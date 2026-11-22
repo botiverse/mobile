@@ -87,7 +87,7 @@ class AgentProfileRefreshCoalescerTest {
     @Test
     fun requestOnCancelledScopeDoesNotInvokeRefresh() = runTest {
         val reads = mutableListOf<String>()
-        val cancelledScope = CoroutineScope(SupervisorJob() + coroutineContext)
+        val cancelledScope = CoroutineScope(coroutineContext + SupervisorJob())
         cancelledScope.cancel()
         val coalescer = AgentProfileRefreshCoalescer(cancelledScope, windowMillis = 1_500) { reads += it }
 

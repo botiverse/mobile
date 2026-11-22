@@ -393,4 +393,58 @@ class AgentActivityKindAndSyncPresenceTest {
         assertFalse(applied)
         assertNull(registry.factFor(owner, "agent-1"))
     }
+
+    @Test
+    fun preSyncRequestSupersedingSyncedCurrentDoesNotBlockNewerPostSyncRequest() = runTest {
+        val registry = ProcessMemberPresenceRegistry()
+        registry.rebaselineTransport(owner, registry.writeGeneration, transport1)
+
+        // Case A: pre-sync RosterCurrent (req 1) supersedes SyncedCurrent (req 2); newer post-sync
+        // DetailCurrent (req 3, base = 2) must still supersede it rather than being dropped.
+        val preSyncRoster = assertNotNull(registry.captureRosterProjectionRequest(owner, registry.writeGeneration))
+        assertTrue(
+            registry.applySyncedAgentProjection(
+                owner = owner,
+                event = presenceEvent("agent-a", AgentStatus.Offline),
+                writeGeneration = registry.writeGeneration,
+            )
+        )
+        val postSyncDetail = assertNotNull(registry.captureDetailProjectionRequest(owner, "agent-a", registry.writeGeneration))
+
+        registry.applyProjection(
+            request = assertNotNull(preSyncRoster.memberRequest("agent-a", freshRoster = true)),
+            event = presenceEvent("agent-a", AgentStatus.Online),
+        )
+        assertEquals(AgentStatus.Online, registry.factFor(owner, "agent-a")?.agentStatus)
+
+        registry.applyProjection(
+            request = postSyncDetail,
+            event = presenceEvent("agent-a", AgentStatus.Working),
+        )
+        assertEquals(AgentStatus.Working, registry.factFor(owner, "agent-a")?.agentStatus)
+
+        // Case B: symmetric — pre-sync DetailCurrent (req 4) supersedes SyncedCurrent (req 5);
+        // newer post-machine:status RosterCurrent (req 6, base = 5) must still supersede it.
+        val preSyncDetail = assertNotNull(registry.captureDetailProjectionRequest(owner, "agent-b", registry.writeGeneration))
+        assertTrue(
+            registry.applySyncedAgentProjection(
+                owner = owner,
+                event = presenceEvent("agent-b", AgentStatus.Offline),
+                writeGeneration = registry.writeGeneration,
+            )
+        )
+        val postSyncRoster = assertNotNull(registry.captureRosterProjectionRequest(owner, registry.writeGeneration))
+
+        registry.applyProjection(
+            request = preSyncDetail,
+            event = presenceEvent("agent-b", AgentStatus.Offline),
+        )
+        assertEquals(AgentStatus.Offline, registry.factFor(owner, "agent-b")?.agentStatus)
+
+        registry.applyProjection(
+            request = assertNotNull(postSyncRoster.memberRequest("agent-b", freshRoster = true)),
+            event = presenceEvent("agent-b", AgentStatus.Online),
+        )
+        assertEquals(AgentStatus.Online, registry.factFor(owner, "agent-b")?.agentStatus)
+    }
 }

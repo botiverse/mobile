@@ -1174,9 +1174,11 @@ private fun ProcessPresenceProjectionRequest.canSupersede(
     current: ProcessPresenceCurrentProjectionStamp
 ): Boolean =
     when {
-        // This request started after the currently accepted projection, so it
-        // is a causal refresh even when its source has lower authority.
-        baseRequestVersion == current.requestVersion -> true
+        // This request started at or after an accepted projection that is at least as new as the
+        // currently stored stamp (including when a pre-sync request superseded a newer SyncedCurrent
+        // stamp and rolled current.requestVersion backwards), so it is a causal refresh even when
+        // its source has lower authority.
+        baseRequestVersion != null && baseRequestVersion >= current.requestVersion -> true
         // Same-source requests have an unambiguous process-monotonic order.
         source == current.source -> requestVersion >= current.requestVersion
         // Different sources compete by authority only when they were captured

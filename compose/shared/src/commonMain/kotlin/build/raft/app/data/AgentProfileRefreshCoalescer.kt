@@ -6,6 +6,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.launch
 
 /**
@@ -43,7 +44,10 @@ internal class AgentProfileRefreshCoalescer(
                                         promotedToActive = true
                                     }
                                 }
-                                if (promotedToActive) refresh(serverId)
+                                if (promotedToActive) {
+                                    coroutineContext.ensureActive()
+                                    refresh(serverId)
+                                }
                             } finally {
                                 synchronized(lock) {
                                     if (pending[serverId] === scheduled) {

@@ -10,6 +10,7 @@ import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.launch
 import kotlin.time.ComparableTimeMark
 import kotlin.time.Duration
@@ -77,6 +78,7 @@ internal class MachineStatusAgentRefresher(
                                     }
                                 }
                                 val boundary = notStartedBefore ?: return@launch
+                                coroutineContext.ensureActive()
                                 refreshNow(normalizedServerId, boundary)
                             } finally {
                                 synchronized(lock) {

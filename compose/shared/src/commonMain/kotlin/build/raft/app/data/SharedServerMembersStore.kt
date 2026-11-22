@@ -1813,13 +1813,18 @@ class SharedServerMembersStore internal constructor(
                 null
             } else {
                 mutex.withLock {
+                    if (currentDirectoryOwnerBinding(ServerId(key)) != binding) {
+                        return@withLock null
+                    }
                     val entry =
                         _state.value.entriesByServerId[key]
                             ?.takeIf { it.matches(binding) && it.status == SharedServerMembersLoadStatus.Loaded }
                             ?: return@withLock null
                     val syncPresenceWrite =
                         owner?.let { expectedOwner ->
-                            presenceWrite(ServerId(key))?.takeIf { it.owner == expectedOwner }
+                            presenceWrite(ServerId(key))?.takeIf {
+                                it.owner == expectedOwner && it.writeGeneration == binding.writeGeneration
+                            }
                         }
                     if (syncPresenceWrite != null) {
                         applySyncedAgentPresence(syncPresenceWrite, accepted)
