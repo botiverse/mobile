@@ -268,13 +268,28 @@ fun RaftCachedImage(
     animated: Boolean = false,
     /** With [animated]: whether it plays now (the selected pager page); it also pauses in the background. */
     animationActive: Boolean = true,
+    /**
+     * Optional stable memory/disk cache key (#proj-mobile:#293: original attachment images key on
+     * attachment id instead of the 5-minute presigned URL).
+     */
+    cacheKey: String? = null,
     onImageStateChange: ((AsyncImagePainter.State) -> Unit)? = null
 ) {
     val platformContext = LocalPlatformContext.current
+    val normalizedCacheKey = cacheKey?.trim()?.takeIf { it.isNotEmpty() }
     val model: Any? =
-        remember(source, animated, platformContext) {
-            if (animated && source != null) {
-                ImageRequest.Builder(platformContext).data(source).raftAnimatedImage().build()
+        remember(source, animated, normalizedCacheKey, platformContext) {
+            if (source != null && (animated || normalizedCacheKey != null)) {
+                ImageRequest.Builder(platformContext)
+                    .data(source)
+                    .apply {
+                        if (animated) raftAnimatedImage()
+                        if (normalizedCacheKey != null) {
+                            memoryCacheKey(normalizedCacheKey)
+                            diskCacheKey(normalizedCacheKey)
+                        }
+                    }
+                    .build()
             } else {
                 source
             }
@@ -323,10 +338,16 @@ internal fun RaftAspectFitImagePreviewSurface(
     animateSource: Boolean = false,
     /** With [animateSource]: whether the animation runs now (the selected pager page). */
     animationActive: Boolean = true,
+    /** Optional stable cache key for [source] (e.g. `raftAttachmentOriginalImageCacheKey`). */
+    sourceCacheKey: String? = null,
+    /** Optional stable cache key for [fallbackSource] (never applied to a low-res thumbnail). */
+    fallbackCacheKey: String? = null,
     onImageStateChange: ((AsyncImagePainter.State) -> Unit)? = null
 ) {
     val normalizedSource = source?.trim()?.takeIf { it.isNotBlank() }
     val normalizedFallback = fallbackSource?.trim()?.takeIf { it.isNotBlank() && it != normalizedSource }
+    val normalizedSourceCacheKey = sourceCacheKey?.trim()?.takeIf { it.isNotEmpty() }
+    val normalizedFallbackCacheKey = fallbackCacheKey?.trim()?.takeIf { it.isNotEmpty() }
     var activeSource by remember(normalizedSource, normalizedFallback) { mutableStateOf(normalizedSource ?: normalizedFallback) }
     var imageState by remember(activeSource) { mutableStateOf<AsyncImagePainter.State>(AsyncImagePainter.State.Empty) }
     // The last source that reached AsyncImagePainter.State.Success. Kept as the
@@ -334,21 +355,32 @@ internal fun RaftAspectFitImagePreviewSurface(
     // URL swaps in over the already-rendered thumbnail instead of flashing a
     // blank frame (task #282).
     var lastSucceededSource by remember { mutableStateOf<String?>(null) }
+    var lastSucceededCacheKey by remember { mutableStateOf<String?>(null) }
     // task #287: a source that departs while still loading (hydration resolved
     // before its first Success) is also a valid underlay — its fetch keeps
     // running under the new frame and the spinner must not flash a second
     // time. Sources that departed in Error are excluded so a dead frame is
     // never pinned underneath.
     var lastPresentableSource by remember { mutableStateOf<String?>(null) }
+    var lastPresentableCacheKey by remember { mutableStateOf<String?>(null) }
+    val activeCacheKey =
+        when (activeSource) {
+            null -> null
+            normalizedSource -> normalizedSourceCacheKey
+            normalizedFallback -> normalizedFallbackCacheKey
+            else -> null
+        }
     val activeSourceOutcome = remember(activeSource) {
         RaftImagePreviewSourceOutcome()
     }
-    DisposableEffect(activeSource) {
+    DisposableEffect(activeSource, activeCacheKey) {
         val departed = activeSource
+        val departedCacheKey = activeCacheKey
         val outcome = activeSourceOutcome
         onDispose {
             if (departed != null && !outcome.failed) {
                 lastPresentableSource = departed
+                lastPresentableCacheKey = departedCacheKey
             }
         }
     }
@@ -376,7 +408,12 @@ internal fun RaftAspectFitImagePreviewSurface(
             // Only the decoded dimensions are read (render identity), so decode a small,
             // subsampled copy instead of the full-resolution image per thumbnail.
             // TODO(cmp-switch): read the dimensions from the image header without decoding.
-            val activeBitmap = rememberAsyncImageBitmap(activeSource, maxDecodeEdgePx = RaftImagePreviewIdentityDecodeEdgePx)
+            val activeBitmap =
+                rememberAsyncImageBitmap(
+                    model = activeSource,
+                    maxDecodeEdgePx = RaftImagePreviewIdentityDecodeEdgePx,
+                    diskCacheKey = activeCacheKey
+                )
             val currentSource = activeSource.orEmpty()
             val activeSucceeded = imageState is AsyncImagePainter.State.Success
             val identityHolder = remember(activeSource) {
@@ -410,10 +447,19 @@ internal fun RaftAspectFitImagePreviewSurface(
                 // While the full-size image loads over a zoomed thumbnail, the thumbnail underlay
                 // keeps the same zoom so the view does not jump to 1x and back.
                 val underlayZoom = zoomState?.takeIf { zoomable }
+                val underlayCacheKey =
+                    when (underlaySource) {
+                        lastSucceededSource -> lastSucceededCacheKey
+                        lastPresentableSource -> lastPresentableCacheKey
+                        normalizedFallback -> normalizedFallbackCacheKey
+                        normalizedSource -> normalizedSourceCacheKey
+                        else -> null
+                    }
                 RaftCachedImage(
                     source = underlaySource,
                     contentDescription = contentDescription,
                     contentScale = contentScale,
+                    cacheKey = underlayCacheKey,
                     modifier =
                         Modifier
                             .fillMaxSize()
@@ -430,11 +476,13 @@ internal fun RaftAspectFitImagePreviewSurface(
                         zoomState = zoomState,
                         animated = animateActive,
                         animationActive = animationActive,
+                        cacheKey = activeCacheKey,
                         onImageStateChange = { state ->
                             imageState = state
                             onImageStateChange?.invoke(state)
                             if (state is AsyncImagePainter.State.Success) {
                                 lastSucceededSource = activeSource
+                                lastSucceededCacheKey = activeCacheKey
                             }
                             if (state is AsyncImagePainter.State.Error) {
                                 activeSourceOutcome.failed = true
@@ -452,11 +500,13 @@ internal fun RaftAspectFitImagePreviewSurface(
                         modifier = Modifier.fillMaxSize(),
                         animated = animateActive,
                         animationActive = animationActive,
+                        cacheKey = activeCacheKey,
                         onImageStateChange = { state ->
                             imageState = state
                             onImageStateChange?.invoke(state)
                             if (state is AsyncImagePainter.State.Success) {
                                 lastSucceededSource = activeSource
+                                lastSucceededCacheKey = activeCacheKey
                             }
                             if (state is AsyncImagePainter.State.Error) {
                                 activeSourceOutcome.failed = true
@@ -519,6 +569,7 @@ private fun RaftZoomableCachedImage(
     zoomState: RaftZoomableImageState? = null,
     animated: Boolean = false,
     animationActive: Boolean = true,
+    cacheKey: String? = null,
     onImageStateChange: ((AsyncImagePainter.State) -> Unit)? = null
 ) {
     // Hoisted state survives the render slot re-keying on a source swap (thumbnail -> full size).
@@ -546,6 +597,7 @@ private fun RaftZoomableCachedImage(
             // stay on this Box; only the painter's frames change.
             animated = animated,
             animationActive = animationActive,
+            cacheKey = cacheKey,
             onImageStateChange = { imageState ->
                 // Pan is bounded by the image as fitted into the viewport, so it needs the image size.
                 // The thumbnail and the full-size image share an aspect ratio, so either one will do.

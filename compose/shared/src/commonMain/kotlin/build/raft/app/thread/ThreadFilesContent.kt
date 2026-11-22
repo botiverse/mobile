@@ -14,7 +14,9 @@ import build.raft.designsystem.components.RaftIconTileSize
 import build.raft.designsystem.components.RaftListRow
 import build.raft.designsystem.components.RaftListRowGroup
 import build.raft.designsystem.theme.RaftTheme
+import build.raft.app.model.RaftTimeContext
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -78,11 +80,18 @@ private const val ThreadFilesAutoLoadPrefetchRows = 4
 // three fixture files at rest (no download in flight), times in the owner's Asia/Shanghai zone.
 @Composable
 internal fun ThreadFilesVisualScreen() {
-    Box(modifier = Modifier.width(390.dp).height(360.dp)) {
-        ThreadFilesContent(
-            payload = threadFilesVisualPayload(),
-            onEvent = { _, _ -> }
-        )
+    // The shared fixtures' instant and zone (slock fixtureData.json `locale`).
+    val clock =
+        remember {
+            RaftTimeContextProvider(RaftTimeContext(localOffsetMinutes = 480, todayEpochDay = 20_623, nowEpochMillis = 1_781_872_200_000L))
+        }
+    CompositionLocalProvider(LocalRaftTimeContextProvider provides clock) {
+        Box(modifier = Modifier.width(390.dp).height(360.dp)) {
+            ThreadFilesContent(
+                payload = threadFilesVisualPayload(),
+                onEvent = { _, _ -> }
+            )
+        }
     }
 }
 
@@ -136,7 +145,7 @@ private fun threadFilesVisualPayload(): RaftThreadFilesPayload =
                     channelId = "visual-thread-composer",
                     name = "composer-preview.png",
                     sizeLabel = "128 KB",
-                    createdAtLabel = "Jun 25, 18:24",
+                    createdAtLabel = "2026-06-25T10:24:00.000Z",
                     sourceLabel = "Channel",
                     sourceType = "channel",
                     sourceChannelId = "visual-thread-composer",
@@ -149,7 +158,7 @@ private fun threadFilesVisualPayload(): RaftThreadFilesPayload =
                     channelId = "visual-thread-composer",
                     name = "release-notes.pdf",
                     sizeLabel = "428 KB",
-                    createdAtLabel = "Jun 25, 18:17",
+                    createdAtLabel = "2026-06-25T10:17:00.000Z",
                     sourceLabel = "Thread #f8e569cb",
                     sourceType = "thread",
                     sourceChannelId = "visual-thread-composer",
@@ -163,7 +172,7 @@ private fun threadFilesVisualPayload(): RaftThreadFilesPayload =
                     channelId = "visual-thread-composer",
                     name = "android-smoke-log.zip",
                     sizeLabel = "1.8 MB",
-                    createdAtLabel = "Jun 25, 18:08",
+                    createdAtLabel = "2026-06-25T10:08:00.000Z",
                     sourceLabel = "Channel",
                     sourceType = "channel",
                     sourceChannelId = "visual-thread-composer",

@@ -727,8 +727,10 @@ internal fun MemberDetailVisualSeedContent(
         currentServerId = "visual-server",
         agentDetailState = seed.agentDetailState,
         activityOverview =
-            remember(seed.activityOverview) {
-                seed.activityOverview?.let {
+            remember(seed, initialAgentTab) {
+                // Only the profile gets the empty overview: it would also open the Activity tab on its Overview.
+                val onProfile = initialAgentTab == null || initialAgentTab == MembersAgentDetailTab.Profile
+                (seed.activityOverview ?: membersVisualEmptyActivityOverview(seed.member).takeIf { onProfile })?.let {
                     MembersAgentActivityOverviewBinding(state = MutableStateFlow(it), onIntent = {})
                 }
             },
@@ -856,6 +858,12 @@ internal fun MembersAgentDetailVisualContent(
             onReportAgentIssue = null,
             onUploadAgentAvatar = null
         ),
+        activityOverview =
+            remember {
+                membersVisualEmptyActivityOverview(membersAgentDetailVisualMember)?.let {
+                    MembersAgentActivityOverviewBinding(state = MutableStateFlow(it), onIntent = {})
+                }
+            },
         timeContext = RaftTimeContext(
             localOffsetMinutes = 480,
             todayEpochDay = 20623,
@@ -870,6 +878,17 @@ internal fun MembersAgentDetailVisualContent(
         remoteControls = rememberMembersVisualFixtureRemoteControls()
     )
 }
+
+/** The web's profile always has its Recent activity card; its fixture has no turns. Null for a person. */
+private fun membersVisualEmptyActivityOverview(member: MemberProfile): build.raft.app.data.AgentActivityOverviewState? =
+    if (member.kind == MemberKind.Agent) {
+        build.raft.app.data.AgentActivityOverviewState(
+            agentId = member.id,
+            status = build.raft.app.data.AgentActivityOverviewStatus.Loaded,
+        )
+    } else {
+        null
+    }
 
 private fun readCurrentServerId(): String? = null
 

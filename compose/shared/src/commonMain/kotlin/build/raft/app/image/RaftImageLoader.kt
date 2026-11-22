@@ -36,6 +36,7 @@ internal fun raftCurrentImageLoader(): ImageLoader? = raftBuiltImageLoader.value
  */
 suspend fun raftClearImageCaches() {
     RaftSentAttachmentLocalImages.registry.clear()
+    build.raft.app.raftFilePreviewAttachmentUrlCache().clear()
     val loader = raftBuiltImageLoader.value ?: return
     withContext(Dispatchers.Default) {
         runCatching { loader.memoryCache?.clear() }

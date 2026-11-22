@@ -769,11 +769,11 @@ internal fun ThreadMessageVisualScreenContent() {
         mutableStateOf<ThreadInlineReplyTimestampBounds?>(null)
     }
     val inheritedTimeContextProvider = LocalRaftTimeContextProvider.current
-    // A fixture that pins `nowEpochMillis` owns its clock, so every relative timestamp under it
-    // resolves against that fixed instant: deterministic across runs AND rendered as real digits.
-    // Without a time context, resolveRaftRelativeTimeLabel() returns Unknown and the row shows the
-    // literal "unknown time" — which is how a non-monospace inline reply timestamp (#2074) shipped
-    // past the case built to guard that row. Fixtures that pin no clock keep the Unknown behavior.
+    // A payload with `nowEpochMillis` (every fixture's, threadVisualFixture) resolves each timestamp
+    // under it against that instant: deterministic across runs AND rendered as real digits. Without
+    // a time context, resolveRaftRelativeTimeLabel() returns Unknown and the row shows the literal
+    // "unknown time" — which is how a non-monospace inline reply timestamp (#2074) shipped past the
+    // case built to guard that row.
     val visualTimeContextProvider =
         remember(payload, interactionProbe) {
             if (interactionProbe == "reply-timestamp-owner" || payload.nowEpochMillis != null) {
