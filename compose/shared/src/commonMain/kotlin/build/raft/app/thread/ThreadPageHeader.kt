@@ -34,6 +34,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.runtime.setValue
 import androidx.compose.foundation.Canvas
@@ -58,6 +59,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.layout.layoutId
 import androidx.compose.ui.layout.layout
+import androidx.compose.ui.layout.onSizeChanged
 import build.raft.app.compat.pager.LocalActivity
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
@@ -286,6 +288,8 @@ internal fun ThreadPageHeader(
                 headerDisplay.surfaceKind == RaftThreadSurfaceKind.ReplyThread ||
                     taskConversation ||
                     payload.threadHeaderSearchAction() != null ||
+                    dmLoungeToggle != null ||
+                    sideCardToggles?.cardsInHeader()?.isNotEmpty() == true ||
                     threadHeaderSettingsActionVisible(payload.showSettingsAction, headerDisplay.surfaceKind) ||
                     payload.threadHeaderOpenInParentActionVisible()
             )
@@ -321,6 +325,8 @@ internal fun ThreadPageHeader(
                         onMarkThreadUnread = onMarkThreadUnread,
                         onViewTaskInChannel = taskConversationChrome?.onViewInChannel,
                         sideCardToggles = sideCardToggles,
+                        dmLoungeToggle = dmLoungeToggle,
+                        loungeLabel = loungeLabel,
                         onOpenTimeline = onOpenTimeline,
                         onDeleteTask = taskConversationChrome?.onDeleteTask,
                     )
@@ -328,12 +334,11 @@ internal fun ThreadPageHeader(
                     emptyList()
                 },
         )
-    // PROTOTYPE (native nav bar): the conversation's buttons on the system bar: Members (with its
-    // member count, plain) first, then the Duo column's actions (the header's Search / Settings / Open in
-    // Channel and its ⋯ rows: Focus mode, Search in Task, View in Channel, Mark as Unread,
-    // Follow), then the ⋯'s notification level row. The bar keeps two buttons, the rest in ⋯.
+    // iOS native nav bar (web Task v2 head parity, #proj-mobile:#281): Search, Lounge (agent DM),
+    // Tasks, Files, Settings — folding from the last into ⋯ to fit, with no Members button
+    // (Members lives in Settings / channel details, also reachable by tapping the channel title).
     val nativeSideActions =
-        if (showActions && LocalRaftNativeNavBarScript.current != null) {
+        if (showActions && (LocalRaftNativeNavBar.current != null || LocalRaftNativeNavBarScript.current != null)) {
             threadHeaderSideColumnActions(
                 payload = payload,
                 surfaceKind = headerDisplay.surfaceKind,
@@ -348,6 +353,9 @@ internal fun ThreadPageHeader(
                 onToggleThreadFollow = onToggleThreadFollow,
                 onMarkThreadUnread = onMarkThreadUnread,
                 onViewTaskInChannel = taskConversationChrome?.onViewInChannel,
+                sideCardToggles = sideCardToggles,
+                dmLoungeToggle = dmLoungeToggle,
+                loungeLabel = loungeLabel,
                 onOpenTimeline = onOpenTimeline,
                 onDeleteTask = taskConversationChrome?.onDeleteTask,
             )
@@ -360,30 +368,11 @@ internal fun ThreadPageHeader(
     if (nativeLevelDialogOpen && nativeLevelTarget != null) {
         RaftNotificationLevelDialog(target = nativeLevelTarget, onDismiss = { nativeLevelDialogOpen = false })
     }
-    val membersLabel = stringResource(Res.string.settings_members_title)
     val nativeNavBarActions =
         if (!showActions) {
             emptyList()
         } else {
             buildList {
-                if (payload.showMembersAction && headerDisplay.surfaceKind != RaftThreadSurfaceKind.DirectMessage && loungeHeader == null) {
-                    add(
-                        RaftNativeNavBarAction(
-                            "members",
-                            membersLabel,
-                            "person.2",
-                            onShowMembers,
-                            // The web header's member count: a quiet number beside the glyph,
-                            // not the red unread badge (28 members read as 28 unread; #proj-mobile:#162).
-                            count = raftNativeNavBarCountText(payload.membersCount),
-                            priority = Int.MAX_VALUE,
-                            icon = RaftLucideIconName.Users,
-                        )
-                    )
-                }
-                if (dmLoungeToggle != null) {
-                    add(RaftNativeNavBarAction("lounge", loungeLabel, "person.2", dmLoungeToggle, icon = RaftLucideIconName.Users))
-                }
                 addAll(nativeSideActions.toRaftNativeNavBarActions())
                 if (nativeLevelTarget != null) {
                     add(
@@ -399,8 +388,15 @@ internal fun ThreadPageHeader(
                 }
             }
         }
+    val headerDensity = LocalDensity.current
+    var headerWidthDp by remember { mutableStateOf(0f) }
     RaftTopPageHeader(
         title = localizedHeaderTitle,
+        modifier =
+            Modifier.onSizeChanged { size ->
+                val measured = with(headerDensity) { size.width.toDp().value }
+                if (measured != headerWidthDp) headerWidthDp = measured
+            },
         nativeSubtitle = headerSubtitle,
         nativeOnSubtitleClick = onOpenInChannel.takeIf { channelLinkLabel != null },
         nativeActions = nativeNavBarActions,
@@ -580,46 +576,43 @@ internal fun ThreadPageHeader(
                     // Web ThreadPanel: a reply thread's Search in Thread and View in Channel live in
                     // its ⋯ menu ("thread commands live in the menu"), not as header buttons.
                     val replyThreadMenu = headerDisplay.surfaceKind == RaftThreadSurfaceKind.ReplyThread
-                    if (!taskConversation && !replyThreadMenu && payload.threadHeaderSearchAction() != null) {
-                        ThreadHeaderIconButton(icon = RaftLucideIconName.Search, onClick = onOpenSearch)
-                    }
-                    // Agent Lounge v0 (web useChannelHeadToggles): an agent DM's Lounge, between Search and Settings.
-                    if (dmLoungeToggle != null) {
-                        Box(Modifier.testTag(AgentLoungeTestTags.DmHeaderToggle)) {
-                            ConversationHeaderToggle(
-                                icon = RaftLucideIconName.Users,
-                                selected = false,
-                                label = loungeLabel,
-                                onClick = dmLoungeToggle
-                            )
-                        }
-                    }
-                    sideCardToggles?.let { toggles ->
-                        // web ChannelTasksToggle / ChannelFilesToggle: no count on either.
-                        toggles.cardsInHeader().forEach { card ->
-                            ConversationHeaderToggle(
-                                icon = card.icon,
-                                selected = toggles.cards.isOpen(card),
-                                label = conversationSideCardToggleLabel(card, toggles.cards.isOpen(card)),
-                                onClick = { toggles.onToggle(card) }
-                            )
-                        }
-                    }
-                    if (threadHeaderSettingsActionVisible(payload.showSettingsAction, headerDisplay.surfaceKind)) {
-                        // web PanelToggleAction: pressed while the details are open, named Close then.
-                        ConversationHeaderToggle(
-                            icon = RaftLucideIconName.Settings,
-                            selected = settingsOpen,
-                            label =
-                                stringResource(
-                                    if (settingsOpen) Res.string.channel_details_close else Res.string.channel_details_open
-                                ),
-                            onClick = onShowSettings,
+                    val searchLabel = stringResource(Res.string.thread_action_search)
+                    val settingsLabel =
+                        stringResource(
+                            if (settingsOpen) Res.string.channel_details_close else Res.string.channel_details_open
                         )
-                    }
-                    if (!replyThreadMenu && payload.threadHeaderOpenInParentActionVisible()) {
-                        ThreadHeaderIconButton(icon = RaftLucideIconName.MapPin, onClick = onOpenInChannel)
-                    }
+                    val openInChannelLabel = stringResource(Res.string.task_conversation_view_in_channel)
+                    val sideCardOwnActions =
+                        sideCardToggles?.cardsInHeader()?.map { card ->
+                            val open = sideCardToggles.cards.isOpen(card)
+                            ThreadHeaderOwnActionSpec(
+                                id = "thread-side-card-${card.name.lowercase()}",
+                                label = conversationSideCardToggleLabel(card, open),
+                                icon = card.icon,
+                                selected = open,
+                                toggle = true,
+                                onClick = { sideCardToggles.onToggle(card) },
+                            )
+                        }.orEmpty()
+                    val ownActions =
+                        threadHeaderConversationOwnActions(
+                            searchLabel = searchLabel.takeIf { !taskConversation && !replyThreadMenu && payload.threadHeaderSearchAction() != null },
+                            onOpenSearch = onOpenSearch,
+                            loungeLabel = loungeLabel.takeIf { dmLoungeToggle != null },
+                            onOpenLounge = dmLoungeToggle,
+                            sideCardActions = sideCardOwnActions,
+                            settingsLabel =
+                                settingsLabel.takeIf {
+                                    threadHeaderSettingsActionVisible(payload.showSettingsAction, headerDisplay.surfaceKind)
+                                },
+                            settingsOpen = settingsOpen,
+                            onShowSettings = onShowSettings,
+                            openInChannelLabel =
+                                openInChannelLabel.takeIf {
+                                    !replyThreadMenu && payload.threadHeaderOpenInParentActionVisible()
+                                },
+                            onOpenInChannel = onOpenInChannel,
+                        )
                     val replyThreadSearch = onOpenSearch.takeIf { replyThreadMenu && payload.threadHeaderSearchAction() != null }
                     val replyThreadViewInChannel =
                         onOpenInChannel.takeIf { replyThreadMenu && parentReachable && payload.threadHeaderOpenInParentActionVisible() }
@@ -627,8 +620,52 @@ internal fun ThreadPageHeader(
                     val hasPanelMenu =
                         onToggleThreadFollow != null || onMarkThreadUnread != null || taskConversation ||
                             replyThreadSearch != null || replyThreadViewInChannel != null || onOpenTimeline != null
-                    if (hasPanelMenu) {
+                    val edgeInsetDp = ThreadHeaderEdgeInset.value
+                    val actionSizeDp = ThreadHeaderActionSize.value
+                    val startInsetDp = if (showsBack && !controlsInColumn) edgeInsetDp else ThreadSplitDetailEdgeInset.value
+                    val backWidthDp = if (showsBack && !controlsInColumn) actionSizeDp + 6f else 0f
+                    val leadingTileDp =
+                        when {
+                            loungeHeader != null -> 35f + ThreadHeaderContentSpacing.value
+                            headerDisplay.surfaceKind == RaftThreadSurfaceKind.DirectMessage ->
+                                ThreadHeaderDmAvatarSize.value + ThreadHeaderContentSpacing.value
+                            payload.showModeTabs -> ThreadHeaderChannelTileSize.value + ThreadHeaderContentSpacing.value
+                            else -> 0f
+                        }
+                    val leadOverheadDp = startInsetDp + backWidthDp + leadingTileDp + ThreadHeaderContentSpacing.value + edgeInsetDp
+                    val shownOwnCount =
+                        threadHeaderShownOwnActions(
+                            widthDp = headerWidthDp,
+                            leadOverheadDp = leadOverheadDp,
+                            ownCount = ownActions.size,
+                            actionSizeDp = actionSizeDp,
+                            fixedTrailingCount = if (toggleFocus != null) 1 else 0,
+                            existingMenuItems = hasPanelMenu,
+                        )
+                    val visibleOwnActions = ownActions.take(shownOwnCount)
+                    val foldedOwnActions = ownActions.drop(shownOwnCount)
+                    visibleOwnActions.forEach { action ->
+                        val renderButton: @Composable () -> Unit = {
+                            if (action.toggle) {
+                                ConversationHeaderToggle(
+                                    icon = action.icon,
+                                    selected = action.selected,
+                                    label = action.label,
+                                    onClick = action.onClick,
+                                )
+                            } else {
+                                ThreadHeaderIconButton(icon = action.icon, onClick = action.onClick)
+                            }
+                        }
+                        if (action.testTag != null) {
+                            Box(Modifier.testTag(action.testTag)) { renderButton() }
+                        } else {
+                            renderButton()
+                        }
+                    }
+                    if (hasPanelMenu || foldedOwnActions.isNotEmpty()) {
                         ThreadHeaderFocusModeMenu(
+                            foldedActions = foldedOwnActions,
                             followed = threadFollowed,
                             onToggleFollow = onToggleThreadFollow,
                             onMarkUnread = onMarkThreadUnread,
@@ -692,10 +729,115 @@ internal fun ThreadHeaderChannelLinkSubtitle(
     }
 }
 
+internal const val ThreadHeaderMinTitleWidthDp = 56f
+
+internal data class ThreadHeaderOwnActionSpec(
+    val id: String,
+    val label: String,
+    val icon: RaftLucideIconName,
+    val selected: Boolean = false,
+    val toggle: Boolean = false,
+    val testTag: String? = null,
+    val onClick: () -> Unit,
+)
+
 /**
- * The conversation header's actions for the Duo side column, in the header's order: Search and
- * Settings (or Open in Channel) first, so they are the two the column shows; the More menu's rows
- * (Focus mode, Search in Task, View in Channel, Follow) after them, in its ⋯.
+ * Web Task v2 conversation head button order (`useChannelHeadToggles.tsx`):
+ * Search, Lounge (agent DM), Tasks, Files, Settings, then Open in Channel where applicable.
+ * No Members button (Members lives inside Settings / channel details, also reachable via title tap).
+ */
+internal fun threadHeaderConversationOwnActions(
+    searchLabel: String?,
+    onOpenSearch: () -> Unit,
+    loungeLabel: String?,
+    onOpenLounge: (() -> Unit)?,
+    sideCardActions: List<ThreadHeaderOwnActionSpec> = emptyList(),
+    settingsLabel: String?,
+    settingsOpen: Boolean,
+    onShowSettings: () -> Unit,
+    openInChannelLabel: String?,
+    onOpenInChannel: () -> Unit,
+): List<ThreadHeaderOwnActionSpec> =
+    buildList {
+        if (!searchLabel.isNullOrBlank()) {
+            add(
+                ThreadHeaderOwnActionSpec(
+                    id = "thread-search",
+                    label = searchLabel,
+                    icon = RaftLucideIconName.Search,
+                    onClick = onOpenSearch,
+                )
+            )
+        }
+        if (!loungeLabel.isNullOrBlank() && onOpenLounge != null) {
+            add(
+                ThreadHeaderOwnActionSpec(
+                    id = "lounge",
+                    label = loungeLabel,
+                    icon = RaftLucideIconName.Users,
+                    toggle = true,
+                    testTag = AgentLoungeTestTags.DmHeaderToggle,
+                    onClick = onOpenLounge,
+                )
+            )
+        }
+        addAll(sideCardActions)
+        if (!settingsLabel.isNullOrBlank()) {
+            add(
+                ThreadHeaderOwnActionSpec(
+                    id = "thread-settings",
+                    label = settingsLabel,
+                    icon = RaftLucideIconName.Settings,
+                    selected = settingsOpen,
+                    toggle = true,
+                    onClick = onShowSettings,
+                )
+            )
+        }
+        if (!openInChannelLabel.isNullOrBlank()) {
+            add(
+                ThreadHeaderOwnActionSpec(
+                    id = "thread-open-in-channel",
+                    label = openInChannelLabel,
+                    icon = RaftLucideIconName.MapPin,
+                    onClick = onOpenInChannel,
+                )
+            )
+        }
+    }
+
+/**
+ * Web `headFit.ts` (`shownOwnActions`, #189 rule 6): how many of the conversation head's own
+ * buttons stay visible before folding from the last into `⋯` so the title keeps at least
+ * [minTitleWidthDp]. When [widthDp] is not measured yet (`<= 0`), every action stays visible.
+ */
+internal fun threadHeaderShownOwnActions(
+    widthDp: Float,
+    leadOverheadDp: Float,
+    ownCount: Int,
+    actionSizeDp: Float,
+    actionGapDp: Float = ThreadHeaderActionGroupSpacing.value,
+    fixedTrailingCount: Int = 0,
+    existingMenuItems: Boolean = false,
+    minTitleWidthDp: Float = ThreadHeaderMinTitleWidthDp,
+): Int {
+    if (ownCount <= 0) return 0
+    if (widthDp <= 0f) return ownCount
+    val room = widthDp - leadOverheadDp - minTitleWidthDp
+    for (shown in ownCount downTo 1) {
+        val needsOverflowMenu = existingMenuItems || shown < ownCount
+        val fixed = fixedTrailingCount + if (needsOverflowMenu) 1 else 0
+        val totalSlots = shown + fixed
+        val need = actionSizeDp * totalSlots + actionGapDp * (totalSlots - 1).coerceAtLeast(0)
+        if (need <= room) return shown
+    }
+    return 0
+}
+
+/**
+ * The conversation header's actions for the Duo side column and iOS native nav bar, in web Task v2
+ * order: Search, Lounge (agent DM), Tasks, Files, Settings — folding from the last into ⋯; reply
+ * thread and task commands live in ⋯, and Focus mode stays out of ⋯.
  */
 @Composable
 private fun threadHeaderSideColumnActions(
@@ -714,6 +856,8 @@ private fun threadHeaderSideColumnActions(
     onMarkThreadUnread: (() -> Unit)?,
     onViewTaskInChannel: (() -> Unit)?,
     sideCardToggles: ThreadHeaderSideCardToggles? = null,
+    dmLoungeToggle: (() -> Unit)? = null,
+    loungeLabel: String = "",
     onOpenTimeline: (() -> Unit)? = null,
     /** Task v2: Delete task, the ⋯ menu's last row (web #14115); null for a reader who may not. */
     onDeleteTask: (() -> Unit)? = null,
@@ -721,6 +865,7 @@ private fun threadHeaderSideColumnActions(
     val timelineLabel = stringResource(Res.string.thread_outline_list_title)
     val markUnreadLabel = stringResource(Res.string.home_action_mark_as_unread)
     val searchLabel = stringResource(Res.string.thread_action_search)
+    val searchInThreadLabel = stringResource(Res.string.thread_action_search_in_thread)
     val settingsLabel = stringResource(Res.string.settings_title)
     val viewInChannelLabel = stringResource(Res.string.task_conversation_view_in_channel)
     val deleteTaskLabel = stringResource(Res.string.task_delete_action)
@@ -742,14 +887,25 @@ private fun threadHeaderSideColumnActions(
         ConversationSideCard.entries.associateWith { card ->
             conversationSideCardToggleLabel(card, sideCardToggles?.cards?.isOpen(card) == true)
         }
+    val replyThreadMenu = surfaceKind == RaftThreadSurfaceKind.ReplyThread
     return buildList {
-        if (!taskConversation && payload.threadHeaderSearchAction() != null) {
+        if (!taskConversation && !replyThreadMenu && payload.threadHeaderSearchAction() != null) {
             add(
                 raftSideColumnLucideAction(
                     "thread-search",
                     searchLabel,
                     RaftLucideIconName.Search,
                     onOpenSearch,
+                )
+            )
+        }
+        if (dmLoungeToggle != null && loungeLabel.isNotBlank()) {
+            add(
+                raftSideColumnLucideAction(
+                    "lounge",
+                    loungeLabel,
+                    RaftLucideIconName.Users,
+                    dmLoungeToggle,
                 )
             )
         }
@@ -775,11 +931,7 @@ private fun threadHeaderSideColumnActions(
                 )
             )
         }
-        // Web ThreadOverflowMenu: Timeline after Search, before View in Channel; in the ⋯.
-        if (onOpenTimeline != null) {
-            add(raftSideColumnLucideAction(THREAD_TIMELINE_MENU_ITEM_ID, timelineLabel, RaftLucideIconName.List, onOpenTimeline, priority = -1))
-        }
-        if (parentReachable && payload.threadHeaderOpenInParentActionVisible()) {
+        if (!replyThreadMenu && parentReachable && payload.threadHeaderOpenInParentActionVisible()) {
             add(raftSideColumnLucideAction("thread-open-in-channel", viewInChannelLabel, RaftLucideIconName.MapPin, onOpenInChannel))
         }
         // web ThreadPanelHeader (slock #12211): Focus mode (the head's Expand) never goes into the ⋯.
@@ -787,11 +939,18 @@ private fun threadHeaderSideColumnActions(
             val icon = if (focusModeActive) RaftLucideIconName.Minimize2 else RaftLucideIconName.Maximize2
             add(raftSideColumnLucideAction(FOCUS_MODE_MENU_ITEM_ID, focusLabel, icon, onToggleFocusMode).copy(keepVisible = true))
         }
-        if (taskConversation) {
-            add(raftSideColumnLucideAction(SEARCH_IN_TASK_MENU_ITEM_ID, searchInTaskLabel, RaftLucideIconName.Search, onOpenSearch))
-            if (onViewTaskInChannel != null) {
-                add(raftSideColumnLucideAction(VIEW_TASK_IN_CHANNEL_MENU_ITEM_ID, viewInChannelLabel, RaftLucideIconName.MapPin, onViewTaskInChannel))
-            }
+        if (taskConversation || (replyThreadMenu && payload.threadHeaderSearchAction() != null)) {
+            val label = if (taskConversation) searchInTaskLabel else searchInThreadLabel
+            add(raftSideColumnLucideAction(SEARCH_IN_TASK_MENU_ITEM_ID, label, RaftLucideIconName.Search, onOpenSearch, priority = -1))
+        }
+        // Web ThreadOverflowMenu: Timeline after Search, before View in Channel; in the ⋯.
+        if (onOpenTimeline != null) {
+            add(raftSideColumnLucideAction(THREAD_TIMELINE_MENU_ITEM_ID, timelineLabel, RaftLucideIconName.List, onOpenTimeline, priority = -1))
+        }
+        if (taskConversation && onViewTaskInChannel != null) {
+            add(raftSideColumnLucideAction(VIEW_TASK_IN_CHANNEL_MENU_ITEM_ID, viewInChannelLabel, RaftLucideIconName.MapPin, onViewTaskInChannel, priority = -1))
+        } else if (replyThreadMenu && parentReachable && payload.threadHeaderOpenInParentActionVisible()) {
+            add(raftSideColumnLucideAction(VIEW_TASK_IN_CHANNEL_MENU_ITEM_ID, viewInChannelLabel, RaftLucideIconName.MapPin, onOpenInChannel, priority = -1))
         }
         if (onMarkThreadUnread != null) {
             add(
@@ -1229,6 +1388,7 @@ private fun rememberThreadAdaptiveFocusContext(
  */
 @Composable
 private fun ThreadHeaderFocusModeMenu(
+    foldedActions: List<ThreadHeaderOwnActionSpec> = emptyList(),
     followed: Boolean? = null,
     onToggleFollow: (() -> Unit)? = null,
     /**
@@ -1261,8 +1421,20 @@ private fun ThreadHeaderFocusModeMenu(
     var localMenuAnchor by remember { mutableStateOf<RaftPopoverAnchor?>(null) }
     var notificationLevelDialogOpen by remember { mutableStateOf(false) }
     val notificationLevelLabel = rememberRaftNotificationLevelMenuLabel(notificationLevelTarget)
+    val latestFoldedActions by rememberUpdatedState(foldedActions)
     val items =
         buildList {
+            // Folded conversation head toggles sit at the top of ⋯ in listed order (web ColumnOverflowMenu).
+            foldedActions.forEach { action ->
+                add(
+                    RaftUiMenuItem(
+                        id = action.id,
+                        label = action.label,
+                        icon = action.icon,
+                        enabled = true,
+                    )
+                )
+            }
             // Task v2: the web menu's next rows for a task, in its order (ThreadOverflowMenu.tsx).
             if (onSearchInTask != null) {
                 add(
@@ -1392,7 +1564,7 @@ private fun ThreadHeaderFocusModeMenu(
                     VIEW_TASK_IN_CHANNEL_MENU_ITEM_ID -> onViewInChannel?.invoke()
                     DELETE_TASK_MENU_ITEM_ID -> onDeleteTask?.invoke()
                     NOTIFICATION_LEVEL_MENU_ITEM_ID -> notificationLevelDialogOpen = true
-                    else -> Unit // dismissed
+                    else -> latestFoldedActions.firstOrNull { it.id == selectedId }?.onClick?.invoke()
                 }
             }
         onDispose {
@@ -1473,6 +1645,7 @@ private fun ThreadHeaderFocusModeMenu(
                     VIEW_TASK_IN_CHANNEL_MENU_ITEM_ID -> onViewInChannel?.invoke()
                     DELETE_TASK_MENU_ITEM_ID -> onDeleteTask?.invoke()
                     NOTIFICATION_LEVEL_MENU_ITEM_ID -> notificationLevelDialogOpen = true
+                    else -> latestFoldedActions.firstOrNull { it.id == id }?.onClick?.invoke()
                 }
             },
             onDismiss = { localMenuAnchor = null },
