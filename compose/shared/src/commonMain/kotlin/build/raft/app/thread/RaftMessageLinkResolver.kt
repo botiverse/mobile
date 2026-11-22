@@ -380,25 +380,45 @@ internal class RaftMessageLinkResolver(
         return null
     }
 
-    /** [serverId] null: no server binding (the anonymous public routes). */
+    /**
+     * [serverId] null: no server binding (the anonymous public routes).
+     *
+     * Warm App Links accepted from another app can launch these idempotent GET probes right as
+     * Android transitions the app from background to foreground (`onActivityStarted()`), which
+     * retires in-flight Read requests with `network_request_lifecycle_retired` (#proj-mobile:#311).
+     * Retry once on that exact visibility-edge retirement so thread/task/short-id probes still run.
+     */
     private suspend fun request(
         serverId: ServerId?,
         path: String,
         query: List<Pair<String, String>> = emptyList(),
-    ): HomeNetworkResponse? =
-        try {
-            networkClient.request(
-                priority = DataRequestPriority.Foreground,
-                path = path,
-                query = query,
-                serverIdOverride = serverId,
-            )
-        } catch (cancellation: CancellationException) {
-            throw cancellation
-        } catch (error: Throwable) {
-            diagnosticsLogger("message_link_probe_failed path=${path.substringBefore('/')} error=${error::class.simpleName.orEmpty()}")
-            null
+    ): HomeNetworkResponse? {
+        repeat(2) { attempt ->
+            val response =
+                try {
+                    networkClient.request(
+                        priority = DataRequestPriority.Foreground,
+                        path = path,
+                        query = query,
+                        serverIdOverride = serverId,
+                    )
+                } catch (cancellation: CancellationException) {
+                    throw cancellation
+                } catch (error: Throwable) {
+                    diagnosticsLogger("message_link_probe_failed path=${path.substringBefore('/')} error=${error::class.simpleName.orEmpty()}")
+                    return null
+                }
+            if (attempt == 0 && response.isLifecycleRetired()) {
+                diagnosticsLogger("message_link_probe_retry reason=lifecycle_retired path=${path.substringBefore('/')}")
+                return@repeat
+            }
+            return response
         }
+        return null
+    }
+
+    private fun HomeNetworkResponse.isLifecycleRetired(): Boolean =
+        code == 0 && errorBodyText == RAFT_LIFECYCLE_RETIRED_ERROR_BODY
 
     private fun open(
         serverId: String,
@@ -437,6 +457,8 @@ internal class RaftMessageLinkResolver(
         return RaftMessageLinkResolution.PublicPreview(link)
     }
 }
+
+private const val RAFT_LIFECYCLE_RETIRED_ERROR_BODY = "network_request_lifecycle_retired"
 
 private data class ThreadChannelRedirect(
     val threadChannelId: String,
