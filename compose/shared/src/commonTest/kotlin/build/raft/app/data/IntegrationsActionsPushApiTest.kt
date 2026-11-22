@@ -30,7 +30,7 @@ class IntegrationsActionsPushApiTest {
             ).data.grantId
         )
         assertEquals("denied", assertIs<DataResult.Content<IntegrationRequestResult>>(client.denyIntegrationRequest("request-1")).data.status)
-        assertEquals("grant-1", assertIs<DataResult.Content<IntegrationGrantResult>>(client.revokeIntegrationGrant("grant-1")).data.grantId)
+        assertEquals(AgentAppGrantRevokeOutcome.Revoked, client.revokeIntegrationGrant("grant-1"))
         val agentIntegrations = assertIs<DataResult.Content<AgentIntegrationsPage>>(client.agentIntegrations(MemberId("agent-1"))).data
         assertEquals("agent-1", agentIntegrations.agentId.value)
         assertEquals(1, agentIntegrations.items.size)
@@ -137,7 +137,6 @@ class IntegrationsActionsPushApiTest {
                     createClientBody = """{"data":{"client":{"id":"client-1"},"secret":"secret"}}""",
                     approveBody = """{"data":{"request":{"id":"request-1"},"grantId":"grant-1"}}""",
                     denyBody = """{"request":{"id":"request-1","status":"denied"}}""",
-                    revokeBody = """{"grant":{"id":"grant-1"}}""",
                     agentIntegrationsBody = """{"items":[{"id":"integration-1"}]}""",
                     actionBody = """{"data":{"messageId":"message-1"}}""",
                     actionEventBody = """{"ok":true}""",
@@ -158,7 +157,6 @@ class IntegrationsActionsPushApiTest {
             assertIs<DataResult.Error>(client.approveIntegrationRequest("request-1", """{"remember":true}""")).error.code
         )
         assertEquals("integration_request_deny_contract_mismatch", assertIs<DataResult.Error>(client.denyIntegrationRequest("request-1")).error.code)
-        assertEquals("integration_grant_revoke_contract_mismatch", assertIs<DataResult.Error>(client.revokeIntegrationGrant("grant-1")).error.code)
         assertEquals("agent_integrations_contract_mismatch", assertIs<DataResult.Error>(client.agentIntegrations(MemberId("agent-1"))).error.code)
         assertEquals(
             "action_execute_contract_mismatch",

@@ -17,6 +17,7 @@ import build.raft.app.data.rememberServerFeatureLatched
 import build.raft.app.data.AgentMigrationIntent
 import build.raft.app.data.AgentMigrationStore
 import build.raft.app.data.isRaftHostVisible
+import build.raft.app.data.AgentAppGrantsRevokeStore
 import build.raft.app.data.AgentSubagentStopStore
 import build.raft.app.data.AgentTurnStopStore
 import build.raft.app.data.RaftAgentControlsApi
@@ -414,6 +415,17 @@ internal fun MemberDetailPageContent(
         agentMigrationStore?.dispatch(AgentMigrationIntent.SetPageVisible(pageVisible))
     }
     val memberIdentity = payload.identity
+    // The Apps tab's Revoke (web AgentAppAccessTab): one store per shown agent, so a confirmation
+    // never carries over to another agent's page; what it changes goes to this route's detail.
+    val agentAppGrantsRevokeStore =
+        remember(provider, routeScope, memberIdentity?.memberId) {
+            AgentAppGrantsRevokeStore(
+                revokeGrant = { grantId -> provider.memberRepository.revokeAgentAppGrant(DataRequestPriority.Foreground, grantId) },
+                loadAppLogins = { agentId -> provider.memberRepository.getAgentAppLogins(DataRequestPriority.Visible, agentId) },
+                applyToDetail = provider::updateAgentAppLogins,
+                scope = routeScope,
+            )
+        }
     val activeServerId by provider.selectedServerStore.currentServerId.collectAsState()
     var routeState by remember(memberIdentity) {
         mutableStateOf(
@@ -1203,7 +1215,12 @@ internal fun MemberDetailPageContent(
                                                 }
                                             )
                                     )
-                                }
+                                },
+                            appAccess =
+                                MembersAgentAppAccessBinding(
+                                    store = agentAppGrantsRevokeStore,
+                                    canManage = { detail -> current.viewerManagesAgentAppAccess(detail) }
+                                )
                         ),
                         agentProfileEditAuthority = agentProfileEditAuthority,
                         canViewPrivateAgentSurfaces = { _, detail -> current.viewerSeesPrivateAgentSurfaces(detail) },

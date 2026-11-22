@@ -1203,8 +1203,17 @@ data class AgentAppLoginSnapshot(
     val loadState: AgentAppLoginLoadState = AgentAppLoginLoadState.Content,
     val errorCode: String? = null,
     val screenError: ScreenError? = null,
-    val permissionBlocker: PermissionBlocker? = null
+    val permissionBlocker: PermissionBlocker? = null,
+    /**
+     * The Apps tab's re-read after a revoke failed (web AgentAppAccessTab's `error` banner): [items]
+     * keep what was shown, and this says why they may be stale. The next read replaces the snapshot.
+     */
+    val refreshError: ScreenError? = null
 )
+
+/** An App's live grant (web `groupGrantsByApp` reads `type === "active"`; a revoked one isn't listed). */
+internal val AgentAppLoginItem.isActiveGrant: Boolean
+    get() = type == AgentAppLoginType.Active && revokedAt.isNullOrBlank()
 
 enum class AgentAppLoginLoadState {
     Content,

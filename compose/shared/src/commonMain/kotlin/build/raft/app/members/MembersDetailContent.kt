@@ -18,6 +18,7 @@ import build.raft.app.data.AgentTurnStopFeedback
 import build.raft.app.data.AgentSubagentStopFeedback
 import build.raft.app.data.AgentSubagentStopIntent
 import build.raft.app.data.AgentSubagentStopState
+import build.raft.app.data.AgentAppGrantsRevokeStore
 import build.raft.app.data.AgentSubagentStopStore
 import build.raft.app.data.canStopAgentSubagents
 import build.raft.app.data.AgentTurnStopIntent
@@ -239,7 +240,15 @@ internal class MembersAgentRemoteControls(
     val turnStopStore: AgentTurnStopStore?,
     val migration: MembersAgentMigrationBinding? = null,
     /** Stop one running sub-agent from the Activity tab's Sub-agents view (web stopSubagent). */
-    val subagentStopStore: AgentSubagentStopStore? = null
+    val subagentStopStore: AgentSubagentStopStore? = null,
+    /** The Apps tab's Revoke access and per-grant Revoke (web AgentAppAccessTab); null offers neither. */
+    val appAccess: MembersAgentAppAccessBinding? = null
+)
+
+/** The Apps tab's revoke store and who may use it (web AgentDetailPanel `canManageAgentAccess`). */
+internal class MembersAgentAppAccessBinding(
+    val store: AgentAppGrantsRevokeStore,
+    val canManage: (AgentDetailSnapshot?) -> Boolean
 )
 
 /** The migration section's store and page-level inputs (web AgentMigrationSection). */
@@ -1378,6 +1387,7 @@ internal fun MembersDetailContent(
                                             onOpenUrl = onOpenUrl,
                                             appEventsLoader = agentAppEventsLoader,
                                             appEventLoader = agentAppEventLoader,
+                                            appAccess = remoteControls?.appAccess,
                                             // Web AgentAppAccessTab: `px-5`.
                                             modifier = Modifier.padding(horizontal = MembersAgentProfileInset)
                                         )
