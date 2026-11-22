@@ -327,7 +327,7 @@ private fun DelegatedReceiptCard(
                 }
             }
         }
-    val time = formatThreadTimeRevealLabel(message.timestampLabel, currentRaftTimeContextProvider?.current)
+    val time = formatThreadTimeRevealLabel(message.timestampLabel, currentRaftDateTimeContext(null))
     val iconColor = raftArgbHex(colors.foregroundMuted)
     RaftMessageActionCard(
         title = "",
@@ -500,7 +500,7 @@ private fun WeChatConnectedNoticeCard(message: RaftThreadMessageItem, modifier: 
     val disconnectedText = stringResource(Res.string.assistant_wechat_disconnected)
     val endedText = stringResource(Res.string.assistant_wechat_notice_ended_body)
     val failedText = stringResource(Res.string.assistant_wechat_disconnect_failed)
-    val time = formatThreadTimeRevealLabel(message.timestampLabel, currentRaftTimeContextProvider?.current)
+    val time = formatThreadTimeRevealLabel(message.timestampLabel, currentRaftDateTimeContext(null))
     val iconColor = raftArgbHex(colors.foregroundMuted)
     RaftMessageActionCard(
         title = stringResource(Res.string.assistant_wechat_notice_title),

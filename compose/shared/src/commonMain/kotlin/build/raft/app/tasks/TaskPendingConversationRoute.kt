@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -38,6 +39,7 @@ import build.raft.app.data.RaftRealtimeEvents
 import build.raft.app.data.RaftSharedStoreRegistry
 import build.raft.app.data.RaftShellStoreScope
 import build.raft.app.data.RaftThreadApiClient
+import build.raft.app.data.RaftTimeFormatRuntime
 import build.raft.app.data.RealChannelRepository
 import build.raft.app.data.ScreenLoadState
 import build.raft.app.data.SharedConversationDirectoryState
@@ -542,9 +544,26 @@ private fun TaskPendingConversationRoute(pageVisible: Boolean) {
             } ?: flowOf(SharedConversationDirectoryState())
         }.collectAsState(initial = SharedConversationDirectoryState())
 
-    val timeCapabilities = remember(params.toString()) { params.threadTimeCapabilities() }
-    val timeContextProvider = rememberLiveRaftTimeContext(capabilities = timeCapabilities)
-    val timeContext = timeContextProvider.current ?: timeCapabilities?.staticContext()
+    val baseTimeCapabilities = remember(params.toString()) { params.threadTimeCapabilities() }
+    val runtimeTimeFormat =
+        RaftTimeFormatRuntime.observe(fallback = baseTimeCapabilities?.timeFormat ?: RaftTimeFormat24Hour)
+    val timeCapabilities =
+        remember(baseTimeCapabilities, runtimeTimeFormat) {
+            baseTimeCapabilities?.copy(timeFormat = runtimeTimeFormat)
+        }
+    val inheritedTimeContextProvider = LocalRaftTimeContextProvider.current
+    val fallbackTimeContextProvider = currentRaftTimeContextProvider
+    val ownTimeContextProvider =
+        rememberLiveRaftTimeContext(
+            capabilities = timeCapabilities,
+            active = inheritedTimeContextProvider == null && timeCapabilities != null,
+        )
+    val timeContextProvider =
+        inheritedTimeContextProvider
+            ?: ownTimeContextProvider.takeIf { timeCapabilities != null }
+            ?: fallbackTimeContextProvider
+            ?: ownTimeContextProvider
+    val timeContext = timeContextProvider.dateContext
 
     val controller = remember(foregroundBannerStore) { TaskPendingPageController(foregroundBannerStore.taskPendingDrafts) }
     var joinedLocally by remember(resolvedChannelId) { mutableStateOf(false) }
@@ -765,6 +784,7 @@ private fun TaskPendingConversationRoute(pageVisible: Boolean) {
     // Keep the page in place while the first send is in flight.
     RaftBackHandler(enabled = controller.sending || controller.handingOff, label = "task_pending_sending") {}
 
+    CompositionLocalProvider(LocalRaftTimeContextProvider provides timeContextProvider) {
     RaftDesignSystemTheme {
         if (liveTask == null) {
             if (route.taskId.isBlank()) {
@@ -937,5 +957,6 @@ private fun TaskPendingConversationRoute(pageVisible: Boolean) {
             useHostSafeArea = true,
             loadingDiscussion = needsSummaryHydration,
         )
+    }
     }
 }

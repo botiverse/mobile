@@ -135,7 +135,7 @@ internal fun ThreadTaskHandoffCard(
     val returnerName = taskHandoffPartyName(returned?.by ?: notice.actor)
     val fromHandle = taskHandoffPartyHandle(notice.actor, fromName)
     val toHandle = taskHandoffPartyHandle(assignee, toName)
-    val timeContext = currentRaftTimeContextProvider?.current
+    val timeContext = currentRaftDateTimeContext(null)
     val label = stringResource(Res.string.task_handoff_label, fromHandle, notice.taskNumber, toHandle)
     val meta =
         when {

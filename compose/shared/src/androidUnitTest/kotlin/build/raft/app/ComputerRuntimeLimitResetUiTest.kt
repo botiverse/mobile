@@ -145,7 +145,8 @@ class ComputerRuntimeLimitResetUiTest {
             CompositionLocalProvider(LocalActivity provides RaftPageActivity(livePager)) {
                 RaftTheme(appearance = RaftAppearance.Light) {
                     val capabilities = remember { RaftTimeCapabilities(localOffsetMinutes = 8 * 60, timeFormat = RaftTimeFormat24Hour) }
-                    ProvideStandaloneRaftTimeContext(clock = { NOW_MILLIS }, foundationOwner = fixedZone, capabilities = capabilities) {
+                    val timeProvider = rememberLiveRaftTimeContext(capabilities = capabilities, clock = { NOW_MILLIS }, foundationOwner = fixedZone)
+                    CompositionLocalProvider(LocalRaftTimeContextProvider provides timeProvider) {
                         RaftComputersTheme {
                             ComputerRuntimeUsageSheetHost(
                                 runtimeLabel = "Codex",

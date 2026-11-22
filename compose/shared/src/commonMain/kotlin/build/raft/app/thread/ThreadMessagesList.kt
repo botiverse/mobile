@@ -496,7 +496,9 @@ private fun ThreadMessagesListContent(
                 mainLoadFailed = timelineSlice.mainLoadFailed
             )
         ) {
-            ThreadLoadingState()
+            if (timelineSlice.loadingIndicatorRevealed) {
+                ThreadLoadingState()
+            }
         } else if (emptyHiddenHistory != null) {
             ThreadHistoryPaywallEmptyState(
                 scope = timelineSlice.historyPaywallScope(),
@@ -4087,7 +4089,9 @@ private fun ThreadMessagesListContent(
             threadListSegments += {
             if (showReplyLoadingSkeleton) {
                 item(key = ThreadReplyLoadingListItemKey) {
-                    ThreadLoadingState()
+                    if (renderPayload.loadingIndicatorRevealed) {
+                        ThreadLoadingState()
+                    }
                 }
             }
             }

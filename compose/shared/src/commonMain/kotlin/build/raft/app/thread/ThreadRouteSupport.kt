@@ -243,7 +243,7 @@ internal fun raftMarkdownUrlOpen(
     val route = raftOwnLinkRoute(url, webUrl, appHosts)
     // The web's task panel (`task=`): its web page, never the bare channel under it.
     if (route == RaftOwnLinkRoute.WebPage(RaftOwnLinkWebPageReason.TaskPanel)) return RaftMarkdownUrlOpen(url, target = null)
-    val target = if (webLink == null) rawUrl.toRaftThreadWebLinkTarget() else webLink.toRaftThreadWebLinkTarget(configuredWebUrl = webUrl)
+    val target = url.toRaftThreadWebLinkTarget(configuredWebUrl = webUrl, appHosts = appHosts)
     return RaftMarkdownUrlOpen(url, target, (route as? RaftOwnLinkRoute.Conversation)?.link)
 }
 
@@ -260,8 +260,11 @@ internal fun RaftMarkdownUrlOpen.opensOnThisPage(knownHere: (channelId: String) 
     return conversationLink == null || knownHere(local.channelId)
 }
 
-internal fun String.toRaftThreadWebLinkTarget(configuredWebUrl: String? = null): RaftThreadWebLinkTarget? {
-    toParsedRaftPermalink(configuredWebUrl = configuredWebUrl)?.let { target ->
+internal fun String.toRaftThreadWebLinkTarget(
+    configuredWebUrl: String? = null,
+    appHosts: Collection<String> = RaftClientConfigAppHosts.current,
+): RaftThreadWebLinkTarget? {
+    toParsedRaftPermalink(configuredWebUrl = configuredWebUrl, appHosts = appHosts)?.let { target ->
         return RaftThreadWebLinkTarget(
             channelId = target.channelId.value,
             messageId = target.messageId.value,
@@ -860,6 +863,7 @@ internal fun ThreadDeferredLoadingRouteContent(
     displayModel: ThreadHeaderDisplayModel,
     memberAvatarResolver: RaftMemberAvatarResolver,
     onBack: () -> Unit,
+    showLoadingIndicator: Boolean = true,
 ) {
     scaffold(
         ThreadRouteScaffoldSlots(
@@ -888,7 +892,9 @@ internal fun ThreadDeferredLoadingRouteContent(
                             .fillMaxWidth()
                             .background(RaftColor.SurfaceWhite)
                 ) {
-                    ThreadLoadingState()
+                    if (showLoadingIndicator) {
+                        ThreadLoadingState()
+                    }
                 }
             }
         )

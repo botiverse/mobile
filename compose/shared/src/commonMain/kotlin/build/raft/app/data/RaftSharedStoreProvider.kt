@@ -1480,6 +1480,39 @@ internal class RaftSharedStoreProvider private constructor(
         }.distinct()
     }
 
+    /**
+     * Stores actively showing [serverId] for `machine:status` agent-presence recovery: empty when
+     * no non-disposed shell selects [serverId], avoiding background wakes of unselected servers,
+     * and skipping the legacy process store when shell stores cover it and it has no loaded roster.
+     */
+    private fun activeServerMembersStoresForMachineStatus(serverId: String): List<SharedServerMembersStore> {
+        val activeScopes = scopesForServer(serverId).toSet()
+        if (activeScopes.isEmpty()) return emptyList()
+        val shellStores =
+            shellServerMembersStores.entries()
+                .filter { (scope, _) -> scope in activeScopes }
+                .map { it.second }
+                .distinct()
+        return buildList {
+            addAll(shellStores)
+            if (shellStores.isEmpty() || serverMembersStore.hasLoadedNonDurableRoster(ServerId(serverId))) {
+                add(serverMembersStore)
+            }
+        }.distinct()
+    }
+
+    private val machineStatusAgentRefresher: MachineStatusAgentRefresher by lazy {
+        MachineStatusAgentRefresher(
+            scope = threadSendScope,
+            storesForActiveServer = ::activeServerMembersStoresForMachineStatus,
+            logger = sharedInfoLogger("SlockPresence", "machine_status_agents_refresh"),
+        )
+    }
+
+    internal fun onMachineStatusRealtimeEvent(serverId: String) {
+        machineStatusAgentRefresher.onMachineStatus(serverId)
+    }
+
     private val presenceTransportRosterRefetch: PresenceTransportRosterRefetch by lazy {
         PresenceTransportRosterRefetch(
             jitter = reconnectRefetchJitter,
@@ -1549,6 +1582,7 @@ internal class RaftSharedStoreProvider private constructor(
                     // binding, and the successor's first connects fetch at once.
                     reconnectRefetchJitter.reset(reason = if (context == null) "signed_out" else "binding_changed")
                     machinesSyncRefreshCoalescer.invalidateAll()
+                    machineStatusAgentRefresher.cancelAll()
                     syncTransientRetry.cancelAll(reason = if (context == null) "signed_out" else "binding_changed")
                     syncRetryAfter.cancelAll(reason = if (context == null) "signed_out" else "binding_changed")
                     syncRealtimePull.cancelAll(reason = if (context == null) "signed_out" else "binding_changed")
@@ -1876,6 +1910,7 @@ internal class RaftSharedStoreProvider private constructor(
             onServerAccessLost = { grant ->
                 reconnectRefetchJitter.dropServer(grant.serverId, reason = "server_access_lost")
                 machinesSyncRefreshCoalescer.invalidate(grant.serverId)
+                machineStatusAgentRefresher.cancel(grant.serverId)
                 // Minimum supported build: that server's gate reading no longer counts.
                 RaftMinBuildGate.onServerLeft(ServerId(grant.serverId))
                 threadPayloadStore.dropServer(grant.serverId)
@@ -4229,6 +4264,9 @@ internal class RaftSharedStoreProvider private constructor(
                         owner.installAgentActivitySubscribedSink { serverId, event ->
                             provider.agentActivitySubscriptions.onSubscribed(serverId, event.agentIds)
                         }
+                        owner.installMachineStatusSink { serverId, _ ->
+                            provider.onMachineStatusRealtimeEvent(serverId)
+                        }
                     },
                 realtimeAuthorityProvider = realtimeAuthorityProvider,
                 messageTranslationStore =
@@ -4621,6 +4659,16 @@ internal class SharedRealtimeDomainEventOwner(
         agentActivitySubscribedSink = sink
     }
 
+    // `machine:status` on the grant's server socket (daemon reconnect after a server restart or
+    // outage): the server does not emit `agent:activity_state: "online"` for idle agents, so web
+    // runs `executeMachineReloadRecovery` (`loadMachines()` + `loadAgents()`). Process entry only:
+    // covers every active shell, window, and route showing the server.
+    private var machineStatusSink: ((serverId: String, event: RealtimeRefreshRequired) -> Unit)? = null
+
+    fun installMachineStatusSink(sink: (serverId: String, event: RealtimeRefreshRequired) -> Unit) {
+        machineStatusSink = sink
+    }
+
     // `notification_prefs:updated` with a server mode is emitted to the viewer's own user room. Process entry
     // only, like the appearance sink: it refreshes the viewer's last-known workspace notification preference
     // under the grant's account whether or not a Settings page is mounted.
@@ -4822,6 +4870,9 @@ internal class SharedRealtimeDomainEventOwner(
             }
             if (acceptedEvent is AgentActivitySubscribed) {
                 agentActivitySubscribedSink?.invoke(serverId, acceptedEvent)
+            }
+            if (acceptedEvent is RealtimeRefreshRequired && acceptedEvent.isMachineStatusUpdate()) {
+                machineStatusSink?.invoke(serverId, acceptedEvent)
             }
         }
 
@@ -5385,6 +5436,16 @@ internal fun RealtimeEvent.isAgentProfileUpdate(): Boolean =
     this is RealtimeRefreshRequired &&
         scope == RealtimeRefreshScope.Agents &&
         reason == build.raft.app.data.realtime.RealtimeSocketEvents.AgentUpdated
+
+/**
+ * A realtime `machine:status` push (web `executeMachineReloadRecovery`, slock `socketBridge.ts` /
+ * `agentOrchestrator.ts`): a Computer came online or went offline. Re-reading `/agents` recovers
+ * server-derived activity for idle agents that receive no `agent:activity_state: "online"` push.
+ */
+internal fun RealtimeEvent.isMachineStatusUpdate(): Boolean =
+    this is RealtimeRefreshRequired &&
+        scope == RealtimeRefreshScope.Machines &&
+        reason == build.raft.app.data.realtime.RealtimeSocketEvents.MachineStatus
 
 private fun RealtimeEvent.updatesSharedTaskProjection(): Boolean =
     this is TaskCreated || this is TaskUpdated || this is TaskDeleted

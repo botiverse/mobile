@@ -29,6 +29,7 @@ import build.raft.app.data.SettingsMobileSnapshot
 import build.raft.app.data.SettingsMobileToggleSnapshot
 import build.raft.app.data.toSettingsMobileSelectionSnapshot
 import build.raft.app.model.NotificationLevelChanged
+import build.raft.app.model.RaftTimeContext
 import build.raft.app.model.ServerId
 import kotlin.test.AfterTest
 import kotlin.test.Test
@@ -135,7 +136,16 @@ private fun captureNotifications(
         remember {
             object : Pager() {}.apply { pageData = PageData(JSONObject().apply { put("slockVisualZeroSafeArea", true) }) }
         }
-    CompositionLocalProvider(LocalActivity provides RaftPageActivity(pager)) {
+    val timeContext =
+        remember {
+            RaftTimeContextProvider(
+                RaftTimeContext(localOffsetMinutes = 0, timeFormat = "24h").refreshedAt(FIXTURE_NOW_MILLIS)
+            )
+        }
+    CompositionLocalProvider(
+        LocalActivity provides RaftPageActivity(pager),
+        LocalRaftTimeContextProvider provides timeContext,
+    ) {
         RaftDesignSystemTheme { content() }
     }
 }

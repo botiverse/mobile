@@ -603,7 +603,7 @@ private fun ArtifactCardTitleLine(title: @Composable () -> Unit, tags: @Composab
 @Composable
 internal fun ArtifactSettledTag(settled: ArtifactSettled, readerId: String?, modifier: Modifier = Modifier) {
     val label = stringResource(Res.string.artifacts_settled_tag)
-    val time = artifactSettledTimeLabel(settled.at, currentRaftTimeContext(null))
+    val time = artifactSettledTimeLabel(settled.at, currentRaftDateTimeContext(null))
     val line = time?.let { stringResource(Res.string.artifacts_settled_line, artifactsHomeAuthorText(settled.by, readerId).first, it, settled.version) }
     val description = line?.let { label + stringResource(Res.string.artifacts_settled_tag_detail, it) } ?: label
     val tagModifier =

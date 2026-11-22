@@ -548,11 +548,14 @@ private fun SettingsSignedInDevicesReauthDialog(
                     visualTransformation = PasswordVisualTransformation()
                 )
             }
+            val dateContext = currentRaftEffectiveDateTimeContext()
             when {
                 dialog.locked ->
                     RaftBanner(
                         description =
-                            dialog.lockedUntilEpochMillis?.let { stringResource(Res.string.settings_reauth_locked_until, secondFactorStepUpLocalClock(it)) }
+                            dialog.lockedUntilEpochMillis?.let {
+                                stringResource(Res.string.settings_reauth_locked_until, dateContext.formatClock(it))
+                            }
                                 ?: stringResource(Res.string.settings_step_up_locked),
                         status = RaftBannerStatus.Warning,
                         size = RaftBannerSize.Sm

@@ -171,7 +171,7 @@ internal fun ThreadActionCard.actionCardEndedLine(): String? {
     if (!isExpired) return null
     val viewerUserId = LocalThreadActionCardSpecHost.current.viewerUserId
     val names = LocalThreadActionCardNames.current
-    val context = currentRaftTimeContextProvider?.current
+    val context = currentRaftDateTimeContext(null)
     val requesterName = requesterUserId?.let { names.name(ThreadActionCardEntityKind.Human, it) }
     val line =
         actionCardExpiredLine(viewerUserId, requesterName) { at ->

@@ -95,7 +95,6 @@ import build.raft.app.compat.pager.LocalActivity
 import build.raft.app.compat.pager.Page
 import build.raft.app.compat.pager.Pager
 import build.raft.app.data.COMPUTER_ACTION_DELETE
-import build.raft.app.data.ProcessRaftDatetimeFoundationOwner
 import build.raft.app.data.COMPUTER_ACTION_DESCRIPTION
 import build.raft.app.data.COMPUTER_ACTION_RENAME
 import build.raft.app.data.COMPUTER_ACTION_OWNER
@@ -3663,10 +3662,7 @@ private fun RaftComputerCreatorAvatar(creator: RaftComputerCreatorModel) {
 @Composable
 private fun raftComputerCreatedDate(createdAt: String?): String? {
     val value = createdAt?.trim()?.takeIf { it.isNotEmpty() } ?: return null
-    val context =
-        currentRaftTimeContextProvider?.current
-            ?: RaftTimeContext(localOffsetMinutes = ProcessRaftDatetimeFoundationOwner.localOffsetMinutesAt(defaultNowMillis(), 0))
-    return value.membersLocalizedCreatedDateOrNull(context)
+    return value.membersLocalizedCreatedDateOrNull(currentRaftEffectiveDateTimeContext())
 }
 
 @Composable
