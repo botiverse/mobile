@@ -2749,6 +2749,7 @@
     <string name="background_kill_notice_body_vendor">Your device stopped Raft while it was in the background, which can delay messages and notifications. Allow Raft to auto-start and run without background restrictions in system settings.</string>
     <string name="background_kill_notice_body_app_details">Your device stopped Raft while it was in the background, which can delay messages and notifications. Open App info, go to Battery, and set Raft to Unrestricted.</string>
     <string name="background_kill_notice_action_open_settings">Open settings</string>
+    <string name="background_kill_notice_action_dont_show_again">Don't show again</string>
     <string name="settings_notifications_offline_computers_title">Offline computer alerts</string>
     <string name="settings_notifications_offline_computers_detail">Show a Home alert when a registered computer is offline. Off by default.</string>
     <string name="settings_notifications_test_title">Send a test notification</string>
