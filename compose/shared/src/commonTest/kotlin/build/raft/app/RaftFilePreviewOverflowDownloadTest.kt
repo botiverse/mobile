@@ -141,6 +141,7 @@ class RaftFilePreviewOverflowDownloadTest {
                 requestedKind = RaftFilePreviewPdfKind,
                 name = "spec.pdf"
             )
+        val lazyPdfError = lazyPdfLoading.copy(kind = "error")
         val nonPdfLoading =
             RaftFilePreviewPayload(
                 source = RaftFilePreviewSourceThreadAttachment,
@@ -150,9 +151,16 @@ class RaftFilePreviewOverflowDownloadTest {
                 name = "notes.txt"
             )
         assertEquals(true, raftFilePreviewPdfIsPreparing(lazyPdfLoading, RaftFilePreviewPdfState.Idle))
-        assertEquals(true, raftFilePreviewPdfIsPreparing(lazyPdfLoading, RaftFilePreviewPdfState.Downloading))
+        assertEquals(true, raftFilePreviewPdfIsPreparing(lazyPdfLoading, RaftFilePreviewPdfState.Downloading()))
         assertEquals(false, raftFilePreviewPdfIsPreparing(lazyPdfLoading, RaftFilePreviewPdfState.Ready("/tmp/spec.pdf")))
-        assertEquals(false, raftFilePreviewPdfIsPreparing(lazyPdfLoading, RaftFilePreviewPdfState.Failed("err")))
+        assertEquals(
+            false,
+            raftFilePreviewPdfIsPreparing(
+                lazyPdfLoading,
+                RaftFilePreviewPdfState.Failed(RaftFilePreviewPdfFailure.Download, "err")
+            )
+        )
+        assertEquals(false, raftFilePreviewPdfIsPreparing(lazyPdfError, RaftFilePreviewPdfState.Idle))
         assertEquals(false, raftFilePreviewPdfIsPreparing(nonPdfLoading, RaftFilePreviewPdfState.Idle))
     }
 }

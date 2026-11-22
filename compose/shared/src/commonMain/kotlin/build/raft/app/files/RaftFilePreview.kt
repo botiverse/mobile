@@ -734,7 +734,10 @@ internal fun raftFilePreviewPdfIsPreparing(
     payload: RaftFilePreviewPayload,
     pdfState: RaftFilePreviewPdfState
 ): Boolean =
-    (payload.kind == RaftFilePreviewPdfKind || payload.requestedKind == RaftFilePreviewPdfKind) &&
+    (
+        payload.kind == RaftFilePreviewPdfKind ||
+            (payload.kind == "loading" && payload.requestedKind == RaftFilePreviewPdfKind)
+        ) &&
         (pdfState is RaftFilePreviewPdfState.Idle || pdfState is RaftFilePreviewPdfState.Downloading)
 
 internal fun raftFilePreviewPhotosActionState(
@@ -2153,7 +2156,9 @@ private fun RaftFilePreviewStandalonePageContent() {
             if (currentCancelTarget != null && currentCancelTarget.operation.operationId == operation.operationId) {
                 activeOpenCancelTarget.value =
                     currentCancelTarget.copy(
-                        attemptToken = downloadProgress?.attemptToken ?: currentCancelTarget.attemptToken,
+                        attemptToken =
+                            downloadProgress?.attemptToken?.takeIf(String::isNotBlank)
+                                ?: currentCancelTarget.attemptToken,
                         recordVersion = downloadProgress?.recordVersion ?: currentCancelTarget.recordVersion
                     )
             }
@@ -3354,11 +3359,12 @@ private fun RaftFilePreviewStandalonePageContent() {
                     // The host runs the download under its principal-scoped id.
                     downloadId = raftAttachmentHostDownloadId(operation.owner, downloadId),
                     owner = operation.owner,
-                    expectedAttemptToken = progressSnapshot?.attemptToken ?: cancelTarget?.attemptToken,
+                    expectedAttemptToken =
+                        progressSnapshot?.attemptToken?.takeIf(String::isNotBlank) ?: cancelTarget?.attemptToken,
                     expectedRecordVersion = progressSnapshot?.recordVersion ?: cancelTarget?.recordVersion,
                     action = action
                 )
-            val controlStatus = controlResult?.optString("status").orEmpty()
+            val controlStatus = controlResult.optString("status")
             if (
                 action == "stop" &&
                 isExternalOpen &&
