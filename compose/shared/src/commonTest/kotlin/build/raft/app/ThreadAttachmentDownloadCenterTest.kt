@@ -211,7 +211,7 @@ class ThreadAttachmentDownloadCenterTest {
                 }
             runCurrent()
 
-            assertEquals(listOf(attachment.id to "attachment"), api.requested)
+            assertEquals(listOf<Pair<String, String?>>(attachment.id to "attachment"), api.requested)
             assertEquals(1, saveCalls.size)
             val call = saveCalls.single()
             val expectedHostDownloadId = raftAttachmentHostDownloadId(owner, downloadId)
