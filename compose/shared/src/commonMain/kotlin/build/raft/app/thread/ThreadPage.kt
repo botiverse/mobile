@@ -2737,7 +2737,8 @@ private fun SharedThreadRouteContentContent(
             payload = payload,
             displayModel = headerDisplayModel,
             memberAvatarResolver = memberAvatarResolver,
-            onBack = onBack
+            onBack = onBack,
+            showLoadingIndicator = timelineSlice.loadingIndicatorRevealed,
         )
         return
     }

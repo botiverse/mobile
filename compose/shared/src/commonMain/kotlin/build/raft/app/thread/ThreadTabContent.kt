@@ -182,7 +182,9 @@ internal fun ThreadTabContent(
                 traceId = payload.errorTraceId
             )
         } else if (renderEarlyLoadingShell) {
-            ThreadLoadingState()
+            if (timelineSlice.loadingIndicatorRevealed) {
+                ThreadLoadingState()
+            }
         } else when (tab) {
             RaftThreadTab.Chat ->
                 // Rows drop viewer-only previews while "Generate image" rasterizes them.

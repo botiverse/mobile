@@ -863,6 +863,7 @@ internal fun ThreadDeferredLoadingRouteContent(
     displayModel: ThreadHeaderDisplayModel,
     memberAvatarResolver: RaftMemberAvatarResolver,
     onBack: () -> Unit,
+    showLoadingIndicator: Boolean = true,
 ) {
     scaffold(
         ThreadRouteScaffoldSlots(
@@ -891,7 +892,9 @@ internal fun ThreadDeferredLoadingRouteContent(
                             .fillMaxWidth()
                             .background(RaftColor.SurfaceWhite)
                 ) {
-                    ThreadLoadingState()
+                    if (showLoadingIndicator) {
+                        ThreadLoadingState()
+                    }
                 }
             }
         )
