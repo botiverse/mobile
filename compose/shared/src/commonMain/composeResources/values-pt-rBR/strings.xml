@@ -783,8 +783,6 @@
     <string name="thread_error_archive_channel">Não foi possível arquivar o canal</string>
     <string name="thread_feedback_channel_deleted">Canal excluído</string>
     <string name="thread_error_delete_channel">Não foi possível excluir o canal</string>
-    <string name="thread_error_convert_message">Não foi possível converter a mensagem</string>
-    <string name="thread_feedback_task_created">Tarefa criada</string>
     <string name="thread_error_task_status_unsupported">Status de tarefa não suportado</string>
     <string name="thread_error_update_task">Não foi possível atualizar a tarefa</string>
     <string name="thread_error_update_assignee">Não foi possível atualizar o responsável</string>

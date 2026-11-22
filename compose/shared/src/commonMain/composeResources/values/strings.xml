@@ -783,8 +783,6 @@
     <string name="thread_error_archive_channel">Unable to archive channel</string>
     <string name="thread_feedback_channel_deleted">Channel deleted</string>
     <string name="thread_error_delete_channel">Unable to delete channel</string>
-    <string name="thread_error_convert_message">Unable to convert message</string>
-    <string name="thread_feedback_task_created">Task created</string>
     <string name="thread_error_task_status_unsupported">Unsupported task status</string>
     <string name="thread_error_update_task">Unable to update task</string>
     <string name="thread_error_update_assignee">Unable to update assignee</string>

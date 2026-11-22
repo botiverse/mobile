@@ -783,8 +783,6 @@
     <string name="thread_error_archive_channel">Не удалось архивировать канал</string>
     <string name="thread_feedback_channel_deleted">Канал удалён</string>
     <string name="thread_error_delete_channel">Не удалось удалить канал</string>
-    <string name="thread_error_convert_message">Не удалось преобразовать сообщение в задачу</string>
-    <string name="thread_feedback_task_created">Задача создана</string>
     <string name="thread_error_task_status_unsupported">Неподдерживаемый статус задачи</string>
     <string name="thread_error_update_task">Не удалось обновить задачу</string>
     <string name="thread_error_update_assignee">Не удалось изменить исполнителя</string>
