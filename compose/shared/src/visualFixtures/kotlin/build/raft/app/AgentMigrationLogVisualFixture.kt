@@ -9,20 +9,28 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalWindowInfo
 import build.raft.app.base.BasePager
+import build.raft.app.compat.pager.LocalActivity
 import build.raft.app.compat.pager.Page
+import build.raft.app.compat.pager.Pager
 import build.raft.app.data.AgentMigrationLog
 import build.raft.app.data.AgentMigrationLogEntry
 import build.raft.app.data.AgentMigrationLogFailureKind
+import build.raft.app.data.AgentMigrationLogFilters
 import build.raft.app.data.AgentMigrationLogInitiator
 import build.raft.app.data.AgentMigrationLogLoad
+import build.raft.app.data.AgentMigrationLogMachine
 import build.raft.app.data.AgentMigrationLogOutcome
 import build.raft.app.model.MemberKind
 import build.raft.app.model.RaftTimeContext
 
 const val AGENT_MIGRATION_LOG_VISUAL_PAGE = "compose_agent_migration_log_visual"
 
+/** The params the cases open with: the view, and the one agent it is filtered to. */
+const val AGENT_MIGRATION_LOG_VISUAL_VIEW = "view"
+const val AGENT_MIGRATION_LOG_VISUAL_AGENT = "agent"
+
 /**
- * The agent migration log's table over the web case's own log (slock
+ * The agent migration log over the web case's own log (slock
  * packages/web/visual-testing/MigrationLogCases.tsx): eight moves of three agents, a computer renamed
  * since (studio-mac, now mac-studio-2) and one no longer on the server (old-runner). No network.
  */
@@ -34,21 +42,21 @@ internal class AgentMigrationLogVisualPage : BasePager() {
     }
 }
 
-private class VisualMigrationAgent(val name: String, val face: String)
+private class VisualMigrationAgent(val name: String, val face: String, val machineId: String)
 
 private val VisualMigrationAgents =
     mapOf(
-        "visual-mig-kirby" to VisualMigrationAgent("Kirby", "pixel:robot"),
-        "visual-mig-atlas" to VisualMigrationAgent("Atlas", "pixel:fox"),
-        "visual-mig-mira" to VisualMigrationAgent("Mira", "pixel:catbot"),
+        "visual-mig-kirby" to VisualMigrationAgent("Kirby", "pixel:robot", "mig-hx1"),
+        "visual-mig-atlas" to VisualMigrationAgent("Atlas", "pixel:fox", "mig-studio"),
+        "visual-mig-mira" to VisualMigrationAgent("Mira", "pixel:catbot", "mig-oak"),
     )
 
 private val VisualMigrationMachines =
     listOf(
-        "mig-hx1" to "hetzner-ax42-1",
-        "mig-hx2" to "hetzner-ax42-2",
-        "mig-studio" to "mac-studio-2",
-        "mig-oak" to "oak-linux",
+        AgentMigrationLogMachine("mig-hx1", "hetzner-ax42-1", hostProvider = "hetzner"),
+        AgentMigrationLogMachine("mig-hx2", "hetzner-ax42-2", hostProvider = "hetzner"),
+        AgentMigrationLogMachine("mig-studio", "mac-studio-2", deviceClass = "desktop"),
+        AgentMigrationLogMachine("mig-oak", "oak-linux", deviceClass = "server"),
     )
 
 private fun visualMove(
@@ -109,23 +117,36 @@ private fun AgentMigrationLogVisualContent() {
                 ),
             )
         }
-    var state by remember { mutableStateOf(AgentMigrationLogState(load = AgentMigrationLogLoad.Loaded(VisualMigrationLog))) }
+    val params = (LocalActivity.current.getPager() as Pager).pageData.params
+    var state by
+        remember {
+            mutableStateOf(
+                AgentMigrationLogState(
+                    load = AgentMigrationLogLoad.Loaded(VisualMigrationLog),
+                    view = if (params.optString(AGENT_MIGRATION_LOG_VISUAL_VIEW) == "table") AgentMigrationLogView.Table else AgentMigrationLogView.Chart,
+                    filters = AgentMigrationLogFilters(agents = listOfNotNull(params.optString(AGENT_MIGRATION_LOG_VISUAL_AGENT).takeIf { it.isNotBlank() })),
+                ),
+            )
+        }
     val windowWidth = with(LocalDensity.current) { LocalWindowInfo.current.containerSize.width.toDp() }
     CompositionLocalProvider(LocalRaftTimeContextProvider provides timeContext) {
         AgentMigrationLogScreen(
             state = state,
             machines = VisualMigrationMachines,
-            agentName = { VisualMigrationAgents[it]?.name },
+            agents = VisualMigrationAgents.mapValues { (id, agent) -> AgentMigrationLogAgent(id, agent.name, agent.machineId) },
             wide = windowWidth.value >= DualPaneMinimumWidthDp,
             onIntent = { intent ->
                 state =
                     when (intent) {
                         is AgentMigrationLogIntent.SetFilters -> state.copy(filters = intent.filters)
+                        is AgentMigrationLogIntent.SetView -> state.copy(view = intent.view)
                         is AgentMigrationLogIntent.Search -> state.copy(query = intent.query)
                         else -> state
                     }
             },
             onOpenAgent = {},
+            onOpenPerson = {},
+            onCopy = {},
             onBack = {},
             avatar = { id, size ->
                 RaftAppAvatar(

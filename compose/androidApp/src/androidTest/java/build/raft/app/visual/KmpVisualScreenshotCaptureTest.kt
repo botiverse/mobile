@@ -2575,6 +2575,26 @@ class KmpVisualScreenshotCaptureTest {
         captureKmpComponentCase(
             caseId = "screens.agent-migration-log.table.phone",
             pageName = "compose_agent_migration_log_visual",
+            pageData = JSONObject().put("view", "table"),
+            crop = FULL_VIEWPORT_CROP
+        )
+    }
+
+    @Test
+    fun captureAgentMigrationLogChart() {
+        captureKmpComponentCase(
+            caseId = "screens.agent-migration-log.chart.phone",
+            pageName = "compose_agent_migration_log_visual",
+            crop = FULL_VIEWPORT_CROP
+        )
+    }
+
+    @Test
+    fun captureAgentMigrationLogChartAgent() {
+        captureKmpComponentCase(
+            caseId = "screens.agent-migration-log.chart.agent.phone",
+            pageName = "compose_agent_migration_log_visual",
+            pageData = JSONObject().put("agent", "visual-mig-kirby"),
             crop = FULL_VIEWPORT_CROP
         )
     }
