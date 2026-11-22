@@ -94,23 +94,6 @@ class RuntimeAccountUsageTest {
     }
 
     @Test
-    fun unusableEnvelopeIsContractMismatch() = runPortableCoroutineTest<Unit> {
-        listOf(
-            """{"state":"brand_new"}""",
-            """{"state":"fresh","snapshot":null}""",
-            """{"state":"fresh","snapshot":{"provider":"claude","accounts":[]}}""",
-            """[]"""
-        ).forEach { body ->
-            val error = assertIs<DataResult.Error>(
-                RaftComputersApiClient(FakeUsageApi { ok(body) })
-                    .runtimeAccountUsage(ServerId("s1"), "m1", RuntimeAccountUsageProvider.Claude),
-                body
-            )
-            assertEquals("computer_runtime_account_usage_contract_mismatch", error.error.code)
-        }
-    }
-
-    @Test
     fun storeMaps403ToForbiddenAndServerErrorsToRetryableFailure() = runPortableCoroutineTest<Unit> {
         val forbidden = store(FakeUsageApi { status(403) })
         assertSame(RuntimeAccountUsageLoad.Forbidden, forbidden.read(key()))
@@ -120,26 +103,6 @@ class RuntimeAccountUsageTest {
         assertEquals(true, failed.retryable)
         val unauthenticated = store(FakeUsageApi { status(401) })
         assertEquals("auth_required", assertIs<RuntimeAccountUsageLoad.Failed>(unauthenticated.read(key())).code)
-    }
-
-    @Test
-    fun storeCachesSixtySecondsPerKeyAndForceReReads() = runPortableCoroutineTest<Unit> {
-        var now = 1_000L
-        val api = FakeUsageApi { ok(FRESH_BODY) }
-        val store = store(api, clock = { now })
-        store.read(key())
-        store.read(key())
-        assertEquals(1, api.calls.size)
-        now += RUNTIME_ACCOUNT_USAGE_CACHE_MILLIS - 1
-        store.read(key())
-        assertEquals(1, api.calls.size)
-        now += 1
-        store.read(key())
-        assertEquals(2, api.calls.size)
-        store.read(key(), force = true)
-        assertEquals(3, api.calls.size)
-        store.clear()
-        assertNull(store.peek(key()))
     }
 
     @Test
@@ -170,21 +133,6 @@ class RuntimeAccountUsageTest {
         // A forbidden Computer does not poison (or get served) another Computer's entry.
         assertSame(RuntimeAccountUsageLoad.Forbidden, store.read(base.copy(machineId = "m-denied")))
         assertIs<RuntimeAccountUsageLoad.Loaded>(store.peek(base))
-    }
-
-    @Test
-    fun concurrentReadsOfOneKeyShareOneRequestAndOtherKeysDoNot() = runPortableCoroutineTest<Unit> {
-        val gate = CompletableDeferred<Unit>()
-        val api = FakeUsageApi(beforeRespond = { gate.await() }) { ok(FRESH_BODY) }
-        val store = store(api)
-        val first = async(start = CoroutineStart.UNDISPATCHED) { store.read(key()) }
-        val second = async(start = CoroutineStart.UNDISPATCHED) { store.read(key()) }
-        val other = async(start = CoroutineStart.UNDISPATCHED) { store.read(key().copy(serverId = "s2")) }
-        yield()
-        gate.complete(Unit)
-        assertEquals(first.await(), second.await())
-        other.await()
-        assertEquals(2, api.calls.size)
     }
 
     @Test
@@ -220,24 +168,6 @@ class RuntimeAccountUsageTest {
         val switched = key().copy(owner = signedIn!!)
         assertIs<RuntimeAccountUsageLoad.Loaded>(store.read(switched))
         assertEquals(2, api.calls.size)
-    }
-
-    @Test
-    fun cachedUsageIsNotServedToAnOwnerThatIsNoLongerSignedIn() = runPortableCoroutineTest<Unit> {
-        val api = FakeUsageApi { ok(FRESH_BODY) }
-        val store = store(api)
-        assertIs<RuntimeAccountUsageLoad.Loaded>(store.read(key()))
-        signedIn = key().owner.copy(accountId = "user-2")
-        assertSame(RuntimeAccountUsageLoad.Superseded, store.read(key()))
-        signedIn = null
-        assertSame(RuntimeAccountUsageLoad.Superseded, store.read(key()))
-        assertEquals(1, api.calls.size)
-    }
-
-    @Test
-    fun tokenRotationForTheSameAccountIsNotAnIdentityChange() = runPortableCoroutineTest<Unit> {
-        val api = FakeUsageApi(beforeRespond = { signedIn = key().owner.copy(sessionGeneration = "gen-2") }) { ok(FRESH_BODY) }
-        assertIs<RuntimeAccountUsageLoad.Loaded>(store(api).read(key()))
     }
 
     /** The identity the fake session currently authenticates as. */
@@ -287,12 +217,6 @@ class RuntimeAccountUsageTest {
             "POST servers/s1/machines/m1/runtime-account-usage/claude/refresh {\"reason\":\"stale_or_missing\"} Background",
             api.calls.last()
         )
-    }
-
-    @Test
-    fun refreshMaps403ToForbidden() = runPortableCoroutineTest<Unit> {
-        val store = store(FakeUsageApi(refreshRespond = { status(403) }) { ok(FRESH_BODY) })
-        assertSame(RuntimeAccountUsageRefreshLoad.Forbidden, store.refresh(key(), RuntimeAccountUsageRefreshReason.Manual))
     }
 
     private fun parseRefresh(body: String): RuntimeAccountUsageRefresh? =

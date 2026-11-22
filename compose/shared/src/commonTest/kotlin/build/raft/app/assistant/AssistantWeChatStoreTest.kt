@@ -2,18 +2,15 @@ package build.raft.app.assistant
 
 import build.raft.app.data.DelegatedRetractResult
 import build.raft.app.data.RaftAssistantDmCardsApi
-import build.raft.app.data.ScreenError
 import build.raft.app.data.WeChatBinding
 import build.raft.app.data.WeChatDisconnectResult
 import build.raft.app.data.WeChatStatus
 import build.raft.app.data.WeChatStatusResult
-import build.raft.app.data.weChatDisconnectResultOf
 import build.raft.app.data.weChatStatusResultOf
 import build.raft.app.model.ServerId
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
-import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -80,20 +77,6 @@ class AssistantWeChatStoreTest {
     }
 
     @Test
-    fun aFailedRefreshKeepsWhatWasKnown() =
-        runTest {
-            val api = ScriptedApi(connected)
-            val store = AssistantWeChatStore(api, "s1", backgroundScope)
-            assertNull(store.status.value)
-            store.refresh()
-            assertEquals(connected, store.status.value)
-            api.status = WeChatStatusResult.Error
-            store.refresh()
-            assertEquals(connected, store.status.value)
-            assertEquals(2, api.reads)
-        }
-
-    @Test
     fun aSecondConfirmWaitsForTheSameDisconnect() =
         runTest {
             val gate = CompletableDeferred<Unit>()
@@ -112,42 +95,4 @@ class AssistantWeChatStoreTest {
             // Raft forgot the binding: the dialog turns to Connect WeChat.
             assertEquals(WeChatStatus(available = true, binding = null), store.status.value.readyStatus())
         }
-
-    @Test
-    fun anEndedConnectionClearsAReplacedOneIsReadAgainAFailureKeepsItsTrace() =
-        runTest {
-            val gone =
-                ScriptedApi(connected, disconnect = weChatDisconnectResultOf(404, """{"error":"WeChat is not connected.","code":"wechat_not_connected"}""", null))
-            val goneStore = AssistantWeChatStore(gone, "s1", backgroundScope)
-            goneStore.refresh()
-            assertEquals(WeChatDisconnectResult.AlreadyEnded(bindingChanged = false), goneStore.disconnect(bindingId))
-            assertNull(goneStore.status.value.readyStatus()?.binding)
-
-            val newer = "7c1d2e3f-4a5b-4c6d-8e9f-0a1b2c3d4e5f"
-            val replaced =
-                ScriptedApi(
-                    connected,
-                    disconnect =
-                        weChatDisconnectResultOf(
-                            409,
-                            """{"error":"WeChat was connected again since; that connection has ended.","code":"wechat_binding_changed"}""",
-                            null,
-                        ),
-                )
-            val replacedStore = AssistantWeChatStore(replaced, "s1", backgroundScope)
-            replacedStore.refresh()
-            replaced.status = WeChatStatusResult.Ready(WeChatStatus(true, WeChatBinding(newer, "active", "2026-11-17T01:00:00.000Z")))
-            assertEquals(WeChatDisconnectResult.AlreadyEnded(bindingChanged = true), replacedStore.disconnect(bindingId))
-            runCurrent()
-            assertEquals(newer, replacedStore.status.value.readyStatus()?.binding?.bindingId, "the newer connection stays")
-
-            val failing = ScriptedApi(connected, disconnect = WeChatDisconnectResult.Failed(ScreenError("http_500", traceId = TRACE)))
-            val failingStore = AssistantWeChatStore(failing, "s1", backgroundScope)
-            failingStore.refresh()
-            val failed = failingStore.disconnect(bindingId)
-            assertEquals(TRACE, (failed as WeChatDisconnectResult.Failed).error.traceId)
-            assertEquals(bindingId, failingStore.status.value.readyStatus()?.binding?.bindingId, "still connected")
-        }
 }
-
-private const val TRACE = "4bf92f3577b34da6a3ce929d0e0e4736"

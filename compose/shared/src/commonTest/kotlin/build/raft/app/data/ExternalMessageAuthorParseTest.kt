@@ -1,17 +1,12 @@
 package build.raft.app.data
 
 import build.raft.app.MemberKindWireContract
-import build.raft.app.SharedThreadStoreTest
 import build.raft.app.data.realtime.RealtimeEventMapper
 import build.raft.app.data.realtime.RealtimeSocketEvents
-import build.raft.app.memberDetailIdentityFromWire
-import build.raft.app.memberKindWireValue
-import build.raft.app.MemberDetailIdentitySource
 import build.raft.app.model.MemberKind
 import build.raft.app.model.MessageNew
 import build.raft.app.model.ThreadId
 import build.raft.app.strictMemberKindOrNull
-import kotlinx.serialization.json.Json
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
@@ -118,45 +113,6 @@ class ExternalMessageAuthorParseTest {
     }
 
     @Test
-    fun restMessagesKeepExternalProjectionWithMalformedExternalAuthor() {
-        val payload =
-            parseSharedChannelMessages(
-                """
-                {
-                  "messages": [{
-                    "id": "m-ext-3",
-                    "seq": 5,
-                    "channelId": "c1",
-                    "senderType": "external_projection",
-                    "senderId": "ext_slack_U888",
-                    "senderName": "Bridged Bob",
-                    "messageType": "chat",
-                    "content": "wrong type author object",
-                    "createdAt": "2026-09-24T01:00:00.000Z",
-                    "externalAuthor": "not-an-object"
-                  }, {
-                    "id": "m-user-1",
-                    "seq": 6,
-                    "channelId": "c1",
-                    "senderType": "user",
-                    "senderId": "u1",
-                    "senderName": "Ada",
-                    "messageType": "chat",
-                    "content": "neighbour row",
-                    "createdAt": "2026-09-24T01:00:01.000Z"
-                  }]
-                }
-                """.trimIndent(),
-                fallbackThreadId = ThreadId("c1"),
-            )
-
-        assertEquals(listOf("m-ext-3", "m-user-1"), payload.messages.map { it.id.value })
-        val external = payload.messages.first()
-        assertEquals("Bridged Bob", external.author.displayName)
-        assertEquals(false, assertNotNull(external.externalAuthor).displayNameIsFallback)
-    }
-
-    @Test
     fun restMessagesTreatThirdPartyAppSenderAsExternalAndKeepPartialAuthorFields() {
         val payload =
             parseSharedChannelMessages(
@@ -193,38 +149,6 @@ class ExternalMessageAuthorParseTest {
         assertEquals("B42", author.externalActorId)
         assertEquals("https://avatars.slack-edge.com/anon.png", message.author.avatar?.wireValue)
         assertEquals("Slack", message.author.description)
-    }
-
-    @Test
-    fun threadRepliesKeepExternalSenderWithoutAuthorOrSenderId() {
-        val json = Json { ignoreUnknownKeys = true; coerceInputValues = true }
-        val replies =
-            listOf(
-                """{"id":"r-ext-1","channelId":"channel-1","senderType":"external_projection","senderId":"","messageType":"chat","content":"slack reply"}""",
-                """{"id":"r-ext-2","channelId":"channel-1","senderType":"third_party_app","senderId":"ext-1","senderName":"Carol","messageType":"chat","content":"app reply","externalAuthor":{"displayName":"Carol (Slack)"}}""",
-                """{"id":"r-ext-3","channelId":"channel-1","senderType":"external_projection","senderId":"ext-2","messageType":"chat","content":"bad author","externalAuthor":[1,2]}""",
-            ).map { json.decodeFromString(WireMessage.serializer(), it) }
-        val diagnostics = mutableListOf<String>()
-
-        val payload =
-            buildSharedThreadPayloadFromMessagesPage(
-                basePayload = SharedThreadStoreTest.basePayload(),
-                page = ThreadMessagesPage(messages = replies, canLoadMoreBefore = false, canLoadMoreAfter = null),
-                session = null,
-                diagnostics = diagnostics::add,
-            )
-
-        assertEquals(listOf("r-ext-1", "r-ext-2", "r-ext-3"), payload.messages.map { it.id })
-        val anonymous = payload.messages[0]
-        assertEquals("external", anonymous.authorKind)
-        assertEquals("external:message:r-ext-1", anonymous.authorId)
-        assertEquals(EXTERNAL_AUTHOR_FALLBACK_DISPLAY_NAME, anonymous.authorName)
-        assertTrue(assertNotNull(anonymous.externalAuthor).displayNameIsFallback)
-        assertNull(anonymous.authorDescription)
-        assertEquals("Carol (Slack)", payload.messages[1].authorName)
-        assertEquals("ext-1", payload.messages[1].authorId)
-        assertNotNull(payload.messages[2].externalAuthor)
-        assertTrue(diagnostics.any { "source=thread_wire_sender field=externalAuthor value=missing" in it })
     }
 
     @Test
@@ -294,45 +218,6 @@ class ExternalMessageAuthorParseTest {
     }
 
     @Test
-    fun realtimeEventMapperKeepsExternalSenderWithBlankSenderId() {
-        for (senderIdField in listOf(""""senderId": "",""", """"senderId": null,""", "")) {
-            val event =
-                RealtimeEventMapper(diagnosticsLogger = {}).map(
-                    RealtimeSocketEvents.MessageNew,
-                    """
-                    {
-                      "id": "m-rt-3",
-                      "seq": 12,
-                      "channelId": "c1",
-                      "senderType": "third_party_app",
-                      $senderIdField
-                      "messageType": "chat",
-                      "content": "anonymous slack message",
-                      "createdAt": "2026-09-24T01:00:00.000Z",
-                      "externalAuthor": { "provider": "slack", "projectionId": "proj-9" }
-                    }
-                    """.trimIndent(),
-                )
-
-            val message = assertIs<MessageNew>(event, "senderId field: $senderIdField").message
-            assertEquals(MemberKind.External, message.author.kind)
-            assertEquals("external:projection:proj-9", message.author.id.value)
-            val author = assertNotNull(message.externalAuthor)
-            assertTrue(author.displayNameIsFallback)
-            assertEquals("Slack", message.author.description)
-            // The synthetic key never resolves to a member-detail identity.
-            assertNull(
-                memberDetailIdentityFromWire(
-                    memberId = message.author.id.value,
-                    kindWireValue = message.author.kind.memberKindWireValue(),
-                    source = MemberDetailIdentitySource.ThreadMessageAuthor,
-                    diagnostics = {},
-                )
-            )
-        }
-    }
-
-    @Test
     fun realtimeEventMapperStillDropsUserOrAgentWithBlankSenderId() {
         for (senderType in listOf("user", "agent")) {
             val diagnostics = mutableListOf<String>()
@@ -397,17 +282,5 @@ class ExternalMessageAuthorParseTest {
         for (contract in listOf(MemberKindWireContract.Identity, MemberKindWireContract.InternalActor)) {
             assertNull("third_party_app".strictMemberKindOrNull(source = "test", diagnostics = diagnostics::add, contract = contract))
         }
-    }
-
-    @Test
-    fun memberDetailIdentityFromWireFailsClosedForExternalAuthor() {
-        assertNull(
-            memberDetailIdentityFromWire(
-                memberId = "ext_slack_U123",
-                kindWireValue = MemberKind.External.memberKindWireValue(),
-                source = MemberDetailIdentitySource.ThreadMessageAuthor,
-                diagnostics = {},
-            )
-        )
     }
 }

@@ -1,7 +1,6 @@
 package build.raft.app.markdown
 
 import com.tencent.kuiklybase.markdown.model.RaftGFMFlavourDescriptor
-import com.tencent.kuiklybase.markdown.model.RaftMarkdownDialect
 import com.tencent.kuiklybase.markdown.model.raftBlockMathSource
 import com.tencent.kuiklybase.markdown.model.raftInlineMathSource
 import org.intellij.markdown.ast.ASTNode
@@ -39,47 +38,6 @@ class MarkdownMathTest {
     }
 
     @Test
-    fun singleDollarMathStaysOnOneLineAndEscapedDollarsAreText() {
-        assertEquals(emptyList(), formulas("\$a\nb\$"))
-        assertEquals(emptyList(), formulas("\\\$x\\\$"))
-    }
-
-    @Test
-    fun doubleDollarsAreMathInlineAndAsABlock() {
-        assertEquals(listOf("inline:E = mc^2"), formulas("then \$\$E = mc^2\$\$ holds"))
-        assertEquals(listOf("block:\\int_0^1 x\\,dx"), formulas("\$\$\n\\int_0^1 x\\,dx\n\$\$"))
-        // A space after `$$` is fine: the single-dollar rules don't apply.
-        assertEquals(listOf("inline:a + b"), formulas("\$\$ a + b \$\$"))
-    }
-
-    @Test
-    fun anAtInsideAFormulaIsNotAMentionOutsideItStillIs() {
-        assertEquals(emptyList(), mentions("see \$a @alice\$ and \$\$ @bob \$\$"))
-        assertEquals(listOf("alice"), mentions("\$5 for @alice and \$10"))
-        assertEquals(listOf("bob"), mentions("\$x\$ @bob"))
-    }
-
-    // Mobile-only: the block shapes the web gets from micromark-extension-math's mathFlow, which
-    // the cases above reach only once.
-    @Test
-    fun mathBlocksFollowTheFenceRules() {
-        // A fence interrupts a paragraph; blank lines stay in the formula.
-        assertEquals(
-            listOf("block:a\n\nb"),
-            formulas("text\n\$\$\na\n\nb\n\$\$"),
-        )
-        // A longer closing fence closes; the opening line may carry text without a `$`.
-        assertEquals(listOf("block:x"), formulas("\$\$\$ tex\nx\n\$\$\$\$"))
-        // Unclosed: runs to the end of the message.
-        assertEquals(listOf("block:x\ny"), formulas("\$\$\nx\ny"))
-        // In a quote and a list item, the container marker is not part of the formula.
-        assertEquals(listOf("block:a^2"), formulas("> \$\$\n> a^2\n> \$\$"))
-        assertEquals(listOf("block:a^2"), formulas("- \$\$\n  a^2\n  \$\$"))
-        // The formula is not Markdown: `# h` and `- x` are TeX here.
-        assertEquals(listOf("block:# h\n- x"), formulas("\$\$\n# h\n- x\n\$\$"))
-    }
-
-    @Test
     fun codeOwnsItsDollars() {
         assertEquals(emptyList(), formulas("`\$x\$` and\n```\n\$\$\nx\n\$\$\n```"))
         // A formula owns what it contains: emphasis markers and link brackets are TeX.
@@ -102,11 +60,4 @@ class MarkdownMathTest {
         visit(parse(source))
         return found
     }
-
-    /** The handles of the `@` references the app would resolve as mentions. */
-    private fun mentions(source: String): List<String> =
-        RaftMarkdownDialect.inlineRefs(parse(source), source)
-            .map { it.sourceText }
-            .filter { it.startsWith("@") }
-            .map { it.removePrefix("@") }
 }

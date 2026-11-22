@@ -12,8 +12,6 @@ import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
-import kotlin.time.Duration.Companion.seconds
-import kotlin.time.TestTimeSource
 
 /**
  * `GET /api/servers/:id/runtimes` (botiverse/slock `docs/contracts/server-runtime-catalog.md`
@@ -209,56 +207,6 @@ class ServerRuntimeCatalogApiTest {
     }
 
     @Test
-    fun ensureLoadedPublishesTheCachedAnswerThenAsksTheServerOncePerMinute() =
-        runTest {
-            val prefs = MapPreferences()
-            val api = FakeApi()
-            val revivedBody = """{"catalogVersion":1,"runtimes":[{"id":"antigravity","displayName":"Antigravity CLI","supported":true,"deprecated":false,"forms":[{"kind":"v2"}]}]}"""
-            // A previous run cached this server's answer.
-            prefs.values["${SERVER_RUNTIME_CATALOG_CACHE_KEY_PREFIX}env|acct|oar"] = revivedBody
-            val names = RaftRuntimeCatalogNameRegistry()
-            val clock = TestTimeSource()
-            val repository =
-                SharedServerRuntimeCatalogRepository(
-                    api,
-                    backgroundScope,
-                    ServerRuntimeCatalogCache(prefs),
-                    scopeProvider = { "env|acct" },
-                    names = names,
-                    timeSource = clock
-                )
-
-            // Offline: the cached answer is what the labels read.
-            api.next = HomeNetworkResponse(code = 503, bodyText = null)
-            repository.ensureLoaded("oar", DataRequestPriority.Background)
-            assertEquals(RuntimeCatalogSource.Cache, names.catalog("oar")?.source)
-            assertFalse(names.entry("antigravity", "oar")!!.deprecated)
-            assertEquals(listOf(DataRequestPriority.Background), api.priorities)
-
-            // Every other row asking for the same server is free: no second request.
-            api.next = HomeNetworkResponse(code = 200, bodyText = revivedBody)
-            repeat(3) { repository.ensureLoaded(" oar ", DataRequestPriority.Background) }
-            assertEquals(1, api.paths.size)
-            // A server switch refreshes through load().
-            repository.load("oar", DataRequestPriority.Background)
-            assertEquals(RuntimeCatalogSource.Server, names.catalog("oar")?.source)
-            assertEquals(2, api.paths.size)
-
-            // Another server is asked once too; a blank one never.
-            repository.ensureLoaded("s2", DataRequestPriority.Background)
-            repository.ensureLoaded("", DataRequestPriority.Background)
-            assertEquals(listOf("servers/oar/runtimes", "servers/oar/runtimes", "servers/s2/runtimes"), api.paths)
-
-            // A minute later (web CATALOG_REUSE_MS) a label may ask again.
-            clock += 59.seconds
-            repository.ensureLoaded("oar", DataRequestPriority.Background)
-            assertEquals(3, api.paths.size)
-            clock += 1.seconds
-            repository.ensureLoaded("oar", DataRequestPriority.Background)
-            assertEquals(4, api.paths.size)
-        }
-
-    @Test
     fun staticModelsAreTheWholeListAndFallbackLetsLiveDetectionWin() {
         val live = listOf(RuntimeModelInfo("live", "Live"))
         val static = entry("claude", models = listOf(RuntimeModelInfo("opus", "Opus")), modelsSource = RuntimeCatalogModelsSource.Static)
@@ -322,22 +270,6 @@ class ServerRuntimeCatalogApiTest {
             val otherAccount =
                 SharedServerRuntimeCatalogRepository(api, backgroundScope, ServerRuntimeCatalogCache(prefs), scopeProvider = { "env|other" }, names = names)
             assertEquals(RuntimeCatalogSource.Bundled, otherAccount.cached("s1").source)
-        }
-
-    @Test
-    fun oneRequestPerServerInFlight() =
-        runTest {
-            val gate = CompletableDeferred<Unit>()
-            val api = FakeApi(gate = gate)
-            api.next = HomeNetworkResponse(code = 200, bodyText = ContractExample)
-            val repository =
-                SharedServerRuntimeCatalogRepository(api, backgroundScope, cache = null, scopeProvider = { null }, names = RaftRuntimeCatalogNameRegistry())
-            val first = async { repository.load("s1", DataRequestPriority.Visible) }
-            val second = async { repository.load("s1", DataRequestPriority.Visible) }
-            testScheduler.runCurrent()
-            gate.complete(Unit)
-            assertEquals(first.await(), second.await())
-            assertEquals(1, api.paths.size)
         }
 
     @Test

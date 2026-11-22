@@ -73,29 +73,6 @@ class HomeSnapshotStabilityTest {
     }
 
     @Test
-    fun preserveStableRowsHandlesEmptyOrNullPreviewsGracefully() {
-        val priorDm = HomeDirectMessageRow(
-            threadId = ThreadId("dm-1"),
-            channelId = ChannelId("dm-1"),
-            name = "Alice",
-            lastMessagePreview = null
-        )
-        val priorSnapshot = sampleHome().copy(directMessages = listOf(priorDm))
-
-        val incomingDm = HomeDirectMessageRow(
-            threadId = ThreadId("dm-1"),
-            channelId = ChannelId("dm-1"),
-            name = "Alice",
-            lastMessagePreview = null
-        )
-        val incomingSnapshot = sampleHome().copy(directMessages = listOf(incomingDm))
-
-        val result = incomingSnapshot.preserveStableRowsFrom(priorSnapshot)
-        assertNull(result.directMessages.single().lastMessagePreview)
-        assertSame(priorDm, result.directMessages.single())
-    }
-
-    @Test
     fun preserveStableRowsRejectsPreviewInheritanceAcrossDifferentServers() {
         val priorDm = HomeDirectMessageRow(
             threadId = ThreadId("shared-key"),

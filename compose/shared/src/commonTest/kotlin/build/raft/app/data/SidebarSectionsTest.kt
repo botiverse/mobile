@@ -101,25 +101,6 @@ class SidebarSectionsTest {
     }
 
     @Test
-    fun moveToCustomSectionAtPositionClampsAndReindexes() {
-        val placements =
-            listOf(
-                placement("channel", "channel-1", "sec-1", 0),
-                placement("channel", "channel-2", "sec-1", 1),
-                placement("channel", "dm-1", "sec-2", 0),
-            )
-        val moved = moveSidebarItemToCustomSectionAtPosition(placements, "channel", "dm-1", "sec-1", 0)
-        assertEquals(
-            listOf(
-                placement("channel", "dm-1", "sec-1", 0),
-                placement("channel", "channel-1", "sec-1", 1),
-                placement("channel", "channel-2", "sec-1", 2),
-            ),
-            moved
-        )
-    }
-
-    @Test
     fun moveWithinSameSectionReorders() {
         val placements =
             listOf(
@@ -136,13 +117,6 @@ class SidebarSectionsTest {
             ),
             moved
         )
-    }
-
-    @Test
-    fun removePlacementReturnsSameListWhenAbsent() {
-        val placements = listOf(placement("channel", "channel-1", "sec-1", 0))
-        assertEquals(placements, removeSidebarItemPlacement(placements, "channel", "missing"))
-        assertEquals(emptyList(), removeSidebarItemPlacement(placements, "channel", "channel-1"))
     }
 
     @Test

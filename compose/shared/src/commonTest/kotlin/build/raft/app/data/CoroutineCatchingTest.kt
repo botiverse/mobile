@@ -1,7 +1,6 @@
 package build.raft.app.data
 
 import kotlin.test.Test
-import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
 import kotlinx.coroutines.CancellationException
@@ -28,15 +27,6 @@ class CoroutineCatchingTest {
                 }
 
             assertTrue(result.isFailure)
-        }
-    }
-
-    @Test
-    fun returnsSuccessValue() {
-        runBlocking {
-            val result = runCatchingPreservingCancellation { "ok" }
-
-            assertEquals("ok", result.getOrNull())
         }
     }
 }

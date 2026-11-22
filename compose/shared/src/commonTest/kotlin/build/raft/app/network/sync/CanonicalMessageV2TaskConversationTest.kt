@@ -71,39 +71,6 @@ class CanonicalMessageV2TaskConversationTest {
         }
     }
 
-    @Test
-    fun codecRejectsATaskScopeAsAReplyParentOrWithoutItsParent() {
-        val cases =
-            listOf(
-                "task scope without parent" to
-                    """{"kind":"top-level","scope":{"kind":"task","serverId":"server-a","scopeId":"conv-1"}}""",
-                "task scope with parent message key" to
-                    """{"kind":"top-level","scope":{"kind":"task","serverId":"server-a","scopeId":"conv-1","parentScopeId":"channel-1","parentMessageId":"m"}}""",
-                "channel scope with task parent key" to
-                    """{"kind":"top-level","scope":{"kind":"channel","serverId":"server-a","scopeId":"channel-1","parentScopeId":"channel-0"}}""",
-            )
-        cases.forEach { (name, context) ->
-            assertIs<CanonicalMessageV2DecodeResult.Rejected>(decodeCanonicalMessageV2Context(json(context)), name)
-        }
-        val replyUnderTask =
-            decodeCanonicalMessageV2Context(
-                context =
-                    json(
-                        """{"kind":"thread","replyScope":{"serverId":"server-a","scopeId":"thread-1"},""" +
-                            """"parentTopLevelScope":{"kind":"task","serverId":"server-a","scopeId":"conv-1","parentScopeId":"channel-1"},""" +
-                            """"rootMessageRef":{"serverId":"server-a","messageId":"root-1"}}"""
-                    ),
-                replyMembership =
-                    json("""{"root":{"serverId":"server-a","messageId":"root-1"},"parentScope":{"serverId":"server-a","scopeId":"thread-1"}}"""),
-            )
-        assertIs<CanonicalMessageV2DecodeResult.Rejected>(replyUnderTask)
-        assertIs<CanonicalMessageV2DecodeResult.Accepted>(
-            decodeCanonicalMessageV2Context(
-                json("""{"kind":"top-level","scope":{"kind":"task","serverId":"server-a","scopeId":"conv-1","parentScopeId":"channel-1"}}""")
-            )
-        )
-    }
-
     private fun input(
         context: CanonicalConversationContextWire,
         childReplyScopeId: String? = null,

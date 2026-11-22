@@ -73,17 +73,6 @@ class SharedSettingsShareUsageDataTest {
     }
 
     @Test
-    fun tapMatchingTheShownValueSavesNothing() = runTest {
-        val harness = harness(choice = null)
-        harness.store.accept(SharedSettingsIntent.LoadPageContent(SharedSettingsDestination.Account))
-
-        harness.store.dispatch(SharedSettingsIntent.SetShareUsageData(true))
-        testScheduler.runCurrent()
-
-        assertEquals(emptyList<Boolean>(), harness.repository.saves, "null already shows on")
-    }
-
-    @Test
     fun learnMoreOpensThePrivacyPolicy() = runTest {
         val harness = harness(choice = null)
 

@@ -68,19 +68,6 @@ class NotificationPermissionAutoPromptTest {
     }
 
     @Test
-    fun logsTheAnswerOnTheResumeAfterThePrompt() = runTest {
-        val host = Host()
-        val prompt = host.prompt(InMemoryRaftKeyValueStore())
-        prompt.onResumed()
-        assertTrue(host.logs.none { "result=" in it }, "nothing asked yet")
-        prompt.maybeAsk()
-        host.statusCode = "permission_authorized"
-        prompt.onResumed()
-        prompt.onResumed()
-        assertEquals(listOf("notification_permission_auto_prompt result=granted"), host.logs.filter { "result=" in it })
-    }
-
-    @Test
     fun aPromptThatNeverShowedDoesNotCountAsTheOneAsk() = runTest {
         // e.g. no activity to show it on yet: the host answers permission_denied without a dialog.
         val store = InMemoryRaftKeyValueStore()

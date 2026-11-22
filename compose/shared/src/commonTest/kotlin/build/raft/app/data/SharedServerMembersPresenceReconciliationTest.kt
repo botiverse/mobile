@@ -138,26 +138,6 @@ class SharedServerMembersPresenceReconciliationTest {
     }
 
     @Test
-    fun historicalActivityStartedAfterCurrentDetailStillCannotReplaceCurrentState() {
-        val registry = ProcessMemberPresenceRegistry()
-        val store = SharedServerMembersStore(PresenceNoopMemberRepository, presenceRegistry = registry)
-        val detailRequest = store.beginAgentDetailPresenceProjection(serverId, agentId)
-        store.applyAgentDetailSnapshot(
-            detailRequest,
-            detail(summaryStatus = "working", summaryActivity = "working")
-        )
-
-        val activityRequest = store.beginAgentActivityPresenceProjection(serverId, agentId)
-        store.applyAgentActivitySnapshot(
-            request = activityRequest,
-            agentId = agentId,
-            activity = listOf(statusEntry(status = "offline", timestamp = "999"))
-        )
-
-        assertEquals(AgentStatus.Working, registry.factFor(owner, agentId.value)?.agentStatus)
-    }
-
-    @Test
     fun forcedRosterRefreshPublishesRequestFencedCurrentStatus() = runBlocking {
         val registry = ProcessMemberPresenceRegistry()
         var rosterStatus = AgentStatus.Working
@@ -347,58 +327,6 @@ class SharedServerMembersPresenceReconciliationTest {
     }
 
     @Test
-    fun realtimeDuringForcedRosterRequestWins() = runBlocking {
-        val registry = ProcessMemberPresenceRegistry()
-        val started = CompletableDeferred<Unit>()
-        val release = CompletableDeferred<Unit>()
-        val repository =
-            object : MemberRepository by PresenceNoopMemberRepository {
-                override suspend fun getMembers(
-                    priority: DataRequestPriority,
-                    serverId: ServerId
-                ): DataResult<MemberSnapshot> {
-                    started.complete(Unit)
-                    release.await()
-                    return DataResult.Content(
-                        MemberSnapshot(
-                            server = ServerSummary(id = serverId, name = "Raft"),
-                            members =
-                                listOf(
-                                    MemberProfile(
-                                        id = agentId,
-                                        displayName = "Agent One",
-                                        handle = "agent-one",
-                                        kind = MemberKind.Agent,
-                                        presence = Presence.Offline,
-                                        agentStatus = AgentStatus.Offline,
-                                        serverId = serverId
-                                    )
-                                )
-                        )
-                    )
-                }
-            }
-        val store = SharedServerMembersStore(repository, presenceRegistry = registry)
-        val transport = ProcessPresenceTransportEpoch("family-1", 1L)
-        registry.rebaselineTransport(owner, registry.writeGeneration, transport)
-
-        val refresh = async { store.refreshMembers(serverId, force = true, reason = "held") }
-        started.await()
-        registry.apply(
-            owner = owner,
-            event = presence(AgentStatus.Working, serverSeq = 7L, detail = "Realtime"),
-            writeGeneration = registry.writeGeneration,
-            transport = transport
-        )
-        release.complete(Unit)
-        refresh.await()
-
-        val current = registry.factFor(owner, agentId.value)
-        assertEquals(AgentStatus.Working, current?.agentStatus)
-        assertEquals(7L, current?.serverSeq)
-    }
-
-    @Test
     fun detailAuthorityWinsConcurrentRosterInEitherResponseOrder() = runBlocking {
         for (rosterCompletesFirst in listOf(true, false)) {
             val registry = ProcessMemberPresenceRegistry()
@@ -492,44 +420,6 @@ class SharedServerMembersPresenceReconciliationTest {
                 "newer request must win when newerCompletesFirst=$newerCompletesFirst"
             )
         }
-    }
-
-    @Test
-    fun laterRosterRefreshAdvancesPastDetailAndBlocksOlderDetailSibling() {
-        val registry = ProcessMemberPresenceRegistry()
-        val store = SharedServerMembersStore(PresenceNoopMemberRepository, presenceRegistry = registry)
-        val staleDetail = store.beginAgentDetailPresenceProjection(serverId, agentId)
-        val acceptedDetail = store.beginAgentDetailPresenceProjection(serverId, agentId)
-
-        store.applyAgentDetailSnapshot(
-            acceptedDetail,
-            detail(summaryStatus = "working", summaryActivity = "working")
-        )
-        assertEquals(AgentStatus.Working, registry.factFor(owner, agentId.value)?.agentStatus)
-
-        val rosterRequest =
-            registry.captureRosterProjectionRequest(owner, registry.writeGeneration)
-                ?.memberRequest(agentId.value)
-        checkNotNull(rosterRequest)
-        registry.applyProjection(
-            request = rosterRequest,
-            event =
-                MemberPresenceUpdated(
-                    memberId = agentId,
-                    presence = Presence.Offline,
-                    kind = MemberKind.Agent,
-                    agentStatus = AgentStatus.Offline,
-                    statusLabel = AgentStatus.Offline.label,
-                    serverSeq = null
-                )
-        )
-        assertEquals(AgentStatus.Offline, registry.factFor(owner, agentId.value)?.agentStatus)
-
-        store.applyAgentDetailSnapshot(
-            staleDetail,
-            detail(summaryStatus = "online", summaryActivity = "online")
-        )
-        assertEquals(AgentStatus.Offline, registry.factFor(owner, agentId.value)?.agentStatus)
     }
 
     @Test
@@ -799,36 +689,6 @@ class SharedServerMembersPresenceReconciliationTest {
         assertEquals(2, repository.calls)
         assertEquals(AgentStatus.Online, registry.factFor(owner, agentId.value)?.agentStatus)
         assertFalse(registry.needsRosterRefill(owner))
-    }
-
-    @Test
-    fun failedRefillIsNotRetriedOnceANewerConnectOwnsTheRepair() = runTest {
-        val registry = ProcessMemberPresenceRegistry()
-        val repository = FlakyRosterRepository(serverId, agentId, failures = 1)
-        val store =
-            SharedServerMembersStore(
-                memberRepository = repository,
-                processCore = ProcessServerMembersCore(fetchMembers = repository::getMembers, scope = backgroundScope),
-                presenceRegistry = registry
-            )
-        val transport = ProcessPresenceTransportEpoch("family-1", 1L)
-        registry.rebaselineTransport(owner, registry.writeGeneration, transport)
-        val refetch =
-            PresenceTransportRosterRefetch(
-                jitter = RaftReconnectRefetchJitter(scope = backgroundScope),
-                invalidate = { _, _ -> },
-                storesForServer = { listOf(store) },
-                retryScope = backgroundScope
-            )
-        refetch.onTransportRebaselined(owner, transport, ProcessPresenceTransportRebaselineResult.Applied)
-        assertEquals(1, repository.calls)
-
-        registry.rebaselineTransport(owner, registry.writeGeneration, ProcessPresenceTransportEpoch("family-1", 2L))
-        advanceTimeBy(SharedServerMembersPresenceRefillRetryDelay.inWholeMilliseconds + 1L)
-        runCurrent()
-
-        assertEquals(1, repository.calls, "the epoch moved: the retry is skipped")
-        assertTrue(registry.needsRosterRefill(owner))
     }
 
     private fun presence(

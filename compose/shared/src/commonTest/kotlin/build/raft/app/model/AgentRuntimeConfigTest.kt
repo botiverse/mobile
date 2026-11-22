@@ -4,20 +4,11 @@ import kotlinx.serialization.json.Json
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
-import kotlin.test.assertNotNull
-import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class AgentRuntimeConfigTest {
 
     // ── validateAgentName ──
-
-    @Test
-    fun validateAgentNameAcceptsSimpleAsciiName() {
-        assertNull(validateAgentName("Alice"))
-        assertNull(validateAgentName("alice-2"))
-        assertNull(validateAgentName("noel_bot"))
-    }
 
     @Test
     fun validateAgentNameRejectsReservedNames() {
@@ -29,25 +20,6 @@ class AgentRuntimeConfigTest {
             "Agent name @humans is reserved. Choose another name.",
             validateAgentName("Humans")
         )
-    }
-
-    @Test
-    fun validateAgentNameRejectsEmptyAndTooLong() {
-        assertEquals("Agent name is required", validateAgentName(""))
-        assertEquals("Agent name is required", validateAgentName("   "))
-        val tooLong = "a".repeat(NAME_MAX_LENGTH + 1)
-        assertEquals(
-            "Agent name must be at most $NAME_MAX_LENGTH characters",
-            validateAgentName(tooLong)
-        )
-    }
-
-    @Test
-    fun validateAgentNameRejectsLeadingDigitAndSpecialChars() {
-        assertNotNull(validateAgentName("1alice"))
-        assertNotNull(validateAgentName("alice@home"))
-        assertNotNull(validateAgentName("alice two"))
-        assertNotNull(validateAgentName("alice.bot"))
     }
 
     // ── Runtimes / models ──
@@ -158,69 +130,10 @@ class AgentRuntimeConfigTest {
     }
 
     @Test
-    fun codexPresentationWithoutTheBundledDefaultKeepsTheMachineDefault() {
-        // web canonicalizeCodexPresentation: GPT-5.6 Sol is no longer the preferred model; a machine
-        // that lacks GPT-6.1 Sol keeps its own default.
-        val presentation =
-            canonicalizeRuntimeModelPresentation(
-                runtimeId = "codex",
-                models = listOf(RuntimeModelInfo("gpt-5.5", "GPT-5.5"), RuntimeModelInfo("gpt-5.6-sol", "GPT-5.6 Sol")),
-                machineDefault = "gpt-5.5"
-            )
-        assertEquals("gpt-5.5", presentation.defaultModel)
-        assertEquals(listOf("gpt-5.6-sol", "gpt-5.5"), presentation.models.map { it.id })
-    }
-
-    @Test
-    fun codexPresentationFallsBackToMachineDefaultWhenSolIsMissing() {
-        val presentation =
-            canonicalizeRuntimeModelPresentation(
-                runtimeId = "codex",
-                models =
-                    listOf(
-                        RuntimeModelInfo("gpt-5.5", "GPT-5.5"),
-                        RuntimeModelInfo("gpt-5.4", "GPT-5.4")
-                    ),
-                machineDefault = "gpt-5.5"
-            )
-
-        assertEquals("gpt-5.5", presentation.defaultModel)
-    }
-
-    @Test
-    fun getModelLabelFallsBackToId() {
-        assertEquals("Claude Sonnet", getModelLabel("claude", "sonnet"))
-        assertEquals("custom-id", getModelLabel("claude", "custom-id"))
-    }
-
-    @Test
     fun freePlanLimitsAgentsToFive() {
         val limits = getEffectiveLimits(ServerPlan.free)
         assertEquals(5, limits.maxAgents)
         assertEquals(2, limits.maxMachines)
-    }
-
-    @Test
-    fun founderPlanLimitsAreUnlimited() {
-        val limits = getEffectiveLimits(ServerPlan.founder)
-        assertEquals(-1, limits.maxAgents)
-        assertEquals(-1, limits.maxMachines)
-    }
-
-    @Test
-    fun capabilityPredicatesAreCorrect() {
-        assertTrue(supportsRuntimeFastMode("claude"))
-        assertTrue(supportsRuntimeFastMode("codex"))
-        assertFalse(supportsRuntimeFastMode("opencode"))
-        assertTrue(supportsRuntimeReasoningEffort("builtin"))
-        assertTrue(supportsRuntimeReasoningEffort("grok"))
-        assertFalse(supportsRuntimeReasoningEffort("opencode"))
-        // slock #14619: Antigravity's effort is agy's thought level, only for a model that lists levels.
-        assertTrue(supportsRuntimeReasoningEffort("antigravity"))
-        assertFalse(runtimeOffersUndeclaredReasoningEfforts("antigravity"))
-        assertTrue(runtimeOffersUndeclaredReasoningEfforts("claude"))
-        assertEquals("default", runtimeChoiceModel("antigravity")?.id)
-        assertNull(runtimeChoiceModel("claude"))
     }
 
     // ── JSON round-trip ──

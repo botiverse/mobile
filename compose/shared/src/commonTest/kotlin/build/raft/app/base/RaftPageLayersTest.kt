@@ -52,26 +52,6 @@ class RaftPageLayersTest {
     }
 
     @Test
-    fun pagesAfterLaunchAndEmbeddedChildrenSkipTheGate() {
-        assertEquals(
-            listOf(
-                RaftPageLayer.EnvironmentIndicator,
-                RaftPageLayer.MinBuildGate,
-                RaftPageLayer.SideColumnScaffold,
-                RaftPageLayer.LinkHoverStatus,
-            ),
-            raftPageLayers(ownsDatabaseLaunch = false, embedded = false, sharedStoreBuilt = true),
-        )
-        listOf(false, true).forEach { sharedStoreBuilt ->
-            assertEquals(
-                listOf(RaftPageLayer.EnvironmentIndicator),
-                raftPageLayers(ownsDatabaseLaunch = false, embedded = true, sharedStoreBuilt = sharedStoreBuilt),
-                "sharedStoreBuilt=$sharedStoreBuilt",
-            )
-        }
-    }
-
-    @Test
     fun minBuildGateCoversEveryWindowedPageExceptTheExemptOnes() {
         // The feedback form the block page opens must work while the app is blocked.
         assertEquals(

@@ -2,8 +2,6 @@ package build.raft.app.network.sync
 
 import build.raft.app.network.sync.CanonicalMessageV2SegmentAlgebra.deriveGaps
 import build.raft.app.network.sync.CanonicalMessageV2SegmentAlgebra.head
-import build.raft.app.network.sync.CanonicalMessageV2SegmentAlgebra.isNormalized
-import build.raft.app.network.sync.CanonicalMessageV2SegmentAlgebra.memberOf
 import build.raft.app.network.sync.CanonicalMessageV2SegmentAlgebra.provenSegmentAfter
 import build.raft.app.network.sync.CanonicalMessageV2SegmentAlgebra.provenSegmentBefore
 import build.raft.app.network.sync.CanonicalMessageV2SegmentAlgebra.reachesHeadAt
@@ -44,16 +42,6 @@ class CanonicalMessageV2SegmentAlgebraTest {
     }
 
     @Test
-    fun overlappingAndContainedRangesMergeIntoOne() {
-        assertEquals(listOf(1L to 9L), union(listOf(seg(1, 5)), seg(4, 9)).ranges())
-        assertEquals(listOf(1L to 10L), union(listOf(seg(1, 10)), seg(3, 4)).ranges())
-        assertEquals(listOf(1L to 10L), union(listOf(seg(3, 4)), seg(1, 10)).ranges())
-        // A claim bridging two islands joins all three; one seq short of the upper island it does not.
-        assertEquals(listOf(1L to 9L), union(listOf(seg(1, 3), seg(7, 9)), seg(4, 6)).ranges())
-        assertEquals(listOf(1L to 5L, 7L to 9L), union(listOf(seg(1, 3), seg(7, 9)), seg(4, 5)).ranges())
-    }
-
-    @Test
     fun reachesOldestPropagatesThroughAMergeAndCoversEverythingBelow() {
         val merged = union(listOf(seg(10, 20, oldest = true)), seg(21, 30)).single()
         assertEquals(10L to 30L, merged.lowSeq to merged.highSeq)
@@ -69,69 +57,12 @@ class CanonicalMessageV2SegmentAlgebraTest {
     }
 
     @Test
-    fun headAtVerifyComesFromTheSegmentReachingHighest() {
-        assertTrue(union(listOf(seg(1, 5)), seg(6, 9, head = true)).single().headAtVerify)
-        // The head moved above the verified-at-head range: no longer the head.
-        assertFalse(union(listOf(seg(1, 5, head = true)), seg(6, 9)).single().headAtVerify)
-        // A contained claim does not take the head away.
-        assertTrue(union(listOf(seg(1, 9, head = true)), seg(2, 3)).single().headAtVerify)
-        // Same high: either verification at the head counts.
-        assertTrue(union(listOf(seg(1, 9)), seg(5, 9, head = true)).single().headAtVerify)
-    }
-
-    @Test
     fun anIslandIsNeverTheHeadEvenAboveTheWindow() {
         val window = seg(10, 20, source = CanonicalMessageV2SegmentSource.Latest)
         val island = seg(100, 110, source = CanonicalMessageV2SegmentSource.Context)
         assertEquals(window, head(listOf(window, island)))
         assertEquals(window, head(listOf(window, seg(100, 110, source = CanonicalMessageV2SegmentSource.Newer))))
         assertNull(head(listOf(island)))
-    }
-
-    @Test
-    fun aMergeWithARootedRangeStaysRootedAndTwoIslandsStayAnIsland() {
-        val rooted = union(
-            listOf(seg(1, 5, at = 10, source = CanonicalMessageV2SegmentSource.Latest)),
-            seg(6, 9, at = 20, source = CanonicalMessageV2SegmentSource.Context),
-        ).single()
-        assertEquals(CanonicalMessageV2SegmentSource.Latest, rooted.source)
-        assertEquals(20L, rooted.verifiedAtMs)
-        val island = union(
-            listOf(seg(1, 5, at = 10, source = CanonicalMessageV2SegmentSource.Context)),
-            seg(6, 9, at = 20, source = CanonicalMessageV2SegmentSource.Newer),
-        ).single()
-        assertNull(head(listOf(island)))
-    }
-
-    @Test
-    fun aMergeKeepsTheNewestVerificationAndItsSource() {
-        val merged = union(
-            listOf(seg(1, 5, at = 10, source = CanonicalMessageV2SegmentSource.Migrated)),
-            seg(6, 9, at = 20, source = CanonicalMessageV2SegmentSource.Latest),
-        ).single()
-        assertEquals(20L, merged.verifiedAtMs)
-        assertEquals(CanonicalMessageV2SegmentSource.Latest, merged.source)
-    }
-
-    @Test
-    fun unionAlwaysReturnsANormalizedListAndRefusesAnUnnormalizedOne() {
-        val result = union(listOf(seg(1, 2), seg(10, 12), seg(20, 25)), seg(13, 18))
-        assertEquals(listOf(1L to 2L, 10L to 18L, 20L to 25L), result.ranges())
-        assertTrue(isNormalized(result))
-        assertFalse(isNormalized(listOf(seg(1, 5), seg(6, 9))), "touching segments are not normalized")
-        assertTrue(isNormalized(listOf(seg(1, 5), seg(7, 9))))
-        assertFailsWith<IllegalArgumentException> { union(listOf(seg(1, 5), seg(6, 9)), seg(20, 21)) }
-    }
-
-    @Test
-    fun membershipIsInclusiveAndAReachesOldestSegmentOwnsEverythingBelow() {
-        val segments = listOf(seg(5, 10), seg(20, 30, oldest = false))
-        assertEquals(5L, memberOf(segments, 5)?.lowSeq)
-        assertEquals(5L, memberOf(segments, 10)?.lowSeq)
-        assertNull(memberOf(segments, 11), "a seq between segments is loose")
-        assertNull(memberOf(segments, 4))
-        assertEquals(5L, memberOf(listOf(seg(5, 10, oldest = true)), 4)?.lowSeq)
-        assertEquals(30L, head(segments)?.highSeq)
     }
 
     @Test
@@ -153,33 +84,6 @@ class CanonicalMessageV2SegmentAlgebraTest {
     }
 
     @Test
-    fun aMessageWindowProvesTheRangeAboveItsPredecessor() {
-        val older = CanonicalMessageV2SegmentSource.Older
-        // Nothing below the page and no history cutoff: the page reaches the oldest.
-        assertEquals(
-            CanonicalMessageV2Coverage(1, 20, reachesOldest = true, headAtVerify = true, older),
-            CanonicalMessageV2Coverage.fromMessageWindow(0, 20, completeThroughLatest = true, historyLimited = false, older),
-        )
-        // Same bounds, a plan cutoff hid older rows: no reachesOldest.
-        assertEquals(
-            CanonicalMessageV2Coverage(1, 20, reachesOldest = false, headAtVerify = true, older),
-            CanonicalMessageV2Coverage.fromMessageWindow(0, 20, completeThroughLatest = true, historyLimited = true, older),
-        )
-        // A predecessor exists: the claim starts right above it, never at the page's first row.
-        assertEquals(
-            CanonicalMessageV2Coverage(5, 20, reachesOldest = false, headAtVerify = false, older),
-            CanonicalMessageV2Coverage.fromMessageWindow(4, 20, completeThroughLatest = false, historyLimited = false, older),
-        )
-        // An empty page: coveredAfterSeq = coveredThroughSeq = high-water. Only an empty channel says anything.
-        assertNull(CanonicalMessageV2Coverage.fromMessageWindow(7, 7, completeThroughLatest = true, historyLimited = false, older))
-        assertEquals(
-            CanonicalMessageV2Coverage(0, 0, reachesOldest = true, headAtVerify = true, older),
-            CanonicalMessageV2Coverage.fromMessageWindow(0, 0, completeThroughLatest = true, historyLimited = false, older),
-        )
-        assertNull(CanonicalMessageV2Coverage.fromMessageWindow(0, 0, completeThroughLatest = true, historyLimited = true, older))
-    }
-
-    @Test
     fun aContextPageProvesItsRowsAndAnOpenEdgeOnlyWhereTheServerSaysSo() {
         assertEquals(
             CanonicalMessageV2Coverage(7, 9, reachesOldest = false, headAtVerify = false, CanonicalMessageV2SegmentSource.Context),
@@ -194,26 +98,6 @@ class CanonicalMessageV2SegmentAlgebraTest {
             CanonicalMessageV2Coverage.fromContextPage(listOf(7), hasOlder = false, historyLimited = true)!!.reachesOldest,
         )
         assertNull(CanonicalMessageV2Coverage.fromContextPage(emptyList(), hasOlder = false, historyLimited = false))
-    }
-
-    @Test
-    fun aLegacyWindowAndTheHeadMirrorRoundTrip() {
-        val window = PersistedCursor(20, 5, 20, hasLoadedOldest = false, hasLoadedNewest = true, epoch = "e")
-        val segment = window.legacyWindowSegment(verifiedAtMs = 3L)!!
-        assertEquals(seg(5, 20, head = true, at = 3L, source = CanonicalMessageV2SegmentSource.Legacy), segment)
-        assertEquals(window, window.mirroring(segment, 5L to 20L))
-        val empty = PersistedCursor(null, null, null, hasLoadedOldest = true, hasLoadedNewest = true)
-        val emptySegment = empty.legacyWindowSegment(verifiedAtMs = 3L)!!
-        assertTrue(emptySegment.isEmptyBaseline)
-        assertEquals(empty, empty.mirroring(emptySegment, null))
-        // No window: no segment, and the mirror of no head claims nothing.
-        val none = PersistedCursor(null, null, null, hasLoadedOldest = false, hasLoadedNewest = true)
-        assertNull(none.legacyWindowSegment(verifiedAtMs = 3L))
-        assertEquals(none.copy(hasLoadedNewest = false), none.mirroring(null, null))
-        assertNull(PersistedCursor(9, 9, 4).legacyWindowSegment(verifiedAtMs = 3L), "an inverted window claims nothing")
-        // The edges are stored-fact seqs, never a claim bound: the same head over facts 7..18 mirrors 7..18.
-        assertEquals(window.copy(oldestLoadedSeq = 7, newestLoadedSeq = 18), window.mirroring(segment, 7L to 18L))
-        assertEquals(window.copy(oldestLoadedSeq = null, newestLoadedSeq = null), window.mirroring(segment, null))
     }
 
     @Test

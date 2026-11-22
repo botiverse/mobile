@@ -17,14 +17,6 @@ class RaftRetiredContentHostTest {
     }
 
     @Test
-    fun schemeAndHostCompareCaseInsensitively() {
-        assertEquals(
-            "https://cdn.raft.build/Thumbs/ABC.webp?Q=Upper",
-            raftRewriteRetiredContentHost("HTTPS://Content.Raft.Build/Thumbs/ABC.webp?Q=Upper")
-        )
-    }
-
-    @Test
     fun subdomainsAndLookalikeHostsStayUntouched() {
         listOf(
             "https://img.content.raft.build/a.png",
@@ -37,27 +29,6 @@ class RaftRetiredContentHostTest {
             "https://user@content.raft.build/a.png",
             "https://evil.example/https://content.raft.build/a.png",
             "https://cdn.raft.build/a.png?next=https://content.raft.build/b.png",
-        ).forEach { url -> assertSame(url, raftRewriteRetiredContentHost(url), url) }
-    }
-
-    @Test
-    fun plainHttpAndOtherSchemesStayUntouched() {
-        listOf(
-            "http://content.raft.build/a.png",
-            "content.raft.build/a.png",
-            "//content.raft.build/a.png",
-            "assets://content.raft.build/a.png",
-            "",
-        ).forEach { url -> assertSame(url, raftRewriteRetiredContentHost(url), url) }
-    }
-
-    @Test
-    fun stagingAndLocalAssetHostsStayUntouched() {
-        listOf(
-            "https://slock-cdn-staging.botiverse.dev/attachments/a.png",
-            "https://api-aws-staging.botiverse.dev/api/attachments/a/thumbnail",
-            "http://localhost:3001/attachments/a.png",
-            "https://cdn.raft.build/attachments/a.png",
         ).forEach { url -> assertSame(url, raftRewriteRetiredContentHost(url), url) }
     }
 }

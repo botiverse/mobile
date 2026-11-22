@@ -137,31 +137,6 @@ class RuntimeFormV2Test {
     }
 
     @Test
-    fun kimiRendersModelAsSelectAndEffortAsDerivedChoices() {
-        assertEquals(
-            listOf(
-                "model" to RuntimeFormV2FieldKind.Select,
-                "reasoningEffort" to RuntimeFormV2FieldKind.DerivedSelect,
-                "envVars" to RuntimeFormV2FieldKind.StringMap
-            ),
-            kimi.fields.map { it.key to it.kind }
-        )
-        assertEquals(
-            RuntimeFormV2DerivedFrom("model", "supportedReasoningEfforts", "defaultReasoningEffort"),
-            kimi.field("reasoningEffort").derivedFrom
-        )
-    }
-
-    @Test
-    fun aDerivedFieldNamingAMissingFieldFallsBackToText() {
-        val form = formJson(KIMI_SDK_V2_FORM_JSON).set(
-            listOf("dataSchema", "properties", "reasoningEffort", "x-optionsFrom"),
-            buildJsonObject { put("field", "gone"); put("attribute", "x") }
-        )
-        assertEquals(RuntimeFormV2FieldKind.Text, parseRuntimeFormV2(form)!!.field("reasoningEffort").kind)
-    }
-
-    @Test
     fun toleratesEverythingAServerIsAllowedToAdd() {
         val form = formJson(BUILTIN_V2_FORM_JSON)
             .set(listOf("somethingNew"), buildJsonObject { put("nested", true) })

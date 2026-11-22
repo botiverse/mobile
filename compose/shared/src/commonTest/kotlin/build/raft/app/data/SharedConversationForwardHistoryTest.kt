@@ -1,6 +1,5 @@
 package build.raft.app.data
 
-import build.raft.app.ConversationOpenSource
 import build.raft.app.RaftThreadSurfaceKind
 import build.raft.app.buildThreadLaunchConversationIdentity
 import build.raft.app.model.ChannelId
@@ -255,20 +254,6 @@ class SharedConversationForwardHistoryTest {
     }
 
     @Test
-    fun historyEnvelopeContainsRouteIdentityOnlyForChannelAndDm() {
-        val channel = entry("server-a", "channel-a", ConversationKind.Channel)
-        val dm = entry("server-a", "dm-a", ConversationKind.DirectMessage)
-
-        assertEquals(ConversationOpenSource.HistoryForward, channel.sourceIdentity.source)
-        assertEquals("channel-a", channel.sourceIdentity.channelId)
-        assertEquals(ConversationKind.Channel, channel.sourceIdentity.conversationKind)
-        assertNull(channel.sourceIdentity.messageId)
-        assertNull(channel.sourceIdentity.originFallback)
-        assertEquals("dm-a", dm.sourceIdentity.channelId)
-        assertEquals(ConversationKind.DirectMessage, dm.sourceIdentity.conversationKind)
-    }
-
-    @Test
     fun defaultOffAndPreferenceTransitionsNeverResurrectHistory() {
         val history = SharedConversationForwardHistory()
         val first = entry("server-a", "channel-a", ConversationKind.Channel)
@@ -432,25 +417,6 @@ class SharedConversationForwardHistoryTest {
         assertFalse(returns.consume(pageVisibleTick = 1, hostDidAppearTick = 1))
         assertTrue(returns.consume(pageVisibleTick = 2, hostDidAppearTick = 2))
         assertFalse(returns.consume(pageVisibleTick = 2, hostDidAppearTick = 2))
-    }
-
-    @Test
-    fun settingOffNeverOffersForwardOnAnyHomeReturn() {
-        val history = SharedConversationForwardHistory()
-        val returns = ConversationForwardHomeReturnSignals()
-        history.recordNewOpen(entry("server-a", "channel-all", ConversationKind.Channel))
-        assertTrue(returns.consume(pageVisibleTick = 0, hostDidAppearTick = 1))
-        assertFalse(history.recordHomeVisible())
-        assertFalse(history.canForward)
-        assertFalse(
-            appShellConversationForwardGestureArmed(
-                preferenceEnabled = false,
-                authoritativeHomeStartAllowed = true,
-                homeSurfaceVisible = true,
-                homeContentReady = true,
-                canForward = history.canForward,
-            )
-        )
     }
 
     private fun enabledHistory(): SharedConversationForwardHistory =

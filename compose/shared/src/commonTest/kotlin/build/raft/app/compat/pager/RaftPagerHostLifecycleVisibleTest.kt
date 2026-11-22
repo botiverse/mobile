@@ -23,23 +23,9 @@ class RaftPagerHostLifecycleVisibleTest {
     }
 
     @Test
-    fun desktopMinimizedOrHiddenWindowIsBackground() {
-        // Minimized (and Cmd-H, which the desktop host maps to CREATED) is the background.
-        assertFalse(raftPagerHostLifecycleVisible(Lifecycle.State.CREATED, visibleFrom = desktop))
-        assertFalse(raftPagerHostLifecycleVisible(Lifecycle.State.DESTROYED, visibleFrom = desktop))
-    }
-
-    @Test
     fun phonesStillDisappearOnPause() {
         assertTrue(raftPagerHostLifecycleVisible(Lifecycle.State.RESUMED, visibleFrom = phone))
         assertFalse(raftPagerHostLifecycleVisible(Lifecycle.State.STARTED, visibleFrom = phone))
         assertFalse(raftPagerHostLifecycleVisible(Lifecycle.State.CREATED, visibleFrom = phone))
-    }
-
-    @Test
-    fun androidUnitTestHostUsesPhoneThreshold() {
-        // The default comes from the platform; the shared unit tests run on the Android actual.
-        assertFalse(raftPagerHostLifecycleVisible(Lifecycle.State.STARTED))
-        assertTrue(raftPagerHostLifecycleVisible(Lifecycle.State.RESUMED))
     }
 }

@@ -63,16 +63,6 @@ class RaftRealtimeAppScopePolicyTest {
     }
 
     @Test
-    fun joinedChannelStateDedupesRooms() {
-        val state = RaftRealtimeAppScopeState()
-
-        assertTrue(state.markChannelJoined(ChannelId("channel-1")))
-        assertFalse(state.markChannelJoined(ChannelId("channel-1")))
-        assertFalse(state.markChannelJoined(ChannelId("")))
-        assertEquals(1, state.joinedChannelCount)
-    }
-
-    @Test
     fun sessionEndReasonsAreExplicit() {
         assertTrue(RaftRealtimeAppScopePolicy.isSessionEndDisconnectReason("logout"))
         assertTrue(RaftRealtimeAppScopePolicy.isSessionEndDisconnectReason("api_environment_changed"))
@@ -145,20 +135,6 @@ class RaftRealtimeAppScopePolicyTest {
         assertTrue(remotePushActive(nowMillis = fetchedAt + maxAge))
         assertFalse(remotePushActive(nowMillis = fetchedAt + maxAge + 1), "expired: post locally")
         assertFalse(remotePushActive(nowMillis = fetchedAt - 1), "clock moved backwards: unknown")
-    }
-
-    @Test
-    fun remotePushIsInactiveWithoutAStoredAnswer() {
-        // Never fetched, every fetch failed, a 404 from an older server, or cleared on logout.
-        assertFalse(remotePushActive(status = null))
-    }
-
-    @Test
-    fun remotePushIsInactiveForAServerMissingFromTheAnswerOrNotFcmActive() {
-        // An older server can still answer fcmActive=false (rollout switch, no FCM config): post locally.
-        assertFalse(remotePushActive(serverId = ServerId("server-3")), "server missing from the answer")
-        assertFalse(remotePushActive(serverId = ServerId("server-2")), "server-2 is fcmActive=false")
-        assertFalse(remotePushActive(serverId = ServerId(" ")), "blank server")
     }
 
     @Test

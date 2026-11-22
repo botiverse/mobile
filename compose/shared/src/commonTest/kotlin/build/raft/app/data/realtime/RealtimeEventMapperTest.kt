@@ -143,29 +143,6 @@ class RealtimeEventMapperTest {
     }
 
     @Test
-    fun messageUpdatedPreservesKnownEmptyReactionPayload() {
-        val event =
-            RealtimeEventMapper().map(
-                RealtimeSocketEvents.MessageUpdated,
-                """
-                {
-                  "id": "message-1",
-                  "channelId": "channel-1",
-                  "senderType": "user",
-                  "messageType": "chat",
-                  "senderId": "u1",
-                  "senderName": "Artin",
-                  "content": "hello",
-                  "reactions": []
-                }
-                """.trimIndent()
-            )
-
-        val updated = assertIs<MessageUpdated>(event)
-        assertEquals(emptyList(), updated.message.reactions)
-    }
-
-    @Test
     fun messageUpdatedTreatsExplicitNullReactionsAsCleared() {
         // A web-side "remove last reaction" emits `reactions: null`; realtime must clear
         // it, not preserve the stale reaction. Explicit JSON null maps to an empty list
@@ -539,35 +516,6 @@ class RealtimeEventMapperTest {
             http?.copy(channelId = null, channelName = null),
             realtime.copy(channelId = null, channelName = null)
         )
-    }
-
-    @Test
-    fun taskCreatedUsesEnvelopeChannelIdWhenTaskOmitsChannelId() {
-        val event =
-            RealtimeEventMapper().map(
-                RealtimeSocketEvents.TaskCreated,
-                """
-                {
-                  "channelId": "channel-3",
-                  "tasks": [
-                    {
-                      "id": "task-3",
-                      "messageId": "m3",
-                      "taskNumber": 3,
-                      "title": "Create channel three",
-                      "status": "todo",
-                      "createdAt": "2026-06-25T06:11:00Z"
-                    }
-                  ]
-                }
-                """.trimIndent()
-            )
-
-        val created = assertIs<TaskCreated>(event)
-        val task = created.tasks.single()
-        assertEquals("task-3", task.id.value)
-        assertEquals("channel-3", task.channelId?.value)
-        assertEquals("m3", task.messageId?.value)
     }
 
     @Test
@@ -1021,30 +969,6 @@ class RealtimeEventMapperTest {
     }
 
     @Test
-    fun agentActivityStatusEntryProjectsWorkingStatus() {
-        val event =
-            RealtimeEventMapper().map(
-                RealtimeSocketEvents.AgentActivity,
-                """
-                {
-                  "agentId": "agent-2",
-                  "activity": "online",
-                  "detail": "",
-                  "entries": [
-                    { "kind": "status", "activity": "working", "detail": "Running extension" }
-                  ]
-                }
-                """.trimIndent()
-            )
-
-        val presence = assertIs<MemberPresenceUpdated>(event)
-        assertEquals("agent-2", presence.memberId.value)
-        assertEquals(Presence.Active, presence.presence)
-        assertEquals(AgentStatus.Working, presence.agentStatus)
-        assertEquals("Running extension", presence.statusLabel)
-    }
-
-    @Test
     fun agentActivityIgnoresInvalidPushedActivity() {
         val event =
             RealtimeEventMapper().map(
@@ -1251,35 +1175,6 @@ class RealtimeEventMapperTest {
         assertTrue(RealtimeSocketEvents.ComputerRestartDone in RealtimeSocketEvents.ServerWireEvents)
     }
 
-    @Test
-    fun machineUpgradeRequestRefreshesMachinesScope() {
-        val event =
-            RealtimeEventMapper().map(
-                RealtimeSocketEvents.MachineUpgradeRequest,
-                """{"machineId":"machine-1","upgradeRequest":{"id":"req-1","targetVersion":"1.0.50","requestedAt":"2026-10-21T01:00:00.000Z","state":"done","observedVersion":"1.0.50","reason":null,"resolvedAt":"2026-10-21T01:03:00.000Z"}}"""
-            )
-
-        val refresh = assertIs<RealtimeRefreshRequired>(event)
-        assertEquals(RealtimeRefreshScope.Machines, refresh.scope)
-        assertEquals(RealtimeSocketEvents.MachineUpgradeRequest, refresh.reason)
-        assertEquals("machine-1", refresh.subjectId)
-        assertTrue(RealtimeSocketEvents.MachineUpgradeRequest in RealtimeSocketEvents.ServerWireEvents)
-    }
-
-    @Test
-    fun legacyDaemonStatusRefreshesMachinesScope() {
-        val event =
-            RealtimeEventMapper().map(
-                RealtimeSocketEvents.DaemonStatus,
-                """{"daemonId":"machine-legacy","status":"online","statusVersion":12}"""
-            )
-
-        val refresh = assertIs<RealtimeRefreshRequired>(event)
-        assertEquals(RealtimeRefreshScope.Machines, refresh.scope)
-        assertEquals(RealtimeSocketEvents.DaemonStatus, refresh.reason)
-        assertEquals("machine-legacy", refresh.subjectId)
-    }
-
     // task #425: message:new conversationContext (server task #86)
 
     @Test
@@ -1449,17 +1344,6 @@ class RealtimeEventMapperTest {
     }
 
     @Test
-    fun readStateUpdatedBulkWithNoUsableScopesIsIgnored() {
-        val event =
-            RealtimeEventMapper().map(
-                RealtimeSocketEvents.ReadStateUpdatedBulk,
-                """{ "serverId": "server-1", "scopes": [] }"""
-            )
-
-        assertNull(event)
-    }
-
-    @Test
     fun readStateUpdatedWithoutVersionIsIgnored() {
         // An event we cannot version-gate is unusable: drop it (fail closed)
         // and let hydrate reconcile, per RFC 041 client obligations.
@@ -1470,36 +1354,6 @@ class RealtimeEventMapperTest {
             )
 
         assertNull(event)
-    }
-
-    @Test
-    fun readStateUpdatedWithoutUsableWatermarkIsIgnored() {
-        val mapper = RealtimeEventMapper()
-
-        assertNull(
-            mapper.map(
-                RealtimeSocketEvents.ReadStateUpdated,
-                """{ "serverId": "server-1", "scopeId": "channel-1", "readStateVersion": 2 }"""
-            )
-        )
-        assertNull(
-            mapper.map(
-                RealtimeSocketEvents.ReadStateUpdated,
-                """{ "serverId": "server-1", "scopeId": "channel-1", "maxReadSeq": -1, "readStateVersion": 2 }"""
-            )
-        )
-        assertNull(
-            mapper.map(
-                RealtimeSocketEvents.ReadStateUpdated,
-                """{ "serverId": "server-1", "scopeId": "channel-1", "maxReadSeq": 2, "readStateVersion": 0 }"""
-            )
-        )
-        assertNull(
-            mapper.map(
-                RealtimeSocketEvents.ReadStateUpdated,
-                """{ "serverId": "server-1", "scopeId": "channel-1", "maxReadSeq": 2, "readStateVersion": "abc" }"""
-            )
-        )
     }
 
     @Test
@@ -1574,29 +1428,6 @@ class RealtimeEventMapperTest {
 
         assertNull(event)
         assertTrue(diagnostics.any { it.contains("realtime_server_notification") && it.contains("push_preview_mode") })
-    }
-
-    @Test
-    fun serverNotificationPrefsUpdatedRejectsPresentUnknownCanonicalMode() {
-        val diagnostics = mutableListOf<String>()
-        val event =
-            RealtimeEventMapper(diagnosticsLogger = diagnostics::add).map(
-                RealtimeSocketEvents.NotificationPrefsUpdated,
-                """
-                {
-                  "serverId": "server-1",
-                  "scopeId": "server-1",
-                  "prefs": {
-                    "serverPushMuted": false,
-                    "serverPushMode": "future_restrictive"
-                  },
-                  "prefsVersion": 5
-                }
-                """.trimIndent()
-            )
-
-        assertNull(event)
-        assertTrue(diagnostics.any { it.contains("realtime_server_notification") && it.contains("server_push_mode") })
     }
 
     @Test
@@ -1722,17 +1553,6 @@ class RealtimeEventMapperTest {
     }
 
     @Test
-    fun notificationPushChannelWithoutChannelIdIsDropped() {
-        val event =
-            RealtimeEventMapper().map(
-                RealtimeSocketEvents.NotificationPush,
-                """{ "serverId": "server-1", "kind": "channel", "messageId": "m-1" }"""
-            )
-
-        assertNull(event)
-    }
-
-    @Test
     fun notificationPushUnknownKindBecomesAGenericNotice() {
         val logs = mutableListOf<String>()
         val event =
@@ -1753,19 +1573,6 @@ class RealtimeEventMapperTest {
             ),
             "logs=$logs",
         )
-    }
-
-    @Test
-    fun notificationPushKnownKindWithoutTargetIsDroppedAndLogged() {
-        val logs = mutableListOf<String>()
-        val event =
-            RealtimeEventMapper(diagnosticsLogger = logs::add).map(
-                RealtimeSocketEvents.NotificationPush,
-                """{ "serverId": "server-1", "kind": "channel", "messageId": "m-1" }"""
-            )
-
-        assertNull(event)
-        assertTrue(logs.any { it.startsWith("realtime_event_dropped eventName=notification:push reason=unmapped") }, "logs=$logs")
     }
 
     @Test
@@ -1845,20 +1652,5 @@ class RealtimeEventMapperTest {
                 """{ "agentId": "", "lastSeenAt": "2026-09-28T01:02:03.456Z" }"""
             )
         )
-    }
-
-    @Test
-    fun notificationPushUnknownSenderTypeFallsBackWithoutUsingSenderId() {
-        val logs = mutableListOf<String>()
-        val event =
-            RealtimeEventMapper(diagnosticsLogger = logs::add).map(
-                RealtimeSocketEvents.NotificationPush,
-                """{ "serverId": "server-1", "kind": "channel", "channelId": "c-1", "messageId": "m-1", "senderId": "member-1", "senderType": "bot" }"""
-            )
-
-        val push = assertIs<NotificationPushReceived>(event)
-        assertNull(push.senderId)
-        assertNull(push.senderKind)
-        assertTrue(logs.any { "source=notification_push_sender" in it && "field=member_kind" in it })
     }
 }

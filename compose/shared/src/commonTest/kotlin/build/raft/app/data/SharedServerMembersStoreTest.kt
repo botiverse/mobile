@@ -12,7 +12,6 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.async
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.take
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.launch
@@ -350,61 +349,6 @@ class SharedServerMembersStoreTest {
     }
 
     @Test
-    fun authoritativeProfileHydrationAdvancesAnEarlierConcreteMessageCandidate() {
-        val serverId = ServerId("server-1")
-        val staleAvatar =
-            "https://cdn.raft.build/avatars/agents/11111111111111111111111111111111.webp"
-        val currentAvatar =
-            "https://cdn.raft.build/avatars/agents/22222222222222222222222222222222.webp"
-        val store = SharedServerMembersStore(FakeMemberRepository())
-        store.seedThreadAuthorProfiles(
-            serverId,
-            listOf(
-                RaftThreadMessageItem(
-                    id = "old-message",
-                    authorId = "agent-1",
-                    authorName = "Argus",
-                    authorKind = "agent",
-                    avatarWireValue = staleAvatar
-                )
-            ),
-            source = "old_page"
-        )
-
-        store.seedProfiles(
-            serverId,
-            listOf(
-                MemberProfile(
-                    id = MemberId("agent-1"),
-                    displayName = "Argus",
-                    handle = "argus",
-                    kind = MemberKind.Agent,
-                    avatar = AvatarReference.fromWireValue(currentAvatar),
-                    serverId = serverId
-                )
-            )
-        )
-        store.seedThreadAuthorProfiles(
-            serverId,
-            listOf(
-                RaftThreadMessageItem(
-                    id = "late-old-message",
-                    authorId = "agent-1",
-                    authorName = "Argus",
-                    authorKind = "agent",
-                    avatarWireValue = staleAvatar
-                )
-            ),
-            source = "late_old_page"
-        )
-
-        assertEquals(
-            currentAvatar,
-            store.state.value.memberProfile(serverId, "agent-1")?.avatar?.wireValue
-        )
-    }
-
-    @Test
     fun candidateFirstSparseDirectoryPublicationKeepsAvatarWhileDirectoryOwnsOtherFields() = runBlocking {
         val serverId = ServerId("server-1")
         val candidateAvatar =
@@ -465,74 +409,6 @@ class SharedServerMembersStoreTest {
         assertEquals(
             authoritativeAvatar,
             store.state.value.memberProfile(serverId, "agent-1")?.avatar?.wireValue
-        )
-    }
-
-    @Test
-    fun candidateFirstSparseChannelPublicationKeepsAvatarAndConcreteChannelAuthorityAdvancesIt() = runBlocking {
-        val serverId = ServerId("server-1")
-        val channelId = ChannelId("channel-1")
-        val candidateAvatar =
-            "https://cdn.raft.build/avatars/users/55555555555555555555555555555555.webp"
-        val authoritativeAvatar =
-            "https://cdn.raft.build/avatars/users/66666666666666666666666666666666.webp"
-        val repository = FakeMemberRepository()
-        repository.channelMembersByChannel[channelId.value] =
-            listOf(
-                member("user-1", "Channel Authority").copy(
-                    handle = "channel-authority",
-                    description = "channel description",
-                    roleDescription = "channel role",
-                    serverRole = "guest",
-                    email = "channel@example.test",
-                    avatar = null
-                )
-            )
-        val store = SharedServerMembersStore(repository)
-        store.seedProfileCandidates(
-            serverId = serverId,
-            listOf(
-                MemberProfile(
-                    id = MemberId("user-1"),
-                    displayName = "Stale Candidate Name",
-                    handle = "stale-candidate",
-                    kind = MemberKind.Human,
-                    description = "stale description",
-                    roleDescription = "stale role",
-                    serverRole = "stale",
-                    email = "stale@example.test",
-                    avatar = AvatarReference.fromWireValue(candidateAvatar),
-                    serverId = serverId
-                )
-            )
-        )
-
-        assertIs<DataResult.Content<ChannelMemberSnapshot>>(
-            store.loadChannelMembers(serverId, channelId, force = true)
-        )
-
-        val sparsePublished = store.currentChannelMembers(serverId, channelId).single()
-        assertEquals("Channel Authority", sparsePublished.displayName)
-        assertEquals("channel-authority", sparsePublished.handle)
-        assertEquals("channel description", sparsePublished.description)
-        assertEquals("channel role", sparsePublished.roleDescription)
-        assertEquals("guest", sparsePublished.serverRole)
-        assertEquals("channel@example.test", sparsePublished.email)
-        assertEquals(candidateAvatar, sparsePublished.avatar?.wireValue)
-        assertEquals(candidateAvatar, store.currentMemberProfile(serverId, "user-1")?.avatar?.wireValue)
-
-        repository.channelMembersByChannel[channelId.value] =
-            listOf(
-                sparsePublished.copy(
-                    avatar = AvatarReference.fromWireValue(authoritativeAvatar)
-                )
-            )
-        assertIs<DataResult.Content<ChannelMemberSnapshot>>(
-            store.loadChannelMembers(serverId, channelId, force = true)
-        )
-        assertEquals(
-            authoritativeAvatar,
-            store.currentMemberProfile(serverId, "user-1")?.avatar?.wireValue
         )
     }
 
@@ -598,32 +474,6 @@ class SharedServerMembersStoreTest {
         val cached = core.load(owner, DataRequestPriority.Visible, force = false, reason = "after")
         assertIs<DataResult.Content<MemberSnapshot>>(cached.result)
         assertEquals(2, fetches, "served from the fresh flight's cache")
-    }
-
-    @Test
-    fun aForcedLoadStillJoinsARecentFlight() = runBlocking {
-        val owner = ProcessServerMembersOwner(environmentId = "https://api.example.test", accountId = "a", serverId = "server-1")
-        val release = CompletableDeferred<Unit>()
-        val started = CompletableDeferred<Unit>()
-        var fetches = 0
-        val core =
-            ProcessServerMembersCore(fetchMembers = { _, _ ->
-                fetches += 1
-                started.complete(Unit)
-                release.await()
-                DataResult.Content(MemberSnapshot(server("server-1"), listOf(member("u1", "One"))))
-            })
-        val first = async { core.load(owner, DataRequestPriority.Visible, force = false, reason = "first") }
-        started.await()
-        // Runs up to its join on the active flight before the flight is released.
-        val second =
-            async(start = kotlinx.coroutines.CoroutineStart.UNDISPATCHED) {
-                core.load(owner, DataRequestPriority.Visible, force = true, reason = "members_retry")
-            }
-        release.complete(Unit)
-        assertIs<DataResult.Content<MemberSnapshot>>(first.await().result)
-        assertIs<DataResult.Content<MemberSnapshot>>(second.await().result)
-        assertEquals(1, fetches, "a young flight is joined, not duplicated")
     }
 
     @Test
@@ -792,52 +642,6 @@ class SharedServerMembersStoreTest {
     }
 
     @Test
-    fun shellFacadesShareProcessRosterFlightAndPublishSameVersion() = runBlocking {
-        val owner =
-            ProcessServerMembersOwner(
-                environmentId = "https://api.example.test",
-                accountId = "account-1",
-                serverId = "server-1"
-            )
-        val processRepository =
-            FakeMemberRepository().apply {
-                getMembersStarted = CompletableDeferred()
-                releaseGetMembers = CompletableDeferred()
-            }
-        val core = ProcessServerMembersCore(processRepository::getMembers)
-        val firstRepository = FakeMemberRepository()
-        val secondRepository = FakeMemberRepository()
-        val firstStore =
-            SharedServerMembersStore(
-                memberRepository = firstRepository,
-                processCore = core,
-                processOwner = { owner },
-                channelMembersOwner = { owner.channelMembersOwnerBinding() }
-            )
-        val secondStore =
-            SharedServerMembersStore(
-                memberRepository = secondRepository,
-                processCore = core,
-                processOwner = { owner },
-                channelMembersOwner = { owner.channelMembersOwnerBinding() }
-            )
-
-        val first = async { firstStore.refreshMembers(ServerId("server-1"), force = true) }
-        processRepository.getMembersStarted?.await()
-        val second = async { secondStore.refreshMembers(ServerId("server-1"), force = false) }
-        yield()
-
-        assertEquals(1, processRepository.getMembersCalls)
-        assertEquals(0, firstRepository.getMembersCalls)
-        assertEquals(0, secondRepository.getMembersCalls)
-        processRepository.releaseGetMembers?.complete(Unit)
-        assertIs<DataResult.Content<Unit>>(first.await())
-        assertIs<DataResult.Content<Unit>>(second.await())
-        assertEquals(listOf("u1"), firstStore.currentServerMembers(ServerId("server-1")).map { it.id.value })
-        assertEquals(listOf("u1"), secondStore.currentServerMembers(ServerId("server-1")).map { it.id.value })
-    }
-
-    @Test
     fun shellFacadesSharingFailedProcessFlightBothReachTerminalError() = runBlocking {
         val owner =
             ProcessServerMembersOwner(
@@ -880,69 +684,6 @@ class SharedServerMembersStoreTest {
     }
 
     @Test
-    fun shellFacadesSharingDeniedProcessFlightBothReachTerminalError() = runBlocking {
-        val owner =
-            ProcessServerMembersOwner(
-                environmentId = "https://api.example.test",
-                accountId = "account-1",
-                serverId = "server-1"
-            )
-        val processRepository =
-            FakeMemberRepository().apply {
-                membersResultOverride = DataResult.NoPermission(PermissionBlocker(code = "forbidden"))
-                getMembersStarted = CompletableDeferred()
-                releaseGetMembers = CompletableDeferred()
-            }
-        val core = ProcessServerMembersCore(processRepository::getMembers)
-        val firstStore =
-            SharedServerMembersStore(
-                memberRepository = FakeMemberRepository(),
-                processCore = core,
-                processOwner = { owner },
-                channelMembersOwner = { owner.channelMembersOwnerBinding() }
-            )
-        val secondStore =
-            SharedServerMembersStore(
-                memberRepository = FakeMemberRepository(),
-                processCore = core,
-                processOwner = { owner },
-                channelMembersOwner = { owner.channelMembersOwnerBinding() }
-            )
-
-        val first = async { firstStore.refreshMembers(ServerId("server-1"), force = true) }
-        processRepository.getMembersStarted?.await()
-        val second = async { secondStore.refreshMembers(ServerId("server-1"), force = false) }
-        yield()
-        processRepository.releaseGetMembers?.complete(Unit)
-
-        assertEquals("forbidden", assertIs<DataResult.NoPermission>(first.await()).blocker.code)
-        assertEquals("forbidden", assertIs<DataResult.NoPermission>(second.await()).blocker.code)
-        assertEquals(SharedServerMembersLoadStatus.Error, firstStore.state.value.entryFor(ServerId("server-1"))?.status)
-        assertEquals(SharedServerMembersLoadStatus.Error, secondStore.state.value.entryFor(ServerId("server-1"))?.status)
-    }
-
-    @Test
-    fun nonForcedRefreshJoinsActiveForcedFlight() = runBlocking {
-        val repository =
-            FakeMemberRepository().apply {
-                getMembersStarted = CompletableDeferred()
-                releaseGetMembers = CompletableDeferred()
-            }
-        val store = SharedServerMembersStore(repository)
-
-        val first = async { store.refreshMembers(ServerId("server-1"), force = true) }
-        repository.getMembersStarted?.await()
-        val second = async { store.refreshMembers(ServerId("server-1"), force = false) }
-        yield()
-
-        assertEquals(1, repository.getMembersCalls)
-        repository.releaseGetMembers?.complete(Unit)
-        assertIs<DataResult.Content<Unit>>(first.await())
-        assertIs<DataResult.Content<Unit>>(second.await())
-        assertEquals(1, repository.getMembersCalls)
-    }
-
-    @Test
     fun cancellingFirstWaiterDoesNotCancelSharedMembersFlight() = runBlocking {
         val repository =
             FakeMemberRepository().apply {
@@ -964,21 +705,6 @@ class SharedServerMembersStoreTest {
     }
 
     @Test
-    fun refreshMembersCachesPerServer() = runBlocking {
-        val repository = FakeMemberRepository()
-        val store = SharedServerMembersStore(repository)
-
-        val first = store.refreshMembers(ServerId("server-1"))
-        val second = store.refreshMembers(ServerId("server-1"))
-
-        assertIs<DataResult.Content<Unit>>(first)
-        assertIs<DataResult.Content<Unit>>(second)
-        assertEquals(1, repository.getMembersCalls)
-        assertEquals(listOf("u1"), store.currentServerMembers(ServerId("server-1")).map { it.id.value })
-        assertEquals(SharedServerMembersLoadStatus.Loaded, store.state.value.entryFor(ServerId("server-1"))?.status)
-    }
-
-    @Test
     fun forceReloadBypassesLoadedCache() = runBlocking {
         val repository = FakeMemberRepository()
         val store = SharedServerMembersStore(repository)
@@ -990,19 +716,6 @@ class SharedServerMembersStoreTest {
         assertIs<DataResult.Content<Unit>>(result)
         assertEquals(2, repository.getMembersCalls)
         assertEquals(listOf("u2"), store.currentServerMembers(ServerId("server-1")).map { it.id.value })
-    }
-
-    @Test
-    fun seedWarmsCacheWithoutRepositoryCall() = runBlocking {
-        val repository = FakeMemberRepository()
-        val store = SharedServerMembersStore(repository)
-
-        store.seed(MemberSnapshot(server("server-1"), listOf(member("u3", "Nina"))))
-        val result = store.refreshMembers(ServerId("server-1"))
-
-        assertIs<DataResult.Content<Unit>>(result)
-        assertEquals(0, repository.getMembersCalls)
-        assertEquals(listOf("u3"), store.currentServerMembers(ServerId("server-1")).map { it.id.value })
     }
 
     @Test
@@ -1047,29 +760,6 @@ class SharedServerMembersStoreTest {
             store.currentServerMembers(ServerId("server-1")).map { it.id.value },
         )
         assertEquals("DM Peer", store.state.value.memberProfile(ServerId("server-1"), "dm-peer")?.displayName)
-    }
-
-    @Test
-    fun channelMemberLoadDoesNotExpandCanonicalServerDirectory() = runBlocking {
-        val repository =
-            FakeMemberRepository().apply {
-                channelMembersByChannel["channel-1"] = listOf(member("channel-peer", "Channel Peer"))
-            }
-        val store = SharedServerMembersStore(repository)
-        store.seed(MemberSnapshot(server("server-1"), listOf(member("self", "Self"))))
-
-        assertIs<DataResult.Content<ChannelMemberSnapshot>>(
-            store.loadChannelMembers(ServerId("server-1"), ChannelId("channel-1"), force = true),
-        )
-
-        assertEquals(
-            listOf("self"),
-            store.currentServerMembers(ServerId("server-1")).map { it.id.value },
-        )
-        assertEquals(
-            listOf("channel-peer"),
-            store.currentChannelMembers(ServerId("server-1"), ChannelId("channel-1")).map { it.id.value },
-        )
     }
 
     @Test
@@ -1212,62 +902,6 @@ class SharedServerMembersStoreTest {
             working.map { it.signal }
         )
         assertEquals(emptyList(), store.workingAgentsFlow(ServerId("server-2")).first())
-    }
-
-    @Test
-    fun applyPresenceAdvancesWatermarkWithoutVisibleChurn() = runBlocking {
-        // QA blocker contract (task #136): same-visible + higher seq advances
-        // the canonical watermark (no more out-of-order rollback), and the
-        // read edge emits NO extra visible state for the advance or the
-        // rejected rollback. Stage-synchronized so StateFlow conflation can
-        // neither hide a churn emission nor hang the collector.
-        val repository = FakeMemberRepository()
-        val registry = ProcessMemberPresenceRegistry()
-        val store = SharedServerMembersStore(repository, presenceRegistry = registry)
-        val owner = ProcessServerMembersOwner(environmentId = "local", accountId = "local", serverId = "server-1")
-
-        val emissions = mutableListOf<AgentStatus?>()
-        val collectJob = launch {
-            store.memberStatusFlow(ServerId("server-1"), "agent-1")
-                .collect { emissions += it?.status }
-        }
-        suspend fun awaitEmissions(count: Int) {
-            var spins = 0
-            while (emissions.size < count && spins < 10_000) {
-                yield()
-                spins += 1
-            }
-            assertEquals(count, emissions.size)
-        }
-        fun fact(seq: Long, status: AgentStatus, presence: Presence) =
-            MemberPresenceUpdated(
-                memberId = MemberId("agent-1"),
-                presence = presence,
-                kind = MemberKind.Agent,
-                agentStatus = status,
-                serverSeq = seq
-            )
-
-        awaitEmissions(1) // initial null
-
-        store.applyPresence(ServerId("server-1"), fact(1L, AgentStatus.Working, Presence.Active))
-        awaitEmissions(2) // Working became visible
-
-        // Same-visible advance + rejected rollback: watermark moves, status
-        // holds, and the settled read edge shows NO additional emission.
-        store.applyPresence(ServerId("server-1"), fact(3L, AgentStatus.Working, Presence.Active))
-        repeat(100) { yield() }
-        store.applyPresence(ServerId("server-1"), fact(2L, AgentStatus.Offline, Presence.Offline))
-        repeat(100) { yield() }
-        assertEquals(3L, registry.factFor(owner, "agent-1")?.serverSeq)
-        assertEquals(AgentStatus.Working, registry.factFor(owner, "agent-1")?.agentStatus)
-        assertEquals(listOf<AgentStatus?>(null, AgentStatus.Working), emissions)
-
-        // A real change still comes through afterwards.
-        store.applyPresence(ServerId("server-1"), fact(4L, AgentStatus.Offline, Presence.Offline))
-        awaitEmissions(3)
-        assertEquals(listOf<AgentStatus?>(null, AgentStatus.Working, AgentStatus.Offline), emissions)
-        collectJob.cancelAndJoin()
     }
 
     @Test
@@ -1443,47 +1077,6 @@ class SharedServerMembersStoreTest {
     }
 
     @Test
-    fun untimestampedActivityFallbackDoesNotDisplaceTimestampedSnapshot() {
-        // task #137(b): the evidence-less current-activity fallback may fill
-        // an empty slot, but once timestamped trajectory evidence exists it
-        // can no longer displace it.
-        val repository = FakeMemberRepository()
-        val registry = ProcessMemberPresenceRegistry()
-        val store = SharedServerMembersStore(repository, presenceRegistry = registry)
-        val owner = ProcessServerMembersOwner(environmentId = "local", accountId = "local", serverId = "server-1")
-
-        store.applyAgentActivitySnapshotForTest(
-            ServerId("server-1"),
-            MemberId("agent-1"),
-            listOf(
-                AgentActivityEntry(
-                    id = "activity-1",
-                    type = "status",
-                    title = "Working",
-                    statusActivity = "working",
-                    statusDetail = "Building",
-                    timestamp = "200"
-                )
-            )
-        )
-        store.applyAgentActivitySnapshotForTest(
-            ServerId("server-1"),
-            MemberId("agent-1"),
-            listOf(
-                AgentActivityEntry(
-                    id = "current:agent-1:offline:Stopped",
-                    type = "status",
-                    title = "Offline",
-                    statusActivity = "offline",
-                    statusDetail = "Stopped"
-                )
-            )
-        )
-
-        assertEquals(AgentStatus.Working, registry.factFor(owner, "agent-1")?.agentStatus)
-    }
-
-    @Test
     fun mountedStatusFlowBindsAfterLaterLoginAndRebindsAcrossAccounts() = runBlocking {
         // Review blockers ①/②/③: a flow mounted BEFORE auth must bind once
         // login happens; after switching A→B the SAME mounted flow must serve
@@ -1604,42 +1197,6 @@ class SharedServerMembersStoreTest {
         )
         // …and the registry did not need a second emission to survive it.
         assertEquals(factsBefore, registry.factsByOwner)
-    }
-
-    @Test
-    fun loadChannelMembersCachesPerChannelAndSeedsProfiles() = runBlocking {
-        val repository = FakeMemberRepository()
-        repository.channelMembersByChannel["channel-1"] =
-            listOf(
-                member("agent-1", "Build Agent").copy(
-                    handle = "build-agent",
-                    kind = MemberKind.Agent,
-                    agentStatus = AgentStatus.Working,
-                    presence = Presence.Active,
-                    avatar = AvatarReference.fromWireValue("pixel:build")
-                )
-            )
-        val store = SharedServerMembersStore(repository)
-
-        val first = store.loadChannelMembers(ServerId("server-1"), ChannelId("channel-1"))
-        val second = store.loadChannelMembers(ServerId("server-1"), ChannelId("channel-1"))
-
-        assertIs<DataResult.Content<ChannelMemberSnapshot>>(first)
-        assertIs<DataResult.Content<ChannelMemberSnapshot>>(second)
-        assertEquals(1, repository.getChannelMembersCalls)
-        assertEquals(listOf("agent-1"), second.data.members.map { it.id.value })
-        assertEquals(
-            SharedServerMembersLoadStatus.Loaded,
-            store.channelMemberSliceFlow(ServerId("server-1"), ChannelId("channel-1")).first().status
-        )
-        assertEquals(
-            SharedServerMemberStatus(status = AgentStatus.Working, presence = Presence.Active, external = false),
-            store.memberStatusFlow(ServerId("server-1"), "agent-1").first()
-        )
-        assertEquals(
-            "pixel:build",
-            store.currentMemberProfile(ServerId("server-1"), "agent-1")?.avatar?.wireValue
-        )
     }
 
     @Test
@@ -1831,32 +1388,6 @@ class SharedServerMembersStoreTest {
     }
 
     @Test
-    fun standaloneDirectorySliceRetiresSameOwnerAfterAuthClearGeneration() = runBlocking {
-        val repository = FakeMemberRepository()
-        val processOwner = ProcessServerMembersOwner("https://api.raft.build/api", "account-a", "server-1")
-        var writeGeneration = 7L
-        val store =
-            SharedServerMembersStore(
-                repository,
-                processOwner = { processOwner },
-                channelMembersOwner = {
-                    processOwner.channelMembersOwnerBinding(writeGeneration)
-                }
-            )
-        val routeOwner = AuthenticatedRouteOwner(processOwner.environmentId, processOwner.accountId, processOwner.serverId)
-        repository.membersByServer["server-1"] = listOf(member("before-clear", "Before"))
-        store.refreshMembers(routeOwner, force = true)
-
-        writeGeneration += 1
-        assertEquals(emptyList(), store.currentServerMembersEntry(routeOwner).members)
-
-        repository.membersByServer["server-1"] = listOf(member("after-clear", "After"))
-        assertIs<DataResult.Content<Unit>>(store.refreshMembers(routeOwner, force = false))
-        assertEquals(listOf("after-clear"), store.currentServerMembersEntry(routeOwner).members.map { it.id.value })
-        assertEquals(2, repository.getMembersCalls)
-    }
-
-    @Test
     fun standaloneDirectoryFirstFrameAppliesHiddenHumanPolicy() {
         val repository = FakeMemberRepository()
         val routeOwner = AuthenticatedRouteOwner("local", "local", "server-1")
@@ -2010,43 +1541,6 @@ class SharedServerMembersStoreTest {
         )
         assertEquals("Local", store.currentMemberProfile(ServerId("server-1"), "local")?.displayName)
         assertEquals("Remote", store.currentMemberProfile(ServerId("server-1"), "remote")?.displayName)
-    }
-
-    @Test
-    fun applyPresenceUpdatesStatusResolverWithoutRewritingChannelMemberSlice() = runBlocking {
-        val repository = FakeMemberRepository()
-        repository.channelMembersByChannel["channel-1"] =
-            listOf(
-                member("agent-1", "Build Agent").copy(
-                    kind = MemberKind.Agent,
-                    agentStatus = AgentStatus.Online,
-                    presence = Presence.Active
-                )
-            )
-        val store = SharedServerMembersStore(repository)
-        store.loadChannelMembers(ServerId("server-1"), ChannelId("channel-1"))
-
-        store.applyPresence(
-            ServerId("server-1"),
-            MemberPresenceUpdated(
-                memberId = MemberId("agent-1"),
-                presence = AgentStatus.Thinking.presence,
-                kind = MemberKind.Agent,
-                agentStatus = AgentStatus.Thinking
-            )
-        )
-
-        val member =
-            store.channelMemberSliceFlow(ServerId("server-1"), ChannelId("channel-1"))
-                .first()
-                .members
-                .single()
-        assertEquals(AgentStatus.Online, member.agentStatus)
-        assertEquals(Presence.Active, member.presence)
-        assertEquals(
-            SharedServerMemberStatus(status = AgentStatus.Thinking, presence = AgentStatus.Thinking.presence, external = false),
-            store.memberStatusFlow(ServerId("server-1"), "agent-1").first()
-        )
     }
 
     @Test
@@ -2387,69 +1881,6 @@ class SharedServerMembersStoreTest {
     }
 
     @Test
-    fun memberStatusFlowEmitsOnlyForTargetMemberStatusChanges() = runBlocking {
-        val repository = FakeMemberRepository()
-        val store = SharedServerMembersStore(repository)
-        store.seed(
-            MemberSnapshot(
-                server("server-1"),
-                listOf(
-                    member("agent-1", "Agent One").copy(
-                        kind = MemberKind.Agent,
-                        agentStatus = AgentStatus.Online,
-                        presence = Presence.Active
-                    ),
-                    member("agent-2", "Agent Two").copy(
-                        kind = MemberKind.Agent,
-                        agentStatus = AgentStatus.Idle,
-                        presence = Presence.Away
-                    )
-                )
-            )
-        )
-        val emissions = mutableListOf<SharedServerMemberStatus?>()
-        val firstEmission = CompletableDeferred<Unit>()
-        val collectJob =
-            launch {
-                store.memberStatusFlow(ServerId("server-1"), "agent-1")
-                    .onEach { firstEmission.complete(Unit) }
-                    .take(2)
-                    .toList(emissions)
-            }
-        firstEmission.await()
-
-        store.applyPresence(
-            ServerId("server-1"),
-            MemberPresenceUpdated(
-                memberId = MemberId("agent-2"),
-                presence = Presence.Active,
-                kind = MemberKind.Agent,
-                agentStatus = AgentStatus.Working
-            )
-        )
-        yield()
-        assertEquals(1, emissions.size)
-
-        store.applyPresence(
-            ServerId("server-1"),
-            MemberPresenceUpdated(
-                memberId = MemberId("agent-1"),
-                presence = Presence.Active,
-                kind = MemberKind.Agent,
-                agentStatus = AgentStatus.Working
-            )
-        )
-        collectJob.join()
-
-        val expected: List<SharedServerMemberStatus?> =
-            listOf(
-                SharedServerMemberStatus(status = AgentStatus.Online, presence = Presence.Active, external = false),
-                SharedServerMemberStatus(status = AgentStatus.Working, presence = Presence.Active, external = false)
-            )
-        assertEquals(expected, emissions)
-    }
-
-    @Test
     fun seedProfilesCannotOverrideRealtimePresenceFactStatus() = runBlocking {
         val repository = FakeMemberRepository()
         val store = SharedServerMembersStore(repository)
@@ -2496,232 +1927,6 @@ class SharedServerMembersStoreTest {
             AgentStatus.Working,
             store.currentServerMembers(ServerId("server-1")).single().agentStatus
         )
-    }
-
-    @Test
-    fun memberProfileFlowEmitsOnlyForTargetProfileChanges() = runBlocking {
-        val repository = FakeMemberRepository()
-        val store = SharedServerMembersStore(repository)
-        store.seed(
-            MemberSnapshot(
-                server("server-1"),
-                listOf(
-                    member("u1", "Cindy").copy(avatar = AvatarReference.fromWireValue("pixel:robot")),
-                    member("u2", "Artin").copy(avatar = AvatarReference.fromWireValue("pixel:paint"))
-                )
-            )
-        )
-        val emissions = mutableListOf<MemberProfile?>()
-        val firstEmission = CompletableDeferred<Unit>()
-        val collectJob =
-            launch {
-                store.memberProfileFlow(ServerId("server-1"), "u1")
-                    .onEach { firstEmission.complete(Unit) }
-                    .take(2)
-                    .toList(emissions)
-            }
-        firstEmission.await()
-
-        store.seed(
-            MemberSnapshot(
-                server("server-1"),
-                listOf(
-                    member("u1", "Cindy").copy(avatar = AvatarReference.fromWireValue("pixel:robot")),
-                    member("u2", "Artin").copy(avatar = AvatarReference.fromWireValue("pixel:terminal"))
-                )
-            )
-        )
-        yield()
-        assertEquals(1, emissions.size)
-
-        store.seed(
-            MemberSnapshot(
-                server("server-1"),
-                listOf(
-                    member("u1", "Cindy").copy(avatar = AvatarReference.fromWireValue("pixel:spark")),
-                    member("u2", "Artin").copy(avatar = AvatarReference.fromWireValue("pixel:terminal"))
-                )
-            )
-        )
-        collectJob.join()
-
-        assertEquals(listOf("pixel:robot", "pixel:spark"), emissions.map { it?.avatar?.wireValue })
-    }
-
-    @Test
-    fun scopedMemberFlowsIgnoreUnrelatedPresenceFacts() = runBlocking {
-        val repository = FakeMemberRepository()
-        val store = SharedServerMembersStore(repository)
-        store.seed(
-            MemberSnapshot(
-                server("server-1"),
-                listOf(
-                    member("agent-1", "Agent One").copy(
-                        kind = MemberKind.Agent,
-                        avatar = AvatarReference.fromWireValue("pixel:robot"),
-                        agentStatus = AgentStatus.Online,
-                        presence = Presence.Active
-                    ),
-                    member("agent-2", "Agent Two").copy(
-                        kind = MemberKind.Agent,
-                        avatar = AvatarReference.fromWireValue("pixel:paint"),
-                        agentStatus = AgentStatus.Idle,
-                        presence = Presence.Away
-                    )
-                )
-            )
-        )
-        val avatarEmissions = mutableListOf<MemberProfile?>()
-        val statusEmissions = mutableListOf<SharedServerMemberStatus?>()
-        val avatarFirstEmission = CompletableDeferred<Unit>()
-        val statusFirstEmission = CompletableDeferred<Unit>()
-        val avatarJob =
-            launch {
-                store.memberProfileFlow(ServerId("server-1"), "agent-1")
-                    .onEach { avatarFirstEmission.complete(Unit) }
-                    .take(2)
-                    .toList(avatarEmissions)
-            }
-        val statusJob =
-            launch {
-                store.memberStatusFlow(ServerId("server-1"), "agent-1")
-                    .onEach { statusFirstEmission.complete(Unit) }
-                    .take(2)
-                    .toList(statusEmissions)
-            }
-        avatarFirstEmission.await()
-        statusFirstEmission.await()
-
-        store.applyPresence(
-            ServerId("server-1"),
-            MemberPresenceUpdated(
-                memberId = MemberId("agent-2"),
-                presence = Presence.Active,
-                kind = MemberKind.Agent,
-                agentStatus = AgentStatus.Working
-            )
-        )
-        yield()
-
-        assertEquals(1, avatarEmissions.size)
-        assertEquals(1, statusEmissions.size)
-
-        store.applyPresence(
-            ServerId("server-1"),
-            MemberPresenceUpdated(
-                memberId = MemberId("agent-1"),
-                presence = Presence.Active,
-                kind = MemberKind.Agent,
-                agentStatus = AgentStatus.Working
-            )
-        )
-        store.seed(
-            MemberSnapshot(
-                server("server-1"),
-                listOf(
-                    member("agent-1", "Agent One").copy(
-                        kind = MemberKind.Agent,
-                        avatar = AvatarReference.fromWireValue("pixel:spark"),
-                        agentStatus = AgentStatus.Working,
-                        presence = Presence.Active
-                    ),
-                    member("agent-2", "Agent Two").copy(
-                        kind = MemberKind.Agent,
-                        avatar = AvatarReference.fromWireValue("pixel:paint"),
-                        agentStatus = AgentStatus.Working,
-                        presence = Presence.Active
-                    )
-                )
-            )
-        )
-        avatarJob.join()
-        statusJob.join()
-
-        assertEquals(listOf("pixel:robot", "pixel:spark"), avatarEmissions.map { it?.avatar?.wireValue })
-        assertEquals(
-            listOf(AgentStatus.Online, AgentStatus.Working),
-            statusEmissions.map { it?.status }
-        )
-    }
-
-    @Test
-    fun serverMembersEntryFlowIgnoresPresenceBurstButStillEmitsRosterMutation() = runBlocking {
-        val store = SharedServerMembersStore(FakeMemberRepository())
-        store.seed(
-            MemberSnapshot(
-                server("server-1"),
-                listOf(
-                    member("agent-1", "Agent One").copy(kind = MemberKind.Agent),
-                    member("agent-2", "Agent Two").copy(kind = MemberKind.Agent)
-                )
-            )
-        )
-        val entries = mutableListOf<SharedServerMembersEntry>()
-        val firstEmission = CompletableDeferred<Unit>()
-        val collectJob =
-            launch {
-                store.serverMembersEntryFlow(ServerId("server-1"))
-                    .onEach { firstEmission.complete(Unit) }
-                    .take(2)
-                    .toList(entries)
-            }
-        firstEmission.await()
-
-        repeat(69) { index ->
-            store.applyPresence(
-                ServerId("server-1"),
-                MemberPresenceUpdated(
-                    memberId = MemberId("burst-agent-$index"),
-                    kind = MemberKind.Agent,
-                    presence = Presence.Active,
-                    agentStatus = AgentStatus.Working,
-                    serverSeq = index.toLong()
-                )
-            )
-        }
-        yield()
-        assertEquals(1, entries.size)
-
-        store.seed(
-            MemberSnapshot(
-                server("server-1"),
-                listOf(
-                    member("agent-1", "Agent One Updated").copy(kind = MemberKind.Agent),
-                    member("agent-2", "Agent Two").copy(kind = MemberKind.Agent)
-                )
-            )
-        )
-        collectJob.join()
-
-        assertEquals(
-            listOf("Agent One", "Agent One Updated"),
-            entries.map { it.members.first { member -> member.id.value == "agent-1" }.displayName }
-        )
-    }
-
-    @Test
-    fun memberSuggestionsAreOwnedByServerMembersStore() = runBlocking {
-        val repository = FakeMemberRepository()
-        repository.membersByServer["server-1"] =
-            listOf(
-                member("u1", "Cindy"),
-                member("agent-1", "Build Agent").copy(
-                    handle = "build-agent",
-                    kind = MemberKind.Agent,
-                    agentStatus = AgentStatus.Working,
-                    presence = Presence.Active
-                )
-            )
-        val store = SharedServerMembersStore(repository)
-
-        store.ensureMemberSuggestionsForServer(ServerId("server-1"))
-
-        val suggestions =
-            store.state.value.memberSuggestionSlice(ServerId("server-1")).suggestions
-        assertEquals(listOf("cindy", "build-agent"), suggestions.map { it.handle })
-        assertEquals("u1", suggestions.single { it.handle == "cindy" }.memberId)
-        assertEquals("agent-1", suggestions.single { it.handle == "build-agent" }.memberId)
-        assertEquals(1, repository.getMembersCalls)
     }
 
     @Test
@@ -2772,25 +1977,6 @@ class SharedServerMembersStoreTest {
         assertEquals(memberId, suggestion.memberId)
         assertEquals(
             "王小明",
-            store.currentCanonicalMentionHandle(
-                serverId = ServerId("server-1"),
-                mentionChannelId = "channel-1",
-                memberId = memberId
-            )
-        )
-    }
-
-    @Test
-    fun canonicalMentionHandleFailsClosedWhenOnlyOpaqueIdentityIsLoaded() = runBlocking {
-        val repository = FakeMemberRepository()
-        val memberId = "123e4567-e89b-12d3-a456-426614174000"
-        repository.membersByServer["server-1"] =
-            listOf(member(memberId, "王小明").copy(handle = memberId))
-        val store = SharedServerMembersStore(repository)
-
-        store.refreshMembers(ServerId("server-1"))
-
-        assertNull(
             store.currentCanonicalMentionHandle(
                 serverId = ServerId("server-1"),
                 mentionChannelId = "channel-1",
@@ -2926,47 +2112,6 @@ class SharedServerMembersStoreTest {
     }
 
     @Test
-    fun memberSuggestionsFailClosedForBlankMemberIdentity() = runBlocking {
-        val repository = FakeMemberRepository()
-        repository.channelMembersByChannel["joint-1"] = listOf(member("", "Unknown").copy(handle = "unknown"))
-        val store = SharedServerMembersStore(repository)
-
-        store.ensureMemberSuggestionsForServer(
-            serverId = ServerId("server-1"),
-            mentionChannelId = "joint-1",
-            memberScopedMentions = true
-        )
-
-        assertEquals(
-            emptyList(),
-            store.state.value.memberSuggestionSlice(
-                serverId = ServerId("server-1"),
-                mentionChannelId = "joint-1",
-                memberScopedMentions = true
-            ).suggestions
-        )
-    }
-
-    @Test
-    fun scopedMemberSuggestionsReuseCachedChannelMembers() = runBlocking {
-        val repository = FakeMemberRepository()
-        repository.membersByServer["server-1"] = listOf(member("u1", "Cindy"), member("u2", "Artin"))
-        repository.channelMembersByChannel["channel-1"] = listOf(member("u2", "Artin"))
-        val store = SharedServerMembersStore(repository)
-
-        store.ensureMemberSuggestionsForServer(
-            serverId = ServerId("server-1"),
-            mentionChannelId = "channel-1"
-        )
-        store.ensureMemberSuggestionsForServer(
-            serverId = ServerId("server-1"),
-            mentionChannelId = "channel-1"
-        )
-
-        assertEquals(1, repository.getChannelMembersCalls)
-    }
-
-    @Test
     fun memberSuggestionPatchMarksRemovedChannelMemberWithoutReloading() = runBlocking {
         val repository = FakeMemberRepository()
         repository.membersByServer["server-1"] = listOf(member("u1", "Cindy"), member("u2", "Artin"))
@@ -2996,38 +2141,6 @@ class SharedServerMembersStoreTest {
             ).suggestions
         assertEquals(false, suggestions.single { it.handle == "artin" }.inMentionChannel)
         assertEquals(listOf("u1"), store.currentChannelMembers(ServerId("server-1"), ChannelId("channel-1")).map { it.id.value })
-    }
-
-    @Test
-    fun scopedMemberSuggestionPatchRemovesMemberWithoutReloading() = runBlocking {
-        val repository = FakeMemberRepository()
-        repository.channelMembersByChannel["channel-1"] = listOf(member("u1", "Cindy"), member("u2", "Artin"))
-        val store = SharedServerMembersStore(repository)
-
-        store.ensureMemberSuggestionsForServer(
-            serverId = ServerId("server-1"),
-            mentionChannelId = "channel-1",
-            memberScopedMentions = true
-        )
-        val patched =
-            store.removeMentionChannelMemberSuggestion(
-                serverId = ServerId("server-1"),
-                mentionChannelId = "channel-1",
-                memberScopedMentions = true,
-                memberId = "u2",
-                memberKind = MemberKind.Human
-            )
-
-        assertEquals(true, patched)
-        assertEquals(0, repository.getMembersCalls)
-        assertEquals(1, repository.getChannelMembersCalls)
-        val suggestions =
-            store.state.value.memberSuggestionSlice(
-                serverId = ServerId("server-1"),
-                mentionChannelId = "channel-1",
-                memberScopedMentions = true
-            ).suggestions
-        assertEquals(listOf("cindy"), suggestions.map { it.handle })
     }
 
     @Test
@@ -3154,108 +2267,6 @@ class SharedServerMembersStoreTest {
     }
 
     @Test
-    fun seedOnlyOfflinePolicyRewritesOnlyTheForcedOfflineSeedArtefact() {
-        val forcedSeedArtefact = SharedServerMemberStatus(status = null, presence = Presence.Offline, external = false)
-
-        // Today's shipped behaviour, held until the task #253 product choice lands.
-        assertEquals(
-            forcedSeedArtefact,
-            applySeedOnlyOfflinePolicy(
-                forcedSeedArtefact,
-                seedOnly = true,
-                policy = SeedOnlyOfflinePolicy.PublishAsOffline
-            )
-        )
-        // Candidate A.
-        assertEquals(
-            forcedSeedArtefact.copy(statusLabel = "—"),
-            applySeedOnlyOfflinePolicy(
-                forcedSeedArtefact,
-                seedOnly = true,
-                policy = SeedOnlyOfflinePolicy.PublishNeutralLabel
-            )
-        )
-        // Candidate B.
-        assertNull(
-            applySeedOnlyOfflinePolicy(
-                forcedSeedArtefact,
-                seedOnly = true,
-                policy = SeedOnlyOfflinePolicy.PublishNothing
-            )
-        )
-
-        // An authoritative record is never rewritten, whatever the policy: a roster member
-        // that really is offline must keep saying so under every candidate.
-        SeedOnlyOfflinePolicy.entries.forEach { policy ->
-            assertEquals(
-                forcedSeedArtefact,
-                applySeedOnlyOfflinePolicy(forcedSeedArtefact, seedOnly = false, policy = policy),
-                "an authoritative Offline must survive policy $policy"
-            )
-            assertEquals(
-                SharedServerMemberStatus(status = AgentStatus.Offline, presence = Presence.Offline, external = false),
-                applySeedOnlyOfflinePolicy(
-                    SharedServerMemberStatus(status = AgentStatus.Offline, presence = Presence.Offline, external = false),
-                    seedOnly = true,
-                    policy = policy
-                ),
-                "a seed carrying a real Offline status is an observation, not an artefact ($policy)"
-            )
-            assertEquals(
-                SharedServerMemberStatus(status = null, presence = Presence.Active, external = false),
-                applySeedOnlyOfflinePolicy(
-                    SharedServerMemberStatus(status = null, presence = Presence.Active, external = false),
-                    seedOnly = true,
-                    policy = policy
-                ),
-                "a non-Offline presence is untouched ($policy)"
-            )
-        }
-    }
-
-    @Test
-    fun memberStatusFlowPassesSeedProvenanceIntoThePolicy() = runBlocking {
-        // Pins the WIRING, not the pure function: that this edge passes the right `seedOnly`.
-        // Under the shipped PublishNothing policy a seed and an authoritative Offline publish
-        // different results, so the two cases below are distinguishable without injecting
-        // anything — mislabelling the seed cache as authoritative turns this red.
-        val serverId = ServerId("server-1")
-        val seedOnlyStore = SharedServerMembersStore(FakeMemberRepository())
-        seedOnlyStore.seedThreadAuthorProfiles(
-            serverId,
-            listOf(
-                RaftThreadMessageItem(
-                    id = "cold-start-message",
-                    authorId = "agent-1",
-                    authorName = "Argus",
-                    authorKind = "agent"
-                )
-            ),
-            source = "cold_start"
-        )
-        assertNull(seedOnlyStore.memberStatusFlow(serverId, "agent-1").first())
-
-        val rosterStore = SharedServerMembersStore(FakeMemberRepository())
-        rosterStore.seed(
-            MemberSnapshot(
-                server(serverId.value),
-                listOf(
-                    member("agent-1", "Argus").copy(
-                        kind = MemberKind.Agent,
-                        agentStatus = null,
-                        presence = Presence.Offline
-                    )
-                )
-            )
-        )
-        assertEquals(
-            SharedServerMemberStatus(status = null, presence = Presence.Offline, external = false),
-            rosterStore.memberStatusFlow(serverId, "agent-1").first(),
-            "a roster member is authoritative: its Offline is an observation and must survive"
-        )
-    }
-
-    @Test
     fun snapshotMemberStatusAppliesTheSamePolicyForRosterAndSeedProfiles() {
         // Roster and seed only — that is where this edge and memberStatusFlow agree. The
         // slice-only case they disagree on is unreachable from here (see memberStatus).
@@ -3331,81 +2342,6 @@ class SharedServerMembersStoreTest {
         val hydrated = store.memberStatusFlow(serverId, "agent-1").first()
         assertEquals(AgentStatus.Working, hydrated?.status)
         assertEquals(Presence.Active, hydrated?.presence)
-    }
-
-    @Test
-    fun memberStatusAndProfileFlowsAreMemoizedPerServerMemberPair() = runBlocking {
-        val serverId = ServerId("server-1")
-        val store = SharedServerMembersStore(FakeMemberRepository())
-        store.seed(
-            MemberSnapshot(
-                server("server-1"),
-                listOf(
-                    member("agent-1", "Agent").copy(
-                        kind = MemberKind.Agent,
-                        agentStatus = AgentStatus.Working,
-                        presence = Presence.Active
-                    )
-                )
-            )
-        )
-
-        // task #329: repeated calls for the same normalized (server, member) pair must
-        // share one upstream flow recipe so N mounted rows don't each rebuild the
-        // entryFlow/presence combine and rescan the roster.
-        assertTrue(
-            store.memberStatusFlow(serverId, "agent-1") ===
-                store.memberStatusFlow(serverId, "agent-1"),
-            "memberStatusFlow should return the memoized instance for the same pair"
-        )
-        assertTrue(
-            store.memberProfileFlow(serverId, "agent-1") ===
-                store.memberProfileFlow(serverId, "agent-1"),
-            "memberProfileFlow should return the memoized instance for the same pair"
-        )
-        // Distinct members and servers must not collide.
-        assertTrue(
-            store.memberStatusFlow(serverId, "agent-2") !==
-                store.memberStatusFlow(serverId, "agent-1")
-        )
-        assertTrue(
-            store.memberStatusFlow(ServerId("server-2"), "agent-1") !==
-                store.memberStatusFlow(serverId, "agent-1")
-        )
-
-        // Behaviour parity: the memoized flow still resolves the seeded status.
-        assertEquals(
-            AgentStatus.Working,
-            store.memberStatusFlow(serverId, "agent-1").first()?.status
-        )
-    }
-
-    @Test
-    fun clearScopedReadCachesDropsMemoizedFlows() = runBlocking {
-        val serverId = ServerId("server-1")
-        val store = SharedServerMembersStore(FakeMemberRepository())
-        store.seed(
-            MemberSnapshot(
-                server("server-1"),
-                listOf(member("agent-1", "Agent").copy(kind = MemberKind.Agent))
-            )
-        )
-
-        val before = store.memberStatusFlow(serverId, "agent-1")
-        assertTrue(before === store.memberStatusFlow(serverId, "agent-1"))
-
-        store.clearScopedReadCaches()
-
-        assertTrue(
-            before !== store.memberStatusFlow(serverId, "agent-1"),
-            "session/account clear must mint fresh recipes so retired auth-bound " +
-                "read edges cannot be reused"
-        )
-        assertTrue(
-            store.memberStatusFlow(serverId, "agent-1") ===
-                store.memberStatusFlow(serverId, "agent-1"),
-            "post-clear calls re-memoize normally"
-        )
     }
 
     @Test

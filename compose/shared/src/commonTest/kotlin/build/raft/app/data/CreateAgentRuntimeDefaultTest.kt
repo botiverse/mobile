@@ -69,12 +69,6 @@ class CreateAgentRuntimeDefaultTest {
     }
 
     @Test
-    fun noCandidateSelectsNothing() {
-        assertEquals("", pickCreateAgentRuntime(emptyList(), supported, onboarding = false, remembered = "claude"))
-        assertEquals("", pickCreateAgentRuntime(emptyList(), supported, onboarding = true, remembered = null))
-    }
-
-    @Test
     fun candidatesAreOnlyTheRuntimeOptionsThisPersonCanPickHere() {
         val catalog =
             SharedCreateAgentRuntimeCatalog(

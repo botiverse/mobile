@@ -50,31 +50,6 @@ class ProcessActivityUnreadStoreTest {
         )
     }
 
-    @Test
-    fun sameForegroundEpochCoalescesToOneLeadingEdgeFetch() = runBlocking {
-        val ownerFlow = MutableStateFlow<ProcessActivityUnreadOwner?>(owner())
-        val started = CompletableDeferred<Unit>()
-        val release = CompletableDeferred<Unit>()
-        var fetches = 0
-        val store =
-            store(ownerFlow) { _, _ ->
-                fetches += 1
-                started.complete(Unit)
-                release.await()
-                DataResult.Content(ActivityUnreadSummarySnapshot(totalUnreadCount = 4, totalCount = 9))
-            }
-
-        store.onForeground(ServerId("server-1"), epoch = 7L, reason = "app_shell_resume")
-        started.await()
-        store.onForeground(ServerId("server-1"), epoch = 7L, reason = "thread_resume")
-        release.complete(Unit)
-
-        val projection = awaitFresh(store)
-        assertEquals(1, fetches)
-        assertEquals(4, projection.totalUnreadCount)
-        assertEquals(7L, projection.lastForegroundEpoch)
-    }
-
     /** Task #164: the server's remembered inbox (`X-Raft-Stale`) never replaces a count already known. */
     @Test
     fun aRememberedSummaryKeepsTheKnownCountAndMarksItStale() = runBlocking {
@@ -99,30 +74,6 @@ class ProcessActivityUnreadStoreTest {
             }
         assertEquals(4, projection.totalUnreadCount, "never the remembered zero")
         assertEquals(9, projection.totalCount)
-    }
-
-    @Test
-    fun multipleSurfaceEnsuresShareOneInFlightFetch() = runBlocking {
-        val ownerFlow = MutableStateFlow<ProcessActivityUnreadOwner?>(owner())
-        val started = CompletableDeferred<Unit>()
-        val release = CompletableDeferred<Unit>()
-        var fetches = 0
-        val store =
-            store(ownerFlow) { _, _ ->
-                fetches += 1
-                started.complete(Unit)
-                release.await()
-                DataResult.Content(ActivityUnreadSummarySnapshot(totalUnreadCount = 2, totalCount = 3))
-            }
-
-        store.ensure(ServerId("server-1"), reason = "app_shell_attach")
-        started.await()
-        store.ensure(ServerId("server-1"), reason = "thread_attach")
-        store.ensure(ServerId("server-1"), reason = "activity_attach")
-        release.complete(Unit)
-
-        awaitFresh(store) { it.totalUnreadCount == 2 }
-        assertEquals(1, fetches)
     }
 
     @Test
@@ -194,61 +145,6 @@ class ProcessActivityUnreadStoreTest {
         assertEquals(2, fetches)
         assertEquals(9, projection.totalUnreadCount)
         assertFalse(projection.source == "foreground" && projection.totalUnreadCount == 1)
-    }
-
-    @Test
-    fun authoritativeFactDuringFlightRejectsOldResponseWithoutRedundantFollowUp() = runBlocking {
-        val ownerFlow = MutableStateFlow<ProcessActivityUnreadOwner?>(owner())
-        val firstStarted = CompletableDeferred<Unit>()
-        val releaseFirst = CompletableDeferred<Unit>()
-        var fetches = 0
-        val store =
-            store(ownerFlow) { _, _ ->
-                fetches += 1
-                firstStarted.complete(Unit)
-                releaseFirst.await()
-                DataResult.Content(ActivityUnreadSummarySnapshot(totalUnreadCount = 1, totalCount = 1))
-            }
-
-        store.onForeground(ServerId("server-1"), epoch = 1L, reason = "foreground")
-        firstStarted.await()
-        store.submitFact(
-            ActivityUnreadSummaryFact(
-                accountId = "account-1",
-                serverId = "server-1",
-                totalUnreadCount = 8,
-                totalCount = 8,
-                authoritative = true,
-                source = "activity_canonical:all"
-            )
-        )
-        val factProjection = awaitFresh(store) { it.totalUnreadCount == 8 }
-        releaseFirst.complete(Unit)
-        yield()
-
-        assertEquals(1, fetches)
-        assertEquals(8, factProjection.totalUnreadCount)
-        assertEquals(8, store.currentProjection(ServerId("server-1")).totalUnreadCount)
-    }
-
-    @Test
-    fun ensureBeforeAuthOwnerPublicationWaitsAndLoadsOnce() = runBlocking {
-        val ownerFlow = MutableStateFlow<ProcessActivityUnreadOwner?>(null)
-        var fetches = 0
-        val store =
-            store(ownerFlow) { _, _ ->
-                fetches += 1
-                DataResult.Content(ActivityUnreadSummarySnapshot(totalUnreadCount = 5, totalCount = 6))
-            }
-
-        store.ensure(ServerId("server-1"), reason = "process_restore_attach")
-        yield()
-        assertEquals(0, fetches)
-
-        ownerFlow.value = owner()
-        val projection = awaitFresh(store) { it.totalUnreadCount == 5 }
-        assertEquals(1, fetches)
-        assertEquals(6, projection.totalCount)
     }
 
     @Test

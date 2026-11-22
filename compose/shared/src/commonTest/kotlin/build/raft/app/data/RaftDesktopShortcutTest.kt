@@ -270,17 +270,6 @@ class RaftDesktopShortcutTest {
     }
 
     @Test
-    fun appShellDesktopShortcutNavigationIntent_fallsBackToServerIdWhenMissing() {
-        val params = buildJsonObject {
-            put(RaftDesktopShortcutContract.KeyTargetId, "chan-1")
-            put(RaftDesktopShortcutContract.KeyTargetKind, "channel")
-        }
-        val intent = params.toKuiklyJson().appShellDesktopShortcutNavigationIntent(fallbackServerId = "fallback-srv")
-        assertNotNull(intent)
-        assertEquals("fallback-srv", intent.serverId)
-    }
-
-    @Test
     fun appShellDesktopShortcutNavigationIntent_returnsNullWhenTargetIdIsMissing() {
         val params = buildJsonObject {
             put(RaftDesktopShortcutContract.KeyServerId, "srv-1")

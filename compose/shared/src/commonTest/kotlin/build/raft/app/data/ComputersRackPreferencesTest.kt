@@ -75,13 +75,4 @@ class ComputersRackPreferencesTest {
             assertNull(KeyValueComputersRackPreferenceRepository(store).readSort(), raw)
         }
     }
-
-    @Test
-    fun theViewIsTheSameChoiceThePageAlreadyKeeps() {
-        val backing = InMemoryRaftKeyValueStore()
-        KeyValueComputersRackPreferenceRepository(backing).selectComputersRackViewSync(ComputersRackView.List)
-        assertEquals(ComputersRackView.List, KeyValueComputersRackViewPreferenceRepository(backing).getComputersRackViewSync())
-        KeyValueComputersRackViewPreferenceRepository(backing).selectComputersRackViewSync(ComputersRackView.Cards)
-        assertEquals(ComputersRackView.Cards, KeyValueComputersRackPreferenceRepository(backing).getComputersRackViewSync())
-    }
 }

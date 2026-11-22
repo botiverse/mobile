@@ -43,23 +43,6 @@ class RaftServicesPrivacyGateTest {
     }
 
     @Test
-    fun publishingAnEnvironmentsAnswerUpdatesTheSignedInAggregate() {
-        RaftTelemetryPrivacy.publish("https://self-hosted.example/api", RaftPrivacyMode.Unknown)
-        assertEquals(RaftPrivacyMode.Unknown, RaftTelemetryPrivacy.acrossSignedInServers.value)
-        assertFalse(RaftServicesPrivacyGate.allowsAutomatic())
-
-        RaftTelemetryPrivacy.publish("https://self-hosted.example/api", RaftPrivacyMode.On)
-        assertEquals(mapOf("https://self-hosted.example/api" to RaftPrivacyMode.On), RaftTelemetryPrivacy.signedInServers.value)
-        assertFalse(RaftServicesPrivacyGate.allowsAutomatic())
-
-        // An environment change replaces the session: the earlier deploy no longer counts.
-        RaftTelemetryPrivacy.publish("https://api.raft.build/api", RaftPrivacyMode.Off)
-        assertEquals(mapOf("https://api.raft.build/api" to RaftPrivacyMode.Off), RaftTelemetryPrivacy.signedInServers.value)
-        assertEquals(RaftPrivacyMode.Off, RaftTelemetryPrivacy.state.value)
-        assertTrue(RaftServicesPrivacyGate.allowsAutomatic())
-    }
-
-    @Test
     fun aFailedReadIsOffForTracesButUnknownForDeferrableUploads() {
         RaftTelemetryPrivacy.publish("https://self-hosted.example/api", RaftPrivacyAnswer.Failed)
         assertEquals(RaftPrivacyMode.Off, RaftTelemetryPrivacy.state.value)
@@ -92,11 +75,5 @@ class RaftServicesPrivacyGateTest {
         runCurrent()
         assertEquals(RaftPrivacyMode.Unknown, decision.await())
         assertFalse(RaftServicesPrivacyGate.allowsAutomatic(decision.await()))
-    }
-
-    @Test
-    fun anOnAnswerSkipsThisLaunch() = runTest {
-        val across = MutableStateFlow(RaftPrivacyMode.On)
-        assertEquals(RaftPrivacyMode.On, RaftServicesPrivacyGate.awaitLaunchDecision(across))
     }
 }

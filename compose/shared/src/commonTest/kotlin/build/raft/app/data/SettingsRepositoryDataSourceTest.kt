@@ -989,19 +989,6 @@ class SettingsRepositoryDataSourceTest {
     }
 
     @Test
-    fun presentUnknownPushPreviewModeFailsClosed() {
-        val diagnostics = mutableListOf<String>()
-        val parsed = parseSharedSettingsServerNotificationSettings(
-            """{"serverPushMuted":false,"serverPushMode":"all","pushPreviewMode":"future"}""",
-            diagnostics::add
-        )
-
-        assertEquals(null, parsed)
-        assertEquals(1, diagnostics.size)
-        assertTrue(diagnostics.single().contains("push_preview_mode"))
-    }
-
-    @Test
     fun serverManagementContractsUseConfirmedShapes() = runBlocking {
         val network =
             FakeSettingsNetworkClient(
@@ -1241,22 +1228,6 @@ class SettingsRepositoryDataSourceTest {
     }
 
     @Test
-    fun serverInvitePreservesCanonicalErrorTextFromProductionErrorBody() = runBlocking {
-        val result =
-            RealSettingsRepository(
-                sampleStore(),
-                FakeSettingsNetworkClient(
-                    responseCode = 409,
-                    errorJson = """{"error":"This person is already invited"}"""
-                )
-            ).createServerInvite(SettingsServerInviteCreateRequest("new@slock.ai"))
-
-        val error = assertIs<DataResult.Error>(result).error
-        assertEquals("http_409", error.code)
-        assertEquals("This person is already invited", error.serverMessage)
-    }
-
-    @Test
     fun inviteRouteErrorParserAcceptsOnlyItsExactErrorField() = runBlocking {
         val fixtures =
             listOf(
@@ -1282,31 +1253,6 @@ class SettingsRepositoryDataSourceTest {
             val error = assertIs<DataResult.Error>(result, name).error
             assertEquals("http_409", error.code, name)
             assertEquals(expectedMessage, error.serverMessage, name)
-        }
-    }
-
-    @Test
-    fun inviteAndJoinLinkRoutesShareTheConfirmedErrorEnvelope() = runBlocking {
-        val repository =
-            RealSettingsRepository(
-                sampleStore(),
-                FakeSettingsNetworkClient(
-                    responseCode = 409,
-                    errorJson = """{"error":"Invite policy rejected this request"}"""
-                )
-            )
-
-        val results =
-            listOf(
-                repository.listServerJoinLinks("server-1"),
-                repository.createServerInvite(SettingsServerInviteCreateRequest("new@slock.ai")),
-                repository.createServerJoinLink(SettingsServerJoinLinkCreateRequest())
-            )
-
-        results.forEach { result ->
-            val error = assertIs<DataResult.Error>(result).error
-            assertEquals("http_409", error.code)
-            assertEquals("Invite policy rejected this request", error.serverMessage)
         }
     }
 

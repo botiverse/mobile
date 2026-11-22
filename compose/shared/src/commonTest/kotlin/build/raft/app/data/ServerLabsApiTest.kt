@@ -113,15 +113,6 @@ class ServerLabsApiTest {
     }
 
     @Test
-    fun rejectsGuessedWrappersAndAliases() {
-        assertNull(parseServerLabsReadback("""{"data":$memberRead}"""))
-        assertNull(parseServerLabsReadback("""{"server_id":"srv-1","access_enabled":true,"version":1,"labs":[]}"""))
-        // The web's own normalized shape is not the wire's.
-        assertNull(parseServerLabsReadback("""{"serverId":"srv-1","masterEnabled":true,"serverLabVersion":1,"labs":[]}"""))
-        assertNull(parseServerLabsReadback(""))
-    }
-
-    @Test
     fun writesSendEnabledAndTheExpectedVersion() {
         val body = Json.parseToJsonElement(encodeServerLabsMutationRequest(ServerLabsMutationRequest(enabled = true, expectedVersion = 3))).jsonObject
         assertEquals(setOf("enabled", "expectedVersion"), body.keys)

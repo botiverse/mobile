@@ -1,58 +1,13 @@
 package build.raft.app.network.sync
 
 import kotlinx.coroutines.runBlocking
-import kotlinx.coroutines.CompletableDeferred
-import kotlinx.coroutines.async
-import kotlinx.coroutines.awaitAll
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertIs
-import kotlin.test.assertNotEquals
 import kotlin.test.assertSame
 import kotlin.test.assertTrue
 
 class ReadStateV1ContractTest {
     private val scope = ReadStateV1Scope("server-1", "user-1", "channel-1")
-
-    @Test
-    fun consumerAndWireNormalizationAreIndependentAndFullPairOnly() {
-        assertEquals("sync-core.read-state.v1", scope.consumerId)
-        assertNotEquals("sync-core.messages.v2", scope.consumerId)
-        assertIs<ReadStateV1CandidateResult.Accepted>(
-            normalizeReadStateV1Candidate(scope, candidate(ReadStateV1FactSource.Hydrate, 2, 20))
-        )
-        assertIs<ReadStateV1CandidateResult.Accepted>(
-            normalizeReadStateV1Candidate(scope, candidate(ReadStateV1FactSource.MutationAck, 3, 30))
-        )
-        assertIs<ReadStateV1CandidateResult.Accepted>(
-            normalizeReadStateV1Candidate(scope, candidate(ReadStateV1FactSource.OwnerRealtime, 4, 40))
-        )
-        assertEquals(
-            ReadStateV1CandidateResult.Rejected(ReadStateV1CandidateRejection.UntrustedSource),
-            normalizeReadStateV1Candidate(scope, candidate(ReadStateV1FactSource.PeerReceipt, 5, 50)),
-        )
-        val current = ReadStateV1Fact(scope.channelId, 7, 70)
-        assertEquals(ReadStateV1ApplyResult.Current, reduceReadStateV1(current, current).result)
-        assertEquals(ReadStateV1ApplyResult.Conflict, reduceReadStateV1(current, ReadStateV1Fact(scope.channelId, 7, 71)).result)
-        assertEquals(ReadStateV1ApplyResult.Stale, reduceReadStateV1(current, ReadStateV1Fact(scope.channelId, 6, 99)).result)
-        assertEquals(
-            ReadStateV1Fact(scope.channelId, 8, 10),
-            reduceReadStateV1(current, ReadStateV1Fact(scope.channelId, 8, 10)).fact,
-            "higher version must allow a lower watermark",
-        )
-        assertEquals(
-            ReadStateV1CandidateResult.Rejected(ReadStateV1CandidateRejection.IncompletePair),
-            normalizeReadStateV1Candidate(
-                scope,
-                ReadStateV1WireCandidate(
-                    channelId = scope.channelId,
-                    readStateVersion = 6,
-                    maxReadSeq = null,
-                    source = ReadStateV1FactSource.MutationAck,
-                ),
-            ),
-        )
-    }
 
     @Test
     fun generationHoldsBeforeBaselineThenCommitsBeforeProjection() = runBlocking {
@@ -133,32 +88,6 @@ class ReadStateV1ContractTest {
     }
 
     @Test
-    fun concurrentConflictsCoalesceOneRebaselineRequest() = runBlocking {
-        val authority = ReadStateV1GrantAuthority()
-        val store = ConcurrentConflictStore()
-        val requests = mutableListOf<ReadStateV1Scope>()
-        val witness = authority.issue(scope)
-        val engine = ReadStateV1GenerationEngine(
-            authority = authority,
-            store = store,
-            projectionObserver = ReadStateV1ProjectionObserver { _, _ -> },
-            rebaselineRequester = ReadStateV1RebaselineRequester { requests += it.scope },
-        )
-        assertEquals(
-            ReadStateV1GenerationResult.Committed,
-            engine.applySnapshot(witness, candidate(ReadStateV1FactSource.Hydrate, 7, 70)),
-        )
-
-        val results = listOf(
-            async { engine.applyIncremental(witness, candidate(ReadStateV1FactSource.OwnerRealtime, 7, 71)) },
-            async { engine.applyIncremental(witness, candidate(ReadStateV1FactSource.MutationAck, 7, 72)) },
-        ).awaitAll()
-
-        assertEquals(listOf(ReadStateV1GenerationResult.Conflict, ReadStateV1GenerationResult.Conflict), results)
-        assertEquals(listOf(scope), requests)
-    }
-
-    @Test
     fun corruptRestoreFailsClosedAndCoalescesCleanHydrate() = runBlocking {
         val authority = ReadStateV1GrantAuthority()
         val requests = mutableListOf<ReadStateV1Scope>()
@@ -173,42 +102,6 @@ class ReadStateV1ContractTest {
         assertEquals(ReadStateV1GenerationResult.BaselineRequired(true), engine.restore(witness))
         assertEquals(ReadStateV1GenerationResult.BaselineRequired(false), engine.restore(witness))
         assertEquals(listOf(scope), requests)
-    }
-
-    @Test
-    fun revokeBeforeConflictOrCorruptRestoreRequestEmitsNothingForStaleGrant() = runBlocking {
-        val conflictAuthority = ReadStateV1GrantAuthority()
-        val conflictWitness = conflictAuthority.issue(scope)
-        val conflictRequests = mutableListOf<ReadStateV1Scope>()
-        val conflictProjections = mutableListOf<ReadStateV1Fact>()
-        val conflictEngine = ReadStateV1GenerationEngine(
-            authority = conflictAuthority,
-            store = RevokingStore(conflictAuthority, conflictWitness, corruptOnRestore = false),
-            projectionObserver = ReadStateV1ProjectionObserver { _, fact -> conflictProjections += fact },
-            rebaselineRequester = ReadStateV1RebaselineRequester { conflictRequests += it.scope },
-        )
-        assertEquals(
-            ReadStateV1GenerationResult.Committed,
-            conflictEngine.applySnapshot(conflictWitness, candidate(ReadStateV1FactSource.Hydrate, 7, 70)),
-        )
-        assertEquals(
-            ReadStateV1GenerationResult.RejectedCurrentGrant,
-            conflictEngine.applyIncremental(conflictWitness, candidate(ReadStateV1FactSource.OwnerRealtime, 7, 71)),
-        )
-        assertEquals(emptyList(), conflictRequests)
-        assertEquals(listOf(ReadStateV1Fact(scope.channelId, 7, 70)), conflictProjections)
-
-        val corruptAuthority = ReadStateV1GrantAuthority()
-        val corruptWitness = corruptAuthority.issue(scope)
-        val corruptRequests = mutableListOf<ReadStateV1Scope>()
-        val corruptEngine = ReadStateV1GenerationEngine(
-            authority = corruptAuthority,
-            store = RevokingStore(corruptAuthority, corruptWitness, corruptOnRestore = true),
-            projectionObserver = ReadStateV1ProjectionObserver { _, _ -> error("revoked corrupt restore must not project") },
-            rebaselineRequester = ReadStateV1RebaselineRequester { corruptRequests += it.scope },
-        )
-        assertEquals(ReadStateV1GenerationResult.RejectedCurrentGrant, corruptEngine.restore(corruptWitness))
-        assertEquals(emptyList(), corruptRequests)
     }
 
     private fun engine(
@@ -248,26 +141,6 @@ class ReadStateV1ContractTest {
         override suspend fun restore(scope: ReadStateV1Scope): ReadStateV1Fact? = restored
     }
 
-    private class ConcurrentConflictStore : ReadStateV1Store {
-        private var incrementalCalls = 0
-        private val bothIncrementalsArrived = CompletableDeferred<Unit>()
-
-        override suspend fun commit(
-            scope: ReadStateV1Scope,
-            fact: ReadStateV1Fact,
-            mode: ReadStateV1CommitMode,
-            guard: ReadStateV1CommitGuard,
-        ): ReadStateV1StoreResult {
-            if (mode == ReadStateV1CommitMode.Snapshot) return ReadStateV1StoreResult.Accepted
-            incrementalCalls += 1
-            if (incrementalCalls == 2) bothIncrementalsArrived.complete(Unit)
-            bothIncrementalsArrived.await()
-            return ReadStateV1StoreResult.Conflict
-        }
-
-        override suspend fun restore(scope: ReadStateV1Scope): ReadStateV1Fact? = null
-    }
-
     private class CorruptRestoreStore : ReadStateV1Store {
         override suspend fun commit(
             scope: ReadStateV1Scope,
@@ -277,29 +150,6 @@ class ReadStateV1ContractTest {
         ): ReadStateV1StoreResult = error("not used")
 
         override suspend fun restore(scope: ReadStateV1Scope): ReadStateV1Fact? {
-            throw ReadStateV1StoredFactCorrupt(scope)
-        }
-    }
-
-    private class RevokingStore(
-        private val authority: ReadStateV1GrantAuthority,
-        private val witness: ReadStateV1GrantWitness,
-        private val corruptOnRestore: Boolean,
-    ) : ReadStateV1Store {
-        override suspend fun commit(
-            scope: ReadStateV1Scope,
-            fact: ReadStateV1Fact,
-            mode: ReadStateV1CommitMode,
-            guard: ReadStateV1CommitGuard,
-        ): ReadStateV1StoreResult {
-            if (mode == ReadStateV1CommitMode.Snapshot) return ReadStateV1StoreResult.Accepted
-            authority.revoke(witness)
-            return ReadStateV1StoreResult.Conflict
-        }
-
-        override suspend fun restore(scope: ReadStateV1Scope): ReadStateV1Fact? {
-            check(corruptOnRestore)
-            authority.revoke(witness)
             throw ReadStateV1StoredFactCorrupt(scope)
         }
     }

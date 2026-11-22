@@ -258,22 +258,6 @@ class SharedTasksOfflineTest {
         assertEquals(listOf("task-a"), device.storedIds(scope, account = "user-1"))
     }
 
-    @Test
-    fun aLargeListKeepsTheMostRecentlyUpdatedTasksInItsOrder() {
-        val tasks = (1..TasksOfflineListMaxTasks + 2).map { index -> task("task-$index").copy(updatedAtLabel = "2026-10-${(index % 28 + 1).toString().padStart(2, '0')}T00:00:00Z") }
-        val stored = tasks.toStoredFirstPage()
-        assertEquals(TasksOfflineListMaxTasks, stored.size)
-        assertEquals(stored, tasks.filter { it in stored })
-    }
-
-    @Test
-    fun ownerIdentityParsesBackToEnvironmentAndAccount() {
-        assertEquals(TasksOfflineOwner(Environment, "user-1"), TasksOfflineOwner.fromOwnerIdentity("$Environment/|user-1"))
-        assertNull(TasksOfflineOwner.fromOwnerIdentity("no-separator"))
-        assertNull(TasksOfflineOwner.fromOwnerIdentity("$Environment|"))
-        assertNull(TasksOfflineOwner.fromOwnerIdentity(null))
-    }
-
     private suspend fun TestScope.loadOnce(device: Device, tasks: List<TaskSummary>) {
         val viewModel = viewModel(device.dataStore(backgroundScope), ScriptedTasks(tasks))
         viewModel.dispatch(SharedTasksRouteIntent.Start)

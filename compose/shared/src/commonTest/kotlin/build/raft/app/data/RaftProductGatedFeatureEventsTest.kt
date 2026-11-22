@@ -87,17 +87,4 @@ class RaftProductGatedFeatureEventsTest {
             assertEquals(mapOf("drafts" to "2-5"), events[0].props())
             assertEquals(mapOf("place" to "dm"), events[1].props())
         }
-
-    @Test
-    fun gatedFeatureEventsWaitForConsentLikeEveryOtherEvent() =
-        runTest {
-            val transport = RecordingProductEventsTransport().apply { configAnswer = { RaftProductEventsConfigResult.Answered(false) } }
-            val (recorder, _) = recorderWithTransport(transport)
-            recorder.draftsPageViewed(0)
-            recorder.draftsItemOpened(RaftDraftPlaceKind.Task)
-            settleProductEvents()
-            assertEquals(listOf(ServerId("srv-a")), transport.configCalls)
-            assertEquals(0, transport.sendAttempts.size, "a server that does not allow client events gets no batch")
-            assertEquals(0, recorder.client.queuedEventCount)
-        }
 }

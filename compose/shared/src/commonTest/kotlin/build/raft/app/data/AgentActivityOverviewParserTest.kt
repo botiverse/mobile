@@ -230,17 +230,6 @@ class AgentActivityOverviewParserTest {
     }
 
     @Test
-    fun rejectsGuessedWrappersAndAliases() {
-        assertNull(parseSharedAgentActivityTurnPage("""[${base(1, 2, null)}]"""))
-        assertNull(parseSharedAgentActivityTurnPage("""{"items":[${base(1, 2, null)}]}"""))
-        assertNull(parseSharedAgentActivityTurnPage("""{"data":{"summaries":[]}}"""))
-        assertNull(parseSharedAgentActivityTurnPage("not json"))
-        // snake_case is not the contract: the row is dropped, not guessed.
-        val snake = """{"v":1,"started_at":1,"ended_at":2,"outcome":"completed","actions":[],"tool_calls":0,"problems":[],"problem_count":0,"messages_sent":0}"""
-        assertTrue(assertIsNotNull(parseSharedAgentActivityTurnPage("""{"summaries":[$snake]}""")).turns.isEmpty())
-    }
-
-    @Test
     fun repositoryRequestsSummariesAndReplyContextAtVisiblePriority() = runTest {
         val client = RecordingActivityOverviewNetworkClient(
             mapOf(

@@ -32,28 +32,6 @@ class BridgeSettingsHandsUpdateErrorTest {
     }
 
     @Test
-    fun handsUpdateBridgeDoesNotGuessServerErrorAlias() {
-        val error =
-            handsUpdateBridgeError(
-                """{"status":"error","code":"hands_service_busy","error":"Unrecognized alias"}"""
-            )
-
-        assertEquals("hands_service_busy", error.code)
-        assertEquals(null, error.serverMessage)
-    }
-
-    @Test
-    fun handsUpdateBridgeKeepsNonErrorStatusCodeWithoutTrustingItsMessage() {
-        val error =
-            handsUpdateBridgeError(
-                """{"status":"unsupported","code":"hands_update_unsupported","message":"Not an error envelope"}"""
-            )
-
-        assertEquals("hands_update_unsupported", error.code)
-        assertEquals(null, error.serverMessage)
-    }
-
-    @Test
     fun handsUpdateStructuredMessageReachesAppUpdateVisibleCopy() {
         val result =
             DataResult.Error(

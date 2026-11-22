@@ -1,6 +1,18 @@
 package build.raft.app.data
 
+import build.raft.app.canonical.message.CanonicalMessageCarry
+import build.raft.app.canonical.message.CanonicalMessageRow
+import build.raft.app.model.ChannelId
+import build.raft.app.model.MemberId
+import build.raft.app.model.MemberKind
+import build.raft.app.model.MemberProfile
+import build.raft.app.model.Message
+import build.raft.app.model.MessageId
+import build.raft.app.model.MessageNew
+import build.raft.app.model.ThreadId
 import build.raft.app.network.sync.CanonicalMessageEnvelopeV2
+import build.raft.app.network.sync.CanonicalMessageFoldInput
+import build.raft.app.network.sync.CanonicalMessageFoldKind
 import build.raft.app.network.sync.CanonicalMessageV2IncrementalFrame
 import build.raft.app.network.sync.CanonicalMessageV2SnapshotFrame
 import build.raft.app.network.sync.CanonicalMessageV2Store
@@ -175,3 +187,42 @@ internal fun canonicalV2TestThinPage(channelId: String = "channel-1"): String =
 /** `channels/{id}/threads` response body; keyed by parent message id, as the server emits. */
 internal fun canonicalV2TestThreadSummaries(replyCount: Int = 4): String =
     """{"message-1":{"threadChannelId":"thread-9","replyCount":$replyCount,"unreadCount":0,"participantIds":[]}}"""
+
+/** A decoded canonical `message:new` fold input for message [id] in channel-a. */
+internal fun canonicalInput(id: String = "m1") =
+    CanonicalMessageFoldInput.from(
+        CanonicalMessageFoldKind.New,
+        CanonicalMessageCarry(
+            row =
+                CanonicalMessageRow(
+                    id = id,
+                    channelId = "channel-a",
+                    seq = 1,
+                    senderType = "human",
+                    senderId = "member-a",
+                    content = "body",
+                    messageType = "chat",
+                    createdAt = "2026-07-15T00:00:00Z",
+                    senderName = "Member A",
+                ),
+            presentAggregates = emptySet(),
+        ),
+    )
+
+/** The realtime `message:new` event carrying [canonicalInput]'s row. */
+internal fun canonicalEvent(id: String = "m1"): MessageNew {
+    val row = canonicalInput(id).row
+    return MessageNew(
+        message =
+            Message(
+                id = MessageId(row.id),
+                threadId = ThreadId(row.channelId),
+                channelId = ChannelId(row.channelId),
+                seq = row.seq,
+                author = MemberProfile(MemberId(row.senderId), "Member A", "member-a", MemberKind.Human),
+                timestampLabel = "now",
+                body = row.content,
+            ),
+        decodedCanonical = CanonicalMessageCarry(row, emptySet()),
+    )
+}

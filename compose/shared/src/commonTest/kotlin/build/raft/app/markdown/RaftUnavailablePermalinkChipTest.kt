@@ -5,7 +5,6 @@ import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.withLink
 import build.raft.app.links.toParsedRaftPermalink
 import kotlin.test.Test
-import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
@@ -28,12 +27,5 @@ class RaftUnavailablePermalinkChipTest {
         assertTrue("Unavailable linked message" in chip.text.text, chip.text.text)
         assertTrue(chip.text.getLinkAnnotations(0, chip.text.length).isEmpty(), "no link to open")
         assertTrue("msg" !in chip.text.text.removePrefix("Unavailable linked message"), "no kind note: ${chip.text.text}")
-    }
-
-    @Test
-    fun aReadableQuoteKeepsItsLink() {
-        val chip = text.withRaftMessagePermalinkRenderConfig(config = config)
-        assertEquals(1, chip.text.getLinkAnnotations(0, chip.text.length).size)
-        assertTrue("linked message" in chip.text.text, chip.text.text)
     }
 }

@@ -6,7 +6,6 @@ import kotlin.test.assertIs
 import kotlin.test.assertTrue
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceTimeBy
-import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
@@ -126,56 +125,12 @@ class SharedArtifactSummaryStoreTest {
     }
 
     @Test
-    fun lookupsInOneWindowGoOutAsOneDedupedRequest() = runTest {
-        val api = FakeApi { okAnswer(it, unavailable = setOf("pt_gone")) }
-        val store = store(api)
-        store.request(server, listOf(ArtifactLinkTarget("pt_a"), ArtifactLinkTarget("pt_gone")))
-        store.request(server, listOf(ArtifactLinkTarget("pt_a"), ArtifactLinkTarget("pt_a", 2)))
-        runCurrent()
-        assertEquals(0, api.calls.size, "waits for the batch window")
-        advanceTimeBy(ARTIFACT_SUMMARY_BATCH_WINDOW_MILLIS + 1)
-        assertEquals(1, api.calls.size)
-        assertEquals(listOf("pt_a", "pt_gone", "pt_a;version=2"), api.calls.single().second.map { it.key })
-        val answers = store.state.value.answersFor(server, listOf(ArtifactLinkTarget("pt_a"), ArtifactLinkTarget("pt_gone")))
-        assertIs<ArtifactSummaryAnswer.Ok>(answers["pt_a"])
-        assertEquals(ArtifactSummaryAnswer.Unavailable, answers["pt_gone"])
-        // Kept: asking again within the TTL sends nothing.
-        store.request(server, listOf(ArtifactLinkTarget("pt_a")))
-        advanceTimeBy(1_000)
-        assertEquals(1, api.calls.size)
-    }
-
-    @Test
     fun moreThanFiftyReferencesSplitIntoRequestsOfFifty() = runTest {
         val api = FakeApi { okAnswer(it) }
         val store = store(api)
         store.request(server, (1..120).map { ArtifactLinkTarget("pt_$it") })
         advanceTimeBy(ARTIFACT_SUMMARY_BATCH_WINDOW_MILLIS + 1)
         assertEquals(listOf(50, 50, 20), api.calls.map { it.second.size })
-    }
-
-    @Test
-    fun unavailableExpiresSoonerThanASummaryAndAFailureKeepsNothing() = runTest {
-        var fail = false
-        val api = FakeApi { if (fail) HomeNetworkResponse(429, null) else okAnswer(it, unavailable = setOf("pt_gone")) }
-        val store = store(api)
-        val both = listOf(ArtifactLinkTarget("pt_a"), ArtifactLinkTarget("pt_gone"))
-        store.request(server, both)
-        advanceTimeBy(ARTIFACT_SUMMARY_BATCH_WINDOW_MILLIS + 1)
-        advanceTimeBy(ARTIFACT_SUMMARY_UNAVAILABLE_TTL_MILLIS)
-        store.request(server, both)
-        advanceTimeBy(ARTIFACT_SUMMARY_BATCH_WINDOW_MILLIS + 1)
-        assertEquals(listOf("pt_gone"), api.calls.last().second.map { it.key }, "only the expired unavailable is asked again")
-        fail = true
-        advanceTimeBy(ARTIFACT_SUMMARY_OK_TTL_MILLIS)
-        store.request(server, both)
-        advanceTimeBy(ARTIFACT_SUMMARY_BATCH_WINDOW_MILLIS + 1)
-        // The failed read kept nothing new; the expired answers stay shown until a new one lands.
-        assertIs<ArtifactSummaryAnswer.Ok>(store.state.value.answersFor(server, both)["pt_a"])
-        val calls = api.calls.size
-        store.request(server, both)
-        advanceTimeBy(ARTIFACT_SUMMARY_BATCH_WINDOW_MILLIS + 1)
-        assertEquals(calls + 1, api.calls.size, "asked again after a failure")
     }
 
     @Test

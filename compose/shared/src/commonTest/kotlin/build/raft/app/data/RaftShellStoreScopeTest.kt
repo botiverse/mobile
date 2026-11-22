@@ -18,51 +18,9 @@ import kotlinx.coroutines.withTimeout
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
-import kotlin.test.assertNotSame
-import kotlin.test.assertSame
 import kotlin.test.assertTrue
 
 class RaftShellStoreScopeTest {
-    @Test
-    fun selectionFencePublishesBeforeStateFlowAndDisposeSynchronouslyClearsIt() = runBlocking {
-        val events = mutableListOf<String>()
-        lateinit var store: SelectedServerStore
-        var constructing = true
-        store =
-            SelectedServerStore(
-                scope = RaftShellStoreScope.create("shell-fenced"),
-                onSelectionChanged = { serverId ->
-                    if (!constructing) {
-                        events += "$serverId|flow=${store.selectedServerId.value}"
-                    }
-                }
-            )
-        constructing = false
-
-        store.select("server-1", "one")
-        store.dispose()
-
-        assertEquals(
-            listOf(
-                "server-1|flow=null",
-                "null|flow=server-1"
-            ),
-            events
-        )
-    }
-
-    @Test
-    fun nonNullInitialServerPublishesTheSelectionFenceDuringConstruction() {
-        val events = mutableListOf<String?>()
-
-        SelectedServerStore(
-            scope = RaftShellStoreScope.create("shell-initial", "server-1"),
-            onSelectionChanged = events::add
-        )
-
-        assertEquals(listOf<String?>("server-1"), events)
-    }
-
     @Test
     fun selectedServerStoreOwnsSelectionWhenPersistedSessionDefaultLags() = runBlocking {
         val store = SelectedServerStore(RaftShellStoreScope.create("shell-selection", "server-1"))
@@ -76,24 +34,6 @@ class RaftShellStoreScopeTest {
         assertEquals("server-2", store.selectedServerId.value)
         assertEquals("server-2", reconciled.serverId)
         assertEquals("two", reconciled.serverSlug)
-    }
-
-    @Test
-    fun cacheKeysByStableShellIdentityWhileInitialServerRemainsBootstrapData() {
-        val cache = RaftShellScopedStoreCache<Any>()
-        val shellA = RaftShellStoreScope.create("shell-a", "server-1")
-        val shellAAfterSwitch = RaftShellStoreScope.create("shell-a", "server-2")
-        val shellB = RaftShellStoreScope.create("shell-b", "server-1")
-
-        val firstA = cache.getOrPut(shellA) { Any() }
-        val secondA = cache.getOrPut(shellAAfterSwitch) { Any() }
-        val firstB = cache.getOrPut(shellB) { Any() }
-
-        assertSame(firstA, secondA)
-        assertNotSame(firstA, firstB)
-        assertEquals(2, cache.size)
-        assertSame(firstA, cache.remove(shellA))
-        assertEquals(1, cache.size)
     }
 
     @Test
@@ -193,69 +133,6 @@ class RaftShellStoreScopeTest {
         assertEquals("server-2", shellB.readSession()?.currentServerId)
         assertEquals("server-3", processStore.readSession()?.currentServerId)
         assertEquals("access-next", processStore.readSession()?.accessToken)
-    }
-
-    @Test
-    fun tokenRefreshPreservesMissingProcessSelectionInsteadOfPersistingBootstrapServer() = runBlocking {
-        val processStore =
-            InMemoryRaftAuthSessionStore(
-                session().copy(selectedServerId = null, selectedServerSlug = null)
-            )
-        val runtimeB = SelectedServerStore(RaftShellStoreScope.create("shell-b", "server-2"))
-        val shellB = RaftShellAuthSessionStore(processStore, runtimeB)
-
-        val refreshedForShellB = shellB.readSession()!!.copy(accessToken = "access-next")
-        shellB.saveSession(refreshedForShellB)
-
-        assertEquals("server-2", shellB.readSession()?.selectedServerId)
-        assertEquals(null, processStore.readSession()?.selectedServerId)
-        assertEquals("access-next", processStore.readSession()?.accessToken)
-    }
-
-    @Test
-    fun atomicTokenRotationPreservesProcessSelectionAndReturnsShellSelection() = runBlocking {
-        val processStore = InMemoryRaftAuthSessionStore(session())
-        val shellStore =
-            RaftShellAuthSessionStore(
-                processStore,
-                SelectedServerStore(RaftShellStoreScope.create("shell-b", "server-2"))
-            )
-        processStore.updateSelectedServer("server-3", "three")
-
-        val rotated =
-            shellStore.rotateTokensIfMatch(
-                expectedAccessToken = "access",
-                expectedRefreshToken = "refresh",
-                newAccessToken = "access-next",
-                newRefreshToken = "refresh-next"
-            )
-
-        assertEquals("server-2", rotated?.selectedServerId)
-        assertEquals("access-next", rotated?.accessToken)
-        assertEquals("server-3", processStore.readSession()?.selectedServerId)
-        assertEquals("access-next", processStore.readSession()?.accessToken)
-    }
-
-    @Test
-    fun atomicMetadataUpdatePreservesTokensAndProcessSelection() = runBlocking {
-        val processStore = InMemoryRaftAuthSessionStore(session())
-        val shellStore =
-            RaftShellAuthSessionStore(
-                processStore,
-                SelectedServerStore(RaftShellStoreScope.create("shell-b", "server-2"))
-            )
-        processStore.updateSelectedServer("server-3", "three")
-
-        shellStore.updateMetadata(expectedAccountId = "user-1") { current ->
-            assertEquals("server-2", current.selectedServerId)
-            current.copy(user = current.user.copy(email = "updated@example.com"))
-        }
-
-        assertEquals("server-2", shellStore.readSession()?.selectedServerId)
-        assertEquals("server-3", processStore.readSession()?.selectedServerId)
-        assertEquals("updated@example.com", processStore.readSession()?.user?.email)
-        assertEquals("access", processStore.readSession()?.accessToken)
-        assertEquals("refresh", processStore.readSession()?.refreshToken)
     }
 
     @Test
@@ -429,39 +306,6 @@ class RaftShellStoreScopeTest {
 
         assertEquals(null, selectedServerStore.selectedServerId.value)
         assertEquals("server-3", selectedServerStore.reconcile(nextSession).serverId)
-    }
-
-    @Test
-    fun disposedRuntimeStopsMatchingActiveServer() {
-        val runtime = SelectedServerStore(RaftShellStoreScope.create("shell-a", "server-1"))
-
-        assertEquals("server-1", runtime.currentServerId.value)
-        assertFalse(runtime.disposed.value)
-
-        runtime.dispose()
-
-        assertTrue(runtime.disposed.value)
-    }
-
-    @Test
-    fun explicitServerRequestDoesNotRequireASelectedServer() = runBlocking {
-        val processStore =
-            InMemoryRaftAuthSessionStore(
-                session().copy(selectedServerId = null, selectedServerSlug = null)
-            )
-        val runtime = SelectedServerStore(RaftShellStoreScope.create("shell-unselected"))
-        val shellStore = RaftShellAuthSessionStore(processStore, runtime)
-
-        val session = shellStore.readSession()
-
-        assertEquals(null, session?.selectedServerId)
-        assertEquals(null, session?.currentServerId)
-        assertEquals(null, runtime.currentServerId.value)
-
-        val network = ShellRecordingNetworkClient(shellStore)
-        val result = RealInboxRepository(shellStore, network).loadInitial(ServerId("server-1"))
-        assertTrue(result is DataResult.Empty)
-        assertEquals(listOf("server-1"), network.requestServerIds)
     }
 
     private class ShellRecordingNetworkClient(

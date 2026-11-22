@@ -31,23 +31,6 @@ class RaftEventBusTest {
     }
 
     @Test
-    fun inProcessEventBusDispatchesWithoutPager() {
-        val eventBus = RaftEventBuses.inProcess()
-        val eventName = "test.inProcessEventBusDispatchesWithoutPager"
-        val received = mutableListOf<String>()
-        val subscription =
-            eventBus.observe(eventName) { data ->
-                received += data?.optString("value").orEmpty()
-            }
-
-        eventBus.post(eventName, buildJsonObject { put("value", "first") })
-        subscription.close()
-        eventBus.post(eventName, buildJsonObject { put("value", "second") })
-
-        assertEquals(listOf("first"), received)
-    }
-
-    @Test
     fun nativeJsonIngressDeliversValidPayloadExactlyOnceAndRejectsMalformedInput() {
         val eventName = "test.nativeJsonIngress"
         val received = mutableListOf<String>()

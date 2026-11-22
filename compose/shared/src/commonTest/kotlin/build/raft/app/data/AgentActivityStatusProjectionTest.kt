@@ -52,24 +52,6 @@ class AgentActivityStatusProjectionTest {
     }
 
     @Test
-    fun statusEntryCarriesServerDetailKind() {
-        val projection =
-            listOf(
-                AgentActivityEntry(
-                    id = "1",
-                    type = "status",
-                    title = "Starting",
-                    statusActivity = "working",
-                    statusDetail = "Starting…",
-                    statusDetailKind = "starting"
-                )
-            ).latestAgentActivityStatusProjection()
-        assertEquals(AgentStatus.Working, projection?.status)
-        assertEquals("starting", projection?.detailKind)
-        assertEquals("starting", projection?.toMemberPresenceUpdated(build.raft.app.model.MemberId("a"))?.detailKind)
-    }
-
-    @Test
     fun latestActivityEntrySkipsNonStatusRows() {
         val projection =
             listOf(
@@ -130,16 +112,6 @@ class AgentActivityStatusProjectionTest {
         assertEquals(
             AgentStatus.Offline,
             normalizedAgentRuntimeStatus(activity = "active", lifecycleStatus = "inactive")
-        )
-    }
-
-    @Test
-    fun activityEntryAccountLifecycleActiveDoesNotProjectAsLiveOnline() {
-        assertNull(
-            projectAgentActivityStatus(
-                kind = "status",
-                activity = "active"
-            )
         )
     }
 

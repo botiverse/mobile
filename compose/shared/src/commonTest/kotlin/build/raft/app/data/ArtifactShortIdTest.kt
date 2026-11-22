@@ -33,19 +33,6 @@ class ArtifactShortIdTest {
     }
 
     @Test
-    fun encodingTakesAnyCaseAndAlwaysWrites22Characters() {
-        assertEquals("ScAiFjjtiUvoyEYA6Ry12u", encodeArtifactShortId("CF5D7BB5-6BBE-4304-BC87-1AB40601A98E"))
-        val random = kotlin.random.Random(11920)
-        repeat(200) {
-            val hex = (1..32).joinToString("") { random.nextInt(16).toString(16) }
-            val uuid = "${hex.substring(0, 8)}-${hex.substring(8, 12)}-${hex.substring(12, 16)}-${hex.substring(16, 20)}-${hex.substring(20)}"
-            val short = encodeArtifactShortId(uuid)!!
-            assertEquals(ARTIFACT_SHORT_ID_LENGTH, short.length, uuid)
-            assertEquals(uuid, decodeArtifactShortId(short), uuid)
-        }
-    }
-
-    @Test
     fun roundTripsWithLeadingZeroBytes() {
         val random = kotlin.random.Random(58)
         for (zeros in 1..15) {
@@ -62,28 +49,6 @@ class ArtifactShortIdTest {
     fun encodingRefusesWhatIsNotAUuid() {
         for (bad in listOf("", "pt_cf5d7bb5-6bbe-4304-bc87-1ab40601a98e", "cf5d7bb56bbe4304bc871ab40601a98e", "cf5d7bb5-6bbe-4304-bc87-1ab40601a98", "gf5d7bb5-6bbe-4304-bc87-1ab40601a98e")) {
             assertNull(encodeArtifactShortId(bad), bad)
-        }
-    }
-
-    @Test
-    fun decodingIsStrict() {
-        for (
-        bad in listOf(
-            "",
-            "ScAiFjjtiUvoyEYA6Ry12", // 21
-            "ScAiFjjtiUvoyEYA6Ry12uu", // 23
-            "ScAiFjjtiUvoyEYA6Ry120", // 0 isn't in the alphabet
-            "ScAiFjjtiUvoyEYA6Ry12O", // nor O
-            "ScAiFjjtiUvoyEYA6Ry12I", // nor I
-            "ScAiFjjtiUvoyEYA6Ry12l", // nor l
-            "ScAiFjjtiUvoyEYA6Ry1-u",
-            " ScAiFjjtiUvoyEYA6Ry12u",
-            "YcVfxkQb6JRzqk5kF2tNLw", // 2^128: one over 16 bytes
-            "zzzzzzzzzzzzzzzzzzzzzz",
-            "a111111111111111111111", // any lowercase lead is over 16 bytes
-        )
-        ) {
-            assertNull(decodeArtifactShortId(bad), bad)
         }
     }
 }

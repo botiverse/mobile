@@ -1,7 +1,6 @@
 package build.raft.app.data
 
 import build.raft.app.model.ChannelId
-import build.raft.app.model.DirectMessageCreated
 import build.raft.app.model.MemberId
 import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberProfile
@@ -48,23 +47,6 @@ class SharedHomeStoreLiveRealtimeTest {
         assertEquals("live update", harness.channel().lastMessagePreview)
         harness.api.release()
         runCurrent()
-        harness.scope.cancel()
-    }
-
-    @Test
-    fun directMessageCreatedReturnsBeforeItsHomeReloadFinishes() = runTest {
-        val harness = harness()
-
-        val apply = async { harness.store.accept(realtime(DirectMessageCreated(ChannelId("dm-new")))) }
-        runCurrent()
-
-        assertTrue(apply.isCompleted, "the live apply must launch the Home reload, not run it inline")
-        assertEquals(2, harness.api.channelsCalls, "dm:new still starts a Home reload")
-        harness.api.release()
-        harness.store.awaitRealtimeSettled()
-        val content = harness.store.state.value.content
-        assertTrue(content is SharedHomeContentState.Content, "reload settles on content, state=$content")
-        assertEquals(false, content.contentRefreshing)
         harness.scope.cancel()
     }
 

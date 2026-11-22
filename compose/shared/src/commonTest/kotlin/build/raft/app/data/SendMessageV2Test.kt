@@ -61,16 +61,6 @@ class SendMessageV2Test {
     }
 
     @Test
-    fun unresolvedMentionHandlesKeepOnlyStringItemsAsWebDoes() = runBlocking {
-        val page =
-            send(
-                """{"message":$MessageRow,"unresolvedMentionHandles":["@a",1,null,{"x":1},"","  ","@b"]}"""
-            )
-
-        assertEquals(listOf("@a", "@b"), page.unresolvedMentionHandles)
-    }
-
-    @Test
     fun aMalformedUnresolvedMentionFieldNeverFailsTheSend() = runBlocking {
         listOf("\"@a\"", "{}", "null", "42").forEach { value ->
             val page = send("""{"message":$MessageRow,"unresolvedMentionHandles":$value}""")

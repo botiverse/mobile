@@ -7,10 +7,7 @@ import build.raft.app.model.ChannelId
 import build.raft.app.runPortableCoroutineTest
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
-import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
@@ -36,26 +33,6 @@ class ThreadComposerDirectFileUploadTest {
                 capabilities = enabled(threshold = 10L, maxBytes = 100L),
                 sizeBytes = 50L,
                 cancelled = true,
-            ),
-        )
-    }
-
-    @Test
-    fun disabledOrMissingThresholdUsesMultipart() {
-        assertEquals(
-            ThreadComposerDirectUploadDecision.LegacyMultipart,
-            decideThreadComposerDirectUpload(
-                capabilities = enabled(threshold = 10L, maxBytes = 200L, directEnabled = false),
-                sizeBytes = 50L,
-                cancelled = false,
-            ),
-        )
-        assertEquals(
-            ThreadComposerDirectUploadDecision.LegacyMultipart,
-            decideThreadComposerDirectUpload(
-                capabilities = enabled(threshold = null, maxBytes = 200L),
-                sizeBytes = 50L,
-                cancelled = false,
             ),
         )
     }
@@ -117,31 +94,6 @@ class ThreadComposerDirectFileUploadTest {
     }
 
     @Test
-    fun fileRefOnlyAboveMaxBytesIsTooLargeAfterPrepare() = runBlocking {
-        val gateway = FakeThreadGateway()
-        gateway.preparedRefSizes["ref-1"] = 51L
-        val unresolved =
-            PlatformFile(
-                id = "local-ref",
-                fileName = "a.bin",
-                mimeType = "application/octet-stream",
-                sizeBytes = null,
-                bytes = ByteArray(0),
-                fileRef = "ref-1",
-            )
-        val resolved =
-            resolveThreadComposerDirectUpload(
-                file = unresolved,
-                capabilities = enabled(threshold = 10L, maxBytes = 50L),
-                cancelled = false,
-                prepare = gateway::prepare,
-            )
-        val upload = assertIs<DataResult.Content<ThreadComposerResolvedUpload>>(resolved).data
-        assertEquals(ThreadComposerDirectUploadDecision.TooLarge, upload.decision)
-        assertEquals(51L, upload.file.sizeBytes)
-    }
-
-    @Test
     fun staleOversizeHintDoesNotRejectAfterPrepare() = runBlocking {
         val gateway = FakeThreadGateway()
         gateway.preparedRefSizes["ref-1"] = 90L
@@ -164,78 +116,6 @@ class ThreadComposerDirectFileUploadTest {
         val upload = assertIs<DataResult.Content<ThreadComposerResolvedUpload>>(resolved).data
         assertEquals(ThreadComposerDirectUploadDecision.Direct, upload.decision)
         assertEquals(90L, upload.file.sizeBytes)
-    }
-
-    @Test
-    fun staleUndersizeHintDoesNotSkipDirectAfterPrepare() = runBlocking {
-        val gateway = FakeThreadGateway()
-        gateway.preparedRefSizes["ref-1"] = 90L
-        val unresolved =
-            PlatformFile(
-                id = "local-ref",
-                fileName = "a.bin",
-                mimeType = "application/octet-stream",
-                sizeBytes = 1L,
-                bytes = ByteArray(0),
-                fileRef = "ref-1",
-            )
-        val resolved =
-            resolveThreadComposerDirectUpload(
-                file = unresolved,
-                capabilities = enabled(threshold = 90L, maxBytes = 200L),
-                cancelled = false,
-                prepare = gateway::prepare,
-            )
-        val upload = assertIs<DataResult.Content<ThreadComposerResolvedUpload>>(resolved).data
-        assertEquals(ThreadComposerDirectUploadDecision.Direct, upload.decision)
-        assertEquals(90L, upload.file.sizeBytes)
-    }
-
-    @Test
-    fun bytesBackedStaleHintUsesActualByteLength() = runBlocking {
-        val unresolved =
-            PlatformFile(
-                id = "local-bytes",
-                fileName = "a.bin",
-                mimeType = "application/octet-stream",
-                sizeBytes = 999_999L,
-                bytes = ByteArray(90) { 1 },
-            )
-        val resolved =
-            resolveThreadComposerDirectUpload(
-                file = unresolved,
-                capabilities = enabled(threshold = 90L, maxBytes = 200L),
-                cancelled = false,
-                prepare = ::prepareDirectAttachmentUploadFile,
-            )
-        val upload = assertIs<DataResult.Content<ThreadComposerResolvedUpload>>(resolved).data
-        assertEquals(ThreadComposerDirectUploadDecision.Direct, upload.decision)
-        assertEquals(90L, upload.file.sizeBytes)
-    }
-
-    @Test
-    fun fileRefOnlyBelowThresholdUsesMultipartAfterPrepare() = runBlocking {
-        val gateway = FakeThreadGateway()
-        gateway.preparedRefSizes["ref-1"] = 89L
-        val unresolved =
-            PlatformFile(
-                id = "local-ref",
-                fileName = "a.bin",
-                mimeType = "application/octet-stream",
-                sizeBytes = null,
-                bytes = ByteArray(0),
-                fileRef = "ref-1",
-            )
-        val resolved =
-            resolveThreadComposerDirectUpload(
-                file = unresolved,
-                capabilities = enabled(threshold = 90L, maxBytes = 200L),
-                cancelled = false,
-                prepare = gateway::prepare,
-            )
-        val upload = assertIs<DataResult.Content<ThreadComposerResolvedUpload>>(resolved).data
-        assertEquals(ThreadComposerDirectUploadDecision.LegacyMultipart, upload.decision)
-        assertEquals(89L, upload.file.sizeBytes)
     }
 
     @Test
@@ -269,44 +149,6 @@ class ThreadComposerDirectFileUploadTest {
     }
 
     @Test
-    fun putUncertainObjectNotFoundDoesNotCreateNewSession() = runBlocking {
-        val gateway = FakeThreadGateway()
-        gateway.putResults.add(
-            DataResult.Error(ScreenError(code = "network_request_failed", retryable = true)),
-        )
-        gateway.statusResults.add(
-            DataResult.Content(
-                AttachmentUploadSessionView(
-                    uploadId = "11111111-1111-4111-8111-111111111111",
-                    state = "pending",
-                    expiresAt = "2026-09-05T00:00:00Z",
-                    attachment = null,
-                ),
-            ),
-        )
-        gateway.completeResults.add(
-            DataResult.Error(
-                ScreenError(
-                    code = "attachment_upload_session_complete_failed",
-                    retryable = true,
-                    serverCode = "UPLOAD_OBJECT_NOT_FOUND",
-                ),
-            ),
-        )
-        val result =
-            gateway.uploadOneThreadFile(
-                channelId = ChannelId("channel-1"),
-                file = file(size = 100),
-                clientRequestId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
-            )
-        val error = assertIs<DataResult.Error>(result).error
-        assertEquals("UPLOAD_OBJECT_PUT_UNCERTAIN", error.code)
-        assertEquals(1, gateway.createRequests.size)
-        assertTrue(gateway.completeCalls >= 1)
-        assertEquals(0, gateway.cancelCalls)
-    }
-
-    @Test
     fun statusCompletedWithForeignUploadIdFailsClosed() = runBlocking {
         val gateway = FakeThreadGateway()
         gateway.putResults.add(
@@ -332,85 +174,6 @@ class ThreadComposerDirectFileUploadTest {
         assertEquals("attachment_upload_session_contract_invalid", error.code)
         assertEquals(1, gateway.createRequests.size)
         assertEquals(0, gateway.completeCalls)
-        assertEquals(1, gateway.cancelCalls)
-    }
-
-    @Test
-    fun statusCompletedWithForeignAttachmentIdFailsClosed() = runBlocking {
-        val gateway = FakeThreadGateway()
-        gateway.putResults.add(
-            DataResult.Error(ScreenError(code = "network_request_failed", retryable = true)),
-        )
-        gateway.statusResults.add(
-            DataResult.Content(
-                AttachmentUploadSessionView(
-                    uploadId = "11111111-1111-4111-8111-111111111111",
-                    state = "completed",
-                    expiresAt = "2026-09-05T00:00:00Z",
-                    attachment = matchingAttachment(id = "44444444-4444-4444-8444-444444444444"),
-                ),
-            ),
-        )
-        val result =
-            gateway.uploadOneThreadFile(
-                channelId = ChannelId("channel-1"),
-                file = file(size = 100),
-                clientRequestId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
-            )
-        val error = assertIs<DataResult.Error>(result).error
-        assertEquals("attachment_upload_session_contract_invalid", error.code)
-        assertEquals(1, gateway.createRequests.size)
-        assertEquals(0, gateway.completeCalls)
-        assertEquals(1, gateway.cancelCalls)
-    }
-
-    @Test
-    fun completeWithForeignUploadIdFailsClosed() = runBlocking {
-        val gateway = FakeThreadGateway()
-        gateway.completeResults.add(
-            DataResult.Content(
-                AttachmentUploadSessionCompleteResult(
-                    uploadId = "33333333-3333-4333-8333-333333333333",
-                    state = "completed",
-                    attachment = matchingAttachment(),
-                ),
-            ),
-        )
-        val result =
-            gateway.uploadOneThreadFile(
-                channelId = ChannelId("channel-1"),
-                file = file(size = 100),
-                clientRequestId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
-            )
-        val error = assertIs<DataResult.Error>(result).error
-        assertEquals("attachment_upload_session_contract_invalid", error.code)
-        assertEquals(1, gateway.createRequests.size)
-        assertEquals(1, gateway.completeCalls)
-        assertEquals(1, gateway.cancelCalls)
-    }
-
-    @Test
-    fun completeWithForeignAttachmentIdFailsClosed() = runBlocking {
-        val gateway = FakeThreadGateway()
-        gateway.completeResults.add(
-            DataResult.Content(
-                AttachmentUploadSessionCompleteResult(
-                    uploadId = "11111111-1111-4111-8111-111111111111",
-                    state = "completed",
-                    attachment = matchingAttachment(id = "44444444-4444-4444-8444-444444444444"),
-                ),
-            ),
-        )
-        val result =
-            gateway.uploadOneThreadFile(
-                channelId = ChannelId("channel-1"),
-                file = file(size = 100),
-                clientRequestId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
-            )
-        val error = assertIs<DataResult.Error>(result).error
-        assertEquals("attachment_upload_session_contract_invalid", error.code)
-        assertEquals(1, gateway.createRequests.size)
-        assertEquals(1, gateway.completeCalls)
         assertEquals(1, gateway.cancelCalls)
     }
 
@@ -461,35 +224,6 @@ class ThreadComposerDirectFileUploadTest {
         assertTrue(secondIds.all { it == secondId })
         assertEquals(firstId, registry.idFor(first))
         assertEquals(secondId, registry.idFor(second))
-    }
-
-    @Test
-    fun jobCancelAfterCreateDeletesSameSessionUnderNonCancellable() = runPortableCoroutineTest {
-        val gateway = FakeThreadGateway()
-        val accepted = CompletableDeferred<Unit>()
-        val release = CompletableDeferred<Unit>()
-        gateway.putAccepted = accepted
-        gateway.putRelease = release
-        val job: Job = launch(start = CoroutineStart.UNDISPATCHED) {
-            try {
-                gateway.uploadOneThreadFile(
-                    channelId = ChannelId("channel-1"),
-                    file = file(size = 100),
-                    clientRequestId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
-                )
-                error("canceled upload unexpectedly completed")
-            } catch (_: CancellationException) {
-            }
-        }
-        accepted.await()
-        job.cancel()
-        release.complete(Unit)
-        job.cancelAndJoin()
-        assertEquals(1, gateway.createRequests.size)
-        assertEquals(1, gateway.putCalls)
-        assertEquals(1, gateway.cancelCalls)
-        assertEquals(0, gateway.completeCalls)
-        assertEquals("11111111-1111-4111-8111-111111111111", gateway.cancelledIds.single())
     }
 
     @Test

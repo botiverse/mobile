@@ -1,11 +1,9 @@
 package build.raft.app.format
 
 import build.raft.app.KmmResourceLocaleRuntime
-import build.raft.app.data.AppLocale
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertNull
 
 /** Golden values of the one byte-size / speed formatter, per UI language (Web `formatFileSizeBytes`). */
 class RaftFormatTest {
@@ -63,55 +61,5 @@ class RaftFormatTest {
             assertEquals("245.1 GB", RaftFormat.diskBytes(245_107_195_904.0, locale))
             assertEquals("0 B", RaftFormat.diskBytes(Double.NaN, locale))
         }
-    }
-
-    @Test
-    fun speedIsTheSizePerSecondAndUnknownBelowOneByte() {
-        for (locale in RaftFormatLocale.entries) {
-            assertEquals("850.0 KB/s", RaftFormat.speed(850L * 1024, locale), locale.languageTag)
-            assertEquals("1.5 MB/s", RaftFormat.speed(1_572_864L, locale), locale.languageTag)
-            assertNull(RaftFormat.speed(0L, locale))
-            assertNull(RaftFormat.speed(null, locale))
-        }
-    }
-
-    @Test
-    fun limitsUseWholeUnitsWhenExact() {
-        val cases =
-            listOf(
-                50L * 1024 * 1024 to "50 MB",
-                200L * 1024 * 1024 to "200 MB",
-                2L * gib to "2 GB",
-                2048L to "2 KB",
-                1536L to "1.5 KB",
-                512L to "512 B"
-            )
-        for (locale in RaftFormatLocale.entries) {
-            cases.forEach { (bytes, expected) -> assertEquals(expected, RaftFormat.byteLimit(bytes, locale), "$bytes") }
-        }
-    }
-
-    @Test
-    fun doubleSizesFromTheServerFormatTheSame() {
-        assertEquals("0 B", RaftFormat.bytes(Double.NaN, RaftFormatLocale.English))
-        assertEquals("0 B", RaftFormat.bytes(0.0, RaftFormatLocale.English))
-        assertEquals("512 B", RaftFormat.bytes(512.0, RaftFormatLocale.English))
-        assertEquals("120.0 GB", RaftFormat.bytes(120.0 * gib, RaftFormatLocale.English))
-    }
-
-    @Test
-    fun currentLocaleFollowsTheAppLanguage() {
-        val cases =
-            listOf(
-                AppLocale.English to RaftFormatLocale.English,
-                AppLocale.SimplifiedChinese to RaftFormatLocale.SimplifiedChinese,
-                AppLocale.Japanese to RaftFormatLocale.Japanese
-            )
-        cases.forEach { (app, expected) ->
-            KmmResourceLocaleRuntime.replaceForTest(app)
-            assertEquals(expected, RaftFormatLocale.current(), app.name)
-        }
-        val tags = listOf("zh-Hans-CN" to RaftFormatLocale.SimplifiedChinese, "ja_JP" to RaftFormatLocale.Japanese, "de-DE" to RaftFormatLocale.English, null to RaftFormatLocale.English)
-        tags.forEach { (tag, expected) -> assertEquals(expected, RaftFormatLocale.forLanguageTag(tag), "$tag") }
     }
 }

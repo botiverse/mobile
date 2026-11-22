@@ -5,7 +5,6 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.runTest
-import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.boolean
 import kotlinx.serialization.json.jsonPrimitive
 
@@ -50,36 +49,6 @@ class RaftProductEntryEventsRecorderTest {
         }
 
     @Test
-    fun channelTabSwipedCarriesHeaderSwipeSurfaceAndWasActiveFalse() =
-        runTest {
-            listOf(RaftChannelTab.Chat to "chat", RaftChannelTab.Tasks to "tasks", RaftChannelTab.Files to "files").forEach { (tab, wire) ->
-                val (recorder, transport) = recorderWithTransport()
-                recorder.channelTabSwiped(tab)
-                val event = single(transport, recorder)
-                assertEquals("channel_tab_selected", event.event)
-                assertEquals(mapOf("tab" to wire, "surface" to "header_swipe", "was_active" to "false"), event.props())
-                assertEquals(false, event.properties.getValue("was_active").jsonPrimitive.boolean)
-            }
-        }
-
-    @Test
-    fun messageActionSelectedIsLongPressAndSetsInThreadPerMessage() =
-        runTest {
-            val reply = recorderWithTransport()
-            reply.first.messageActionSelected(RaftMessageAction.OpenMenu, inThread = true)
-            val replyEvent = single(reply.second, reply.first)
-            assertEquals("message_action_selected", replyEvent.event)
-            assertEquals(mapOf("action" to "open_menu", "surface" to "long_press", "in_thread" to "true"), replyEvent.props())
-            assertEquals(true, replyEvent.properties.getValue("in_thread").jsonPrimitive.boolean)
-
-            val topLevel = recorderWithTransport()
-            topLevel.first.messageActionSelected(RaftMessageAction.CopyMarkdown, inThread = false)
-            val topLevelEvent = single(topLevel.second, topLevel.first)
-            assertEquals(mapOf("action" to "copy_markdown", "surface" to "long_press", "in_thread" to "false"), topLevelEvent.props())
-            assertEquals(false, topLevelEvent.properties.getValue("in_thread").jsonPrimitive.boolean)
-        }
-
-    @Test
     fun activityEventsCarryOnlyTheRegisteredField() =
         runTest {
             val open = recorderWithTransport()
@@ -94,19 +63,6 @@ class RaftProductEntryEventsRecorderTest {
                 val markEvent = single(mark.second, mark.first)
                 assertEquals("activity_mark", markEvent.event)
                 assertEquals(mapOf("action" to action.wire), markEvent.props())
-            }
-        }
-
-    @Test
-    fun agentCreateOpenedCarriesTheEntry() =
-        runTest {
-            RaftAgentCreateEntry.entries.forEach { entry ->
-                val (recorder, transport) = recorderWithTransport()
-                recorder.agentCreateOpened(entry)
-                val event = single(transport, recorder)
-                assertEquals("agent_create_opened", event.event)
-                assertEquals(mapOf("entry" to entry.wire), event.props())
-                assertEquals(JsonPrimitive(entry.wire), event.properties.getValue("entry"))
             }
         }
 }

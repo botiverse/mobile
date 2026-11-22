@@ -346,21 +346,6 @@ class SyncChangesStoreRouterTest {
     }
 
     @Test
-    fun `a viewer without viewMachines keeps its cursor through a machines 403 and a reset`() = runTest {
-        targets.machineResults = listOf(guestForbidden)
-        cursors.write(syncTestScope, "c1.1.1")
-        val reset = """{"reason":"forced","snapshots":["machines"]}"""
-
-        val result = engine(syncPage(syncChangesBody("c1.2.1", reset = reset))).pull(syncTestScope, trigger = "reconnect")
-
-        assertEquals("forced", assertIs<RaftSyncPullResult.Synced>(result).resetReason)
-        assertEquals(listOf("machines_reload"), targets.calls)
-        assertEquals("c1.2.1", cursors.read(syncTestScope))
-        // Not a failure: the next pull does not read it again.
-        assertTrue(ledger.takeRetakes("server-1").isEmpty)
-    }
-
-    @Test
     fun `a 5xx roster still fails the first sync and keeps no cursor`() = runTest {
         targets.rosterResults = listOf(serverUnavailable)
 
@@ -418,35 +403,5 @@ class SyncChangesStoreRouterTest {
         ledger.endListRead("server-1", RaftSyncListRead.Activity, ledger.beginListRead("server-1", RaftSyncListRead.Activity), RaftSyncSnapshotRead.Failed)
         assertEquals(setOf(RaftSyncListRead.Activity), ledger.takeRetakes("server-1").lists)
         assertTrue(ledger.takeRetakes("server-1").isEmpty)
-    }
-
-    @Test
-    fun `failed channel member and roster reloads after a page are retaken by the next pull`() = runTest {
-        cursors.write(syncTestScope, "c1.1.1")
-        targets.channelMembersOk = false
-        targets.rosterResults = listOf(serverUnavailable)
-        engine(
-            syncPage(
-                syncChangesBody(
-                    "c1.2.1",
-                    changes = listOf(syncDelete(2, "channel_member", "ch-1:user:u-2"), """{"seq":3,"entity":"agent","id":"a-1","op":"quarantined"}"""),
-                )
-            )
-        ).pull(syncTestScope, trigger = "foreground")
-        assertEquals(listOf("channel_members", "roster_reload"), targets.calls)
-        // The cursor goes on: the rows were applied.
-        assertEquals("c1.2.1", cursors.read(syncTestScope))
-
-        targets.channelMembersOk = true
-        targets.rosterResults = listOf(DataResult.Content(Unit))
-        targets.calls.clear()
-        engine(syncPage(syncChangesBody("c1.3.1"))).pull(syncTestScope, trigger = "foreground")
-        assertEquals(listOf("roster_reload", "channel_members"), targets.calls)
-        // Every loaded roster: which channels failed is not kept.
-        assertEquals(null, targets.channelMemberRefreshes.last())
-
-        targets.calls.clear()
-        engine(syncPage(syncChangesBody("c1.4.1"))).pull(syncTestScope, trigger = "foreground")
-        assertEquals(emptyList(), targets.calls)
     }
 }

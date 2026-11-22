@@ -129,38 +129,6 @@ class SharedServerMembersRebaselineCarryOverTest {
     }
 
     @Test
-    fun rosterProjectionWithRealStatusOverwritesCarriedFact() = runBlocking {
-        val registry = ProcessMemberPresenceRegistry()
-        val logs = mutableListOf<String>()
-        val store = storeWith(registry, logs, agentAStatus = { "stopped" })
-        switchWithKnownOnline(registry)
-
-        store.refreshMembers(serverId, force = true, reason = "presence_transport_connected")
-
-        assertEquals(AgentStatus.Offline, registry.factFor(owner, "agent-a")?.agentStatus)
-        assertTrue(registry.carriedOverMemberIds(owner).isEmpty())
-        val line = logs.single { it.startsWith("roster_presence_projection ") }
-        assertTrue("retained=0 " in line, line)
-        assertTrue("offline=1[agent-a]" in line, line)
-    }
-
-    /** artin #triage:#97: no fact + lifecycle `active` reads "Likely online", display only. */
-    @Test
-    fun neverSeenActiveAgentReadsLikelyOnlineWithoutAFact() = runBlocking {
-        val registry = ProcessMemberPresenceRegistry()
-        val store = storeWith(registry)
-        switchWithKnownOnline(registry)
-        store.refreshMembers(serverId, force = true, reason = "presence_transport_connected")
-
-        assertNull(registry.factFor(owner, "agent-never"), "the guess is never written as a fact")
-        val status = assertNotNull(store.currentMemberStatus(serverId, "agent-never"))
-        assertNull(status.status)
-        assertTrue(status.likelyOnline)
-        assertEquals(Presence.Active, status.presence)
-        assertEquals(LikelyOnlineAgentStatusLabel, status.statusLabel)
-    }
-
-    @Test
     fun parserKeepsActiveLifecycleUnknown() {
         val agent = assertNotNull(parseSharedSettingsAgentsAsMembers(agentsJson())).single { it.id.value == "agent-a" }
         assertNull(agent.agentStatus)

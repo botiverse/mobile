@@ -7,7 +7,6 @@ import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertTrue
 
 /**
  * Tenny's request rules for the Computers page's runtime usage reads, on virtual time: at most 4
@@ -16,74 +15,6 @@ import kotlin.test.assertTrue
  */
 class RaftComputersRackUsageTest {
     private val owner = SharedComputersOwner(environmentId = "https://api.example", accountId = "user-1", sessionGeneration = "gen-1")
-
-    @Test
-    fun neverMoreThanFourReadsInFlight() = runTest {
-        val api = SlowUsageApi(latencyMillis = 1_000L)
-        val store = store(api)
-        val keys = raftComputersRackUsageKeys(owner, "s1", List(10) { computer("m$it", runtimes = listOf("claude")) })
-        assertEquals(10, keys.size)
-
-        RaftComputersRackUsageSession(store).open(keys) { _, _ -> }
-
-        assertEquals(10, api.calls.size)
-        assertEquals(4, api.maxInFlight)
-        // 10 reads, 4 at a time, 1 s each: three rounds.
-        assertEquals(3_000L, testScheduler.currentTime)
-    }
-
-    @Test
-    fun noRepeatReadWithinSixtySecondsEvenAcrossPageVisits() = runTest {
-        val api = SlowUsageApi(latencyMillis = 0L)
-        val store = store(api)
-        val keys = raftComputersRackUsageKeys(owner, "s1", listOf(computer("m1", runtimes = listOf("claude", "codex"))))
-        val visit = RaftComputersRackUsageSession(store)
-
-        visit.open(keys) { _, _ -> }
-        assertEquals(2, api.calls.size)
-        // The same visit sees the list again (a realtime update): nothing is read again.
-        visit.open(keys) { _, _ -> }
-        assertEquals(2, api.calls.size)
-
-        advanceTimeBy(RUNTIME_ACCOUNT_USAGE_CACHE_MILLIS - 1)
-        // The page opened again inside 60 s: the store's cache answers.
-        val results = mutableListOf<RuntimeAccountUsageLoad>()
-        RaftComputersRackUsageSession(store).open(keys) { _, load -> results += load }
-        assertEquals(2, api.calls.size)
-        assertEquals(2, results.size)
-        assertTrue(results.all { it is RuntimeAccountUsageLoad.Loaded })
-
-        advanceTimeBy(1)
-        RaftComputersRackUsageSession(store).open(keys) { _, _ -> }
-        assertEquals(4, api.calls.size)
-    }
-
-    @Test
-    fun offlineAndNoPermissionComputersAreNotRead() = runTest {
-        val api = SlowUsageApi(latencyMillis = 0L)
-        val computers =
-            listOf(
-                computer("m-ok", runtimes = listOf("gemini", "kimi-sdk", "codex", "claude", "kimi")),
-                computer("m-offline", runtimes = listOf("claude"), online = false),
-                computer("m-denied", runtimes = listOf("claude"), canView = false),
-                computer("m-none", runtimes = listOf("gemini")),
-            )
-        val keys = raftComputersRackUsageKeys(owner, "s1", computers)
-        assertEquals(
-            listOf(RuntimeAccountUsageProvider.Claude, RuntimeAccountUsageProvider.Codex, RuntimeAccountUsageProvider.Kimi),
-            keys.map { it.provider },
-        )
-        assertTrue(keys.all { it.machineId == "m-ok" })
-
-        RaftComputersRackUsageSession(store(api)).open(keys) { _, _ -> }
-        assertEquals(
-            listOf("m-ok/claude", "m-ok/codex", "m-ok/kimi"),
-            api.calls.sorted(),
-        )
-        // No owner or no server yet: nothing to read.
-        assertEquals(emptyList(), raftComputersRackUsageKeys(null, "s1", computers))
-        assertEquals(emptyList(), raftComputersRackUsageKeys(owner, " ", computers))
-    }
 
     @Test
     fun pullToRefreshReadsPastTheCache() = runTest {

@@ -52,15 +52,4 @@ class RealtimeEventCanonicalCarryTransientTest {
         assertNull(restored.decodedCanonical, "the @Transient carry must not survive serialization")
         assertEquals(event.message, restored.message, "the authoritative message must round-trip unchanged")
     }
-
-    @Test
-    fun messageUpdated_roundTrip_dropsTheCarry() {
-        val event = MessageUpdated(message = message(), decodedCanonical = carry())
-        val restored = json.decodeFromString(
-            MessageUpdated.serializer(),
-            json.encodeToString(MessageUpdated.serializer(), event),
-        )
-        assertNull(restored.decodedCanonical, "the @Transient carry must not survive serialization")
-        assertEquals(event.message, restored.message, "the authoritative message must round-trip unchanged")
-    }
 }

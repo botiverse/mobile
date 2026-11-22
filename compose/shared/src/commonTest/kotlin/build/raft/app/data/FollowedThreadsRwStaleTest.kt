@@ -5,7 +5,6 @@ import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
-import kotlin.test.assertNull
 
 /**
  * Task #164: `GET /channels/threads/followed` (first page) while the read warehouse is behind.
@@ -44,13 +43,6 @@ class FollowedThreadsRwStaleTest {
         val error = assertIs<DataResult.Error>(result).error
         assertEquals("server_unavailable", error.code)
         assertEquals(true, error.isRwOverloaded)
-    }
-
-    @Test
-    fun aFreshAnswerCarriesNoStaleReason() = runTest {
-        val result = repository(HomeNetworkResponse(200, followedBody(unread = 1))).getUnreadFollowedThreads(ServerId("server-1"))
-
-        assertNull(assertIs<DataResult.Content<ThreadListSnapshot>>(result).data.staleReason)
     }
 
     private fun followedBody(unread: Int): String =

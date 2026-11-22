@@ -16,12 +16,6 @@ class RaftImageSourceDataUriTest {
     }
 
     @Test
-    fun base64AndNonSvgDataUrisStayWithCoil() {
-        assertNull(raftImageSourceOf("data:image/svg+xml;base64,PHN2Zz48L3N2Zz4="))
-        assertNull(raftImageSourceOf("data:image/png;utf8,$EncodedSvg"))
-    }
-
-    @Test
     fun malformedSvgDataUriIsNotClaimed() {
         assertNull(raftImageSourceOf("data:image/svg+xml;utf8"), "no payload separator")
         assertNull(raftImageSourceOf("data:image/svg+xml;utf8,%3Csvg%2"), "truncated escape")

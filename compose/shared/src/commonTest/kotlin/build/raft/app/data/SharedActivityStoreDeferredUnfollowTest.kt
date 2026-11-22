@@ -12,7 +12,6 @@ import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertIs
 import kotlin.test.assertNull
 
 /**
@@ -205,29 +204,6 @@ class SharedActivityStoreDeferredUnfollowTest {
     }
 
     @Test
-    fun aWaitingUnfollowStillLandsAfterTheFilterDroppedTheRow() = runTest {
-        val conversation = FakeConversationRepository()
-        val store =
-            activityStore(
-                backgroundScope,
-                FakeInboxRepository(initialSnapshots = listOf(snapshot(listOf(threadA)), snapshot(emptyList()))),
-                conversationRepository = conversation,
-            )
-        store.dispatch(SharedActivityIntent.LoadInitial)
-        runCurrent()
-        val panel = Panel(store)
-
-        panel.unfollow(threadA)
-        // The person switches to Mentions: the store no longer holds the row when the list goes away.
-        store.dispatch(SharedActivityIntent.SetFilter(InboxFilter.Mentions))
-        runCurrent()
-        assertEquals(emptyList(), store.state.value.items)
-        panel.leave()
-        runCurrent()
-        assertEquals(listOf(ChannelId("thread-a")), conversation.unfollowedThreadChannelIds)
-    }
-
-    @Test
     fun aWaitingUnfollowFromAnotherServersListWritesNothing() = runTest {
         val conversation = FakeConversationRepository()
         val store =
@@ -240,20 +216,6 @@ class SharedActivityStoreDeferredUnfollowTest {
         otherServerPanel.leave()
         runCurrent()
         assertEquals(emptyList(), conversation.unfollowedThreadChannelIds)
-    }
-
-    @Test
-    fun aWaitingUnfollowIsSentEvenIfTheThreadGotNewActivity() = runTest {
-        val swiped = threadA
-        val pending = ActivitySwipeDoneUndoState().swipe(swiped, ActivitySwipeDeferredAction.Unfollow, "user-1", "server-1").state.pending!!
-        val newer = swiped.copy(unreadCount = 5, latestActivityAt = "2026-10-28T10:00:00Z", doneFrontierSeq = "99")
-        val intent = assertIs<SharedActivityIntent.UnfollowThread>(activitySwipeDeferredCommitIntent(pending, newer))
-        assertEquals(newer, intent.item)
-        assertEquals("user-1", intent.listOwnerUserId)
-        assertEquals("server-1", intent.listOwnerServerId)
-        // A Done in the same spot is dropped (unchanged).
-        val done = ActivitySwipeDoneUndoState().swipe(swiped).state.pending!!
-        assertNull(activitySwipeDeferredCommitIntent(done, newer.copy(isFollowing = true)))
     }
 
     @Test

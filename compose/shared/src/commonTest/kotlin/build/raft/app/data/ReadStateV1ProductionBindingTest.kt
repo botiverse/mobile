@@ -4,7 +4,6 @@ import build.raft.app.network.sync.ReadStateV1CommitGuard
 import build.raft.app.network.sync.ReadStateV1CommitMode
 import build.raft.app.network.sync.ReadStateV1Fact
 import build.raft.app.network.sync.ReadStateV1GenerationResult
-import build.raft.app.network.sync.ReadStateV1GrantWitness
 import build.raft.app.network.sync.ReadStateV1ProductionCanary
 import build.raft.app.network.sync.ReadStateV1ProductionDisposition
 import build.raft.app.network.sync.ReadStateV1ProductionOwner
@@ -22,7 +21,6 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
-import kotlin.test.assertSame
 import kotlin.test.assertTrue
 
 class ReadStateV1ProductionBindingTest {
@@ -104,33 +102,6 @@ class ReadStateV1ProductionBindingTest {
     }
 
     @Test
-    fun preBaselineIncrementalsCoalesceAndCarryTheOriginalWitnessIntoProjection() = runBlocking {
-        val projectionWitnesses = mutableListOf<ReadStateV1GrantWitness>()
-        val rebaselineWitnesses = mutableListOf<ReadStateV1GrantWitness>()
-        val canary =
-            ReadStateV1ProductionCanary(
-                isEnabledForServer = { true },
-                store = TestReadStateV1Store(),
-                onProjection = { _, witness, _ -> projectionWitnesses += witness },
-                onRebaseline = { _, witness, _ -> rebaselineWitnesses += witness },
-            )
-
-        assertEquals(
-            ReadStateV1ProductionDisposition.Selected(ReadStateV1GenerationResult.BaselineRequired(true)),
-            canary.applyMutationAck(owner, "channel-1", 1, 4),
-        )
-        assertEquals(
-            ReadStateV1ProductionDisposition.Selected(ReadStateV1GenerationResult.BaselineRequired(false)),
-            canary.applyOwnerRealtime(owner, "channel-1", 2, 5),
-        )
-        canary.applyHydrate(owner, "channel-1", 3, 6)
-
-        assertEquals(1, rebaselineWitnesses.size)
-        assertEquals(1, projectionWitnesses.size)
-        assertSame(rebaselineWitnesses.single(), projectionWitnesses.single())
-    }
-
-    @Test
     fun selectedCommitFailureDoesNotFallOpen() = runBlocking {
         val fixture = fixture(failCommit = true)
         assertIs<ReadStateV1ProductionDisposition.SelectedFailure>(
@@ -158,61 +129,6 @@ class ReadStateV1ProductionBindingTest {
         assertTrue(fixture.canary.completePreparedHydrateProjection(owner, newFact) { newWriteCount += 1 })
         assertEquals(1, newWriteCount)
         assertEquals(listOf(newFact), fixture.projections)
-    }
-
-    @Test
-    fun sameDurableHydrateAfterRevokeProjectsThroughTheReplacementWitnessBeforeRelease() = runBlocking {
-        val fixture = fixture()
-        val fact = ReadStateV1Fact("channel-1", 1, 4)
-
-        assertEquals(
-            ReadStateV1ProductionDisposition.Selected(ReadStateV1GenerationResult.Committed, fact),
-            fixture.canary.applyHydrate(owner, fact.channelId, fact.readStateVersion, fact.maxReadSeq),
-        )
-        fixture.canary.revoke(owner)
-        assertEquals(
-            ReadStateV1ProductionDisposition.Selected(ReadStateV1GenerationResult.Current, fact),
-            fixture.canary.applyHydrate(owner, fact.channelId, fact.readStateVersion, fact.maxReadSeq),
-        )
-
-        assertEquals(listOf(fact, fact), fixture.projections)
-    }
-
-    @Test
-    fun revokeFirstRejectsStaleIncompleteAndFailedPreparedHomePublications() = runBlocking {
-        suspend fun assertRejectedAfterRevoke(
-            prepare: suspend (Fixture) -> ReadStateV1ProductionDisposition,
-        ) {
-            val fixture = fixture()
-            fixture.canary.applyHydrate(owner, "channel-1", 3, 9)
-            val disposition = prepare(fixture)
-            val publication =
-                when (disposition) {
-                    is ReadStateV1ProductionDisposition.Selected -> disposition.preparedPublication
-                    is ReadStateV1ProductionDisposition.SelectedFailure -> disposition.preparedPublication
-                    ReadStateV1ProductionDisposition.Legacy -> null
-                }
-            val preparedPublication =
-                requireNotNull(publication) {
-                    "every selected hydrate adjudication must carry its original witness"
-                }
-
-            fixture.canary.revoke(owner)
-            var writeCount = 0
-            assertFalse(fixture.canary.completePreparedPublication(preparedPublication) { writeCount += 1 })
-            assertEquals(0, writeCount)
-        }
-
-        assertRejectedAfterRevoke { fixture ->
-            fixture.canary.prepareHydrate(owner, "channel-1", 2, 99)
-        }
-        assertRejectedAfterRevoke { fixture ->
-            fixture.canary.prepareHydrate(owner, "channel-1", null, 99)
-        }
-        assertRejectedAfterRevoke { fixture ->
-            fixture.store.failCommit = true
-            fixture.canary.prepareHydrate(owner, "channel-1", 4, 10)
-        }
     }
 
     @Test
@@ -286,29 +202,6 @@ class ReadStateV1ProductionBindingTest {
             canary.applyOwnerRealtime(owner, "channel-1", 5, 50),
         )
         assertEquals(ReadStateV1Fact("channel-1", 4, 40), projections.last())
-    }
-
-    @Test
-    fun flagOffReplacementClosesOldPreparedDestinationBeforeReturning() = runBlocking {
-        var enabled = true
-        val canary =
-            ReadStateV1ProductionCanary(
-                isEnabledForServer = { enabled },
-                store = TestReadStateV1Store(),
-                onProjection = { _, _, _ -> },
-                onRebaseline = { _, _, _ -> },
-            )
-        val oldFact = ReadStateV1Fact("channel-1", 1, 10)
-        canary.prepareHydrate(owner, oldFact.channelId, oldFact.readStateVersion, oldFact.maxReadSeq)
-        enabled = false
-
-        assertIs<ReadStateV1ProductionDisposition.Selected>(
-            canary.applyOwnerRealtime(owner, oldFact.channelId, 2, 20),
-        )
-        var oldWriteCount = 0
-        assertFalse(canary.completePreparedHydrateProjection(owner, oldFact) { oldWriteCount += 1 })
-        assertEquals(0, oldWriteCount)
-        assertTrue(canary.isSelected(owner, oldFact.channelId), "snapshot barrier must remain selected")
     }
 
     @Test

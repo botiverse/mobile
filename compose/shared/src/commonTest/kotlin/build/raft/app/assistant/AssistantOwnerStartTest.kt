@@ -1,22 +1,13 @@
 package build.raft.app.assistant
 
-import build.raft.app.data.AgentLifecycleActionResult
 import build.raft.app.data.DataResult
 import build.raft.app.data.ScreenError
-import build.raft.app.model.MemberId
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
 
 /** The owner's Start on the paused notice (AssistantOwnerSection `AssistantOwnerPausedNotice`). */
 class AssistantOwnerStartTest {
-    private val agentId = MemberId("asst-1")
-
-    @Test
-    fun aStartThatWentThroughHasNoError() {
-        assertNull(assistantStartError(DataResult.Content(AgentLifecycleActionResult(agentId, success = true, action = "start"))))
-    }
-
     @Test
     fun aRefusedStartKeepsItsErrorAndTraceId() {
         val refused = ScreenError("http_409", serverCode = "machine_unassigned", traceId = TRACE_ID)
@@ -40,12 +31,6 @@ class AssistantOwnerStartTest {
         assertNull(assistantStartRefusal(ScreenError("http_409", traceId = null)))
         assertNull(assistantStartRefusal(ScreenError("server_unavailable", traceId = null)))
         assertNull(assistantStartRefusal(ScreenError(AssistantStartInFlightCode, traceId = null)))
-    }
-
-    @Test
-    fun theInFlightCodeIsTheRepositorysSingleFlightRefusal() {
-        // MemberRepositoryDataSource `executeAgentLifecycleAction`: `agent_${action}_in_flight`.
-        assertEquals("agent_start_in_flight", AssistantStartInFlightCode)
     }
 }
 

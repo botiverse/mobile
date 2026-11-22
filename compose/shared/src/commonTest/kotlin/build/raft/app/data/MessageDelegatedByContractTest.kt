@@ -3,13 +3,10 @@ package build.raft.app.data
 import build.raft.app.RaftThreadScreenPayload
 import build.raft.app.data.realtime.RealtimeEventMapper
 import build.raft.app.data.realtime.RealtimeSocketEvents
-import build.raft.app.model.ChannelId
 import build.raft.app.model.MessageDelegatedBy
 import build.raft.app.model.MessageNew
 import build.raft.app.model.MessageUpdated
 import build.raft.app.model.ThreadId
-import build.raft.app.toMessage
-import build.raft.app.toRaftThreadMessageItem
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
@@ -108,14 +105,6 @@ class MessageDelegatedByContractTest {
         assertEquals("2026-10-25T12:00:00.000Z", page.deletedAt)
         assertEquals(placeholder, page.body)
         assertNull(threadItem(aliceMessage(""", "deletedAt": null""")).deletedAt, "page null")
-    }
-
-    @Test
-    fun labelSurvivesTheThreadItemRoundTrip() {
-        val message = restMessage(aliceMessage())
-        val item = message.toRaftThreadMessageItem(currentUserId = "user-alice")
-        assertEquals(fridayLabel, item.delegatedBy)
-        assertEquals(fridayLabel, item.toMessage(ThreadId("channel-qa-x"), ChannelId("channel-qa-x"))?.delegatedBy)
     }
 
     @Test

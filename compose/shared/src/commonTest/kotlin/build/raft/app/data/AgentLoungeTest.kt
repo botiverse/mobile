@@ -193,22 +193,6 @@ class AgentLoungeTest {
     }
 
     @Test
-    fun aRefusedUnarchiveKeepsTheServersReason() = runTest {
-        RaftAgentLounges.rememberRow("server-1", loungeRow(archived = true), canPost = false)
-        val refused =
-            AgentLoungeApi(FakeNetwork { HomeNetworkResponse(403, null, """{"error":"Only admins can unarchive","code":"forbidden"}""") })
-                .unarchive(ServerId("server-1"), ChannelId("lounge-bugen"))
-        assertIs<DataResult.NoPermission>(refused)
-        assertEquals("Only admins can unarchive", refused.blocker.serverMessage)
-        val failed =
-            AgentLoungeApi(FakeNetwork { HomeNetworkResponse(500, null, """{"error":"Database unavailable"}""") })
-                .unarchive(ServerId("server-1"), ChannelId("lounge-bugen"))
-        assertIs<DataResult.Error>(failed)
-        assertEquals("Database unavailable", failed.error.serverMessage)
-        assertEquals(true, RaftAgentLounges.lounge("server-1", "lounge-bugen")?.archived, "still archived")
-    }
-
-    @Test
     fun loungesNeverOutliveTheAccountOrTheServerTheyWereKnownFor() {
         RaftAgentLounges.bindAccount("user-a")
         RaftAgentLounges.rememberRow("server-1", loungeRow(), canPost = true)

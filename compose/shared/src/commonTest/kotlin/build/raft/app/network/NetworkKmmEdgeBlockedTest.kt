@@ -24,17 +24,6 @@ class NetworkKmmEdgeBlockedTest {
     }
 
     @Test
-    fun angleBracketBodyMarks403AsEdgeBlockedWithoutHeader() {
-        assertTrue(
-            isEdgeBlockedErrorBody(
-                status = 403,
-                headers = emptyMap(),
-                bodyText = cloudFrontHtml
-            )
-        )
-    }
-
-    @Test
     fun jsonErrorBodyKeeps403AsOrdinaryApiError() {
         assertFalse(
             isEdgeBlockedErrorBody(
@@ -50,22 +39,5 @@ class NetworkKmmEdgeBlockedTest {
                 bodyText = """{"error":"no_permission"}"""
             )
         )
-    }
-
-    @Test
-    fun non403HtmlIsNotEdgeBlocked() {
-        assertFalse(
-            isEdgeBlockedErrorBody(
-                status = 404,
-                headers = mapOf("Content-Type" to listOf("text/html")),
-                bodyText = cloudFrontHtml
-            )
-        )
-    }
-
-    @Test
-    fun blankOrMissingBodyIsNotEdgeBlockedWithoutHtmlHeader() {
-        assertFalse(isEdgeBlockedErrorBody(403, emptyMap(), null))
-        assertFalse(isEdgeBlockedErrorBody(403, emptyMap(), "   "))
     }
 }

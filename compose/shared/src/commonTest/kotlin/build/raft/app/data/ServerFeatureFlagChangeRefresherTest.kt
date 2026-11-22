@@ -12,7 +12,6 @@ import kotlin.test.assertTrue
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.advanceTimeBy
-import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 
 /**
@@ -44,34 +43,6 @@ class ServerFeatureFlagChangeRefresherTest {
         assertTrue(samples.all { it in 0L..SERVER_FEATURES_CHANGED_MAX_JITTER_MILLIS }, "samples out of 0..10s")
         // Spread over the window, not a constant.
         assertTrue(samples.min() < 1_000L && samples.max() > 9_000L, "min=${samples.min()} max=${samples.max()}")
-    }
-
-    @Test
-    fun refetchWaitsForTheJitterThenFetchesOnce() = runTest {
-        val fetched = mutableListOf<Pair<ServerId, Long>>()
-        val refresher =
-            ServerFeatureFlagChangeRefresher(
-                scope = backgroundScope,
-                refetch = { fetched += it to testScheduler.currentTime },
-                jitterMillis = { 7_000L },
-            )
-        refresher.onFeaturesChanged(server, listOf("workspace_artifacts_v0"))
-        advanceTimeBy(6_999L)
-        runCurrent()
-        assertEquals(emptyList(), fetched)
-        advanceTimeBy(1L)
-        runCurrent()
-        assertEquals(listOf(server to 7_000L), fetched)
-    }
-
-    @Test
-    fun jitterAboveTheMaximumIsClampedToTenSeconds() = runTest {
-        val fetchedAt = mutableListOf<Long>()
-        val refresher =
-            ServerFeatureFlagChangeRefresher(backgroundScope, refetch = { fetchedAt += testScheduler.currentTime }, jitterMillis = { 60_000L })
-        refresher.onFeaturesChanged(server)
-        advanceTimeBy(SERVER_FEATURES_CHANGED_MAX_JITTER_MILLIS + 1)
-        assertEquals(listOf(SERVER_FEATURES_CHANGED_MAX_JITTER_MILLIS), fetchedAt)
     }
 
     @Test

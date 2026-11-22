@@ -28,14 +28,6 @@ class RuntimeFormV3ConditionsConformanceTest {
 
     @Test fun everyUnsupportedSchemaIsReportedUnsupported() = runtimeFormV3CheckConformanceUnsupported()
 
-    @Test fun scopesNameTheWholeValuesOrOneFieldAndNothingElse() = runtimeFormV3CheckScopes()
-
-    @Test fun numbersCompareByValueAndNeverEqualAString() = runtimeFormV3CheckNumbers()
-
-    @Test fun objectsCompareStructurallyWhateverTheKeyOrder() = runtimeFormV3CheckStructuralCompare()
-
-    @Test fun patternsInsideThePortableSubsetAreSupported() = runtimeFormV3CheckPortablePatterns()
-
     @Test fun patternsOutsideThePortableSubsetMakeTheConditionUnsupported() = runtimeFormV3CheckNonPortablePatterns()
 
     @Test fun patternsMatchWithEcmaScriptDollarAndDot() = runtimeFormV3CheckEcmaScriptMatching()

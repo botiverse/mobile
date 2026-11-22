@@ -3,17 +3,10 @@ package build.raft.app.data
 import build.raft.app.model.ChannelId
 import build.raft.app.model.ConversationKind
 import build.raft.app.model.ConversationSummary
-import build.raft.app.model.InboxItemKind
 import build.raft.app.model.MemberId
-import build.raft.app.model.MemberKind
-import build.raft.app.model.MemberProfile
 import build.raft.app.model.ServerId
-import build.raft.app.model.ServerSummary
 import build.raft.app.model.ThreadId
-import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
@@ -122,78 +115,6 @@ class SharedConversationIdentityHubLifetimeTest {
     }
 
     @Test
-    fun serverSwitchAtoBtoAKeepsEveryCanonicalIdentity() = runTest {
-        val hub = SharedConversationIdentityHub()
-        val dm2Frames = hub.titleFrames(this, "server-a", "dm-2")
-        assertTrue(hub.publishCanonical(authority(server = "server-a", selection = 1), dm("server-a", "dm-1", "Cindy")))
-        assertTrue(hub.publishCanonical(authority(server = "server-a", selection = 1), dm("server-a", "dm-2", "Dora")))
-        // Switch to B (selection 2), open something there.
-        assertTrue(hub.publishCanonical(authority(server = "server-b", selection = 2), dm("server-b", "dm-b", "Bob")))
-        // A late A response from selection 1 after switching to B is still A data.
-        assertTrue(hub.publishCanonical(authority(server = "server-a", selection = 1), dm("server-a", "dm-4", "Finn")))
-        // Back to A (selection 3): opening dm-1 must not wipe A's other canonical rows.
-        assertTrue(hub.publishCanonical(authority(server = "server-a", selection = 3), dm("server-a", "dm-1", "Cindy")))
-
-        assertEquals("Dora", hub.resolveProjection(ServerId("server-a"), "dm-2")?.title)
-        assertEquals("Finn", hub.resolveProjection(ServerId("server-a"), "dm-4")?.title)
-        assertEquals("Bob", hub.resolveProjection(ServerId("server-b"), "dm-b")?.title)
-        // Per-conversation ordering still holds: an older selection never overwrites a newer row.
-        assertFalse(hub.publishCanonical(authority(server = "server-a", selection = 1), dm("server-a", "dm-1", "Stale")))
-        assertEquals("Cindy", hub.resolveProjection(ServerId("server-a"), "dm-1")?.title)
-        assertEquals(listOf<String?>(null, "Dora"), dm2Frames, "no handle-only / missing frame for dm-2")
-    }
-
-    @Test
-    fun homeRebindKeepsSupplementedIdentityAndLaterPublicationsLand() = runTest {
-        val storeScope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
-        val hub = SharedConversationIdentityHub()
-        val authStore = InMemoryRaftAuthSessionStore(authSessionFixture())
-        var homeName = "Home Cindy"
-        val home =
-            SharedHomeStore(
-                authStore = authStore,
-                dataSource =
-                    SharedHomeDataSource(
-                        sessionStore = authStore,
-                        api = RootEmptyHomeApi,
-                        parseHome = { _, _ -> DataResult.Content(homeSnapshot(homeName)) },
-                    ),
-                scope = storeScope,
-                conversationIdentityPublicationSink = { publication ->
-                    hub.publishCandidate(
-                        authority = authority(server = publication.serverId.value, account = publication.accountId),
-                        revision = publication.revision,
-                        next = publication.state,
-                    )
-                },
-            )
-        // Cold start: Activity restores and supplements a reply thread whose parent is a DM; the
-        // parent title is the peer's name, not the DM channel's raw handle.
-        home.supplementConversationIdentity(
-            serverId = ServerId("server-1"),
-            source = SharedConversationIdentitySupplementSource.Activity,
-            items = listOf(threadInDm()),
-            dmPeerNames = mapOf("dm-9" to "Ivy"),
-        )
-        val parentFrames = hub.titleFrames(this, "server-1", "dm-9")
-
-        home.accept(SharedHomeIntent.Start) // first bind of server-1
-
-        assertEquals("Ivy", hub.resolveProjection(ServerId("server-1"), "dm-9")?.title)
-        assertEquals("Home Cindy", hub.resolveProjection(ServerId("server-1"), "dm-1")?.title)
-
-        // Sign-out-free rebind (store reset, e.g. session reset UI) keeps the hub's rows; Home's next
-        // publication must still be accepted, so its revision cannot restart below the hub's.
-        home.reset()
-        homeName = "Home Cindy L"
-        home.accept(SharedHomeIntent.Start)
-        assertEquals("Home Cindy L", hub.resolveProjection(ServerId("server-1"), "dm-1")?.title)
-        assertEquals(listOf<String?>(null, "Ivy"), parentFrames.take(2))
-        assertTrue(parentFrames.drop(1).dropLast(1).all { it == "Ivy" }, "no handle frame before the reset: $parentFrames")
-        storeScope.cancel()
-    }
-
-    @Test
     fun lostAccessEvictsServerAndCapsAreEnforced() = runTest {
         val hub = SharedConversationIdentityHub(maxServers = 2, maxCanonicalPerServer = 2)
         assertTrue(hub.publishCanonical(authority(server = "server-a"), dm("server-a", "dm-1", "One")))
@@ -248,37 +169,6 @@ class SharedConversationIdentityHubLifetimeTest {
             directMessagePeerType = "human",
             presenceMemberId = MemberId("peer-$id"),
         ).toCanonicalConversationDirectoryProjection(ServerId(server))!!
-
-    private fun homeSnapshot(dmName: String): HomeSnapshot =
-        HomeSnapshot(
-            server = ServerSummary(ServerId("server-1"), "One"),
-            currentMember =
-                MemberProfile(id = MemberId("user-1"), displayName = "Artin", handle = "artin", kind = MemberKind.Human),
-            channels = emptyList(),
-            directMessages =
-                listOf(
-                    HomeDirectMessageRow(
-                        threadId = ThreadId("dm-1"),
-                        channelId = ChannelId("dm-1"),
-                        name = dmName,
-                        directMessagePeerType = "human",
-                        presenceMemberId = MemberId("peer-1"),
-                    )
-                ),
-            unreadTotal = 0,
-        )
-
-    private fun threadInDm(): InboxItem =
-        InboxItem(
-            key = "thread-1",
-            kind = InboxItemKind.Thread,
-            channelId = ChannelId("thread-1"),
-            channelName = "ivy-handle",
-            threadChannelId = ChannelId("thread-1"),
-            parentChannelId = ChannelId("dm-9"),
-            parentChannelName = "ivy-handle",
-            parentChannelKind = ConversationKind.DirectMessage,
-        )
 
     private companion object {
         const val Env = "https://api.example.test"

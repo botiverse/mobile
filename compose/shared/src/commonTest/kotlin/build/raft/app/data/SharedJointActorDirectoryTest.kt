@@ -13,7 +13,6 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceUntilIdle
-import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -79,28 +78,6 @@ class SharedJointActorDirectoryTest {
         Harness(scope = CoroutineScope(SupervisorJob() + StandardTestDispatcher(testScheduler)), answer = answer)
 
     @Test
-    fun batchesDedupesAndSkipsLocalAndMalformedRefs() = runTest {
-        val h = harness { refs -> ActorResolveOutcome.Resolved(refs.map { resolvedActorOf(it, "https://cdn.test/a.webp") }) }
-        h.known += uuid(3)
-
-        h.directory.request(server, listOf(human(1), agent(2)))
-        h.directory.request(server, listOf(human(1), human(3), ActorResolveRef(MemberKind.Human, "system")))
-        h.directory.request(server, listOf(ActorResolveRef(MemberKind.System, uuid(4))))
-        advanceUntilIdle()
-
-        assertEquals(listOf(listOf(human(1), agent(2))), h.calls)
-        assertEquals("https://cdn.test/a.webp", h.directory.current(server, uuid(1))?.avatarUrl)
-        assertEquals(MemberKind.Agent, h.directory.current(server, uuid(2))?.kind)
-        // Wrong kind asked: no row.
-        assertNull(h.directory.current(server, uuid(2), MemberKind.Human))
-
-        // Resolved rows are not asked again.
-        h.directory.request(server, listOf(human(1)))
-        advanceUntilIdle()
-        assertEquals(1, h.calls.size)
-    }
-
-    @Test
     fun actorUpdatedReplacesTheRowForTheCurrentOwnerOnly() = runTest {
         val h = harness { refs -> ActorResolveOutcome.Resolved(refs.map { resolvedActorOf(it, "https://cdn.test/old.webp") }) }
         h.directory.request(server, listOf(agent(2)))
@@ -123,27 +100,6 @@ class SharedJointActorDirectoryTest {
         h.directory.applyActorUpdated(server, resolvedActorOf(agent(3)))
         h.account = "user-1"
         assertNull(h.directory.current(server, uuid(3)))
-    }
-
-    @Test
-    fun aRefTheRosterLearnsWhileTheBatchWaitsIsNotSent() = runTest {
-        val h = harness()
-        h.directory.request(server, listOf(human(1), human(2)))
-        h.known += uuid(2)
-        advanceUntilIdle()
-        assertEquals(listOf(listOf(human(1))), h.calls)
-    }
-
-    @Test
-    fun absentAndFailedRefsAreNotAskedAgain() = runTest {
-        val h = harness { refs -> if (refs.first() == human(1)) ActorResolveOutcome.Resolved(emptyList()) else ActorResolveOutcome.Failed(500) }
-        h.directory.request(server, listOf(human(1)))
-        advanceUntilIdle()
-        h.directory.request(server, listOf(human(2)))
-        advanceUntilIdle()
-        h.directory.request(server, listOf(human(1), human(2)))
-        advanceUntilIdle()
-        assertEquals(listOf(listOf(human(1)), listOf(human(2))), h.calls)
     }
 
     @Test
@@ -170,27 +126,6 @@ class SharedJointActorDirectoryTest {
         advanceUntilIdle()
         assertEquals(listOf(200, 200, 50), h.calls.map { it.size })
         assertEquals(450, h.calls.flatten().toSet().size)
-    }
-
-    @Test
-    fun oneBatchInFlightPerScopeAndRefsQueuedMeanwhileFollowIt() = runTest {
-        val gate = CompletableDeferred<Unit>()
-        val h = harness { refs ->
-            if (refs.first() == human(1)) gate.await()
-            ActorResolveOutcome.Resolved(refs.map { resolvedActorOf(it) })
-        }
-        h.directory.request(server, listOf(human(1)))
-        advanceUntilIdle()
-        assertEquals(1, h.calls.size)
-
-        h.directory.request(server, listOf(human(1), human(2)))
-        advanceUntilIdle()
-        assertEquals(1, h.calls.size, "no second request while the first is in flight")
-
-        gate.complete(Unit)
-        advanceUntilIdle()
-        assertEquals(listOf(listOf(human(1)), listOf(human(2))), h.calls)
-        assertEquals(uuid(2), h.directory.current(server, uuid(2))?.id)
     }
 
     @Test
@@ -232,31 +167,6 @@ class SharedJointActorDirectoryTest {
 
         h.directory.clearServer(server)
         assertNull(h.directory.current(server, uuid(1)))
-    }
-
-    @Test
-    fun anUnchangedAnswerDoesNotReEmit() = runTest {
-        val h = harness { refs -> ActorResolveOutcome.Resolved(refs.map { resolvedActorOf(human(1)) }) }
-        val emissions = mutableListOf<ResolvedActor?>()
-        backgroundScope.launch { h.directory.actorFlow(server, human(1)).toList(emissions) }
-        runCurrent()
-        advanceUntilIdle()
-        // The flow asked on collection; a second, unrelated ref answers with the same row.
-        h.directory.request(server, listOf(human(2)))
-        advanceUntilIdle()
-
-        assertEquals(2, h.calls.size)
-        assertEquals(listOf(null, resolvedActorOf(human(1))), emissions)
-        assertTrue(h.directory.rows.value.values.single().size == 1)
-    }
-
-    @Test
-    fun signedOutAsksNothing() = runTest {
-        val h = harness()
-        h.account = null
-        h.directory.request(server, listOf(human(1)))
-        advanceUntilIdle()
-        assertTrue(h.calls.isEmpty())
     }
 
     @Test

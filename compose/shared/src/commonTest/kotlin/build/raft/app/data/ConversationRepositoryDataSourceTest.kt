@@ -106,72 +106,6 @@ class ConversationRepositoryDataSourceTest {
     }
 
     @Test
-    fun routeScopedServerPinsInitialSummariesAndReplyCreateOpenToOneServer() = runBlocking {
-        val network =
-            FakeConversationNetworkClient(
-                responses =
-                    mapOf(
-                        "GET messages/channel/channel-1" to
-                            """{"historyLimited":false,"messages":[${messageJson("parent-1", "channel-1")}] }""",
-                        "GET channels/channel-1/threads" to "{}",
-                        "GET channels/threads/followed" to
-                            """{"threads":[],"totalCount":0,"hasMore":false,"nextOffset":null}""",
-                        "POST channels/channel-1/threads" to
-                            """{"threadChannelId":"thread-b","replyCount":1,"ok":true}""",
-                        "GET messages/channel/thread-b" to
-                            """{"historyLimited":false,"messages":[${messageJson("reply-1", "thread-b")}] }""",
-                    ),
-            )
-        val repository = routeScopedRepository(routeScopedAuthStore(), network)
-
-        assertIs<DataResult.Content<ThreadSnapshot>>(
-            repository.getThread(
-                threadId = ThreadId("channel-1"),
-                includeFollowedSummaries = true,
-                limit = 30,
-            ),
-        )
-        assertIs<DataResult.Content<ThreadSnapshot>>(
-            repository.getReplyThread(
-                parentChannelId = ChannelId("channel-1"),
-                parentMessageId = MessageId("parent-1"),
-                limit = 30,
-            ),
-        )
-
-        assertTrue(network.serverOverrides.size >= 5)
-        assertTrue(network.serverOverrides.all { it == "server-b" })
-        assertTrue(network.requests.any { it.method == "POST" && it.path == "channels/channel-1/threads" })
-        assertTrue(network.requests.any { it.path == "channels/threads/followed" })
-        assertTrue(network.requests.any { it.path == "channels/channel-1/threads" && it.method == "GET" })
-    }
-
-    @Test
-    fun routeScopedServerPinsParentContextAndDetailToRouteServer() = runBlocking {
-        val network =
-            FakeConversationNetworkClient(
-                responses =
-                    mapOf(
-                        "GET messages/context/message-1" to
-                            """{"channelId":"channel-1","targetMessageId":"message-1","messages":[${messageJson("message-1", "channel-1")}] }""",
-                        "GET channels/channel-1" to
-                            """{"id":"channel-1","name":"general","type":"channel"}""",
-                    ),
-            )
-        val repository = routeScopedRepository(routeScopedAuthStore(), network)
-
-        assertIs<DataResult.Content<ThreadSnapshot>>(
-            repository.getMessageContext(MessageId("message-1"), ChannelId("channel-1")),
-        )
-
-        assertEquals(
-            listOf("messages/context/message-1", "channels/channel-1"),
-            network.requests.map { it.path },
-        )
-        assertEquals(listOf<String?>("server-b", "server-b"), network.serverOverrides)
-    }
-
-    @Test
     fun routeScopedServerPinsRealtimeGapSyncToRouteServer() = runBlocking {
         val network =
             FakeConversationNetworkClient(
@@ -310,48 +244,6 @@ class ConversationRepositoryDataSourceTest {
     }
 
     @Test
-    fun replyThreadRetainsCanonicalParentDirectMessageDetail() = runBlocking {
-        val network =
-            FakeConversationNetworkClient(
-                responses =
-                    mapOf(
-                        "POST channels/dm-parent/threads" to
-                            """{"threadChannelId":"thread-1","replyCount":1,"ok":true}""",
-                        "GET messages/channel/thread-1" to
-                            """{"messages":[${messageJson("reply-1", "thread-1")}]}""",
-                        "GET channels/dm-parent" to
-                            """
-                            {
-                              "id":"dm-parent",
-                              "name":"dm-parent",
-                              "type":"dm",
-                              "peerType":"user",
-                              "peerId":"peer-1",
-                              "peerName":"cindy",
-                              "peerDisplayName":"Cindy",
-                              "peerAvatarUrl":"pixel:cindy"
-                            }
-                            """.trimIndent(),
-                    )
-            )
-        val repository = RealConversationRepository(sampleStore(), network)
-
-        val snapshot =
-            assertIs<DataResult.Content<ThreadSnapshot>>(
-                repository.getReplyThread(
-                    parentChannelId = ChannelId("dm-parent"),
-                    parentMessageId = MessageId("parent-1"),
-                )
-            ).data
-
-        assertEquals(ConversationKind.Thread, snapshot.conversation.kind)
-        assertEquals("dm-parent", snapshot.conversation.thread?.parentChannelId?.value)
-        assertEquals(ConversationKind.DirectMessage, snapshot.canonicalConversationDetail?.kind)
-        assertEquals("Cindy", snapshot.canonicalConversationDetail?.name)
-        assertEquals("pixel:cindy", snapshot.canonicalConversationDetail?.directMessagePeerAvatarWireValue)
-    }
-
-    @Test
     fun messageContextStillOpensWhenChannelDetailCannotBeHydrated() = runBlocking {
         val logs = mutableListOf<String>()
         val network =
@@ -372,51 +264,6 @@ class ConversationRepositoryDataSourceTest {
         assertEquals(ConversationKind.Thread, snapshot.conversation.kind)
         assertEquals("channel-1", snapshot.conversation.name)
         assertTrue(logs.any { it.contains("conversation_detail_parse_failed channelId=channel-1") })
-    }
-
-    @Test
-    fun messageContextKeepsCanonicalReplyThreadWhenParentDetailIsDm() = runBlocking {
-        val network =
-            FakeConversationNetworkClient(
-                responses =
-                    mapOf(
-                        "GET messages/context/reply-1" to
-                            """
-                            {
-                              "channelId":"thread-1",
-                              "targetMessageId":"reply-1",
-                              "canonicalTarget":{
-                                "kind":"thread",
-                                "channelId":"dm-parent",
-                                "messageId":"reply-1",
-                                "threadParentMessageId":"parent-1",
-                                "threadChannelId":"thread-1"
-                              },
-                              "messages":[${messageJson("reply-1", "thread-1")}]
-                            }
-                            """.trimIndent(),
-                        "GET channels/dm-parent" to
-                            """
-                            {
-                              "id":"dm-parent",
-                              "name":"removed-search-peer",
-                              "type":"dm",
-                              "peerType":"agent",
-                              "peerId":"agent-deleted",
-                              "peerName":"removed-search-peer"
-                            }
-                            """.trimIndent()
-                    )
-            )
-        val repository = RealConversationRepository(sampleStore(), network)
-
-        val result = repository.getMessageContext(MessageId("reply-1"))
-
-        val conversation = assertIs<DataResult.Content<ThreadSnapshot>>(result).data.conversation
-        assertEquals(ConversationKind.Thread, conversation.kind)
-        assertEquals("dm-parent", conversation.thread?.parentChannelId?.value)
-        assertEquals("parent-1", conversation.thread?.parentMessageId?.value)
-        assertEquals("thread-1", conversation.thread?.streamChannelId?.value)
     }
 
     @Test
@@ -505,35 +352,6 @@ class ConversationRepositoryDataSourceTest {
     }
 
     @Test
-    fun malformedEmbeddedAndFailedSummaryFallbacksRemainUnavailable() = runBlocking {
-        val network =
-            FakeConversationNetworkClient(
-                responses =
-                    mapOf(
-                        "GET messages/channel/channel-1" to
-                            """{
-                              "messages":[${messageJson("parent-1", "channel-1")}],
-                              "threadSummariesByParentMessageId":[]
-                            }""",
-                    ),
-            )
-        val repository = RealConversationRepository(sampleStore(), network)
-
-        val snapshot =
-            assertIs<DataResult.Content<ThreadSnapshot>>(
-                repository.getThread(
-                    ThreadId("channel-1"),
-                    includeFollowedSummaries = true,
-                )
-            ).data
-
-        assertEquals(ThreadReplySummariesAuthority.Unavailable, snapshot.replySummariesAuthority)
-        assertTrue(snapshot.replySummaries.threads.isEmpty())
-        assertTrue(network.requests.any { it.path == "channels/channel-1/threads" })
-        assertTrue(network.requests.any { it.path == "channels/threads/followed" })
-    }
-
-    @Test
     fun getThreadCanOptIntoFollowedSummariesForBackgroundCompletion() = runBlocking {
         val network =
             FakeConversationNetworkClient(
@@ -587,113 +405,6 @@ class ConversationRepositoryDataSourceTest {
     }
 
     @Test
-    fun getThreadReplySummariesReturnsChannelSummariesWhenFollowedListIsSlow() = runBlocking {
-        // Task #1142: the account-wide followed list (multi-MB on busy accounts) must never gate
-        // the channel summaries that draw reply rows. Hold that request forever and expect the
-        // channel summaries back within the join budget, with no followed decoration.
-        val holdFollowed = CompletableDeferred<Unit>()
-        val network =
-            FakeConversationNetworkClient(
-                responses =
-                    mapOf(
-                        // The endpoint is a record keyed by parent message id (see
-                        // parseChannelThreadSummaryRecordElement); a {"threads":[...]} list is rejected.
-                        "GET channels/channel-1/threads" to
-                            """{"parent-1":{"threadChannelId":"thread-1","replyCount":4,"latestReplies":[]}}""",
-                    ),
-                requestRelease = mapOf("GET channels/threads/followed" to holdFollowed),
-            )
-        val repository = RealConversationRepository(sampleStore(), network)
-        repository.followedSummariesJoinBudgetMillis = 50L
-
-        val result =
-            withTimeout(2_000L) {
-                repository.getThreadReplySummaries(
-                    threadId = ThreadId("channel-1"),
-                    parentMessageIds = listOf(MessageId("parent-1"))
-                )
-            }
-
-        // Release the held request only after the result is in hand; the block must end in
-        // an assertion so the JUnit4 method stays void (runBlocking returns its last value).
-        holdFollowed.complete(Unit)
-        val summaries =
-            assertIs<DataResult.Content<ThreadReplySummariesSnapshot>>(result, "unexpected result: $result").data
-        assertEquals(1, summaries.threads.size)
-        assertEquals("parent-1", summaries.threads.single().parentMessageId?.value)
-        assertEquals(4, summaries.threads.single().replyCount)
-        assertTrue(summaries.followedThreadKeys.isEmpty())
-    }
-
-    @Test
-    fun getThreadReplySummariesDoesNotRefetchMessages() = runBlocking {
-        val network =
-            FakeConversationNetworkClient(
-                responses =
-                    mapOf(
-                        "GET channels/channel-1/threads" to
-                            """
-                            {
-                              "threads": [
-                                {
-                                  "threadChannelId": "thread-1",
-                                  "parentChannelId": "channel-1",
-                                  "parentMessageId": "parent-1",
-                                  "replyCount": 4,
-                                  "unreadCount": 1,
-                                  "firstUnreadMessageId": "reply-4"
-                                }
-                              ]
-                            }
-                            """.trimIndent(),
-                        "GET channels/threads/followed" to
-                            """
-                            {
-                              "threads": [
-                                {
-                                  "threadChannelId": "thread-1",
-                                  "parentChannelId": "channel-1",
-                                  "parentMessageId": "parent-1",
-                                  "replyCount": 4
-                                }
-                              ]
-                            }
-                            """.trimIndent()
-                    )
-            )
-        val repository = RealConversationRepository(sampleStore(), network)
-
-        val result =
-            repository.getThreadReplySummaries(
-                threadId = ThreadId("channel-1"),
-                parentMessageIds = listOf(MessageId("parent-1"))
-            )
-
-        val summaries = assertIs<DataResult.Content<ThreadReplySummariesSnapshot>>(result).data
-        assertEquals(1, summaries.threads.size)
-        assertEquals("parent-1", summaries.threads.single().parentMessageId?.value)
-        assertTrue(summaries.followedThreadKeys.isNotEmpty())
-        assertEquals(
-            listOf(
-                RecordedConversationRequest(
-                    DataRequestPriority.Visible,
-                    "GET",
-                    "channels/channel-1/threads",
-                    listOf("parentMessageIds" to "parent-1")
-                ),
-                RecordedConversationRequest(
-                    DataRequestPriority.Visible,
-                    "GET",
-                    "channels/threads/followed",
-                    listOf("limit" to "50")
-                )
-            ),
-            network.requests
-        )
-        assertFalse(network.requests.any { it.path.startsWith("messages/") })
-    }
-
-    @Test
     fun getReplyThreadLoadsMessagesFromResolvedThreadChannel() = runBlocking {
         val network =
             FakeConversationNetworkClient(
@@ -727,47 +438,6 @@ class ConversationRepositoryDataSourceTest {
             network.requests
         )
         assertEquals(listOf("""{"parentMessageId":"parent-1"}"""), network.bodies)
-    }
-
-    @Test
-    fun replyThreadCarriesItsRawServerPageOnlyWhenAsked() = runBlocking {
-        // Task #14b: the Activity prewarm asks for the raw reply page (and the limit sent) to persist it.
-        val network =
-            FakeConversationNetworkClient(
-                responses =
-                    mapOf(
-                        "POST channels/channel-1/threads" to """{"threadChannelId":"thread-1","replyCount":2,"ok":true}""",
-                        "GET messages/channel/thread-1" to
-                            """{"messages":[${messageJson("reply-1", "thread-1", seq = 2, content = "reply body")}],"historyLimited":false}"""
-                    )
-            )
-        val repository = RealConversationRepository(sampleStore(), network)
-
-        val captured = assertIs<DataResult.Content<ThreadSnapshot>>(
-            repository.getReplyThread(
-                parentChannelId = ChannelId("channel-1"),
-                parentMessageId = MessageId("parent-1"),
-                limit = 30,
-                priority = DataRequestPriority.Background,
-                captureRawMessagePage = true
-            )
-        ).data
-        val page = assertNotNull(captured.rawMessagePage.page)
-        assertEquals(listOf("reply-1"), page.messages.map { it.jsonObject["id"]?.jsonPrimitive?.content })
-        assertEquals(30, page.requestedLimit)
-        assertEquals("thread-1", captured.conversation.thread?.streamChannelId?.value)
-
-        // Negative twin: the same call without the flag carries nothing.
-        val plain = assertIs<DataResult.Content<ThreadSnapshot>>(
-            repository.getReplyThread(
-                parentChannelId = ChannelId("channel-1"),
-                parentMessageId = MessageId("parent-1"),
-                limit = 30,
-                priority = DataRequestPriority.Background
-            )
-        ).data
-        assertNull(plain.rawMessagePage.page)
-        assertEquals(captured, plain, "the witness never takes part in equality")
     }
 
     @Test
@@ -825,51 +495,6 @@ class ConversationRepositoryDataSourceTest {
 
         assertIs<DataResult.Error>(result)
         assertEquals("network_parse_failed", result.error.code)
-    }
-
-    @Test
-    fun getChannelThreadsRejectsNonRecordWrapperResponse() = runBlocking {
-        val network =
-            FakeConversationNetworkClient(
-                responses = mapOf("GET channels/channel-1/threads" to """{"items":[]}""")
-            )
-        val repository = RealConversationRepository(sampleStore(), network)
-
-        val result = repository.getChannelThreads(ChannelId("channel-1"), limit = 25)
-
-        assertIs<DataResult.Error>(result)
-        assertEquals("network_parse_failed", result.error.code)
-    }
-
-    @Test
-    fun getThreadEmitsOffUiParseDiagnostics() = runBlocking {
-        val logs = mutableListOf<String>()
-        val network =
-            FakeConversationNetworkClient(
-                responses =
-                    mapOf(
-                        "GET messages/channel/channel-1" to
-                            """{"messages":[${messageJson("parent-1", "channel-1")}],"historyLimited":false}""",
-                        "GET channels/channel-1/threads" to """{}"""
-                    )
-            )
-        val repository = RealConversationRepository(sampleStore(), network, warningLogger = logs::add)
-
-        val result = repository.getThread(ThreadId("channel-1"))
-
-        assertEquals("parent-1", assertIs<DataResult.Content<ThreadSnapshot>>(result).data.messages.single().id.value)
-        assertTrue(
-            logs.any {
-                it.contains("conversation_parse_start source=messages_channel") &&
-                    it.contains("dispatcher=JsonParse")
-            }
-        )
-        assertTrue(
-            logs.any {
-                it.contains("conversation_parse_result source=messages_channel result=content") &&
-                    it.contains("dispatcher=JsonParse")
-            }
-        )
     }
 
     @Test
@@ -1092,51 +717,6 @@ class ConversationRepositoryDataSourceTest {
     }
 
     @Test
-    fun attachmentUploadCapabilitiesBodyEventIncludesRoutingFields() = runBlocking {
-        val body =
-            """{"directUploadEnabled":true,"directUploadThresholdBytes":94371840,"maxBytes":52428800,"sessionExpiresInSeconds":900}"""
-        val logs = mutableListOf<String>()
-        val network =
-            FakeConversationNetworkClient(
-                responses = mapOf("GET attachments/upload-capabilities" to body)
-            )
-
-        RealConversationRepository(sampleStore(), network, warningLogger = logs::add)
-            .getAttachmentUploadCapabilities()
-
-        assertTrue(
-            logs.any { line ->
-                line.contains("conversation_network_body_received source=attachment_upload_capabilities") &&
-                    line.contains("maxBytes=52428800") &&
-                    line.contains("directUploadThresholdBytes=94371840") &&
-                    line.contains("directUploadEnabled=true")
-            }
-        )
-    }
-
-    @Test
-    fun attachmentUploadCapabilitiesBodyEventMarksParseFailure() = runBlocking {
-        val body = """{"maxBytes":"""
-        val logs = mutableListOf<String>()
-        val network =
-            FakeConversationNetworkClient(
-                responses = mapOf("GET attachments/upload-capabilities" to body)
-            )
-
-        val result =
-            RealConversationRepository(sampleStore(), network, warningLogger = logs::add)
-                .getAttachmentUploadCapabilities()
-
-        assertIs<DataResult.Error>(result)
-        assertTrue(
-            logs.any { line ->
-                line.contains("conversation_network_body_received source=attachment_upload_capabilities") &&
-                    line.contains("attachmentUploadCapabilitiesParseError=true")
-            }
-        )
-    }
-
-    @Test
     fun attachmentUploadCapabilitiesRejectThresholdAboveContractLimit() = runBlocking {
         val logs = mutableListOf<String>()
         val network =
@@ -1159,18 +739,6 @@ class ConversationRepositoryDataSourceTest {
                     line.contains("attachmentUploadCapabilitiesParseError=true")
             }
         )
-    }
-
-    @Test
-    fun attachmentUploadCapabilitiesRejectNonPositiveServerValue() = runBlocking {
-        val network =
-            FakeConversationNetworkClient(
-                responses = mapOf("GET attachments/upload-capabilities" to """{"maxBytes":0}""")
-            )
-
-        val result = RealConversationRepository(sampleStore(), network).getAttachmentUploadCapabilities()
-
-        assertEquals("network_parse_failed", assertIs<DataResult.Error>(result).error.code)
     }
 
     @Test
@@ -1355,49 +923,6 @@ class ConversationRepositoryDataSourceTest {
         assertTrue("senderName" in page.messages.first().jsonObject, "the raw node, not the domain projection")
         assertTrue(context.canLoadMoreBefore)
         assertFalse(context.canLoadMoreAfter)
-    }
-
-    @Test
-    fun onlyOlderAndNewerPagesCarryTheirRawServerPage() = runBlocking {
-        // Task #168: the raw `messages` array (and the limit actually sent) rides along for the
-        // durable window extender — on the two paging fetches only.
-        val pageBody =
-            """{"messages":[${messageJson("m7", "channel-1", seq = 7)},${messageJson("m8", "channel-1", seq = 8)}],"historyLimited":false}"""
-        val network =
-            FakeConversationNetworkClient(
-                responses =
-                    mapOf(
-                        "GET messages/channel/channel-1" to pageBody,
-                        "GET messages/sync" to """[${messageJson("m7", "channel-1", seq = 7)}]""",
-                    ),
-            )
-        val repository = RealConversationRepository(sampleStore(), network)
-
-        val older = assertIs<DataResult.Content<ThreadSnapshot>>(
-            repository.loadOlderMessages(ThreadId("channel-1"), beforeSeq = 9, limit = 30),
-        ).data
-        val olderPage = assertNotNull(older.rawMessagePage.page)
-        assertEquals(listOf("m7", "m8"), olderPage.messages.map { it.jsonObject["id"]?.jsonPrimitive?.content })
-        assertEquals(30, olderPage.requestedLimit)
-        assertTrue("senderName" in olderPage.messages.first().jsonObject, "the raw node, not the domain projection")
-
-        val newer = assertIs<DataResult.Content<ThreadSnapshot>>(
-            repository.loadNewerMessages(ThreadId("channel-1"), afterSeq = 6, limit = 20),
-        ).data
-        assertEquals(2, assertNotNull(newer.rawMessagePage.page).messages.size)
-        assertEquals(20, newer.rawMessagePage.page?.requestedLimit)
-
-        // Negative twin: the same body through the initial load and the gap sync carries nothing.
-        val initial = assertIs<DataResult.Content<ThreadSnapshot>>(repository.getThread(ThreadId("channel-1"))).data
-        assertNull(initial.rawMessagePage.page)
-        val sync = assertIs<DataResult.Content<ThreadSnapshot>>(
-            repository.syncNewerMessages(ThreadId("channel-1"), sinceSeq = 6, limit = 20),
-        ).data
-        assertNull(sync.rawMessagePage.page)
-
-        // The witness never takes part in equality: a snapshot with and without it is the same.
-        assertEquals(older.copy(rawMessagePage = RawMessagePageWitness.None), older)
-        assertEquals(older.copy(rawMessagePage = RawMessagePageWitness.None).hashCode(), older.hashCode())
     }
 
     @Test

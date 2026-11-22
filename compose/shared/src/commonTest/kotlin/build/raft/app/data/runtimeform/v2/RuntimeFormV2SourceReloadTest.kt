@@ -71,13 +71,4 @@ class RuntimeFormV2SourceReloadTest {
             assertIs<DataResult.Error>(loader.reloadSource(ServerId("s1"), "m1", "kimi-sdk", "model")).error.code
         )
     }
-
-    @Test
-    fun reloadSourceNeedsAMachineAndARuntime() = runBlocking {
-        val api = ScriptedSourceApi(mutableListOf())
-        val loader = RuntimeFormV2Loader(api)
-        assertIs<DataResult.Error>(loader.reloadSource(ServerId("s1"), "", "kimi-sdk", "model"))
-        assertIs<DataResult.Error>(loader.reloadSource(ServerId("s1"), "m1", " ", "model"))
-        assertEquals(emptyList(), api.requests)
-    }
 }

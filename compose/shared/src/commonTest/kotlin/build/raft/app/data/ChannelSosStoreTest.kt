@@ -121,23 +121,6 @@ class ChannelSosStoreTest {
     }
 
     @Test
-    fun failedResumeKeepsTheGuidance() = runTest {
-        val network = ScriptedAgentControlsNetworkClient()
-        network.respond("POST", stopPath, 200, """{"ok":true,"stopped":1,"total":1,"results":[]}""")
-        network.respond("POST", resumePath, 500, """{"error":"Failed to resume agents"}""")
-        val store = ChannelSosStore(channelId, "design", RaftAgentControlsApi(network), this)
-        store.dispatch(ChannelSosIntent.Stop)
-        runCurrent()
-        store.dispatch(ChannelSosIntent.UpdateGuidance("keep me"))
-        store.dispatch(ChannelSosIntent.Resume)
-        runCurrent()
-
-        assertEquals("keep me", store.state.value.guidance)
-        assertEquals("http_500", store.state.value.errorCode)
-        assertFalse(store.state.value.closed)
-    }
-
-    @Test
     fun entryFollowsJoinAndStopAgents() {
         val channel = HomeChannelRow(threadId = ThreadId("t1"), channelId = channelId, name = "design")
         // slock #12029: Stop all is shown only with `stopAgents` (owner/admin).

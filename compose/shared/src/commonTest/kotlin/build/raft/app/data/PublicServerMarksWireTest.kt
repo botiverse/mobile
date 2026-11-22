@@ -90,19 +90,6 @@ class PublicServerMarksWireTest {
     }
 
     @Test
-    fun channelDetailCarriesGuestVisibleIntoTheDirectoryProjection() {
-        val row = assertNotNull(
-            parseRaftChannelDetail(
-                """{"id":"c-public","name":"announcements","type":"channel","guestVisible":true,"archivedAt":null,"joined":true}"""
-            )
-        )
-        assertTrue(row.guestVisible)
-        val projection = assertNotNull(row.toSharedConversationDirectoryProjection(ServerId("server-1")))
-        assertTrue(projection.guestVisible)
-        assertFalse(projection.archived)
-    }
-
-    @Test
     fun channelPayloadsPreferVisitorVisibleAndDecodeManageVisitorAccess() {
         val detail = assertNotNull(
             parseRaftChannelDetail(

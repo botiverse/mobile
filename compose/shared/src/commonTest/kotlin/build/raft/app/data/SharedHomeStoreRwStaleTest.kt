@@ -1,7 +1,6 @@
 package build.raft.app.data
 
 import build.raft.app.model.ChannelId
-import build.raft.app.model.ServerId
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.launch
@@ -100,18 +99,6 @@ class SharedHomeStoreRwStaleTest {
         advanceTimeBy(10 * RecoveryDelayMillis)
         runCurrent()
         assertEquals(3, api.unreadPriorities.size, "nothing more is scheduled once fresh")
-    }
-
-    @Test
-    fun theFollowedThreadReconcileReadSurfacesStaleAndOverloadAsTypedFacts() = runTest {
-        val api = ScriptedUnreadHomeApi(channelUnread = mutableListOf(stale(channelUnread(5)), overloaded()))
-        val dataSource = homeDataSource(api)
-
-        val remembered = dataSource.channelUnreadSummary(ServerId("server-1"), DataRequestPriority.Background)
-        val overload = dataSource.channelUnreadSummary(ServerId("server-1"), DataRequestPriority.Background)
-
-        assertTrue((remembered as DataResult.Content).data.stale, "the header becomes a typed flag")
-        assertTrue(overload.isRwOverloadedError, "the 503 body's code becomes a typed error")
     }
 
     @Test

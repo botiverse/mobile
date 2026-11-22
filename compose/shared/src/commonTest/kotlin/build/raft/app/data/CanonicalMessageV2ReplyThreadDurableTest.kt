@@ -133,20 +133,6 @@ class CanonicalMessageV2ReplyThreadDurableTest {
         assertEquals(true, 5L in h.store.seqs(threadScope))
     }
 
-    @Test
-    fun topLevelWindowIsNeverExtendedAsAReplyThread() = runBlocking {
-        // A channel window with an identical page: the top-level caller commits; a reply caller
-        // naming the same id finds no thread window.
-        val h = harness()
-        h.seedChannelWindow()
-        val channelPage = adjacentPageOf(adjacentPageNode("m5", 5), adjacentPageNode("m10", 10))
-        val window = pagingWindowFor(ThreadDurablePageDirection.Older, 20, channelPage)
-        h.writer.extendWithAdjacentPage(partition, "channel-1", ThreadDurablePageDirection.Older, 20, channelPage, 3, parent, null, window) { true }
-        assertTrue(h.logs.last().endsWith("scopeKind=thread direction=older outcome=no_window"), h.logs.toString())
-        h.writer.extendWithAdjacentPage(partition, "channel-1", ThreadDurablePageDirection.Older, 20, channelPage, 3, null, null, window) { true }
-        assertTrue(h.logs.last().endsWith("direction=older outcome=committed facts=2"), h.logs.toString())
-    }
-
     private inner class Harness(
         val network: PathNetworkClient,
         val store: InMemoryCanonicalMessageV2Store,

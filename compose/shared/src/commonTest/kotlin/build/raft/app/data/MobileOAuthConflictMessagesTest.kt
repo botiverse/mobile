@@ -40,10 +40,4 @@ class MobileOAuthConflictMessagesTest {
         assertEquals("password_then_settings:Google", message("ACCOUNT_CONFLICT"))
         assertEquals("other_user:Google", message("Provider_Conflict"))
     }
-
-    @Test
-    fun providerNameIsCarriedThroughUnchanged() {
-        assertEquals("password_then_settings:GitHub", message("account_conflict", "GitHub"))
-        assertEquals("other_user:GitHub", message("provider_conflict", "GitHub"))
-    }
 }

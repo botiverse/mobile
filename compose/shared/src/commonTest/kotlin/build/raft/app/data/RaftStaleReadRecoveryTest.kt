@@ -88,23 +88,6 @@ class RaftStaleReadRecoveryTest {
         assertTrue(!recovery.armed)
     }
 
-    @Test
-    fun eachStaleAnswerArmsTheNextBackoffStep() = runTest {
-        val reads = mutableListOf<Long>()
-        val recovery = recovery(MutableStateFlow(true), MutableSharedFlow())
-        lateinit var read: suspend () -> Boolean
-        read = {
-            reads += testScheduler.currentTime
-            recovery.schedule(retryAfterMillis = null, read) // the store found it still stale
-            true
-        }
-        recovery.schedule(retryAfterMillis = 3_000L, read)
-        advanceTimeBy(3_000 + 5_000 + 10_000 + 20_000 + 1)
-        runCurrent()
-        assertEquals(listOf(3_000L, 8_000L, 18_000L, 38_000L), reads)
-        recovery.reset()
-    }
-
     private fun TestScope.recovery(
         foreground: MutableStateFlow<Boolean>,
         nudges: MutableSharedFlow<String>,

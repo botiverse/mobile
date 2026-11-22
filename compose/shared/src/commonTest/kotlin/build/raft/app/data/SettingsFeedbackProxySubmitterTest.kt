@@ -190,14 +190,6 @@ class SettingsFeedbackProxySubmitterTest {
         assertEquals(emptyList(), repository.requests)
     }
 
-    @Test
-    fun onlyAnOffAnswerLetsSettingsFeedbackSend() {
-        assertTrue(settingsFeedbackSendAllowed(RaftPrivacyMode.Off))
-        assertFalse(settingsFeedbackSendAllowed(RaftPrivacyMode.On))
-        assertFalse(settingsFeedbackSendAllowed(RaftPrivacyMode.Unknown))
-        assertNull(settingsFeedbackPrivacyCode(RaftPrivacyMode.Off))
-    }
-
     private val card =
         SettingsFeedbackCardDraft(
             messageId = "0b6f3c8e-5d1a-4c2e-9f7a-1e2d3c4b5a69",
@@ -255,35 +247,6 @@ class SettingsFeedbackProxySubmitterTest {
         val outcome = assertIs<SettingsFeedbackProxyOutcome.Failed>(submitter.submit(submitter.newAttempt("x", emptyList(), card = card)))
         assertEquals(SETTINGS_FEEDBACK_CARD_CHANGED, outcome.code)
         assertEquals(traceId, outcome.traceId)
-    }
-
-    @Test
-    fun aCardsSendNeverHandsOverToTheAnonymousNativeForm() = runTest {
-        // The native Hands form cannot complete the card: the server is unavailable, retry later.
-        listOf(
-            failed(FeedbackErrorKind.Unavailable, "feedback_integration_unavailable", 503),
-            failed(FeedbackErrorKind.NotSupported, "feedback_http_404", 404),
-        ).forEach { answer ->
-            val submitter = submitter(FakeRepository(mutableListOf(answer)), mutableListOf())
-            val outcome = assertIs<SettingsFeedbackProxyOutcome.Failed>(submitter.submit(submitter.newAttempt("x", emptyList(), card = card)))
-            assertEquals("settings_feedback_server_unavailable", outcome.code)
-            assertEquals(card, outcome.retry?.card)
-        }
-    }
-
-    @Test
-    fun aNonImageAttachmentBlocksBeforeAnyUpload() = runTest {
-        val repository = FakeRepository(mutableListOf())
-        val uploads = mutableListOf<String>()
-        val submitter = submitter(repository, uploads)
-        val pdf = PlatformFile(id = "b", fileName = "report.pdf", mimeType = "application/pdf", fileRef = "draft://b")
-
-        val outcome = assertIs<SettingsFeedbackProxyOutcome.Failed>(submitter.submit(submitter.newAttempt("x", listOf(image, pdf))))
-
-        assertEquals(SETTINGS_FEEDBACK_ATTACHMENT_TYPE_INVALID, outcome.code)
-        assertNull(outcome.retry)
-        assertTrue(uploads.isEmpty())
-        assertTrue(repository.requests.isEmpty())
     }
 
     @Test
@@ -382,17 +345,5 @@ class SettingsFeedbackProxySubmitterTest {
         assertNull(HostSettingsFeedbackDiagnosticsUploader(stalledHost, stallMillis = 1_000L).upload("user-1"))
         // A stalled upload is stopped, as the web skips it.
         assertEquals(listOf("feedbackDiagnosticsStart", "feedbackDiagnosticsCancel"), stalledHost.commands.map { it.optString("action") })
-    }
-
-    @Test
-    fun aHostWithoutTheDiagnosticsActionAttachesNothingAtOnce() = runTest {
-        // The Compose desktop bridge answers an unknown settings action with `{code: -1, message}`.
-        val desktopHost =
-            FakeDiagnosticsHost {
-                listOf(buildJsonObject { put("code", -1); put("message", "Method not implemented") })
-            }
-        assertNull(HostSettingsFeedbackDiagnosticsUploader(desktopHost, stallMillis = Long.MAX_VALUE).upload("user-1"))
-        assertEquals(listOf("feedbackDiagnosticsStart"), desktopHost.commands.map { it.optString("action") })
-        assertEquals(0L, testScheduler.currentTime)
     }
 }

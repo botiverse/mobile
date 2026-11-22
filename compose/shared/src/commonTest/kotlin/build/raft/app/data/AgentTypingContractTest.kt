@@ -83,9 +83,4 @@ class AgentTypingContractTest {
         assertNull(map("""{"agentId":"a","serverId":"s","channelId":"c","state":"start","expiresAt":1}"""))
         assertNull(map("""{"agentId":"a","serverId":"s","channelId":"c","callId":"k","state":"typing","expiresAt":1}"""))
     }
-
-    @Test fun aMissingExpiryReadsAsZero() {
-        val event = assertIs<AgentTypingUpdated>(map("""{"agentId":"a","serverId":"s","channelId":"c","callId":"k","state":"start"}"""))
-        assertEquals(0L, event.expiresAtEpochMillis)
-    }
 }

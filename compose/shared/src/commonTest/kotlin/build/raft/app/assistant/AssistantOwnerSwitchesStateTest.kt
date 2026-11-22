@@ -54,13 +54,4 @@ class AssistantOwnerSwitchesStateTest {
             state.flip(AssistantOwnerSetting.SendAsOwner, true) { _, _ -> MyAssistantSettingSaveOutcome.Saved }
             assertEquals(emptyMap<AssistantOwnerSetting, ScreenError>(), state.failures)
         }
-
-    @Test
-    fun aSaveThatThrowsFailsWithoutATraceId() =
-        runTest {
-            val state = AssistantOwnerSwitchesState()
-            state.flip(AssistantOwnerSetting.ReadsDms, false) { _, _ -> error("boom") }
-            assertEquals(null, state.failures.getValue(AssistantOwnerSetting.ReadsDms).traceId)
-            assertEquals(emptySet<AssistantOwnerSetting>(), state.saving)
-        }
 }

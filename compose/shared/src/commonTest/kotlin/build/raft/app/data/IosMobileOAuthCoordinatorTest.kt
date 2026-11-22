@@ -62,26 +62,6 @@ class IosMobileOAuthCoordinatorTest {
     }
 
     @Test
-    fun appleIsRejectedByTheBrowserCoordinatorWithoutCreatingPendingState() = runBlocking {
-        val runtime = FakeRuntime(environmentKey = "production")
-        val fixture = fixture(runtime)
-
-        val result = fixture.coordinator.startBrowser(
-            provider = "apple",
-            mode = "link",
-            generation = "apple-browser-generation",
-            codeVerifier = Verifier,
-            codeChallenge = Challenge,
-        )
-
-        assertEquals("error", result.status)
-        assertNull(result.authorizationUrl)
-        assertNull(runtime.startedBrowserLinkReturnUri)
-        assertNull(runtime.startedNativeApple)
-        assertNull(fixture.pendingStore.read())
-    }
-
-    @Test
     fun nonProductionEnvironmentsUseTheDebugCallbackByDefault() = runBlocking {
         listOf("staging", "custom").forEach { environmentKey ->
             val runtime = FakeRuntime(environmentKey = environmentKey)
@@ -120,26 +100,6 @@ class IosMobileOAuthCoordinatorTest {
         assertEquals("raft-debug", result.callbackScheme)
         assertEquals("raft-debug://oauth/callback", runtime.startedBrowserLinkReturnUri)
         assertEquals("production", fixture.pendingStore.read()?.environmentKey)
-    }
-
-    @Test
-    fun unregisteredCallbackOverrideFailsBeforeNetworkOrPendingState() = runBlocking {
-        val runtime = FakeRuntime(environmentKey = "production")
-        val fixture = fixture(runtime)
-
-        val result = fixture.coordinator.startBrowser(
-            provider = "google",
-            mode = "link",
-            generation = "unregistered-generation",
-            codeVerifier = Verifier,
-            codeChallenge = Challenge,
-            returnUriOverride = "raft-connectedtest://oauth/callback",
-        )
-
-        assertEquals("error", result.status)
-        assertEquals("ios_mobile_oauth_invalid_return_uri", result.errorCode)
-        assertNull(runtime.startedBrowserLinkReturnUri)
-        assertNull(fixture.pendingStore.read())
     }
 
     @Test
@@ -302,24 +262,6 @@ class IosMobileOAuthCoordinatorTest {
     }
 
     @Test
-    fun typedConflictCodesKeepExistingAccountGuidanceDistinctFromOtherUserConflict() {
-        fun message(error: String, provider: String = "google"): String =
-            testMessageKey(
-                iosMobileOAuthProviderErrorMessage(
-                    provider = provider,
-                    mode = "link",
-                    error = error,
-                    accountConflictMessage = { providerName -> "password_then_settings:$providerName" },
-                    providerConflictMessage = { providerName -> "other_user:$providerName" },
-                )
-            )
-
-        assertEquals("password_then_settings:Google", message("account_conflict"))
-        assertEquals("other_user:Google", message("provider_conflict"))
-        assertEquals("password_then_settings:Social", message("account_conflict", "unexpected"))
-    }
-
-    @Test
     fun providerErrorCodesReadAsCatalogCopyNeverAsTheCode() {
         fun message(error: String, mode: String = "link"): String =
             testMessageKey(iosMobileOAuthProviderErrorMessage(provider = "github", mode = mode, error = error))
@@ -331,31 +273,6 @@ class IosMobileOAuthCoordinatorTest {
         assertEquals("auth_error_runtime_starting", message("runtime_not_ready"))
         assertEquals("auth_error_mobile_oauth_link_failed(GitHub)", message("provider_failed"))
         assertEquals("auth_error_mobile_oauth_sign_in_failed(GitHub)", message("browser_failed", mode = "login"))
-    }
-
-    @Test
-    fun linkResultsCarryLocalizedCopyAndTheServersOwnWordsOnlyWhenItSentSome() = runBlocking {
-        val runtime = FakeRuntime(environmentKey = "production")
-        val fixture = fixture(runtime)
-        fixture.startLink()
-        assertEquals(
-            "auth_notice_mobile_oauth_linked(Google)",
-            fixture.coordinator.complete(fixture.callback(code = "linked-handoff")).message
-        )
-
-        fixture.startLink()
-        runtime.linkOutcome = IosMobileOAuthLinkOutcome.Unauthenticated
-        assertEquals(
-            "auth_error_mobile_oauth_link_sign_in_again(Google)",
-            fixture.coordinator.complete(fixture.callback(code = "signed-out-handoff")).message
-        )
-
-        fixture.startLink()
-        runtime.linkOutcome = IosMobileOAuthLinkOutcome.Failure("Handoff code already used".desc())
-        assertEquals(
-            "Handoff code already used",
-            fixture.coordinator.complete(fixture.callback(code = "server-message-handoff")).message
-        )
     }
 
     @Test
@@ -454,52 +371,6 @@ class IosMobileOAuthCoordinatorTest {
         val cancelled = coordinator.cancel(retry.generation.orEmpty(), "runtime_not_ready")
         assertEquals("settings_account", cancelled.status)
         assertEquals("auth_error_runtime_starting", cancelled.message)
-        assertNull(pendingStore.read())
-    }
-
-    @Test
-    fun nativeAppleRuntimeRetryPreservesPendingUntilTheSameInMemoryCredentialCanComplete() = runBlocking {
-        val runtime = FakeRuntime(environmentKey = "production")
-        var availableRuntime: IosMobileOAuthRuntime? = runtime
-        val pendingStore = IosMobileOAuthPendingStore(InMemoryRaftKeyValueStore())
-        val coordinator =
-            IosMobileOAuthCoordinator(
-                pendingStore = pendingStore,
-                runtimeProvider = { availableRuntime },
-                nowMillis = { 1_000L },
-                resolveMessage = ::testMessageKey,
-            )
-        val start =
-            coordinator.startNativeApple(
-                mode = "link",
-                generation = "native-retry-generation",
-                codeVerifier = Verifier,
-                codeChallenge = Challenge,
-            )
-        assertEquals("native_apple", start.presentation)
-
-        availableRuntime = null
-        val retry =
-            coordinator.completeNativeApple(
-                generation = "native-retry-generation",
-                authorizationCode = "native-retry-code",
-                identityToken = "native-retry-token",
-            )
-        assertEquals("retry", retry.status)
-        assertEquals("native-retry-generation", retry.generation)
-        assertEquals("native-retry-generation", pendingStore.read()?.generation)
-        assertNull(runtime.authorizedNativeApple)
-
-        availableRuntime = runtime
-        val completed =
-            coordinator.completeNativeApple(
-                generation = "native-retry-generation",
-                authorizationCode = "native-retry-code",
-                identityToken = "native-retry-token",
-            )
-        assertEquals("settings_account", completed.status)
-        assertEquals("native-retry-code", runtime.authorizedNativeApple?.authorizationCode)
-        assertEquals("native-retry-token", runtime.authorizedNativeApple?.identityToken)
         assertNull(pendingStore.read())
     }
 

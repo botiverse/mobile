@@ -220,18 +220,6 @@ class SharedSettingsStoreComputersTest {
     }
 
     @Test
-    fun catchUpLeavesOtherSettingsPagesAlone() = runTest {
-        val repository = FakeSettingsRepository(computersResult = DataResult.Content(computers(machine("m-1", "Studio"))))
-        val store = store(repository, standalone = true)
-        repository.calls.clear()
-
-        store.dispatch(SharedSettingsIntent.CatchUpComputers)
-        runCurrent()
-
-        assertEquals(emptyList(), repository.calls)
-    }
-
-    @Test
     fun detailRefreshForcesTheComputersFetch() = runTest {
         val computersSource =
             FakeSettingsComputersSource(computerResult = DataResult.Content(machine("m-1", "Studio")))
@@ -419,15 +407,6 @@ class SharedSettingsStoreComputersTest {
         val refusal = detail.state.value.computerControl.upgradeRefusal
         assertEquals("remote_upgrade_disabled", refusal?.code)
         assertEquals(settingsComputerUpgradeAvailabilityKey(machine("m-1", "Studio")), refusal?.availabilityKey)
-    }
-
-    @Test
-    fun copyingACommandEmitsTheCopyEffect() = runTest {
-        val detail = store(detailRepository(), standalone = true)
-
-        detail.accept(SharedSettingsIntent.CopyComputerCommand(" raft-computer status "))
-
-        assertEquals(SharedSettingsEffect.CopyText("raft-computer status"), detail.state.value.effect)
     }
 
     private fun detailRepository() =

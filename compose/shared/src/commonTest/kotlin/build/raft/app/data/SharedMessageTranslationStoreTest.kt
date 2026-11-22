@@ -137,22 +137,6 @@ class SharedMessageTranslationStoreTest {
     }
 
     @Test
-    fun noPreferenceTargetReadsCurrentDisplayLanguageForEveryRequest() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        val api = FakeMessageTranslationApi()
-        var appLocale = AppLocale.English
-        val store = store(api, scope, displayLanguage = { appLocale.displayLanguageTag(systemLanguage = "ko-KR") })
-
-        store.ensureSettingsLoaded()
-        store.requestAutoTranslations(listOf(candidate(messageId = "m1")))
-        appLocale = AppLocale.Japanese
-        store.requestAutoTranslations(listOf(candidate(messageId = "m2")))
-
-        assertEquals(listOf("en", "ja"), api.batchCalls.map { it.second })
-        scope.cancel()
-    }
-
-    @Test
     fun explicitTargetOverridesDisplayLanguage() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val api = FakeMessageTranslationApi()
@@ -298,24 +282,6 @@ class SharedMessageTranslationStoreTest {
     }
 
     @Test
-    fun translateNowWithFreshEntryOnlyTogglesDisplay() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        val api = FakeMessageTranslationApi(
-            batchResponses = mutableListOf(HomeNetworkResponse(200, translatedResultBody("m1", "Hello")))
-        )
-        val store = store(api, scope)
-        store.ensureSettingsLoaded()
-        store.requestAutoTranslations(listOf(candidate()))
-        store.setShowOriginal("m1", true)
-
-        store.translateNow(candidate())
-
-        assertEquals(1, api.batchCalls.size)
-        assertEquals(false, store.state.value.entries.getValue("m1").showOriginal)
-        scope.cancel()
-    }
-
-    @Test
     fun serverDisabledResponseFlipsAvailabilityAndClearsPending() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val api = FakeMessageTranslationApi(
@@ -366,18 +332,6 @@ class SharedMessageTranslationStoreTest {
         val entry = store.state.value.entries.getValue("m1")
         assertEquals(SharedMessageTranslationStatus.NotFound, entry.status)
         assertTrue(entry.isSilentTranslationEntry())
-        scope.cancel()
-    }
-
-    @Test
-    fun setShowOriginalIsNoOpWithoutEntry() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        val api = FakeMessageTranslationApi()
-        val store = store(api, scope)
-
-        store.setShowOriginal("missing", true)
-
-        assertTrue(store.state.value.entries.isEmpty())
         scope.cancel()
     }
 

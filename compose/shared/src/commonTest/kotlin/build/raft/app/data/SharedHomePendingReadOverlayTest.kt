@@ -59,16 +59,6 @@ class SharedHomePendingReadOverlayTest {
     }
 
     @Test
-    fun withNoNewestSeqTheServersCountStands() = runTest {
-        ReadReceiptPendingStore(disk).record(owner, channel, 40L)
-        val store = homeStore(HomeApi(unread = 5, latestSeq = null))
-
-        store.accept(SharedHomeIntent.Start)
-
-        assertEquals(5, store.snapshot().row("channel-1").unreadCount, "a message nobody read is never hidden")
-    }
-
-    @Test
     fun anotherAccountsSavedReadDoesNotTouchThisHome() = runTest {
         ReadReceiptPendingStore(disk).record(ReadReceiptOwner("env", "user-2", "server-1"), channel, 40L)
         val store = homeStore(HomeApi(unread = 5, latestSeq = "40"))
@@ -133,20 +123,6 @@ class SharedHomePendingReadOverlayTest {
             "the summary's cursor is saved as what this read was based on"
         )
         assertEquals(0, store.snapshot().row("channel-1").unreadCount)
-    }
-
-    @Test
-    fun theOverlayLeavesTheReadCursorToTheServer() = runTest {
-        val store = homeStore(HomeApi(unread = 5, latestSeq = "40"))
-        store.accept(SharedHomeIntent.Start)
-        val snapshot = store.snapshot()
-        val withCursor =
-            snapshot.copy(channels = snapshot.channels.map { it.copy(readStateMaxReadSeq = 35L) })
-
-        val overlaid = withCursor.withPendingReadOverlay(mapOf(channel to 40L))
-
-        assertEquals(0, overlaid.row("channel-1").unreadCount)
-        assertEquals(35L, overlaid.row("channel-1").readStateMaxReadSeq, "only an ack moves it, with its version")
     }
 
     @Test

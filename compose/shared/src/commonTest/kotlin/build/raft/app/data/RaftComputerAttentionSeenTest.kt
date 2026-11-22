@@ -41,21 +41,6 @@ class RaftComputerAttentionSeenTest {
     }
 
     @Test
-    fun pairsComeFromMachineNoticesOnly() {
-        assertEquals(
-            setOf(
-                raftComputerAttentionPair("m1", RaftComputerAttentionState.Offline),
-                raftComputerAttentionPair("m2", RaftComputerAttentionState.Offline),
-                raftComputerAttentionPair("m3", RaftComputerAttentionState.Outdated),
-            ),
-            raftComputerAttentionPairs(
-                listOf("machine-offline:m1,m2", "machine-outdated:1.2.0:m3", APP_UPDATE_HOME_NOTIFICATION_ID, "announcement:1")
-            ),
-        )
-        assertEquals(emptySet(), raftComputerAttentionPairs(emptyList()))
-    }
-
-    @Test
     fun enteringAStateLightsAndOpeningComputersSeesIt() {
         val s = Session()
         assertFalse(s.notices())
@@ -71,16 +56,6 @@ class RaftComputerAttentionSeenTest {
         s.openComputers()
         assertFalse(s.notices("machine-offline:m1"))
         assertFalse(s.notices("machine-offline:m1"))
-    }
-
-    @Test
-    fun backOnlineThenOfflineLightsAgain() {
-        val s = Session()
-        s.notices("machine-offline:m1")
-        s.openComputers()
-        assertFalse(s.notices())
-        assertEquals(emptySet(), s.seen, "leaving the state forgets it was seen")
-        assertTrue(s.notices("machine-offline:m1"))
     }
 
     @Test

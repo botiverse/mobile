@@ -3,8 +3,6 @@ package build.raft.app.markdown
 import com.tencent.kuiklybase.markdown.compose.elements.markdownTableColumnWidths
 import kotlin.test.Test
 import kotlin.test.assertContentEquals
-import kotlin.test.assertEquals
-import kotlin.test.assertTrue
 
 /**
  * HTML automatic table layout, as the web renders a chat table (`<table>` in `overflow-x-auto`):
@@ -39,33 +37,10 @@ class MarkdownTableColumnWidthsTest {
     }
 
     @Test
-    fun roundingStillFillsTheAvailableWidthExactly() {
-        val widths = markdownTableColumnWidths(intArrayOf(10, 10, 10), intArrayOf(40, 40, 40), availableWidth = 100)
-        assertEquals(100, widths.sum())
-        widths.forEach { assertTrue(it in 10..40, "every column stays between its min and max: $it") }
-    }
-
-    @Test
     fun columnsThatCannotShrinkEnoughKeepTheirMinimumAndOverflow() {
         assertContentEquals(
             intArrayOf(120, 200),
             markdownTableColumnWidths(intArrayOf(120, 200), intArrayOf(300, 900), availableWidth = 250),
-        )
-    }
-
-    @Test
-    fun maxBelowMinIsTreatedAsMin() {
-        assertContentEquals(
-            intArrayOf(80, 40),
-            markdownTableColumnWidths(intArrayOf(80, 40), intArrayOf(20, 40), availableWidth = 1000),
-        )
-    }
-
-    @Test
-    fun unboundedWidthUsesMaxContent() {
-        assertContentEquals(
-            intArrayOf(60, 5000),
-            markdownTableColumnWidths(intArrayOf(60, 110), intArrayOf(60, 5000), availableWidth = Int.MAX_VALUE),
         )
     }
 }

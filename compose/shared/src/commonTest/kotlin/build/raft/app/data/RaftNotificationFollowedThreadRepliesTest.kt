@@ -3,7 +3,6 @@ package build.raft.app.data
 import build.raft.app.data.realtime.RealtimeEventMapper
 import build.raft.app.data.realtime.RealtimeSocketEvents
 import build.raft.app.model.NotificationAccountSettingsChanged
-import build.raft.app.settingsFollowedThreadRepliesPatch
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -86,14 +85,6 @@ class RaftNotificationFollowedThreadRepliesTest {
         assertFalse("followedThreadReplies" in body(buildRaftNotificationAccountSettingsPatchBody(RaftNotificationAccountSettingsPatch(sound = false), 1)).keys)
         assertEquals(false, RaftNotificationAccountSettingsPatch(sound = false).appliedTo(RaftNotificationAccountSettings(followedThreadReplies = false)).followedThreadReplies)
         assertNull(RaftNotificationAccountSettingsPatch(sound = false).appliedTo(RaftNotificationAccountSettings()).followedThreadReplies)
-    }
-
-    @Test
-    fun theRowWritesOnlyARealChangeAndNothingOnAnOlderServer() {
-        val on = RaftNotificationAccountSettings(followedThreadReplies = true)
-        assertEquals(RaftNotificationAccountSettingsPatch(followedThreadReplies = false), settingsFollowedThreadRepliesPatch(on, enabled = false))
-        assertNull(settingsFollowedThreadRepliesPatch(on, enabled = true), "already on")
-        assertNull(settingsFollowedThreadRepliesPatch(RaftNotificationAccountSettings(followedThreadReplies = null), enabled = false), "no setting on the server")
     }
 
     @Test

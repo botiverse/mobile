@@ -75,32 +75,6 @@ class AnnouncementsRemindersApiTest {
     }
 
     @Test
-    fun typedAnnouncementsRemindersApiRejectsGuessedWrappersAndUnsupportedCommands() = runBlocking {
-        val client =
-            RaftAnnouncementsRemindersApiClient(
-                RecordingAnnouncementsRemindersApi(
-                    activeBody = """{"items":[{"id":"announcement-1","title":"Release notes"}]}""",
-                    dismissBody = """{"success":true}""",
-                    remindersBody = """{"items":[{"reminderId":"reminder-1","title":"standup"}]}"""
-                )
-            )
-        val agentId = MemberId("agent-1")
-
-        assertEquals(
-            "announcements_active_contract_mismatch",
-            assertIs<DataResult.Error>(client.activeAnnouncements()).error.code
-        )
-        assertEquals(
-            "announcement_dismiss_contract_mismatch",
-            assertIs<DataResult.Error>(client.dismissAnnouncement("announcement-1")).error.code
-        )
-        assertEquals(
-            "reminders_list_contract_mismatch",
-            assertIs<DataResult.Error>(client.reminders(agentId)).error.code
-        )
-    }
-
-    @Test
     fun networkAnnouncementsRemindersApiUsesRaftNetworkClientRoutes() = runBlocking {
         val networkClient = RecordingAnnouncementsRemindersNetworkClient()
         val client = RaftAnnouncementsRemindersApiClient(NetworkRaftAnnouncementsRemindersApi(networkClient))

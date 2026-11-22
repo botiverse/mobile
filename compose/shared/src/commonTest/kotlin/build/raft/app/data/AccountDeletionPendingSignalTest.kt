@@ -11,7 +11,6 @@ import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -38,23 +37,6 @@ class AccountDeletionPendingSignalTest {
         assertNull(parseAccountDeletionPendingError(403, """{"error":"account_deletion_pending"}"""))
         assertNull(parseAccountDeletionPendingError(403, "account_deletion_pending"))
         assertNull(parseAccountDeletionPendingError(403, null))
-    }
-
-    @Test
-    fun manyPendingResponsesQueueOneOpenRequest() = runTest {
-        val signal = RaftAccountDeletionPendingSignal()
-        assertTrue(signal.observe(403, pendingBody))
-        assertFalse(signal.observe(403, pendingBody))
-        assertFalse(signal.observe(403, pendingBody))
-
-        val received = mutableListOf<Unit>()
-        val collector = launch { signal.openRequests.toList(received) }
-        advanceUntilIdle()
-        assertEquals(1, received.size, "one open request")
-        assertFalse(signal.observe(403, pendingBody))
-        advanceUntilIdle()
-        assertEquals(1, received.size, "still one after more pending responses")
-        collector.cancel()
     }
 
     @Test

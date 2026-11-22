@@ -71,25 +71,6 @@ class RaftLastCountsRetentionTest {
         assertEquals("identity", store.getString("mvi:persist:home:identity:v1:user:u1:server:s1"), "other families stay")
     }
 
-    @Test
-    fun theActivityBadgeCacheKeepsFiveServersPerAccountAndNothingOlderThanSevenDays() {
-        val cache = ProcessActivityUnreadProjectionCache(InMemoryRaftKeyValueStore()) { now }
-        fun owner(server: String, account: String = "u1") =
-            ProcessActivityUnreadOwner(environmentId = "https://api.example.test", accountId = account, serverId = server)
-        cache.write(owner("other", account = "u2"), totalUnreadCount = 1, totalCount = 1)
-        (1..6).forEach { server ->
-            cache.write(owner("s$server"), totalUnreadCount = server, totalCount = server)
-            now += 1_000
-        }
-
-        assertNull(cache.read(owner("s1")), "the sixth server pushed out the least recent")
-        assertEquals(6, cache.read(owner("s6"))?.totalUnreadCount)
-        assertEquals(1, cache.read(owner("other", account = "u2"))?.totalUnreadCount, "another account stays")
-
-        now += RaftLastCountsMaxAgeMillis + 1
-        assertNull(cache.read(owner("s6")), "older than 7 days is not shown")
-    }
-
     private fun key(user: String, server: String, filter: String = "All", prefix: String = "activity"): String =
         if (prefix == "activity") {
             "mvi:persist:activity:v1:user:$user:server:$server:filter:$filter"

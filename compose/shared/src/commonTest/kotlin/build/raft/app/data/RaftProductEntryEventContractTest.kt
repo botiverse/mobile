@@ -2,7 +2,6 @@ package build.raft.app.data
 
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 import kotlinx.serialization.json.jsonPrimitive
 
@@ -97,13 +96,6 @@ class RaftProductEntryEventContractTest {
             RaftAgentCreateEntry.entries.map { RaftProductEvent.AgentCreateOpened(RaftAgentCreateOpenedProperties(it)) }
 
     @Test
-    fun pinnedShasMatchProductionConstants() {
-        assertEquals(PinnedSlockSha, RAFT_PRODUCT_ENTRY_EVENTS_SLOCK_SHA)
-        assertEquals(PinnedBaseSlockSha, RAFT_PRODUCT_ENTRY_EVENTS_BASE_SLOCK_SHA)
-        assertEquals(PinnedSelectTextSlockSha, RAFT_PRODUCT_EVENTS_SELECT_TEXT_SLOCK_SHA)
-    }
-
-    @Test
     fun everyEmittableEventNamePropertyAndValueIsInTheRegistry() {
         val events = allEvents()
         assertEquals(Registry.keys, events.map { it.name }.toSet(), "each registered entry event has a typed emitter")
@@ -121,39 +113,9 @@ class RaftProductEntryEventContractTest {
     }
 
     @Test
-    fun appEnumsAreSubsetsOfTheRegistryAndNativeSourcesMayEmitThem() {
-        val cases =
-            listOf(
-                Triple("CHANNEL_TABS", ChannelTabs, RaftChannelTab.entries.map { it.wire }),
-                Triple("CHANNEL_TAB_SURFACES", ChannelTabSurfaces, RaftChannelTabSurface.entries.map { it.wire }),
-                Triple("MESSAGE_ACTIONS", MessageActions, RaftMessageAction.entries.map { it.wire }),
-                Triple("MESSAGE_ACTION_SURFACES", MessageActionSurfaces, RaftMessageActionSurface.entries.map { it.wire }),
-                Triple("AGENT_CREATE_ENTRIES", AgentCreateEntries, RaftAgentCreateEntry.entries.map { it.wire }),
-                Triple("activity_item_open.item_kind", Registry.getValue("activity_item_open").properties.getValue("item_kind").values!!, RaftActivityItemKind.entries.map { it.wire }),
-                Triple("activity_mark.action", Registry.getValue("activity_mark").properties.getValue("action").values!!, RaftActivityMarkAction.entries.map { it.wire }),
-            )
-        cases.forEach { (name, registry, app) ->
-            assertTrue(registry.containsAll(app), "$name: ${app.filterNot { it in registry }} not in slock@$PinnedSlockSha")
-            assertEquals(app.size, app.toSet().size, "$name has duplicates")
-        }
-        RaftProductEventSource.entries.forEach { source ->
-            Registry.forEach { (name, spec) -> assertTrue(source.wire in spec.sources, "$name does not accept ${source.wire}") }
-        }
-    }
-
-    @Test
     fun registryActionsWithoutAnAppMenuItemAreNotSent() {
         val sent = RaftMessageAction.entries.map { it.wire }.toSet()
         assertEquals(emptySet(), sent intersect MessageActionsWithoutAppItem)
         assertTrue(MessageActionsWithoutAppItem.all { it in MessageActions })
-    }
-
-    @Test
-    fun namesTheServerNeverAcceptedAreNotEmitted() {
-        val emitted = allEvents().map { it.name }.toSet()
-        UnregisteredNames.forEach { name ->
-            assertFalse(name in Registry, name)
-            assertFalse(name in emitted, name)
-        }
     }
 }

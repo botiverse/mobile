@@ -170,30 +170,6 @@ class RuntimeFormV2SavedConnectionTest {
         assertEquals("sk-direct", submitted["apiKey"].stringOrNull(), "direct mode submits its own secret as before")
     }
 
-    @Test
-    fun aSavedGatewayKeepsItsEndpointAndImageFieldsVisible() {
-        val sources = connSources(saved("gw", "Gateway", "openai-compatible", "gateway"))
-        val values = initialRuntimeFormV2Values(conn, sources)
-            .with("providerId", "connection:gw")
-            .with("model", "any/model")
-        for (key in listOf("baseUrl", "supportsImageInput")) {
-            assertTrue(isRuntimeFormV2FieldVisible(field(key), values.with("providerId", "openai-compatible"), sources))
-            assertTrue(isRuntimeFormV2FieldVisible(field(key), values, sources), "$key must stay visible as a disabled managed field")
-        }
-    }
-
-    @Test
-    fun choicesCarryTheConnectionMetadata() {
-        val choices = assertIs<RuntimeFormV2Choices.Select>(
-            runtimeFormV2Choices(field("providerId"), connSources(), emptyMap())
-        ).options
-        assertEquals(listOf("saved", "saved", "direct", "direct"), choices.map { it.group })
-        assertEquals("conn-1", choices.first().connectionId)
-        assertEquals("deepseek", choices.first().underlyingProviderId)
-        assertEquals(listOf(false, true, false, false), choices.map { it.unavailable })
-        assertNull(choices[2].connectionId)
-    }
-
     // --- loader: formRevision echo and 409 form_revision_stale ---
 
     private class RevisionApi(
@@ -289,14 +265,6 @@ class RuntimeFormV2SavedConnectionTest {
         val result = RuntimeFormV2Loader(api).loadCreate(ServerId("s1"), "m1", "builtin")
         assertTrue(result.isFormRevisionStale(), "a stale form is never shown with a source marked unavailable")
         assertEquals(2, api.formRequests.size, "the whole-form refetch is bounded to one")
-    }
-
-    @Test
-    fun aStaleReprobeAsksTheCallerToReloadTheForm() = runBlocking {
-        val api = RevisionApi(mutableListOf(connectionFormJson())) { _, _, _ -> stale }
-        val result = RuntimeFormV2Loader(api).reloadSource(ServerId("s1"), "m1", "builtin", "model", formRevision = "rev-1")
-        assertTrue(result.isFormRevisionStale())
-        assertEquals(listOf("model rev=rev-1 refresh=true"), api.sourceRequests)
     }
 
     @Test

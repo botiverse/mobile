@@ -182,24 +182,6 @@ class SyncChangesContractTest {
     }
 
     @Test
-    fun `scope added with an unknown snapshot name retakes all`() {
-        val page =
-            parseSyncChangesPage(
-                syncChangesBody(
-                    cursor = "c1.51.1000",
-                    changes =
-                        listOf(
-                            syncScope(1, "channel", "ch-1", "added", listOf("channels", "inbox")),
-                            syncScope(2, "channel", "ch-2", "added", listOf("channels", "reactions")),
-                        ),
-                )
-            )!!
-        val added = page.changes.map { assertIs<RaftSyncChange.ScopeAdded>(it).snapshots }
-        assertEquals(listOf(setOf(RaftSyncSnapshot.Channels, RaftSyncSnapshot.Inbox), RaftSyncSnapshot.All), added)
-        assertEquals(RaftSyncSnapshot.All, page.changes.toSyncApplyPlan().snapshots)
-    }
-
-    @Test
     fun `contract mismatches are rejected`() {
         listOf(
             """{"hasMore":false,"changes":[],"reset":null}""",

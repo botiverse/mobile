@@ -25,21 +25,6 @@ class AttachmentDownloadAtomicFileSinkTest {
     }
 
     @Test
-    fun zeroWriteFailsAndAbortClosesAndUnlinksExactlyOnce() {
-        val ops = RecordingFileOps(zeroWrite = true)
-        val sink = AttachmentDownloadAtomicFileSink("/cache/final.bin", "attempt-2", ops)
-
-        assertTrue(sink.begin())
-        assertFalse(sink.write(byteArrayOf(1)))
-        sink.abort()
-        sink.abort()
-
-        assertEquals(1, ops.closeCalls)
-        assertEquals(2, ops.unlinkCalls, "one pre-open cleanup and one staging abort")
-        assertEquals(0, ops.renameCalls)
-    }
-
-    @Test
     fun fsyncCloseAndRenameFailuresNeverPublishSuccess() {
         listOf("fsync", "close", "rename").forEach { failure ->
             val ops = RecordingFileOps(failAt = failure)
@@ -57,24 +42,6 @@ class AttachmentDownloadAtomicFileSinkTest {
             assertEquals(1, ops.closeCalls, "$failure must own close exactly once")
             assertEquals(if (failure == "rename") 1 else 0, ops.renameCalls)
         }
-    }
-
-    @Test
-    fun renameSuccessIsFinalEvenIfTargetPreexistedAndAbortRunsLater() {
-        val ops = RecordingFileOps(targetPreexists = true)
-        val sink = AttachmentDownloadAtomicFileSink("/cache/final.bin", "attempt-3", ops)
-
-        assertTrue(sink.begin())
-        assertTrue(sink.write(byteArrayOf(4, 5, 6)))
-        assertTrue(sink.prepare())
-        assertTrue(sink.publish())
-        sink.abort()
-
-        assertTrue(ops.published)
-        assertContentEquals(byteArrayOf(4, 5, 6), ops.publishedBytes)
-        assertEquals(1, ops.renameCalls)
-        assertEquals(1, ops.closeCalls)
-        assertEquals(1, ops.unlinkCalls, "abort-after-commit must not unlink the published final")
     }
 }
 

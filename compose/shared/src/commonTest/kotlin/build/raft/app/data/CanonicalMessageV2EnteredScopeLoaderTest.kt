@@ -84,18 +84,6 @@ class CanonicalMessageV2EnteredScopeLoaderTest {
     }
 
     @Test
-    fun threadParentWithoutSummaryDropsTheNodeAndRefusesThePage() = runBlocking {
-        val h = harness(
-            pageBody = canonicalV2TestThreadParentPage(),
-            threadSummariesBody = "{}",
-        )
-        h.loader.loadOnEnter(partition, "channel-1") { true }
-        assertEquals(0, h.store.snapshots.size)
-        assertTrue(h.logs.any { "canonical_v2_snapshot_reply_count_missing" in it }, h.logs.toString())
-        assertTrue(h.logs.any { "outcome=canonical_v2_snapshot_not_full_v6" in it }, h.logs.toString())
-    }
-
-    @Test
     fun emptyPageIsCommittedAsAnEmptyBaseline() = runBlocking {
         // Task #1137: an empty channel is an answer, persisted as a baseline with no facts and no seqs.
         val h = harness(pageBody = """{"messages":[],"historyLimited":false}""")

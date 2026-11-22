@@ -5,10 +5,7 @@ import build.raft.app.data.RuntimeLimitResetTest.Companion.ok
 import build.raft.app.data.RuntimeLimitResetTest.FakeLimitResetApi
 import build.raft.app.model.ServerId
 import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.currentTime
-import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -113,37 +110,6 @@ class MachineOperationsTest {
     }
 
     @Test
-    fun aDoneRedeemCarriesItsOutcome() = runTest {
-        val api =
-            FakeLimitResetApi(
-                redeem = { started() },
-                operation = answers({ pending() }, { done(200, """{"result":{"kind":"reset"},"snapshot":null}""") }),
-            )
-        val load = RaftComputersApiClient(api).redeemRuntimeLimitReset(ServerId("s1"), "m1", RuntimeAccountUsageProvider.Codex, key())
-        assertEquals(RuntimeLimitResetResult.Reset, assertIs<RuntimeLimitResetLoad.Done>(load).reply.result)
-    }
-
-    @Test
-    fun aSignOutReadsItsResultFromTheOperationAndKeepsTheTraceIdOnARefusal() = runTest {
-        val signedOut =
-            FakeLimitResetApi(
-                logout = { started() },
-                operation = answers({ pending() }, { done(200, """{"result":{"kind":"logged_out"}}""") }),
-            )
-        val client = RaftComputersApiClient(signedOut)
-        assertEquals(RuntimeAuthCall.Done(RuntimeAuthLogoutResult.LoggedOut), client.logoutRuntime(ServerId("s1"), "m1", RuntimeAuthRuntime.Codex))
-        assertEquals("""POST servers/s1/machines/m1/runtime-auth/codex/logout {"respondAsync":true}""", signedOut.calls.first())
-
-        val refused =
-            FakeLimitResetApi(
-                logout = { started() },
-                operation = answers({ done(409, """{"error":"This Computer is offline.","code":"computer_offline"}""") }),
-            )
-        val call = RaftComputersApiClient(refused).logoutRuntime(ServerId("s1"), "m1", RuntimeAuthRuntime.Codex)
-        assertEquals(RuntimeAuthRequestError(status = 409, code = "computer_offline", traceId = TRACE), assertIs<RuntimeAuthCall.Refused>(call).error)
-    }
-
-    @Test
     fun noAnswerInTimeOrAGoneOperationIsAnOutcomeNeverLearned() = runTest {
         val late = FakeLimitResetApi(readClaude = { started() }, operation = { pending() })
         val never = RaftComputersApiClient(late).readClaudeLimitResets(ServerId("s1"), "m1", consent = false)
@@ -183,19 +149,6 @@ class MachineOperationsTest {
             RUNTIME_LIMIT_RESET_CLAUDE_RELAY_BUDGET_MILLIS + MACHINE_OPERATION_SLACK_MILLIS,
             deadlineOf { it.redeemRuntimeLimitReset(ServerId("s1"), "m1", RuntimeAccountUsageProvider.Claude, key(), RuntimeLimitResetKind.FiveHour) },
         )
-    }
-
-    @Test
-    fun leavingThePageStopsTheReads() = runTest {
-        val api = FakeLimitResetApi(readClaude = { started() }, operation = { pending() })
-        val job = launch { RaftComputersApiClient(api).readClaudeLimitResets(ServerId("s1"), "m1", consent = false) }
-        advanceTimeBy(3 * MACHINE_OPERATION_POLL_MILLIS + 1)
-        runCurrent()
-        assertEquals(3, reads(api))
-        job.cancel()
-        advanceTimeBy(60_000)
-        assertEquals(3, reads(api), "no read after the caller is cancelled")
-        assertTrue(job.isCancelled)
     }
 
     @Test

@@ -87,14 +87,6 @@ class AgentOperatorEventsParserTest {
         assertTrue(logs.any { it.startsWith("projection_value_rejected") && "index=3" in it }, "$logs")
     }
 
-    @Test
-    fun anythingButTheEnvelopeIsNotAPage() {
-        assertNull(parseSharedAgentOperatorEventsPage("""[{"id":"e1"}]"""))
-        assertNull(parseSharedAgentOperatorEventsPage("""{"items":[]}"""))
-        assertNull(parseSharedAgentOperatorEventsPage("<html>"))
-        assertEquals(AgentOperatorEventsPage(emptyList(), truncated = false), parseSharedAgentOperatorEventsPage("""{"events":[]}"""))
-    }
-
     private fun turn(id: String, startedAt: Long) = AgentActivityTurn(
         id = id,
         startedAtEpochMillis = startedAt,

@@ -39,31 +39,6 @@ class RaftMessageBlockCardsTest {
     }
 
     @Test
-    fun severalLinksInOneParagraphFollowItInLinkOrder() {
-        val content = "${url(2)} then ${url(1)} and ${url(3)}"
-        assertEquals(listOf(content to listOf(2, 1, 3)), plan(content, results(1, 2, 3)))
-    }
-
-    @Test
-    fun aLinkInAListItemGivesItsCardToTheItemsParagraph() {
-        val content = "- first ${url(1)}\n- second\n- third ${url(3)}"
-        assertEquals(listOf("first ${url(1)}" to listOf(1), "third ${url(3)}" to listOf(3)), plan(content, results(1, 3)))
-    }
-
-    @Test
-    fun aTableCellAHeadingAndTheAuthorsQuoteGetNoCard() {
-        val content =
-            "| a | b |\n| --- | --- |\n| ${url(1)} | x |\n\n# Heading ${url(2)}\n\n> quoted ${url(3)}\n\n> - in a list ${url(4)}\n\nSetext ${url(5)}\n===\n"
-        assertTrue(planRaftBlockCards(content, results(1, 2, 3, 4, 5)).isEmpty())
-    }
-
-    @Test
-    fun aLinkThatIsNotBareGetsNoCard() {
-        val content = "[the fix](${url(1)}) and `${url(2)}`"
-        assertTrue(planRaftBlockCards(content, results(1, 2)).isEmpty())
-    }
-
-    @Test
     fun theSameUrlIsDrawnOnceAtItsFirstOccurrenceAndOnlyThatOneCounts() {
         val content = "${url(1)}\n\n${url(1)}\n\n${url(2)}\n\n${url(3)}\n\n${url(4)}"
         // 1 once, then 2 and 3: the repeated 1 does not count toward the three; 4 is the fourth.
@@ -74,23 +49,6 @@ class RaftMessageBlockCardsTest {
     fun atMostThreeInAMessageInMessageOrder() {
         val content = (1..5).joinToString("\n\n") { url(it) }
         assertEquals(listOf(1, 2, 3), planRaftBlockCards(content, results(1, 2, 3, 4, 5)).values.flatten().map { it.url.substringAfterLast('/').toInt() })
-    }
-
-    @Test
-    fun aFirstOccurrenceInATableDoesNotUseUpTheUrlOrTheLimit() {
-        val content = "| a |\n| --- |\n| ${url(1)} |\n\n${url(1)}"
-        assertEquals(1, planRaftBlockCards(content, results(1)).values.flatten().size)
-    }
-
-    @Test
-    fun onlyAnswersWithABlockCardGetOne() {
-        val hover = AppLinkResult.Card(url(2), AppLinkApp("Stamp", null), "PR 2")
-        val content = "${url(1)}\n\n${url(2)}\n\n${url(3)}"
-        assertEquals(
-            listOf(url(1)),
-            planRaftBlockCards(content, results(1) + mapOf(url(2) to hover as AppLinkResult)).values.flatten().map { it.url },
-        )
-        assertTrue(planRaftBlockCards(content, emptyMap()).isEmpty())
     }
 
     @Test

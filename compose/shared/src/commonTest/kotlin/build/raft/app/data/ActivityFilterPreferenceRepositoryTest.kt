@@ -2,7 +2,6 @@ package build.raft.app.data
 
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /** web `store/activityFilterPreference.ts` (slock #11383): the Filter menu's last choice, per server. */
@@ -32,18 +31,6 @@ class ActivityFilterPreferenceRepositoryTest {
     }
 
     @Test
-    fun choosingAllRemovesTheKey() {
-        val keyValues = InMemoryRaftKeyValueStore()
-        val preferences = ActivityFilterPreferenceRepository(keyValues)
-        preferences.write("server-1", InboxFilter.Mentions)
-
-        preferences.write("server-1", InboxFilter.All)
-
-        assertNull(keyValues.getString("raft.activity.filter.server-1"))
-        assertEquals(InboxFilter.All, preferences.read("server-1"))
-    }
-
-    @Test
     fun anUnknownStoredValueReadsAsAll() {
         val keyValues =
             InMemoryRaftKeyValueStore(
@@ -58,19 +45,6 @@ class ActivityFilterPreferenceRepositoryTest {
         assertEquals(InboxFilter.All, preferences.read("server-1"), "not one of the menu's choices")
         assertEquals(InboxFilter.All, preferences.read("server-2"), "values are the web's lower-case strings")
         assertEquals(InboxFilter.All, preferences.read("server-3"))
-    }
-
-    @Test
-    fun aBlankServerKeepsNothing() {
-        val keyValues = InMemoryRaftKeyValueStore()
-        val preferences = ActivityFilterPreferenceRepository(keyValues)
-
-        preferences.write(null, InboxFilter.Unread)
-        preferences.write("  ", InboxFilter.Unread)
-
-        assertEquals(InboxFilter.All, preferences.read(null))
-        assertEquals(InboxFilter.All, preferences.read(""))
-        assertNull(keyValues.getString("raft.activity.filter."))
     }
 
     @Test

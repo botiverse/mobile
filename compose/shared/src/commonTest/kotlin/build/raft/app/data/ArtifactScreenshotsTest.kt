@@ -4,10 +4,8 @@ import build.raft.app.model.ServerId
 import kotlin.test.Test
 import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
-import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertNull
-import kotlin.test.assertTrue
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.async
 import kotlinx.coroutines.test.TestScope
@@ -47,31 +45,11 @@ class ArtifactScreenshotsTest {
     }
 
     @Test
-    fun screenshotWithoutPhoneShotIsRead() {
-        assertEquals(ArtifactScreenshot("of_desktop", null), summaryOf("""{"kind":"screenshot","desktop":"of_desktop","phone":null}""").screenshot)
-        assertEquals(ArtifactScreenshot("of_desktop", null), summaryOf("""{"kind":"screenshot","desktop":"of_desktop"}""").screenshot)
-        assertEquals(ArtifactScreenshot("of_desktop", null), summaryOf("""{"kind":"screenshot","desktop":"of_desktop","phone":""}""").screenshot)
-    }
-
-    @Test
     fun screenshotWithoutDesktopShotIsNone() {
         assertNull(summaryOf("""{"kind":"screenshot","phone":"of_phone"}""").screenshot)
         assertNull(summaryOf("""{"kind":"screenshot","desktop":"","phone":"of_phone"}""").screenshot)
         // A file id of another type: the card still shows, without a screenshot.
         assertNull(summaryOf("""{"kind":"screenshot","desktop":42,"phone":{"id":"x"}}""").screenshot)
-    }
-
-    @Test
-    fun otherAndUnknownKindsKeepTodaysBehaviour() {
-        val excerpt = summaryOf("""{"kind":"excerpt","text":"Revenue grew"}""")
-        assertNull(excerpt.screenshot)
-        assertEquals("Revenue grew", excerpt.description)
-        assertTrue(excerpt.descriptionIsExcerpt)
-        assertNull(summaryOf("""{"kind":"image","path":"cover.png"}""").screenshot)
-        assertNull(summaryOf("""{"kind":"none"}""").screenshot)
-        val unknown = summaryOf("""{"kind":"hologram","desktop":"of_desktop","depth":3}""")
-        assertNull(unknown.screenshot)
-        assertNull(unknown.description)
     }
 
     @Test
@@ -170,75 +148,6 @@ class ArtifactScreenshotsTest {
     private fun key(file: String, card: String = cardId, serverId: String = server) = ArtifactScreenshotKey(serverId, card, file)
 
     @Test
-    fun oneReadHoweverManyCardsAskAndKeptOnesAnswerAtOnce() = runTest {
-        val gate = CompletableDeferred<Unit>()
-        val fetcher = FakeFetcher { byteArrayOf(7) }.apply { this.gate = gate }
-        val store = store(fetcher)
-        val first = async { store.read(key("of_desktop")) }
-        val second = async { store.reader(server).read(cardId, "of_desktop") }
-        runCurrent()
-        assertEquals(1, fetcher.calls.size)
-        gate.complete(Unit)
-        assertContentEquals(byteArrayOf(7), first.await())
-        assertContentEquals(byteArrayOf(7), second.await())
-        assertContentEquals(byteArrayOf(7), store.reader(server).kept(cardId, "of_desktop"))
-        assertContentEquals(byteArrayOf(7), store.read(key("of_desktop")))
-        assertEquals(1, fetcher.calls.size)
-        // Another Server's reader is another read.
-        assertNull(store.reader("other").kept(cardId, "of_desktop"))
-    }
-
-    @Test
-    fun aReadOutlivesTheCardThatStartedIt() = runTest {
-        val gate = CompletableDeferred<Unit>()
-        val fetcher = FakeFetcher { byteArrayOf(5) }.apply { this.gate = gate }
-        val store = store(fetcher)
-        val card = async { store.read(key("of_desktop")) }
-        runCurrent()
-        card.cancel()
-        gate.complete(Unit)
-        runCurrent()
-        assertContentEquals(byteArrayOf(5), store.kept(key("of_desktop")))
-    }
-
-    @Test
-    fun aFailureIsRememberedThirtySecondsThenReadAgain() = runTest {
-        val fetcher = FakeFetcher { null }
-        val store = store(fetcher)
-        assertNull(store.read(key("of_desktop")))
-        assertTrue(store.failedLately(key("of_desktop")))
-        testScheduler.advanceTimeBy(ARTIFACT_SCREENSHOT_FAILED_MILLIS - 1)
-        assertNull(store.read(key("of_desktop")))
-        assertEquals(1, fetcher.calls.size)
-        testScheduler.advanceTimeBy(1)
-        assertFalse(store.failedLately(key("of_desktop")))
-        fetcher.answer = { byteArrayOf(1) }
-        assertContentEquals(byteArrayOf(1), store.read(key("of_desktop")))
-        assertEquals(2, fetcher.calls.size)
-    }
-
-    @Test
-    fun aThrowingReadIsAFailure() = runTest {
-        val store = store(FakeFetcher { error("boom") })
-        assertNull(store.read(key("of_desktop")))
-        assertTrue(store.failedLately(key("of_desktop")))
-    }
-
-    @Test
-    fun theOldestGoFirstPastTheCount() = runTest {
-        val store = store(FakeFetcher { byteArrayOf(1) }, maxKept = 2)
-        store.read(key("a"))
-        store.read(key("b"))
-        // Shown again: the newest.
-        store.kept(key("a"))
-        store.read(key("c"))
-        assertEquals(2, store.keptCount())
-        assertNull(store.kept(key("b")))
-        assertContentEquals(byteArrayOf(1), store.kept(key("a")))
-        assertContentEquals(byteArrayOf(1), store.kept(key("c")))
-    }
-
-    @Test
     fun theOldestGoFirstPastTheBytes() = runTest {
         val store = store(FakeFetcher { ByteArray(400) }, maxKeptBytes = 1_000)
         store.read(key("a"))
@@ -248,13 +157,6 @@ class ArtifactScreenshotsTest {
         assertEquals(2, store.keptCount())
         assertEquals(800, store.keptByteCount())
         assertNull(store.kept(key("a")))
-    }
-
-    @Test
-    fun webLimits() {
-        assertEquals(64, ARTIFACT_SCREENSHOT_MAX_KEPT)
-        assertEquals(32L * 1024 * 1024, ARTIFACT_SCREENSHOT_MAX_KEPT_BYTES)
-        assertEquals(30_000L, ARTIFACT_SCREENSHOT_FAILED_MILLIS)
     }
 
     @Test

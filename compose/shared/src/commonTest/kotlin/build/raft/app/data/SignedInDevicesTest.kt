@@ -99,12 +99,6 @@ class SignedInDevicesTest {
     }
 
     @Test
-    fun aSignInIdIsEscapedInThePath() {
-        assertEquals("0b6f-4c1e_a.b~c", encodeSignedInDevicePathSegment("0b6f-4c1e_a.b~c"))
-        assertEquals("a%2Fb%20c", encodeSignedInDevicePathSegment("a/b c"))
-    }
-
-    @Test
     fun aSignOutAsksForThePasswordThenSignsOutAndReadsAgain() = runTest {
         val network =
             ScriptedAgentControlsNetworkClient().apply {

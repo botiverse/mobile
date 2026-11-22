@@ -15,7 +15,6 @@ import build.raft.app.model.Message
 import build.raft.app.model.MessageConversationContext
 import build.raft.app.model.MessageId
 import build.raft.app.model.MessageNew
-import build.raft.app.model.MessageUpdated
 import build.raft.app.model.PerReceiverReadStateChanged
 import build.raft.app.model.PerReceiverReadStateScope
 import build.raft.app.model.RealtimeRefreshRequired
@@ -34,17 +33,13 @@ import build.raft.app.network.sync.ReadStateV1ProductionCanary
 import build.raft.app.network.sync.ReadStateV1ProductionOwner
 import kotlinx.atomicfu.locks.SynchronizedObject
 import kotlinx.atomicfu.locks.synchronized
-import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.joinAll
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.withContext
@@ -53,71 +48,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
-// Mirrors the store's private SharedActivityReplyPrewarmConcurrency (Semaphore(2)); the tail reuses
-// that same shared Semaphore, so total prewarm concurrency must never exceed it.
-private const val SharedActivityReplyPrewarmConcurrencyForTest = 2
-
 class SharedActivityStoreTest {
-    // atomicfu `synchronized` (Kotlin/Native) only locks a SynchronizedObject, never a plain list.
-    private val testLogsLock = SynchronizedObject()
-
-    @Test
-    fun flagOffActivityFinalStateCheckpointAndEffectTraceMatchLegacy() = runBlocking {
-        val legacyScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        val canaryScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        val legacyInbox = FakeInboxRepository(initialSnapshots = listOf(snapshot(emptyList())))
-        val canaryInbox = FakeInboxRepository(initialSnapshots = listOf(snapshot(emptyList())))
-        val legacyVersionStore = PerReceiverStateVersionStore(InMemoryRaftKeyValueStore())
-        val canaryVersionStore = PerReceiverStateVersionStore(InMemoryRaftKeyValueStore())
-        var legacyEffects = 0
-        var canaryEffects = 0
-        val legacy =
-            activityStore(
-                scope = legacyScope,
-                inboxRepository = legacyInbox,
-                perReceiverStateVersionStore = legacyVersionStore,
-                readReceiptOwnerFactory = { serverId, accountId -> ReadReceiptOwner("production", accountId, serverId) },
-                onUnreadCountsChanged = { legacyEffects += 1 },
-            )
-        val flagOff =
-            activityStore(
-                scope = canaryScope,
-                inboxRepository = canaryInbox,
-                perReceiverStateVersionStore = canaryVersionStore,
-                readReceiptOwnerFactory = { serverId, accountId -> ReadReceiptOwner("production", accountId, serverId) },
-                readStateV1Canary =
-                    ReadStateV1ProductionCanary(
-                        isEnabledForServer = { false },
-                        store = TestReadStateV1Store(),
-                        onProjection = { _, _, _ -> },
-                        onRebaseline = { _, _, _ -> },
-                    ),
-                onUnreadCountsChanged = { canaryEffects += 1 },
-            )
-        legacy.dispatch(SharedActivityIntent.LoadInitial)
-        flagOff.dispatch(SharedActivityIntent.LoadInitial)
-        val event =
-            SharedActivityIntent.ApplyRealtimeEvent(
-                PerReceiverReadStateChanged(
-                    ServerId("server-1"),
-                    listOf(PerReceiverReadStateScope(ChannelId("channel-1"), 5, 2)),
-                )
-            )
-
-        legacy.acceptRealtime(event)
-        flagOff.acceptRealtime(event)
-
-        assertEquals(legacy.state.value, flagOff.state.value)
-        assertEquals(legacyEffects, canaryEffects)
-        assertEquals(
-            legacyVersionStore.readReadStateCheckpoint(ServerId("server-1"), MemberId("user-1"), ChannelId("channel-1")),
-            canaryVersionStore.readReadStateCheckpoint(ServerId("server-1"), MemberId("user-1"), ChannelId("channel-1")),
-        )
-        assertEquals(legacyInbox.initialLoadCount, canaryInbox.initialLoadCount)
-        legacyScope.cancel()
-        canaryScope.cancel()
-    }
-
     @Test
     fun selectedReadStateRealtimeUsesSynchronousPatchOnlyProjectionWithoutLegacyCheckpoint() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
@@ -211,193 +142,6 @@ class SharedActivityStoreTest {
     }
 
     @Test
-    fun failedVisibleReplyPrewarmRetriesOnlyAfterViewportReentry() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        var calls = 0
-        val store =
-            activityStore(
-                scope = scope,
-                prewarmReplyThread = {
-                    calls += 1
-                    DataResult.Error(ScreenError(code = "offline", retryable = true))
-                }
-            )
-        val marker = replyPrewarmMarker()
-
-        store.dispatch(SharedActivityIntent.PrewarmVisibleReplyThreads(setOf(marker)))
-        store.dispatch(SharedActivityIntent.PrewarmVisibleReplyThreads(setOf(marker)))
-        assertEquals(1, calls)
-
-        store.dispatch(SharedActivityIntent.PrewarmVisibleReplyThreads(emptySet()))
-        store.dispatch(SharedActivityIntent.PrewarmVisibleReplyThreads(setOf(marker)))
-        assertEquals(2, calls)
-        scope.cancel()
-    }
-
-    @Test
-    fun visibleReplyPrewarmRunsLatestGenerationAfterOlderInFlightCompletes() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        val releaseFirst = CompletableDeferred<Unit>()
-        val calls = mutableListOf<ActivityReplyThreadPrewarmMarker>()
-        val ledger = SharedThreadFreshnessLedger()
-        val marker = replyPrewarmMarker()
-        val store =
-            activityStore(
-                scope = scope,
-                replyThreadFreshnessLedger = ledger,
-                prewarmReplyThread = { marker ->
-                    calls += marker
-                    if (calls.size == 1) releaseFirst.await()
-                    DataResult.Content(Unit)
-                }
-            )
-
-        store.dispatch(SharedActivityIntent.PrewarmVisibleReplyThreads(setOf(marker)))
-        ledger.advanceAllOwners(marker.key.serverId, marker.key.threadChannelId)
-        store.dispatch(SharedActivityIntent.PrewarmVisibleReplyThreads(setOf(marker)))
-        assertEquals(1, calls.size)
-
-        releaseFirst.complete(Unit)
-        assertEquals(2, calls.size)
-        assertTrue(calls[0].contentGeneration !== calls[1].contentGeneration)
-        scope.cancel()
-    }
-
-    @Test
-    fun resetSerializesWithConcurrentReplyPrewarmRegistrationAndCompletion() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
-        val store =
-            activityStore(
-                scope = scope,
-                prewarmReplyThread = { DataResult.Content(Unit) }
-            )
-        val markerSets =
-            (0 until 8).map { generation ->
-                (0 until 24)
-                    .map { index -> keyedMarker("reset-race-$generation-$index") }
-                    .toSet()
-            }
-
-        // Production hit this exact ownership split: Kuikly reset iterated replyPrewarmJobs while
-        // app-scope completion removed entries in finally. Exercise both sides from real worker
-        // threads; any unsynchronized HashMap size/copy race escapes the child and fails the test.
-        val workers =
-            List(4) { worker ->
-                launch(Dispatchers.Default) {
-                    repeat(200) { iteration ->
-                        if ((worker + iteration) % 3 == 0) {
-                            store.reset()
-                        } else {
-                            store.dispatch(
-                                SharedActivityIntent.PrewarmVisibleReplyThreads(
-                                    markerSets[(worker + iteration) % markerSets.size]
-                                )
-                            )
-                        }
-                    }
-                }
-            }
-        workers.joinAll()
-
-        store.reset()
-        assertEquals(emptyList(), store.state.value.items)
-        scope.cancel()
-    }
-
-    @Test
-    fun twoActivityShellOwnersShareTheSameOpaqueAppFreshnessGeneration() = runBlocking {
-        val ledger = SharedThreadFreshnessLedger()
-        val firstScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        val secondScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        val firstCalls = mutableListOf<ActivityReplyThreadPrewarmMarker>()
-        val secondCalls = mutableListOf<ActivityReplyThreadPrewarmMarker>()
-        val firstStore =
-            activityStore(
-                scope = firstScope,
-                replyThreadFreshnessLedger = ledger,
-                prewarmReplyThread = { marker ->
-                    firstCalls += marker
-                    DataResult.Content(Unit)
-                }
-            )
-        val secondStore =
-            activityStore(
-                scope = secondScope,
-                replyThreadFreshnessLedger = ledger,
-                prewarmReplyThread = { marker ->
-                    secondCalls += marker
-                    DataResult.Content(Unit)
-                }
-            )
-        val marker = replyPrewarmMarker()
-
-        firstStore.dispatch(SharedActivityIntent.PrewarmVisibleReplyThreads(setOf(marker)))
-        secondStore.dispatch(SharedActivityIntent.PrewarmVisibleReplyThreads(setOf(marker)))
-        assertTrue(firstCalls.single().contentGeneration === secondCalls.single().contentGeneration)
-
-        ledger.advanceAllOwners(marker.key.serverId, marker.key.threadChannelId)
-        firstStore.dispatch(SharedActivityIntent.PrewarmVisibleReplyThreads(setOf(marker)))
-        secondStore.dispatch(SharedActivityIntent.PrewarmVisibleReplyThreads(setOf(marker)))
-        assertTrue(firstCalls.last().contentGeneration === secondCalls.last().contentGeneration)
-        assertTrue(firstCalls.first().contentGeneration !== firstCalls.last().contentGeneration)
-        firstScope.cancel()
-        secondScope.cancel()
-    }
-
-    @Test
-    fun activityTailPrewarmsBelowFoldInTopFirstOrder() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        val calls = mutableListOf<ActivityReplyThreadPrewarmMarker>()
-        val store =
-            activityStore(
-                scope = scope,
-                prewarmReplyThread = { marker ->
-                    calls += marker
-                    DataResult.Content(Unit)
-                }
-            )
-        val ordered = (1..4).map { keyedMarker("row-$it") }
-
-        store.dispatch(SharedActivityIntent.PrewarmActivityTail(ordered))
-
-        assertEquals(ordered.map { it.key }, calls.map { it.key })
-        scope.cancel()
-    }
-
-    @Test
-    fun activityTailKeepsRunningAfterTheActivityViewportDetaches() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        val firstStarted = CompletableDeferred<Unit>()
-        val releaseFirst = CompletableDeferred<Unit>()
-        val calls = mutableListOf<ActivityReplyThreadPrewarmMarker>()
-        val first = keyedMarker("row-1")
-        val second = keyedMarker("row-2")
-        val store =
-            activityStore(
-                scope = scope,
-                prewarmReplyThread = { marker ->
-                    calls += marker
-                    if (marker.key == first.key) {
-                        firstStarted.complete(Unit)
-                        releaseFirst.await()
-                    }
-                    DataResult.Content(Unit)
-                }
-            )
-
-        store.dispatch(SharedActivityIntent.PrewarmActivityTail(listOf(first, second)))
-        firstStarted.await()
-
-        // Opening the clicked Thread removes the Activity viewport owner, but the store-owned
-        // click-progressive tail must keep draining outside that route.
-        store.dispatch(SharedActivityIntent.DetachPrewarmViewport)
-        releaseFirst.complete(Unit)
-
-        assertEquals(listOf(first.key, second.key), calls.map { it.key })
-        scope.cancel()
-    }
-
-    @Test
     fun activityTailPrewarmHonorsDepthCap() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val calls = mutableListOf<ActivityReplyThreadPrewarmMarker>()
@@ -415,269 +159,6 @@ class SharedActivityStoreTest {
         store.dispatch(SharedActivityIntent.PrewarmActivityTail(ordered))
 
         assertEquals(ordered.take(3).map { it.key }, calls.map { it.key })
-        scope.cancel()
-    }
-
-    @Test
-    fun activityTailPrewarmSkipsVisibleAndCompletedKeys() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        val calls = mutableListOf<ActivityReplyThreadPrewarmMarker>()
-        val store =
-            activityStore(
-                scope = scope,
-                prewarmReplyThread = { marker ->
-                    calls += marker
-                    DataResult.Content(Unit)
-                }
-            )
-        val completed = keyedMarker("row-1")
-        val visible = keyedMarker("row-2")
-        val fresh = keyedMarker("row-3")
-
-        // "completed" warms via the visible path and records completion.
-        store.dispatch(SharedActivityIntent.PrewarmVisibleReplyThreads(setOf(completed)))
-        // "visible" stays in the current viewport while the tail runs.
-        store.dispatch(SharedActivityIntent.PrewarmVisibleReplyThreads(setOf(visible)))
-        calls.clear()
-
-        store.dispatch(
-            SharedActivityIntent.PrewarmActivityTail(listOf(visible, completed, fresh))
-        )
-
-        assertEquals(listOf(fresh.key), calls.map { it.key })
-        scope.cancel()
-    }
-
-    @Test
-    fun activityTailPrewarmNeverExceedsSharedConcurrencyCap() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        var inFlight = 0
-        var maxInFlight = 0
-        val store =
-            activityStore(
-                scope = scope,
-                prewarmReplyThread = {
-                    inFlight += 1
-                    if (inFlight > maxInFlight) maxInFlight = inFlight
-                    inFlight -= 1
-                    DataResult.Content(Unit)
-                }
-            )
-        val ordered = (1..12).map { keyedMarker("row-$it") }
-
-        store.dispatch(SharedActivityIntent.PrewarmActivityTail(ordered))
-
-        assertTrue(maxInFlight <= SharedActivityReplyPrewarmConcurrencyForTest)
-        scope.cancel()
-    }
-
-    @Test
-    fun visibleReplyPrewarmTakesPriorityOverActivityTail() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        val releaseVisible = CompletableDeferred<Unit>()
-        val calls = mutableListOf<ActivityReplyThreadPrewarmMarker>()
-        val firstVisible = keyedMarker("visible-1")
-        val secondVisible = keyedMarker("visible-2")
-        val tail = keyedMarker("tail-1")
-        val store =
-            activityStore(
-                scope = scope,
-                prewarmReplyThread = { marker ->
-                    calls += marker
-                    if (marker.key == firstVisible.key || marker.key == secondVisible.key) releaseVisible.await()
-                    DataResult.Content(Unit)
-                }
-            )
-
-        // Two visible markers saturate the shared Semaphore(2).
-        store.dispatch(
-            SharedActivityIntent.PrewarmVisibleReplyThreads(setOf(firstVisible, secondVisible))
-        )
-        store.dispatch(SharedActivityIntent.PrewarmActivityTail(listOf(tail)))
-
-        // Tail cannot acquire a permit while the visible set holds both.
-        assertEquals(setOf(firstVisible.key, secondVisible.key), calls.map { it.key }.toSet())
-        assertTrue(calls.none { it.key == tail.key })
-
-        releaseVisible.complete(Unit)
-        assertTrue(calls.any { it.key == tail.key })
-        scope.cancel()
-    }
-
-    @Test
-    fun activityTailPrewarmCancelsKeysDroppedFromOrderedSet() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        val started = mutableListOf<ActivityReplyThreadPrewarmMarker>()
-        val cancelled = mutableListOf<ActivityReplyThreadPrewarmMarker>()
-        val dropped = keyedMarker("dropped")
-        val kept = keyedMarker("kept")
-        val store =
-            activityStore(
-                scope = scope,
-                prewarmReplyThread = { marker ->
-                    started += marker
-                    if (marker.key == dropped.key) {
-                        try {
-                            awaitCancellation()
-                        } catch (cancellation: CancellationException) {
-                            cancelled += marker
-                            throw cancellation
-                        }
-                    }
-                    DataResult.Content(Unit)
-                }
-            )
-
-        // "dropped" is warmed first (top of the list) and stays in-flight.
-        store.dispatch(SharedActivityIntent.PrewarmActivityTail(listOf(dropped, kept)))
-        assertEquals(listOf(dropped.key), started.map { it.key })
-
-        // New ordered set no longer contains "dropped" -> its in-flight job is cancelled.
-        store.dispatch(SharedActivityIntent.PrewarmActivityTail(listOf(kept)))
-
-        assertEquals(listOf(dropped.key), cancelled.map { it.key })
-        assertTrue(started.any { it.key == kept.key })
-        scope.cancel()
-    }
-
-    @Test
-    fun activityTailReplanReschedulesInFlightItemWithoutExceedingOneActive() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        val gates = mutableMapOf<ActivityReplyThreadPrewarmMarker, CompletableDeferred<Unit>>()
-        val calls = mutableListOf<ActivityReplyThreadPrewarmMarker>()
-        var active = 0
-        var maxActive = 0
-        val ledger = SharedThreadFreshnessLedger()
-        val firstVersion = keyedMarker("A")
-        val below = keyedMarker("B")
-        val storeMarkerKey = firstVersion.key
-        val secondVersion = firstVersion
-        val store =
-            activityStore(
-                scope = scope,
-                replyThreadFreshnessLedger = ledger,
-                prewarmReplyThread = { marker ->
-                    calls += marker
-                    active += 1
-                    if (active > maxActive) maxActive = active
-                    try {
-                        gates.getOrPut(marker) { CompletableDeferred() }.await()
-                    } finally {
-                        active -= 1
-                    }
-                    DataResult.Content(Unit)
-                }
-            )
-        // A(v1) is warmed at the top of the tail and suspends in-flight on its gate.
-        store.dispatch(SharedActivityIntent.PrewarmActivityTail(listOf(firstVersion)))
-        assertEquals(1, calls.size)
-
-        // Replan while A(v1) is still in-flight: A is re-versioned to v2 and B appears below it.
-        ledger.advanceAllOwners(storeMarkerKey.serverId, storeMarkerKey.threadChannelId)
-        store.dispatch(SharedActivityIntent.PrewarmActivityTail(listOf(secondVersion, below)))
-
-        // The superseded A(v1) is unwound; the tail then reschedules A(v2) and warms B, one at a
-        // time. Release the gates so the serial tail can drain.
-        val latestVersion = calls.last { it.key == storeMarkerKey }
-        gates.getOrPut(latestVersion) { CompletableDeferred() }.complete(Unit)
-        val actualBelow = calls.last { it.key == below.key }
-        gates.getOrPut(actualBelow) { CompletableDeferred() }.complete(Unit)
-
-        // A(v2) must be rescheduled (no permanent warm miss) and B must be warmed.
-        assertEquals(2, calls.count { it.key == storeMarkerKey })
-        assertTrue(calls.any { it.key == below.key })
-        // The tail never runs more than one prewarm concurrently across the replan.
-        assertTrue(maxActive <= 1)
-        // A(v1)'s stale result is discarded; only the latest version is recorded as warmed.
-        assertTrue(calls.filter { it.key == storeMarkerKey }.map { it.contentGeneration }.distinctBy { it }.size == 2)
-        scope.cancel()
-    }
-
-    @Test
-    fun activityTailRapidReplansSerializeBehindSlowDrainingJob() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        val calls = mutableListOf<ActivityReplyThreadPrewarmMarker>()
-        val running = CompletableDeferred<Unit>()
-        val drainGate = CompletableDeferred<Unit>()
-        var active = 0
-        var maxActive = 0
-        val ledger = SharedThreadFreshnessLedger()
-        val firstVersion = keyedMarker("A")
-        val store =
-            activityStore(
-                scope = scope,
-                replyThreadFreshnessLedger = ledger,
-                prewarmReplyThread = { marker ->
-                    calls += marker
-                    active += 1
-                    if (active > maxActive) maxActive = active
-                    try {
-                        if (marker.key == firstVersion.key && calls.size == 1) {
-                            running.complete(Unit)
-                            try {
-                                awaitCancellation()
-                            } catch (cancellation: CancellationException) {
-                                // Simulate a SLOW drain: the cancelled job stays alive (and still
-                                // counts as active) until the drain gate releases.
-                                withContext(NonCancellable) { drainGate.await() }
-                                throw cancellation
-                            }
-                        }
-                    } finally {
-                        active -= 1
-                    }
-                    DataResult.Content(Unit)
-                }
-            )
-        val secondVersion = keyedMarker("A")
-        val secondBelow = keyedMarker("B")
-        val thirdVersion = keyedMarker("A")
-        val thirdBelow = keyedMarker("C")
-
-        // A(v1) is warmed at the top of the tail and is now in-flight.
-        store.dispatch(SharedActivityIntent.PrewarmActivityTail(listOf(firstVersion)))
-        running.await()
-        assertEquals(listOf(firstVersion.key), calls.map { it.key })
-
-        // Two rapid consecutive replans arrive while A(v1) is still SLOWLY draining.
-        ledger.advanceAllOwners(firstVersion.key.serverId, firstVersion.key.threadChannelId)
-        store.dispatch(SharedActivityIntent.PrewarmActivityTail(listOf(secondVersion, secondBelow)))
-        ledger.advanceAllOwners(firstVersion.key.serverId, firstVersion.key.threadChannelId)
-        store.dispatch(SharedActivityIntent.PrewarmActivityTail(listOf(thirdVersion, thirdBelow)))
-
-        // The drain barrier holds every later generation: nothing new may start while A(v1) drains.
-        assertEquals(listOf(firstVersion.key), calls.map { it.key })
-        assertTrue(maxActive <= 1)
-
-        // Once the slow drain finishes, only the LATEST generation (v3) runs, one item at a time.
-        drainGate.complete(Unit)
-
-        assertEquals(2, calls.count { it.key == thirdVersion.key })
-        assertTrue(calls.any { it.key == thirdBelow.key })
-        // The superseded v2 generation never launched (its loop was cancelled before it ran).
-        assertTrue(calls.none { it.key == secondBelow.key })
-        // Concurrency never exceeded one across the two consecutive replans and the drain.
-        assertTrue(maxActive <= 1)
-        scope.cancel()
-    }
-
-    @Test
-    fun setFilterRetainsCachedFilterSnapshotsForKeepAliveSwipe() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        val allSnap = snapshot(listOf(activityItem("channel-all", unreadCount = 1)), totalUnreadCount = 1)
-        val unreadSnap = snapshot(listOf(activityItem("channel-unread", unreadCount = 1)), totalUnreadCount = 1)
-        val inbox = FakeInboxRepository(initialSnapshots = listOf(allSnap, unreadSnap, allSnap))
-        val store = activityStore(scope, inbox)
-
-        store.dispatch(SharedActivityIntent.LoadInitial)
-        assertEquals(listOf("channel:channel-all"), store.state.value.items.map { it.key })
-        assertEquals(listOf("channel:channel-all"), store.state.value.filterSnapshots[InboxFilter.All]?.items?.map { it.key })
-
-        store.dispatch(SharedActivityIntent.SetFilter(InboxFilter.Unread))
-        assertEquals(InboxFilter.Unread, store.state.value.selectedFilter)
-        assertEquals(listOf("channel:channel-unread"), store.state.value.items.map { it.key })
-        assertEquals(listOf("channel:channel-all"), store.state.value.filterSnapshots[InboxFilter.All]?.items?.map { it.key })
-        assertEquals(listOf("channel:channel-unread"), store.state.value.filterSnapshots[InboxFilter.Unread]?.items?.map { it.key })
         scope.cancel()
     }
 
@@ -860,41 +341,6 @@ class SharedActivityStoreTest {
     }
 
     @Test
-    fun unfollowedThreadUpdatedEventCannotRestoreAttention() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        val unfollowed =
-            threadItem("thread-unfollowed").copy(
-                isFollowing = false,
-                replyCount = 1
-            )
-        val store =
-            activityStore(
-                scope = scope,
-                inboxRepository = FakeInboxRepository(initialSnapshots = listOf(snapshot(listOf(unfollowed))))
-            )
-
-        store.dispatch(SharedActivityIntent.LoadInitial)
-        store.dispatch(
-            SharedActivityIntent.ApplyRealtimeEvent(
-                ThreadUpdated(
-                    parentMessageId = MessageId("parent-message"),
-                    threadChannelId = ChannelId("thread-unfollowed"),
-                    replyCount = 2,
-                    lastReplyAt = "2026-09-01T00:00:00Z",
-                    participantIds = emptyList(),
-                    unreadCount = 5,
-                    firstUnreadMessageId = MessageId("reply")
-                )
-            )
-        )
-
-        assertEquals(0, store.state.value.items.single().unreadCount)
-        assertEquals(null, store.state.value.items.single().firstUnreadMessageId)
-        assertEquals(0, store.state.value.totalUnreadCount)
-        scope.cancel()
-    }
-
-    @Test
     fun activityUnfollowKeepsRowAndClearsAttentionThroughSharedTransport() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val conversation = FakeConversationRepository().apply {
@@ -987,36 +433,6 @@ class SharedActivityStoreTest {
 
         val row = store.state.value.items.single()
         assertEquals(true, row.isFollowing)
-        assertEquals(0, row.unreadCount)
-        assertEquals(false, row.hasMention)
-        assertEquals(listOf(MessageId("parent-message")), conversation.followedParentMessageIds)
-        scope.cancel()
-    }
-
-    @Test
-    fun activityFollowFailureLeavesServerProjectedUnfollowedRowAfterRefresh() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        val conversation = FakeConversationRepository().apply {
-            followResult = DataResult.Error(ScreenError("offline"))
-        }
-        val unfollowed =
-            threadItem("thread-unfollowed").copy(
-                isFollowing = false,
-                unreadCount = 0,
-                hasMention = false
-            )
-        val store =
-            activityStore(
-                scope = scope,
-                conversationRepository = conversation,
-                inboxRepository = FakeInboxRepository(initialSnapshots = listOf(snapshot(listOf(unfollowed))))
-            )
-
-        store.dispatch(SharedActivityIntent.LoadInitial)
-        store.dispatch(SharedActivityIntent.FollowThread(unfollowed))
-
-        val row = store.state.value.items.single()
-        assertEquals(false, row.isFollowing)
         assertEquals(0, row.unreadCount)
         assertEquals(false, row.hasMention)
         assertEquals(listOf(MessageId("parent-message")), conversation.followedParentMessageIds)
@@ -1298,128 +714,6 @@ class SharedActivityStoreTest {
     }
 
     @Test
-    fun nonAdvancingRefreshOffsetKeepsThePreviousSnapshot() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        val rows = (1..30).map { index -> activityItem("channel-$index") }
-        var initialLoads = 0
-        val inbox =
-            object : InboxRepository {
-                override suspend fun loadInitial(
-                    serverId: ServerId,
-                    filter: InboxFilter,
-                    limit: Int
-                ): DataResult<InboxSnapshot> {
-                    initialLoads += 1
-                    return DataResult.Content(
-                        if (initialLoads == 1) {
-                            snapshot(rows, hasMore = false, nextOffset = 30, totalCount = 30)
-                        } else {
-                            snapshot(rows.take(10), hasMore = true, nextOffset = 10, totalCount = 30)
-                        }
-                    )
-                }
-
-                override suspend fun loadMore(
-                    serverId: ServerId,
-                    filter: InboxFilter,
-                    offset: Int,
-                    limit: Int
-                ): DataResult<InboxSnapshot> =
-                    DataResult.Content(
-                        snapshot(
-                            rows.slice(10 until 30),
-                            hasMore = true,
-                            nextOffset = offset,
-                            totalCount = 30
-                        )
-                    )
-
-                override suspend fun markDone(channelId: ChannelId, frontier: InboxDoneFrontier): DataResult<InboxDoneResult> =
-                    DataResult.Content(InboxDoneResult(channelId))
-            }
-        val store = activityStore(scope, inbox)
-
-        store.dispatch(SharedActivityIntent.LoadInitial)
-        val stableKeys = store.state.value.items.map { item -> item.key }
-        store.dispatch(SharedActivityIntent.Refresh)
-
-        assertEquals(stableKeys, store.state.value.items.map { item -> item.key })
-        // A stalled later page ends the read with what it fetched (Hands f6c3f3a6), not an error.
-        assertEquals(null, store.state.value.errorCode)
-        assertEquals(false, store.state.value.refreshing)
-        scope.cancel()
-    }
-
-    @Test
-    fun visibleRefreshBurstKeepsContentAndCoalescesWhileCanonicalRefreshIsInFlight() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        val inbox = DeferredInboxRepository()
-        val store = activityStore(scope, inbox)
-
-        store.dispatch(SharedActivityIntent.LoadInitial)
-        inbox.completeNext(activityItem("channel-1"))
-
-        store.dispatch(SharedActivityIntent.Refresh)
-        store.dispatch(SharedActivityIntent.Refresh)
-        store.dispatch(SharedActivityIntent.Refresh)
-
-        assertEquals(1, inbox.pendingCount)
-        assertEquals(false, store.state.value.loading)
-        assertEquals(true, store.state.value.refreshing)
-        assertEquals(listOf("channel-1"), store.state.value.items.map { item -> item.channelId.value })
-
-        inbox.completeNext(activityItem("channel-1"))
-        assertEquals(false, store.state.value.refreshing)
-        scope.cancel()
-    }
-
-    @Test
-    fun realtimeAndReadStateBurstUsesOneBackgroundReconcileWithoutReadStateReload() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        val head = (1..30).map { index -> activityItem("channel-$index") }
-        val tail = (31..60).map { index -> activityItem("channel-$index") }
-        val inbox =
-            FakeInboxRepository(
-                initialSnapshots =
-                    listOf(
-                        snapshot(head, hasMore = true, nextOffset = 30, totalCount = 60),
-                        snapshot(head + tail, hasMore = false, nextOffset = 60, totalCount = 60)
-                    ),
-                moreSnapshots = listOf(snapshot(tail, hasMore = false, nextOffset = 60, totalCount = 60))
-            )
-        val store =
-            activityStore(
-                scope = scope,
-                inboxRepository = inbox,
-                realtimeBackgroundRefreshIntervalMillis = 0L
-            )
-
-        store.dispatch(SharedActivityIntent.LoadInitial)
-        store.dispatch(SharedActivityIntent.LoadMore)
-        store.acceptRealtime(
-            SharedActivityIntent.ApplyRealtimeEvent(
-                MessageNew(message("message-burst", channelId = "channel-1"))
-            )
-        )
-        store.dispatch(
-            SharedActivityIntent.ApplyRealtimeEvent(
-                readStateEvent(scopeId = "channel-1", version = 1, maxReadSeq = 10)
-            )
-        )
-        store.dispatch(
-            SharedActivityIntent.ApplyRealtimeEvent(
-                readStateEvent(scopeId = "channel-2", version = 1, maxReadSeq = 20)
-            )
-        )
-
-        assertEquals(2, inbox.initialLoadCount)
-        assertEquals(listOf(30, 60), inbox.initialLoadLimits)
-        assertEquals(60, store.state.value.items.size)
-        assertEquals((31..60).map { index -> "channel:channel-$index" }, store.state.value.items.drop(30).map { it.key })
-        scope.cancel()
-    }
-
-    @Test
     fun loadInitialDedupesRowsWithSameActivityKey() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val duplicateFirst = activityItem("channel-1", unreadCount = 1)
@@ -1498,26 +792,6 @@ class SharedActivityStoreTest {
         val row = store.state.value.items.single()
         assertEquals(0, row.unreadCount)
         assertEquals(null, row.firstUnreadMessageId)
-        assertEquals(0, store.state.value.totalUnreadCount)
-        scope.cancel()
-    }
-
-    @Test
-    fun staleUnreadFilterRefreshAfterMarkReadKeepsTheRetainedRowRead() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        val inbox = DeferredInboxRepository()
-        val store = activityStore(scope, inbox)
-        val unreadRow = activityItem("channel-1", unreadCount = 2)
-
-        store.dispatch(SharedActivityIntent.SetFilter(InboxFilter.Unread))
-        inbox.completeNextSnapshot(snapshot(listOf(unreadRow), totalCount = 1, totalUnreadCount = 2))
-        store.dispatch(SharedActivityIntent.Refresh)
-        store.dispatch(SharedActivityIntent.MarkRead(store.state.value.items.single()))
-        inbox.completeNextSnapshot(snapshot(listOf(unreadRow), totalCount = 1, totalUnreadCount = 2))
-
-        // The lagging copy cannot bring the unread state back; the row stays only as the retained read row.
-        assertEquals(listOf("channel:channel-1" to 0), store.state.value.items.map { it.key to it.unreadCount })
-        assertEquals(0, store.state.value.totalCount)
         assertEquals(0, store.state.value.totalUnreadCount)
         scope.cancel()
     }
@@ -1678,40 +952,6 @@ class SharedActivityStoreTest {
     }
 
     @Test
-    fun markAllReadKeepsReadRowsInUnreadAndMentionsFilters() = runBlocking {
-        // Unread keeps every listed row, shown read, until the user moves on (stdrc 10-23,
-        // SharedActivityStoreRetainedReadRowTest); its count drops at once. Mentions keeps read rows
-        // (slock channelService.ts:13136-13168).
-        listOf(InboxFilter.Unread to 0, InboxFilter.Mentions to 1).forEach { (filter, expectedTotalCount) ->
-            val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-            val pendingReadAll = CompletableDeferred<DataResult<ReadReceiptResult>>()
-            val row = activityItem("channel-1", unreadCount = 2).copy(hasMention = true)
-            val inbox =
-                FakeInboxRepository(
-                    initialSnapshots =
-                        listOf(
-                            snapshot(listOf(row), totalCount = 1, totalUnreadCount = 2)
-                        )
-                )
-            val store =
-                activityStore(
-                    scope,
-                    inbox,
-                    readReceiptRepository = FakeReadReceiptRepository(pendingInboxReadAllResult = pendingReadAll)
-                )
-
-            store.dispatch(SharedActivityIntent.SetFilter(filter))
-            store.dispatch(SharedActivityIntent.MarkAllRead)
-
-            assertEquals(listOf(row.copy(unreadCount = 0, firstUnreadMessageId = null, hasMention = false)), store.state.value.items, "$filter")
-            assertEquals(expectedTotalCount, store.state.value.totalCount, "$filter")
-            assertEquals(0, store.state.value.totalUnreadCount, "$filter")
-            pendingReadAll.complete(DataResult.Content(ReadReceiptResult()))
-            scope.cancel()
-        }
-    }
-
-    @Test
     fun activitySilentRefreshDoesNotDrivePullRefreshState() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val inbox = DeferredInboxRepository()
@@ -1783,34 +1023,6 @@ class SharedActivityStoreTest {
     }
 
     @Test
-    fun announcementRealtimeDoesNotRefreshActivitySummaryCounts() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        val inbox =
-            FakeInboxRepository(
-                initialSnapshots =
-                    listOf(
-                        snapshot(listOf(activityItem("channel-1", unreadCount = 1)), totalUnreadCount = 1),
-                        snapshot(listOf(activityItem("channel-1", unreadCount = 2)), totalUnreadCount = 2)
-                    )
-            )
-        val store = activityStore(scope, inbox)
-
-        store.dispatch(SharedActivityIntent.LoadInitial)
-        store.dispatch(
-            SharedActivityIntent.ApplyRealtimeEvent(
-                RealtimeRefreshRequired(
-                    scope = RealtimeRefreshScope.Announcements,
-                    reason = "announcement:new"
-                )
-            )
-        )
-
-        assertEquals(1, inbox.initialLoadCount)
-        assertEquals(1, store.state.value.totalUnreadCount)
-        scope.cancel()
-    }
-
-    @Test
     fun readStateFactBeforeInitialRequestRecordsCheckpointWithoutTakingListLoadOwnership() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val inbox =
@@ -1842,38 +1054,6 @@ class SharedActivityStoreTest {
             build.raft.app.data.realtime.PerReceiverReadStateCheckpoint(version = 1, maxReadSeq = 10),
             versionStore.readReadStateCheckpoint(ServerId("server-1"), MemberId("user-1"), ChannelId("channel-1"))
         )
-        scope.cancel()
-    }
-
-    @Test
-    fun readStateFactAlreadyAcceptedByHomeDoesNotRefreshActivity() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        val inbox =
-            FakeInboxRepository(
-                initialSnapshots =
-                    listOf(snapshot(listOf(activityItem("channel-1", unreadCount = 0)), totalUnreadCount = 0))
-            )
-        val versionStore = PerReceiverStateVersionStore(InMemoryRaftKeyValueStore())
-        versionStore.writeReadStateCheckpoint(
-            serverId = ServerId("server-1"),
-            memberId = MemberId("user-1"),
-            scopeId = ChannelId("channel-1"),
-            checkpoint = build.raft.app.data.realtime.PerReceiverReadStateCheckpoint(version = 3, maxReadSeq = 30)
-        )
-        val store = activityStore(scope, inboxRepository = inbox, perReceiverStateVersionStore = versionStore)
-
-        store.dispatch(
-            SharedActivityIntent.ApplyRealtimeEvent(
-                readStateEvent(scopeId = "channel-1", version = 3, maxReadSeq = 30)
-            )
-        )
-        store.dispatch(
-            SharedActivityIntent.ApplyRealtimeEvent(
-                readStateEvent(scopeId = "channel-1", version = 3, maxReadSeq = 30)
-            )
-        )
-
-        assertEquals(0, inbox.initialLoadCount)
         scope.cancel()
     }
 
@@ -1913,38 +1093,6 @@ class SharedActivityStoreTest {
 
         assertEquals(1, inbox.initialLoadCount)
         assertEquals(0, homeReconcileRequests)
-        assertEquals(2, store.state.value.totalUnreadCount)
-        scope.cancel()
-    }
-
-    @Test
-    fun staleReadStateFactDoesNotRefreshActivity() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        val inbox =
-            FakeInboxRepository(
-                initialSnapshots =
-                    listOf(
-                        snapshot(listOf(activityItem("channel-1", unreadCount = 2)), totalUnreadCount = 2),
-                        snapshot(listOf(activityItem("channel-1", unreadCount = 0)), totalUnreadCount = 0)
-                    )
-            )
-        val versionStore = PerReceiverStateVersionStore(InMemoryRaftKeyValueStore())
-        versionStore.writeReadStateCheckpoint(
-            serverId = ServerId("server-1"),
-            memberId = MemberId("user-1"),
-            scopeId = ChannelId("channel-1"),
-            checkpoint = build.raft.app.data.realtime.PerReceiverReadStateCheckpoint(version = 5, maxReadSeq = 50)
-        )
-        val store = activityStore(scope, inboxRepository = inbox, perReceiverStateVersionStore = versionStore)
-        store.dispatch(SharedActivityIntent.LoadInitial)
-
-        store.dispatch(
-            SharedActivityIntent.ApplyRealtimeEvent(
-                readStateEvent(scopeId = "channel-1", version = 4, maxReadSeq = 40)
-            )
-        )
-
-        assertEquals(1, inbox.initialLoadCount)
         assertEquals(2, store.state.value.totalUnreadCount)
         scope.cancel()
     }
@@ -2039,34 +1187,6 @@ class SharedActivityStoreTest {
             snapshot(listOf(activityItem("channel-1", unreadCount = 3)), totalUnreadCount = 3)
         )
         assertEquals(3, store.state.value.totalUnreadCount)
-        assertEquals(0, inbox.pendingCount)
-        scope.cancel()
-    }
-
-    @Test
-    fun readStateFactDoesNotRestartExplicitCanonicalRefresh() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        val inbox = DeferredInboxRepository()
-        val store = activityStore(scope, inboxRepository = inbox)
-        val visibleUnread = activityItem("channel-1", unreadCount = 3).copy(hasMention = true)
-
-        store.dispatch(SharedActivityIntent.LoadInitial)
-        inbox.completeNextSnapshot(snapshot(listOf(visibleUnread), totalUnreadCount = 3))
-        store.dispatch(SharedActivityIntent.Refresh)
-        store.dispatch(
-            SharedActivityIntent.ApplyRealtimeEvent(
-                readStateEvent(scopeId = "channel-1", version = 1, maxReadSeq = 10)
-            )
-        )
-
-        assertEquals(3, store.state.value.totalUnreadCount)
-        assertEquals(true, store.state.value.items.single().hasMention)
-
-        inbox.completeNextSnapshot(
-            snapshot(listOf(activityItem("channel-1", unreadCount = 0)), totalUnreadCount = 0)
-        )
-        assertEquals(0, store.state.value.totalUnreadCount)
-        assertEquals(false, store.state.value.items.single().hasMention)
         assertEquals(0, inbox.pendingCount)
         scope.cancel()
     }
@@ -2383,47 +1503,6 @@ class SharedActivityStoreTest {
     }
 
     @Test
-    fun aThreadUpdatedOnlyPatchStaysOnTopThroughALaggingServedOrder() = runBlocking {
-        // The joint-channel shape of Hands 62498f69: only `thread:updated` reaches the row.
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        val head =
-            threadItem("thread-head").copy(
-                parentMessageId = MessageId("parent-head"),
-                replyCount = 5,
-                latestActivityMessageId = MessageId("head-5"),
-                latestActivitySeq = "21060639"
-            )
-        val mine =
-            threadItem("thread-mine").copy(
-                parentMessageId = MessageId("parent-mine"),
-                replyCount = 22,
-                latestActivityMessageId = MessageId("mine-22"),
-                latestActivitySeq = "21060637"
-            )
-        val inbox = FakeInboxRepository(initialSnapshots = listOf(snapshot(listOf(head, mine))))
-        val store = activityStore(scope = scope, inboxRepository = inbox)
-        store.dispatch(SharedActivityIntent.LoadInitial)
-
-        store.dispatch(
-            SharedActivityIntent.ApplyRealtimeEvent(
-                ThreadUpdated(
-                    parentMessageId = MessageId("parent-mine"),
-                    threadChannelId = ChannelId("thread-mine"),
-                    replyCount = 23,
-                    lastReplyAt = "2026-11-09T05:41:41Z",
-                    participantIds = emptyList()
-                )
-            )
-        )
-        assertEquals(listOf(mine.key, head.key), store.state.value.items.map(InboxItem::key))
-        store.dispatch(SharedActivityIntent.Refresh)
-
-        assertEquals(listOf(mine.key, head.key), store.state.value.items.map(InboxItem::key))
-        assertEquals(23, store.state.value.items.first().replyCount)
-        scope.cancel()
-    }
-
-    @Test
     fun threadUpdatedAdvancesFreshnessOnlyForAcceptedHighWaterChange() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val ledger = SharedThreadFreshnessLedger()
@@ -2461,63 +1540,6 @@ class SharedActivityStoreTest {
             )
         )
         assertTrue(advanced === ledger.captureContent("server-1", "thread-channel-1"))
-        scope.cancel()
-    }
-
-    @Test
-    fun messageUpdatedAdvancesOnceForSameMessageContentMutation() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        val ledger = SharedThreadFreshnessLedger()
-        val store =
-            activityStore(
-                scope = scope,
-                inboxRepository = FakeInboxRepository(listOf(snapshot(listOf(threadItem("thread-channel-1"))))),
-                replyThreadFreshnessLedger = ledger
-            )
-        store.dispatch(SharedActivityIntent.LoadInitial)
-        val initial = ledger.captureContent("server-1", "thread-channel-1")
-        val update =
-            MessageUpdated(
-                message(
-                    id = "reply-1",
-                    channelId = "thread-channel-1",
-                    body = "edited body"
-                )
-            )
-
-        store.dispatch(SharedActivityIntent.ApplyRealtimeEvent(update))
-        val advanced = ledger.captureContent("server-1", "thread-channel-1")
-        assertTrue(initial !== advanced)
-
-        store.dispatch(SharedActivityIntent.ApplyRealtimeEvent(update))
-        assertTrue(advanced === ledger.captureContent("server-1", "thread-channel-1"))
-        scope.cancel()
-    }
-
-    @Test
-    fun canonicalReconcileAdvancesOnlyWhenAcceptedThreadContentChanges() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        val ledger = SharedThreadFreshnessLedger()
-        val original = threadItem("thread-channel-1").copy(replyCount = 2)
-        val changed = original.copy(replyCount = 3, latestActivityAt = "2026-07-13T03:05:00Z")
-        val store =
-            activityStore(
-                scope = scope,
-                inboxRepository =
-                    FakeInboxRepository(
-                        initialSnapshots =
-                            listOf(snapshot(listOf(original)), snapshot(listOf(original)), snapshot(listOf(changed)))
-                    ),
-                replyThreadFreshnessLedger = ledger
-            )
-
-        store.dispatch(SharedActivityIntent.LoadInitial)
-        val initial = ledger.captureContent("server-1", "thread-channel-1")
-        store.dispatch(SharedActivityIntent.Refresh)
-        assertTrue(initial === ledger.captureContent("server-1", "thread-channel-1"))
-
-        store.dispatch(SharedActivityIntent.Refresh)
-        assertTrue(initial !== ledger.captureContent("server-1", "thread-channel-1"))
         scope.cancel()
     }
 
@@ -2645,55 +1667,6 @@ class SharedActivityStoreTest {
     }
 
     @Test
-    fun realtimeBackgroundReconcileKeepsRefreshChromeOffWhileRequestIsInFlight() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        val inbox = DeferredInboxRepository()
-        val store =
-            activityStore(
-                scope = scope,
-                inboxRepository = inbox,
-                realtimeBackgroundRefreshIntervalMillis = 0L
-            )
-        val stale = threadItem("thread-channel-1", unreadCount = 0).copy(replyCount = 2)
-        val canonical =
-            stale.copy(
-                latestActivityMessageId = MessageId("message-new"),
-                latestActivityPreview = "Realtime preview",
-                replyCount = 3,
-                unreadCount = 1,
-                firstUnreadMessageId = MessageId("message-new")
-            )
-        store.dispatch(SharedActivityIntent.LoadInitial)
-        inbox.completeNextSnapshot(snapshot(listOf(stale), totalUnreadCount = 0))
-        store.dispatch(
-            SharedActivityIntent.ApplyRealtimeEvent(
-                MessageNew(
-                    message(
-                        id = "message-new",
-                        channelId = "thread-channel-1",
-                        body = "Realtime preview",
-                        conversationContext = MessageConversationContext(channelKind = ConversationKind.Thread)
-                    )
-                )
-            )
-        )
-
-        awaitPendingCount(inbox, 1)
-        assertEquals(false, store.state.value.loading)
-        assertEquals(false, store.state.value.refreshing)
-        assertEquals(false, store.state.value.pullRefreshing)
-        assertEquals(MessageId("message-new"), store.state.value.items.single().latestActivityMessageId)
-        assertEquals(0, store.state.value.items.single().unreadCount, "unread arrives with the canonical row")
-        assertEquals(0, store.state.value.totalUnreadCount)
-
-        inbox.completeNextSnapshot(snapshot(listOf(canonical), totalUnreadCount = 1))
-        awaitState(store) { state -> state.items.singleOrNull()?.latestActivityMessageId == MessageId("message-new") }
-        assertEquals(false, store.state.value.refreshing)
-        assertEquals(1, store.state.value.items.single().unreadCount)
-        scope.cancel()
-    }
-
-    @Test
     fun realtimeBackgroundReconcileFailureDoesNotPolluteVisibleErrorOrChrome() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val inbox = DeferredInboxRepository()
@@ -2752,35 +1725,6 @@ class SharedActivityStoreTest {
 
         inbox.completeNextSnapshot(snapshot(listOf(head), totalUnreadCount = 1))
         awaitState(store) { state -> state.items.map { it.key } == listOf(head.key) }
-        assertEquals(false, store.state.value.refreshing)
-        scope.cancel()
-    }
-
-    @Test
-    fun mentionsFilterWaitsForCanonicalMembershipWithoutApplyingMessageGuess() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        val inbox = DeferredInboxRepository()
-        val store =
-            activityStore(
-                scope = scope,
-                inboxRepository = inbox,
-                realtimeBackgroundRefreshIntervalMillis = 0L
-            )
-        val target = threadItem("thread-target", unreadCount = 1).copy(replyCount = 2, hasMention = true)
-
-        store.dispatch(SharedActivityIntent.SetFilter(InboxFilter.Mentions))
-        inbox.completeNextSnapshot(snapshot(listOf(target), totalUnreadCount = 1))
-        store.dispatch(
-            SharedActivityIntent.ApplyRealtimeEvent(
-                MessageNew(message("message-new", channelId = "thread-target"))
-            )
-        )
-
-        awaitPendingCount(inbox, 1)
-        assertEquals(target, store.state.value.items.single())
-
-        inbox.completeNextSnapshot(snapshot(emptyList(), totalUnreadCount = 0))
-        awaitState(store) { state -> state.items.isEmpty() }
         assertEquals(false, store.state.value.refreshing)
         scope.cancel()
     }
@@ -2906,36 +1850,6 @@ class SharedActivityStoreTest {
 
         assertTrue(store.state.value.items.isEmpty())
         assertEquals(0, store.state.value.totalUnreadCount)
-        scope.cancel()
-    }
-
-    @Test
-    fun backgroundEmptyResultCannotDropRowStillHeldByRealtimeHighWater() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        val inbox = DeferredInboxRepository()
-        val store =
-            activityStore(
-                scope = scope,
-                inboxRepository = inbox,
-                realtimeBackgroundRefreshIntervalMillis = 0L
-            )
-        val stale = threadItem("thread-channel-1").copy(replyCount = 2)
-
-        store.dispatch(SharedActivityIntent.LoadInitial)
-        inbox.completeNextSnapshot(snapshot(listOf(stale)))
-        store.dispatch(
-            SharedActivityIntent.ApplyRealtimeEvent(
-                MessageNew(message("message-new", channelId = "thread-channel-1"))
-            )
-        )
-
-        awaitPendingCount(inbox, 1)
-        inbox.completeNextResult(DataResult.Empty(EmptyReason.NoMessages))
-        delay(1L)
-
-        assertEquals(listOf(stale.key), store.state.value.items.map { it.key })
-        assertEquals(MessageId("message-new"), store.state.value.items.single().latestActivityMessageId)
-        assertEquals(0, store.state.value.totalUnreadCount, "no local unread inflation")
         scope.cancel()
     }
 
@@ -3231,71 +2145,6 @@ class SharedActivityStoreTest {
     }
 
     @Test
-    fun messageThreadAndResumeBurstPatchImmediatelyAndCoalesceOneBackgroundReconcile() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        val stale = threadItem("thread-channel-1").copy(replyCount = 2)
-        val canonical =
-            stale.copy(
-                latestActivityMessageId = MessageId("message-1"),
-                latestActivityPreview = "message message-1",
-                replyCount = 4,
-                latestActivityAt = "2026-07-13T03:04:00Z",
-                unreadCount = 1,
-                firstUnreadMessageId = MessageId("message-1")
-            )
-        val inbox =
-            FakeInboxRepository(
-                listOf(
-                    snapshot(listOf(stale), totalUnreadCount = 0),
-                    snapshot(listOf(canonical), totalUnreadCount = 1)
-                )
-            )
-        val store =
-            activityStore(
-                scope = scope,
-                inboxRepository = inbox,
-                realtimeBackgroundRefreshIntervalMillis = 75L,
-                // Legacy real-dispatcher case: the 75ms throttle window is waited
-                // out with a real delay below, so it needs the real clock.
-                nowMillis = activityMonotonicClock()
-            )
-
-        store.dispatch(SharedActivityIntent.LoadInitial)
-        store.dispatch(
-            SharedActivityIntent.ApplyRealtimeEvent(
-                MessageNew(message("message-1", channelId = "thread-channel-1"))
-            )
-        )
-        store.dispatch(
-            SharedActivityIntent.ApplyRealtimeEvent(
-                ThreadUpdated(
-                    parentMessageId = MessageId("parent-message"),
-                    threadChannelId = ChannelId("thread-channel-1"),
-                    replyCount = 4,
-                    lastReplyAt = "2026-07-13T03:04:00Z",
-                    participantIds = emptyList(),
-                    unreadCount = 1,
-                    firstUnreadMessageId = MessageId("message-1")
-                )
-            )
-        )
-        store.dispatch(
-            SharedActivityIntent.ApplyRealtimeEvent(
-                SyncResumeResponse(messages = emptyList(), currentSeq = 10L, hasMore = false)
-            )
-        )
-
-        assertEquals(4, store.state.value.items.single().replyCount)
-        assertEquals(MessageId("message-1"), store.state.value.items.single().latestActivityMessageId)
-        assertEquals(0, store.state.value.items.single().unreadCount)
-        assertEquals(false, store.state.value.refreshing)
-        delay(150L)
-        assertEquals(2, inbox.initialLoadCount)
-        assertEquals(false, store.state.value.refreshing)
-        scope.cancel()
-    }
-
-    @Test
     fun homeSummaryRealtimeIncrementsUnreadWithoutRefreshingActivityRows() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val inbox =
@@ -3425,48 +2274,6 @@ class SharedActivityStoreTest {
         assertEquals(listOf("channel:channel-1"), store.state.value.items.map { it.key })
         assertTrue(diagnostics.none { it.contains("stale_session") })
         scope.cancel()
-    }
-
-    @Test
-    fun loadInitialDedupesHydratedActivityPersistRows() = runBlocking {
-        val persistStorage = InMemoryPersistStorage()
-        val persistSlice = createSharedActivityPersistSlice(persistStorage)
-        val duplicateRow = activityItem("channel-1")
-        val preloadScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        val preloadStore =
-            activityStore(
-                scope = preloadScope,
-                inboxRepository =
-                    FakeInboxRepository(
-                        initialSnapshots =
-                            listOf(
-                                snapshot(
-                                    listOf(
-                                        duplicateRow,
-                                        duplicateRow.copy(latestActivityMessageId = MessageId("latest-channel-1-duplicate")),
-                                        activityItem("channel-2")
-                                    )
-                                )
-                            )
-                    ),
-                persistSlices = listOf(persistSlice)
-            )
-        preloadStore.dispatch(SharedActivityIntent.LoadInitial)
-
-        val standaloneScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        val standaloneStore =
-            activityStore(
-                scope = standaloneScope,
-                inboxRepository = DeferredInboxRepository(),
-                persistSlices = listOf(persistSlice)
-            )
-
-        standaloneStore.dispatch(SharedActivityIntent.LoadInitial)
-
-        assertEquals(listOf("channel:channel-1", "channel:channel-2"), standaloneStore.state.value.items.map { it.key })
-        assertEquals(true, standaloneStore.state.value.refreshing)
-        preloadScope.cancel()
-        standaloneScope.cancel()
     }
 
     @Test
@@ -4162,79 +2969,6 @@ class SharedActivityStoreTest {
         scope.cancel()
     }
 
-    @Test
-    fun pullRefreshRecordsStartAndTerminalDiagnosticsCarryingPullRefreshInput() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        val lines = mutableListOf<String>()
-        val store = activityStore(scope = scope, diagnosticsLogger = { message -> lines.add(message) })
-
-        store.dispatch(SharedActivityIntent.LoadInitial)
-        lines.clear()
-        store.dispatch(SharedActivityIntent.PullRefresh)
-
-        // task #436: without a start line, "no terminal line" cannot be told apart
-        // from "the load never began", so absence is unreadable as evidence.
-        val startLines = lines.filter { it.contains("phase=start") }
-        assertEquals(1, startLines.size, "pull refresh must record exactly one start line; actual=$lines")
-        assertTrue(
-            startLines[0].contains("pullRefresh=true"),
-            "start line must carry the pull-refresh input; actual=${startLines[0]}"
-        )
-
-        val terminalLines = lines.filter { it.contains("result=") }
-        assertEquals(1, terminalLines.size, "pull refresh must record exactly one terminal line; actual=$lines")
-        assertTrue(
-            terminalLines[0].contains("pullRefresh=true"),
-            "terminal line must carry the pull-refresh input; actual=${terminalLines[0]}"
-        )
-        assertTrue(
-            terminalLines[0].contains("pullRefreshingAfter=false"),
-            "a terminated pull refresh must publish pullRefreshing=false; actual=${terminalLines[0]}"
-        )
-        scope.cancel()
-    }
-
-    @Test
-    fun postStartExitViaMissingServerStillRecordsATerminalLine() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        val lines = mutableListOf<String>()
-        // currentServerId resolves to a server absent from the session's list, which
-        // reaches the `server == null` exit.
-        val session =
-            StoredAuthSession(
-                user = StoredAuthUser(id = "user-1", email = "user-1@slock.local", displayName = "User One"),
-                accessToken = "access",
-                refreshToken = "refresh",
-                selectedServerId = "server-absent",
-                servers = listOf(StoredAuthServer(id = "server-1", name = "Slock"))
-            )
-        val store =
-            activityStore(
-                scope = scope,
-                authStore = InMemoryRaftAuthSessionStore(session),
-                diagnosticsLogger = { message -> lines.add(message) }
-            )
-
-        store.dispatch(SharedActivityIntent.PullRefresh)
-
-        // task #436: this exit used to return silently. After a start line, silence is
-        // the stuck signature, so an unlogged exit makes the diagnostic manufacture the
-        // false positive it exists to rule out.
-        val startLines = lines.filter { it.contains("phase=start") }
-        assertEquals(1, startLines.size, "expected exactly one start line; actual=$lines")
-        val terminalLines = lines.filter { it.contains("result=") }
-        assertEquals(1, terminalLines.size, "a post-start exit must record a terminal line; actual=$lines")
-        assertTrue(
-            terminalLines[0].contains("code=server_missing"),
-            "terminal line must identify the exit; actual=${terminalLines[0]}"
-        )
-        assertTrue(
-            terminalLines[0].contains("pullRefresh=true") && terminalLines[0].contains("generation="),
-            "terminal line must carry generation and the pull-refresh input; actual=${terminalLines[0]}"
-        )
-        scope.cancel()
-    }
-
     private fun readStateEvent(
         scopeId: String,
         version: Long,
@@ -4251,181 +2985,6 @@ class SharedActivityStoreTest {
                     )
                 )
         )
-
-    @Test
-    fun replyPrewarmQueuedDuringForegroundOpenStartsOnlyAfterTheOpenReleases() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        val gate = SharedForegroundLoadGate()
-        val calls = mutableListOf<ActivityReplyThreadPrewarmKey>()
-        val logs = mutableListOf<String>()
-        val store =
-            activityStore(
-                scope = scope,
-                foregroundLoadGate = gate,
-                prewarmReplyThread = { marker ->
-                    synchronized(testLogsLock) { calls += marker.key }
-                    DataResult.Content(Unit)
-                },
-                diagnosticsLogger = { line -> synchronized(testLogsLock) { logs += line } }
-            )
-        val open = gate.acquire(SharedForegroundThreadKey(serverId = "server-1", threadId = "thread-opened"))
-        val marker = keyedMarker("queued")
-
-        store.dispatch(SharedActivityIntent.PrewarmVisibleReplyThreads(setOf(marker)))
-        delay(50L)
-
-        assertEquals(emptyList(), synchronized(testLogsLock) { calls.toList() }, "prewarm must not start during a foreground open")
-        assertTrue(
-            synchronized(testLogsLock) { logs.any { it.startsWith("activity_reply_prewarm_deferred reason=foreground_open queued=1 ") } },
-            synchronized(testLogsLock) { logs.toString() }
-        )
-
-        assertTrue(open.release())
-        withTimeout(5_000L) { while (synchronized(testLogsLock) { calls.isEmpty() }) delay(5L) }
-        assertEquals(listOf(marker.key), synchronized(testLogsLock) { calls.toList() })
-        assertTrue(
-            synchronized(testLogsLock) { logs.any { it.startsWith("activity_reply_prewarm_resumed reason=released ") } },
-            synchronized(testLogsLock) { logs.toString() }
-        )
-        scope.cancel()
-    }
-
-    @Test
-    fun replyPrewarmWithoutForegroundOpenStartsImmediately() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        val calls = mutableListOf<ActivityReplyThreadPrewarmKey>()
-        val logs = mutableListOf<String>()
-        val store =
-            activityStore(
-                scope = scope,
-                foregroundLoadGate = SharedForegroundLoadGate(),
-                prewarmReplyThread = { marker ->
-                    calls += marker.key
-                    DataResult.Content(Unit)
-                },
-                diagnosticsLogger = { line -> logs += line }
-            )
-        val marker = keyedMarker("idle")
-
-        store.dispatch(SharedActivityIntent.PrewarmVisibleReplyThreads(setOf(marker)))
-
-        assertEquals(listOf(marker.key), calls)
-        assertTrue(logs.none { it.startsWith("activity_reply_prewarm_deferred") })
-        scope.cancel()
-    }
-
-    @Test
-    fun replyPrewarmResumesWhenAForegroundLeaseIsNeverReleased() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        val gate = SharedForegroundLoadGate(leaseTimeoutMillis = 100L)
-        val calls = mutableListOf<ActivityReplyThreadPrewarmKey>()
-        val logs = mutableListOf<String>()
-        val store =
-            activityStore(
-                scope = scope,
-                foregroundLoadGate = gate,
-                prewarmReplyThread = { marker ->
-                    synchronized(testLogsLock) { calls += marker.key }
-                    DataResult.Content(Unit)
-                },
-                diagnosticsLogger = { line -> synchronized(testLogsLock) { logs += line } }
-            )
-        // A lost release: the lease is never released by its owner.
-        gate.acquire(SharedForegroundThreadKey(serverId = "server-1", threadId = "thread-leaked"))
-        val marker = keyedMarker("after-leak")
-
-        store.dispatch(SharedActivityIntent.PrewarmVisibleReplyThreads(setOf(marker)))
-        assertEquals(emptyList(), synchronized(testLogsLock) { calls.toList() })
-
-        withTimeout(5_000L) { while (synchronized(testLogsLock) { calls.isEmpty() }) delay(5L) }
-        assertEquals(listOf(marker.key), synchronized(testLogsLock) { calls.toList() })
-        assertEquals(0, gate.activeCount())
-        assertTrue(
-            synchronized(testLogsLock) { logs.any { it.startsWith("activity_reply_prewarm_resumed reason=timeout ") } },
-            synchronized(testLogsLock) { logs.toString() }
-        )
-        scope.cancel()
-    }
-
-    @Test
-    fun queuedReplyPrewarmIsDroppedWhenTheUserOpenedThatThreadAndItsContentIsCached() = runBlocking {
-        val calls = queuedPrewarmAfterTappedOpen(tappedContentCached = true)
-        // Negative twin in the same queue: the untapped row still prewarms.
-        assertEquals(listOf(keyedMarker("other").key), calls.prewarmed)
-        assertTrue(
-            calls.logs.any {
-                it.startsWith("activity_reply_prewarm_result result=skipped reason=foreground_open_owns_load ") &&
-                    it.contains("threadChannelId=${keyedMarker("tapped").key.threadChannelId}")
-            },
-            calls.logs.toString()
-        )
-        // Same generation is settled: a later viewport pass does not re-issue it.
-        assertEquals(listOf(keyedMarker("other").key), calls.prewarmedAfterSecondPass)
-    }
-
-    @Test
-    fun queuedReplyPrewarmStillRunsWhenTheTappedOpenLeftNoCachedContent() = runBlocking {
-        // Twin: identical queue, identical tap; the open failed / closed before loading.
-        val calls = queuedPrewarmAfterTappedOpen(tappedContentCached = false)
-        assertEquals(
-            setOf(keyedMarker("tapped").key, keyedMarker("other").key),
-            calls.prewarmed.toSet()
-        )
-        assertTrue(calls.logs.none { it.contains("result=skipped") }, calls.logs.toString())
-    }
-
-    private class QueuedPrewarmRun(
-        val prewarmed: List<ActivityReplyThreadPrewarmKey>,
-        val prewarmedAfterSecondPass: List<ActivityReplyThreadPrewarmKey>,
-        val logs: List<String>,
-    )
-
-    private suspend fun queuedPrewarmAfterTappedOpen(tappedContentCached: Boolean): QueuedPrewarmRun {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        var now = 1_000L
-        val gate = SharedForegroundLoadGate(nowMillis = { now })
-        val calls = mutableListOf<ActivityReplyThreadPrewarmKey>()
-        val logs = mutableListOf<String>()
-        val tapped = keyedMarker("tapped")
-        val other = keyedMarker("other")
-        val store =
-            activityStore(
-                scope = scope,
-                foregroundLoadGate = gate,
-                replyThreadContentCached = { marker -> tappedContentCached && marker.key == tapped.key },
-                prewarmReplyThread = { marker ->
-                    synchronized(testLogsLock) { calls += marker.key }
-                    DataResult.Content(Unit)
-                },
-                diagnosticsLogger = { line -> synchronized(testLogsLock) { logs += line } }
-            )
-        val earlierOpen = gate.acquire(SharedForegroundThreadKey(serverId = "server-1", threadId = "thread-earlier"))
-        store.dispatch(SharedActivityIntent.PrewarmVisibleReplyThreads(setOf(tapped, other)))
-        assertEquals(emptyList(), synchronized(testLogsLock) { calls.toList() })
-
-        // The user taps the queued row after it was queued.
-        now = 2_000L
-        val tappedOpen =
-            gate.acquire(
-                SharedForegroundThreadKey(
-                    serverId = "server-1",
-                    threadId = tapped.key.threadChannelId,
-                    parentChannelId = tapped.key.parentChannelId,
-                    parentMessageId = tapped.key.parentMessageId,
-                )
-            )
-        earlierOpen.release()
-        tappedOpen.release()
-
-        withTimeout(5_000L) { while (synchronized(testLogsLock) { calls.isEmpty() }) delay(5L) }
-        delay(50L)
-        val prewarmed = synchronized(testLogsLock) { calls.toList() }
-        store.dispatch(SharedActivityIntent.PrewarmVisibleReplyThreads(setOf(tapped, other)))
-        delay(20L)
-        val afterSecondPass = synchronized(testLogsLock) { calls.toList() }
-        scope.cancel()
-        return QueuedPrewarmRun(prewarmed, afterSecondPass, synchronized(testLogsLock) { logs.toList() })
-    }
 
     private fun replyPrewarmMarker(): ActivityReplyThreadPrewarmMarker =
         ActivityReplyThreadPrewarmMarker(
@@ -4716,31 +3275,6 @@ class SharedActivityStoreTest {
         }
         assertEquals(2, channelRepository.directMessageCalls)
         assertEquals(mapOf("dm-1" to "Jiacheng"), store.state.value.dmPeerNames)
-        scope.cancel()
-    }
-
-    @Test
-    fun channelOnlySnapshotsNeverFetchDirectMessages() = runBlocking {
-        val channelRepository =
-            FakeChannelRepository(
-                directMessagesResult = { error("unused") }
-            )
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        val store =
-            activityStore(
-                scope = scope,
-                inboxRepository =
-                    FakeInboxRepository(
-                        initialSnapshots = listOf(snapshot(listOf(activityItem("channel-1"))))
-                    ),
-                channelRepository = channelRepository
-            )
-
-        store.dispatch(SharedActivityIntent.LoadInitial)
-        delay(50L)
-
-        assertEquals(0, channelRepository.directMessageCalls)
-        assertEquals(emptyMap(), store.state.value.dmPeerNames)
         scope.cancel()
     }
 

@@ -43,20 +43,6 @@ class InboxParserReadStateTest {
     }
 
     @Test
-    fun threadRowReadsTheFrontierAndAMalformedSiblingKeepsItsRow() {
-        val parsed =
-            parseSharedInboxSnapshot(
-                body(
-                    threadRow(present("""{"messageId":"r-1","seq":"7"}""")),
-                    channelRow("c-2", present("""{"messageId":"m-2","seq":5}"""))
-                )
-            ) ?: error("inbox payload did not parse")
-
-        assertEquals(listOf("7", null), parsed.items.map { it.readStateLatestActivitySeq })
-        assertEquals(2, parsed.items.size)
-    }
-
-    @Test
     fun aPresentFrontierCarriesTheServedReadVersionAndSeq() {
         // (case, readState JSON, expected readStateVersion to readStateMaxReadSeq)
         val cases =

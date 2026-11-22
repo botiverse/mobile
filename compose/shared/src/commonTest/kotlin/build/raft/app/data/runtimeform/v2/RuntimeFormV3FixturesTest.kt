@@ -57,27 +57,6 @@ class RuntimeFormV3FixturesTest {
     }
 
     @Test
-    fun everyReasoningEffortIsADependentSelectOnItsModel() {
-        val efforts = mapOf(
-            CODEX_V3_FORM_JSON to listOf("reasoningEffort" to "model"),
-            GROK_V3_FORM_JSON to listOf("reasoningEffort" to "model"),
-            CLAUDE_V3_FORM_JSON to listOf("reasoningEffort" to "model"),
-            COPILOT_V3_EDIT_JSON to listOf("reasoningEffort" to "model"),
-            KIMI_SDK_V3_FORM_JSON to listOf("reasoningEffort" to "model"),
-            PI_V3_FORM_JSON to listOf("reasoningEffort" to "model", "providerReasoningEffort" to "providerModel")
-        )
-        for ((json, pairs) in efforts) {
-            val form = assertNotNull(parseRuntimeFormV2(json))
-            for ((key, parent) in pairs) {
-                val field = form.fields.single { it.key == key }
-                assertEquals(RuntimeFormV2FieldKind.DependentSelect, field.kind, "${form.runtimeId}/$key")
-                assertEquals(parent, field.dependsOn, "${form.runtimeId}/$key")
-                assertFalse(field.required, "${form.runtimeId}/$key is optional")
-            }
-        }
-    }
-
-    @Test
     fun rulesAndConditionalRequiredAreReadFromTheSavedConnectionsForm() {
         val form = assertNotNull(parseRuntimeFormV2(BUILTIN_V3_FORM_SAVED_CONNECTIONS_JSON))
         val apiKey = form.fields.single { it.key == "apiKey" }

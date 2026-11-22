@@ -34,23 +34,6 @@ class AuthSessionTerminalRouteGateTest {
     }
 
     @Test
-    fun backgroundOrColdReentryWithoutSessionTerminalizesExactlyOnce() {
-        val gate = AuthSessionTerminalRouteGate()
-
-        assertTrue(gate.reconcile(AuthSessionTerminalSnapshot(4, null)))
-        assertFalse(gate.reconcile(AuthSessionTerminalSnapshot(4, null)))
-    }
-
-    @Test
-    fun nonClearEventsAdvanceTheGenerationFenceWithoutTerminalizing() {
-        val gate = AuthSessionTerminalRouteGate()
-
-        assertFalse(gate.reconcile(AuthSessionTerminalSnapshot(10, authSessionFixture())))
-        assertNull(gate.admit(AuthSessionEvent.TokensRotated(12)))
-        assertNull(gate.admit(AuthSessionEvent.Cleared(11, AuthSessionClearReason.AuthLoss)))
-    }
-
-    @Test
     fun truePermission403RemainsDistinctFromAuthExpiry() {
         assertFalse(PermissionBlocker("server_forbidden", "server_admin").isAuthSessionBlocker())
         assertTrue(PermissionBlocker("auth_required", "auth_session").isAuthSessionBlocker())

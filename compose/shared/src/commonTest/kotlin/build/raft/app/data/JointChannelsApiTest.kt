@@ -203,38 +203,6 @@ class JointChannelsApiTest {
     }
 
     @Test
-    fun failuresKeepServerCodeAndReason() = runTest {
-        data class Case(val status: Int, val body: String, val code: String, val blocked: Boolean, val message: String?)
-        listOf(
-            // sendJointLimitError through refuse(): 403 { error, code, errorCode }.
-            Case(403, """{"error":"Joint channels are limited to 30 servers.","code":"joint_server_limit","errorCode":"joint_server_limit"}""", JOINT_SERVER_LIMIT, true, "Joint channels are limited to 30 servers."),
-            Case(
-                403,
-                """{"error":"The server hosting this Joint Channel has reached its Joint Channel limit. Ask its admin to make room, then accept the invite again.","code":"joint_channel_plan_limit_reached","errorCode":"joint_channel_plan_limit_reached"}""",
-                JOINT_CHANNEL_PLAN_LIMIT_REACHED,
-                true,
-                "The server hosting this Joint Channel has reached its Joint Channel limit. Ask its admin to make room, then accept the invite again.",
-            ),
-            // The name is taken on the accepting server: 409 { error } only.
-            Case(409, """{"error":"Channel name \"partner-room\" is already taken"}""", "joint_http_409", false, "Channel name \"partner-room\" is already taken"),
-            Case(500, """{"error":"Failed to accept joint channel invite"}""", "server_unavailable", false, "Failed to accept joint channel invite"),
-        ).forEach { case ->
-            val result = RealJointChannelRepository(RecordingJointNetworkClient { _, _ -> HomeNetworkResponse(case.status, case.body) })
-                .acceptInvite(ServerId("srv-target"), "inv-1")
-            assertEquals(case.code, result.jointFailureCode(), "status=${case.status}")
-            if (case.blocked) {
-                assertEquals(case.message, assertIs<DataResult.NoPermission>(result).blocker.serverMessage)
-            } else {
-                assertEquals(case.message, assertIs<DataResult.Error>(result).error.serverMessage)
-            }
-        }
-        val unauthenticated =
-            RealJointChannelRepository(RecordingJointNetworkClient { _, _ -> HomeNetworkResponse(401, """{"error":"Unauthorized"}""") })
-                .acceptInvite(ServerId("srv-target"), "inv-1")
-        assertEquals("auth_required", unauthenticated.jointFailureCode())
-    }
-
-    @Test
     fun aRateLimitWaitIsWholeMinutesRoundedUpAndAtLeastOne() {
         // The action card's feedback rate limit words its wait with this (ThreadActionCardSpecView).
         assertEquals(

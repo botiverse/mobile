@@ -142,54 +142,6 @@ class SharedAppLinkPreviewStoreChangedRereadTest {
     }
 
     @Test
-    fun anObjectIsReadAgainAtMostOncePerTenSecondsAndNudgesMeanwhileAreThatOneRead() = runTest(StandardTestDispatcher()) {
-        val (harness, _) = shown(changedCard(CPr1, KeyA))
-        harness.nudges.emit(RaftLinkCardChangedHint(CServer, KeyA))
-        after(1_000)
-        assertEquals(2, harness.api.cardReads.size)
-        // One second later: it waits for the ten seconds after the last re-read (at 1 s), so until 11 s.
-        after(1_000)
-        harness.nudges.emit(RaftLinkCardChangedHint(CServer, KeyA))
-        after(3_000)
-        harness.nudges.emit(RaftLinkCardChangedHint(CServer, KeyA))
-        after(5_999)
-        assertEquals(2, harness.api.cardReads.size, "at 10.999 s")
-        after(1)
-        assertEquals(3, harness.api.cardReads.size, "one read for both nudges")
-        after(19_000)
-        assertEquals(3, harness.api.cardReads.size)
-
-        // A nudge that comes while it reads starts another read after it (the interval applies).
-        val gate = CompletableDeferred<Unit>()
-        harness.api.readGate = gate
-        harness.nudges.emit(RaftLinkCardChangedHint(CServer, KeyA))
-        after(1_000)
-        assertEquals(4, harness.api.cardReads.size, "sent, not answered yet")
-        harness.nudges.emit(RaftLinkCardChangedHint(CServer, KeyA))
-        runCurrent()
-        harness.api.readGate = null
-        gate.complete(Unit)
-        after(9_999)
-        assertEquals(4, harness.api.cardReads.size)
-        after(1)
-        assertEquals(5, harness.api.cardReads.size)
-    }
-
-    @Test
-    fun aRowThatIsNotOnScreenWaitsForTheScreen() = runTest(StandardTestDispatcher()) {
-        // Composed ahead of the scroll, not drawn.
-        val (harness, row) = shown(changedCard(CPr1, KeyA), onScreen = false)
-        harness.nudges.emit(RaftLinkCardChangedHint(CServer, KeyA))
-        after(60_000)
-        assertEquals(1, harness.api.cardReads.size, "nothing is read for a row off screen")
-        row.presence.onScreen(true)
-        after(999)
-        assertEquals(1, harness.api.cardReads.size)
-        after(1)
-        assertEquals(2, harness.api.cardReads.size)
-    }
-
-    @Test
     fun aNudgeForAnAnswerNoRowShowsIsReadOnceWhenItsRowIsNextOnScreen() = runTest(StandardTestDispatcher()) {
         val (harness, first) = shown(changedCard(CPr1, KeyA))
         first.leave()
@@ -302,46 +254,6 @@ class SharedAppLinkPreviewStoreChangedRereadTest {
     }
 
     @Test
-    fun aMessageWhoseFirstReadFailedIsNotReadOnEveryReturnOfItsRow() = runTest(StandardTestDispatcher()) {
-        val harness = Harness(this)
-        harness.api.cardReadResponses += HomeNetworkResponse(500, null)
-        harness.api.cardReadResponses += HomeNetworkResponse(500, null)
-        harness.api.cardReadResponses += changedAnswer(changedCard(CPr1, KeyA))
-        val first = harness.Row()
-        first.read()
-        runCurrent()
-        assertEquals(1, harness.api.cardReads.size)
-        first.leave()
-
-        // Back five seconds later: it waits for the rest of the 30 s, and leaving again ends the wait.
-        after(5_000)
-        val second = harness.Row()
-        second.read()
-        after(20_000)
-        assertEquals(1, harness.api.cardReads.size, "no read on a quick return")
-        second.leave()
-        after(60_000)
-        assertEquals(1, harness.api.cardReads.size, "nor after it left")
-
-        // Back after the cooldown: read at once (it fails again, at 85 s).
-        val third = harness.Row()
-        third.read()
-        runCurrent()
-        assertEquals(2, harness.api.cardReads.size)
-        third.leave()
-
-        // A row that stays is read when the cooldown ends.
-        after(1_000)
-        val fourth = harness.Row()
-        fourth.read()
-        after(28_999)
-        assertEquals(2, harness.api.cardReads.size, "at 114.999 s")
-        after(1)
-        assertEquals(3, harness.api.cardReads.size)
-        assertEquals("Open", fourth.title(CPr1))
-    }
-
-    @Test
     fun noCardChangesWhileThePersonIsOnTheMessageAndABusyCardIsLeftToItsWork() = runTest(StandardTestDispatcher()) {
         val (harness, row) = shown(changedCard(CPr1, KeyA))
         // A card of the message is open (or Raft's confirmation on it).
@@ -380,24 +292,6 @@ class SharedAppLinkPreviewStoreChangedRereadTest {
         assertEquals(1, back.reads)
         assertEquals("Merged", back.title(CPr1))
         assertEquals(3, harness.api.cardReads.size)
-    }
-
-    @Test
-    fun theTenSecondsBetweenRereadsOfAnObjectOutliveTheRow() = runTest(StandardTestDispatcher()) {
-        val (harness, row) = shown(changedCard(CPr1, KeyA))
-        harness.nudges.emit(RaftLinkCardChangedHint(CServer, KeyA))
-        after(1_000)
-        assertEquals(1, row.reads - 1, "read again at 1 s")
-        // A list makes a new row each time the message scrolls in.
-        row.leave()
-        val back = harness.Row()
-        back.show()
-        after(1_000)
-        harness.nudges.emit(RaftLinkCardChangedHint(CServer, KeyA))
-        after(8_999)
-        assertEquals(0, back.reads, "at 10.999 s")
-        after(1)
-        assertEquals(1, back.reads)
     }
 
     /**

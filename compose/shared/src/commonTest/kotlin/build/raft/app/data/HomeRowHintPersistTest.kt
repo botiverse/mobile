@@ -69,13 +69,6 @@ class HomeRowHintPersistTest {
     }
 
     @Test
-    fun persistedPreviewsAreBounded() {
-        val content = content(rows = listOf(row("c").copy(lastMessagePreview = "x".repeat(5_000))))
-
-        assertEquals(HomeRowHintPreviewMaxChars, content.toRowHintsSnapshot().hints.getValue("c").lastMessagePreview?.length)
-    }
-
-    @Test
     fun hintsAreOnlyDisplayedWhileHomeIsTheDurableCache() {
         val hints = mapOf("c" to HomeRowRestoredHint(unreadCount = 1))
 

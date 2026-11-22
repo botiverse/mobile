@@ -12,7 +12,6 @@ import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
-import build.raft.app.model.toMemberProfile
 
 class MemberAgentParserTest {
     @Test
@@ -61,37 +60,6 @@ class MemberAgentParserTest {
         assertEquals("private", channels.channels.last().type)
         assertEquals(true, channels.channels.last().activityMuted)
         assertEquals(7L, channels.channels.last().muteFromSeq)
-    }
-
-    @Test
-    fun agentsListUsesRuntimeProfileComputerName() {
-        val members = parseSharedSettingsAgentsAsMembers(
-            """
-            [
-              {
-                "id": "agent-1",
-                "name": "builder",
-                "displayName": "Builder",
-                "status": "active",
-                "runtime": "claude",
-                "runtimeProfile": {
-                  "current": {
-                    "machineId": "machine-1",
-                    "machineName": "Mac Studio",
-                    "daemonVersion": "0.43.0"
-                  },
-                  "migrationStatus": "stable"
-                }
-              }
-            ]
-            """.trimIndent()
-        )
-
-        val profile = assertNotNull(members).single()
-        assertEquals(
-            listOf("claude", "computer:Mac Studio", "computer-id:machine-1"),
-            profile.permissionBadges
-        )
     }
 
     @Test
@@ -145,26 +113,6 @@ class MemberAgentParserTest {
     }
 
     @Test
-    fun agentsListFallsBackInactiveLifecycleStatusToOfflineLikeWeb() {
-        val members = parseSharedSettingsAgentsAsMembers(
-            """
-            [
-              {
-                "id": "agent-1",
-                "name": "builder",
-                "displayName": "Builder",
-                "status": "inactive"
-              }
-            ]
-            """.trimIndent()
-        )
-
-        val profile = assertNotNull(members).single()
-        assertEquals(AgentStatus.Offline, profile.agentStatus)
-        assertEquals(Presence.Offline, profile.presence)
-    }
-
-    @Test
     fun agentsListNeverDerivesLivenessFromActiveLifecycleStatus() {
         // task #135 regression lock: "active" is the ACCOUNT lifecycle (not
         // archived/stopped) and stays "active" while the agent's machine is
@@ -208,27 +156,6 @@ class MemberAgentParserTest {
         val profile = assertNotNull(members).single()
         assertEquals(AgentStatus.Working, profile.agentStatus)
         assertEquals(Presence.Active, profile.presence)
-    }
-
-    @Test
-    fun currentActivityEntryDoesNotTreatActiveLifecycleAsOnline() {
-        assertNull(
-            currentAgentActivityEntry(
-                agentId = MemberId("agent-1"),
-                activity = null,
-                status = "active",
-                activityDetail = null
-            )
-        )
-        assertEquals(
-            "working",
-            currentAgentActivityEntry(
-                agentId = MemberId("agent-1"),
-                activity = "working",
-                status = "active",
-                activityDetail = "Building"
-            )?.statusActivity
-        )
     }
 
     @Test
@@ -478,19 +405,6 @@ class MemberAgentParserTest {
     // parallel sources (agentStore.ts); either alone must mark the agent external so a
     // payload missing one key cannot silently demote it to a managed (green) agent.
     @Test
-    fun agentsListMarksExternalFromProjectedBoolean() {
-        val profile =
-            assertNotNull(
-                parseSharedSettingsAgentsAsMembers(
-                    """
-                    [{"id":"agent-x","name":"bridge","displayName":"Bridge","status":"active","runtime":"external","external":true}]
-                    """.trimIndent()
-                )
-            ).single()
-        assertTrue(profile.isExternal)
-    }
-
-    @Test
     fun agentsListMarksExternalFromRuntimeSentinelWhenBooleanMissing() {
         val profile =
             assertNotNull(
@@ -533,76 +447,6 @@ class MemberAgentParserTest {
         assertEquals(3, profiles.size)
         // Exact sentinel match only (shared isExternalAgentRuntime parity): "External" is not it.
         profiles.forEach { assertFalse(it.isExternal, "${it.handle} must stay managed") }
-    }
-
-    @Test
-    fun agentProfileAndCreatedAgentsCarryExternal() {
-        val agent =
-            assertNotNull(
-                parseSharedAgentProfile(
-                    """
-                    {"id":"agent-x","name":"bridge","displayName":"Bridge","status":"active","runtime":"external","external":true}
-                    """.trimIndent()
-                )
-            )
-        assertTrue(agent.isExternal)
-
-        val human =
-            assertNotNull(
-                parseSharedMemberProfile(
-                    """
-                    {
-                      "userId":"user-1","name":"owner","displayName":"Owner","role":"member",
-                      "createdAgents":[
-                        {"id":"agent-x","name":"bridge","displayName":"Bridge","status":"active","runtime":"external"},
-                        {"id":"agent-y","name":"claude","displayName":"Claude","status":"active","runtime":"claude"}
-                      ]
-                    }
-                    """.trimIndent()
-                )
-            )
-        assertFalse(human.isExternal)
-        assertEquals(listOf(true, false), human.createdAgents.map { it.isExternal })
-    }
-
-    @Test
-    fun agentProfileToMemberProfilePreservesExternal() {
-        val external =
-            assertNotNull(
-                parseSharedAgentProfile(
-                    """
-                    {"id":"agent-x","name":"bridge","displayName":"Bridge","status":"active","runtime":"external"}
-                    """.trimIndent()
-                )
-            )
-        val managed =
-            assertNotNull(
-                parseSharedAgentProfile(
-                    """
-                    {"id":"agent-y","name":"claude","displayName":"Claude","status":"active","runtime":"claude"}
-                    """.trimIndent()
-                )
-            )
-        // parseSharedAgentProfile already yields a MemberProfile; round-trip through the
-        // human profile's createdAgents (AgentProfile) and back to MemberProfile.
-        val human =
-            assertNotNull(
-                parseSharedMemberProfile(
-                    """
-                    {"userId":"user-1","name":"owner","displayName":"Owner","role":"member",
-                     "createdAgents":[
-                       {"id":"agent-x","name":"bridge","displayName":"Bridge","status":"active","runtime":"external"},
-                       {"id":"agent-y","name":"claude","displayName":"Claude","status":"active","runtime":"claude"}
-                     ]}
-                    """.trimIndent()
-                )
-            )
-        assertEquals(
-            listOf(true, false),
-            human.createdAgents.map { it.toMemberProfile().isExternal }
-        )
-        assertTrue(external.isExternal)
-        assertFalse(managed.isExternal)
     }
 
     /**

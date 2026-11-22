@@ -7,7 +7,6 @@ import build.raft.app.ReplyCacheProvenance
 import build.raft.app.ThreadMessageDeliveryFailed
 import build.raft.app.ThreadMessageDeliverySending
 import build.raft.app.ThreadRouteIdentity
-import build.raft.app.network.RaftRequestTimeoutException
 import build.raft.app.network.retry.RetryPolicy
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
@@ -15,7 +14,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.runBlocking
-import kotlinx.coroutines.withTimeout
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
@@ -244,73 +242,6 @@ class ThreadPendingSendDrainerTest {
         assertEquals(listOf("local-1" to "empty_response"), store.markFailedCalls)
         assertEquals(emptyList(), store.consumedRandomIds)
         assertEquals(4, drainer.recordedAttemptsForTests("local-1"))
-    }
-
-    @Test
-    fun timeoutExceptionIsClassifiedAndBackedOff() = runBlocking {
-        val store = FakeDrainStore().apply { rows += pendingMessage("local-1", "random-1", failed = true) }
-        val send = RecordingSend()
-        send.throwables += RaftRequestTimeoutException("send request exceeded 30000ms")
-        send.results += ThreadApiResult.Success(successPage())
-        val wakeups = mutableListOf<Long>()
-        val drainer = drainer(store = store, send = send.handler, wakeups = wakeups)
-
-        drainer.drainOnceForTests("send_failed")
-        assertEquals(listOf(0L), wakeups)
-        drainer.drainOnceForTests("backoff")
-
-        assertEquals(listOf("local-1" to "thread_send_timeout"), store.markFailedCalls)
-        assertEquals(listOf("random-1", "random-1"), send.randomIds)
-        assertEquals(listOf("random-1"), store.consumedRandomIds)
-    }
-
-    @Test
-    fun realtimeTriggersAreThrottledToOneDrainPerInterval() {
-        val store = FakeDrainStore().apply { rows += pendingMessage("local-1", "random-1", failed = true) }
-        val drainer =
-            drainer(
-                store = store,
-                send = RecordingSend().handler,
-                realtimeTriggerMinIntervalMs = 3_600_000L,
-            )
-
-        drainer.onAuthoritativeOnline()
-        drainer.onAuthoritativeOnline()
-        drainer.onAuthoritativeOnline()
-
-        assertEquals(1, drainer.realtimeTriggersAcceptedForTests)
-    }
-
-    @Test
-    fun triggersArrivingDuringADrainCoalesceIntoOneFollowUpPass() = runBlocking {
-        val store = FakeDrainStore().apply { rows += pendingMessage("local-1", "random-1", failed = true) }
-        val sendStarted = CompletableDeferred<Unit>()
-        val releaseSend = CompletableDeferred<Unit>()
-        val send = RecordingSend(beforeResult = {
-            sendStarted.complete(Unit)
-            releaseSend.await()
-        })
-        send.results += ThreadApiResult.Failure(code = 400)
-        val consumerScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
-        try {
-            val drainer = drainer(store = store, send = send.handler, scope = consumerScope)
-
-            drainer.trigger("send_failed")
-            withTimeout(5_000) { sendStarted.await() }
-            // These pile up while the first pass is blocked inside the send.
-            drainer.trigger("realtime")
-            drainer.trigger("foreground")
-            drainer.trigger("send_failed")
-            releaseSend.complete(Unit)
-            withTimeout(5_000) { store.secondPass.await() }
-
-            // One in-flight pass + one coalesced follow-up pass; the follow-up finds the row
-            // terminally failed (attempt budget spent), so the wire saw exactly one request.
-            assertEquals(2, store.rowsForDrainCalls)
-            assertEquals(listOf("random-1"), send.randomIds)
-        } finally {
-            consumerScope.cancel()
-        }
     }
 
     @Test

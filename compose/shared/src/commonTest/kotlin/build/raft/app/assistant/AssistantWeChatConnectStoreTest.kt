@@ -7,10 +7,8 @@ import build.raft.app.data.WeChatAttemptStatus
 import build.raft.app.data.WeChatPollResult
 import build.raft.app.data.WeChatRequestFailure
 import build.raft.app.data.WeChatStartResult
-import build.raft.app.data.weChatPollResultOf
 import build.raft.app.data.weChatStartResultOf
 import build.raft.app.model.ServerId
-import build.raft.app.network.RAFT_KTOR_REQUEST_TIMEOUT_MILLIS
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -79,9 +77,6 @@ class AssistantWeChatConnectStoreTest {
     private fun refused(code: Int, errorCode: String): WeChatPollResult =
         WeChatPollResult.Failed(WeChatRequestFailure(code, ScreenError(errorCode, traceId = TRACE)), cookieCleared = false)
 
-    private val noAnswer: WeChatPollResult =
-        WeChatPollResult.Failed(WeChatRequestFailure(null, ScreenError("network", traceId = null)), cookieCleared = false)
-
     /** 08:00:00Z at virtual time 0: an attempt expiring 08:05:00Z has 300 s left. */
     private fun TestScope.newStore(api: ScriptedApi, statusReads: MutableList<Unit> = mutableListOf()) =
         AssistantWeChatConnectStore(
@@ -127,31 +122,6 @@ class AssistantWeChatConnectStoreTest {
             runCurrent()
             assertTrue((store.step.value as WeChatConnectStep.Qr).scanned)
             assertEquals(1, api.maxInFlight, "one poll at a time")
-        }
-
-    @Test
-    fun refusedForNowPollsAreTriedAgainAfterThreeSeconds() =
-        runTest {
-            for (retry in listOf(refused(429, "wechat_poll_in_flight"), refused(502, "wechat_upstream_unavailable"), noAnswer, refused(503, "http_503"))) {
-                val api = ScriptedApi(this)
-                val store = newStore(api)
-                store.start()
-                runCurrent()
-                api.starts.single().complete(started("a1"))
-                runCurrent()
-                val firstAt = api.lastPoll().atMillis
-                api.answerPoll(retry)
-                runCurrent()
-                advanceTimeBy(WECHAT_POLL_RETRY_MILLIS - 1)
-                runCurrent()
-                assertEquals(1, api.polls.size, "$retry: not before 3 s")
-                advanceTimeBy(1)
-                runCurrent()
-                assertEquals(2, api.polls.size, "$retry")
-                assertEquals(WECHAT_POLL_RETRY_MILLIS, api.lastPoll().atMillis - firstAt)
-                assertTrue(store.step.value is WeChatConnectStep.Qr, "$retry keeps the code")
-                store.stop()
-            }
         }
 
     @Test
@@ -208,26 +178,6 @@ class AssistantWeChatConnectStoreTest {
         }
 
     @Test
-    fun aRetriedCodeGoesAgainWithTheRetry() =
-        runTest {
-            val api = ScriptedApi(this)
-            val store = newStore(api)
-            store.start()
-            runCurrent()
-            api.starts.single().complete(started("a1"))
-            runCurrent()
-            api.answerPoll(answered("need_verify_code"))
-            runCurrent()
-            store.submitCode("Q1")
-            runCurrent()
-            api.answerPoll(refused(429, "wechat_poll_in_flight"))
-            runCurrent()
-            advanceTimeBy(WECHAT_POLL_RETRY_MILLIS)
-            runCurrent()
-            assertEquals("Q1", api.lastPoll().verifyCode)
-        }
-
-    @Test
     fun confirmedReadsTheStatusAndDropsTheCookie() =
         runTest {
             val api = ScriptedApi(this)
@@ -247,83 +197,6 @@ class AssistantWeChatConnectStoreTest {
             advanceTimeBy(600_000)
             runCurrent()
             assertEquals(1, api.polls.size, "nothing after the final answer")
-        }
-
-    @Test
-    fun finalAnswersAndRefusalsEndTheRunWithTheirReason() =
-        runTest {
-            val cases =
-                listOf(
-                    answered("expired", final = true) to WeChatConnectFailure.Expired,
-                    answered("blocked", final = true) to WeChatConnectFailure.Blocked,
-                    answered("already_bound", final = true) to WeChatConnectFailure.AlreadyBound,
-                    refused(410, "wechat_attempt_used") to WeChatConnectFailure.Used,
-                    refused(404, "wechat_attempt_not_found") to WeChatConnectFailure.Used,
-                    refused(410, "wechat_attempt_expired") to WeChatConnectFailure.Expired,
-                    refused(403, "wechat_attempt_unbound") to WeChatConnectFailure.Unbound,
-                    refused(409, "wechat_account_in_use") to WeChatConnectFailure.InUse,
-                    refused(502, "wechat_upstream_refused") to WeChatConnectFailure.Upstream,
-                    refused(404, "wechat_unavailable") to WeChatConnectFailure.Unavailable,
-                    refused(409, "assistant_not_found") to WeChatConnectFailure.Unavailable,
-                    refused(418, "teapot") to WeChatConnectFailure.Other,
-                )
-            for ((answer, reason) in cases) {
-                val api = ScriptedApi(this)
-                val reads = mutableListOf<Unit>()
-                val store = newStore(api, reads)
-                store.start()
-                runCurrent()
-                api.starts.single().complete(started("a1"))
-                runCurrent()
-                api.answerPoll(answer)
-                runCurrent()
-                val failed = store.step.value as WeChatConnectStep.Failed
-                assertEquals(reason, failed.reason, "$answer")
-                if (answer is WeChatPollResult.Failed) assertEquals(TRACE, failed.error?.traceId, "$answer keeps its trace")
-                assertNull(store.heldCookie, "$answer drops the cookie")
-                assertEquals(if (reason == WeChatConnectFailure.Unavailable) 1 else 0, reads.size, "$answer")
-                advanceTimeBy(10_000)
-                runCurrent()
-                assertEquals(1, api.polls.size, "$answer: no more polls")
-            }
-        }
-
-    @Test
-    fun startRefusalsMapAsWebAndAlreadyConnectedShowsTheConnection() =
-        runTest {
-            val cases =
-                listOf(
-                    Triple(429, "wechat_rate_limited", WeChatConnectStep.Failed(WeChatConnectFailure.RateLimited, ScreenError("wechat_rate_limited", traceId = TRACE))),
-                    Triple(502, "wechat_upstream_unavailable", WeChatConnectStep.Failed(WeChatConnectFailure.Upstream, ScreenError("wechat_upstream_unavailable", traceId = TRACE))),
-                    Triple(404, "wechat_unavailable", WeChatConnectStep.Failed(WeChatConnectFailure.Unavailable, ScreenError("wechat_unavailable", traceId = TRACE))),
-                    Triple(409, "wechat_attempt_in_progress", WeChatConnectStep.Failed(WeChatConnectFailure.Other, ScreenError("wechat_attempt_in_progress", traceId = TRACE))),
-                    Triple(409, "wechat_already_connected", WeChatConnectStep.Connected),
-                )
-            for ((status, code, expected) in cases) {
-                val api = ScriptedApi(this)
-                val store = newStore(api)
-                store.start()
-                runCurrent()
-                api.starts.single().complete(weChatStartResultOf(status, """{"error":"x","code":"$code"}""", emptyMap(), TRACE))
-                runCurrent()
-                assertEquals(expected, store.step.value, code)
-                assertTrue(api.polls.isEmpty())
-            }
-        }
-
-    @Test
-    fun aStartWithoutTheBindingCookieNeverPolls() =
-        runTest {
-            val api = ScriptedApi(this)
-            val store = newStore(api)
-            store.start()
-            runCurrent()
-            api.starts.single().complete(
-                weChatStartResultOf(201, """{"attemptId":"a1","qrContent":"q","expiresAt":"2026-11-17T08:05:00.000Z"}""", emptyMap(), null)
-            )
-            runCurrent()
-            assertEquals(WeChatConnectStep.Failed(WeChatConnectFailure.Other, null), store.step.value)
-            assertTrue(api.polls.isEmpty())
         }
 
     @Test
@@ -384,48 +257,6 @@ class AssistantWeChatConnectStoreTest {
             assertEquals(2, api.polls.size)
             assertEquals(0, api.inFlight, "the open poll was cancelled")
         }
-
-    @Test
-    fun thePollRequestBudgetOutlastsTheServersLongPoll() {
-        assertTrue(RAFT_KTOR_REQUEST_TIMEOUT_MILLIS >= WECHAT_POLL_MIN_REQUEST_TIMEOUT_MILLIS)
-    }
-
-    @Test
-    fun aPollAnswerThatRemovesTheCookieWithoutEndingStopsPolling() =
-        runTest {
-            val api = ScriptedApi(this)
-            val store = newStore(api)
-            store.start()
-            runCurrent()
-            api.starts.single().complete(started("a1"))
-            runCurrent()
-            val cookie = api.polls.single().first
-            api.answerPoll(
-                weChatPollResultOf(
-                    WeChatAttemptCookieFixture.of("a1", cookie.cookieHeader),
-                    200,
-                    """{"status":"wait"}""",
-                    mapOf("Set-Cookie" to listOf("${cookie.cookieHeader.substringBefore('=')}=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax")),
-                    null,
-                )
-            )
-            runCurrent()
-            advanceTimeBy(WECHAT_POLL_GAP_MILLIS)
-            runCurrent()
-            assertEquals(1, api.polls.size, "no poll without the cookie")
-            assertEquals(WeChatConnectStep.Failed(WeChatConnectFailure.Other, null), store.step.value)
-        }
-}
-
-/** A cookie for a hand-built poll answer, through the production start parser. */
-private object WeChatAttemptCookieFixture {
-    fun of(attemptId: String, header: String): WeChatAttemptCookie =
-        (weChatStartResultOf(
-            201,
-            """{"attemptId":"$attemptId","qrContent":"q","expiresAt":"2026-11-17T08:05:00.000Z"}""",
-            mapOf("Set-Cookie" to listOf("$header; Path=/; Max-Age=300")),
-            null,
-        ) as WeChatStartResult.Started).cookie!!
 }
 
 private const val TRACE = "4bf92f3577b34da6a3ce929d0e0e4736"

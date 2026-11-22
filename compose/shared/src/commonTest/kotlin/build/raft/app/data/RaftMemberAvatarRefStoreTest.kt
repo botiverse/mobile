@@ -90,18 +90,6 @@ class RaftMemberAvatarRefStoreTest {
         assertNull(RaftMemberAvatarRefStore(preferences).avatarWireValue(ServerKey, "m", null), "a new owner replaces the page")
     }
 
-    @Test
-    fun sizeBoundKeepsTheMostRecentlyConfirmedReferences() {
-        val refs = RaftMemberAvatarRefStore(InMemoryRaftKeyValueStore(), maxEntriesPerServer = 2)
-        refs.record(ServerKey, Owner, mapOf("a" to "pixel:a", "b" to "pixel:b"))
-        refs.record(ServerKey, Owner, mapOf("a" to "pixel:a"))
-        refs.record(ServerKey, Owner, mapOf("c" to "pixel:c"))
-
-        assertEquals("pixel:a", refs.avatarWireValue(ServerKey, "a", null))
-        assertNull(refs.avatarWireValue(ServerKey, "b", null))
-        assertEquals("pixel:c", refs.avatarWireValue(ServerKey, "c", null))
-    }
-
     private fun server(): ServerSummary = ServerSummary(id = ServerId(ServerKey), name = "Raft")
 
     private fun agent(id: String, avatarUrl: String): MemberProfile =

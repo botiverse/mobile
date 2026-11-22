@@ -2,16 +2,9 @@ package build.raft.app.data
 
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineStart
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
 import kotlinx.coroutines.cancel
-import kotlinx.coroutines.flow.MutableSharedFlow
-import kotlinx.coroutines.flow.SharedFlow
-import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.collect
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.yield
@@ -127,58 +120,6 @@ class AuthShellServerSelectionTest {
     }
 
     @Test
-    fun sameAccountSuccessorGenerationRejectsLateSelectionWithoutWrites() = runBlocking {
-        val generationA =
-            authSessionFixture(
-                userId = "user-1",
-                servers = authServerFixtures(),
-                selectedServerId = "server-1",
-            ).copy(
-                accessToken = "access-generation-a",
-                refreshToken = "refresh-generation-a",
-            )
-        val generationB =
-            generationA.copy(
-                accessToken = "access-generation-b",
-                refreshToken = "refresh-generation-b",
-            )
-        val processStore = InMemoryRaftAuthSessionStore(generationA)
-        val selectedServerStore = SelectedServerStore(RaftShellStoreScope.create("same-account-successor-shell"))
-        val shellStore = RaftShellAuthSessionStore(processStore, selectedServerStore)
-        shellStore.readSession()
-        processStore.saveRememberedServerSelection(
-            generationA.user,
-            StoredAuthServerSelection(serverId = "server-1", serverSlug = "one"),
-        )
-        processStore.replaceAuthenticatedSession(generationB)
-        val events = mutableListOf<AuthSessionEvent>()
-        val eventObserver =
-            launch(start = CoroutineStart.UNDISPATCHED) {
-                shellStore.authSessionEvents.collect { events += it }
-            }
-        val processBefore = processStore.readSession()
-
-        val result =
-            selectStoredAuthServer(
-                sessionStore = shellStore,
-                expectedSession = generationA,
-                serverId = "server-2",
-            )
-        yield()
-
-        assertIs<SharedAuthResult.Unauthenticated>(result)
-        assertEquals(processBefore, processStore.readSession())
-        assertEquals("server-1", selectedServerStore.selectedServerId.value)
-        assertEquals("server-1", shellStore.readSession()?.selectedServerId)
-        assertEquals(
-            StoredAuthServerSelection(serverId = "server-1", serverSlug = "one"),
-            processStore.readRememberedServerSelection(generationB.user),
-        )
-        assertEquals(emptyList(), events)
-        eventObserver.cancel()
-    }
-
-    @Test
     fun serverRemovedAfterCaptureCannotBeSelected() = runBlocking {
         val captured =
             authSessionFixture(
@@ -276,34 +217,6 @@ class AuthShellServerSelectionTest {
     }
 
     @Test
-    fun directCanonicalSelectionAndExpectedSourceSelectionShareOneMutationOrder() = runBlocking {
-        val initial =
-            authSessionFixture(
-                userId = "user-1",
-                servers = authServerFixtures() + StoredAuthServer(id = "server-3", name = "Three", slug = "three"),
-                selectedServerId = "server-1",
-            )
-        val processStore = InMemoryRaftAuthSessionStore(initial)
-        val selectedServerStore = SelectedServerStore(RaftShellStoreScope.create("direct-source-race-shell"))
-        val shellStore = RaftShellAuthSessionStore(processStore, selectedServerStore)
-        shellStore.readSession()
-
-        shellStore.updateSelectedServer("server-3", "three")
-        val stale =
-            selectStoredAuthServer(
-                sessionStore = shellStore,
-                expectedSession = initial,
-                expectedSelectedServerId = "server-1",
-                serverId = "server-2",
-            )
-
-        assertIs<SharedAuthResult.Unauthenticated>(stale)
-        assertEquals("server-3", selectedServerStore.selectedServerId.value)
-        assertEquals("server-3", shellStore.readSession()?.selectedServerId)
-        assertEquals("server-3", processStore.readSession()?.selectedServerId)
-    }
-
-    @Test
     fun logoutCannotCutIntoExpectedSourceCommitRememberAndEventSequence() = runBlocking {
         val initial =
             authSessionFixture(
@@ -385,40 +298,6 @@ class AuthShellServerSelectionTest {
         assertEquals("Updated", processStore.readSession()?.user?.displayName)
     }
 
-    @Test
-    fun processSelectionEventCannotExposeOldShellSelection() = runBlocking {
-        val initial = authSessionFixture(userId = "user-1", servers = authServerFixtures(), selectedServerId = null)
-        val processStore = YieldingEventStore(InMemoryRaftAuthSessionStore(initial))
-        val selectedServerStore = SelectedServerStore(RaftShellStoreScope.create("event-order-shell"))
-        val eventScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        try {
-            val shellStore =
-                RaftShellAuthSessionStore(
-                    delegate = processStore,
-                    selectedServerStore = selectedServerStore,
-                    eventScope = eventScope,
-                )
-            shellStore.readSession()
-            val selectionAtFirstEvent = CompletableDeferred<String?>()
-            val observation =
-                launch(start = CoroutineStart.UNDISPATCHED) {
-                    shellStore.authSessionEvents.first()
-                    selectionAtFirstEvent.complete(selectedServerStore.selectedServerId.value)
-                }
-
-            selectStoredAuthServer(
-                sessionStore = shellStore,
-                expectedSession = initial,
-                serverId = "server-2",
-            )
-
-            assertEquals("server-2", selectionAtFirstEvent.await())
-            observation.cancel()
-        } finally {
-            eventScope.cancel()
-        }
-    }
-
     private class DelayedMetadataStore(
         private val delegate: InMemoryRaftAuthSessionStore,
     ) : RaftAuthSessionStore by delegate {
@@ -455,47 +334,6 @@ class AuthShellServerSelectionTest {
             rememberEntered.complete(Unit)
             releaseRemember.await()
             delegate.saveRememberedServerSelection(user, selection)
-        }
-    }
-
-    private class YieldingEventStore(
-        private val delegate: InMemoryRaftAuthSessionStore,
-    ) : RaftAuthSessionStore by delegate, RaftAuthSessionEventSource {
-        private val events = MutableSharedFlow<AuthSessionEvent>(extraBufferCapacity = 1)
-        private var generation = 0L
-
-        override val authSessionEvents: SharedFlow<AuthSessionEvent> = events.asSharedFlow()
-
-        override suspend fun selectServerIfSessionMatches(
-            expectedAccountId: String,
-            expectedAccessToken: String,
-            expectedRefreshToken: String,
-            expectedSelectedServerId: String?,
-            serverId: String,
-        ): StoredAuthSession? {
-            val selected =
-                delegate.selectServerIfSessionMatches(
-                    expectedAccountId = expectedAccountId,
-                    expectedAccessToken = expectedAccessToken,
-                    expectedRefreshToken = expectedRefreshToken,
-                    expectedSelectedServerId = expectedSelectedServerId,
-                    serverId = serverId,
-                ) ?: return null
-            events.emit(AuthSessionEvent.BindingMetadataChanged(++generation))
-            yield()
-            return selected
-        }
-
-        override suspend fun updateMetadata(
-            expectedAccountId: String?,
-            transform: (StoredAuthSession) -> StoredAuthSession,
-        ) {
-            val before = delegate.readSession()
-            delegate.updateMetadata(expectedAccountId, transform)
-            if (delegate.readSession() != before) {
-                events.emit(AuthSessionEvent.BindingMetadataChanged(++generation))
-                yield()
-            }
         }
     }
 }

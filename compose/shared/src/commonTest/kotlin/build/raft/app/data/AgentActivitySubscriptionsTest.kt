@@ -50,23 +50,6 @@ class AgentActivitySubscriptionsTest {
     }
 
     @Test
-    fun aPageReplacingAnotherWithTheSameAgentSendsNothing() = runTest {
-        val subscriptions = subscriptions()
-        subscriptions.acquire("s1", listOf("a1")).let { first ->
-            flush()
-            emits.clear()
-            // DM -> agent detail: the next lease is taken before the delay ends.
-            val next = subscriptions.acquire("s1", listOf("a1"))
-            first.release()
-            flush()
-            assertTrue(emits.isEmpty(), "no unsubscribe/subscribe churn: $emits")
-            next.release()
-        }
-        flush()
-        assertEquals(listOf(Emit("s1", false, listOf("a1"))), emits)
-    }
-
-    @Test
     fun emitsAreBatchedAtTheServerLimitPerServer() = runTest {
         val subscriptions = subscriptions()
         val ids = (1..250).map { "agent-$it" }

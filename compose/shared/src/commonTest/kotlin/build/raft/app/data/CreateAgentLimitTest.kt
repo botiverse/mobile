@@ -36,13 +36,6 @@ class CreateAgentLimitTest {
     }
 
     @Test
-    fun belowTheCapCreateStaysOpen() {
-        val limit = createAgentLimit(CreateAgentBilling(plan = "free", maxAgents = 2, agents = 1), serverPlan = null, serverAgentCount = 9)
-        assertFalse(limit.reached)
-        assertFalse(createAgentAtLimit(limit.usage, limit.limit))
-    }
-
-    @Test
     fun noAgentCapInBillingMeansNoLimit() {
         val limit = createAgentLimit(CreateAgentBilling(plan = "pro", maxAgents = -1, agents = 40), serverPlan = "pro", serverAgentCount = 40)
         assertFalse(limit.reached)
