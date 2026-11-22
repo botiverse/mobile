@@ -555,6 +555,11 @@ tasks.withType<Test>().matching { it.name.endsWith("UnitTest") }.configureEach {
     // The Roborazzi tasks overwrite this (record / compare / verify) when the test starts.
     if (!roborazziModeProperty.get()) systemProperty("roborazzi.test.verify", "true")
     systemProperty("java.awt.headless", "true")
+    addTestOutputListener { descriptor, event ->
+        if (descriptor.className?.contains("VirtualMessageTimelineComparison") == true) {
+            logger.lifecycle(event.message.trimEnd())
+        }
+    }
 }
 
 fun getCommonCompilerArgs(): List<String> {

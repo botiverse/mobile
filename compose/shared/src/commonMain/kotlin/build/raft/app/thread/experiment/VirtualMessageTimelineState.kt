@@ -536,12 +536,25 @@ internal class VirtualMessageTimelineState(
             firstMountedIndex = scratchVisibleRange[0].coerceIn(0, count - 1)
             lastMountedIndex = scratchVisibleRange[1].coerceIn(firstMountedIndex, count - 1)
 
-            // Measure initial estimated range, recording any above-anchor height shifts.
+            // Measure from firstMountedIndex downward, stopping once real measured offsets cover
+            // the compensated viewport + overscan bottom so taller-than-estimated rows never
+            // over-compose off-window items that would immediately unmount and re-compose later.
             var index = firstMountedIndex
+            var actualLastMounted = firstMountedIndex
             while (index <= lastMountedIndex) {
                 measureItemOnce(index)
+                actualLastMounted = index
+                val itemBottom = heightIndex.offsetOf(index) + heightIndex.heightOf(index)
+                val liveViewportTop =
+                    if (currentScrollInt > 0 && anchorIndex in 0 until count) {
+                        heightIndex.offsetOf(anchorIndex) - anchorViewportTopBefore
+                    } else {
+                        currentScrollInt
+                    }
+                if (index >= anchorIndex && itemBottom >= liveViewportTop + viewportHeight + overscanPx) break
                 index += 1
             }
+            lastMountedIndex = actualLastMounted
 
             // Measure pinned off-viewport rows too so any pinned row above anchorIndex is included
             // in the single above-anchor height compensation step below.
