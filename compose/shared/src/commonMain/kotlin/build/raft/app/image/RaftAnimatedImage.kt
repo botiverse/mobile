@@ -17,9 +17,11 @@ import okio.BufferedSource
 /**
  * Animated GIF / animated WebP playback, opt-in per request.
  *
- * Only the full-screen image viewer asks for it ([raftAnimatedImage]), for the original file (as
- * the web lightbox does); every other image (message thumbnails, avatars, the viewer's own
- * thumbnail underlay) keeps the static decode path. An
+ * Asked for ([raftAnimatedImage]) by the full-screen image viewer for the original file (as the
+ * web lightbox does), by a message's image tiles in a conversation for the server thumbnail only
+ * (a GIF's is a 320px animated WebP, slock #16159; never a just-sent GIF's full-size local copy;
+ * they play only while on screen) and by announcement images. Every other image (avatars, link
+ * cards, file lists, the viewer's own thumbnail underlay) keeps the static decode path. An
  * opted-in request whose bytes are not an animated format falls through to the static decoders.
  *
  * Android decodes through coil-gif (`AnimatedImageDecoder` on API 28+, `GifDecoder` below; the
@@ -71,10 +73,10 @@ private fun raftNormalizedMime(mimeType: String?): String =
     mimeType.orEmpty().substringBefore(';').trim().lowercase()
 
 /**
- * Whether the viewer should ask for animated decoding of this image: its metadata says GIF or
- * WebP (WebP may or may not be animated; the decoder checks the bytes). Another `image/` type
- * keeps today's static path; with no image MIME type (blank, `application/octet-stream`) the
- * file name / URL extension decides.
+ * Whether to ask for animated decoding of this image (the viewer, a message image tile): its
+ * metadata says GIF or WebP (WebP may or may not be animated; the decoder checks the bytes).
+ * Another `image/` type keeps today's static path; with no image MIME type (blank,
+ * `application/octet-stream`) the file name / URL extension decides.
  */
 fun raftImageMayBeAnimated(mimeType: String?, vararg names: String?): Boolean {
     val mime = raftNormalizedMime(mimeType)

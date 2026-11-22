@@ -17,10 +17,10 @@ import org.robolectric.RuntimeEnvironment
 import org.robolectric.annotation.Config
 
 /**
- * Which decoder the real Raft loader picks for a source: coil-gif only for viewer requests
- * (opted in through [raftAnimatedImage]) whose bytes are GIF / animated WebP, and the
- * unchanged static decoder for everything else, including GIFs anywhere outside the viewer
- * (coil-gif's service-loader registration must stay off).
+ * Which decoder the real Raft loader picks for a source: coil-gif only for requests that opted
+ * in through [raftAnimatedImage] (the viewer, a message's image tiles) whose bytes are GIF /
+ * animated WebP, and the unchanged static decoder for everything else, including GIFs that did
+ * not opt in, such as avatars (coil-gif's service-loader registration must stay off).
  */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34])
@@ -36,9 +36,9 @@ class RaftAnimatedImageDecoderSelectionTest {
     }
 
     private fun assertStaticPaths() {
-        assertStatic(decoderFor(RaftAnimatedImageFixtures.threeFrameGif, animate = false), "GIF outside the viewer")
-        assertStatic(decoderFor(RaftAnimatedImageFixtures.pngHeader, animate = true), "PNG in the viewer")
-        assertStatic(decoderFor(RaftAnimatedImageFixtures.webpVp8xHeader(animated = false), animate = true), "still WebP in the viewer")
+        assertStatic(decoderFor(RaftAnimatedImageFixtures.threeFrameGif, animate = false), "GIF that did not opt in")
+        assertStatic(decoderFor(RaftAnimatedImageFixtures.pngHeader, animate = true), "opted-in PNG")
+        assertStatic(decoderFor(RaftAnimatedImageFixtures.webpVp8xHeader(animated = false), animate = true), "opted-in still WebP")
     }
 
     private fun assertStatic(decoder: kotlin.reflect.KClass<*>?, label: String) {
