@@ -599,6 +599,70 @@ class CanonicalMessageV2DurableLastKnownReaderTest {
         }
     }
 
+    @Test
+    fun boundedNewestIsolatesPoisonImmediatelyBelowWindowAndInsideSkippedAboveHeadIsland() = withFreshDatabase { database ->
+        val store = SqlDelightCanonicalMessageV2Store(database = database, now = { 10L })
+        val scope = SyncScopeKey(partitionA, "channel-a", "channel")
+        val reader = CanonicalMessageV2DurableLastKnownReader(store)
+
+        runBlocking {
+            // Head [1..15] + context island above head [100..105].
+            store.applyCoverage(
+                scope = scope,
+                envelopes = (1L..15L).map(::envelope),
+                coverage = CanonicalMessageV2Coverage(1L, 15L, reachesOldest = true, headAtVerify = true, CanonicalMessageV2SegmentSource.Latest),
+                revAtRequest = 0L,
+                userDriven = true,
+            )
+            store.applyCoverage(
+                scope = scope,
+                envelopes = (100L..105L).map(::envelope),
+                coverage = CanonicalMessageV2Coverage(100L, 105L, reachesOldest = false, headAtVerify = false, CanonicalMessageV2SegmentSource.Context),
+                revAtRequest = 0L,
+                userDriven = false,
+            )
+            // Poison row 10 (exact limit+1 boundary below Newest(5) = [11..15]) and row 105 (top of skipped above-head island).
+            for (poisonSeq in listOf(10L, 105L)) {
+                database.queries.updateCanonicalFact(
+                    seq = poisonSeq,
+                    createdAt = "2026-07-16T00:00:00.000Z",
+                    canonicalFactJson = "malformed-$poisonSeq",
+                    id = "message-$poisonSeq",
+                    environmentId = scope.environmentId,
+                    serverId = scope.serverId,
+                    principalId = scope.principalId,
+                    consumerId = scope.consumerId,
+                    scopeKind = scope.scopeKind,
+                    channelId = scope.scopeId,
+                )
+            }
+
+            val newest = assertNotNull(
+                reader.readTimeline(partitionA, "channel-a", ThreadDurableTimelineAnchor.Newest(limit = 5)),
+            )
+            assertEquals(listOf(11L, 12L, 13L, 14L, 15L), newest.envelopes.map { it.fact.seq })
+            assertTrue(newest.hasOlderStored)
+            assertFalse(newest.reachesOldest)
+            assertTrue(newest.reachesHead)
+            assertTrue(newest.insideProvenSegment)
+
+            // Extreme boundary anchors report opposite-direction presence accurately without overflow.
+            val beforeMin = assertNotNull(
+                reader.readTimeline(partitionA, "channel-a", ThreadDurableTimelineAnchor.Before(Long.MIN_VALUE, limit = 5, crossGaps = true)),
+            )
+            assertTrue(beforeMin.envelopes.isEmpty())
+            assertFalse(beforeMin.hasOlderStored)
+            assertTrue(beforeMin.hasNewerStored)
+
+            val afterMax = assertNotNull(
+                reader.readTimeline(partitionA, "channel-a", ThreadDurableTimelineAnchor.After(Long.MAX_VALUE, limit = 5, crossGaps = true)),
+            )
+            assertTrue(afterMax.envelopes.isEmpty())
+            assertTrue(afterMax.hasOlderStored)
+            assertFalse(afterMax.hasNewerStored)
+        }
+    }
+
     private class RestoreCountingStore(private val delegate: CanonicalMessageV2Store) : CanonicalMessageV2Store {
         var restoreCalls = 0
         override suspend fun applySnapshot(frame: CanonicalMessageV2SnapshotFrame) = delegate.applySnapshot(frame)
@@ -624,6 +688,8 @@ class CanonicalMessageV2DurableLastKnownReaderTest {
             delegate.hasFactBefore(scope, beforeSeq)
         override suspend fun hasFactAfter(scope: SyncScopeKey, afterSeq: Long) =
             delegate.hasFactAfter(scope, afterSeq)
+        override suspend fun highestFactSeqBefore(scope: SyncScopeKey, beforeSeq: Long) =
+            delegate.highestFactSeqBefore(scope, beforeSeq)
         override suspend fun locateFact(partition: DurablePartitionKey, factId: String) =
             delegate.locateFact(partition, factId)
         override suspend fun touchUserAccess(scope: SyncScopeKey) = delegate.touchUserAccess(scope)

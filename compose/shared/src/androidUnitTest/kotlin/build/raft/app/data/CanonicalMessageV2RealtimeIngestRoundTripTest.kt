@@ -825,6 +825,8 @@ class CanonicalMessageV2RealtimeIngestRoundTripTest {
             guarded { delegate.hasFactBefore(scope, beforeSeq) }
         override suspend fun hasFactAfter(scope: SyncScopeKey, afterSeq: Long) =
             guarded { delegate.hasFactAfter(scope, afterSeq) }
+        override suspend fun highestFactSeqBefore(scope: SyncScopeKey, beforeSeq: Long) =
+            guarded { delegate.highestFactSeqBefore(scope, beforeSeq) }
         override suspend fun locateFact(partition: DurablePartitionKey, factId: String) =
             guarded { delegate.locateFact(partition, factId) }
         override suspend fun touchUserAccess(scope: SyncScopeKey) = guarded { delegate.touchUserAccess(scope) }

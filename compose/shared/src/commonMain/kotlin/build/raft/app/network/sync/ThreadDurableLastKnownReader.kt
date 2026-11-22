@@ -435,6 +435,26 @@ internal class CanonicalMessageV2DurableLastKnownReader(
                 reachedLowerBound = true
                 break
             }
+            // Non-decoding pre-skip: avoid decoding poisoned payloads inside skipped segments (e.g. a context island above head).
+            val nextSeq = store.highestFactSeqBefore(scope, beforeSeq = cursorSeq)
+            if (nextSeq == null) {
+                exhaustedStore = true
+                break
+            }
+            if (oldestMinSeq != null && nextSeq < oldestMinSeq) {
+                reachedLowerBound = true
+                break
+            }
+            val nextMember = CanonicalMessageV2SegmentAlgebra.memberOf(segments, nextSeq)
+            if (nextMember != null && shouldSkipSegment(nextMember)) {
+                val jumpTo = minOf(nextSeq, nextMember.effectiveLowSeq)
+                if (jumpTo >= cursorSeq) {
+                    exhaustedStore = true
+                    break
+                }
+                cursorSeq = jumpTo
+                continue
+            }
             val remaining = limit - collectedDesc.size
             val raw = store.readFactsBefore(scope, beforeSeq = cursorSeq, limit = remaining)
             if (raw.envelopes.isEmpty()) {
@@ -507,9 +527,7 @@ internal class CanonicalMessageV2DurableLastKnownReader(
         var cursorSeq = initialBeforeSeq
         while (true) {
             if (oldestMinSeq != null && cursorSeq <= oldestMinSeq) return false
-            val probe = store.readFactsBefore(scope, beforeSeq = cursorSeq, limit = 1)
-            val row = probe.envelopes.firstOrNull() ?: return false
-            val seq = row.fact.seq
+            val seq = store.highestFactSeqBefore(scope, beforeSeq = cursorSeq) ?: return false
             if (oldestMinSeq != null && seq < oldestMinSeq) return false
             val member = CanonicalMessageV2SegmentAlgebra.memberOf(segments, seq)
             if (member != null && shouldSkipSegment(member)) {
@@ -682,7 +700,7 @@ internal class CanonicalMessageV2DurableLastKnownReader(
         val provenSegment = CanonicalMessageV2SegmentAlgebra.provenSegmentBefore(segments, anchor.beforeSeq)
         val hasNewerStored =
             if (anchor.beforeSeq == Long.MIN_VALUE) {
-                false
+                store.hasFactAfter(scope, Long.MIN_VALUE) || store.hasFactBefore(scope, Long.MIN_VALUE + 1L)
             } else {
                 store.hasFactAfter(scope, anchor.beforeSeq - 1L)
             }
@@ -766,7 +784,7 @@ internal class CanonicalMessageV2DurableLastKnownReader(
         val provenSegment = CanonicalMessageV2SegmentAlgebra.provenSegmentAfter(segments, anchor.afterSeq)
         val hasOlderStored =
             if (anchor.afterSeq == Long.MAX_VALUE) {
-                false
+                store.hasFactBefore(scope, Long.MAX_VALUE) || store.hasFactAfter(scope, Long.MAX_VALUE - 1L)
             } else {
                 store.hasFactBefore(scope, anchor.afterSeq + 1L)
             }

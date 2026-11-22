@@ -264,6 +264,19 @@ interface CanonicalMessageV2Store {
     ): Boolean = restore(scope).envelopes.any { it.fact.seq > afterSeq }
 
     /**
+     * Phase 2d: non-decoding probe for the highest stored fact seq of [scope] strictly below [beforeSeq],
+     * or `null` when none exists. Avoids decoding out-of-window or skipped-segment payloads.
+     */
+    suspend fun highestFactSeqBefore(
+        scope: SyncScopeKey,
+        beforeSeq: Long,
+    ): Long? = restore(scope).envelopes
+        .asSequence()
+        .map { it.fact.seq }
+        .filter { it < beforeSeq }
+        .maxOrNull()
+
+    /**
      * Phase 2d: locate every stored copy of [factId] inside [partition] without scanning scopes.
      * Used by anchored opens (`anchor = MessageId`) to read around a cached island directly.
      */
@@ -1188,6 +1201,23 @@ internal class SqlDelightCanonicalMessageV2Store(
             seq = afterSeq,
             limit = 1L,
         ).executeAsList().isNotEmpty()
+    }
+
+    override suspend fun highestFactSeqBefore(
+        scope: SyncScopeKey,
+        beforeSeq: Long,
+    ): Long? {
+        requireV2Scope(scope)
+        return database.queries.selectFactsInScopeBefore(
+            environmentId = scope.environmentId,
+            serverId = scope.serverId,
+            principalId = scope.principalId,
+            consumerId = scope.consumerId,
+            scopeKind = scope.scopeKind,
+            channelId = scope.scopeId,
+            seq = beforeSeq,
+            limit = 1L,
+        ).executeAsOneOrNull()?.seq
     }
 
     override suspend fun locateFact(
