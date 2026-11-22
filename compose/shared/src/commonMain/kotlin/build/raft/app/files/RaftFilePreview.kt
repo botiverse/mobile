@@ -9279,7 +9279,7 @@ internal fun RaftFilePreviewPayloadContent(
                                         !pagePayload.imageFullLoadFailed &&
                                         primaryUrl != null
                                     ) {
-                                        val failedData = state.result.request.data?.toString()?.trim()
+                                        val failedData = state.result.request.data.toString().trim()
                                         if (failedData == primaryUrl) {
                                             onImageLoadError?.invoke(pagePayload.attachmentId, primaryUrl)
                                         }

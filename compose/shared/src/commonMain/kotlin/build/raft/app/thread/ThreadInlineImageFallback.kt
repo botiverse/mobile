@@ -167,7 +167,7 @@ internal class ThreadInlineAttachmentUrlBatcher(
                             continue
                         }
                     val currentOwner = ownerProvider()?.normalizedOrNull()
-                    if (owner != null && currentOwner != owner) {
+                    if (currentOwner != owner) {
                         logger("thread_inline_image_fallback status=batch_dropped reason=owner_changed")
                         continue
                     }

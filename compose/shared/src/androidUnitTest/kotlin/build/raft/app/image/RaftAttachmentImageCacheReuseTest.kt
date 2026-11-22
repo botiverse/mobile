@@ -2,6 +2,7 @@ package build.raft.app.image
 
 import android.graphics.Bitmap
 import coil3.SingletonImageLoader
+import coil3.annotation.DelicateCoilApi
 import coil3.decode.DataSource
 import coil3.request.CachePolicy
 import coil3.request.ImageRequest
@@ -21,6 +22,7 @@ import kotlin.test.assertNotNull
  * an original attachment image already downloaded in the message list hits Coil's cache when opened
  * in full-screen preview even after the 5-minute presigned R2 URL rotates, without re-downloading.
  */
+@OptIn(DelicateCoilApi::class)
 @RunWith(RobolectricTestRunner::class)
 class RaftAttachmentImageCacheReuseTest {
     @Test
