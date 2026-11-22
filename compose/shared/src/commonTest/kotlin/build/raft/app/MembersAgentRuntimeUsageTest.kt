@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.app.data.AuthSessionClearReason
 import build.raft.app.data.AuthSessionEvent
 import build.raft.app.data.HomeNetworkResponse
 import build.raft.app.data.RuntimeAccountUsageAccount
@@ -135,11 +136,85 @@ class MembersAgentRuntimeUsageTest {
         tracker.onAuthSessionEvent(AuthSessionEvent.TokensRotated(generation = 1))
         assertEquals(owner, tracker.owner.value)
         assertTrue(AuthSessionEvent.BindingMetadataChanged(generation = 2).changesRuntimeAccountUsageOwner())
+        assertFalse(AuthSessionEvent.BindingMetadataChanged(generation = 2).clearsRuntimeAccountUsageOwnerImmediately())
         signedIn = null
         tracker.onAuthSessionEvent(AuthSessionEvent.BindingMetadataChanged(generation = 2))
         assertNull(tracker.owner.value)
     }
 
+    @Test
+    fun bindingMetadataChangedWithSameOwnerNeverFlashesNull() = runPortableCoroutineTest<Unit> {
+        var signedIn: SharedComputersOwner? = owner
+        val resolveGate = CompletableDeferred<Unit>()
+        var gateResolves = false
+        val tracker = MembersRuntimeAccountUsageOwnerTracker {
+            if (gateResolves) resolveGate.await()
+            signedIn
+        }
+        tracker.refresh()
+        assertEquals(owner, tracker.owner.value)
+
+        // Foreground return metadata refreshes (auth/me, appearance catch-up) emit BindingMetadataChanged
+        // without changing the signed-in account: owner must never flash null mid-resolve and cancel an
+        // active runtime OAuth sign-in dialog.
+        gateResolves = true
+        val refreshing = async(start = CoroutineStart.UNDISPATCHED) {
+            tracker.onAuthSessionEvent(AuthSessionEvent.BindingMetadataChanged(generation = 2))
+        }
+        assertEquals(owner, tracker.owner.value)
+        resolveGate.complete(Unit)
+        refreshing.await()
+        assertEquals(owner, tracker.owner.value)
+
+        // Sign-out (Cleared) still clears the owner immediately before resolve completes.
+        val clearGate = CompletableDeferred<Unit>()
+        var blockClearResolve = false
+        val clearTracker = MembersRuntimeAccountUsageOwnerTracker {
+            if (blockClearResolve) clearGate.await()
+            signedIn
+        }
+        clearTracker.refresh()
+        assertEquals(owner, clearTracker.owner.value)
+        signedIn = null
+        blockClearResolve = true
+        val clearing = async(start = CoroutineStart.UNDISPATCHED) {
+            clearTracker.onAuthSessionEvent(AuthSessionEvent.Cleared(generation = 3, reason = AuthSessionClearReason.UserLogout))
+        }
+        assertNull(clearTracker.owner.value)
+        clearGate.complete(Unit)
+        clearing.await()
+        assertNull(clearTracker.owner.value)
+    }
+
+    @Test
+    fun applyShellRuntimeAccountUsageAuthEventRefreshesMetadataInPlaceAndClearsOnAuthChange() = runPortableCoroutineTest<Unit> {
+        val actions = mutableListOf<String>()
+        applyShellRuntimeAccountUsageAuthEvent(
+            event = AuthSessionEvent.TokensRotated(generation = 1),
+            clearImmediateAndRead = { actions += "clear" },
+            refreshInPlace = { actions += "refresh" },
+        )
+        assertEquals(emptyList(), actions)
+
+        applyShellRuntimeAccountUsageAuthEvent(
+            event = AuthSessionEvent.BindingMetadataChanged(generation = 2),
+            clearImmediateAndRead = { actions += "clear" },
+            refreshInPlace = { actions += "refresh" },
+        )
+        assertEquals(listOf("refresh"), actions)
+
+        applyShellRuntimeAccountUsageAuthEvent(
+            event = AuthSessionEvent.Authenticated(generation = 3),
+            clearImmediateAndRead = { actions += "clear" },
+            refreshInPlace = { actions += "refresh" },
+        )
+        applyShellRuntimeAccountUsageAuthEvent(
+            event = AuthSessionEvent.Cleared(generation = 4, reason = AuthSessionClearReason.UserLogout),
+            clearImmediateAndRead = { actions += "clear" },
+            refreshInPlace = { actions += "refresh" },
+        )
+        assertEquals(listOf("refresh", "clear", "clear"), actions)
+    }
     private class UsageOkApi : RaftComputersApi {
         override suspend fun runtimeAccountUsage(serverId: ServerId, machineId: String, provider: String): HomeNetworkResponse =
             HomeNetworkResponse(

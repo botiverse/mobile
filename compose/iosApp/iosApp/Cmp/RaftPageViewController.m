@@ -5,6 +5,7 @@
 #import "HRBridgeModule.h"
 #import "UINavigationController+FDFullscreenPopGesture.h"
 #import "iosApp-Swift.h"
+#import <SafariServices/SafariServices.h>
 #import <shared/shared.h>
 #import <math.h>
 
@@ -375,13 +376,35 @@ static NSString *RaftPageWindowId(NSString *controllerToken) {
     [self raftSendEvent:RaftAppShellHostDidAppearPagerEvent data:@{}];
 }
 
+/// Presenting `SFSafariViewController` (e.g. a runtime OAuth sign-in page opened through
+/// `openUrl(browser = true)`) temporarily covers the page while the person signs in and returns:
+/// unlike a Raft navigation push or modal page, it must not dismiss open overlays (which would
+/// close `ComputerRuntimeSignInDialog` and cancel the running Computer login).
+- (BOOL)raftIsPresentingExternalBrowser {
+    if (self.isBeingDismissed || self.isMovingFromParentViewController) {
+        return NO;
+    }
+    for (UIViewController *controller = self; controller != nil; controller = controller.parentViewController) {
+        if ([controller.presentedViewController isKindOfClass:SFSafariViewController.class]) {
+            return YES;
+        }
+    }
+    UIViewController *toController =
+        [self.transitionCoordinator viewControllerForKey:UITransitionContextToViewControllerKey];
+    return [toController isKindOfClass:SFSafariViewController.class];
+}
+
 - (void)viewWillDisappear:(BOOL)animated {
     [super viewWillDisappear:animated];
     // Overlays (CMP popups and dialogs, layers of this window) close while the page still
     // composes: once covered it stops, and an overlay left open sits over the next page.
-    void (^coverHook)(void) = self.raftPageWillBeCoveredHook;
-    if (coverHook != nil) {
-        coverHook();
+    // An external browser sheet (`SFSafariViewController`) is a transient return-to-dialog detour,
+    // not a Raft page push.
+    if (![self raftIsPresentingExternalBrowser]) {
+        void (^coverHook)(void) = self.raftPageWillBeCoveredHook;
+        if (coverHook != nil) {
+            coverHook();
+        }
     }
     _raftAdaptivePanePublishingActive = NO;
     [self raftInvalidateAdaptiveNavigation];

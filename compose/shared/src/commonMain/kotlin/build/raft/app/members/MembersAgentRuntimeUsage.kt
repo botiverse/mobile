@@ -113,12 +113,24 @@ internal class MembersRuntimeAccountUsageOwnerTracker(
     }
 
     suspend fun onAuthSessionEvent(event: AuthSessionEvent) {
-        if (event.changesRuntimeAccountUsageOwner()) invalidate()
+        when {
+            event.clearsRuntimeAccountUsageOwnerImmediately() -> invalidate()
+            event.changesRuntimeAccountUsageOwner() -> refresh()
+        }
     }
 }
 
-/** Token rotation keeps the account; every other auth event may change who is signed in. */
+/** Token rotation keeps the account; every other auth event may change who is signed in or which server is active. */
 internal fun AuthSessionEvent.changesRuntimeAccountUsageOwner(): Boolean = this !is AuthSessionEvent.TokensRotated
+
+/**
+ * Only sign-out and a new sign-in clear the owner to null before re-resolving: a metadata refresh
+ * (`BindingMetadataChanged`, e.g. `auth/me` or server appearance catch-up on foreground return)
+ * usually keeps the same `(owner, serverId)` and must not flash null and tear down an active
+ * runtime sign-in dialog.
+ */
+internal fun AuthSessionEvent.clearsRuntimeAccountUsageOwnerImmediately(): Boolean =
+    this is AuthSessionEvent.Authenticated || this is AuthSessionEvent.Cleared
 
 internal val LocalMembersRuntimeAccountUsageAccess =
     compositionLocalOf<MembersRuntimeAccountUsageAccess?> { null }
