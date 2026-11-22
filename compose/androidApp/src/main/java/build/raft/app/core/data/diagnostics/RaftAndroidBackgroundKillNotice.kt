@@ -48,10 +48,10 @@ internal fun hasVendorCleanerDescription(description: String?): Boolean =
  * `dismissForever()` or `openVendorWhitelistSettings()`), NEVER during `Application.onCreate()`
  * evaluation, so a sticky-service restart never swallows a notice before the user opens the UI.
  *
- * [shownCount] counts the notice's appearances on this install: `evaluate()` adds one each time it
- * surfaces the notice in a process where it is not on screen yet. That includes a process that
- * never shows UI, such as a sticky-service restart: the cap ([BackgroundKillNoticeMaxAppearances])
- * counts appearances, not views. [suppressedForever] is the user's "Don't show again".
+ * [shownCount] counts the processes in which the banner was really on screen: `markShown()` adds
+ * one, at most once per process, when the banner is composed. A headless start (a push, a widget,
+ * the keep-alive service) only evaluates and never counts. At [BackgroundKillNoticeMaxAppearances]
+ * the notice is never selected again. [suppressedForever] is the user's "Don't show again".
  */
 internal data class BackgroundKillNoticePersistenceState(
     val baselineMillis: Long? = null,
@@ -99,7 +99,7 @@ internal fun qualifiesForBackgroundKillNotice(
  * task/app-launch cleaners (Huawei PowerGenie, Lenovo ZuiMemoryCleaner, etc.) still kill apps
  * unless explicitly whitelisted in vendor settings.
  *
- * Selects nothing after "Don't show again" or once the notice has appeared
+ * Selects nothing after "Don't show again" or once the banner has been on screen
  * [BackgroundKillNoticeMaxAppearances] times on this install. A notice already on screen stays
  * there all the same: the controller keeps it (see [RaftAndroidBackgroundKillNoticeController.evaluate]).
  */
@@ -177,13 +177,16 @@ internal class RaftAndroidBackgroundKillNoticeController(
     private val lock = Any()
     private var cachedState: BackgroundKillNoticePersistenceState? = null
 
+    /** Whether this process has counted its appearance ([markShown]); guarded by [lock]. */
+    private var appearanceCounted = false
+
     override val notice: StateFlow<RaftBackgroundKillNotice?> = mutableNotice.asStateFlow()
 
     /**
-     * Picks this process's notice. Surfacing one while none is on screen in this process is a fresh
-     * appearance and counts once towards [BackgroundKillNoticeMaxAppearances]. A notice already on
-     * screen stays until the user acts on it: an evaluation that selects nothing (past the cap, say)
-     * keeps it rather than taking it away.
+     * Picks this process's notice. It counts no appearance: only [markShown], once the banner is on
+     * screen, does, so a headless start (a push, a widget, the keep-alive service) uses none. A
+     * notice already on screen stays until the user acts on it: an evaluation that selects nothing
+     * (past the cap, say) keeps it rather than taking it away.
      */
     fun evaluate(
         exits: List<SystemKillExit>,
@@ -209,10 +212,9 @@ internal class RaftAndroidBackgroundKillNoticeController(
             if (loaded.baselineMillis == null) loaded.copy(baselineMillis = baseline) else loaded
         val selected: SystemKillExit?
         val result: RaftBackgroundKillNotice?
-        val freshAppearance: Boolean
-        val shownCount: Int
         synchronized(lock) {
             val state = mergePersistenceState(cachedState, loadedWithBaseline)
+            cachedState = state
             selected =
                 selectBackgroundKillForNotice(
                     exits = exits,
@@ -225,33 +227,48 @@ internal class RaftAndroidBackgroundKillNoticeController(
                     noPlayServicesFallbackApplies = noPlayServicesFallbackApplies,
                     keepAlivePreferenceEnabled = keepAlivePreferenceEnabled,
                 )
-            val onScreen = mutableNotice.value
-            freshAppearance = selected != null && onScreen == null
-            val counted = if (freshAppearance) state.copy(shownCount = state.shownCount + 1) else state
-            cachedState = counted
-            shownCount = counted.shownCount
+            // A notice already on screen stays when nothing is selected (see above).
             result =
                 selected?.let { exit ->
                     RaftBackgroundKillNotice(
                         exitTimestampMillis = exit.timestampMillis,
                         guide = RaftAndroidVendorWhitelist.guideFor(vendor),
                     )
-                } ?: onScreen
+                } ?: mutableNotice.value
             mutableNotice.value = result
-        }
-        if (freshAppearance) {
-            // Saves the state as it is when the save runs, not this snapshot: a click handled in the
-            // meantime may have saved first, and must not be overwritten by an older state.
-            persistAsync { runCatching { synchronized(lock) { cachedState }?.let(store::save) } }
         }
         if (selected != null && result != null) {
             log(
-                "background_kill_notice state=shown shownCount=$shownCount vendor=${vendor.id} guide=${result.guide.name} " +
+                "background_kill_notice state=shown vendor=${vendor.id} guide=${result.guide.name} " +
                     "exitTimestampMillis=${selected.timestampMillis} reason=${historicalProcessExitReasonLabel(selected.reasonCode)} " +
                     "importance=${selected.importance}"
             )
         }
         return result
+    }
+
+    /**
+     * The banner is on screen. The first call in this process while a notice is showing counts one
+     * appearance towards [BackgroundKillNoticeMaxAppearances]; later calls in this process
+     * (recomposition, a newer exit swapped in, a second window) change nothing.
+     */
+    override fun markShown() {
+        val shownCount: Int
+        val shownExitAt: Long
+        synchronized(lock) {
+            if (appearanceCounted) return
+            val current = mutableNotice.value ?: return
+            val state = cachedState ?: BackgroundKillNoticePersistenceState()
+            appearanceCounted = true
+            val counted = state.copy(shownCount = state.shownCount + 1)
+            cachedState = counted
+            shownCount = counted.shownCount
+            shownExitAt = current.exitTimestampMillis
+        }
+        // Saves the state as it is when the save runs, not this snapshot: a click handled in the
+        // meantime may have saved first, and must not be overwritten by an older state.
+        persistAsync { runCatching { synchronized(lock) { cachedState }?.let(store::save) } }
+        log("background_kill_notice state=on_screen shownCount=$shownCount exitTimestampMillis=$shownExitAt")
     }
 
     override fun dismiss() {
@@ -434,6 +451,10 @@ internal object RaftAndroidBackgroundKillNoticeHost : RaftBackgroundKillNoticeHo
 
     override fun dismissForever() {
         controller?.dismissForever()
+    }
+
+    override fun markShown() {
+        controller?.markShown()
     }
 
     internal fun resetForTests() {

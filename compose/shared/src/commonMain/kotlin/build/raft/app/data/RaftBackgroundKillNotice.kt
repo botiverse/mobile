@@ -39,6 +39,12 @@ interface RaftBackgroundKillNoticeHost {
 
     /** "Don't show again": hides the notice and never shows it again on this install. */
     fun dismissForever()
+
+    /**
+     * The banner is on screen: counts one appearance towards the per-install cap. Only the first
+     * call in a process counts; later ones (recomposition, a newer exit, a second window) do nothing.
+     */
+    fun markShown()
 }
 
 object RaftBackgroundKillNoticeHostRegistry {

@@ -8,9 +8,11 @@ import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
@@ -75,6 +77,7 @@ internal fun rememberRaftBackgroundKillNoticeBannerSlot(
                 onOpenSettings = { host.openVendorWhitelistSettings() },
                 onDismiss = { host.dismiss() },
                 onDismissForever = { host.dismissForever() },
+                onShown = { host.markShown() },
             )
         }
     }
@@ -86,8 +89,13 @@ internal fun RaftBackgroundKillNoticeBanner(
     onOpenSettings: () -> Unit,
     onDismiss: () -> Unit,
     onDismissForever: () -> Unit,
+    onShown: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    // An appearance counts once the banner is really composed, never when a headless start (a
+    // push, a widget, the keep-alive service) only selected the notice; the host counts once per process.
+    val currentOnShown by rememberUpdatedState(onShown)
+    LaunchedEffect(notice.exitTimestampMillis) { currentOnShown() }
     val description =
         when (notice.guide) {
             RaftBackgroundWhitelistGuide.HuaweiAppLaunch -> stringResource(Res.string.background_kill_notice_body_huawei)

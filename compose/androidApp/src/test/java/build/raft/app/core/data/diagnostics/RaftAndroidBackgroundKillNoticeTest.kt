@@ -83,6 +83,30 @@ class RaftAndroidBackgroundKillNoticeTest {
         systemLowMemory = systemLowMemory,
     )
 
+    /** A new process: a new controller over [store], at [at]. */
+    private fun launch(
+        store: InMemoryNoticeStore,
+        at: Long,
+        persistAsync: (() -> Unit) -> Unit = { it() },
+    ) = RaftAndroidBackgroundKillNoticeController(
+        store = store,
+        nowMillis = { at },
+        openWhitelist = { "huawei_startup_normal" },
+        persistAsync = persistAsync,
+    )
+
+    /** [RaftAndroidBackgroundKillNoticeController.evaluate] as a Huawei phone without Play services runs it. */
+    private fun RaftAndroidBackgroundKillNoticeController.eval(exits: List<SystemKillExit>) =
+        evaluate(
+            exits = exits,
+            snapshots = emptyList(),
+            packageUpdatedMillis = installedAt,
+            mainProcessName = mainProcess,
+            vendor = AndroidOemVendor.Huawei,
+            noPlayServicesFallbackApplies = true,
+            keepAlivePreferenceEnabled = true,
+        )
+
     @Test
     fun huaweiNoGmsQualifiesAnyBackgroundKillAndUsesHuaweiGuide() {
         val killAt = installedAt + hour
@@ -369,11 +393,8 @@ class RaftAndroidBackgroundKillNoticeTest {
                 },
             )
 
-        fun eval(
-            exits: List<SystemKillExit>,
-            target: RaftAndroidBackgroundKillNoticeController = controller,
-        ) =
-            target.evaluate(
+        fun eval(exits: List<SystemKillExit>) =
+            controller.evaluate(
                 exits = exits,
                 snapshots = emptyList(),
                 packageUpdatedMillis = installedAt,
@@ -416,60 +437,30 @@ class RaftAndroidBackgroundKillNoticeTest {
         val exitDuring30d = exit(pid = 4, at = now - 1_000L, importance = IMPORTANCE_SERVICE)
         assertNull(eval(listOf(exitDuring30d)))
 
-        // New exit after the 30-day cooldown: still suppressed, the notice has appeared twice on this install.
+        // New exit after 30-day cooldown: shows again.
         now = secondDismissAt + 30 * day + 1_000L
         val exit3 = exit(pid = 5, at = now - 500L, importance = IMPORTANCE_SERVICE)
-        assertNull(eval(listOf(exit3)))
-        assertEquals(2, store.state.shownCount)
+        assertEquals(exit3.timestampMillis, eval(listOf(exit3))?.exitTimestampMillis)
 
-        // The 30-day cooldown itself still holds for a state saved before shown-count existed.
-        val savedBeforeShownCount = store.state.copy(shownCount = 0)
-
-        fun selectSavedBeforeShownCount(exits: List<SystemKillExit>, at: Long) =
-            selectBackgroundKillForNotice(
-                exits = exits,
-                snapshots = emptyList(),
-                state = savedBeforeShownCount,
-                baselineMillis = installedAt,
-                nowMillis = at,
-                mainProcessName = mainProcess,
-                vendor = AndroidOemVendor.LenovoZui,
-                noPlayServicesFallbackApplies = false,
-                keepAlivePreferenceEnabled = true,
-            )
-        assertNull(selectSavedBeforeShownCount(listOf(exitDuring30d), at = secondDismissAt + 29 * day))
-        assertEquals(exit3, selectSavedBeforeShownCount(listOf(exit3), at = now))
-
-        // On another install, Open settings closes the first appearance -> 24-hour cooldown and invokes opener.
-        val settingsStore = InMemoryNoticeStore()
-        val settingsController =
-            RaftAndroidBackgroundKillNoticeController(
-                store = settingsStore,
-                nowMillis = { now },
-                openWhitelist = {
-                    openedCount += 1
-                    "zui_startup_list"
-                },
-            )
-        assertEquals(exit3.timestampMillis, eval(listOf(exit3), settingsController)?.exitTimestampMillis)
+        // User opens vendor whitelist settings -> 24-hour cooldown and invokes opener.
         val openedAt = now
-        settingsController.openVendorWhitelistSettings()
+        controller.openVendorWhitelistSettings()
         assertEquals(1, openedCount)
-        assertNull(settingsController.notice.value)
-        assertEquals(exit3.timestampMillis, settingsStore.state.lastAcknowledgedExitTimestampMillis)
+        assertNull(controller.notice.value)
+        assertEquals(exit3.timestampMillis, store.state.lastAcknowledgedExitTimestampMillis)
 
         // New exit 23 hours later: suppressed.
         now = openedAt + 23 * hour
         val exitDuring24h = exit(pid = 6, at = now - 1_000L, importance = IMPORTANCE_SERVICE)
-        assertNull(eval(listOf(exitDuring24h), settingsController))
+        assertNull(eval(listOf(exitDuring24h)))
 
         // Old exit (<= openedAt) after 24 hours: suppressed (requires strictly newer exit).
         now = openedAt + 24 * hour + 1_000L
-        assertNull(eval(listOf(exit3), settingsController))
+        assertNull(eval(listOf(exit3)))
 
-        // Strictly newer exit after 24-hour cooldown: shows again (this install's second appearance).
+        // Strictly newer exit after 24-hour cooldown: shows again.
         val exit4 = exit(pid = 7, at = now - 500L, importance = IMPORTANCE_SERVICE)
-        assertEquals(exit4.timestampMillis, eval(listOf(exit4), settingsController)?.exitTimestampMillis)
+        assertEquals(exit4.timestampMillis, eval(listOf(exit4))?.exitTimestampMillis)
     }
 
     @Test
@@ -499,48 +490,62 @@ class RaftAndroidBackgroundKillNoticeTest {
     }
 
     @Test
-    fun noticeAppearsAtMostTwicePerInstallAndStaysOnScreenWhenEvaluatedAgain() {
+    fun evaluateAloneNeverCountsAnAppearance() {
         val store = InMemoryNoticeStore()
         val kill = exit(pid = 601, at = installedAt + hour, importance = IMPORTANCE_SERVICE)
 
-        // Each launch is a new process: a new controller over the same store.
-        fun launch(at: Long) =
-            RaftAndroidBackgroundKillNoticeController(
-                store = store,
-                nowMillis = { at },
-                openWhitelist = { "huawei_startup_normal" },
-            )
+        // Three headless starts (a push, a widget, the keep-alive service): each selects the notice
+        // and none shows it, so none counts, not even when evaluated twice.
+        for (start in 1..3) {
+            val headless = launch(store, at = kill.timestampMillis + start * hour)
+            assertNotNull(headless.eval(listOf(kill)))
+            assertNotNull(headless.eval(listOf(kill)))
+            assertEquals(0, store.state.shownCount)
+        }
 
-        fun RaftAndroidBackgroundKillNoticeController.eval(exits: List<SystemKillExit>) =
-            evaluate(
-                exits = exits,
-                snapshots = emptyList(),
-                packageUpdatedMillis = installedAt,
-                mainProcessName = mainProcess,
-                vendor = AndroidOemVendor.Huawei,
-                noPlayServicesFallbackApplies = true,
-                keepAlivePreferenceEnabled = true,
-            )
+        // The user opens Raft: the notice is still there, and counts once it is on screen.
+        val opened = launch(store, at = kill.timestampMillis + 4 * hour)
+        assertNotNull(opened.eval(listOf(kill)))
+        assertEquals(0, store.state.shownCount)
+        opened.markShown()
+        assertEquals(1, store.state.shownCount)
+    }
 
-        // 1st appearance; the user leaves without acting on it.
-        assertNotNull(launch(kill.timestampMillis + hour).eval(listOf(kill)))
+    @Test
+    fun markShownCountsOncePerProcessAndTwoProcessesThatShowedItEndTheNotice() {
+        val store = InMemoryNoticeStore()
+        val kill = exit(pid = 611, at = installedAt + hour, importance = IMPORTANCE_SERVICE)
+        val newerKill = exit(pid = 612, at = installedAt + 2 * hour, importance = IMPORTANCE_SERVICE)
+
+        // 1st process: nothing on screen yet, so nothing to count. Then it is shown, recomposed, a
+        // newer exit is swapped in and a second window shows it: one appearance.
+        val first = launch(store, at = newerKill.timestampMillis + hour)
+        first.markShown()
+        assertEquals(0, store.state.shownCount)
+        assertNotNull(first.eval(listOf(kill)))
+        first.markShown()
+        first.markShown()
+        assertEquals(newerKill.timestampMillis, first.eval(listOf(kill, newerKill))?.exitTimestampMillis)
+        first.markShown()
         assertEquals(1, store.state.shownCount)
 
-        // 2nd appearance, in the next process.
-        val second = launch(kill.timestampMillis + 2 * hour)
-        val secondNotice = second.eval(listOf(kill))
+        // 2nd process: shown again; the user leaves it there.
+        val second = launch(store, at = newerKill.timestampMillis + 2 * hour)
+        val secondNotice = second.eval(listOf(kill, newerKill))
         assertNotNull(secondNotice)
+        second.markShown()
         assertEquals(2, store.state.shownCount)
 
-        // Evaluated again in that process, past the cap: the notice stays on screen and is not counted again.
-        assertEquals(secondNotice, second.eval(listOf(kill)))
+        // Evaluated again in that process, past the cap: the notice stays on screen, not counted again.
+        assertEquals(secondNotice, second.eval(listOf(kill, newerKill)))
         assertEquals(secondNotice, second.notice.value)
+        second.markShown()
         assertEquals(2, store.state.shownCount)
 
         // 3rd process: no notice, not even for a newer kill.
-        val newerKill = exit(pid = 602, at = kill.timestampMillis + 3 * hour, importance = IMPORTANCE_SERVICE)
-        val third = launch(newerKill.timestampMillis + hour)
-        assertNull(third.eval(listOf(kill, newerKill)))
+        val newestKill = exit(pid = 613, at = newerKill.timestampMillis + 3 * hour, importance = IMPORTANCE_SERVICE)
+        val third = launch(store, at = newestKill.timestampMillis + hour)
+        assertNull(third.eval(listOf(kill, newerKill, newestKill)))
         assertNull(third.notice.value)
         assertEquals(2, store.state.shownCount)
     }
@@ -550,32 +555,18 @@ class RaftAndroidBackgroundKillNoticeTest {
         val store = InMemoryNoticeStore()
         val kill = exit(pid = 701, at = installedAt + hour, importance = IMPORTANCE_SERVICE)
         val deferredSaves = mutableListOf<() -> Unit>()
+        val shown = launch(store, at = kill.timestampMillis + 60_000L, persistAsync = { task -> deferredSaves += task })
+        assertNotNull(shown.eval(listOf(kill)))
+        shown.markShown()
 
-        fun RaftAndroidBackgroundKillNoticeController.eval(exits: List<SystemKillExit>) =
-            evaluate(
-                exits = exits,
-                snapshots = emptyList(),
-                packageUpdatedMillis = installedAt,
-                mainProcessName = mainProcess,
-                vendor = AndroidOemVendor.LenovoZui,
-                noPlayServicesFallbackApplies = false,
-                keepAlivePreferenceEnabled = true,
-            )
-
-        val controller =
-            RaftAndroidBackgroundKillNoticeController(
-                store = store,
-                nowMillis = { kill.timestampMillis + 60_000L },
-                openWhitelist = { "zui_startup_list" },
-                persistAsync = { task -> deferredSaves += task },
-            )
-        assertNotNull(controller.eval(listOf(kill)))
-
-        controller.dismissForever()
-        assertNull(controller.notice.value)
-        // Both saves run off the caller thread. Even when the appearance's save runs last, it writes
-        // the state after Don't show again, not the older one it was queued with.
+        shown.dismissForever()
+        assertNull(shown.notice.value)
+        // Both saves run off the caller thread: no synchronous store.load() or store.save().
+        assertEquals(1, store.loadCalls)
+        assertEquals(0, store.saveCalls)
         assertEquals(2, deferredSaves.size)
+        // Even when the appearance's save runs last, it writes the state after Don't show again,
+        // not the older one it was queued with.
         deferredSaves.asReversed().forEach { save -> save() }
         assertTrue(store.state.suppressedForever)
         assertEquals(kill.timestampMillis, store.state.lastAcknowledgedExitTimestampMillis)
@@ -585,12 +576,7 @@ class RaftAndroidBackgroundKillNoticeTest {
 
         // Next process: a newer qualifying kill, one appearance so far and no cooldown, yet nothing shows.
         val newerKill = exit(pid = 702, at = kill.timestampMillis + 2 * day, importance = IMPORTANCE_SERVICE)
-        val reloaded =
-            RaftAndroidBackgroundKillNoticeController(
-                store = store,
-                nowMillis = { newerKill.timestampMillis + 60_000L },
-                openWhitelist = { "zui_startup_list" },
-            )
+        val reloaded = launch(store, at = newerKill.timestampMillis + 60_000L)
         assertNull(reloaded.eval(listOf(kill, newerKill)))
         assertNull(reloaded.notice.value)
         assertTrue(store.state.suppressedForever)
@@ -679,11 +665,6 @@ class RaftAndroidBackgroundKillNoticeTest {
         )
         assertEquals(1, store.loadCalls)
         assertEquals(0, store.saveCalls)
-        // The appearance count is saved off the caller thread too.
-        assertEquals(1, deferredSaves.size)
-        deferredSaves.removeAt(0).invoke()
-        assertEquals(1, store.saveCalls)
-        assertEquals(1, store.state.shownCount)
 
         // When no whitelist activity can be opened, keep the notice visible without starting cooldown.
         controller.openVendorWhitelistSettings()
@@ -696,12 +677,11 @@ class RaftAndroidBackgroundKillNoticeTest {
         controller.openVendorWhitelistSettings()
         assertNull(controller.notice.value)
         assertEquals(1, store.loadCalls)
-        assertEquals(1, store.saveCalls)
+        assertEquals(0, store.saveCalls)
         assertEquals(1, deferredSaves.size)
         deferredSaves.removeAt(0).invoke()
-        assertEquals(2, store.saveCalls)
+        assertEquals(1, store.saveCalls)
         assertEquals(kill.timestampMillis, store.state.lastAcknowledgedExitTimestampMillis)
-        assertEquals(1, store.state.shownCount)
 
         // Unknown importance == 0 on generic GMS does not spuriously qualify.
         assertEquals(
