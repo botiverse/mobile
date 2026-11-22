@@ -483,8 +483,10 @@ internal fun MemberDetailPageContent(
             MembersAgentDetailLoadState.Loading
         }
     val timeContextProvider = rememberMemberDetailTimeContextProvider(payload, pageVisibleTick, pageVisible)
+    val fallbackDateContext = currentRaftEffectiveDateTimeContext(payload.toRaftTimeContextOrNull())
     val timeContext =
-        timeContextProvider.dateContext ?: currentRaftEffectiveDateTimeContext(payload.toRaftTimeContextOrNull())
+        (if (payload.nowEpochMillis != null) timeContextProvider.current else timeContextProvider.dateContext)
+            ?: fallbackDateContext
     val initialAgentTab = remember(payload.initialAgentTab) { payload.initialAgentTab.toMembersAgentDetailTabOrNull() }
     val expectedKind = memberIdentity?.kind
     val statusLookupServerId =
@@ -2128,44 +2130,50 @@ private fun rememberMemberDetailAssistantOwnerScope(
  * or freezing relative reminder clocks when opened from routes without explicit timezone params
  * (AssistantPage, SettingsServerArchive, RaftSettingsComputersPage, ThreadMembersPage).
  *
- * - Pinned payloads (`todayEpochDay != null || nowEpochMillis != null`, e.g., visual fixtures) get a
- *   deterministic static provider with no timer.
+ * - Pinned payloads (`nowEpochMillis != null`, e.g., visual fixtures) get a deterministic static
+ *   provider with no timer. Payloads carrying only `todayEpochDay` (live route hand-off) stay live
+ *   so relative reminder labels and chat timestamps keep ticking.
  * - Live pages inherit [currentRaftTimeContextProvider] (`LocalRaftTimeContextProvider` in wide split
- *   or `BasePager`'s `LocalRaftPageBaseTimeContextProvider`), avoiding duplicate timers; isolated
- *   callers without an enclosing provider get a fallback live provider.
+ *   or `BasePager`'s `LocalRaftPageBaseTimeContextProvider`) whenever the payload does not specify a
+ *   conflicting offset or 12h/24h format, avoiding duplicate timers; isolated callers or explicit
+ *   overrides get a fallback live provider.
  */
 @Composable
-private fun rememberMemberDetailTimeContextProvider(
+internal fun rememberMemberDetailTimeContextProvider(
     payload: RaftMemberDetailPayload,
     pageVisibleTick: Int,
     pageVisible: Boolean,
 ): RaftTimeContextProvider {
-    val hasPinnedClock = payload.todayEpochDay != null || payload.nowEpochMillis != null
+    val hasPinnedClock = payload.nowEpochMillis != null
     val inherited = currentRaftTimeContextProvider
+    val runtimeTimeFormat = RaftTimeFormatRuntime.observe(fallback = payload.timeFormat ?: RaftTimeFormat24Hour)
     val pinnedContext =
-        if (hasPinnedClock) {
-            remember(payload) { payload.toRaftTimeContext() }
-        } else {
-            null
+        remember(hasPinnedClock, payload) {
+            if (hasPinnedClock) payload.toRaftTimeContext() else null
         }
     val pinnedProvider =
         remember(pinnedContext) {
             pinnedContext?.let(::RaftTimeContextProvider)
         }
-    val needsFallback = !hasPinnedClock && inherited == null
+    val inheritedDateContext = inherited?.dateContext
+    val inheritedMatchesPayload =
+        inherited != null &&
+            (payload.localOffsetMinutes == null || payload.localOffsetMinutes == inheritedDateContext?.localOffsetMinutes) &&
+            (payload.timeFormat == null || payload.timeFormat == inheritedDateContext?.timeFormat)
+    val needsFallback = !hasPinnedClock && !inheritedMatchesPayload
+    val effectiveFallbackTimeFormat = payload.timeFormat ?: runtimeTimeFormat
     val fallbackCapabilities =
-        if (needsFallback) {
-            val runtimeTimeFormat = RaftTimeFormatRuntime.observe(fallback = payload.timeFormat ?: RaftTimeFormat24Hour)
-            remember(payload.localOffsetMinutes, runtimeTimeFormat) {
+        remember(needsFallback, payload.localOffsetMinutes, effectiveFallbackTimeFormat) {
+            if (needsFallback) {
                 RaftTimeCapabilities(
                     localOffsetMinutes =
                         payload.localOffsetMinutes
                             ?: ProcessRaftDatetimeFoundationOwner.localOffsetMinutesAt(defaultNowMillis(), 0),
-                    timeFormat = runtimeTimeFormat,
+                    timeFormat = effectiveFallbackTimeFormat,
                 )
+            } else {
+                null
             }
-        } else {
-            null
         }
     val fallbackProvider =
         rememberLiveRaftTimeContext(
@@ -2173,7 +2181,7 @@ private fun rememberMemberDetailTimeContextProvider(
             pageVisibleTick = pageVisibleTick,
             active = needsFallback && pageVisible,
         )
-    return pinnedProvider ?: inherited ?: fallbackProvider
+    return pinnedProvider ?: if (inheritedMatchesPayload) inherited!! else fallbackProvider
 }
 
 internal fun RaftMemberDetailPayload.toRaftTimeContextOrNull(): RaftTimeContext? {

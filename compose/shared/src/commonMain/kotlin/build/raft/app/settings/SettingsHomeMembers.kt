@@ -32,7 +32,6 @@ import build.raft.app.model.MemberProfile
 import build.raft.app.model.Presence
 import build.raft.app.model.ServerId
 import build.raft.app.model.ServerSummary
-import build.raft.app.model.RaftTimeFormat24Hour
 import build.raft.app.model.RaftTimeContext
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.MutableState

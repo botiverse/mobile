@@ -45,11 +45,13 @@ class MembersReminderDateTimeLocaleUiTest {
         runRobolectricComposeUiTest {
             val utc24 = RaftTimeContext(localOffsetMinutes = 0, todayEpochDay = 20_397L, timeFormat = RaftTimeFormat24Hour)
             val utc12 = RaftTimeContext(localOffsetMinutes = 0, todayEpochDay = 20_397L, timeFormat = RaftTimeFormat12Hour)
+            val tokyo24 = RaftTimeContext(localOffsetMinutes = 540, todayEpochDay = 20_397L, timeFormat = RaftTimeFormat24Hour)
             val iso = "2025-11-05T14:30:00Z"
 
             setContent {
                 BasicText(text = iso.membersReminderShortDateTime(utc24), modifier = Modifier.testTag("dt24"))
                 BasicText(text = iso.membersReminderShortDateTime(utc12), modifier = Modifier.testTag("dt12"))
+                BasicText(text = iso.membersReminderShortDateTime(tokyo24), modifier = Modifier.testTag("dt-tokyo"))
             }
 
             mapOf(
@@ -70,6 +72,62 @@ class MembersReminderDateTimeLocaleUiTest {
             StringDesc.localeType = StringDesc.LocaleType.Custom("en")
             waitForIdle()
             onNodeWithTag("dt12").assertTextEquals("Nov 5, 02:30 PM")
+            onNodeWithTag("dt-tokyo").assertTextEquals("Nov 5, 23:30")
+        }
+
+    @Test
+    fun memberDetailDayOnlyPayloadStillInheritsLiveProviderSoRemindersStayRelative() =
+        runRobolectricComposeUiTest {
+            StringDesc.localeType = StringDesc.LocaleType.Custom("en")
+            val fireAtIso = "2025-11-05T17:30:00Z"
+            val initialNow = 1_762_353_000_000L // 2025-11-05T14:30:00Z (+3h until fireAt)
+            val liveProvider =
+                RaftTimeContextProvider(
+                    RaftTimeContext(
+                        localOffsetMinutes = 0,
+                        todayEpochDay = 20_397L,
+                        nowEpochMillis = initialNow,
+                        timeFormat = RaftTimeFormat24Hour,
+                    )
+                )
+            val dayOnlyLivePayload =
+                RaftMemberDetailPayload(
+                    instanceId = "detail-1",
+                    memberId = "agent-1",
+                    todayEpochDay = 20_397L,
+                    nowEpochMillis = null,
+                )
+            val pinnedClockPayload =
+                RaftMemberDetailPayload(
+                    instanceId = "detail-2",
+                    memberId = "agent-1",
+                    localOffsetMinutes = 0,
+                    todayEpochDay = 20_397L,
+                    nowEpochMillis = initialNow + 3_600_000L, // +2h until fireAt
+                )
+
+            setContent {
+                CompositionLocalProvider(LocalRaftTimeContextProvider provides liveProvider) {
+                    val inherited = rememberMemberDetailTimeContextProvider(dayOnlyLivePayload, pageVisibleTick = 0, pageVisible = true)
+                    val pinned = rememberMemberDetailTimeContextProvider(pinnedClockPayload, pageVisibleTick = 0, pageVisible = true)
+                    CompositionLocalProvider(LocalRaftTimeContextProvider provides inherited) {
+                        BasicText(
+                            text = fireAtIso.membersReminderRelativeTime(inherited.dateContext ?: dayOnlyLivePayload.toRaftTimeContext()),
+                            modifier = Modifier.testTag("day-only-live"),
+                        )
+                    }
+                    CompositionLocalProvider(LocalRaftTimeContextProvider provides pinned) {
+                        BasicText(
+                            text = fireAtIso.membersReminderRelativeTime(pinned.current ?: pinnedClockPayload.toRaftTimeContext()),
+                            modifier = Modifier.testTag("pinned-clock"),
+                        )
+                    }
+                }
+            }
+            waitForIdle()
+
+            onNodeWithTag("day-only-live").assertTextEquals("in 3 hours")
+            onNodeWithTag("pinned-clock").assertTextEquals("in 2 hours")
         }
 
     @Test

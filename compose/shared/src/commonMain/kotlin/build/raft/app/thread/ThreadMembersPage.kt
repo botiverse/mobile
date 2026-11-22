@@ -39,7 +39,6 @@ import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberProfile
 import build.raft.app.model.MemberServerRef
 import build.raft.app.model.ChannelId
-import build.raft.app.model.RaftTimeFormat24Hour
 import build.raft.app.model.ServerId
 import build.raft.app.model.avatarWireValueForAvatarSlot
 import androidx.compose.runtime.Composable
@@ -272,7 +271,7 @@ internal fun JSONObject.toThreadMembersPageRouteOrNull(): ThreadMembersPageRoute
         localOffsetMinutes = optString("localOffsetMinutes").toIntOrNull(),
         todayEpochDay = optString("todayEpochDay").toLongOrNull(),
         nowEpochMillis = optString("nowEpochMillis").toLongOrNull(),
-        timeFormat = optString("timeFormat").takeIf { it.isNotBlank() },
+        timeFormat = optString("timeFormat").trim().takeIf { it.isNotEmpty() && !it.equals("null", ignoreCase = true) },
         openAddMember = optString(THREAD_MEMBERS_INITIAL_VIEW_KEY).trim() == "add",
     )
 }
