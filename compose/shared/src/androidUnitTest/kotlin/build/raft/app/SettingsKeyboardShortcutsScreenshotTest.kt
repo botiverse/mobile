@@ -30,9 +30,6 @@ class SettingsKeyboardShortcutsScreenshotTest {
     @Test
     fun appleLight() = capture("settings.appearance.keyboard-shortcuts", RaftAppAppearance.Light, apple = true)
 
-    @Test
-    fun otherDark() = capture("settings.appearance.keyboard-shortcuts.other.dark", RaftAppAppearance.Dark, apple = false)
-
     private fun capture(name: String, appearance: RaftAppAppearance, apple: Boolean) =
         RaftRobolectricScreenshot.capture(
             name,

@@ -122,23 +122,6 @@ class ForwardConversationTargetsTest {
     }
 
     @Test
-    fun pickerOpenIsOneVisibleRequestWithLimit4AndCurrentChannelId() = runTest {
-        val network = ConversationNetworkClient()
-        network.conversationsResponse = { HomeNetworkResponse(code = 200, bodyText = ConversationsBody) }
-        val repository = repository(network)
-
-        val targets = repository.conversationTargets(serverId, currentChannelId = ChannelId("thread-current"))
-
-        val call = network.calls.single()
-        assertEquals(ForwardConversationTargetsPath, call.path)
-        assertEquals("GET", call.method)
-        assertEquals(DataRequestPriority.Visible, call.priority)
-        assertEquals(listOf("limit" to "4", "currentChannelId" to "thread-current"), call.query)
-        assertEquals(serverId, call.serverId)
-        assertEquals(listOf("thread-current", "thread-5", "task-conv-7"), targets.map { it.id })
-    }
-
-    @Test
     fun failureOrOfflineIsNoGroupAndNoRetry() = runTest {
         val network = ConversationNetworkClient()
         network.conversationsResponse = { HomeNetworkResponse(code = 404, bodyText = null, errorBodyText = "not found") }

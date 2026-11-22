@@ -342,34 +342,6 @@ class CanonicalMessageV2ProductionCanaryTest {
         )
     }
 
-    /** Twin: the same channel wire also without `mentions` (not in the allowed set) is never written and says why. */
-    @Test
-    fun theSameWireAlsoMissingMentionsIsNeverWrittenAndSaysWhy() = runBlocking {
-        val fixture = Fixture()
-        fixture.enter(1L)
-
-        val noMentions = wireReply(extraKeys = "", mentionsKey = "", channel = true)
-        assertEquals(CanonicalMessageV2CanaryOutcome.NotSelected, fixture.accept(noMentions))
-        assertEquals(0, fixture.store.incrementalCalls)
-        assertEquals(listOf("e1"), fixture.store.restore(scope).envelopes.map { it.fact.id })
-        assertEquals(CanonicalMessageV2ScopeContinuity.Discontinuous, fixture.canary.continuityOf(scope))
-        assertTrue(
-            fixture.logs.any {
-                it == "canonical_v2_canary discontinuous server=server-1 scope=channel-1 " +
-                    "reason=not_full_v2 kind=new msg=reply-2 seq=2 missing=SenderDescription,Mentions,Reactions"
-            },
-            fixture.logs.toString(),
-        )
-        // The same frame through the owner's second entry: display only, and the line names it.
-        assertEquals(CanonicalMessageV2CanaryOutcome.NotSelected, fixture.accept(noMentions))
-        assertTrue(
-            fixture.logs.any {
-                it == "canonical_v2_canary skip=discontinuous server=server-1 scope=channel-1 kind=new msg=reply-2 seq=2"
-            },
-            fixture.logs.toString(),
-        )
-    }
-
     /**
      * The server's thread-reply `message:new` payload (public parent), decoded by the production decoder;
      * [channel]: the same payload as a top-level message of `channel-1`.

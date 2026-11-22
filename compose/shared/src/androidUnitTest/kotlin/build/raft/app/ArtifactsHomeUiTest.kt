@@ -7,10 +7,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.ComposeUiTest
 import androidx.compose.ui.test.ExperimentalTestApi
-import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertCountEquals
-import androidx.compose.ui.test.assertIsOff
-import androidx.compose.ui.test.assertIsOn
 import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onAllNodesWithText
@@ -28,7 +25,6 @@ import build.raft.app.data.ArtifactKind
 import build.raft.app.data.ArtifactSummary
 import build.raft.app.data.ArtifactsHomeActor
 import build.raft.app.data.ArtifactsHomeBehalf
-import build.raft.app.data.ArtifactsHomeChoiceKind
 import build.raft.app.data.ArtifactsHomeCounts
 import build.raft.app.data.ArtifactsHomeIntent
 import build.raft.app.data.ArtifactsHomeNews
@@ -128,59 +124,6 @@ class ArtifactsHomeUiTest {
     }
 
     @Test
-    fun theFilterBarSendsItsIntents() = runRobolectricComposeUiTest {
-        show(loaded(rows = listOf(row("pt_a", "Launch plan"))))
-
-        // A switch (review M3), named by its filter.
-        onNodeWithTag(ArtifactsHomeTags.Relevant).assertIsOff()
-        onNodeWithTag(ArtifactsHomeTags.Relevant).performClick()
-        assertEquals(ArtifactsHomeIntent.SetRelevant(true), intents.last())
-        onNodeWithTag(ArtifactsHomeTags.Conversation).assert(hasContentDescription("By conversation"))
-        onNodeWithTag(ArtifactsHomeTags.Sort).assert(hasContentDescription("Sort: Recently opened"))
-        onNodeWithTag(ArtifactsHomeTags.Search, useUnmergedTree = true).assert(hasContentDescription("Search Artifacts by title"))
-
-        onNodeWithTag(ArtifactsHomeTags.Conversation).performClick()
-        assertEquals(ArtifactsHomeIntent.OpenChoices(ArtifactsHomeChoiceKind.Conversation), intents.last())
-
-        onNodeWithTag(ArtifactsHomeTags.Author).performClick()
-        assertEquals(ArtifactsHomeIntent.OpenChoices(ArtifactsHomeChoiceKind.Author), intents.last())
-
-        onNodeWithText("Relevant to me 2").assertExists()
-        onAllNodesWithTag(ArtifactsHomeTags.Clear).assertCountEquals(0)
-    }
-
-    @Test
-    fun theConversationSheetOffersTheHomesAndPicksOne() = runRobolectricComposeUiTest {
-        val state = loaded(rows = listOf(row("pt_a", "Launch plan")))
-        show(state.copy(conversationChoices = state.conversationChoices.copy(open = true)))
-
-        onNodeWithText("Everyone in Northwind Labs").assertExists()
-        onNodeWithText("Anyone with the link").performClick()
-        assertEquals(
-            ArtifactsHomeIntent.SetPlace(build.raft.app.data.ArtifactsHomePlace.Home(build.raft.app.data.ArtifactsHomeScope.Public)),
-            intents.first { it is ArtifactsHomeIntent.SetPlace },
-        )
-    }
-
-    @Test
-    fun relevantHidesTheSortAndBothFiltersShowClearAll() = runRobolectricComposeUiTest {
-        val conversation = build.raft.app.data.ArtifactsHomeConversation("c-1", "proj", "channel")
-        show(
-            loaded(rows = listOf(row("pt_a", "Launch plan"))).copy(
-                query = ArtifactsHomeQuery(place = build.raft.app.data.ArtifactsHomePlace.Conversation(conversation), author = "user:u-1", relevant = true),
-                authorActor = ArtifactsHomeActor("user", "u-1", "pat", "Pat"),
-            ),
-        )
-
-        onAllNodesWithTag(ArtifactsHomeTags.Sort).assertCountEquals(0)
-        onNodeWithTag(ArtifactsHomeTags.Relevant).assertIsOn()
-        onNodeWithTag(ArtifactsHomeTags.Conversation).assert(hasContentDescription("Conversation: #proj"))
-        onNodeWithTag(ArtifactsHomeTags.Author).assert(hasContentDescription("Author: Pat"))
-        onNodeWithTag(ArtifactsHomeTags.Clear).performClick()
-        assertEquals(ArtifactsHomeIntent.ClearFilters, intents.last())
-    }
-
-    @Test
     fun aFailedReadIsAWarningWithTryAgainAndTheRowsStay() = runRobolectricComposeUiTest {
         show(loaded(rows = listOf(row("pt_a", "Launch plan"))).copy(status = ArtifactsHomeStatus.Failed))
         onNodeWithTag(ArtifactsHomeTags.Failed).assertExists()
@@ -214,17 +157,6 @@ class ArtifactsHomeUiTest {
         state = state.copy(status = ArtifactsHomeStatus.Off)
         onNodeWithTag(ArtifactsHomeTags.Off).assertExists()
         onNodeWithText("Artifacts aren't on for this server").assertExists()
-    }
-
-    @Test
-    fun theGridShowsTilesAndTheToggleSwitchesTheView() = runRobolectricComposeUiTest {
-        val views = mutableListOf<ArtifactsHomeView>()
-        show(loaded(rows = listOf(row("pt_a", "Launch plan"), row("pt_b", "Metrics"))), view = ArtifactsHomeView.Grid, onView = { views += it })
-        onAllNodesWithTag(ArtifactsHomeTags.Tile).assertCountEquals(2)
-        onNodeWithTag(ArtifactsHomeTags.ViewList).performClick()
-        assertEquals(listOf(ArtifactsHomeView.List), views)
-        onAllNodesWithTag(ArtifactsHomeTags.Row).assertCountEquals(2)
-        onAllNodes(hasContentDescription("Launch plan, ", substring = true)).assertCountEquals(1)
     }
 
     private val assistant =

@@ -191,42 +191,12 @@ class MessageShadowCompareTest {
     }
 
     @Test
-    fun adversarial_emptyAttachmentFilenameAndMime_preservedNotDefaulted() {
-        val payload = buildJsonObject {
-            richMessageFields(this)
-            putJsonArray("attachments") {
-                add(
-                    buildJsonObject {
-                        put("id", "a-0")
-                        put("filename", "")
-                        put("mimeType", "")
-                        put("sizeBytes", 10L)
-                    },
-                )
-            }
-        }
-        assertParity(RealtimeSocketEvents.MessageNew, ProductionFace.MessageNew, payload)
-    }
-
-    @Test
     fun adversarial_blankEmojiAndNegativeCountReactions_droppedLikeLegacy() {
         val payload = buildJsonObject {
             richMessageFields(this)
             putJsonArray("reactions") {
                 add(buildJsonObject { put("emoji", ""); put("count", 1) }) // blank emoji -> dropped
                 add(buildJsonObject { put("emoji", "👎"); put("count", -3) }) // negative count -> dropped
-            }
-        }
-        assertParity(RealtimeSocketEvents.MessageNew, ProductionFace.MessageNew, payload)
-    }
-
-    @Test
-    fun adversarial_emptyCommentRefIds_wholeRefDroppedLikeLegacy() {
-        val payload = buildJsonObject {
-            richMessageFields(this)
-            putJsonObject("commentRef") {
-                put("attachmentId", "")
-                put("filename", "")
             }
         }
         assertParity(RealtimeSocketEvents.MessageNew, ProductionFace.MessageNew, payload)

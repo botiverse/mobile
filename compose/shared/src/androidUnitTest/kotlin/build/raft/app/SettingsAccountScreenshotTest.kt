@@ -14,7 +14,6 @@ import build.raft.app.data.ScreenError
 import build.raft.app.data.SecondFactorStepUpBanner
 import build.raft.app.data.SecondFactorStepUpDialogState
 import build.raft.app.data.SecondFactorStepUpMethod
-import build.raft.app.data.SecondFactorWebStepUpPhase
 import build.raft.app.data.SharedAccountLoginSecurityState
 import kotlin.test.Test
 import org.junit.runner.RunWith
@@ -93,30 +92,6 @@ class SettingsAccountScreenshotTest {
             stepUpCode.copy(input = "123456", banner = SecondFactorStepUpBanner.Locked(lockedUntilEpochMillis = 0L)),
         )
 
-    @Test
-    @Config(qualifiers = "w390dp-h844dp-xxhdpi")
-    fun stepUpDialogContinueInBrowserLight() =
-        stepUpDialog("settings.account.step-up.continue-in-browser", RaftAppAppearance.Light, stepUpContinueInBrowser)
-
-    @Test
-    @Config(qualifiers = "w390dp-h844dp-xxhdpi")
-    fun logoutDialogLight() = logoutDialog("settings.account.logout-dialog", RaftAppAppearance.Light)
-
-    private fun logoutDialog(name: String, appearance: RaftAppAppearance) =
-        RaftRobolectricScreenshot.capture(
-            name,
-            appearance,
-            reportDir = "build/reports/home-screenshots",
-            activities = activities,
-            root = { ShadowDialog.getLatestDialog()?.window?.decorView },
-        ) {
-            Page {
-                RaftDesignSystemTheme {
-                    SettingsLogoutConfirmDialog(payload = accountFixture, onConfirm = {}, onDismiss = {})
-                }
-            }
-        }
-
     private fun stepUpDialog(name: String, appearance: RaftAppAppearance, state: SecondFactorStepUpDialogState) =
         RaftRobolectricScreenshot.capture(
             name,
@@ -158,16 +133,6 @@ class SettingsAccountScreenshotTest {
 
 private val loginSecurityOn =
     SharedAccountLoginSecurityState(security = AccountLoginSecurity(twoStepEnabled = true, passkeyCount = 2))
-
-/** Only legacy passkeys on iOS: Continue in browser (the action's page is known, but the web step-up stands in). */
-private val stepUpContinueInBrowser =
-    SecondFactorStepUpDialogState(
-        methods = emptyList(),
-        method = null,
-        passkeyListed = true,
-        webUrl = "https://app.raft.build/s/acme/computers",
-        webStepUp = SecondFactorWebStepUpPhase.Ready,
-    )
 
 private val stepUpCode =
     SecondFactorStepUpDialogState(

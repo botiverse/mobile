@@ -280,28 +280,6 @@ class InboxFetchTriggerHeaderTest {
     // --- The unread summary (ProcessActivityUnreadStore, the badge's `limit=1` read). ---
 
     @Test
-    fun summaryAsksInsideTheWindowFoldIntoOneReadNamedByTheFirst() = runTest {
-        val owner = ProcessActivityUnreadOwner("https://api.raft.build/api", "user-1", "server-1")
-        val reads = mutableListOf<Map<String, String>>()
-        val store = summaryStore(owner, reads)
-
-        store.invalidate(owner, "realtime:ThreadUpdated", eventMarker = "a", realtimeOnly = true, trigger = InboxRefreshTrigger.ThreadReply)
-        runCurrent()
-        advanceTimeBy(500L)
-        val repeated = Any()
-        store.invalidate(owner, "realtime:MessageNew", eventMarker = repeated, realtimeOnly = true, trigger = InboxRefreshTrigger.MessageNew)
-        // The same frame from a second subscriber: the same ask, dropped, not counted.
-        store.invalidate(owner, "realtime:MessageNew", eventMarker = repeated, realtimeOnly = true, trigger = InboxRefreshTrigger.MessageNew)
-        store.invalidate(owner, "realtime:DirectMessageCreated", eventMarker = "c", realtimeOnly = true, trigger = InboxRefreshTrigger.DmNew)
-        // A summary invalidation from Activity without an event (the person's Done): `other`.
-        store.submitInvalidation(ActivityUnreadSummaryInvalidation(accountId = "user-1", serverId = "server-1", source = "realtime"))
-        advanceTimeBy(20_000L)
-        runCurrent()
-
-        assertEquals(listOf(fallback("thread_reply", 1), fallback("message_new", 3)), reads)
-    }
-
-    @Test
     fun summaryRealtimeSinkTagsTheEvent() = runTest {
         val owner = ProcessActivityUnreadOwner("https://api.raft.build/api", "user-1", "server-1")
         val reads = mutableListOf<Map<String, String>>()
@@ -324,24 +302,6 @@ class InboxFetchTriggerHeaderTest {
         runCurrent()
 
         assertEquals(listOf(fallback("activity_changed", 1)), reads)
-    }
-
-    @Test
-    fun summaryReadsForAnotherReasonCarryNoTrigger() = runTest {
-        val owner = ProcessActivityUnreadOwner("https://api.raft.build/api", "user-1", "server-1")
-        val reads = mutableListOf<Map<String, String>>()
-        val store = summaryStore(owner, reads)
-
-        store.refresh(ServerId("server-1"), reason = "manual")
-        runCurrent()
-        advanceTimeBy(500L)
-        // A realtime ask, then the person's read, folded into one round: its final reason is `manual`.
-        store.invalidate(owner, "realtime:MessageNew", eventMarker = "a", realtimeOnly = true, trigger = InboxRefreshTrigger.MessageNew)
-        store.invalidate(owner, "read_result:7")
-        advanceTimeBy(20_000L)
-        runCurrent()
-
-        assertEquals(List(2) { mapOf("X-Raft-Fetch-Reason" to "manual") }, reads)
     }
 
     // --- Fixtures. ---

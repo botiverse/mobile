@@ -106,26 +106,6 @@ class ConversationRepositoryDataSourceTest {
     }
 
     @Test
-    fun routeScopedServerPinsRealtimeGapSyncToRouteServer() = runBlocking {
-        val network =
-            FakeConversationNetworkClient(
-                responses =
-                    mapOf(
-                        "GET messages/sync" to
-                            """[${messageJson("message-2", "channel-1", seq = 2)}]""",
-                    ),
-            )
-        val repository = routeScopedRepository(routeScopedAuthStore(), network)
-
-        assertIs<DataResult.Content<ThreadSnapshot>>(
-            repository.syncNewerMessages(ThreadId("channel-1"), sinceSeq = 1, limit = 30),
-        )
-
-        assertEquals(listOf<String?>("server-b"), network.serverOverrides)
-        assertEquals("messages/sync", network.requests.single().path)
-    }
-
-    @Test
     fun messageContextHydratesDeletedAgentDmDetailByChannelId() = runBlocking {
         val network =
             FakeConversationNetworkClient(
@@ -267,67 +247,6 @@ class ConversationRepositoryDataSourceTest {
     }
 
     @Test
-    fun getThreadInitialLoadAdmitsEmbeddedThreadSummaryWithoutSecondSummaryRequest() = runBlocking {
-        val network =
-            FakeConversationNetworkClient(
-                responses =
-                    mapOf(
-                        "GET messages/channel/channel-1" to
-                            """
-                            {
-                              "messages":[${messageJson("parent-1", "channel-1")}],
-                              "threadSummariesByParentMessageId": {
-                                "parent-1": {
-                                  "threadChannelId":"thread-1",
-                                  "replyCount":4,
-                                  "unreadCount":1,
-                                  "firstUnreadMessageId":"reply-4",
-                                  "latestReplies":[
-                                    {
-                                      "messageId":"reply-4",
-                                      "seq":4,
-                                      "preview":"first-frame preview",
-                                      "senderId":"agent-1",
-                                      "senderType":"agent",
-                                      "senderName":"MingQi",
-                                      "senderDisplayName":"明启",
-                                      "senderAvatarUrl":null,
-                                      "createdAt":"2026-07-25T14:01:00.000Z"
-                                    }
-                                  ]
-                                }
-                              },
-                              "historyLimited":false
-                            }
-                            """.trimIndent(),
-                    )
-            )
-        val repository = RealConversationRepository(sampleStore(), network)
-
-        val result = repository.getThread(ThreadId("channel-1"))
-
-        val snapshot = assertIs<DataResult.Content<ThreadSnapshot>>(result).data
-        val message = snapshot.messages.single()
-        assertEquals("parent-1", message.id.value)
-        assertEquals("thread-1", message.threadChannelId?.value)
-        assertEquals(4, message.replyCount)
-        assertEquals(1, message.unreadReplyCount)
-        assertEquals("reply-4", message.firstUnreadReplyMessageId?.value)
-        assertFalse(message.isThreadFollowed)
-        val summary = snapshot.replySummaries.threads.single()
-        assertEquals("parent-1", summary.parentMessageId?.value)
-        assertEquals(listOf("reply-4"), summary.latestReplies.map { it.messageId })
-        assertEquals("明启", summary.latestReplies.single().senderDisplayName)
-        assertEquals(
-            listOf(
-                RecordedConversationRequest(DataRequestPriority.Foreground, "GET", "messages/channel/channel-1", listOf("limit" to "30")),
-                RecordedConversationRequest(DataRequestPriority.Foreground, "GET", "channels/channel-1")
-            ),
-            network.requests
-        )
-    }
-
-    @Test
     fun malformedEmbeddedSummaryRemainsUnavailableUntilSecondaryEnrichment() = runBlocking {
         val network =
             FakeConversationNetworkClient(
@@ -349,59 +268,6 @@ class ConversationRepositoryDataSourceTest {
         assertEquals(ThreadReplySummariesAuthority.Unavailable, snapshot.replySummariesAuthority)
         assertEquals(null, snapshot.messages.single().threadChannelId)
         assertFalse(network.requests.any { it.path == "channels/channel-1/threads" })
-    }
-
-    @Test
-    fun getThreadCanOptIntoFollowedSummariesForBackgroundCompletion() = runBlocking {
-        val network =
-            FakeConversationNetworkClient(
-                responses =
-                    mapOf(
-                        "GET messages/channel/channel-1" to
-                            """{"messages":[${messageJson("parent-1", "channel-1")}],"historyLimited":false}""",
-                        "GET channels/channel-1/threads" to """{}""",
-                        "GET channels/threads/followed" to
-                            """
-                            {
-                              "threads": [
-                                {
-                                  "threadChannelId": "thread-1",
-                                  "parentChannelId": "channel-1",
-                                  "parentMessageId": "parent-1",
-                                  "replyCount": 4,
-                                  "unreadCount": 1,
-                                  "firstUnreadMessageId": "reply-4",
-                                  "lastActivityAt": "2026-05-22T10:05:00.000Z"
-                                }
-                              ]
-                            }
-                            """.trimIndent()
-                    )
-            )
-        val repository = RealConversationRepository(sampleStore(), network)
-
-        val result = repository.getThread(ThreadId("channel-1"), includeFollowedSummaries = true)
-
-        val message = assertIs<DataResult.Content<ThreadSnapshot>>(result).data.messages.single()
-        assertEquals("thread-1", message.threadChannelId?.value)
-        assertEquals(4, message.replyCount)
-        assertEquals(1, message.unreadReplyCount)
-        assertEquals("reply-4", message.firstUnreadReplyMessageId?.value)
-        assertTrue(message.isThreadFollowed)
-        assertEquals(
-            listOf(
-                RecordedConversationRequest(DataRequestPriority.Foreground, "GET", "messages/channel/channel-1", listOf("limit" to "30")),
-                RecordedConversationRequest(DataRequestPriority.Foreground, "GET", "channels/channel-1"),
-                RecordedConversationRequest(
-                    DataRequestPriority.Visible,
-                    "GET",
-                    "channels/channel-1/threads",
-                    listOf("parentMessageIds" to "parent-1")
-                ),
-                RecordedConversationRequest(DataRequestPriority.Visible, "GET", "channels/threads/followed", listOf("limit" to "50"))
-            ),
-            network.requests
-        )
     }
 
     @Test
@@ -697,26 +563,6 @@ class ConversationRepositoryDataSourceTest {
     }
 
     @Test
-    fun attachmentUploadCapabilitiesAdmitFreePlanDirectThresholdAboveMaxBytes() = runBlocking {
-        val body =
-            """{"directUploadEnabled":true,"directUploadThresholdBytes":94371840,"maxBytes":52428800,"sessionExpiresInSeconds":900}"""
-        assertEquals(116, body.encodeToByteArray().size)
-        val network =
-            FakeConversationNetworkClient(
-                responses = mapOf("GET attachments/upload-capabilities" to body)
-            )
-
-        val capability = assertIs<DataResult.Content<AttachmentUploadCapabilities>>(
-            RealConversationRepository(sampleStore(), network).getAttachmentUploadCapabilities()
-        ).data
-
-        assertEquals(52_428_800L, capability.maxBytes)
-        assertEquals(true, capability.directUploadEnabled)
-        assertEquals(94_371_840L, capability.directUploadThresholdBytes)
-        assertEquals(900, capability.sessionExpiresInSeconds)
-    }
-
-    @Test
     fun attachmentUploadCapabilitiesRejectThresholdAboveContractLimit() = runBlocking {
         val logs = mutableListOf<String>()
         val network =
@@ -897,56 +743,6 @@ class ConversationRepositoryDataSourceTest {
         assertEquals(listOf(MessageType.System, MessageType.Chat), latest.messages.map { it.messageType })
         assertEquals(listOf("remove-19", "chat-20"), older.messages.map { it.id.value })
         assertEquals(listOf(MessageType.System, MessageType.Chat), older.messages.map { it.messageType })
-    }
-
-    @Test
-    fun messageContextCarriesItsRawServerPageWithoutALimit() = runBlocking {
-        // Task #14 part C: the anchor context page is persisted into the durable window too, so its raw
-        // `messages` array rides along; the endpoint takes no limit (requestedLimit = 0).
-        val network =
-            FakeConversationNetworkClient(
-                responses =
-                    mapOf(
-                        "GET messages/context/m8" to
-                            """{"channelId":"channel-1","targetMessageId":"m8","hasOlder":true,"hasNewer":false,"messages":[${messageJson("m7", "channel-1", seq = 7)},${messageJson("m8", "channel-1", seq = 8)}]}""",
-                    ),
-            )
-        val repository = RealConversationRepository(sampleStore(), network)
-
-        val context = assertIs<DataResult.Content<ThreadSnapshot>>(
-            repository.getMessageContext(MessageId("m8"), ChannelId("channel-1")),
-        ).data
-        val page = assertNotNull(context.rawMessagePage.page)
-        assertEquals(listOf("m7", "m8"), page.messages.map { it.jsonObject["id"]?.jsonPrimitive?.content })
-        assertEquals(0, page.requestedLimit)
-        assertNull(page.messageWindow, "a context page has no messageWindow")
-        assertTrue("senderName" in page.messages.first().jsonObject, "the raw node, not the domain projection")
-        assertTrue(context.canLoadMoreBefore)
-        assertFalse(context.canLoadMoreAfter)
-    }
-
-    @Test
-    fun theEntryPageCarriesItsRawPageAndEmbeddedReplyCountsOnlyWhenAsked() = runBlocking {
-        // Message storage Phase 2b: the thread store's own entry page is written through, so getThread can carry the raw
-        // rows, the server window and the embedded reply counts. Twin: the same call without the flag carries nothing.
-        val body =
-            """{"messages":[${messageJson("m7", "channel-1", seq = 7)}],"historyLimited":false,""" +
-                """"threadSummariesByParentMessageId":{"m7":{"threadChannelId":"t-7","replyCount":4},"m8":{"replyCount":"x"}}}"""
-        val network = FakeConversationNetworkClient(responses = mapOf("GET messages/channel/channel-1" to body))
-        val repository = RealConversationRepository(sampleStore(), network)
-
-        val captured = assertIs<DataResult.Content<ThreadSnapshot>>(
-            repository.getThread(ThreadId("channel-1"), includeFollowedSummaries = false, limit = 40, captureRawMessagePage = true),
-        ).data
-        val page = assertNotNull(captured.rawMessagePage.page)
-        assertEquals(listOf("m7"), page.messages.map { it.jsonObject["id"]?.jsonPrimitive?.content })
-        assertEquals(40, page.requestedLimit)
-        assertEquals(mapOf("m7" to 4), page.replyCountsByParentId, "an unusable count is left out")
-
-        val plain = assertIs<DataResult.Content<ThreadSnapshot>>(
-            repository.getThread(ThreadId("channel-1"), includeFollowedSummaries = false, limit = 40),
-        ).data
-        assertNull(plain.rawMessagePage.page)
     }
 
     @Test

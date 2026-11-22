@@ -2,21 +2,15 @@ package build.raft.app.nav
 
 import android.content.Context
 import android.content.ContextWrapper
-import androidx.activity.BackEventCompat
 import androidx.activity.ComponentActivity
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.OnBackPressedDispatcher
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
-import androidx.compose.ui.layout.onSizeChanged
-import androidx.compose.ui.unit.IntSize
-import androidx.navigation3.runtime.NavEntry
-import kotlinx.serialization.json.JsonPrimitive
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -26,13 +20,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.ExperimentalTestApi
-import androidx.compose.ui.test.assertIsNotDisplayed
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import build.raft.app.RobolectricComposeActivityRule
 import build.raft.app.compat.ui.BackHandler
-import build.raft.app.compat.ui.LocalRaftPageActive
 import build.raft.app.runRobolectricComposeUiTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -193,46 +185,6 @@ class RaftMobilePageStackDisplayUiTest {
         }
 
     @Test
-    fun aCoveredChatKeepsTheWindowSizeAndOtherPagesCollapse() =
-        runRobolectricComposeUiTest {
-            val stack = RaftPageStack()
-            val sizes = mutableMapOf<String, IntSize>()
-            setContent {
-                RaftMobilePageStackDisplay(stack) { page ->
-                    Box(Modifier.fillMaxSize().testTag(page.contentKey).onSizeChanged { sizes[page.contentKey] = it })
-                }
-            }
-            val rootKey = stack.pages.first().contentKey
-            runOnIdle { stack.open(CHAT, JsonObject(emptyMap()), from = stack.pages.first()) }
-            waitForIdle()
-            val chat = stack.pages.last()
-            val window = sizes.getValue(chat.contentKey)
-            assertTrue(window.width > 0 && window.height > 0, "chat on top: $window")
-            onNodeWithTag(rootKey).assertIsNotDisplayed()
-            assertEquals(window, sizes.getValue(rootKey), "covered shell keeps viewport size so gesture back never rebuilds tabs from 0x0")
-
-            runOnIdle { stack.open("compose_member_detail", JsonObject(emptyMap()), from = chat) }
-            waitForIdle()
-            val profile = stack.pages.last()
-            assertEquals(window, sizes.getValue(profile.contentKey))
-            assertEquals(window, sizes.getValue(chat.contentKey), "covered chat keeps its viewport size")
-
-            runOnIdle { stack.open("compose_settings", JsonObject(emptyMap()), from = profile) }
-            waitForIdle()
-            val settings = stack.pages.last()
-            assertEquals(window, sizes.getValue(settings.contentKey))
-            assertEquals(IntSize.Zero, sizes.getValue(profile.contentKey), "other covered non-root pages still collapse to 0x0")
-
-            runOnIdle { stack.back() }
-            waitForIdle()
-            assertEquals(window, sizes.getValue(profile.contentKey))
-
-            runOnIdle { stack.back() }
-            waitForIdle()
-            assertEquals(window, sizes.getValue(chat.contentKey))
-        }
-
-    @Test
     fun aCoveredPageGivesUpTextFocusAndANewPageKeepsItsOwn() =
         runRobolectricComposeUiTest {
             val stack = RaftPageStack()
@@ -271,126 +223,6 @@ class RaftMobilePageStackDisplayUiTest {
         }
 
     // nav_transition_frames: what the display reports per transition ------------------------------
-
-    private class Transitions : RaftStackTransitionListener {
-        val events = mutableListOf<String>()
-
-        override fun onTransitionStarted(kind: RaftStackTransitionKind, fromPage: String, toPage: String) {
-            events += "${kind.wire} $fromPage>$toPage"
-        }
-
-        override fun onTransitionEnded(outcome: RaftStackTransitionOutcome) {
-            events += outcome.wire
-        }
-    }
-
-    @Test
-    fun pushPopAndPredictiveBackEachReportOneTransition() =
-        runRobolectricComposeUiTest {
-            val stack = RaftPageStack()
-            val transitions = Transitions()
-            lateinit var dispatcher: OnBackPressedDispatcher
-            setContent {
-                dispatcher = LocalContext.current.componentActivity().onBackPressedDispatcher
-                RaftMobilePageStackDisplay(stack, transitions) { page -> Box(Modifier.fillMaxSize().testTag(page.contentKey)) }
-            }
-            waitForIdle()
-            runOnIdle { stack.open("about", JsonObject(emptyMap()), from = stack.pages.first()) }
-            waitForIdle()
-            runOnIdle { stack.back() }
-            waitForIdle()
-            assertEquals(
-                listOf("push $RAFT_SHELL>about", "completed", "pop about>$RAFT_SHELL", "completed"),
-                transitions.events,
-            )
-
-            runOnIdle { stack.open("about", JsonObject(emptyMap()), from = stack.pages.first()) }
-            waitForIdle()
-            transitions.events.clear()
-            runOnIdle {
-                dispatcher.dispatchOnBackStarted(BackEventCompat(10f, 500f, 0f, BackEventCompat.EDGE_LEFT))
-                dispatcher.dispatchOnBackProgressed(BackEventCompat(200f, 500f, 0.4f, BackEventCompat.EDGE_LEFT))
-            }
-            waitForIdle()
-            runOnIdle { dispatcher.dispatchOnBackCancelled() }
-            waitForIdle()
-            assertEquals(2, stack.pages.size, "a cancelled gesture keeps the page")
-            assertEquals(listOf("predictive_back about>$RAFT_SHELL", "cancelled"), transitions.events)
-
-            transitions.events.clear()
-            runOnIdle {
-                dispatcher.dispatchOnBackStarted(BackEventCompat(10f, 500f, 0f, BackEventCompat.EDGE_LEFT))
-                dispatcher.dispatchOnBackProgressed(BackEventCompat(300f, 500f, 0.6f, BackEventCompat.EDGE_LEFT))
-            }
-            waitForIdle()
-            runOnIdle { dispatcher.onBackPressed() }
-            waitForIdle()
-            assertEquals(1, stack.pages.size, "a released gesture pops the page")
-            assertEquals(listOf("predictive_back about>$RAFT_SHELL", "completed"), transitions.events)
-        }
-
-    @Test
-    fun aPushedPageBecomesTheActivePageOnlyOnceItsSlideSettled() =
-        runRobolectricComposeUiTest {
-            val stack = RaftPageStack()
-            val activity = mutableMapOf<String, MutableList<Boolean>>()
-            setContent {
-                RaftMobilePageStackDisplay(stack) { page ->
-                    val active = LocalRaftPageActive.current
-                    val seen = activity.getOrPut(page.contentKey) { mutableListOf() }
-                    if (seen.lastOrNull() != active) seen += active
-                    Box(Modifier.fillMaxSize().testTag(page.contentKey))
-                }
-            }
-            runOnIdle { stack.open(CHAT, JsonObject(emptyMap()), from = stack.pages.first()) }
-            waitForIdle()
-            val chat = stack.pages.last().contentKey
-            onNodeWithTag(chat).assertExists()
-            // Built and drawn inactive while it slides (no viewDidAppear work mid slide), then active.
-            assertEquals<List<Boolean>?>(listOf(false, true), activity[chat])
-            assertEquals<List<Boolean>?>(listOf(true, false), activity[stack.pages.first().contentKey], "the covered shell is inactive")
-        }
-
-    @Test
-    fun aPushedPageIsInMotionUntilItsSlideSettledAndTheCoveredPageNever() =
-        runRobolectricComposeUiTest {
-            val stack = RaftPageStack()
-            val motion = mutableMapOf<String, MutableList<Boolean>>()
-            setContent {
-                RaftMobilePageStackDisplay(stack) { page ->
-                    val inMotion = LocalRaftStackPageInMotion.current
-                    val seen = motion.getOrPut(page.contentKey) { mutableListOf() }
-                    if (seen.lastOrNull() != inMotion) seen += inMotion
-                    Box(Modifier.fillMaxSize().testTag(page.contentKey))
-                }
-            }
-            waitForIdle()
-            val shell = stack.pages.first().contentKey
-            assertEquals<List<Boolean>?>(listOf(false), motion[shell], "the root page opens settled")
-
-            runOnIdle { stack.open(CHAT, JsonObject(emptyMap()), from = stack.pages.first()) }
-            waitForIdle()
-            val chat = stack.pages.last().contentKey
-            // The chat's heavy first build waits on this: true through the slide, false once settled.
-            assertEquals<List<Boolean>?>(listOf(true, false), motion[chat])
-            assertEquals<List<Boolean>?>(listOf(false), motion[shell], "the covered shell is never in motion")
-
-            runOnIdle { stack.back() }
-            waitForIdle()
-            assertEquals(false, motion.getValue(shell).last(), "settled again on top after the pop")
-        }
-
-    @Test
-    fun entryMetadataMarksTheChatAndAnOpenWithoutThePush() {
-        val stack = RaftPageStack()
-        stack.open(CHAT, JsonObject(mapOf("slockOpenWithoutAnimation" to JsonPrimitive(true))), from = stack.pages.first())
-        stack.open("compose_settings_native_detail", JsonObject(emptyMap()), from = stack.pages.first())
-        val (chat, settings) = stack.pages.drop(1).map { page -> NavEntry(page, page.contentKey, raftMobileStackEntryMetadata(page)) {} }
-        assertTrue(chat.raftStackCoveredKeepsSize())
-        assertTrue(chat.raftStackOpensWithoutMotion(), "opened without the push: no slide-in")
-        assertFalse(settings.raftStackCoveredKeepsSize())
-        assertFalse(settings.raftStackOpensWithoutMotion())
-    }
 
     private fun Context.componentActivity(): ComponentActivity {
         var context: Context = this

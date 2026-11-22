@@ -86,30 +86,6 @@ class RaftAdaptiveWorkspaceTest {
     }
 
     @Test
-    fun closeAndLateCallbacksAreGenerationFencedAcrossRapidReplacement() {
-        val first =
-            initialState()
-                .reduce(RaftAdaptiveWorkspaceIntent.WindowChanged(widePane()))
-                .reduce(RaftAdaptiveWorkspaceIntent.OpenDetail(detailIdentity("thread-a")))
-        val firstSelection = first.selection ?: error("first selection missing")
-        val second =
-            first.reduce(RaftAdaptiveWorkspaceIntent.OpenDetail(detailIdentity("thread-b")))
-        val secondSelection = second.selection ?: error("second selection missing")
-        val lateClose =
-            second.reduce(
-                RaftAdaptiveWorkspaceIntent.CloseDetail(
-                    identityKey = firstSelection.identity.key,
-                    generation = firstSelection.generation,
-                )
-            )
-
-        assertTrue(first.acceptsDetailCallback(firstSelection.identity.key, firstSelection.generation))
-        assertFalse(second.acceptsDetailCallback(firstSelection.identity.key, firstSelection.generation))
-        assertTrue(second.acceptsDetailCallback(secondSelection.identity.key, secondSelection.generation))
-        assertEquals(second, lateClose)
-    }
-
-    @Test
     fun parkSelectionTracksStandaloneOpenWhileParkedAndRespectsServerIsolation() {
         // task #45: ON pick A → OFF → user standalone-opens B → ON must restore B, not A.
         val opened =

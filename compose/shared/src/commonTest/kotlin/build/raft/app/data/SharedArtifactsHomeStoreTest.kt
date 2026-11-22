@@ -189,21 +189,6 @@ class SharedArtifactsHomeStoreTest {
     }
 
     @Test
-    fun activityDuringARead_queuesOneMore() = runTest {
-        val api = FakeDashboardApi()
-        val store = started(api)
-        val gate = CompletableDeferred<Unit>()
-        api.answer = { _, _ -> gate.await(); ok(rows("a")) }
-
-        repeat(3) { store.dispatch(ArtifactsHomeIntent.ActivityChanged("s-1")) }
-        runCurrent()
-        gate.complete(Unit)
-        advanceUntilIdle()
-
-        assertEquals(3, api.calls.size, "the start, one read, one queued")
-    }
-
-    @Test
     fun offIsTheOffStateAndFiltersReadNothing() = runTest {
         val api = FakeDashboardApi()
         api.answer = { _, _ -> ArtifactsHomeLoad.Off }

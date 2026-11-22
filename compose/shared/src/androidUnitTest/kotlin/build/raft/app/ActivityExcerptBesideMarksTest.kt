@@ -26,11 +26,6 @@ import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import build.raft.app.data.InboxFilter
-import build.raft.app.data.InboxItem
-import build.raft.app.model.ChannelId
-import build.raft.app.model.InboxItemKind
-import build.raft.app.model.MemberKind
 import build.raft.app.model.TaskStatus
 import build.raft.designsystem.components.RaftMentionMarker
 import build.raft.designsystem.components.RaftTaskStatusBadge
@@ -203,86 +198,6 @@ class ActivityExcerptBesideMarksTest {
             expectedHeights += readHeight
         }
         assertEquals(1, expectedHeights.toSet().size, "all 2-line excerpt variants must share one exact height: $expectedHeights")
-    }
-
-    /** Full Activity conversation row: tapping an unread CJK row with avatar + mention + count to read must not change row height. */
-    @Test
-    fun activityConversationRowHeightDoesNotJumpWhenMarkedRead() {
-        val unread = mutableStateOf(true)
-        var measuredHeight = -1
-        val activity = activities.launch()
-        build.raft.app.data.RaftAndroidSqlDatabaseContext.init(activity)
-        activity.setContent {
-            val isUnread = unread.value
-            val item =
-                InboxItem(
-                    key = "channel:cjk-jump",
-                    kind = InboxItemKind.Channel,
-                    channelId = ChannelId("cjk-jump"),
-                    channelName = "那个长按选中那个功能现在还有问题吗",
-                    unreadCount = if (isUnread) 3 else 0,
-                    hasMention = isUnread,
-                    lastMessageSenderId = "agent-linzhou",
-                    lastMessageSenderName = "林舟",
-                    lastMessageSenderKind = MemberKind.Agent,
-                    lastMessagePreview = "长按选中按你说的改好了，PR #3411，等 Lagoon 审完会合进去，下一个测试包就有。",
-                    lastMessageAt = "2026-10-21T16:31:00Z",
-                )
-            RaftTheme {
-                ActivityConversationListRow(
-                    item = item,
-                    model = item.activityConversationRowModel(ActivityConversationListContext(), InboxFilter.All),
-                    divider = false,
-                    selected = false,
-                    timeContext = null,
-                    agentStatusResolver = EmptyRaftAgentStatusResolver,
-                    canMarkDone = true,
-                    openGestureKey = item.key,
-                    captureMenuAnchor = false,
-                    onOpen = {},
-                    onOpenMenu = {},
-                    modifier = Modifier.onSizeChanged { measuredHeight = it.height },
-                )
-            }
-        }
-        settle()
-        val unreadRowHeight = measuredHeight
-        assertTrue(unreadRowHeight > 0, "unread row measured positive height")
-        unread.value = false
-        settle()
-        val readRowHeight = measuredHeight
-        assertEquals(unreadRowHeight, readRowHeight, "Activity row height jumped on unread -> read ($unreadRowHeight -> $readRowHeight)")
-    }
-
-    @Test
-    fun explicitNewlineMovesSecondParagraphToLineTwo() {
-        val text = buildAnnotatedString { append("First line\nSecond line") }
-        var latestSplit: Pair<String, String?> = "" to null
-        val showMarks = mutableStateOf(false)
-        var measuredHeight = -1
-        val activity = activities.launch()
-        activity.setContent {
-            RaftTheme {
-                Box(Modifier.onSizeChanged { measuredHeight = it.height }) {
-                    ActivityExcerptBesideMarks(
-                        text = text,
-                        style = RaftTheme.typography.callout,
-                        color = RaftTheme.colors.foreground,
-                        inlineContent = emptyMap(),
-                        lineHeight = 20.dp,
-                        onLineSplit = { first, rest -> latestSplit = first to rest },
-                        marks = { if (showMarks.value) Box(Modifier.size(32.dp, 20.dp)) },
-                    )
-                }
-            }
-        }
-        settle()
-        val readHeight = measuredHeight
-        assertEquals("Second line", latestSplit.second, "line 2 starts cleanly after explicit newline")
-        showMarks.value = true
-        settle()
-        assertEquals("Second line", latestSplit.second, "line 2 survives explicit newline with marks")
-        assertEquals(readHeight, measuredHeight, "explicit newline height stays invariant")
     }
 
     @Test

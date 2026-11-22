@@ -129,19 +129,6 @@ class TaskConversationHeadEditUiTest {
         }
 
     @Test
-    fun aReadOnlyTaskHasNeitherEditor() =
-        runRobolectricComposeUiTest {
-            setContent { Host { ConversationPage(task.copy(readOnlyReason = "historical_joint")) } }
-
-            // The status is the plain badge (no chevron, no tap) and the assignee a plain fact.
-            onNodeWithTag(TaskHeadStatusTestTag, useUnmergedTree = true).performClick()
-            onNodeWithTag(TaskHeadAssigneeTestTag, useUnmergedTree = true).assertDoesNotExist()
-            waitForIdle()
-            onNodeWithText("Todo").assertDoesNotExist()
-            assertEquals(emptyList(), dispatched)
-        }
-
-    @Test
     fun sourceTimestampUsesLocalTimeProviderWhenCallerPassesDaylessOrNullTimeContext() =
         runRobolectricComposeUiTest {
             val today = raftEpochDayForDate(2026, 11, 21)

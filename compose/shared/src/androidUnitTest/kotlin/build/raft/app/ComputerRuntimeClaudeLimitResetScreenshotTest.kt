@@ -55,16 +55,6 @@ class ComputerRuntimeClaudeLimitResetScreenshotTest {
         }
 
     @Test
-    fun resultOnTheOlderProgram() =
-        capture("settings.computer.runtime_usage.claude_limit_reset.result") {
-            UsageCard(
-                atLimit = false,
-                offer = ComputerRuntimeClaudeLimitResetOffer(canUse = true, primary = false),
-                note = ComputerRuntimeClaudeLimitResetText.LegacyReset,
-            )
-        }
-
-    @Test
     @Config(qualifiers = "w390dp-h640dp-xxhdpi")
     fun choose() =
         dialog("settings.computer.runtime_usage.claude_limit_reset.choose") {

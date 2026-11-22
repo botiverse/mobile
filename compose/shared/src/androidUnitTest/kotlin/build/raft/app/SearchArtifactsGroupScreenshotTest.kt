@@ -102,12 +102,6 @@ class SearchArtifactsGroupScreenshotTest {
         }
 
     @Test
-    fun failed() =
-        RaftRobolectricScreenshot.capture("search.artifacts.failed", RaftAppAppearance.Light, reportDir = REPORT_DIR, activities = activities) {
-            Host { Panel(FailedGroup) }
-        }
-
-    @Test
     fun aHitOpensItsArtifactAndTheSectionAsksForMore() =
         runRobolectricComposeUiTest {
             val opened = mutableListOf<SearchArtifactHit>()

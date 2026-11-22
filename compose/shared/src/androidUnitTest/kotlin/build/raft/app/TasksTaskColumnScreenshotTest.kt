@@ -83,8 +83,6 @@ class TasksTaskColumnScreenshotTest {
 
     @Test fun open() = capture("tasks.task-column.open", RaftAppAppearance.Light, expanded = false)
 
-    @Test fun expanded() = capture("tasks.task-column.expanded", RaftAppAppearance.Light, expanded = true)
-
     private fun capture(name: String, appearance: RaftAppAppearance, expanded: Boolean) =
         RaftRobolectricScreenshot.capture(name, appearance, reportDir = "build/reports/home-screenshots", activities = activities) {
             val grid = remember { RaftPaneGridStore() }

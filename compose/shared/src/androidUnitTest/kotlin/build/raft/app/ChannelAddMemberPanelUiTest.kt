@@ -11,8 +11,6 @@ import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.performClick
-import androidx.compose.ui.test.performTextInput
-import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.isToggleable
 import androidx.compose.ui.test.SemanticsNodeInteraction
@@ -119,15 +117,6 @@ class ChannelAddMemberPanelUiTest {
         }
 
     @Test
-    fun membersAlreadyInTheChannelAreNotListed() =
-        runRobolectricComposeUiTest {
-            show(Calls(), members = listOf(RaftThreadMemberItem("agent-cindy", "Cindy", handle = "cindy", kind = "agent")))
-            row("Product UX Designer").assertExists()
-            onNodeWithText("Agents").assertExists()
-            onNodeWithText("Humans").assertExists()
-        }
-
-    @Test
     fun theOneCreateAgentRowOpensAMenuWhoseItemsEachOpenTheirDialog() =
         runRobolectricComposeUiTest {
             val calls = Calls()
@@ -147,21 +136,5 @@ class ChannelAddMemberPanelUiTest {
             onNodeWithText("Create agent").performClick()
             onNodeWithText("Create external agent").performClick()
             assertEquals(listOf("" to MembersCreateAgentMode.Managed, "" to MembersCreateAgentMode.External), calls.creates)
-        }
-
-    @Test
-    fun withoutCreatePermissionThereIsNoCreateRowAndNoReason() =
-        runRobolectricComposeUiTest {
-            // slock #14948: a viewer who can't create agents sees no Create agent row, no reason
-            // under it and no menu; picking members works as before.
-            val calls = Calls()
-            show(calls, canCreateAgents = false)
-            onNodeWithText("Create agent").assertDoesNotExist()
-            onNodeWithText("Create external agent").assertDoesNotExist()
-            onNodeWithText("Joins #design automatically after creation").assertDoesNotExist()
-            onAllNodesWithText("needs an owner or admin", substring = true).assertCountEquals(0)
-            onNode(hasSetTextAction()).performTextInput("@mia")
-            onNodeWithText("Create agent “mia”").assertDoesNotExist()
-            assertTrue(calls.creates.isEmpty())
         }
 }

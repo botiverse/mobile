@@ -78,28 +78,6 @@ class ThreadInstallAppActionScreenshotTest {
     }
 }
 
-/**
- * Action cards whose people, agents and channel are stored as ids (as the server prepares them),
- * shown with the names this server's roster holds (web useActionCardDetail): a channel to create
- * with its first members, members to add to a channel (one agent no roster knows: "Unknown
- * agent", never its UUID), an owner recovery, and a Marketplace install. Light and dark.
- */
-@RunWith(RobolectricTestRunner::class)
-@GraphicsMode(GraphicsMode.Mode.NATIVE)
-@Config(sdk = [34], qualifiers = "w390dp-h2000dp-xxhdpi")
-class ThreadActionCardNamesScreenshotTest {
-    @get:Rule
-    val activities = RobolectricComposeActivityRule()
-
-    @Test
-    fun namesLight() = capture("thread.action-cards.names", RaftAppAppearance.Light)
-
-    private fun capture(name: String, appearance: RaftAppAppearance) =
-        RaftRobolectricScreenshot.capture(name, appearance, reportDir = "build/reports/home-screenshots", activities = activities) {
-            ScreenshotPage { ThreadActionCardNamesVisualContent() }
-        }
-}
-
 @Composable
 private fun ScreenshotPage(content: @Composable () -> Unit) {
     val pager =

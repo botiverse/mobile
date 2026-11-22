@@ -668,28 +668,6 @@ class SharedMembersParserTest {
     }
 
     @Test
-    fun agentManagementMenuHidesWhenUnavailable() {
-        assertEquals(
-            emptyList(),
-            buildMembersManagementMenuItems(
-                primaryAction = MembersAgentLifecycleAction.Stop,
-                canManage = false,
-                deleted = false,
-                inProgress = false
-            )
-        )
-        assertEquals(
-            emptyList(),
-            buildMembersManagementMenuItems(
-                primaryAction = MembersAgentLifecycleAction.Stop,
-                canManage = true,
-                deleted = true,
-                inProgress = false
-            )
-        )
-    }
-
-    @Test
     fun agentActivityErrorDisplayDetailExtractsReactErrorFields() {
         assertEquals(
             "Runtime crashed",

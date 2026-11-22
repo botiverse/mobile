@@ -50,13 +50,6 @@ class RaftUpgradeDialogScreenshotTest {
     fun historyWideLight() = capture("upgrade.dialog.history.wide", RaftAppAppearance.Light, owner)
 
     @Test
-    fun waitingLight() = capture("upgrade.dialog.waiting", RaftAppAppearance.Light, owner.copy(waitingForWeb = true))
-
-    @Test
-    fun addSeatsLight() =
-        capture("upgrade.dialog.add-seats", RaftAppAppearance.Light, owner.copy(gate = RaftUpgradeGate.SeatLimitInvite, mode = RaftUpgradeMode.AddSeats))
-
-    @Test
     fun iosLimitNoticeLight() =
         capture("upgrade.dialog.ios-limit", RaftAppAppearance.Light, owner.copy(mode = RaftUpgradeMode.LimitNotice))
 

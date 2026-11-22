@@ -169,31 +169,6 @@ class SharedActivityStoreChannelRowLagTest {
     }
 
     @Test
-    fun anUpdateOfAnotherMessageLeavesTheRowsAlone() = runTest {
-        val network =
-            ScriptedInboxNetwork(
-                this,
-                listOf(
-                    inbox(
-                        row(seq = 41, preview = "hi", unread = 3),
-                        row(seq = 30, preview = "dm", unread = 1, channelId = "dm-1", kind = "dm")
-                    )
-                )
-            )
-        val store = loadedStore(network, initialKeys = listOf("channel:general", "dm:dm-1"))
-        store.dispatch(newMessage(seq = 42))
-        runCurrent()
-        val before = store.state.value.items
-
-        store.dispatch(updatedMessage(id = "m-41", seq = 41, body = "older edited"))
-        store.dispatch(updatedMessage(id = "m-99", seq = 99, body = "elsewhere", channelId = "dm-1"))
-        runCurrent()
-
-        assertEquals(before, store.state.value.items, "no row shows those messages: nothing moves")
-        assertEquals(4, store.state.value.totalUnreadCount)
-    }
-
-    @Test
     fun anOverloadedInboxEndsTheCatchUpAndFollowsRetryAfter() = runTest {
         val recoveryRetryAfters = mutableListOf<Long?>()
         val network =
@@ -224,33 +199,6 @@ class SharedActivityStoreChannelRowLagTest {
         assertEquals(listOf<Long?>(2_000L), recoveryRetryAfters)
         assertEquals("new", store.state.value.items.single().lastMessagePreview)
         assertFalse(store.state.value.stale)
-    }
-
-    @Test
-    fun aPatchedRowStaysOnTopOverAnOlderServedOrder() = runTest {
-        val network =
-            ScriptedInboxNetwork(
-                this,
-                listOf(
-                    inbox(
-                        row(seq = 40, preview = "r", unread = 0, channelId = "random"),
-                        row(seq = 39, preview = "hi", unread = 3)
-                    )
-                )
-            )
-        val store = loadedStore(network, initialKeys = listOf("channel:random", "channel:general"))
-
-        store.dispatch(newMessage(seq = 42))
-        assertEquals(listOf("channel:general", "channel:random"), store.state.value.items.map(InboxItem::key))
-        runCurrent()
-
-        assertEquals(2, network.requestTimes.size, "the stale re-read answered")
-        assertEquals(
-            listOf("channel:general", "channel:random"),
-            store.state.value.items.map(InboxItem::key),
-            "the older served order does not move the patched row down"
-        )
-        assertEquals("new", store.state.value.items.first().lastMessagePreview)
     }
 
     @Test

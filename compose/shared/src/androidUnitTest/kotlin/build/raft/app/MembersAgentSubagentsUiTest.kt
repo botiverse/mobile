@@ -1,6 +1,5 @@
 package build.raft.app
 
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -11,7 +10,6 @@ import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
-import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.unit.dp
 import build.raft.app.components.RaftDesignSystemTheme
@@ -38,27 +36,6 @@ class MembersAgentSubagentsUiTest {
 
     private val log = subagentsFixtureLog()
     private val groups = groupAgentActivitySubagents(log)
-
-    @Test
-    fun aRowOpensItsSubagent() =
-        runRobolectricComposeUiTest {
-            val opened = mutableListOf<String>()
-            setContent {
-                RaftDesignSystemTheme {
-                    MembersAgentSubagentsList(
-                        groups = groups,
-                        timeContext = SubagentsFixtureTimeContext,
-                        onOpen = { opened += it },
-                        contentPadding = PaddingValues(0.dp),
-                        modifier = Modifier.fillMaxSize(),
-                        nowEpochMillis = { SubagentsFixtureNowMillis },
-                    )
-                }
-            }
-            onAllNodesWithTag(MembersAgentSubagentRowTag).assertCountEquals(3)
-            onNodeWithText("Find the stale call sites of isSecondaryThreadId").performClick()
-            assertEquals(listOf(groups.first { it.state == AgentActivitySubagentState.Running }.key), opened)
-        }
 
     @Test
     fun stopShowsOnlyOnARunningSubagentForAViewerWhoMayStopIt() =

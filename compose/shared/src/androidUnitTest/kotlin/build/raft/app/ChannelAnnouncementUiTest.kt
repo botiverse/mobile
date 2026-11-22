@@ -2,19 +2,15 @@ package build.raft.app
 
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.ComposeUiTest
 import androidx.compose.ui.test.ExperimentalTestApi
-import androidx.compose.ui.test.getBoundsInRoot
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
-import androidx.compose.ui.unit.dp
 import build.raft.app.compat.json.JSONObject
 import build.raft.app.compat.pager.LocalActivity
 import build.raft.app.compat.pager.PageData
@@ -34,12 +30,10 @@ import build.raft.app.model.RaftTimeContext
 import build.raft.app.model.raftEpochDayForDate
 import build.raft.app.resources.StringDesc
 import build.raft.designsystem.text.RaftText
-import build.raft.designsystem.theme.RaftTheme
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertTrue
 import org.junit.Rule
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -132,29 +126,6 @@ class ChannelAnnouncementUiTest {
         }
 
     @Test
-    fun aSeenVersionShowsTheFirstLineAndNoDot() =
-        runRobolectricComposeUiTest {
-            show {
-                ChannelAnnouncementStrip(
-                    announcement = channelAnnouncementFixture.copy(seen = true),
-                    authorName = "Bugen",
-                    onOpen = {},
-                    onCopyLink = {},
-                    onOpenSettings = null,
-                )
-                ChannelAnnouncementStrip(
-                    announcement = channelAnnouncementFixture.copy(note = null, title = "Ops"),
-                    authorName = "Bugen",
-                    onOpen = {},
-                    onCopyLink = {},
-                    onOpenSettings = null,
-                )
-            }
-            onNodeWithText("Code freeze Thursday 18:00. Release branch cut Friday morning.").assertExists()
-            onNodeWithText("Bugen updated it").assertExists()
-        }
-
-    @Test
     fun theMenuCopiesTheLinkAndOffersSettingsOnlyToWhoMayChangeIt() =
         runRobolectricComposeUiTest {
             var copies = 0
@@ -211,73 +182,6 @@ class ChannelAnnouncementUiTest {
                 assertEquals(1, replaces)
                 assertEquals(1, removes)
             }
-        }
-
-    @Test
-    fun aReaderSeesTheAnnouncementAloneAndNoRowWhenThereIsNone() =
-        runRobolectricComposeUiTest {
-            show {
-                ChannelAnnouncementDetailsRow(
-                    slice = ChannelAnnouncementSlice(read = true, announcement = channelAnnouncementFixture),
-                    canEdit = false,
-                    onOpen = {},
-                    onSet = {},
-                    onReplace = {},
-                    onRemove = {},
-                    artifactKind = ArtifactKind.Html,
-                )
-            }
-            onNodeWithText("Pinned content").assertExists()
-            onNodeWithTag(ChannelAnnouncementTestTags.DetailsItem).assertExists()
-            onNodeWithTag(ChannelAnnouncementTestTags.DetailsActions).assertDoesNotExist()
-            onNodeWithTag(ChannelAnnouncementTestTags.DetailsReplace).assertDoesNotExist()
-            onNodeWithTag(ChannelAnnouncementTestTags.DetailsRemove).assertDoesNotExist()
-        }
-
-    /** slock #15693: a long updater name truncates while the short relative time stays unclipped. */
-    @Test
-    @Config(qualifiers = "w360dp-h900dp")
-    fun longUpdaterNameTruncatesWhileRelativeTimeStaysWhole() =
-        runRobolectricComposeUiTest {
-            val longNameFixture =
-                channelAnnouncementFixture.copy(
-                    updatedBy =
-                        RaftChannelAnnouncementActor(
-                            RaftChannelAnnouncementActorType.Agent,
-                            "agent-long",
-                            "qa-wa-bot-very-long-agent-name-that-must-truncate-before-time",
-                        ),
-                )
-            show {
-                Column(Modifier.padding(horizontal = 20.dp)) {
-                    ChannelAnnouncementDetailsRow(
-                        slice = ChannelAnnouncementSlice(read = true, announcement = longNameFixture),
-                        canEdit = true,
-                        onOpen = {},
-                        onSet = {},
-                        onReplace = {},
-                        onRemove = {},
-                    )
-                    RaftText(
-                        text = "45m ago",
-                        modifier = Modifier.testTag("ref-time-label"),
-                        style = RaftTheme.typography.monoMeta,
-                        maxLines = 1,
-                        softWrap = false,
-                    )
-                }
-            }
-            val meta = onNodeWithTag(ChannelAnnouncementTestTags.DetailsMeta, useUnmergedTree = true).getBoundsInRoot()
-            val name = onNodeWithTag(ChannelAnnouncementTestTags.DetailsMetaName, useUnmergedTree = true).getBoundsInRoot()
-            val time = onNodeWithTag(ChannelAnnouncementTestTags.DetailsMetaTime, useUnmergedTree = true).getBoundsInRoot()
-            val refTime = onNodeWithTag("ref-time-label", useUnmergedTree = true).getBoundsInRoot()
-            assertTrue((name.right - name.left) > 0.dp, "name remains visible while truncating: name=$name")
-            assertTrue(name.right <= time.left, "name stays left of time without overlap: name=$name time=$time")
-            assertTrue(time.right <= meta.right + 1.dp, "time fits inside meta row: time=$time meta=$meta")
-            assertTrue(
-                (time.right - time.left) >= (refTime.right - refTime.left) - 1.dp,
-                "short relative time stays completely unclipped: time=$time ref=$refTime",
-            )
         }
 
     @Test

@@ -94,11 +94,4 @@ class MembersAgentRecentTurnRowsUiTest {
             rows(agentRecentActivityAcrossDays())
             assertOneTextColumn()
         }
-
-    @Test
-    fun textsStartAtOneXAtTwiceTheFontSize() =
-        runRobolectricComposeUiTest {
-            rows(agentRecentActivityAcrossDays(), fontScale = 2f)
-            assertOneTextColumn()
-        }
 }

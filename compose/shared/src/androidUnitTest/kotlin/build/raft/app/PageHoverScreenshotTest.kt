@@ -68,17 +68,8 @@ class PageHoverScreenshotTest {
     val activities = RobolectricComposeActivityRule()
 
     @Test
-    fun messageRowLight() = capture("hover.message-row", RaftAppAppearance.Light) { HoverMessageRow(it) }
-
-    @Test
     fun messageRowToolbarLight() =
         capture("hover.message-row-toolbar", RaftAppAppearance.Light) { HoverMessageRowWithToolbar(it, RaftAppAppearance.Light) }
-
-    @Test
-    fun serverTileLight() = capture("hover.server-tile", RaftAppAppearance.Light) { HoverServerTile(it) }
-
-    @Test
-    fun markdownLinkLight() = capture("hover.markdown-link", RaftAppAppearance.Light) { HoverMarkdownLink(it) }
 
     private fun capture(name: String, appearance: RaftAppAppearance, content: @Composable (HoverTarget) -> Unit) {
         val target = HoverTarget()

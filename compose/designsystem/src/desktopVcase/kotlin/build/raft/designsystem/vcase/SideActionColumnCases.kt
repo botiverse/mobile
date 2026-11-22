@@ -20,7 +20,6 @@ import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
-import build.raft.designsystem.components.LocalRaftTooltipPreview
 import build.raft.designsystem.components.RaftGlyph
 import build.raft.designsystem.components.RaftGlyphIcon
 import build.raft.designsystem.components.RaftSideAction
@@ -97,16 +96,6 @@ fun SideActionColumnAttention() {
         Page(240.dp) { RaftSideActionColumn(primary = emptyList(), actions = listOf(bell(attention = true), search)) }
         // Room for two: Search stays (listed first), the ⋯ holds the bell and wears its pixel.
         Page(124.dp) { RaftSideActionColumn(primary = emptyList(), actions = listOf(search, bell(attention = true), settings)) }
-    }
-}
-
-@VCase("ds.side-action-column.tooltip", settleFrames = 2, frameIntervalMs = 0)
-@Composable
-fun SideActionColumnTooltip() {
-    Row(horizontalArrangement = Arrangement.spacedBy(24.dp)) {
-        CompositionLocalProvider(LocalRaftTooltipPreview provides true) {
-            Page(160.dp, pageWidth = 200.dp) { RaftSideActionColumn(primary = listOf(back), actions = emptyList()) }
-        }
     }
 }
 

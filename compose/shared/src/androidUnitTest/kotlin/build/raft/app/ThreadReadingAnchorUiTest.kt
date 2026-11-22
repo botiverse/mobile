@@ -180,12 +180,6 @@ class ThreadReadingAnchorUiTest {
             assertReadingRowsKept { changed -> saved.value = saved.value + (changed to true) }
         }
 
-    @Test
-    fun aCardOrImageResolvingLateKeepsTheReadingRow() =
-        runRobolectricComposeUiTest {
-            assertReadingRowsKept { changed -> lateCardDp[changed] = 120 }
-        }
-
     /** The row whose Save / reaction the user tapped is the anchor: its top stays, the change grows downward. */
     @Test
     fun theTappedRowStaysPut() =

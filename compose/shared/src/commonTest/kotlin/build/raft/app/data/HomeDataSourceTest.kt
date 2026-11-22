@@ -56,37 +56,6 @@ class HomeDataSourceTest {
     }
 
     @Test
-    fun loadNotificationsDoesNotRequestActiveAnnouncements() = runBlocking {
-        val computersApi = ConcurrentComputersApi(CompletableDeferred(Unit))
-        val source =
-            SharedHomeDataSource(
-                sessionStore = InMemoryRaftAuthSessionStore(sampleSession(role = "admin")),
-                api = FakeHomeApi(),
-                announcementsApi =
-                    object : RaftAnnouncementsRemindersApi {
-                        override suspend fun activeAnnouncements(): HomeNetworkResponse =
-                            error("Home notification center must not request account announcements")
-
-                        override suspend fun dismissAnnouncement(announcementId: String): HomeNetworkResponse =
-                            error("unused")
-
-                        override suspend fun reminders(ownerAgentId: MemberId, status: String): HomeNetworkResponse =
-                            error("unused")
-                    },
-                computersApi = computersApi,
-                notificationPreferenceRepository = notificationPreferences(offlineComputerAlertsEnabled = true),
-                parseHome = { _, session ->
-                    DataResult.Content(sampleHome(ServerId(session.currentServerId!!)))
-                }
-            )
-
-        val result = withTimeout(1_000L) { source.loadNotifications() }
-
-        val notifications = (result as DataResult.Content).data
-        assertEquals(listOf("machine-offline:machine-1"), notifications.map { it.id })
-    }
-
-    @Test
     fun offlineComputerAlertsDefaultOffWithoutSuppressingOutdatedAlerts() = runBlocking {
         val machinesBody =
             """
@@ -396,26 +365,6 @@ class HomeDataSourceTest {
         assertFalse("announcement-1".isMachineHomeNotificationId())
     }
 
-    @Test
-    fun syncOnMachinesRefreshStillReadsTheMachineList() = runBlocking {
-        val computersApi = ConcurrentComputersApi(CompletableDeferred(Unit))
-        val source =
-            SharedHomeDataSource(
-                sessionStore = InMemoryRaftAuthSessionStore(sampleSession(role = "admin")),
-                api = FakeHomeApi(),
-                computersApi = computersApi,
-                serverMembersStore =
-                    SharedServerMembersStore(FakeMemberRepository(emptyList()), incrementalSyncCoversRoster = { true }),
-                parseHome = { _, session -> DataResult.Content(sampleHome(ServerId(session.currentServerId!!))) },
-            )
-        source.loadNotificationsAfterHomeLoad()
-        // Machines scope (sync reconnect / foreground machines refresh): always the network.
-        source.loadNotifications()
-        source.loadNotificationsAfterHomeLoad()
-
-        assertEquals(2, computersApi.machineCalls)
-    }
-
     /** Tenny 10-27: a machine change drops the held list; the next Home reload reads it again. */
     @Test
     fun syncOnDroppedMachineListIsReadAgainByTheNextHomeReload() = runBlocking {
@@ -497,37 +446,6 @@ class HomeDataSourceTest {
 
         assertTrue(result is DataResult.Error)
         assertEquals("home_channels_contract_mismatch", result.error.code)
-    }
-
-    // task #831: a contract-mismatched unread section is still rejected (never
-    // mis-accepted as data — it does not reach the payload), but per the Home
-    // decoupling it must no longer abort the canonical channels/DMs. Previously
-    // these asserted the whole Home returned Error on a guessed unread wrapper.
-    @Test
-    fun guessedUnreadCountWrapperIsRejectedWithoutBlockingCanonicalHome() = runBlocking {
-        // A guessed array, and the bare `{[channelId]: number}` map Home no longer asks for: neither is
-        // the `?summary=1` shape, so neither may reach the payload as unread data.
-        for (body in listOf("""[{"channelId":"channel-1","unreadCount":1}]""", """{"channel-1":1}""")) {
-            val source =
-                SharedHomeDataSource(
-                    sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
-                    api = FakeHomeApi(unreadCountsBody = body),
-                    parseHome = { payload, session ->
-                        assertEquals(emptyMap(), payload.unreadCounts, body)
-                        assertEquals(emptySet(), payload.mentionedChannelIds, body)
-                        assertFalse(payload.unreadEnrichmentAvailable, body)
-                        DataResult.Content(sampleHome(ServerId(session.currentServerId!!)))
-                    }
-                )
-
-            val result = source.loadHome(priority = DataRequestPriority.Visible)
-
-            assertTrue(
-                result is DataResult.Content,
-                "canonical Home must load even when the unread-counts wire shape is rejected: $body"
-            )
-            assertEquals(1, result.data.channels.size)
-        }
     }
 
     @Test

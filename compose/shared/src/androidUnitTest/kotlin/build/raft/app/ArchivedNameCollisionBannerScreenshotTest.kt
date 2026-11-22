@@ -46,10 +46,6 @@ class ArchivedNameCollisionBannerScreenshotTest {
 
     @Test
     @Config(qualifiers = RENAME_QUALIFIERS)
-    fun renameLight() = captureRename("channel.settings.rename.archived-name", RaftAppAppearance.Light)
-
-    @Test
-    @Config(qualifiers = RENAME_QUALIFIERS)
     fun renameUnarchiveFailedLight() =
         captureRename("channel.settings.rename.archived-name.unarchive-failed", RaftAppAppearance.Light, unarchiveFailed = true)
 

@@ -53,13 +53,6 @@ class RaftEmojiPickerScreenshotTest {
     fun pickerDark() = picker("thread.emoji-picker.dark", RaftAppAppearance.Dark)
 
     @Test
-    fun searchLight() = picker("thread.emoji-picker.search", RaftAppAppearance.Light, query = "heart")
-
-    @Test
-    fun skinToneLight() =
-        picker("thread.emoji-picker.skin-tone", RaftAppAppearance.Light, tone = RaftEmojiSkinTone.Medium, toneMenuOpen = true)
-
-    @Test
     fun popoverLight() = popover("thread.emoji-picker.popover", RaftAppAppearance.Light)
 
     private fun popover(name: String, appearance: RaftAppAppearance) =

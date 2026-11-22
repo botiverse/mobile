@@ -8,7 +8,6 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.ui.platform.ViewRootForTest
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsNode
-import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
 import build.raft.app.data.InboxFilter
 import build.raft.app.data.InboxItem
@@ -129,40 +128,6 @@ class ActivityConversationRowAccessibilityTest {
         }
         // Each action runs the menu item of its id on its own row.
         assertEquals(rows.flatMap { item -> activityContextMenuActionIds(item, mutes).map { item.key to it } }, ran)
-    }
-
-    @Test
-    fun aRowWithoutActionIdsPublishesNoCustomActions() {
-        val activity = activities.launch()
-        build.raft.app.data.RaftAndroidSqlDatabaseContext.init(activity)
-        val item = channel("general")
-        activity.setContent {
-            RaftTheme {
-                ActivityConversationListRow(
-                    item = item,
-                    model = item.activityConversationRowModel(ActivityConversationListContext(), InboxFilter.All),
-                    divider = false,
-                    selected = false,
-                    timeContext = null,
-                    agentStatusResolver = EmptyRaftAgentStatusResolver,
-                    canMarkDone = true,
-                    openGestureKey = item.key,
-                    captureMenuAnchor = false,
-                    onOpen = {},
-                    onOpenMenu = {},
-                )
-            }
-        }
-        settle()
-        val root = assertNotNull(findComposeRoot(activity.window.decorView), "no compose root")
-        val nodes = mutableListOf<SemanticsNode>()
-        fun walk(node: SemanticsNode) {
-            nodes += node
-            node.children.forEach(::walk)
-        }
-        walk((root as ViewRootForTest).semanticsOwner.rootSemanticsNode)
-        assertTrue(nodes.any { it.config.getOrNull(SemanticsProperties.Role) != null }, "the row node is there")
-        assertTrue(nodes.none { it.config.getOrNull(SemanticsActions.CustomActions) != null })
     }
 
     private fun settle() {

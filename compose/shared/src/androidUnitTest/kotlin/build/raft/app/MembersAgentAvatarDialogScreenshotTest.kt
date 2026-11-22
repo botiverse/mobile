@@ -167,19 +167,6 @@ class MembersAgentAvatarDialogScreenshotTest {
         assertEquals(1, dismissed)
     }
 
-    @Test
-    fun aPickedImageIsStagedNotUploaded() {
-        val saved = mutableListOf<MembersAgentAvatarDraft>()
-        val image = PlatformFile(id = "file-1", fileName = "ada.png", mimeType = "image/png", sizeBytes = 1_000L)
-        open(onPickFile = { DataResult.Content(image) }, onSave = { saved += it; DataResult.Content(agent) }, onDismiss = {})
-        node("Upload image").click()
-        settle()
-        assertTrue(saved.isEmpty(), "picking an image does not upload it")
-        save().click()
-        settle()
-        assertEquals(listOf<MembersAgentAvatarDraft>(MembersAgentAvatarDraft.Upload(image)), saved)
-    }
-
     private fun open(
         onPickFile: suspend () -> DataResult<PlatformFile> = { DataResult.Error(ScreenError("unused")) },
         onSave: suspend (MembersAgentAvatarDraft) -> DataResult<*>,

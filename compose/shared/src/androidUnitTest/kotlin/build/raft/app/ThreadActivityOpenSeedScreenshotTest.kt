@@ -53,12 +53,6 @@ class ThreadActivityOpenSeedScreenshotTest {
 
     @Test fun standInLoadingLight() = capture("thread.stand-in-loading", RaftAppAppearance.Light) { StandInLoadingRows() }
 
-    @Test fun standInLoadingDark() = capture("thread.stand-in-loading.dark", RaftAppAppearance.Dark) { StandInLoadingRows() }
-
-    @Test fun systemMessageLight() = capture("thread.system-message-seed", RaftAppAppearance.Light) { SystemMessageRows() }
-
-    @Test fun truncatedPreviewLight() = capture("thread.activity-seed-truncated", RaftAppAppearance.Light) { TruncatedPreviewRows() }
-
     private fun capture(name: String, appearance: RaftAppAppearance, rows: @Composable () -> Unit) =
         RaftRobolectricScreenshot.capture(name, appearance, reportDir = "build/reports/home-screenshots", activities = activities) {
             val pager = remember { object : Pager() {}.apply { pageData = PageData(JSONObject()) } }

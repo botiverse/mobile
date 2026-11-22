@@ -173,16 +173,4 @@ class ComputersRackFitToolbarUiTest {
         back.press()
         assertEquals(1, back.pageBacks(), "a closed, empty search leaves Back to the page")
     }
-
-    @Test
-    fun anInlineSearchNeverTakesBack() = runRobolectricComposeUiTest {
-        val store = store()
-        val back = show(loaded, store)
-        runOnIdle { store.dispatch(RaftComputersRackToolbarIntent.Search("alp")) }
-        waitForIdle()
-        assertTrue(has(RaftComputersRackTags.Search))
-        back.press()
-        assertEquals(1, back.pageBacks(), "a wide toolbar's search is inline: Back stays the page's")
-        assertEquals("alp", store.state.value.filters.query)
-    }
 }

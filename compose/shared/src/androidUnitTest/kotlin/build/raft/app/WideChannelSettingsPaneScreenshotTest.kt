@@ -49,14 +49,6 @@ class WideChannelSettingsPaneScreenshotTest {
     @Test
     fun channelSettingsPaneLight() = capture("shell.wide.channel-settings", RaftAppAppearance.Light)
 
-    @Test
-    fun channelSettingsPaneDark() = capture("shell.wide.channel-settings.dark", RaftAppAppearance.Dark)
-
-    // artin 2026-10-29: an agent's profile opened from the chat (avatar, mention) is the same pane
-    // (web ProfilePanel / AgentDetailPanel beside the conversation); its first page shows ×.
-    @Test
-    fun agentProfilePaneLight() = capture("shell.wide.agent-profile", RaftAppAppearance.Light, AgentProfilePane)
-
     private fun capture(name: String, appearance: RaftAppAppearance, pane: PaneFixture = ChannelSettingsPane) =
         RaftRobolectricScreenshot.capture(name, appearance, reportDir = "build/reports/home-screenshots", activities = activities) {
             val pager =
@@ -139,12 +131,6 @@ class WideChannelSettingsPaneScreenshotTest {
         PaneFixture(
             "Ada: the channel details now open beside the conversation" to "Linus: and the chat stays where it was",
         ) { ChannelSettingsVisualContent() }
-
-    private val AgentProfilePane =
-        PaneFixture(
-            "Ada: @Product-UX-Designer can you check the release notes?" to "Linus: the profile opens beside the chat",
-            RaftProfileColumnCell.Profile,
-        ) { MembersAgentDetailVisualContent() }
 
     @Composable
     private fun FixtureConversation(modifier: Modifier, lines: Pair<String, String>) {

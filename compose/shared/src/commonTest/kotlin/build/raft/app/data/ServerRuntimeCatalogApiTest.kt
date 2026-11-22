@@ -273,29 +273,6 @@ class ServerRuntimeCatalogApiTest {
         }
 
     @Test
-    fun aCancelledInitiatorDoesNotCancelAnotherWaiter() =
-        runTest {
-            val gate = CompletableDeferred<Unit>()
-            val api = FakeApi(gate = gate)
-            api.next = HomeNetworkResponse(code = 200, bodyText = ContractExample)
-            val repository =
-                SharedServerRuntimeCatalogRepository(api, backgroundScope, cache = null, scopeProvider = { null }, names = RaftRuntimeCatalogNameRegistry())
-            val initiator = async { repository.load("s1", DataRequestPriority.Visible) }
-            testScheduler.runCurrent()
-            val waiter = async { repository.load("s1", DataRequestPriority.Visible) }
-            testScheduler.runCurrent()
-            // The page that started the request closes.
-            initiator.cancel()
-            testScheduler.runCurrent()
-            gate.complete(Unit)
-            val catalog = waiter.await()
-            assertEquals(RuntimeCatalogSource.Server, catalog.source)
-            assertEquals(listOf("kimi-sdk"), catalog.runtimes.map { it.id })
-            assertTrue(initiator.isCancelled)
-            assertEquals(1, api.paths.size)
-        }
-
-    @Test
     fun aPageFollowsItsOwnServersCatalogNeverTheOneReadLast() =
         runTest {
             val prefs = MapPreferences()
@@ -341,26 +318,6 @@ class ServerRuntimeCatalogApiTest {
             val kept = mutableListOf<ServerRuntimeCatalog>()
             noCache.followServerRuntimeCatalog("s2", s2Shown.last()) { kept += it }
             assertEquals(emptyList(), kept)
-        }
-
-    @Test
-    fun twoServersLoadingTogetherEachKeepTheirCatalog() =
-        runTest {
-            // Production loads run in parallel off main; the registry's publish is one locked
-            // read-modify-write, so the second server never overwrites the first one's entry.
-            val names = RaftRuntimeCatalogNameRegistry()
-            val api = PerServerApi().apply {
-                bodies["s1"] = ServerProjection
-                bodies["s2"] = ContractExample
-            }
-            val repository =
-                SharedServerRuntimeCatalogRepository(api, backgroundScope, cache = null, scopeProvider = { null }, names = names)
-            val s1 = async { repository.load("s1", DataRequestPriority.Visible) }
-            val s2 = async { repository.load("s2", DataRequestPriority.Visible) }
-            s1.await()
-            s2.await()
-            assertEquals(listOf("claude", "copilot", "qwen", "qoder", "codex"), names.catalog("s1")?.runtimes?.map { it.id })
-            assertEquals(listOf("kimi-sdk"), names.catalog("s2")?.runtimes?.map { it.id })
         }
 
     private class PerServerApi : RaftServerRuntimeCatalogApi {

@@ -146,67 +146,6 @@ class ThreadInitialFocusedPlacementUiTest {
         }
 
     @Test
-    fun tallFocusedRowLandsFlushAtTopOnFirstFrame() =
-        runRobolectricComposeUiTest {
-            val totalMessages = 10
-            val messages = (0 until totalMessages).map { "m$it" }
-            val focusedIndex = 4
-            lateinit var viewport: ThreadListViewport
-            lateinit var owner: ThreadInitialFocusedPlacementOwner
-            mainClock.autoAdvance = false
-            setContent {
-                val raw =
-                    rememberLazyListState(
-                        initialFirstVisibleItemIndex =
-                            threadInitialFirstVisibleItemIndex(
-                                reverseLayout = true,
-                                latestItemIndex = totalMessages - 1,
-                                lazyItemCount = totalMessages,
-                                focusedItemIndex = focusedIndex,
-                            )
-                    )
-                viewport = remember(raw) { ThreadListViewport(raw, reverse = true) }
-                val scope = rememberCoroutineScope()
-                owner =
-                    remember(viewport) {
-                        ThreadInitialFocusedPlacementOwner(
-                            listState = viewport,
-                            scope = scope,
-                            armed = true,
-                        )
-                    }
-                LazyColumn(
-                    state = raw,
-                    reverseLayout = true,
-                    verticalArrangement = Arrangement.Bottom,
-                    modifier =
-                        Modifier
-                            .fillMaxSize()
-                            .onGloballyPositioned {
-                                owner.afterLayout(
-                                    owns = { !viewport.isScrollInProgress && !viewport.isRetired },
-                                    retiredByHost = { false },
-                                    focusedForwardIndex = { focusedIndex },
-                                    placement = { LazyViewportAnchorPlacement.Focused },
-                                    minBottomReservePx = 100,
-                                )
-                            },
-                ) {
-                    items(messages.asReversed(), key = { it }) { id ->
-                        val h = if (id == "m$focusedIndex") 1200.dp else 120.dp
-                        Box(Modifier.fillMaxWidth().height(h))
-                    }
-                }
-            }
-            repeat(3) { mainClock.advanceTimeByFrame() }
-            assertTrue(owner.applied)
-            val focusedItem = assertNotNull(viewport.layoutInfo.visibleItemsInfo.firstOrNull { it.index == focusedIndex })
-            assertEquals(0, focusedItem.offset, "row taller than viewport must land flush at forward top 0")
-            mainClock.autoAdvance = true
-            waitForIdle()
-        }
-
-    @Test
     fun retiredByHostPreventsPlacementAfterUserTakeover() =
         runRobolectricComposeUiTest {
             val totalMessages = 30

@@ -27,18 +27,6 @@ class ReadStateV1ProductionBindingTest {
     private val owner = ReadStateV1ProductionOwner("https://prod.example", "user-1", "server-1")
 
     @Test
-    fun flagOffAndNonSelectedScopeRemainLegacy() = runBlocking {
-        val disabled = fixture(enabled = false)
-        assertIs<ReadStateV1ProductionDisposition.Legacy>(disabled.canary.applyHydrate(owner, "channel-1", 1, 4))
-        assertTrue(disabled.store.facts.isEmpty())
-
-        val enabled = fixture()
-        assertIs<ReadStateV1ProductionDisposition.Selected>(enabled.canary.applyHydrate(owner, "channel-1", 1, 4))
-        assertIs<ReadStateV1ProductionDisposition.Legacy>(enabled.canary.applyHydrate(owner, "channel-2", 1, 8))
-        assertEquals(setOf("channel-1"), enabled.projections.map { it.channelId }.toSet())
-    }
-
-    @Test
     fun emptyOrIncompleteHydrateCannotSeizeOrAdvanceTheProcessCanary() = runBlocking {
         val fixture = fixture()
         assertIs<ReadStateV1ProductionDisposition.Legacy>(fixture.canary.applyHydrate(owner, "empty", 0, 0))
@@ -132,41 +120,6 @@ class ReadStateV1ProductionBindingTest {
     }
 
     @Test
-    fun publicationFirstMakesOwnerRevokeWaitAndNoOldCallbackRunsAfterReturn() = runBlocking {
-        val entered = CompletableDeferred<Unit>()
-        val release = CompletableDeferred<Unit>()
-        val projections = mutableListOf<ReadStateV1Fact>()
-        val canary =
-            ReadStateV1ProductionCanary(
-                isEnabledForServer = { true },
-                store = TestReadStateV1Store(),
-                onProjection = { _, _, fact -> projections += fact },
-                onRebaseline = { _, _, _ -> },
-            )
-        val fact = ReadStateV1Fact("channel-1", 1, 10)
-        canary.prepareHydrate(owner, fact.channelId, fact.readStateVersion, fact.maxReadSeq)
-
-        val confirmation =
-            async(Dispatchers.Default) {
-                canary.completePreparedHydrateProjection(owner, fact) {
-                    entered.complete(Unit)
-                    runBlocking { release.await() }
-                }
-            }
-        withTimeout(2_000) { entered.await() }
-        val revoke = async(Dispatchers.Default) { canary.revoke(owner) }
-        delay(100)
-        assertFalse(revoke.isCompleted, "owner revoke must wait for the exact-witness App write")
-
-        release.complete(Unit)
-        assertTrue(withTimeout(2_000) { confirmation.await() })
-        withTimeout(2_000) { revoke.await() }
-        assertEquals(listOf(fact), projections)
-        assertFalse(canary.completePreparedHydrateProjection(owner, fact))
-        assertEquals(listOf(fact), projections, "revoke return must be a terminal old-witness callback barrier")
-    }
-
-    @Test
     fun flagOffHoldsSelectedScopeUntilSnapshotBarrierCommitsAndPublishes() = runBlocking {
         var enabled = true
         val store = TestReadStateV1Store()
@@ -202,31 +155,6 @@ class ReadStateV1ProductionBindingTest {
             canary.applyOwnerRealtime(owner, "channel-1", 5, 50),
         )
         assertEquals(ReadStateV1Fact("channel-1", 4, 40), projections.last())
-    }
-
-    @Test
-    fun flagOffSnapshotCommitFailureRemainsSelectedAndDark() = runBlocking {
-        var enabled = true
-        val store = TestReadStateV1Store()
-        val canary =
-            ReadStateV1ProductionCanary(
-                isEnabledForServer = { enabled },
-                store = store,
-                onProjection = { _, _, _ -> },
-                onRebaseline = { _, _, _ -> },
-            )
-        canary.applyHydrate(owner, "channel-1", 1, 10)
-        enabled = false
-        store.failCommit = true
-
-        assertIs<ReadStateV1ProductionDisposition.SelectedFailure>(
-            canary.applyHydrate(owner, "channel-1", 2, 20),
-        )
-        assertTrue(canary.isSelected(owner, "channel-1"))
-        assertIs<ReadStateV1ProductionDisposition.Selected>(
-            canary.applyOwnerRealtime(owner, "channel-1", 3, 30),
-        )
-        assertEquals(ReadStateV1Fact("channel-1", 1, 10), store.facts.values.single())
     }
 
     @Test

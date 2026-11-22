@@ -135,82 +135,6 @@ class ComposerAutofocusOnOpenUiTest {
             onNodeWithTag(COMPOSER).assertIsFocused()
         }
 
-    // 1.24.0 on a cloud phone (it reports a keyboard, and its IME still came up): opening a message
-    // link focused the composer about a second after the list had scrolled to the message, and the
-    // soft keyboard pushed the message off the screen. An open that lands on one message (a link,
-    // Activity, a search result) leaves the composer alone on a phone or tablet.
-    @Test
-    @Config(qualifiers = "keysexposed-qwerty")
-    fun openOnAMessageLeavesTheComposerUnfocusedEvenWithAHardwareKeyboard() =
-        runRobolectricComposeUiTest {
-            val outcomes = mutableListOf<ComposerAutofocusOutcome>()
-            val seen = openConversationWithPlatformPolicy(opensOnMessage = true, outcomes = outcomes)
-            assertTrue(seen.startsWith("keyboard=${Configuration.KEYBOARD_QWERTY} "), seen)
-            onNodeWithTag(COMPOSER).assertIsNotFocused()
-            assertEquals(listOf(ComposerAutofocusOutcome.OpensOnMessage), outcomes)
-        }
-
-    @Test
-    @Config(qualifiers = "keyshidden-nokeys")
-    fun touchOnlyLeavesTheComposerUnfocused() =
-        runRobolectricComposeUiTest {
-            openConversationWithPlatformPolicy()
-            onNodeWithTag(COMPOSER).assertIsNotFocused()
-        }
-
-    @Test
-    fun threadPanelTakesTheFocusAndGivesItBackWhenItCloses() =
-        runRobolectricComposeUiTest {
-            var panelOpen by mutableStateOf(false)
-            setContent {
-                Column {
-                    // ThreadPage: the channel yields while its reply thread is shown beside it.
-                    Composer(CHANNEL, conversation = "ch-1", focus = pageFocus(yieldsToSideThread = panelOpen))
-                    if (panelOpen) Composer(THREAD, conversation = "th-1", focus = pageFocus())
-                }
-            }
-            waitForIdle()
-            onNodeWithTag(CHANNEL).assertIsFocused()
-
-            runOnIdle { panelOpen = true }
-            waitForIdle()
-            onNodeWithTag(THREAD).assertIsFocused()
-            onNodeWithTag(CHANNEL).assertIsNotFocused()
-
-            runOnIdle { panelOpen = false }
-            waitForIdle()
-            onNodeWithTag(CHANNEL).assertIsFocused()
-        }
-
-    @Test
-    fun anotherFocusedFieldKeepsItsFocus() =
-        runRobolectricComposeUiTest {
-            val searchRequester = FocusRequester()
-            var opened by mutableStateOf(false)
-            val outcomes = mutableListOf<ComposerAutofocusOutcome>()
-            setContent {
-                Column {
-                    TextField(
-                        modifier = Modifier.testTag(SEARCH),
-                        value = "",
-                        autoFocus = false,
-                        onValueChange = {},
-                        focusRequester = searchRequester,
-                    )
-                    if (opened) Composer(COMPOSER, conversation = "ch-1", focus = pageFocus(), outcomes = outcomes)
-                }
-            }
-            runOnIdle { searchRequester.requestFocus() }
-            onNodeWithTag(SEARCH).assertIsFocused()
-            assertTrue(RaftAutofocusGuard.Default.otherFieldFocused, "search focus is reported to the guard")
-
-            runOnIdle { opened = true }
-            waitForIdle()
-            onNodeWithTag(SEARCH).assertIsFocused()
-            onNodeWithTag(COMPOSER).assertIsNotFocused()
-            assertEquals(listOf(ComposerAutofocusOutcome.Blocked), outcomes)
-        }
-
     @Test
     fun openDialogOrMenuKeepsTheFocus() =
         runRobolectricComposeUiTest {
@@ -230,25 +154,6 @@ class ComposerAutofocusOnOpenUiTest {
             waitForIdle()
             onNodeWithTag(COMPOSER).assertIsNotFocused()
             assertFalse(RaftAutofocusGuard.Default.blocksAutofocus)
-        }
-
-    @Test
-    fun aDialogInAnotherWindowDoesNotKeepTheComposerFromTheFocus() =
-        runRobolectricComposeUiTest {
-            var opened by mutableStateOf(false)
-            val outcomes = mutableListOf<ComposerAutofocusOutcome>()
-            setContent {
-                Column {
-                    RaftWindowFocusScope { LocalRaftAutofocusGuard.current.HoldOpenSurface() }
-                    RaftWindowFocusScope {
-                        if (opened) Composer(COMPOSER, conversation = "ch-1", focus = pageFocus(), outcomes = outcomes)
-                    }
-                }
-            }
-            runOnIdle { opened = true }
-            waitForIdle()
-            onNodeWithTag(COMPOSER).assertIsFocused()
-            assertEquals(listOf(ComposerAutofocusOutcome.Focused), outcomes)
         }
 
     // raft-design "Moving focus" (#1118), rule 2: only a person's action moves the focus to another

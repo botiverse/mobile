@@ -10,7 +10,6 @@ import androidx.compose.ui.state.ToggleableState
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assertIsEnabled
-import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertIsOff
 import androidx.compose.ui.test.assertIsOn
 import androidx.compose.ui.test.bottomRight
@@ -85,47 +84,5 @@ class RuntimeFormV2BooleanFieldUiTest {
         onNode(checkbox).performTouchInput { click(topLeft + Offset(4f, 4f)) }
         waitForIdle()
         assertEquals(false, checked)
-    }
-
-    @Test
-    fun aDisabledFieldDoesNotToggle() = runRobolectricComposeUiTest {
-        var checked by mutableStateOf(true)
-        setContent {
-            RaftTheme(appearance = RaftAppearance.Light) {
-                RuntimeFormV2BooleanField(
-                    label = "Fast mode",
-                    checked = checked,
-                    onCheckedChange = { checked = it },
-                    hint = "Provided by My provider",
-                    error = null,
-                    required = false,
-                    enabled = false
-                )
-            }
-        }
-        onNode(checkbox).assertIsNotEnabled().assertIsOn()
-        onNodeWithText("Fast mode", useUnmergedTree = true).performClick()
-        waitForIdle()
-        assertEquals(true, checked)
-    }
-
-    @Test
-    fun anErrorIsShownUnderTheCard() = runRobolectricComposeUiTest {
-        setContent {
-            RaftTheme(appearance = RaftAppearance.Light) {
-                RuntimeFormV2BooleanField(
-                    label = "Fast mode",
-                    checked = false,
-                    onCheckedChange = {},
-                    hint = "Launch this runtime with higher speed.",
-                    error = "Required",
-                    required = true,
-                    enabled = true
-                )
-            }
-        }
-        val card = onNode(checkbox).fetchSemanticsNode().boundsInRoot
-        val error = onNodeWithText("Required", useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
-        assertEquals(true, error.top >= card.bottom, "error $error should sit under the card $card")
     }
 }

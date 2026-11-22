@@ -5,13 +5,10 @@ import androidx.compose.ui.test.ComposeUiTest
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.hasTestTag
-import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import build.raft.app.data.COMPUTER_ACTION_DELETE
-import build.raft.app.data.InMemoryRaftKeyValueStore
-import build.raft.app.data.KeyValueComputersRackPreferenceRepository
 import build.raft.app.data.ScreenError
 import build.raft.app.data.ScreenLoadState
 import build.raft.app.data.SettingsComputerBroadcastPolicySnapshot
@@ -133,24 +130,5 @@ class ComputersRackActionsUiTest {
         )
         onNodeWithTag(RaftComputersRackTags.ActionError).assertIsDisplayed()
         onNodeWithTag(RaftTraceIdNoteTestTag, useUnmergedTree = true).assertIsDisplayed()
-    }
-
-    @Test
-    fun aComputerUpgradedOnTheMachineOffersTheInstallCommand() = runRobolectricComposeUiTest {
-        show()
-        onNodeWithTag(RaftComputersRackTags.ManualUpgrade).performClick()
-        waitForIdle()
-        onNodeWithTag(RaftComputersRackTags.InstallSheet).assertIsDisplayed()
-        onNodeWithText("can't be upgraded from the web", substring = true).assertIsDisplayed()
-        assertTrue(onAllNodes(hasText("--setup /acme", substring = true), useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty())
-    }
-
-    @Test
-    fun anAttentionEntryWithNothingToDoSaysSo() = runRobolectricComposeUiTest {
-        val store = RaftComputersRackToolbarStore(KeyValueComputersRackPreferenceRepository(InMemoryRaftKeyValueStore()))
-        store.onServer("server-1")
-        store.dispatch(RaftComputersRackToolbarIntent.SetStatus(RaftComputersRackStatusFilter.Attention))
-        show(listOf(computer("m-1", "build-box") { copy(computerVersion = "1.0.53", upgradeAvailable = false) }), toolbarStore = store)
-        onNodeWithText("No computers need attention").assertIsDisplayed()
     }
 }

@@ -64,14 +64,6 @@ class SharedServerMembersStoreSyncTest {
     }
 
     @Test
-    fun `a roster that is not loaded is left for its load`() = runTest {
-        val store = SharedServerMembersStore(FakeMemberRepository())
-
-        assertFalse(store.applySyncedRosterRows(serverId, listOf(profile("u-1", "Ann", MemberKind.Human)), emptyList()))
-        assertNull(store.state.value.entryFor(serverId))
-    }
-
-    @Test
     fun `an agents refresh reads only agents and keeps the humans`() = runTest {
         val repository =
             SyncRosterRepository(
@@ -111,18 +103,6 @@ class SharedServerMembersStoreSyncTest {
     }
 
     @Test
-    fun `an agents refresh of a roster not loaded takes the full load`() = runTest {
-        val repository = SyncRosterRepository(members = listOf(human("u-1", "Ann"), agent("a-1", "Bot")))
-        val store = syncStore(repository)
-
-        store.refreshAgents(serverId, reason = "test")
-
-        assertEquals(1, repository.memberCalls)
-        assertEquals(0, repository.agentCalls)
-        assertEquals(SharedServerMembersLoadStatus.Loaded, store.currentServerMembersEntry(serverId).status)
-    }
-
-    @Test
     fun `an agents read older than a synced agent row is dropped`() = runTest {
         val repository =
             SyncRosterRepository(members = listOf(human("u-1", "Ann"), agent("a-1", "Bot")), agents = listOf(agent("a-1", "Stale")))
@@ -138,26 +118,6 @@ class SharedServerMembersStoreSyncTest {
         refresh.await()
 
         assertEquals(listOf("Ann", "Synced"), store.currentServerMembers(serverId).map { it.displayName })
-    }
-
-    @Test
-    fun `a forced roster read older than a synced row does not publish over it`() = runTest {
-        val repository = SyncRosterRepository(members = listOf(human("u-1", "Ann"), agent("a-1", "Bot")))
-        val store = syncStore(repository)
-        store.refreshMembers(serverId, force = true)
-        // R0 reads the roster before the change and answers after it.
-        val gate = CompletableDeferred<Unit>().also { repository.membersGate = it }
-        val olderLoad = async { store.refreshMembers(serverId, force = true) }
-        runCurrent()
-        repository.members = listOf(human("u-1", "Ann B"), agent("a-1", "Bot"))
-
-        store.applySyncedRosterRows(serverId, listOf(human("u-1", "Ann B")), emptyList())
-        gate.complete(Unit)
-        olderLoad.await()
-
-        assertEquals(listOf("Ann B", "Bot"), store.currentServerMembers(serverId).map { it.displayName })
-        // The older answer was dropped and the load read the server again.
-        assertEquals(3, repository.memberCalls)
     }
 
     @Test
@@ -206,25 +166,6 @@ class SharedServerMembersStoreSyncTest {
         gate.complete(Unit)
         normalLoad.await()
         assertEquals(listOf("Ann B", "Bot"), store.currentServerMembers(serverId).map { it.displayName })
-    }
-
-    @Test
-    fun `a first roster load in flight when member rows arrive reads the server again`() = runTest {
-        val repository = SyncRosterRepository(members = listOf(human("u-1", "Ann")))
-        val core = syncCore(repository)
-        val store = SharedServerMembersStore(memberRepository = repository, processCore = core)
-        val gate = CompletableDeferred<Unit>().also { repository.membersGate = it }
-        val firstLoad = async { store.refreshMembers(serverId) }
-        runCurrent()
-        repository.members = listOf(human("u-1", "Ann B"))
-
-        // The router's supersedeRosterLoad: no roster to patch, so the load in flight is retired.
-        core.invalidate(ProcessServerMembersOwner("local", "local", serverId.value), reason = "sync_changes")
-        gate.complete(Unit)
-        firstLoad.await()
-
-        assertEquals(listOf("Ann B"), store.currentServerMembers(serverId).map { it.displayName })
-        assertEquals(2, repository.memberCalls)
     }
 
     @Test

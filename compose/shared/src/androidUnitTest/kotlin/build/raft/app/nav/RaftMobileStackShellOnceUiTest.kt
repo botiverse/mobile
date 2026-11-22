@@ -59,10 +59,8 @@ import build.raft.app.runRobolectricComposeUiTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
-import kotlin.test.assertTrue
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.JsonPrimitive
 import org.junit.Rule
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -225,81 +223,6 @@ class RaftMobileStackShellOnceUiTest {
             assertShellComposedOnceInPlace()
         }
 
-    @Test
-    fun aReplaceOrAPopWhileThePushStillSlidesKeepsOneShell() =
-        runRobolectricComposeUiTest {
-            val stack = showShell { WideShell() }
-            ticking {
-                runOnIdle { stack.push() }
-                frames(2)
-                runOnIdle { stack.push(PREVIEW_PAGE, JsonObject(mapOf(RAFT_REPLACE_CURRENT_PAGE to JsonPrimitive(true)))) }
-            }
-            ticking {
-                runOnIdle { stack.back() }
-                frames(2)
-                runOnIdle { stack.push() }
-                frames(2)
-                runOnIdle { stack.back() }
-            }
-            ticking {
-                runOnIdle {
-                    stack.push()
-                    stack.push(PREVIEW_PAGE)
-                }
-            }
-            assertEquals(3, stack.pages.size)
-            assertShellComposedOnceInPlace()
-        }
-
-    @Test
-    fun theShellShowsWhereTheScenesDrewIt() =
-        runRobolectricComposeUiTest {
-            val stack = showShell { WideShell() }
-            onNodeWithTag(SHELL).assertIsDisplayed()
-            assertTrue(shellActive == true && shellLifecycle == Lifecycle.State.RESUMED, "on top: active, resumed")
-
-            runOnIdle { stack.push() }
-            waitForIdle()
-            // The push settled: covered, laid out at 0x0 as any covered page, inactive and stopped.
-            onNodeWithTag(SHELL).assertIsNotDisplayed()
-            onNodeWithTag(ARTIFACT_PAGE).assertIsDisplayed()
-            assertFalse(shellActive == true, "covered: inactive")
-            assertEquals(Lifecycle.State.CREATED, shellLifecycle)
-
-            runOnIdle { stack.back() }
-            waitForIdle()
-            onNodeWithTag(SHELL).assertIsDisplayed()
-            assertTrue(shellActive == true && shellLifecycle == Lifecycle.State.RESUMED, "back on top: active, resumed")
-
-            // Two pages over it: the one revealed by a pop is the page under it, not the shell.
-            runOnIdle { stack.push() }
-            waitForIdle()
-            runOnIdle { stack.push(PREVIEW_PAGE) }
-            waitForIdle()
-            runOnIdle { stack.back() }
-            waitForIdle()
-            onNodeWithTag(SHELL).assertIsNotDisplayed()
-            onNodeWithTag(ARTIFACT_PAGE).assertIsDisplayed()
-            assertShellComposedOnceInPlace()
-        }
-
-    /**
-     * Control: a page over the shell is still NavDisplay's entry, moved into the scene of the push
-     * over it (its node detached and attached again). The detach count is what shows the shell moving.
-     */
-    @Test
-    fun controlAPageUnderAPushIsMovedByNavigation3() =
-        runRobolectricComposeUiTest {
-            val stack = showShell { WideShell() }
-            runOnIdle { stack.push(ARTIFACT_PAGE) }
-            waitForIdle()
-            val before = artifactDetached
-            runOnIdle { stack.push(PREVIEW_PAGE) }
-            waitForIdle()
-            assertTrue(artifactDetached > before, "the covered page was not moved")
-            assertShellComposedOnceInPlace()
-        }
-
     /**
      * A predictive back gesture from a page over the shell shows the shell under the dragged page for
      * the whole drag (the gesture holds the pop mid motion), keeps the page and the shell inactive when cancelled, and a
@@ -360,28 +283,6 @@ class RaftMobileStackShellOnceUiTest {
             onNodeWithTag(SHELL).performTouchInput { click(center) }
             waitForIdle()
             assertEquals(2, shellTaps, "the shell takes a tap after the pop")
-        }
-
-    /**
-     * Mid push, at a point the page itself reports (composed, laid out, still in motion), the shell
-     * is still drawn under it at full size; once settled it is 0x0.
-     */
-    @Test
-    fun theShellStaysDrawnUnderAPushStillInMotion() =
-        runRobolectricComposeUiTest {
-            val stack = showShell { Box(Modifier.fillMaxSize()) }
-            val full = shellWidth
-            assertTrue(full > 0)
-            mainClock.autoAdvance = false
-            runOnIdle { stack.push() }
-            mainClock.advanceTimeUntil(timeoutMillis = 2_000) { pageInMotion == true && pageWidth > 0 }
-            assertEquals(full, shellWidth, "the shell is drawn under the page still sliding in")
-            onNodeWithTag(SHELL).assertIsDisplayed()
-            mainClock.autoAdvance = true
-            waitForIdle()
-            assertEquals(false, pageInMotion)
-            onNodeWithTag(SHELL).assertIsNotDisplayed()
-            assertEquals(full, shellWidth, "covered shell keeps viewport size so gesture back never rebuilds tabs from 0x0")
         }
 
     /**

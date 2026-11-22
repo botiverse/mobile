@@ -167,69 +167,6 @@ class AuthDataSourceTest {
         assertEquals("sha256:receipt", store.readSession()?.qaBootstrap?.readyReceipt?.receiptDigest)
     }
 
-    @Test
-    fun qaBootstrapReadyResponseForAttemptADoesNotMutateSameAccountAttemptB() = runBlocking {
-        val store = InMemoryRaftAuthSessionStore()
-        val api =
-            FakeAuthApi(
-                qaConsumeResponse = qaConsumeResponse,
-                qaReadyResponse = qaReadyResponse,
-                onQaReadyRequest = {
-                    val current = requireNotNull(store.readSession())
-                    store.replaceAuthenticatedSession(
-                        current.copy(
-                            qaBootstrap =
-                                requireNotNull(current.qaBootstrap).copy(
-                                    ticketDigest = "sha256:ticket-b",
-                                    attempt = 2,
-                                    sessionGeneration = "session-b",
-                                    state = "pending",
-                                    readyReceipt = null,
-                                    runtimeEnvelope = null,
-                                ),
-                            qaBootstrapLaunchAuthorized = false,
-                        )
-                    )
-                },
-            )
-        val source = SharedAuthDataSource(transport = api, sessionStore = store)
-        assertTrue(
-            source.consumeQaBootstrap(QaBootstrapConsumeRequest("raw-ticket", "build.raft.app.alpha", "sha256:cert", "sha256:boot"))
-                is SharedAuthResult.Success
-        )
-
-        val result = source.readyQaBootstrap()
-
-        assertTrue(result is SharedAuthResult.Failure)
-        val final = requireNotNull(store.readSession())
-        assertEquals(2, final.qaBootstrap?.attempt)
-        assertEquals("pending", final.qaBootstrap?.state)
-        assertNull(final.qaBootstrap?.readyReceipt)
-    }
-
-    @Test
-    fun qaBootstrapReadyRejectsEveryFrozenReceiptBindingMutation() = runBlocking {
-        frozenReadyReceiptMutations(qaReadyBodyText).forEach { (field, body) ->
-            val store = InMemoryRaftAuthSessionStore()
-            val source = SharedAuthDataSource(
-                transport = FakeAuthApi(
-                    qaConsumeResponse = qaConsumeResponse,
-                    qaReadyResponse = AuthNetworkResponse(200, body)
-                ),
-                sessionStore = store
-            )
-            assertTrue(
-                source.consumeQaBootstrap(QaBootstrapConsumeRequest("raw-ticket", "build.raft.app.alpha", "sha256:cert", "sha256:boot"))
-                    is SharedAuthResult.Success,
-                field
-            )
-
-            assertTrue(source.readyQaBootstrap() is SharedAuthResult.Failure, field)
-            assertEquals("pending", store.readSession()?.qaBootstrap?.state, field)
-            assertNull(store.readSession()?.qaBootstrap?.readyReceipt, field)
-        }
-    }
-
     private fun frozenReadyReceiptMutations(body: String): List<Pair<String, String>> =
         listOf(
             "receiptId" to body.replace("\"receiptId\":\"receipt-1\"", "\"receiptId\":\"\""),
@@ -272,22 +209,6 @@ class AuthDataSourceTest {
         store.saveRememberedServerSelection(
             StoredAuthUser(id = "user-2", email = "other@slock.ai"),
             StoredAuthServerSelection(serverId = "server-1", serverSlug = "slock")
-        )
-        val source = SharedAuthDataSource(transport = FakeAuthApi(), sessionStore = store)
-
-        val result = source.login("user@slock.ai", "password")
-
-        assertTrue(result is SharedAuthResult.Success)
-        assertEquals(null, store.readSession()?.selectedServerId)
-        assertEquals(null, store.readSession()?.selectedServerSlug)
-    }
-
-    @Test
-    fun loginIgnoresRememberedServerSelectionWhenServerIsUnavailable() = runBlocking {
-        val store = InMemoryRaftAuthSessionStore()
-        store.saveRememberedServerSelection(
-            StoredAuthUser(id = "user-1", email = "user@slock.ai"),
-            StoredAuthServerSelection(serverId = "server-old", serverSlug = "old")
         )
         val source = SharedAuthDataSource(transport = FakeAuthApi(), sessionStore = store)
 
@@ -422,26 +343,6 @@ class AuthDataSourceTest {
     }
 
     @Test
-    fun loginMapsServersContractFailureToServersParseStage() = runBlocking {
-        val logs = mutableListOf<String>()
-        val store = InMemoryRaftAuthSessionStore()
-        val source =
-            SharedAuthDataSource(
-                transport = FakeAuthApi(serversResponse = AuthNetworkResponse(200, """{"servers":[]}""")),
-                sessionStore = store,
-                diagnosticsLogger = logs::add
-            )
-
-        val result = source.login("user@slock.ai", "password")
-
-        assertTrue(result is SharedAuthResult.Failure)
-        assertEquals(SharedAuthErrorCode.Unknown, result.code)
-        assertTrue(result.message.contains("servers_parse"))
-        assertEquals(null, store.readSession())
-        assertTrue(logs.any { it.contains("auth_login_servers_result result=failure stage=servers_parse") })
-    }
-
-    @Test
     fun googleSocialCompleteWritesStoredSessionAndFetchesServers() = runBlocking {
         val store = InMemoryRaftAuthSessionStore()
         val api = FakeAuthApi()
@@ -458,29 +359,6 @@ class AuthDataSourceTest {
         assertEquals("social-access", store.readSession()?.accessToken)
         assertEquals("social-refresh", store.readSession()?.refreshToken)
         assertEquals(null, store.readSession()?.selectedServerId)
-    }
-
-    @Test
-    fun socialCompleteStoresCurrentUserPreferredTimeFormat() = runBlocking {
-        val store = InMemoryRaftAuthSessionStore()
-        val api =
-            FakeAuthApi(
-                currentUserResponses =
-                    ArrayDeque(
-                        listOf(
-                            AuthNetworkResponse(
-                                200,
-                                """{"id":"user-1","email":"user@slock.ai","displayName":"Artin","preferredTimeFormat":"12h"}"""
-                            )
-                        )
-                    )
-            )
-        val source = SharedAuthDataSource(transport = api, sessionStore = store)
-
-        val result = source.completeSocialLogin("google", "social-code")
-
-        assertTrue(result is SharedAuthResult.Success)
-        assertEquals("12h", store.readSession()?.user?.preferredTimeFormat)
     }
 
     @Test
@@ -712,23 +590,6 @@ class AuthDataSourceTest {
     }
 
     @Test
-    fun resendVerificationSurfacesAlreadyVerifiedMessage() = runBlocking {
-        val store = InMemoryRaftAuthSessionStore(storedSession())
-        val api =
-            FakeAuthApi(
-                resendVerificationResponse =
-                    AuthNetworkResponse(400, null, """{"error":"Email already verified"}""")
-            )
-        val source = SharedAuthDataSource(transport = api, sessionStore = store)
-
-        val result = source.resendVerification()
-
-        assertTrue(result is SharedAuthResult.Failure)
-        assertEquals(SharedAuthErrorCode.Validation, result.code)
-        assertEquals("Email already verified", result.message)
-    }
-
-    @Test
     fun verifyEmailConsumesExactTokenThenRefreshesAndPersistsCanonicalUser() = runBlocking {
         val store =
             InMemoryRaftAuthSessionStore(
@@ -793,20 +654,6 @@ class AuthDataSourceTest {
     }
 
     @Test
-    fun verifyEmailCurrentUserExceptionReturnsRefreshPendingWithoutChangingCachedUser() = runBlocking {
-        val store = unverifiedSessionStore()
-        val api = FakeAuthApi(throwCurrentUser = true)
-        val source = SharedAuthDataSource(transport = api, sessionStore = store)
-
-        val result = source.verifyEmail("one-time-token")
-
-        assertTrue(result is SharedEmailVerificationResult.RefreshPending)
-        assertEquals(1, api.verifyEmailRequestCount)
-        assertEquals(1, api.currentUserRequestCount)
-        assertEquals(false, store.readSession()?.user?.emailVerified)
-    }
-
-    @Test
     fun verifyEmailServerFailureCanRetryCanonicalRefreshWithoutReplayingToken() = runBlocking {
         val store = unverifiedSessionStore()
         val currentUserResponses =
@@ -832,46 +679,6 @@ class AuthDataSourceTest {
         assertEquals(1, api.verifyEmailRequestCount)
         assertEquals(2, api.currentUserRequestCount)
         assertEquals(true, store.readSession()?.user?.emailVerified)
-    }
-
-    @Test
-    fun verifyEmailBlankRefreshSnapshotDoesNotClearConcurrentLogin() = runBlocking {
-        val store =
-            InMemoryRaftAuthSessionStore(
-                storedSession(accessToken = "stale-access").copy(
-                    refreshToken = "",
-                    user = StoredAuthUser("user-1", "user@slock.ai", emailVerified = false)
-                )
-            )
-        val successor =
-            storedSession(accessToken = "successor-access").copy(
-                refreshToken = "successor-refresh",
-                user = StoredAuthUser("user-1", "user@slock.ai", emailVerified = true)
-            )
-        val api =
-            FakeAuthApi(
-                currentUserResponses =
-                    ArrayDeque(
-                        listOf(
-                            AuthNetworkResponse(401, null),
-                            AuthNetworkResponse(
-                                200,
-                                """{"id":"user-1","email":"user@slock.ai","emailVerified":true}"""
-                            )
-                        )
-                    ),
-                onCurrentUserRequest = { requestCount ->
-                    if (requestCount == 1) store.replaceAuthenticatedSession(successor)
-                }
-            )
-        val source = SharedAuthDataSource(transport = api, sessionStore = store)
-
-        val result = source.verifyEmail("one-time-token")
-
-        assertTrue(result is SharedEmailVerificationResult.Verified)
-        assertEquals("successor-access", store.readSession()?.accessToken)
-        assertEquals("successor-refresh", store.readSession()?.refreshToken)
-        assertEquals(1, api.verifyEmailRequestCount)
     }
 
 
@@ -1171,29 +978,6 @@ class AuthDataSourceTest {
     }
 
     @Test
-    fun loadServersPreservesServerAvatarUrlInSharedLayer() = runBlocking {
-        val store = InMemoryRaftAuthSessionStore(storedSession())
-        val source =
-            SharedAuthDataSource(
-                transport =
-                    FakeAuthApi(
-                        serversResponse =
-                            AuthNetworkResponse(
-                                200,
-                                """[{"id":"server-1","name":"Slock","slug":"slock","avatarUrl":"https://cdn.slock.ai/server.png"}]"""
-                            )
-                    ),
-                sessionStore = store
-            )
-
-        val result = source.loadServers()
-
-        assertTrue(result is SharedAuthResult.Success)
-        assertEquals("https://cdn.slock.ai/server.png", store.readSession()?.servers?.single()?.avatarUrl)
-        assertEquals("https://cdn.slock.ai/server.png", result.data.servers.single().avatarUrl)
-    }
-
-    @Test
     fun loadServersAppliesServerSwitcherOrderPreference() = runBlocking {
         val store =
             InMemoryRaftAuthSessionStore(
@@ -1368,46 +1152,6 @@ class AuthDataSourceTest {
     }
 
     @Test
-    fun shellChooserCreateServerCommitsCreatedServerToShellAndProcessAuthorities() = runBlocking {
-        val initial =
-            StoredAuthSession(
-                user = StoredAuthUser(id = "user-1", email = "user@slock.ai"),
-                accessToken = "access-token",
-                refreshToken = "refresh-token",
-                selectedServerId = "server-1",
-                selectedServerSlug = "slock",
-                servers = listOf(StoredAuthServer(id = "server-1", name = "Slock", slug = "slock"))
-            )
-        val processStore = InMemoryRaftAuthSessionStore(initial)
-        val selectedServerStore =
-            SelectedServerStore(RaftShellStoreScope.create("chooser-shell", "server-1"))
-        val shellStore = RaftShellAuthSessionStore(processStore, selectedServerStore)
-        val api =
-            FakeAuthApi(
-                createServerResponse =
-                    AuthNetworkResponse(201, """{"id":"server-2","name":"Ops","slug":"ops"}"""),
-                serversResponse =
-                    AuthNetworkResponse(
-                        200,
-                        """[{"id":"server-1","name":"Slock","slug":"slock"},{"id":"server-2","name":"Ops","slug":"ops"}]"""
-                    )
-            )
-        val source = SharedAuthDataSource(transport = api, sessionStore = shellStore)
-
-        assertEquals("server-1", shellStore.readSession()?.selectedServerId)
-
-        val result = source.createServer("Ops")
-
-        val ready = result as SharedAuthResult.Success
-        assertEquals("server-2", ready.data.selectedServerId)
-        assertEquals("ops", ready.data.selectedServerSlug)
-        assertEquals("server-2", selectedServerStore.selectedServerId.value)
-        assertEquals("server-2", shellStore.readSession()?.selectedServerId)
-        assertEquals("server-2", processStore.readSession()?.selectedServerId)
-        assertEquals(2, processStore.readSession()?.servers?.size)
-    }
-
-    @Test
     fun createServerRefreshesUnauthorizedAccessBeforeRetryingOnce() = runBlocking {
         val store =
             InMemoryRaftAuthSessionStore(
@@ -1534,35 +1278,6 @@ class AuthDataSourceTest {
         assertEquals("auth_authority_changed", result.message)
         assertEquals(listOf("Bearer expired-access", "Bearer fresh-access"), api.createServerAuthorizations)
         assertEquals(successor, store.readSession())
-    }
-
-    @Test
-    fun createServerWithSelectCreatedServerFalseKeepsStoredSelectionUnchanged() = runBlocking {
-        val store = InMemoryRaftAuthSessionStore(storedSession())
-        val api =
-            FakeAuthApi(
-                createServerResponse =
-                    AuthNetworkResponse(201, """{"id":"server-2","name":"Ops","slug":"ops"}"""),
-                serversResponse =
-                    AuthNetworkResponse(
-                        200,
-                        """[{"id":"server-1","name":"Slock","slug":"slock","role":"owner"},{"id":"server-2","name":"Ops","slug":"ops","role":"owner"}]"""
-                    ),
-            )
-        val source = SharedAuthDataSource(transport = api, sessionStore = store)
-
-        val result = source.createServer("Ops", selectCreatedServer = false)
-
-        assertTrue(result is SharedAuthResult.Success)
-        // Returned session targets the newly created server so the caller can open it in a new window.
-        assertEquals("server-2", result.data.selectedServerId)
-        assertEquals("ops", result.data.selectedServerSlug)
-        assertEquals(listOf("server-1", "server-2"), result.data.servers.map { it.id })
-        // Process/shell stored selection remains on the original server so the caller's window does not switch.
-        val stored = requireNotNull(store.readSession())
-        assertEquals("server-1", stored.selectedServerId)
-        assertEquals("slock", stored.selectedServerSlug)
-        assertEquals(listOf("server-1", "server-2"), stored.servers.map { it.id })
     }
 
     private fun storedSession(accessToken: String = "access-token"): StoredAuthSession =

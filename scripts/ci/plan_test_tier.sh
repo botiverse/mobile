@@ -3,7 +3,7 @@
 set -euo pipefail
 
 usage() {
-  echo "usage: plan_test_tier.sh <event-name> <changed-paths-file> <full-ci:true|false> <ref-name> [dispatch-scope:pr|ios|premerge|full] [xcode-app-path] [premerge-base-ref] [queue-tested:true|false]" >&2
+  echo "usage: plan_test_tier.sh <event-name> <changed-paths-file> <full-ci:true|false> <ref-name> [dispatch-scope:pr|ios|premerge|full] [xcode-app-path] [premerge-base-ref] [queue-tested:true|false] [record-screenshots:true|false]" >&2
   echo "  ref-name: the PR head branch for pull_request (stamp-mq/* = Stamp merge-queue candidate), else github.ref_name" >&2
   exit 2
 }
@@ -78,6 +78,43 @@ change_touches_ios_tests() {
 
 main_push_keeps_ios() {
   change_keeps_ios "$@"
+}
+
+# The design system's tests (:designsystem:verifyRoborazziDesktop: its unit
+# tests and the vcase goldens, the design system's contract) on the jvm
+# Android unit tier: only when the change touches compose/designsystem/. An
+# unavailable diff fails closed to running them.
+change_touches_designsystem() {
+  local changed_paths_file="$1"
+  local path
+  while IFS= read -r path || test -n "$path"; do
+    path="${path%$'\r'}"
+    case "$path" in
+      "$UNKNOWN_PATH_SENTINEL"|compose/designsystem/*)
+        return 0
+        ;;
+    esac
+  done < "$changed_paths_file"
+  return 1
+}
+
+# Build and dependency files (version catalog, Gradle wrapper and properties,
+# build scripts, buildSrc, the patched third_party Compose sources) change how
+# every test and golden renders: an ordinary pull request that touches one keeps
+# the whole Android unit suite (android_unit_scope=all), so a Compose/Skiko
+# bump shows its golden and Robolectric changes before it merges.
+change_touches_build_or_deps() {
+  local changed_paths_file="$1"
+  local path
+  while IFS= read -r path || test -n "$path"; do
+    path="${path%$'\r'}"
+    case "$path" in
+      compose/gradle/*|compose/gradle.properties|compose/*.gradle.kts|compose/*/build.gradle.kts|compose/buildSrc/*|third_party/*)
+        return 0
+        ;;
+    esac
+  done < "$changed_paths_file"
+  return 1
 }
 
 # Classify one repository path. The function mutates the platform booleans in
@@ -175,6 +212,7 @@ emit_plan() {
   local xcode_app_path="${6:-}"
   local premerge_base_ref="${7:-}"
   local queue_tested="${8:-false}"
+  local record_screenshots="${9:-false}"
   run_android=false
   run_ios=false
   local run_device_suite=false
@@ -207,6 +245,22 @@ emit_plan() {
   # status (scripts/ci/check_queue_tested.py); only queue-ci-reuse runs.
   local queue_candidate=false
   local queue_reuse=false
+  # Android unit-test tier (artin 2026-11-22: "PRs run only a little, like
+  # slock"; the web repo's ordinary PRs run types and lightweight checks, its
+  # heavy suites run on staging, nightly and release candidates).
+  # android_unit_scope=jvm, the ordinary PR tier (pull_request without
+  # full-ci, scope=pr, a premerge into main that reruns Android): the Android
+  # job still compiles every main and test source set it compiles today, then
+  # runs only the plain JVM unit tests (-Praft.unitTest.skipRobolectric=true:
+  # no Robolectric class, so no :shared screenshot golden) and
+  # :designsystem:verifyRoborazziDesktop only when run_designsystem_tests (the
+  # change touches compose/designsystem/). android_unit_scope=all, every other
+  # Android run: main and release-* pushes, nightly, full-ci PRs, scope=full,
+  # premerge into a release base, the merge queue candidate and the
+  # record_screenshots dispatch run the whole suite and both golden sets, as
+  # before. none: the plan runs no Android job.
+  local android_unit_scope=all
+  local run_designsystem_tests=true
   reason=""
 
   case "$full_ci" in
@@ -226,6 +280,18 @@ emit_plan() {
   esac
   if test "$queue_tested" = true && ! { test "$event_name" = push && test "$ref_name" = main; }; then
     echo "queue-tested reuse applies only to push to main (got ${event_name} ${ref_name})" >&2
+    return 1
+  fi
+
+  case "$record_screenshots" in
+    true|false) ;;
+    *)
+      echo "record-screenshots flag must be true or false" >&2
+      return 1
+      ;;
+  esac
+  if test "$record_screenshots" = true && test "$event_name" != workflow_dispatch; then
+    echo "record-screenshots is a workflow_dispatch input (got ${event_name})" >&2
     return 1
   fi
 
@@ -275,6 +341,15 @@ emit_plan() {
           pull-request-diff-unavailable-fail-closed) run_android=true ;;
           pull-request-paths:*) reason="pull-request-paths:$(platform_summary)" ;;
         esac
+        # artin 2026-11-22: compile everything, run only the plain JVM unit
+        # tests; Robolectric and the goldens run in the merge queue, on main,
+        # nightly and release.
+        android_unit_scope=jvm
+        if change_touches_build_or_deps "$changed_paths_file"; then
+          android_unit_scope=all
+        elif ! change_touches_designsystem "$changed_paths_file"; then
+          run_designsystem_tests=false
+        fi
       fi
       ;;
     merge_group)
@@ -360,6 +435,9 @@ emit_plan() {
           run_ios=false
           run_device_suite=false
           attachment_api_levels="[]"
+          # The PR tier's Android unit tests; without a diff the design
+          # system's tests run.
+          android_unit_scope=jvm
           reason="workflow_dispatch-pr-tier"
           ;;
         ios)
@@ -399,6 +477,9 @@ emit_plan() {
               case "$reason" in
                 workflow_dispatch-premerge-diff-unavailable-fail-closed)
                   run_android=true
+                  # The PR tier's Android unit tests (the design system's
+                  # tests too: no diff).
+                  android_unit_scope=jvm
                   reason="workflow_dispatch-premerge:diff-unavailable-fail-closed"
                   ;;
                 *)
@@ -466,6 +547,16 @@ emit_plan() {
     ios_lanes='["github-xcode27.1"]'
   fi
 
+  # Recording goldens needs every screenshot test, whatever the scope.
+  if test "$record_screenshots" = true; then
+    android_unit_scope=all
+    run_designsystem_tests=true
+  fi
+  if test "$run_android" != true; then
+    android_unit_scope=none
+    run_designsystem_tests=false
+  fi
+
   printf 'run_android=%s\n' "$run_android"
   printf 'run_ios=%s\n' "$run_ios"
   printf 'run_ios_xcode270=%s\n' "$run_ios_xcode270"
@@ -476,8 +567,10 @@ emit_plan() {
   printf 'attachment_api_levels=%s\n' "$attachment_api_levels"
   printf 'queue_candidate=%s\n' "$queue_candidate"
   printf 'queue_reuse=%s\n' "$queue_reuse"
+  printf 'android_unit_scope=%s\n' "$android_unit_scope"
+  printf 'run_designsystem_tests=%s\n' "$run_designsystem_tests"
   printf 'reason=%s\n' "$reason"
 }
 
-test "$#" -ge 4 && test "$#" -le 8 || usage
-emit_plan "$1" "$2" "$3" "$4" "${5:-}" "${6:-}" "${7:-}" "${8:-false}"
+test "$#" -ge 4 && test "$#" -le 9 || usage
+emit_plan "$1" "$2" "$3" "$4" "${5:-}" "${6:-}" "${7:-}" "${8:-false}" "${9:-false}"

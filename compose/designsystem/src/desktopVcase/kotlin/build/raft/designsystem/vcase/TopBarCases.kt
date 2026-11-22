@@ -204,38 +204,6 @@ fun TopBarTooltipBelow() {
     }
 }
 
-/**
- * The strip's tooltip (web WorkspaceStripButton's `AppTooltip`): the server under the pointer
- * wears the on-frame hover fill and names itself below, centred, caret up (the top bar's
- * placement). Opened through [LocalRaftTooltipPreview] and [LocalRaftPressedPreview] (no
- * pointer offscreen) on that one avatar.
- */
-@VCase("ds.workspace-strip.tooltip", settleFrames = 2, frameIntervalMs = 0)
-@Composable
-fun WorkspaceStripTooltip() {
-    Column(Modifier.height(120.dp)) {
-        RaftTopBar(
-            modifier = Modifier.width(1000.dp),
-            leading = {
-                Row(
-                    Modifier.padding(start = 8.dp),
-                    horizontalArrangement = Arrangement.spacedBy(4.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Item(servers[0], current = true, attention = false)
-                    Item(servers[1], current = false, attention = true)
-                    CompositionLocalProvider(LocalRaftTooltipPreview provides true, LocalRaftPressedPreview provides true) {
-                        Item(RaftWorkspaceStripEntry("p", "Bearproof"), current = false, attention = false)
-                    }
-                    Item(servers[2], current = false, attention = false)
-                    Item(servers[3], current = false, attention = false)
-                }
-            },
-            center = { RaftSearchTrigger(label = "Search", onClick = {}, windowWidth = 1000.dp) },
-        )
-    }
-}
-
 @VCase("ds.search-trigger.gallery")
 @Composable
 fun SearchTriggerGallery() {

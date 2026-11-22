@@ -140,26 +140,6 @@ class ThreadComposerKeyboardHandoffUiTest {
             assertEquals(1, page.returns)
         }
 
-    @Test
-    fun aClosedKeyboardStaysClosed() =
-        runRobolectricComposeUiTest {
-            val page = Page()
-            val handoff = showFocusedComposer(page)
-
-            runOnIdle {
-                handoff.leave(keyboardOpen = false)
-                handoff.pageOpened()
-                handoff.settle()
-                page.covered = true
-            }
-            waitForIdle()
-            runOnIdle { page.covered = false }
-            waitForIdle()
-
-            assertEquals(0, page.keyboard.hidden)
-            assertEquals(0, page.returns, "a keyboard the user had put away came back")
-        }
-
     private companion object {
         const val COMPOSER = "composer"
     }

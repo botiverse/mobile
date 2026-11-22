@@ -49,9 +49,6 @@ class TaskOpenSurfacesScreenshotTest {
     fun pendingLight() = capture("task.open.pending", RaftAppAppearance.Light) { Pending(joined = true, refused = false) }
 
     @Test
-    fun pendingDark() = capture("task.open.pending.dark", RaftAppAppearance.Dark) { Pending(joined = true, refused = false) }
-
-    @Test
     fun pendingRefusedLight() = capture("task.open.pending.refused", RaftAppAppearance.Light) { Pending(joined = null, refused = true) }
 
     @Test

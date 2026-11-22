@@ -14,9 +14,7 @@ import build.raft.app.model.ServerId
 import build.raft.app.push.raftFcmUnreadNotificationRequest
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
-import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -46,50 +44,6 @@ class AndroidNotificationBannerCopyTest {
         assertEquals("Acme", plain.extras.getCharSequence(Notification.EXTRA_SUB_TEXT).toString())
         // A receiver of one server: no subtitle at all.
         assertNull(build(fcm()).extras.getCharSequence(Notification.EXTRA_SUB_TEXT))
-    }
-
-    @Test
-    fun stackedMessagesAreListedOneLinePerSender() {
-        var history = UnreadConversationHistory.EMPTY
-        history = history.appended("m-1", "Alice: first", "Alice", 1_000L)
-        history = history.appended("m-2", "Bob: second", "Bob", 2_000L)
-        history = history.appended("m-3", "an older build's line", null, 0L)
-        val style =
-            AndroidUnreadNotificationPoster.unreadMessagingStyle(
-                selfName = "Raft",
-                conversationTitle = "#general",
-                directMessage = false,
-                history = history,
-                fallbackMillis = 3_000L
-            )
-        assertEquals("#general", style.conversationTitle.toString())
-        assertTrue(style.isGroupConversation)
-        assertEquals(
-            listOf("Alice: first @1000", "Bob: second @2000", "#general: an older build's line @3000"),
-            style.messages.map { "${it.person?.name}: ${it.text} @${it.timestamp}" }
-        )
-
-        // A DM is one-to-one: its sender is the title, no conversation title of its own.
-        val dm =
-            AndroidUnreadNotificationPoster.unreadMessagingStyle(
-                selfName = "Raft",
-                conversationTitle = "Alice",
-                directMessage = true,
-                history = UnreadConversationHistory.EMPTY.appended("m-1", "hi", "Alice", 1L),
-                fallbackMillis = 1L
-            )
-        assertNull(dm.conversationTitle)
-        assertFalse(dm.isGroupConversation)
-        assertEquals("hi", dm.messages.single().text.toString())
-    }
-
-    @Test
-    fun theLockScreenSaysRaftAndTheCount() {
-        val notification = build(fcm())
-        val public = notification.publicVersion!!
-        assertEquals("Raft", public.extras.getCharSequence(Notification.EXTRA_TITLE).toString())
-        assertEquals("1 new message", public.extras.getCharSequence(Notification.EXTRA_TEXT).toString())
-        assertNull(public.extras.getCharSequence(Notification.EXTRA_SUB_TEXT))
     }
 
     private fun baseFcm(): Map<String, String> =

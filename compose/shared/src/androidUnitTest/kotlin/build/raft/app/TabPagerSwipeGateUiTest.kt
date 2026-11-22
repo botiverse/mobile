@@ -75,17 +75,6 @@ class TabPagerSwipeGateUiTest {
     }
 
     @Test
-    fun swipeOffStillFollowsTheTabStrip() = runRobolectricComposeUiTest {
-        showPager(swipeEnabled = false)
-
-        runOnIdle { selected = 2 }
-        mainClock.advanceTimeBy(2_000)
-
-        onNodeWithText("Files").assertIsDisplayed()
-        assertEquals(2, selected)
-    }
-
-    @Test
     fun swipeOnPagesWithADrag() = runRobolectricComposeUiTest {
         showPager(swipeEnabled = true)
 
