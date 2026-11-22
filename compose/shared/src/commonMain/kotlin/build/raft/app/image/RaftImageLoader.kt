@@ -172,6 +172,7 @@ internal fun raftScheduleStartupAvatarPrewarm(
  */
 suspend fun raftClearImageCaches() {
     RaftSentAttachmentLocalImages.registry.clear()
+    build.raft.app.raftFilePreviewAttachmentUrlCache().clear()
     val runningPrewarm =
         synchronized(raftPrewarmLock) {
             raftPrewarmGeneration += 1L

@@ -83,6 +83,7 @@ LUCIDE_ICONS = [
     "bug",
     "building-2",
     "calendar",
+    "calendar-range",
     "camera",
     "chart-bar",
     "chart-column",

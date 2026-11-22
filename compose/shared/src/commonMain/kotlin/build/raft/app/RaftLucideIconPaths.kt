@@ -283,6 +283,20 @@ internal object RaftLucideIconPaths {
                         RaftLucidePathSpec("M3 10h18"),
                     ),
                 )
+            RaftLucideIconName.CalendarRange ->
+                RaftLucideIconSpec(
+                    "calendar-range",
+                    listOf(
+                        RaftLucidePathSpec("M 5.0 4.0 H 19.0 A 2.0 2.0 0 0 1 21.0 6.0 V 20.0 A 2.0 2.0 0 0 1 19.0 22.0 H 5.0 A 2.0 2.0 0 0 1 3.0 20.0 V 6.0 A 2.0 2.0 0 0 1 5.0 4.0 Z"),
+                        RaftLucidePathSpec("M16 2v4"),
+                        RaftLucidePathSpec("M3 10h18"),
+                        RaftLucidePathSpec("M8 2v4"),
+                        RaftLucidePathSpec("M17 14h-6"),
+                        RaftLucidePathSpec("M13 18H7"),
+                        RaftLucidePathSpec("M7 14h.01"),
+                        RaftLucidePathSpec("M17 18h.01"),
+                    ),
+                )
             RaftLucideIconName.Camera ->
                 RaftLucideIconSpec(
                     "camera",

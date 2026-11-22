@@ -1533,7 +1533,7 @@ internal fun ActivityConversationLeading(
         } else {
             // A channel is a place, not a face: the neutral tile at the avatar's 35dp step, with the
             // channel's own glyph as the Home sidebar draws it. A DM (or a thread in one) whose peer is
-            // not loaded yet shows the DM icon, never `#`.
+            // not loaded yet shows the DM glyph in the tile's ink (web `DirectMessageIcon`), never `#`.
             RaftIconTile(size = RaftIconTileSize.Md) {
                 val objectIcon = model.objectIcon
                 if (flipped && model.taskConversation) {
@@ -1543,7 +1543,7 @@ internal fun ActivityConversationLeading(
                 } else if (model.leadingKind == ActivityConversationLeadingKind.Object && objectIcon != null) {
                     RaftLucideIcon(objectIcon, Modifier.size(ConversationTileGlyph), color = raftArgbHex(colors.foregroundMuted))
                 } else if (model.leadingKind == ActivityConversationLeadingKind.DirectMessage || model.threadInDirectMessage) {
-                    RaftLucideIcon(RaftLucideIconName.MessageCircle, Modifier.size(ConversationTileGlyph), color = raftArgbHex(colors.foregroundMuted))
+                    RaftConversationKindIcon(RaftConversationKindGlyph.DirectMessage, size = ConversationTileGlyph)
                 } else {
                     HomeSidebarChannelGlyph(model.channelSymbol, size = ConversationTileGlyph)
                 }

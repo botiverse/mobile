@@ -49,6 +49,9 @@ internal fun migrationCopyResource(copy: MigrationCopy): StringResource =
         MigrationCopy.ErrorHostedReviewNotReady -> Res.string.agent_migration_error_hosted_review_not_ready
         MigrationCopy.ErrorHostedMemoryUnimportable -> Res.string.agent_migration_error_hosted_memory_unimportable
         MigrationCopy.ErrorNotCancelable -> Res.string.agent_migration_error_not_cancelable
+        MigrationCopy.ErrorSuperseded -> Res.string.agent_migration_error_superseded
+        MigrationCopy.ErrorNotDismissible -> Res.string.agent_migration_error_not_dismissible
+        MigrationCopy.ErrorDismissFailed -> Res.string.agent_migration_error_dismiss_failed
         MigrationCopy.ErrorAlreadyInProgress -> Res.string.agent_migration_error_already_in_progress
         MigrationCopy.ErrorProPlanRequired -> raftUpsellCopy(Res.string.agent_migration_error_pro_plan_required)
         MigrationCopy.ErrorTransportNotProvisioned -> Res.string.agent_migration_error_transport_not_provisioned
