@@ -1020,9 +1020,11 @@ internal fun AppShellRealtimeSinkAndNetworkEffects(
                     // Server-membership/profile mutations must invalidate the in-session
                     // roster cache; otherwise updated fields (e.g. avatarUrl) stay stale
                     // until process restart. Agents/Machines scopes already refresh through
-                    // their own projections, so only ServerMembers pays for a roster refetch —
-                    // except agent:updated (a profile edit, e.g. a new avatar), which re-reads
-                    // only the agents, as web re-reads /api/agents.
+                    // their own projections (and `machine:status` triggers a coalesced
+                    // `/agents` recovery at the process realtime owner level), so only
+                    // ServerMembers pays for a full roster refetch — except agent:updated
+                    // (a profile edit, e.g. a new avatar), which re-reads only the agents,
+                    // as web re-reads /api/agents.
                     if (event.isAgentProfileUpdate()) {
                         agentProfileRefreshCoalescer.request(serverId)
                         // An open agent Profile shows `GET /agents/:id`, not the roster: it re-reads too.

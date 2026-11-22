@@ -1784,7 +1784,9 @@ class SharedServerMembersStore internal constructor(
      * [removeMember] does (memory, durable row, presence fact). A roster that is not loaded for the
      * current owner is left alone: its next load reads the server anyway.
      *
-     * Presence is not touched: agent status travels on the presence push, not in the change log.
+     * Synced `agent` rows carry server-resolved `activity` (slock `routes/sync.ts` `buildAgentRows`),
+     * which is projected safely into [presenceRegistry] only for missing or stale carried-over slots
+     * (never clobbering a live socket push or current REST projection).
      * Returns whether the roster changed.
      */
     internal suspend fun applySyncedRosterRows(
@@ -1793,12 +1795,13 @@ class SharedServerMembersStore internal constructor(
         deletes: List<Pair<MemberId, MemberKind>>
     ): Boolean {
         val key = serverId.value.normalizedServerMembersId() ?: return false
+        val owner = processOwner(ServerId(key))
         val binding = currentDirectoryOwnerBinding(ServerId(key)) ?: return false
         if (upserts.isEmpty() && deletes.isEmpty()) return false
         // Before the rows land (Tenny 10-27): a roster or `/agents` read already in flight answers for
         // the list without them and would publish over them later; this retires it (its rejoin
         // reads again) and drops the process cache that still holds the pre-sync list.
-        processOwner(ServerId(key))?.let { owner -> processCore.invalidate(owner, reason = "sync_changes") }
+        owner?.let { processCore.invalidate(it, reason = "sync_changes") }
         var changed = false
         deletes.forEach { (memberId, kind) ->
             if (removeMember(serverId = ServerId(key), memberId = memberId, memberKind = kind)) changed = true
@@ -1814,6 +1817,13 @@ class SharedServerMembersStore internal constructor(
                         _state.value.entriesByServerId[key]
                             ?.takeIf { it.matches(binding) && it.status == SharedServerMembersLoadStatus.Loaded }
                             ?: return@withLock null
+                    val syncPresenceWrite =
+                        owner?.let { expectedOwner ->
+                            presenceWrite(ServerId(key))?.takeIf { it.owner == expectedOwner }
+                        }
+                    if (syncPresenceWrite != null) {
+                        applySyncedAgentPresence(syncPresenceWrite, accepted)
+                    }
                     val incoming = accepted.associateBy { it.kind to it.id.value.trim() }
                     val replaced = mutableSetOf<Pair<MemberKind, String>>()
                     val nextMembers =
@@ -1836,6 +1846,39 @@ class SharedServerMembersStore internal constructor(
             )
         }
         return changed
+    }
+
+    internal fun hasLoadedNonDurableRoster(serverId: ServerId): Boolean {
+        val key = serverId.value.normalizedServerMembersId() ?: return false
+        val owner = processOwner(ServerId(key)) ?: return false
+        val binding = currentDirectoryOwnerBinding(ServerId(key))?.takeIf { it.matches(owner) } ?: return false
+        return _state.value.entriesByServerId[key]?.let {
+            it.matches(binding) && it.status == SharedServerMembersLoadStatus.Loaded && !it.seededFromDurable
+        } == true
+    }
+
+    private fun applySyncedAgentPresence(
+        write: ProcessPresenceWrite,
+        profiles: List<MemberProfile>,
+    ) {
+        profiles.forEach { profile ->
+            if (profile.kind != MemberKind.Agent) return@forEach
+            if (!profile.agentDeletedAt.isNullOrBlank()) return@forEach
+            val status = profile.agentStatus ?: return@forEach
+            presenceRegistry.applySyncedAgentProjection(
+                owner = write.owner,
+                event =
+                    MemberPresenceUpdated(
+                        memberId = profile.id,
+                        presence = status.presence,
+                        kind = MemberKind.Agent,
+                        agentStatus = status,
+                        statusLabel = status.label,
+                        serverSeq = null
+                    ),
+                writeGeneration = write.writeGeneration
+            )
+        }
     }
 
     /**

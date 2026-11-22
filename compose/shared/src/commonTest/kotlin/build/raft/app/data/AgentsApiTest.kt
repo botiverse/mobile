@@ -1009,4 +1009,32 @@ class AgentsApiTest {
         assertEquals(false, assertIs<DataResult.Content<AgentSummary>>(managed.agent(MemberId("agent-1"))).data.isExternal)
         assertEquals(true, assertIs<DataResult.Content<AgentSummary>>(byRuntime.agent(MemberId("agent-1"))).data.toAgentDetailSummary().isExternal)
     }
+
+    @Test
+    fun agentSummaryPrefersActivityKindOverActivityAndKeepsErrorCode() = runPortableCoroutineTest {
+        val kindWins =
+            RaftAgentsApiClient(
+                RecordingAgentsApi(
+                    agentBody = """{"id":"agent-1","name":"bot","status":"active","activity":"offline","activityKind":"online"}"""
+                )
+            )
+        val kindError =
+            RaftAgentsApiClient(
+                RecordingAgentsApi(
+                    agentBody = """{"id":"agent-2","name":"bot","status":"active","activityKind":"error","activityErrorCode":"usage_limit"}"""
+                )
+            )
+        val blankKindFallsBack =
+            RaftAgentsApiClient(
+                RecordingAgentsApi(
+                    agentBody = """{"id":"agent-3","name":"bot","status":"active","activity":"working","activityKind":"  "}"""
+                )
+            )
+
+        assertEquals("online", assertIs<DataResult.Content<AgentSummary>>(kindWins.agent(MemberId("agent-1"))).data.activity)
+        val errorSummary = assertIs<DataResult.Content<AgentSummary>>(kindError.agent(MemberId("agent-2"))).data
+        assertEquals("error", errorSummary.activity)
+        assertEquals(AgentRuntimeErrorCode.UsageLimit, errorSummary.activityErrorCode)
+        assertEquals("working", assertIs<DataResult.Content<AgentSummary>>(blankKindFallsBack.agent(MemberId("agent-3"))).data.activity)
+    }
 }

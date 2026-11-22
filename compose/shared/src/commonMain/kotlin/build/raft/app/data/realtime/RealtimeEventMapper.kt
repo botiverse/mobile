@@ -911,6 +911,7 @@ private data class AgentActivitySubscribedDto(
 private data class AgentActivityDto(
     val agentId: String,
     val activity: String? = null,
+    val activityKind: String? = null,
     val detail: String? = null,
     val detailKind: String? = null,
     val entries: List<JsonObject> = emptyList(),
@@ -1671,8 +1672,9 @@ private fun AgentSeenDto.toDomain(): MemberPresenceUpdated? {
 }
 
 private fun AgentActivityDto.toDomain(): MemberPresenceUpdated? {
+    val resolvedActivity = activityKind?.takeIf { it.isNotBlank() } ?: activity
     val projectedActivity = entries.latestAgentActivityProjection()
-        ?: AgentStatus.fromAgentActivityWireValue(activity)
+        ?: AgentStatus.fromAgentActivityWireValue(resolvedActivity)
             ?.let { status ->
                 AgentActivityStatusProjection(
                     status = status,
@@ -1749,7 +1751,7 @@ private fun List<JsonObject>.latestAgentActivityProjection(): AgentActivityStatu
 private fun JsonObject.toAgentActivityProjection(): AgentActivityStatusProjection? =
     projectAgentActivityStatus(
         kind = stringValue("kind"),
-        activity = stringValue("activity"),
+        activity = stringValue("activityKind") ?: stringValue("activity"),
         detail = stringValue("detail"),
         text = stringValue("text"),
         toolName = stringValue("toolName"),

@@ -1006,6 +1006,68 @@ internal class ProcessMemberPresenceRegistry(
         }
     }
 
+    /**
+     * Projects an agent's server-resolved `activity` from an incremental sync upsert
+     * (`GET /api/sync/changes`, slock `routes/sync.ts` `buildAgentRows`). Because incremental sync
+     * rows arrive without a fetch-start mutation fence, this writes ONLY when the member has no
+     * live fact yet — either absent or holding only a lowest-precedence carried-over fact from
+     * before the last transport advance — so it can never clobber a newer live socket push or
+     * current REST projection. Recording a [ProcessPresenceProjectionSource.RosterCurrent] stamp
+     * prevents older in-flight roster reads or historical trajectory snapshots from rolling the
+     * synced presence backwards, while still letting realtime pushes, concurrent detail reads, and
+     * later roster refreshes supersede it.
+     */
+    fun applySyncedAgentProjection(
+        owner: ProcessServerMembersOwner,
+        event: MemberPresenceUpdated,
+        writeGeneration: Long
+    ): Boolean {
+        val memberId = event.memberId.value.trim()
+        if (memberId.isBlank()) return false
+        while (true) {
+            val current = snapshot.value
+            if (writeGeneration != current.writeGeneration) return false
+            val ownerFacts = current.partitions[owner].orEmpty()
+            val carriedIds = current.carriedOverMembers[owner].orEmpty()
+            val existing = ownerFacts[memberId]
+            if (existing != null && memberId !in carriedIds) return false
+            val requestVersion = current.nextProjectionRequestVersion + 1L
+            val nextOwnerFacts = ownerFacts + (memberId to event.copy(serverSeq = null))
+            val nextPartitions = current.partitions + (owner to nextOwnerFacts)
+            val nextCarriedOverMembers =
+                current.carriedOverMembers.withCarriedOver(owner, carriedIds - memberId)
+            val nextCurrentProjectionStamps =
+                current.currentProjectionStamps +
+                    (
+                        owner to
+                            (
+                                current.currentProjectionStamps[owner].orEmpty() +
+                                    (
+                                        memberId to
+                                            ProcessPresenceCurrentProjectionStamp(
+                                                source = ProcessPresenceProjectionSource.RosterCurrent,
+                                                requestVersion = requestVersion,
+                                                baseRequestVersion = null
+                                            )
+                                    )
+                            )
+                    )
+            if (
+                snapshot.compareAndSet(
+                    current,
+                    current.copy(
+                        partitions = nextPartitions,
+                        currentProjectionStamps = nextCurrentProjectionStamps,
+                        nextProjectionRequestVersion = requestVersion,
+                        carriedOverMembers = nextCarriedOverMembers
+                    )
+                )
+            ) {
+                return true
+            }
+        }
+    }
+
     /** Deleted members must not keep a live fact — in THIS owner only. */
     fun evict(
         owner: ProcessServerMembersOwner,

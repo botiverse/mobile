@@ -166,6 +166,7 @@ private data class WireAgent(
     val creatorId: String? = null,
     val machineId: String? = null,
     val activity: String? = null,
+    val activityKind: String? = null,
     val activityDetail: String? = null,
     val deletedAt: String? = null,
     /**
@@ -706,10 +707,13 @@ fun parseSharedCurrentAgentActivityEntries(
         .mapNotNull { it.toCurrentActivityEntry() }
 }.getOrNull()
 
+private val WireAgent.resolvedActivity: String?
+    get() = activityKind?.takeIf { it.isNotBlank() } ?: activity
+
 private fun WireAgent.toCurrentActivityEntry(): AgentActivityEntry? {
     return currentAgentActivityEntry(
         agentId = MemberId(id),
-        activity = activity,
+        activity = resolvedActivity,
         status = status,
         activityDetail = activityDetail
     )
@@ -1070,7 +1074,7 @@ private fun WireChannelHuman.toMemberProfile(): MemberProfile {
 
 private fun WireAgent.toMemberProfile(): MemberProfile {
     val label = displayName?.takeIf { it.isNotBlank() } ?: name
-    val agentStatus = normalizedAgentRuntimeStatus(activity = activity, lifecycleStatus = status)
+    val agentStatus = normalizedAgentRuntimeStatus(activity = resolvedActivity, lifecycleStatus = status)
     return MemberProfile(
         id = MemberId(id),
         displayName = label,
@@ -1177,7 +1181,7 @@ private fun MemberProfile.withSourceServer(
 
 private fun WireAgent.toAgentProfile(): AgentProfile {
     val label = displayName?.takeIf { it.isNotBlank() } ?: name
-    val agentStatus = normalizedAgentRuntimeStatus(activity = activity, lifecycleStatus = status)
+    val agentStatus = normalizedAgentRuntimeStatus(activity = resolvedActivity, lifecycleStatus = status)
     return AgentProfile(
         id = MemberId(id),
         userId = userId ?: id,
