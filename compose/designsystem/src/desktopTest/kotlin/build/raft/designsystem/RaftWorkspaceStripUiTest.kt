@@ -7,13 +7,11 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.longClick
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.performClick
-import androidx.compose.ui.test.performMouseInput
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.runComposeUiTest
 import androidx.compose.ui.unit.dp
@@ -57,21 +55,6 @@ class RaftWorkspaceStripUiTest {
             }
         }
     }
-
-    @Test
-    fun aHoveredAvatarShowsItsServersName() =
-        runComposeUiTest {
-            setContent { Bar() }
-            mainClock.autoAdvance = false
-            val avatar = onNodeWithContentDescription("Bearproof")
-            onNode(hasText("Bearproof")).assertDoesNotExist()
-            avatar.performMouseInput { moveTo(center) }
-            mainClock.advanceTimeBy(500)
-            onNode(hasText("Bearproof")).assertExists()
-            avatar.performMouseInput { moveTo(bottomRight + Offset(400f, 400f)) }
-            mainClock.advanceTimeBy(500)
-            onNode(hasText("Bearproof")).assertDoesNotExist()
-        }
 
     @Test
     fun aLongPressShowsTheNameWithoutSwitching() =

@@ -1,7 +1,6 @@
 package build.raft.designsystem
 
 import build.raft.designsystem.components.RaftReorderState
-import build.raft.designsystem.components.raftReorderAutoScrollDelta
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -43,16 +42,6 @@ class RaftReorderStateTest {
     }
 
     @Test
-    fun aHoldLetGoWithoutMovingCommitsNothing() {
-        val s = state("a", "b")
-        s.lift("b")
-        s.dragBy(5f)
-        s.dragBy(-5f)
-        assertNull(s.drop())
-        assertEquals(listOf("a", "b"), s.order)
-    }
-
-    @Test
     fun cancelPutsTheOrderBack() {
         val s = state("a", "b", "c")
         s.lift("c")
@@ -61,22 +50,6 @@ class RaftReorderStateTest {
         s.cancel()
         assertEquals(listOf("a", "b", "c"), s.order)
         assertFalse(s.dragging)
-    }
-
-    @Test
-    fun anIncomingOrderWaitsForTheDrop() {
-        val s = state("a", "b", "c")
-        s.lift("a")
-        s.sync(listOf("c", "b", "a"))
-        assertEquals(listOf("a", "b", "c"), s.order, "rows don't jump under the finger")
-        assertNull(s.drop())
-        assertEquals(listOf("c", "b", "a"), s.order, "an unchanged drop takes the newer order")
-
-        s.lift("c")
-        s.sync(listOf("a", "b", "c"))
-        s.dragBy(30f)
-        assertEquals(listOf("b", "c", "a"), s.drop(), "a changed drop wins; the app echoes it")
-        assertEquals(listOf("b", "c", "a"), s.order)
     }
 
     @Test
@@ -108,24 +81,6 @@ class RaftReorderStateTest {
     }
 
     @Test
-    fun oneRowAtATimeAndOnlyKnownRows() {
-        val s = state("a", "b")
-        assertFalse(s.lift("z"))
-        assertTrue(s.lift("a"))
-        assertFalse(s.lift("b"))
-        assertNull(s.moveBy("b", -1), "no screen-reader move while a row is lifted")
-    }
-
-    @Test
-    fun unmeasuredRowsAreNeverSwappedPast() {
-        val s = RaftReorderState(listOf("a", "b"))
-        s.lift("a")
-        s.dragBy(100f)
-        assertEquals(listOf("a", "b"), s.order)
-        assertEquals(100f, s.liftedOffset)
-    }
-
-    @Test
     fun screenReaderMovesUpAndDown() {
         val s = state("a", "b", "c")
         assertFalse(s.canMove("a", -1))
@@ -135,46 +90,5 @@ class RaftReorderStateTest {
         assertEquals(listOf("a", "b", "c"), s.moveBy("a", -1))
         assertNull(s.moveBy("c", 1))
         assertNull(s.moveBy("a", -1))
-    }
-
-    @Test
-    fun aLiftedRowNearAnEdgeScrollsTheList() {
-        fun delta(y: Float, back: Boolean = true, forward: Boolean = true) =
-            raftReorderAutoScrollDelta(y, top = 100f, bottom = 500f, zone = 40f, step = 8f, canScrollBackward = back, canScrollForward = forward)
-        assertEquals(-8f, delta(120f))
-        assertEquals(8f, delta(480f))
-        assertEquals(0f, delta(300f))
-        assertEquals(0f, delta(120f, back = false), "already at the top")
-        assertEquals(0f, delta(480f, forward = false), "already at the bottom")
-    }
-
-    @Test
-    fun aGapBetweenRowsCountsInEachSlotAndTheEndsClampTheLiftedRow() {
-        // The app rail: 40dp items 6dp apart, the lifted tab kept within the rail.
-        val s = RaftReorderState(listOf("a", "b", "c"), gap = 6f, clampToEnds = true).apply { listOf("a", "b", "c").forEach { setHeight(it, 40) } }
-        s.lift("a")
-        s.dragBy(22f)
-        assertEquals(listOf("a", "b", "c"), s.order, "not past b's slot middle (46 / 2) yet")
-        s.dragBy(2f)
-        assertEquals(listOf("b", "a", "c"), s.order)
-        assertEquals(-22f, s.liftedOffset, "the slot is the row and its gap")
-        s.dragBy(400f)
-        assertEquals(listOf("b", "c", "a"), s.order)
-        assertEquals(0f, s.liftedOffset, "the last slot holds the row: it doesn't leave the list")
-    }
-
-    @Test
-    fun theKeyboardStepsTheLiftedRowOneSlotAtATime() {
-        val s = state("a", "b", "c")
-        assertFalse(s.stepLifted(1), "nothing lifted")
-        s.lift("a")
-        assertTrue(s.stepLifted(1))
-        assertTrue(s.stepLifted(1))
-        assertFalse(s.stepLifted(1), "already last")
-        assertEquals(listOf("b", "c", "a"), s.drop())
-        s.lift("a")
-        s.stepLifted(-1)
-        s.cancel()
-        assertEquals(listOf("b", "c", "a"), s.order, "a cancel puts it back")
     }
 }

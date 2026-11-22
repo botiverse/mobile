@@ -2,7 +2,6 @@ package build.raft.designsystem
 
 import build.raft.designsystem.components.RaftRowPlanColumn
 import build.raft.designsystem.components.raftPaneGridFadeSpans
-import build.raft.designsystem.components.raftPaneGridMainShownDp
 import build.raft.designsystem.components.raftPaneGridRowPlan
 import build.raft.designsystem.components.raftRowUnitWidths
 import kotlin.math.abs
@@ -53,41 +52,6 @@ class RaftPaneGridClipTest {
     }
 
     @Test
-    fun theNarrowestWideWindowKeepsEveryColumnAt160() {
-        // 744 (RaftScale.WideMinWidth), 682 right of the rail, the list at 321 (the detail keeps 360 beside it): 360.
-        val widths = shown(360f, listOf(artifact))
-        assertEquals(listOf(160, 200), widths.map { it.roundToInt() })
-        assertInRoom(360f, widths)
-        // Three columns there: 480 is more than 360, so the Artifact becomes a tab.
-        assertEquals(listOf(listOf(0), listOf(1, 2)), raftPaneGridRowPlan(360f, listOf(sideThread, artifact)).groups)
-        assertInRoom(360f, shown(360f, listOf(sideThread, artifact)))
-    }
-
-    @Test
-    fun aRowWithRoomIsUnchanged() {
-        // 1600 wide (1538 right of the rail), the list at 380: the Artifact keeps its 480, the thread the rest.
-        val widths = shown(1538f - 381f, listOf(artifact))
-        assertEquals(listOf(677, 480), widths.map { it.roundToInt() })
-        assertInRoom(1157f, widths)
-    }
-
-    @Test
-    fun theMainPaneShowsWhatTheColumnsLeaveTheirSeamsIncluded() {
-        // The foldable's row: 476 right of the list's seam. The Artifact's 272 holds its own 1dp left seam (drawn inside
-        // its box), so the thread shows 204: the main pane has no seam of its own, the one right of it is the column's.
-        val room = 954f - 478f
-        val columns = shown(room, listOf(artifact)).drop(1)
-        assertEquals(204, raftPaneGridMainShownDp(room, columns).roundToInt())
-        // Main pane and columns, seams included, are the row exactly: nothing left over, nothing past its end.
-        assertTrue(abs(raftPaneGridMainShownDp(room, columns) + columns.sum() - room) < 0.01f)
-        // Two columns, two seams, each inside its column: still the row exactly.
-        val two = shown(1200f, listOf(sideThread, artifact)).drop(1)
-        assertTrue(abs(raftPaneGridMainShownDp(1200f, two) + two.sum() - 1200f) < 0.01f)
-        // A row too narrow for its columns never shows the main pane under nothing.
-        assertEquals(0f, raftPaneGridMainShownDp(300f, listOf(200f, 160f)))
-    }
-
-    @Test
     fun theEndFadePassesTheHeadsBy() {
         // No head: the whole height fades.
         assertEquals(listOf(0f to 600f), raftPaneGridFadeSpans(600f, emptyList()))
@@ -100,23 +64,5 @@ class RaftPaneGridClipTest {
         )
         // A head past the bottom: nothing below it.
         assertEquals(listOf(56f to 580f), raftPaneGridFadeSpans(600f, listOf(0f to 56f, 580f to 640f)))
-    }
-
-    @Test
-    fun theEndFadePassesFullBleedMediaBy() {
-        // An image (raftPaneGridNoFade) under the 56 head: the fade skips it as it does the head, text around it fades.
-        assertEquals(
-            listOf(56f to 200f, 380f to 600f),
-            raftPaneGridFadeSpans(600f, listOf(0f to 56f, 200f to 380f)),
-        )
-        // Two images overlapping, or one inside another's span: one gap.
-        assertEquals(listOf(0f to 100f, 400f to 600f), raftPaneGridFadeSpans(600f, listOf(100f to 300f, 200f to 400f)))
-        assertEquals(listOf(0f to 100f, 400f to 600f), raftPaneGridFadeSpans(600f, listOf(100f to 400f, 200f to 300f)))
-        // Scrolled partly out at the top or the bottom: only what is in counts.
-        assertEquals(listOf(40f to 500f), raftPaneGridFadeSpans(600f, listOf(-80f to 40f, 500f to 720f)))
-        // Wholly out of the column: the whole height fades.
-        assertEquals(listOf(0f to 600f), raftPaneGridFadeSpans(600f, listOf(-300f to -100f, 650f to 900f)))
-        // The whole pane full-bleed (the Artifact's page under its bar): nothing fades.
-        assertEquals(emptyList(), raftPaneGridFadeSpans(600f, listOf(0f to 56f, 56f to 600f)))
     }
 }

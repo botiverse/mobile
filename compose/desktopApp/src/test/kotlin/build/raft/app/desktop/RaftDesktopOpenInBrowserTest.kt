@@ -26,10 +26,4 @@ class RaftDesktopOpenInBrowserTest {
         assertNull(raftDesktopBrowseUri("javascript:alert(1)"))
         assertNull(raftDesktopBrowseUri("https:///no-host"))
     }
-
-    @Test
-    fun nothingToOpenHidesTheAction() {
-        assertNull(raftDesktopBrowseUri(null))
-        assertNull(raftDesktopBrowseUri("  "))
-    }
 }

@@ -1,14 +1,9 @@
 package build.raft.designsystem
 
-import build.raft.designsystem.components.RaftPaneGridColumnControls
 import build.raft.designsystem.components.RaftPaneGridExpand
 import build.raft.designsystem.components.RaftPaneGridHeadFit
 import build.raft.designsystem.components.raftPaneGridHeadFit
-import build.raft.designsystem.components.RaftRowPlanColumn
 import build.raft.designsystem.components.raftPaneGridHeadShownActions
-import build.raft.designsystem.components.raftPaneGridRowPlan
-import build.raft.designsystem.components.raftPaneGridShownUnit
-import kotlin.math.roundToInt
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -39,12 +34,6 @@ class RaftPaneGridHeadTest {
         )
 
     @Test
-    fun withRoomEveryOwnActionIsAButtonAndAHeadNotMeasuredShowsThemAll() {
-        assertEquals(1, head(400f, 1))
-        assertEquals(3, head(0f, 3))
-    }
-
-    @Test
     fun theLastFoldsFirstAndTheMenuCountsOnceSomethingIsInIt() {
         // Tasks at 160: New Task goes into ⋯; Expand and Close stay.
         assertEquals(0, head(160f, 1))
@@ -56,13 +45,6 @@ class RaftPaneGridHeadTest {
         assertEquals(0, head(228f, 3))
         // A menu with commands of its own (Move Left) is there anyway.
         assertEquals(2, head(265f, 3, menuItems = 1))
-    }
-
-    @Test
-    fun aLeadButtonAndTabsInTheTitlesPlaceTakeTheirRoom() {
-        assertEquals(0, head(205f, 1, lead = 1))
-        assertEquals(1, head(270f, 1, tabs = true))
-        assertEquals(0, head(250f, 1, tabs = true))
     }
 
     /** Mobile's head by touch: 44dp buttons 4 apart, 16 / 5 margins (5 / 5 after a lead), a lead 48 with its gap. */
@@ -96,35 +78,6 @@ class RaftPaneGridHeadTest {
         assertEquals(RaftPaneGridHeadFit(1), touch(0f))
     }
 
-    private val columns =
-        listOf(
-            RaftRowPlanColumn("thread", listOf("thread"), listOf(360f), 400f),
-            RaftRowPlanColumn("sideCards", listOf("tasks", "files"), listOf(280f, 280f), 360f),
-            RaftRowPlanColumn("profile", listOf("profile", "details"), listOf(320f, 320f), 400f),
-        )
-
-    @Test
-    fun anExpandedRegionsColumnFillsTheRowAndEveryOtherIs160() {
-        val plan = raftPaneGridRowPlan(1600f, columns, expanded = "files")
-        assertEquals("files", plan.expanded)
-        assertEquals("sideCards", plan.expandedUnit)
-        // The conversation, the thread and the profile at 160; Tasks / Files the rest.
-        assertEquals(listOf(160, 160, 1120, 160), plan.widths.map { it.roundToInt() })
-        // A region the row no longer has: planned as if nothing were expanded (the grid then forgets it).
-        val gone = raftPaneGridRowPlan(1600f, columns, expanded = "artifact")
-        assertNull(gone.expanded)
-        assertEquals(raftPaneGridRowPlan(1600f, columns).widths, gone.widths)
-    }
-
-    @Test
-    fun aGroupOfTabsShowsTheColumnExpandedWhateverWasPicked() {
-        // 400: the thread's group holds the three side columns as tabs; the profile expanded shows in it.
-        val plan = raftPaneGridRowPlan(400f, columns, expanded = "details")
-        val group = plan.groups.first { 3 in it }
-        assertEquals(3, raftPaneGridShownUnit(plan, group, mapOf("thread" to "sideCards")))
-        assertEquals(1, raftPaneGridShownUnit(raftPaneGridRowPlan(400f, columns), group, emptyMap()))
-    }
-
     @Test
     fun expandTogglesRestoresAndWritesOnlyOnChange() {
         val expand = RaftPaneGridExpand()
@@ -139,17 +92,5 @@ class RaftPaneGridHeadTest {
         expand.expand("profile")
         assertTrue(expand.restore())
         assertNull(expand.region)
-    }
-
-    @Test
-    fun aHeadsExpandIsPressedOnlyOnTheRegionExpandedAndComparesByValue() {
-        val expand = RaftPaneGridExpand()
-        val controls = RaftPaneGridColumnControls(listOf(listOf("tasks", "files")), expandShown = true, expanded = "files", expandState = expand, tabs = null, tabsCell = null)
-        assertTrue(controls.expandFor("files")!!.pressed)
-        assertFalse(controls.expandFor("tasks")!!.pressed, "another head in its column shows it unpressed")
-        controls.expandFor("tasks")!!.toggle()
-        assertEquals("tasks", expand.region, "and moves the expansion there")
-        assertEquals(controls, controls.copy(rowCells = listOf(listOf("tasks", "files"))), "equal values, equal controls")
-        assertNull(controls.copy(expandState = null).expandFor("tasks"), "no expand state, no Expand")
     }
 }

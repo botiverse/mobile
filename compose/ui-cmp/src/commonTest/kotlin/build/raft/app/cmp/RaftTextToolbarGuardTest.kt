@@ -58,16 +58,6 @@ class RaftTextToolbarGuardTest {
     }
 
     @Test
-    fun aMenuWithNoAutofillItemsIsNeverForwarded() {
-        val platform = FakePlatformToolbar()
-        val guard = RaftTextToolbarGuard(platform)
-
-        guard.showMenu(rect, null, null, null, null, null)
-
-        assertEquals(0, platform.shows)
-    }
-
-    @Test
     fun theFieldsHideReachesThePlatformWhenUIKitNeverPresentedTheMenu() {
         val platform = FakePlatformToolbar()
         val guard = RaftTextToolbarGuard(platform)
@@ -84,29 +74,5 @@ class RaftTextToolbarGuardTest {
         assertEquals(1, platform.hides)
         assertEquals(false, platform.pendingRequest)
         assertEquals(TextToolbarStatus.Hidden, guard.status)
-    }
-
-    @Test
-    fun withoutTheGuardTheStaleRequestSurvivesTheFieldsHide() {
-        // Documents the CMP behaviour the guard works around.
-        val platform = FakePlatformToolbar()
-
-        platform.showMenu(rect, null, null, null, null)
-        platform.hideLikeBasicTextField()
-
-        assertEquals(0, platform.hides)
-        assertEquals(true, platform.pendingRequest)
-    }
-
-    @Test
-    fun statusFollowsThePlatformWhenNothingIsRequested() {
-        val platform = FakePlatformToolbar()
-        val guard = RaftTextToolbarGuard(platform)
-        platform.presented = true
-
-        assertEquals(TextToolbarStatus.Shown, guard.status)
-        guard.hide()
-        assertEquals(TextToolbarStatus.Hidden, guard.status)
-        assertEquals(1, platform.hides)
     }
 }

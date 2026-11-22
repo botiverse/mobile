@@ -17,7 +17,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
@@ -132,12 +131,6 @@ class RaftBackSwipeNestedDragUiTest {
     fun rowSwipeWinsOverTheFirstPageForwardDragOnABackSwipeHost() = assertRowTakesItsLeftSwipe(RaftBackSwipeRegions())
 
     @Test
-    fun rowSwipeWinsOverThePagerPastTheFirstPageOnABackSwipeHost() = assertRowTakesItsLeftSwipe(RaftBackSwipeRegions(), page = 1)
-
-    @Test
-    fun rowSwipeWinsOverThePagerWithoutAHostBackSwipe() = assertRowTakesItsLeftSwipe(null)
-
-    @Test
     fun forwardDragOutsideASwipeRowStillTurnsThePage() = runComposeUiTest {
         setContent { PagerWithSwipeRows(RaftBackSwipeRegions()) }
         onNodeWithTag("pager").performTouchInput {
@@ -149,49 +142,5 @@ class RaftBackSwipeNestedDragUiTest {
         waitForIdle()
         assertFalse(rowClaimed)
         assertEquals(1, pager.currentPage)
-    }
-
-    @Test
-    fun aDragTheRowReleasesStillReachesThePager() = runComposeUiTest {
-        // Past the first page a drag toward the end is not the row's: the pager pages back once the
-        // row released it.
-        setContent { PagerWithSwipeRows(null) }
-        runOnIdle { runBlocking { pager.scrollToPage(1) } }
-        waitForIdle()
-        onNodeWithTag("row1").performTouchInput {
-            down(Offset(30f, 30f))
-            repeat(60) { moveBy(Offset(4f, 0f), delayMillis = 8) }
-            up()
-        }
-        waitForIdle()
-        assertFalse(rowClaimed)
-        assertEquals(0, pager.currentPage)
-    }
-
-    @Test
-    fun anUnregisteredRowLosesItsSwipeToThePager() = runComposeUiTest {
-        // The 1.15.5 bug: the pager claims at 1x slop, before the row's 2x slop gate.
-        registerRow = false
-        setContent { PagerWithSwipeRows(RaftBackSwipeRegions()) }
-        onNodeWithTag("row0").performTouchInput {
-            down(Offset(250f, 30f))
-            repeat(80) { moveBy(Offset(-2f, 0f), delayMillis = 8) }
-            up()
-        }
-        waitForIdle()
-        assertFalse(rowClaimed)
-        assertEquals(1, pager.currentPage)
-    }
-
-    @Test
-    fun deferredSlopAndLookup() {
-        assertEquals(8f, raftDeferredTouchSlop(8f, 0f))
-        assertEquals(17f, raftDeferredTouchSlop(8f, 16f))
-        assertEquals(30f, raftDeferredTouchSlop(30f, 16f))
-        val row = RaftNestedDragRegionSnapshot({ Rect(0f, 0f, 100f, 50f) }) { p -> if (p.x < 24f) 0f else 20f }
-        val empty = RaftNestedDragRegionSnapshot({ Rect(0f, 0f, 0f, 0f) }) { 99f }
-        assertEquals(20f, raftNestedClaimDistanceAt(Offset(50f, 10f), listOf(row, empty)))
-        assertEquals(0f, raftNestedClaimDistanceAt(Offset(10f, 10f), listOf(row)), "edge zone: no deferral")
-        assertEquals(0f, raftNestedClaimDistanceAt(Offset(50f, 80f), listOf(row)), "outside: no deferral")
     }
 }

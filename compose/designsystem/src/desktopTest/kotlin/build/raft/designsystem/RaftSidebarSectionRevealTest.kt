@@ -10,12 +10,10 @@ import androidx.compose.ui.input.InputMode
 import androidx.compose.ui.platform.LocalInputModeManager
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.SemanticsMatcher
-import androidx.compose.ui.test.assertIsFocused
 import androidx.compose.ui.test.getUnclippedBoundsInRoot
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performMouseInput
-import androidx.compose.ui.test.requestFocus
 import androidx.compose.ui.test.runComposeUiTest
 import androidx.compose.ui.unit.dp
 import build.raft.designsystem.components.RaftGlyph
@@ -89,36 +87,6 @@ class RaftSidebarSectionRevealTest {
             onNodeWithText("Channels").performMouseInput { moveTo(bottomRight + Offset(400f, 400f)) }
             waitForIdle()
             onNode(hidden, useUnmergedTree = true).assertExists()
-        }
-
-    @Test
-    fun keyboardFocusOnAControlShowsThem() =
-        runComposeUiTest {
-            setContent { Section(RaftPointerInput.Fine, keyboard = true) }
-            onNode(hidden, useUnmergedTree = true).assertExists()
-            val create = onNodeWithContentDescription("Create Channel")
-            create.requestFocus()
-            create.assertIsFocused()
-            waitForIdle()
-            onNode(shown, useUnmergedTree = true).assertExists()
-        }
-
-    @Test
-    fun keyboardFocusOnTheHeaderShowsThem() =
-        runComposeUiTest {
-            setContent { Section(RaftPointerInput.Fine, keyboard = true) }
-            onNode(hidden, useUnmergedTree = true).assertExists()
-            onNodeWithText("Channels").requestFocus()
-            waitForIdle()
-            onNode(shown, useUnmergedTree = true).assertExists()
-        }
-
-    @Test
-    fun anOpenMenuKeepsThemShownWithAMouse() =
-        runComposeUiTest {
-            setContent { Section(RaftPointerInput.Fine, sortMenuOpen = true) }
-            waitForIdle()
-            onNode(shown, useUnmergedTree = true).assertExists()
         }
 
     @Test

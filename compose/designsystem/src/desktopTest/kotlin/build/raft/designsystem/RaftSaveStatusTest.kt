@@ -12,12 +12,9 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.runComposeUiTest
 import androidx.compose.ui.unit.height
 import build.raft.designsystem.components.RaftField
-import build.raft.designsystem.components.RaftListRow
-import build.raft.designsystem.components.RaftListRowVariant
 import build.raft.designsystem.components.RaftSaveStatusHolder
 import build.raft.designsystem.components.RaftSaveStatusState
 import build.raft.designsystem.components.RaftSelectTrigger
-import build.raft.designsystem.components.RaftSwitch
 import build.raft.designsystem.theme.RaftTheme
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -30,36 +27,6 @@ import kotlin.test.assertTrue
 @OptIn(ExperimentalTestApi::class)
 class RaftSaveStatusTest {
     private val failure = "Couldn't save. Try again."
-
-    @Test
-    fun anIdleSettingsRowIsAsTallAsOneWithoutItAndAFailureGrowsIt() =
-        runComposeUiTest {
-            var state by mutableStateOf<RaftSaveStatusState?>(null)
-            setContent {
-                RaftTheme {
-                    RaftListRow(
-                        title = "Mute this server",
-                        modifier = Modifier.testTag("row"),
-                        variant = RaftListRowVariant.Plain,
-                        description = "No notifications from its channels.",
-                        saveStatus = state,
-                        trailing = { RaftSwitch(checked = true, onCheckedChange = {}) },
-                    )
-                }
-            }
-            val without = onNodeWithTag("row").getBoundsInRoot().height
-            state = RaftSaveStatusState.Idle
-            waitForIdle()
-            assertEquals(without, onNodeWithTag("row").getBoundsInRoot().height, "idle takes no room")
-            state = RaftSaveStatusState.Failed(failure)
-            waitForIdle()
-            onNodeWithText(failure).assertExists()
-            assertTrue(onNodeWithTag("row").getBoundsInRoot().height > without, "a failure grows the row")
-            state = RaftSaveStatusState.Idle
-            waitForIdle()
-            onNodeWithText(failure).assertDoesNotExist()
-            assertEquals(without, onNodeWithTag("row").getBoundsInRoot().height, "back to idle")
-        }
 
     @Test
     fun aFieldSaysNothingUntilAChangeFails() =

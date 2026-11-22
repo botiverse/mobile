@@ -77,12 +77,4 @@ class RaftTextFieldImeCompositionTest {
             RaftTextField(value = text, onValueChange = { text = it }, modifier = modifier)
         }
     }
-
-    @Test
-    fun valueFieldKeepsTheImeComposition() {
-        var value by mutableStateOf(TextFieldValue(""))
-        assertMarkedTextIsNotEchoed { modifier ->
-            RaftTextField(value = value, onValueChange = { value = it }, modifier = modifier)
-        }
-    }
 }

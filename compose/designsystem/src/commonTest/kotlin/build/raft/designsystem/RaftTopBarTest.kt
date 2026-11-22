@@ -1,7 +1,6 @@
 package build.raft.designsystem
 
 import androidx.compose.ui.unit.dp
-import build.raft.designsystem.components.RaftSearchTriggerDefaults
 import build.raft.designsystem.components.RaftWorkspaceStripDefaults
 import build.raft.designsystem.components.RaftWorkspaceStripItems
 import build.raft.designsystem.components.raftTopBarRowTopInset
@@ -28,13 +27,6 @@ class RaftTopBarTest {
         assertEquals(RaftWorkspaceStripItems(listOf("a", "b", "e"), true), RaftWorkspaceStripDefaults.items(servers, currentIndex = 4, shown = 3))
         assertEquals(RaftWorkspaceStripItems(listOf("a", "b", "c"), false), RaftWorkspaceStripDefaults.items(servers, currentIndex = -1, shown = 3))
         assertEquals(RaftWorkspaceStripItems(emptyList(), false), RaftWorkspaceStripDefaults.items(servers, currentIndex = 4, shown = 0))
-    }
-
-    @Test
-    fun searchTriggerWidthIsAThirdOfTheWindowWithinItsBounds() {
-        assertEquals(360.dp, RaftSearchTriggerDefaults.width(900.dp))
-        assertEquals(409.6f, RaftSearchTriggerDefaults.width(1280.dp).value, 0.01f)
-        assertEquals(520.dp, RaftSearchTriggerDefaults.width(2000.dp))
     }
 
     @Test

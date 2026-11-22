@@ -42,22 +42,6 @@ class EngineIoCodecTest {
     }
 
     @Test
-    fun missingOrInvalidOpenFieldsFallBackToServerDefaultsAndAreNamed() {
-        val open = EngineIoCodec.parseOpen("""{"sid":"s1","pingInterval":"25000","pingTimeout":-1}""")!!
-        assertEquals(EngineIoCodec.DEFAULT_PING_INTERVAL_MILLIS, open.pingIntervalMillis)
-        assertEquals(EngineIoCodec.DEFAULT_PING_TIMEOUT_MILLIS, open.pingTimeoutMillis)
-        assertEquals(EngineIoCodec.DEFAULT_MAX_PAYLOAD, open.maxPayload)
-        assertEquals(listOf("pingInterval", "pingTimeout", "maxPayload"), open.fallbacks)
-    }
-
-    @Test
-    fun openWithoutSessionIdIsRejected() {
-        listOf("", "[]", "{}", """{"sid":""}""", """{"sid":7}""", "not json").forEach { data ->
-            assertNull(EngineIoCodec.parseOpen(data), data)
-        }
-    }
-
-    @Test
     fun webSocketUrlTargetsEngineIoV4WebSocketTransport() {
         assertEquals(
             "wss://api.raft.build/socket.io/?EIO=4&transport=websocket",

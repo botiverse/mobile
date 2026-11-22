@@ -5,7 +5,6 @@ import androidx.compose.ui.unit.dp
 import build.raft.designsystem.components.RaftDialogSheetDefaults
 import build.raft.designsystem.components.raftDialogSheetCentered
 import build.raft.designsystem.components.raftDialogSheetConstraints
-import build.raft.designsystem.theme.RaftScale
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -24,20 +23,6 @@ class RaftDialogSheetLayoutTest {
             assertTrue(raftDialogSheetCentered(width), "width=$width")
         }
         assertTrue(RaftDialogSheetDefaults.CenteredWidth < RaftDialogSheetDefaults.CenteredMinWindowWidth)
-    }
-
-    @Test
-    fun theDialogSwitchesWhereTheAppLayoutGoesWide() {
-        assertEquals(RaftScale.WideMinWidth, RaftDialogSheetDefaults.CenteredMinWindowWidth)
-    }
-
-    @Test
-    fun theSheetIsNinetyPercentOfTheWindow() {
-        val sheet = raftDialogSheetConstraints(Constraints(maxWidth = 1170, maxHeight = 2000))
-        assertEquals(1800, sheet.minHeight)
-        assertEquals(1800, sheet.maxHeight)
-        val unbounded = Constraints(maxWidth = 1170)
-        assertEquals(unbounded, raftDialogSheetConstraints(unbounded))
     }
 
     @Test

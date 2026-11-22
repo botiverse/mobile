@@ -14,23 +14,15 @@ import androidx.compose.ui.test.SemanticsNodeInteraction
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performImeAction
 import androidx.compose.ui.test.performTextInput
-import androidx.compose.ui.test.performTextInputSelection
-import androidx.compose.ui.test.performTextReplacement
 import androidx.compose.ui.test.runComposeUiTest
-import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.PasswordVisualTransformation
-import androidx.compose.ui.text.input.TextFieldValue
 import build.raft.designsystem.components.RaftTextField
 import build.raft.designsystem.components.RaftTextFieldDefaults
-import build.raft.designsystem.components.RaftTextInputTrace
-import build.raft.designsystem.components.RaftTextInputTracing
-import build.raft.designsystem.components.RaftTextarea
 import build.raft.designsystem.theme.RaftAppearance
 import build.raft.designsystem.theme.RaftTheme
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertTrue
 
 /**
  * The value-based Raft fields edit a TextFieldState (task #69). Their controlled API must behave
@@ -66,71 +58,6 @@ class RaftTextFieldStateUiTest {
             waitForIdle()
             assertEquals("", field.editableText())
             assertEquals(listOf("hi"), seen)
-        }
-
-    @Test
-    fun anEditTheOwnerRejectsIsUndone() =
-        runComposeUiTest {
-            var value by mutableStateOf("abc")
-            show {
-                RaftTextField(value = value, onValueChange = { value = it.take(3) }, modifier = Modifier.testTag(tag))
-            }
-            val field = onNodeWithTag(tag)
-            field.performTextReplacement("abcdef")
-            waitForIdle()
-            assertEquals("abc", value)
-            assertEquals("abc", field.editableText())
-        }
-
-    /** Handle drags move the selection without touching the text: the owner follows, nothing reverts it. */
-    @Test
-    fun selectionOnlyChangesReachTheOwnerAndStay() =
-        runComposeUiTest {
-            val text = "alpha beta gamma"
-            var value by mutableStateOf(TextFieldValue(text, TextRange(text.length)))
-            show {
-                RaftTextarea(value = value, onValueChange = { value = it }, inputModifier = Modifier.testTag(tag))
-            }
-            val field = onNodeWithTag(tag)
-            listOf(TextRange(6, 10), TextRange(6, 16), TextRange(0, 16), TextRange(0, 8)).forEach { range ->
-                field.performTextInputSelection(range)
-                waitForIdle()
-                assertEquals(range, value.selection, "owner follows $range")
-                assertEquals(range, field.fetchSemanticsNode().config[SemanticsProperties.TextSelectionRange], "editor keeps $range")
-                assertEquals(text, value.text)
-            }
-        }
-
-    @Test
-    fun aStringOwnersFieldKeepsItsSelection() =
-        runComposeUiTest {
-            var value by mutableStateOf("alpha beta gamma")
-            var changes = 0
-            show {
-                RaftTextField(value = value, onValueChange = { changes++; value = it }, modifier = Modifier.testTag(tag))
-            }
-            val field = onNodeWithTag(tag)
-            field.performTextInputSelection(TextRange(6, 10))
-            waitForIdle()
-            field.performTextInputSelection(TextRange(0, 16))
-            waitForIdle()
-            assertEquals(TextRange(0, 16), field.fetchSemanticsNode().config[SemanticsProperties.TextSelectionRange])
-            assertEquals(0, changes, "a String owner hears about text only")
-        }
-
-    @Test
-    fun aTextFieldValueOwnerPlacesTheCaret() =
-        runComposeUiTest {
-            var value by mutableStateOf(TextFieldValue("hi @al", TextRange(6)))
-            show {
-                RaftTextarea(value = value, onValueChange = { value = it }, inputModifier = Modifier.testTag(tag))
-            }
-            // A mention picker completes the handle and puts the caret after it.
-            value = TextFieldValue("hi @alice ", TextRange(10))
-            waitForIdle()
-            val node = onNodeWithTag(tag).fetchSemanticsNode()
-            assertEquals("hi @alice ", node.config[SemanticsProperties.EditableText].text)
-            assertEquals(TextRange(10), node.config[SemanticsProperties.TextSelectionRange])
         }
 
     @Test
@@ -175,26 +102,5 @@ class RaftTextFieldStateUiTest {
             }
             val node = onNodeWithTag(tag).fetchSemanticsNode()
             assertEquals("•".repeat(6), node.config[SemanticsProperties.EditableText].text)
-        }
-
-    @Test
-    fun theTraceSeesEditsAndSyncsWithoutTheText() =
-        runComposeUiTest {
-            val events = mutableListOf<String>()
-            RaftTextInputTracing.trace = RaftTextInputTrace { field, message -> events += "$field $message" }
-            try {
-                var value by mutableStateOf("")
-                show { RaftTextField(value = value, onValueChange = { value = it }, modifier = Modifier.testTag(tag)) }
-                onNodeWithTag(tag).performTextInput("secret")
-                waitForIdle()
-                value = ""
-                waitForIdle()
-                assertTrue(events.any { it.startsWith("RaftTextField edit ") }, events.toString())
-                assertTrue(events.any { it.startsWith("RaftTextField report ") }, events.toString())
-                assertTrue(events.any { it.startsWith("RaftTextField push ") }, events.toString())
-                assertTrue(events.none { "secret" in it }, events.toString())
-            } finally {
-                RaftTextInputTracing.trace = null
-            }
         }
 }

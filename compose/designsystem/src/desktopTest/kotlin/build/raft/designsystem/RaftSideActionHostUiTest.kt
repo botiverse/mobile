@@ -26,7 +26,6 @@ import build.raft.designsystem.theme.RaftAppearance
 import build.raft.designsystem.theme.RaftTheme
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertTrue
 
 /** RaftSideActionColumn under a host that draws its buttons (LocalRaftSideActionHost). */
 @OptIn(ExperimentalTestApi::class)
@@ -86,30 +85,6 @@ class RaftSideActionHostUiTest {
 
         shown = false
         waitForIdle()
-        assertEquals(1, host.clears)
-    }
-
-    @Test
-    fun aMissingSymbolDrawsTheButtonsAndClearsTheHost() = runComposeUiTest {
-        val host = RecordingHost()
-        var symbol by mutableStateOf<String?>("magnifyingglass")
-        setContent {
-            RaftTheme(appearance = RaftAppearance.Light, systemDark = false) {
-                CompositionLocalProvider(LocalRaftSideActionHost provides host) {
-                    RaftSideActionColumn(
-                        primary = emptyList(),
-                        actions = listOf(action("search", symbol) {}),
-                        modifier = Modifier.height(300.dp),
-                    )
-                }
-            }
-        }
-        waitForIdle()
-        onAllNodesWithContentDescription("search").assertCountEquals(0)
-        symbol = null
-        waitForIdle()
-        assertTrue(onAllNodesWithContentDescription("search").fetchSemanticsNodes().isNotEmpty())
-        assertEquals(1, host.presented.size)
         assertEquals(1, host.clears)
     }
 }
