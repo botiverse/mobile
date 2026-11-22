@@ -22,9 +22,11 @@ import androidx.compose.foundation.layout.systemGestures
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Stable
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -35,7 +37,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.AwaitPointerEventScope
@@ -55,6 +56,7 @@ import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.LayoutDirection
+import androidx.compose.ui.unit.constrainHeight
 import androidx.compose.ui.unit.dp
 import build.raft.designsystem.haptics.rememberRaftHaptics
 import build.raft.designsystem.motion.RaftMotion
@@ -786,7 +788,8 @@ internal fun activitySwipeShowsFullDone(
 /** Measured layout height (px) of a row during its exit collapse: full at 1f, 0 at 0f. */
 internal fun activitySwipeCollapsedHeightPx(measuredHeightPx: Int, collapseProgress: Float): Int {
     if (measuredHeightPx <= 0) return 0
-    return (measuredHeightPx * collapseProgress.coerceIn(0f, 1f)).roundToInt()
+    val safeProgress = if (collapseProgress.isFinite()) collapseProgress.coerceIn(0f, 1f) else 1f
+    return (measuredHeightPx * safeProgress).roundToInt()
 }
 
 /** Whether tapping [action] on the end swipe layer removes the row from the list (Mute keeps it). */
@@ -901,7 +904,12 @@ private class AnimatableActivitySwipeRevealDriver(
             collapseAnimatable.snapTo(target)
             return
         }
-        collapseAnimatable.animateTo(target, tween(ActivitySwipeDoneCollapseMillis, easing = RaftMotion.EaseSlide))
+        val spec: AnimationSpec<Float> =
+            when (kind) {
+                ActivitySwipeAnimationKind.Restore -> spring()
+                else -> tween(ActivitySwipeDoneCollapseMillis, easing = RaftMotion.EaseSlide)
+            }
+        collapseAnimatable.animateTo(target, spec)
     }
 }
 
@@ -910,10 +918,11 @@ private class AnimatableActivitySwipeRevealDriver(
  * height-collapse exit.
  *
  * Every mutation of reveal / collapse goes through one tracked [activeJob] fenced by a monotonic
- * [generation], joining the previous cancelled job before driving [driver]. That eliminates the
- * untracked-`snapTo` vs `animateTo` `MutatorMutex` race and the same-frame `busy` toggle bug where
- * `LaunchedEffect` never ran reset, and ensures Done always expands to full width before collapsing
- * cleanly to zero height without a snap-back flash.
+ * [generation], retaining and joining every cancelled prior job before driving [driver]. That
+ * eliminates the untracked-`snapTo` vs `animateTo` `MutatorMutex` race and the same-frame `busy`
+ * toggle bug where `LaunchedEffect` never ran reset, prevents `beginDrag()` from dropping an
+ * in-flight read toggle, and ensures Done always expands to full width before collapsing cleanly
+ * to zero height without a snap-back flash.
  */
 @Stable
 internal class ActivitySwipeRowController(
@@ -945,33 +954,94 @@ internal class ActivitySwipeRowController(
 
     private var generation: Long = 0L
     private var activeJob: Job? = null
+    private var pendingPrevJobs: List<Job> = emptyList()
     private var activeTarget: Float? = null
     private var pendingDragTarget: Float? = null
 
     private var fullDoneGeneration: Long = 0L
     private var fullDoneJob: Job? = null
+    private var pendingPrevFullDoneJobs: List<Job> = emptyList()
     private var fullDoneTarget: Float? = null
 
-    /** Starts a finger drag; returns false if the row is already animating out. */
-    fun beginDrag(): Boolean {
-        if (isExiting) return false
-        generation += 1L
-        activeJob?.cancel()
+    private fun retireActiveJob(): List<Job> {
+        val jobs =
+            buildList {
+                pendingPrevJobs.forEach { if (!it.isCompleted) add(it) }
+                activeJob?.let { job ->
+                    job.cancel()
+                    if (!job.isCompleted) add(job)
+                }
+            }
         activeJob = null
+        pendingPrevJobs = jobs
+        return jobs
+    }
+
+    private fun retireFullDoneJob(): List<Job> {
+        val jobs =
+            buildList {
+                pendingPrevFullDoneJobs.forEach { if (!it.isCompleted) add(it) }
+                fullDoneJob?.let { job ->
+                    job.cancel()
+                    if (!job.isCompleted) add(job)
+                }
+            }
+        fullDoneJob = null
+        pendingPrevFullDoneJobs = jobs
+        return jobs
+    }
+
+    private suspend fun joinRetiredActiveJobs(jobs: List<Job>) {
+        jobs.forEach { it.join() }
+        if (pendingPrevJobs.isNotEmpty()) {
+            pendingPrevJobs = pendingPrevJobs.filterNot { it.isCompleted }
+        }
+    }
+
+    private suspend fun joinRetiredFullDoneJobs(jobs: List<Job>) {
+        jobs.forEach { it.join() }
+        if (pendingPrevFullDoneJobs.isNotEmpty()) {
+            pendingPrevFullDoneJobs = pendingPrevFullDoneJobs.filterNot { it.isCompleted }
+        }
+    }
+
+    /**
+     * Cancels all in-flight reveal, full-Done, and exit coroutines and advances generation fences
+     * so an orphaned controller (when `stateKey` changes while `scope` stays alive, or on disposal)
+     * can never fire zombie callbacks or drive animations later.
+     */
+    fun cancel() {
+        generation += 1L
+        fullDoneGeneration += 1L
+        retireActiveJob()
+        retireFullDoneJob()
+        pendingDragTarget = null
+        activeTarget = null
+        fullDoneTarget = null
+        phase = ActivitySwipePhase.Idle
+    }
+
+    /** Starts a finger drag; returns false if the row is already completing an action or exiting. */
+    fun beginDrag(): Boolean {
+        if (isCompleting) return false
+        generation += 1L
+        retireActiveJob()
         activeTarget = null
         pendingDragTarget = null
         phase = ActivitySwipePhase.Dragging
         return true
     }
 
-    /** Coalesced drag update: at most one tracked snap job runs at a time, fenced by [generation]. */
+    /** Coalesced drag update: at most one tracked snap job runs at a time, serialized after prior jobs. */
     fun dragTo(targetPx: Float) {
         if (phase != ActivitySwipePhase.Dragging) return
         pendingDragTarget = targetPx
         val dragGen = generation
         if (activeJob?.isActive == true) return
+        val prevJobs = retireActiveJob()
         activeJob =
             scope.launch {
+                joinRetiredActiveJobs(prevJobs)
                 while (generation == dragGen && phase == ActivitySwipePhase.Dragging) {
                     val next = pendingDragTarget ?: break
                     pendingDragTarget = null
@@ -983,14 +1053,13 @@ internal class ActivitySwipeRowController(
 
     /**
      * Ends a drag (release without full-swipe action, or pointer cancellation) and directly
-     * schedules the settle animation serialized after any in-flight drag snap, even if the drag
-     * claimed and ended within a single frame before recomposition.
+     * schedules the settle animation serialized after any in-flight drag snap or prior animation,
+     * even if the drag claimed and ended within a single frame before recomposition.
      */
     fun endDrag(restRevealPx: Float) {
         if (phase != ActivitySwipePhase.Dragging) return
         val myGen = ++generation
-        val prev = activeJob
-        prev?.cancel()
+        val prevJobs = retireActiveJob()
         pendingDragTarget = null
         phase = ActivitySwipePhase.Idle
         activeTarget = restRevealPx
@@ -998,7 +1067,7 @@ internal class ActivitySwipeRowController(
         activeJob =
             scope.launch {
                 try {
-                    prev?.join()
+                    joinRetiredActiveJobs(prevJobs)
                     if (generation != myGen) return@launch
                     if (driver.collapseProgress != 1f) driver.snapCollapseTo(1f)
                     if (driver.revealPx != restRevealPx) {
@@ -1019,15 +1088,21 @@ internal class ActivitySwipeRowController(
     fun syncRest(restRevealPx: Float) {
         if (phase != ActivitySwipePhase.Idle) return
         if (activeJob?.isActive == true && activeTarget == restRevealPx) return
-        if (activeJob?.isActive != true && driver.revealPx == restRevealPx && driver.collapseProgress == 1f) return
+        if (
+            activeJob?.isActive != true &&
+            pendingPrevJobs.all { it.isCompleted } &&
+            driver.revealPx == restRevealPx &&
+            driver.collapseProgress == 1f
+        ) {
+            return
+        }
         val myGen = ++generation
-        val prev = activeJob
-        prev?.cancel()
+        val prevJobs = retireActiveJob()
         activeTarget = restRevealPx
         activeJob =
             scope.launch {
                 try {
-                    prev?.join()
+                    joinRetiredActiveJobs(prevJobs)
                     if (generation != myGen) return@launch
                     if (driver.collapseProgress != 1f) driver.snapCollapseTo(1f)
                     if (driver.revealPx != restRevealPx) {
@@ -1046,15 +1121,20 @@ internal class ActivitySwipeRowController(
         if (isExiting) return
         val target = if (fullDone) 1f else 0f
         if (fullDoneJob?.isActive == true && fullDoneTarget == target) return
-        if (fullDoneJob?.isActive != true && driver.fullDoneProgress == target) return
+        if (
+            fullDoneJob?.isActive != true &&
+            pendingPrevFullDoneJobs.all { it.isCompleted } &&
+            driver.fullDoneProgress == target
+        ) {
+            return
+        }
         val myFullDoneGen = ++fullDoneGeneration
-        val prev = fullDoneJob
-        prev?.cancel()
+        val prevFullDoneJobs = retireFullDoneJob()
         fullDoneTarget = target
         fullDoneJob =
             scope.launch {
                 try {
-                    prev?.join()
+                    joinRetiredFullDoneJobs(prevFullDoneJobs)
                     if (fullDoneGeneration != myFullDoneGen) return@launch
                     if (driver.fullDoneProgress != target) {
                         driver.animateFullDoneTo(target)
@@ -1082,23 +1162,30 @@ internal class ActivitySwipeRowController(
     ) {
         if (isExiting) return
         val myGen = ++generation
-        val prev = activeJob
-        prev?.cancel()
+        val prevJobs = retireActiveJob()
         pendingDragTarget = null
         val myFullDoneGen = ++fullDoneGeneration
-        val prevFullDone = fullDoneJob
-        prevFullDone?.cancel()
-        fullDoneJob = null
+        val prevFullDoneJobs = retireFullDoneJob()
         fullDoneTarget = null
         phase = ActivitySwipePhase.CompletingDone
         val slideTarget = widthPx.coerceAtLeast(0f)
         activeTarget = slideTarget
-        onBeforeDone()
+        var beforeSucceeded = false
+        try {
+            onBeforeDone()
+            beforeSucceeded = true
+        } finally {
+            if (!beforeSucceeded && generation == myGen) {
+                phase = ActivitySwipePhase.Idle
+                activeTarget = null
+                settleVersion += 1
+            }
+        }
         activeJob =
             scope.launch {
                 try {
-                    prev?.join()
-                    prevFullDone?.join()
+                    joinRetiredActiveJobs(prevJobs)
+                    joinRetiredFullDoneJobs(prevFullDoneJobs)
                     if (generation != myGen || fullDoneGeneration != myFullDoneGen) return@launch
                     coroutineScope {
                         launch {
@@ -1140,22 +1227,29 @@ internal class ActivitySwipeRowController(
     ) {
         if (isExiting) return
         val myGen = ++generation
-        val prev = activeJob
-        prev?.cancel()
+        val prevJobs = retireActiveJob()
         pendingDragTarget = null
         val myFullDoneGen = ++fullDoneGeneration
-        val prevFullDone = fullDoneJob
-        prevFullDone?.cancel()
-        fullDoneJob = null
+        val prevFullDoneJobs = retireFullDoneJob()
         fullDoneTarget = null
         phase = ActivitySwipePhase.CompletingExit
         activeTarget = null
-        onBeforeExit()
+        var beforeSucceeded = false
+        try {
+            onBeforeExit()
+            beforeSucceeded = true
+        } finally {
+            if (!beforeSucceeded && generation == myGen) {
+                phase = ActivitySwipePhase.Idle
+                activeTarget = null
+                settleVersion += 1
+            }
+        }
         activeJob =
             scope.launch {
                 try {
-                    prev?.join()
-                    prevFullDone?.join()
+                    joinRetiredActiveJobs(prevJobs)
+                    joinRetiredFullDoneJobs(prevFullDoneJobs)
                     if (generation != myGen || fullDoneGeneration != myFullDoneGen) return@launch
                     driver.animateCollapseTo(0f, ActivitySwipeAnimationKind.DoneCollapse)
                     if (generation != myGen) return@launch
@@ -1176,25 +1270,37 @@ internal class ActivitySwipeRowController(
             }
     }
 
-    /** Completes the start-side Read / Unread toggle and springs the row cleanly back to 0. */
+    /**
+     * Completes the start-side Read / Unread toggle immediately on commit (so cancelling the
+     * subsequent spring-back can never drop the write) and springs the row cleanly back to 0.
+     */
     fun completeToggle(
         onBeforeToggle: () -> Unit,
         onToggleRead: () -> Unit,
     ) {
         if (isCompleting) return
         val myGen = ++generation
-        val prev = activeJob
-        prev?.cancel()
+        val prevJobs = retireActiveJob()
         pendingDragTarget = null
         phase = ActivitySwipePhase.CompletingToggle
         activeTarget = 0f
-        onBeforeToggle()
+        var toggleSucceeded = false
+        try {
+            onBeforeToggle()
+            onToggleRead()
+            toggleSucceeded = true
+        } finally {
+            if (!toggleSucceeded && generation == myGen) {
+                phase = ActivitySwipePhase.Idle
+                activeTarget = null
+                settleVersion += 1
+            }
+        }
         activeJob =
             scope.launch {
                 try {
-                    prev?.join()
+                    joinRetiredActiveJobs(prevJobs)
                     if (generation != myGen) return@launch
-                    onToggleRead()
                     if (driver.revealPx != 0f) {
                         driver.animateRevealTo(0f, ActivitySwipeAnimationKind.Settle)
                     }
@@ -1219,35 +1325,81 @@ internal class ActivitySwipeListHostState {
     var openRow by mutableStateOf(ActivitySwipeOpenRow())
     val geometry = ActivitySwipeOpenRowGeometry()
 
-    fun close() {
-        val next = openRow.close()
+    fun updateOpenRow(next: ActivitySwipeOpenRow) {
         if (next != openRow) openRow = next
+        if (next.key == null) geometry.clearOpenRow()
+    }
+
+    fun close() {
+        updateOpenRow(openRow.close())
     }
 }
 
-/** One non-swipe row removal waiting for its height-collapse animation before committing. */
+/** Whether an in-flight row exit is driven by non-swipe collapse (`exiting = true`) or directly by a swipe gesture. */
+internal enum class ActivityRowExitMode {
+    Collapse,
+    Swipe,
+}
+
+/** One row removal captured at gesture-commit time and waiting for its exit animation before committing. */
 @Immutable
 internal data class ActivityPendingRowExit(
     val item: InboxItem,
     val actionId: String,
+    val mode: ActivityRowExitMode = ActivityRowExitMode.Collapse,
+    val ownerIdentity: String? = null,
+    val listOwnerUserId: String? = null,
+    val listOwnerServerId: String? = null,
 )
 
 /**
- * Tracks rows currently collapsing out after a non-swipe Done / Unfollow (wide/hover Done button,
- * long-press menu, screen reader). Swipe Done and swipe Unfollow drive their own collapse inside
- * [ActivitySwipeActionsBox]. Pure; unit-tested.
+ * Unified list-level tracker for rows currently animating out (both swipe Done / swipe Unfollow
+ * and non-swipe row Done button / long-press menu / screen-reader removals). Captures the live
+ * [InboxItem] and list owner at gesture-commit time so mid-animation scroll-off, row disposal,
+ * list-key mutations, or filter/server switches commit each removal exactly once without dropping
+ * or double-committing it. Pure; unit-tested.
  */
 @Immutable
 internal data class ActivityRowExitState(
     val exitingByKey: Map<String, ActivityPendingRowExit> = emptyMap(),
 ) {
+    /** True while any exit (non-swipe collapse or swipe-driven exit) is in flight for [key]. */
     fun isExiting(key: String): Boolean = key in exitingByKey
 
-    fun start(item: InboxItem, actionId: String): ActivityRowExitState =
+    /**
+     * True when a non-swipe removal should drive [ActivitySwipeActionsBox]'s `exiting` collapse.
+     * Swipe-driven exits run their own slide/collapse inside the row controller directly.
+     */
+    fun isCollapseExiting(key: String, ownerIdentity: String? = null): Boolean {
+        val pending = exitingByKey[key] ?: return false
+        if (pending.mode != ActivityRowExitMode.Collapse) return false
+        return ownerIdentity == null || pending.ownerIdentity == null || pending.ownerIdentity == ownerIdentity
+    }
+
+    fun start(
+        item: InboxItem,
+        actionId: String,
+        mode: ActivityRowExitMode = ActivityRowExitMode.Collapse,
+        ownerIdentity: String? = null,
+        listOwnerUserId: String? = null,
+        listOwnerServerId: String? = null,
+    ): ActivityRowExitState =
         if (item.key in exitingByKey) {
             this
         } else {
-            copy(exitingByKey = exitingByKey + (item.key to ActivityPendingRowExit(item, actionId)))
+            copy(
+                exitingByKey =
+                    exitingByKey +
+                        (item.key to
+                            ActivityPendingRowExit(
+                                item = item,
+                                actionId = actionId,
+                                mode = mode,
+                                ownerIdentity = ownerIdentity,
+                                listOwnerUserId = listOwnerUserId,
+                                listOwnerServerId = listOwnerServerId,
+                            )),
+            )
         }
 
     fun complete(key: String): Pair<ActivityRowExitState, ActivityPendingRowExit?> {
@@ -1255,10 +1407,25 @@ internal data class ActivityRowExitState(
         return copy(exitingByKey = exitingByKey - key) to pending
     }
 
-    fun retain(listedKeys: Collection<String>): ActivityRowExitState {
-        if (exitingByKey.isEmpty()) return this
-        val retained = exitingByKey.filterKeys { it in listedKeys }
-        return if (retained.size == exitingByKey.size) this else copy(exitingByKey = retained)
+    /**
+     * Partitions exits when the rendered list keys change: entries still in [listedKeys] keep
+     * animating; entries dropped from [listedKeys] are popped and returned so the caller commits
+     * them instead of silently discarding them.
+     */
+    fun retainOrCommitDropped(listedKeys: Collection<String>): Pair<ActivityRowExitState, List<ActivityPendingRowExit>> {
+        if (exitingByKey.isEmpty()) return this to emptyList()
+        val listedSet = listedKeys as? Set<String> ?: listedKeys.toSet()
+        val dropped = mutableListOf<ActivityPendingRowExit>()
+        val retained = LinkedHashMap<String, ActivityPendingRowExit>(exitingByKey.size)
+        for ((key, pending) in exitingByKey) {
+            if (key in listedSet) {
+                retained[key] = pending
+            } else {
+                dropped += pending
+            }
+        }
+        if (dropped.isEmpty()) return this to emptyList()
+        return copy(exitingByKey = retained) to dropped
     }
 
     fun flushAll(): Pair<ActivityRowExitState, List<ActivityPendingRowExit>> =
@@ -1307,31 +1474,47 @@ internal class ActivitySwipeOpenRowGeometry {
         openRow = coordinates
     }
 
+    fun clearOpenRow() {
+        openRowKey = null
+        openRow = null
+    }
+
     fun containsInOpenRow(position: Offset, expectedKey: String? = null): Boolean {
         if (expectedKey != null && openRowKey != null && openRowKey != expectedKey) return false
         val panelCoordinates = panel?.takeIf { it.isAttached } ?: return false
         val rowCoordinates = openRow?.takeIf { it.isAttached } ?: return false
-        return panelCoordinates.localBoundingBoxOf(rowCoordinates, clipBounds = false).contains(position)
+        // Clip to ancestor viewport bounds so a row partially scrolled behind the Header / FilterBar
+        // does not swallow outside taps meant to dismiss it.
+        return panelCoordinates.localBoundingBoxOf(rowCoordinates, clipBounds = true).contains(position)
     }
 }
 
 /**
  * Collapses the composable's reported layout height smoothly toward zero during row exit without
  * re-measuring or squeezing its inner content (the inner row stays full height and is clipped
- * symmetrically by an outer [Modifier.clipToBounds]). Reading [collapseProgress] inside [layout]
- * avoids recomposition during every frame of the collapse.
+ * symmetrically by the outer graphics layer with `clip = true`). Reading [collapseProgress] inside
+ * [layout] avoids recomposition during every frame of the collapse.
  */
 private fun Modifier.activitySwipeCollapseHeight(collapseProgress: () -> Float): Modifier =
     layout { measurable, constraints ->
-        val progress = collapseProgress().coerceIn(0f, 1f)
         val placeable = measurable.measure(constraints)
-        val height = activitySwipeCollapsedHeightPx(placeable.height, progress)
-        layout(placeable.width, height) {
-            if (height > 0) {
-                placeable.placeRelative(0, (height - placeable.height) / 2)
+        val rawHeight = activitySwipeCollapsedHeightPx(placeable.height, collapseProgress())
+        val constrainedHeight = constraints.constrainHeight(rawHeight)
+        layout(placeable.width, constrainedHeight) {
+            if (constrainedHeight > 0) {
+                placeable.placeRelative(0, (constrainedHeight - placeable.height) / 2)
             }
         }
     }
+
+private class ActivitySwipeExitLifecycle(
+    var hasEnteredExit: Boolean = false,
+)
+
+private class ActivitySwipeControllerDisposalState(
+    var exiting: Boolean,
+    var onInFlightExitDisposed: () -> Unit,
+)
 
 /**
  * Hosts one conversation-list row with its swipe buttons: [buttons] at its end (a swipe toward the start)
@@ -1341,9 +1524,11 @@ private fun Modifier.activitySwipeCollapseHeight(collapseProgress: () -> Float):
  * Done (8 s Undo); [onAction] Unfollow or Mute; [onToggleRead] the start button's Mark as read / unread.
  * [gestureKey] resets an active pre-commit drag when the list's order generation changes; [stateKey] owns
  * the reveal / exit controller so unrelated list reorders do not abort an in-progress Done exit animation.
- * [exiting] / [onExitCollapsed] drive a height-collapse exit for non-swipe removals (row button / menu).
- * [previewRevealFraction] slides the row by that share of its width on top of [openSide] (negative:
- * toward the end), for screenshots only.
+ * [exiting] / [onExitCollapsed] drive a height-collapse exit for non-swipe removals (row button / menu);
+ * [onBeforeDone] / [onBeforeExitAction] run synchronously at gesture-commit time to capture the live row
+ * before the exit animation begins; [onInFlightExitDisposed] flushes any uncommitted exit if this row
+ * leaves composition mid-animation. [previewRevealFraction] slides the row by that share of its width on
+ * top of [openSide] (negative: toward the end), for screenshots only.
  */
 @Composable
 internal fun ActivitySwipeActionsBox(
@@ -1360,10 +1545,18 @@ internal fun ActivitySwipeActionsBox(
     stateKey: String = gestureKey,
     exiting: Boolean = false,
     onExitCollapsed: () -> Unit = {},
+    onBeforeDone: () -> Boolean = { true },
+    onBeforeExitAction: (ActivitySwipeEndAction) -> Boolean = { true },
+    onInFlightExitDisposed: () -> Unit = {},
     previewRevealFraction: Float = 0f,
     content: @Composable () -> Unit,
 ) {
-    if (buttons.isEmpty() && startButton == null && !exiting) {
+    // Once a row enters an exit for this stateKey, keep the controller mounted through Exited /
+    // disposal so a non-swipe row (no swipe buttons) never tears down the controller and snaps back
+    // to full height while waiting on async list removal (e.g. InboxItemKind.Object).
+    val exitLifecycle = remember(stateKey) { ActivitySwipeExitLifecycle() }
+    if (exiting) exitLifecycle.hasEnteredExit = true
+    if (buttons.isEmpty() && startButton == null && !exiting && !exitLifecycle.hasEnteredExit) {
         Box(modifier) { content() }
         return
     }
@@ -1413,11 +1606,13 @@ internal fun ActivitySwipeActionsBox(
     val currentOnAction by rememberUpdatedState(onAction)
     val currentOnToggleRead by rememberUpdatedState(onToggleRead)
     val currentOnExitCollapsed by rememberUpdatedState(onExitCollapsed)
+    val currentOnBeforeDone by rememberUpdatedState(onBeforeDone)
+    val currentOnBeforeExitAction by rememberUpdatedState(onBeforeExitAction)
     val currentOpenSide by rememberUpdatedState(openSide)
     val currentHasStart by rememberUpdatedState(hasStart)
     // Whether the list around the row is still moving (a fling), read at each gesture's down.
     val listScrolling by rememberUpdatedState(LocalRaftScrollInProgress.current)
-    var widthPx by remember { mutableIntStateOf(0) }
+    val widthPxState = remember { mutableIntStateOf(0) }
     // Starts where the list says the row is, so an open row recomposed (or captured) shows open at once.
     // Signed: positive uncovers the end buttons, negative the start button.
     val controller =
@@ -1430,6 +1625,29 @@ internal fun ActivitySwipeActionsBox(
                 scope = scope,
             )
         }
+    // Bound to this exact controller instance so changing stateKey does not overwrite the outgoing
+    // controller's disposal state before its DisposableEffect.onDispose runs.
+    val controllerDisposal =
+        remember(controller) {
+            ActivitySwipeControllerDisposalState(
+                exiting = exiting,
+                onInFlightExitDisposed = onInFlightExitDisposed,
+            )
+        }
+    controllerDisposal.exiting = exiting
+    controllerDisposal.onInFlightExitDisposed = onInFlightExitDisposed
+    DisposableEffect(controller) {
+        onDispose {
+            val wasInFlightExit =
+                controller.phase == ActivitySwipePhase.CompletingDone ||
+                    controller.phase == ActivitySwipePhase.CompletingExit ||
+                    (controllerDisposal.exiting && controller.phase != ActivitySwipePhase.Exited)
+            controller.cancel()
+            if (wasInFlightExit) {
+                controllerDisposal.onInFlightExitDisposed()
+            }
+        }
+    }
     val restRevealPx = restReveal(openSide)
     // At rest the row follows the list: open on a side, or closed (another row opened, a tap elsewhere,
     // a scroll, Back, tab switch, or post-drag reconciliation via settleVersion).
@@ -1438,21 +1656,27 @@ internal fun ActivitySwipeActionsBox(
     }
     LaunchedEffect(controller, exiting) {
         if (exiting) {
+            exitLifecycle.hasEnteredExit = true
             controller.completeCollapseExit(
                 onBeforeExit = { currentOnOpenChange(null) },
                 onExit = { currentOnExitCollapsed() },
             )
         }
     }
-    val maxReveal = widthPx.toFloat().coerceAtLeast(0f)
-    val shownReveal = (controller.revealPx + previewRevealFraction * widthPx).coerceIn(-maxReveal, maxReveal)
-    val fullDone =
-        activitySwipeShowsFullDone(
-            revealPx = shownReveal,
-            widthPx = widthPx.toFloat(),
-            doneEnabled = doneEnabled,
-            completingDone = controller.completingDone,
-        )
+    val isExiting by remember(controller) { derivedStateOf { controller.isExiting } }
+    val fullDone by
+        remember(controller, doneEnabled, previewRevealFraction) {
+            derivedStateOf {
+                val maxReveal = widthPxState.intValue.toFloat().coerceAtLeast(0f)
+                val shownReveal = (controller.revealPx + previewRevealFraction * maxReveal).coerceIn(-maxReveal, maxReveal)
+                activitySwipeShowsFullDone(
+                    revealPx = shownReveal,
+                    widthPx = maxReveal,
+                    doneEnabled = doneEnabled,
+                    completingDone = controller.completingDone,
+                )
+            }
+        }
     LaunchedEffect(controller, fullDone) {
         controller.syncFullDone(fullDone)
     }
@@ -1460,20 +1684,39 @@ internal fun ActivitySwipeActionsBox(
     val hasSwipeActions = hasEnd || hasStart
     Box(
         modifier
-            // Outer clipToBounds clips to the collapsed height reported by activitySwipeCollapseHeight.
-            .clipToBounds()
-            .activitySwipeCollapseHeight { controller.collapseProgress }
+            // Single graphics layer placed before activitySwipeCollapseHeight so its clip rect
+            // matches the collapsed row height while also clipping horizontal swipe translation.
             .graphicsLayer {
-                val collapse = controller.collapseProgress
+                val rawCollapse = controller.collapseProgress
+                val collapse = if (rawCollapse.isFinite()) rawCollapse else 1f
                 alpha = if (collapse < 1f) (collapse / 0.35f).coerceIn(0f, 1f) else 1f
+                clip = true
             }
-            .onSizeChanged { widthPx = it.width }
-            .then(if (swipeOpen && onOpenRowPlaced != null) Modifier.onPlaced(onOpenRowPlaced) else Modifier)
+            .activitySwipeCollapseHeight { controller.collapseProgress }
+            .onSizeChanged { widthPxState.intValue = it.width }
+            .then(
+                if (isExiting) {
+                    // Block taps, long-presses, buttons, and screen-reader actions while collapsing/exited.
+                    Modifier
+                        .clearAndSetSemantics {}
+                        .pointerInput(controller) {
+                            awaitPointerEventScope {
+                                while (true) {
+                                    val event = awaitPointerEvent(PointerEventPass.Initial)
+                                    event.changes.forEach { it.consume() }
+                                }
+                            }
+                        }
+                } else {
+                    Modifier
+                }
+            )
+            .then(if (swipeOpen && !isExiting && onOpenRowPlaced != null) Modifier.onPlaced(onOpenRowPlaced) else Modifier)
             // iOS full-page pop: an open row, and a row whose swipe toward the end uncovers its start
             // button, keep that drag; the leading edge strip still pops the page. Inert on hosts without a
             // content back swipe.
             .then(
-                if (swipeOpen || hasStart) {
+                if (!isExiting && (swipeOpen || hasStart)) {
                     Modifier.raftBackSwipeRegion(RaftBackSwipeEdgeWidth) { currentOpenSide != null || currentHasStart }
                 } else {
                     Modifier
@@ -1494,7 +1737,7 @@ internal fun ActivitySwipeActionsBox(
                                 val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Main)
                                 // A touch on a list that still flings only stops it (iOS, RecyclerView): this
                                 // gesture is never a swipe. The row sees the down before the list stops.
-                                if (listScrolling() || controller.isExiting) return@awaitEachGesture
+                                if (listScrolling() || controller.isCompleting) return@awaitEachGesture
                                 val slop = viewConfiguration.touchSlop
                                 val atDown = controller.revealPx
                                 val policy =
@@ -1542,11 +1785,12 @@ internal fun ActivitySwipeActionsBox(
                                 var applyOnRelease = false
                                 val tickGate = ActivitySwipeFullDoneTickGate()
                                 val velocity = VelocityTracker()
-                                tickGate.update(activitySwipeArmed(target, widthPx.toFloat(), doneEnabled, hasStart))
+                                tickGate.update(activitySwipeArmed(target, widthPxState.intValue.toFloat(), doneEnabled, hasStart))
                                 try {
                                     while (true) {
                                         val event = awaitPointerEvent(PointerEventPass.Main)
                                         val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                                        val rowWidthPx = widthPxState.intValue.toFloat()
                                         if (!change.pressed) {
                                             change.consume()
                                             velocity.addPointerInputChange(change)
@@ -1555,7 +1799,7 @@ internal fun ActivitySwipeActionsBox(
                                             val revealVelocity = if (isLtr) -dragVelocityX else dragVelocityX
                                             val flick = ActivitySwipeFlickVelocity.toPx()
                                             if (target < 0f) {
-                                                when (activitySwipeStartReleaseTarget(-target, startButtonWidthPx, widthPx.toFloat(), -revealVelocity, flick)) {
+                                                when (activitySwipeStartReleaseTarget(-target, startButtonWidthPx, rowWidthPx, -revealVelocity, flick)) {
                                                     ActivitySwipeStartRelease.Toggle -> {
                                                         settleSide = ActivitySwipeSide.Start
                                                         applyOnRelease = true
@@ -1566,7 +1810,7 @@ internal fun ActivitySwipeActionsBox(
                                             } else {
                                                 when (
                                                     activitySwipeReleaseTarget(
-                                                        target, buttonsWidthPx, widthPx.toFloat(), doneEnabled, revealVelocity, flick,
+                                                        target, buttonsWidthPx, rowWidthPx, doneEnabled, revealVelocity, flick,
                                                     )
                                                 ) {
                                                     ActivitySwipeRelease.Done -> {
@@ -1582,31 +1826,40 @@ internal fun ActivitySwipeActionsBox(
                                         velocity.addPointerInputChange(change)
                                         target =
                                             activitySwipeRevealPx(
-                                                target, change.position.x - change.previousPosition.x, widthPx.toFloat(), isLtr, hasStart, hasEnd,
+                                                target, change.position.x - change.previousPosition.x, rowWidthPx, isLtr, hasStart, hasEnd,
                                             )
                                         change.consume()
-                                        if (tickGate.update(activitySwipeArmed(target, widthPx.toFloat(), doneEnabled, hasStart))) {
+                                        if (tickGate.update(activitySwipeArmed(target, rowWidthPx, doneEnabled, hasStart))) {
                                             currentHaptics.threshold()
                                         }
                                         controller.dragTo(target)
                                     }
                                 } finally {
-                                    // Also on cancellation (pointer input reset): never leave a row half open.
-                                    when {
-                                        applyOnRelease && settleSide == ActivitySwipeSide.End ->
-                                            controller.completeDone(
-                                                widthPx = widthPx.toFloat(),
-                                                onBeforeDone = { currentOnOpenChange(null) },
-                                                onDone = { currentOnDone() },
-                                            )
-                                        applyOnRelease ->
-                                            controller.completeToggle(
-                                                onBeforeToggle = { currentOnOpenChange(null) },
-                                                onToggleRead = { currentOnToggleRead() },
-                                            )
-                                        else -> {
-                                            currentOnOpenChange(settleSide)
-                                            controller.endDrag(restReveal(settleSide))
+                                    // Also on cancellation (pointer input reset): never leave a row half open,
+                                    // and never re-open or double-commit a row that already started exiting.
+                                    if (controller.phase == ActivitySwipePhase.Dragging && !controller.isExiting) {
+                                        when {
+                                            applyOnRelease && settleSide == ActivitySwipeSide.End ->
+                                                if (currentOnBeforeDone()) {
+                                                    exitLifecycle.hasEnteredExit = true
+                                                    controller.completeDone(
+                                                        widthPx = widthPxState.intValue.toFloat(),
+                                                        onBeforeDone = { currentOnOpenChange(null) },
+                                                        onDone = { currentOnDone() },
+                                                    )
+                                                } else {
+                                                    currentOnOpenChange(null)
+                                                    controller.endDrag(0f)
+                                                }
+                                            applyOnRelease ->
+                                                controller.completeToggle(
+                                                    onBeforeToggle = { currentOnOpenChange(null) },
+                                                    onToggleRead = { currentOnToggleRead() },
+                                                )
+                                            else -> {
+                                                currentOnOpenChange(settleSide)
+                                                controller.endDrag(restReveal(settleSide))
+                                            }
                                         }
                                     }
                                 }
@@ -1617,59 +1870,68 @@ internal fun ActivitySwipeActionsBox(
                 }
             )
     ) {
-        if (shownReveal > 0f && hasEnd) {
-            ActivitySwipeButtonsLayer(
-                buttons = buttons,
-                revealPx = shownReveal,
-                fullDoneProgress = controller.fullDoneProgress,
-                onTap = { button ->
-                    if (controller.isCompleting) return@ActivitySwipeButtonsLayer
+        ActivitySwipeUnderlayLayers(
+            controller = controller,
+            widthPx = { widthPxState.intValue },
+            previewRevealFraction = previewRevealFraction,
+            buttons = buttons,
+            hasEnd = hasEnd,
+            startButton = startButton,
+            onEndButtonTap = { button ->
+                if (!controller.isCompleting) {
                     when (val action = button.endAction) {
                         null ->
-                            controller.completeDone(
-                                widthPx = widthPx.toFloat(),
-                                onBeforeDone = { currentOnOpenChange(null) },
-                                onDone = { currentOnDone() },
-                            )
+                            if (currentOnBeforeDone()) {
+                                exitLifecycle.hasEnteredExit = true
+                                controller.completeDone(
+                                    widthPx = widthPxState.intValue.toFloat(),
+                                    onBeforeDone = { currentOnOpenChange(null) },
+                                    onDone = { currentOnDone() },
+                                )
+                            } else {
+                                currentOnOpenChange(null)
+                                controller.syncRest(0f)
+                            }
                         else ->
                             if (activitySwipeEndActionRemovesRow(action)) {
-                                controller.completeCollapseExit(
-                                    onBeforeExit = { currentOnOpenChange(null) },
-                                    onExit = { currentOnAction(action) },
-                                )
+                                if (currentOnBeforeExitAction(action)) {
+                                    exitLifecycle.hasEnteredExit = true
+                                    controller.completeCollapseExit(
+                                        onBeforeExit = { currentOnOpenChange(null) },
+                                        onExit = { currentOnAction(action) },
+                                    )
+                                } else {
+                                    currentOnOpenChange(null)
+                                    controller.syncRest(0f)
+                                }
                             } else {
                                 currentOnOpenChange(null)
                                 currentOnAction(action)
                             }
                     }
-                },
-                modifier = Modifier.matchParentSize(),
-            )
-        }
-        if (shownReveal < 0f && startButton != null) {
-            ActivitySwipeStartButtonLayer(
-                button = startButton,
-                revealPx = -shownReveal,
-                onTap = {
-                    if (controller.isCompleting) return@ActivitySwipeStartButtonLayer
+                }
+            },
+            onStartButtonTap = {
+                if (!controller.isCompleting) {
                     controller.completeToggle(
                         onBeforeToggle = { currentOnOpenChange(null) },
                         onToggleRead = { currentOnToggleRead() },
                     )
-                },
-                modifier = Modifier.matchParentSize(),
-            )
-        }
+                }
+            },
+            modifier = Modifier.matchParentSize(),
+        )
         // The row itself, opaque on the panel's surface so the buttons show only where it slid away.
         Box(
             Modifier
                 .offset {
-                    val value = (controller.revealPx + previewRevealFraction * widthPx).coerceIn(-maxReveal, maxReveal)
+                    val maxReveal = widthPxState.intValue.toFloat().coerceAtLeast(0f)
+                    val value = (controller.revealPx + previewRevealFraction * maxReveal).coerceIn(-maxReveal, maxReveal)
                     IntOffset((if (isLtr) -value else value).roundToInt(), 0)
                 }
                 .background(RaftColor.SurfaceWhite)
                 .then(
-                    if (swipeOpen) {
+                    if (swipeOpen && !isExiting) {
                         // A tap on the open row closes it instead of opening the conversation; a drag
                         // still reaches the swipe (and a vertical one the list).
                         Modifier.pointerInput(Unit) {
@@ -1685,6 +1947,43 @@ internal fun ActivitySwipeActionsBox(
         ) {
             content()
         }
+    }
+}
+
+/**
+ * Isolates per-frame [ActivitySwipeRowController.revealPx] and [ActivitySwipeRowController.fullDoneProgress]
+ * reads into their own non-inline recompose scope so dragging or sliding never recomposes the outer
+ * [ActivitySwipeActionsBox] or its foreground row content.
+ */
+@Composable
+private fun ActivitySwipeUnderlayLayers(
+    controller: ActivitySwipeRowController,
+    widthPx: () -> Int,
+    previewRevealFraction: Float,
+    buttons: List<ActivitySwipeButton>,
+    hasEnd: Boolean,
+    startButton: ActivitySwipeButton?,
+    onEndButtonTap: (ActivitySwipeButton) -> Unit,
+    onStartButtonTap: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val maxReveal = widthPx().toFloat().coerceAtLeast(0f)
+    val shownReveal = (controller.revealPx + previewRevealFraction * maxReveal).coerceIn(-maxReveal, maxReveal)
+    if (shownReveal > 0f && hasEnd) {
+        ActivitySwipeButtonsLayer(
+            buttons = buttons,
+            revealPx = shownReveal,
+            fullDoneProgress = controller.fullDoneProgress,
+            onTap = onEndButtonTap,
+            modifier = modifier,
+        )
+    } else if (shownReveal < 0f && startButton != null) {
+        ActivitySwipeStartButtonLayer(
+            button = startButton,
+            revealPx = -shownReveal,
+            onTap = onStartButtonTap,
+            modifier = modifier,
+        )
     }
 }
 

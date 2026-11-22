@@ -1069,7 +1069,7 @@ private fun SharedActivityPanelContent(
                 .activitySwipeCloseOnOutsideDown(
                     geometry = swipeHostState.geometry,
                     openRow = { swipeHostState.openRow },
-                    onChange = { swipeHostState.openRow = it },
+                    onChange = { swipeHostState.updateOpenRow(it) },
                 )
     ) {
         SharedActivityHeader(
@@ -1102,6 +1102,7 @@ private fun SharedActivityPanelContent(
             totalUnreadCount = state.activityConversationUnreadCount(),
             onFilterSelected = { onIntent(SharedActivityIntent.SetFilter(it)) },
             onMarkAllRead = {
+                swipeHostState.close()
                 RaftProductEvents.activityMark(RaftActivityMarkAction.ReadAll)
                 onIntent(SharedActivityIntent.MarkAllRead)
             },
@@ -1948,7 +1949,9 @@ internal fun SharedActivityList(
     val ownedSwipeHostState = remember { ActivitySwipeListHostState() }
     val effectiveSwipeHost = swipeHostState ?: ownedSwipeHostState
     val ownsOutsideDismiss = swipeHostState == null
-    var pendingRowExits by remember(presentationOwnerIdentity) { mutableStateOf(ActivityRowExitState()) }
+    // Single list-level exit map shared by DisposableEffect(presentationOwnerIdentity) and per-row
+    // DisposableEffect(controller) so mid-animation flushes commit each row once without double-committing.
+    var pendingRowExits by remember { mutableStateOf(ActivityRowExitState()) }
     val swipeDoneHiddenKey = swipeDoneUndo.hiddenKey
     // Day headings (web slock #13030) by the live clock: they turn at the person's midnight.
     val listTimeContext = currentRaftTimeContext(timeContext)
@@ -1997,6 +2000,7 @@ internal fun SharedActivityList(
             currentPresentationGeneration = presentationGenerationState.value,
         )
     fun openRow(renderedItemKey: String) {
+        if (pendingRowExits.isExiting(renderedItemKey)) return
         val currentItem = committedRowItem(renderedItemKey) ?: return
         // Workspace Artifacts (v1): an object row opens its page on the web (environment web URL),
         // and reading it is the row's Read, as opening it in Raft would be.
@@ -2035,6 +2039,7 @@ internal fun SharedActivityList(
         onOpenItem(currentItem)
     }
     fun openRowMenu(renderedItemKey: String, anchor: RaftPopoverAnchor) {
+        if (pendingRowExits.isExiting(renderedItemKey)) return
         val currentItem = committedRowItem(renderedItemKey) ?: return
         effectiveSwipeHost.close()
         activeMenuItem = currentItem
@@ -2091,19 +2096,13 @@ internal fun SharedActivityList(
         objectUndo = objectUndo.flushUnfollow { latestOnIntent(SharedActivityIntent.UnfollowObject(it)) }
         objectUndo = objectUndo.unfollow(item)
     }
-    fun swipeRowDone(renderedItemKey: String) {
-        val currentItem = committedRowItem(renderedItemKey) ?: return
-        if (currentItem.kind == InboxItemKind.Object) {
-            objectRowDone(currentItem)
-            return
-        }
-        // One toast at a time: an end swipe's toast gives way (its action stands).
-        swipeEndUndo = swipeEndUndo.dismiss()
-        applySwipeDone(swipeDoneUndo.swipe(currentItem))
-    }
     // raft-design #790: a thread's Unfollow (swipe button or menu) takes the row out at once and is only
     // sent when its toast ends; Undo sends nothing and shows the row again as it was.
-    fun deferThreadUnfollow(item: InboxItem) {
+    fun deferThreadUnfollow(
+        item: InboxItem,
+        listOwnerUserId: String? = presentationAccountId.takeIf { it.isNotEmpty() },
+        listOwnerServerId: String? = presentationServerId,
+    ) {
         // Web #11687: the thread's unread leaves Home now, while the request waits for the toast.
         latestOnIntent(SharedActivityIntent.ProjectThreadUnfollow(item, HomeThreadUnfollowPhase.Unfollowed))
         swipeEndUndo = swipeEndUndo.dismiss()
@@ -2112,8 +2111,8 @@ internal fun SharedActivityList(
             swipeDoneUndo.swipe(
                 item,
                 ActivitySwipeDeferredAction.Unfollow,
-                listOwnerUserId = presentationAccountId.takeIf { it.isNotEmpty() },
-                listOwnerServerId = presentationServerId,
+                listOwnerUserId = listOwnerUserId,
+                listOwnerServerId = listOwnerServerId,
             )
         )
     }
@@ -2123,12 +2122,81 @@ internal fun SharedActivityList(
             is ActivitySwipeEndCommand.ChannelMute -> channelMute?.onToggle?.invoke(command.channelId, command.muted)
         }
     }
-    // The swipe's Unfollow / Mute Activity button: written on tap like the menu item; the toast's Undo
-    // writes the reverse (ActivityConversationSwipe.kt).
-    fun swipeRowEnd(renderedItemKey: String) {
+    // The row menu's items and the row's screen-reader actions (raft-design #776 / #777): one write each,
+    // with the menu's analytics. Done and Unfollow take the row out of the list, so on every route they
+    // wait out the swipe's Undo toast (web #12107, Raft DS › Feedback, "Confirming").
+    fun commitRowAction(
+        item: InboxItem,
+        actionId: String,
+        listOwnerUserId: String? = presentationAccountId.takeIf { it.isNotEmpty() },
+        listOwnerServerId: String? = presentationServerId,
+    ) {
+        if (item.kind == InboxItemKind.Object && actionId == "done") return objectRowDone(item)
+        if (item.kind == InboxItemKind.Object && actionId == "unfollow-object") return objectRowUnfollow(item)
+        if (actionId == "unfollow-thread") return deferThreadUnfollow(item, listOwnerUserId, listOwnerServerId)
+        if (actionId == "done") {
+            // One toast at a time: an end swipe's toast gives way (its action stands).
+            swipeEndUndo = swipeEndUndo.dismiss()
+            applySwipeDone(swipeDoneUndo.swipe(item))
+            return
+        }
+        val write = activityRowActionWrite(item, actionId)
+        write.markAction?.let(RaftProductEvents::activityMark)
+        runSwipeEndCommand(write.command)
+    }
+    fun commitPendingRowExit(pending: ActivityPendingRowExit) {
+        commitRowAction(
+            item = pending.item,
+            actionId = pending.actionId,
+            listOwnerUserId = pending.listOwnerUserId,
+            listOwnerServerId = pending.listOwnerServerId,
+        )
+    }
+    fun completePendingRowExit(key: String) {
+        val (nextExits, pending) = pendingRowExits.complete(key)
+        pendingRowExits = nextExits
+        if (pending != null) commitPendingRowExit(pending)
+    }
+    fun startSwipeDone(renderedItemKey: String): Boolean {
+        if (pendingRowExits.isExiting(renderedItemKey)) return false
+        val currentItem = committedRowItem(renderedItemKey) ?: return false
+        pendingRowExits =
+            pendingRowExits.start(
+                item = currentItem,
+                actionId = "done",
+                mode = ActivityRowExitMode.Swipe,
+                ownerIdentity = renderedPresentationOwnerIdentity,
+                listOwnerUserId = presentationAccountId.takeIf { it.isNotEmpty() },
+                listOwnerServerId = presentationServerId,
+            )
+        return true
+    }
+    fun startSwipeEndExit(renderedItemKey: String, action: ActivitySwipeEndAction): Boolean {
+        if (pendingRowExits.isExiting(renderedItemKey)) return false
+        val currentItem = committedRowItem(renderedItemKey) ?: return false
+        val liveAction = currentItem.activitySwipeEndAction(channelMute?.mutedByChannelId.orEmpty()) ?: return false
+        if (liveAction != action || !activitySwipeEndActionRemovesRow(liveAction)) return false
+        pendingRowExits =
+            pendingRowExits.start(
+                item = currentItem,
+                actionId = liveAction.menuActionId,
+                mode = ActivityRowExitMode.Swipe,
+                ownerIdentity = renderedPresentationOwnerIdentity,
+                listOwnerUserId = presentationAccountId.takeIf { it.isNotEmpty() },
+                listOwnerServerId = presentationServerId,
+            )
+        return true
+    }
+    // The swipe's Unfollow / Mute Activity button: Unfollow was captured at gesture commit into
+    // pendingRowExits and finishes via completePendingRowExit; Mute writes immediately with Undo.
+    fun finishSwipeEnd(renderedItemKey: String) {
+        if (pendingRowExits.isExiting(renderedItemKey)) {
+            completePendingRowExit(renderedItemKey)
+            return
+        }
         val currentItem = committedRowItem(renderedItemKey) ?: return
         val action = currentItem.activitySwipeEndAction(channelMute?.mutedByChannelId.orEmpty()) ?: return
-        if (action == ActivitySwipeEndAction.UnfollowThread) return deferThreadUnfollow(currentItem)
+        if (activitySwipeEndActionRemovesRow(action)) return
         // One toast at a time: a waiting Done or Unfollow is committed now rather than lost.
         applySwipeDone(swipeDoneUndo.flush())
         runSwipeEndCommand(activitySwipeEndApplyCommand(currentItem, action))
@@ -2144,33 +2212,32 @@ internal fun SharedActivityList(
         RaftProductEvents.activityMark(activityReadToggleMarkAction(currentItem))
         latestOnIntent(activityReadToggleIntent(currentItem))
     }
-    // The row menu's items and the row's screen-reader actions (raft-design #776 / #777): one write each,
-    // with the menu's analytics. Done and Unfollow take the row out of the list, so on every route they
-    // wait out the swipe's Undo toast (web #12107, Raft DS › Feedback, "Confirming").
-    fun commitRowAction(item: InboxItem, actionId: String) {
-        if (item.kind == InboxItemKind.Object && actionId == "done") return objectRowDone(item)
-        if (item.kind == InboxItemKind.Object && actionId == "unfollow-object") return objectRowUnfollow(item)
-        if (actionId == "unfollow-thread") return deferThreadUnfollow(item)
-        if (actionId == "done") {
-            // One toast at a time: an end swipe's toast gives way (its action stands).
-            swipeEndUndo = swipeEndUndo.dismiss()
-            applySwipeDone(swipeDoneUndo.swipe(item))
-            return
-        }
-        val write = activityRowActionWrite(item, actionId)
-        write.markAction?.let(RaftProductEvents::activityMark)
-        runSwipeEndCommand(write.command)
-    }
     fun runRowAction(item: InboxItem, actionId: String) {
-        if (activityRowActionRemovesRow(actionId) && item.key in lazyItemKeys) {
-            pendingRowExits = pendingRowExits.start(item, actionId)
-            return
+        if (activityRowActionRemovesRow(actionId)) {
+            val visibleInList = listState.layoutInfo.visibleItemsInfo.any { info -> info.key == item.key }
+            if (pendingRowExits.isExiting(item.key)) {
+                if (!visibleInList) completePendingRowExit(item.key)
+                return
+            }
+            if (item.key in lazyItemKeys && visibleInList) {
+                pendingRowExits =
+                    pendingRowExits.start(
+                        item = item,
+                        actionId = actionId,
+                        mode = ActivityRowExitMode.Collapse,
+                        ownerIdentity = renderedPresentationOwnerIdentity,
+                        listOwnerUserId = presentationAccountId.takeIf { it.isNotEmpty() },
+                        listOwnerServerId = presentationServerId,
+                    )
+                return
+            }
         }
         commitRowAction(item, actionId)
     }
     // A screen-reader action on a rendered row: resolved against the live row like a tap, and only while
     // the row still offers it (its menu would list it).
     fun accessibilityRowAction(renderedItemKey: String, actionId: String) {
+        if (pendingRowExits.isExiting(renderedItemKey)) return
         val currentItem = committedRowItem(renderedItemKey) ?: return
         if (actionId !in activityContextMenuActionIds(currentItem, channelMute?.mutedByChannelId.orEmpty())) return
         effectiveSwipeHost.close()
@@ -2206,11 +2273,11 @@ internal fun SharedActivityList(
     }
     DisposableEffect(presentationOwnerIdentity) {
         onDispose {
-            // Commit any row mid-height-collapse before flushing Undo queues so leaving Activity
-            // or switching filters never drops an in-flight Done or Unfollow.
+            // Commit any row mid-exit animation (swipe Done, swipe Unfollow, or non-swipe collapse)
+            // before flushing Undo queues so leaving Activity or switching filters never drops it.
             val (clearedExits, flushedExits) = pendingRowExits.flushAll()
             pendingRowExits = clearedExits
-            flushedExits.forEach { pending -> commitRowAction(pending.item, pending.actionId) }
+            flushedExits.forEach(::commitPendingRowExit)
             // Leaving: a waiting Unfollow is sent now rather than lost; a Done already stands.
             objectUndo = objectUndo.flushUnfollow { latestOnIntent(SharedActivityIntent.UnfollowObject(it)) }
             applySwipeDone(swipeDoneUndo.flush())
@@ -2226,11 +2293,12 @@ internal fun SharedActivityList(
         }
     }
     // The open row left the list (Done, a filter, a refresh): nothing stays open, nor holds Back.
+    // Any exiting row dropped from the list is committed rather than discarded so Done/Unfollow is never lost.
     LaunchedEffect(lazyItemKeys) {
-        val retained = effectiveSwipeHost.openRow.retain(lazyItemKeys)
-        if (retained != effectiveSwipeHost.openRow) effectiveSwipeHost.openRow = retained
-        val retainedExits = pendingRowExits.retain(lazyItemKeys)
+        effectiveSwipeHost.updateOpenRow(effectiveSwipeHost.openRow.retain(lazyItemKeys))
+        val (retainedExits, droppedExits) = pendingRowExits.retainOrCommitDropped(lazyItemKeys)
         if (retainedExits != pendingRowExits) pendingRowExits = retainedExits
+        droppedExits.forEach(::commitPendingRowExit)
     }
     // Scrolling the list closes the open row.
     LaunchedEffect(listState) {
@@ -2255,7 +2323,7 @@ internal fun SharedActivityList(
                 .activitySwipeCloseOnOutsideDown(
                     geometry = effectiveSwipeHost.geometry,
                     openRow = { effectiveSwipeHost.openRow },
-                    onChange = { effectiveSwipeHost.openRow = it },
+                    onChange = { effectiveSwipeHost.updateOpenRow(it) },
                 )
         } else {
             Modifier.fillMaxSize().background(RaftColor.SurfaceWhite)
@@ -2322,30 +2390,30 @@ internal fun SharedActivityList(
                                     captureMenuAnchor = !listState.isScrollInProgress,
                                     onOpen = { openRow(item.key) },
                                     onOpenMenu = { anchor -> openRowMenu(item.key, anchor) },
-                                    onSwipeDone = { swipeRowDone(item.key) },
+                                    onSwipeDoneStart = { startSwipeDone(item.key) },
+                                    onSwipeDone = { completePendingRowExit(item.key) },
                                     onRowDone = { rowDoneButton(item.key) },
                                     swipeEndAction = item.activitySwipeEndAction(channelMute?.mutedByChannelId.orEmpty()),
-                                    onSwipeEnd = { swipeRowEnd(item.key) },
+                                    onSwipeEndStart = { action -> startSwipeEndExit(item.key, action) },
+                                    onSwipeEnd = { finishSwipeEnd(item.key) },
                                     onSwipeToggleRead = { swipeRowToggleRead(item.key) },
                                     accessibilityActionIds = activityContextMenuActionIds(item, channelMute?.mutedByChannelId.orEmpty()),
                                     onAccessibilityAction = { actionId -> accessibilityRowAction(item.key, actionId) },
                                     swipeOpenSide = effectiveSwipeHost.openRow.openSide(item.key),
                                     onSwipeOpenChange = { side ->
-                                        effectiveSwipeHost.openRow =
+                                        effectiveSwipeHost.updateOpenRow(
                                             if (active || side == null) {
                                                 effectiveSwipeHost.openRow.change(item.key, side)
                                             } else {
                                                 effectiveSwipeHost.openRow.close()
                                             }
+                                        )
                                     },
                                     onSwipeOpenRowPlaced = { coords -> effectiveSwipeHost.geometry.onOpenRowPlaced(item.key, coords) },
                                     swipeStateKey = "$renderedPresentationOwnerIdentity|${item.key}",
-                                    exiting = pendingRowExits.isExiting(item.key),
-                                    onExitCollapsed = {
-                                        val (nextExits, pending) = pendingRowExits.complete(item.key)
-                                        pendingRowExits = nextExits
-                                        pending?.let { commitRowAction(it.item, it.actionId) }
-                                    },
+                                    exiting = pendingRowExits.isCollapseExiting(item.key, renderedPresentationOwnerIdentity),
+                                    onExitCollapsed = { completePendingRowExit(item.key) },
+                                    onInFlightExitDisposed = { completePendingRowExit(item.key) },
                                     layout = rowLayout,
                                 )
                             }

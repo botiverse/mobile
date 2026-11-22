@@ -979,6 +979,8 @@ internal fun ActivityConversationListRow(
     modifier: Modifier = Modifier,
     /** The swipe's Done button (ActivitySwipeActionsBox); null: no Done button. */
     onSwipeDone: (() -> Unit)? = null,
+    /** Called synchronously at swipe-Done commit time; returning false cancels the exit cleanly. */
+    onSwipeDoneStart: (() -> Boolean)? = null,
     /**
      * The row's trailing Mark as Done button (web InboxRowDone, raft-ui `InboxItemActions
      * reveal="hover"`): the menu's Done. A mouse or trackpad shows it while the row is hovered, open
@@ -990,6 +992,8 @@ internal fun ActivityConversationListRow(
     /** The swipe's Unfollow / Mute button ([activitySwipeEndAction]); null action or callback: none. */
     swipeEndAction: ActivitySwipeEndAction? = null,
     onSwipeEnd: (() -> Unit)? = null,
+    /** Called synchronously at swipe-Unfollow commit time; returning false cancels the exit cleanly. */
+    onSwipeEndStart: ((ActivitySwipeEndAction) -> Boolean)? = null,
     /**
      * The swipe toward the end's Read / Unread button (raft-design #793, [activitySwipeStartButton]): the
      * menu's Mark as read / unread. Null: no start button.
@@ -1011,6 +1015,8 @@ internal fun ActivityConversationListRow(
     exiting: Boolean = false,
     /** Called once [exiting]'s height collapse finishes at zero px. */
     onExitCollapsed: () -> Unit = {},
+    /** Called when an in-flight swipe or collapse exit disposes before its completion callback ran. */
+    onInFlightExitDisposed: () -> Unit = {},
     /** Screenshots only: the row slid by this share of its width on top of [swipeOpenSide] (negative: toward the end). */
     swipePreviewRevealFraction: Float = 0f,
     /** Screenshots only: draw the row as a mouse hovers it (the trailing Done button shown under a fine pointer). */
@@ -1104,6 +1110,9 @@ internal fun ActivityConversationListRow(
         onOpenRowPlaced = onSwipeOpenRowPlaced,
         exiting = exiting,
         onExitCollapsed = onExitCollapsed,
+        onBeforeDone = { onSwipeDoneStart?.invoke() ?: true },
+        onBeforeExitAction = { action -> onSwipeEndStart?.invoke(action) ?: true },
+        onInFlightExitDisposed = onInFlightExitDisposed,
         previewRevealFraction = swipePreviewRevealFraction,
     ) {
         Box(

@@ -1,5 +1,6 @@
 package build.raft.app
 
+import androidx.compose.ui.geometry.Offset
 import build.raft.app.data.InboxItem
 import build.raft.app.model.ChannelId
 import build.raft.app.model.InboxItemKind
@@ -7,6 +8,7 @@ import build.raft.app.model.RaftTimeContext
 import build.raft.app.model.parseRaftTimestampEpochMillisOrNull
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -54,35 +56,59 @@ class ActivitySwipeResetAndExitTest {
 
         val ops = mutableListOf<Op>()
         var snapRevealGate: CompletableDeferred<Unit>? = null
+        var animateRevealGate: CompletableDeferred<Unit>? = null
         var animateCollapseStarted: CompletableDeferred<Unit>? = null
         var fullDoneAtCollapseStart: Float? = null
         var revealAtCollapseStart: Float? = null
         var settleDurationMillis: Long = 120L
+        var activeRevealDrivers: Int = 0
+        var maxConcurrentRevealDrivers: Int = 0
 
         override suspend fun snapRevealTo(targetPx: Float) {
-            ops += Op(OpKind.SnapReveal, targetPx)
-            val gate = snapRevealGate
-            if (gate != null) {
-                // Hold the in-flight snap across cancellation to simulate a snapTo mid-critical-section.
-                withContext(NonCancellable) { gate.await() }
+            activeRevealDrivers += 1
+            if (activeRevealDrivers > maxConcurrentRevealDrivers) {
+                maxConcurrentRevealDrivers = activeRevealDrivers
             }
-            revealPx = targetPx
+            try {
+                ops += Op(OpKind.SnapReveal, targetPx)
+                val gate = snapRevealGate
+                if (gate != null) {
+                    // Hold the in-flight snap across cancellation to simulate a snapTo mid-critical-section.
+                    withContext(NonCancellable) { gate.await() }
+                }
+                revealPx = targetPx
+            } finally {
+                activeRevealDrivers -= 1
+            }
         }
 
         override suspend fun animateRevealTo(targetPx: Float, kind: ActivitySwipeAnimationKind) {
-            ops += Op(OpKind.AnimateReveal, targetPx, kind)
-            val duration =
-                when (kind) {
-                    ActivitySwipeAnimationKind.DoneSlideOut -> ActivitySwipeDoneSlideOutMillis.toLong()
-                    else -> settleDurationMillis
-                }
-            val start = revealPx
-            if (duration > 0L) {
-                delay(duration / 2)
-                revealPx = (start + targetPx) / 2f
-                delay(duration - duration / 2)
+            activeRevealDrivers += 1
+            if (activeRevealDrivers > maxConcurrentRevealDrivers) {
+                maxConcurrentRevealDrivers = activeRevealDrivers
             }
-            revealPx = targetPx
+            try {
+                ops += Op(OpKind.AnimateReveal, targetPx, kind)
+                val gate = animateRevealGate
+                if (gate != null) {
+                    // Hold the in-flight animate across cancellation to simulate an Animatable mid-mutex.
+                    withContext(NonCancellable) { gate.await() }
+                }
+                val duration =
+                    when (kind) {
+                        ActivitySwipeAnimationKind.DoneSlideOut -> ActivitySwipeDoneSlideOutMillis.toLong()
+                        else -> settleDurationMillis
+                    }
+                val start = revealPx
+                if (duration > 0L) {
+                    delay(duration / 2)
+                    revealPx = (start + targetPx) / 2f
+                    delay(duration - duration / 2)
+                }
+                revealPx = targetPx
+            } finally {
+                activeRevealDrivers -= 1
+            }
         }
 
         override suspend fun snapFullDoneTo(target: Float) {
@@ -396,23 +422,16 @@ class ActivitySwipeResetAndExitTest {
 
     @Test
     fun tryFinallyCleansUpPhaseOnExceptionAndCancellationInToggleAndDone() = runTest {
-        val uncaught = mutableListOf<Throwable>()
-        val safeScope =
-            CoroutineScope(
-                backgroundScope.coroutineContext +
-                    SupervisorJob() +
-                    CoroutineExceptionHandler { _, throwable -> uncaught += throwable },
-            )
         val toggleDriver = FakeRevealDriver(initialRevealPx = -260f)
-        val toggleController = ActivitySwipeRowController(driver = toggleDriver, scope = safeScope)
+        val toggleController = ActivitySwipeRowController(driver = toggleDriver, scope = backgroundScope)
 
-        toggleController.completeToggle(
-            onBeforeToggle = {},
-            onToggleRead = { throw IllegalStateException("toggle boom") },
-        )
-        runCurrent()
+        assertFailsWith<IllegalStateException> {
+            toggleController.completeToggle(
+                onBeforeToggle = {},
+                onToggleRead = { throw IllegalStateException("toggle boom") },
+            )
+        }
 
-        assertEquals(1, uncaught.size)
         assertEquals(ActivitySwipePhase.Idle, toggleController.phase, "try/finally must clear CompletingToggle on failure")
         assertTrue(toggleController.settleVersion > 0)
         // Self-healing syncRest recovers the offset cleanly back to 0.
@@ -432,7 +451,198 @@ class ActivitySwipeResetAndExitTest {
         cancelScope.cancel()
         runCurrent()
         assertEquals(ActivitySwipePhase.Idle, doneController.phase, "try/finally must reset phase on cancellation")
+    }
+
+    @Test
+    fun onDoneThrowingInsideCompleteDoneRecoversCleanlyWithoutStuckState() = runTest {
+        val uncaught = mutableListOf<Throwable>()
+        val safeScope =
+            CoroutineScope(
+                backgroundScope.coroutineContext +
+                    SupervisorJob() +
+                    CoroutineExceptionHandler { _, throwable -> uncaught += throwable },
+            )
+        val driver = FakeRevealDriver(initialRevealPx = 144f)
+        val controller = ActivitySwipeRowController(driver = driver, scope = safeScope)
+
+        controller.completeDone(
+            widthPx = 390f,
+            onBeforeDone = {},
+            onDone = { throw IllegalStateException("done boom") },
+        )
+        advanceUntilIdle()
+
+        assertEquals(1, uncaught.size)
+        assertEquals(ActivitySwipePhase.Idle, controller.phase, "try/finally must clear Exited on onDone exception")
+        assertTrue(controller.settleVersion > 0)
+
+        // Self-healing syncRest restores offset and collapse progress so the row is not permanently stuck.
+        controller.syncRest(0f)
+        advanceUntilIdle()
+        assertEquals(0f, controller.revealPx)
+        assertEquals(1f, controller.collapseProgress)
+        assertTrue(controller.beginDrag(), "row must remain interactive after onDone failure")
         safeScope.cancel()
+    }
+
+    @Test
+    fun beginDragWhileAnimateRevealOrSnapInFlightJoinsCancelledJobBeforeDrivingReveal() = runTest {
+        // Case 1: animateRevealTo is in flight when beginDrag + dragTo arrive.
+        val animDriver = FakeRevealDriver(initialRevealPx = 144f)
+        val animGate = CompletableDeferred<Unit>()
+        animDriver.animateRevealGate = animGate
+        val animController = ActivitySwipeRowController(driver = animDriver, scope = backgroundScope)
+
+        animController.syncRest(0f)
+        runCurrent()
+        assertEquals(1, animDriver.ops.count { it.kind == OpKind.AnimateReveal })
+
+        assertTrue(animController.beginDrag())
+        animController.dragTo(80f)
+        runCurrent()
+        assertTrue(
+            animDriver.ops.none { it.kind == OpKind.SnapReveal },
+            "dragTo must join the cancelled animateRevealTo job before touching driver, ops=${animDriver.ops}",
+        )
+
+        animDriver.animateRevealGate = null
+        animGate.complete(Unit)
+        advanceUntilIdle()
+        assertEquals(80f, animController.revealPx)
+        assertEquals(1, animDriver.maxConcurrentRevealDrivers, "driver must never run concurrently")
+
+        // Case 2: animateRevealTo is in flight when beginDrag + immediate endDrag (no dragTo) arrive.
+        val endDriver = FakeRevealDriver(initialRevealPx = 144f)
+        val endGate = CompletableDeferred<Unit>()
+        endDriver.animateRevealGate = endGate
+        val endController = ActivitySwipeRowController(driver = endDriver, scope = backgroundScope)
+
+        endController.syncRest(72f)
+        runCurrent()
+        assertTrue(endController.beginDrag())
+        endController.endDrag(0f)
+        runCurrent()
+        assertEquals(
+            1,
+            endDriver.ops.count { it.kind == OpKind.AnimateReveal },
+            "endDrag must join the prior job retired by beginDrag before animating, ops=${endDriver.ops}",
+        )
+
+        endDriver.animateRevealGate = null
+        endGate.complete(Unit)
+        advanceUntilIdle()
+        assertEquals(0f, endController.revealPx)
+        assertEquals(1, endDriver.maxConcurrentRevealDrivers, "driver must never run concurrently")
+
+        // Case 3: snapRevealTo is in flight when a new beginDrag + dragTo arrive.
+        val snapDriver = FakeRevealDriver(initialRevealPx = 0f)
+        val snapGate = CompletableDeferred<Unit>()
+        snapDriver.snapRevealGate = snapGate
+        val snapController = ActivitySwipeRowController(driver = snapDriver, scope = backgroundScope)
+
+        assertTrue(snapController.beginDrag())
+        snapController.dragTo(40f)
+        runCurrent()
+        assertEquals(1, snapDriver.ops.count { it.kind == OpKind.SnapReveal })
+
+        assertTrue(snapController.beginDrag())
+        snapController.dragTo(92f)
+        runCurrent()
+        assertEquals(
+            1,
+            snapDriver.ops.count { it.kind == OpKind.SnapReveal },
+            "second drag must join the prior snap job before calling snapRevealTo, ops=${snapDriver.ops}",
+        )
+
+        snapDriver.snapRevealGate = null
+        snapGate.complete(Unit)
+        advanceUntilIdle()
+        assertEquals(92f, snapController.revealPx)
+        assertEquals(1, snapDriver.maxConcurrentRevealDrivers, "driver must never run concurrently")
+    }
+
+    @Test
+    fun beginDragDuringCompletingToggleDoesNotDropToggleRead() = runTest {
+        val driver = FakeRevealDriver(initialRevealPx = -260f)
+        val snapGate = CompletableDeferred<Unit>()
+        driver.snapRevealGate = snapGate
+        val controller = ActivitySwipeRowController(driver = driver, scope = backgroundScope)
+
+        // Hold a drag snap in flight when completeToggle commits.
+        assertTrue(controller.beginDrag())
+        controller.dragTo(-260f)
+        runCurrent()
+
+        var toggles = 0
+        controller.completeToggle(
+            onBeforeToggle = {},
+            onToggleRead = { toggles += 1 },
+        )
+        assertEquals(1, toggles, "onToggleRead must commit synchronously so spring-back cancellation cannot drop it")
+        assertEquals(ActivitySwipePhase.CompletingToggle, controller.phase)
+        assertFalse(controller.beginDrag(), "beginDrag must be rejected while CompletingToggle is active")
+
+        driver.snapRevealGate = null
+        snapGate.complete(Unit)
+        advanceTimeBy(40L)
+        runCurrent()
+        assertEquals(ActivitySwipePhase.CompletingToggle, controller.phase)
+        assertFalse(controller.beginDrag(), "beginDrag must stay rejected while toggle springs back")
+
+        advanceUntilIdle()
+        assertEquals(ActivitySwipePhase.Idle, controller.phase)
+        assertEquals(0f, controller.revealPx)
+        assertEquals(1, toggles)
+        assertTrue(controller.beginDrag(), "row becomes draggable again once toggle finishes")
+
+        // Even cancelling mid-spring-back never drops a committed toggle write.
+        val cancelDriver = FakeRevealDriver(initialRevealPx = -260f)
+        val cancelController = ActivitySwipeRowController(driver = cancelDriver, scope = backgroundScope)
+        var cancelledToggles = 0
+        cancelController.completeToggle(onBeforeToggle = {}, onToggleRead = { cancelledToggles += 1 })
+        advanceTimeBy(30L)
+        runCurrent()
+        cancelController.cancel()
+        advanceUntilIdle()
+        assertEquals(1, cancelledToggles, "cancelling spring-back must never drop onToggleRead")
+        assertEquals(ActivitySwipePhase.Idle, cancelController.phase)
+    }
+
+    @Test
+    fun controllerCancelOnStateKeyChangeStopsInFlightAnimationsAndPreventsZombieCallbacks() = runTest {
+        // Simulates stateKey changing while the remembered CoroutineScope stays alive.
+        val doneDriver = FakeRevealDriver(initialRevealPx = 144f)
+        val doneController = ActivitySwipeRowController(driver = doneDriver, scope = backgroundScope)
+        var zombieDone = 0
+        doneController.completeDone(widthPx = 390f, onBeforeDone = {}, onDone = { zombieDone += 1 })
+        advanceTimeBy(100L)
+        runCurrent()
+        assertEquals(ActivitySwipePhase.CompletingDone, doneController.phase)
+
+        doneController.cancel()
+        val doneOpsAfterCancel = doneDriver.ops.size
+        assertEquals(ActivitySwipePhase.Idle, doneController.phase)
+
+        advanceUntilIdle()
+        assertEquals(0, zombieDone, "cancelled controller must never fire zombie onDone on a new row")
+        assertEquals(doneOpsAfterCancel, doneDriver.ops.size, "cancelled controller must not keep driving animations")
+
+        // Same for completeCollapseExit.
+        val exitDriver = FakeRevealDriver(initialRevealPx = 144f)
+        val exitController = ActivitySwipeRowController(driver = exitDriver, scope = backgroundScope)
+        var zombieExit = 0
+        exitController.completeCollapseExit(onBeforeExit = {}, onExit = { zombieExit += 1 })
+        advanceTimeBy(60L)
+        runCurrent()
+        assertEquals(ActivitySwipePhase.CompletingExit, exitController.phase)
+
+        exitController.cancel()
+        val exitOpsAfterCancel = exitDriver.ops.size
+        assertEquals(ActivitySwipePhase.Idle, exitController.phase)
+
+        advanceUntilIdle()
+        assertEquals(0, zombieExit, "cancelled controller must never fire zombie onExit")
+        assertEquals(exitOpsAfterCancel, exitDriver.ops.size)
     }
 
     @Test
@@ -499,6 +709,7 @@ class ActivitySwipeResetAndExitTest {
         // so LazyColumn keys and top-anchor head signature remain stable during the animation.
         val started = ActivityRowExitState().start(head, "done")
         assertTrue(started.isExiting(head.key))
+        assertTrue(started.isCollapseExiting(head.key))
         assertEquals(started, started.start(head, "done"))
         val headBeforeCommit = activityListHeadSignature(activitySwipeListedItems(initialItems, null, emptySet()), timeContext)
         assertEquals(listOf(head, second, objectRow), activitySwipeListedItems(initialItems, null, emptySet()))
@@ -516,13 +727,115 @@ class ActivitySwipeResetAndExitTest {
             "removing the head row via Done must not trigger a new-top-row anchor jump",
         )
 
-        // Disposal flushes any in-flight exits so leaving Activity / switching filters never drops Done.
+        // Dropping a key from lazyItemKeys returns it to commit instead of discarding it,
+        // and disposal flushes any remaining exits once.
         val twoExits = ActivityRowExitState().start(second, "done").start(objectRow, "done")
-        val retained = twoExits.retain(listOf(second.key))
+        val (retained, dropped) = twoExits.retainOrCommitDropped(listOf(second.key))
         assertTrue(retained.isExiting(second.key))
         assertFalse(retained.isExiting(objectRow.key))
+        assertEquals(listOf(ActivityPendingRowExit(objectRow, "done")), dropped)
         val (flushedState, flushedItems) = retained.flushAll()
         assertFalse(flushedState.isExiting(second.key))
         assertEquals(listOf(ActivityPendingRowExit(second, "done")), flushedItems)
+    }
+
+    @Test
+    fun inFlightSwipeDoneAndUnfollowFlushOnScrollOffDisposalAndListDropWithoutDoubleCommit() {
+        val swipedDone = sampleItem("row-done", at = "2026-11-05T11:50:00Z")
+        val swipedUnfollow = sampleItem("thread-unfollow", at = "2026-11-05T11:40:00Z", kind = InboxItemKind.Thread)
+        val collapseDone = sampleItem("row-menu", at = "2026-11-05T11:30:00Z")
+
+        val state =
+            ActivityRowExitState()
+                .start(
+                    item = swipedDone,
+                    actionId = "done",
+                    mode = ActivityRowExitMode.Swipe,
+                    ownerIdentity = "owner-a",
+                    listOwnerUserId = "user-1",
+                    listOwnerServerId = "server-1",
+                )
+                .start(
+                    item = swipedUnfollow,
+                    actionId = "unfollow-thread",
+                    mode = ActivityRowExitMode.Swipe,
+                    ownerIdentity = "owner-a",
+                    listOwnerUserId = "user-1",
+                    listOwnerServerId = "server-1",
+                )
+                .start(
+                    item = collapseDone,
+                    actionId = "done",
+                    mode = ActivityRowExitMode.Collapse,
+                    ownerIdentity = "owner-a",
+                    listOwnerUserId = "user-1",
+                    listOwnerServerId = "server-1",
+                )
+
+        // Swipe exits are tracked in the unified map without triggering the non-swipe exiting collapse flag.
+        assertTrue(state.isExiting(swipedDone.key))
+        assertFalse(state.isCollapseExiting(swipedDone.key, "owner-a"))
+        assertTrue(state.isExiting(swipedUnfollow.key))
+        assertFalse(state.isCollapseExiting(swipedUnfollow.key, "owner-a"))
+        assertTrue(state.isCollapseExiting(collapseDone.key, "owner-a"))
+        assertFalse(state.isCollapseExiting(collapseDone.key, "owner-b"))
+
+        // 1. Row scrolled off and disposed mid-swipe-Done: complete(key) commits once; later flush skips it.
+        val committed = mutableListOf<ActivityPendingRowExit>()
+        val (afterRowDispose, rowDisposedExit) = state.complete(swipedDone.key)
+        rowDisposedExit?.let(committed::add)
+        assertEquals(1, committed.size)
+        assertEquals(swipedDone, committed[0].item)
+        assertEquals("done", committed[0].actionId)
+        assertNull(afterRowDispose.complete(swipedDone.key).second, "second complete must be a no-op")
+
+        // 2. lazyItemKeys drops swipedUnfollow mid-collapse: retainOrCommitDropped commits it with captured owner.
+        val (afterDrop, dropped) = afterRowDispose.retainOrCommitDropped(listOf(collapseDone.key))
+        committed += dropped
+        assertEquals(2, committed.size)
+        assertEquals(swipedUnfollow, committed[1].item)
+        assertEquals("unfollow-thread", committed[1].actionId)
+        assertEquals("user-1", committed[1].listOwnerUserId)
+        assertEquals("server-1", committed[1].listOwnerServerId)
+        assertNull(afterDrop.complete(swipedUnfollow.key).second, "dropped exit must not double-commit on dispose")
+
+        // 3. Owner disposal flushes remaining exit; any late row disposal afterward is a no-op.
+        val (afterOwnerFlush, ownerFlushed) = afterDrop.flushAll()
+        committed += ownerFlushed
+        assertEquals(3, committed.size)
+        assertEquals(collapseDone, committed[2].item)
+        assertNull(afterOwnerFlush.complete(collapseDone.key).second, "late row dispose after owner flush must not double-commit")
+        assertTrue(afterOwnerFlush.flushAll().second.isEmpty())
+    }
+
+    @Test
+    fun activitySwipeCollapsedHeightPxHandlesNonFiniteAndOutOfRangeValuesSafely() {
+        assertEquals(80, activitySwipeCollapsedHeightPx(80, Float.NaN))
+        assertEquals(80, activitySwipeCollapsedHeightPx(80, Float.POSITIVE_INFINITY))
+        assertEquals(80, activitySwipeCollapsedHeightPx(80, Float.NEGATIVE_INFINITY))
+        assertEquals(0, activitySwipeCollapsedHeightPx(0, Float.NaN))
+        assertEquals(0, activitySwipeCollapsedHeightPx(-10, 1f))
+        assertEquals(0, activitySwipeCollapsedHeightPx(80, -0.5f))
+        assertEquals(0, activitySwipeCollapsedHeightPx(80, 0f))
+        assertEquals(40, activitySwipeCollapsedHeightPx(80, 0.5f))
+        assertEquals(80, activitySwipeCollapsedHeightPx(80, 1f))
+        assertEquals(80, activitySwipeCollapsedHeightPx(80, 1.5f))
+    }
+
+    @Test
+    fun activitySwipeListHostStateUpdateAndCloseClearOpenRowAndGeometry() {
+        val host = ActivitySwipeListHostState()
+        host.updateOpenRow(host.openRow.change("row-a", ActivitySwipeSide.End))
+        assertEquals("row-a", host.openRow.key)
+        assertEquals(ActivitySwipeSide.End, host.openRow.openSide("row-a"))
+
+        host.close()
+        assertNull(host.openRow.key)
+        assertFalse(host.geometry.containsInOpenRow(Offset.Zero, expectedKey = "row-a"))
+
+        host.updateOpenRow(host.openRow.change("row-b", ActivitySwipeSide.Start))
+        assertEquals(ActivitySwipeSide.Start, host.openRow.openSide("row-b"))
+        host.updateOpenRow(host.openRow.retain(emptyList()))
+        assertNull(host.openRow.key)
     }
 }
