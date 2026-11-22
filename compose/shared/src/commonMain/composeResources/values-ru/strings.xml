@@ -930,6 +930,7 @@
     <string name="thread_quoted_permalink_one_file">1 файл</string>
     <string name="thread_quoted_permalink_images">Изображений: %1$d</string>
     <string name="thread_quoted_permalink_attachments">Вложений: %1$d</string>
+    <string name="thread_quote_reply_jump">Перейти к цитируемому сообщению (автор: %1$s): %2$s</string>
     <string name="thread_member_role_member">Участник</string>
     <string name="thread_member_role_system">Система</string>
     <string name="thread_settings_preferences">Параметры</string>

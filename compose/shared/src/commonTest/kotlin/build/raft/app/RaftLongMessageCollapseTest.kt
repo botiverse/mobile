@@ -1,11 +1,27 @@
 package build.raft.app
 
+import build.raft.app.data.HomeChannelRow
+import build.raft.app.data.HomeDirectMessageRow
+import build.raft.app.data.HomeSnapshot
 import build.raft.app.data.InMemoryRaftKeyValueStore
 import build.raft.app.data.KeyValueChatLayoutPreferenceStore
 import build.raft.app.data.RaftLongMessageCollapsePreferenceStore
+import build.raft.app.data.SharedHomeContentState
+import build.raft.app.data.StoredAuthSession
+import build.raft.app.data.StoredAuthUser
 import build.raft.app.data.raftLongMessageCollapseEffective
 import build.raft.app.data.raftLongMessageCollapseOverrideKey
 import build.raft.app.data.raftLongMessageCollapseParseOverride
+import build.raft.app.model.ChannelId
+import build.raft.app.model.ConversationKind
+import build.raft.app.model.ConversationPermissions
+import build.raft.app.model.MemberId
+import build.raft.app.model.MemberKind
+import build.raft.app.model.MemberProfile
+import build.raft.app.model.Presence
+import build.raft.app.model.ServerId
+import build.raft.app.model.ServerSummary
+import build.raft.app.model.ThreadId
 import kotlinx.coroutines.runBlocking
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -239,20 +255,235 @@ class RaftLongMessageCollapseTest {
         assertEquals(
             "parent",
             RaftThreadScreenPayload(
+                status = "content",
                 surfaceKind = RaftThreadSurfaceKind.ReplyThread,
                 sourceThreadId = "thread",
                 parentChannelId = "parent"
             ).longMessageCollapseConversationId()
         )
+        assertNull(
+            RaftThreadScreenPayload(
+                status = "content",
+                surfaceKind = RaftThreadSurfaceKind.ReplyThread,
+                sourceThreadId = "thread",
+                parentChannelId = null
+            ).longMessageCollapseConversationId()
+        )
         assertEquals(
             "chan",
-            RaftThreadScreenPayload(surfaceKind = RaftThreadSurfaceKind.Channel, sourceThreadId = "chan")
+            RaftThreadScreenPayload(status = "content", surfaceKind = RaftThreadSurfaceKind.Channel, sourceThreadId = "chan")
                 .longMessageCollapseConversationId()
+        )
+        assertNull(
+            RaftThreadScreenPayload(
+                status = "content",
+                surfaceKind = RaftThreadSurfaceKind.Channel,
+                sourceThreadId = "unjoined-chan",
+                joined = false
+            ).longMessageCollapseConversationId()
         )
         assertEquals(
             "dm",
-            RaftThreadScreenPayload(surfaceKind = RaftThreadSurfaceKind.DirectMessage, sourceThreadId = "dm")
+            RaftThreadScreenPayload(status = "content", surfaceKind = RaftThreadSurfaceKind.DirectMessage, sourceThreadId = "dm", joined = false)
                 .longMessageCollapseConversationId()
+        )
+        // Loading routes fail closed when Home has not confirmed membership (except DMs).
+        assertNull(
+            RaftThreadScreenPayload(
+                status = "loading",
+                surfaceKind = RaftThreadSurfaceKind.Channel,
+                sourceThreadId = "unknown-chan",
+                joined = true,
+            ).longMessageCollapseConversationId()
+        )
+        assertNull(
+            RaftThreadScreenPayload(
+                status = "loading",
+                surfaceKind = RaftThreadSurfaceKind.ReplyThread,
+                sourceThreadId = "thread",
+                parentChannelId = "unknown-parent",
+                joined = true,
+            ).longMessageCollapseConversationId()
+        )
+        assertEquals(
+            "dm",
+            RaftThreadScreenPayload(
+                status = "loading",
+                surfaceKind = RaftThreadSurfaceKind.DirectMessage,
+                sourceThreadId = "dm",
+                joined = false,
+            ).longMessageCollapseConversationId()
+        )
+        // Denied / errored routes must never request display settings even when joined stayed at default true.
+        assertNull(
+            RaftThreadScreenPayload(
+                status = "no_permission",
+                surfaceKind = RaftThreadSurfaceKind.Channel,
+                sourceThreadId = "denied-chan",
+                joined = true,
+            ).longMessageCollapseConversationId()
+        )
+        assertNull(
+            RaftThreadScreenPayload(
+                status = "error",
+                surfaceKind = RaftThreadSurfaceKind.Channel,
+                sourceThreadId = "errored-chan",
+                joined = true,
+            ).longMessageCollapseConversationId()
+        )
+    }
+
+    @Test
+    fun taskConversationNeverRequestsItsOwnIdAndUsesJoinedOrDmParent() {
+        val loadingTaskRoute =
+            RaftThreadScreenPayload(
+                status = "loading",
+                surfaceKind = RaftThreadSurfaceKind.Channel,
+                channelKind = RaftTaskConversationChannelKind,
+                sourceThreadId = "task-conv-1",
+                streamChannelId = "task-conv-1",
+            )
+        val settledJoinedTaskRoute = loadingTaskRoute.copy(status = "content", joined = true)
+        val settledUnjoinedTaskRoute = loadingTaskRoute.copy(status = "content", joined = false)
+        // Before the task conversation's parent channel resolves, no display-settings request may fire.
+        assertNull(loadingTaskRoute.longMessageCollapseConversationId())
+        assertNull(settledJoinedTaskRoute.longMessageCollapseConversationId())
+        assertNull(loadingTaskRoute.longMessageCollapseConversationId(homeContent = null, taskParentChannelId = null))
+
+        // While loading, fail closed when Home has not confirmed parent membership.
+        assertNull(loadingTaskRoute.longMessageCollapseConversationId(resolvedParentChannelId = "unknown-parent"))
+        assertEquals(
+            "parent-chan",
+            loadingTaskRoute.longMessageCollapseConversationId(resolvedParentChannelId = "parent-chan", parentJoined = true)
+        )
+        assertNull(
+            loadingTaskRoute.longMessageCollapseConversationId(resolvedParentChannelId = "unjoined-parent", parentJoined = false)
+        )
+
+        // Once settled, follow payload.joined (so live Join overrides stale Home joined=false) and always allow DM parents.
+        assertEquals("parent-chan", settledJoinedTaskRoute.longMessageCollapseConversationId(resolvedParentChannelId = "parent-chan"))
+        assertNull(settledUnjoinedTaskRoute.longMessageCollapseConversationId(resolvedParentChannelId = "unjoined-parent"))
+        assertEquals(
+            "unjoined-parent",
+            settledJoinedTaskRoute.longMessageCollapseConversationId(resolvedParentChannelId = "unjoined-parent", parentJoined = false)
+        )
+        assertEquals(
+            "dm-parent",
+            settledUnjoinedTaskRoute.longMessageCollapseConversationId(
+                resolvedParentChannelId = "dm-parent",
+                parentJoined = false,
+                parentIsDirectMessage = true
+            )
+        )
+
+        val homeContent =
+            SharedHomeContentState.Content(
+                snapshot =
+                    HomeSnapshot(
+                        server = ServerSummary(id = ServerId("srv-1"), name = "Raft"),
+                        currentMember =
+                            MemberProfile(
+                                id = MemberId("u1"),
+                                displayName = "Artin",
+                                handle = "artin",
+                                kind = MemberKind.Human,
+                                presence = Presence.Active,
+                            ),
+                        channels =
+                            listOf(
+                                HomeChannelRow(
+                                    threadId = ThreadId("joined-ch"),
+                                    channelId = ChannelId("joined-ch"),
+                                    name = "joined",
+                                    kind = ConversationKind.Channel,
+                                    joined = true,
+                                    permissions = ConversationPermissions(canRead = true, canSend = true),
+                                ),
+                                HomeChannelRow(
+                                    threadId = ThreadId("unjoined-ch"),
+                                    channelId = ChannelId("unjoined-ch"),
+                                    name = "unjoined",
+                                    kind = ConversationKind.Channel,
+                                    joined = false,
+                                    permissions = ConversationPermissions(canRead = true, canSend = false),
+                                ),
+                            ),
+                        directMessages =
+                            listOf(
+                                HomeDirectMessageRow(
+                                    threadId = ThreadId("dm-1"),
+                                    channelId = ChannelId("dm-1"),
+                                    name = "Lagoon",
+                                    kind = ConversationKind.DirectMessage,
+                                    joined = false,
+                                    permissions = ConversationPermissions(canRead = true, canSend = true),
+                                ),
+                            ),
+                        unreadTotal = 0,
+                    ),
+                session =
+                    StoredAuthSession(
+                        user = StoredAuthUser(id = "u1", email = "artin@slock.ai", displayName = "Artin"),
+                        accessToken = "access",
+                        refreshToken = "refresh",
+                        selectedServerId = "srv-1",
+                    ),
+            )
+
+        assertEquals(
+            "joined-ch",
+            loadingTaskRoute.longMessageCollapseConversationId(homeContent = homeContent, taskParentChannelId = ChannelId("joined-ch"))
+        )
+        assertNull(
+            loadingTaskRoute.longMessageCollapseConversationId(homeContent = homeContent, taskParentChannelId = ChannelId("unjoined-ch"))
+        )
+        assertNull(
+            loadingTaskRoute.longMessageCollapseConversationId(homeContent = homeContent, taskParentChannelId = ChannelId("missing-from-home"))
+        )
+        assertEquals(
+            "dm-1",
+            loadingTaskRoute.longMessageCollapseConversationId(homeContent = homeContent, taskParentChannelId = ChannelId("dm-1"))
+        )
+        // Live Join inside a task conversation overrides stale Home joined=false.
+        assertEquals(
+            "unjoined-ch",
+            settledJoinedTaskRoute.longMessageCollapseConversationId(homeContent = homeContent, taskParentChannelId = ChannelId("unjoined-ch"))
+        )
+        // Top-level loading channel uses Home's joined flag and fails closed if absent from Home.
+        assertEquals(
+            "joined-ch",
+            RaftThreadScreenPayload(
+                surfaceKind = RaftThreadSurfaceKind.Channel,
+                sourceThreadId = "joined-ch",
+                status = "loading",
+                joined = true,
+            ).longMessageCollapseConversationId(homeContent = homeContent)
+        )
+        assertNull(
+            RaftThreadScreenPayload(
+                surfaceKind = RaftThreadSurfaceKind.Channel,
+                sourceThreadId = "unjoined-ch",
+                status = "loading",
+                joined = true,
+            ).longMessageCollapseConversationId(homeContent = homeContent)
+        )
+        assertNull(
+            RaftThreadScreenPayload(
+                surfaceKind = RaftThreadSurfaceKind.Channel,
+                sourceThreadId = "missing-lounge",
+                status = "loading",
+                joined = true,
+            ).longMessageCollapseConversationId(homeContent = homeContent)
+        )
+        // After a live Join updates payload to content+joined=true, stale Home joined=false does not block it.
+        assertEquals(
+            "unjoined-ch",
+            RaftThreadScreenPayload(
+                surfaceKind = RaftThreadSurfaceKind.Channel,
+                sourceThreadId = "unjoined-ch",
+                status = "content",
+                joined = true,
+            ).longMessageCollapseConversationId(homeContent = homeContent)
         )
     }
 

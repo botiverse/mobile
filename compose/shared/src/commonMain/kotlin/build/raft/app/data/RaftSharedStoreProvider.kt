@@ -667,6 +667,19 @@ internal class RaftSharedStoreProvider private constructor(
     }
     val artifactScreenshotStore: SharedArtifactScreenshotStore by artifactScreenshotStoreLazy
 
+    /**
+     * Quote replies of the messages on screen that came without their resolved quotes (a live
+     * `message:new`): `GET /api/messages/:id/resolved-quotes`, in memory for this viewer.
+     */
+    private val resolvedQuotesStoreLazy = lazy {
+        SharedResolvedQuotesStore(
+            api = NetworkRaftResolvedQuotesApi(networkClient),
+            scope = RaftStoreThreading.newScope(),
+            diagnosticsLogger = sharedInfoLogger("RaftQuoteReply"),
+        )
+    }
+    val resolvedQuotesStore: SharedResolvedQuotesStore by resolvedQuotesStoreLazy
+
     /** Joint channel Connected-servers pages (data-layer plan step 5): memory + durable. */
     internal val jointConnectionsCache: build.raft.app.RaftJointConnectionsCache by lazy {
         RaftKeyedSnapshotCache(
@@ -772,6 +785,8 @@ internal class RaftSharedStoreProvider private constructor(
                 if (appLinkPreviewStoreLazy.isInitialized()) appLinkPreviewStore.clearAll()
                 if (artifactSummaryStoreLazy.isInitialized()) artifactSummaryStore.clearAll()
                 if (artifactScreenshotStoreLazy.isInitialized()) artifactScreenshotStore.clearAll()
+                // Quote replies' resolved quotes: per viewer, session only.
+                if (resolvedQuotesStoreLazy.isInitialized()) resolvedQuotesStore.clearAll()
                 // The Artifact viewer's headers and its kept WebView (Tenny's cache rule 1).
                 build.raft.app.RaftArtifactViewerMemory.clear()
                 build.raft.app.raftWebViewKeepAliveClear()

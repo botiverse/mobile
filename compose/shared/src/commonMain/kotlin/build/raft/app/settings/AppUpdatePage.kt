@@ -393,7 +393,10 @@ internal fun AppUpdateSummary(
                     text = stringResource(Res.string.app_update_version_summary, currentVersion, latestVersion),
                     style = RaftType.ButtonBold,
                     color = RaftColor.TextBlack,
-                    maxLines = 1,
+                    // Two builds of one version read "1.28.0 (12800001) → 1.28.0 (12800004)", wider than
+                    // a phone's row beside the Download button; one line cut the new build off (artin
+                    // 2026-11-22), so it wraps.
+                    maxLines = 2,
                     overflow = TextOverflow.Ellipsis
                 )
                 Text(

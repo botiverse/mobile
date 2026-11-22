@@ -122,7 +122,7 @@ class SharedThreadStep2dGapRoundTripTest {
 
             // Phase 1: Cold offline open paints [51..80]; offline LoadOlder crosses into [1..10] with gap (10, 51).
             val repo =
-                SharedThreadStoreTest.FakeConversationRepository(
+                SharedThreadStoreTestFakes.FakeConversationRepository(
                     threadResult = DataResult.Error(ScreenError(code = "offline", retryable = true)),
                     olderResult = DataResult.Error(ScreenError(code = "offline", retryable = true)),
                 )

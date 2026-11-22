@@ -833,8 +833,9 @@ internal fun ThreadInPlaceSelectableBody(
                     quoteSelection =
                         quoteIntoComposer?.let { quote ->
                             {
-                                // Select Text > Quote's formatter and composer append.
-                                val text = formatThreadMessageQuote(selectionText())
+                                // Select Text > Quote's formatter and composer append: a quote reply
+                                // of a sent message (web selection quote with its source message).
+                                val text = threadSelectionQuote(selectionText(), controller.messageId)
                                 diagnosticsLogger(
                                     "thread_in_place_selection_quote messageId=${controller.messageId} chars=${text.length}"
                                 )

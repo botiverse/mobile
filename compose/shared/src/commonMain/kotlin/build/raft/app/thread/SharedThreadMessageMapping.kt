@@ -467,7 +467,8 @@ internal fun RaftThreadMessageItem.toMessage(
         isThreadFollowed = isThreadFollowed,
         isSaved = isSaved,
         reactions = reactions.toMessageReactions(currentUserId, currentUserName),
-        commentRef = commentRef?.toMessageCommentRef()
+        commentRef = commentRef?.toMessageCommentRef(),
+        resolvedQuotes = resolvedQuotes
     )
 }
 
@@ -642,6 +643,7 @@ internal fun Message.toRaftThreadMessageItem(currentUserId: String?): RaftThread
         commentRef = commentRef?.toRaftThreadCommentRef(),
         forwardBundle = forwardBundle,
         mentions = mentions,
+        resolvedQuotes = resolvedQuotes,
         pendingSendContext = pendingSendContext,
         pendingSendErrorCode = metadata[ThreadLocalSendErrorMetadataKey]?.takeIf { it.isNotBlank() },
         pendingSendErrorMessage = metadata[ThreadLocalSendErrorMessageMetadataKey]?.takeIf { it.isNotBlank() }

@@ -563,10 +563,16 @@ private fun ChannelSettingsPageScreen() {
             pinned = homeSidebarOrder?.let { order -> channelSettingsSidebarPinned(order, route.channelId.value) } ?: pinned,
             joint = channel?.let(::channelSettingsIsJoint) == true,
         )
+    val longMessageCollapseConversationId =
+        route.channelId.value.takeIf {
+            channel?.joined == true &&
+                channel.kind != ConversationKind.Task &&
+                channel.kind != ConversationKind.Thread
+        }
     val longMessageCollapseSetting =
         rememberRaftLongMessageCollapseConversationSetting(
             serverId = route.serverId.value,
-            conversationId = route.channelId.value
+            conversationId = longMessageCollapseConversationId,
         )
     // Web ChatPanel: the channel overflow offers "Stop All Agents" (SOS) to
     // joined members holding `controlAgentRuntime` (owner/admin/member).
@@ -2026,15 +2032,17 @@ private fun ChannelPreferencesSection(
                 onToggle = onTogglePin,
             )
         }
-        // Device-local display preference: available without write permission on the channel.
-        ChannelPreferenceRow(
-            title = stringResource(Res.string.conversation_long_message_collapse),
-            detail = null,
-            checked = longMessageCollapseSetting.effective,
-            enabled = longMessageCollapseSetting.available,
-            divider = true,
-            onToggle = { longMessageCollapseSetting.onSetEnabled(!longMessageCollapseSetting.effective) },
-        )
+        // Display preference (web ChannelPreferencesSection): offered only on joined channels.
+        if (longMessageCollapseSetting.available) {
+            ChannelPreferenceRow(
+                title = stringResource(Res.string.conversation_long_message_collapse),
+                detail = null,
+                checked = longMessageCollapseSetting.effective,
+                enabled = true,
+                divider = true,
+                onToggle = { longMessageCollapseSetting.onSetEnabled(!longMessageCollapseSetting.effective) },
+            )
+        }
     }
 }
 
