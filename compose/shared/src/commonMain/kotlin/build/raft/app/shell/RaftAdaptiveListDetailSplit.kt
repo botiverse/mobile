@@ -9,13 +9,13 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.ReadOnlyComposable
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
+import build.raft.app.components.RaftDesignSystemTheme
 import build.raft.app.resources.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -32,12 +32,15 @@ import build.raft.designsystem.components.RaftIconButtonSize
 import build.raft.designsystem.components.RaftPaneSplitter
 import build.raft.designsystem.focus.RaftFocusRegion
 import build.raft.designsystem.focus.RaftFocusRegionHost
+import build.raft.designsystem.theme.RaftPointerInput
+import build.raft.designsystem.theme.RaftPointerInputState
 import build.raft.designsystem.theme.RaftTheme
 import build.raft.app.data.KeyValueChatLayoutPreferenceStore
+import build.raft.app.data.RAFT_LIST_PANE_COLLAPSE_RELEASE_SHARE
 import build.raft.app.data.RAFT_LIST_PANE_DIVIDER_DP
+import build.raft.app.data.RAFT_LIST_PANE_SNAP_PAST_END_DP
 import build.raft.app.data.RaftListPaneDragSession
 import build.raft.app.data.RaftListPaneKind
-import build.raft.app.data.raftListPaneReleaseCollapses
 import build.raft.app.data.raftListPaneDraggedWidthDp
 import build.raft.app.data.raftListPanePreferredWidthDp
 import build.raft.app.data.raftListPaneStoredWidth
@@ -110,9 +113,10 @@ internal fun raftListPaneShareCapDp(roomDp: Float, share: Float, minDp: Float): 
  *   row at once, without the list's handle; the list leaves composition until it is expanded
  *   (web: the collapsed sidebar is inert). Only while [hasSelection]: with nothing open the list shows
  *   beside the empty detail (#4394), and hides again once something opens. With [onCollapsedChange] (the columns the rail's toggle
- *   collapses) the handle collapses the list too: its edge let go of near the rail
- *   ([raftListPaneReleaseCollapses]), or Enter; and where the list was, a strip keeps the rail
- *   toggle's Expand sidebar in sight ([RaftListPaneExpandStrip]), which brings it back.
+ *   collapses) the handle collapses the list too, by the input in use ([raftListPaneDragCollapses]:
+ *   with a mouse or trackpad 40dp past its minimum while held, by touch only its edge let go of
+ *   near the rail), or Enter; and where the list was, a strip keeps the rail toggle's Expand
+ *   sidebar in sight ([RaftListPaneExpandStrip]), which brings it back.
  * - Otherwise (compact): the detail when something is selected, else the list.
  */
 @Composable
@@ -144,7 +148,9 @@ internal fun RaftAdaptiveListDetailSplit(
     val split = dualPane && !listFillsRow && !listCollapsed
     // Collapsed where the rail's toggle brings it back: the strip with Expand sidebar stands where it was.
     val expandStrip = listCollapsed && onCollapsedChange != null
-    val expandStripWidthDp = raftListPaneExpandStripWidthDp()
+    // The split stands outside any page's theme: the strip is as wide as the bar button of the input in use, which
+    // the outermost RaftTheme (the strip's own) reads from RaftPointerInputState too.
+    val expandStripWidthDp = raftListPaneExpandStripWidthDp(RaftPointerInputState.current)
     Box(
         modifier =
             Modifier
@@ -195,10 +201,36 @@ internal fun RaftAdaptiveListDetailSplit(
             listWidthDp = listWidthDp,
             listMaxDp = listMaxDp,
             rowWidthDp = rowWidthDp,
+            collapsedSeamDp = if (expandStrip) expandStripWidthDp else 0f,
             onCollapsedChange = onCollapsedChange,
             onResizingChange = onResizingChange,
             log = log,
         )
+    }
+}
+
+/**
+ * Whether a drag of the list's edge has the list collapsed, as the rail's Collapse Sidebar does: the drag started at
+ * [startWidthDp] and is now [dragDeltaDp] from where it started (right = wider), taken before any clamp; [released]:
+ * the pointer has let go. [pointerInput] (the input in use, [RaftTheme.pointerInput]) picks the rule:
+ * - [RaftPointerInput.Fine], a mouse or trackpad: the web's snap (ColumnResizeHandle `SNAP_PAST_END`, DS Resizable
+ *   "Dragging past the end"). [RAFT_LIST_PANE_SNAP_PAST_END_DP] under the minimum the list collapses at once, while
+ *   the edge is held, and dragging back over the line brings it back; letting go keeps what shows.
+ * - [RaftPointerInput.Touch], a finger: a deliberate gesture, as the edge's 24dp touch target sits beside the list's
+ *   rows. Only letting go under [RAFT_LIST_PANE_COLLAPSE_RELEASE_SHARE] of the minimum from the list's start (100dp for
+ *   the sidebar, 120dp for the Activity list) collapses it; while held it never does, the list stopping at its minimum.
+ */
+internal fun raftListPaneDragCollapses(
+    pointerInput: RaftPointerInput,
+    kind: RaftListPaneKind,
+    startWidthDp: Float,
+    dragDeltaDp: Float,
+    released: Boolean,
+): Boolean {
+    val reach = startWidthDp + dragDeltaDp
+    return when (pointerInput) {
+        RaftPointerInput.Fine -> reach < kind.minDp - RAFT_LIST_PANE_SNAP_PAST_END_DP
+        RaftPointerInput.Touch -> released && reach < kind.minDp * RAFT_LIST_PANE_COLLAPSE_RELEASE_SHARE
     }
 }
 
@@ -208,13 +240,18 @@ internal fun RaftAdaptiveListDetailSplit(
  * range and the row (saved when it ends), arrows step 16dp (Shift 64), Home / End go to the ends,
  * a double click or tap restores the default width, and a mouse shows the resize pointer.
  *
- * With [onCollapsedChange], letting go of the edge near the rail collapses the list as the rail's
- * Collapse Sidebar does ([raftListPaneReleaseCollapses]: under half the list's minimum width from
- * its start). During the drag the list only resizes, stopping at its minimum while the finger
- * goes on, so an overshoot never hides it and dragging back before letting go keeps it; only the
- * release decides, not a drag cut short (the host going inactive, the handle leaving). The width
+ * With [onCollapsedChange], a drag collapses the list as the rail's Collapse Sidebar does, by the
+ * input in use ([raftListPaneDragCollapses]): with a mouse or trackpad the web's snap, 40dp past
+ * the minimum while held (back over the line brings it back, the release keeps what shows); by
+ * touch only letting go near the rail, the list stopping at its minimum while the finger goes on
+ * (a drag cut short, the host going inactive or the handle leaving, never collapses it). The width
  * from before the drag stays remembered (the over-drag is never saved), so Expand sidebar
- * restores it. Enter collapses it too.
+ * restores it. Enter collapses it too. While a drag has the list collapsed the handle stays on the
+ * edge of what is left ([collapsedSeamDp]: the collapsed strip's, else the row's start), so the
+ * drag goes on.
+ *
+ * The split stands outside any page's theme: the handle takes the design system's
+ * ([RaftDesignSystemTheme]) for its colours and the input in use ([RaftTheme.pointerInput]).
  *
  * A drag ends exactly once ([RaftListPaneDragSession]): on release, on cancel, when the host goes
  * inactive and when the seam leaves composition, so the shell never keeps a "resizing" state.
@@ -228,119 +265,137 @@ private fun RaftListPaneSeam(
     listWidthDp: Float,
     listMaxDp: Float,
     rowWidthDp: Float?,
+    collapsedSeamDp: Float,
     onCollapsedChange: ((Boolean) -> Unit)?,
     onResizingChange: (Boolean) -> Unit,
     log: (String) -> Unit,
 ) {
-    val currentOnResizingChange by rememberUpdatedState(onResizingChange)
-    val currentOnCollapsedChange by rememberUpdatedState(onCollapsedChange)
-    val currentLog by rememberUpdatedState(log)
-    val currentKind by rememberUpdatedState(kind)
-    val currentRow by rememberUpdatedState(rowWidthDp)
-    val currentMax by rememberUpdatedState(listMaxDp)
-    var startWidthDp by remember { mutableStateOf(0f) }
-    // The remembered width when the drag started: where a list the release collapsed comes back to.
-    var restoreWidthDp by remember { mutableStateOf(0f) }
-    // How far the finger is from where the drag started (right = wider), before any clamp.
-    var dragTotalDp by remember { mutableStateOf(0f) }
-    val session =
-        remember {
-            RaftListPaneDragSession(onEnd = { reason ->
-                val kindNow = currentKind
-                val collapse =
-                    currentOnCollapsedChange?.takeIf {
-                        reason == RAFT_LIST_PANE_DRAG_RELEASE && raftListPaneReleaseCollapses(kindNow, startWidthDp, dragTotalDp)
+    RaftDesignSystemTheme {
+        val currentPointerInput by rememberUpdatedState(RaftTheme.pointerInput)
+        val currentOnResizingChange by rememberUpdatedState(onResizingChange)
+        val currentOnCollapsedChange by rememberUpdatedState(onCollapsedChange)
+        val currentLog by rememberUpdatedState(log)
+        val currentKind by rememberUpdatedState(kind)
+        val currentRow by rememberUpdatedState(rowWidthDp)
+        val currentMax by rememberUpdatedState(listMaxDp)
+        var startWidthDp by remember { mutableStateOf(0f) }
+        // The remembered width when the drag started: where a list this drag collapsed comes back to.
+        var restoreWidthDp by remember { mutableStateOf(0f) }
+        // How far the pointer is from where the drag started (right = wider), before any clamp.
+        var dragTotalDp by remember { mutableStateOf(0f) }
+        // The drag in flight has the list collapsed (with a mouse or trackpad: the web's snap, while held).
+        var dragCollapsed by remember { mutableStateOf(false) }
+        val session =
+            remember {
+                RaftListPaneDragSession(onEnd = { reason ->
+                    val kindNow = currentKind
+                    // By touch the release decides (raftListPaneDragCollapses); a drag cut short never collapses.
+                    val collapseOnRelease =
+                        !dragCollapsed && currentOnCollapsedChange != null && reason == RAFT_LIST_PANE_DRAG_RELEASE &&
+                            raftListPaneDragCollapses(currentPointerInput, kindNow, startWidthDp, dragTotalDp, released = true)
+                    val collapsedByDrag = dragCollapsed || collapseOnRelease
+                    if (collapsedByDrag) {
+                        // Collapsed by this drag: the width from before it stays, nothing new is saved.
+                        widths.preview(kindNow, restoreWidthDp)
+                        if (collapseOnRelease) currentOnCollapsedChange?.invoke(true)
+                    } else {
+                        widths.save(kindNow)
                     }
-                if (collapse != null) {
-                    // Collapsed by the release: the width from before the drag stays, nothing new is saved.
-                    widths.preview(kindNow, restoreWidthDp)
-                    collapse(true)
-                } else {
-                    widths.save(kindNow)
-                }
-                currentOnResizingChange(false)
-                currentLog("adaptive_list_pane_resize end=$reason kind=$kindNow width=${widths.preferredDp(kindNow)} collapsed=${collapse != null} row=$currentRow")
-            })
+                    currentOnResizingChange(false)
+                    currentLog("adaptive_list_pane_resize end=$reason kind=$kindNow width=${widths.preferredDp(kindNow)} collapsed=$collapsedByDrag row=$currentRow")
+                    dragCollapsed = false
+                })
+            }
+        LaunchedEffect(active) { if (!active) session.end("inactive") }
+        DisposableEffect(Unit) { onDispose { session.end("disposed") } }
+        // Collapsed by the rail, the shortcut or a release (not by this drag), the list is inert and has no handle.
+        if (!split && !dragCollapsed) return@RaftDesignSystemTheme
+        val min = kind.minDp
+        val max = maxOf(min, listMaxDp)
+        val seamDp = if (split) listWidthDp else collapsedSeamDp
+        RaftPaneGridAppLocals {
+            // The splitter's hit area: 12dp across the seam for a mouse, 24dp for a finger.
+            val hit = if (LocalRaftPaneGridPlatform.current.finePointer) 12.dp else 24.dp
+            RaftPaneSplitter(
+                vertical = true,
+                label = stringResource(if (kind == RaftListPaneKind.Sidebar) Res.string.column_resize_sidebar else Res.string.column_resize_list),
+                value = listWidthDp,
+                range = min..max,
+                onSet = { widths.commit(kind, it.coerceIn(min, max)) },
+                onDragStart = {
+                    startWidthDp = listWidthDp
+                    restoreWidthDp = widths.preferredDp(kind)
+                    dragTotalDp = 0f
+                    dragCollapsed = false
+                    session.start(listWidthDp)
+                    currentOnResizingChange(true)
+                    log("adaptive_list_pane_resize start kind=$kind width=$listWidthDp row=$rowWidthDp")
+                },
+                onDrag = { total ->
+                    // Ended already (the host went inactive) with the pointer still down.
+                    if (!session.active) return@RaftPaneSplitter
+                    dragTotalDp = total
+                    // While held: with a mouse or trackpad past the snap line and back; by touch never.
+                    val collapse = currentOnCollapsedChange
+                    val past = collapse != null && raftListPaneDragCollapses(currentPointerInput, kind, startWidthDp, total, released = false)
+                    if (past != dragCollapsed) {
+                        dragCollapsed = past
+                        collapse?.invoke(past)
+                    }
+                    if (dragCollapsed) widths.preview(kind, restoreWidthDp) else widths.drag(kind, startWidthDp, total, currentRow, currentMax)
+                },
+                onDragEnd = { session.end(RAFT_LIST_PANE_DRAG_RELEASE) },
+                onStep = { step -> widths.commit(kind, (listWidthDp + step).coerceIn(min, max)) },
+                onHome = { widths.commit(kind, min) },
+                onEnd = { widths.commit(kind, max) },
+                onReset = { widths.commit(kind, kind.defaultDp) },
+                onEnter = onCollapsedChange?.let { change -> { change(true) } },
+                // The seam's 1dp line is the list's right neighbour; the handle is centred on it.
+                modifier = Modifier.offset(x = seamDp.dp + (RAFT_LIST_PANE_DIVIDER_DP / 2f).dp - hit / 2),
+            )
         }
-    LaunchedEffect(active) { if (!active) session.end("inactive") }
-    DisposableEffect(Unit) { onDispose { session.end("disposed") } }
-    // Collapsed (by the rail, the shortcut or a release), the list is inert and has no handle.
-    if (!split) return
-    val min = kind.minDp
-    val max = maxOf(min, listMaxDp)
-    RaftPaneGridAppLocals {
-        // The splitter's hit area: 12dp across the seam for a mouse, 24dp for a finger.
-        val hit = if (LocalRaftPaneGridPlatform.current.finePointer) 12.dp else 24.dp
-        RaftPaneSplitter(
-            vertical = true,
-            label = stringResource(if (kind == RaftListPaneKind.Sidebar) Res.string.column_resize_sidebar else Res.string.column_resize_list),
-            value = listWidthDp,
-            range = min..max,
-            onSet = { widths.commit(kind, it.coerceIn(min, max)) },
-            onDragStart = {
-                startWidthDp = listWidthDp
-                restoreWidthDp = widths.preferredDp(kind)
-                dragTotalDp = 0f
-                session.start(listWidthDp)
-                currentOnResizingChange(true)
-                log("adaptive_list_pane_resize start kind=$kind width=$listWidthDp row=$rowWidthDp")
-            },
-            onDrag = { total ->
-                // Ended already (the host went inactive) with the pointer still down.
-                if (!session.active) return@RaftPaneSplitter
-                dragTotalDp = total
-                widths.drag(kind, startWidthDp, total, currentRow, currentMax)
-            },
-            onDragEnd = { session.end(RAFT_LIST_PANE_DRAG_RELEASE) },
-            onStep = { step -> widths.commit(kind, (listWidthDp + step).coerceIn(min, max)) },
-            onHome = { widths.commit(kind, min) },
-            onEnd = { widths.commit(kind, max) },
-            onReset = { widths.commit(kind, kind.defaultDp) },
-            onEnter = onCollapsedChange?.let { change -> { change(true) } },
-            // The seam's 1dp line is the list's right neighbour; the handle is centred on it.
-            modifier = Modifier.offset(x = listWidthDp.dp + (RAFT_LIST_PANE_DIVIDER_DP / 2f).dp - hit / 2),
-        )
     }
 }
 
-/** [RaftListPaneDragSession]'s end when the finger lets go of the edge (or the gesture is cancelled): the only end that may collapse. */
+/** [RaftListPaneDragSession]'s end when the pointer lets go of the edge (or the gesture is cancelled): by touch the only end that may collapse. */
 private const val RAFT_LIST_PANE_DRAG_RELEASE = "lift"
 
 /** Test tag of the collapsed list's Expand sidebar ([RaftListPaneExpandStrip]). */
 internal const val RAFT_LIST_PANE_EXPAND_TEST_TAG = "raftListPaneExpand"
 
 /**
- * The collapsed list's strip ([RaftListPaneExpandStrip]): the head's bar button with the 16dp content margin on either
- * side of its glyph (54 with a finger, 48 under a mouse or trackpad).
+ * The collapsed list's strip ([RaftListPaneExpandStrip]) for [pointerInput]: the head's bar button with the 16dp
+ * content margin on either side of its glyph (54 with a finger, 48 under a mouse or trackpad).
  */
-@Composable
-@ReadOnlyComposable
-internal fun raftListPaneExpandStripWidthDp(): Float =
-    RaftTheme.controls.let { controls -> controls.barButtonSize.value + 2 * controls.barEdgeInset.value }
+internal fun raftListPaneExpandStripWidthDp(pointerInput: RaftPointerInput): Float =
+    pointerInput.controls.let { controls -> controls.barButtonSize.value + 2 * controls.barEdgeInset.value }
 
 /**
  * Where the list was while it is collapsed: a strip of the list's surface at the row's start holding the rail toggle's
  * Expand sidebar (web LeftRail SidebarToggleRailItem: PanelLeftOpen, "Expand sidebar"; the web shows it only on the
  * rail, at the foot of it, far from where the list was), a head's bar button level with the head beside it. It brings
- * the list back at the width it had ([onExpand]); the rail's toggle and ⌘\ / Ctrl+\ still do too.
+ * the list back at the width it had ([onExpand]); the rail's toggle and ⌘\ / Ctrl+\ still do too. The split stands
+ * outside any page's theme: the strip takes the design system's, for its colours and the input in use.
  */
 @Composable
 private fun RaftListPaneExpandStrip(onExpand: () -> Unit) {
-    val controls = RaftTheme.controls
-    Box(Modifier.fillMaxSize().background(RaftTheme.colors.layerCanvas), contentAlignment = Alignment.TopCenter) {
-        // The head's icon-lg buttons are bar buttons: 44 with a finger, 28 under a mouse or trackpad (sizing v12).
-        CompositionLocalProvider(LocalRaftBarButtons provides true) {
-            RaftIconButton(
-                onClick = onExpand,
-                tooltip = stringResource(Res.string.rail_expand_sidebar),
-                modifier =
-                    Modifier
-                        .padding(top = raftTopSafeAreaPadding() + (controls.headHeight - controls.barButtonSize) / 2)
-                        .testTag(RAFT_LIST_PANE_EXPAND_TEST_TAG),
-                variant = RaftButtonVariant.Ghost,
-                size = RaftIconButtonSize.Lg,
-            ) {
-                RaftContentLucideIcon(RaftLucideIconName.PanelLeftOpen, size = controls.barIconSize)
+    RaftDesignSystemTheme {
+        val controls = RaftTheme.controls
+        Box(Modifier.fillMaxSize().background(RaftTheme.colors.layerCanvas), contentAlignment = Alignment.TopCenter) {
+            // The head's icon-lg buttons are bar buttons: 44 with a finger, 28 under a mouse or trackpad (sizing v12).
+            CompositionLocalProvider(LocalRaftBarButtons provides true) {
+                RaftIconButton(
+                    onClick = onExpand,
+                    tooltip = stringResource(Res.string.rail_expand_sidebar),
+                    modifier =
+                        Modifier
+                            .padding(top = raftTopSafeAreaPadding() + (controls.headHeight - controls.barButtonSize) / 2)
+                            .testTag(RAFT_LIST_PANE_EXPAND_TEST_TAG),
+                    variant = RaftButtonVariant.Ghost,
+                    size = RaftIconButtonSize.Lg,
+                ) {
+                    RaftContentLucideIcon(RaftLucideIconName.PanelLeftOpen, size = controls.barIconSize)
+                }
             }
         }
     }

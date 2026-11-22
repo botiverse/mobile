@@ -1,6 +1,7 @@
 package build.raft.app
 
 import build.raft.app.data.*
+import build.raft.designsystem.theme.RaftPointerInput
 import kotlin.test.*
 
 /** task #37 / artin task #20: user-resizable, per-kind list column of the wide list + detail split. */
@@ -83,15 +84,30 @@ class AdaptiveListPaneWidthTest {
         assertNull(session.moveTo(20f, 0f))
     }
 
-    @Test fun onlyTheEdgeLetGoOfUnderHalfTheMinimumCollapsesTheList() {
-        // A tablet's edge is a 24dp touch target beside the rows: an overshoot past the minimum (the web's 40dp snap
-        // line, 160 for the sidebar from its default 240) only resizes; let go under half the minimum, it collapses.
-        assertFalse(raftListPaneReleaseCollapses(sidebar, 240f, -81f))
-        assertFalse(raftListPaneReleaseCollapses(sidebar, 240f, -140f))
-        assertTrue(raftListPaneReleaseCollapses(sidebar, 240f, -141f))
-        // The list's minimum is 240: its line is at 120.
-        assertFalse(raftListPaneReleaseCollapses(list, 380f, -260f))
-        assertTrue(raftListPaneReleaseCollapses(list, 380f, -261f))
+    @Test fun byTouchAnOvershootOnlyResizesAndOnlyALetGoNearTheRailCollapses() {
+        val touch = RaftPointerInput.Touch
+        // A tablet's edge is a 24dp touch target beside the rows: the web's 40dp overshoot (past 160 for the sidebar
+        // from its default 240) only resizes, held or let go; held, not even a drag to the rail collapses the list.
+        assertFalse(raftListPaneDragCollapses(touch, sidebar, 240f, -81f, released = false))
+        assertFalse(raftListPaneDragCollapses(touch, sidebar, 240f, -81f, released = true))
+        assertFalse(raftListPaneDragCollapses(touch, sidebar, 240f, -230f, released = false))
+        // Let go under half the minimum from the list's start: 100 for the sidebar (minimum 200), 120 for the list.
+        assertFalse(raftListPaneDragCollapses(touch, sidebar, 240f, -140f, released = true))
+        assertTrue(raftListPaneDragCollapses(touch, sidebar, 240f, -141f, released = true))
+        assertFalse(raftListPaneDragCollapses(touch, list, 380f, -260f, released = true))
+        assertTrue(raftListPaneDragCollapses(touch, list, 380f, -261f, released = true))
+    }
+
+    @Test fun withAFinePointerTheListSnapsClosedFortyPastItsMinimumWhileHeld() {
+        val fine = RaftPointerInput.Fine
+        // web ColumnResizeHandle SNAP_PAST_END: `reach < min - 40`, before any clamp, while the edge is held.
+        assertFalse(raftListPaneDragCollapses(fine, sidebar, 240f, -80f, released = false))
+        assertTrue(raftListPaneDragCollapses(fine, sidebar, 240f, -81f, released = false))
+        // The list's minimum is 240: its line is at 200.
+        assertTrue(raftListPaneDragCollapses(fine, list, 380f, -181f, released = false))
+        // Back across the line while still held, it shows again; letting go keeps what shows.
+        assertFalse(raftListPaneDragCollapses(fine, sidebar, 240f, -20f, released = false))
+        assertTrue(raftListPaneDragCollapses(fine, sidebar, 240f, -81f, released = true))
     }
 
     @Test fun aCommittedWidthIsSavedPerDeviceAndAPreviewIsNot() {

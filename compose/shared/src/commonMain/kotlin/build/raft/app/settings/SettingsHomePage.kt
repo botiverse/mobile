@@ -6051,7 +6051,7 @@ private fun RaftAppShellReadyContent(
                                 detailPane = detailPane,
                                 fillListWhenNothingPicked = fillListWhenNothingPicked,
                                 collapsed = collapseColumn != null && sidebarCollapse.isHidden(collapseColumn),
-                                // The handle's collapse (web `snap` "collapse", here on a deliberate release) and the
+                                // The handle's collapse (web `snap` "collapse"; by touch only on a deliberate release) and the
                                 // Expand sidebar strip where the list was: only where the rail's toggle can bring it back.
                                 onCollapsedChange =
                                     collapseColumn?.takeIf { it == collapsibleColumn }?.let { column ->

@@ -152,7 +152,8 @@ private fun settingsWideWebPage(surface: SettingsWebViewSurface, storeScope: Raf
  * while a non-default section shows returns to the default one ([settingsWideBackReturnsToDefault]).
  * [collapsed]: the rail's Collapse Sidebar hid the list, so the section takes the width beside the
  * strip that keeps Expand sidebar where the list was; [onCollapsedChange] lets that strip bring it
- * back and the list's handle collapse it too (its edge let go of near the rail, Enter).
+ * back and the list's handle collapse it too (a drag past its minimum: with a mouse or trackpad
+ * at once, by touch only let go near the rail; Enter).
  */
 @Composable
 internal fun SettingsWideListDetail(
