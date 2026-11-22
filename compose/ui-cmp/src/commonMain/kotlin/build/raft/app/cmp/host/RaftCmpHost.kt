@@ -67,6 +67,7 @@ fun interface RaftChildPageLoadListener {
  */
 class RaftHostEvents {
     private val listeners = LinkedHashSet<(String, JsonObject) -> Unit>()
+    private val sticky = LinkedHashMap<String, JsonObject>()
 
     /** Registers [listener]; the returned function unregisters it. */
     fun subscribe(listener: (event: String, data: JsonObject) -> Unit): () -> Unit {
@@ -74,9 +75,35 @@ class RaftHostEvents {
         return { listeners.remove(listener) }
     }
 
+    /**
+     * Replays the latest sticky snapshot of each event sent via [sendSticky], in first-send order.
+     *
+     * Note: `:shared`'s `RaftPagerHost` invokes this synchronously during pager creation (right
+     * after `Pager.created()`, ahead of the first composition), so replayed events reach
+     * `Pager.onReceivePagerEvent` overrides directly — NOT `IPagerEventObserver`s registered later
+     * in composition effects such as `DisposableEffect`.
+     */
+    fun replaySticky(listener: (event: String, data: JsonObject) -> Unit) {
+        sticky.entries.toList().forEach { (event, data) -> listener(event, data) }
+    }
+
     /** Delivers [event] to every current subscriber (snapshot: listeners may unsubscribe re-entrantly). */
     fun send(event: String, data: JsonObject = JsonObject(emptyMap())) {
         listeners.toList().forEach { it(event, data) }
+    }
+
+    /**
+     * Like [send], and retains the latest snapshot for pages that attach on the same frame
+     * ([replaySticky]) so Frame-1 composition already sees initial host window facts.
+     *
+     * Use only for events handled directly by `Pager.onReceivePagerEvent` (for example
+     * `slockAdaptivePaneChanged`). Events whose consumers register `IPagerEventObserver`s inside
+     * `DisposableEffect` (such as `slockWindowInsetsChanged`) miss pre-composition replay and must
+     * continue to be sent after composition via [send].
+     */
+    fun sendSticky(event: String, data: JsonObject = JsonObject(emptyMap())) {
+        sticky[event] = data
+        send(event, data)
     }
 }
 

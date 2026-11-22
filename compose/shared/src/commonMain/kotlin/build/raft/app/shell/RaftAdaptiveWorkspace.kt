@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.app.data.SharedHomeContentState
 import build.raft.app.model.ConversationKind
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonObject
@@ -285,7 +286,7 @@ internal fun reduceRaftAdaptiveWorkspace(
                 current?.identity?.key == intent.identityKey &&
                 current.generation == intent.generation
             ) {
-                state.copy(selection = null)
+                state.copy(selection = null, landingGeneration = null)
             } else {
                 state
             }
@@ -300,6 +301,7 @@ internal fun reduceRaftAdaptiveWorkspace(
                 state.copy(
                     serverId = nextServerId,
                     selection = null,
+                    landingGeneration = null,
                     generationCursor = state.generationCursor.nextAdaptiveGeneration(),
                 )
             }
@@ -308,6 +310,7 @@ internal fun reduceRaftAdaptiveWorkspace(
         RaftAdaptiveWorkspaceIntent.TerminalReset ->
             state.copy(
                 selection = null,
+                landingGeneration = null,
                 generationCursor = state.generationCursor.nextAdaptiveGeneration(),
             )
 
@@ -317,6 +320,7 @@ internal fun reduceRaftAdaptiveWorkspace(
             } else {
                 state.copy(
                     selection = null,
+                    landingGeneration = null,
                     generationCursor = state.generationCursor.nextAdaptiveGeneration(),
                 )
             }
@@ -344,6 +348,81 @@ internal fun reduceRaftAdaptiveWorkspace(
  */
 internal fun RaftAdaptiveWorkspaceState.acceptsAdaptiveDefaultLanding(): Boolean =
     pane.layout == RaftAdaptivePaneLayout.DualPane && parentVisible && selection == null
+
+/**
+ * Whether transitioning [before] to [after] dropped a shell-installed default landing because the
+ * window left DualPane (task #243). Explicit closes in DualPane and cross-server authority switches
+ * return false so an explicit close keeps its settled state and authority changes follow their own
+ * reset path. Shared by [SharedAdaptiveWorkspaceStore.update] (canonical normalizer) and
+ * `SettingsHomePage` (handoff lease release) so both never drift.
+ */
+internal fun raftAdaptiveDefaultLandingDropped(
+    before: RaftAdaptiveWorkspaceState?,
+    after: RaftAdaptiveWorkspaceState?,
+): Boolean =
+    before?.selectionIsDefaultLanding == true &&
+        after != null &&
+        after.serverId == before.serverId &&
+        after.pane.layout != RaftAdaptivePaneLayout.DualPane &&
+        after.selection == null
+
+/**
+ * Returns [workspace]'s active selection only when [detailAccepted] is true and both the workspace
+ * authority and selection identity match [readyServerId] (when [readyServerId] is non-blank).
+ *
+ * Prevents a 1-frame cross-server detail mount on Frame T0 of a server switch before Effect #1
+ * applies [RaftAdaptiveWorkspaceIntent.AuthorityChanged] (task #243).
+ */
+internal fun raftAdaptiveSelectionForReadyServer(
+    workspace: RaftAdaptiveWorkspaceState?,
+    readyServerId: String?,
+    detailAccepted: Boolean,
+): RaftAdaptiveDetailSelection? {
+    if (!detailAccepted) return null
+    val selection = workspace?.selection ?: return null
+    val normalizedServerId = readyServerId?.trim()?.takeIf(String::isNotBlank) ?: return selection
+    if (workspace.serverId.trim() != normalizedServerId) return null
+    if (selection.identity.serverId.trim() != normalizedServerId) return null
+    return selection
+}
+
+/**
+ * Whether the wide adaptive detail pane should hide its "Select a conversation" empty placeholder
+ * while Home default landing is still pending for the active server (task #243).
+ *
+ * Returns true only while a wide detail surface is eligible to receive a default landing (desktop
+ * mode on, detail accepted by the hosting surface, [defaultLandingEligible] true on the Home
+ * surface where default landing actually runs, and Home has not failed or resolved empty for this
+ * server) and default landing has not yet settled for [readyServerId].
+ *
+ * Returns false when [detailAccepted] is false (e.g. a tab declining a channel selection), when
+ * [defaultLandingEligible] is false (e.g. Activity / Tasks / inline search where Home's store and
+ * default landing do not run), when default landing has already settled for [readyServerId]
+ * (explicit user open/close or a server with no eligible conversation), when Home failed or
+ * resolved empty for the current server, or when desktop mode is off.
+ */
+internal fun shouldSuppressWideAdaptiveEmptyState(
+    desktopModeOnLargeScreen: Boolean,
+    detailAccepted: Boolean,
+    defaultLandingEligible: Boolean,
+    authoritativeHomeStartAllowed: Boolean,
+    readyServerId: String?,
+    adaptiveDefaultLandingServerId: String?,
+    homeContent: SharedHomeContentState,
+): Boolean {
+    if (!desktopModeOnLargeScreen || !detailAccepted || !defaultLandingEligible) return false
+    val normalizedServerId = readyServerId?.trim()?.takeIf(String::isNotBlank)
+    if (homeContent is SharedHomeContentState.Error) {
+        val errorServerId = homeContent.session?.currentServerId?.trim()?.takeIf(String::isNotBlank)
+        if (errorServerId == null || errorServerId == normalizedServerId) return false
+    }
+    if (homeContent is SharedHomeContentState.Empty) {
+        val emptyServerId = homeContent.session.currentServerId?.trim()?.takeIf(String::isNotBlank)
+        if (emptyServerId == null || emptyServerId == normalizedServerId) return false
+    }
+    if (!authoritativeHomeStartAllowed || normalizedServerId == null) return true
+    return adaptiveDefaultLandingServerId?.trim()?.takeIf(String::isNotBlank) != normalizedServerId
+}
 
 internal fun RaftAdaptiveWorkspaceState.acceptsDetailCallback(
     identityKey: String,

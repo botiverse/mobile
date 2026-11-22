@@ -79,10 +79,24 @@ internal fun SharedAdaptiveWorkspaceSession.backFromDetail(
             detailHistory = AdaptiveDetailHistory(next.selection!!, previous.dropLast(1)),
         )
     }
+    val next =
+        reduceRaftAdaptiveWorkspace(
+            current,
+            RaftAdaptiveWorkspaceIntent.CloseDetail(source.identityKey, source.generation),
+        )
+    // task #243: an explicit close to empty in DualPane settles default landing for this server so
+    // Effect #2 does not resurrect a conversation opened via OpenDetail (e.g. deep link / tap).
+    val settledLandingServerId =
+        if (next.selection == null && next.pane.layout == RaftAdaptivePaneLayout.DualPane) {
+            next.serverId
+        } else {
+            defaultLandingServerId
+        }
     return copy(
-        workspace = reduceRaftAdaptiveWorkspace(current, RaftAdaptiveWorkspaceIntent.CloseDetail(source.identityKey, source.generation)),
+        workspace = next,
         launchPayload = null,
         detailHistory = null,
+        defaultLandingServerId = settledLandingServerId,
     )
 }
 
@@ -109,7 +123,14 @@ internal fun SharedAdaptiveWorkspaceSession.withOpenedDetail(
     val next = reduceRaftAdaptiveWorkspace(current, intent)
     if (next === current && defaultLanding) return this
     if (next.selection?.identity != identity) return this
-    return copy(workspace = next, launchPayload = target)
+    // task #243: any DualPane open (default landing or explicit OpenDetail) settles default landing
+    // for this server. OpenDetail keeps selectionIsDefaultLanding == false, so narrow-drop reset
+    // (raftAdaptiveDefaultLandingDropped) still applies exclusively to untouched default landings.
+    return copy(
+        workspace = next,
+        launchPayload = target,
+        defaultLandingServerId = identity.serverId,
+    )
 }
 
 /**
@@ -119,10 +140,18 @@ internal fun SharedAdaptiveWorkspaceSession.withOpenedDetail(
 internal fun SharedAdaptiveWorkspaceSession.closeDetailCompletely(): SharedAdaptiveWorkspaceSession {
     val current = workspace ?: return this
     if (current.selection == null) return copy(launchPayload = null, detailHistory = null)
+    val next = reduceRaftAdaptiveWorkspace(current, RaftAdaptiveWorkspaceIntent.DismissDetail)
+    val settledLandingServerId =
+        if (next.selection == null && next.pane.layout == RaftAdaptivePaneLayout.DualPane) {
+            next.serverId
+        } else {
+            defaultLandingServerId
+        }
     return copy(
-        workspace = reduceRaftAdaptiveWorkspace(current, RaftAdaptiveWorkspaceIntent.DismissDetail),
+        workspace = next,
         launchPayload = null,
         detailHistory = null,
+        defaultLandingServerId = settledLandingServerId,
     )
 }
 
