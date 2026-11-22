@@ -70,7 +70,7 @@ class RaftPageStack(
         }
 
     fun open(pageName: String, pageData: JsonObject, from: RaftStackPage?) {
-        log("open page=$pageName from=${from?.args?.pageName} data=${pageData.toString().take(200)}")
+        log("open page=$pageName from=${from?.args?.pageName} data=${raftRedactedPageDataForLog(pageData).take(200)}")
         val replace = (pageData[RAFT_REPLACE_CURRENT_PAGE] as? JsonPrimitive)?.booleanOrNull == true
         val top = pages.lastOrNull()
         if (!replace && pageName != RAFT_APP_SHELL_PAGE && top != null &&
@@ -140,4 +140,27 @@ class RaftPageStack(
             }
         return RaftStackPage(key, RaftCmpPageArgs(pageName, hostPageData(pageName, key.pageData)))
     }
+}
+
+private val RaftPageStackRedactedUrlKeys =
+    setOf(
+        build.raft.app.SETTINGS_WEB_VIEW_TARGET_URL,
+        build.raft.app.RAFT_IN_APP_BROWSER_URL_KEY,
+    )
+
+/** Redacts web URL fields in [pageData] to origin + first path segment before writing stack logs. */
+internal fun raftRedactedPageDataForLog(pageData: JsonObject): String {
+    if (RaftPageStackRedactedUrlKeys.none { it in pageData }) return pageData.toString()
+    val sanitized =
+        JsonObject(
+            pageData.mapValues { (key, value) ->
+                val raw = (value as? JsonPrimitive)?.takeIf { it.isString }?.content
+                if (key in RaftPageStackRedactedUrlKeys && raw != null) {
+                    JsonPrimitive(build.raft.app.raftOwnWebUrlForLog(raw))
+                } else {
+                    value
+                }
+            }
+        )
+    return sanitized.toString()
 }

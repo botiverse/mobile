@@ -55,7 +55,6 @@ import build.raft.app.data.StoredAuthSession
 import build.raft.app.data.DataRequestPriority
 import build.raft.app.data.DataResult
 import build.raft.app.data.map
-import build.raft.app.data.BridgeSettingsPlatformCapabilities
 import build.raft.app.data.raftAppActionCardCapabilities
 import build.raft.app.data.featureFlagClientOs
 import build.raft.app.data.ThreadComposerDirectUploadClientRequestIds
@@ -3916,7 +3915,6 @@ private fun SharedThreadRouteContentContent(
         }
     val installAppDialogStateHolder = installAppDialogStore.state.collectAsState()
 
-    val actionCardSpecCopiedLabel = stringResource(Res.string.common_copied)
     // A4: spec card Buttons that run the card (execute, its confirm, a form) go through this store
     // to SharedThreadDataSource.executeActionCardSpec; links and the typed path don't
     // (threadActionCardSpecPress).
@@ -3928,15 +3926,15 @@ private fun SharedThreadRouteContentContent(
                 stepUp = actionCardStepUp,
                 applyCard = { messageId, card -> threadViewModel.dispatch(SharedThreadIntent.ApplyActionCard(messageId, card)) },
                 onNoPermission = { result -> routeAuthRequired(result) },
-                loadWebUrl = {
-                    (
-                        BridgeSettingsPlatformCapabilities(bridge = bridge, copiedMessage = actionCardSpecCopiedLabel)
-                            .loadDeveloper() as? DataResult.Content
-                    )?.data?.webUrl
-                },
+                loadWebUrl = { sharedStores.apiEnvironmentStore.current().webUrl },
                 openInBrowser = { url ->
-                    bridge.log("thread_action_card_open_in_web")
-                    bridge.hostCapabilities.openUrlInBrowser(url)
+                    openThreadActionCardWebUrl(
+                        url = url,
+                        activeWebUrl = sharedStores.apiEnvironmentStore.current().webUrl,
+                        pager = pager,
+                        storeScope = storeScope,
+                        bridge = bridge,
+                    )
                 },
                 onApproved = RaftRatingPrompt::onActionCardApproved,
             )
@@ -7461,6 +7459,31 @@ private fun threadActionCardStepUpCoordinator(networkClient: RaftNetworkClient):
         passkeyOptions = repository::passkeyAssertionOptions,
         webStepUp = repository.webStepUp(),
     )
+}
+
+/**
+ * Opens an action card's "Open in web" link with the App Store 3.1.1 guard and own-origin
+ * authenticated WebView (out of SharedThreadRouteContentContent to stay below its JVM method-size cap).
+ */
+private fun openThreadActionCardWebUrl(
+    url: String,
+    activeWebUrl: String,
+    pager: Pager,
+    storeScope: RaftShellStoreScope,
+    bridge: build.raft.app.base.BridgeModule,
+) {
+    bridge.log("thread_action_card_open_in_web")
+    if (
+        raftPlatformFollowsAppStoreBillingRules() &&
+        raftUrlIsAppStoreRestrictedPurchaseUrl(url, activeWebUrl)
+    ) {
+        bridge.logWarn("thread_action_card_appstore_purchase_blocked url=${raftOwnWebUrlForLog(url)}")
+        if (raftUrlIsOwnBillingPath(url, activeWebUrl)) {
+            pager.openSettingsBillingPage(storeScope)
+        }
+    } else if (!pager.openRaftOwnWebPage(url, storeScope, activeWebBaseUrl = activeWebUrl)) {
+        bridge.hostCapabilities.openUrlInBrowser(url)
+    }
 }
 
 /**

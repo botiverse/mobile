@@ -171,12 +171,17 @@ internal fun raftInAppBrowserDisplayUrl(rawUrl: String): String {
     return url.substring(0, end)
 }
 
-internal fun raftInAppBrowserPageData(rawUrl: String): JSONObject? {
+internal fun raftInAppBrowserPageData(
+    rawUrl: String,
+    replaceCurrentPage: Boolean = false,
+): JSONObject? {
     val decision = resolveRaftLinkOpenDecision(rawUrl, LinkOpenMode.InAppBrowser)
     if (decision.target != RaftLinkOpenTarget.InAppBrowser) return null
-    return JSONObject()
-        .put("pageName", RAFT_IN_APP_BROWSER_PAGE)
-        .put(RAFT_IN_APP_BROWSER_URL_KEY, decision.url)
+    return JSONObject().apply {
+        put("pageName", RAFT_IN_APP_BROWSER_PAGE)
+        put(RAFT_IN_APP_BROWSER_URL_KEY, decision.url)
+        if (replaceCurrentPage) put(build.raft.app.nav.RAFT_REPLACE_CURRENT_PAGE, true)
+    }
 }
 
 internal fun JSONObject.raftInAppBrowserUrlOrNull(): String? =
@@ -187,8 +192,9 @@ internal fun JSONObject.raftInAppBrowserUrlOrNull(): String? =
 internal fun Pager.openRaftInAppBrowserPage(
     rawUrl: String,
     storeScopeOverride: RaftShellStoreScope? = null,
+    replaceCurrentPage: Boolean = false,
 ): Boolean {
-    val pageData = raftInAppBrowserPageData(rawUrl) ?: return false
+    val pageData = raftInAppBrowserPageData(rawUrl, replaceCurrentPage = replaceCurrentPage) ?: return false
     return openRaftPage(
         pageName = RAFT_IN_APP_BROWSER_PAGE,
         pageData = pageData,
@@ -196,8 +202,11 @@ internal fun Pager.openRaftInAppBrowserPage(
     )
 }
 
-internal fun Pager.openUnscopedRaftInAppBrowserPage(rawUrl: String): Boolean {
-    val pageData = raftInAppBrowserPageData(rawUrl) ?: return false
+internal fun Pager.openUnscopedRaftInAppBrowserPage(
+    rawUrl: String,
+    replaceCurrentPage: Boolean = false,
+): Boolean {
+    val pageData = raftInAppBrowserPageData(rawUrl, replaceCurrentPage = replaceCurrentPage) ?: return false
     acquireModule<RouterModule>(RouterModule.MODULE_NAME)
         .openPage(RAFT_IN_APP_BROWSER_PAGE, pageData)
     return true
@@ -230,12 +239,37 @@ internal class RaftLinkNavigator(
      * opens as [RaftLinkOpenIntent.RaftWebPage], a real browser in "Default browser" mode.
      */
     private val isRaftWebPage: (String) -> Boolean = { false },
+    /**
+     * #proj-mobile:#204: opens a Raft own-origin web page in the authenticated in-app WebView
+     * regardless of [LinkOpenMode]. Returning false falls through to the unauthenticated browser path.
+     */
+    private val openRaftWebPageInApp: (String) -> Boolean = { false },
+    /**
+     * iOS App Store Guideline 3.1.1: Raft billing, `/servers/<id>/upgrade`, own-host `?upgrade=...`,
+     * and Stripe purchase URLs must never open inside an in-app WebView or `SFSafariViewController`.
+     */
+    private val isAppStoreRestrictedPurchaseUrl: (String) -> Boolean = { false },
+    /**
+     * Optional iOS App Store 3.1.1 handler for [isAppStoreRestrictedPurchaseUrl] (e.g. redirecting
+     * Raft's own billing page to the native read-only Plan & Billing screen). Returning false blocks
+     * the navigation without opening any browser or purchase sheet.
+     */
+    private val openAppStoreRestrictedPurchaseUrl: (String) -> Boolean = { false },
 ) {
     fun open(
         rawUrl: String,
         intent: RaftLinkOpenIntent = RaftLinkOpenIntent.Ordinary,
     ): RaftLinkOpenDecision {
         val decision = resolveRaftLinkOpenDecision(rawUrl, modeProvider(), intent)
+        // App Store Guideline 3.1.1: intercept billing, /servers/*/upgrade, and Stripe URLs before
+        // any in-app WebView or SFSafariViewController path can open them on iOS.
+        if (decision.target != RaftLinkOpenTarget.Rejected && isAppStoreRestrictedPurchaseUrl(decision.url)) {
+            if (openAppStoreRestrictedPurchaseUrl(decision.url)) {
+                return RaftLinkOpenDecision(RaftLinkOpenTarget.InAppDestination, decision.url)
+            }
+            onRejected(RaftLinkRejectReason.RouteUnavailable)
+            return rejectedLink(RaftLinkRejectReason.RouteUnavailable)
+        }
         // An Artifact's address opens Raft's own viewer, as an Artifact card does, whatever the setting.
         if (intent == RaftLinkOpenIntent.Ordinary && decision.target != RaftLinkOpenTarget.Rejected && openArtifactAddress(decision.url)) {
             return RaftLinkOpenDecision(RaftLinkOpenTarget.ArtifactViewer, decision.url)
@@ -248,9 +282,14 @@ internal class RaftLinkNavigator(
         if (intent == RaftLinkOpenIntent.Ordinary && decision.target != RaftLinkOpenTarget.Rejected && openOwnLink(decision.url)) {
             return RaftLinkOpenDecision(RaftLinkOpenTarget.InAppDestination, decision.url)
         }
-        // A Raft page it has none for: the web page, in a real browser when that is the setting.
+        // A Raft page it has none for: the web page, authenticated in-app when on the active environment.
         if (intent == RaftLinkOpenIntent.Ordinary && decision.target != RaftLinkOpenTarget.Rejected && isRaftWebPage(decision.url)) {
             return open(decision.url, RaftLinkOpenIntent.RaftWebPage)
+        }
+        // Active-environment Raft web pages open in the authenticated WebView regardless of LinkOpenMode;
+        // ForceExternal and RaftWebPageInBrowser bypass this and always reach the system browser.
+        if (intent == RaftLinkOpenIntent.RaftWebPage && decision.target != RaftLinkOpenTarget.Rejected && openRaftWebPageInApp(decision.url)) {
+            return RaftLinkOpenDecision(RaftLinkOpenTarget.InAppDestination, decision.url)
         }
         return when (decision.target) {
             RaftLinkOpenTarget.InAppBrowser -> {
@@ -383,6 +422,38 @@ internal fun rememberRaftLinkNavigator(
                     log = { bridge.log(it) },
                 ),
             isRaftWebPage = { url -> raftOwnLinkIsWebPage(url, RaftSharedStoreRegistry.get(bridge).apiEnvironmentStore.current().webUrl) },
+            openRaftWebPageInApp = { url ->
+                routeScope == RaftInAppBrowserRouteScope.InheritShell &&
+                    pager.openRaftOwnWebPage(
+                        rawUrl = url,
+                        storeScopeOverride = artifactStoreScope,
+                        activeWebBaseUrl = RaftSharedStoreRegistry.get(bridge).apiEnvironmentStore.current().webUrl,
+                    )
+            },
+            isAppStoreRestrictedPurchaseUrl = { url ->
+                raftPlatformFollowsAppStoreBillingRules() &&
+                    raftUrlIsAppStoreRestrictedPurchaseUrl(
+                        rawUrl = url,
+                        activeWebBaseUrl = RaftSharedStoreRegistry.get(bridge).apiEnvironmentStore.current().webUrl,
+                    )
+            },
+            openAppStoreRestrictedPurchaseUrl = { url ->
+                val activeWebUrl = RaftSharedStoreRegistry.get(bridge).apiEnvironmentStore.current().webUrl
+                if (
+                    routeScope == RaftInAppBrowserRouteScope.InheritShell &&
+                    raftUrlIsOwnBillingPath(url, activeWebUrl)
+                ) {
+                    val scope = artifactStoreScope ?: pager.pageData.params.raftShellStoreScopeOrNull()
+                    if (scope != null) {
+                        pager.openSettingsBillingPage(scope)
+                        true
+                    } else {
+                        false
+                    }
+                } else {
+                    false
+                }
+            },
         )
     }
 }

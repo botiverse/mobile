@@ -33,7 +33,8 @@ class SharedAuthDataSource(
     private val api: RaftAuthApi,
     private val sessionStore: RaftAuthSessionStore,
     private val diagnosticsLogger: (String) -> Unit = {},
-    private val criticalDiagnosticsLogger: (String) -> Unit = diagnosticsLogger
+    private val criticalDiagnosticsLogger: (String) -> Unit = diagnosticsLogger,
+    private val clearWebViewAuthStorage: suspend () -> Unit = { build.raft.app.raftClearWebViewAuthStorage() },
 ) {
     private var avatarCacheRuntime: RaftAvatarCacheRuntime? = null
     private var avatarCacheNativeCache: RaftAvatarNativeCache = UnsupportedRaftAvatarNativeCache
@@ -66,12 +67,14 @@ class SharedAuthDataSource(
         transport: RaftAuthTransport,
         sessionStore: RaftAuthSessionStore,
         diagnosticsLogger: (String) -> Unit = {},
-        criticalDiagnosticsLogger: (String) -> Unit = diagnosticsLogger
+        criticalDiagnosticsLogger: (String) -> Unit = diagnosticsLogger,
+        clearWebViewAuthStorage: suspend () -> Unit = { build.raft.app.raftClearWebViewAuthStorage() },
     ) : this(
         api = RaftAuthApiClient(transport, diagnosticsLogger),
         sessionStore = sessionStore,
         diagnosticsLogger = diagnosticsLogger,
-        criticalDiagnosticsLogger = criticalDiagnosticsLogger
+        criticalDiagnosticsLogger = criticalDiagnosticsLogger,
+        clearWebViewAuthStorage = clearWebViewAuthStorage,
     )
 
     fun logDiagnostics(message: String) {
@@ -1447,6 +1450,7 @@ class SharedAuthDataSource(
             sessionStore.clearSession(reason = "logout", source = "auth_data_source_logout")
             retireCapturedAvatarOwners(avatarRetirement, source = "logout")
             clearAccountImageCaches(source = "logout")
+            clearAccountWebViewStorage(source = "logout")
             diagnosticsLogger("auth_logout_cleared serverRevocation=$serverRevocation")
             SharedAuthResult.Success(Unit)
         }
@@ -1456,6 +1460,7 @@ class SharedAuthDataSource(
         sessionStore.clearSession(reason = reason, source = source)
         retireCapturedAvatarOwners(capture, source)
         clearAccountImageCaches(source)
+        clearAccountWebViewStorage(source)
     }
 
     private suspend fun replaceAuthenticatedSessionAndRetireChangedAccount(
@@ -1469,9 +1474,17 @@ class SharedAuthDataSource(
             previous
                 ?.takeIf { accountChanged }
                 ?.let(::captureAvatarOwnerRetirement)
+        if (accountChanged) {
+            if (!isCurrent()) return false
+            // Clear and await previous account's WebView auth storage BEFORE persisting the new
+            // session so async cleanup can never race and wipe the new account's injected token.
+            clearAccountWebViewStorage(source)
+        }
         if (!sessionStore.replaceAuthenticatedSessionIfCurrent(session, isCurrent)) return false
         retireCapturedAvatarOwners(capture, source)
-        if (accountChanged) clearAccountImageCaches(source)
+        if (accountChanged) {
+            clearAccountImageCaches(source)
+        }
         return true
     }
 
@@ -1479,6 +1492,12 @@ class SharedAuthDataSource(
     private suspend fun clearAccountImageCaches(source: String) {
         runCatchingPreservingCancellation { raftClearImageCaches() }
             .onFailure { diagnosticsLogger("image_cache_clear result=failure source=$source") }
+    }
+
+    /** Persistent WebView storage holds the previous account's web access token; drop it. */
+    private suspend fun clearAccountWebViewStorage(source: String) {
+        runCatchingPreservingCancellation { clearWebViewAuthStorage() }
+            .onFailure { diagnosticsLogger("webview_storage_clear result=failure source=$source") }
     }
 
     private fun captureAvatarOwnerRetirement(session: StoredAuthSession?): RaftAvatarOwnerRetirementCapture? =

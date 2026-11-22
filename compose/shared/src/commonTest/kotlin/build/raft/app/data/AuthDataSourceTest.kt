@@ -1412,6 +1412,60 @@ class AuthDataSourceTest {
     }
 
     @Test
+    fun logoutClearsPersistentWebViewAuthStorage() = runBlocking {
+        var clearedCount = 0
+        val store = InMemoryRaftAuthSessionStore(storedSession())
+        val result =
+            SharedAuthDataSource(
+                transport = FakeAuthApi(),
+                sessionStore = store,
+                clearWebViewAuthStorage = { clearedCount += 1 },
+            ).logout()
+        assertTrue(result is SharedAuthResult.Success)
+        assertEquals(1, clearedCount)
+    }
+
+    @Test
+    fun switchingAccountClearsWebViewAuthStorageBeforePersistingNewSession() = runBlocking {
+        val events = mutableListOf<String>()
+        val previousSession = storedSession()
+        val delegate = InMemoryRaftAuthSessionStore(previousSession)
+        val recordingStore =
+            object : RaftAuthSessionStore by delegate {
+                override suspend fun replaceAuthenticatedSessionIfCurrent(
+                    session: StoredAuthSession,
+                    isCurrent: () -> Boolean,
+                ): Boolean {
+                    events += "persist:${session.user.id}"
+                    return delegate.replaceAuthenticatedSessionIfCurrent(session, isCurrent)
+                }
+            }
+        val otherUserTransport =
+            FakeAuthApi(
+                loginResponse =
+                    AuthNetworkResponse(
+                        200,
+                        """{"accessToken":"token-2","refreshToken":"refresh-2","user":{"id":"user-2","email":"other@slock.ai","displayName":"Other"},"servers":[]}""",
+                    ),
+            )
+        val source =
+            SharedAuthDataSource(
+                transport = otherUserTransport,
+                sessionStore = recordingStore,
+                clearWebViewAuthStorage = { events += "clear_webview" },
+            )
+        // completeAppLogin transitions directly from user-1 to user-2 without pre-clearing sessionStore,
+        // exercising replaceAuthenticatedSessionAndRetireChangedAccount's accountChanged branch.
+        val staleResult = source.completeAppLogin("code-1", "verifier-1", isCurrent = { false })
+        assertTrue(staleResult is SharedAuthResult.Unauthenticated)
+        assertEquals(emptyList(), events, "superseded login must not clear WebView storage")
+
+        val result = source.completeAppLogin("code-2", "verifier-2", isCurrent = { true })
+        assertTrue(result is SharedAuthResult.Success)
+        assertEquals(listOf("clear_webview", "persist:user-2"), events)
+    }
+
+    @Test
     fun loadServersClearsStaleSelectedServerInSharedLayer() = runBlocking {
         val store =
             InMemoryRaftAuthSessionStore(

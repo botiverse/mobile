@@ -328,6 +328,7 @@ private fun SettingsAccountScreen() {
             settingsViewModel.dispatch(SharedSettingsIntent.LoadPageContent(SharedSettingsDestination.Account))
         }
     }
+    val linkNavigator = LocalRaftLinkNavigator.current
     // A Settings search result opened this page at a setting: its row is brought into view and located.
     ProvideSettingsSearchLocator(pager.pageData.params) {
     SettingsDetailShell(
@@ -381,7 +382,14 @@ private fun SettingsAccountScreen() {
                             webBaseUrl = environment.webBaseUrl,
                             serverSlug = { standaloneSettingsServerSlug(session.value) },
                             log = { line -> bridge.log(line) },
-                            openInBrowser = { url -> bridge.openUrl(url, inBrowser = true) },
+                            openInBrowser = { url ->
+                                // Passkeys / two-step verification require WebAuthn, which the in-app WebView lacks.
+                                if (linkNavigator != null) {
+                                    linkNavigator.open(url, RaftLinkOpenIntent.RaftWebPageInBrowser)
+                                } else {
+                                    bridge.openUrl(url, inBrowser = true)
+                                }
+                            },
                         ),
                     onRetry = { loginSecurityStore.dispatch(SharedAccountLoginSecurityIntent.Refresh) },
                 ),

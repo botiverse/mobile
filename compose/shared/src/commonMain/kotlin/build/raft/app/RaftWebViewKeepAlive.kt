@@ -1,6 +1,9 @@
 package build.raft.app
 
 import androidx.compose.runtime.Composable
+import build.raft.app.data.RaftClientConfigAppHosts
+import build.raft.app.data.RaftSharedStoreRegistry
+import build.raft.app.links.raftComparableHostname
 
 /**
  * One native WebView kept past its page ([RaftWebViewConfig.keepAliveKey]), so the next page with
@@ -31,6 +34,56 @@ internal expect fun raftWebViewEvaluateInKept(key: String, origin: String, scrip
 
 /** Destroys every kept WebView (sign-out, an account or server switch, a 403/404). */
 internal expect fun raftWebViewKeepAliveClear()
+
+/**
+ * Origins whose persistent WebView storage holds Raft web auth tokens (the active environment's
+ * web origin plus known Raft app hosts). Clearing only these origins preserves third-party site
+ * sessions in [InAppBrowserPage].
+ */
+internal fun raftWebViewAuthOriginsToClear(
+    activeWebBaseUrl: String? = RaftSharedStoreRegistry.currentOrNull()?.apiEnvironmentStore?.current()?.webUrl,
+    appHosts: Set<String> = RaftClientConfigAppHosts.current,
+): Set<String> =
+    buildSet {
+        activeWebBaseUrl?.trim()?.takeIf { it.isNotEmpty() }?.let(::raftWebOriginOf)?.let(::add)
+        for (host in RaftMessageLinkProductionHosts) {
+            add("https://$host")
+        }
+        for (rawHost in appHosts) {
+            val host = raftComparableHostname(rawHost.trim())
+            if (host.isNotEmpty()) add("https://$host")
+        }
+    }
+
+/**
+ * Matches a WebKit `WKWebsiteDataRecord.displayName` (eTLD+1 or host, e.g. `raft.build`) against
+ * the set of Raft own hostnames (`app.raft.build`, `staging.raft.build`, etc.).
+ */
+internal fun raftWebKitDisplayNameMatchesHosts(displayName: String, hosts: Set<String>): Boolean {
+    val normalized = displayName.trim().lowercase().trimEnd('.')
+    if (normalized.isEmpty()) return false
+    return hosts.any { raw ->
+        val host = raw.trim().lowercase().trimEnd('.')
+        host.isNotEmpty() && (host == normalized || host.endsWith(".$normalized"))
+    }
+}
+
+/**
+ * Clears persistent WebView auth storage (`localStorage`, Raft own-origin cookies, site data) and
+ * drops any kept or spare WebViews, suspending until platform cleanup completes so an account
+ * switch never races a new account's token injection (#proj-mobile:#204).
+ *
+ * On Android, `WebStorage.deleteAllData()` is always used because Chromium's `deleteOrigin()`
+ * omits `LOCAL_STORAGE`; cookies are still cleared per Raft origin so third-party cookie logins in
+ * [InAppBrowserPage] survive. On iOS, `WKWebsiteDataStore` records matching Raft hosts are deleted.
+ */
+internal suspend fun raftClearWebViewAuthStorage(
+    origins: Set<String> = raftWebViewAuthOriginsToClear(),
+) {
+    raftClearPlatformWebViewAuthStorage(origins)
+}
+
+internal expect suspend fun raftClearPlatformWebViewAuthStorage(origins: Set<String>)
 
 /**
  * Creates and keeps a WebView for [config] (which has a [RaftWebViewConfig.keepAliveKey]) ahead

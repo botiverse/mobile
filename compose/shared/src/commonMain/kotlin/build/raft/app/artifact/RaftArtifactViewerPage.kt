@@ -112,7 +112,7 @@ internal fun raftArtifactViewerWebViewConfig(
         domStorageEnabled = true,
         useWideViewPort = desktopMode,
         cacheEnabled = true,
-        ephemeral = false,
+        ephemeral = raftPlatformUsesEphemeralAuthWebView(),
         injectedJavaScript = injectedJavaScript,
         allowedNavigationSchemes = setOf("http", "https"),
         // Rule 3: no bridge into the app, for the page or the content frame.
@@ -689,11 +689,27 @@ private fun RaftArtifactViewerScreen() {
                 RaftArtifactViewerSplashCover(splashKinds, splashOpenedAt, desktopMode)
             RaftArtifactViewerBodyState.Viewing ->
                 if (scope == null) {
-                    // An unknown subject reuses nothing and keeps nothing: the page in the browser, as before.
+                    // An unknown viewer scope reuses nothing and keeps nothing: replace in place when
+                    // standalone (or push over the shell and dismiss the column when inColumn) if a
+                    // session and shell scope exist, else fall back to the browser and close this page.
                     LaunchedEffect(Unit) {
                         raftLogWarn(RAFT_ARTIFACT_VIEWER_DIAGNOSTICS_TAG, "artifact_viewer_browser_fallback reason=no_scope")
-                        host.bridge.openUrl(pageUrl, inBrowser = true)
-                        closePage()
+                        val hasSession = runCatchingPreservingCancellation { authStore.readSession() }.getOrNull() != null
+                        val configuredWebBaseUrl = standaloneSettingsWebBaseUrl(host.sharedStores.apiEnvironmentStore)
+                        val openedInApp =
+                            hasSession &&
+                                pager.openRaftOwnWebPage(
+                                    rawUrl = pageUrl,
+                                    storeScopeOverride = host.openStoreScope,
+                                    activeWebBaseUrl = configuredWebBaseUrl,
+                                    replaceCurrentPage = !inColumn,
+                                )
+                        if (!openedInApp) {
+                            host.bridge.openUrl(pageUrl, inBrowser = true)
+                        }
+                        if (!openedInApp || inColumn) {
+                            closePage()
+                        }
                     }
                 } else {
                     key(webRetry) {
@@ -1180,7 +1196,7 @@ private fun RaftArtifactViewerWebBody(
             // viewport (the version shown stays); iOS re-zooms the page in place.
             useWideViewPort = desktopMode,
             cacheEnabled = true,
-            ephemeral = false,
+            ephemeral = raftPlatformUsesEphemeralAuthWebView(),
             injectedJavaScript = injected,
             hostEventsEnabled = false,
             controller = controller,
@@ -1211,8 +1227,26 @@ private fun RaftArtifactViewerWebBody(
             onNavigationBlocked = { blocked ->
                 // Rule 2: off the web origin never loads here; a new window the page asked for is
                 // routed as a link ([raftArtifactViewerBlockedNavigationTarget]).
+                val configuredWebBaseUrl = standaloneSettingsWebBaseUrl(host.sharedStores.apiEnvironmentStore)
+                fun openExternallyRespectingAppStore(targetUrl: String) {
+                    if (
+                        raftPlatformFollowsAppStoreBillingRules() &&
+                        raftUrlIsAppStoreRestrictedPurchaseUrl(targetUrl, configuredWebBaseUrl)
+                    ) {
+                        host.bridge.logWarn("artifact_viewer_appstore_purchase_blocked url=${raftOwnWebUrlForLog(targetUrl)}")
+                        if (raftUrlIsOwnBillingPath(targetUrl, configuredWebBaseUrl)) {
+                            host.pager.openSettingsBillingPage(host.storeScope)
+                        }
+                        return
+                    }
+                    host.bridge.openUrl(targetUrl, inBrowser = true)
+                }
                 when (val routed = raftArtifactViewerBlockedNavigationTarget(blocked, scope.webOrigin, shownTarget.id)) {
-                    is RaftArtifactViewerBlockedTarget.SystemBrowser -> host.bridge.openUrl(routed.url, inBrowser = true)
+                    is RaftArtifactViewerBlockedTarget.RaftWebPage ->
+                        if (!host.pager.openRaftOwnWebPage(routed.url, host.openStoreScope, activeWebBaseUrl = configuredWebBaseUrl)) {
+                            openExternallyRespectingAppStore(routed.url)
+                        }
+                    is RaftArtifactViewerBlockedTarget.SystemBrowser -> openExternallyRespectingAppStore(routed.url)
                     // A save the page asked for as a new window: an http(s) address on the page's origin is
                     // downloaded with the app's session; a `blob:` one cannot be read from here.
                     RaftArtifactViewerBlockedTarget.Download ->

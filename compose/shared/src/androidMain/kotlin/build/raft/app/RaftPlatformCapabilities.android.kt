@@ -90,6 +90,10 @@ internal actual fun raftPlatformShortcutsUseCommand(): Boolean = false
 
 internal actual fun raftPlatformSupportsInAppBrowser(): Boolean = true
 
+internal actual fun raftPlatformSupportsEmbeddedOwnWebView(): Boolean = true
+
+internal actual fun raftPlatformUsesEphemeralAuthWebView(): Boolean = false
+
 internal actual fun raftPlatformClipboardHasAttachments(): Boolean = false
 
 internal actual fun raftPlatformReadClipboardAttachments(): List<PlatformFile> = emptyList()
