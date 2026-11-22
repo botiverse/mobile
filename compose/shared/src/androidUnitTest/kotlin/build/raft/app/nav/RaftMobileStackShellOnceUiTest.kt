@@ -51,6 +51,7 @@ import build.raft.app.compat.pager.PageData
 import build.raft.app.compat.pager.Pager
 import build.raft.app.compat.pager.RaftPageActivity
 import build.raft.app.compat.ui.LocalRaftPageActive
+import build.raft.app.compat.ui.collectAsStateWhileStarted
 import build.raft.app.components.RaftDesignSystemTheme
 import build.raft.app.data.RaftAndroidSqlDatabaseContext
 import build.raft.app.rememberThreadInPlaceSelectionController
@@ -59,6 +60,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import org.junit.Rule
@@ -374,10 +376,47 @@ class RaftMobileStackShellOnceUiTest {
             runOnIdle { stack.push() }
             mainClock.advanceTimeUntil(timeoutMillis = 2_000) { pageInMotion == true && pageWidth > 0 }
             assertEquals(full, shellWidth, "the shell is drawn under the page still sliding in")
+            onNodeWithTag(SHELL).assertIsDisplayed()
             mainClock.autoAdvance = true
             waitForIdle()
             assertEquals(false, pageInMotion)
-            assertEquals(0, shellWidth, "covered once the push settled")
+            onNodeWithTag(SHELL).assertIsNotDisplayed()
+            assertEquals(full, shellWidth, "covered shell keeps viewport size so gesture back never rebuilds tabs from 0x0")
+        }
+
+    /**
+     * While covered by a pushed page, [collectAsStateWhileStarted] pauses upstream emissions so the
+     * hidden shell does not recompose mid-transition, and catches up as soon as the pop lands back.
+     */
+    @Test
+    fun coveredShellPausesLifecycleGatedCollectionAndCatchesUpOnPop() =
+        runRobolectricComposeUiTest {
+            val sharedCounter = MutableStateFlow(1)
+            var observedInShell = -1
+            var shellCollectorRecompositions = 0
+            val stack = showShell {
+                val value by sharedCounter.collectAsStateWhileStarted()
+                shellCollectorRecompositions++
+                observedInShell = value
+                Box(Modifier.fillMaxSize())
+            }
+            assertEquals(1, observedInShell)
+
+            runOnIdle { stack.push() }
+            waitForIdle()
+            val recompositionsWhileCovered = shellCollectorRecompositions
+
+            runOnIdle {
+                sharedCounter.value = 2
+                sharedCounter.value = 3
+            }
+            waitForIdle()
+            assertEquals(1, observedInShell, "covered shell holds last value while paused")
+            assertEquals(recompositionsWhileCovered, shellCollectorRecompositions, "covered shell does not recompose on store updates")
+
+            runOnIdle { stack.back() }
+            waitForIdle()
+            assertEquals(3, observedInShell, "returning shell catches up to the latest StateFlow value")
         }
 
     private fun Context.componentActivity(): ComponentActivity {

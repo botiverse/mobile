@@ -205,6 +205,7 @@ class RaftRatingPromptCoordinator(
     private class OpenedTask(val status: TaskStatus, val creatorId: String?, val assigneeKind: MemberKind?)
 
     private val lock = SynchronizedObject()
+    private val activeDayLock = SynchronizedObject()
     private val evaluation = Mutex()
     private var shellContext: RaftRatingPromptShellContext? = null
     private var openedTask: OpenedTask? = null
@@ -223,8 +224,10 @@ class RaftRatingPromptCoordinator(
     /** The app came to the foreground: counts today as an active day. */
     fun onAppForeground() {
         val records = repository() ?: return
-        runCatching { records.recordActiveDay(todayEpochDay()) }
-            .onFailure { log("rating_prompt_active_day_failed error=${it::class.simpleName}") }
+        synchronized(activeDayLock) {
+            runCatching { records.recordActiveDay(todayEpochDay()) }
+                .onFailure { log("rating_prompt_active_day_failed error=${it::class.simpleName}") }
+        }
     }
 
     /** The app went to the background: an opened task no longer leads back to the list. */

@@ -1473,7 +1473,12 @@ private object RaftMarkdownTextProvider : TextProvider {
         val bodyClick = LocalRaftMarkdownBodyClick.current
         val permalinkLabelResolver = LocalRaftMessagePermalinkLabelResolver.current
         val unavailableQuotedPermalink = LocalRaftUnavailableQuotedPermalink.current
-        val unavailableLinkLabel = stringResource(Res.string.thread_quoted_permalink_unavailable_link)
+        val unavailableLinkLabel =
+            if (unavailableQuotedPermalink != null) {
+                stringResource(Res.string.thread_quoted_permalink_unavailable_link)
+            } else {
+                ""
+            }
         val renderMessagePermalinksAsTag =
             LocalRaftMarkdownRenderConfig.current.renderMessagePermalinksAsTag
         val permalinkUriHandler = LocalUriHandler.current

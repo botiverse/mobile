@@ -172,6 +172,7 @@ import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.collectAsState
+import build.raft.app.compat.ui.collectAsStateWhileStarted
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
@@ -1849,7 +1850,7 @@ private fun SharedThreadRouteContentContent(
     val sharedHomeStore = remember(sharedStores, storeScope) { sharedStores.sharedHomeStore(storeScope) }
     // Data-layer plan: frame 1 sees the Home store's current value (pin state, rows), not an empty state.
     val sharedHomeStateFlow = remember(sharedHomeStore) { sharedHomeStore.homeStateForPage() }
-    val sharedHomeState by sharedHomeStateFlow.collectAsState()
+    val sharedHomeState by sharedHomeStateFlow.collectAsStateWhileStarted()
     val realtimeEvents = remember(eventBus) { RaftRealtimeEvents(eventBus) }
     val realtimeEventMapper =
         remember(sharedStores) {
@@ -2245,7 +2246,7 @@ private fun SharedThreadRouteContentContent(
             }
         }
     }
-    val directoryConversationProjections by headerProjectionStateOwner.state.collectAsState()
+    val directoryConversationProjections by headerProjectionStateOwner.state.collectAsStateWhileStarted()
     val directoryConversationProjection =
         remember(headerProjectionInput, conversationDirectoryLookupIds, directoryConversationProjections) {
             conversationDirectoryLookupIds
@@ -2257,7 +2258,7 @@ private fun SharedThreadRouteContentContent(
         }
     // Unfiltered directory projections (header owner drops non-display rows, but a
     // reply thread's joint billing state lives on its parent channel projection).
-    val billingDirectoryProjections by directoryConversationProjectionFlow.collectAsState(
+    val billingDirectoryProjections by directoryConversationProjectionFlow.collectAsStateWhileStarted(
         initialDirectoryConversationProjections
     )
     // Joint channel (or a reply thread in one): message rows may resolve senders from the other
@@ -2383,29 +2384,18 @@ private fun SharedThreadRouteContentContent(
             accessResolution = renderSlice.accessResolution
         )
     // #171 diagnostics: the first content frame lands while the page is still sliding in (it used to
-    // wait for the slide behind the loading shell). Compare with nav_transition_frames on device.
-    val threadPageInMotion = LocalRaftStackPageInMotion.current
-    var threadFirstContentLogged by remember(threadInstanceKey) { mutableStateOf(false) }
-    if (!threadFirstContentLogged && routeMountPlan == ThreadRouteMountPlan.FeatureSurfaces) {
-        val revealedInMotion = threadPageInMotion
-        val revealAccess = renderSlice.accessResolution
-        val revealLookupComplete = renderSlice.initialHomeAccessLookupComplete
-        val revealMessages = timelineSlice.messages.size
-        SideEffect {
-            threadFirstContentLogged = true
-            bridge.log(
-                "thread_first_reveal threadId=${(threadTimelineKey ?: threadInstanceKey).orEmpty()} " +
-                    "inMotion=$revealedInMotion access=$revealAccess homeLookupComplete=$revealLookupComplete " +
-                    "messages=$revealMessages"
-            )
-            if (revealedInMotion) {
-                bridge.log(
-                    "thread_first_reveal_in_motion threadId=${(threadTimelineKey ?: threadInstanceKey).orEmpty()} " +
-                        "messages=$revealMessages"
-                )
-            }
-        }
-    }
+    // wait for the slide behind the loading shell). Isolate LocalRaftStackPageInMotion inside a leaf
+    // composable kept across routeMountPlan changes so it logs at most once per threadInstanceKey
+    // and never subscribes SharedThreadRouteContentContent to motion state.
+    ThreadFirstRevealMotionLogger(
+        threadInstanceKey = threadInstanceKey,
+        ready = routeMountPlan == ThreadRouteMountPlan.FeatureSurfaces,
+        threadId = (threadTimelineKey ?: threadInstanceKey).orEmpty(),
+        accessResolutionName = renderSlice.accessResolution.toString(),
+        homeLookupComplete = renderSlice.initialHomeAccessLookupComplete,
+        revealMessages = timelineSlice.messages.size,
+        log = bridge::log,
+    )
     val realtimeRoomLeaseRegistry =
         remember(sharedStores, storeScope) { sharedStores.realtimeRoomLeaseRegistry(storeScope) }
     val roomLeaseActive = shouldHoldThreadRoomLease(adaptiveCloseRequest, active)
@@ -2451,9 +2441,9 @@ private fun SharedThreadRouteContentContent(
         }
     }
     val coroutineScope = rememberCoroutineScope()
-    LaunchedEffect(sharedStores.activityUnreadSummaryStore, currentSession?.currentServerId) {
+    ThreadAfterMotionEffect(sharedStores.activityUnreadSummaryStore, currentSession?.currentServerId) {
         val serverId = currentSession?.currentServerId?.trim()?.takeIf { it.isNotBlank() }
-            ?: return@LaunchedEffect
+            ?: return@ThreadAfterMotionEffect
         sharedStores.activityUnreadSummaryStore.ensure(ServerId(serverId), reason = "thread_route_attach")
     }
     val latestCurrentSessionState = rememberUpdatedState(currentSession)
@@ -2843,7 +2833,7 @@ private fun SharedThreadRouteContentContent(
         remember(sharedStores, storeScope) {
             sharedStores.foregroundBannerStore(storeScope)
         }
-    val foregroundMessageBanner by foregroundBannerStore.banner.collectAsState()
+    val foregroundMessageBanner by foregroundBannerStore.banner.collectAsStateWhileStarted()
     val foregroundBannerRouteOwnerId = remember { nextForegroundBannerRouteOwnerId("thread") }
     val inAssistantPanelEmbed = LocalThreadAssistantPanelEmbed.current != null
     DisposableEffect(active, payloadRouteIdentity, foregroundBannerStore, inAssistantPanelEmbed, foregroundBannerRouteOwnerId) {
@@ -2967,7 +2957,7 @@ private fun SharedThreadRouteContentContent(
         }
     val labels = threadRouteLabels()
     val genericActionCardSuccessLabel = labels.genericActionCardSuccessLabel
-    val composerSendKeyEnabled = chatLayoutPreferenceStore.readComposerSendKeyEnabledSync()
+    val composerSendKeyEnabled = rememberComposerSendKeyEnabled(chatLayoutPreferenceStore, eventBus)
     // Effective "Collapse long messages": this conversation's device-local override ?: the global switch.
     val longMessageCollapseConversationSetting =
         rememberRaftLongMessageCollapseConversationSetting(
@@ -3364,26 +3354,18 @@ private fun SharedThreadRouteContentContent(
             store.refreshMembers(serverId, DataRequestPriority.Visible)
         }
     }
+    // Keep channelMemberSliceFlow keyed independently of `active` so covering this thread during
+    // a push never tears down and recreates its member flow on Frame 1; gate only the refresh.
     val threadChannelMembersSlice by remember(
         serverMembersStore,
         threadMembersServerId,
         threadMembersChannelId,
-        active
     ) {
         if (serverMembersStore != null && threadMembersServerId != null && threadMembersChannelId != null) {
             serverMembersStore.channelMemberSliceFlow(
                 serverId = threadMembersServerId,
                 channelId = threadMembersChannelId
             )
-                .onStart {
-                    if (active) {
-                        serverMembersStore.loadChannelMembers(
-                            serverId = threadMembersServerId,
-                            channelId = threadMembersChannelId,
-                            priority = DataRequestPriority.Visible
-                        )
-                    }
-                }
         } else {
             MutableStateFlow(
                 SharedServerChannelMembersSlice(
@@ -3392,7 +3374,7 @@ private fun SharedThreadRouteContentContent(
                 )
             )
         }
-    }.collectAsState(
+    }.collectAsStateWhileStarted(
         if (serverMembersStore != null && threadMembersServerId != null && threadMembersChannelId != null) {
             serverMembersStore.currentChannelMemberSlice(threadMembersServerId, threadMembersChannelId)
         } else {
@@ -3402,6 +3384,15 @@ private fun SharedThreadRouteContentContent(
             )
         }
     )
+    LaunchedEffect(serverMembersStore, threadMembersServerId, threadMembersChannelId, active) {
+        if (active && serverMembersStore != null && threadMembersServerId != null && threadMembersChannelId != null) {
+            serverMembersStore.loadChannelMembers(
+                serverId = threadMembersServerId,
+                channelId = threadMembersChannelId,
+                priority = DataRequestPriority.Visible
+            )
+        }
+    }
     val threadMembersProjection =
         remember(baseRenderedPayload, threadChannelMembersSlice, threadServerMembersEntry, threadMembersServerId) {
             threadMembersProjection(
@@ -3442,7 +3433,7 @@ private fun SharedThreadRouteContentContent(
             )
             ?.distinctUntilChanged()
             ?: MutableStateFlow(SharedTasksProjectionSlice())
-    }.collectAsState(initialTaskProjectionSlice)
+    }.collectAsStateWhileStarted(initialTaskProjectionSlice)
     val initialServerTaskProjectionSlice =
         remember(tasksDataStore, taskProjectionOwnerIdentity, currentServerId) {
             tasksDataStore?.projectionForOwner(
@@ -3459,20 +3450,20 @@ private fun SharedThreadRouteContentContent(
             )
             ?.distinctUntilChanged()
             ?: MutableStateFlow(SharedTasksProjectionSlice())
-    }.collectAsState(initialServerTaskProjectionSlice)
+    }.collectAsStateWhileStarted(initialServerTaskProjectionSlice)
     var refreshedTaskProjectionChannelId by remember(threadInstanceKey, currentServerId) {
         mutableStateOf<String?>(null)
     }
-    LaunchedEffect(
+    ThreadAfterMotionEffect(
         currentServerId,
         taskChannelId?.value,
         selectedThreadTab,
         payload.status,
         refreshedTaskProjectionChannelId
     ) {
-        val serverId = currentServerId ?: return@LaunchedEffect
-        val resolvedTaskChannelId = taskChannelId ?: return@LaunchedEffect
-        val sharedStore = tasksDataStore ?: return@LaunchedEffect
+        val serverId = currentServerId ?: return@ThreadAfterMotionEffect
+        val resolvedTaskChannelId = taskChannelId ?: return@ThreadAfterMotionEffect
+        val sharedStore = tasksDataStore ?: return@ThreadAfterMotionEffect
         val currentPayload = payload.copy(selectedTab = selectedThreadTab.wireValue)
         if (
             !shouldRefreshThreadTasksProjection(
@@ -3481,7 +3472,7 @@ private fun SharedThreadRouteContentContent(
                 refreshStarted = refreshedTaskProjectionChannelId == resolvedTaskChannelId.value
             )
         ) {
-            return@LaunchedEffect
+            return@ThreadAfterMotionEffect
         }
         refreshedTaskProjectionChannelId = resolvedTaskChannelId.value
         bridge.log(
@@ -3546,7 +3537,7 @@ private fun SharedThreadRouteContentContent(
                 )
                 ?.distinctUntilChanged()
         } ?: MutableStateFlow(SharedTasksProjectionSlice())
-    }.collectAsState(SharedTasksProjectionSlice())
+    }.collectAsStateWhileStarted(SharedTasksProjectionSlice())
     // A reader without write access (or whose access is still resolving) has no [taskChannelId], so
     // nothing above loads the context channel's tasks; load them for its task refs.
     LaunchedEffect(currentServerId, markdownTaskContextChannelId?.value, taskChannelId?.value, payload.status) {
@@ -3623,12 +3614,14 @@ private fun SharedThreadRouteContentContent(
             )
         }
     val taskAssigneeOptions =
-        taskAssigneeIdentityOptions(
-            channelMembers = threadChannelMembersSlice.members,
-            channelMembersLoaded =
-                threadChannelMembersSlice.status == SharedServerMembersLoadStatus.Loaded,
-            payloadMembers = threadMembersProjection.members.mapNotNull { it.toMemberProfile() }
-        )
+        remember(threadChannelMembersSlice, threadMembersProjection) {
+            taskAssigneeIdentityOptions(
+                channelMembers = threadChannelMembersSlice.members,
+                channelMembersLoaded =
+                    threadChannelMembersSlice.status == SharedServerMembersLoadStatus.Loaded,
+                payloadMembers = threadMembersProjection.members.mapNotNull { it.toMemberProfile() }
+            )
+        }
     // Channel refs (`#name`) are chips only for channels the reader knows. The store adds those names
     // once its Home lookup answers; the Home snapshot already in memory gives them to the first frame.
     val firstFrameHomeSnapshot =
@@ -6902,4 +6895,58 @@ private fun ThreadViewerImageEditHost(
             }
         },
     )
+}
+
+/**
+ * Logs `thread_first_reveal` once without subscribing [SharedThreadRouteContentContent] to
+ * [LocalRaftStackPageInMotion], so settling the push slide never triggers a full-page recomposition.
+ */
+@Composable
+private fun ThreadFirstRevealMotionLogger(
+    threadInstanceKey: String,
+    ready: Boolean,
+    threadId: String,
+    accessResolutionName: String,
+    homeLookupComplete: Boolean,
+    revealMessages: Int,
+    log: (String) -> Unit,
+) {
+    var logged by remember(threadInstanceKey) { mutableStateOf(false) }
+    if (logged || !ready) return
+    val revealedInMotion = LocalRaftStackPageInMotion.current
+    SideEffect {
+        logged = true
+        log(
+            "thread_first_reveal threadId=$threadId " +
+                "inMotion=$revealedInMotion access=$accessResolutionName homeLookupComplete=$homeLookupComplete " +
+                "messages=$revealMessages"
+        )
+        if (revealedInMotion) {
+            log("thread_first_reveal_in_motion threadId=$threadId messages=$revealMessages")
+        }
+    }
+}
+
+/**
+ * Runs a non-visual [LaunchedEffect] once the initial push slide settles (`LocalRaftStackPageInMotion`
+ * turns false). Latches one-way so pop-back animations never cancel or replay already-started work,
+ * and reading the CompositionLocal in this leaf keeps the enclosing thread route out of motion
+ * invalidations.
+ */
+@Composable
+private fun ThreadAfterMotionEffect(
+    vararg keys: Any?,
+    block: suspend CoroutineScope.() -> Unit,
+) {
+    val settledLatch = remember { booleanArrayOf(false) }
+    val settledOnce = settledLatch[0] || !LocalRaftStackPageInMotion.current
+    if (settledOnce && !settledLatch[0]) {
+        SideEffect { settledLatch[0] = true }
+    }
+    val currentBlock by rememberUpdatedState(block)
+    if (settledOnce) {
+        LaunchedEffect(*keys) {
+            currentBlock()
+        }
+    }
 }

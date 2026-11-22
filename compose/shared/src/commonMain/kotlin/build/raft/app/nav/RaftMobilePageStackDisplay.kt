@@ -2,7 +2,6 @@ package build.raft.app.nav
 
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
@@ -15,8 +14,8 @@ import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import kotlinx.coroutines.delay
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.LocalFocusManager
-import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
@@ -29,6 +28,7 @@ import androidx.navigation3.runtime.metadata
 import androidx.navigation3.ui.NavDisplay
 import build.raft.app.RAFT_OPEN_WITHOUT_ANIMATION
 import build.raft.app.compat.ui.RaftProvidePageActive
+import build.raft.app.resources.RaftProvideResourceEnvironment
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.booleanOrNull
 
@@ -91,6 +91,10 @@ fun RaftMobilePageStackDisplay(
     }
     val saveableStateHolder = rememberSaveableStateHolder()
     val entryDecorators = remember(saveableStateHolder) { listOf(raftMobileStackSaveableDecorator<RaftStackPage>(saveableStateHolder)) }
+    // Share one locale observer across the whole phone stack so every pushed page skips
+    // per-string collectAsState coroutines; the Android host stack wraps this in
+    // RaftReactionAtlasProvider so bitmap decoding stays out of headless navigation tests.
+    RaftProvideResourceEnvironment {
     Box(Modifier.fillMaxSize()) {
         NavDisplay(
             backStack = stack.pages,
@@ -129,6 +133,7 @@ fun RaftMobilePageStackDisplay(
         // RaftMobileStackMotion.rootShown of this same composition.
         RaftMobileStackRootPage(stack, motion, Modifier.zIndex(-1f), pageContent)
     }
+    }
 }
 
 /**
@@ -141,9 +146,10 @@ fun RaftMobilePageStackDisplay(
  *
  * Drawn under NavDisplay ([modifier] puts it below) where the scenes would have drawn it
  * ([RaftMobileStackMotion.rootShown]: on top, or covered by a push still sliding in; the scene's
- * slot for it takes the taps then), laid out at 0x0 otherwise, as a covered page. Lifecycle and
- * activity as a stack page's, and no higher than STARTED until its scene has settled, as
- * NavDisplay's scene lifecycle capped it.
+ * slot for it takes the taps then), and measured at full size without placement while covered so
+ * kept-alive tabs never collapse to 0x0 and rebuild on gesture back. Lifecycle and activity match
+ * a stack page's, and no higher than STARTED until its scene has settled, as NavDisplay's scene
+ * lifecycle capped it.
  */
 @Composable
 private fun RaftMobileStackRootPage(
@@ -154,8 +160,20 @@ private fun RaftMobileStackRootPage(
 ) {
     val root = stack.pages.firstOrNull() ?: return
     // A stable key (not the page instance) so the root page's saved UI state comes back after a recreation.
+    // Keep the root shell measured at full window constraints and skip placement while covered
+    // (reading motion.rootShown in placement only) so kept-alive tabs never collapse to 0x0 and
+    // rebuild their lists / toolbars from scratch when gesture back reveals the shell.
+    val placedModifier =
+        remember(motion) {
+            Modifier.layout { measurable, constraints ->
+                val placeable = measurable.measure(constraints)
+                layout(placeable.width, placeable.height) {
+                    if (motion.rootShown) placeable.place(0, 0)
+                }
+            }
+        }
     key(root.contentKey) {
-        Box(modifier.then(if (motion.rootShown) Modifier.fillMaxSize() else Modifier.size(0.dp))) {
+        Box(modifier.fillMaxSize().then(placedModifier)) {
             RaftStackPageViewModels {
                 val top = stack.pages.lastOrNull() === root
                 val settled = motion.settledTop == root.contentKey

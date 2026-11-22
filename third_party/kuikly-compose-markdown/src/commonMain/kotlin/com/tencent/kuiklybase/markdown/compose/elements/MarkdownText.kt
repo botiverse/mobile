@@ -175,17 +175,26 @@ fun MarkdownText(
         }
     }
 
-    val inlineContent = mutableMapOf<String, InlineTextContent>()
     val currentPlaceholderState = placeholderState
-    if (currentPlaceholderState != null) {
-        inlineContent[MARKDOWN_TAG_IMAGE_URL] = createImageInlineTextContent(currentPlaceholderState, transformer)
-    }
     val extendedInlineContent: Map<String, InlineTextContent>? = annotatorSettings.annotator.inlineContent?.invoke()
-    if (extendedInlineContent != null) {
-        inlineContent.putAll(extendedInlineContent)
-    }
     // Task #775: formulas (INLINE_MATH placeholders), in this text's size and colour.
-    inlineContent.putAll(raftInlineMathContent(content, style, baseColor))
+    val mathInlineContent = raftInlineMathContent(content, style, baseColor)
+    val inlineContent: Map<String, InlineTextContent> =
+        if (currentPlaceholderState == null && extendedInlineContent.isNullOrEmpty() && mathInlineContent.isEmpty()) {
+            emptyMap()
+        } else {
+            buildMap {
+                if (currentPlaceholderState != null) {
+                    put(MARKDOWN_TAG_IMAGE_URL, createImageInlineTextContent(currentPlaceholderState, transformer))
+                }
+                if (extendedInlineContent != null) {
+                    putAll(extendedInlineContent)
+                }
+                if (mathInlineContent.isNotEmpty()) {
+                    putAll(mathInlineContent)
+                }
+            }
+        }
 
     MarkdownBasicText(
         text = content,
