@@ -6107,7 +6107,7 @@ private fun RaftAppShellReadyContent(
                             // (Frame 1 / CachedRestorePending) so wide layouts render split panes
                             // immediately in lockstep with navRailActive and tasksDetailColumnOpen.
                             val dualPane =
-                                enabled && (workspace?.pane ?: adaptivePane).layout == RaftAdaptivePaneLayout.DualPane
+                                (workspace?.pane ?: adaptivePane).layout == RaftAdaptivePaneLayout.DualPane
                             RaftAdaptiveListDetailSplit(
                                 kind = listKind,
                                 widths = adaptiveListPaneWidths,

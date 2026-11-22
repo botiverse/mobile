@@ -103,4 +103,24 @@ class RaftHostEventsTest {
             pagerReceived,
         )
     }
+
+    @Test
+    fun replayStickySnapshotsImmutablePairsAgainstReentrantSendSticky() {
+        val events = RaftHostEvents()
+        val first = JsonObject(mapOf("step" to JsonPrimitive(1)))
+        val second = JsonObject(mapOf("step" to JsonPrimitive(2)))
+        val updatedSecond = JsonObject(mapOf("step" to JsonPrimitive(3)))
+        events.sendSticky("first", first)
+        events.sendSticky("second", second)
+
+        val replayed = mutableListOf<Pair<String, JsonObject>>()
+        events.replaySticky { event, data ->
+            replayed += event to data
+            if (event == "first") {
+                events.sendSticky("second", updatedSecond)
+            }
+        }
+
+        assertEquals(listOf("first" to first, "second" to second), replayed)
+    }
 }

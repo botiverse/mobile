@@ -84,7 +84,7 @@ class RaftHostEvents {
      * in composition effects such as `DisposableEffect`.
      */
     fun replaySticky(listener: (event: String, data: JsonObject) -> Unit) {
-        sticky.entries.toList().forEach { (event, data) -> listener(event, data) }
+        sticky.map { (event, data) -> event to data }.forEach { (event, data) -> listener(event, data) }
     }
 
     /** Delivers [event] to every current subscriber (snapshot: listeners may unsubscribe re-entrantly). */

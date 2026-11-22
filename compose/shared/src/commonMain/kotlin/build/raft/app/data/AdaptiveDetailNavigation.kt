@@ -86,11 +86,13 @@ internal fun SharedAdaptiveWorkspaceSession.backFromDetail(
         )
     // task #243: an explicit close to empty in DualPane settles default landing for this server so
     // Effect #2 does not resurrect a conversation opened via OpenDetail (e.g. deep link / tap).
+    // Backing out to ListOnly in Compact only returns to the conversation list, so clear
+    // defaultLandingServerId to allow re-landing if the window later widens back to DualPane.
     val settledLandingServerId =
-        if (next.selection == null && next.pane.layout == RaftAdaptivePaneLayout.DualPane) {
-            next.serverId
-        } else {
-            defaultLandingServerId
+        when {
+            next.selection != null -> defaultLandingServerId
+            next.pane.layout == RaftAdaptivePaneLayout.DualPane -> next.serverId
+            else -> null
         }
     return copy(
         workspace = next,
@@ -142,10 +144,10 @@ internal fun SharedAdaptiveWorkspaceSession.closeDetailCompletely(): SharedAdapt
     if (current.selection == null) return copy(launchPayload = null, detailHistory = null)
     val next = reduceRaftAdaptiveWorkspace(current, RaftAdaptiveWorkspaceIntent.DismissDetail)
     val settledLandingServerId =
-        if (next.selection == null && next.pane.layout == RaftAdaptivePaneLayout.DualPane) {
-            next.serverId
-        } else {
-            defaultLandingServerId
+        when {
+            next.selection != null -> defaultLandingServerId
+            next.pane.layout == RaftAdaptivePaneLayout.DualPane -> next.serverId
+            else -> null
         }
     return copy(
         workspace = next,

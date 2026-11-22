@@ -396,4 +396,98 @@ class SharedAdaptiveWorkspaceStoreTest {
         assertNull(closedByBackAgain.workspace?.selection)
         assertEquals("server-a", closedByBackAgain.defaultLandingServerId)
     }
+
+    @Test
+    fun compactBackFromDetailClearsDefaultLandingSoReWideningCanLandAgain() {
+        val store = SharedAdaptiveWorkspaceStore()
+        val wide =
+            RaftAdaptivePaneState(
+                layout = RaftAdaptivePaneLayout.DualPane,
+                widthDp = 1280f,
+                heightDp = 800f,
+                posture = RaftAdaptivePosture.Flat,
+                hingeBoundsDp = null,
+            )
+        val compact =
+            RaftAdaptivePaneState(
+                layout = RaftAdaptivePaneLayout.Compact,
+                widthDp = 420f,
+                heightDp = 800f,
+                posture = RaftAdaptivePosture.Flat,
+                hingeBoundsDp = null,
+            )
+        val identity = detailIdentity("server-a", "thread-user")
+        val payload = launchPayload("server-a", "thread-user")
+
+        store.update {
+            SharedAdaptiveWorkspaceSession(
+                workspace =
+                    RaftAdaptiveWorkspaceState(
+                        shellInstanceId = "shell-a",
+                        serverId = "server-a",
+                        pane = wide,
+                    )
+            )
+        }
+        val opened = store.update { it.withOpenedDetail(identity, payload, defaultLanding = false) }
+        assertEquals("server-a", opened.defaultLandingServerId)
+
+        // Narrowing retains the user-selected detail full-screen (DetailOnly).
+        val narrowed =
+            store.update { session ->
+                session.copy(
+                    workspace =
+                        reduceRaftAdaptiveWorkspace(
+                            session.workspace!!,
+                            RaftAdaptiveWorkspaceIntent.WindowChanged(compact),
+                        )
+                )
+            }
+        val compactSel = narrowed.workspace!!.selection!!
+        assertEquals("server-a", narrowed.defaultLandingServerId)
+
+        // Pressing Back in Compact returns to ListOnly and clears defaultLandingServerId so widening
+        // back to DualPane restores the remembered default conversation instead of staying blank.
+        val backedToList =
+            store.update { session ->
+                session.backFromDetail(
+                    RaftAdaptiveDetailCloseRequest(
+                        shellInstanceId = "shell-a",
+                        identityKey = compactSel.identity.key,
+                        generation = compactSel.generation,
+                    )
+                )
+            }
+        assertNull(backedToList.workspace?.selection)
+        assertNull(backedToList.defaultLandingServerId)
+
+        val reWidened =
+            store.update { session ->
+                session.copy(
+                    workspace =
+                        reduceRaftAdaptiveWorkspace(
+                            session.workspace!!,
+                            RaftAdaptiveWorkspaceIntent.WindowChanged(wide),
+                        )
+                )
+            }
+        assertNull(reWidened.workspace?.selection)
+        assertNull(reWidened.defaultLandingServerId)
+
+        // Same for closeDetailCompletely in Compact.
+        val openedAgain = store.update { it.withOpenedDetail(identity, payload, defaultLanding = false) }
+        assertEquals("server-a", openedAgain.defaultLandingServerId)
+        store.update { session ->
+            session.copy(
+                workspace =
+                    reduceRaftAdaptiveWorkspace(
+                        session.workspace!!,
+                        RaftAdaptiveWorkspaceIntent.WindowChanged(compact),
+                    )
+            )
+        }
+        val closedCompletelyInCompact = store.update { it.closeDetailCompletely() }
+        assertNull(closedCompletelyInCompact.workspace?.selection)
+        assertNull(closedCompletelyInCompact.defaultLandingServerId)
+    }
 }

@@ -380,7 +380,7 @@ internal fun raftAdaptiveSelectionForReadyServer(
 ): RaftAdaptiveDetailSelection? {
     if (!detailAccepted) return null
     val selection = workspace?.selection ?: return null
-    val normalizedServerId = readyServerId?.trim()?.takeIf(String::isNotBlank) ?: return selection
+    val normalizedServerId = readyServerId?.trim()?.takeIf(String::isNotBlank) ?: return null
     if (workspace.serverId.trim() != normalizedServerId) return null
     if (selection.identity.serverId.trim() != normalizedServerId) return null
     return selection

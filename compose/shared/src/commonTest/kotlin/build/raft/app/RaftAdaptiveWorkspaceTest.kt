@@ -638,9 +638,11 @@ class RaftAdaptiveWorkspaceTest {
         assertNull(
             raftAdaptiveSelectionForReadyServer(opened, readyServerId = "server-a", detailAccepted = false),
         )
-        assertEquals(
-            selection,
+        assertNull(
             raftAdaptiveSelectionForReadyServer(opened, readyServerId = null, detailAccepted = true),
+        )
+        assertNull(
+            raftAdaptiveSelectionForReadyServer(opened, readyServerId = "   ", detailAccepted = true),
         )
     }
 

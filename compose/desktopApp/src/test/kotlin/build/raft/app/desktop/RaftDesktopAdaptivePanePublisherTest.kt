@@ -1,5 +1,6 @@
 package build.raft.app.desktop
 
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
@@ -101,6 +102,33 @@ class RaftDesktopAdaptivePanePublisherTest {
                 containerSize = IntSize.Zero,
                 fallbackWindowSize = DpSize(1200.dp, 800.dp),
                 density = 0f,
+            ),
+        )
+        assertEquals(
+            IntSize.Zero,
+            raftDesktopInitialAdaptivePaneSize(
+                isTopPage = true,
+                containerSize = IntSize.Zero,
+                fallbackWindowSize = DpSize(1200.dp, 800.dp),
+                density = Float.NaN,
+            ),
+        )
+        assertEquals(
+            IntSize.Zero,
+            raftDesktopInitialAdaptivePaneSize(
+                isTopPage = true,
+                containerSize = IntSize.Zero,
+                fallbackWindowSize = DpSize(1200.dp, 800.dp),
+                density = Float.POSITIVE_INFINITY,
+            ),
+        )
+        assertEquals(
+            IntSize.Zero,
+            raftDesktopInitialAdaptivePaneSize(
+                isTopPage = true,
+                containerSize = IntSize.Zero,
+                fallbackWindowSize = DpSize(1200.dp, Dp.Unspecified),
+                density = 2f,
             ),
         )
     }
