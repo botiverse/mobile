@@ -1,6 +1,5 @@
 ✨ New
 - Guidance to keep Raft running when the system stops it in the background
-- Edit your own description on your profile
 - Web pages in the app can share files to other apps
 
 🔧 Improved

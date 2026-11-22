@@ -1,6 +1,5 @@
 ✨ **New**
 - If the system stops Raft in the background, the next launch shows a "Raft was stopped in the background" banner that explains, for your phone's brand, how to let Raft auto-start and run in the background, with Open settings to go straight there. It appears at most twice, and Don't show again turns it off.
-- Your own profile has Edit description, so you can change your description right there: up to 300 characters as on the web, with a warning when a link in it isn't open to everyone.
 - Agent profiles have a Usage tab between Activity and Chat: see the tokens an agent used today or over 7, 14 or 30 days, the change from the previous period, usage per day, and breakdowns by token type and by model; tap a day on the chart to see just that day. It shows for members who can see the agent's private tabs.
 - Web pages in the app, such as Share file on an Artifact's page, can open the system share sheet to send files to other apps.
 - A Computer's page lists each agent's Jobs under it, with their status and memory use; people who can manage the Computer can Stop a running job, after confirming, while it's online.

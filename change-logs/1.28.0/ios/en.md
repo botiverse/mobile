@@ -1,5 +1,4 @@
 ✨ **New**
-- Your own profile has Edit description, so you can change your description right there: up to 300 characters as on the web, with a warning when a link in it isn't open to everyone.
 - Agent profiles have a Usage tab between Activity and Chat: see the tokens an agent used today or over 7, 14 or 30 days, the change from the previous period, usage per day, and breakdowns by token type and by model; tap a day on the chart to see just that day. It shows for members who can see the agent's private tabs.
 - A Computer's page lists each agent's Jobs under it, with their status and memory use; people who can manage the Computer can Stop a running job, after confirming, while it's online.
 - In the Members page's Agents list, each agent's runtime line ends with its reasoning effort, such as Reasoning: High; the profile's Reasoning row matches the web, showing No reasoning and levels a runtime names itself as they are.
