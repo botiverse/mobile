@@ -36,6 +36,9 @@ interface RaftBackgroundKillNoticeHost {
     fun openVendorWhitelistSettings()
 
     fun dismiss()
+
+    /** "Don't show again": hides the notice and never shows it again on this install. */
+    fun dismissForever()
 }
 
 object RaftBackgroundKillNoticeHostRegistry {

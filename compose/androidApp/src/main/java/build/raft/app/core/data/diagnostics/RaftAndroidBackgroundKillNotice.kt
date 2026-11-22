@@ -22,6 +22,9 @@ internal const val BackgroundKillNoticeFirstDismissCooldownMillis: Long = 7L * 2
 internal const val BackgroundKillNoticeRepeatDismissCooldownMillis: Long = 30L * 24 * 60 * 60 * 1000
 internal const val BackgroundKillNoticeSettingsCooldownMillis: Long = 24L * 60 * 60 * 1000
 
+/** The notice appears at most this many times on an install, then never again. */
+internal const val BackgroundKillNoticeMaxAppearances: Int = 2
+
 private val OemCleanerReasonCodes =
     setOf(
         ApplicationExitInfo.REASON_SIGNALED,
@@ -41,9 +44,14 @@ internal fun hasVendorCleanerDescription(description: String?): Boolean =
 /**
  * Persisted dedup and cooldown state for the local background-kill whitelist notice.
  *
- * [lastAcknowledgedExitTimestampMillis] is advanced ONLY on user action (`dismiss()` or
- * `openVendorWhitelistSettings()`), NEVER during `Application.onCreate()` evaluation, so a
- * sticky-service restart never swallows a notice before the user opens the UI.
+ * [lastAcknowledgedExitTimestampMillis] is advanced ONLY on user action (`dismiss()`,
+ * `dismissForever()` or `openVendorWhitelistSettings()`), NEVER during `Application.onCreate()`
+ * evaluation, so a sticky-service restart never swallows a notice before the user opens the UI.
+ *
+ * [shownCount] counts the notice's appearances on this install: `evaluate()` adds one each time it
+ * surfaces the notice in a process where it is not on screen yet. That includes a process that
+ * never shows UI, such as a sticky-service restart: the cap ([BackgroundKillNoticeMaxAppearances])
+ * counts appearances, not views. [suppressedForever] is the user's "Don't show again".
  */
 internal data class BackgroundKillNoticePersistenceState(
     val baselineMillis: Long? = null,
@@ -51,6 +59,8 @@ internal data class BackgroundKillNoticePersistenceState(
     val lastDismissedAtMillis: Long = 0L,
     val dismissCount: Int = 0,
     val lastOpenedSettingsAtMillis: Long = 0L,
+    val shownCount: Int = 0,
+    val suppressedForever: Boolean = false,
 )
 
 internal interface BackgroundKillNoticeStore {
@@ -88,6 +98,10 @@ internal fun qualifiesForBackgroundKillNotice(
  * Never suppresses solely because `PowerManager.isIgnoringBatteryOptimizations()` is true: OEM
  * task/app-launch cleaners (Huawei PowerGenie, Lenovo ZuiMemoryCleaner, etc.) still kill apps
  * unless explicitly whitelisted in vendor settings.
+ *
+ * Selects nothing after "Don't show again" or once the notice has appeared
+ * [BackgroundKillNoticeMaxAppearances] times on this install. A notice already on screen stays
+ * there all the same: the controller keeps it (see [RaftAndroidBackgroundKillNoticeController.evaluate]).
  */
 internal fun selectBackgroundKillForNotice(
     exits: List<SystemKillExit>,
@@ -100,6 +114,7 @@ internal fun selectBackgroundKillForNotice(
     noPlayServicesFallbackApplies: Boolean,
     keepAlivePreferenceEnabled: Boolean,
 ): SystemKillExit? {
+    if (state.suppressedForever || state.shownCount >= BackgroundKillNoticeMaxAppearances) return null
     if (state.dismissCount > 0 && state.lastDismissedAtMillis > 0L) {
         val cooldown =
             if (state.dismissCount >= 2) {
@@ -164,6 +179,12 @@ internal class RaftAndroidBackgroundKillNoticeController(
 
     override val notice: StateFlow<RaftBackgroundKillNotice?> = mutableNotice.asStateFlow()
 
+    /**
+     * Picks this process's notice. Surfacing one while none is on screen in this process is a fresh
+     * appearance and counts once towards [BackgroundKillNoticeMaxAppearances]. A notice already on
+     * screen stays until the user acts on it: an evaluation that selects nothing (past the cap, say)
+     * keeps it rather than taking it away.
+     */
     fun evaluate(
         exits: List<SystemKillExit>,
         snapshots: List<MemoryTelemetrySnapshot>,
@@ -188,9 +209,10 @@ internal class RaftAndroidBackgroundKillNoticeController(
             if (loaded.baselineMillis == null) loaded.copy(baselineMillis = baseline) else loaded
         val selected: SystemKillExit?
         val result: RaftBackgroundKillNotice?
+        val freshAppearance: Boolean
+        val shownCount: Int
         synchronized(lock) {
             val state = mergePersistenceState(cachedState, loadedWithBaseline)
-            cachedState = state
             selected =
                 selectBackgroundKillForNotice(
                     exits = exits,
@@ -203,18 +225,28 @@ internal class RaftAndroidBackgroundKillNoticeController(
                     noPlayServicesFallbackApplies = noPlayServicesFallbackApplies,
                     keepAlivePreferenceEnabled = keepAlivePreferenceEnabled,
                 )
+            val onScreen = mutableNotice.value
+            freshAppearance = selected != null && onScreen == null
+            val counted = if (freshAppearance) state.copy(shownCount = state.shownCount + 1) else state
+            cachedState = counted
+            shownCount = counted.shownCount
             result =
                 selected?.let { exit ->
                     RaftBackgroundKillNotice(
                         exitTimestampMillis = exit.timestampMillis,
                         guide = RaftAndroidVendorWhitelist.guideFor(vendor),
                     )
-                }
+                } ?: onScreen
             mutableNotice.value = result
+        }
+        if (freshAppearance) {
+            // Saves the state as it is when the save runs, not this snapshot: a click handled in the
+            // meantime may have saved first, and must not be overwritten by an older state.
+            persistAsync { runCatching { synchronized(lock) { cachedState }?.let(store::save) } }
         }
         if (selected != null && result != null) {
             log(
-                "background_kill_notice state=shown vendor=${vendor.id} guide=${result.guide.name} " +
+                "background_kill_notice state=shown shownCount=$shownCount vendor=${vendor.id} guide=${result.guide.name} " +
                     "exitTimestampMillis=${selected.timestampMillis} reason=${historicalProcessExitReasonLabel(selected.reasonCode)} " +
                     "importance=${selected.importance}"
             )
@@ -242,6 +274,27 @@ internal class RaftAndroidBackgroundKillNoticeController(
         }
         persistAsync { runCatching { store.save(updatedState) } }
         log("background_kill_notice action=dismiss dismissCount=${updatedState.dismissCount} exitTimestampMillis=$dismissedExitAt")
+    }
+
+    /** "Don't show again": acknowledges the current exit as [dismiss] does and suppresses the notice for good. */
+    override fun dismissForever() {
+        val dismissedExitAt: Long
+        val updatedState: BackgroundKillNoticePersistenceState
+        synchronized(lock) {
+            val current = mutableNotice.value ?: return
+            val state = cachedState ?: BackgroundKillNoticePersistenceState()
+            dismissedExitAt = current.exitTimestampMillis
+            updatedState =
+                state.copy(
+                    lastAcknowledgedExitTimestampMillis =
+                        maxOf(state.lastAcknowledgedExitTimestampMillis, current.exitTimestampMillis),
+                    suppressedForever = true,
+                )
+            cachedState = updatedState
+            mutableNotice.value = null
+        }
+        persistAsync { runCatching { store.save(updatedState) } }
+        log("background_kill_notice action=dismiss_forever shownCount=${updatedState.shownCount} exitTimestampMillis=$dismissedExitAt")
     }
 
     override fun openVendorWhitelistSettings() {
@@ -287,6 +340,8 @@ internal class RaftAndroidBackgroundKillNoticeController(
             lastDismissedAtMillis = maxOf(inMemory.lastDismissedAtMillis, disk.lastDismissedAtMillis),
             dismissCount = maxOf(inMemory.dismissCount, disk.dismissCount),
             lastOpenedSettingsAtMillis = maxOf(inMemory.lastOpenedSettingsAtMillis, disk.lastOpenedSettingsAtMillis),
+            shownCount = maxOf(inMemory.shownCount, disk.shownCount),
+            suppressedForever = inMemory.suppressedForever || disk.suppressedForever,
         )
     }
 }
@@ -306,6 +361,8 @@ internal object RaftAndroidBackgroundKillNoticeHost : RaftBackgroundKillNoticeHo
     private const val LastDismissedAtKey = "last-dismissed-at-millis"
     private const val DismissCountKey = "dismiss-count"
     private const val LastOpenedSettingsAtKey = "last-opened-settings-at-millis"
+    private const val ShownCountKey = "shown-count"
+    private const val SuppressedForeverKey = "suppressed-forever"
     private const val MaxExitsQueried = 16
 
     private val hostNotice = MutableStateFlow<RaftBackgroundKillNotice?>(null)
@@ -375,6 +432,10 @@ internal object RaftAndroidBackgroundKillNoticeHost : RaftBackgroundKillNoticeHo
         controller?.dismiss()
     }
 
+    override fun dismissForever() {
+        controller?.dismissForever()
+    }
+
     internal fun resetForTests() {
         controller = null
         appContextRef = null
@@ -407,6 +468,8 @@ internal object RaftAndroidBackgroundKillNoticeHost : RaftBackgroundKillNoticeHo
                 lastDismissedAtMillis = preferences.getLong(LastDismissedAtKey, 0L),
                 dismissCount = preferences.getInt(DismissCountKey, 0),
                 lastOpenedSettingsAtMillis = preferences.getLong(LastOpenedSettingsAtKey, 0L),
+                shownCount = preferences.getInt(ShownCountKey, 0),
+                suppressedForever = preferences.getBoolean(SuppressedForeverKey, false),
             )
 
         override fun save(state: BackgroundKillNoticePersistenceState) {
@@ -416,6 +479,8 @@ internal object RaftAndroidBackgroundKillNoticeHost : RaftBackgroundKillNoticeHo
                     .putLong(LastDismissedAtKey, state.lastDismissedAtMillis)
                     .putInt(DismissCountKey, state.dismissCount)
                     .putLong(LastOpenedSettingsAtKey, state.lastOpenedSettingsAtMillis)
+                    .putInt(ShownCountKey, state.shownCount)
+                    .putBoolean(SuppressedForeverKey, state.suppressedForever)
             state.baselineMillis?.let { editor.putLong(BaselineKey, it) }
             editor.apply()
         }

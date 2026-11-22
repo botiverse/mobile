@@ -2747,6 +2747,7 @@
     <string name="background_kill_notice_body_vendor">기기에서 백그라운드에 있던 Raft를 종료해 메시지와 알림이 지연될 수 있어요. 시스템 설정에서 Raft의 자동 실행과 제한 없는 백그라운드 실행을 허용해 주세요.</string>
     <string name="background_kill_notice_body_app_details">기기에서 백그라운드에 있던 Raft를 종료해 메시지와 알림이 지연될 수 있어요. 앱 정보에서 배터리 설정을 열고 Raft를 제한 없음으로 변경해 주세요.</string>
     <string name="background_kill_notice_action_open_settings">설정 열기</string>
+    <string name="background_kill_notice_action_dont_show_again">다시 표시 안 함</string>
     <string name="settings_notifications_offline_computers_title">오프라인 컴퓨터 알림</string>
     <string name="settings_notifications_offline_computers_detail">등록된 컴퓨터가 오프라인이면 홈에 알림을 표시해요. 기본적으로 꺼져 있어요.</string>
     <string name="settings_notifications_test_title">테스트 알림 보내기</string>
