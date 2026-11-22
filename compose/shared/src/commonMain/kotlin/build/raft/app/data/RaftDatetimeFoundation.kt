@@ -1,7 +1,14 @@
 package build.raft.app.data
 
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import build.raft.app.model.RaftTimeFormat24Hour
+import build.raft.app.model.normalizeRaftTimeFormatPreference
 import kotlin.time.Clock
 import kotlin.time.Instant
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.offsetAt
 
@@ -55,3 +62,34 @@ internal val ProcessRaftDatetimeFoundationOwner =
 
 internal fun defaultNowMillis(): Long =
     ProcessRaftDatetimeFoundationOwner.nowEpochMillis()
+
+/**
+ * Process-wide reactive holder for the signed-in account's 12h/24h time-format preference.
+ *
+ * Backed by [MutableStateFlow] rather than Compose `mutableStateOf` so writes from repository /
+ * session flows never allocate Compose snapshot state records off the main thread (#264).
+ */
+object RaftTimeFormatRuntime {
+    private val overrideFlow = MutableStateFlow<String?>(null)
+
+    val current: String
+        get() = overrideFlow.value ?: RaftTimeFormat24Hour
+
+    val currentOrNull: String?
+        get() = overrideFlow.value
+
+    val state: StateFlow<String?>
+        get() = overrideFlow.asStateFlow()
+
+    @Composable
+    fun observe(fallback: String = RaftTimeFormat24Hour): String =
+        overrideFlow.collectAsState().value ?: normalizeRaftTimeFormatPreference(fallback)
+
+    fun update(value: String?) {
+        overrideFlow.value = value?.let(::normalizeRaftTimeFormatPreference)
+    }
+
+    internal fun resetForTest() {
+        overrideFlow.value = null
+    }
+}

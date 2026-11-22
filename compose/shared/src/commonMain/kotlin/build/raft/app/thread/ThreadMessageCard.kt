@@ -205,7 +205,6 @@ internal fun ThreadQuotedPermalinkCard(
             val avatarWireValue =
                 resolveThreadRowAvatarWireValue(rememberRaftMemberAvatarWireValue(memberAvatarResolver, item.authorId))
                     ?: item.avatarWireValue
-            val liveTimeContext = currentRaftTimeContextProvider?.current
             build.raft.designsystem.components.RaftMessageQuotedPreview(
                 authorName = item.localizedAuthorName().ifBlank { stringResource(Res.string.thread_comments_unknown_author) },
                 text = markdownToPreviewText(item.body).takeIf { it.isNotBlank() }
@@ -248,7 +247,6 @@ internal fun ThreadQuotedPermalinkCard(
                         {
                             RaftRelativeTimestampText(
                                 value = item.timestampLabel,
-                                timeContext = liveTimeContext,
                                 displayGroup = RaftTimestampDisplayGroup.Conversation,
                                 style = build.raft.designsystem.components.RaftMessageQuotedPreviewDefaults.TimeStyle,
                                 color = build.raft.designsystem.components.RaftMessageQuotedPreviewDefaults.TimeInk,
@@ -834,7 +832,7 @@ private fun ThreadMessageCardContent(
     val compactTimestampGutter = compactConsecutiveMessages
     // Screen readers hear every row's time: a compact row without its header has no visible one
     // (only while pressed), so its avatar slot carries it, as the header would show it.
-    val rowTimeContext = currentRaftTimeContextProvider?.current
+    val rowTimeContext = currentRaftDateTimeContext(null)
     val rowTimeAccessibilityLabel =
         if (showTimestampInHeader) {
             null

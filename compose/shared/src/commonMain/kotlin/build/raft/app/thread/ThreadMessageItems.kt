@@ -580,8 +580,17 @@ internal fun threadRowTimeAccessibilityLabel(
     timestampLabel: String,
     fallback: String,
     timeContext: RaftTimeContext?,
-): String? =
-    (raftAbsoluteTimestampLabel(timestampLabel, timeContext) ?: fallback.takeIf { it.isNotBlank() })
+): String? {
+    val formatted =
+        timeContext
+            ?.takeIf {
+                it.resolvedTodayEpochDay() != null &&
+                    parseRaftTimestampEpochMillisOrNull(timestampLabel, it.localOffsetMinutes) != null
+            }
+            ?.formatTimestampLabel(timestampLabel)
+            ?.takeIf { it.isNotBlank() }
+    return formatted ?: fallback.takeIf { it.isNotBlank() }
+}
 
 internal fun formatThreadCompactTimestampLabel(
     value: String,

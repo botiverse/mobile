@@ -305,6 +305,7 @@ class RealSettingsRepository(
      * that never serve the notification settings screen (sidebar order, members, thread pages).
      */
     private val serverNotificationLastKnownStore: SettingsServerNotificationLastKnownStore? = null,
+    private val onTimeFormatUpdated: (String) -> Unit = {},
 ) : SettingsRepository, SettingsServerActionRepository, SettingsServerManagementRepository {
     private val computersApiClient = RaftComputersApiClient(RaftComputersNetworkApi(networkClient))
     private val secondFactorStepUpRepository = SecondFactorStepUpRepository(networkClient)
@@ -1543,7 +1544,9 @@ class RealSettingsRepository(
         val effectiveTimeFormat =
             snapshot.timeFormat.selectedKey.takeIf { it == "12h" || it == "24h" }
                 ?: return
+        var applied = false
         sessionStore.updateMetadata(expectedAccountId) { latest ->
+            applied = true
             latest.copy(
                 user =
                     latest.user.copy(
@@ -1552,6 +1555,9 @@ class RealSettingsRepository(
                         timeFormat = effectiveTimeFormat,
                     )
             )
+        }
+        if (applied) {
+            onTimeFormatUpdated(effectiveTimeFormat)
         }
     }
 

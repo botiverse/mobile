@@ -2,6 +2,7 @@ package build.raft.app
 
 import androidx.compose.runtime.snapshots.Snapshot
 import build.raft.app.data.RaftDisplayPreferenceRuntime
+import build.raft.app.data.RaftTimeFormatRuntime
 import build.raft.app.model.ChannelId
 import build.raft.app.resources.StringDesc
 import kotlin.test.Test
@@ -35,6 +36,14 @@ class ProcessWideSnapshotStateIsolationTest {
             RaftDisplayPreferenceRuntime.showAgentModelName
             RaftDisplayPreferenceRuntime.showSenderDescription
             RaftDisplayPreferenceRuntime.hideEmptySidebarSections
+        }
+    }
+
+    @Test
+    fun raftTimeFormatRuntimeGettersNeverReadComposeSnapshotState() {
+        assertNoSnapshotStateReads("RaftTimeFormatRuntime") {
+            RaftTimeFormatRuntime.current
+            RaftTimeFormatRuntime.currentOrNull
         }
     }
 

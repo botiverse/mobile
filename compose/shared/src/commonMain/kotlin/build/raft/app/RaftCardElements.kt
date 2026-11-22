@@ -53,6 +53,7 @@ import build.raft.app.data.RaftAppLinkCardElement
 import build.raft.app.data.RaftAppLinkTextTone
 import build.raft.app.data.appLinkDomain
 import build.raft.app.data.actionCardScopeGroupLabel
+import build.raft.app.data.defaultNowMillis
 import build.raft.app.data.renderActionCardMsg
 import build.raft.app.data.repeatWhileProcessForeground
 import build.raft.app.markdown.raftAppLinkKeepEnd
@@ -71,7 +72,6 @@ import build.raft.designsystem.components.RaftMessageActionCardScopeList
 import build.raft.designsystem.components.RaftTooltip
 import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.RaftTheme
-import kotlin.time.Clock
 
 /**
  * What a card tree needs from the place that draws it. Link cards ([RaftAppLinkCardBody]) use
@@ -475,17 +475,20 @@ private fun RaftCardDuration(node: CardDuration) {
 internal fun raftCardDurationText(node: CardDuration): String? {
     val start = remember(node.start) { parseRaftTimestampEpochMillisOrNull(node.start, localOffsetMinutes = 0) } ?: return null
     val end = remember(node.end) { node.end?.let { parseRaftTimestampEpochMillisOrNull(it, localOffsetMinutes = 0) } }
-    val clock = currentRaftTimeContextProvider?.current?.nowEpochMillis
-    var now by remember { mutableLongStateOf(clock ?: Clock.System.now().toEpochMilliseconds()) }
-    if (end == null && clock == null) {
-        LaunchedEffect(node.start) {
-            // Ticks only while the app is in front; back in front it catches up at once.
-            repeatWhileProcessForeground(intervalMillis = 1_000L) {
-                now = Clock.System.now().toEpochMilliseconds()
+    val effectiveEnd =
+        if (end != null) {
+            end
+        } else {
+            var now by remember(node.start) { mutableLongStateOf(defaultNowMillis()) }
+            LaunchedEffect(node.start) {
+                // Ticks only while the app is in front; back in front it catches up at once.
+                repeatWhileProcessForeground(intervalMillis = 1_000L) {
+                    now = defaultNowMillis()
+                }
             }
+            now
         }
-    }
-    val seconds = (((end ?: clock ?: now) - start).coerceAtLeast(0) / 1_000).toInt()
+    val seconds = ((effectiveEnd - start).coerceAtLeast(0) / 1_000).toInt()
     val minutes = seconds / 60
     return when {
         seconds < 60 -> stringResource(Res.string.member_activity_overview_duration_seconds, seconds)

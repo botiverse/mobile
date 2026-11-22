@@ -11,11 +11,9 @@ import build.raft.app.data.SharedSecondFactorRecoveryEffect
 import build.raft.app.data.SharedSecondFactorRecoveryIntent
 import build.raft.app.data.SharedSecondFactorRecoveryState
 import build.raft.app.data.SharedSecondFactorRecoveryStore
+import build.raft.app.model.RaftTimeContext
 import build.raft.app.resources.*
-import kotlin.time.Instant
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.datetime.TimeZone
-import kotlinx.datetime.toLocalDateTime
 
 /** Home notification-center id of the pending two-step verification reset (web `second-factor-recovery`). */
 internal const val SECOND_FACTOR_RECOVERY_HOME_NOTIFICATION_ID = "second-factor-recovery"
@@ -68,14 +66,10 @@ internal fun SecondFactorRecovery.toHomeNotificationItem(
 internal val SecondFactorRecovery.noticeTime: String
     get() = if (status == SecondFactorRecoveryStatus.Ready) expiresAt else eligibleAt
 
-/** An ISO time in the reader's zone, web `formatMediumDateTime` (medium date, 24-hour time); the raw value if unreadable. */
+/** An ISO time in the reader's zone (medium date + local clock); the raw value if unreadable. */
 @Composable
-internal fun secondFactorRecoveryLocalTime(iso: String): String {
-    val local =
-        runCatching { Instant.parse(iso).toLocalDateTime(TimeZone.currentSystemDefault()) }.getOrNull()
-            ?: return iso
-    return TaskHeadDateTime(local.year, local.month.ordinal + 1, local.day, local.hour, local.minute).localized()
-}
+internal fun secondFactorRecoveryLocalTime(iso: String, timeContext: RaftTimeContext? = null): String =
+    raftLocalizedMediumDateTime(iso, timeContext)
 
 @Composable
 internal fun secondFactorRecoveryNoticeCopy(time: String): SecondFactorRecoveryNoticeCopy =

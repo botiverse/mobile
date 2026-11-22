@@ -10,7 +10,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -26,15 +25,12 @@ import build.raft.app.compat.pager.LocalActivity
 import build.raft.app.compat.pager.Page
 import build.raft.app.compat.pager.Pager
 import build.raft.app.components.RaftDesignSystemTheme
-import build.raft.app.data.ProcessRaftDatetimeFoundationOwner
 import build.raft.app.data.RaftShellStoreScope
 import build.raft.app.data.SharedSettingsDestination
 import build.raft.app.data.SharedSettingsIntent
 import build.raft.app.data.SharedSettingsViewModel
-import build.raft.app.data.defaultNowMillis
 import build.raft.app.data.isRefreshing
 import build.raft.app.downloads.RaftDownloadCenterProcess
-import build.raft.app.model.RaftTimeFormat24Hour
 import build.raft.designsystem.components.RaftBanner
 import build.raft.designsystem.components.RaftBannerStatus
 import build.raft.designsystem.components.RaftButtonVariant
@@ -157,52 +153,39 @@ private fun SettingsStorageScreen() {
             is RaftDownloadCenterAction.Delete -> downloadCenter.delete(action.id)
         }
     }
-    // The download dates are relative times ("5 min ago"); this page sits outside the app shell's
-    // time context, so it keeps its own live one in the device zone.
-    val timeCapabilities = remember {
-        RaftTimeCapabilities(
-            localOffsetMinutes = ProcessRaftDatetimeFoundationOwner.localOffsetMinutesAt(defaultNowMillis(), 0),
-            timeFormat = RaftTimeFormat24Hour
-        )
-    }
-    val inheritedTimeContextProvider = LocalRaftTimeContextProvider.current
-    val ownTimeContextProvider =
-        rememberLiveRaftTimeContext(capabilities = timeCapabilities, active = inheritedTimeContextProvider == null)
-    val timeContextProvider = inheritedTimeContextProvider ?: ownTimeContextProvider
-    CompositionLocalProvider(LocalRaftTimeContextProvider provides timeContextProvider) {
-        SettingsDetailShell(
-            title = stringResource(Res.string.settings_storage_title),
-            subtitle = "",
-            onBack = { pager.acquireModule<RouterModule>(RouterModule.MODULE_NAME).closePage() }
-        ) {
-            SettingsStorageContent(
-                // task #177: standalone page outside the app shell.
-                bottomContentPadding = raftBottomSafeAreaPadding() + RaftAppSpacing.Lg,
-                payload =
-                    settingsState.storage.toStoragePayload(
-                        actionState = settingsState.actionState,
-                        refreshing = settingsState.isRefreshing(SharedSettingsDestination.Storage)
-                    ),
-                onEvent = { action, target ->
-                    when (action) {
-                        "refreshStorage" -> settingsViewModel.dispatch(SharedSettingsIntent.RefreshStorage)
-                        "clearStorage" ->
-                            target
-                                ?.takeIf { it.isNotBlank() }
-                                ?.let { settingsViewModel.dispatch(SharedSettingsIntent.ClearStorage(it)) }
-                        else -> bridge.log("settings_storage_unsupported_action action=$action target=${target.orEmpty()}")
-                    }
-                },
-                downloads = {
-                    RaftDownloadCenterSection(
-                        entries = downloadEntries,
-                        canRetry = downloadCenter::canRetry,
-                        onAction = ::onDownloadAction,
-                        onClearFinished = { ownerKey?.let(downloadCenter::clearFinished) }
-                    )
+    // BasePager provides LocalRaftPageBaseTimeContextProvider (device zone + reactive 12h/24h).
+    SettingsDetailShell(
+        title = stringResource(Res.string.settings_storage_title),
+        subtitle = "",
+        onBack = { pager.acquireModule<RouterModule>(RouterModule.MODULE_NAME).closePage() }
+    ) {
+        SettingsStorageContent(
+            // task #177: standalone page outside the app shell.
+            bottomContentPadding = raftBottomSafeAreaPadding() + RaftAppSpacing.Lg,
+            payload =
+                settingsState.storage.toStoragePayload(
+                    actionState = settingsState.actionState,
+                    refreshing = settingsState.isRefreshing(SharedSettingsDestination.Storage)
+                ),
+            onEvent = { action, target ->
+                when (action) {
+                    "refreshStorage" -> settingsViewModel.dispatch(SharedSettingsIntent.RefreshStorage)
+                    "clearStorage" ->
+                        target
+                            ?.takeIf { it.isNotBlank() }
+                            ?.let { settingsViewModel.dispatch(SharedSettingsIntent.ClearStorage(it)) }
+                    else -> bridge.log("settings_storage_unsupported_action action=$action target=${target.orEmpty()}")
                 }
-            )
-        }
+            },
+            downloads = {
+                RaftDownloadCenterSection(
+                    entries = downloadEntries,
+                    canRetry = downloadCenter::canRetry,
+                    onAction = ::onDownloadAction,
+                    onClearFinished = { ownerKey?.let(downloadCenter::clearFinished) }
+                )
+            }
+        )
     }
 }
 

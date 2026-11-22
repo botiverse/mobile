@@ -90,7 +90,7 @@ internal fun HomeSearchHistoryWindowBanner(
  */
 @Composable
 internal fun homeSearchIncompleteNote(searchedThrough: String?, timeContext: RaftTimeContext?): String {
-    val label = homeSearchSearchedThroughLabel(searchedThrough, currentRaftTimeContext(timeContext))
+    val label = homeSearchSearchedThroughLabel(searchedThrough, currentRaftDateTimeContext(timeContext))
     return if (label != null) {
         stringResource(Res.string.search_incomplete_searched_through, label)
     } else {
@@ -102,11 +102,11 @@ internal fun homeSearchIncompleteNote(searchedThrough: String?, timeContext: Raf
 internal fun homeSearchSearchedThroughLabel(searchedThrough: String?, timeContext: RaftTimeContext?): String? {
     val value = searchedThrough?.trim()?.takeIf { it.isNotEmpty() } ?: return null
     // A context that knows today writes the time as message times are; else the device zone does.
-    val context = timeContext?.takeIf { it.todayEpochDay != null || it.nowEpochMillis != null }
+    val context = timeContext?.takeIf { it.resolvedTodayEpochDay() != null }
     if (context != null && parseRaftTimestampEpochMillisOrNull(value, context.localOffsetMinutes) != null) {
         return formatRaftTimestampLabel(value, context).takeIf { it.isNotBlank() }
     }
-    return raftDeviceZoneAbsoluteLabel(value)
+    return raftDeviceZoneAbsoluteLabel(value, timeContext = timeContext)
 }
 
 /**

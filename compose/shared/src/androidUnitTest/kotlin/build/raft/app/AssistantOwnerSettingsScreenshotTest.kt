@@ -8,6 +8,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import build.raft.app.assistant.AssistantOwnerOtterRow
@@ -18,6 +20,7 @@ import build.raft.app.assistant.WeChatDisconnectConfirmBody
 import build.raft.app.assistant.WeChatPhoneBlockedBody
 import build.raft.app.data.ScreenError
 import build.raft.app.data.WeChatBinding
+import build.raft.app.model.RaftTimeContext
 import build.raft.designsystem.components.RaftButton
 import build.raft.designsystem.components.RaftButtonSize
 import build.raft.designsystem.components.RaftButtonVariant
@@ -25,6 +28,7 @@ import build.raft.designsystem.components.RaftDialogSize
 import build.raft.designsystem.components.RaftDialogSurface
 import build.raft.designsystem.theme.RaftTheme
 import kotlin.test.Test
+import kotlin.time.Instant
 import org.junit.Rule
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -126,7 +130,16 @@ class AssistantOwnerSettingsScreenshotTest {
 
     private fun capture(name: String, appearance: RaftAppAppearance, content: @Composable () -> Unit) =
         RaftRobolectricScreenshot.capture(name, appearance, reportDir = "build/reports/home-screenshots", activities = activities) {
-            MigrationFixtureHost(content)
+            val timeContext =
+                remember {
+                    RaftTimeContextProvider(
+                        RaftTimeContext(localOffsetMinutes = 0, timeFormat = "24h")
+                            .refreshedAt(Instant.parse(CONNECTED_AT).toEpochMilliseconds())
+                    )
+                }
+            CompositionLocalProvider(LocalRaftTimeContextProvider provides timeContext) {
+                MigrationFixtureHost(content)
+            }
         }
 }
 

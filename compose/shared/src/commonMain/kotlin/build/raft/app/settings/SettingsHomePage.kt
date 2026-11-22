@@ -56,6 +56,7 @@ import build.raft.app.data.RaftHostNetworkEvents
 import build.raft.app.data.RaftAppUpdateEvents
 import build.raft.app.data.RaftChatLayoutPreferenceEvents
 import build.raft.app.data.RaftRealtimeEvents
+import build.raft.app.data.RaftTimeFormatRuntime
 import build.raft.app.data.RealtimeRoomLeaseOwner
 import build.raft.app.data.AppLocale
 import build.raft.app.data.MyMessageAlignmentPreference
@@ -1266,6 +1267,7 @@ private fun RaftAppShellReadyContent(
                     }
                 },
                 serverNotificationLastKnownStore = sharedStores.settingsServerNotificationLastKnownStore,
+                onTimeFormatUpdated = RaftTimeFormatRuntime::update,
             )
         }
     val myMessageAlignmentState = remember { mutableStateOf(MyMessageAlignmentPreference.Default) }
@@ -1302,14 +1304,25 @@ private fun RaftAppShellReadyContent(
     var createChannelCollision by remember { mutableStateOf<ArchivedNameCollision?>(null) }
     var createChannelMembersLoading by remember { mutableStateOf(false) }
     var createChannelMembers by remember { mutableStateOf<List<MemberProfile>>(emptyList()) }
-    val hostThreadTimeCapabilities = remember(pager.pageData.params.toString()) {
+    val baseHostThreadTimeCapabilities = remember(pager.pageData.params.toString()) {
         pager.pageData.params.threadTimeCapabilities()
     }
-    val hostThreadTimeContextProvider =
+    val hostTimeFormat =
+        RaftTimeFormatRuntime.observe(fallback = baseHostThreadTimeCapabilities?.timeFormat ?: RaftTimeFormat24Hour)
+    val hostThreadTimeCapabilities = remember(baseHostThreadTimeCapabilities, hostTimeFormat) {
+        baseHostThreadTimeCapabilities?.copy(timeFormat = hostTimeFormat)
+    }
+    val fallbackHostTimeContextProvider = currentRaftTimeContextProvider
+    val ownHostThreadTimeContextProvider =
         rememberLiveRaftTimeContext(
             capabilities = hostThreadTimeCapabilities,
-            pageVisibleTick = pageVisibleTick
+            pageVisibleTick = pageVisibleTick,
+            active = hostThreadTimeCapabilities != null,
         )
+    val hostThreadTimeContextProvider =
+        ownHostThreadTimeContextProvider.takeIf { hostThreadTimeCapabilities != null }
+            ?: fallbackHostTimeContextProvider
+            ?: ownHostThreadTimeContextProvider
     val currentHostThreadTimeContextProvider = rememberUpdatedState(hostThreadTimeContextProvider)
     val notificationWindowNavigationIntent =
         remember(pager.pageData.params.toString()) {
@@ -2230,15 +2243,23 @@ private fun RaftAppShellReadyContent(
         latestAuthoritativeHomeStartAllowedState = latestAuthoritativeHomeStartAllowedState,
         homeSurfaceVisible = homeSurfaceVisible,
     )
-    val sessionTimeFormat = readySession.appShellThreadTimeFormat()
+    val sessionTimeFormat = (readySession ?: homePreviewSession).appShellThreadTimeFormat()
+    val effectiveSessionTimeFormat =
+        RaftTimeFormatRuntime.observe(fallback = sessionTimeFormat ?: RaftTimeFormat24Hour)
+    val authRequired = authGateState is SharedAuthGateState.AuthRequired
+    LaunchedEffect(readySession?.user?.id, sessionTimeFormat, authRequired) {
+        if (readySession != null || authRequired) {
+            RaftTimeFormatRuntime.update(sessionTimeFormat)
+        }
+    }
     // Subscribe only to low-frequency dateContext (updates on midnight, timezone/DST shift, or
     // 12h/24h format change — never on 1-minute ticks) so child tabs and task heads always format
     // dates/clocks consistently instead of leaking raw ISO strings.
     val threadTimeContext =
         hostThreadTimeContextProvider.dateContext
-            ?.withTimeFormat(sessionTimeFormat)
-            ?: remember(hostThreadTimeCapabilities, sessionTimeFormat) {
-                hostThreadTimeCapabilities?.staticContext().withTimeFormat(sessionTimeFormat)
+            ?.withTimeFormat(effectiveSessionTimeFormat)
+            ?: remember(hostThreadTimeCapabilities, effectiveSessionTimeFormat) {
+                hostThreadTimeCapabilities?.staticContext().withTimeFormat(effectiveSessionTimeFormat)
             }
     fun selectAppShellTab(
         nextTab: String,

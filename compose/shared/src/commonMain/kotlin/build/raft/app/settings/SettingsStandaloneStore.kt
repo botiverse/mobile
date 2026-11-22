@@ -29,6 +29,7 @@ import build.raft.app.data.SharedSettingsState
 import build.raft.app.data.RaftAuthSessionStore
 import build.raft.app.data.RaftSharedStoreRegistry
 import build.raft.app.data.RaftShellStoreScope
+import build.raft.app.data.RaftTimeFormatRuntime
 import build.raft.app.data.kuiklyBridgeCallContext
 import build.raft.app.data.RaftChatLayoutPreferenceEvents
 import build.raft.app.data.RaftNotificationPreferenceEvents
@@ -155,6 +156,7 @@ internal fun rememberStandaloneSettingsEnvironment(
                             }
                         },
                         serverNotificationLastKnownStore = sharedStores.settingsServerNotificationLastKnownStore,
+                        onTimeFormatUpdated = RaftTimeFormatRuntime::update,
                     ),
                 serverMembersStore = serverMembersStore,
                 // Data-layer plan step 5: the shell's owner-fenced, durable machine cache.

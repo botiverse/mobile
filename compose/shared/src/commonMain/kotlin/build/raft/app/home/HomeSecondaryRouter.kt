@@ -71,6 +71,7 @@ import build.raft.app.data.asSearchArtifactsSource
 import build.raft.app.data.asSearchCoreGroupsSource
 import build.raft.app.data.SearchCoreGroupsIntent
 import build.raft.app.data.RaftShellStoreScope
+import build.raft.app.data.RaftTimeFormatRuntime
 import build.raft.app.data.kuiklyBridgeCallContext
 import build.raft.app.data.mergedSharedConversationDirectoryState
 import build.raft.app.data.parseRaftHome
@@ -79,6 +80,7 @@ import build.raft.app.data.toSharedConversationDirectoryState
 import build.raft.app.data.typedPinnedOrLegacy
 import build.raft.app.model.ServerId
 import build.raft.app.model.RaftTimeContext
+import build.raft.app.model.RaftTimeFormat24Hour
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
@@ -203,24 +205,39 @@ private fun rememberHomeSecondaryRouteEnvironment(
         compactConsecutiveMessages = chatLayout.compactConsecutiveMessages
         foregroundMessageBannersEnabled = chatLayout.foregroundMessageBannersEnabled
     }
-    val timeCapabilities =
+    val baseTimeCapabilities =
         remember(pager.pageData.params.toString()) {
             pager.pageData.params.threadTimeCapabilities()
         }
-    val timeContextProvider =
+    val runtimeTimeFormat =
+        RaftTimeFormatRuntime.observe(fallback = baseTimeCapabilities?.timeFormat ?: RaftTimeFormat24Hour)
+    val timeCapabilities =
+        remember(baseTimeCapabilities, runtimeTimeFormat) {
+            baseTimeCapabilities?.copy(timeFormat = runtimeTimeFormat)
+        }
+    val inheritedTimeContextProvider = LocalRaftTimeContextProvider.current
+    val fallbackTimeContextProvider = currentRaftTimeContextProvider
+    val ownTimeContextProvider =
         rememberLiveRaftTimeContext(
             capabilities = timeCapabilities,
-            pageVisibleTick = routeVisibleTick
+            pageVisibleTick = routeVisibleTick,
+            active = inheritedTimeContextProvider == null && timeCapabilities != null,
         )
+    val timeContextProvider =
+        inheritedTimeContextProvider
+            ?: ownTimeContextProvider.takeIf { timeCapabilities != null }
+            ?: fallbackTimeContextProvider
+            ?: ownTimeContextProvider
     val timeContext =
-        remember(timeCapabilities) {
-            timeCapabilities?.let {
-                RaftTimeContext(
-                    localOffsetMinutes = it.localOffsetMinutes,
-                    timeFormat = it.timeFormat
-                )
+        timeContextProvider.dateContext
+            ?: remember(timeCapabilities) {
+                timeCapabilities?.let {
+                    RaftTimeContext(
+                        localOffsetMinutes = it.localOffsetMinutes,
+                        timeFormat = it.timeFormat
+                    )
+                }
             }
-        }
     val shellScope = rememberRaftAppShellScope(adaptivePane)
     return remember(
         pager,
