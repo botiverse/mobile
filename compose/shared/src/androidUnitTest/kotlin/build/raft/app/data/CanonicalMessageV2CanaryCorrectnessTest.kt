@@ -1723,6 +1723,19 @@ class CanonicalMessageV2CanaryCorrectnessTest {
         override suspend fun readCursor(scope: SyncScopeKey): PersistedCursor? = delegate.readCursor(scope)
         override suspend fun readSegments(scope: SyncScopeKey) = delegate.readSegments(scope)
         override suspend fun maxLocalRev(partition: DurablePartitionKey): Long = delegate.maxLocalRev(partition)
+        override suspend fun readFactsBefore(scope: SyncScopeKey, beforeSeq: Long, limit: Int) =
+            delegate.readFactsBefore(scope, beforeSeq, limit)
+        override suspend fun readFactsAfter(scope: SyncScopeKey, afterSeq: Long, limit: Int) =
+            delegate.readFactsAfter(scope, afterSeq, limit)
+        override suspend fun hasFactBefore(scope: SyncScopeKey, beforeSeq: Long) =
+            delegate.hasFactBefore(scope, beforeSeq)
+        override suspend fun hasFactAfter(scope: SyncScopeKey, afterSeq: Long) =
+            delegate.hasFactAfter(scope, afterSeq)
+        override suspend fun highestFactSeqBefore(scope: SyncScopeKey, beforeSeq: Long) =
+            delegate.highestFactSeqBefore(scope, beforeSeq)
+        override suspend fun locateFact(partition: DurablePartitionKey, factId: String) =
+            delegate.locateFact(partition, factId)
+        override suspend fun touchUserAccess(scope: SyncScopeKey) = delegate.touchUserAccess(scope)
 
         /** Since message storage Phase 2a the enter / catch-up page is a coverage write: counted with the snapshots. */
         override suspend fun applyCoverage(

@@ -2,6 +2,7 @@ package build.raft.app.network.sync
 
 import build.raft.app.canonical.message.MessageAggregateField
 import build.raft.app.data.RaftSqlDatabase
+import build.raft.app.shared.data.local.MessageEntity
 import build.raft.app.shared.data.local.SelectCanonicalFactInScope
 import build.raft.app.shared.data.local.SyncCursorEntity
 import kotlinx.atomicfu.locks.SynchronizedObject
@@ -102,6 +103,25 @@ data class RestoredCanonicalMessageV2Scope(
     val unknownFieldsByFactId: Map<String, Set<MessageAggregateField>> = emptyMap(),
 )
 
+/**
+ * Message storage design 2026-10-27 (Phase 2d): one bounded fact page returned by
+ * [CanonicalMessageV2Store.readFactsBefore] or [CanonicalMessageV2Store.readFactsAfter], in ascending
+ * `(seq, id)` order. [hasMoreStored] reports whether at least one additional stored fact exists in the
+ * queried direction beyond this page.
+ */
+data class CanonicalMessageV2BoundedFactsPage(
+    val envelopes: List<CanonicalMessageEnvelopeV2>,
+    val hasMoreStored: Boolean,
+    val unknownFieldsByFactId: Map<String, Set<MessageAggregateField>> = emptyMap(),
+)
+
+/** Phase 2d: location of a stored fact inside a partition ([CanonicalMessageV2Store.locateFact]). */
+data class CanonicalMessageV2FactLocation(
+    val scopeKind: String,
+    val scopeId: SyncScopeId,
+    val seq: Long,
+)
+
 interface CanonicalMessageV2Store {
     suspend fun applySnapshot(frame: CanonicalMessageV2SnapshotFrame): CanonicalMessageV2StoreWriteResult
     suspend fun applyIncremental(frame: CanonicalMessageV2IncrementalFrame): CanonicalMessageV2StoreWriteResult
@@ -178,6 +198,98 @@ interface CanonicalMessageV2Store {
      * request and pass it as revAtRequest.
      */
     suspend fun maxLocalRev(partition: DurablePartitionKey): Long = 0L
+
+    /**
+     * Phase 2d: bounded read of the newest [limit] stored facts of [scope] strictly below [beforeSeq],
+     * returned in ascending `(seq, id)` order. Never scans the whole scope in SQLite.
+     */
+    suspend fun readFactsBefore(
+        scope: SyncScopeKey,
+        beforeSeq: Long,
+        limit: Int,
+    ): CanonicalMessageV2BoundedFactsPage {
+        require(limit > 0) { "limit must be positive" }
+        val restored = restore(scope)
+        val older = restored.envelopes
+            .filter { it.fact.seq < beforeSeq }
+            .sortedWith(compareBy<CanonicalMessageEnvelopeV2> { it.fact.seq }.thenBy { it.fact.id })
+        val page = older.takeLast(limit)
+        val pageIds = page.mapTo(HashSet()) { it.fact.id }
+        return CanonicalMessageV2BoundedFactsPage(
+            envelopes = page,
+            hasMoreStored = older.size > page.size,
+            unknownFieldsByFactId = restored.unknownFieldsByFactId.filterKeys { it in pageIds },
+        )
+    }
+
+    /**
+     * Phase 2d: bounded read of the oldest [limit] stored facts of [scope] strictly above [afterSeq],
+     * returned in ascending `(seq, id)` order. Never scans the whole scope in SQLite.
+     */
+    suspend fun readFactsAfter(
+        scope: SyncScopeKey,
+        afterSeq: Long,
+        limit: Int,
+    ): CanonicalMessageV2BoundedFactsPage {
+        require(limit > 0) { "limit must be positive" }
+        val restored = restore(scope)
+        val newer = restored.envelopes
+            .filter { it.fact.seq > afterSeq }
+            .sortedWith(compareBy<CanonicalMessageEnvelopeV2> { it.fact.seq }.thenBy { it.fact.id })
+        val page = newer.take(limit)
+        val pageIds = page.mapTo(HashSet()) { it.fact.id }
+        return CanonicalMessageV2BoundedFactsPage(
+            envelopes = page,
+            hasMoreStored = newer.size > page.size,
+            unknownFieldsByFactId = restored.unknownFieldsByFactId.filterKeys { it in pageIds },
+        )
+    }
+
+    /**
+     * Phase 2d: non-decoding existence check for any stored fact of [scope] strictly below [beforeSeq].
+     * Avoids decoding out-of-window payloads so unrelated poisoned rows never fail closed a boundary probe.
+     */
+    suspend fun hasFactBefore(
+        scope: SyncScopeKey,
+        beforeSeq: Long,
+    ): Boolean = restore(scope).envelopes.any { it.fact.seq < beforeSeq }
+
+    /**
+     * Phase 2d: non-decoding existence check for any stored fact of [scope] strictly above [afterSeq].
+     * Avoids decoding out-of-window payloads so unrelated poisoned rows never fail closed a boundary probe.
+     */
+    suspend fun hasFactAfter(
+        scope: SyncScopeKey,
+        afterSeq: Long,
+    ): Boolean = restore(scope).envelopes.any { it.fact.seq > afterSeq }
+
+    /**
+     * Phase 2d: non-decoding probe for the highest stored fact seq of [scope] strictly below [beforeSeq],
+     * or `null` when none exists. Avoids decoding out-of-window or skipped-segment payloads.
+     */
+    suspend fun highestFactSeqBefore(
+        scope: SyncScopeKey,
+        beforeSeq: Long,
+    ): Long? = restore(scope).envelopes
+        .asSequence()
+        .map { it.fact.seq }
+        .filter { it < beforeSeq }
+        .maxOrNull()
+
+    /**
+     * Phase 2d: locate every stored copy of [factId] inside [partition] without scanning scopes.
+     * Used by anchored opens (`anchor = MessageId`) to read around a cached island directly.
+     */
+    suspend fun locateFact(
+        partition: DurablePartitionKey,
+        factId: String,
+    ): List<CanonicalMessageV2FactLocation> = emptyList()
+
+    /**
+     * Phase 2d (design §5): move [scope]'s `lastUserAccessAtMs` (and `updatedAtMs`) when read.
+     * Best-effort: a scope without a header row is a no-op.
+     */
+    suspend fun touchUserAccess(scope: SyncScopeKey) {}
 }
 
 /** The parent a reply-thread scope's header names (its cursor's parent columns). */
@@ -955,16 +1067,10 @@ internal class SqlDelightCanonicalMessageV2Store(
         }
     }
 
-    override suspend fun restore(scope: SyncScopeKey): RestoredCanonicalMessageV2Scope {
-        requireV2Scope(scope)
-        val rows = database.queries.selectServerBackedMessagesForChannel(
-            environmentId = scope.environmentId,
-            serverId = scope.serverId,
-            principalId = scope.principalId,
-            consumerId = scope.consumerId,
-            scopeKind = scope.scopeKind,
-            channelId = scope.scopeId,
-        ).executeAsList()
+    private fun decodeAndValidateStoredRows(
+        scope: SyncScopeKey,
+        rows: List<MessageEntity>,
+    ): Pair<List<CanonicalMessageEnvelopeV2>, Map<String, Set<MessageAggregateField>>> {
         val envelopes = rows.map { row ->
             val accepted = decodeCanonicalMessageV2(row.canonicalFactJson, scope.serverId)
                 as? CanonicalMessageV2DecodeResult.Accepted
@@ -984,9 +1090,173 @@ internal class SqlDelightCanonicalMessageV2Store(
         val unknownFieldsByFactId = rows.mapNotNull { row ->
             decodeUnknownFields(scope, row.id, row.unknownFields).takeIf { it.isNotEmpty() }?.let { row.id to it }
         }.toMap()
+        return envelopes to unknownFieldsByFactId
+    }
+
+    override suspend fun restore(scope: SyncScopeKey): RestoredCanonicalMessageV2Scope {
+        requireV2Scope(scope)
+        val rows = database.queries.selectServerBackedMessagesForChannel(
+            environmentId = scope.environmentId,
+            serverId = scope.serverId,
+            principalId = scope.principalId,
+            consumerId = scope.consumerId,
+            scopeKind = scope.scopeKind,
+            channelId = scope.scopeId,
+        ).executeAsList()
+        val (envelopes, unknownFieldsByFactId) = decodeAndValidateStoredRows(scope, rows)
         val cursor = selectCursor(scope)
         if (envelopes.isNotEmpty() && cursor == null) throw CanonicalMessageV2ScopePoisoned(scope, poisonCause = "cursor_missing")
         return RestoredCanonicalMessageV2Scope(envelopes = envelopes, cursor = cursor, unknownFieldsByFactId = unknownFieldsByFactId)
+    }
+
+    override suspend fun readFactsBefore(
+        scope: SyncScopeKey,
+        beforeSeq: Long,
+        limit: Int,
+    ): CanonicalMessageV2BoundedFactsPage {
+        requireV2Scope(scope)
+        require(limit > 0) { "limit must be positive" }
+        val rows = database.queries.selectFactsInScopeBefore(
+            environmentId = scope.environmentId,
+            serverId = scope.serverId,
+            principalId = scope.principalId,
+            consumerId = scope.consumerId,
+            scopeKind = scope.scopeKind,
+            channelId = scope.scopeId,
+            seq = beforeSeq,
+            limit = limit.toLong() + 1L,
+        ).executeAsList()
+        val hasMoreStored = rows.size > limit
+        val pageRows = rows.take(limit).asReversed()
+        val (envelopes, unknownFieldsByFactId) = decodeAndValidateStoredRows(scope, pageRows)
+        if (envelopes.isNotEmpty() && selectCursor(scope) == null) {
+            throw CanonicalMessageV2ScopePoisoned(scope, poisonCause = "cursor_missing")
+        }
+        return CanonicalMessageV2BoundedFactsPage(
+            envelopes = envelopes,
+            hasMoreStored = hasMoreStored,
+            unknownFieldsByFactId = unknownFieldsByFactId,
+        )
+    }
+
+    override suspend fun readFactsAfter(
+        scope: SyncScopeKey,
+        afterSeq: Long,
+        limit: Int,
+    ): CanonicalMessageV2BoundedFactsPage {
+        requireV2Scope(scope)
+        require(limit > 0) { "limit must be positive" }
+        val rows = database.queries.selectFactsInScopeAfter(
+            environmentId = scope.environmentId,
+            serverId = scope.serverId,
+            principalId = scope.principalId,
+            consumerId = scope.consumerId,
+            scopeKind = scope.scopeKind,
+            channelId = scope.scopeId,
+            seq = afterSeq,
+            limit = limit.toLong() + 1L,
+        ).executeAsList()
+        val hasMoreStored = rows.size > limit
+        val pageRows = rows.take(limit)
+        val (envelopes, unknownFieldsByFactId) = decodeAndValidateStoredRows(scope, pageRows)
+        if (envelopes.isNotEmpty() && selectCursor(scope) == null) {
+            throw CanonicalMessageV2ScopePoisoned(scope, poisonCause = "cursor_missing")
+        }
+        return CanonicalMessageV2BoundedFactsPage(
+            envelopes = envelopes,
+            hasMoreStored = hasMoreStored,
+            unknownFieldsByFactId = unknownFieldsByFactId,
+        )
+    }
+
+    override suspend fun hasFactBefore(
+        scope: SyncScopeKey,
+        beforeSeq: Long,
+    ): Boolean {
+        requireV2Scope(scope)
+        return database.queries.selectFactsInScopeBefore(
+            environmentId = scope.environmentId,
+            serverId = scope.serverId,
+            principalId = scope.principalId,
+            consumerId = scope.consumerId,
+            scopeKind = scope.scopeKind,
+            channelId = scope.scopeId,
+            seq = beforeSeq,
+            limit = 1L,
+        ).executeAsList().isNotEmpty()
+    }
+
+    override suspend fun hasFactAfter(
+        scope: SyncScopeKey,
+        afterSeq: Long,
+    ): Boolean {
+        requireV2Scope(scope)
+        return database.queries.selectFactsInScopeAfter(
+            environmentId = scope.environmentId,
+            serverId = scope.serverId,
+            principalId = scope.principalId,
+            consumerId = scope.consumerId,
+            scopeKind = scope.scopeKind,
+            channelId = scope.scopeId,
+            seq = afterSeq,
+            limit = 1L,
+        ).executeAsList().isNotEmpty()
+    }
+
+    override suspend fun highestFactSeqBefore(
+        scope: SyncScopeKey,
+        beforeSeq: Long,
+    ): Long? {
+        requireV2Scope(scope)
+        return database.queries.selectFactsInScopeBefore(
+            environmentId = scope.environmentId,
+            serverId = scope.serverId,
+            principalId = scope.principalId,
+            consumerId = scope.consumerId,
+            scopeKind = scope.scopeKind,
+            channelId = scope.scopeId,
+            seq = beforeSeq,
+            limit = 1L,
+        ).executeAsOneOrNull()?.seq
+    }
+
+    override suspend fun locateFact(
+        partition: DurablePartitionKey,
+        factId: String,
+    ): List<CanonicalMessageV2FactLocation> {
+        require(partition.consumerId == SYNC_CORE_MESSAGES_V2_DURABLE_CONSUMER_ID)
+        if (factId.isBlank() || factId != factId.trim()) return emptyList()
+        return database.queries.selectFactLocationById(
+            environmentId = partition.environmentId,
+            serverId = partition.serverId,
+            principalId = partition.principalId,
+            consumerId = partition.consumerId,
+            id = factId,
+        ).executeAsList().map { row ->
+            CanonicalMessageV2FactLocation(
+                scopeKind = row.scopeKind,
+                scopeId = row.channelId,
+                seq = row.seq,
+            )
+        }
+    }
+
+    override suspend fun touchUserAccess(scope: SyncScopeKey) {
+        requireV2Scope(scope)
+        database.transaction {
+            val header = selectCursor(scope) ?: return@transaction
+            val atMs = now()
+            queries.touchSyncCursorUserAccess(
+                atMs = atMs,
+                environmentId = scope.environmentId,
+                serverId = scope.serverId,
+                principalId = scope.principalId,
+                consumerId = scope.consumerId,
+                scopeKind = scope.scopeKind,
+                scopeId = scope.scopeId,
+            )
+            touchParentScopeInsideTransaction(scope, header, atMs)
+        }
     }
 
     private class StoredFact(val envelope: CanonicalMessageEnvelopeV2, val unknown: Set<MessageAggregateField>)
@@ -1465,12 +1735,16 @@ internal class SqlDelightCanonicalMessageV2Store(
      * cursor's `updatedAtMs` moves with it, in the same transaction, so a thread write can never make
      * its own parent the least-recently-written scope and cascade-evict itself with it.
      */
-    private fun touchParentScopeInsideTransaction(scope: SyncScopeKey, cursor: PersistedCursor) {
+    private fun touchParentScopeInsideTransaction(
+        scope: SyncScopeKey,
+        cursor: PersistedCursor,
+        atMs: Long = now(),
+    ) {
         if (scope.scopeKind != THREAD_SCOPE_KIND) return
         val parentKind = cursor.parentScopeKind ?: return
         val parentId = cursor.parentScopeId ?: return
         database.queries.touchSyncCursorUserAccess(
-            atMs = now(),
+            atMs = atMs,
             environmentId = scope.environmentId,
             serverId = scope.serverId,
             principalId = scope.principalId,
