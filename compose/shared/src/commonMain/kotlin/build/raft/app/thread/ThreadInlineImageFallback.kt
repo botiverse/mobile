@@ -229,22 +229,38 @@ internal fun shouldRequestThreadInlineImageFallbackForMissingThumbnail(
  * What a thread inline image loads. An image this device just uploaded ([localModel], see
  * `RaftSentAttachmentLocalImages`) renders from the local copy and never asks for the remote
  * inline URL; the remote thumbnail / fallback stays as the error fallback.
+ *
+ * One that may animate (`mayAnimate`: GIF / WebP) moves to its server thumbnail once the message
+ * has one: that bounded animated WebP (slock #16159) is the only source a tile plays. The
+ * full-size local copy shows a still until then, and stays the fallback (and the underlay while
+ * the thumbnail loads).
  */
 internal data class ThreadInlineImageSourcePlan(
     val source: String?,
     val fallbackSource: String?,
-    val requestRemoteFallback: Boolean
+    val requestRemoteFallback: Boolean,
+    /** [source] is the server thumbnail: the only source an animated image plays from. */
+    val sourceIsThumbnail: Boolean = false
 )
 
 internal fun threadInlineImageSourcePlan(
     thumbnailUrl: String?,
     fallbackUrl: String?,
-    localModel: String?
+    localModel: String?,
+    mayAnimate: Boolean = false
 ): ThreadInlineImageSourcePlan {
     val thumbnail = thumbnailUrl?.takeIf { it.isNotBlank() }
     val fallback = fallbackUrl?.takeIf { it.isNotBlank() }
     val local = localModel?.takeIf { it.isNotBlank() }
     if (local != null) {
+        if (mayAnimate && thumbnail != null) {
+            return ThreadInlineImageSourcePlan(
+                source = thumbnail,
+                fallbackSource = local,
+                requestRemoteFallback = false,
+                sourceIsThumbnail = true
+            )
+        }
         return ThreadInlineImageSourcePlan(
             source = local,
             fallbackSource = thumbnail ?: fallback,
@@ -254,7 +270,8 @@ internal fun threadInlineImageSourcePlan(
     return ThreadInlineImageSourcePlan(
         source = thumbnail,
         fallbackSource = fallback,
-        requestRemoteFallback = shouldRequestThreadInlineImageFallbackForMissingThumbnail(thumbnail, fallback)
+        requestRemoteFallback = shouldRequestThreadInlineImageFallbackForMissingThumbnail(thumbnail, fallback),
+        sourceIsThumbnail = thumbnail != null
     )
 }
 

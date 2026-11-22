@@ -2616,7 +2616,8 @@
     <string name="search_entity_computer">Computador</string>
     <string name="search_meta_thread">Thread</string>
     <string name="search_meta_thread_inline">thread</string>
-    <string name="search_hits_count">%1$d ocorrências</string>
+    <string name="search_hits_count_one">%1$d ocorrência</string>
+    <string name="search_hits_count_other">%1$d ocorrências</string>
     <string name="search_state_no_preview">Sem pré-visualização</string>
     <string name="search_thread_discussion">Discussão na thread</string>
     <string name="search_sender_me">Você</string>

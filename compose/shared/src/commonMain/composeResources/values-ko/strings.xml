@@ -2616,7 +2616,8 @@
     <string name="search_entity_computer">컴퓨터</string>
     <string name="search_meta_thread">스레드</string>
     <string name="search_meta_thread_inline">스레드</string>
-    <string name="search_hits_count">%1$d건 일치</string>
+    <string name="search_hits_count_one">%1$d건 일치</string>
+    <string name="search_hits_count_other">%1$d건 일치</string>
     <string name="search_state_no_preview">미리보기 없음</string>
     <string name="search_thread_discussion">스레드 대화</string>
     <string name="search_sender_me">나</string>

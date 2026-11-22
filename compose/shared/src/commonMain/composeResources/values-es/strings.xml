@@ -2616,7 +2616,8 @@
     <string name="search_entity_computer">Computadora</string>
     <string name="search_meta_thread">Hilo</string>
     <string name="search_meta_thread_inline">hilo</string>
-    <string name="search_hits_count">%1$d coincidencias</string>
+    <string name="search_hits_count_one">%1$d coincidencia</string>
+    <string name="search_hits_count_other">%1$d coincidencias</string>
     <string name="search_state_no_preview">Sin vista previa</string>
     <string name="search_thread_discussion">Conversación del hilo</string>
     <string name="search_sender_me">Yo</string>

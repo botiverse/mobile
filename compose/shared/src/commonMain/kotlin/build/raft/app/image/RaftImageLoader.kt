@@ -243,7 +243,7 @@ fun raftBuildImageLoader(context: PlatformContext): ImageLoader {
             add(RaftImageSourceMapper)
             add(RaftImageSourceKeyer)
             add(RaftImageFetcherFactory())
-            // Ahead of the static decoders, but only for requests that opted in (the image viewer).
+            // Ahead of the static decoders, but only for requests that opted in ([raftAnimatedImage]).
             raftPlatformAnimatedImageDecoderFactory()?.let { add(RaftAnimatedImageDecoderFactory(it)) }
             add(SvgDecoder.Factory())
         }
