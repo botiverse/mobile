@@ -797,7 +797,11 @@ final class RaftNativeNavBarHost: NSObject, RaftNativeNavBarListener {
             windowScenes.first(where: { $0.activationState == .foregroundActive })
             ?? windowScenes.first(where: { $0.activationState == .foregroundInactive })
             ?? windowScenes.first
-        let width = preferred?.screen.bounds.width ?? 0
+        let keyWindowWidth =
+            preferred?.windows.first(where: { $0.isKeyWindow })?.bounds.width
+            ?? preferred?.windows.first?.bounds.width
+            ?? 0
+        let width = keyWindowWidth > 0 ? keyWindowWidth : (preferred?.coordinateSpace.bounds.width ?? 0)
         return width > 0 ? width : 390
     }
 

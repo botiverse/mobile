@@ -272,89 +272,50 @@ internal fun buildThreadNativeNavBarPrefillHead(
             payload.showModeTabs -> RaftNativeNavBarTitleLeading.Channel(headerDisplay.channelKindGlyph)
             else -> null
         }
-    val actions =
-        buildList {
-            if (!taskConversation && !replyThread) {
-                if (payload.threadHeaderSearchAction() != null) {
-                    add(
-                        RaftNativeNavBarAction(
-                            id = "thread-search",
-                            label = resolvedStrings.searchLabel,
-                            systemSymbol = "magnifyingglass",
-                            onClick = {},
-                            icon = RaftLucideIconName.Search,
-                        )
-                    )
-                }
-                if (dmLoungeToggleVisible && headerDisplay.surfaceKind == RaftThreadSurfaceKind.DirectMessage) {
-                    add(
-                        RaftNativeNavBarAction(
-                            id = "lounge",
-                            label = resolvedStrings.loungeLabel,
-                            systemSymbol = "person.2",
-                            onClick = {},
-                            icon = RaftLucideIconName.Users,
-                        )
-                    )
-                }
-                if (payload.showModeTabs) {
-                    if (payload.supportsChannelTasks()) {
-                        add(
-                            RaftNativeNavBarAction(
-                                id = "thread-side-card-tasks",
-                                label = resolvedStrings.openTasksLabel,
-                                systemSymbol = "checklist",
-                                onClick = {},
-                                icon = RaftLucideIconName.ListTodo,
-                            )
-                        )
+    val sideCardActions =
+        if (conversationSideCardsEnabled(showModeTabs = payload.showModeTabs, assistantPanelEmbed = false)) {
+            threadHeaderSideCardOwnActions(
+                tasksAvailable = payload.supportsChannelTasks(),
+                labelForCard = { card, _ ->
+                    when (card) {
+                        ConversationSideCard.Tasks -> resolvedStrings.openTasksLabel
+                        ConversationSideCard.Files -> resolvedStrings.openFilesLabel
                     }
-                    add(
-                        RaftNativeNavBarAction(
-                            id = "thread-side-card-files",
-                            label = resolvedStrings.openFilesLabel,
-                            systemSymbol = "paperclip",
-                            onClick = {},
-                            icon = RaftLucideIconName.Paperclip,
-                        )
-                    )
-                }
-                if (threadHeaderSettingsActionVisible(payload.showSettingsAction, headerDisplay.surfaceKind)) {
-                    add(
-                        RaftNativeNavBarAction(
-                            id = "thread-settings",
-                            label = resolvedStrings.settingsLabel,
-                            systemSymbol = "gearshape",
-                            onClick = {},
-                            icon = RaftLucideIconName.Settings,
-                        )
-                    )
-                }
-            } else {
-                if (taskConversation || payload.threadHeaderSearchAction() != null) {
-                    add(
-                        RaftNativeNavBarAction(
-                            id = SEARCH_IN_TASK_MENU_ITEM_ID,
-                            label = if (taskConversation) resolvedStrings.searchInTaskLabel else resolvedStrings.searchInThreadLabel,
-                            systemSymbol = "magnifyingglass",
-                            onClick = {},
-                            icon = RaftLucideIconName.Search,
-                        )
-                    )
-                }
-                if (payload.threadHeaderOpenInParentActionVisible()) {
-                    add(
-                        RaftNativeNavBarAction(
-                            id = VIEW_TASK_IN_CHANNEL_MENU_ITEM_ID,
-                            label = resolvedStrings.viewInChannelLabel,
-                            systemSymbol = "mappin.and.ellipse",
-                            onClick = {},
-                            icon = RaftLucideIconName.MapPin,
-                        )
-                    )
-                }
-            }
+                },
+            )
+        } else {
+            emptyList()
         }
+    val dmLoungeToggle: (() -> Unit)? =
+        if (dmLoungeToggleVisible && headerDisplay.surfaceKind == RaftThreadSurfaceKind.DirectMessage) {
+            {}
+        } else {
+            null
+        }
+    val taskViewInChannel: (() -> Unit)? =
+        if (taskConversation && (payload.parentChannelId?.isNotBlank() == true || payload.threadHeaderOpenInParentActionVisible())) {
+            {}
+        } else {
+            null
+        }
+    val actions =
+        threadHeaderSideColumnActionsForPayload(
+            payload = payload,
+            surfaceKind = headerDisplay.surfaceKind,
+            taskConversation = taskConversation,
+            labels =
+                ThreadHeaderSideColumnLabels(
+                    searchLabel = resolvedStrings.searchLabel,
+                    searchInThreadLabel = resolvedStrings.searchInThreadLabel,
+                    searchInTaskLabel = resolvedStrings.searchInTaskLabel,
+                    settingsLabel = resolvedStrings.settingsLabel,
+                    viewInChannelLabel = resolvedStrings.viewInChannelLabel,
+                    loungeLabel = resolvedStrings.loungeLabel,
+                ),
+            onViewTaskInChannel = taskViewInChannel,
+            sideCardActions = sideCardActions,
+            dmLoungeToggle = dmLoungeToggle,
+        ).toRaftNativeNavBarActions()
     return RaftNativeNavBarHead(
         title = title,
         subtitle = subtitle,
