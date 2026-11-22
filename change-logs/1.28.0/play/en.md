@@ -5,8 +5,8 @@
 🔧 Improved
 - Activity: one-tap Mark as Done on large screens, compact rows on phones
 - App link cards update themselves
-- Smoother launch and return to the app
+- Smoother launch, return to the app and opening of conversations
 
 🐛 Fixed
 - Attachments no longer wait in line when the network stalls
-- No flash of the bottom when opening at a message, plus crash and other fixes
+- No flash of the bottom or of Loading… when opening a conversation, plus crash and other fixes
