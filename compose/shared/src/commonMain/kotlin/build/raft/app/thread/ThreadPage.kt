@@ -2958,13 +2958,6 @@ private fun SharedThreadRouteContentContent(
     val labels = threadRouteLabels()
     val genericActionCardSuccessLabel = labels.genericActionCardSuccessLabel
     val composerSendKeyEnabled = rememberComposerSendKeyEnabled(chatLayoutPreferenceStore, eventBus)
-    // Effective "Collapse long messages": this conversation's device-local override ?: the global switch.
-    val longMessageCollapseConversationSetting =
-        rememberRaftLongMessageCollapseConversationSetting(
-            serverId = currentSession?.currentServerId,
-            conversationId = payload.longMessageCollapseConversationId()
-        )
-    val longMessageCollapseEnabled = longMessageCollapseConversationSetting.effective
     val newMessageMenuEnabled = rememberNewMessageMenuEnabled(chatLayoutPreferenceStore, eventBus)
     val attachmentUploadFailedDetailTemplate = labels.attachmentUploadFailedDetailTemplate
     val unableToOpenTaskLabel = labels.unableToOpenTaskLabel
@@ -3102,6 +3095,17 @@ private fun SharedThreadRouteContentContent(
             onBack = onBack,
         )
     val taskParentChannelId = taskConversation.parentChannelId?.value
+    // Effective "Collapse long messages": this conversation's device-local override ?: the global switch.
+    val longMessageCollapseConversationSetting =
+        rememberRaftLongMessageCollapseConversationSetting(
+            serverId = currentSession?.currentServerId,
+            conversationId =
+                payload.longMessageCollapseConversationId(
+                    homeContent = sharedHomeState.content,
+                    taskParentChannelId = taskConversation.parentChannelId,
+                )
+        )
+    val longMessageCollapseEnabled = longMessageCollapseConversationSetting.effective
     var jointBillingDeadlineTick by remember(payload.instanceId) { mutableStateOf(0) }
     val billingNowEpochMillis =
         payload.nowEpochMillis ?: kotlin.time.Clock.System.now().toEpochMilliseconds()
@@ -6222,7 +6226,11 @@ private fun SharedThreadRouteContentContent(
                 initialMembers = threadChannelMembersSlice,
                 agentStatusResolver = agentStatusResolver,
                 collapseServerId = currentSession?.currentServerId,
-                collapseConversationId = payload.longMessageCollapseConversationId(),
+                collapseConversationId =
+                    payload.longMessageCollapseConversationId(
+                        homeContent = sharedHomeState.content,
+                        taskParentChannelId = taskConversationParentChannelId,
+                    ),
                 completePanel = { panel, homeContent, onLeave -> completeChannelSettingsPanel(panel, homeContent, onLeave) },
                 onOpenMembers = { add ->
                     val serverId = threadMembersServerId

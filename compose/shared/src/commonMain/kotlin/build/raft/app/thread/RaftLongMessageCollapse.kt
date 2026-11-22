@@ -38,7 +38,9 @@ import build.raft.app.data.RaftLongMessageCollapsePreferenceStore
 import build.raft.app.data.raftSharedPreferenceStore
 import build.raft.app.data.RaftMessageDisplayPrefsResult
 import build.raft.app.data.RaftMessageDisplayPrefsStore
+import build.raft.app.data.SharedHomeContentState
 import build.raft.app.data.raftMessageDisplayPrefsKey
+import build.raft.app.model.ChannelId
 import androidx.compose.runtime.rememberCoroutineScope
 import kotlinx.coroutines.launch
 import build.raft.designsystem.components.RaftTextLink
@@ -442,15 +444,65 @@ private fun RaftLongMessageToggle(
 
 /**
  * The conversation whose "Collapse long messages" override applies to a thread route: the channel
- * or DM itself, and for a reply thread its parent conversation. Same id the channel settings page
- * is opened with (`sourceThreadId`).
+ * or DM itself, and for a reply thread or task conversation its parent conversation (slock
+ * `routes/channels.ts` `resolveMessageDisplayPrefsTarget` rejects both `thread` and `task`
+ * sub-conversations with `400 thread_message_display_settings_unsupported` because display
+ * settings belong to the parent channel). Returns null while a sub-conversation's parent channel
+ * id is not yet known, or for an unjoined non-DM channel (web `ChatPanel.tsx`
+ * `messageDisplayPrefsSupported`).
  */
-internal fun RaftThreadScreenPayload.longMessageCollapseConversationId(): String? =
-    if (surfaceKind == RaftThreadSurfaceKind.ReplyThread) {
-        parentChannelId?.trim()?.takeIf { it.isNotEmpty() }
-    } else {
-        (sourceThreadId?.trim()?.takeIf { it.isNotEmpty() } ?: streamChannelId?.trim()?.takeIf { it.isNotEmpty() })
+internal fun RaftThreadScreenPayload.longMessageCollapseConversationId(
+    resolvedParentChannelId: String? = null,
+    parentJoined: Boolean? = null,
+    parentIsDirectMessage: Boolean = false,
+    channelJoined: Boolean? = null,
+): String? {
+    if (status == "no_permission" || status == "error") return null
+    if (surfaceKind == RaftThreadSurfaceKind.ReplyThread || isTaskConversationSurface()) {
+        val parentId =
+            parentChannelId?.trim()?.takeIf { it.isNotEmpty() }
+                ?: resolvedParentChannelId?.trim()?.takeIf { it.isNotEmpty() }
+        val parentIsDm =
+            parentIsDirectMessage ||
+                parentSurfaceKind == RaftThreadSurfaceKind.DirectMessage ||
+                parentChannelKind.equals("dm", ignoreCase = true)
+        val effectiveParentJoined = if (status == "loading") parentJoined == true else joined
+        return parentId?.takeIf { parentIsDm || effectiveParentJoined }
     }
+    val effectiveJoined = if (status == "loading") channelJoined == true else joined
+    if (!effectiveJoined && surfaceKind != RaftThreadSurfaceKind.DirectMessage) return null
+    return sourceThreadId?.trim()?.takeIf { it.isNotEmpty() } ?: streamChannelId?.trim()?.takeIf { it.isNotEmpty() }
+}
+
+/**
+ * Resolves [longMessageCollapseConversationId] using Home snapshot facts (parent DM detection and
+ * channel membership before the thread payload settles) and the async [taskParentChannelId] of a
+ * task conversation.
+ */
+internal fun RaftThreadScreenPayload.longMessageCollapseConversationId(
+    homeContent: SharedHomeContentState?,
+    taskParentChannelId: ChannelId? = null,
+): String? {
+    val snapshot = (homeContent as? SharedHomeContentState.Content)?.baseSnapshot
+    val resolvedParentId =
+        parentChannelId?.trim()?.takeIf { it.isNotEmpty() }
+            ?: taskParentChannelId?.value?.trim()?.takeIf { it.isNotEmpty() }
+    val parentDm =
+        resolvedParentId != null &&
+            snapshot?.directMessages?.any { it.channelId.value == resolvedParentId } == true
+    val parentChannelRow =
+        resolvedParentId?.let { id -> snapshot?.channels?.firstOrNull { it.channelId.value == id } }
+    val ownChannelId =
+        sourceThreadId?.trim()?.takeIf { it.isNotEmpty() } ?: streamChannelId?.trim()?.takeIf { it.isNotEmpty() }
+    val ownChannelRow =
+        ownChannelId?.let { id -> snapshot?.channels?.firstOrNull { it.channelId.value == id } }
+    return longMessageCollapseConversationId(
+        resolvedParentChannelId = resolvedParentId,
+        parentJoined = parentChannelRow?.joined,
+        parentIsDirectMessage = parentDm,
+        channelJoined = ownChannelRow?.joined,
+    )
+}
 
 /**
  * One conversation's collapse switch as a settings row and the thread read it. [accountEnabled]
@@ -471,7 +523,7 @@ internal class RaftLongMessageCollapseConversationSetting(
 @Composable
 internal fun rememberRaftLongMessageCollapseConversationSetting(
     serverId: String?,
-    conversationId: String?
+    conversationId: String?,
 ): RaftLongMessageCollapseConversationSetting {
     val store = remember { RaftLongMessageCollapsePreferenceStore(raftSharedPreferenceStore()) }
     val revision by RaftLongMessageCollapsePreferenceRevision.revision.collectAsState()
@@ -485,7 +537,10 @@ internal fun rememberRaftLongMessageCollapseConversationSetting(
     val accountPrefs by RaftMessageDisplayPrefsStore.state.collectAsState()
     val unsupported by RaftMessageDisplayPrefsStore.unsupported.collectAsState()
     val key = raftMessageDisplayPrefsKey(serverId, conversationId)
-    val accountEnabled = key?.takeIf { it !in unsupported }?.let { accountPrefs[it]?.collapseLongMessages }
+    val accountEnabled =
+        key
+            ?.takeIf { it !in unsupported }
+            ?.let { accountPrefs[it]?.collapseLongMessages }
     // Read the account's value when the conversation opens; the first time, move this device's
     // value there (raftLongMessageCollapseMigrationWrite).
     LaunchedEffect(store, serverId, conversationId) {
