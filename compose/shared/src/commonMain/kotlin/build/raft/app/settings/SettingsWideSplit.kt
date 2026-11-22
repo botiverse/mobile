@@ -150,8 +150,9 @@ private fun settingsWideWebPage(surface: SettingsWebViewSurface, storeScope: Raf
  * The wide Settings tab: the Settings list in the sidebar column ([RaftListPaneKind.Sidebar], the
  * Home sidebar's width) with the [selectedKey] row highlighted, and [detailPane] beside it. Back
  * while a non-default section shows returns to the default one ([settingsWideBackReturnsToDefault]).
- * [collapsed]: the rail's Collapse Sidebar hid the list, so the section takes the whole width;
- * [onCollapsedChange] lets the list's handle collapse it too (a drag past its minimum, Enter).
+ * [collapsed]: the rail's Collapse Sidebar hid the list, so the section takes the width beside the
+ * strip that keeps Expand sidebar where the list was; [onCollapsedChange] lets that strip bring it
+ * back and the list's handle collapse it too (its edge let go of near the rail, Enter).
  */
 @Composable
 internal fun SettingsWideListDetail(

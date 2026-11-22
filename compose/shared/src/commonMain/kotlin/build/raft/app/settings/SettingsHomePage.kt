@@ -6051,12 +6051,13 @@ private fun RaftAppShellReadyContent(
                                 detailPane = detailPane,
                                 fillListWhenNothingPicked = fillListWhenNothingPicked,
                                 collapsed = collapseColumn != null && sidebarCollapse.isHidden(collapseColumn),
-                                // web `snap` "collapse": only where the rail's toggle can bring it back.
+                                // The handle's collapse (web `snap` "collapse", here on a deliberate release) and the
+                                // Expand sidebar strip where the list was: only where the rail's toggle can bring it back.
                                 onCollapsedChange =
                                     collapseColumn?.takeIf { it == collapsibleColumn }?.let { column ->
                                         { hidden ->
                                             sidebarCollapse.setHidden(column, hidden)
-                                            bridge.log("app_shell_sidebar_toggle column=$column hidden=$hidden from=handle")
+                                            bridge.log("app_shell_sidebar_toggle column=$column hidden=$hidden from=split")
                                         }
                                     },
                                 // Web: Activity's list with an item open is at most half the row, so the
@@ -6558,7 +6559,7 @@ private fun RaftAppShellReadyContent(
                                     RaftCollapsibleColumn.Sidebar.takeIf { it == collapsibleColumn }?.let { column ->
                                         { hidden ->
                                             sidebarCollapse.setHidden(column, hidden)
-                                            bridge.log("app_shell_sidebar_toggle column=$column hidden=$hidden from=handle")
+                                            bridge.log("app_shell_sidebar_toggle column=$column hidden=$hidden from=split")
                                         }
                                     },
                                 onResizingChange = { adaptiveListPaneResizing = it },

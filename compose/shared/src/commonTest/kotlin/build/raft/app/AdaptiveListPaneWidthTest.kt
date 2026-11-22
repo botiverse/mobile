@@ -83,17 +83,15 @@ class AdaptiveListPaneWidthTest {
         assertNull(session.moveTo(20f, 0f))
     }
 
-    @Test fun aDragMoreThanFortyUnderTheMinimumCollapses() {
-        // web ColumnResizeHandle SNAP_PAST_END: `reach < min - 40`, before any clamp.
-        assertEquals(40f, RAFT_LIST_PANE_SNAP_PAST_END_DP)
-        // Sidebar 200 minimum: from 240, a drag to 160 stops at the minimum; past 160 it collapses.
-        assertFalse(raftListPaneDragCollapses(sidebar, 240f, -80f))
-        assertTrue(raftListPaneDragCollapses(sidebar, 240f, -81f))
-        // List 240 minimum: the line is at 200.
-        assertFalse(raftListPaneDragCollapses(list, 380f, -180f))
-        assertTrue(raftListPaneDragCollapses(list, 380f, -181f))
-        // Back across the line while still held: no longer collapsed.
-        assertFalse(raftListPaneDragCollapses(sidebar, 240f, -20f))
+    @Test fun onlyTheEdgeLetGoOfUnderHalfTheMinimumCollapsesTheList() {
+        // A tablet's edge is a 24dp touch target beside the rows: an overshoot past the minimum (the web's 40dp snap
+        // line, 160 for the sidebar from its default 240) only resizes; let go under half the minimum, it collapses.
+        assertFalse(raftListPaneReleaseCollapses(sidebar, 240f, -81f))
+        assertFalse(raftListPaneReleaseCollapses(sidebar, 240f, -140f))
+        assertTrue(raftListPaneReleaseCollapses(sidebar, 240f, -141f))
+        // The list's minimum is 240: its line is at 120.
+        assertFalse(raftListPaneReleaseCollapses(list, 380f, -260f))
+        assertTrue(raftListPaneReleaseCollapses(list, 380f, -261f))
     }
 
     @Test fun aCommittedWidthIsSavedPerDeviceAndAPreviewIsNot() {
