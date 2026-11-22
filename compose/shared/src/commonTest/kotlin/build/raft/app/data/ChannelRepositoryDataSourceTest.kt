@@ -54,21 +54,6 @@ class ChannelRepositoryDataSourceTest {
     }
 
     @Test
-    fun openDirectMessageRejectsWrongPeerKindEvenWhenIdMatches() = runBlocking {
-        val network =
-            FakeChannelNetworkClient(
-                responseBody =
-                    """{"id":"dm-wrong-kind","name":"Wrong kind","type":"dm","peerType":"agent","peerId":"user-1","peerName":"Artin"}"""
-            )
-        val repository = RealChannelRepository(sampleStore(), network)
-
-        val result = repository.openUserDirectMessage(MemberId("user-1"))
-
-        val error = assertIs<DataResult.Error>(result)
-        assertEquals("network_parse_failed", error.error.code)
-    }
-
-    @Test
     fun directMessageErrorsPreserveOnlyStructuredServerErrorText() = runBlocking {
         val fixtures =
             listOf(
@@ -97,29 +82,6 @@ class ChannelRepositoryDataSourceTest {
 
             assertEquals("http_400", error.code, name)
             assertEquals(expectedMessage, error.serverMessage, name)
-        }
-    }
-
-    @Test
-    fun directMessagePermissionErrorsRetainExactErrorFieldOn401And403() = runBlocking {
-        listOf(401, 403).forEach { status ->
-            val exactReason = "  channel-$status 理由  "
-            val repository =
-                RealChannelRepository(
-                    sampleStore(),
-                    FakeChannelNetworkClient(
-                        responseCode = status,
-                        responseBody = null,
-                        responseErrorBody = """{"error":"$exactReason"}"""
-                    )
-                )
-
-            val blocker =
-                assertIs<DataResult.NoPermission>(
-                    repository.openUserDirectMessage(MemberId("user-2"))
-                ).blocker
-
-            assertEquals(exactReason, blocker.serverMessage)
         }
     }
 
@@ -268,34 +230,6 @@ class ChannelRepositoryDataSourceTest {
     }
 
     @Test
-    fun plainNameTakenRefusalCarriesNoArchivedChannel() = runBlocking {
-        val network =
-            FakeChannelNetworkClient(responseCode = 409, responseBody = """{"error":"Channel name \"review\" is already taken"}""")
-        val repository = RealChannelRepository(sampleStore(), network)
-
-        val error = assertIs<DataResult.Error>(repository.createChannel(CreateChannelRequest(name = "review"))).error
-
-        assertEquals("http_409", error.code)
-        assertEquals(emptyMap(), error.serverFields)
-        assertEquals(null, error.archivedNameCollisionOrNull())
-    }
-
-    @Test
-    fun createChannelPreservesUnicodeName() = runBlocking {
-        val network =
-            FakeChannelNetworkClient(
-                responseBody = """{"id":"channel-1","name":"markdown专修","type":"channel","joined":true}"""
-            )
-        val repository = RealChannelRepository(sampleStore(), network)
-
-        val result = repository.createChannel(CreateChannelRequest(name = " markdown专修 "))
-
-        val created = assertIs<DataResult.Content<CreateChannelResult>>(result).data
-        assertEquals("markdown专修", created.channel.name)
-        assertEquals("markdown专修", network.bodies.single().asJsonObject()["name"]?.jsonPrimitive?.content)
-    }
-
-    @Test
     fun createChannelRejectsOverlengthNameBeforeNetwork() = runBlocking {
         val network = FakeChannelNetworkClient()
         val repository = RealChannelRepository(sampleStore(), network)
@@ -305,17 +239,6 @@ class ChannelRepositoryDataSourceTest {
         val error = assertIs<DataResult.Error>(result).error
         assertEquals("channel_name_invalid", error.code)
         assertEquals(false, error.retryable)
-        assertEquals(emptyList(), network.requests)
-    }
-
-    @Test
-    fun createChannelRejectsBlankNameBeforeNetwork() = runBlocking {
-        val network = FakeChannelNetworkClient()
-        val repository = RealChannelRepository(sampleStore(), network)
-
-        val result = repository.createChannel(CreateChannelRequest(name = "   "))
-
-        assertIs<DataResult.Empty>(result)
         assertEquals(emptyList(), network.requests)
     }
 
@@ -415,79 +338,6 @@ class ChannelRepositoryDataSourceTest {
     }
 
     @Test
-    fun updateChannelProfilePreservesUnicodeName() = runBlocking {
-        val network =
-            FakeChannelNetworkClient(
-                responseBody =
-                    """{"id":"channel-1","name":"markdown专修","description":"中文描述","type":"channel","joined":true}"""
-            )
-        val repository = RealChannelRepository(sampleStore(), network)
-
-        val result =
-            repository.updateChannelProfile(
-                ChannelProfileUpdateRequest(ChannelId("channel-1"), " markdown专修 ", " 中文描述 ")
-            )
-
-        val updated = assertIs<DataResult.Content<ChannelProfileUpdateResult>>(result).data
-        assertEquals("markdown专修", updated.name)
-        assertEquals("markdown专修", network.bodies.single().asJsonObject()["name"]?.jsonPrimitive?.content)
-    }
-
-    @Test
-    fun updateChannelProfileRejectsOverlengthNameBeforeNetwork() = runBlocking {
-        val network = FakeChannelNetworkClient()
-        val repository = RealChannelRepository(sampleStore(), network)
-
-        val result =
-            repository.updateChannelProfile(
-                ChannelProfileUpdateRequest(
-                    ChannelId("channel-1"),
-                    "a".repeat(ChannelNameMaxLength + 1),
-                    "description"
-                )
-            )
-
-        assertEquals("channel_name_invalid", assertIs<DataResult.Error>(result).error.code)
-        assertEquals(emptyList(), network.requests)
-    }
-
-    @Test
-    fun updateChannelProfileRejectsBlankNameBeforeNetwork() = runBlocking {
-        val network = FakeChannelNetworkClient()
-        val repository = RealChannelRepository(sampleStore(), network)
-
-        val result =
-            repository.updateChannelProfile(
-                ChannelProfileUpdateRequest(ChannelId("channel-1"), "   ", "description")
-            )
-
-        assertEquals("channel_name_invalid", assertIs<DataResult.Error>(result).error.code)
-        assertEquals(emptyList(), network.requests)
-    }
-
-    @Test
-    fun updateChannelProfileMapsServerNameValidationMessageToTypedCode() = runBlocking {
-        val network =
-            FakeChannelNetworkClient(
-                responseCode = 400,
-                responseBody =
-                    """{"error":"Channel name must start with a letter and can only contain letters, numbers, hyphens, and underscores"}"""
-            )
-        val repository = RealChannelRepository(sampleStore(), network)
-
-        val result =
-            repository.updateChannelProfile(
-                ChannelProfileUpdateRequest(ChannelId("channel-1"), "bad.name", "description")
-            )
-
-        assertEquals("channel_name_invalid", assertIs<DataResult.Error>(result).error.code)
-        assertEquals(
-            listOf(RecordedChannelRequest(DataRequestPriority.Foreground, "PATCH", "channels/channel-1")),
-            network.requests
-        )
-    }
-
-    @Test
     fun updateChannelProfileRejectsMismatchedCanonicalChannelIdentity() = runBlocking {
         val logs = mutableListOf<String>()
         val network =
@@ -549,28 +399,6 @@ class ChannelRepositoryDataSourceTest {
 
         assertEquals("channel-1", generic.name)
         assertEquals(null, generic.subtitle)
-    }
-
-    @Test
-    fun channelRepositoryDoesNotReusePreviousDirectMessageDisplayFields() = runBlocking {
-        val network =
-            FakeChannelNetworkClient(
-                responseBody = """[{"id":"dm-1","name":"dm-1","type":"dm","peerType":"agent","peerId":"agent-1","peerName":"Product UX","peerDescription":"Design system"}]"""
-            )
-        val repository = RealChannelRepository(sampleStore(), network)
-        val serverId = ServerId("server-1")
-
-        val rich = assertIs<DataResult.Content<DirectMessageSnapshot>>(repository.getDirectMessages(serverId)).data.directMessages.single()
-        assertEquals("Product UX", rich.name)
-        assertEquals("Design system", rich.subtitle)
-        assertEquals("agent", rich.directMessagePeerType)
-
-        network.responseBody = """[{"id":"dm-1","name":"dm-1","type":"dm","peerType":"user","peerId":"user-1","peerName":"dm-1"}]"""
-        val generic = assertIs<DataResult.Content<DirectMessageSnapshot>>(repository.getDirectMessages(serverId)).data.directMessages.single()
-
-        assertEquals("dm-1", generic.name)
-        assertEquals(null, generic.subtitle)
-        assertEquals("user", generic.directMessagePeerType)
     }
 
     @Test

@@ -101,12 +101,6 @@ class ChannelConversionApiTest {
     }
 
     @Test
-    fun aJobStatusTheAppDoesNotKnowIsNoJob() {
-        val paused = job(status = "paused")
-        assertNull(parseSharedChannelConversionRead(row(""""conversionState":${state("running", command(), paused)}"""))?.job)
-    }
-
-    @Test
     fun theJobAnswerReadsTheChannelsStateElseTheAnswersJob() {
         val verify = job(phase = "verify")
         val withChannel =

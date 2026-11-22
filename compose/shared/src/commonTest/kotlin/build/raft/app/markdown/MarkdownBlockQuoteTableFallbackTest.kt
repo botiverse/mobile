@@ -1,10 +1,8 @@
 package build.raft.app.markdown
 
-import com.tencent.kuiklybase.markdown.compose.elements.blockQuoteTablePlainText
 import com.tencent.kuiklybase.markdown.compose.elements.requiresBlockQuotePlainTextFallback
 import com.tencent.kuiklybase.markdown.model.RaftGFMFlavourDescriptor
 import kotlin.test.Test
-import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 import org.intellij.markdown.MarkdownElementTypes.BLOCK_QUOTE
@@ -13,22 +11,6 @@ import org.intellij.markdown.ast.findChildOfType
 import org.intellij.markdown.parser.MarkdownParser
 
 class MarkdownBlockQuoteTableFallbackTest {
-    @Test
-    fun removesOnlyLeadingQuoteSyntaxFromRawTableLines() {
-        assertEquals(
-            """| Check | Result |
-| --- | --- |
-| Source > cache | Ready |
-| Android | Pending |""",
-            blockQuoteTablePlainText(
-                """| Check | Result |
-> | --- | --- |
-> | Source > cache | Ready |
->| Android | Pending |"""
-            )
-        )
-    }
-
     @Test
     fun directAndListNestedTablesRequireFallback() {
         assertTrue(

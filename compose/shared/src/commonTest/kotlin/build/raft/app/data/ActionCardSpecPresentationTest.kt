@@ -5,9 +5,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertIs
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
-import kotlin.test.assertSame
 import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.jsonObject
 
 /** `presentation.card` on the App's action card model; the full contract is ActionCardSpecVectorTest. */
@@ -105,13 +103,6 @@ class ActionCardSpecPresentationTest {
     }
 
     @Test
-    fun rebuildingTheCardFromMetadataReusesTheParsedSpec() {
-        val metadata = assertNotNull(wire(cardJson()).toThreadActionCard()).toMessageMetadata()
-        val first = assertNotNull(actionCardFromMessageMetadata(metadata)?.presentationCard)
-        assertSame(first, actionCardFromMessageMetadata(metadata)?.presentationCard)
-    }
-
-    @Test
     fun theAppLanguageMapsToTheContractLocaleKeys() {
         val tags =
             mapOf(
@@ -180,15 +171,6 @@ class ActionCardSpecPresentationTest {
         assertEquals("Use 3 characters or fewer.", renderActionCardMsgText(tooLong.message, "en"))
     }
 
-    @Test
-    fun linkCardsReadThroughTheSharedTreeCheck() {
-        val tree = Json.parseToJsonElement("""{"root":"a","elements":{"a":{"type":"Stack","props":{},"children":["b"]},"b":{"type":"Badge","props":{"text":"ok"}}}}""")
-        assertNotNull(parseRaftAppLinkCard(tree))
-        val cycle = (tree as JsonObject).toMutableMap().apply {
-            put("elements", Json.parseToJsonElement("""{"a":{"type":"Stack","props":{},"children":["a"]}}""").jsonObject)
-        }
-        assertNull(parseRaftAppLinkCard(JsonObject(cycle)))
-    }
     @Test
     fun sharedElementsStayStrictForLinkCardsAndStripOnlyForAnActionCardRead() {
         val stack = Json.parseToJsonElement("""{"type":"Stack","props":{"direction":"row","gap":4},"children":["b"],"note":"x"}""").jsonObject

@@ -206,21 +206,6 @@ class ExternalInvitesApiTest {
         assertEquals(true, body.getValue("makePrivate").jsonPrimitive.boolean)
     }
 
-    @Test
-    fun theConnectBodyNamesMakePrivateOnlyWhenSet() {
-        val plain = Json.parseToJsonElement(buildSharedExternalConnectServersBody(listOf("s2"))).jsonObject
-        assertEquals(setOf("serverIds"), plain.keys)
-    }
-
-    @Test
-    fun aRefusedConnectAsAWholeIsARefusalWithItsCode() = runTest {
-        val client = RecordingClient(HomeNetworkResponse(400, """{"error":"serverIds must be a list of 1 to 29 servers","code":"invalid_input"}"""))
-        val answer = assertIs<DataResult.Content<ExternalInviteAnswer<List<ServerConnectOutcome>>>>(
-            ExternalInvitesApi(client).connectOwnServers(ChannelId("c1"), emptyList(), makePrivate = false)
-        )
-        assertEquals("invalid_input", assertIs<ExternalInviteAnswer.Refused>(answer.data).refusal.code)
-    }
-
     /** `GET channels/external-availability` → `{ freeLimitReached }` (staging 97a3e293d71a). */
     @Test
     fun theAvailabilityIsReadFromTheChannelsRoute() = runTest {

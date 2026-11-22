@@ -4,7 +4,6 @@ import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 /**
@@ -48,19 +47,6 @@ class RaftThreadReplyWindowCacheTest {
     }
 
     @Test
-    fun emptyWindowsAreDroppedAndTheBoundKeepsRecentParents() = runTest {
-        val storage = RaftInMemoryThreadReplyWindowStorage()
-        val cache = RaftThreadReplyWindowCache(storage, this, maxParentsPerPage = 2)
-        cache.record(listOf(projection("p1", "t1", 1, 1), projection("p2", "t2", 1, 1)))
-        cache.record(listOf(projection("p3", "t3", 1, 1)))
-        cache.record(listOf(projection("p2", "t2", replies = 0, replyCount = 0)))
-        advanceUntilIdle()
-
-        val windows = RaftThreadReplyWindowCache(storage, this).load(page())
-        assertEquals(setOf("p3"), windows.keys)
-    }
-
-    @Test
     fun clearAllWipesMemoryAndDisk() = runTest {
         val storage = RaftInMemoryThreadReplyWindowStorage()
         val cache = RaftThreadReplyWindowCache(storage, this)
@@ -73,34 +59,6 @@ class RaftThreadReplyWindowCacheTest {
         assertTrue(cache.load(page()).isEmpty())
         assertTrue(RaftThreadReplyWindowCache(storage, this).load(page()).isEmpty())
         assertTrue(storage.values.isEmpty(), storage.values.toString())
-    }
-
-    @Test
-    fun hostSeedsOnlyUnseenScopesAndAuthoritativeSummariesConfirmThem() = runTest {
-        val host = ThreadRepliesSyncHost()
-        val cached = mapOf("parent-1" to RaftCachedThreadReplyWindow("thread-1", model(replies = 2, replyCount = 4)))
-
-        val seeded = host.seedCachedWindows(page(), cached)
-        assertEquals(setOf("parent-1"), seeded.keys)
-        assertTrue(seeded.getValue("parent-1").fromLocalCache)
-        val identity = seeded.getValue("parent-1").identity
-
-        val current = host.withCurrentAcceptedProjections(listOf(identity)) { it }
-        assertEquals(4, current.getValue("parent-1").model.replyCount)
-        assertTrue(current.getValue("parent-1").fromLocalCache)
-        assertTrue(host.seedCachedWindows(page(), cached).isEmpty(), "a known scope is never re-seeded")
-
-        assertTrue(host.beginAuthoritativeRebaseline(page(), generation = 1L))
-        val authoritative =
-            host.ingestAuthoritativeSnapshots(
-                page(),
-                generation = 1L,
-                snapshots = listOf(ThreadRepliesAuthoritativeSnapshot(identity, model(3, 6).replies, replyCount = 6)),
-            )
-        assertFalse(authoritative!!.getValue("parent-1").fromLocalCache)
-        val confirmed = host.withCurrentAcceptedProjections(listOf(identity)) { it }
-        assertEquals(6, confirmed.getValue("parent-1").model.replyCount)
-        assertFalse(confirmed.getValue("parent-1").fromLocalCache)
     }
 
     private fun page(

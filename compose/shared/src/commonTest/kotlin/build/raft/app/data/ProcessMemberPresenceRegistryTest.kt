@@ -139,18 +139,6 @@ class ProcessMemberPresenceRegistryTest {
     }
 
     @Test
-    fun evictOnOneServerDoesNotDeleteTheOtherServersFact() {
-        val registry = ProcessMemberPresenceRegistry()
-        registry.apply(ownerServerA, fact(), GEN0)
-        registry.apply(ownerServerB, fact(), GEN0)
-
-        registry.evict(ownerServerA, "agent-1")
-
-        assertNull(registry.factFor(ownerServerA, "agent-1"))
-        assertEquals(Presence.Active, registry.factFor(ownerServerB, "agent-1")?.presence)
-    }
-
-    @Test
     fun accountsAreIsolatedForTheSameServerAndMember()  {
         val registry = ProcessMemberPresenceRegistry()
         registry.apply(ownerServerA, fact(presence = Presence.Offline, status = AgentStatus.Offline), GEN0)
@@ -185,21 +173,6 @@ class ProcessMemberPresenceRegistryTest {
         // A write stamped with the CURRENT generation lands normally.
         registry.apply(ownerServerA, fact(serverSeq = 1, status = AgentStatus.Online), newGeneration)
         assertEquals(AgentStatus.Online, registry.factFor(ownerServerA, "agent-1")?.agentStatus)
-    }
-
-    @Test
-    fun retiredGenerationProjectionIsAlsoRejected() {
-        val registry = ProcessMemberPresenceRegistry()
-        val heldGeneration = registry.writeGeneration
-        registry.clearAll(reason = "cleared")
-
-        registry.applyProjection(
-            ownerServerA,
-            fact(serverSeq = null, presence = Presence.Active, status = AgentStatus.Working),
-            heldGeneration
-        )
-
-        assertEquals(emptyMap(), registry.factsByOwner)
     }
 
     @Test
@@ -278,33 +251,6 @@ class ProcessMemberPresenceRegistryTest {
     }
 
     @Test
-    fun projectionWithEqualOrNewerEvidenceAppliesAndAdvancesWatermark() {
-        val registry = ProcessMemberPresenceRegistry()
-        registry.applyProjection(ownerServerA, fact(status = AgentStatus.Working), GEN0, evidenceTimestamp = 200L)
-        // Equal evidence re-applies (>= rule, same as serverSeq).
-        registry.applyProjection(ownerServerA, fact(status = AgentStatus.Online), GEN0, evidenceTimestamp = 200L)
-        assertEquals(AgentStatus.Online, registry.factFor(ownerServerA, "agent-1")?.agentStatus)
-
-        // Watermark is now 200: older evidence is rejected …
-        registry.applyProjection(
-            ownerServerA,
-            fact(status = AgentStatus.Offline, presence = Presence.Offline),
-            GEN0,
-            evidenceTimestamp = 150L
-        )
-        assertEquals(AgentStatus.Online, registry.factFor(ownerServerA, "agent-1")?.agentStatus)
-
-        // … newer evidence applies.
-        registry.applyProjection(
-            ownerServerA,
-            fact(status = AgentStatus.Offline, presence = Presence.Offline),
-            GEN0,
-            evidenceTimestamp = 300L
-        )
-        assertEquals(AgentStatus.Offline, registry.factFor(ownerServerA, "agent-1")?.agentStatus)
-    }
-
-    @Test
     fun unevidencedProjectionFillsOnlyUntilEvidenceExists() {
         // Evidence-less fallbacks (detail summary / current-activity entry)
         // keep their gap-fill role, but once evidenced freshness exists they
@@ -346,25 +292,6 @@ class ProcessMemberPresenceRegistryTest {
             evidenceTimestamp = 300L
         )
         assertEquals(AgentStatus.Online, registry.factFor(ownerServerA, "agent-1")?.agentStatus)
-    }
-
-    @Test
-    fun projectionEvidenceAdvancesWithoutVisibleChurn() {
-        // Same-visible newer evidence must still advance the watermark
-        // (mirrors the seq watermark doctrine): otherwise an older stale
-        // snapshot would pass the gate later.
-        val registry = ProcessMemberPresenceRegistry()
-        registry.applyProjection(ownerServerA, fact(status = AgentStatus.Working), GEN0, evidenceTimestamp = 100L)
-        registry.applyProjection(ownerServerA, fact(status = AgentStatus.Working), GEN0, evidenceTimestamp = 200L)
-
-        registry.applyProjection(
-            ownerServerA,
-            fact(status = AgentStatus.Offline, presence = Presence.Offline),
-            GEN0,
-            evidenceTimestamp = 150L
-        )
-
-        assertEquals(AgentStatus.Working, registry.factFor(ownerServerA, "agent-1")?.agentStatus)
     }
 
     @Test

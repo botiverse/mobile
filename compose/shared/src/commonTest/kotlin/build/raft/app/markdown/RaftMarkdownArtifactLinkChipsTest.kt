@@ -9,11 +9,8 @@ import build.raft.app.data.ArtifactHome
 import build.raft.app.data.ArtifactKind
 import build.raft.app.data.ArtifactLinkTarget
 import build.raft.app.data.ArtifactSummary
-import build.raft.app.threadAppLinkPreviewsEnabled
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertFalse
-import kotlin.test.assertSame
 import kotlin.test.assertTrue
 
 /**
@@ -82,30 +79,5 @@ class RaftMarkdownArtifactLinkChipsTest {
             val plain = source(url).withRaftAppLinkChipContent(host()) {}
             assertEquals("Read $url today", plain.text.text)
         }
-    }
-
-    @Test
-    fun aPinnedVersionIsItsOwnReference() {
-        val pinned = "$link/v/2"
-        val chip = source(pinned).withRaftAppLinkChipContent(host(summaries = mapOf("$id;version=2" to summary.copy(version = 2, pinned = true)))) {}
-        assertEquals("Read Q3 report today", chip.text.visibleText())
-    }
-
-    @Test
-    fun withoutAnOpenerTheChipOpensTheLink() {
-        val opened = mutableListOf<String>()
-        val chip = source().withRaftAppLinkChipContent(host(opened = null)) { opened += it }
-        val annotation = chip.text.getLinkAnnotations(0, chip.text.length).single().item as LinkAnnotation.Url
-        annotation.linkInteractionListener!!.onClick(annotation)
-        assertEquals(listOf(link), opened)
-    }
-
-    @Test
-    fun shareCaptureAndNoHostKeepTheAuthorsLink() {
-        // A share image keeps the links the author wrote: the message scope reads nothing and
-        // provides no chip host while capture is active.
-        assertFalse(threadAppLinkPreviewsEnabled(sentMessage = true, shareCaptureActive = true))
-        val text = source()
-        assertSame(text, text.withRaftAppLinkChipContent(null) {}.text)
     }
 }

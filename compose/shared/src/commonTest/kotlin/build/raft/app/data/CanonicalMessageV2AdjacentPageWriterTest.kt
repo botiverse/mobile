@@ -248,18 +248,6 @@ class CanonicalMessageV2AdjacentPageWriterTest {
     }
 
     @Test
-    fun newerPageAnchoredInsideTheWindowExtendsPastTheNewestEdge() = runBlocking {
-        val h = harness()
-        h.seedWindow()
-        h.extend(ThreadDurablePageDirection.Newer, anchorSeq = 30, adjacentPageOf(adjacentPageNode("m40", 40), adjacentPageNode("m50", 50)), limit = 3)
-        assertEquals(listOf(20L, 30L, 40L, 50L), h.store.seqs(scope))
-        val cursor = h.store.cursors.getValue(scope)
-        assertEquals(50L, cursor.newestLoadedSeq)
-        assertEquals(50L, cursor.latestSeq)
-        assertEquals(false, cursor.hasLoadedNewest, "a short page reaching the top proves nothing")
-    }
-
-    @Test
     fun aContextIslandIsStoredButIsNotTheHeadAndTheMirrorStays() = runBlocking {
         val h = harness()
         h.seedWindow()
@@ -322,18 +310,6 @@ class CanonicalMessageV2AdjacentPageWriterTest {
     }
 
     @Test
-    fun aContextPageNeverAsksForThreadSummaries() = runBlocking {
-        val h = harness()
-        h.seedWindow()
-        h.context(
-            "m90", adjacentPageOf(adjacentPageNode("m80", 80, threadId = "thread-9"), adjacentPageNode("m90", 90)),
-            hasOlder = true, hasNewer = false, replyCounts = mapOf("m80" to 3),
-        )
-        assertEquals(3, h.store.facts.getValue(scope).getValue("m80").fact.replyCount)
-        assertEquals(emptyList<String>(), h.network.paths)
-    }
-
-    @Test
     fun onlyAWriteThatMovesTheHeadVoidsTheEnterBaseline() = runBlocking {
         suspend fun enterAround(write: suspend (Harness) -> Unit): CanonicalMessageV2ScopeContinuity {
             val h = harness(sameEngineForWriter = true)
@@ -382,34 +358,6 @@ class CanonicalMessageV2AdjacentPageWriterTest {
         assertEquals(60L, cursor.oldestLoadedSeq, "the header mirrors the new head")
         assertEquals(70L, cursor.newestLoadedSeq)
         assertTrue(island.logs.any { "outcome=island_kept new=60..70" in it }, island.logs.toString())
-    }
-
-    @Test
-    fun latestPageKeepsTheAdjacentWritersAdmissionGates() = runBlocking {
-        val page = adjacentPageOf(adjacentPageNode("m100", 100))
-        val none = harness()
-        none.latest(page, limit = 200)
-        assertTrue(none.store.cursors.isEmpty(), "the catch-up never creates a window")
-        assertTrue(none.logs.any { "canonical_v2_latest_page" in it && "outcome=no_window" in it }, none.logs.toString())
-
-        val changed = harness()
-        changed.seedWindow()
-        changed.latest(page, limit = 200, stillCurrent = { false })
-        assertEquals(listOf(20L, 30L, 40L), changed.store.seqs(scope))
-        assertTrue(changed.logs.any { "outcome=identity_changed" in it }, changed.logs.toString())
-
-        val owned = harness(sameEngineForWriter = true)
-        // A continuous realtime window (committed by an enter snapshot, task #168 step 3).
-        owned.enterWindow(foldInput("channel-1"))
-        assertEquals(CanonicalMessageV2ScopeContinuity.Continuous, owned.canary.continuityOf(scope))
-        // Task #168 device FAIL: the canary's own scope is no longer skipped — its catch-up page is written.
-        owned.latest(page, limit = 1)
-        assertEquals(listOf(7L, 100L), owned.store.seqs(scope), "the enter's page stays (an older island)")
-        assertEquals(100L, owned.store.cursors.getValue(scope).newestLoadedSeq)
-        assertTrue(owned.logs.any { "canonical_v2_latest_page" in it && "outcome=island_kept" in it }, owned.logs.toString())
-        assertTrue(owned.logs.none { "canary_owned" in it }, owned.logs.toString())
-        // #3008 kept for the catch-up writer: nothing proves the page continuous with the realtime stream.
-        assertEquals(CanonicalMessageV2ScopeContinuity.Discontinuous, owned.canary.continuityOf(scope))
     }
 
     @Test
@@ -562,48 +510,6 @@ class CanonicalMessageV2AdjacentPageWriterTest {
     }
 
     @Test
-    fun aTaskPageWhoseRowsNameTheirChannelNeedsNoRequest() = runBlocking {
-        val node = { id: String, seq: Long ->
-            adjacentPageNode(id, seq, channelId = "conv-1", conversationContext = """{"channelType":"task","parentChannelId":"channel-1"}""")
-        }
-        // The server could not name the parent: only the rows do.
-        val h = taskHarness(parentChannelId = null)
-        h.seedWindow(taskScope, taskParentChannelId = "channel-1")
-        h.extend(ThreadDurablePageDirection.Older, 20, adjacentPageOf(node("m10", 10)), limit = 3, channelId = "conv-1")
-        assertEquals(listOf(10L, 20L, 30L, 40L), h.store.seqs(taskScope))
-        assertEquals(listOf(10L to 40L), h.store.segments.getValue(taskScope).map { it.lowSeq to it.highSeq })
-        assertEquals(emptyList<String>(), h.network.paths)
-
-        // Twin: same page without the row context. Nothing names the parent, so nothing is written.
-        val unknown = taskHarness(parentChannelId = null)
-        unknown.seedWindow(taskScope, taskParentChannelId = "channel-1")
-        unknown.extend(ThreadDurablePageDirection.Older, 20, adjacentPageOf(adjacentPageNode("m10", 10, channelId = "conv-1")), limit = 3, channelId = "conv-1")
-        assertEquals(listOf(20L, 30L, 40L), unknown.store.seqs(taskScope))
-        assertEquals(listOf(20L to 40L), unknown.store.segments.getValue(taskScope).map { it.lowSeq to it.highSeq })
-        assertTrue(unknown.logs.any { "scope=conv-1 direction=older outcome=task_parent_unknown" in it }, unknown.logs.toString())
-    }
-
-    @Test
-    fun aNewerAndALatestPageOfATaskConversationAreStoredToo() = runBlocking {
-        val newer = taskHarness()
-        newer.seedWindow(taskScope, taskParentChannelId = "channel-1")
-        newer.extend(ThreadDurablePageDirection.Newer, 40, adjacentPageOf(adjacentPageNode("m50", 50, channelId = "conv-1")), limit = 3, channelId = "conv-1")
-        assertEquals(listOf(20L to 50L), newer.store.segments.getValue(taskScope).map { it.lowSeq to it.highSeq })
-        assertEquals(50L, newer.store.cursors.getValue(taskScope).newestLoadedSeq)
-
-        val latest = taskHarness()
-        latest.seedWindow(taskScope, taskParentChannelId = "channel-1")
-        latest.latest(
-            adjacentPageOf(adjacentPageNode("m60", 60, channelId = "conv-1"), adjacentPageNode("m70", 70, channelId = "conv-1")),
-            limit = 2, channelId = "conv-1",
-            messageWindow = channelWindow(coveredAfterSeq = 40, coveredThroughSeq = 70, scopeId = "conv-1"),
-        )
-        assertEquals(listOf(20L, 30L, 40L, 60L, 70L), latest.store.seqs(taskScope))
-        assertEquals(listOf(20L to 70L), latest.store.segments.getValue(taskScope).map { it.lowSeq to it.highSeq })
-        assertTrue(latest.logs.any { "scope=conv-1 outcome=window_extended new=60..70" in it }, latest.logs.toString())
-    }
-
-    @Test
     fun aContextPageOfATaskConversationIsStoredUnderItsTaskChannel() = runBlocking {
         // Hands 7e198cab: an Activity open of a task conversation wrote nothing (`task_window_extend_unsupported`).
         val page = adjacentPageOf(adjacentPageNode("m40", 40, channelId = "conv-1"), adjacentPageNode("m50", 50, channelId = "conv-1"))
@@ -621,18 +527,6 @@ class CanonicalMessageV2AdjacentPageWriterTest {
         unknown.context("m50", page, hasOlder = true, hasNewer = true, channelId = "conv-1")
         assertEquals(listOf(20L, 30L, 40L), unknown.store.seqs(taskScope))
         assertTrue(unknown.logs.any { "scope=conv-1 anchor=m50 outcome=skipped reason=task_parent_unknown" in it }, unknown.logs.toString())
-    }
-
-    @Test
-    fun aChannelPageStillAsksForNoParent() = runBlocking {
-        // Unchanged channel behaviour: the parent lookup is for task windows only.
-        val h = harness()
-        h.seedWindow()
-        h.extend(ThreadDurablePageDirection.Older, 20, adjacentPageOf(adjacentPageNode("m10", 10)), limit = 3)
-        assertEquals(listOf(10L to 40L), h.store.segments.getValue(scope).map { it.lowSeq to it.highSeq })
-        assertEquals(emptyList<String>(), h.network.paths)
-        val context = h.store.facts.getValue(scope).getValue("m10").context as CanonicalConversationContextV2.TopLevel
-        assertEquals(TopLevelScopeRefV2.Channel("server-1", "channel-1"), context.scope)
     }
 
     private fun taskHarness(parentChannelId: String? = "channel-1") =

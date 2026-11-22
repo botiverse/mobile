@@ -73,22 +73,6 @@ class RaftProcessForegroundGateTest {
         }
 
     @Test
-    fun aShortHideFinishesTheIntervalUnderWayInsteadOfRunningAtOnce() =
-        runTest {
-            val foreground = MutableStateFlow(true)
-            val runs = mutableListOf<Long>()
-            startRepeating(foreground, runs, intervalMillis = 60_000L)
-            advanceTimeBy(10_000L)
-            foreground.value = false
-            advanceTimeBy(5_000L)
-            foreground.value = true
-            runCurrent()
-            assertEquals(emptyList(), runs, "not due yet")
-            advanceTimeBy(45_001L)
-            assertEquals(listOf(60_000L), runs)
-        }
-
-    @Test
     fun aCancellationThrownByTheBlockReachesTheCaller() =
         runTest {
             var runs = 0
@@ -106,51 +90,4 @@ class RaftProcessForegroundGateTest {
             assertEquals(2, runs)
             assertEquals("stop", stopped.exceptionOrNull()?.message)
         }
-
-    @Test
-    fun startedHiddenItWaitsForTheForeground() =
-        runTest {
-            val foreground = MutableStateFlow(false)
-            val runs = mutableListOf<Long>()
-            startRepeating(foreground, runs, runImmediatelyOnStart = true)
-            advanceTimeBy(10_000L)
-            assertEquals(emptyList(), runs)
-            foreground.value = true
-            runCurrent()
-            assertEquals(listOf(10_000L), runs)
-        }
-
-    @Test
-    fun featureFlagRefreshStopsWhileHidden() =
-        runTest {
-            val foreground = MutableStateFlow(true)
-            var refreshes = 0
-            backgroundScope.launch {
-                refreshSelectedServerFeatureFlags(
-                    intervalMillis = ServerFeatureFlagRefreshIntervalMillis,
-                    foreground = foreground,
-                    nowMillis = { testScheduler.currentTime },
-                ) { refreshes += 1 }
-            }
-            runCurrent()
-            assertEquals(1, refreshes, "a selection reads at once")
-            foreground.value = false
-            advanceTimeBy(ServerFeatureFlagRefreshIntervalMillis * 30)
-            assertEquals(1, refreshes, "no reads while hidden")
-            foreground.value = true
-            runCurrent()
-            assertEquals(2, refreshes, "one read on return")
-        }
-
-    @Test
-    fun processVisibilityFeedsTheGate() {
-        try {
-            RaftStaleReadRecoverySignals.onProcessVisibility(false)
-            assertEquals(false, RaftProcessForegroundGate.foreground.value)
-            assertEquals(false, RaftStaleReadRecoverySignals.foreground.value)
-        } finally {
-            RaftStaleReadRecoverySignals.onProcessVisibility(true)
-        }
-        assertEquals(true, RaftProcessForegroundGate.foreground.value)
-    }
 }

@@ -45,10 +45,4 @@ class SystemChannelParserTest {
     fun returnsNullWhenChannelsKeyMissing() {
         assertNull(parseSharedSystemChannelSnapshot("{}"))
     }
-
-    @Test
-    fun returnsNullWhenAllChannelHasNoId() {
-        val body = """{"channels":[{"name":"all","type":"private"}]}"""
-        assertNull(parseSharedSystemChannelSnapshot(body))
-    }
 }

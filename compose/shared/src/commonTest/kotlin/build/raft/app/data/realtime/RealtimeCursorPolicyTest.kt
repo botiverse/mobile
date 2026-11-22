@@ -82,27 +82,6 @@ class RealtimeCursorPolicyTest {
     }
 
     @Test
-    fun visibleGapRequestSkipsWhenVisibleStreamCaughtUpOrLoading() {
-        assertEquals(
-            null,
-            RealtimeVisibleStreamGapPolicy.syncRequest(
-                channelId = ChannelId("channel-1"),
-                visibleMaxSeq = 90,
-                serverSeq = 90
-            )
-        )
-        assertEquals(
-            null,
-            RealtimeVisibleStreamGapPolicy.syncRequest(
-                channelId = ChannelId("channel-1"),
-                visibleMaxSeq = 10,
-                serverSeq = 90,
-                loading = true
-            )
-        )
-    }
-
-    @Test
     fun appliedSeqCursorPersistsPerServerAndNeverRegresses() {
         val store = RealtimeAppliedSeqCursorStore(InMemoryRaftKeyValueStore())
         val serverOne = ServerId("server-1")

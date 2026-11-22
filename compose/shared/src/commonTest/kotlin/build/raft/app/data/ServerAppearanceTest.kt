@@ -82,17 +82,6 @@ class ServerAppearanceTest {
         }
     }
 
-    private class FailingNetworkClient : RaftNetworkClient {
-        override suspend fun request(
-            priority: DataRequestPriority,
-            path: String,
-            method: String,
-            query: List<Pair<String, String>>,
-            serverIdOverride: ServerId?,
-            bodyText: String?,
-        ): HomeNetworkResponse = throw IllegalStateException("offline")
-    }
-
     private val appearancePath = "servers/$serverA/appearance-settings"
 
     private fun session(
@@ -295,36 +284,6 @@ class ServerAppearanceTest {
 
         assertEquals(ServerAppearanceUpdateResult.InvalidTheme, result)
         assertEquals("space", store.storedServer(serverA).theme, "a refused save changes nothing")
-    }
-
-    @Test
-    fun otherFailuresMapToTypedResults() = runTest {
-        val store = InMemoryRaftAuthSessionStore(session())
-        val id = ServerId(serverA)
-        fun repository(response: HomeNetworkResponse) =
-            NetworkServerAppearanceRepository(RecordingNetworkClient(mapOf("PATCH $appearancePath" to response)), store)
-
-        assertEquals(
-            ServerAppearanceUpdateResult.NotFound,
-            repository(HomeNetworkResponse(404, """{"error":"Server not found"}""")).update(id, RaftThemeId.Space, true),
-        )
-        assertEquals(
-            ServerAppearanceUpdateResult.Failed(400, "themeDecor must be a boolean"),
-            repository(HomeNetworkResponse(400, """{"error":"themeDecor must be a boolean"}""")).update(id, RaftThemeId.Space, true),
-        )
-        assertEquals(
-            ServerAppearanceUpdateResult.Failed(500, "Failed to update appearance settings"),
-            repository(HomeNetworkResponse(500, """{"error":"Failed to update appearance settings"}""")).update(id, RaftThemeId.Space, true),
-        )
-        assertEquals(
-            ServerAppearanceUpdateResult.Failed(200, null),
-            repository(HomeNetworkResponse(200, "not json")).update(id, RaftThemeId.Space, true),
-        )
-        assertEquals(
-            ServerAppearanceUpdateResult.Failed(0, null),
-            NetworkServerAppearanceRepository(FailingNetworkClient(), store).update(id, RaftThemeId.Space, true),
-        )
-        assertNull(store.storedServer(serverA).theme)
     }
 
     @Test

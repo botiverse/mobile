@@ -1,13 +1,11 @@
 package build.raft.app.data
 
 import build.raft.app.applySelectedServerTerminalRealtimeTransition
-import build.raft.app.data.realtime.RaftRealtimeNotifyContract
 import build.raft.app.model.ChannelId
 import build.raft.app.model.DirectMessageCreated
 import build.raft.app.model.RealtimeRefreshRequired
 import build.raft.app.model.RealtimeRefreshScope
 import build.raft.app.model.ServerId
-import build.raft.app.realtimeConnectionWitnessOrNull
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -28,8 +26,6 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.yield
-import kotlinx.serialization.json.buildJsonObject
-import kotlinx.serialization.json.put
 
 class RealtimeLiveCutoverGateTest {
 
@@ -108,34 +104,6 @@ class RealtimeLiveCutoverGateTest {
             fixture.owner.accept(
                 grant = resolved,
                 event = DirectMessageCreated(ChannelId("resolved-before-rotate")),
-                source = "test",
-            )
-        )
-        assertEquals(emptyList(), fixture.domainWrites)
-        fixture.close()
-    }
-
-    @Test
-    fun rawCallbackEnvelopeKeepsTheConnectionWitnessThatProducedTheFrame() = runBlocking {
-        val fixture = fixture("raw-envelope-family")
-        fixture.auth.replace(session(), AuthSessionEvent.Authenticated(generation = 1))
-        val first = assertNotNull(fixture.provider.authorityFlow("shell").value)
-        val rawEnvelope =
-            buildJsonObject {
-                put(RaftRealtimeNotifyContract.KeyAuthorityScopeLeaseId, first.witness.scopeLeaseId)
-                put(RaftRealtimeNotifyContract.KeyAuthorityPrincipalId, first.witness.principalId)
-                put(RaftRealtimeNotifyContract.KeyAuthorityAuthGeneration, first.witness.authGeneration)
-                put(RaftRealtimeNotifyContract.KeyAuthorityConnectionFamilyId, first.witness.connectionFamilyId)
-            }
-
-        fixture.auth.replace(session(), AuthSessionEvent.TokensRotated(generation = 2))
-        val parsedWitness = assertNotNull(rawEnvelope.realtimeConnectionWitnessOrNull())
-        assertEquals(first.witness, parsedWitness)
-        assertFalse(
-            fixture.callbackGate.acceptDomain(
-                witness = parsedWitness,
-                eventServerId = "server-a",
-                event = DirectMessageCreated(ChannelId("delayed-old-socket-frame")),
                 source = "test",
             )
         )

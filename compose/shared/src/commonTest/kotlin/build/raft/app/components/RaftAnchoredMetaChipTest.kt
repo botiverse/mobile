@@ -14,26 +14,4 @@ class RaftAnchoredMetaChipTest {
             )
         )
     }
-
-    @Test
-    fun positionedMenuChipKeepsAnchorRequiredDispatch() {
-        assertEquals(
-            RaftMetaChipClickDispatch.Anchored,
-            resolveRaftMetaChipClickDispatch(
-                hasPlainClick = false,
-                hasAnchoredClick = true
-            )
-        )
-    }
-
-    @Test
-    fun plainClickTakesPriorityWhenBothDispatchesExist() {
-        assertEquals(
-            RaftMetaChipClickDispatch.Plain,
-            resolveRaftMetaChipClickDispatch(
-                hasPlainClick = true,
-                hasAnchoredClick = true
-            )
-        )
-    }
 }

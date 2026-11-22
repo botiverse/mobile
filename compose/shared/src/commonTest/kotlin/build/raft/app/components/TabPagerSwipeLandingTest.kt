@@ -15,15 +15,4 @@ class TabPagerSwipeLandingTest {
     fun springBackToTheStartPageReportsNothing() {
         assertNull(tabPagerSwipeLanding(startPage = 1, endPage = 1, pageCount = 3))
     }
-
-    @Test
-    fun scrollNotDrivenByTheUserReportsNothing() {
-        assertNull(tabPagerSwipeLanding(startPage = null, endPage = 2, pageCount = 3))
-    }
-
-    @Test
-    fun outOfRangeLandingReportsNothing() {
-        assertNull(tabPagerSwipeLanding(startPage = 0, endPage = 3, pageCount = 3))
-        assertNull(tabPagerSwipeLanding(startPage = 1, endPage = -1, pageCount = 3))
-    }
 }

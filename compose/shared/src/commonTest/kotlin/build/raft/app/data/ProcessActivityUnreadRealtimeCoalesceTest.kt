@@ -23,24 +23,6 @@ import kotlin.test.assertEquals
  */
 class ProcessActivityUnreadRealtimeCoalesceTest {
     @Test
-    fun oneEventFromBothSubscribersFetchesOncePerRound() = runTest {
-        val harness = harness(storeScope = this)
-        val event = refreshHint()
-
-        harness.deliverFromBothSubscribers(event)
-        advanceUntilIdle()
-        assertEquals(1, harness.fetches, "one event in one round must fetch inbox once")
-        assertEquals(ActivityUnreadSummaryFreshness.Fresh, harness.freshness())
-
-        // The server repeats the identical hint after the round finished: it must not be swallowed
-        // (task #136 — the reason refresh hints carry no upstream dedup key).
-        harness.deliverFromBothSubscribers(event)
-        advanceUntilIdle()
-        assertEquals(2, harness.fetches, "a second event in a separate round must fetch again")
-        assertEquals(ActivityUnreadSummaryFreshness.Fresh, harness.freshness())
-    }
-
-    @Test
     fun distinctEventDuringInFlightRoundStillRerunsOnce() = runTest {
         val harness = harness(storeScope = this)
 

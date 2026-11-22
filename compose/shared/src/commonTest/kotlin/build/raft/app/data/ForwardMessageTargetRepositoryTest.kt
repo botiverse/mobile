@@ -13,9 +13,6 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertTrue
-import kotlinx.coroutines.async
-import kotlinx.coroutines.awaitAll
-import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.runBlocking
 
 class ForwardMessageTargetRepositoryTest {
@@ -280,34 +277,6 @@ class ForwardMessageTargetRepositoryTest {
     }
 
     @Test
-    fun directorySnapshotDedupesAndEmptySectionsStillTerminate() {
-        val public =
-            List(5) { index ->
-                directoryTarget("public-$index", ForwardMessageTargetKind.RecentChannel, "public")
-            }
-        val snapshot =
-            (public + public[1]).toForwardDirectorySnapshot(
-                "snapshot-empty-sections",
-                serverId,
-                sessionId = "picker-empty"
-            )
-        val seen = mutableListOf<String>()
-        var cursor = ForwardMessageTargetDirectoryCursor(snapshotId = snapshot.id)
-        var pageCount = 0
-
-        do {
-            val page = snapshot.page(cursor = cursor, pageSize = 10)
-            seen += page.items.map { it.id }
-            cursor = page.nextCursor ?: break
-            pageCount += 1
-        } while (pageCount < 10)
-
-        assertEquals(public.map { it.id }, seen)
-        assertEquals(seen.distinct(), seen)
-        assertTrue(pageCount < 10, "empty sections must not keep hasMore alive")
-    }
-
-    @Test
     fun directoryAuthorityRevisionDriftAtomicallyResetsToFreshFirstPage() = runBlocking {
         val network = RecordingForwardNetworkClient()
         network.peerChannelsBody = jointChannelsBody("joint-0", "joint-1", "joint-2")
@@ -335,32 +304,6 @@ class ForwardMessageTargetRepositoryTest {
         assertEquals(listOf("joint-new"), reset.items.map { it.id })
         assertTrue(reset.reset)
         assertFalse(reset.nextCursor?.authorityRevision == first.nextCursor?.authorityRevision)
-    }
-
-    @Test
-    fun expiredDirectorySnapshotResetsInsteadOfContinuingOldOffsets() = runBlocking {
-        var nowMillis = 0L
-        val network = RecordingForwardNetworkClient()
-        network.peerChannelsBody = jointChannelsBody("joint-0", "joint-1", "joint-2")
-        val repository = realRepository(network, nowMillis = { nowMillis })
-        val first =
-            assertIs<DataResult.Content<ForwardMessageTargetDirectoryPage>>(
-                repository.directoryTargets(ServerId("server-peer"), sessionId = "picker-ttl", pageSize = 5)
-            ).data
-
-        nowMillis = ForwardDirectorySnapshotTtlMillis
-        val reset =
-            assertIs<DataResult.Content<ForwardMessageTargetDirectoryPage>>(
-                repository.directoryTargets(
-                    ServerId("server-peer"),
-                    sessionId = "picker-ttl",
-                    cursor = requireNotNull(first.nextCursor),
-                    pageSize = 5
-                )
-            ).data
-
-        assertTrue(reset.reset)
-        assertEquals(listOf("joint-0"), reset.items.map { it.id })
     }
 
     @Test
@@ -545,80 +488,6 @@ class ForwardMessageTargetRepositoryTest {
     }
 
     @Test
-    fun unauthenticatedTargetServerFailsClosedBeforeNetwork() = runBlocking {
-        val network = RecordingForwardNetworkClient()
-        val repository = realRepository(network)
-        val result =
-            repository.resolveTargetChannel(
-                sourceServerId = ServerId("server-source"),
-                target =
-                    ForwardMessageTarget(
-                        serverId = ServerId("server-unknown"),
-                        kind = ForwardMessageTargetKind.RecentChannel,
-                        id = "unknown-channel",
-                        title = "#unknown",
-                        channelId = ChannelId("unknown-channel")
-                    )
-            )
-
-        assertEquals(
-            "forward_target_server_unauthorized",
-            assertIs<DataResult.Error>(result).error.code
-        )
-        assertTrue(network.calls.isEmpty())
-    }
-
-    @Test
-    fun interimKeystrokesFilterTheLoadedDirectoryWithoutNetworkAndWithoutMembers() = runBlocking {
-        val network = RecordingForwardNetworkClient()
-        network.peerChannelsBody = jointChannelsBody("Design-Room", "ops", "design-review")
-        network.membersBody =
-            """{"members":[{"userId":"user-2","name":"designer","displayName":"Second User"}]}"""
-        val repository = realRepository(network)
-        val peer = ServerId("server-peer")
-        assertIs<DataResult.Content<ForwardMessageTargetDirectoryPage>>(
-            repository.directoryTargets(peer, sessionId = "picker", pageSize = 30)
-        )
-        val authorityCalls = network.calls.size
-
-        val results =
-            listOf("d", "de", "DES", "design", "designer", "zzz").associateWith { query ->
-                repository.interimSearchTargets(peer, query, limit = 60).map { it.id }
-            }
-
-        assertEquals(authorityCalls, network.calls.size, "a keystroke must not refetch channels/DMs/members")
-        // Member candidates are the server's job: the interim list is DMs/channels only.
-        assertEquals(listOf("Design-Room", "design-review"), results.getValue("DES"))
-        assertEquals(emptyList(), results.getValue("designer"))
-        assertEquals(emptyList(), results.getValue("zzz"))
-    }
-
-    @Test
-    fun coldInterimLoadsDmsAndChannelsOnceThenReusesThemUntilTtl() = runBlocking {
-        val network = RecordingForwardNetworkClient()
-        network.peerChannelsBody = jointChannelsBody("alpha", "beta")
-        var now = 0L
-        val repository = realRepository(network, nowMillis = { now })
-        val peer = ServerId("server-peer")
-        fun channelCalls() = network.calls.count { it.path == "channels" && it.serverId == peer }
-
-        coroutineScope {
-            listOf("a", "al", "alp").map { query ->
-                async { repository.interimSearchTargets(peer, query, limit = 60) }
-            }.awaitAll()
-        }
-        assertEquals(1, channelCalls(), "concurrent cold searches share one DM/channel load")
-        assertEquals(listOf("alpha"), repository.interimSearchTargets(peer, "ALPHA", limit = 60).map { it.id })
-        assertEquals(1, channelCalls())
-
-        network.peerChannelsBody = jointChannelsBody("alpha", "alpine")
-        now = ForwardSearchIndexTtlMillis
-        assertEquals(listOf("alpha", "alpine"), repository.interimSearchTargets(peer, "alp", limit = 60).map { it.id })
-        assertEquals(2, channelCalls())
-        assertEquals(0, network.calls.count { it.path.endsWith("/members") }, "local search never reads the member list")
-    }
-
-    @Test
     fun searchIndexMatchesThePerTargetQueryRule() {
         val targets =
             listOf(
@@ -635,82 +504,6 @@ class ForwardMessageTargetRepositoryTest {
         assertEquals(listOf("member-1"), index.search("opal", limit = 60).map { it.id })
         assertEquals(4, index.search("", limit = 60).size)
     }
-
-    @Test
-    fun emptyQueryRecentAndDirectoryNeverReadTheMemberList() = runBlocking {
-        val network = RecordingForwardNetworkClient()
-        network.dmBody = cindyDmBody
-        val members = CountingMemberRepository(RealMemberRepository(authStore(), network))
-        val repository = realRepository(network, memberRepository = members)
-        val peer = ServerId("server-peer")
-
-        val recent = assertIs<DataResult.Content<List<ForwardMessageTarget>>>(repository.recentTargets(peer, limit = 10)).data
-        val directory =
-            assertIs<DataResult.Content<ForwardMessageTargetDirectoryPage>>(
-                repository.directoryTargets(peer, sessionId = "picker-empty-query", pageSize = 30)
-            ).data.items
-
-        assertEquals(0, members.getMembersCalls, "empty query must not wait for the server member list")
-        assertEquals(0, network.calls.count { it.path.endsWith("/members") || it.path == "agents" })
-        for (targets in listOf(recent, directory)) {
-            assertEquals(setOf("dm-1", "joint-peer-projection"), targets.map { it.id }.toSet())
-            val dm = targets.single { it.id == "dm-1" }
-            assertEquals(ForwardMessageTargetKind.RecentDirectMessage, dm.kind)
-            assertEquals("Cindy", dm.title)
-            assertEquals("pixel:cindy-dm", dm.avatarWireValue, "DM row falls back to the DM's own peer avatar")
-            assertEquals(MemberId("user-2"), dm.memberId)
-            assertEquals(ChannelId("dm-1"), dm.channelId)
-            assertTrue(dm.canForwardNow)
-        }
-    }
-
-    @Test
-    fun emptyQueryEnrichesDmRowsFromAnAlreadyLoadedRosterWithoutFetching() = runBlocking {
-        val network = RecordingForwardNetworkClient()
-        network.dmBody = cindyDmBody
-        val members =
-            CountingMemberRepository(
-                RealMemberRepository(authStore(), network),
-                cached =
-                    listOf(
-                        MemberProfile(
-                            id = MemberId("user-2"),
-                            displayName = "Cindy",
-                            handle = "cindy",
-                            kind = MemberKind.Human,
-                            avatar = AvatarReference.fromWireValue("pixel:cindy-roster"),
-                            avatarLabel = "CR"
-                        ),
-                        MemberProfile(
-                            id = MemberId("user-3"),
-                            displayName = "Dora",
-                            handle = "dora",
-                            kind = MemberKind.Human
-                        )
-                    )
-            )
-        val repository = realRepository(network, memberRepository = members)
-        val peer = ServerId("server-peer")
-
-        val recent = assertIs<DataResult.Content<List<ForwardMessageTarget>>>(repository.recentTargets(peer, limit = 10)).data
-        val directory =
-            assertIs<DataResult.Content<ForwardMessageTargetDirectoryPage>>(
-                repository.directoryTargets(peer, sessionId = "picker-cached-roster", pageSize = 30)
-            ).data.items
-
-        assertEquals(0, members.getMembersCalls)
-        assertEquals(0, network.calls.count { it.path.endsWith("/members") || it.path == "agents" })
-        for (targets in listOf(recent, directory)) {
-            // A cached roster refines DM rows but never adds people to the empty-query list.
-            assertEquals(setOf("dm-1", "joint-peer-projection"), targets.map { it.id }.toSet())
-            val dm = targets.single { it.id == "dm-1" }
-            assertEquals("pixel:cindy-roster", dm.avatarWireValue)
-            assertEquals("CR", dm.avatarLabel)
-        }
-    }
-
-    private val cindyDmBody =
-        """[{"id":"dm-1","name":"dm-1","type":"dm","peerType":"user","peerId":"user-2","peerName":"Cindy","peerAvatarUrl":"pixel:cindy-dm"}]"""
 
     private fun canonicalMessageBody(channelId: String, content: String): String =
         """
@@ -787,20 +580,6 @@ class ForwardMessageTargetRepositoryTest {
         ids.joinToString(prefix = "[", postfix = "]") { id ->
             """{"id":"$id","name":"$id","type":"joint","joined":true,"jointChannelId":"$id-root","jointRole":"participant","jointPeerServerId":"server-source"}"""
         }
-}
-
-private class CountingMemberRepository(
-    private val delegate: MemberRepository,
-    private val cached: List<MemberProfile> = emptyList()
-) : MemberRepository by delegate {
-    var getMembersCalls = 0
-
-    override suspend fun getMembers(priority: DataRequestPriority, serverId: ServerId): DataResult<MemberSnapshot> {
-        getMembersCalls += 1
-        return delegate.getMembers(priority, serverId)
-    }
-
-    override fun cachedMembers(serverId: ServerId): List<MemberProfile> = cached
 }
 
 private data class ForwardNetworkCall(

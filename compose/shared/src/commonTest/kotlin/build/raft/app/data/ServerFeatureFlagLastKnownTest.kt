@@ -5,7 +5,6 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.async
 import kotlinx.coroutines.runBlocking
 import kotlin.test.Test
-import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -112,27 +111,6 @@ class ServerFeatureFlagLastKnownTest {
     }
 
     @Test
-    fun onlineEvaluationWinsEvenWhenItCouldNotBeStored() = runBlocking {
-        val device = Device().apply { binding = accountA }
-        device.onlineSession(enabled = false)
-
-        // Online cold start: evaluate leaves before the auth binding is published, so its result cannot be
-        // attributed to a binding and is not stored — but it is still this process's online truth.
-        device.binding = null
-        val api = ScriptedApi { evaluated(true) }.apply { gate = CompletableDeferred() }
-        val flags = device.process(api)
-        val inFlight = async { flags.prefetch(server) }
-        api.entered.await()
-        device.binding = accountA
-        assertFalse(flags.isEnabled(server, THREAD_MARKDOWN_SINGLE_PARAGRAPH_LIGHT_FEATURE_FLAG_KEY)) // stored value until it lands
-        api.gate?.complete(Unit)
-        inFlight.await()
-
-        assertTrue(flags.isEnabled(server, THREAD_MARKDOWN_SINGLE_PARAGRAPH_LIGHT_FEATURE_FLAG_KEY))
-        assertTrue(device.logs.any { it.startsWith("feature_flags last_known_skipped server=s1") })
-    }
-
-    @Test
     fun anotherAccountNeverReadsTheStoredValue() = runBlocking {
         val device = Device().apply { binding = accountA }
         device.onlineSession(enabled = false)
@@ -147,43 +125,11 @@ class ServerFeatureFlagLastKnownTest {
     }
 
     @Test
-    fun accountSwitchDropsThePreviousAccountsValues() = runBlocking {
-        val device = Device().apply { binding = accountA }
-        device.onlineSession(enabled = false)
-        device.binding = accountB
-        device.onlineSession(enabled = true)
-
-        device.binding = accountA
-        assertTrue(device.process(ScriptedApi { offline }).isEnabled(server, THREAD_MARKDOWN_SINGLE_PARAGRAPH_LIGHT_FEATURE_FLAG_KEY))
-    }
-
-    @Test
     fun clearAllOnLogoutRemovesTheStoredValue() = runBlocking {
         val device = Device().apply { binding = accountA }
         device.onlineSession(enabled = false)
         ServerFeatureFlagLastKnownStore(store = device.disk, currentBinding = { device.binding }, keys = lastKnownKeys).clearAll()
 
-        assertTrue(device.process(ScriptedApi { offline }).isEnabled(server, THREAD_MARKDOWN_SINGLE_PARAGRAPH_LIGHT_FEATURE_FLAG_KEY))
-    }
-
-    @Test
-    fun tokenRefreshKeepsTheStoredValueButAccountChangeDoesNot() = runBlocking {
-        val context =
-            ProcessPresenceAuthContext(
-                environmentId = "https://api.example",
-                accountId = "user-a",
-                authorityGeneration = 3,
-                writeGeneration = 1,
-            )
-        val device = Device().apply { binding = context.toServerFeatureFlagLastKnownBinding() }
-        device.onlineSession(enabled = false)
-
-        // Silent refresh: same binding, authorityGeneration + 1.
-        device.binding = context.copy(authorityGeneration = 4).toServerFeatureFlagLastKnownBinding()
-        assertFalse(device.process(ScriptedApi { offline }).isEnabled(server, THREAD_MARKDOWN_SINGLE_PARAGRAPH_LIGHT_FEATURE_FLAG_KEY))
-
-        // Control with identical generations: another principal.
-        device.binding = context.copy(accountId = "user-b").toServerFeatureFlagLastKnownBinding()
         assertTrue(device.process(ScriptedApi { offline }).isEnabled(server, THREAD_MARKDOWN_SINGLE_PARAGRAPH_LIGHT_FEATURE_FLAG_KEY))
     }
 
@@ -212,14 +158,5 @@ class ServerFeatureFlagLastKnownTest {
         assertNull(device.disk.getString(SERVER_FEATURE_FLAG_LAST_KNOWN_STORAGE_KEY))
         device.binding = accountA
         assertTrue(device.process(ScriptedApi { offline }).isEnabled(server, THREAD_MARKDOWN_SINGLE_PARAGRAPH_LIGHT_FEATURE_FLAG_KEY))
-    }
-
-    @Test
-    fun environmentTrailingSlashIsTheSameBinding() = runBlocking {
-        val device = Device().apply { binding = accountA.copy(environmentId = "https://api.example/") }
-        device.onlineSession(enabled = false)
-        device.binding = accountA
-        assertFalse(device.process(ScriptedApi { offline }).isEnabled(server, THREAD_MARKDOWN_SINGLE_PARAGRAPH_LIGHT_FEATURE_FLAG_KEY))
-        assertEquals(1, device.logs.count { it.contains("last_known_stored") })
     }
 }

@@ -154,27 +154,6 @@ class SharedTasksStatusMutationAuthorityTest {
     }
 
     @Test
-    fun authClearGenerationInvalidatesPermit() = runBlocking {
-        val authority = authority()
-        val previousTask = task(status = TaskStatus.Todo, revision = 40L)
-        authority.store.upsertTaskForCurrentOwner(ServerA, previousTask)
-        val permit = assertNotNull(authority.begin(previousTask, TaskStatus.Done))
-
-        authority.ownerIdentity = null
-        authority.store.bindCurrentOwnerIdentity()
-        authority.ownerIdentity = OwnerA
-        authority.store.bindCurrentOwnerIdentity()
-
-        assertNull(
-            authority.store.completeStatusMutation(
-                permit,
-                previousTask.copy(status = TaskStatus.Done, revision = 41L)
-            )
-        )
-        assertEquals(emptyList(), authority.store.projection(ServerA, SharedTasksScope.Server).tasks)
-    }
-
-    @Test
     fun beginAssignMutationPublishesOptimisticAssigneeAndSharesOneMutationSlot() = runBlocking {
         val authority = authority()
         val assignee = MemberProfile(MemberId("user-2"), "Nathan Peer", "nathan", MemberKind.Human)

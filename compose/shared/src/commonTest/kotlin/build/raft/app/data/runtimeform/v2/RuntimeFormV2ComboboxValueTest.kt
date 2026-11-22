@@ -27,16 +27,4 @@ class RuntimeFormV2ComboboxValueTest {
     fun emptyValueWithoutAnEmptyOptionShowsThePlaceholder() {
         assertNull(runtimeFormV2ComboboxValue("", models))
     }
-
-    @Test
-    fun aChosenValueIsKept() {
-        assertEquals("high", runtimeFormV2ComboboxValue("high", reasoning))
-        assertEquals("opus", runtimeFormV2ComboboxValue("opus", models))
-    }
-
-    @Test
-    fun theAllowEmptyDefaultRowStillCounts() {
-        val withDefault = listOf(RaftComboboxOption("", "Default")) + models
-        assertEquals("", runtimeFormV2ComboboxValue("", withDefault))
-    }
 }

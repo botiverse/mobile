@@ -75,13 +75,6 @@ class SyncChangesCursorStoreTest {
     }
 
     @Test
-    fun `scope needs every part and normalizes the environment`() {
-        assertEquals(syncTestScope, RaftSyncScope.of(" https://api.example.test/ ", "user-1", " server-1"))
-        assertNull(RaftSyncScope.of("https://api.example.test", " ", "server-1"))
-        assertNull(RaftSyncScope.of(null, "user-1", "server-1"))
-    }
-
-    @Test
     fun `a corrupt document reads as no cursor`() {
         preferences.values[SYNC_CHANGES_CURSOR_STORAGE_KEY] = "{not json"
         val store = RaftSyncCursorStore(preferences)

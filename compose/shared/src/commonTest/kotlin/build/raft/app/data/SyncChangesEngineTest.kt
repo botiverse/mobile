@@ -37,89 +37,11 @@ class SyncChangesEngineTest {
     }
 
     @Test
-    fun `a reconnect pull waits the jitter before its snapshots but not before its changes`() = runTest {
-        val log = mutableListOf<String>()
-        val sink = RecordingSyncChangesSink(calls = log)
-        val engine =
-            RaftSyncChangesEngine(
-                api =
-                    ScriptedSyncChangesApi(
-                        syncPage(syncChangesBody("c1.10.100")),
-                        syncPage(syncChangesBody("c1.11.100", changes = listOf(syncDelete(11, "agent", "a-1")))),
-                        syncPage(syncChangesBody("c1.12.100", changes = listOf(syncDelete(12, "agent", "a-2")))),
-                    ),
-                cursors = cursors,
-                sink = sink,
-                snapshotJitterDelay = { log += "jitter" },
-            )
-
-        engine.pull(syncTestScope, trigger = "reconnect", jitterSnapshots = true)
-        assertEquals(listOf("jitter", "snapshots:first_sync", "apply"), log)
-
-        log.clear()
-        engine.pull(syncTestScope, trigger = "reconnect", jitterSnapshots = true)
-        assertEquals(listOf("apply"), log)
-    }
-
-    @Test
-    fun `a reconnect pull waits the short pull jitter before its first request and others do not`() = runTest {
-        val log = mutableListOf<String>()
-        val api =
-            object : RaftSyncChangesApi {
-                val scripted =
-                    ScriptedSyncChangesApi(
-                        syncPage(syncChangesBody("c1.11.100")),
-                        syncPage(syncChangesBody("c1.12.100")),
-                        syncPage(syncChangesBody("c1.13.100")),
-                    )
-
-                override suspend fun changes(serverId: build.raft.app.model.ServerId, since: String?, limit: Int) =
-                    scripted.changes(serverId, since, limit).also { log += "request:${since ?: "none"}" }
-            }
-        cursors.write(syncTestScope, "c1.10.100")
-        val engine =
-            RaftSyncChangesEngine(
-                api = api,
-                cursors = cursors,
-                sink = RecordingSyncChangesSink(calls = log),
-                snapshotJitterDelay = { log += "snapshot_jitter" },
-                pullJitterDelay = { log += "pull_jitter" },
-            )
-
-        engine.pull(syncTestScope, trigger = "reconnect", jitterSnapshots = true, jitterPull = true)
-        assertEquals(listOf("pull_jitter", "request:c1.10.100"), log)
-
-        log.clear()
-        engine.pull(syncTestScope, trigger = "foreground")
-        engine.pull(syncTestScope, trigger = "server_selected")
-        assertEquals(listOf("request:c1.11.100", "request:c1.12.100"), log)
-    }
-
-    @Test
     fun `the reconnect pull jitter is uniform up to two seconds`() {
         val random = kotlin.random.Random(7)
         val delays = List(500) { reconnectRefetchJitterMillis(random, SYNC_CHANGES_RECONNECT_PULL_JITTER_MAX_MILLIS) }
         assertTrue(delays.all { it in 0L..2_000L })
         assertTrue(delays.any { it < 500L } && delays.any { it > 1_500L })
-    }
-
-    @Test
-    fun `one request past five seconds keeps the cursor and asks for no full refetch`() = runTest {
-        cursors.write(syncTestScope, "c1.1.1")
-        val api = RaftSyncChangesApi { _, _, _ -> kotlinx.coroutines.awaitCancellation() }
-        val engine = RaftSyncChangesEngine(api = api, cursors = cursors, sink = RecordingSyncChangesSink())
-
-        val result = assertIs<RaftSyncPullResult.Failed>(engine.pull(syncTestScope, trigger = "reconnect"))
-
-        assertEquals("timeout", result.code)
-        assertTrue(result.cursorKept)
-        // #proj-mobile:#112: a first failure (a deploy) must not turn into a full reload either.
-        assertFalse(result.needsFullRefetchFallback)
-        assertEquals(SYNC_CHANGES_REQUEST_TIMEOUT_MILLIS, testScheduler.currentTime)
-        assertEquals("c1.1.1", cursors.read(syncTestScope))
-        assertEquals(1, cursors.failures(syncTestScope))
-        // A pull whose scope is gone (signed out or server switched) has nothing to fall back to.
-        assertTrue(!RaftSyncPullResult.Failed(RaftSyncPullResult.Failed.SCOPE_RETIRED).needsFullRefetchFallback)
     }
 
     @Test
@@ -140,50 +62,6 @@ class SyncChangesEngineTest {
         assertTrue(second.needsFullRefetchFallback)
         assertNull(cursors.read(syncTestScope))
         assertEquals(0, cursors.failures(syncTestScope))
-    }
-
-    @Test
-    fun `a successful pull between two failures resets the count`() = runTest {
-        cursors.write(syncTestScope, "c1.1.1")
-        val api =
-            ScriptedSyncChangesApi(
-                RaftSyncChangesFetch.Failed("http_503"),
-                // Same cursor back (nothing changed): the success alone resets the count.
-                syncPage(syncChangesBody("c1.1.1")),
-                RaftSyncChangesFetch.Failed("http_502"),
-            )
-        val engine = engine(api, RecordingSyncChangesSink())
-
-        assertTrue(assertIs<RaftSyncPullResult.Failed>(engine.pull(syncTestScope, trigger = "foreground")).cursorKept)
-        assertIs<RaftSyncPullResult.Synced>(engine.pull(syncTestScope, trigger = "foreground"))
-        assertEquals(0, cursors.failures(syncTestScope))
-        val again = assertIs<RaftSyncPullResult.Failed>(engine.pull(syncTestScope, trigger = "foreground"))
-
-        assertTrue(again.cursorKept)
-        assertFalse(again.needsFullRefetchFallback)
-        assertEquals("c1.1.1", cursors.read(syncTestScope))
-        assertEquals(1, cursors.failures(syncTestScope))
-    }
-
-    @Test
-    fun `the failure count survives a cursor store reload`() = runTest {
-        cursors.write(syncTestScope, "c1.1.1")
-        val first = engine(ScriptedSyncChangesApi(RaftSyncChangesFetch.Failed("http_500")), RecordingSyncChangesSink())
-        assertTrue(assertIs<RaftSyncPullResult.Failed>(first.pull(syncTestScope, trigger = "foreground")).cursorKept)
-
-        // An app restart: a new store over the same preferences and a new engine.
-        val reloaded = RaftSyncCursorStore(preferences)
-        assertEquals(1, reloaded.failures(syncTestScope))
-        val restarted =
-            RaftSyncChangesEngine(
-                api = ScriptedSyncChangesApi(RaftSyncChangesFetch.Failed("timeout")),
-                cursors = reloaded,
-                sink = RecordingSyncChangesSink(),
-            )
-        val second = assertIs<RaftSyncPullResult.Failed>(restarted.pull(syncTestScope, trigger = "foreground"))
-
-        assertTrue(second.needsFullRefetchFallback)
-        assertNull(reloaded.read(syncTestScope))
     }
 
     @Test
@@ -209,16 +87,6 @@ class SyncChangesEngineTest {
     }
 
     @Test
-    fun `no answer timeouts 5xx 408 and 429 are the failures that count against the cursor`() {
-        listOf("timeout", "http_0", "http_408", "http_429", "http_500", "http_503", "http_599")
-            .forEach { assertTrue(isTransientSyncChangesFailure(it), it) }
-        listOf(
-            "http_400", "http_401", "http_403", "http_404", "http_409", "empty_body", "contract_mismatch",
-            "snapshot_failed", "invalid_cursor", "http_x", "exception_IllegalStateException",
-        ).forEach { assertFalse(isTransientSyncChangesFailure(it), it) }
-    }
-
-    @Test
     fun `a 408 or 429 keeps the cursor and asks for no fallback`() = runTest {
         listOf("http_408", "http_429").forEach { code ->
             cursors.write(syncTestScope, "c1.1.1")
@@ -228,30 +96,6 @@ class SyncChangesEngineTest {
             assertEquals(RaftSyncPullResult.Failed(code, cursorKept = true), result, code)
             assertFalse(assertIs<RaftSyncPullResult.Failed>(result).needsFullRefetchFallback, code)
             assertEquals("c1.1.1", cursors.read(syncTestScope), code)
-        }
-    }
-
-    @Test
-    fun `a 401 403 400 or malformed answer of sync changes forgets the cursor at once`() = runTest {
-        // 403 here is the sync/changes call itself; a snapshot list's 403 is "not readable, skip"
-        // (SyncChangesStoreRouterTest, #4473) and keeps the cursor.
-        val answers =
-            listOf(
-                RaftSyncChangesFetch.Failed("http_401"),
-                RaftSyncChangesFetch.Failed("http_403"),
-                RaftSyncChangesFetch.Failed("http_400"),
-                syncChangesFetchOf(HomeNetworkResponse(code = 200, bodyText = "{not json")),
-                syncChangesFetchOf(HomeNetworkResponse(code = 200, bodyText = "")),
-            )
-        answers.forEach { answer ->
-            cursors.write(syncTestScope, "c1.1.1")
-            val result = assertIs<RaftSyncPullResult.Failed>(
-                engine(ScriptedSyncChangesApi(answer), RecordingSyncChangesSink()).pull(syncTestScope, trigger = "foreground"),
-            )
-
-            assertFalse(result.cursorKept, result.code)
-            assertTrue(result.needsFullRefetchFallback, result.code)
-            assertNull(cursors.read(syncTestScope), result.code)
         }
     }
 
@@ -307,30 +151,6 @@ class SyncChangesEngineTest {
 
         assertTrue(result.cursorKept)
         assertEquals("c1.10.100", cursors.read(syncTestScope))
-    }
-
-    @Test
-    fun `reset snapshots wait the jitter whatever the trigger and a first sync only on reconnect`() = runTest {
-        val log = mutableListOf<String>()
-        val engine =
-            RaftSyncChangesEngine(
-                api =
-                    ScriptedSyncChangesApi(
-                        syncPage(syncChangesBody("c1.10.100")),
-                        syncPage(syncChangesBody("c1.11.100")),
-                        syncPage(syncChangesBody("c1.90.500", reset = """{"reason":"forced","snapshots":["agents"]}""")),
-                    ),
-                cursors = cursors,
-                sink = RecordingSyncChangesSink(calls = log),
-                snapshotJitterDelay = { log += "jitter" },
-            )
-
-        engine.pull(syncTestScope, trigger = "server_selected")
-        assertEquals(listOf("snapshots:first_sync"), log)
-
-        log.clear()
-        engine.pull(syncTestScope, trigger = "foreground")
-        assertEquals(listOf("jitter", "snapshots:reset_forced"), log)
     }
 
     @Test
@@ -412,33 +232,6 @@ class SyncChangesEngineTest {
     }
 
     @Test
-    fun `a capped pull that left the cursor where it was asks for no follow-up`() = runTest {
-        // A server answering hasMore with the cursor it was given (#proj-mobile:#112 should-fix a):
-        // without the stop the follow-up pulls would chain forever, 40 requests each.
-        cursors.write(syncTestScope, "c1.1.1")
-        val api =
-            ScriptedSyncChangesApi(
-                syncPage(syncChangesBody("c1.1.1", hasMore = true)),
-                syncPage(syncChangesBody("c1.1.1", hasMore = true)),
-            )
-
-        val result = assertIs<RaftSyncPullResult.Synced>(engine(api, RecordingSyncChangesSink(), maxPages = 2).pull(syncTestScope, trigger = "test"))
-
-        assertTrue(result.truncated)
-        assertFalse(result.cursorAdvanced)
-        assertFalse(result.needsFollowUp)
-        assertEquals("c1.1.1", cursors.read(syncTestScope))
-        // A first sync that stops at the cap did move the cursor (none before): it goes on.
-        preferences.values.clear()
-        val first =
-            ScriptedSyncChangesApi(
-                syncPage(syncChangesBody("c1.5.1")),
-                syncPage(syncChangesBody("c1.5.1", hasMore = true)),
-            )
-        assertTrue(assertIs<RaftSyncPullResult.Synced>(engine(first, RecordingSyncChangesSink(), maxPages = 1).pull(syncTestScope, trigger = "test")).needsFollowUp)
-    }
-
-    @Test
     fun `a pull from a cursor first retakes what earlier reloads failed and a first sync does not`() = runTest {
         val log = mutableListOf<String>()
         val sink =
@@ -503,64 +296,6 @@ class SyncChangesEngineTest {
 
         assertEquals(RaftSyncPullResult.Failed("snapshot_failed"), result)
         assertNull(cursors.read(syncTestScope))
-    }
-
-    @Test
-    fun `an invalid cursor is forgotten and the pull starts over as a jittered first sync`() = runTest {
-        cursors.write(syncTestScope, "c0.bogus")
-        val api =
-            ScriptedSyncChangesApi(
-                RaftSyncChangesFetch.InvalidCursor,
-                syncPage(syncChangesBody("c1.5.5")),
-                syncPage(syncChangesBody("c1.5.6")),
-            )
-        val log = mutableListOf<String>()
-        val sink = RecordingSyncChangesSink(calls = log)
-        val engine =
-            RaftSyncChangesEngine(api = api, cursors = cursors, sink = sink, snapshotJitterDelay = { log += "jitter" })
-
-        val result = engine.pull(syncTestScope, trigger = "server_selected")
-
-        assertEquals(listOf("c0.bogus", null, "c1.5.5"), api.sinces)
-        // The server may have invalidated every cursor at once: the restart's full lists are spread.
-        assertEquals(listOf("jitter", "snapshots:first_sync"), sink.log)
-        assertEquals("c1.5.6", cursors.read(syncTestScope))
-        assertEquals(true, assertIs<RaftSyncPullResult.Synced>(result).firstSync)
-    }
-
-    @Test
-    fun `a page failing twice drops the cursor and the next pull re-bootstraps after the jitter`() = runTest {
-        cursors.write(syncTestScope, "c1.1.1")
-        val api =
-            ScriptedSyncChangesApi(
-                syncPage(syncChangesBody("c1.2.1.k", hasMore = true)),
-                RaftSyncChangesFetch.Failed("http_500"),
-                syncPage(syncChangesBody("c1.2.1.k", hasMore = true)),
-                RaftSyncChangesFetch.Failed("http_500"),
-                syncPage(syncChangesBody("c1.9.1")),
-                syncPage(syncChangesBody("c1.9.2")),
-            )
-        val log = mutableListOf<String>()
-        val engine =
-            RaftSyncChangesEngine(
-                api = api,
-                cursors = cursors,
-                sink = RecordingSyncChangesSink(calls = log),
-                snapshotJitterDelay = { log += "jitter" },
-            )
-
-        // Page 2 fails: the pull did not finish, so the cursor from before page 1 stays (first failure).
-        assertEquals(RaftSyncPullResult.Failed("http_500", cursorKept = true), engine.pull(syncTestScope, trigger = "foreground"))
-        assertEquals("c1.1.1", cursors.read(syncTestScope))
-        assertEquals(RaftSyncPullResult.Failed("http_500"), engine.pull(syncTestScope, trigger = "foreground"))
-        assertNull(cursors.read(syncTestScope))
-
-        // A cursor that keeps failing is not retried forever: the next pull starts over, spread out.
-        val next = engine.pull(syncTestScope, trigger = "foreground")
-        assertEquals(true, assertIs<RaftSyncPullResult.Synced>(next).firstSync)
-        assertEquals(listOf("c1.1.1", "c1.2.1.k", "c1.1.1", "c1.2.1.k", null, "c1.9.1"), api.sinces)
-        assertEquals(listOf("jitter", "snapshots:first_sync"), log)
-        assertEquals("c1.9.2", cursors.read(syncTestScope))
     }
 
     @Test

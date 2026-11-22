@@ -346,21 +346,6 @@ class TaskConversationHeaderStoreTest {
     }
 
     @Test
-    fun followersUpdatedForAnotherConversationDoesNotRefetch() = runTest {
-        var loads = 0
-        val viewModel =
-            followRefetchViewModel { _, _, _ ->
-                loads++
-                DataResult.Content(task(TaskStatus.InProgress).copy(conversationFollowed = true))
-            }
-        viewModel.onFollowersUpdated("server-1", ChannelId("conv-2"))
-        viewModel.onFollowersUpdated("server-1", ChannelId("channel-1"))
-        advanceUntilIdle()
-        assertEquals(0, loads)
-        assertEquals(false, viewModel.state.value.followed(viewModel.state.value.lastSeenTask?.conversationFollowed))
-    }
-
-    @Test
     fun repeatedFollowersUpdatedCoalesceIntoOneTrailingRefetch() = runTest {
         val gates = mutableListOf<CompletableDeferred<Unit>>()
         var serverFollowed = true

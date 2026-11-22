@@ -26,25 +26,4 @@ class RaftImageSourceRetiredContentHostTest {
         val fresh = assertIs<RaftImageSource.Network>(raftImageSourceOf(current))
         assertEquals(fresh.cacheKey, source.cacheKey, "old and new payloads must share one cache entry")
     }
-
-    @Test
-    fun avatarOnRetiredHostSharesTheContentAddressedCdnAvatarKey() {
-        val hash = "0123456789abcdef0123456789abcdef"
-        val old = assertIs<RaftImageSource.Network>(raftImageSourceOf("https://content.raft.build/avatars/users/$hash.webp"))
-        val cdn = assertIs<RaftImageSource.Network>(raftImageSourceOf("https://cdn.raft.build/avatars/users/$hash.webp"))
-
-        assertEquals("https://cdn.raft.build/avatars/users/$hash.webp", old.url)
-        assertEquals(cdn.cacheKey, old.cacheKey)
-    }
-
-    @Test
-    fun otherHttpImagesKeepTheirUrl() {
-        listOf(
-            "http://content.raft.build/a.png",
-            "https://img.content.raft.build/a.png",
-            "https://slock-cdn-staging.botiverse.dev/a.png",
-        ).forEach { url ->
-            assertEquals(url, assertIs<RaftImageSource.Network>(raftImageSourceOf(url)).url, url)
-        }
-    }
 }

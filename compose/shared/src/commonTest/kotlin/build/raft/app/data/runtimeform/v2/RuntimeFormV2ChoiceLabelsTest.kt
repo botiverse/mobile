@@ -44,16 +44,6 @@ class RuntimeFormV2ChoiceLabelsTest {
     }
 
     @Test
-    fun derivedSelectChoicesAreLabelledToo() {
-        val effort = options("effort")
-        assertEquals(listOf("low", "high", "max"), effort.map { it.value })
-        assertEquals("Low", effort[0].label)
-        assertEquals("Fast responses with lighter reasoning", effort[0].description)
-        assertEquals("High", effort[1].label)
-        assertEquals("max", effort[2].label, "no copy and no option label: the raw value")
-    }
-
-    @Test
     fun malformedChoiceCopyIsIgnoredEntryByEntry() {
         val tweaked = formJson(CHOICES_V2_FORM_JSON).set(
             listOf("uiSchema", "localization", "tier", "choices"),

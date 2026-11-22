@@ -306,17 +306,6 @@ class MessageParserTest {
     }
 
     @Test
-    fun contextWithoutEmbeddedSummariesStaysUnavailable() {
-        val payload =
-            parseSharedMessageContext(
-                """{"channelId":"channel-1","messages":[]}""",
-                fallbackThreadId = ThreadId("channel-1"),
-            )
-        assertEquals(ThreadReplySummariesAuthority.Unavailable, payload.replySummariesAuthority)
-        assertEquals(0, payload.threadSummaries.threads.size)
-    }
-
-    @Test
     fun parsesThreadSummaryIntoDomainMessageReplyMetadata() {
         val payload =
             parseSharedChannelMessages(

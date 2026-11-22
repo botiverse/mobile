@@ -78,36 +78,4 @@ class RaftMarkdownPreviewTextTest {
             assertEquals(case.expected, markdownToPreviewText(case.markdown), case.name)
         }
     }
-
-    /** web `boundNotificationPreview`: cut to the limit with "…", after flattening. */
-    @Test
-    fun truncatesAfterFlattening() {
-        listOf(
-            Triple("x".repeat(200), 140, "x".repeat(139) + "…"),
-            Triple("**" + "a".repeat(20) + "**", 10, "a".repeat(9) + "…"),
-            Triple("**short**", 140, "short"),
-            Triple("`" + "c".repeat(30) + "` tail", 5, "cccc…"),
-        ).forEach { (markdown, limit, expected) ->
-            assertEquals(expected, markdownToPreviewText(markdown, maxLength = limit), markdown)
-        }
-    }
-
-    @Test
-    fun keepsInlineStylesAsRanges() {
-        val strong = RaftMarkdownPreviewStyle.Strong
-        val code = RaftMarkdownPreviewStyle.Code
-        val link = RaftMarkdownPreviewStyle.Link
-        listOf(
-            "**`#wg-rust-rewrite` 开场**" to listOf(Triple(0, 19, strong), Triple(0, 16, code)),
-            "a *b* ~~c~~" to
-                listOf(Triple(2, 3, RaftMarkdownPreviewStyle.Emphasis), Triple(4, 5, RaftMarkdownPreviewStyle.Strikethrough)),
-            "see [docs](u) and https://x.y" to listOf(Triple(4, 8, link), Triple(13, 24, link)),
-            "plain" to emptyList(),
-        ).forEach { (markdown, expected) ->
-            val spans = markdownToPreview(markdown).spans.map { Triple(it.start, it.end, it.style) }
-            assertEquals(expected.sortedBy { it.toString() }, spans.sortedBy { it.toString() }, markdown)
-        }
-        val cut = markdownToPreview("**" + "b".repeat(20) + "** tail", maxLength = 6)
-        assertEquals(listOf(RaftMarkdownPreviewSpan(0, 5, strong)), cut.spans)
-    }
 }

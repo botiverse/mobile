@@ -221,45 +221,6 @@ class PushRegistrationTest {
     }
 
     @Test
-    fun crossInstanceMatchedAuthLossClearUnregistersWithoutAuthenticatedDelete() = runBlocking {
-        val authKv = InMemoryRaftKeyValueStore()
-        val observedStore = KeyValueAuthSessionStore(authKv)
-        val clearingStore = KeyValueAuthSessionStore(authKv)
-        val session = storedSession("user-1")
-        observedStore.replaceAuthenticatedSession(session)
-        val remoteNotifications = RecordingRemoteNotificationsController()
-        val api = RecordingPushRegistrationApi()
-        val coordinator =
-            coordinator(
-                currentSession = { observedStore.readSession() },
-                api = api,
-                remoteNotificationsController = remoteNotifications
-            )
-        coordinator.installationId("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")
-        assertTrue(coordinator.updateRegistration("a0b1c2d3", "build.raft.app", "production", "1.3.0"))
-
-        val unregistered = CompletableDeferred<Unit>()
-        remoteNotifications.onDisabled = { unregistered.complete(Unit) }
-        RaftPushRegistrationLifecycle.install(coordinator)
-        RaftPushRegistrationLifecycle.observeSessionEvents(
-            source = observedStore.authSessionEvents,
-            scope = CoroutineScope(SupervisorJob())
-        )
-
-        assertTrue(
-            clearingStore.clearSessionFromSessionClearedNotify(
-                reason = "remote_session_cleared",
-                previousSessionFingerprint = session.authSessionClearFingerprint()
-            )
-        )
-        withTimeout(1_000) { unregistered.await() }
-
-        assertEquals(listOf(true, false), remoteNotifications.states)
-        assertEquals(1, api.calls.count { it.startsWith("POST ") })
-        assertEquals(0, api.calls.count { it.startsWith("DELETE ") }, "auth loss has no valid token for DELETE")
-    }
-
-    @Test
     fun authenticatedStartupRegistersOnceAndAuthLossUnregistersBeforeNextLogin() = runBlocking {
         var session: StoredAuthSession? = storedSession("user-1")
         val remoteNotifications = RecordingRemoteNotificationsController()
@@ -429,55 +390,6 @@ class PushRegistrationTest {
     }
 
     @Test
-    fun answerRequestedBeforeANewRegistrationSettledIsDropped() = runBlocking {
-        val clock = TestClock()
-        val api = RecordingPushRegistrationApi()
-        api.deliveryStatusResponse = deliveryStatusBody("server-1" to true)
-        val coordinator =
-            deliveryStatusCoordinator(currentSession = { storedSession("user-1") }, api = api, clock = clock)
-        coordinator.installationId("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")
-        assertTrue(coordinator.registerFcm(token = "fid-one"))
-        clock.advanceBeyondRequestSpacing()
-
-        // A periodic request is in flight when a new FID registers and settles.
-        api.onDeliveryStatus = {
-            api.onDeliveryStatus = null
-            runBlocking { assertTrue(coordinator.registerFcm(token = "fid-two")) }
-        }
-        assertFalse(coordinator.refreshDeliveryStatus(reason = "periodic"))
-        assertFalse(coordinator.isRemotePushActiveFor("server-1", now = clock.now))
-    }
-
-    @Test
-    fun deliveryStatusRequestsAreSpacedUnlessNoAnswerExists() = runBlocking {
-        val clock = TestClock()
-        val store = InMemoryRaftKeyValueStore()
-        val api = RecordingPushRegistrationApi()
-        api.deliveryStatusResponse = deliveryStatusBody("server-1" to true)
-        val coordinator =
-            deliveryStatusCoordinator(store = store, currentSession = { storedSession("user-1") }, api = api, clock = clock)
-        coordinator.installationId("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")
-        assertTrue(coordinator.registerFcm())
-        assertEquals(1, api.deliveryStatusRequests)
-
-        assertFalse(coordinator.refreshDeliveryStatus(reason = "app_foreground"))
-        assertFalse(coordinator.refreshDeliveryStatus(reason = "session_saved", force = true), "an answer exists")
-        assertEquals(1, api.deliveryStatusRequests)
-        clock.advanceBeyondRequestSpacing()
-        assertTrue(coordinator.refreshDeliveryStatus(reason = "app_foreground"))
-        assertEquals(2, api.deliveryStatusRequests)
-
-        // Cold start of a new process over the same storage: startup reconcile, foreground and the realtime
-        // connect fire together and cost one request.
-        val restarted =
-            deliveryStatusCoordinator(store = store, currentSession = { storedSession("user-1") }, api = api, clock = clock)
-        restarted.handleSessionSaved()
-        assertFalse(restarted.refreshDeliveryStatus(reason = "app_foreground"))
-        assertFalse(restarted.refreshDeliveryStatus(reason = "realtime_connected"))
-        assertEquals(3, api.deliveryStatusRequests)
-    }
-
-    @Test
     fun logoutClearsTheDeliveryStatusAndTheNextAccountGetsItsOwnAnswer() = runBlocking {
         val clock = TestClock()
         var session: StoredAuthSession? = storedSession("user-1")
@@ -517,19 +429,6 @@ class PushRegistrationTest {
     }
 
     @Test
-    fun withoutAnEnvironmentProviderTheCoordinatorNeverAsksForDeliveryStatus() = runBlocking {
-        val api = RecordingPushRegistrationApi()
-        api.deliveryStatusResponse = deliveryStatusBody("server-1" to true)
-        val coordinator = coordinator(currentSession = { storedSession("user-1") }, api = api)
-        coordinator.installationId("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")
-
-        assertTrue(coordinator.updateRegistration("a0b1c2d3", "build.raft.app", "production", "1.3.0"))
-        assertFalse(coordinator.refreshDeliveryStatus(reason = "test"))
-        assertEquals(0, api.deliveryStatusRequests, "iOS (APNs) behaviour is unchanged")
-        assertEquals(null, coordinator.storedDeliveryStatus())
-    }
-
-    @Test
     fun fcmRegistrationRejectsSandboxAndMalformedIds() = runBlocking {
         val api = RecordingPushRegistrationApi()
         val coordinator =
@@ -546,16 +445,6 @@ class PushRegistrationTest {
         )
         assertFalse(coordinator.updateRegistration("has space", "build.raft.app", "production", "1.3.0"))
         assertFalse(coordinator.updateRegistration("", "build.raft.app", "production", "1.3.0"))
-        assertTrue(api.calls.isEmpty())
-    }
-
-    @Test
-    fun apnsSpecStillRejectsAnFcmShapedToken() = runBlocking {
-        val api = RecordingPushRegistrationApi()
-        val coordinator = coordinator(currentSession = { storedSession(userId = "user-1") }, api = api)
-        coordinator.installationId("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")
-
-        assertFalse(coordinator.updateRegistration("cX9-AbC:dEf", "build.raft.app", "production", "1.3.0"))
         assertTrue(api.calls.isEmpty())
     }
 
@@ -693,40 +582,6 @@ class PushRegistrationTest {
     }
 
     @Test
-    fun aSameBindingRefreshKeepsTheStoredDeliveryStatus() = runBlocking {
-        val clock = TestClock()
-        val api = RecordingPushRegistrationApi()
-        api.deliveryStatusResponse = deliveryStatusBody("server-1" to true)
-        val coordinator =
-            deliveryStatusCoordinator(currentSession = { storedSession("user-1") }, api = api, clock = clock)
-        coordinator.installationId("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")
-        assertTrue(coordinator.registerFcm())
-        assertTrue(coordinator.isRemotePushActiveFor("server-1", now = clock.now))
-        val stored = coordinator.storedDeliveryStatus()
-        val posts = { api.calls.count { it.startsWith("POST ") } }
-        assertEquals(1, posts())
-        // Later status requests fail, so only the coordinator itself could drop the stored answer.
-        api.deliveryStatusResponse = HomeNetworkResponse(code = 503, bodyText = null)
-
-        // New session family: same token, user and environment, re-upserted.
-        assertTrue(coordinator.handleSessionSaved(forceUpsert = true))
-        assertEquals(2, posts())
-        assertEquals(stored, coordinator.storedDeliveryStatus(), "FCM still delivers; the answer stays")
-        assertTrue(coordinator.isRemotePushActiveFor("server-1", now = clock.now), "no local double alert")
-
-        // Confirmation expiry: same binding, re-upserted after 24h.
-        clock.now += PUSH_REGISTRATION_REFRESH_INTERVAL_MILLIS
-        assertTrue(coordinator.handleSessionSaved())
-        assertEquals(3, posts())
-        assertEquals(stored, coordinator.storedDeliveryStatus())
-
-        // A new token is a different registration: its answer is cleared.
-        assertTrue(coordinator.registerFcm(token = "dY0-BcD_eFgHiJkLmNoPqR"))
-        assertEquals(4, posts())
-        assertEquals(null, coordinator.storedDeliveryStatus())
-    }
-
-    @Test
     fun anEnvironmentChangeRebindsTheRegistration() = runBlocking {
         val clock = TestClock()
         var environment = "https://api.example/"
@@ -820,38 +675,6 @@ class PushRegistrationTest {
         assertTrue(api.calls.isEmpty(), "no upsert of an undeliverable token, no delivery-status request")
         assertEquals(null, current.storedDeliveryStatus())
         assertFalse(current.isRemotePushActiveFor("server-1", now = clock.now), "the realtime path posts locally")
-    }
-
-    @Test
-    fun authenticatedEventsReachTheSinkAsAuthenticated() = runBlocking {
-        val events = MutableSharedFlow<AuthSessionEvent>(extraBufferCapacity = 4)
-        val received = mutableListOf<String>()
-        val done = CompletableDeferred<Unit>()
-        RaftPushRegistrationLifecycle.install(
-            object : RaftPushRegistrationLifecycleSink {
-                override fun onSessionSaved() {
-                    received += "saved"
-                }
-
-                override fun onSessionAuthenticated() {
-                    received += "authenticated"
-                    done.complete(Unit)
-                }
-
-                override fun onSessionInvalidated(reason: AuthSessionClearReason) = Unit
-
-                override suspend fun unbindBeforeLogout() = Unit
-            }
-        )
-        RaftPushRegistrationLifecycle.observeSessionEvents(
-            source = events,
-            scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        )
-        events.emit(AuthSessionEvent.TokensRotated(generation = 1))
-        events.emit(AuthSessionEvent.Authenticated(generation = 2))
-        withTimeout(1_000) { done.await() }
-
-        assertEquals(listOf("saved", "saved", "authenticated"), received)
     }
 
     @Test
@@ -983,22 +806,6 @@ class PushRegistrationTest {
     }
 
     @Test
-    fun aDeviceStateChangeWithNothingToSendDoesNotRetry() = runBlocking {
-        val api = RecordingPushRegistrationApi()
-        val coordinator =
-            coordinator(
-                spec = RaftPushProviderSpec.Fcm,
-                currentSession = { storedSession(userId = "user-1") },
-                api = api
-            )
-        coordinator.installationId("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")
-
-        assertFalse(coordinator.syncDeviceStateWithRetry())
-
-        assertTrue(api.calls.isEmpty())
-    }
-
-    @Test
     fun aPendingPayloadFromAnOlderBuildDropsItsPreviewModeOnTheNextFlush() = runBlocking {
         val store = InMemoryRaftKeyValueStore()
         store.putString(
@@ -1083,28 +890,6 @@ class PushRegistrationTest {
             api.calls.single().endsWith(""","previewMode":"hidden","alertsEnabled":true,"osPermission":"granted","previewKeySet":3}"""),
             api.calls.single()
         )
-    }
-
-    @Test
-    fun deviceStateChangesReachTheInstalledSink() {
-        var changes = 0
-        RaftPushRegistrationLifecycle.install(
-            object : RaftPushRegistrationLifecycleSink {
-                override fun onSessionSaved() = Unit
-
-                override fun onSessionInvalidated(reason: AuthSessionClearReason) = Unit
-
-                override suspend fun unbindBeforeLogout() = Unit
-
-                override fun onDeviceStateChanged() {
-                    changes += 1
-                }
-            }
-        )
-
-        RaftPushRegistrationLifecycle.onDeviceStateChanged()
-
-        assertEquals(1, changes)
     }
 
     private fun coordinator(

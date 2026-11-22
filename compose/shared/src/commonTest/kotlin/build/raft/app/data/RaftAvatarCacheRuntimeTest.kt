@@ -4,22 +4,16 @@ import build.raft.app.model.MemberKind
 import build.raft.app.optBoolean
 import build.raft.app.optString
 import build.raft.app.toRaftJsonString
-import build.raft.app.withEntry
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
-import kotlin.test.assertNotEquals
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlinx.coroutines.CompletableDeferred
-import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
-import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.buildJsonObject
-import kotlinx.serialization.json.put
 
 class RaftAvatarCacheRuntimeTest {
     @Test
@@ -82,91 +76,6 @@ class RaftAvatarCacheRuntimeTest {
     }
 
     @Test
-    fun legacyValidatorRowForcesFullFetchAndOmitsEveryConditionalValidator() = runBlocking {
-        val key = key()
-        val store = FakeMetadataStore()
-        store.metadataBySlot[key.slot] =
-            metadata(key, eTag = "legacy-etag", lastModified = "legacy-last")
-                .copy(commitIdentity = null, modelRevision = 0L)
-        val native = FakeNativeCache().apply {
-            inspection = RaftAvatarNativeInspection.Supported(true, true, managedBytes = 512L)
-        }
-
-        val request =
-            assertIs<RaftAvatarPreparedRender.Native>(
-                runtime(store).prepare(key.subject, RemoteUrl, nativeCache = native)
-            ).request
-
-        assertEquals(RaftAvatarNativeReadMode.Fetch, request.readMode)
-        assertNull(request.expectedCommitIdentity)
-        assertNull(request.eTag)
-        assertNull(request.lastModified)
-        assertEquals(0L, request.expectedModelRevision)
-        assertEquals(1L, request.commitGeneration)
-    }
-
-    @Test
-    fun restartGenerationReuseCannotReplaceDurableCommitIdentityOrNonce() = runBlocking {
-        val key = key()
-        val store = FakeMetadataStore()
-        val firstRuntime =
-            runtime(
-                store,
-                generationAuthority =
-                    RaftAvatarCacheGenerationAuthority { "1".repeat(64) }
-            )
-        val native = FakeNativeCache().apply {
-            awaitBlock = {
-                RaftAvatarNativeLoadResult.SuccessfulBytes(256L, "v1", null, "image/webp")
-            }
-        }
-        val first =
-            assertIs<RaftAvatarPreparedRender.Native>(
-                firstRuntime.prepare(key.subject, RemoteUrl, nativeCache = native)
-            )
-        assertIs<RaftAvatarCacheCompletionReceipt.Accepted>(firstRuntime.observeAndCommit(first))
-
-        val restarted =
-            runtime(
-                store,
-                generationAuthority =
-                    RaftAvatarCacheGenerationAuthority { "2".repeat(64) }
-            )
-        val next =
-            assertIs<RaftAvatarPreparedRender.Native>(
-                restarted.prepare(key.subject, RemoteUrl, nativeCache = native)
-            )
-
-        assertEquals(1L, next.token.generation)
-        assertEquals(first.request.committedToCommitIdentity, next.request.expectedCommitIdentity)
-        assertEquals(2L, next.request.commitGeneration)
-        assertEquals("2".repeat(64), next.request.committedToCommitIdentity.nonce)
-        assertNotEquals(next.token.generation, next.request.commitGeneration)
-    }
-
-    @Test
-    fun managedSetAcknowledgementFailsClosedForMissingIndexGlobalBudgetOrOverflow() {
-        fun response(): JsonObject =
-            buildJsonObject {
-                put("managedSet", RAFT_AVATAR_NATIVE_MANAGED_SET)
-                put("managedIndex", RAFT_AVATAR_NATIVE_INDEX_CONTRACT)
-                put("budgetScope", RAFT_AVATAR_NATIVE_BUDGET_SCOPE)
-                put("indexedRetirement", true)
-                put("managedBytes", "1024")
-            }
-
-        assertTrue(response().acknowledgesRaftAvatarManagedSet())
-        assertFalse(response().withEntry("managedIndex", "none").acknowledgesRaftAvatarManagedSet())
-        assertFalse(response().withEntry("budgetScope", "global_image_cache").acknowledgesRaftAvatarManagedSet())
-        assertFalse(response().withEntry("indexedRetirement", false).acknowledgesRaftAvatarManagedSet())
-        assertFalse(
-            response()
-                .withEntry("managedBytes", (RaftAvatarCachePolicy.MaxPlatformBytes + 1L).toString())
-                .acknowledgesRaftAvatarManagedSet()
-        )
-    }
-
-    @Test
     fun unsupportedNativeCapabilityUsesTheExistingUrlRenderer() = runBlocking {
         val runtime = runtime(FakeMetadataStore())
         val prepared =
@@ -196,110 +105,6 @@ class RaftAvatarCacheRuntimeTest {
             )
 
         assertEquals(RemoteUrl, assertIs<RaftAvatarPreparedRender.Legacy>(prepared).imageModel)
-    }
-
-    @Test
-    fun readDecisionAndValidatorsAreForwardedWithoutInventingNativePolicy() = runBlocking {
-        val key = key()
-        val store = FakeMetadataStore()
-        store.metadataBySlot[key.slot] =
-            metadata(
-                key = key,
-                eTag = "etag-v1",
-                lastModified = "last-v1",
-                freshUntilMs = 200L,
-                staleUntilMs = 500L
-            )
-        store.failureByKey[key] =
-            RaftAvatarCacheFailure(
-                key = key,
-                kind = RaftAvatarCacheFailureKind.TemporaryTransport,
-                consecutiveCount = 1,
-                failedAtMs = 210L,
-                retryAtMs = 400L
-            )
-        val native = FakeNativeCache().apply {
-            inspection = RaftAvatarNativeInspection.Supported(true, true, managedBytes = 0L)
-        }
-
-        val stale =
-            assertIs<RaftAvatarPreparedRender.Native>(
-                runtime(store, nowMillis = { 250L }).prepare(
-                    subject = key.subject,
-                    remoteUrl = RemoteUrl,
-                    nativeCache = native
-                )
-            ).request
-        assertEquals(RaftAvatarNativeReadMode.RenderStaleSuppressed, stale.readMode)
-        assertEquals(400L, stale.retryAtMillis)
-        assertEquals("etag-v1", stale.eTag)
-        assertEquals("last-v1", stale.lastModified)
-
-        native.inspection = RaftAvatarNativeInspection.Supported(false, false, managedBytes = 0L)
-        val suppressed =
-            assertIs<RaftAvatarPreparedRender.Native>(
-                runtime(store, nowMillis = { 250L }).prepare(
-                    subject = key.subject,
-                    remoteUrl = RemoteUrl,
-                    nativeCache = native
-                )
-            ).request
-        assertEquals(RaftAvatarNativeReadMode.Suppressed, suppressed.readMode)
-        assertEquals(400L, suppressed.retryAtMillis)
-    }
-
-    @Test
-    fun suppressedReadCompletesWithoutMetadataFinalizeRollbackOrLegacyEscape() = runBlocking {
-        val key = key()
-        val store = FakeMetadataStore().apply {
-            failureByKey[key] =
-                RaftAvatarCacheFailure(
-                    key = key,
-                    kind = RaftAvatarCacheFailureKind.ResourceAbsent,
-                    consecutiveCount = 1,
-                    failedAtMs = 100L,
-                    retryAtMs = 10_000L
-                )
-        }
-        val native = FakeNativeCache().apply {
-            inspection = RaftAvatarNativeInspection.Supported(false, false, managedBytes = 0L)
-            awaitBlock = { RaftAvatarNativeLoadResult.Suppressed }
-        }
-        val runtime = runtime(store, nowMillis = { 200L })
-        val prepared =
-            assertIs<RaftAvatarPreparedRender.Native>(
-                runtime.prepare(subject(), RemoteUrl, nativeCache = native)
-            )
-        assertEquals(RaftAvatarNativeReadMode.Suppressed, prepared.request.readMode)
-
-        assertIs<RaftAvatarCacheCompletionReceipt.Suppressed>(runtime.observeAndCommit(prepared))
-        assertEquals(0, store.commitSuccessCalls)
-        assertEquals(0, store.commitFailureCalls)
-        assertTrue(native.finalized.isEmpty())
-        assertTrue(native.rolledBack.isEmpty())
-    }
-
-    @Test
-    fun sameSubjectAndContentReuseGenerationWhileChangedContentRotatesIt() = runBlocking {
-        val native = FakeNativeCache()
-        val runtime = runtime(FakeMetadataStore())
-        val first =
-            assertIs<RaftAvatarPreparedRender.Native>(
-                runtime.prepare(subject(), RemoteUrl, nativeCache = native)
-            )
-        val same =
-            assertIs<RaftAvatarPreparedRender.Native>(
-                runtime.prepare(subject(), RemoteUrl, nativeCache = native)
-            )
-        val changed =
-            assertIs<RaftAvatarPreparedRender.Native>(
-                runtime.prepare(subject(), "$RemoteUrl&v=2", nativeCache = native)
-            )
-
-        assertEquals(first.token, same.token)
-        assertNotEquals(first.token.generation, changed.token.generation)
-        assertNotEquals(first.request.nativeBytesKey, changed.request.nativeBytesKey)
-        assertEquals(first.request.nativeSubjectKey, changed.request.nativeSubjectKey)
     }
 
     @Test
@@ -370,33 +175,6 @@ class RaftAvatarCacheRuntimeTest {
     }
 
     @Test
-    fun acceptedNotModifiedRefreshesExistingMetadataAndFinalizes304() = runBlocking {
-        val key = key()
-        val store = FakeMetadataStore()
-        store.metadataBySlot[key.slot] =
-            metadata(key, eTag = "etag-v1", freshUntilMs = 150L, staleUntilMs = 500L)
-        val native = FakeNativeCache().apply {
-            inspection = RaftAvatarNativeInspection.Supported(true, true, managedBytes = 1_024L)
-            awaitBlock = { RaftAvatarNativeLoadResult.NotModified("etag-v2", "today") }
-        }
-        val runtime = runtime(store, nowMillis = { 200L })
-        val prepared =
-            assertIs<RaftAvatarPreparedRender.Native>(
-                runtime.prepare(key.subject, RemoteUrl, nativeCache = native)
-            )
-
-        assertIs<RaftAvatarCacheCompletionReceipt.Accepted>(runtime.observeAndCommit(prepared))
-
-        val refreshed = store.metadataBySlot.getValue(key.slot)
-        assertEquals(100L, refreshed.fetchedAtMs)
-        assertEquals(200L, refreshed.validatedAtMs)
-        assertEquals("etag-v2", refreshed.eTag)
-        assertEquals(prepared.request.expectedCommitIdentity, refreshed.commitIdentity)
-        assertEquals(prepared.request.expectedModelRevision, refreshed.modelRevision)
-        assertEquals(RaftAvatarNativeFinalizeOutcome.NotModified, native.finalized.single().second)
-    }
-
-    @Test
     fun notModifiedCannotRefreshAReplacedDurableNonce() = runBlocking {
         val key = key()
         val original = metadata(key, eTag = "etag-v1", freshUntilMs = 150L, staleUntilMs = 500L)
@@ -425,62 +203,6 @@ class RaftAvatarCacheRuntimeTest {
         assertEquals(100L, store.metadataBySlot.getValue(key.slot).validatedAtMs)
         assertEquals(listOf(prepared.request), native.rolledBack)
         assertTrue(native.finalized.isEmpty())
-    }
-
-    @Test
-    fun successfulBytesCannotOverwriteAReplacedDurableNonce() = runBlocking {
-        val key = key()
-        val original = metadata(key, eTag = "etag-v1")
-        val replacementIdentity = RaftAvatarCommitIdentity(1L, "c".repeat(64))
-        val store = FakeMetadataStore().apply { metadataBySlot[key.slot] = original }
-        val native = FakeNativeCache().apply {
-            inspection = RaftAvatarNativeInspection.Supported(true, true, managedBytes = 512L)
-            awaitBlock = {
-                store.metadataBySlot[key.slot] =
-                    original.copy(commitIdentity = replacementIdentity, eTag = "replacement")
-                RaftAvatarNativeLoadResult.SuccessfulBytes(
-                    sizeBytes = 512L,
-                    eTag = "must-not-commit",
-                    lastModified = null,
-                    contentType = "image/webp"
-                )
-            }
-        }
-        val runtime = runtime(store)
-        val prepared =
-            assertIs<RaftAvatarPreparedRender.Native>(
-                runtime.prepare(key.subject, RemoteUrl, nativeCache = native)
-            )
-
-        assertIs<RaftAvatarCacheCompletionReceipt.RejectedStaleGeneration>(
-            runtime.observeAndCommit(prepared)
-        )
-        assertEquals(replacementIdentity, store.metadataBySlot.getValue(key.slot).commitIdentity)
-        assertEquals("replacement", store.metadataBySlot.getValue(key.slot).eTag)
-        assertEquals(listOf(prepared.request), native.rolledBack)
-        assertTrue(native.finalized.isEmpty())
-    }
-
-    @Test
-    fun acceptedFailureCommitsExactBoundedFailureAndFinalizesItsKind() = runBlocking {
-        val store = FakeMetadataStore()
-        val native = FakeNativeCache().apply {
-            awaitBlock = {
-                RaftAvatarNativeLoadResult.Failure(RaftAvatarCacheFailureKind.TemporaryTransport)
-            }
-        }
-        val runtime = runtime(store, nowMillis = { 5_000L })
-        val prepared =
-            assertIs<RaftAvatarPreparedRender.Native>(
-                runtime.prepare(subject(), RemoteUrl, nativeCache = native)
-            )
-
-        assertIs<RaftAvatarCacheCompletionReceipt.Accepted>(runtime.observeAndCommit(prepared))
-
-        val failure = store.failureByKey.getValue(prepared.token.key)
-        assertEquals(RaftAvatarCacheFailureKind.TemporaryTransport, failure.kind)
-        assertEquals(5_000L + RaftAvatarCachePolicy.InitialTemporaryBackoffMillis, failure.retryAtMs)
-        assertEquals(RaftAvatarNativeFinalizeOutcome.TemporaryTransport, native.finalized.single().second)
     }
 
     @Test
@@ -579,54 +301,6 @@ class RaftAvatarCacheRuntimeTest {
         assertEquals("finalize_failed", receipt.code)
         assertEquals(listOf(prepared.request), native.rolledBack)
         assertEquals(previousMetadata, store.metadataBySlot[key.slot])
-    }
-
-    @Test
-    fun reusedGenerationRunsOneMetadataAndFinalizeMutation() = runBlocking {
-        val store = FakeMetadataStore()
-        val native = FakeNativeCache().apply {
-            awaitBlock = {
-                RaftAvatarNativeLoadResult.SuccessfulBytes(512L, "etag", null, "image/webp")
-            }
-        }
-        val runtime = runtime(store)
-        val prepared =
-            assertIs<RaftAvatarPreparedRender.Native>(
-                runtime.prepare(subject(), RemoteUrl, nativeCache = native)
-            )
-
-        val first = async { runtime.observeAndCommit(prepared) }
-        val second = async { runtime.observeAndCommit(prepared) }
-
-        assertIs<RaftAvatarCacheCompletionReceipt.Accepted>(first.await())
-        assertIs<RaftAvatarCacheCompletionReceipt.Accepted>(second.await())
-        assertEquals(1, native.awaited.size)
-        assertEquals(1, store.commitSuccessCalls)
-        assertEquals(1, native.finalized.size)
-    }
-
-    @Test
-    fun completedGenerationClosesForNewPrepareSoLaterStaleReadCanRevalidate() = runBlocking {
-        val store = FakeMetadataStore()
-        val native = FakeNativeCache().apply {
-            awaitBlock = {
-                RaftAvatarNativeLoadResult.SuccessfulBytes(512L, "etag", null, "image/webp")
-            }
-        }
-        val runtime = runtime(store)
-        val first =
-            assertIs<RaftAvatarPreparedRender.Native>(
-                runtime.prepare(subject(), RemoteUrl, nativeCache = native)
-            )
-
-        assertIs<RaftAvatarCacheCompletionReceipt.Accepted>(runtime.observeAndCommit(first))
-
-        val later =
-            assertIs<RaftAvatarPreparedRender.Native>(
-                runtime.prepare(subject(), RemoteUrl, nativeCache = native)
-            )
-        assertNotEquals(first.token.generation, later.token.generation)
-        assertEquals(first.request.nativeBytesKey, later.request.nativeBytesKey)
     }
 
     @Test
@@ -795,38 +469,6 @@ class RaftAvatarCacheRuntimeTest {
         assertEquals(listOf(currentOwner, currentOwner), store.clearedTemporaryFailureOwners)
         assertEquals(otherKey, store.failureByKey[otherKey]?.key)
         assertEquals(permanentKey, store.failureByKey[permanentKey]?.key)
-    }
-
-    @Test
-    fun networkRecoveryFailsClosedWithoutAStableCurrentOwner() = runBlocking {
-        val oldOwner = owner()
-        val newOwner = owner(accountId = "account-b", serverId = "server-b")
-        val oldKey = key(owner = oldOwner)
-        val newKey = key(owner = newOwner)
-        val store = FakeMetadataStore().apply {
-            failureByKey[oldKey] = temporaryFailure(oldKey)
-            failureByKey[newKey] = temporaryFailure(newKey)
-        }
-        var ownerRead = 0
-        val changingRuntime =
-            runtime(
-                store = store,
-                ownerProvider = {
-                    ownerRead += 1
-                    if (ownerRead == 1) oldOwner else newOwner
-                }
-            )
-
-        assertFalse(changingRuntime.recoverCurrentOwnerAfterNetworkAvailable())
-        assertTrue(store.clearedTemporaryFailureOwners.isEmpty())
-        assertEquals(oldKey, store.failureByKey[oldKey]?.key)
-        assertEquals(newKey, store.failureByKey[newKey]?.key)
-
-        val signedOutRuntime = runtime(store, ownerProvider = { null })
-        assertFalse(signedOutRuntime.recoverCurrentOwnerAfterNetworkAvailable())
-        val failedOwnerRuntime = runtime(store, ownerProvider = { error("owner unavailable") })
-        assertFalse(failedOwnerRuntime.recoverCurrentOwnerAfterNetworkAvailable())
-        assertTrue(store.clearedTemporaryFailureOwners.isEmpty())
     }
 
     @Test

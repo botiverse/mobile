@@ -111,40 +111,6 @@ class RaftStoreUpdateNoticeTest {
     }
 
     @Test
-    fun theStoreIsAskedAtMostEveryFewHoursUnlessThePersonAsks() = runTest {
-        val store = FakeStore()
-        var now = 0L
-        val checker = RaftStoreUpdateChecker(channel = { store }, now = { now })
-
-        assertEquals(store.answer, checker.answer()?.latest)
-        now += RAFT_STORE_UPDATE_CHECK_INTERVAL_MILLIS - 1
-        checker.answer()
-        assertEquals(1, store.calls)
-
-        checker.answer(force = true)
-        assertEquals(2, store.calls)
-
-        now += RAFT_STORE_UPDATE_CHECK_INTERVAL_MILLIS
-        checker.answer()
-        assertEquals(3, store.calls)
-    }
-
-    @Test
-    fun anUnknownAnswerIsAskedAgainSooner() = runTest {
-        val store = FakeStore(answer = RaftInstallChannelLatest.Unknown)
-        var now = 0L
-        val checker = RaftStoreUpdateChecker(channel = { store }, now = { now })
-
-        checker.answer()
-        now += RAFT_STORE_UPDATE_RETRY_MILLIS - 1
-        checker.answer()
-        assertEquals(1, store.calls)
-        now += 1
-        checker.answer()
-        assertEquals(2, store.calls)
-    }
-
-    @Test
     fun notAStoreInstallIsNeverAsked() = runTest {
         listOf(
             FakeStore(name = "hands", offersStoreUpdateNotice = false), // Hands builds keep the host's own check

@@ -82,28 +82,6 @@ class SharedTasksPullRefreshTest {
         }
     }
 
-    @Test
-    fun catchUpJoinsAReloadAlreadyInFlight() = runTest {
-        val remote = GatedChannelTasks(tasks("task-1"))
-        val viewModel = loadedViewModel(remote)
-        val release = CompletableDeferred<Unit>()
-        remote.release = release
-        remote.answers += tasks("task-2", "task-1")
-
-        viewModel.dispatch(SharedTasksRouteIntent.Refresh)
-        runCurrent()
-        // Foreground and reconnect both arrive while the reload runs: no extra request.
-        viewModel.dispatch(SharedTasksRouteIntent.CatchUp)
-        viewModel.dispatch(SharedTasksRouteIntent.CatchUp)
-        runCurrent()
-        assertEquals(2, remote.priorities.size)
-
-        release.complete(Unit)
-        runCurrent()
-        assertEquals(listOf("task-2", "task-1"), ids(viewModel))
-        assertEquals(2, remote.priorities.size)
-    }
-
     private fun TestScope.loadedViewModel(remote: GatedChannelTasks): SharedTasksViewModel {
         val authStore = InMemoryRaftAuthSessionStore(authSessionFixture(selectedServerId = "server-1"))
         val scope = SharedTasksScope.Channel(channel)

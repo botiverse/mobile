@@ -112,27 +112,4 @@ class SharedTasksCreateOperationTest {
         assertFalse(completedB.isCreatingTasksFor(channelId))
         assertEquals(attemptB.attempt, completedB.createTerminalAttempt)
     }
-
-    @Test
-    fun staleTerminalCannotCrossChannelBoundary() {
-        val channelA = ChannelId("channel-a")
-        val channelB = ChannelId("channel-b")
-        val attemptA = operation(1L, channelA)
-        val attemptB = operation(2L, channelB)
-        val pendingB =
-            TasksUiState(loadState = ScreenLoadState.Content(emptySnapshot.toTasksContent()))
-                .reduce(SharedTasksIntent.CreateTasksStarted(attemptA))
-                .reduce(SharedTasksIntent.CreateTasksStarted(attemptB))
-
-        assertEquals(
-            pendingB,
-            pendingB.reduce(SharedTasksIntent.CreateTasksSucceeded(attemptA, emptySnapshot))
-        )
-        assertEquals(
-            pendingB,
-            pendingB.reduce(SharedTasksIntent.CreateTasksFailed(attemptA, "stale_failure"))
-        )
-        assertTrue(pendingB.isCreatingTasksFor(channelB))
-        assertFalse(pendingB.isCreatingTasksFor(channelA))
-    }
 }

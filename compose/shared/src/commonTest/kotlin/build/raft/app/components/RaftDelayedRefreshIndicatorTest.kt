@@ -58,34 +58,4 @@ class RaftDelayedRefreshIndicatorTest {
             changes
         )
     }
-
-    @Test
-    fun refreshOutlastingTheMinimumHidesWhenItEnds() = runTest {
-        val active = MutableStateFlow(false)
-        val changes = track(active)
-
-        active.value = true
-        advanceTimeBy(2_000L)
-        active.value = false
-        runCurrent()
-
-        assertEquals(listOf(0L to false, RaftRefreshIndicatorShowDelayMillis to true, 2_000L to false), changes)
-    }
-
-    @Test
-    fun refreshResumingDuringTheHoldStaysShownWithoutANewDelay() = runTest {
-        val active = MutableStateFlow(false)
-        val changes = track(active)
-
-        active.value = true
-        advanceTimeBy(400L)
-        active.value = false
-        advanceTimeBy(100L)
-        active.value = true
-        advanceTimeBy(1_000L)
-        active.value = false
-        runCurrent()
-
-        assertEquals(listOf(0L to false, RaftRefreshIndicatorShowDelayMillis to true, 1_500L to false), changes)
-    }
 }

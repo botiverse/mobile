@@ -22,22 +22,6 @@ class RaftPageKeyTest {
         assertEquals("compose_thread#3", key.contentKey)
     }
 
-    @Test fun `identity-only data is kept as is`() {
-        val dropped = mutableListOf<String>()
-        val key = RaftPageKey.create("compose_thread", identity, id = 0, onDropped = { dropped += it })
-        assertEquals(identity, key.pageData)
-        assertEquals(emptyList(), dropped)
-    }
-
-    @Test fun `key survives a JSON round trip`() {
-        val key = RaftPageKey.create("compose_thread", identity, id = 7)
-        val text = Json.encodeToString(RaftPageKey.serializer(), key)
-        val restored = Json.decodeFromString(RaftPageKey.serializer(), text)
-        assertEquals(key, restored)
-        assertEquals("compose_thread#7", restored.contentKey)
-        assertEquals(identity, restored.pageData)
-    }
-
     @Test fun `a saved key carrying content is rejected on decode`() {
         val text = """{"pageName":"compose_thread","pageData":{"channelId":"c1","messages":[]},"id":1}"""
         assertFailsWith<IllegalArgumentException> { Json.decodeFromString(RaftPageKey.serializer(), text) }

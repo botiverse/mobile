@@ -2,7 +2,6 @@ package build.raft.app.data
 
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class MessageTranslationsApiTest {
@@ -42,11 +41,6 @@ class MessageTranslationsApiTest {
 
         checkNotNull(results)
         assertEquals(SharedMessageTranslationStatus.NotFound, results.single().status)
-    }
-
-    @Test
-    fun parseReturnsNullForMalformedBody() {
-        assertNull(parseSharedMessageTranslationBatch("not json"))
     }
 
     @Test

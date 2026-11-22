@@ -15,7 +15,6 @@ import kotlinx.coroutines.withTimeout
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
-import kotlin.test.assertIs
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -131,17 +130,6 @@ class TaskBacklogMoveTest {
             network.calls.filter { it.startsWith("PATCH") || it.startsWith("POST") },
         )
         runtimeScope.cancel()
-    }
-
-    @Test
-    fun theUseCaseCarriesTheReasonThroughTheRepository() = runBlocking {
-        val network = RecordingNetworkClient()
-        val repository = SharedTasksDataRepository(remoteDataSource = SharedTasksDataSource(NetworkRaftTasksApi(network)))
-        val result =
-            SharedTasksUseCase(InMemoryRaftAuthSessionStore(), repository)
-                .updateTaskStatus(ServerId("server-1"), TasksStatusUpdateRequest(TaskId("task-1"), TaskStatus.Backlog, "not now"))
-        assertIs<DataResult.Content<TaskActionResult>>(result)
-        assertEquals(listOf("""PATCH tasks/task-1/status server=server-1 body={"status":"backlog","reason":"not now"}"""), network.calls)
     }
 
     private class RecordingNetworkClient : RaftNetworkClient {

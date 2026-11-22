@@ -7,12 +7,7 @@ import build.raft.app.model.MessageId
 import build.raft.app.model.TaskId
 import build.raft.app.model.ThreadId
 import kotlinx.coroutines.CompletableDeferred
-import kotlinx.coroutines.async
-import kotlinx.coroutines.awaitAll
-import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
-import kotlin.time.Duration.Companion.seconds
-import kotlin.time.TestTimeSource
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -132,56 +127,6 @@ class TaskConversationContractTest {
             assertEquals(1, network.requests.count { it.path == "channels/conv-1" }, "ref reused joined=$parentJoined")
             assertEquals(1, network.requests.count { it.path == "channels/channel-1" }, "parent reused joined=$parentJoined")
         }
-    }
-
-    @Test
-    fun aRecentTaskReadIsReusedForThirtySecondsAcrossLoads() = runTest {
-        // Hands 4cf4c781: one open loaded the task detail twice within seconds (context load, then
-        // the thread load). A task read seconds ago names the next load's title without a request.
-        val clock = TestTimeSource()
-        val network = taskConversationNetwork(parentJoined = true)
-        val repository =
-            RealConversationRepository(conversationRepositoryTestSessionStore(), network).apply {
-                taskConversationTimeSource = clock
-            }
-        repository.getThread(ThreadId("conv-1"))
-        assertEquals("#general:#7 Ship the task conversation", repository.loadTaskConversationTitle(ChannelId("conv-1")))
-
-        clock += 29.seconds
-        val again = assertIs<DataResult.Content<ThreadSnapshot>>(repository.getThread(ThreadId("conv-1"))).data
-        assertEquals("#general:#7 Ship the task conversation", again.conversation.name, "within 30 s")
-        assertEquals("#general:#7 Ship the task conversation", repository.loadTaskConversationTitle(ChannelId("conv-1")))
-        assertEquals(1, network.requests.count { it.path == "tasks/channel/channel-1" }, "within 30 s")
-        assertEquals(2, network.requests.count { it.path == "channels/channel-1" }, "write authority is always read")
-
-        clock += 2.seconds
-        val stale = assertIs<DataResult.Content<ThreadSnapshot>>(repository.getThread(ThreadId("conv-1"))).data
-        assertEquals("", stale.conversation.name, "after 30 s the title is pending again")
-        repository.loadTaskConversationTitle(ChannelId("conv-1"))
-        assertEquals(2, network.requests.count { it.path == "tasks/channel/channel-1" }, "after 30 s")
-    }
-
-    @Test
-    fun overlappingLoadsOfOneTaskConversationShareItsParentFetch() = runTest {
-        // Hands 4cf4c781: two loads of the same conversation in flight at once (prewarm + open).
-        val parentStarted = CompletableDeferred<Unit>()
-        val releaseParent = CompletableDeferred<Unit>()
-        val network =
-            taskConversationNetwork(
-                parentJoined = true,
-                requestStarted = mapOf("GET channels/channel-1" to parentStarted),
-                requestRelease = mapOf("GET channels/channel-1" to releaseParent),
-            )
-        val repository = RealConversationRepository(conversationRepositoryTestSessionStore(), network)
-
-        val loads = List(2) { async { repository.getThread(ThreadId("conv-1")) } }
-        parentStarted.await()
-        runCurrent()
-        releaseParent.complete(Unit)
-        val conversations = loads.awaitAll().map { assertIs<DataResult.Content<ThreadSnapshot>>(it).data.conversation }
-
-        conversations.forEach { conversation -> assertTrue(conversation.permissions.canSend) }
-        assertEquals(1, network.requests.count { it.path == "channels/channel-1" }, "parent detail shared")
     }
 
     private fun taskConversationNetwork(

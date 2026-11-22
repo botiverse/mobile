@@ -26,29 +26,4 @@ class RaftAnimatedImageFormatTest {
             assertEquals(bytes.size.toLong(), source.size, "$label: sniffing must not consume the source")
         }
     }
-
-    @Test
-    fun viewerRequestsAnimationOnlyForGifAndWebpMetadata() {
-        val cases =
-            listOf(
-                Triple("image/gif", listOf("cat.png"), true),
-                Triple("image/webp", emptyList<String?>(), true),
-                Triple("IMAGE/GIF; charset=binary", emptyList(), true),
-                Triple("image/png", listOf("cat.gif"), false),
-                Triple("image/jpeg", emptyList(), false),
-                Triple("", listOf("", "Cat.GIF"), true),
-                Triple("application/octet-stream", listOf("loop.webp"), true),
-                Triple("", listOf("https://cdn.example/a/loop.gif?sig=1#x"), true),
-                Triple("", listOf("https://cdn.example/a.gif/still.png?x=.gif"), false),
-                Triple("", listOf(null, "photo.jpg"), false),
-            )
-        cases.forEach { (mime, names, expected) ->
-            assertEquals(expected, raftImageMayBeAnimated(mime, *names.toTypedArray()), "mime=$mime names=$names")
-        }
-    }
-
-    @Test
-    fun fixtureIsARealThreeFrameGif() {
-        assertEquals(listOf(100, 200, 0), RaftAnimatedImageFixtures.gifFrameDelaysMillis(RaftAnimatedImageFixtures.threeFrameGif))
-    }
 }

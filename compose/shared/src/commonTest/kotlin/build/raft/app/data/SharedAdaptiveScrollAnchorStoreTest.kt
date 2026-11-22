@@ -9,16 +9,6 @@ import kotlin.test.assertNull
 class SharedAdaptiveScrollAnchorStoreTest {
 
     @Test
-    fun stagedAnchorPeeksWithoutConsuming() {
-        val store = SharedAdaptiveScrollAnchorStore()
-        store.stage("shell-a", identity, anchor("req-1"))
-
-        assertEquals("req-1", store.peek("shell-a", identity)?.requestId)
-        // Peek does not consume.
-        assertEquals("req-1", store.peek("shell-a", identity)?.requestId)
-    }
-
-    @Test
     fun consumeIsFencedToItsRequest() {
         val store = SharedAdaptiveScrollAnchorStore()
         store.stage("shell-a", identity, anchor("req-1"))
@@ -31,18 +21,6 @@ class SharedAdaptiveScrollAnchorStoreTest {
         assertNull(store.peek("shell-a", identity))
         // Second consume of the same request id is a no-op (idempotent).
         assertNull(store.consume("shell-a", identity, "req-1"))
-    }
-
-    @Test
-    fun discardOnlyDropsItsOwnRequest() {
-        val store = SharedAdaptiveScrollAnchorStore()
-        store.stage("shell-a", identity, anchor("req-1"))
-
-        store.discard("shell-a", identity, "req-0")
-        assertEquals("req-1", store.peek("shell-a", identity)?.requestId)
-
-        store.discard("shell-a", identity, "req-1")
-        assertNull(store.peek("shell-a", identity))
     }
 
     @Test

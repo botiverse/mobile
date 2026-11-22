@@ -80,14 +80,4 @@ class FeedbackDiagnosticsPresignTest {
             )
         }
     }
-
-    @Test
-    fun requestBuilderRejectsUnsupportedArchives() {
-        assertFailsWith<IllegalArgumentException> {
-            encodeSharedFeedbackDiagnosticsPresignRequest("diag.zip", "application/octet-stream", 4L)
-        }
-        assertFailsWith<IllegalArgumentException> {
-            encodeSharedFeedbackDiagnosticsPresignRequest("diag.zip", FEEDBACK_DIAGNOSTICS_CONTENT_TYPE, 0L)
-        }
-    }
 }

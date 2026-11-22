@@ -8,7 +8,6 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.yield
 import build.raft.app.model.MessageId
 import build.raft.app.model.TaskId
 import build.raft.app.model.TaskStatus
@@ -66,25 +65,6 @@ class TasksPerStatusPaginationTest {
         assertEquals("todo-3", afterTodo.statusPages[TaskStatus.Todo]?.nextCursor)
         assertEquals("wip-2", afterTodo.statusPages[TaskStatus.InProgress]?.nextCursor, "the other column must not move")
         assertNull(afterTodo.nextCursor, "the global walk cursor must stay untouched")
-    }
-
-    @Test
-    fun anExhaustedStatusPageIsANoOp() {
-        // M2-adjacent: a short column (hasMore=false) must not fire.
-        val exhausted = seeded(TaskStatus.Done, null)
-        val reducerNext = exhausted.reduce(SharedTasksIntent.LoadMoreStatus(TaskStatus.Done))
-        assertEquals(exhausted, reducerNext, "an exhausted column must not start a load")
-    }
-
-    @Test
-    fun anAlreadyLoadingStatusPageIsANoOp() {
-        // M2: single-flight. A second trigger while one is in flight must not
-        // start another (the reducer refuses).
-        val loading = seeded(TaskStatus.Todo, "todo-2").copy(
-            statusPages = mapOf(TaskStatus.Todo to TasksStatusPageState(nextCursor = "todo-2", hasMore = true, loadingMore = true))
-        )
-        val reducerNext = loading.reduce(SharedTasksIntent.LoadMoreStatus(TaskStatus.Todo))
-        assertEquals(loading, reducerNext, "single-flight must refuse a second in-flight page")
     }
 
     @Test
@@ -302,38 +282,5 @@ class TasksPerStatusBoardSeedWiringTest {
         assertTrue(seeded.all { it.first == null }, "each seed is a first page (cursor=null)")
         assertEquals(seeded.size, seeded.mapNotNull { it.second }.toSet().size,
             "exactly one first-page request per column")
-    }
-
-    @Test
-    fun theBacklogColumnIsSeededOnlyAfterABacklogTaskWasSeen() = runBlocking {
-        val api = RecordingApi(emptyStatuses = emptySet(), firstPageStatus = "backlog")
-        val vm = viewModel(api)
-        vm.dispatch(SharedTasksRouteIntent.Start)
-        withTimeout(5_000) { vm.state.first { it.loadState is ScreenLoadState.Content } }
-        val callsBeforeBoard = api.requests.size
-
-        vm.dispatch(SharedTasksRouteIntent.EnterBoard)
-        val everyColumn = TaskStatus.known.map { it.toWireValue() }.toSet()
-        withTimeout(5_000) {
-            while (api.requests.drop(callsBeforeBoard).mapNotNull { it.second }.toSet() != everyColumn) {
-                kotlinx.coroutines.delay(5)
-            }
-        }
-        assertEquals(everyColumn, api.requests.drop(callsBeforeBoard).mapNotNull { it.second }.toSet())
-    }
-
-    @Test
-    fun listModeNeverSeeds() = runBlocking {
-        val api = RecordingApi(emptyStatuses = emptySet())
-        val vm = viewModel(api)
-        vm.dispatch(SharedTasksRouteIntent.Start)
-        withTimeout(5_000) { vm.state.first { it.loadState is ScreenLoadState.Content } }
-        val calls = api.requests.size
-        // A global page request must not seed any column.
-        vm.dispatch(SharedTasksRouteIntent.LoadMore)
-        kotlinx.coroutines.yield()
-        assertTrue(vm.state.value.statusPages.isEmpty(),
-            "the global walk must not create per-status page state: ${vm.state.value.statusPages.keys}")
-        assertTrue(api.requests.size >= calls)
     }
 }

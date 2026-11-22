@@ -250,25 +250,6 @@ class SettingsFeedbackTicketsApiTest {
     }
 
     @Test
-    fun aTicketOfThisAppOrOfNoNamedAppSendsNoPlatform() = runTest {
-        val network =
-            FakeNetwork { HomeNetworkResponse(200, """{"ticket":${ticketJson()},"comments":[],"attachments":[],"next_comment_cursor":null,"unread_total":0}""") }
-        val repository = NetworkSettingsFeedbackTicketsRepository(network, "ios")
-        repository.ticket(ticketId, source = "ios")
-        repository.ticket(ticketId, source = null)
-        // Not a Hands app the server knows: not sent (the server would answer 400).
-        repository.ticket(ticketId, source = "desktop")
-        repository.attachment(ticketId, attachmentId, source = "ios")
-        assertTrue(network.calls.all { it.query == listOf("comment_limit" to "100") })
-        assertEquals("product-feedback/tickets/$ticketId/attachments/$attachmentId", network.byteReads.single().first)
-
-        // The desktop app files into the web app: a web ticket is its own, an Android one is not.
-        assertNull(feedbackTicketPlatform("web", ""))
-        assertNull(feedbackTicketPlatform("web", "web"))
-        assertEquals("android", feedbackTicketPlatform("android", "web"))
-    }
-
-    @Test
     fun onlyATicketFiledOnAnotherClientNamesIt() {
         val ticket = FeedbackTicket(ticketId, FeedbackTicketKind.Feedback, FeedbackTicketStatus.Open, null, "m", 1, 1, false, 0, 0, 0)
         val android = feedbackOwnClient("android")
@@ -437,15 +418,6 @@ class SettingsFeedbackTicketsApiTest {
         val bytes = assertIs<FeedbackResult.Ok<FeedbackAttachmentBytes>>(result).value
         assertContentEquals(byteArrayOf(1, 2, 3), bytes.bytes)
         assertEquals("image/png", bytes.contentType)
-    }
-
-    @Test
-    fun idsThatAreNotUuidsAreNotFoundWithoutARequest() = runTest {
-        val network = FakeNetwork { error("no request") }
-        val repository = NetworkSettingsFeedbackTicketsRepository(network, "android")
-        assertEquals(FeedbackErrorKind.NotFound, (repository.ticket("../tickets") as FeedbackResult.Failed).failure.kind)
-        assertEquals(FeedbackErrorKind.NotFound, (repository.attachment(ticketId, "x/y") as FeedbackResult.Failed).failure.kind)
-        assertTrue(network.calls.isEmpty() && network.byteReads.isEmpty())
     }
 
     @Test

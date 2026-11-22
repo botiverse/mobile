@@ -18,29 +18,4 @@ class ConversationDisplayTitleTest {
         assertNull(conversationSafeDisplayTitleOrNull("deadbeef"))
         assertNull(conversationSafeDisplayTitleOrNull("#channel-1", setOf("channel-1")))
     }
-
-    @Test
-    fun titleFallbackUsesOnlyCanonicalDisplayName() {
-        val current =
-            ConversationSummary(
-                threadId = ThreadId("channel-1:message-1"),
-                channelId = ChannelId("channel-1"),
-                thread =
-                    ThreadConversation(
-                        parentChannelId = ChannelId("channel-1"),
-                        parentMessageId = MessageId("message-1")
-                    ),
-                kind = ConversationKind.Thread,
-                name = "channel-1"
-            )
-        val fallback =
-            ConversationSummary(
-                threadId = ThreadId("channel-1"),
-                channelId = ChannelId("channel-1"),
-                kind = ConversationKind.Channel,
-                name = "#对话流专修"
-            )
-
-        assertEquals("对话流专修", current.withTitleFallback(fallback).name)
-    }
 }

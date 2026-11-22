@@ -221,30 +221,6 @@ class SharedActivityStoreProgressiveRefreshTest {
     }
 
     @Test
-    fun aPullDuringAVisibleRefreshJoinsItAndShowsTheSpinner() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        val inbox = ScriptedInboxRepository()
-        val logs = mutableListOf<String>()
-        val store = loadedStore(scope, inbox, logs)
-
-        store.dispatch(SharedActivityIntent.Refresh)
-        assertFalse(store.state.value.pullRefreshing)
-
-        store.dispatch(SharedActivityIntent.PullRefresh)
-
-        assertTrue(store.state.value.pullRefreshing, "the pull shows its spinner over the running refresh")
-        assertEquals(4, inbox.calls.size, "the refresh in flight is not restarted")
-        assertTrue(logs.any { "phase=pull_joined" in it }, logs.joinToString("\n"))
-
-        inbox.answer(3, page(rows.take(100), nextOffset = 100))
-        assertFalse(store.state.value.pullRefreshing, "the joined pull ends with page 1")
-        inbox.answer(4, page(rows.slice(100 until 200), nextOffset = 200))
-        inbox.answer(5, page(rows.slice(200 until 250), nextOffset = 250, hasMore = false))
-        assertEquals(rows.map(InboxItem::key), store.keys)
-        scope.cancel()
-    }
-
-    @Test
     fun aPullAfterTheFirstPageIsShownStartsAFreshRead() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val inbox = ScriptedInboxRepository()

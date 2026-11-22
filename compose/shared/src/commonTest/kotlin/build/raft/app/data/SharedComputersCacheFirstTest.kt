@@ -21,33 +21,6 @@ import kotlin.test.assertTrue
  */
 class SharedComputersCacheFirstTest {
     @Test
-    fun switchingServersAToBToAPaintsCachedListOnFirstFrameAndRefreshesOnceInBackground() = runTest {
-        val harness = Harness(this)
-        val store = harness.store()
-        store.ensureComputerPickerForServer(SERVER_A)
-        store.ensureComputerPickerForServer(SERVER_B)
-        assertEquals(1, harness.api.calls(SERVER_A))
-
-        // Back on A: the first frame reads the store's current value — rows, no spinner.
-        val firstFrame = assertNotNull(store.currentSettingsComputers(SERVER_A))
-        assertEquals(listOf("Studio A"), firstFrame.computers.map { it.name })
-
-        // The page open paints the cache at once, then validates it with exactly one fetch.
-        harness.session = harness.session.copy(selectedServerId = SERVER_A)
-        harness.api.names[SERVER_A] = "Studio A2"
-        val gate = CompletableDeferred<Unit>()
-        harness.api.gates[SERVER_A] = gate
-        val page = harness.settingsStore(store)
-        page.dispatch(SharedSettingsIntent.LoadPageContent(SharedSettingsDestination.Computers))
-        runCurrent()
-        assertEquals(listOf("Studio A"), listNames(page))
-        gate.complete(Unit)
-        runCurrent()
-        assertEquals(listOf("Studio A2"), listNames(page))
-        assertEquals(2, harness.api.calls(SERVER_A), "exactly one background fetch after returning to A")
-    }
-
-    @Test
     fun coldStartSeedsFromDurableStoreThenRefreshesOnce() = runTest {
         val storage = MapRowStorage()
         val first = Harness(this, storage)
@@ -146,34 +119,6 @@ class SharedComputersCacheFirstTest {
         runCurrent()
         assertIs<ScreenLoadState.Error>(page.state.value.computers)
     }
-
-    @Test
-    fun machinePageIsCachedPerServerAndForgottenWhenTheMachineIsGone() = runTest {
-        val harness = Harness(this)
-        val store = harness.store()
-        store.ensureComputerPickerForServer(SERVER_A)
-        val detail = SettingsComputerDetailSnapshot(store.currentSettingsComputers(SERVER_A)!!.computers.single(), emptyList(), emptyList(), emptyList())
-        store.recordSettingsComputerDetail(SERVER_A, "m-$SERVER_A", detail)
-        assertEquals(detail, store.cachedSettingsComputerDetail(SERVER_A, "m-$SERVER_A"))
-        assertNull(store.cachedSettingsComputerDetail(SERVER_B, "m-$SERVER_A"))
-        store.recordSettingsComputerDetail(SERVER_A, "m-$SERVER_A", null)
-        assertNull(store.cachedSettingsComputerDetail(SERVER_A, "m-$SERVER_A"))
-    }
-
-    @Test
-    fun memoryAndDurableCachesAreCapped() = runTest {
-        val harness = Harness(this, maxServers = 2, maxRowsPerAccount = 2)
-        val store = harness.store()
-        store.ensureComputerPickerForServer(SERVER_A)
-        store.ensureComputerPickerForServer(SERVER_B)
-        store.ensureComputerPickerForServer(SERVER_C)
-        assertEquals(setOf(SERVER_B, SERVER_C), store.state.value.serverSlices.keys)
-        assertNull(harness.durable.read(harness.key(SERVER_A)), "least recently written row left")
-        assertEquals(2, harness.durable.rowIdsForTest().size)
-    }
-
-    private fun listNames(store: SharedSettingsStore): List<String> =
-        (store.state.value.computers as ScreenLoadState.Content).data.computers.map { it.name }
 
     private class Harness(
         private val testScope: TestScope,

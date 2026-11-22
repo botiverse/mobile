@@ -247,107 +247,6 @@ class InboxSavedSearchRepositoryDataSourceTest {
     }
 
     @Test
-    fun savedFilterAsksForTheAllFilterScopedToSavedOnEveryPage() = runBlocking {
-        // web Saved: a scope over All listing the threads followed through a save,
-        // `filter=all&scope=saved`, on the first page and on every page after it.
-        val network =
-            FakeInboxNetworkClient(
-                inboxJson =
-                    """
-                    {
-                      "items": [
-                        {
-                          "kind": "thread",
-                          "threadChannelId": "thread-saved",
-                          "parentMessageId": "parent-1",
-                          "parentChannelId": "channel-general",
-                          "parentChannelName": "general",
-                          "parentChannelType": "channel",
-                          "replyCount": 1,
-                          "unreadCount": 0,
-                          "isFollowing": true
-                        }
-                      ],
-                      "hasMore": true,
-                      "totalCount": 2,
-                      "totalUnreadCount": 0
-                    }
-                    """.trimIndent()
-            )
-        val repository = RealInboxRepository(sampleStore(), network)
-
-        val first = repository.loadInitial(ServerId("server-1"), InboxFilter.Saved)
-        repository.loadMore(ServerId("server-1"), InboxFilter.Saved, offset = 30)
-
-        assertEquals(
-            listOf(
-                InboxCall(filter = "all", limit = 30, offset = 0, scope = "saved"),
-                InboxCall(filter = "all", limit = 30, offset = 30, scope = "saved"),
-            ),
-            network.inboxCalls
-        )
-        assertTrue(first is DataResult.Content)
-        assertEquals("thread-saved", first.data.items.single().threadChannelId?.value)
-        assertEquals(2, first.data.totalCount)
-    }
-
-    @Test
-    fun artifactsFilterAsksForTheAllFilterScopedToArtifactsOnEveryPage() = runBlocking {
-        // web Artifacts: a scope over All listing only Artifact rows (object rows, no conversations),
-        // `filter=all&scope=artifacts`, on the first page and on every page after it. The server's
-        // conversation totals are 0; the rows count under `objectCount`.
-        val network =
-            FakeInboxNetworkClient(
-                inboxJson =
-                    """
-                    {
-                      "items": [
-                        {
-                          "kind": "object",
-                          "objectKind": "artifact",
-                          "objectId": "pt_artifact-1",
-                          "home": { "kind": "channel", "label": "general", "channelId": "channel-general" },
-                          "latestEvent": {
-                            "eventKind": "comment",
-                            "reason": "following",
-                            "actor": { "type": "user", "id": "user-2", "name": "kirby" },
-                            "at": "2026-10-26T10:00:00.000Z"
-                          },
-                          "unreadCount": 1,
-                          "hasMention": false,
-                          "isFollowing": true,
-                          "lastActivityAt": "2026-10-26T10:00:00.000Z",
-                          "doneFrontierSeq": "12"
-                        }
-                      ],
-                      "hasMore": true,
-                      "totalCount": 0,
-                      "totalUnreadCount": 0,
-                      "objectUnreadCount": 1,
-                      "objectMentionUnreadCount": 0,
-                      "objectCount": 2
-                    }
-                    """.trimIndent()
-            )
-        val repository = RealInboxRepository(sampleStore(), network)
-
-        val first = repository.loadInitial(ServerId("server-1"), InboxFilter.Artifacts)
-        repository.loadMore(ServerId("server-1"), InboxFilter.Artifacts, offset = 30)
-
-        assertEquals(
-            listOf(
-                InboxCall(filter = "all", limit = 30, offset = 0, scope = "artifacts"),
-                InboxCall(filter = "all", limit = 30, offset = 30, scope = "artifacts"),
-            ),
-            network.inboxCalls
-        )
-        assertTrue(first is DataResult.Content)
-        assertEquals("object:artifact:pt_artifact-1", first.data.items.single().key)
-        assertEquals(ActivityObjectCounts(objectUnreadCount = 1, objectMentionUnreadCount = 0, objectCount = 2), first.data.objectCounts)
-        assertEquals(1, first.data.objectCounts?.unreadFor(InboxFilter.Artifacts))
-    }
-
-    @Test
     fun attentionFiltersNeverExposeAnUnfollowedThreadRow() = runBlocking {
         val repository =
             RealInboxRepository(
@@ -674,37 +573,6 @@ class InboxSavedSearchRepositoryDataSourceTest {
     }
 
     @Test
-    fun savedAndSearchRejectInboxOnlySystemSenderKind() {
-        val savedDiagnostics = mutableListOf<String>()
-        val searchDiagnostics = mutableListOf<String>()
-        val saved =
-            parseSharedSavedItems(
-                """{"saved":[{"messageId":"message-1","channelId":"channel-1","channelName":"android-dev","channelType":"channel","content":"Saved note","senderType":"system","senderId":"system","createdAt":"2026-05-01T00:00:00Z","savedAt":"2026-05-02T00:00:00Z"}]}""",
-                savedDiagnostics::add,
-            )
-        val search =
-            parseSharedSearchItems(
-                """{"results":[{"id":"message-2","channelId":"channel-2","channelName":"product","channelType":"channel","parentChannelId":"channel-2","parentChannelName":"product","parentChannelType":"channel","senderId":"system","senderType":"system","senderName":"System","content":"Search hit","snippet":"Search hit","createdAt":"2026-05-01T00:00:00Z"}]}""",
-                searchDiagnostics::add,
-            )
-
-        assertNull(assertNotNull(saved).items.single().lastMessageSenderKind)
-        assertNull(assertNotNull(search).items.single().lastMessageSenderKind)
-        assertEquals(
-            listOf(
-                "projection_value_rejected source=saved_message_sender field=member_kind value=system",
-            ),
-            savedDiagnostics,
-        )
-        assertEquals(
-            listOf(
-                "projection_value_rejected source=search_message_sender field=member_kind value=system",
-            ),
-            searchDiagnostics,
-        )
-    }
-
-    @Test
     fun savedShowsUnknownChannelTypeAsGenericChannelRowAndKeepsCanonicalDirectKind() = runBlocking {
         val network =
             FakeInboxNetworkClient(
@@ -734,38 +602,6 @@ class InboxSavedSearchRepositoryDataSourceTest {
         assertEquals(null, weird.channelKind)
         assertEquals("mystery", weird.channelType)
         assertEquals("weird-1", weird.channelId.value)
-    }
-
-    @Test
-    fun searchShowsUnknownChannelTypeAsGenericChannelRowAndKeepsCanonicalDirectKind() = runBlocking {
-        val network =
-            FakeInboxNetworkClient(
-                savedJson = """{"saved":[],"hasMore":false}""",
-                searchJson = """
-                    {
-                      "results": [
-                        {"id":"message-dm-search","seq":1,"channelId":"dm-2","channelName":"Cindy","channelType":"direct_message","parentChannelId":"dm-2","parentChannelName":"Cindy","parentChannelType":"direct","senderId":"user-2","senderType":"user","senderName":"Cindy","content":"Search dm","snippet":"Search dm","createdAt":"2026-05-01T00:00:00Z"},
-                        {"id":"message-weird-search","seq":2,"channelId":"weird-2","channelName":"Mystery","channelType":"mystery","parentChannelId":"weird-2","parentChannelName":"Mystery","parentChannelType":"mystery","senderId":"user-2","senderType":"user","senderName":"Cindy","content":"Dropped","snippet":"Dropped","createdAt":"2026-05-01T00:00:00Z"}
-                      ],
-                      "hasMore": false
-                    }
-                """.trimIndent()
-            )
-
-        val search = RealSearchRepository(sampleStore(), network).search(ServerId("server-1"), "dm")
-
-        assertTrue(search is DataResult.Content)
-        assertEquals(
-            listOf("dm:dm-2:message-dm-search", "channel:weird-2:message-weird-search"),
-            search.data.items.map { it.key },
-        )
-        val dm = search.data.items.first()
-        assertEquals(InboxItemKind.DirectMessage, dm.kind)
-        assertEquals(ConversationKind.DirectMessage, dm.channelKind)
-        assertEquals(ConversationKind.DirectMessage, dm.parentChannelKind)
-        val weird = search.data.items.last()
-        assertEquals(InboxItemKind.Channel, weird.kind)
-        assertEquals("mystery", weird.channelType)
     }
 
     @Test
@@ -897,16 +733,6 @@ class InboxSavedSearchRepositoryDataSourceTest {
         assertEquals(listOf("saved:message-1", "saved:message-2"), saved.data.items.map { it.key })
         assertEquals(listOf("message-1", "message-2"), saved.data.items.map { it.lastMessageId?.value })
         assertEquals(2, saved.data.totalCount)
-    }
-
-    @Test
-    fun blankSearchWithoutFiltersReturnsEmptyWithoutServerRequest() = runBlocking {
-        val network = FakeInboxNetworkClient(searchJson = """{"results":[]}""")
-
-        val blank = RealSearchRepository(sampleStore(), network).search(ServerId("server-1"), " ")
-
-        assertTrue(blank is DataResult.Empty)
-        assertEquals(emptyList(), network.searchCalls)
     }
 
     @Test

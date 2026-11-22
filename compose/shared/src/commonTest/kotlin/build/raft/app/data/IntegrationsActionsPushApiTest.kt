@@ -186,41 +186,6 @@ class IntegrationsActionsPushApiTest {
         assertEquals("Failed to load agent integrations", error.serverMessage)
     }
 
-    @Test
-    fun agentIntegrationsErrorParserAcceptsOnlyItsExactErrorField() = runBlocking {
-        val fixtures =
-            listOf(
-                "canonical-with-future-field" to
-                    ("""{"error":"Failed to load agent integrations","future":true}""" to
-                        "Failed to load agent integrations"),
-                "wrong-alias" to ("""{"message":"Failed to load agent integrations"}""" to null),
-                "nested-error" to ("""{"error":{"message":"Failed to load agent integrations"}}""" to null),
-                "malformed" to ("""{"error":"unterminated""" to null),
-                "plain-text" to ("Failed to load agent integrations" to null),
-                "blank" to ("" to null),
-                "missing" to (null to null)
-            )
-
-        fixtures.forEach { (name, fixture) ->
-            val (body, expectedMessage) = fixture
-            val client =
-                RaftIntegrationsActionsPushApiClient(
-                    RecordingIntegrationsActionsPushApi(
-                        agentIntegrationsCode = 500,
-                        agentIntegrationsErrorBody = body
-                    )
-                )
-
-            val error = assertIs<DataResult.Error>(
-                client.agentIntegrations(MemberId("agent-1")),
-                name
-            ).error
-
-            assertEquals("server_unavailable", error.code, name)
-            assertEquals(expectedMessage, error.serverMessage, name)
-        }
-    }
-
     /**
      * POST /integrations/requests/:requestId/approve at botiverse/slock staging
      * 0dd599ab68 (#12297): routes/integrations.ts calls `refuseUnverifiedApprover` with

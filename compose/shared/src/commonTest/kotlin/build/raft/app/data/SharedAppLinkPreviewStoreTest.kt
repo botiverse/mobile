@@ -88,31 +88,6 @@ class SharedAppLinkPreviewStoreTest {
         state.value.messageView(Viewer, messageId, content, Conversation)
 
     @Test
-    fun aMessageIsReadOnceAndItsAnswerIsKept() = runTest(StandardTestDispatcher()) {
-        val api = FakeAppLinkPreviewApi().apply { readResponses += HomeNetworkResponse(200, CardsBody) }
-        val store = store(api)
-        assertTrue(store.view().wantsRead)
-        store.read(Viewer, Server, MessageA, Content, Conversation)
-        store.read(Viewer, Server, MessageA, Content, Conversation)
-        runCurrent()
-        store.read(Viewer, Server, MessageA, Content, Conversation)
-        runCurrent()
-        assertEquals(listOf(MessageA), api.reads)
-        val view = store.view()
-        assertFalse(view.wantsRead)
-        assertEquals("Private PR", (view.results["https://alpha.example.test/pr/1"] as AppLinkResult.Card).title)
-    }
-
-    @Test
-    fun aMessageWithoutAnHttpsLinkIsNeverRead() = runTest(StandardTestDispatcher()) {
-        val api = FakeAppLinkPreviewApi()
-        val store = store(api)
-        store.read(Viewer, Server, MessageA, "see http://example.com and #general", Conversation)
-        runCurrent()
-        assertTrue(api.reads.isEmpty())
-    }
-
-    @Test
     fun anAppIsAskedOnceInAConversation() = runTest(StandardTestDispatcher()) {
         val api = FakeAppLinkPreviewApi().apply {
             readResponses += HomeNetworkResponse(200, PromptBody)

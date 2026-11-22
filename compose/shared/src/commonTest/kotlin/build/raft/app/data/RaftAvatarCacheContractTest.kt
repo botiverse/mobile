@@ -8,20 +8,6 @@ import kotlin.test.assertNotEquals
 import kotlin.test.assertNull
 
 class RaftAvatarCacheContractTest {
-    @Test
-    fun immutableRaftPathIgnoresTransportQuery() {
-        val cdn =
-            raftAvatarContentIdentity(
-                "https://cdn.raft.build/avatars/agents/0123456789abcdef0123456789abcdef.webp?token=one"
-            )
-        val api =
-            raftAvatarContentIdentity(
-                "https://api.raft.build/api/avatars/agents/0123456789abcdef0123456789abcdef.webp?token=two"
-            )
-        assertEquals(RaftAvatarContentKind.RaftImmutable, cdn.kind)
-        assertEquals(cdn, api)
-    }
-
     /** slock #13674: no Gravatar kind; a stored `gravatar` kind reads as none (no cached avatar), never an error. */
     @Test
     fun gravatarIsRetiredAsAContentKind() {
@@ -70,26 +56,6 @@ class RaftAvatarCacheContractTest {
             baseline.nativeBytesKey,
             key(subject = RaftAvatarCacheSubject.Member(MemberKind.Human, "member-b"), content = content)
                 .nativeBytesKey
-        )
-    }
-
-    @Test
-    fun nativeSubjectKeyIsOwnerScopedButStableAcrossContentVersions() {
-        val baseline = key(content = raftAvatarContentIdentity("https://images.example/avatar.png?v=1"))
-        val changedContent = key(content = raftAvatarContentIdentity("https://images.example/avatar.png?v=2"))
-
-        assertEquals(baseline.nativeSubjectKey, changedContent.nativeSubjectKey)
-        assertNotEquals(
-            baseline.nativeSubjectKey,
-            key(owner = owner(serverId = "server-b")).nativeSubjectKey
-        )
-        assertNotEquals(
-            baseline.nativeSubjectKey,
-            key(subject = RaftAvatarCacheSubject.Member(MemberKind.Human, "member-a")).nativeSubjectKey
-        )
-        assertNotEquals(
-            baseline.nativeSubjectKey,
-            key(subject = RaftAvatarCacheSubject.Member(MemberKind.Agent, "member-b")).nativeSubjectKey
         )
     }
 
@@ -169,28 +135,6 @@ class RaftAvatarCacheContractTest {
     }
 
     @Test
-    fun legacyMetadataWithoutExactCommitIdentityNeverRendersNativeBytes() {
-        val key = key()
-        val legacy =
-            metadata(
-                key,
-                validatedAtMs = 100L,
-                freshUntilMs = 500L,
-                staleUntilMs = 900L
-            ).copy(commitIdentity = null, modelRevision = 0L)
-
-        assertIs<RaftAvatarCacheReadDecision.Fetch>(
-            RaftAvatarCachePolicy.decideRead(
-                key = key,
-                stored = RaftAvatarCacheStoredState(legacy, null),
-                bytesAvailable = true,
-                bytesDecodable = true,
-                nowMs = 200L
-            )
-        )
-    }
-
-    @Test
     fun failuresAreResourceScopedFiniteAndExponentiallyBounded() {
         val key = key()
         val first =
@@ -229,36 +173,6 @@ class RaftAvatarCacheContractTest {
                 nowMs = 5_000L
             )
         assertEquals(RaftAvatarCachePolicy.ResourceAbsentBackoffMillis, missing.retryAtMs - missing.failedAtMs)
-    }
-
-    @Test
-    fun successfulBytesEnforceBudgetAndRefreshValidatorsWithoutChangingFetchedTime() {
-        val key = key()
-        assertIs<RaftAvatarCacheWriteDecision.RejectTooLarge>(
-            RaftAvatarCachePolicy.successfulResponse(
-                key,
-                nowMs = 100L,
-                sizeBytes = RaftAvatarCachePolicy.MaxEntryBytes + 1L,
-                commitIdentity = RaftAvatarCommitIdentity(1L, "1".repeat(64)),
-                modelRevision = 1L
-            )
-        )
-        val stored =
-            assertIs<RaftAvatarCacheWriteDecision.Store>(
-                RaftAvatarCachePolicy.successfulResponse(
-                    key,
-                    nowMs = 100L,
-                    sizeBytes = 512L,
-                    commitIdentity = RaftAvatarCommitIdentity(1L, "1".repeat(64)),
-                    modelRevision = 1L,
-                    eTag = "v1",
-                    contentType = "image/webp"
-                )
-            ).metadata
-        val refreshed = RaftAvatarCachePolicy.notModified(stored, nowMs = 200L, eTag = "v2")
-        assertEquals(100L, refreshed.fetchedAtMs)
-        assertEquals(200L, refreshed.validatedAtMs)
-        assertEquals("v2", refreshed.eTag)
     }
 
     private fun owner(

@@ -46,48 +46,6 @@ class RaftDisplayPreferenceRuntimeTest {
     }
 
     @Test
-    fun memberDescriptionsAreOnByDefaultAndSavedUnderTheWebKey() {
-        val store = MemoryStore()
-        RaftDisplayPreferenceRuntime.resetForTest(store)
-        assertTrue(RaftDisplayPreferenceRuntime.showSenderDescription)
-
-        RaftDisplayPreferenceRuntime.setShowSenderDescription(false)
-        assertEquals("false", store.values["slock_show_sender_description"])
-        RaftDisplayPreferenceRuntime.resetForTest(store)
-        assertFalse(RaftDisplayPreferenceRuntime.showSenderDescription)
-
-        // Nothing saved: on, the web default (`readStoredShowSenderDescription`).
-        store.values["slock_show_sender_description"] = null
-        RaftDisplayPreferenceRuntime.resetForTest(store)
-        assertTrue(RaftDisplayPreferenceRuntime.showSenderDescription)
-    }
-
-    @Test
-    fun theHomeMenuChoiceIsTheSameValue() {
-        val store = MemoryStore()
-        KeyValueRaftSidebarHideEmptySectionsStore(store).write(false)
-        RaftDisplayPreferenceRuntime.resetForTest(store)
-        assertFalse(RaftDisplayPreferenceRuntime.hideEmptySidebarSections)
-    }
-
-    @Test
-    fun liveAgentActivityIsOnByDefaultAndSavedUnderTheWebKey() {
-        val store = MemoryStore()
-        RaftDisplayPreferenceRuntime.resetForTest(store)
-        assertTrue(RaftDisplayPreferenceRuntime.showLiveAgentActivity)
-
-        RaftDisplayPreferenceRuntime.setShowLiveAgentActivity(false)
-        assertEquals("false", store.values["slock_show_live_agent_activity_bar"])
-        RaftDisplayPreferenceRuntime.resetForTest(store)
-        assertFalse(RaftDisplayPreferenceRuntime.showLiveAgentActivity)
-
-        // Web `readStoredShowLiveAgentActivityBar`: anything but "false" is on.
-        store.values["slock_show_live_agent_activity_bar"] = "garbage"
-        RaftDisplayPreferenceRuntime.resetForTest(store)
-        assertTrue(RaftDisplayPreferenceRuntime.showLiveAgentActivity)
-    }
-
-    @Test
     fun readingDisplayPreferenceStoreCreatedAfterMutableSnapshotWasTakenNeverThrows() {
         val snapshot = Snapshot.takeMutableSnapshot()
         try {

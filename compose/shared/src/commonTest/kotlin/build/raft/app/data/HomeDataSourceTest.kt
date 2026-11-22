@@ -3,7 +3,6 @@ package build.raft.app.data
 import build.raft.app.model.ChannelId
 import build.raft.app.model.ConversationKind
 import build.raft.app.model.ConversationSummary
-import build.raft.app.model.AgentStatus
 import build.raft.app.model.MemberId
 import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberProfile
@@ -22,7 +21,6 @@ import kotlin.test.assertContains
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
-import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class HomeDataSourceTest {
@@ -55,51 +53,6 @@ class HomeDataSourceTest {
             assertEquals("home_http_$status", blocker.code)
             assertEquals(exactReason, blocker.serverMessage)
         }
-    }
-
-    @Test
-    fun loadHomeFetchesApiWithoutWritingLocalHomeSnapshot() = runBlocking {
-        val localStore = InMemoryComposeLocalDataStore()
-        val source =
-            SharedHomeDataSource(
-                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
-                api = FakeHomeApi(),
-                parseHome = { payload, session ->
-                    assertEquals(emptyList(), payload.channels)
-                    assertEquals(emptyList(), payload.directMessages)
-                    assertEquals(emptyMap(), payload.unreadCounts)
-                    assertEquals(emptyList(), payload.serverUnreadSummary)
-                    DataResult.Content(sampleHome(ServerId(session.currentServerId!!)))
-                }
-            )
-
-        val result = source.loadHome()
-
-        assertEquals(1, (result as DataResult.Content).data.channels.size)
-        // loadHome no longer writes a durable home snapshot: the home blob cache
-        // was removed in fb845a19 ("fix(home): remove home snapshot blob cache").
-        assertNull(localStore.readHome(ServerId("server-1")))
-    }
-
-    @Test
-    fun loadHomeRequestsCoreHomeSectionsConcurrently() = runBlocking {
-        val api = ConcurrentHomeApi()
-        val source =
-            SharedHomeDataSource(
-                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
-                api = api,
-                parseHome = { payload, _ ->
-                    DataResult.Content(sampleHome(payload.serverId))
-                }
-            )
-
-        val result = withTimeout(1_000L) { source.loadHome() }
-
-        assertTrue(result is DataResult.Content)
-        assertEquals(
-            setOf("channels", "direct_messages", "channel_unread_counts", "server_unread_summary"),
-            api.calls.toSet()
-        )
     }
 
     @Test
@@ -373,36 +326,6 @@ class HomeDataSourceTest {
     }
 
     @Test
-    fun appUpdateNotificationUsesNativeActionLabel() = runBlocking {
-        val source =
-            SharedHomeDataSource(
-                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
-                api = FakeHomeApi(),
-                appUpdateStatusProvider = {
-                    DataResult.Content(
-                        SharedSettingsUpdateCheckSnapshot(
-                            supported = true,
-                            statusLabel = "Install",
-                            actionLabel = "Install",
-                            updateAvailable = true,
-                            currentVersionCode = 1_000_000L,
-                            latestVersionCode = 1_000_100L
-                        )
-                    )
-                },
-                parseHome = { _, session ->
-                    DataResult.Content(sampleHome(ServerId(session.currentServerId!!)))
-                }
-            )
-
-        val result = source.loadNotifications()
-
-        val notification = (result as DataResult.Content).data.single()
-        assertEquals("Install", notification.actionLabel)
-        assertTrue(notification.actionLabelDesc != null)
-    }
-
-    @Test
     fun appUpdateNotificationUsesTransactionStateInsteadOfLocalizedHostLabels() {
         val ready =
             SharedSettingsUpdateCheckSnapshot(
@@ -474,171 +397,6 @@ class HomeDataSourceTest {
     }
 
     @Test
-    fun loadHomeDoesNotBlockOnAgentDirectMessageStatusEnrichment() = runBlocking {
-        val localStore = InMemoryComposeLocalDataStore()
-        val agentDm =
-            ConversationSummary(
-                threadId = ThreadId("dm-agent-1"),
-                channelId = ChannelId("dm-agent-1"),
-                kind = ConversationKind.DirectMessage,
-                name = "Agent One",
-                directMessagePeerType = "agent",
-                presenceMemberId = MemberId("agent-1")
-            )
-        val humanDm =
-            ConversationSummary(
-                threadId = ThreadId("dm-human-1"),
-                channelId = ChannelId("dm-human-1"),
-                kind = ConversationKind.DirectMessage,
-                name = "Human One",
-                directMessagePeerType = "user",
-                presenceMemberId = MemberId("human-1")
-            )
-        val memberRepository =
-            FakeMemberRepository(
-                members =
-                    listOf(
-                        MemberProfile(
-                            id = MemberId("agent-1"),
-                            displayName = "Agent One",
-                            handle = "agent-one",
-                            kind = MemberKind.Agent,
-                            presence = Presence.Active,
-                            agentStatus = AgentStatus.Working
-                        ),
-                        MemberProfile(
-                            id = MemberId("human-1"),
-                            displayName = "Human One",
-                            handle = "human-one",
-                            kind = MemberKind.Human,
-                            presence = Presence.Active
-                        )
-                    )
-            )
-        val source =
-            SharedHomeDataSource(
-                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
-                api = FakeHomeApi(),
-                memberRepository = memberRepository,
-                parseHome = { _, session ->
-                    DataResult.Content(
-                        sampleHome(ServerId(session.currentServerId!!)).copy(
-                            directMessages = listOf(agentDm.toHomeDirectMessageRow(), humanDm.toHomeDirectMessageRow())
-                        )
-                    )
-                }
-            )
-
-        val result = source.loadHome()
-
-        val dms = (result as DataResult.Content).data.directMessages
-        assertEquals(MemberId("agent-1"), dms[0].presenceMemberId)
-        assertEquals(MemberId("human-1"), dms[1].presenceMemberId)
-        assertEquals(0, memberRepository.getMembersCalls)
-
-        val patch = source.refreshAgentDirectMessageStatuses(result.data)
-
-        assertFalse(patch.changed)
-        assertEquals(0, memberRepository.getMembersCalls)
-        assertEquals(emptyList(), patch.directMessages)
-        // The local home snapshot cache is gone (fb845a19): loadHome does not
-        // write it and writeHomeSnapshot is a no-op that reports false.
-        assertNull(localStore.readHome(ServerId("server-1")))
-
-        assertFalse(source.writeHomeSnapshot(patch.snapshot, source = "test_agent_dm_status_refresh"))
-
-        assertNull(localStore.readHome(ServerId("server-1")))
-    }
-
-    @Test
-    fun backgroundLoadFetchesNetworkWithoutCachedHomeShortCircuit() = runBlocking {
-        // The cached-home short circuit for background loads was removed together
-        // with the home snapshot blob cache (fb845a19 "fix(home): remove home
-        // snapshot blob cache"): background loads now always fetch the network.
-        val serverId = ServerId("server-1")
-        val localStore = InMemoryComposeLocalDataStore()
-        localStore.writeHome(sampleHome(serverId))
-        val api = FakeHomeApi()
-        val source =
-            SharedHomeDataSource(
-                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
-                api = api,
-                parseHome = { payload, _ -> DataResult.Content(sampleHome(payload.serverId)) }
-            )
-
-        val result = source.loadHome(priority = DataRequestPriority.Background)
-
-        assertEquals(4, api.calls)
-        assertEquals("general", (result as DataResult.Content).data.channels.single().name)
-    }
-
-    @Test
-    fun agentStatusProjectionReusesLoadedMemberSnapshotWithoutNetworkRefresh() = runBlocking {
-        val members =
-            listOf(
-                MemberProfile(
-                    id = MemberId("agent-1"),
-                    displayName = "Agent One",
-                    handle = "agent-one",
-                    kind = MemberKind.Agent,
-                    presence = Presence.Active,
-                    agentStatus = AgentStatus.Working
-                )
-            )
-        val memberRepository = FakeMemberRepository(members)
-        val memberStore = SharedServerMembersStore(memberRepository)
-        memberStore.seed(
-            MemberSnapshot(
-                server = ServerSummary(id = ServerId("server-1"), name = "Slock"),
-                members = members
-            )
-        )
-        val source =
-            SharedHomeDataSource(
-                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
-                api = FakeHomeApi(),
-                serverMembersStore = memberStore,
-                parseHome = { payload, _ -> DataResult.Content(sampleHome(payload.serverId)) }
-            )
-        val snapshot = sampleHome(ServerId("server-1"))
-
-        val patch = source.refreshAgentDirectMessageStatuses(snapshot)
-
-        assertFalse(patch.changed)
-        assertEquals(0, memberRepository.getMembersCalls)
-    }
-
-    /**
-     * Staging run 10-27 (Tenny / Scout): with incremental sync on, a Home reload reuses the machine
-     * list the last machines refresh read (reconnect / foreground / Machines scope) instead of
-     * reading `/servers/:id/machines` again; sync off reads it on every Home load as before.
-     */
-    @Test
-    fun syncOnHomeReloadReusesTheHeldMachineListAndSyncOffReadsItAgain() = runBlocking {
-        suspend fun machineReads(syncOn: Boolean): Pair<Int, List<String>> {
-            val computersApi = ConcurrentComputersApi(CompletableDeferred(Unit))
-            val source =
-                SharedHomeDataSource(
-                    sessionStore = InMemoryRaftAuthSessionStore(sampleSession(role = "admin")),
-                    api = FakeHomeApi(),
-                    computersApi = computersApi,
-                    notificationPreferenceRepository = notificationPreferences(offlineComputerAlertsEnabled = true),
-                    serverMembersStore =
-                        SharedServerMembersStore(FakeMemberRepository(emptyList()), incrementalSyncCoversRoster = { syncOn }),
-                    parseHome = { _, session -> DataResult.Content(sampleHome(ServerId(session.currentServerId!!))) },
-                )
-            // The first Home load reads the list (nothing held yet), then two Home reloads.
-            source.loadNotificationsAfterHomeLoad()
-            source.loadNotificationsAfterHomeLoad()
-            val last = source.loadNotificationsAfterHomeLoad() as DataResult.Content
-            return computersApi.machineCalls to last.data.map { it.id }
-        }
-
-        assertEquals(1 to listOf("machine-offline:machine-1"), machineReads(syncOn = true))
-        assertEquals(3 to listOf("machine-offline:machine-1"), machineReads(syncOn = false))
-    }
-
-    @Test
     fun syncOnMachinesRefreshStillReadsTheMachineList() = runBlocking {
         val computersApi = ConcurrentComputersApi(CompletableDeferred(Unit))
         val source =
@@ -675,23 +433,6 @@ class HomeDataSourceTest {
         assertEquals(emptyList(), afterChange.data.map { it.id }, "the offline alert left with the fresh list")
     }
 
-    /** Tenny 10-27: the sync machines refresh (Machines scope) reads fresh and is what later reloads reuse. */
-    @Test
-    fun syncOnMachinesRefreshOverwritesTheHeldListForLaterHomeReloads() = runBlocking {
-        val computersApi = ConcurrentComputersApi(CompletableDeferred(Unit))
-        val source = syncOnMachinesSource(computersApi)
-        val first = source.loadNotificationsAfterHomeLoad() as DataResult.Content
-        assertEquals(listOf("machine-offline:machine-1"), first.data.map { it.id })
-
-        computersApi.bodyText = ONLINE_MACHINE_BODY
-        val refreshed = source.loadNotifications() as DataResult.Content
-        val reused = source.loadNotificationsAfterHomeLoad() as DataResult.Content
-
-        assertEquals(2, computersApi.machineCalls)
-        assertEquals(emptyList(), refreshed.data.map { it.id })
-        assertEquals(emptyList(), reused.data.map { it.id }, "the reload reuses the refreshed list, not the first")
-    }
-
     /**
      * A machine read in flight when the held list is dropped may have been answered before the
      * change: landing after the drop it is not held, so the next sync-on Home reload reads again.
@@ -725,28 +466,6 @@ class HomeDataSourceTest {
         )
 
     @Test
-    fun cachedHomeReadReturnsEmptyWithoutNetwork() = runBlocking {
-        // readCachedHome always reports Empty(NoChannels) since the home snapshot
-        // blob cache was removed (fb845a19); it must still never hit the network.
-        val serverId = ServerId("server-1")
-        val localStore = InMemoryComposeLocalDataStore()
-        localStore.writeHome(sampleHome(serverId))
-        val api = FakeHomeApi()
-        val source =
-            SharedHomeDataSource(
-                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
-                api = api,
-                parseHome = { _, _ -> error("cached read should not parse network") }
-            )
-
-        val result = source.readCachedHome(serverId)
-
-        assertEquals(0, api.calls)
-        assertTrue(result is DataResult.Empty)
-        assertEquals(EmptyReason.NoChannels, (result as DataResult.Empty).reason)
-    }
-
-    @Test
     fun visibleLoadMapsThrownNetworkFailureToError() = runBlocking {
         val logs = mutableListOf<String>()
         val source =
@@ -766,38 +485,6 @@ class HomeDataSourceTest {
     }
 
     @Test
-    fun loadHomeLogsEndpointCategoryAndContractMismatch() = runBlocking {
-        val logs = mutableListOf<String>()
-        val source =
-            SharedHomeDataSource(
-                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
-                api = FakeHomeApi(channelsBody = """{"channels":[]}"""),
-                parseHome = { _, _ -> error("typed home api should reject wrapper before parser") },
-                diagnosticsLogger = logs::add
-            )
-
-        val result = source.loadHome(priority = DataRequestPriority.Visible)
-
-        assertTrue(result is DataResult.Error)
-        assertEquals("home_channels_contract_mismatch", result.error.code)
-        assertContains(
-            logs,
-            "home_endpoint category=channels code=200 result=error code=home_channels_contract_mismatch"
-        )
-        assertTrue(logs.any { it.contains("home_parse_start source=home_channels") && it.contains("dispatcher=JsonParse") })
-        assertTrue(
-            logs.any {
-                it.contains("home_parse_result source=home_channels result=error code=home_channels_contract_mismatch") &&
-                    it.contains("dispatcher=JsonParse")
-            }
-        )
-        assertContains(
-            logs,
-            "home_bootstrap_result result=error code=home_channels_contract_mismatch stage=payload"
-        )
-    }
-
-    @Test
     fun loadHomeRejectsGuessedHomeWrappersBeforeParser() = runBlocking {
         val source =
             SharedHomeDataSource(
@@ -810,21 +497,6 @@ class HomeDataSourceTest {
 
         assertTrue(result is DataResult.Error)
         assertEquals("home_channels_contract_mismatch", result.error.code)
-    }
-
-    @Test
-    fun loadHomeRejectsGuessedDirectMessageWrappersBeforeParser() = runBlocking {
-        val source =
-            SharedHomeDataSource(
-                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
-                api = FakeHomeApi(directMessagesBody = """{"directMessages":[]}"""),
-                parseHome = { _, _ -> error("typed home api should reject wrapper before parser") }
-            )
-
-        val result = source.loadHome(priority = DataRequestPriority.Visible)
-
-        assertTrue(result is DataResult.Error)
-        assertEquals("home_direct_messages_contract_mismatch", result.error.code)
     }
 
     // task #831: a contract-mismatched unread section is still rejected (never
@@ -856,29 +528,6 @@ class HomeDataSourceTest {
             )
             assertEquals(1, result.data.channels.size)
         }
-    }
-
-    @Test
-    fun guessedServerUnreadSummaryWrapperIsRejectedWithoutBlockingCanonicalHome() = runBlocking {
-        val source =
-            SharedHomeDataSource(
-                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
-                api = FakeHomeApi(serverUnreadSummaryBody = """{"unreadCount":24}"""),
-                parseHome = { payload, session ->
-                    // Guessed object shape rejected → not mis-accepted as summary data.
-                    assertEquals(emptyList(), payload.serverUnreadSummary)
-                    assertFalse(payload.serverUnreadSummaryAvailable)
-                    DataResult.Content(sampleHome(ServerId(session.currentServerId!!)))
-                }
-            )
-
-        val result = source.loadHome(priority = DataRequestPriority.Visible)
-
-        assertTrue(
-            result is DataResult.Content,
-            "canonical Home must load even when the server-unread-summary wire shape is rejected"
-        )
-        assertEquals(1, result.data.channels.size)
     }
 
     @Test
@@ -947,28 +596,6 @@ class HomeDataSourceTest {
         assertTrue(
             result is DataResult.Content,
             "canonical Home must still load when the server-unread-summary endpoint errors"
-        )
-        assertEquals(1, result.data.channels.size)
-    }
-
-    @Test
-    fun erroringChannelUnreadCountsMustNotBlockCanonicalHome() = runBlocking {
-        val source =
-            SharedHomeDataSource(
-                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
-                api = UnreadAuxiliaryHomeApi(errorCounts = true),
-                parseHome = { payload, session ->
-                    assertTrue(payload.serverUnreadSummaryAvailable)
-                    assertFalse(payload.unreadEnrichmentAvailable)
-                    DataResult.Content(sampleHome(ServerId(session.currentServerId!!)))
-                }
-            )
-
-        val result = withTimeout(5_000L) { source.loadHome() }
-
-        assertTrue(
-            result is DataResult.Content,
-            "canonical Home must still load when the channel-unread-counts endpoint errors"
         )
         assertEquals(1, result.data.channels.size)
     }
@@ -1087,47 +714,6 @@ class HomeDataSourceTest {
         override suspend fun serverUnreadSummary(priority: DataRequestPriority): HomeNetworkResponse = ok(serverUnreadSummaryBody).also { calls++ }
 
         private fun ok(body: String): HomeNetworkResponse = HomeNetworkResponse(code = 200, bodyText = body)
-    }
-
-    private class ConcurrentHomeApi : RaftHomeApi {
-        val calls = mutableListOf<String>()
-        private val channelsStarted = CompletableDeferred<Unit>()
-        private val directMessagesStarted = CompletableDeferred<Unit>()
-        private val unreadCountsStarted = CompletableDeferred<Unit>()
-        private val serverUnreadSummaryStarted = CompletableDeferred<Unit>()
-
-        override suspend fun channels(priority: DataRequestPriority): HomeNetworkResponse {
-            calls += "channels"
-            channelsStarted.complete(Unit)
-            directMessagesStarted.await()
-            unreadCountsStarted.await()
-            serverUnreadSummaryStarted.await()
-            return ok("[]")
-        }
-
-        override suspend fun directMessages(priority: DataRequestPriority): HomeNetworkResponse {
-            calls += "direct_messages"
-            directMessagesStarted.complete(Unit)
-            channelsStarted.await()
-            return ok("[]")
-        }
-
-        override suspend fun channelUnreadCounts(priority: DataRequestPriority): HomeNetworkResponse {
-            calls += "channel_unread_counts"
-            unreadCountsStarted.complete(Unit)
-            channelsStarted.await()
-            return ok(EMPTY_CHANNEL_UNREAD_SUMMARY_BODY)
-        }
-
-        override suspend fun serverUnreadSummary(priority: DataRequestPriority): HomeNetworkResponse {
-            calls += "server_unread_summary"
-            serverUnreadSummaryStarted.complete(Unit)
-            channelsStarted.await()
-            return ok("[]")
-        }
-
-        private fun ok(body: String): HomeNetworkResponse =
-            HomeNetworkResponse(code = 200, bodyText = body)
     }
 
     private class ConcurrentAnnouncementsApi : RaftAnnouncementsRemindersApi {

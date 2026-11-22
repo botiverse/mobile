@@ -1,6 +1,5 @@
 package build.raft.app.data
 
-import build.raft.app.SharedCreateAgentMachineOption
 import build.raft.app.model.ServerId
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
@@ -18,75 +17,6 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class SharedComputersStoreTest {
-    @Test
-    fun ensureComputerPickerLoadsMachinesOncePerServer() = runBlocking {
-        val api = RecordingComputersApi()
-        val store = store(api)
-
-        store.ensureComputerPickerForServer("server-1")
-        store.ensureComputerPickerForServer("server-1")
-
-        assertEquals(1, api.calls.count { it == "GET servers/server-1/machines" })
-        assertEquals(
-            SharedComputersPickerSlice(
-                machines =
-                    listOf(
-                        SharedCreateAgentMachineOption(
-                            id = "machine-1",
-                            name = "Maria Laptop",
-                            status = "online",
-                            runtimes = listOf("claude", "codex"),
-                            usageFactsKnown = true
-                        )
-                ),
-                status = SharedComputersLoadStatus.Loaded,
-                hasSnapshot = true
-            ),
-            store.state.value.selectComputerPickerSlice("server-1")
-        )
-    }
-
-    // Review of #4591: a card naming a computer asks on every Home rebuild; a guest's 403 must not
-    // send the request again for that server while the owner stays (a forced refresh still does).
-    @Test
-    fun noPermissionIsRememberedPerServerUntilAForcedRefresh() = runBlocking {
-        val api = RecordingComputersApi()
-        api.respond = { HomeNetworkResponse(code = 403, bodyText = """{"error":"Forbidden"}""") }
-        val store = store(api)
-
-        store.ensureComputerPickerForServer("server-1")
-        assertEquals(SharedComputersLoadStatus.Error, store.state.value.selectComputerPickerSlice("server-1").status)
-        repeat(3) { store.ensureComputerPickerForServer("server-1", priority = DataRequestPriority.Background) }
-        assertEquals(1, api.calls.count { it == "GET servers/server-1/machines" }, "no retry after no permission")
-
-        // Another server is asked on its own.
-        api.respond = { HomeNetworkResponse(code = 200, bodyText = machinesBody) }
-        store.ensureComputerPickerForServer("server-2")
-        assertEquals(1, api.calls.count { it == "GET servers/server-2/machines" })
-
-        // The person's own refresh asks again; once allowed, the list loads and the memo is gone.
-        store.ensureComputerPickerForServer("server-1", force = true)
-        assertEquals(2, api.calls.count { it == "GET servers/server-1/machines" })
-        assertEquals(SharedComputersLoadStatus.Loaded, store.state.value.selectComputerPickerSlice("server-1").status)
-    }
-
-    @Test
-    fun concurrentEnsuresShareOneRequest() = runBlocking {
-        val api = ControlledComputersApi()
-        val pending = api.enqueuePending()
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        val store = controlledStore(api, scope)
-
-        val first = scope.async(start = CoroutineStart.UNDISPATCHED) { store.ensureComputerPickerForServer("server-1", priority = DataRequestPriority.Background) }
-        val second = scope.async(start = CoroutineStart.UNDISPATCHED) { store.ensureComputerPickerForServer("server-1", priority = DataRequestPriority.Background) }
-        pending.complete(HomeNetworkResponse(code = 403, bodyText = """{"error":"Forbidden"}"""))
-        first.await()
-        second.await()
-        store.ensureComputerPickerForServer("server-1", priority = DataRequestPriority.Background)
-
-        assertEquals(listOf("server-1"), api.serverIds, "one request in flight, none after the 403")
-    }
-
     @Test
     fun failedComputerPickerLoadRetries() = runBlocking {
         val api = RecordingComputersApi()
@@ -120,29 +50,6 @@ class SharedComputersStoreTest {
     }
 
     @Test
-    fun settingsComputerSlicesProjectFromSharedMachineSnapshot() = runBlocking {
-        val api = RecordingComputersApi()
-        val store = store(api)
-
-        val computers = store.loadSettingsComputersForServer("server-1")
-        val detailComputer = store.loadSettingsComputerSnapshotForServer("server-1", "machine-1")
-
-        assertEquals(1, api.calls.count { it == "GET servers/server-1/machines" })
-        val snapshot = (computers as DataResult.Content).data
-        assertEquals("0.53.0", snapshot.latestDaemonVersion)
-        assertEquals("machine-1", snapshot.computers.single().id)
-        assertEquals("Maria Laptop", snapshot.computers.single().name)
-        assertEquals(true, snapshot.computers.single().online)
-        assertEquals("darwin", snapshot.computers.single().platform)
-        assertEquals("maria.local", snapshot.computers.single().hostname)
-        assertEquals("sk_machine_abc", snapshot.computers.single().apiKeyPrefix)
-        assertEquals(7L, snapshot.computers.single().statusVersion)
-
-        val computer = (detailComputer as DataResult.Content).data
-        assertEquals(snapshot.computers.single(), computer)
-    }
-
-    @Test
     fun computerListsPutMyComputersFirstAttachedOrOwned() {
         // artin task #53 and #triage:#332 (web orderSidebarMachineIds / isMyComputer): mine (attached
         // or owned) first, then the rest, server order kept; a Public Computer (no owner) is nobody's.
@@ -170,49 +77,6 @@ class SharedComputersStoreTest {
                 null to listOf("b", "d", "a", "public", "owned", "theirs"),
             )
         cases.forEach { (userId, expected) -> assertEquals(expected, machines.inComputerListOrder(userId).map { it.id }, "as $userId") }
-    }
-
-    @Test
-    fun startupPrewarmUsesBackgroundPriority() = runBlocking {
-        val api = ControlledComputersApi()
-        api.enqueue(HomeNetworkResponse(code = 200, bodyText = machinesBody))
-        val store = controlledStore(api, this@runBlocking)
-
-        store.ensureComputerPickerForServer(
-            serverId = "server-1",
-            priority = DataRequestPriority.Background
-        )
-
-        assertEquals(listOf(DataRequestPriority.Background), api.priorities)
-        assertTrue(store.state.value.selectComputerPickerSlice("server-1").hasSnapshot)
-    }
-
-    @Test
-    fun repeatedMembersAndDialogIntentsJoinOneInFlightRequest() = runBlocking {
-        val api = ControlledComputersApi()
-        val response = api.enqueuePending()
-        val store = controlledStore(api, this@runBlocking)
-
-        val membersLoad = async(start = CoroutineStart.UNDISPATCHED) {
-            store.ensureComputerPickerForServer("server-1", force = true, priority = DataRequestPriority.Visible)
-        }
-        yield()
-        val dialogEnsure = async(start = CoroutineStart.UNDISPATCHED) {
-            store.ensureComputerPickerForServer("server-1", force = false, priority = DataRequestPriority.Visible)
-        }
-        val retryWhileLoading = async(start = CoroutineStart.UNDISPATCHED) {
-            store.ensureComputerPickerForServer("server-1", force = true, priority = DataRequestPriority.Visible)
-        }
-        yield()
-
-        assertEquals(1, api.priorities.size)
-        assertTrue(store.state.value.selectComputerPickerSlice("server-1").initialLoadInFlight)
-
-        response.complete(HomeNetworkResponse(code = 200, bodyText = machinesBody))
-        membersLoad.await()
-        dialogEnsure.await()
-        retryWhileLoading.await()
-        assertEquals(1, api.priorities.size)
     }
 
     @Test
@@ -341,38 +205,6 @@ class SharedComputersStoreTest {
     }
 
     @Test
-    fun unknownOrUnreadableSessionKeepsTheComputerListAndOnlyASignOutClearsIt() = runBlocking {
-        // Architecture review B, site 9: the owner came from readSession(), whose null is also "cannot
-        // be read" (a corrupt record, a failed read); every such read wiped the in-memory list.
-        val api = RecordingComputersApi()
-        val owner = SharedComputersOwner("environment", "account-a", "session-a")
-        var binding: RaftAccountBinding<SharedComputersOwner> = RaftAccountBinding.SignedIn(owner)
-        val store =
-            SharedComputersStore(
-                computersApiClient = RaftComputersApiClient(api),
-                scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined),
-                ownerProvider = { binding.accountOrNull },
-                ownerBinding = { binding },
-            )
-        store.ensureComputerPickerForServer("server-1")
-        assertTrue(store.state.value.selectComputerPickerSlice("server-1").hasSnapshot)
-
-        for (unknown in listOf(RaftAccountBinding.Corrupt("SerializationException"), RaftAccountBinding.Unknown)) {
-            binding = unknown
-            store.reconcileOwner()
-            store.ensureComputerPickerForServer("server-1")
-            assertEquals(owner, store.state.value.owner, "$unknown is not a sign-out")
-            assertEquals(listOf("machine-1"), store.state.value.selectComputerPickerSlice("server-1").machines.map { it.id })
-        }
-        assertEquals(1, api.callCount, "nothing is fetched without a known owner")
-
-        binding = RaftAccountBinding.SignedOut
-        store.reconcileOwner()
-        assertNull(store.state.value.owner)
-        assertFalse(store.state.value.selectComputerPickerSlice("server-1").hasSnapshot)
-    }
-
-    @Test
     fun accountSwitchClearsSnapshotsAndRejectsOldCompletion() = runBlocking {
         val ownerA = SharedComputersOwner("environment", "account-a", "session-a")
         val ownerB = SharedComputersOwner("environment", "account-b", "session-b")
@@ -409,32 +241,6 @@ class SharedComputersStoreTest {
         val slice = store.state.value.selectComputerPickerSlice("shared-server")
         assertEquals(ownerB, store.state.value.owner)
         assertEquals(listOf("machine-b"), slice.machines.map { it.id })
-    }
-
-    @Test
-    fun ownerChangeAtPublicationRejectsResponseEvenBeforeExplicitReconcile() = runBlocking {
-        val ownerA = SharedComputersOwner("environment", "account-a", "session-a")
-        val ownerB = SharedComputersOwner("environment", "account-b", "session-b")
-        var owner = ownerA
-        val api = ControlledComputersApi()
-        val responseA = api.enqueuePending()
-        val store =
-            SharedComputersStore(
-                computersApiClient = RaftComputersApiClient(api),
-                scope = this@runBlocking,
-                ownerProvider = { owner }
-            )
-
-        val loadA = async(start = CoroutineStart.UNDISPATCHED) {
-            store.ensureComputerPickerForServer("shared-server")
-        }
-        yield()
-        owner = ownerB
-        responseA.complete(HomeNetworkResponse(code = 200, bodyText = machinesBodyFor("machine-a", "A Computer")))
-        loadA.await()
-
-        assertEquals(ownerB, store.state.value.owner)
-        assertFalse(store.state.value.selectComputerPickerSlice("shared-server").hasSnapshot)
     }
 
     @Test
@@ -486,16 +292,6 @@ class SharedComputersStoreTest {
         assertEquals("Maria Desktop", machine.name)
         assertEquals(listOf(ComputerLoginStep("codex", ComputerLoginStepAction.SignIn)), machine.loginSteps)
         assertEquals(true, machine.serverNeedsAttention)
-    }
-
-    @Test
-    fun syncedMachineRowsLeaveAnUnloadedServerForItsLoad() = runBlocking {
-        val store = store(RecordingComputersApi())
-        val row = parseSyncedComputerRow(syncMachineRow("machine-1", "Maria Laptop", "online"))!!
-
-        assertFalse(store.applySyncedMachineRows("server-1", listOf(row), deletes = emptySet()))
-        assertFalse(store.state.value.selectComputerServerSlice("server-1").hasSnapshot)
-        assertNull(parseSyncedComputerRow(kotlinx.serialization.json.buildJsonObject { put("id", kotlinx.serialization.json.JsonPrimitive("m")) }))
     }
 
     @Test

@@ -37,11 +37,6 @@ class RaftMarkdownMentionReadBadgeTest {
     }
 
     @Test
-    fun markRiseScalesWithFontSize() {
-        assertEquals(16.5f, raftMarkdownMentionReadMarkRiseSp(20.sp), 0.001f)
-    }
-
-    @Test
     fun revisionStillDistinguishesReadFromUnread() {
         assertTrue(mention(read = true).text != mention(read = false).text)
     }

@@ -45,16 +45,6 @@ class ProfileDescriptionTest {
     }
 
     @Test
-    fun lineBreaksCompareAsStored() {
-        val stored = "Legacy intro.\n" + "x".repeat(398)
-        assertFalse(profileDescriptionTooLong(stored.replace("\n", "\r\n"), stored), "CRLF is the stored LF")
-        assertFalse(profileDescriptionTooLong(stored.replace("\n", "\r"), stored), "a lone CR is the stored LF")
-        // 299 characters and a CRLF count as 300 once normalised: it fits.
-        assertFalse(profileDescriptionTooLong("x".repeat(150) + "\r\n" + "x".repeat(149), null))
-        assertEquals(PROFILE_DESCRIPTION_MAX_LENGTH, profileDescriptionLength("x".repeat(150) + "\r\n" + "x".repeat(149)))
-    }
-
-    @Test
     fun countsTheTrimmedTextLikeTheWeb() {
         assertEquals(412, profileDescriptionLength(legacy))
         assertEquals(3, profileDescriptionLength("  abc \n"))

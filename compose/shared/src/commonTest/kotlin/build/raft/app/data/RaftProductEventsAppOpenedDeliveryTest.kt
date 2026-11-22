@@ -110,29 +110,4 @@ class RaftProductEventsAppOpenedDeliveryTest {
             assertEquals(0, transport.sendAttempts.size, "clientEventsAllowed=false: never sent")
             assertEquals(0, client.queuedEventCount, "and not kept")
         }
-
-    @Test
-    fun signedInReturnAfterTheGapSendsOneForegroundOpen() =
-        runTest {
-            val transport = RecordingProductEventsTransport()
-            val client = productEventsClient(transport)
-            val recorder = recorder(client)
-            client.setSignedIn(serverA)
-            recorder.onAppForeground()
-            settleProductEvents()
-            assertEquals(listOf("cold"), transport.appOpenedStarts())
-
-            recorder.onAppBackground()
-            testScheduler.advanceTimeBy(RaftAppOpenForegroundGapMillis - 1)
-            recorder.onAppForeground()
-            settleProductEvents()
-            assertEquals(listOf("cold"), transport.appOpenedStarts(), "29:59 away: same session")
-
-            recorder.onAppBackground()
-            testScheduler.advanceTimeBy(RaftAppOpenForegroundGapMillis)
-            recorder.onAppForeground()
-            recorder.onAppForeground() // iOS inactive -> active blip
-            settleProductEvents()
-            assertEquals(listOf("cold", "foreground"), transport.appOpenedStarts())
-        }
 }

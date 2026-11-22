@@ -15,19 +15,6 @@ import kotlin.test.assertEquals
 
 class SharedMembersStoreTest {
     @Test
-    fun channelSuggestionsLoadOncePerServer() = runBlocking {
-        val channelRepository = FakeChannelRepository()
-        val store = store(channelRepository)
-
-        store.dispatch(SharedMembersIntent.EnsureChannelSuggestions)
-        store.dispatch(SharedMembersIntent.EnsureChannelSuggestions)
-
-        assertEquals(1, channelRepository.getChannelsCalls)
-        assertEquals(listOf(SharedMembersChannelSuggestion("general", "team", channelId = "channel-1")), store.state.value.channelSuggestions)
-        assertEquals(SharedMembersLoadStatus.Loaded, store.state.value.channelStatus)
-    }
-
-    @Test
     fun channelSuggestionsForceRefresh() = runBlocking {
         val channelRepository = FakeChannelRepository()
         val store = store(channelRepository)

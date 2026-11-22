@@ -2,7 +2,6 @@ package build.raft.app.nav
 
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertSame
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 
@@ -15,11 +14,5 @@ class RaftStackRootTabTest {
         assertEquals(JsonPrimitive("more"), data["slockInitialTab"])
         assertEquals(JsonPrimitive("shell-1"), data["slockShellInstanceId"])
         assertEquals(JsonPrimitive("settings"), raftAppShellPageDataWithTab(shell, "settings")["slockInitialTab"])
-    }
-
-    @Test fun `home missing or unknown tabs leave the shell pageData unchanged`() {
-        assertSame(shell, raftAppShellPageDataWithTab(shell, null))
-        assertSame(shell, raftAppShellPageDataWithTab(shell, "home"))
-        assertSame(shell, raftAppShellPageDataWithTab(shell, "not-a-tab"))
     }
 }

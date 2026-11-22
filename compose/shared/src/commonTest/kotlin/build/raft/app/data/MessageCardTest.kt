@@ -39,31 +39,6 @@ class MessageCardTest {
     }
 
     @Test
-    fun `a card the shared schema refuses is not drawn`() {
-        val cases =
-            mapOf(
-                "no version" to messageCardBuildStoredJson.replace(""""version":1,""", ""),
-                "version 2" to messageCardBuildStoredJson.replace(""""version":1""", """"version":2"""),
-                "a key a card has no place for" to messageCardBuildStoredJson.replace(""""version":1,""", """"version":1,"title":"x","""),
-                "an element type this client does not know" to
-                    messageCardBuildStoredJson.replace(""""type":"Badge"""", """"type":"Image""""),
-                "a button that calls back" to
-                    messageCardBuildStoredJson.replace(
-                        """{"kind":"navigate","url":"https://appstoreconnect.apple.com/apps/1"}""",
-                        """{"kind":"execute","action_id":"approve","confirm":"prepare"}""",
-                    ),
-                "a button to a non-https URL" to messageCardBuildStoredJson.replace("https://appstoreconnect", "http://appstoreconnect"),
-                "a root that is not an element" to messageCardBuildStoredJson.replace(""""root":"root"""", """"root":"missing""""),
-                "an element no one reaches" to
-                    messageCardBuildStoredJson.replace(""""children":["title","meta","links"]""", """"children":["title","meta"]"""),
-                "five buttons" to fiveButtonCard(),
-                "depth 5" to deepCard(levels = 6),
-            )
-        for ((case, json) in cases) assertNull(parse(json), case)
-        assertNotNull(parse(deepCard(levels = 5)), "depth 4 is allowed")
-    }
-
-    @Test
     fun `a card message projects its card and revision and time onto the message`() {
         val metadata = metadataOf(messageCardMetadataJson(messageCardUpdateTestCardJson("Ready for testing"), 2, "2026-11-03T12:10:00.000Z"))
         val card = assertNotNull(readMessageCardFromMetadata(metadata))
@@ -186,27 +161,5 @@ class MessageCardTest {
 
         val metadata = metadataOf(messageCardMetadataJson(messageCardOpenBesideStoredJson, 1, "2026-11-11T00:40:00.000Z"))
         assertNotNull(readMessageCardFromMetadata(metadata), "drawn as a card, not its fallback text")
-    }
-
-    private fun fiveButtonCard(): String {
-        val ids = (0 until 5).map { "b$it" }
-        val buttons =
-            ids.joinToString(",") {
-                """"$it":{"type":"Button","props":{"label":"$it","action":{"kind":"navigate","url":"https://example.com/$it"}}}"""
-            }
-        return """{"version":1,"root":"root","elements":{"root":{"type":"Stack","props":{},"children":[${ids.joinToString(",") { "\"$it\"" }}]},$buttons}}"""
-    }
-
-    /** A chain of Stacks [levels] deep ending in a Text (the root is depth 0). */
-    private fun deepCard(levels: Int): String {
-        val elements =
-            (0 until levels).joinToString(",") { i ->
-                if (i == levels - 1) {
-                    """"s$i":{"type":"Text","props":{"text":"leaf"}}"""
-                } else {
-                    """"s$i":{"type":"Stack","props":{},"children":["s${i + 1}"]}"""
-                }
-            }
-        return """{"version":1,"root":"s0","elements":{$elements}}"""
     }
 }

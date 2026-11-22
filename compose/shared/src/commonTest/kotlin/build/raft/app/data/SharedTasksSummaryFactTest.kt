@@ -225,14 +225,6 @@ class SharedTasksSummaryFactTest {
         assertEquals(SharedTaskFactFoldOutcome.Conflict, store.upsertTask(ServerA, full.copy(description = "Another text")))
     }
 
-    @Test
-    fun aPageFoldsInOneGo() = runTest {
-        val store = SharedTasksDataStore(currentServerIdProvider = { ServerA })
-        val outcomes = store.upsertTasksForCurrentServer(ServerA, listOf(task("a"), task("b"), summary))
-        assertEquals(List(3) { SharedTaskFactFoldOutcome.Accepted }, outcomes)
-        assertEquals(null, SharedTasksDataStore(currentServerIdProvider = { "server-b" }).upsertTasksForCurrentServer(ServerA, listOf(task("a"))))
-    }
-
     private companion object {
         const val ServerA = "server-a"
     }

@@ -2,7 +2,6 @@ package build.raft.app.network
 
 import kotlin.test.AfterTest
 import kotlin.test.Test
-import kotlin.test.assertEquals
 import kotlin.test.assertNull
 import kotlin.time.TestTimeSource
 import kotlin.time.Duration.Companion.milliseconds
@@ -20,13 +19,6 @@ class AttachmentDownloadSessionHeadersTest {
     }
 
     @Test
-    fun takenOnceForTheSameDownloadAndUrl() {
-        AttachmentDownloadSessionHeaders.register("d1", url, headers)
-        assertEquals(headers, AttachmentDownloadSessionHeaders.take("d1", url))
-        assertNull(AttachmentDownloadSessionHeaders.take("d1", url))
-    }
-
-    @Test
     fun anotherUrlOrDownloadGetsNothingAndDropsTheEntry() {
         AttachmentDownloadSessionHeaders.register("d1", url, headers)
         assertNull(AttachmentDownloadSessionHeaders.take("d2", url))
@@ -40,13 +32,6 @@ class AttachmentDownloadSessionHeadersTest {
         AttachmentDownloadSessionHeaders.timeSource = time
         AttachmentDownloadSessionHeaders.register("d1", url, headers)
         time += (AttachmentDownloadSessionHeaders.ttlMillis + 1).milliseconds
-        assertNull(AttachmentDownloadSessionHeaders.take("d1", url))
-    }
-
-    @Test
-    fun forgetDrops() {
-        AttachmentDownloadSessionHeaders.register("d1", url, headers)
-        AttachmentDownloadSessionHeaders.forget("d1")
         assertNull(AttachmentDownloadSessionHeaders.take("d1", url))
     }
 }

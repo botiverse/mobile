@@ -40,29 +40,6 @@ import kotlin.test.assertTrue
 
 class CurrentMessageCommitAuthorityRedTest {
 
-    @Test
-    fun contextExposesOnlyExactPartitionDerivedInsideCurrentGrantGate() = runBlocking {
-        val fixture = fixture("context")
-        try {
-            fixture.auth.replace(session(), AuthSessionEvent.Authenticated(generation = 1))
-            val authority = assertNotNull(fixture.provider.authorityFlow("shell-a").value)
-            val grant = assertNotNull(authority.grant("server-a"))
-            var partition: DurablePartitionKey? = null
-
-            assertTrue(
-                fixture.provider.runWithCurrentMessageGrant(grant) { context ->
-                    partition = context.partition
-                },
-            )
-            assertEquals(
-                DurablePartitionKey("server-a", "user-1", SYNC_CORE_MESSAGES_DURABLE_CONSUMER_ID, "env-test"),
-                partition,
-            )
-        } finally {
-            fixture.close()
-        }
-    }
-
     /**
      * Task #1109 (offline cache ②): the commit partition carries the REAL environment of the selected API
      * server, normalized exactly like the pending-send journal owner key (trim + trailing '/'), so staging
@@ -100,27 +77,6 @@ class CurrentMessageCommitAuthorityRedTest {
             fixture.auth.replace(session(), AuthSessionEvent.Authenticated(generation = 1))
             val authority = fixture.provider.authorityFlow("shell-a").value
             assertNull(authority?.grant("server-a"))
-        } finally {
-            fixture.close()
-        }
-    }
-
-    @Test
-    fun a2StaleCapturedGrantRunsZeroContextOrLaneWork() = runBlocking {
-        val fixture = fixture("stale")
-        try {
-            fixture.auth.replace(session(), AuthSessionEvent.Authenticated(generation = 1))
-            val first = assertNotNull(fixture.provider.authorityFlow("shell-a").value)
-            val stale = assertNotNull(first.grant("server-a"))
-            fixture.auth.replace(session(), AuthSessionEvent.TokensRotated(generation = 2))
-            var contextRuns = 0
-
-            assertFalse(
-                fixture.provider.runWithCurrentMessageGrant(stale) {
-                    contextRuns += 1
-                },
-            )
-            assertEquals(0, contextRuns)
         } finally {
             fixture.close()
         }

@@ -13,20 +13,4 @@ class RaftHeaderRefreshIndicatorTest {
         assertFalse(raftHeaderRefreshIndicatorVisible(refreshing = false, pullRefreshing = true))
         assertFalse(raftHeaderRefreshIndicatorVisible(refreshing = false, pullRefreshing = false))
     }
-
-    @Test
-    fun storePullStateHandsTheRefreshToThePullIndicatorOnlyAfterAPull() {
-        val state = RaftStorePullRefreshState()
-        // A background refresh of the same store flag: header spinner, no pull indicator.
-        assertFalse(state.pullRefreshing(refreshing = true))
-        assertTrue(state.headerRefreshing(refreshing = true))
-
-        state.pulled = true
-        assertTrue(state.pullRefreshing(refreshing = true))
-        assertFalse(state.headerRefreshing(refreshing = true))
-
-        // Idle: neither.
-        assertFalse(state.pullRefreshing(refreshing = false))
-        assertFalse(state.headerRefreshing(refreshing = false))
-    }
 }

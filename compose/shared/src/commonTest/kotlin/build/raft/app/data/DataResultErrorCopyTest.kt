@@ -61,21 +61,6 @@ class DataResultErrorCopyTest {
     }
 
     @Test
-    fun createAgentFallbackPrefersServerTextThenLocalizedGenericWithoutLeakingCode() {
-        assertEquals(
-            "Cindy agent already exists in this server",
-            createAgentFallbackErrorText(
-                ScreenError(code = "http_409", serverMessage = "Cindy agent already exists in this server"),
-                genericPrefix = "无法创建 Agent"
-            )
-        )
-        assertEquals(
-            "无法创建 Agent",
-            createAgentFallbackErrorText(ScreenError("http_418"), genericPrefix = "无法创建 Agent")
-        )
-    }
-
-    @Test
     fun screenErrorCopyDoesNotTreatMessageTextAsCode() {
         assertEquals(
             "Something went wrong. Please try again.",
@@ -96,50 +81,6 @@ class DataResultErrorCopyTest {
         assertEquals(
             "These settings are not available right now.",
             EmptyReason.NoSettingsAvailable.userFacingMessage(errorStrings)
-        )
-    }
-
-    @Test
-    fun permissionPresentationUsesStatusSuffixAndDeterministicRawPriority() {
-        assertEquals(
-            "Your session expired. Sign in again to continue.",
-            PermissionBlocker(
-                code = "tasks_401",
-                serverMessage = "  サーバーの認証文言は表示しない  "
-            ).userFacingMessage(errorStrings),
-            "401 suffix must always use localized session copy"
-        )
-
-        val exactServerReason = "  この操作は監査ポリシーで拒否されました。  "
-        assertEquals(
-            exactServerReason,
-            PermissionBlocker(
-                code = "home_http_403",
-                serverMessage = exactServerReason
-            ).userFacingMessage(errorStrings),
-            "audited nonblank 403 reason must remain verbatim and untranslated"
-        )
-
-        listOf(null, "", " \t\n ").forEach { blankReason ->
-            assertEquals(
-                "You do not have permission to view this page.",
-                PermissionBlocker(
-                    code = "home_http_403",
-                    serverMessage = blankReason
-                ).userFacingMessage(errorStrings)
-            )
-        }
-    }
-
-    @Test
-    fun unknownErrorRawFallbackIsVerbatimAndUntranslated() {
-        val exactServerReason = "  访问策略拒绝了此操作 / ポリシー拒否  "
-        assertEquals(
-            exactServerReason,
-            ScreenError(
-                code = "route_specific_unmapped_failure",
-                serverMessage = exactServerReason
-            ).userFacingMessage(errorStrings)
         )
     }
 

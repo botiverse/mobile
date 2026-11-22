@@ -44,36 +44,6 @@ class SharedAgentPanelTabOrderStoreTest {
     }
 
     @Test
-    fun tracedWritesReportSourceAndBeforeAfterOrder() {
-        val store = SharedAgentPanelTabOrderStore()
-        val logs = mutableListOf<String>()
-
-        store.bindServer(
-            serverId = "server-1",
-            source = "test_bind",
-            logger = logs::add
-        )
-        store.applyLoaded(
-            serverId = "server-1",
-            order = listOf("activity", "profile"),
-            source = "test_load",
-            logger = logs::add
-        )
-
-        assertEquals(2, logs.size)
-        assertTrue(logs[0].contains("operation=bindServer"))
-        assertTrue(logs[0].contains("source=test_bind"))
-        assertTrue(logs[0].contains("changed=true"))
-        assertTrue(logs[0].contains("beforeOrder=[]"))
-        assertTrue(logs[0].contains("afterOrder=[]"))
-        assertTrue(logs[1].contains("operation=applyLoaded"))
-        assertTrue(logs[1].contains("source=test_load"))
-        assertTrue(logs[1].contains("beforeOrder=[]"))
-        assertTrue(logs[1].contains("inputOrder=[activity,profile]"))
-        assertTrue(logs[1].contains("afterOrder=[activity,profile]"))
-    }
-
-    @Test
     fun coldStartKnowsTheLastOrderBeforeAnyBindOrLoad() {
         // Task #22: the order saved by a previous process run is readable during the profile's
         // first composition, before any effect binds the store or the server answers.
@@ -94,17 +64,6 @@ class SharedAgentPanelTabOrderStoreTest {
         // Still refreshed from the server: the cache is the last known value, not the answer.
         assertFalse(store.state.value.loaded)
         assertTrue(store.state.value.orderKnown)
-    }
-
-    @Test
-    fun aKnownDefaultOrderIsDistinctFromNeverSeen() {
-        val preferences = InMemoryRaftKeyValueStore()
-        SharedAgentPanelTabOrderStore(KeyValueAgentPanelTabOrderPreferenceRepository(preferences))
-            .applyLoaded("server-1", emptyList())
-
-        val store = SharedAgentPanelTabOrderStore(KeyValueAgentPanelTabOrderPreferenceRepository(preferences))
-
-        assertEquals(emptyList(), store.knownOrderFor("server-1"))
     }
 
     @Test

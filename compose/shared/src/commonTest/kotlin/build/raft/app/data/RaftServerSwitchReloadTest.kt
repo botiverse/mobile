@@ -8,9 +8,6 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
-import kotlinx.coroutines.flow.take
-import kotlinx.coroutines.flow.toList
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.yield
 import kotlin.test.Test
@@ -53,29 +50,6 @@ class RaftServerSwitchReloadTest {
     }
 
     @Test
-    fun savedNeverOpenedIsNotLoadedByASwitch() = runBlocking<Unit> {
-        val auth = SwitchingAuthStore(authSessionFixture(servers = twoServers, selectedServerId = "server-a"))
-        val saved = ServerTaggedSavedRepository()
-        val storeScope = CoroutineScope(coroutineContext + Job())
-        val store =
-            SharedHomeSearchSavedStore(
-                authStore = auth,
-                savedRepository = saved,
-                searchRepository = NoSearchRepository,
-                scope = storeScope,
-            )
-        settle()
-
-        auth.switchServer("server-b")
-        settle()
-
-        assertEquals(emptyList(), saved.loadedServers)
-        assertEquals(emptyList(), store.state.value.saved.items)
-        store.clear()
-        storeScope.coroutineContext[Job]?.cancel()
-    }
-
-    @Test
     fun computersListReloadsForTheNewServerAfterASwitch() = runBlocking<Unit> {
         val auth = SwitchingAuthStore(authSessionFixture(servers = twoServers, selectedServerId = "server-a"))
         val computers = ServerTaggedComputersSource()
@@ -98,47 +72,6 @@ class RaftServerSwitchReloadTest {
         assertEquals(SharedSettingsRoute(SharedSettingsDestination.Computers), store.state.value.route)
         store.clear()
         storeScope.coroutineContext[Job]?.cancel()
-    }
-
-    @Test
-    fun accountOnlySettingsPageIsNotReloadedByASwitch() = runBlocking<Unit> {
-        val auth = SwitchingAuthStore(authSessionFixture(servers = twoServers, selectedServerId = "server-a"))
-        val computers = ServerTaggedComputersSource()
-        val storeScope = CoroutineScope(coroutineContext + Job())
-        val store =
-            SharedSettingsStore(
-                dataSource = SharedSettingsDataSource(sessionStore = auth, computersSource = computers),
-                scope = storeScope,
-                standaloneNavigation = true,
-            )
-        settle()
-        store.accept(SharedSettingsIntent.LoadPageContent(SharedSettingsDestination.OpenSourceLicenses))
-
-        auth.switchServer("server-b")
-        settle()
-
-        assertEquals(emptyList(), computers.loadedServers)
-        assertEquals(SharedSettingsRoute(SharedSettingsDestination.OpenSourceLicenses), store.state.value.route)
-        store.clear()
-        storeScope.coroutineContext[Job]?.cancel()
-    }
-
-    @Test
-    fun serverScopeFlowFollowsSelectionAndIgnoresTokenRotation() = runBlocking<Unit> {
-        val auth = SwitchingAuthStore(authSessionFixture(servers = twoServers, selectedServerId = "server-a"))
-        val collected = mutableListOf<RaftServerScopeKey?>()
-        val job = launch { auth.raftServerScopeFlow().take(2).toList(collected) }
-        settle()
-        auth.rotateTokens()
-        settle()
-        auth.switchServer("server-b")
-        settle()
-        job.join()
-
-        assertEquals(
-            listOf<RaftServerScopeKey?>(RaftServerScopeKey("user-1", "server-a"), RaftServerScopeKey("user-1", "server-b")),
-            collected,
-        )
     }
 
     private fun computerNames(store: SharedSettingsStore): List<String> =

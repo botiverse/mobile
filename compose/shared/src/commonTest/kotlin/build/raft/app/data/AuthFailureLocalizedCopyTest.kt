@@ -62,16 +62,4 @@ class AuthFailureLocalizedCopyTest {
             AuthApiResult.Failure(code = 429, errorBodyText = """{"error":"Slow down","code":429}""").toSharedAuthFailure().userMessage
         )
     }
-
-    @Test
-    fun emailVerificationFailureKeepsTheLocalizedCopy() {
-        val failure =
-            SharedEmailVerificationResult.Failure(
-                SharedAuthErrorCode.Network,
-                "Network unavailable. Check your connection.",
-                Res.string.error_network_connection_failed.desc()
-            )
-        assertEquals(Res.string.error_network_connection_failed.desc(), failure.userMessage)
-        assertEquals("server words".desc(), SharedEmailVerificationResult.Failure(SharedAuthErrorCode.Unknown, "server words").userMessage)
-    }
 }

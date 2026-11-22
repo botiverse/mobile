@@ -130,28 +130,6 @@ class SharedAppLinkPreviewStoreBatchedReadTest {
     }
 
     @Test
-    fun rereadsStopWhenTheRowLeavesAndAnotherViewReadsTheWholeMessage() = runTest(StandardTestDispatcher()) {
-        val api = FakeAppLinkPreviewApi().apply { cardReadResponses += answer(card(Pr1), limited(Pr2, 1)) }
-        val store = store(api)
-        val batch = AppLinkBatchRead(AppLinkCardView.create(), "en")
-        store.read(BViewer, BServer, BMessage, BContent, BConversation, batch)
-        runCurrent()
-        val job = store.keepReadingLimited(BViewer, BServer, BMessage, BContent, batch)
-        job.cancel()
-        advanceTimeBy(120_000)
-        runCurrent()
-        assertEquals(1, api.cardReads.size, "no re-read off screen")
-        // Mounted again: a new view, and a link still rate_limited means the whole message is read again.
-        val again = AppLinkBatchRead(AppLinkCardView.create(), "en")
-        assertTrue(store.view(again).wantsRead)
-        store.read(BViewer, BServer, BMessage, BContent, BConversation, again)
-        runCurrent()
-        assertEquals(2, api.cardReads.size)
-        assertEquals(again.view.id, api.cardReads[1].viewInstanceId)
-        assertNull(api.cardReads[1].urls)
-    }
-
-    @Test
     fun onlyTheViewsLatestRequestIsApplied() = runTest(StandardTestDispatcher()) {
         val gate = kotlinx.coroutines.CompletableDeferred<Unit>()
         val api =

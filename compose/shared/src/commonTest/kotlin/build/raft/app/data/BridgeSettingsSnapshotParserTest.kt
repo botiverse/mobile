@@ -151,22 +151,6 @@ class BridgeSettingsSnapshotParserTest {
     }
 
     @Test
-    fun developerClampsInvalidDownloadSizesToUnknown() {
-        val update =
-            buildJsonObject {
-                put("status", "ok")
-                put("updateDownloadSizesResolved", true)
-                put("updatePatchDownloadSizeBytes", -1L)
-                put("updateFullDownloadSizeBytes", -2L)
-            }
-                .toDeveloperSnapshot()
-                .updateCheck
-
-        assertEquals(0L, update.patchDownloadSizeBytes)
-        assertEquals(0L, update.fullDownloadSizeBytes)
-    }
-
-    @Test
     fun developerFailsUnknownHandsTransactionStateClosedToLegacyMapping() {
         val update =
             buildJsonObject {

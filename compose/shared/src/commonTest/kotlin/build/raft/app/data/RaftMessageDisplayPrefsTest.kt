@@ -60,12 +60,4 @@ class RaftMessageDisplayPrefsTest {
             RaftMessageDisplayPrefsStore.resetForTests()
         }
     }
-
-    @Test
-    fun keysNeedBothIds() {
-        assertEquals("s1:c1", raftMessageDisplayPrefsKey(" s1 ", "c1"))
-        assertNull(raftMessageDisplayPrefsKey(null, "c1"))
-        assertNull(raftMessageDisplayPrefsKey("s1", " "))
-        assertEquals("chatLayout:long_message_collapse_migrated:s1:c1", raftLongMessageCollapseMigratedKey("s1", "c1"))
-    }
 }

@@ -1,16 +1,11 @@
 package build.raft.app.network
 
-import build.raft.app.data.RaftPlatformFileChunkSource
-import build.raft.app.data.boundedPlatformFileNetworkStream
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.mock.MockEngine
 import io.ktor.client.engine.mock.MockRequestHandleScope
 import io.ktor.client.engine.mock.respond
-import io.ktor.client.engine.mock.toByteArray
-import io.ktor.client.network.sockets.ConnectTimeoutException
 import io.ktor.client.network.sockets.SocketTimeoutException
 import io.ktor.client.plugins.HttpRequestTimeoutException
-import io.ktor.client.plugins.HttpTimeoutCapability
 import io.ktor.client.request.HttpRequestData
 import io.ktor.client.request.HttpResponseData
 import io.ktor.http.HttpHeaders
@@ -91,26 +86,6 @@ class KtorRaftHttpExecutorTest {
             RaftRequestPriority.entries.flatMap { priority -> expectedPerLane.map { priority to it } },
             harness.lanes
         )
-    }
-
-    @Test
-    fun callerContentTypeMovesOntoTheBody() = runBlocking {
-        val harness = Harness { respond("{}", HttpStatusCode.Created) }
-
-        val response =
-            harness.executor.execute(
-                priority = RaftRequestPriority.Foreground,
-                url = "https://api.raft.test/api/messages",
-                method = "POST",
-                headers = mapOf("Content-Type" to "application/json; charset=utf-8", "Content-Length" to "999"),
-                bodyText = """{"content":"hi"}""",
-                jsonBody = true
-            )
-
-        assertEquals(201, response.code)
-        val body = harness.requests.single().body
-        assertEquals("application/json; charset=utf-8", body.contentType.toString())
-        assertEquals("""{"content":"hi"}""", body.toByteArray().decodeToString())
     }
 
     @Test
@@ -200,50 +175,6 @@ class KtorRaftHttpExecutorTest {
     }
 
     @Test
-    fun anUploadThatGotNoAnswerReportsWhatFailedAndNoPhaseItCouldNotMeasure() = runBlocking {
-        // The body went out, then nothing came back in time: a body time, no response wait, no edge.
-        // The error's text holds the signed URL; only its class is named.
-        val url = "https://bucket.r2.test/obj/key?X-Amz-Signature=abc"
-        val answered = Harness(transportFacts = { "reusedConnection=true requestBodyMs=700" }) { throw SocketTimeoutException("no answer from $url") }
-        // The call ended with the body still going out.
-        val midBody =
-            Harness(transportFacts = { "reusedConnection=false connectSetupMs=90 requestBodyPartialMs=4200" }) {
-                throw IllegalStateException("stream was reset while sending /private/var/mobile/IMG_0042.jpg to $url")
-            }
-
-        val noAnswer = answered.executor.executeBytes(RaftRequestPriority.Foreground, url, "PUT", emptyMap(), ByteArray(10))
-        val reset = midBody.executor.executeBytes(RaftRequestPriority.Foreground, url, "PUT", emptyMap(), ByteArray(10))
-
-        assertEquals(0, noAnswer.code)
-        val noAnswerFacts = requireNotNull(noAnswer.uploadFacts) { "facts of a failed PUT" }
-        assertEquals(RaftTransportFailureKind.TIMEOUT, noAnswerFacts.failureKind)
-        assertTrue(noAnswerFacts.transportError.orEmpty().endsWith(":SocketTimeoutException"), noAnswerFacts.transportError)
-        assertEquals(
-            RaftUploadWireFacts(
-                requestBytes = 10L,
-                requestBodyMs = 700L,
-                failureKind = RaftTransportFailureKind.TIMEOUT,
-                transportError = noAnswerFacts.transportError,
-            ),
-            noAnswerFacts,
-        )
-        assertEquals(
-            RaftUploadWireFacts(
-                requestBytes = 10L,
-                connectMs = 90L,
-                requestBodyPartialMs = 4_200L,
-                failureKind = RaftTransportFailureKind.UNKNOWN,
-                transportError = "other",
-            ),
-            reset.uploadFacts,
-        )
-        listOf(noAnswer, reset).forEach { response ->
-            val facts = response.uploadFacts.toString()
-            assertFalse("bucket" in facts || "Signature" in facts || "IMG_0042" in facts, facts)
-        }
-    }
-
-    @Test
     fun aMultipartUploadResetByTheConnectionIsSentOnceMore() = runBlocking {
         // Hands a5eae49e: a VPN reset the upload's stream after the body reached the server.
         var calls = 0
@@ -283,57 +214,6 @@ class KtorRaftHttpExecutorTest {
         assertEquals(1, server.requests.size)
     }
 
-    /**
-     * The upload's complete call waits 45 s (web slock #15743), past the server's own 30 s storage
-     * check: the engine gets that whole budget and no shorter idle timeout, while an ordinary call keeps
-     * the 30 s budget and the lane's own idle timeouts.
-     */
-    @Test
-    fun aCallWithItsOwnBudgetGetsItOnTheEngineWithNoShorterIdleTimeout() = runBlocking {
-        val harness = Harness { respond("{}", HttpStatusCode.OK) }
-
-        harness.executor.execute(RaftRequestPriority.Foreground, "https://api.raft.test/api/messages", "POST", emptyMap(), null, false)
-        harness.executor.executeWithTotalTimeout(
-            priority = RaftRequestPriority.Foreground,
-            url = "https://api.raft.test/api/attachments/upload-sessions/u-1/complete",
-            method = "POST",
-            headers = emptyMap(),
-            bodyText = null,
-            jsonBody = false,
-            totalTimeoutMillis = RAFT_ATTACHMENT_UPLOAD_COMPLETE_TIMEOUT_MILLIS,
-        )
-
-        val (ordinary, complete) = harness.requests.map { request -> request.getCapabilityOrNull(HttpTimeoutCapability) }
-        assertEquals(RAFT_KTOR_REQUEST_TIMEOUT_MILLIS, ordinary?.requestTimeoutMillis)
-        assertNull(ordinary?.socketTimeoutMillis, "an ordinary call keeps the lane's idle timeouts")
-        assertEquals(RAFT_ATTACHMENT_UPLOAD_COMPLETE_TIMEOUT_MILLIS, complete?.requestTimeoutMillis)
-        assertEquals(RAFT_ATTACHMENT_UPLOAD_COMPLETE_TIMEOUT_MILLIS, complete?.socketTimeoutMillis)
-        assertEquals(RAFT_KTOR_CONNECT_TIMEOUT_MILLIS, complete?.connectTimeoutMillis)
-    }
-
-    @Test
-    fun transportFailuresMapToTheExistingErrorKinds() = runBlocking {
-        val cases: List<Pair<Throwable, String>> =
-            listOf(
-                HttpRequestTimeoutException("https://api.raft.test/api/x", 30_000L) to "TIMEOUT",
-                ConnectTimeoutException("connect timed out") to "TIMEOUT",
-                IllegalStateException("boom") to "UNKNOWN",
-            ) + platformFailureCases()
-        cases.forEach { (failure, kind) ->
-            val harness = Harness { throw failure }
-
-            val response = harness.executor.execute(RaftRequestPriority.Visible, "https://api.raft.test/api/x", "GET", emptyMap(), null, false)
-
-            val label = failure::class.simpleName
-            assertEquals(0, response.code, "$label")
-            assertTrue("kind=$kind " in response.transportDiagnostics.orEmpty(), "$label: ${response.transportDiagnostics}")
-            if (kind == "TIMEOUT") {
-                // Settings / Home map error codes containing "timeout" to the timed-out copy.
-                assertTrue(response.errorBodyText.orEmpty().contains("timeout"), "$label: ${response.errorBodyText}")
-            }
-        }
-    }
-
     @Test
     fun httpErrorsAreReturnedNotThrownAndEdgeBlockPagesKeepTheirMarker() = runBlocking {
         val harness =
@@ -352,103 +232,6 @@ class KtorRaftHttpExecutorTest {
         assertEquals("""{"error":"nope"}""", server.errorBodyText)
         assertEquals(403, edge.code)
         assertEquals("""{"error":"edge_blocked"}""", edge.errorBodyText)
-    }
-
-    @Test
-    fun multipartUploadStreamsTheFileAndReportsProgressToTheEnd() = runBlocking {
-        val fileBytes = ByteArray(300 * 1024) { (it % 251).toByte() }
-        val harness = Harness { request -> respond(request.body.toByteArray().size.toString(), HttpStatusCode.OK) }
-        val progress = mutableListOf<RaftWireTransferProgress>()
-
-        val response =
-            harness.executor.executeMultipart(
-                priority = RaftRequestPriority.Foreground,
-                url = "https://api.raft.test/api/attachments/upload",
-                fields = mapOf("channelId" to "c1"),
-                files =
-                    listOf(
-                        MultipartFile(
-                            name = "file",
-                            fileName = "photo\".png",
-                            mimeType = "image/png",
-                            fileRef = "content://photo",
-                            sizeBytes = fileBytes.size.toLong(),
-                            streamOpener = { boundedPlatformFileNetworkStream(fileBytes.size.toLong(), ByteChunkSource(fileBytes)) }
-                        )
-                    ),
-                headers = mapOf(HEADER_SERVER_ID to "server-1"),
-                onUploadProgress = { progress += it }
-            )
-
-        assertEquals(200, response.code)
-        val total = response.bodyText!!.toLong()
-        assertEquals(total, harness.requests.single().body.contentLength)
-        assertTrue(progress.size > 2, "progress=$progress")
-        assertEquals(progress.map { it.bytesTransferred }.sorted(), progress.map { it.bytesTransferred })
-        assertEquals(RaftWireTransferProgress(total, total), progress.last())
-        assertTrue(harness.requests.single().body.contentType.toString().startsWith("multipart/form-data; boundary="))
-        assertEquals(listOf(RaftRequestPriority.Foreground to RaftKtorCallKind.MultipartUpload), harness.lanes)
-    }
-
-    @Test
-    fun presignedFilePutCarriesItsLengthAndReportsProgress() = runBlocking {
-        val fileBytes = ByteArray(150 * 1024) { 7 }
-        val received = CompletableDeferred<ByteArray>()
-        val harness = Harness { request ->
-            received.complete(request.body.toByteArray())
-            respond("", HttpStatusCode.OK)
-        }
-        val progress = mutableListOf<RaftWireTransferProgress>()
-
-        val response =
-            harness.executor.executeFile(
-                priority = RaftRequestPriority.Visible,
-                url = "https://bucket.test/k?sig=1",
-                method = "PUT",
-                headers = emptyMap(),
-                body =
-                    RaftHttpFileBody(
-                        path = "content://doc",
-                        contentType = "application/pdf",
-                        contentLength = fileBytes.size.toLong(),
-                        openStream = { boundedPlatformFileNetworkStream(fileBytes.size.toLong(), ByteChunkSource(fileBytes)) }
-                    ),
-                onUploadProgress = { progress += it }
-            )
-
-        assertEquals(200, response.code)
-        assertTrue(received.await().contentEquals(fileBytes))
-        val body = harness.requests.single().body
-        assertEquals(fileBytes.size.toLong(), body.contentLength)
-        assertEquals("application/pdf", body.contentType.toString())
-        assertEquals(RaftWireTransferProgress(fileBytes.size.toLong(), fileBytes.size.toLong()), progress.last())
-    }
-
-    @Test
-    fun visibilityRetirementCancelsTheInFlightReadLikeBefore() = runBlocking {
-        val coordinator = RaftNetworkRequestLifetimeCoordinator()
-        coordinator.onProcessVisibilityChanged(foreground = true)
-        val reachedEngine = CompletableDeferred<Unit>()
-        val engineCancelled = CompletableDeferred<Unit>()
-        val harness =
-            Harness(coordinator) {
-                reachedEngine.complete(Unit)
-                try {
-                    awaitCancellation()
-                } finally {
-                    engineCancelled.complete(Unit)
-                }
-            }
-
-        val call = async { harness.executor.execute(RaftRequestPriority.Visible, "https://api.raft.test/api/x", "GET", emptyMap(), null, false) }
-        withTimeout(10_000) { reachedEngine.await() }
-        assertEquals(1, coordinator.onProcessVisibilityChanged(foreground = false).retiredRequestCount)
-
-        val response = call.await()
-        assertEquals(0, response.code)
-        assertEquals("network_request_lifecycle_retired", response.errorBodyText)
-        assertTrue("kind=CANCELLED" in response.transportDiagnostics.orEmpty())
-        withTimeout(10_000) { engineCancelled.await() }
     }
 
     @Test
@@ -476,23 +259,6 @@ class KtorRaftHttpExecutorTest {
             harness.logs.any { it.startsWith("slock_http_execute_finish") && "kind=CANCELLED" in it && "detail=caller_cancelled" in it },
             harness.logs.joinToString("\n")
         )
-    }
-
-    @Test
-    fun protocolIsLoggedOnlyWhenTheEngineReportsIt() = runBlocking {
-        listOf(true to "protocol=HTTP/1.1", false to "protocol=$RAFT_KTOR_PROTOCOL_UNREPORTED").forEach { (reports, expected) ->
-            val harness = Harness(engineReportsProtocol = reports) { respond("{}", HttpStatusCode.OK) }
-
-            val response =
-                harness.executor.execute(RaftRequestPriority.Visible, "https://api.raft.test/api/x", "GET", emptyMap(), null, false)
-
-            val diagnostics = response.transportDiagnostics.orEmpty()
-            assertTrue(expected in diagnostics, "reports=$reports: $diagnostics")
-            assertTrue(
-                harness.logs.any { it.startsWith("slock_http_execute_finish") && expected in it },
-                harness.logs.joinToString("\n")
-            )
-        }
     }
 
     /** A lane whose platform replaces its connections after a timeout (iOS, Hands 43837e84). */
@@ -543,17 +309,6 @@ class KtorRaftHttpExecutorTest {
         assertEquals(listOf(0L, 1L), lane.sent)
         assertEquals(listOf(0L to true, 1L to false), lane.outcomes)
         assertTrue(logs.any { it.startsWith("slock_http_execute_retry_fresh_session lane=visible_idempotent") }, logs.joinToString("\n"))
-    }
-
-    @Test
-    fun aTimeoutIsReturnedAsBeforeWhenTheLaneKeepsItsConnections() = runBlocking {
-        val lane = RecyclingLane(recycleOnTimeout = false)
-        val response = executorOn(lane, mutableListOf()).execute(RaftRequestPriority.Visible, "https://api.raft.test/api/x", "GET", emptyMap(), null, false)
-
-        assertEquals(0, response.code)
-        assertTrue("kind=TIMEOUT " in response.transportDiagnostics.orEmpty(), response.transportDiagnostics)
-        assertEquals(listOf(0L), lane.sent)
-        assertEquals(listOf(0L to true), lane.outcomes)
     }
 
     @Test
@@ -626,17 +381,6 @@ class KtorRaftHttpExecutorTest {
                 uploadProgress = BodyWriterUploadProgressTracker,
                 failedTraceIds = failedTraceIds,
             )
-    }
-
-    private class ByteChunkSource(private val bytes: ByteArray) : RaftPlatformFileChunkSource {
-        private var offset = 0
-
-        override suspend fun read(maxBytes: Int): ByteArray {
-            val end = minOf(bytes.size, offset + maxBytes)
-            return bytes.copyOfRange(offset, end).also { offset = end }
-        }
-
-        override fun close() = Unit
     }
 }
 

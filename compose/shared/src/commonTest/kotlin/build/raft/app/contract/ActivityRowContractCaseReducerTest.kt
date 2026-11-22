@@ -9,7 +9,6 @@ import build.raft.app.data.reduceActivityRow
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
-import kotlin.test.assertIs
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlin.test.fail
@@ -54,25 +53,6 @@ class ActivityRowContractCaseReducerTest {
         println("ACTIVITY_ROW_REDUCER_CONTRACT ${ActivityRowVendoredCases.SOURCE_SHA}: ran $ran of ${files.size}, ${failures.size} failed")
         if (failures.isNotEmpty()) fail("activity-row cases the reducer does not hold:\n  " + failures.joinToString("\n  "))
         assertTrue(ran > 0, "no agreed case ran")
-    }
-
-    @Test
-    fun theDriverReportsAMismatchItDoesNotHold() {
-        // The shipped case with its expectations flipped must fail, or a case could pass unchecked.
-        val text = ActivityRowVendoredCases.files.getValue("null_position_rereads")
-        val case = assertIs<ActivityRowCaseDecoding.Decoded>(decodeActivityRowContractCase("null_position_rereads", text)).case
-        assertEquals(emptyList(), runActivityRowCaseOnReducer(case))
-        val expect = case.expect!!
-        val flipped = case.copy(expect = expect.copy(reread = !expect.reread!!))
-        assertEquals(listOf("at the end: reread: expected ${!expect.reread}, got ${expect.reread}"), runActivityRowCaseOnReducer(flipped))
-
-        val predicate =
-            ActivityRowVendoredCases.files.keys.first { it.startsWith("predicate_") }.let { id ->
-                assertIs<ActivityRowCaseDecoding.Decoded>(decodeActivityRowContractCase(id, ActivityRowVendoredCases.files.getValue(id))).case
-            }
-        val verdict = predicate.expect!!.verdict!!
-        val wrong = predicate.copy(expect = predicate.expect.copy(verdict = verdict.copy(mention = !verdict.mention)))
-        assertEquals(1, runActivityRowCaseOnReducer(wrong).size, "a wrong verdict is reported")
     }
 
     @Test

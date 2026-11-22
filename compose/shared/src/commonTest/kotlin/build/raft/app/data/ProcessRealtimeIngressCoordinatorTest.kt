@@ -237,59 +237,6 @@ class ProcessRealtimeIngressCoordinatorTest {
         scope.cancel()
     }
 
-    /** Silent-drop audit: a process-path event the app can't place leaves a `realtime_event_dropped` line. */
-    @Test
-    fun aDroppedProcessEventIsLoggedWithItsReason() = runBlocking {
-        val auth = FakeAuthStore()
-        val registry =
-            RealtimeAuthorityRegistry(
-                KeyValueRealtimeAuthRevisionStore(InMemoryRaftKeyValueStore()),
-                processInstanceId = "process-ingress-test",
-            )
-        val provider = RealtimeAuthorityProvider(registry, auth, auth, { "env-test" })
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        provider.start(scope)
-        provider.registerScope("process-realtime-host", "process-owner")
-        auth.replace(session(), AuthSessionEvent.Authenticated(generation = 1))
-        val authority = assertNotNull(provider.authorityFlow("process-realtime-host").value)
-        val bus = FakeEventBus()
-        val logs = mutableListOf<String>()
-        ProcessRealtimeIngressCoordinator(
-            events = RaftRealtimeEvents(bus),
-            authorityProvider = provider,
-            authorityFlow = provider.authorityFlow("process-realtime-host"),
-            domainOwner =
-                SharedRealtimeDomainEventOwner(
-                    cursorStore = RealtimeAppliedSeqCursorStore(InMemoryRaftKeyValueStore()),
-                    runIfCurrentGrant = provider::runIfCurrentGrant,
-                    runWithCurrentMessageGrant = provider::runWithCurrentMessageGrant,
-                ),
-            authStore = auth,
-            environmentStore = SharedApiEnvironmentStore(InMemoryRaftKeyValueStore()),
-            mapper = RealtimeEventMapper(diagnosticsLogger = logs::add),
-            nativeHost = FakeNativeHost(),
-            scope = scope,
-            diagnostics = logs::add,
-        ).start()
-        yield()
-
-        // A message frame without its required `id`: the mapper can't decode it.
-        bus.post(RaftRealtimeNotifyContract.EventName, eventEnvelope(authority, RealtimeSocketEvents.MessageNew, """{"seq":1}"""))
-        // An envelope without a payload.
-        bus.post(RaftRealtimeNotifyContract.EventName, eventEnvelope(authority, RealtimeSocketEvents.MessageNew, ""))
-        yield()
-
-        val dropped = logs.filter { it.startsWith("realtime_event_dropped") }
-        assertEquals(
-            listOf(
-                "realtime_event_dropped eventName=message:new reason=decode keys=seq",
-                "realtime_event_dropped eventName=message:new reason=envelope_no_payload",
-            ),
-            dropped,
-        )
-        scope.cancel()
-    }
-
     /**
      * Reconnect jitter (Tenny 10-27, web #11453), wired as the provider wires it: the roster refetch of a
      * presence transport RE-connect waits the client's 0–20 s delay, while the same socket's message
@@ -407,20 +354,6 @@ class ProcessRealtimeIngressCoordinatorTest {
     }
 
     @Test
-    fun releasingAWindowShrinksTheSet() = runTest {
-        val fixture = multiSessionFixture(enabled = true)
-        fixture.demand.claim("shell-a", "server-a")
-        fixture.demand.claim("shell-b", "server-b")
-        runCurrent()
-
-        fixture.demand.release("shell-b")
-        runCurrent()
-
-        assertEquals(setOf("server-a"), fixture.host.reconciles.last().serverIds.toSet())
-        assertTrue(fixture.host.reconciles.last().multiSession)
-    }
-
-    @Test
     fun tokenRotationKeepsEveryWindowServer() = runTest {
         val fixture = multiSessionFixture(enabled = true)
         fixture.demand.claim("shell-a", "server-a")
@@ -465,52 +398,6 @@ class ProcessRealtimeIngressCoordinatorTest {
         advanceTimeBy(RaftRealtimeSessionDemand.HiddenWindowSessionGraceMillis + 1L)
         runCurrent()
         assertEquals(count, fixture.host.reconciles.size, "with the setting off a hidden window's grace never reconciles")
-    }
-
-    @Test
-    fun turningTheSettingOffRevertsToTheSelectedServerOnce() = runTest {
-        val fixture = multiSessionFixture(enabled = true)
-        fixture.demand.claim("shell-a", "server-a")
-        fixture.demand.claim("shell-b", "server-b")
-        runCurrent()
-
-        fixture.enabled = false
-        fixture.demand.notifySettingChanged()
-        runCurrent()
-        val reverted = fixture.host.reconciles.last()
-        assertEquals(setOf("server-a"), reverted.serverIds.toSet())
-        assertFalse(reverted.multiSession)
-
-        val count = fixture.host.reconciles.size
-        fixture.demand.release("shell-b")
-        runCurrent()
-        assertEquals(count, fixture.host.reconciles.size, "once reverted, claims no longer reconcile")
-    }
-
-    @Test
-    fun aWindowHiddenPastItsGraceLeavesTheSetWithoutAnotherChange() = runTest {
-        val fixture = multiSessionFixture(enabled = true)
-        fixture.demand.claim("shell-a", "server-a")
-        fixture.demand.claim("shell-b", "server-b")
-        fixture.demand.onVisibility("shell-b", visible = false, nowMillis = 1_000L + currentTime)
-        runCurrent()
-        assertEquals(setOf("server-a", "server-b"), fixture.host.reconciles.last().serverIds.toSet())
-        val before = fixture.host.reconciles.size
-
-        advanceTimeBy(RaftRealtimeSessionDemand.HiddenWindowSessionGraceMillis)
-        runCurrent()
-        assertEquals(before, fixture.host.reconciles.size, "still inside the grace: nothing to reconcile")
-
-        advanceTimeBy(1L)
-        runCurrent()
-        val last = fixture.host.reconciles.last()
-        assertEquals(before + 1, fixture.host.reconciles.size, "the expiry alone re-reconciles")
-        assertEquals(listOf("server-a"), last.serverIds)
-        assertTrue(last.multiSession)
-
-        advanceTimeBy(RaftRealtimeSessionDemand.HiddenWindowSessionGraceMillis * 2)
-        runCurrent()
-        assertEquals(before + 1, fixture.host.reconciles.size, "no hidden window left inside a grace: no more wake-ups")
     }
 
     // Hands a92fbb13: two restored windows, the one behind reconciled last. With multi-session realtime

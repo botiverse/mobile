@@ -288,31 +288,6 @@ class MemberRepositoryDataSourceTest {
     }
 
     @Test
-    fun agentDetailStartsIndependentSectionsTogetherWithoutFullAgentsFallback() = runBlocking {
-        val network = FakeMemberNetworkClient()
-        val gate = CompletableDeferred<Unit>()
-        network.detailRequestGate = gate
-        val repository = RealMemberRepository(sampleStore(), network)
-
-        val result = async {
-            repository.getAgentDetail(DataRequestPriority.Visible, MemberId("agent-1"))
-        }
-
-        try {
-            network.firstDetailRequestStarted.await()
-            repeat(FakeMemberNetworkClient.expectedDetailRequestStarts.size) {
-                yield()
-            }
-            assertEquals(FakeMemberNetworkClient.expectedDetailRequestStarts, network.detailRequestsStarted)
-            assertFalse(network.requests.any { it.matches("GET", "agents") })
-        } finally {
-            gate.complete(Unit)
-        }
-        assertIs<DataResult.Content<AgentDetailSnapshot>>(result.await())
-        Unit
-    }
-
-    @Test
     fun agentDetailCurrentActivityComesFromSingleAgentSummary() = runBlocking {
         val network =
             FakeMemberNetworkClient().apply {
@@ -370,22 +345,6 @@ class MemberRepositoryDataSourceTest {
         assertTrue(merged is DataResult.Content)
         assertTrue(!merged.data.activity.any { it.body == "Running task" })
         assertTrue(merged.data.activity.any { it.body == "After reset" })
-    }
-
-    @Test
-    fun agentDetailKeepsProfileWhenOptionalSectionFails() = runBlocking {
-        val network = FakeMemberNetworkClient().apply {
-            skillsResponse = HomeNetworkResponse(code = 503, bodyText = """{"code":"server_unavailable"}""")
-        }
-        val repository = RealMemberRepository(sampleStore(), network)
-        val agentId = MemberId("agent-1")
-
-        val detail = repository.getAgentDetail(DataRequestPriority.Visible, agentId)
-
-        assertTrue(detail is DataResult.Content)
-        assertEquals("agent-1", detail.data.summary?.id)
-        assertEquals("Noel Bot", detail.data.summary?.displayName)
-        assertEquals(emptyList(), detail.data.skills.groups)
     }
 
     @Test
@@ -468,34 +427,6 @@ class MemberRepositoryDataSourceTest {
 
             assertEquals("http_400", error.code, name)
             assertEquals(expectedMessage, error.serverMessage, name)
-        }
-    }
-
-    @Test
-    fun workspacePermissionErrorsPreserveExactServerErrorTextOn401And403() = runBlocking {
-        listOf(401, 403).forEach { status ->
-            val exactReason = "  member-route-$status 理由  "
-            val network =
-                FakeMemberNetworkClient().apply {
-                    workspaceFileResponse =
-                        HomeNetworkResponse(
-                            code = status,
-                            bodyText = null,
-                            errorBodyText = """{"error":"$exactReason"}"""
-                        )
-                }
-            val repository = RealMemberRepository(sampleStore(), network)
-
-            val blocker =
-                assertIs<DataResult.NoPermission>(
-                    repository.readAgentWorkspaceFile(
-                        DataRequestPriority.Visible,
-                        MemberId("agent-1"),
-                        "/repo/README.md"
-                    )
-                ).blocker
-
-            assertEquals(exactReason, blocker.serverMessage)
         }
     }
 

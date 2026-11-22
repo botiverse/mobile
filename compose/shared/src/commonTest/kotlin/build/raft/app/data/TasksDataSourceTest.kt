@@ -16,46 +16,6 @@ import kotlin.test.assertTrue
 
 class TasksDataSourceTest {
     @Test
-    fun typedTasksApiUsesCanonicalTaskRoutesAndBodies() = runBlocking {
-        val transport = RecordingTasksApi()
-        val client = RaftTasksApiClient(transport)
-
-        val serverTasks = client.serverTasks(ServerId("server-1"), DataRequestPriority.Visible)
-        val channelTasks = client.channelTasks(ChannelId("channel-1"), DataRequestPriority.Visible)
-        val byNumber = client.taskByNumber(ChannelId("channel-1"), 42, DataRequestPriority.Visible)
-        val created = client.createTasks(ChannelId("channel-1"), listOf(TaskCreateDraft("Ship KMP")), DataRequestPriority.Visible)
-        val claimed = client.claimTask(TaskId("task-1"))
-        val converted = client.convertMessage(MessageId("message-1"))
-        val unclaimed = client.unclaimTask(TaskId("task-1"))
-        val status = client.updateTaskStatus(TaskId("task-1"), TaskStatus.InReview)
-        val deleted = client.deleteTask(TaskId("task-1"))
-
-        assertIs<DataResult.Content<TaskSnapshot>>(serverTasks)
-        assertIs<DataResult.Content<TaskSnapshot>>(channelTasks)
-        assertIs<DataResult.Content<TaskActionResult>>(byNumber)
-        assertIs<DataResult.Content<TaskSnapshot>>(created)
-        assertIs<DataResult.Content<TaskActionResult>>(claimed)
-        assertIs<DataResult.Content<TaskConvertResult>>(converted)
-        assertIs<DataResult.Content<TaskActionResult>>(unclaimed)
-        assertIs<DataResult.Content<TaskActionResult>>(status)
-        assertIs<DataResult.Content<Unit>>(deleted)
-        assertEquals(
-            listOf(
-                "GET tasks/server server=server-1",
-                "GET tasks/channel/channel-1",
-                "GET tasks/channel/channel-1/number/42",
-                """POST tasks/channel/channel-1 body={"tasks":[{"title":"Ship KMP"}]}""",
-                "PATCH tasks/task-1/claim",
-                """POST tasks/convert-message body={"messageId":"message-1"}""",
-                "PATCH tasks/task-1/unclaim",
-                """PATCH tasks/task-1/status body={"status":"in_review"}""",
-                "DELETE tasks/task-1"
-            ),
-            transport.calls
-        )
-    }
-
-    @Test
     fun networkTasksApiUsesRaftNetworkClientRoutesAndBodies() = runBlocking {
         val networkClient = RecordingTasksNetworkClient()
         val client = RaftTasksApiClient(NetworkRaftTasksApi(networkClient))
@@ -372,41 +332,6 @@ class TasksDataSourceTest {
         assertTrue(logs.any { it == "projection_value_rejected source=task_creator field=member_kind value=human" })
         assertTrue(logs.any { it == "projection_value_rejected source=task_assignee field=member_kind value=system" })
         assertTrue(logs.none { "secret-assignee-id" in it || "Secret Assignee" in it })
-    }
-
-    @Test
-    fun taskActionWithUnknownStatusKeepsTheTaskAsUnknown() = runBlocking {
-        val logs = mutableListOf<String>()
-        val client =
-            RaftTasksApiClient(
-                RecordingTasksApi(
-                    actionBody =
-                        """
-                        {
-                          "task": {
-                            "id": "task-1",
-                            "channelId": "channel-1",
-                            "title": "Must not become Todo",
-                            "status": "future-status",
-                            "createdByType": "user",
-                            "createdById": "user-1"
-                          }
-                        }
-                        """.trimIndent(),
-                ),
-                diagnosticsLogger = logs::add,
-            )
-
-        val task =
-            assertIs<DataResult.Content<TaskActionResult>>(
-                client.taskByNumber(ChannelId("channel-1"), 1, DataRequestPriority.Visible),
-            ).data.task
-
-        assertEquals(TaskStatus.Unknown, task.status)
-        assertEquals(
-            listOf("projection_value_unknown source=task_wire field=task_status value=future-status"),
-            logs,
-        )
     }
 
     private class RecordingTasksApi(

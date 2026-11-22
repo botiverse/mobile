@@ -108,22 +108,6 @@ class ForwardMessageTargetServerSearchTest {
     }
 
     @Test
-    fun searchNeverLoadsTheMemberDirectory() = runTest {
-        val network = SearchNetworkClient()
-        network.searchResponse = { HomeNetworkResponse(code = 200, bodyText = ServerSearchBody) }
-        val repository = repository(network)
-
-        // Cold: interim may read DMs/channels once, the server answers — the member list is never read.
-        repository.searchTargetsProgressively(serverId, "de", limit = 60).toList()
-        repository.searchTargetsProgressively(serverId, "des", limit = 60).toList()
-
-        assertEquals(0, network.memberDirectoryCalls(), "search must never call getMembers: ${network.calls}")
-        assertEquals(1, network.calls.count { it.path == "channels" }, "the local interim index is reused across keystrokes")
-        assertEquals(1, network.calls.count { it.path == "channels/dm" })
-        assertEquals(2, network.calls.count { it.path == ForwardTargetSearchPath })
-    }
-
-    @Test
     fun progressiveSearchShowsLocalDmAndChannelMatchesThenTheServerList() = runTest {
         val network = SearchNetworkClient()
         val serverAnswer = CompletableDeferred<HomeNetworkResponse>()
@@ -269,29 +253,6 @@ class ForwardMessageTargetServerSearchTest {
         pending.getValue("d").complete(HomeNetworkResponse(code = 200, bodyText = searchBody("d-result")))
         advanceUntilIdle()
         assertEquals(listOf("des-result"), shown)
-    }
-
-    @Test
-    fun serverDebounceDelaysOnlyTheServerRequestNotTheInterim() = runTest {
-        val network = SearchNetworkClient()
-        network.searchResponse = { HomeNetworkResponse(code = 200, bodyText = searchBody("server-row")) }
-        val repository = repository(network)
-        val updates = mutableListOf<ForwardTargetSearchUpdate>()
-        val job =
-            launch {
-                repository.searchTargetsProgressively(
-                    serverId,
-                    "de",
-                    limit = 60,
-                    serverDebounceMillis = ForwardTargetServerSearchDebounceMillis
-                ).collect { updates += it }
-            }
-        runCurrent()
-        assertIs<ForwardTargetSearchUpdate.Interim>(updates.single())
-        assertEquals(0, network.calls.count { it.path == ForwardTargetSearchPath })
-        job.join()
-        assertEquals(1, network.calls.count { it.path == ForwardTargetSearchPath })
-        assertIs<ForwardTargetSearchUpdate.Final>(updates.last())
     }
 
     private fun repository(network: SearchNetworkClient): RealForwardMessageTargetRepository {

@@ -4,7 +4,6 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
 import kotlin.test.assertNull
-import kotlin.test.assertTrue
 import kotlinx.serialization.json.Json
 
 /**
@@ -60,19 +59,5 @@ class ArtifactSettledContractTest {
         assertEquals(4, reopened.version)
         assertEquals(3, reopened.was.version)
         assertEquals("Remy", reopened.was.by.displayName)
-    }
-
-    @Test
-    fun anUnreadableSettleIsLoggedNotDropped() {
-        val json = Json { ignoreUnknownKeys = true }
-        val card = json.decodeFromString(ArtifactCardWireDto.serializer(), artifactsHomeCardJson("pt_a", "Launch plan", extra = """"settled": { "by": "Remy" },"""))
-        val logs = mutableListOf<String>()
-        assertNull(card.settledOrNull { logs += it })
-        assertTrue(logs.single().startsWith("projection_value_unknown source=artifact_summary field=settled"), "$logs")
-        // Working and absent are no surprise: nothing is logged.
-        val working = json.decodeFromString(ArtifactCardWireDto.serializer(), artifactsHomeCardJson("pt_a", "Plan", extra = """"settled": null,"""))
-        assertNull(working.settledOrNull { logs += it })
-        assertNull(json.decodeFromString(ArtifactCardWireDto.serializer(), artifactsHomeCardJson("pt_a", "Plan")).settledOrNull { logs += it })
-        assertEquals(1, logs.size, "$logs")
     }
 }

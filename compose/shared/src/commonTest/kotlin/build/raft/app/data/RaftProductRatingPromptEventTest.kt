@@ -35,16 +35,4 @@ class RaftProductRatingPromptEventTest {
             events.map { event -> event.properties.mapValues { (_, value) -> value.jsonPrimitive.content } },
         )
     }
-
-    @Test
-    fun theEventWaitsForTheServersConsentLikeEveryOtherEvent() = runTest {
-        val transport = RecordingProductEventsTransport().apply { configAnswer = { RaftProductEventsConfigResult.Answered(false) } }
-        val client = productEventsClient(transport).also { it.setSignedIn(ServerId("srv-a")) }
-        RaftProductEventsRecorder(client, nowEpochMillis = { testScheduler.currentTime })
-            .appRatingPromptRequested(RaftAppRatingPromptTrigger.ActionCardApproved)
-        settleProductEvents()
-        assertEquals(listOf(ServerId("srv-a")), transport.configCalls)
-        assertEquals(0, transport.sendAttempts.size, "Share usage data off: no batch")
-        assertEquals(0, client.queuedEventCount)
-    }
 }

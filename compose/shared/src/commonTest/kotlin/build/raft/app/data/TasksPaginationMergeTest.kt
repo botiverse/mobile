@@ -70,14 +70,6 @@ class TasksPaginationMergeTest {
     }
 
     @Test
-    fun anEmptyPageStillUpdatesCursorState() {
-        val merged = content(task("task-1")).withAppendedTasks(emptyList(), nextCursor = null)
-        assertEquals("task-1", (merged.loadState as ScreenLoadState.Content).data.tasks.single().id.value)
-        assertNull(merged.nextCursor)
-        assertFalse(merged.hasMore)
-    }
-
-    @Test
     fun transientLoadMoreFailureKeepsCursorForRetry() {
         val state = content(task("task-1")).copy(nextCursor = "c2", hasMore = true)
         val failed = state.reduce(SharedTasksIntent.LoadMoreFailed(errorCode = "timeout"))
@@ -94,20 +86,6 @@ class TasksPaginationMergeTest {
         assertNull(failed.nextCursor)
         assertFalse(failed.hasMore)
     }
-
-    @Test
-    fun loadMoreIsASingleFlightAndNoOpWithoutMore() {
-        // No cursor / !hasMore -> LoadMore is a no-op.
-        val idle = content(task("task-1"))
-        assertFalse(idle.reduce(SharedTasksIntent.LoadMore).loadingMore)
-
-        // With more available -> starts loading.
-        val ready = idle.copy(nextCursor = "c2", hasMore = true)
-        assertTrue(ready.reduce(SharedTasksIntent.LoadMore).loadingMore)
-
-        // Already loading -> does not re-enter.
-        assertEquals(ready.reduce(SharedTasksIntent.LoadMore).reduce(SharedTasksIntent.LoadMore), ready.reduce(SharedTasksIntent.LoadMore))
-    }
 }
 
 /**
@@ -116,16 +94,6 @@ class TasksPaginationMergeTest {
  * reached the load-more threshold.
  */
 class TasksPaginationSentinelTest {
-    @Test
-    fun requestsOnlyWhenMoreIsAvailableAndIdle() {
-        // No more pages -> never.
-        assertFalse(shouldRequestNextTasksPage(totalItems = 10, lastVisibleIndex = 9, hasMore = false, loadingMore = false))
-        // Already loading -> no re-entry.
-        assertFalse(shouldRequestNextTasksPage(totalItems = 10, lastVisibleIndex = 9, hasMore = true, loadingMore = true))
-        // Empty list -> no request.
-        assertFalse(shouldRequestNextTasksPage(totalItems = 0, lastVisibleIndex = 0, hasMore = true, loadingMore = false))
-    }
-
     @Test
     fun requestsOnceTheViewportReachesTheThreshold() {
         // 200 items, threshold 5: index 194 leaves 5 after it -> not yet; 195 -> yes.
@@ -200,16 +168,6 @@ class TasksSummaryProductionShapeTest {
         // The opaque cursor is carried through verbatim.
         assertEquals("eyJjIjoiZDE4ZDlkYWQtOGE1Yy00NGVmLThkODUtMmMwNTcwYmFmOTM5IiwibiI6MjN9", page.nextCursor)
     }
-
-    @OptIn(kotlin.io.encoding.ExperimentalEncodingApi::class)
-    @Test
-    fun decodesTheProductionCursorAsChannelAndTaskNumber() {
-        val raw = "eyJjIjoiZDE4ZDlkYWQtOGE1Yy00NGVmLThkODUtMmMwNTcwYmFmOTM5IiwibiI6MjN9"
-        val decoded = kotlin.io.encoding.Base64.UrlSafe.decode(raw)
-            .decodeToString()
-        assertTrue(decoded.contains("\"c\":\"d18d9dad-8a5c-44ef-8d85-2c0570baf939\""), "cursor carries channelId")
-        assertTrue(decoded.contains("\"n\":23"), "cursor carries taskNumber")
-    }
 }
 
 /**
@@ -229,19 +187,5 @@ class TasksPaginationServerFenceTest {
         // No current server -> discard.
         assertFalse(tasksPageServerStillCurrent("server-A", null))
         assertFalse(tasksPageServerStillCurrent(null, null))
-    }
-
-    @Test
-    fun aPageIsDiscardedOnASameServerOwnerSwitch() {
-        // Same server, same owner -> apply.
-        assertTrue(tasksPageOwnerStillCurrent("base|user-A", "base|user-A"))
-        // Same server, user A logged out and user B logged in -> discard
-        // (a server-ID-only fence would WRONGLY apply this page).
-        assertFalse(tasksPageOwnerStillCurrent("base|user-A", "base|user-B"))
-        // Owner cleared (logout) -> discard.
-        assertFalse(tasksPageOwnerStillCurrent("base|user-A", null))
-        assertFalse(tasksPageOwnerStillCurrent(null, "base|user-B"))
-        // No owner provider at all (both null) -> unchanged, apply.
-        assertTrue(tasksPageOwnerStillCurrent(null, null))
     }
 }

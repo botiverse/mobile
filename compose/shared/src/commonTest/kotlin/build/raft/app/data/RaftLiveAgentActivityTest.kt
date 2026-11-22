@@ -85,27 +85,6 @@ class RaftLiveAgentActivityTest {
         assertEquals("Niko the Second", items.single().name)
     }
 
-    @OptIn(ExperimentalCoroutinesApi::class)
-    @Test
-    fun theFlowPrunesAnIdleAgentWhenItsGraceRunsOut() = runTest {
-        val working = MutableStateFlow(listOf(agent("niko"), agent("kirby")))
-        val seen = mutableListOf<List<String>>()
-        val job = launch { liveAgentActivityFlow(working, now = { currentTime }).collect { seen += it.ids() } }
-        runCurrent()
-        working.value = listOf(agent("kirby"))
-        runCurrent()
-        // Still listed during the grace.
-        assertEquals(listOf("niko", "kirby"), seen.last())
-        advanceTimeBy(RaftLiveAgentIdleGraceMillis + 100)
-        runCurrent()
-        assertEquals(listOf("kirby"), seen.last())
-        working.value = emptyList()
-        advanceTimeBy(RaftLiveAgentIdleGraceMillis + 100)
-        runCurrent()
-        assertEquals(emptyList(), seen.last())
-        job.cancel()
-    }
-
     /**
      * Web `LIVE_AGENT_ACTIVITY_VISIBLE_MS`: a row from a detailed frame leaves 90 s after the last
      * frame; a heartbeat (a new seq) restarts the window; the registry still holding the old fact

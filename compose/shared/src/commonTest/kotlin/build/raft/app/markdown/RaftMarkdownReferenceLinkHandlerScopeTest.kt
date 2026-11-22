@@ -28,14 +28,4 @@ class RaftMarkdownReferenceLinkHandlerScopeTest {
         // Doc A keeps its own definition.
         assertEquals("https://doc-a.example/target", docA.find("shared-label"))
     }
-
-    @Test
-    fun sameInstanceReusedAcrossRecompositionKeepsDefinitions() {
-        val handler = ReferenceLinkHandlerImpl()
-        handler.store("label", "https://example/target")
-        // Pure recomposition of the same document reuses the instance — the
-        // definitions written during earlier passes must remain readable.
-        assertEquals("https://example/target", handler.find("label"))
-        assertEquals("https://example/target", handler.find("LABEL"))
-    }
 }

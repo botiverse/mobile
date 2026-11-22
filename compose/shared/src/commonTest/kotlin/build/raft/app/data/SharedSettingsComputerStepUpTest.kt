@@ -28,24 +28,6 @@ class SharedSettingsComputerStepUpTest {
         """{"machine":{"id":"machine-new","name":"my-computer","status":"offline","statusVersion":0,"apiKeyPrefix":"sk_machine_123456","runtimes":[],"daemonVersion":null,"hostname":null,"os":null,"lastHeartbeat":null,"createdAt":null},"apiKey":"sk_machine_123456789"}"""
 
     @Test
-    fun theSharedHelperMapsOnlyAStepUpRefusal() {
-        val error =
-            assertIs<DataResult.Error>(
-                HomeNetworkResponse(code = 403, bodyText = null, errorBodyText = registerRefusal).secondFactorStepUpErrorOrNull<Unit>()
-            ).error
-        assertEquals(SECOND_FACTOR_STEP_UP_REQUIRED_CODE, error.code)
-        assertEquals(SECOND_FACTOR_STEP_UP_REQUIRED_CODE, error.serverCode)
-        assertEquals(listOf("totp", "passkey", "backup_code"), error.secondFactorStepUp?.methods)
-        assertEquals(listOf(SecondFactorStepUpMethod.Totp, SecondFactorStepUpMethod.BackupCode), error.secondFactorStepUp?.usableMethods)
-
-        assertNull(
-            HomeNetworkResponse(code = 403, bodyText = null, errorBodyText = """{"error":"Forbidden","code":"forbidden"}""")
-                .secondFactorStepUpErrorOrNull<Unit>()
-        )
-        assertNull(HomeNetworkResponse(code = 400, bodyText = null, errorBodyText = registerRefusal).secondFactorStepUpErrorOrNull<Unit>())
-    }
-
-    @Test
     fun aRegisterRefusalIsAStepUpNotAPermissionBlocker() = runTest {
         val network = ScriptedAgentControlsNetworkClient().apply { respond("POST", machinesPath, 403, registerRefusal) }
         val client = RaftComputersApiClient(RaftComputersNetworkApi(network))

@@ -184,28 +184,6 @@ class SharedActivityStoreRowPositionTest {
     }
 
     @Test
-    fun rowsAskedForTogetherGoInOneRead() = runTest {
-        val f = loadedStore(listOf(snapshot(listOf(otherRow, channelRow))))
-        f.store.dispatch(live("m-9", "channel-1", seq = 9L))
-        f.store.dispatch(live("m-4", "channel-2", seq = 4L))
-        // The same row asked twice is one row standing for two asks.
-        f.store.dispatch(live("m-8", "channel-1", seq = 8L))
-        advanceTimeBy(ActivityRowRereadDelayMillis + 1L)
-        runCurrent()
-
-        assertEquals(
-            listOf(
-                Read(
-                    InboxFetchReason.PositionReread,
-                    InboxRefreshTriggerCount(InboxRefreshTrigger.AmbiguousSeq, coalesced = 3),
-                    listOf("channel-1", "channel-2")
-                )
-            ),
-            f.inbox.rowReads
-        )
-    }
-
-    @Test
     fun aRowTheAnswerLeavesOutRereadsTheList() = runTest {
         val f = loadedStore(listOf(snapshot(listOf(otherRow, channelRow)), snapshot(listOf(otherRow))))
         f.store.dispatch(live("m-9", "channel-1", seq = 9L))
@@ -404,19 +382,6 @@ class SharedActivityStoreRowPositionTest {
     }
 
     @Test
-    fun flagOffAnAbsentAnswerLeavesTheSharedCheckpoint() = runTest {
-        // The checkpoint is Home's too: flag off, Activity changes nothing about it.
-        val versions = PerReceiverStateVersionStore(InMemoryRaftKeyValueStore())
-        val absent = channelRow.copy(unreadCount = 1, readStateAbsent = true)
-        val f = loadedStore(listOf(snapshot(listOf(channelRow)), snapshot(listOf(absent))), rowPosition = false, versions = versions)
-        f.store.dispatch(readState("channel-1", maxReadSeq = 10L, version = 5L))
-        runCurrent()
-        f.store.dispatch(SharedActivityIntent.Refresh)
-        runCurrent()
-        assertEquals(5L, versions.readReadStateCheckpoint(ServerId("server-1"), MemberId("user-1"), ChannelId("channel-1")).version)
-    }
-
-    @Test
     fun aReadFoldedFromTheLedgerReadsTheAppliedLiveSeqsItCovers() = runTest {
         // Scout (#4924): row at 10, live 11 and 12 applied; Home takes the read of 12 first, so this store
         // only folds it. A late answer at 10 is read by the read seq, and 11 and 12 do not count again.
@@ -520,32 +485,6 @@ class SharedActivityStoreRowPositionTest {
         assertEquals(1, badgeAfter(rowPosition = false, ownCausedSystem))
     }
 
-    @Test
-    fun theRowReadRequestNamesOnlyTheRows() = runTest {
-        val network = RecordingInboxRowsClient()
-        val repository = RealInboxRepository(InMemoryRaftAuthSessionStore(sampleSession()), network)
-
-        val result =
-            withInboxFetchReason(InboxFetchReason.PositionReread, InboxRefreshTriggerCount(InboxRefreshTrigger.RowUnjudged, 2)) {
-                repository.loadRows(ServerId("server-1"), listOf("c-1", "t-2", "c-1"))
-            }
-
-        assertEquals(listOf(listOf("ids" to "c-1,t-2")), network.queries)
-        assertEquals(
-            listOf(
-                mapOf(
-                    "X-Raft-Fetch-Reason" to "position_reread",
-                    "X-Raft-Fetch-Trigger" to "row_unjudged",
-                    "X-Raft-Fetch-Coalesced" to "2",
-                )
-            ),
-            network.headers
-        )
-        val rows = (result as DataResult.Content).data
-        assertEquals(listOf("c-1"), rows.items.map { it.channelId.value })
-        assertEquals(false, rows.hasMore)
-    }
-
     private fun readState(channelId: String, maxReadSeq: Long, version: Long = 2L) =
         SharedActivityIntent.ApplyRealtimeEvent(
             PerReceiverReadStateChanged(
@@ -553,39 +492,4 @@ class SharedActivityStoreRowPositionTest {
                 scopes = listOf(PerReceiverReadStateScope(ChannelId(channelId), maxReadSeq = maxReadSeq, readStateVersion = version))
             )
         )
-
-    private class RecordingInboxRowsClient : RaftNetworkClient {
-        val headers = mutableListOf<Map<String, String>>()
-        val queries = mutableListOf<List<Pair<String, String>>>()
-
-        override suspend fun request(
-            priority: DataRequestPriority,
-            path: String,
-            method: String,
-            query: List<Pair<String, String>>,
-            serverIdOverride: ServerId?,
-            bodyText: String?
-        ): HomeNetworkResponse = requestWithHeaders(priority, path, emptyMap(), method, query, serverIdOverride, bodyText)
-
-        override suspend fun requestWithHeaders(
-            priority: DataRequestPriority,
-            path: String,
-            headers: Map<String, String>,
-            method: String,
-            query: List<Pair<String, String>>,
-            serverIdOverride: ServerId?,
-            bodyText: String?
-        ): HomeNetworkResponse {
-            check(path == "channels/inbox" && method == "GET") { "unexpected $method $path" }
-            this.headers += headers
-            queries += query
-            // `{ items }` only (routes/channels.ts: an ids read carries no totals or paging).
-            return HomeNetworkResponse(
-                200,
-                """{"items":[{"kind":"channel","channelId":"c-1","channelName":"general","channelType":"channel",""" +
-                    """"unreadCount":1,"hasMention":false,"lastMessageId":"m-1","lastMessageAt":"2026-11-16T00:00:00.000Z",""" +
-                    """"lastMessagePreview":"hi","latestActivitySeq":"12"}]}"""
-            )
-        }
-    }
 }

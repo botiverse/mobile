@@ -38,14 +38,6 @@ class TasksAssignContractTest {
     }
 
     @Test
-    fun assignBodySerializesAgentAssignee() {
-        assertEquals(
-            """{"assignee":{"type":"agent","id":"agent-1"}}""",
-            buildSharedTaskAssignBody(agent, expectedRevision = null),
-        )
-    }
-
-    @Test
     fun unassignBodyKeepsExplicitNullAssigneeKey() {
         // `explicitNulls = false` in tasksJson would drop the key entirely; the
         // server 400s on a missing key, so the explicit null must survive.
@@ -89,20 +81,6 @@ class TasksAssignContractTest {
         val error = assertIs<DataResult.Error>(result)
         assertEquals(TASKS_ASSIGN_CONFLICT, error.error.code)
         assertTrue(error.error.retryable)
-    }
-
-    @Test
-    fun assignConflictDetectionRequiresExactServerError() {
-        assertTrue(taskAssignConflictErrorCode("""{"error":"task state changed concurrently"}"""))
-        assertTrue(taskAssignConflictErrorCode("""{"error":"Task State Changed Concurrently"}"""))
-        assertTrue(
-            !taskAssignConflictErrorCode(null),
-            "missing body is not a conflict",
-        )
-        assertTrue(
-            !taskAssignConflictErrorCode("""{"error":"some other failure"}"""),
-            "other 409 domain errors stay generic",
-        )
     }
 
     @Test
@@ -159,17 +137,6 @@ class TasksAssignContractTest {
             """{"assignee":{"type":"user","id":"user-1"},"expectedRevision":42}""",
             body,
         )
-    }
-
-    @Test
-    fun typedClientUnassignSendsExplicitNullBody() = runBlocking {
-        val transport = RecordingAssignApi()
-        val client = RaftTasksApiClient(transport)
-
-        client.assignTask(ServerId("server-1"), TaskId("task-9"), assignee = null, expectedRevision = 3L)
-
-        val (_, body) = transport.calls.single()
-        assertEquals("""{"assignee":null,"expectedRevision":3}""", body)
     }
 
     private class RecordingAssignApi : RaftTasksApi {

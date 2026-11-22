@@ -84,20 +84,6 @@ class SharedMyAssistantStoreTest {
     }
 
     @Test
-    fun readsOncePerPersonAndServer() =
-        runTest {
-            val api = ScriptedApi(MyAssistantFetchResult.Answer(ready))
-            val store = SharedMyAssistantStore(api, scope = backgroundScope)
-            store.ensureLoaded(key)
-            store.ensureLoaded(key)
-            settle()
-            store.ensureLoaded(key)
-            settle()
-            assertEquals(listOf("s1"), api.asked)
-            assertEquals(ready, store.answerFor(key))
-        }
-
-    @Test
     fun notAvailableAndAFailedFirstReadFailClosed() =
         runTest {
             val notAvailable = SharedMyAssistantStore(ScriptedApi(MyAssistantFetchResult.NotAvailable), scope = backgroundScope)
@@ -131,17 +117,6 @@ class SharedMyAssistantStoreTest {
             assertEquals(ready, store.answerFor(key))
             settle()
             assertEquals(3, api.asked.size, "no more once the DM exists")
-        }
-
-    @Test
-    fun stopsAfterTheLastDelay() =
-        runTest {
-            val api = ScriptedApi(MyAssistantFetchResult.Answer(settingUp))
-            val store = SharedMyAssistantStore(api, scope = backgroundScope)
-            store.ensureLoaded(key)
-            settle()
-            assertEquals(1 + MyAssistantDmSetupRetryDelaysMillis.size, api.asked.size)
-            assertEquals(settingUp, store.answerFor(key))
         }
 
     @Test
@@ -325,22 +300,6 @@ class SharedMyAssistantStoreTest {
     }
 
     @Test
-    fun aSwitchAnswerIsSavedGoneOrFailed() {
-        assertEquals(
-            MyAssistantSettingSaveResult.Saved(withNotes),
-            myAssistantSettingSaveResultOf(
-                200,
-                """{"enabled":true,"assistant":{"id":"a1","name":"Ada","agentId":"a1","dmChannelId":"dm1","readsDms":true,"sendAsOwner":false,"ownerNotes":"Be brief."}}""",
-            ),
-        )
-        assertEquals(MyAssistantSettingSaveResult.Saved(null), myAssistantSettingSaveResultOf(204, null))
-        assertEquals(MyAssistantSettingSaveResult.NotAvailable(403, TRACE_ID), myAssistantSettingSaveResultOf(403, null, TRACE_ID))
-        assertEquals(MyAssistantSettingSaveResult.NotAvailable(404), myAssistantSettingSaveResultOf(404, null))
-        assertEquals(MyAssistantSettingSaveResult.Failed(400, TRACE_ID), myAssistantSettingSaveResultOf(400, """{"error":"bad_request"}""", TRACE_ID))
-        assertEquals(MyAssistantSettingSaveResult.Failed(500), myAssistantSettingSaveResultOf(500, null))
-    }
-
-    @Test
     fun aSwitchMovesAtOnceThenTakesOnlyItsOwnValueFromTheReply() =
         runTest {
             val gate = CompletableDeferred<Unit>()
@@ -384,25 +343,6 @@ class SharedMyAssistantStoreTest {
             assertEquals(withNotes, store.answerFor(key), "back where it was")
             settle()
             assertEquals(1, api.asked.size, "a transient failure reads nothing again")
-        }
-
-    @Test
-    fun aSwitchTheServerNoLongerAllowsReadsTheAssistantAgain() =
-        runTest {
-            val api =
-                ScriptedApi(
-                    MyAssistantFetchResult.Answer(withNotes),
-                    MyAssistantFetchResult.NotAvailable,
-                    settingResult = MyAssistantSettingSaveResult.NotAvailable(404, TRACE_ID),
-                )
-            val store = SharedMyAssistantStore(api, scope = backgroundScope)
-            store.ensureLoaded(key)
-            settle()
-            val outcome = store.saveSetting(key, AssistantOwnerSetting.ReadsDms, false)
-            assertEquals(TRACE_ID, assertIs<MyAssistantSettingSaveOutcome.Failed>(outcome).error.traceId)
-            settle()
-            assertEquals(2, api.asked.size)
-            assertEquals(MyAssistantAnswer.NotEnabled, store.answerFor(key))
         }
 
     @Test

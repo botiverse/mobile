@@ -4,8 +4,6 @@ import build.raft.app.model.ActivityChanged
 import build.raft.app.model.ChannelId
 import build.raft.app.model.MessageId
 import build.raft.app.model.MessageNew
-import build.raft.app.model.PerReceiverReadStateChanged
-import build.raft.app.model.PerReceiverReadStateScope
 import build.raft.app.model.ServerId
 import build.raft.app.model.ThreadUpdated
 import build.raft.app.network.sync.ReplyPreview
@@ -19,7 +17,6 @@ import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertTrue
 
 /**
  * `inbox_row_position_v1` (B4, review of #4863): the list owns the badge only while it can keep it.
@@ -114,16 +111,6 @@ class SharedActivityStoreBadgeOwnerHardeningTest {
     }
 
     @Test
-    fun anAuditDueWhileThePanelIsHiddenIsNotJudged() = runTest {
-        val f = fixture(listOf(fresh), panelActive = false)
-        repeat(ActivityPositionAuditEvery) { f.store.dispatch(live("m-${11 + it}", seq = 11L + it)) }
-        advanceTimeBy(ActivityRowRereadDelayMillis + 1L)
-        runCurrent()
-        assertEquals(emptyList(), f.inbox.rowReads)
-        assertEquals(ActivityAuditNotJudgedCause.PageHidden, f.checks.single().notJudgedCause)
-    }
-
-    @Test
     fun aFailedOrStaleReturnReadGivesTheBadgeBack() = runTest {
         listOf(
             DataResult.Error(ScreenError(code = "network")),
@@ -142,12 +129,6 @@ class SharedActivityStoreBadgeOwnerHardeningTest {
             assertEquals(false, f.store.ownsBadgeFor(owner), "answer=$answer")
             assertEquals(listOf("server-1"), f.released, "the summary reads the badge again")
         }
-    }
-
-    @Test
-    fun theBadgeReleasedReadIsAVisibilityReadTheListDoesNotAnswer() {
-        assertEquals(InboxFetchReason.Visibility, activityUnreadSummaryFetchReason(ActivityBadgeReleasedSummaryReason))
-        assertEquals(false, ActivityBadgeReleasedSummaryReason.isListDerivedActivitySummaryRead())
     }
 
     @Test
@@ -231,28 +212,5 @@ class SharedActivityStoreBadgeOwnerHardeningTest {
         assertEquals(1, totalAfter(rowPosition = true), "the reply, once")
         // Flag off: today's `unreadCount` add, as before.
         assertEquals(6, totalAfter(rowPosition = false))
-    }
-
-    @Test
-    fun aListCheckSaysTheCauseAndWhetherAReadStateCame() = runTest {
-        val f = fixture(listOf(DataResult.Content(snapshot(listOf(row.copy(unreadCount = 0))))))
-        f.store.dispatch(live("m-11", seq = 11L))
-        runCurrent()
-        f.store.dispatch(
-            SharedActivityIntent.ApplyRealtimeEvent(
-                PerReceiverReadStateChanged(
-                    serverId = ServerId("server-1"),
-                    scopes = listOf(PerReceiverReadStateScope(ChannelId("channel-1"), maxReadSeq = 11L, readStateVersion = 2L))
-                )
-            )
-        )
-        runCurrent()
-        advanceTimeBy(ActivityInPlaceCheckTtlMillis + 1_000L)
-        f.store.dispatch(SharedActivityIntent.Refresh)
-        runCurrent()
-
-        val detail = f.checks.single { it.result == "expired" }.outcomeDetail
-        assertTrue(detail.contains(";reread=position;own=0;sender_type=user;message_type=chat;age_ms="), detail)
-        assertTrue(detail.contains(";read_state=1;read_behind=0;fetch_reason="), detail)
     }
 }

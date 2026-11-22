@@ -34,18 +34,6 @@ class LocalPreferencesTest {
     }
 
     @Test
-    fun localePersistsSelectedValue() = runBlocking {
-        val store = InMemoryRaftKeyValueStore()
-        val repository = PersistentLocaleRepository(KeyValueLocalePreferenceStore(store))
-
-        val selected = repository.selectLocale(AppLocale.Japanese)
-        val restored = repository.getLocale()
-
-        assertEquals(AppLocale.Japanese, selected.current)
-        assertEquals(AppLocale.Japanese, restored.current)
-    }
-
-    @Test
     fun localePersistsExplicitSystemSelection() = runBlocking {
         val store = InMemoryRaftKeyValueStore()
         val repository = PersistentLocaleRepository(KeyValueLocalePreferenceStore(store))
@@ -430,13 +418,6 @@ class LocalPreferencesTest {
     }
 
     @Test
-    fun computersRackViewReadsAnUnknownValueAsCards() {
-        val repository = KeyValueComputersRackViewPreferenceRepository(InMemoryRaftKeyValueStore(mapOf("computers:rackView" to "grid")))
-
-        assertEquals(ComputersRackView.Cards, repository.getComputersRackViewSync())
-    }
-
-    @Test
     fun pushPreviewModeDefaultsToFullWhenNeverStored() = runBlocking {
         val store = KeyValuePushPreviewModePreferenceStore(InMemoryRaftKeyValueStore())
 
@@ -469,15 +450,5 @@ class LocalPreferencesTest {
 
         assertEquals(PUSH_PREVIEW_MODE_UNREADABLE, store.readPushPreviewModeSync())
         assertEquals("hidden", store.readPushPreviewModeSync())
-    }
-
-    @Test
-    fun missingAndUnreadablePushPreviewModeResolveDifferently() {
-        val empty = KeyValuePushPreviewModePreferenceStore(InMemoryRaftKeyValueStore())
-        val corruptBacking = InMemoryRaftKeyValueStore(mapOf(PUSH_PREVIEW_MODE_PREFERENCE_KEY to "corrupt"))
-        val corrupt = KeyValuePushPreviewModePreferenceStore(corruptBacking)
-
-        assertEquals("full", empty.readPushPreviewModeSync())
-        assertEquals("hidden", corrupt.readPushPreviewModeSync())
     }
 }

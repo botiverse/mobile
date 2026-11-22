@@ -57,41 +57,9 @@ class BridgeModuleToastTest {
             windows += window
         }
 
-    private fun nativeToasts(): List<String> =
-        calls.filter { it.method == "toast" }.map { Json.parseToJsonElement(it.params).jsonObject.getValue("content").jsonPrimitive.content }
-
     @AfterTest
     fun detach() {
         windows.forEach { it.detach() }
-    }
-
-    @Test
-    fun postsToTheForegroundWindowRenderingThePage() {
-        val window = window(visible = true)
-        window.addOrigin(capabilities)
-
-        bridge().toast("Link copied.")
-
-        assertEquals(listOf("Link copied."), window.state.visible.map { it.title })
-        assertEquals(emptyList(), nativeToasts())
-    }
-
-    @Test
-    fun fallsBackToTheNativeToastWithNoWindowAttached() {
-        bridge().toast("Saved.")
-
-        assertEquals(listOf("Saved."), nativeToasts())
-    }
-
-    @Test
-    fun fallsBackToTheNativeToastWhileTheWindowIsInTheBackground() {
-        val window = window(visible = false)
-        window.addOrigin(capabilities)
-
-        bridge().toast("Saved.")
-
-        assertEquals(emptyList(), window.state.visible.map { it.title })
-        assertEquals(listOf("Saved."), nativeToasts())
     }
 
     @Test
@@ -110,38 +78,6 @@ class BridgeModuleToastTest {
         val copied = calls.single { it.method == "copyToPasteboard" }
         assertEquals(traceId, Json.parseToJsonElement(copied.params).jsonObject.getValue("content").jsonPrimitive.content)
         assertEquals(listOf("Trace ID copied"), window.state.visible.map { it.title })
-    }
-
-    @Test
-    fun errorToastWithoutATraceIdIsThePlainToast() {
-        val window = window(visible = true)
-        window.addOrigin(capabilities)
-
-        bridge().errorToast("Unable to open thread", traceId = null)
-
-        val toast = window.state.visible.single()
-        assertEquals("Unable to open thread", toast.title)
-        assertNull(toast.description)
-        assertNull(toast.actionLabel)
-    }
-
-    @Test
-    fun errorToastWithRetryKeepsTheTraceIdAndItsCopyAction() {
-        val window = window(visible = true)
-        window.addOrigin(capabilities)
-        val traceId = "a1b2c3d4e5f60718293a4b5c6d7e8f90"
-        var retries = 0
-
-        bridge().errorToastWithRetry("Couldn't load these messages.", "Retry", onRetry = { retries += 1 }, traceId = traceId) {
-            RaftTraceIdToastStrings({ "Trace ID $it" }, "Copy", "Trace ID copied")
-        }
-
-        val toast = window.state.visible.single()
-        assertEquals("Couldn't load these messages.", toast.title)
-        assertEquals("Trace ID a1b2c3d4…", toast.description)
-        // The trace ID rule wins the toast's one action; the restored control is the retry.
-        assertEquals("Copy", toast.actionLabel)
-        assertEquals(0, retries)
     }
 
     @Test

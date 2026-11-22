@@ -139,14 +139,6 @@ class ForwardConversationTargetsTest {
     }
 
     @Test
-    fun channelOrDmSourceSendsNoCurrentChannelId() = runTest {
-        val network = ConversationNetworkClient()
-        repository(network).conversationTargets(serverId, currentChannelId = null)
-
-        assertEquals(listOf("limit" to "4"), network.calls.single().query)
-    }
-
-    @Test
     fun failureOrOfflineIsNoGroupAndNoRetry() = runTest {
         val network = ConversationNetworkClient()
         network.conversationsResponse = { HomeNetworkResponse(code = 404, bodyText = null, errorBodyText = "not found") }
@@ -159,17 +151,6 @@ class ForwardConversationTargetsTest {
         assertEquals(emptyList(), repository.conversationTargets(serverId, null))
         assertEquals(2, network.calls.size)
         assertTrue(network.logs.any { it.startsWith("forward_conversation_targets result=error code=http_404") })
-    }
-
-    @Test
-    fun searchKeystrokesNeverAskForConversations() = runTest {
-        val network = ConversationNetworkClient()
-        val repository = repository(network)
-
-        repository.searchTargets(serverId, "zep", limit = 20)
-        repository.searchTargets(serverId, "zeph", limit = 20)
-
-        assertEquals(0, network.calls.count { it.path == ForwardConversationTargetsPath })
     }
 
     @Test

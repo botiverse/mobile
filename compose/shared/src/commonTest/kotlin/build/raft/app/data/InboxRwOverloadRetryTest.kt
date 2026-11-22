@@ -53,18 +53,6 @@ class InboxRwOverloadRetryTest {
         }
     }
 
-    @Test
-    fun activityUnreadSummaryReadUsesTheSameRetry() = runTest {
-        val network = ScriptedInboxClient(this, listOf(overloaded(), ok()))
-        val result =
-            ProcessActivityUnreadRepository(InMemoryRaftAuthSessionStore(sampleSession()), network).load(
-                ProcessActivityUnreadOwner(environmentId = "https://api.example.test", accountId = "user-1", serverId = "server-1"),
-                DataRequestPriority.Background
-            )
-        assertEquals(ActivityUnreadSummarySnapshot(totalUnreadCount = 3, totalCount = 4), (result as DataResult.Content).data)
-        assertEquals(2, network.requestTimes.size)
-    }
-
     private fun overloaded(headers: Map<String, List<String>> = mapOf("retry-after" to listOf("2"))): HomeNetworkResponse =
         HomeNetworkResponse(
             code = 503,

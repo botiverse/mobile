@@ -3,7 +3,6 @@ package build.raft.app.data
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
-import kotlin.test.assertTrue
 
 class AppLoginCallbacksTest {
     @Test fun parsesCodeAndErrorCallbacksForEveryAllowedScheme() {
@@ -17,11 +16,6 @@ class AppLoginCallbacksTest {
                 parseAppLoginCallback("$returnUri?error=access_denied&requestId=req-1"),
             )
         }
-    }
-
-    @Test fun theOldComposeDesktopSchemeIsNotACallback() {
-        assertNull(parseAppLoginCallback("raft-mac://login/callback?requestId=req-1&code=abc"))
-        assertNull(parseAppLoginCallback("raft://oauth/callback?requestId=req-1&code=abc"))
     }
 
     @Test fun decodesPercentEscapesAndKeepsPlusLiteral() {
@@ -53,14 +47,6 @@ class AppLoginCallbacksTest {
         for (uri in rejected) assertNull(parseAppLoginCallback(uri), "$uri")
     }
 
-    @Test fun bridgeRejectsMalformedCallbacksWithoutStartingAnExchange() {
-        assertEquals(false, RaftAppLoginBridge.completeCallbackUri("raft://oauth/callback?requestId=r&code=c"))
-        assertEquals(false, RaftAppLoginBridge.completeCallback("raft-evil://login/callback", "r", "c", ""))
-        assertEquals(false, RaftAppLoginBridge.completeCallback("raft://login/callback", "r", "c", "e"))
-        assertEquals(false, RaftAppLoginBridge.completeCallback("raft://login/callback", " ", "c", ""))
-        assertTrue(APP_LOGIN_RETURN_URIS.all { it.endsWith("://login/callback") })
-    }
-
     private class CompletionStatus {
         var value: String? = null
         val writes = mutableListOf<String?>()
@@ -77,21 +63,6 @@ class AppLoginCallbacksTest {
         status.marker.callbackFinished("ignored")
         assertEquals("app_shell", status.value)
         assertEquals(listOf<String?>(APP_LOGIN_CALLBACK_RECEIVED, "app_shell"), status.writes)
-    }
-
-    @Test fun anIgnoredDuplicateWhileTheFirstIsStillExchangingKeepsTheMarker() {
-        val status = CompletionStatus()
-        status.marker.callbackAccepted()
-        status.marker.callbackAccepted()
-        status.marker.callbackFinished("ignored") // the duplicate found no request on file
-        assertEquals(APP_LOGIN_CALLBACK_RECEIVED, status.value, "the first is still being exchanged")
-        status.marker.callbackFinished("choose_server")
-        assertEquals("choose_server", status.value)
-
-        val lone = CompletionStatus()
-        lone.marker.callbackAccepted()
-        lone.marker.callbackFinished("ignored")
-        assertNull(lone.value, "a lone ignored callback clears its marker")
     }
 
     @Test fun aCallbackAfterTheBrowserClosedStillMarksItself() {

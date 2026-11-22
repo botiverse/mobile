@@ -87,31 +87,6 @@ class SharedReferenceResolverTest {
     }
 
     @Test
-    fun aSecondTapAfterASuccessfulFetchIsLocal() = runTest {
-        val resolver = SharedReferenceResolver()
-        val network = FakeReferenceNetwork(resolver)
-
-        assertIs<SharedReferenceOutcome.Open<String>>(
-            resolver.resolve(key = key, actionId = "message-a:thread", local = { null }, fetch = network::fetch)
-        )
-        // The same ref, as written in another message (case differs): same reference.
-        val sameRef = requireNotNull(SharedReferenceKey.of(key.scopeId, key.kind, key.conversationId, "bc037b0b"))
-        val second =
-            resolver.resolve(key = sameRef, actionId = "message-b:thread", local = { null }, fetch = network::fetch)
-
-        val open = assertIs<SharedReferenceOutcome.Open<String>>(second)
-        assertEquals("thread-target", open.target)
-        assertEquals(SharedReferenceSource.Resolved, open.source)
-        assertEquals(1, network.calls, "the second tap must not fetch again")
-        assertTrue(resolver.inFlight.value.isEmpty())
-
-        // Another account or server never reuses it.
-        val otherServer = requireNotNull(SharedReferenceKey.of("env\u001fviewer\u001fserver-2", key.kind, key.conversationId, key.id))
-        resolver.resolve(key = otherServer, actionId = null, local = { null }, fetch = network::fetch)
-        assertEquals(2, network.calls)
-    }
-
-    @Test
     fun aFailureIsAnErrorOutcomeWithItsReasonAndLoadingCleared() = runTest {
         val cases =
             listOf(

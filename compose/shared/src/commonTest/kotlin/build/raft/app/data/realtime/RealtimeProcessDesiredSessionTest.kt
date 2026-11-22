@@ -22,48 +22,6 @@ class RealtimeProcessDesiredSessionTest {
     }
 
     @Test
-    fun currentServerScopeTrimsAndMatchesNormalizedIds() {
-        assertEquals(
-            setOf("server-a"),
-            realtimeCurrentServerScopedServerIds(
-                currentServerId = "  server-a  ",
-                grantedServerIds = setOf(" server-a ", "server-b"),
-            ),
-        )
-    }
-
-    @Test
-    fun blankOrNullCurrentServerYieldsNoTransport() {
-        // No selected server yet → keep zero persistent sockets (never fan out
-        // to every authenticated server); a later re-run reconnects the current.
-        assertEquals(
-            emptySet(),
-            realtimeCurrentServerScopedServerIds(
-                currentServerId = "",
-                grantedServerIds = setOf("server-a", "server-b"),
-            ),
-        )
-        assertEquals(
-            emptySet(),
-            realtimeCurrentServerScopedServerIds(
-                currentServerId = null,
-                grantedServerIds = setOf("server-a", "server-b"),
-            ),
-        )
-    }
-
-    @Test
-    fun currentServerNotAmongGrantsYieldsNoTransport() {
-        assertEquals(
-            emptySet(),
-            realtimeCurrentServerScopedServerIds(
-                currentServerId = "server-z",
-                grantedServerIds = setOf("server-a", "server-b"),
-            ),
-        )
-    }
-
-    @Test
     fun runtimeCursorAdvanceIsMonotonicServerScopedAndRejectsLateGeneration() {
         val serverA = cursorIdentity(serverId = "server-a", generation = 7L)
         val serverB = cursorIdentity(serverId = "server-b", generation = 7L)

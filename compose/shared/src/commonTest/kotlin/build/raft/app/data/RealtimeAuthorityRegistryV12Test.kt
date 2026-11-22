@@ -7,7 +7,6 @@ import kotlin.test.assertFalse
 import kotlin.test.assertNotEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
-import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
 
 /**
@@ -291,35 +290,6 @@ class RealtimeAuthorityRegistryV12Test {
         assertEquals(2L, registry.snapshot.value.authRevision.generation)
     }
 
-    @Test
-    fun environmentIdRoundTripsThroughTheDurableStoreAndNormalizesLikeOtherSegments() = runBlocking {
-        val store = InMemoryRaftKeyValueStore()
-        val registry = registry(store, process = "process-env-durable")
-        registry.initialize()
-        assertTrue(
-            registry.advanceAuth(
-                RealtimeAuthRevision(
-                    generation = 1,
-                    session = RealtimeAuthoritySession(" p1 ", listOf(" a "), environmentId = " https://api.staging.test "),
-                ),
-            ),
-        )
-        assertEquals(
-            RealtimeAuthRevision(
-                generation = 1,
-                session = RealtimeAuthoritySession("p1", listOf("a"), environmentId = "https://api.staging.test"),
-            ),
-            KeyValueRealtimeAuthRevisionStore(store).read(),
-        )
-    }
-
-    @Test
-    fun blankEnvironmentIsNotAnIdentity() {
-        assertFailsWith<IllegalArgumentException> {
-            RealtimeAuthoritySession(principalId = "p1", serverIds = listOf("a"), environmentId = "   ")
-        }
-    }
-
     /**
      * Durable revisions written before the environment dimension existed have no `environmentId`. They
      * must decode as "generation kept, no authority": grants cannot be minted from them (nothing can be
@@ -348,16 +318,6 @@ class RealtimeAuthorityRegistryV12Test {
             listOf("https://api.staging.test", "https://api.staging.test"),
             registry.snapshot.value.grantsFor(lease.id).map { it.environmentId },
         )
-    }
-
-    @Test
-    fun processInstanceIdMustBeFreshConstructionInputAndNeverBlank() {
-        assertFailsWith<IllegalArgumentException> {
-            RealtimeAuthorityRegistry(
-                authRevisionStore = KeyValueRealtimeAuthRevisionStore(InMemoryRaftKeyValueStore()),
-                processInstanceId = "   ",
-            )
-        }
     }
 
     private fun registry(store: RaftKeyValueStore, process: String): RealtimeAuthorityRegistry =

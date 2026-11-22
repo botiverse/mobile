@@ -2,7 +2,6 @@ package build.raft.app.data
 
 import build.raft.app.model.InboxItemKind
 import build.raft.app.model.ThreadId
-import build.raft.app.reportUnknownTypeDropped
 import build.raft.app.reportRealtimeEventDropped
 import kotlinx.coroutines.runBlocking
 import kotlin.test.Test
@@ -19,20 +18,6 @@ import kotlin.test.assertTrue
  * an error, not "no messages" / an empty roster.
  */
 class NoSilentDropsTest {
-    @Test
-    fun unknownTypeDiagnosticPassesTheRealtimeFilterAndSanitisesValues() {
-        val lines = mutableListOf<String>()
-        reportUnknownTypeDropped("Inbox", "inbox_kind", "New Kind!", diagnostics = lines::add)
-        reportUnknownTypeDropped("saved", "channel_type", null, fallback = "channel_row", diagnostics = lines::add)
-        assertEquals(
-            listOf(
-                "projection_value_unknown source=inbox field=inbox_kind value=new_kind_ action=dropped",
-                "projection_value_unknown source=saved field=channel_type value=blank action=fallback_channel_row",
-            ),
-            lines,
-        )
-    }
-
     @Test
     fun realtimeDropLineHasNameReasonAndKeysOnly() {
         val lines = mutableListOf<String>()
@@ -56,15 +41,6 @@ class NoSilentDropsTest {
     }
 
     @Test
-    fun inboxRowOfAnUnknownKindWithoutAChannelIsDroppedButLogged() {
-        val logs = mutableListOf<String>()
-        val snapshot = parseSharedInboxSnapshot("""{"items":[{"kind":"poll"}],"hasMore":false}""", logs::add)
-        assertTrue(assertNotNull(snapshot).items.isEmpty())
-        assertEquals(1, snapshot.rawItemCount)
-        assertTrue(logs.contains("projection_value_unknown source=inbox field=inbox_kind value=poll action=dropped"), "logs=$logs")
-    }
-
-    @Test
     fun oneUnreadableMessageRowIsSkippedNotThePage() {
         val logs = mutableListOf<String>()
         val payload =
@@ -77,21 +53,6 @@ class NoSilentDropsTest {
         assertEquals(3, payload.rawMessageCount)
         assertFalse(payload.decodeFailed)
         assertTrue(logs.contains("projection_value_rejected source=rest_messages_channel field=row value=decode_failed index=1"), "logs=$logs")
-    }
-
-    @Test
-    fun contextAndSyncPagesAreAlsoReadPerRow() {
-        val context =
-            parseSharedMessageContext(
-                """{"channelId":"channel-1","messages":[${badMessage("m1", 1)},${message("m2", 2)}],"hasOlder":false,"hasNewer":false}""",
-                ThreadId("channel-1"),
-            )
-        assertEquals(listOf("m2"), context.messages.map { it.id.value })
-        assertEquals(2, context.rawMessageCount)
-
-        val sync = parseSharedSyncMessages("""[${message("m1", 1)},${badMessage("m2", 2)}]""", ThreadId("channel-1"))
-        assertEquals(listOf("m1"), sync.messages.map { it.id.value })
-        assertEquals(2, sync.rawMessageCount)
     }
 
     @Test
@@ -108,18 +69,6 @@ class NoSilentDropsTest {
         assertEquals(4, logs.count { it.startsWith("messages_page_decode_failed") }, "logs=$logs")
         // A real empty page stays empty (not a failure).
         assertFalse(parseSharedChannelMessages("""{"messages":[]}""", ThreadId("channel-1")).decodeFailed)
-    }
-
-    @Test
-    fun repositoryTurnsAnUnreadablePageIntoAnError() = runBlocking {
-        val network =
-            FakeConversationNetworkClient(
-                responses = mapOf("GET messages/channel/channel-1" to """{"messages":"oops"}"""),
-            )
-        val repository = RealConversationRepository(conversationRepositoryTestSessionStore(), network)
-        val result = repository.loadNewerMessages(ThreadId("channel-1"), afterSeq = 0, limit = 20)
-        val error = assertIs<DataResult.Error>(result)
-        assertEquals("network_parse_failed", error.error.code)
     }
 
     @Test

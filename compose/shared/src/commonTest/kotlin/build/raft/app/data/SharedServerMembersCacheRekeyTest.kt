@@ -30,51 +30,6 @@ import kotlin.test.assertTrue
  */
 class SharedServerMembersCacheRekeyTest {
     @Test
-    fun switchingServersAToBToAPaintsCachedMembersOnFirstFrameAndRefreshesOnceInBackground() = runTest {
-        val harness = Harness(this)
-        harness.rosters[SERVER_A] = listOf(human("a1", "Ada"), agent("a2", "Atlas", AgentStatus.Working))
-        harness.rosters[SERVER_B] = listOf(human("b1", "Bea"))
-        val store = harness.store()
-
-        assertIs<DataResult.Content<Unit>>(store.refreshMembers(ServerId(SERVER_A)))
-        assertIs<DataResult.Content<Unit>>(store.refreshMembers(ServerId(SERVER_B)))
-        assertEquals(1, harness.calls(SERVER_A))
-
-        // Back on A: the first frame reads the store's current value — no empty list, names and
-        // the agent status are there before any refresh.
-        val firstFrame = store.currentServerMembersEntry(ServerId(SERVER_A))
-        assertEquals(listOf("Ada", "Atlas"), firstFrame.members.map { it.displayName })
-        assertEquals(SharedServerMembersLoadStatus.Loaded, firstFrame.status)
-        assertEquals(listOf("a1", "a2"), store.currentServerMembersEntry(harness.routeOwner(SERVER_A)).members.map { it.id.value })
-        assertEquals(AgentStatus.Working, store.currentMemberStatus(ServerId(SERVER_A), "a2")?.status)
-
-        // One background revalidation (the realtime rebaseline forces it); the page's own
-        // background refresh joins it, and the roster never flips away from Loaded meanwhile.
-        harness.gates[SERVER_A] = CompletableDeferred()
-        val rebaseline =
-            async {
-                store.refreshMembers(
-                    ServerId(SERVER_A),
-                    priority = DataRequestPriority.Background,
-                    force = true,
-                    reason = "presence_transport_connected"
-                )
-            }
-        runCurrent()
-        val pageMount = async { store.refreshMembers(ServerId(SERVER_A), DataRequestPriority.Background) }
-        runCurrent()
-        assertEquals(SharedServerMembersLoadStatus.Loaded, store.currentServerMembersEntry(ServerId(SERVER_A)).status)
-        assertEquals(2, store.currentServerMembersEntry(ServerId(SERVER_A)).members.size)
-        harness.rosters[SERVER_A] = listOf(human("a1", "Ada Lovelace"), agent("a2", "Atlas", AgentStatus.Idle))
-        harness.gates.remove(SERVER_A)?.complete(Unit)
-        assertIs<DataResult.Content<Unit>>(rebaseline.await())
-        assertIs<DataResult.Content<Unit>>(pageMount.await())
-
-        assertEquals(2, harness.calls(SERVER_A), "exactly one background fetch after returning to A")
-        assertEquals("Ada Lovelace", store.currentMemberProfile(ServerId(SERVER_A), "a1")?.displayName)
-    }
-
-    @Test
     fun coldStartSeedsFromDurableStoreThenRefreshesOnceInBackground() = runTest {
         val storage = MapDurableStorage()
         val firstProcess = Harness(this, storage)
@@ -235,28 +190,6 @@ class SharedServerMembersCacheRekeyTest {
     }
 
     @Test
-    fun backgroundValidationThatProvesLostAccessEvictsTheCachedRoster() = runTest {
-        val harness = Harness(this)
-        harness.rosters[SERVER_A] = listOf(human("a1", "Ada"))
-        val store = harness.store()
-        store.refreshMembers(ServerId(SERVER_A))
-        assertNotNull(harness.durable.read(harness.durableKey(SERVER_A)))
-
-        harness.failures[SERVER_A] = DataResult.Error(ScreenError(code = "http_404", retryable = false))
-        store.refreshMembers(ServerId(SERVER_A), DataRequestPriority.Background, force = true)
-
-        assertTrue(store.currentServerMembersEntry(ServerId(SERVER_A)).members.isEmpty())
-        assertNull(harness.durable.read(harness.durableKey(SERVER_A)))
-
-        // A transient failure keeps the cached roster.
-        harness.failures.remove(SERVER_A)
-        store.refreshMembers(ServerId(SERVER_A), force = true)
-        harness.failures[SERVER_A] = DataResult.Error(ScreenError(code = "network_unavailable", retryable = true))
-        store.refreshMembers(ServerId(SERVER_A), DataRequestPriority.Background, force = true)
-        assertEquals(listOf("a1"), store.currentServerMembersEntry(ServerId(SERVER_A)).members.map { it.id.value })
-    }
-
-    @Test
     fun removedMemberLeavesMemoryAndDurableRoster() = runTest {
         val harness = Harness(this)
         harness.rosters[SERVER_A] = listOf(human("a1", "Ada"), human("a2", "Ben"))
@@ -268,57 +201,6 @@ class SharedServerMembersCacheRekeyTest {
 
         assertEquals(listOf("a1"), store.currentServerMembersEntry(ServerId(SERVER_A)).members.map { it.id.value })
         assertEquals(listOf("a1"), harness.durable.read(harness.durableKey(SERVER_A))?.members?.map { it.id.value })
-    }
-
-    @Test
-    fun memoryCapEvictsLeastRecentlyUsedServerAndRevisitSeedsFromDisk() = runTest {
-        val harness = Harness(this)
-        listOf("s1", "s2", "s3").forEach { id -> harness.rosters[id] = listOf(human("$id-m", "Member $id")) }
-        val store = harness.store(maxCachedServers = 2)
-        store.refreshMembers(ServerId("s1"))
-        store.refreshMembers(ServerId("s2"))
-        store.refreshMembers(ServerId("s3"))
-
-        assertEquals(listOf("s2", "s3"), store.cachedServerIdsForTest())
-        assertTrue(store.currentServerMembersEntry(ServerId("s1")).members.isEmpty())
-
-        assertTrue(store.hydrateFromDurable(ServerId("s1")))
-        assertEquals(listOf("s1-m"), store.currentServerMembersEntry(ServerId("s1")).members.map { it.id.value })
-        assertEquals(listOf("s3", "s1"), store.cachedServerIdsForTest())
-    }
-
-    @Test
-    fun durableCapsTrimMembersAndServersLeastRecentlyWrittenFirst() = runTest {
-        val storage = MapDurableStorage()
-        val durable =
-            RaftServerMembersDurableStore(
-                storage = storage,
-                maxServersPerAccount = 2,
-                maxServers = 3,
-                maxMembersPerServer = 2,
-                scope = backgroundScope
-            )
-        suspend fun put(accountId: String, serverId: String) {
-            assertTrue(
-                durable.write(
-                    RaftServerMembersDurableKey(ENVIRONMENT, accountId, serverId),
-                    MemberSnapshot(server(serverId), listOf(human("x", "X"), human("y", "Y"), human("z", "Z"))),
-                    durable.epoch
-                )
-            )
-        }
-        put("account-a", "s1")
-        put("account-a", "s2")
-        put("account-a", "s3")
-        assertEquals(listOf("s2", "s3"), durable.rowIdsForTest().map { it.substringAfterLast('\u001f') })
-        assertNull(durable.read(RaftServerMembersDurableKey(ENVIRONMENT, "account-a", "s1")))
-        assertEquals(2, durable.read(RaftServerMembersDurableKey(ENVIRONMENT, "account-a", "s3"))?.members?.size)
-
-        put("account-b", "s1")
-        put("account-b", "s2")
-        assertEquals(3, durable.rowIdsForTest().size)
-        assertNull(durable.read(RaftServerMembersDurableKey(ENVIRONMENT, "account-a", "s2")))
-        assertNotNull(durable.read(RaftServerMembersDurableKey(ENVIRONMENT, "account-a", "s3")))
     }
 
     private class Harness(

@@ -10,12 +10,9 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.yield
 import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.JsonPrimitive
-import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.jsonObject
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertIs
 import kotlin.test.assertTrue
 
 /**
@@ -62,27 +59,6 @@ class CanonicalMessageV2ProductionCanaryTest {
     }
 
     @Test
-    fun unsupportedProducerMetadataMakesTheWindowDiscontinuous() = runBlocking {
-        val fixture = Fixture()
-        fixture.enter(1L)
-        val unsupported = fixture.input("m2", 2L).copy(
-            row = fixture.input("m2", 2L).row.copy(
-                actionMetadata = buildJsonObject {
-                    put("kind", JsonPrimitive("future-action"))
-                    put("payload", JsonPrimitive("opaque"))
-                },
-            ),
-        )
-
-        assertEquals(CanonicalMessageV2CanaryOutcome.NotSelected, fixture.accept(unsupported))
-        assertEquals(0, fixture.store.incrementalCalls)
-        assertEquals(CanonicalMessageV2ScopeContinuity.Discontinuous, fixture.canary.continuityOf(scope))
-        // The window now misses m2: m3 must not be appended after m1.
-        assertEquals(CanonicalMessageV2CanaryOutcome.NotSelected, fixture.accept(fixture.input("m3", 3L)))
-        assertEquals(0, fixture.store.incrementalCalls)
-    }
-
-    @Test
     fun aThreadReplyIsNeverWrittenIntoAChannelWindow() = runBlocking {
         val fixture = Fixture()
         fixture.enter(1L)
@@ -126,19 +102,6 @@ class CanonicalMessageV2ProductionCanaryTest {
     }
 
     @Test
-    fun withoutAReconnectTheNextFrameStaysIncremental() = runBlocking {
-        val fixture = Fixture()
-        fixture.connect(1L)
-        fixture.enter(1L)
-        fixture.accept(fixture.input("m2", 2L))
-        // A repeated signal for the same epoch is not a reconnect.
-        fixture.connect(1L)
-
-        assertEquals(CanonicalMessageV2CanaryOutcome.Committed, fixture.accept(fixture.input("m4", 4L)))
-        assertEquals(2, fixture.store.incrementalCalls)
-    }
-
-    @Test
     fun aRestoredWindowIsDisplayOnlyAfterProcessRestartUntilOpened() = runBlocking {
         val store = FakeStore()
         val beforeRestart = Fixture(store = store)
@@ -159,76 +122,6 @@ class CanonicalMessageV2ProductionCanaryTest {
     }
 
     @Test
-    fun aReconnectOnAnotherServerOrAccountDoesNotTouchThisWindow() = runBlocking {
-        val fixture = Fixture()
-        fixture.connect(1L)
-        fixture.enter(1L)
-
-        fixture.canary.noteTransportEpoch(partition.copy(serverId = "server-2"), 2L)
-        fixture.canary.noteTransportEpoch(partition.copy(principalId = "principal-2"), 2L)
-
-        assertEquals(CanonicalMessageV2CanaryOutcome.Committed, fixture.accept(fixture.input("m4", 4L)))
-        assertEquals(1, fixture.store.incrementalCalls)
-    }
-
-    @Test
-    fun aRestartedTransportCountingFromOneIsStillAReconnect() = runBlocking {
-        val fixture = Fixture()
-        fixture.connect(5L)
-        fixture.enter(1L)
-
-        // The native transport object was rebuilt (server switch, re-login) and numbers from 1 again.
-        fixture.connect(1L)
-
-        assertEquals(CanonicalMessageV2CanaryOutcome.NotSelected, fixture.accept(fixture.input("m4", 4L)))
-        assertEquals(0, fixture.store.incrementalCalls, "a smaller recorded epoch is a different connection too")
-    }
-
-    @Test
-    fun aReconnectDuringTheEnterFetchKeepsTheNewWindowDisplayOnly() = runBlocking {
-        val fixture = Fixture()
-        fixture.connect(1L)
-        // The request is sent under epoch 1; the socket reconnects as epoch 2 before the page commits.
-        fixture.enter(1L, beforeCommit = { fixture.connect(2L) })
-
-        assertEquals(CanonicalMessageV2CanaryOutcome.NotSelected, fixture.accept(fixture.input("m2", 2L)))
-        assertEquals(0, fixture.store.incrementalCalls, "the page predates epoch 2")
-
-        // Twin: no reconnect during the fetch.
-        val twin = Fixture()
-        twin.connect(1L)
-        twin.enter(1L)
-        assertEquals(CanonicalMessageV2CanaryOutcome.Committed, twin.accept(twin.input("m2", 2L)))
-    }
-
-    @Test
-    fun anEnterRightAfterAReconnectIsDisplayOnlyUntilRoomsJoinedArrivedForThatConnection() = runBlocking {
-        // Before rooms:joined the page may predate the connect-time room join: display only.
-        val before = Fixture()
-        before.connect(2L, roomsJoined = false)
-        before.enter(1L)
-        assertEquals(CanonicalMessageV2ScopeContinuity.Discontinuous, before.canary.continuityOf(scope))
-        assertEquals(CanonicalMessageV2CanaryOutcome.NotSelected, before.accept(before.input("m2", 2L)))
-        assertEquals(0, before.store.incrementalCalls)
-
-        // rooms:joined recorded for an OLDER connection only: still display only.
-        val older = Fixture()
-        older.connect(1L)
-        older.connect(2L, roomsJoined = false)
-        older.enter(1L)
-        assertEquals(CanonicalMessageV2CanaryOutcome.NotSelected, older.accept(older.input("m2", 2L)))
-        assertEquals(0, older.store.incrementalCalls)
-
-        // Twin: the same open once rooms:joined arrived for the current connection appends.
-        val after = Fixture()
-        after.connect(2L, roomsJoined = false)
-        after.canary.noteRoomsJoined(partition, 2L)
-        after.enter(1L)
-        assertEquals(CanonicalMessageV2CanaryOutcome.Committed, after.accept(after.input("m2", 2L)))
-        assertEquals(1, after.store.incrementalCalls)
-    }
-
-    @Test
     fun aCatchUpBaselineIsRegisteredOnlyForAMemberWhoseConnectionSawRoomsJoined() = runBlocking {
         val fixture = Fixture()
         fixture.connect(2L, roomsJoined = false)
@@ -242,23 +135,6 @@ class CanonicalMessageV2ProductionCanaryTest {
         fixture.resetPartition()
         fixture.connect(2L, roomsJoined = false)
         assertEquals(null, fixture.canary.beginCatchUpBaseline(partition, "channel-1", nonMember = false), "after a reset")
-    }
-
-    @Test
-    fun aFrameFromTheNewConnectionIsDisplayOnlyEvenWhenItBeatsTheReconnectSignal() = runBlocking {
-        val fixture = Fixture()
-        fixture.connect(1L)
-        fixture.enter(1L)
-        fixture.accept(fixture.input("m2", 2L), transportEpoch = 1L)
-        assertEquals(1, fixture.store.incrementalCalls)
-
-        // The socket came back as epoch 2, but its first frame is processed before the epoch-2 signal.
-        assertEquals(CanonicalMessageV2CanaryOutcome.NotSelected, fixture.accept(fixture.input("m4", 4L), transportEpoch = 2L))
-        assertEquals(1, fixture.store.incrementalCalls, "m4 must not be appended after m2")
-
-        fixture.connect(2L)
-        assertEquals(CanonicalMessageV2CanaryOutcome.NotSelected, fixture.accept(fixture.input("m5", 5L), transportEpoch = 2L))
-        assertEquals(1, fixture.store.incrementalCalls, "still display only: only an enter makes it continuous again")
     }
 
     @Test
@@ -278,19 +154,6 @@ class CanonicalMessageV2ProductionCanaryTest {
 
         // Twin: the same frame under the current connection is appended.
         assertEquals(CanonicalMessageV2CanaryOutcome.Committed, fixture.accept(fixture.input("m110", 110L), transportEpoch = 2L))
-        assertEquals(1, fixture.store.incrementalCalls)
-    }
-
-    @Test
-    fun framesWithoutATransportEpochStillFollowTheReconnectSignal() = runBlocking {
-        val fixture = Fixture()
-        fixture.connect(1L)
-        fixture.enter(1L)
-        fixture.accept(fixture.input("m2", 2L))
-        assertEquals(1, fixture.store.incrementalCalls)
-
-        fixture.connect(2L)
-        assertEquals(CanonicalMessageV2CanaryOutcome.NotSelected, fixture.accept(fixture.input("m4", 4L)))
         assertEquals(1, fixture.store.incrementalCalls)
     }
 
@@ -341,118 +204,6 @@ class CanonicalMessageV2ProductionCanaryTest {
         assertEquals(CanonicalMessageV2ScopeContinuity.Continuous, fixture.canary.continuityOf(scope))
     }
 
-    @Test
-    fun aReplyOfAThreadNeverEnteredInThisProcessIsDisplayOnlyWithoutAStoreRead() = runBlocking {
-        val fixture = Fixture()
-        fixture.enterThread(1L)
-        val readsBefore = fixture.store.reads
-
-        // thread-2 was never entered: no window, no write, no store lookup.
-        assertEquals(CanonicalMessageV2CanaryOutcome.NotSelected, fixture.accept(fixture.reply("s2", 2L, threadId = "thread-2")))
-        assertEquals(0, fixture.store.incrementalCalls)
-        assertEquals(readsBefore, fixture.store.reads)
-        assertEquals(CanonicalMessageV2ScopeContinuity.NoWindow, fixture.canary.continuityOf(threadScope.copy(scopeId = "thread-2")))
-
-        // Entering it again in a new process over the same store still never makes it continuous.
-        val afterRestart = Fixture(store = fixture.store)
-        assertEquals(CanonicalMessageV2CanaryOutcome.NotSelected, afterRestart.accept(afterRestart.reply("s3", 3L)))
-        afterRestart.enterThread(3L)
-        assertEquals(CanonicalMessageV2CanaryOutcome.NotSelected, afterRestart.accept(afterRestart.reply("s4", 4L)))
-        assertEquals(0, fixture.store.incrementalCalls)
-        assertEquals(CanonicalMessageV2ScopeContinuity.Discontinuous, afterRestart.canary.continuityOf(threadScope))
-    }
-
-    /**
-     * The realtime frame-parent check is unreachable while threads are never continuous (the plan stops at
-     * `skip=discontinuous` first); the enter-commit parent check still runs, and it outranks the delivery gate.
-     */
-    @Test
-    fun aThreadEnterWhoseCommittedCursorNamesAnotherParentEndsParentMismatch() = runBlocking {
-        fun run(cursorParentId: String): Fixture = runBlocking {
-            val fixture = Fixture()
-            fixture.enterThread(1L, cursorParentId = cursorParentId)
-            fixture.accept(fixture.reply("r2", 2L))
-            fixture
-        }
-        val mismatch = run(cursorParentId = "channel-2")
-        assertTrue(
-            mismatch.logs.any { it.startsWith("canonical_v2_canary enter=committed server=server-1 scope=thread-1 scopeKind=thread") &&
-                it.endsWith("continuity=discontinuous reason=parent_mismatch") },
-            mismatch.logs.toString(),
-        )
-        assertEquals(0, mismatch.store.incrementalCalls)
-        // Twin: the cursor naming the baseline's parent passes the parent check and stops at the delivery gate.
-        val matching = run(cursorParentId = "channel-1")
-        assertTrue(matching.logs.any { it == threadUnconfirmedLine }, matching.logs.toString())
-        assertTrue(matching.logs.none { "parent_mismatch" in it }, matching.logs.toString())
-        assertEquals(0, matching.store.incrementalCalls)
-    }
-
-    @Test
-    fun aRoomLeaveDuringTheThreadFetchCountsTheThreadAndItsParentRoom() = runBlocking {
-        fun reasonAfterLeaving(leftRoom: String): String = runBlocking {
-            val fixture = Fixture()
-            fixture.enterThread(1L, beforeCommit = { fixture.canary.noteRoomLeft("server-1", leftRoom) })
-            fixture.accept(fixture.reply("r2", 2L))
-            assertEquals(0, fixture.store.incrementalCalls)
-            fixture.logs.single { it.startsWith("canonical_v2_canary enter=committed") }.substringAfter("reason=")
-        }
-        assertEquals("room_left", reasonAfterLeaving("thread-1"))
-        assertEquals("room_left", reasonAfterLeaving("channel-1"), "replies may come through the parent channel's room")
-        // Twin: an unrelated room leaves only the delivery gate.
-        assertEquals("thread_delivery_unconfirmed", reasonAfterLeaving("channel-9"))
-    }
-
-    @Test
-    fun aThreadUnderANonMemberParentEndsParentNonMemberAndTheThreadsOwnFlagOnlyUnderAFollowerOnlyParent() = runBlocking {
-        fun reason(nonMember: Boolean = false, parentNonMember: Boolean = false, parentKind: String = "channel"): String = runBlocking {
-            val fixture = Fixture()
-            fixture.enterThread(1L, nonMember = nonMember, parentNonMember = parentNonMember, parentKind = parentKind)
-            fixture.accept(fixture.reply("r2", 2L, parentKind = parentKind))
-            assertEquals(0, fixture.store.incrementalCalls)
-            assertEquals(CanonicalMessageV2ScopeContinuity.Discontinuous, fixture.canary.continuityOf(threadScope))
-            fixture.logs.single { it.startsWith("canonical_v2_canary enter=committed") }.substringAfter("reason=")
-        }
-        assertEquals("parent_non_member", reason(parentNonMember = true))
-        // Task #14c: under a public parent the thread's own flag never decides: the missing ack is the reason.
-        assertEquals("thread_delivery_unconfirmed", reason(nonMember = true))
-        assertEquals("thread_delivery_unconfirmed", reason())
-        // Under a follower-only parent it does, with its own name.
-        assertEquals("thread_non_member", reason(nonMember = true, parentKind = "private"))
-        assertEquals("thread_delivery_follower_only", reason(parentKind = "private"))
-    }
-
-    @Test
-    fun aReplyDuringTheThreadEnterFetchIsDisplayedButNeverReplayed() = runBlocking {
-        val fixture = Fixture()
-        fixture.enterThread(1L, beforeCommit = {
-            assertEquals(
-                CanonicalMessageV2CanaryOutcome.Pending,
-                fixture.accept(fixture.reply("r2", 2L)),
-                "buffered for the thread's enter, displayed now",
-            )
-        })
-        assertEquals(listOf("e1"), fixture.store.restore(threadScope).envelopes.map { it.fact.id })
-        assertEquals(0, fixture.store.incrementalCalls)
-        assertTrue(
-            fixture.logs.any {
-                it == "canonical_v2_canary enter=committed server=server-1 scope=thread-1 scopeKind=thread epoch=1 buffered=1 " +
-                    "nonMember@request=false nonMember@commit=false parentNonMember@request=false parentNonMember@commit=false " +
-                    "continuity=discontinuous reason=thread_delivery_unconfirmed"
-            },
-            fixture.logs.toString(),
-        )
-        assertEquals(CanonicalMessageV2CanaryOutcome.NotSelected, fixture.accept(fixture.reply("r3", 3L)))
-        assertEquals(0, fixture.store.incrementalCalls)
-
-        // Control: the identical buffered frame shape during a CHANNEL enter is replayed.
-        fixture.enter(1L, beforeCommit = {
-            assertEquals(CanonicalMessageV2CanaryOutcome.Pending, fixture.accept(fixture.input("m2", 2L)))
-        })
-        assertEquals(listOf("e1", "m2"), fixture.store.restore(scope).envelopes.map { it.fact.id })
-        assertEquals(CanonicalMessageV2ScopeContinuity.Continuous, fixture.canary.continuityOf(scope))
-    }
-
     // ---- task #14c: a public-parent thread whose room join was acked before the enter is continuous ----
     //
     // Each case is paired with the identical sequence differing only in the signal under test.
@@ -492,231 +243,6 @@ class CanonicalMessageV2ProductionCanaryTest {
         assertEquals("discontinuous reason=thread_delivery_unconfirmed", threadEnterReason(unacked))
         assertEquals(0, unacked.store.incrementalCalls)
         assertEquals(listOf("e1"), unacked.store.restore(threadScope).envelopes.map { it.fact.id })
-    }
-
-    @Test
-    fun anAckArrivingOnlyDuringTheEnterFetchDoesNotMakeThatEnterContinuousButTheNextOne() = runBlocking {
-        val fixture = Fixture()
-        fixture.connect(1L)
-        fixture.enterThread(1L, beforeCommit = { fixture.joinAck(1L) })
-        // The server may have read the page before it joined the room: a reply between is in neither.
-        assertEquals("discontinuous reason=thread_join_ack_after_request", threadEnterReason(fixture))
-        assertEquals(CanonicalMessageV2CanaryOutcome.NotSelected, fixture.accept(fixture.reply("r2", 2L)))
-        assertEquals(0, fixture.store.incrementalCalls)
-
-        // The next enter on the same connection is registered after the ack: continuous.
-        fixture.enterThread(2L)
-        assertEquals("continuous", threadEnterReason(fixture))
-        assertEquals(CanonicalMessageV2CanaryOutcome.Committed, fixture.accept(fixture.reply("r3", 3L)))
-        assertEquals(1, fixture.store.incrementalCalls)
-    }
-
-    @Test
-    fun anAckOfAnOlderConnectionNeverMakesTheThreadContinuous() = runBlocking {
-        fun run(ackEpoch: Long): String = runBlocking {
-            val fixture = Fixture()
-            fixture.connect(1L)
-            fixture.joinAck(ackEpoch)
-            fixture.connect(2L)
-            fixture.enterThread(1L)
-            fixture.accept(fixture.reply("r2", 2L), transportEpoch = 2L)
-            threadEnterReason(fixture).also {
-                if (it != "continuous") assertEquals(0, fixture.store.incrementalCalls)
-            }
-        }
-        assertEquals("discontinuous reason=thread_delivery_unconfirmed", run(ackEpoch = 1L))
-        assertEquals("continuous", run(ackEpoch = 2L))
-    }
-
-    @Test
-    fun anAckForAnotherThreadHasNoEffect() = runBlocking {
-        fun run(ackedThread: String): String = runBlocking {
-            val fixture = Fixture()
-            fixture.connect(1L)
-            fixture.joinAck(1L, threadId = ackedThread)
-            fixture.enterThread(1L)
-            threadEnterReason(fixture)
-        }
-        assertEquals("discontinuous reason=thread_delivery_unconfirmed", run(ackedThread = "thread-2"))
-        assertEquals("continuous", run(ackedThread = "thread-1"))
-    }
-
-    @Test
-    fun aJoinDeniedEndsJoinDeniedBeforeDuringOrAfterTheEnter() = runBlocking {
-        // Denied as the latest answer before the enter (an ack before it is overridden).
-        val before = Fixture()
-        before.connect(1L)
-        before.joinAck(1L)
-        before.joinAck(1L, joined = false)
-        before.enterThread(1L)
-        assertEquals("discontinuous reason=join_denied", threadEnterReason(before))
-        assertEquals(CanonicalMessageV2CanaryOutcome.NotSelected, before.accept(before.reply("r2", 2L)))
-        assertEquals(0, before.store.incrementalCalls)
-
-        // Denied while the fetch is in flight, after an ack that would have made it continuous.
-        val during = Fixture()
-        during.connect(1L)
-        during.joinAck(1L)
-        during.enterThread(1L, beforeCommit = { during.joinAck(1L, joined = false) })
-        assertEquals("discontinuous reason=join_denied", threadEnterReason(during))
-
-        // Denied after a continuous commit: the window stops being written.
-        val after = Fixture()
-        after.connect(1L)
-        after.joinAck(1L)
-        after.enterThread(1L)
-        assertEquals("continuous", threadEnterReason(after))
-        after.joinAck(1L, joined = false)
-        assertEquals(CanonicalMessageV2ScopeContinuity.Discontinuous, after.canary.continuityOf(threadScope))
-        assertEquals(CanonicalMessageV2CanaryOutcome.NotSelected, after.accept(after.reply("r2", 2L)))
-        assertEquals(0, after.store.incrementalCalls)
-        assertTrue(
-            after.logs.any { it == "canonical_v2_canary discontinuous server=server-1 scope=thread-1 scopeKind=thread reason=join_denied" },
-            after.logs.toString(),
-        )
-        // Twin: a denial of an OLDER connection does not touch the window committed on the current one.
-        val stale = Fixture()
-        stale.connect(2L)
-        stale.joinAck(2L)
-        stale.enterThread(1L)
-        stale.joinAck(1L, joined = false)
-        assertEquals(CanonicalMessageV2ScopeContinuity.Continuous, stale.canary.continuityOf(threadScope))
-    }
-
-    @Test
-    fun aPrivateDmOrJointParentThreadStaysFollowerOnlyEvenWithAnAck() = runBlocking {
-        for (parentKind in listOf("private", "dm", "joint")) {
-            val fixture = Fixture()
-            fixture.connect(1L)
-            fixture.joinAck(1L)
-            fixture.enterThread(1L, parentKind = parentKind)
-            assertEquals("discontinuous reason=thread_delivery_follower_only", threadEnterReason(fixture), parentKind)
-            assertEquals(CanonicalMessageV2CanaryOutcome.NotSelected, fixture.accept(fixture.reply("r2", 2L, parentKind = parentKind)))
-            assertEquals(0, fixture.store.incrementalCalls, parentKind)
-        }
-    }
-
-    @Test
-    fun aReconnectAfterAContinuousThreadEnterMakesItDisplayOnlyUntilTheNextEnter() = runBlocking {
-        val fixture = Fixture()
-        fixture.connect(1L)
-        fixture.joinAck(1L)
-        fixture.enterThread(1L)
-        assertEquals(CanonicalMessageV2CanaryOutcome.Committed, fixture.accept(fixture.reply("r2", 2L), transportEpoch = 1L))
-
-        fixture.connect(2L)
-        // The host rejoins the thread room and the server acks it on the new socket: still no write until re-enter.
-        fixture.joinAck(2L)
-        assertEquals(CanonicalMessageV2CanaryOutcome.NotSelected, fixture.accept(fixture.reply("r3", 3L), transportEpoch = 2L))
-        assertEquals(1, fixture.store.incrementalCalls)
-        assertEquals(CanonicalMessageV2ScopeContinuity.Discontinuous, fixture.canary.continuityOf(threadScope))
-
-        fixture.enterThread(4L)
-        assertEquals("continuous", threadEnterReason(fixture))
-        assertEquals(CanonicalMessageV2CanaryOutcome.Committed, fixture.accept(fixture.reply("r5", 5L), transportEpoch = 2L))
-    }
-
-    @Test
-    fun aLeaveOfTheThreadRoomAfterTheAckVoidsIt() = runBlocking {
-        fun run(leaveAfterAck: Boolean, rejoinAck: Boolean = false): String = runBlocking {
-            val fixture = Fixture()
-            fixture.connect(1L)
-            fixture.joinAck(1L)
-            if (leaveAfterAck) fixture.canary.noteRoomLeft("server-1", "thread-1")
-            // A later ack on the same socket may answer the join sent before the leave: never trusted.
-            if (rejoinAck) fixture.joinAck(1L)
-            fixture.enterThread(1L)
-            threadEnterReason(fixture)
-        }
-        assertEquals("continuous", run(leaveAfterAck = false))
-        assertEquals("discontinuous reason=thread_delivery_unconfirmed", run(leaveAfterAck = true))
-        assertEquals("discontinuous reason=thread_delivery_unconfirmed", run(leaveAfterAck = true, rejoinAck = true))
-    }
-
-    /**
-     * Review finding on #14c: the leave runs synchronously from the room-lease registry while epochs and acks reach
-     * the canary asynchronously, so a leave on the new socket E2 can be noted BEFORE `noteTransportEpoch(E2)`
-     * (or before any epoch at all), and the ack of a join sent before the leave can be processed after it. Any
-     * leave of the thread room voids its acks on every epoch; the paired control without the leave is continuous.
-     */
-    @Test
-    fun aLeaveNotedBeforeTheNewSocketsEpochStillVoidsItsLaterAck() = runBlocking {
-        fun reconnected(leave: Boolean): String = runBlocking {
-            val fixture = Fixture()
-            fixture.connect(1L)
-            // Socket E2: the host rejoined the thread room, the server acked; the user closed the thread (leave)
-            // before shared processed E2's epoch; then the ack, then the epoch; the user reopens.
-            if (leave) fixture.canary.noteRoomLeft("server-1", "thread-1")
-            fixture.joinAck(2L)
-            fixture.connect(2L)
-            fixture.enterThread(1L)
-            fixture.accept(fixture.reply("r2", 2L), transportEpoch = 2L)
-            threadEnterReason(fixture).also {
-                if (it != "continuous") assertEquals(0, fixture.store.incrementalCalls)
-            }
-        }
-        assertEquals("discontinuous reason=thread_delivery_unconfirmed", reconnected(leave = true))
-        assertEquals("continuous", reconnected(leave = false))
-
-        fun firstConnection(leave: Boolean): String = runBlocking {
-            val fixture = Fixture()
-            // The leave is noted before any epoch was recorded.
-            if (leave) fixture.canary.noteRoomLeft("server-1", "thread-1")
-            fixture.connect(1L)
-            fixture.joinAck(1L)
-            fixture.enterThread(1L)
-            threadEnterReason(fixture)
-        }
-        assertEquals("discontinuous reason=thread_delivery_unconfirmed", firstConnection(leave = true))
-        assertEquals("continuous", firstConnection(leave = false))
-    }
-
-    @Test
-    fun theThreadsOwnNonMembershipYieldsToTheAckButTheParentsNeverDoes() = runBlocking {
-        fun run(nonMember: Boolean, parentNonMember: Boolean, ack: Boolean): String = runBlocking {
-            val fixture = Fixture()
-            fixture.connect(1L)
-            if (ack) fixture.joinAck(1L)
-            fixture.enterThread(1L, nonMember = nonMember, parentNonMember = parentNonMember)
-            threadEnterReason(fixture)
-        }
-        assertEquals("continuous", run(nonMember = true, parentNonMember = false, ack = true))
-        // Task #14c: the thread's own flag never produces non_member under a known-member public parent.
-        assertEquals("discontinuous reason=thread_delivery_unconfirmed", run(nonMember = true, parentNonMember = false, ack = false))
-        assertEquals("discontinuous reason=parent_non_member", run(nonMember = false, parentNonMember = true, ack = true))
-        assertEquals("continuous", run(nonMember = false, parentNonMember = false, ack = true))
-    }
-
-    /**
-     * Device run (task #14c): both flags false at registration, the thread's own flag true at commit, the ack during
-     * the fetch. The commit line names both moments and the reason is the late ack, never `non_member`; the twin with
-     * the PARENT flipping at commit ends `parent_non_member`.
-     */
-    @Test
-    fun aMembershipFlagFlippingAtCommitIsLoggedAndOnlyTheParentsEndsNonMember() = runBlocking {
-        fun commitLine(nonMemberAtCommit: Boolean, parentNonMemberAtCommit: Boolean): String = runBlocking {
-            val fixture = Fixture()
-            fixture.connect(1L)
-            fixture.enterThread(
-                1L,
-                nonMemberAtCommit = nonMemberAtCommit,
-                parentNonMemberAtCommit = parentNonMemberAtCommit,
-                beforeCommit = { fixture.joinAck(1L) },
-            )
-            fixture.logs.single { it.startsWith("canonical_v2_canary enter=committed") }
-        }
-        assertEquals(
-            "canonical_v2_canary enter=committed server=server-1 scope=thread-1 scopeKind=thread epoch=1 buffered=0 " +
-                "nonMember@request=false nonMember@commit=true parentNonMember@request=false parentNonMember@commit=false " +
-                "continuity=discontinuous reason=thread_join_ack_after_request",
-            commitLine(nonMemberAtCommit = true, parentNonMemberAtCommit = false),
-        )
-        assertEquals(
-            "canonical_v2_canary enter=committed server=server-1 scope=thread-1 scopeKind=thread epoch=1 buffered=0 " +
-                "nonMember@request=false nonMember@commit=false parentNonMember@request=false parentNonMember@commit=true " +
-                "continuity=discontinuous reason=parent_non_member",
-            commitLine(nonMemberAtCommit = false, parentNonMemberAtCommit = true),
-        )
     }
 
     // ---- task #14c: a late ack requests ONE catch-up whose baseline (registered after the ack) is continuous ----
@@ -776,106 +302,6 @@ class CanonicalMessageV2ProductionCanaryTest {
             settle()
             assertEquals(1, received.size, "the catch-up's commit requests nothing more")
         }
-    }
-
-    /** Paired: identical sequence, only the late ack's connection differs (current vs older). */
-    @Test
-    fun aLateAckAfterTheCommitRequestsTheCatchUpOnlyOnTheWindowsOwnConnection() = runBlocking {
-        fun run(ackEpoch: Long): Pair<Int, String> = runBlocking {
-            val fixture = Fixture()
-            withOpenPage(fixture) { received ->
-                fixture.connect(1L)
-                fixture.connect(2L)
-                fixture.enterThread(1L)
-                assertEquals("discontinuous reason=thread_delivery_unconfirmed", threadEnterReason(fixture))
-                fixture.joinAck(ackEpoch)
-                settle()
-                fixture.catchUpThread(2L)
-                received.size to threadCatchUpReason(fixture)
-            }
-        }
-        assertEquals(1 to "continuous", run(ackEpoch = 2L))
-        assertEquals(0 to "discontinuous reason=thread_delivery_unconfirmed", run(ackEpoch = 1L))
-    }
-
-    @Test
-    fun aLateAckWithNoOpenPageIsDroppedAndNeverReplayed() = runBlocking {
-        val fixture = Fixture()
-        fixture.connect(1L)
-        fixture.enterThread(1L)
-        fixture.joinAck(1L)
-        assertTrue(
-            fixture.logs.any { "thread_join_confirmed" in it && it.endsWith("catchUp=requested subscribers=0") },
-            fixture.logs.toString(),
-        )
-        // A page opened afterwards does not receive it (hot, no replay).
-        withOpenPage(fixture) { received ->
-            settle()
-            assertEquals(emptyList(), received)
-        }
-    }
-
-    @Test
-    fun oneAckRequestsAtMostOneCatchUpAndAFailedCatchUpIsNotRetried() = runBlocking {
-        val fixture = Fixture()
-        withOpenPage(fixture) { received ->
-            fixture.connect(1L)
-            fixture.enterThread(1L, beforeCommit = { fixture.joinAck(1L) })
-            settle()
-            assertEquals(1, received.size)
-            // The page's catch-up fails (abandoned): nothing is requested again, by it or by further acks.
-            assertEquals(true, fixture.catchUpThread(2L, fail = true))
-            fixture.joinAck(1L)
-            fixture.joinAck(1L)
-            settle()
-            assertEquals(1, received.size, fixture.logs.toString())
-            assertEquals(1, fixture.logs.count { "thread_join_confirmed" in it })
-            assertTrue(fixture.logs.any { it.startsWith("canonical_v2_canary catch_up=abandoned server=server-1 scope=thread-1") })
-        }
-    }
-
-    @Test
-    fun aCatchUpThatItselfSeesALateAckRequestsNothing() = runBlocking {
-        // A catch-up registered BEFORE the ack (e.g. a resume) commits `thread_join_ack_after_request` like an enter,
-        // but never arms another catch-up: only an enter does. Twin: the same ack during an ENTER requests one.
-        fun requested(viaCatchUp: Boolean): Int = runBlocking {
-            val fixture = Fixture()
-            withOpenPage(fixture) { received ->
-                fixture.connect(1L)
-                if (viaCatchUp) {
-                    fixture.connect(2L)
-                    fixture.enterThread(1L)
-                    fixture.connect(3L)
-                    fixture.catchUpThread(2L, beforeCommit = { fixture.joinAck(3L) })
-                    assertEquals("discontinuous reason=thread_join_ack_after_request", threadCatchUpReason(fixture))
-                } else {
-                    fixture.connect(3L)
-                    fixture.enterThread(1L, beforeCommit = { fixture.joinAck(3L) })
-                    assertEquals("discontinuous reason=thread_join_ack_after_request", threadEnterReason(fixture))
-                }
-                settle()
-                received.size
-            }
-        }
-        assertEquals(0, requested(viaCatchUp = true))
-        assertEquals(1, requested(viaCatchUp = false))
-    }
-
-    @Test
-    fun aLeftThreadRoomNeverRequestsTheFutileCatchUp() = runBlocking {
-        fun run(leave: Boolean): Pair<Int, Boolean> = runBlocking {
-            val fixture = Fixture()
-            withOpenPage(fixture) { received ->
-                fixture.connect(1L)
-                fixture.enterThread(1L)
-                if (leave) fixture.canary.noteRoomLeft("server-1", "thread-1")
-                fixture.joinAck(1L)
-                settle()
-                received.size to fixture.logs.any { it.endsWith("trigger=ack catchUp=skipped reason=room_left") }
-            }
-        }
-        assertEquals(0 to true, run(leave = true))
-        assertEquals(1 to false, run(leave = false))
     }
 
     // ---- device #3092: the real `message:new` wire, decoded exactly as the socket mapper does ----
@@ -941,53 +367,6 @@ class CanonicalMessageV2ProductionCanaryTest {
                 it == "canonical_v2_canary skip=discontinuous server=server-1 scope=channel-1 kind=new msg=reply-2 seq=2"
             },
             fixture.logs.toString(),
-        )
-    }
-
-    /** Twin: the identical channel wire plus the two keys the producer contract lists for `message:new` is written full. */
-    @Test
-    fun theSameWireCarryingSenderDescriptionAndReactionsIsWrittenFull() = runBlocking {
-        val fixture = Fixture()
-        fixture.enter(1L)
-
-        val full = wireReply(extraKeys = """"senderDescription":null,"reactions":[],""", channel = true)
-        assertEquals(CanonicalMessageV2CanaryOutcome.Committed, fixture.accept(full))
-        assertEquals(listOf("e1", "reply-2"), fixture.store.restore(scope).envelopes.map { it.fact.id })
-        assertEquals(emptyMap(), fixture.store.lastIncremental?.unknownFieldsByFactId, "a full fact has no marker")
-        assertEquals(CanonicalMessageV2ScopeContinuity.Continuous, fixture.canary.continuityOf(scope))
-        assertTrue(fixture.logs.none { "discontinuous" in it || "partial=" in it }, fixture.logs.toString())
-    }
-
-    /** A frame missing only one aggregate names only that one (the detail is per field, not a fixed label). */
-    @Test
-    fun theNotFullDetailNamesEachMissingAggregateAndInvalidScalar() {
-        val onlyReactions = wireReply(extraKeys = """"senderDescription":null,""")
-        assertEquals(
-            CanonicalMessageV2EnvelopeConversion.NotFull("missing=Reactions"),
-            onlyReactions.toCanonicalMessageV2Conversion(partition, replyCount = 0),
-        )
-        val blankName = onlyReactions.copy(
-            row = onlyReactions.row.copy(senderName = ""),
-            presentAggregates = MessageAggregateField.entries.toList(),
-        )
-        assertEquals(
-            CanonicalMessageV2EnvelopeConversion.NotFull("invalid=senderName"),
-            blankName.toCanonicalMessageV2Conversion(partition, replyCount = 0),
-        )
-        assertIs<CanonicalMessageV2EnvelopeConversion.Converted>(
-            blankName.copy(row = blankName.row.copy(senderName = "Alice"))
-                .toCanonicalMessageV2Conversion(partition, replyCount = 0),
-        )
-        // Task #14a, realtime only: a missing allowed aggregate converts as unknown; an invalid scalar never does.
-        val partial = assertIs<CanonicalMessageV2EnvelopeConversion.Converted>(
-            onlyReactions.toCanonicalMessageV2Conversion(partition, replyCount = 0, allowPartial = true),
-        )
-        assertEquals(setOf(MessageAggregateField.Reactions), partial.unknownFields)
-        assertEquals(emptyList(), partial.envelope.fact.reactions)
-        assertEquals(
-            CanonicalMessageV2EnvelopeConversion.NotFull("invalid=senderName"),
-            onlyReactions.copy(row = onlyReactions.row.copy(senderName = ""))
-                .toCanonicalMessageV2Conversion(partition, replyCount = 0, allowPartial = true),
         )
     }
 

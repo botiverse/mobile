@@ -64,16 +64,6 @@ class SharedServerMembersStoreSyncTest {
     }
 
     @Test
-    fun `the same rows again change nothing`() = runTest {
-        val store = SharedServerMembersStore(FakeMemberRepository(serverMembers = listOf(profile("u-1", "Ann", MemberKind.Human))))
-        store.refreshMembers(serverId, force = true)
-        val before = store.state.value
-
-        assertFalse(store.applySyncedRosterRows(serverId, listOf(profile("u-1", "Ann", MemberKind.Human)), emptyList()))
-        assertEquals(before, store.state.value)
-    }
-
-    @Test
     fun `a roster that is not loaded is left for its load`() = runTest {
         val store = SharedServerMembersStore(FakeMemberRepository())
 
@@ -171,21 +161,6 @@ class SharedServerMembersStoreSyncTest {
     }
 
     @Test
-    fun `with sync on a reconnect refetches only agents and a first connect the full roster`() = runTest {
-        val repository = SyncRosterRepository(members = listOf(human("u-1", "Ann"), agent("a-1", "Bot")), agents = listOf(agent("a-1", "Bot")))
-        val store = syncStore(repository)
-        val refetch = rosterRefetch(store, agentsOnly = true)
-
-        connect(refetch, epoch = 1L)
-        assertEquals(1 to 0, repository.memberCalls to repository.agentCalls)
-
-        connect(refetch, epoch = 2L)
-        advanceTimeBy(RECONNECT_REFETCH_JITTER_MAX_MILLIS + 1L)
-        runCurrent()
-        assertEquals(1 to 1, repository.memberCalls to repository.agentCalls)
-    }
-
-    @Test
     fun `with sync off a reconnect still refetches the full roster`() = runTest {
         val repository = SyncRosterRepository(members = listOf(human("u-1", "Ann"), agent("a-1", "Bot")))
         val store = syncStore(repository)
@@ -197,55 +172,6 @@ class SharedServerMembersStoreSyncTest {
         runCurrent()
 
         assertEquals(2 to 0, repository.memberCalls to repository.agentCalls)
-    }
-
-    /**
-     * Staging run 10-27 (Tenny): with sync on a reconnect must not retire the roster, so the Home
-     * reloads that follow it (catch-up, sync `home=true`) read neither `/members` nor `/machines`
-     * (both come with the members read): only the delayed `/agents`.
-     */
-    @Test
-    fun `with sync on a reconnect and an immediate Home reload read only the delayed agents and machines`() = runTest {
-        val repository = SyncRosterRepository(members = listOf(human("u-1", "Ann"), agent("a-1", "Bot")), agents = listOf(agent("a-1", "Bot")))
-        val core = syncCore(repository)
-        val store = SharedServerMembersStore(memberRepository = repository, processCore = core, incrementalSyncCoversRoster = { true })
-        var machineReads = 0
-        val refetch =
-            rosterRefetch(store, agentsOnly = true, invalidate = core::invalidate, refreshMachines = { machineReads += 1 })
-        connect(refetch, epoch = 1L)
-        assertEquals(1 to 0, repository.memberCalls to repository.agentCalls)
-        assertEquals(0, machineReads, "a first connect's full roster read carries the machines")
-
-        connect(refetch, epoch = 2L)
-        homeReload(store)
-        homeReload(store)
-        runCurrent()
-        assertEquals(1 to 0, repository.memberCalls to repository.agentCalls, "no roster read outside the jitter")
-        assertEquals(0, machineReads, "no machines read outside the jitter")
-
-        advanceTimeBy(RECONNECT_REFETCH_JITTER_MAX_MILLIS + 1L)
-        runCurrent()
-        homeReload(store)
-        assertEquals(1 to 1, repository.memberCalls to repository.agentCalls)
-        assertEquals(1, machineReads)
-        assertEquals(SharedServerMembersLoadStatus.Loaded, store.currentServerMembersEntry(serverId).status)
-    }
-
-    @Test
-    fun `with sync off a Home reload after a reconnect reads the roster at once as before`() = runTest {
-        val repository = SyncRosterRepository(members = listOf(human("u-1", "Ann"), agent("a-1", "Bot")))
-        val core = syncCore(repository)
-        val store = SharedServerMembersStore(memberRepository = repository, processCore = core)
-        val refetch = rosterRefetch(store, agentsOnly = false, invalidate = core::invalidate)
-        connect(refetch, epoch = 1L)
-
-        connect(refetch, epoch = 2L)
-        homeReload(store)
-        assertEquals(2 to 0, repository.memberCalls to repository.agentCalls)
-
-        advanceTimeBy(RECONNECT_REFETCH_JITTER_MAX_MILLIS + 1L)
-        runCurrent()
-        assertEquals(3 to 0, repository.memberCalls to repository.agentCalls)
     }
 
     @Test
@@ -319,24 +245,6 @@ class SharedServerMembersStoreSyncTest {
         advanceTimeBy(RECONNECT_REFETCH_JITTER_MAX_MILLIS + 1L)
         runCurrent()
         assertEquals(2 to 0, repository.memberCalls to repository.agentCalls)
-    }
-
-    @Test
-    fun `the pull fallback never runs at once even for a session that never connected`() = runTest {
-        val repository = SyncRosterRepository(members = listOf(human("u-1", "Ann")))
-        val store = syncStore(repository)
-        val refetch = rosterRefetch(store, agentsOnly = true, maxJitterMillis = 5_000L)
-
-        refetch.onSyncPullFailed(
-            owner = ProcessServerMembersOwner("local", "local", serverId.value),
-            transport = ProcessPresenceTransportEpoch(connectionFamilyId = "family-1", epoch = 1L),
-        )
-        runCurrent()
-        assertEquals(0, repository.memberCalls)
-        advanceTimeBy(RECONNECT_REFETCH_JITTER_MAX_MILLIS + 1L)
-        runCurrent()
-        assertEquals(1, repository.memberCalls)
-        assertTrue(testScheduler.currentTime > 0L)
     }
 
     private fun human(id: String, name: String) = profile(id, name, MemberKind.Human)

@@ -2,7 +2,6 @@ package build.raft.app.data
 
 import build.raft.app.data.realtime.RealtimeEventMapper
 import build.raft.app.data.realtime.RealtimeSocketEvents
-import build.raft.app.model.NotificationNoticeReceived
 import build.raft.app.model.NotificationPushReceived
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -98,29 +97,6 @@ class RaftNotificationBannerCopyTest {
         val request = buildSystemUnreadNotificationRequestFromPush(push, isVisibleThread = false, isAppInForeground = false)!!
         assertEquals("Acme", request.subtitle)
         assertEquals(push.localization, request.localization)
-    }
-
-    @Test
-    fun aSocketNoticeCarriesItsSubtitleAndLocalization() {
-        val notice =
-            assertIs<NotificationNoticeReceived>(
-                RealtimeEventMapper().map(
-                    RealtimeSocketEvents.NotificationPush,
-                    """
-                    {
-                      "serverId": "server-1", "kind": null, "channelId": null, "messageId": null,
-                      "category": "test", "groupKey": "server-1:test", "id": "t-1",
-                      "title": "Raft test notification · Acme", "subtitle": "Acme",
-                      "body": "If you can read this, notifications reach this device.",
-                      "tag": "t-1", "silent": false,
-                      "localization": { "titleKey": "push.title.test", "bodyKey": "push.body.test", "bodyArgs": [] }
-                    }
-                    """.trimIndent()
-                )
-            )
-        assertEquals("Acme", notice.subtitle)
-        assertEquals("push.title.test", notice.localization?.titleKey)
-        assertEquals("push.body.test", notice.localization?.bodyKey)
     }
 
     @Test

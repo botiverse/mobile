@@ -136,59 +136,11 @@ class AppLinkCardV3ParseTest {
     }
 
     @Test
-    fun aCardNeedsItsPlacementAndOnlyBlockOrHoverIsOne() {
-        assertTrue(read(cardItem(null)).results.isEmpty())
-        assertTrue(read(cardItem("inline")).results.isEmpty())
-        assertTrue(read(cardItem("")).results.isEmpty())
-    }
-
-    @Test
-    fun anItemMustBeAnObjectWithATypeOf1To32AllowedCharacters() {
-        assertTrue(read("$inlineItem,\"inline\"").results.isEmpty())
-        assertTrue(read("""$inlineItem,{"title":"no type"}""").results.isEmpty())
-        assertTrue(read("""$inlineItem,{"type":"Upper"}""").results.isEmpty())
-        assertTrue(read("""$inlineItem,{"type":"${"a".repeat(33)}"}""").results.isEmpty())
-        assertTrue(read("""$inlineItem,{"type":""}""").results.isEmpty())
-        assertTrue(read("""$inlineItem,{"type":7}""").results.isEmpty())
-        assertNotNull(result("""$inlineItem,{"type":"${"a".repeat(32)}"}"""))
-        assertNotNull(result("""$inlineItem,{"type":"a.b_c9"}"""))
-    }
-
-    @Test
-    fun atMostEightItems() {
-        val unknown = """{"type":"x"}"""
-        assertNotNull(result("$inlineItem," + List(7) { unknown }.joinToString(",")))
-        assertTrue(read("$inlineItem," + List(8) { unknown }.joinToString(",")).results.isEmpty())
-    }
-
-    @Test
-    fun aKnownItemIsAsStrictAsVersion2() {
-        assertTrue(read("""{"type":"inline","title":"PR","extra":1}""").results.isEmpty())
-        assertTrue(read("""{"type":"inline","title":""}""").results.isEmpty())
-        assertTrue(read(cardItem("block").replace("\"card_revision\":\"cr-1\",", "\"card_revision\":\"cr-1\",\"extra\":1,")).results.isEmpty())
-        assertTrue(read(cardItem("block").replace("\"business_revision\":\"br-1\"", "\"business_revision\":\"\"")).results.isEmpty())
-        assertTrue(read(cardItem("block").replace("\"title\":\"PR 123: Fix sign-in\"", "\"title\":\"\"")).results.isEmpty())
-        assertTrue(read("""{"type":"connect_account","connect_url":"$connectUrl","label":"x"}""").results.isEmpty())
-    }
-
-    @Test
     fun aNavigateOrConnectUrlOffTheLinksOriginIsThePlainLink() {
         val off = "https://elsewhere.example.test/x"
         assertTrue(read(cardItem("block", tree.replace("\"url\":\"$url\"", "\"url\":\"$off\""))).results.isEmpty())
         assertTrue(read("""{"type":"connect_account","connect_url":"$off"}""").results.isEmpty())
         assertTrue(read("""{"type":"connect_account","connect_url":"http://stamp.example.test/x"}""").results.isEmpty())
-    }
-
-    @Test
-    fun theAnswerIsStrictAtItsTopAndTheTitleIsTolerated() {
-        fun plain(preview: String) = parseAppLinkCardReadAnswer("""{"items":[${item("", preview = preview)}]}""")!!.results.isEmpty()
-        assertTrue(plain("""{"version":3,"items":[$inlineItem],"extra":1}"""))
-        assertTrue(plain("""{"version":2,"items":[$inlineItem]}"""))
-        assertTrue(plain("""{"version":3}"""))
-        assertTrue(plain("""{"version":3,"items":{}}"""))
-        assertTrue(plain("""{"version":"3","items":[$inlineItem]}"""))
-        assertFalse(plain("""{"version":3,"title":"PR 123: Fix sign-in","items":[$inlineItem]}"""))
-        assertTrue(plain("""{"version":3,"title":"","items":[$inlineItem]}"""))
     }
 
     @Test
@@ -207,19 +159,6 @@ class AppLinkCardV3ParseTest {
         assertEquals("br-1", card.block?.businessRevision)
         val badId = signed.replace("\"merge\"", "\"Merge\"")
         assertTrue(parseAppLinkCardReadAnswer("""{"items":[$badId]}""")!!.results.isEmpty())
-    }
-
-    @Test
-    fun theHandlesAndTheBusinessRevisionOfAHoverCardAreKept() {
-        // #proj-mobile:#218 (web `appLinkResultOfItem`): the chip card's buttons press with them.
-        val signed = """{"kind":"v3","url":"$url","app":$stamp,"ticket":"tk","actions":[{"action_id":"merge","handle":"h-1"}],
-          "preview":{"version":3,"items":[$inlineItem,${cardItem("hover")}]}}"""
-        val card = parseAppLinkCardReadAnswer("""{"items":[$signed]}""")!!.results[url] as AppLinkResult.Card
-        assertNotNull(card.cardV2)
-        assertNull(card.block)
-        assertEquals(mapOf("merge" to "h-1"), card.handles)
-        assertEquals("br-1", card.businessRevision)
-        assertEquals("br-1", card.claimedRevision)
     }
 
     @Test

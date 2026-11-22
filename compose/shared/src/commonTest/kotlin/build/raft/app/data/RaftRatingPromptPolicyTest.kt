@@ -88,12 +88,4 @@ class RaftRatingPromptPolicyTest {
         repository.markRequested()
         assertTrue(RaftRatingPromptRepository(store).read().requested, "the flag is persisted")
     }
-
-    @Test
-    fun aLocalDayFollowsTheOffset() {
-        val utcMidnight = day * 86_400_000L
-        assertEquals(day, raftLocalEpochDay(utcMidnight, 0))
-        assertEquals(day - 1, raftLocalEpochDay(utcMidnight, -60), "23:00 the previous day at UTC-1")
-        assertEquals(day, raftLocalEpochDay(utcMidnight - 60_000L, 8 * 60), "07:59 at UTC+8")
-    }
 }

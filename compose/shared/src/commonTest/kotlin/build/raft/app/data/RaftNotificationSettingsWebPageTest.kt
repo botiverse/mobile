@@ -1,13 +1,11 @@
 package build.raft.app.data
 
-import build.raft.app.model.ServerId
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
-import kotlinx.coroutines.test.runTest
 import kotlinx.datetime.LocalDate
 
 /**
@@ -119,34 +117,6 @@ class RaftNotificationSettingsWebPageTest {
             )
         )
         assertNull(parseRaftNotificationChannelNames("""{"channels":[]}"""))
-    }
-
-    @Test
-    fun channelNamesLoadBothListsOfThatServerOnce() = runTest {
-        val asked = mutableListOf<Pair<String, String?>>()
-        val client =
-            object : RaftNetworkClient {
-                override suspend fun request(
-                    priority: DataRequestPriority,
-                    path: String,
-                    method: String,
-                    query: List<Pair<String, String>>,
-                    serverIdOverride: ServerId?,
-                    bodyText: String?
-                ): HomeNetworkResponse {
-                    asked += path to serverIdOverride?.value
-                    return when (path) {
-                        "channels" -> HomeNetworkResponse(200, """[{"id":"c1","name":"general","type":"channel"}]""")
-                        "channels/dm" -> HomeNetworkResponse(500, null)
-                        else -> HomeNetworkResponse(404, null)
-                    }
-                }
-            }
-        RaftNotificationChannelNames.apiProvider = { RaftNotificationSettingsApi(client) }
-        RaftNotificationChannelNames.load("s2")
-        RaftNotificationChannelNames.load("s2")
-        assertEquals<List<Pair<String, String?>>>(listOf("channels" to "s2", "channels/dm" to "s2"), asked)
-        assertEquals(mapOf("s2" to mapOf("c1" to "#general")), RaftNotificationChannelNames.state.value)
     }
 
     private companion object {

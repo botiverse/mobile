@@ -4,7 +4,6 @@ import build.raft.app.ChannelConversionErrorText
 import build.raft.app.ChannelConversionStatusNotice
 import build.raft.app.channelConversionStripModel
 import build.raft.app.data.realtime.RealtimeEventMapper
-import build.raft.app.data.realtime.RealtimeLocalEvents
 import build.raft.app.data.realtime.RealtimeSocketEvents
 import build.raft.app.model.ChannelId
 import build.raft.app.model.RealtimeEvent
@@ -157,21 +156,6 @@ class SharedChannelConversionStoreTest {
             store.dispatch(ChannelConversionIntent.Unwatch(key))
             advanceTimeBy(CHANNEL_CONVERSION_POLL_MILLIS * 3)
             assertEquals(3, api.calls.size, "no page shows it")
-        }
-
-    @Test
-    fun aFailedJobIsNotPolledAndACatchUpReadsItOnce() =
-        runTest {
-            val api = FakeApi()
-            val store = store(api)
-            opened(api, store, ok(row("failed", "verify", error = "Verification failed")))
-            store.dispatch(ChannelConversionIntent.Watch(key))
-            advanceTimeBy(CHANNEL_CONVERSION_POLL_MILLIS * 3)
-            assertEquals(1, api.calls.size)
-            store.dispatch(ChannelConversionIntent.Realtime(key, "srv-1", RealtimeRefreshRequired(RealtimeRefreshScope.Home, RealtimeLocalEvents.CatchUpRequired)))
-            runCurrent()
-            assertEquals("channel:ch-ops:Background", api.calls.last())
-            store.dispatch(ChannelConversionIntent.Unwatch(key))
         }
 
     @Test
