@@ -145,8 +145,9 @@ private class VirtualTimelineItemProvider<T>(
 ) : LazyLayoutItemProvider {
     private val keyToIndex: Map<Any, Int> =
         buildMap(keys.size) {
-            for (i in keys.indices) {
-                put(keys[i], i)
+            val rowKeys = this@VirtualTimelineItemProvider.keys
+            for (i in rowKeys.indices) {
+                put(rowKeys[i], i)
             }
         }
 
