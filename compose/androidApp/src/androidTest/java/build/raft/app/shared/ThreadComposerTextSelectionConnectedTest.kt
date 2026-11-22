@@ -10,6 +10,8 @@ import android.os.SystemClock
 import android.view.MotionEvent
 import android.view.ViewConfiguration
 import android.view.accessibility.AccessibilityWindowInfo
+import androidx.compose.runtime.Composer
+import androidx.compose.runtime.tooling.ComposeStackTraceMode
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.unit.toSize
@@ -31,10 +33,13 @@ import androidx.test.uiautomator.UiDevice
 import androidx.test.uiautomator.Until
 import java.io.File
 import org.json.JSONObject
+import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
+import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
+import org.junit.rules.TestRule
 
 /**
  * Text selection in the production thread composer (the CMP BasicTextField on the composer
@@ -52,8 +57,29 @@ import org.junit.Test
  * the gesture's selection recompose.
  */
 class ThreadComposerTextSelectionConnectedTest {
-    @get:Rule
+    private val offMainSnapshotWrites = RaftOffMainSnapshotWriteLog()
+
+    // #310 crash diagnostics (RaftThreadDiagnosticsTestSupport.kt). Outermost rule, so a failure
+    // the compose rule raises while tearing down is dumped too.
+    @get:Rule(order = 0)
+    val threadDumpOnFailure: TestRule = RaftThreadDumpOnFailure(offMainSnapshotWrites)
+
+    @get:Rule(order = 1)
     val composeRule = createEmptyComposeRule()
+
+    @Before
+    fun startCrashDiagnostics() {
+        // Composition, measure and layout exceptions then carry the composable stack with source
+        // information. setDiagnosticStackTraceEnabled(true) does the same; runtime 1.12 deprecates it.
+        Composer.setDiagnosticStackTraceMode(ComposeStackTraceMode.SourceInformation)
+        offMainSnapshotWrites.register()
+    }
+
+    @After
+    fun stopCrashDiagnostics() {
+        offMainSnapshotWrites.dispose()
+        Composer.setDiagnosticStackTraceMode(ComposeStackTraceMode.None)
+    }
 
     @Test
     fun doubleTapSelectsWordWithBothHandlesAndHandleDragsResizeIt() =
@@ -257,39 +283,54 @@ class ThreadComposerTextSelectionConnectedTest {
     private fun handleLineCenterOnScreen(scenario: ActivityScenario<RaftCmpActivity>, kind: HandleKind): Offset {
         val selection = requireNotNull(scenario.raftFirstTextField()?.selection)
         val offset = if (kind == HandleKind.Start) selection.min else selection.max
-        val geometry = editorGeometry(scenario)
-        val layout = geometry.layout
-        val x = layout.getHorizontalPosition(offset, usePrimaryDirection = true)
-        val line = layout.getLineForOffset(offset)
-        val y = (layout.getLineTop(line) + layout.getLineBottom(line)) / 2f
-        return geometry.toScreen(Offset(x, y))
+        return editorPointOnScreen(scenario) { layout ->
+            val x = layout.getHorizontalPosition(offset, usePrimaryDirection = true)
+            val line = layout.getLineForOffset(offset)
+            val y = (layout.getLineTop(line) + layout.getLineBottom(line)) / 2f
+            Offset(x, y)
+        }
     }
 
     private fun wordPointOnScreen(scenario: ActivityScenario<RaftCmpActivity>, word: String): Offset {
         val index = ComposerText.indexOf(word)
         require(index >= 0) { "'$word' is not in the draft" }
-        val geometry = editorGeometry(scenario)
-        val first = geometry.layout.getBoundingBox(index)
-        val last = geometry.layout.getBoundingBox(index + word.length - 1)
-        val box = Rect(first.left, first.top, last.right, last.bottom)
-        return geometry.toScreen(box.center)
+        return editorPointOnScreen(scenario) { layout ->
+            val first = layout.getBoundingBox(index)
+            val last = layout.getBoundingBox(index + word.length - 1)
+            Rect(first.left, first.top, last.right, last.bottom).center
+        }
     }
 
-    private class EditorGeometry(val layout: TextLayoutResult, val textOriginOnScreen: Offset) {
-        fun toScreen(local: Offset): Offset = textOriginOnScreen + local
-    }
-
-    private fun editorGeometry(scenario: ActivityScenario<RaftCmpActivity>): EditorGeometry {
+    /**
+     * Maps a point in the composer's text, which [pointInText] reads off its text layout, to the
+     * screen.
+     *
+     * fetchSemanticsNode() syncs with the UI, so it runs on the test thread. The rest touches the
+     * live layout and runs in one UI-thread block: the field's GetTextLayoutResult action (it can
+     * lay the text out again), the node's size and screen position, and [pointInText]'s reads of
+     * the layout. Compose text layout and layout geometry are main-thread-only (AGENTS.md
+     * "Main-thread-only APIs", #310).
+     */
+    private fun editorPointOnScreen(
+        scenario: ActivityScenario<RaftCmpActivity>,
+        pointInText: (TextLayoutResult) -> Offset,
+    ): Offset {
         val node = composeRule.onNode(hasSetTextAction(), useUnmergedTree = true).fetchSemanticsNode()
-        val layouts = mutableListOf<TextLayoutResult>()
-        val gotLayout = node.config.getOrNull(SemanticsActions.GetTextLayoutResult)?.action?.invoke(layouts) == true
-        assertTrue("composer should expose its text layout", gotLayout && layouts.isNotEmpty())
-        val layout = layouts.first()
-        // The composer's decoration box centers the inner text vertically (CenterStart).
-        val verticalInset = ((node.size.height - layout.size.height) / 2f).coerceAtLeast(0f)
-        val origin = node.positionOnScreen + Offset(0f, verticalInset)
+        val point =
+            composeRule.runOnUiThread {
+                val layouts = mutableListOf<TextLayoutResult>()
+                val action = node.config.getOrNull(SemanticsActions.GetTextLayoutResult)?.action
+                val gotLayout = action?.invoke(layouts) == true
+                val layout = layouts.firstOrNull()
+                if (!gotLayout || layout == null) return@runOnUiThread null
+                // The composer's decoration box centers the inner text vertically (CenterStart).
+                val verticalInset = ((node.size.height - layout.size.height) / 2f).coerceAtLeast(0f)
+                val textOriginOnScreen = node.positionOnScreen + Offset(0f, verticalInset)
+                textOriginOnScreen + pointInText(layout)
+            }
+        assertTrue("composer should expose its text layout", point != null)
         check(scenario.raftFirstTextField() != null)
-        return EditorGeometry(layout, origin)
+        return point!!
     }
 
     private enum class HandleKind { Start, End, Cursor }
@@ -351,11 +392,15 @@ class ThreadComposerTextSelectionConnectedTest {
         throw AssertionError("the ${handle.kind} handle is covered by another window at every point; $last")
     }
 
-    private fun handles(): List<HandleSnapshot> =
-        composeRule
-            .onAllNodes(SemanticsMatcher("is a selection handle") { it.selectionHandleInfo() != null }, useUnmergedTree = true)
-            .fetchSemanticsNodes(atLeastOneRootRequired = false)
-            .mapNotNull { node ->
+    private fun handles(): List<HandleSnapshot> {
+        val nodes =
+            composeRule
+                .onAllNodes(SemanticsMatcher("is a selection handle") { it.selectionHandleInfo() != null }, useUnmergedTree = true)
+                .fetchSemanticsNodes(atLeastOneRootRequired = false)
+        // Fetched on the test thread (the fetch syncs with the UI); the handles' live positions
+        // and sizes are layout geometry, read on the UI thread (#310).
+        return composeRule.runOnUiThread {
+            nodes.mapNotNull { node ->
                 // Foundation's internal SelectionHandleInfo(handle, position, anchor, visible).
                 val info = node.selectionHandleInfo().toString()
                 val kind =
@@ -369,6 +414,8 @@ class ThreadComposerTextSelectionConnectedTest {
                 val center = node.positionOnScreen + Offset(node.size.width / 2f, node.size.height / 2f)
                 HandleSnapshot(kind, visible, center, Rect(node.positionOnScreen, node.size.toSize()))
             }
+        }
+    }
 
     private fun SemanticsNode.selectionHandleInfo(): Any? =
         config.firstOrNull { it.key.name == "SelectionHandleInfo" }?.value
