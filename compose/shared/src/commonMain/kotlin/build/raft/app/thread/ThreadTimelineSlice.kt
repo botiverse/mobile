@@ -86,6 +86,13 @@ internal data class ThreadTimelineSlice(
      * not of agent activity.
      */
     val agentTypingLineSlot: Boolean = true,
+    /**
+     * #proj-mobile:#265: whether an initial loading state has passed [ThreadInitialLoadingRevealDelayMs]
+     * and should render [ThreadLoadingState]. Stays false while brief local-cache reads are in flight
+     * so cached opens do not flash a spinner; defaults to true so standalone previews/tests without a
+     * store keep rendering loading states immediately.
+     */
+    val loadingIndicatorRevealed: Boolean = true,
 ) {
     /** Derived from [surfaceKind] and [channelKind]; the menu's `reply` capability reads this single source. */
     val showReplyActions: Boolean get() = RaftThreadSurfaceKind.allowsReplyInThread(surfaceKind, channelKind)

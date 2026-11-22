@@ -695,7 +695,7 @@ internal enum class RaftThreadTab(val wireValue: String, val label: String) {
     }
 }
 
-private val ThreadResolvedContentStatuses = setOf("content", "empty")
+internal val ThreadResolvedContentStatuses = setOf("content", "empty")
 
 internal fun shouldShowThreadComposerForTab(
     joined: Boolean,

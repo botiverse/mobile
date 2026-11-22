@@ -156,6 +156,12 @@ internal class SharedThreadStore(
      * not held): Activity counts no unread for a live message only there.
      */
     private val readOnSight: ConversationReadOnSight = raftConversationReadOnSight,
+    /**
+     * #proj-mobile:#265: grace window before revealing [ThreadLoadingState] while an initial
+     * load has no renderable content yet. Injectable for tests; production uses
+     * [ThreadInitialLoadingRevealDelayMs].
+     */
+    private val initialLoadingRevealDelayMillis: Long = ThreadInitialLoadingRevealDelayMs,
 ) {
     private val readStateProjection = ThreadReadStateProjection()
     // task #387: seed the first frame from the in-memory reply cache synchronously, so a warm
@@ -163,7 +169,8 @@ internal class SharedThreadStore(
     // ~one frame the async Start intent needs to reach the same cache. Only the memory cache is
     // consulted here (all synchronous); the durable last-known frame stays with start(), which
     // re-runs the full seed chain right after and converges to the same payload.
-    private val _state = MutableStateFlow(SharedThreadState(payload = initialPayload))
+    private val _state =
+        MutableStateFlow(SharedThreadState(payload = initialPayload).withSynchronizedTimelineSlice())
     val state: StateFlow<SharedThreadState> = _state.asStateFlow()
     /** Channel name/description updates from the thread page; see [ThreadChannelProfileUpdater]. */
     private val channelProfileUpdater =
@@ -271,6 +278,11 @@ internal class SharedThreadStore(
     }
 
     private var loadJob: Job? = null
+    // #proj-mobile:#265: grace-delay timer before revealing the loading indicator on initial opens.
+    private val loadingRevealLock = SynchronizedObject()
+    private var loadingRevealJob: Job? = null
+    private var loadingRevealGeneration: Long = 0L
+    private var loadingRevealElapsedGeneration: Long = -1L
     // Foreground priority lease for this page's first-content load (see [SharedForegroundLoadGate]).
     private val foregroundLoadLeaseLock = SynchronizedObject()
     private var foregroundLoadLease: SharedForegroundLoadGate.Lease? = null
@@ -486,6 +498,11 @@ internal class SharedThreadStore(
             SharedThreadIntent.Refresh -> {
                 loadJob?.cancel()
                 if (intent is SharedThreadIntent.Start) {
+                    cancelLoadingRevealTimer()
+                    val current = _state.value
+                    if (current.loadingIndicatorRevealed) {
+                        reduceStateInternal(current.copy(loadingIndicatorRevealed = false), manageLoadingTimer = false)
+                    }
                     initialAccessResolutionJob?.cancel()
                     initialAccessResolutionJob = null
                     replyParentAuthorityFallbackJob?.cancel()
@@ -678,6 +695,7 @@ internal class SharedThreadStore(
 
     fun clear() {
         readOnSight.hide(this)
+        cancelLoadingRevealTimer()
         loadJob?.cancel()
         loadJob = null
         realtimeGapRecoveryJob?.cancel()
@@ -722,12 +740,102 @@ internal class SharedThreadStore(
         synchronized(initialProducerContextLock) { initialProducerContextRef = null }
     }
 
+    private fun isLoadingRevealElapsedForCurrentGeneration(): Boolean =
+        synchronized(loadingRevealLock) {
+            loadingRevealElapsedGeneration == loadingRevealGeneration && loadingRevealGeneration > 0L
+        }
+
+    private fun cancelLoadingRevealTimer() {
+        val jobToCancel =
+            synchronized(loadingRevealLock) {
+                loadingRevealGeneration += 1L
+                loadingRevealElapsedGeneration = -1L
+                loadingRevealJob.also { loadingRevealJob = null }
+            }
+        jobToCancel?.cancel()
+    }
+
+    private fun launchLoadingRevealTimerFor(generation: Long) {
+        val scheduled =
+            scope.launch {
+                delay(initialLoadingRevealDelayMillis)
+                val stillCurrent =
+                    synchronized(loadingRevealLock) {
+                        if (loadingRevealGeneration != generation) {
+                            false
+                        } else {
+                            loadingRevealElapsedGeneration = generation
+                            loadingRevealJob = null
+                            true
+                        }
+                    }
+                if (!stillCurrent) return@launch
+                val latest = _state.value
+                if (latest.awaitsInitialLoadingIndicator() && !latest.loadingIndicatorRevealed) {
+                    reduceStateInternal(latest.copy(loadingIndicatorRevealed = true), manageLoadingTimer = false)
+                }
+            }
+        val keep =
+            synchronized(loadingRevealLock) {
+                if (loadingRevealGeneration == generation && scheduled.isActive) {
+                    loadingRevealJob = scheduled
+                    true
+                } else {
+                    false
+                }
+            }
+        if (!keep) scheduled.cancel()
+    }
+
+    private fun armLoadingRevealTimer() {
+        val (jobToCancel, generation) =
+            synchronized(loadingRevealLock) {
+                val previous = loadingRevealJob
+                loadingRevealJob = null
+                loadingRevealGeneration += 1L
+                loadingRevealElapsedGeneration = -1L
+                previous to loadingRevealGeneration
+            }
+        jobToCancel?.cancel()
+        val current = _state.value
+        if (current.loadingIndicatorRevealed) {
+            reduceStateInternal(current.copy(loadingIndicatorRevealed = false), manageLoadingTimer = false)
+        }
+        if (initialLoadingRevealDelayMillis <= 0L) {
+            synchronized(loadingRevealLock) {
+                if (loadingRevealGeneration == generation) {
+                    loadingRevealElapsedGeneration = generation
+                }
+            }
+            return
+        }
+        launchLoadingRevealTimerFor(generation)
+    }
+
+    private fun ensureLoadingRevealTimerArmed() {
+        if (initialLoadingRevealDelayMillis <= 0L) return
+        val generationToSchedule =
+            synchronized(loadingRevealLock) {
+                val active = loadingRevealJob?.isActive == true
+                val elapsed = loadingRevealElapsedGeneration == loadingRevealGeneration && loadingRevealGeneration > 0L
+                if (active || elapsed) {
+                    null
+                } else {
+                    loadingRevealGeneration += 1L
+                    loadingRevealElapsedGeneration = -1L
+                    loadingRevealGeneration
+                }
+            } ?: return
+        launchLoadingRevealTimerFor(generationToSchedule)
+    }
+
     /**
      * Holds a foreground-load lease from Start until this page's first content is ready, the
      * start/refresh finishes (content, failure, or early return), the load is cancelled, or the
      * page is cleared. Background Activity prewarm does not start new loads while it is held.
      */
     private suspend fun start(initialPayload: RaftThreadScreenPayload) {
+        armLoadingRevealTimer()
         val producerContext = dataSource.captureReplyCacheProducerContext()
         synchronized(initialProducerContextLock) { initialProducerContextRef = producerContext }
         val lease = acquireForegroundLoadLease(initialPayload, producerContext?.session?.currentServerId)
@@ -901,6 +1009,101 @@ internal class SharedThreadStore(
         if (producerContext != null) {
             watchThreadJoinConfirmations(routeIdentity, producerContext, routeContextPayload.durableReplyParentOrNull())
         }
+        // #proj-mobile:#265 Path 1: a superseded memory entry is already verified for this exact owner
+        // and route (only its freshness generation advanced while away). When it satisfies any focused
+        // anchor on its own (or together with the synchronous Activity seed) and there is no remembered
+        // access failure, publish it synchronously on Frame 1 before suspending on SQLite so cached
+        // opens never flash a loading shell. SQLite and network refresh still run right after and
+        // upgrade seamlessly if disk or server holds newer messages.
+        val immediateSupersededSeedBodies =
+            if (supersededMemory != null) {
+                activitySeed.withLocalFullMessages(supersededMemory.messages)
+            } else {
+                emptyList()
+            }
+        val immediateSupersededCandidate =
+            if (
+                cached == null &&
+                    current == null &&
+                    supersededMemory != null &&
+                    rememberedAccessFailure == null &&
+                    producerContext != null
+            ) {
+                supersededMemory
+                    .withActivityOpenSeed(immediateSupersededSeedBodies)
+                    .takeUnless { it.lacksFocusedAnchor() }
+                    ?.copy(
+                        backgroundRefreshing = false,
+                        errorCode = null,
+                        errorServerMessage = null,
+                        errorTraceId = null,
+                    )
+            } else {
+                null
+            }
+        var publishedImmediateSuperseded: RaftThreadScreenPayload? = null
+        var immediateSupersededKeptAccess = false
+        if (immediateSupersededCandidate != null && producerContext != null) {
+            if (dataSource.isCurrentReplyCacheProvenance(producerContext.provenance)) {
+                dataSource.seedThreadAuthorProfiles(
+                    serverId = session?.currentServerId,
+                    payload = immediateSupersededCandidate,
+                    source = "superseded_cache",
+                )
+            }
+            val immediateVisiblePayload =
+                dataSource.restorePendingLocalSends(
+                    provenance = producerContext.provenance,
+                    route = routeIdentity,
+                    canonicalPayload = immediateSupersededCandidate,
+                )
+            val keptAccess =
+                threadId != null &&
+                    routeIdentity.surfaceKind != RaftThreadSurfaceKind.ReplyThread &&
+                    dataSource.hasResolvedThreadAccessIfCurrent(threadId, producerContext.provenance)
+            initialAccessStateMutex.withLock {
+                val admitted =
+                    dataSource.withCurrentReplyCacheProvenance(producerContext.provenance) {
+                        if (!staleTokenStillCurrent(staleToken, "thread_start", "superseded_first_frame", routeContextPayload)) {
+                            return@withCurrentReplyCacheProvenance false
+                        }
+                        visiblePayloadOwnerScopeId = payloadOwnerScopeId
+                        reduceState(
+                            SharedThreadState(
+                                payload = immediateVisiblePayload,
+                                highlightedMentions = emptySet(),
+                                accessResolution =
+                                    if (keptAccess) ThreadAccessResolution.Resolved else ThreadAccessResolution.Loading,
+                                canonicalAccessResolved = false,
+                                initialHomeAccessLookupComplete = false,
+                                initialHomeAccessCandidate = null,
+                                writeActionsEnabled =
+                                    keptAccess &&
+                                        immediateVisiblePayload.hasWriteAuthorityForAccess(
+                                            accessResolution = ThreadAccessResolution.Resolved,
+                                            homeLookupComplete = false,
+                                            homeAccessCandidate = null,
+                                        ),
+                                loadingIndicatorRevealed = false,
+                            )
+                        )
+                        true
+                    }
+                if (admitted == true) {
+                    publishedImmediateSuperseded = immediateVisiblePayload
+                    immediateSupersededKeptAccess = keptAccess
+                }
+            }
+            if (publishedImmediateSuperseded != null) {
+                if (immediateSupersededKeptAccess) {
+                    diagnosticsLogger?.invoke("thread_start_access_kept threadId=${threadId.orEmpty()}")
+                }
+                diagnosticsLogger?.invoke(
+                    "thread_visible_payload threadId=${threadId.orEmpty()} status=${immediateVisiblePayload.status} " +
+                        "messages=${immediateVisiblePayload.messages.size} " + immediateVisiblePayload.originDiagnostics()
+                )
+            }
+        }
         // Offline cache read entry (task #1123): only when no in-memory candidate exists does the
         // durable last-known frame stand in for the loading shell. Memory candidates are newer by
         // construction (they were written by a network response in this process).
@@ -916,11 +1119,16 @@ internal class SharedThreadStore(
             } else {
                 null
             }
+        if (!staleTokenStillCurrent(staleToken, "thread_start", "after_durable_read", routeContextPayload)) {
+            return
+        }
         // Hands 4b6ccb0d: the superseded memory copy wins only when it holds a newer server message than the
-        // durable frame (or there is no durable frame). An equal or older copy loses: the disk is at least as new.
+        // durable frame (or there is no durable frame, or the durable frame is empty). An equal or older copy
+        // loses: the disk is at least as new.
         val supersededFirstFrame =
             supersededMemory?.takeIf { memory ->
                 durableLastKnown == null ||
+                    durableLastKnown.messages.isEmpty() ||
                     (memory.newestServerSeqOrNull() ?: Long.MIN_VALUE) >
                     (durableLastKnown.newestServerSeqOrNull() ?: Long.MIN_VALUE)
             }
@@ -933,21 +1141,21 @@ internal class SharedThreadStore(
                     "chosen=${if (supersededFirstFrame != null) "memory" else "durable"}"
             )
         }
-        supersededFirstFrame?.let { accepted ->
+        if (supersededFirstFrame != null && publishedImmediateSuperseded == null) {
             dataSource.seedThreadAuthorProfiles(
                 serverId = session?.currentServerId,
-                payload = accepted,
+                payload = supersededFirstFrame,
                 source = "superseded_cache"
             )
         }
         // Hands dd79da45: with no in-memory candidate (cold start), seed the reply-preview windows
         // persisted by the last session. The durable frame shows them on its first frame, and the
         // first network commit re-reads them from the sync host until the summaries confirm them.
-        // Only a durable first frame waits for the (small) disk read; a loading-shell first frame
-        // must not, so there the seed runs beside the network fetch, whose commit re-reads it.
+        // Only await the (small) disk read when a durable frame actually wins the first frame; when
+        // superseded memory won or there is no durable frame, seed beside the network fetch.
         val seededReplyWindows =
             if (cached == null && current == null && producerContext != null) {
-                if (durableLastKnown != null) {
+                if (durableLastKnown != null && supersededFirstFrame == null) {
                     seedCachedReplyWindows(routeContextPayload, producerContext)
                 } else {
                     scope.launch { seedCachedReplyWindows(routeContextPayload, producerContext) }
@@ -956,12 +1164,15 @@ internal class SharedThreadStore(
             } else {
                 emptyMap()
             }
+        if (!staleTokenStillCurrent(staleToken, "thread_start", "after_reply_windows_seed", routeContextPayload)) {
+            return
+        }
         val durableLastKnownWithReplies =
             durableLastKnown?.withSeededReplyWindows(seededReplyWindows)
-        durableLastKnownWithReplies?.let { accepted ->
+        if (durableLastKnownWithReplies != null && supersededFirstFrame == null) {
             dataSource.seedThreadAuthorProfiles(
                 serverId = session?.currentServerId,
-                payload = accepted,
+                payload = durableLastKnownWithReplies,
                 source = "durable_last_known"
             )
         }
@@ -971,156 +1182,257 @@ internal class SharedThreadStore(
                 "status=${routeContextPayload.status} messages=${routeContextPayload.messages.size} " +
                 routeContextPayload.originDiagnostics()
         )
-        val standInFirstFrame =
-            supersededFirstFrame
-                ?: durableLastKnownWithReplies
-                ?: if (threadId == null) {
-                    routeContextPayload
-                } else {
-                    routeContextPayload.copy(status = "loading", errorCode = null, errorServerMessage = null, errorTraceId = null)
-                }
         // artin 10-26: a seed message whose Activity preview was cut shows the full copy when either
         // route-matched local frame already holds that message.
         val activitySeedBodies =
             activitySeed.withLocalFullMessages(
                 listOfNotNull(supersededMemory, durableLastKnownWithReplies).flatMap { it.messages }
             )
-        val seededStandIn = standInFirstFrame.withActivityOpenSeed(activitySeedBodies)
-        if (activitySeed.isNotEmpty()) {
-            diagnosticsLogger?.invoke(
-                "thread_start_activity_seed threadId=${threadId.orEmpty()} seed=${activitySeed.size} " +
-                    "truncated=${activitySeedBodies.count { it.activityPreviewTruncated }} " +
-                    "standIn=${standInFirstFrame.status}/${standInFirstFrame.messages.size} " +
-                    "added=${seededStandIn.messages.size - standInFirstFrame.messages.size}"
-            )
-        }
-        // Hands 7e198cab: an open aimed at a message (Activity, a notification, a link) whose local frame
-        // lacks that message would paint an older window as if it were the conversation and show the
-        // message only after the network answered (or never, when the answer kept being superseded).
-        // Such an open shows a loading state at the anchor instead (the Activity seed when it holds the
-        // message); the candidate is kept only to stand in if the load fails.
-        val firstFrameCandidate = cached ?: current ?: seededStandIn
-        val anchorPending =
-            current == null &&
-                firstFrameCandidate.hasRenderableThreadContent() &&
-                firstFrameCandidate.lacksFocusedAnchor()
-        val anchoredFirstFrame =
-            if (anchorPending) {
-                anchorPendingStandIn = firstFrameCandidate
-                val anchorId = routeContextPayload.focusedMessageId.orEmpty()
-                val loading =
-                    routeContextPayload.copy(
-                        status = if (threadId == null) routeContextPayload.status else "loading",
-                        errorCode = null,
-                        errorServerMessage = null,
-                        errorTraceId = null,
-                    )
-                val seedHoldsAnchor = activitySeedBodies.any { it.id == anchorId }
-                val candidateSource =
-                    when {
-                        cached != null -> "memory"
-                        supersededFirstFrame != null -> "superseded_memory"
-                        durableLastKnownWithReplies != null -> "durable"
-                        else -> "activity_seed"
-                    }
-                diagnosticsLogger?.invoke(
-                    "thread_start_anchor_pending threadId=${threadId.orEmpty()} anchor=$anchorId " +
-                        "candidate=$candidateSource candidateMessages=${firstFrameCandidate.messages.size} " +
-                        "seed=$seedHoldsAnchor"
-                )
-                if (seedHoldsAnchor) loading.withActivityOpenSeed(activitySeedBodies) else loading
-            } else {
-                firstFrameCandidate
-            }
-        val visiblePayload =
-            anchoredFirstFrame.let { candidate ->
-                rememberedAccessFailure?.let { failure ->
-                    candidate
-                        .asRefreshFailed(failure.code)
-                        .withTerminalAccessWriteAuthorityClosed(ThreadAccessResolution.Error)
-                } ?: candidate
-            }.let { candidate ->
-                producerContext?.let { context ->
-                    dataSource.restorePendingLocalSends(
-                        provenance = context.provenance,
-                        route = routeIdentity,
-                        canonicalPayload = candidate,
-                    )
-                } ?: candidate
-            }
-        diagnosticsLogger?.invoke(
-            "thread_visible_payload threadId=${threadId.orEmpty()} status=${visiblePayload.status} " +
-                "messages=${visiblePayload.messages.size} " + visiblePayload.originDiagnostics()
-        )
-        // Hands 4cf4c781: a reopen that shows this route's memory frame keeps the access this owner
-        // already resolved for it, so the composer / Join bar stays up while the refresh runs. The
-        // refresh still applies the canonical access it returns (canonicalAccessResolved stays false)
-        // and a terminal NoPermission closes it. Reply threads keep their parent-row lookup.
-        val keptResolvedAccess =
-            rememberedAccessFailure == null &&
-                threadId != null &&
-                (cached ?: current) != null &&
-                routeIdentity.surfaceKind != RaftThreadSurfaceKind.ReplyThread &&
-                producerContext?.provenance?.let { provenance ->
-                    dataSource.hasResolvedThreadAccessIfCurrent(threadId, provenance)
-                } == true
-        if (keptResolvedAccess) {
-            diagnosticsLogger?.invoke("thread_start_access_kept threadId=${threadId.orEmpty()}")
-        }
-        initialAccessStateMutex.withLock {
-            val admitted =
-                producerContext?.let { context ->
-                    dataSource.withCurrentReplyCacheProvenance(context.provenance) {
-                        visiblePayloadOwnerScopeId = payloadOwnerScopeId
-                        reduceState(
-                            SharedThreadState(
-                                payload = visiblePayload,
-                                highlightedMentions = emptySet(),
-                                accessResolution =
-                                    when {
-                                        rememberedAccessFailure != null -> ThreadAccessResolution.Error
-                                        keptResolvedAccess -> ThreadAccessResolution.Resolved
-                                        else -> ThreadAccessResolution.Loading
-                                    },
-                                canonicalAccessResolved = false,
-                                initialHomeAccessLookupComplete = false,
-                                initialHomeAccessCandidate = null,
-                                writeActionsEnabled =
-                                    keptResolvedAccess &&
-                                        visiblePayload.hasWriteAuthorityForAccess(
-                                            accessResolution = ThreadAccessResolution.Resolved,
-                                            homeLookupComplete = false,
-                                            homeAccessCandidate = null,
-                                        ),
-                            )
-                        )
-                    }
-            }
-            if (admitted == null) {
-                visiblePayloadOwnerScopeId =
-                    dataSource.currentReplyCacheProvenance()?.threadPayloadOwnerScopeId
-                reduceState(
-                    SharedThreadState(
-                        payload =
-                            if (threadId == null) {
-                                routeContextPayload
-                            } else {
-                                routeContextPayload.copy(
-                                    status = "loading",
-                                    messages = emptyList(),
-                                    backgroundRefreshing = false,
-                                    errorCode = null
+        if (publishedImmediateSuperseded != null) {
+            initialAccessStateMutex.withLock {
+                val admitted =
+                    producerContext?.let { context ->
+                        dataSource.withCurrentReplyCacheProvenance(context.provenance) {
+                            if (
+                                !staleTokenStillCurrent(
+                                    staleToken,
+                                    "thread_start",
+                                    "post_durable_reconcile",
+                                    routeContextPayload,
                                 )
-                            },
-                        highlightedMentions = emptySet(),
-                        accessResolution = ThreadAccessResolution.Loading,
-                        canonicalAccessResolved = false,
-                        initialHomeAccessLookupComplete = false,
-                        initialHomeAccessCandidate = null,
-                        writeActionsEnabled = false
+                            ) {
+                                return@withCurrentReplyCacheProvenance true
+                            }
+                            val liveState = _state.value
+                            val livePayload = liveState.payload
+                            if (supersededFirstFrame != null) {
+                                val upgraded =
+                                    durableLastKnownWithReplies?.let { livePayload.withActivitySeedBodiesFrom(it) }
+                                        ?: livePayload
+                                if (upgraded !== livePayload) {
+                                    reduceState(liveState.copy(payload = upgraded))
+                                }
+                            } else if (durableLastKnownWithReplies != null) {
+                                val liveSeq = livePayload.newestServerSeqOrNull() ?: Long.MIN_VALUE
+                                val diskSeq = durableLastKnownWithReplies.newestServerSeqOrNull() ?: Long.MIN_VALUE
+                                val memorySeq = supersededMemory?.newestServerSeqOrNull() ?: Long.MIN_VALUE
+                                val realtimeAdvancedPastDisk = liveSeq > memorySeq && liveSeq > diskSeq
+                                if (!realtimeAdvancedPastDisk) {
+                                    val upgradedCandidate =
+                                        durableLastKnownWithReplies
+                                            .withActivityOpenSeed(activitySeedBodies)
+                                            .let { candidate ->
+                                                if (immediateSupersededKeptAccess && supersededMemory != null) {
+                                                    candidate
+                                                        .withCanonicalConversationAccessFrom(supersededMemory)
+                                                        .copy(channelArchived = supersededMemory.channelArchived)
+                                                } else {
+                                                    candidate
+                                                }
+                                            }
+                                            .withRouteIntentFrom(livePayload)
+                                    val upgradedVisible =
+                                        dataSource.restorePendingLocalSends(
+                                            provenance = context.provenance,
+                                            route = routeIdentity,
+                                            canonicalPayload = upgradedCandidate,
+                                        )
+                                    if (!upgradedVisible.lacksFocusedAnchor()) {
+                                        visiblePayloadOwnerScopeId = payloadOwnerScopeId
+                                        reduceState(
+                                            liveState.copy(
+                                                payload = upgradedVisible,
+                                                loadingIndicatorRevealed = false,
+                                            )
+                                        )
+                                        diagnosticsLogger?.invoke(
+                                            "thread_visible_payload threadId=${threadId.orEmpty()} status=${upgradedVisible.status} " +
+                                                "messages=${upgradedVisible.messages.size} " + upgradedVisible.originDiagnostics()
+                                        )
+                                    }
+                                }
+                            }
+                            true
+                        }
+                    }
+                if (admitted == null) {
+                    visiblePayloadOwnerScopeId =
+                        dataSource.currentReplyCacheProvenance()?.threadPayloadOwnerScopeId
+                    reduceState(
+                        SharedThreadState(
+                            payload =
+                                if (threadId == null) {
+                                    routeContextPayload
+                                } else {
+                                    routeContextPayload.copy(
+                                        status = "loading",
+                                        messages = emptyList(),
+                                        backgroundRefreshing = false,
+                                        errorCode = null
+                                    )
+                                },
+                            highlightedMentions = emptySet(),
+                            accessResolution = ThreadAccessResolution.Loading,
+                            canonicalAccessResolved = false,
+                            initialHomeAccessLookupComplete = false,
+                            initialHomeAccessCandidate = null,
+                            writeActionsEnabled = false,
+                            loadingIndicatorRevealed = isLoadingRevealElapsedForCurrentGeneration(),
+                        )
                     )
+                }
+            }
+        } else {
+            val standInFirstFrame =
+                supersededFirstFrame
+                    ?: durableLastKnownWithReplies
+                    ?: if (threadId == null) {
+                        routeContextPayload
+                    } else {
+                        routeContextPayload.copy(status = "loading", errorCode = null, errorServerMessage = null, errorTraceId = null)
+                    }
+            val seededStandIn = standInFirstFrame.withActivityOpenSeed(activitySeedBodies)
+            if (activitySeed.isNotEmpty()) {
+                diagnosticsLogger?.invoke(
+                    "thread_start_activity_seed threadId=${threadId.orEmpty()} seed=${activitySeed.size} " +
+                        "truncated=${activitySeedBodies.count { it.activityPreviewTruncated }} " +
+                        "standIn=${standInFirstFrame.status}/${standInFirstFrame.messages.size} " +
+                        "added=${seededStandIn.messages.size - standInFirstFrame.messages.size}"
                 )
             }
+            // Hands 7e198cab: an open aimed at a message (Activity, a notification, a link) whose local frame
+            // lacks that message would paint an older window as if it were the conversation and show the
+            // message only after the network answered (or never, when the answer kept being superseded).
+            // Such an open shows a loading state at the anchor instead (the Activity seed when it holds the
+            // message); the candidate is kept only to stand in if the load fails.
+            val firstFrameCandidate = cached ?: current ?: seededStandIn
+            val anchorPending =
+                current == null &&
+                    firstFrameCandidate.hasRenderableThreadContent() &&
+                    firstFrameCandidate.lacksFocusedAnchor()
+            val anchoredFirstFrame =
+                if (anchorPending) {
+                    anchorPendingStandIn = firstFrameCandidate
+                    val anchorId = routeContextPayload.focusedMessageId.orEmpty()
+                    val loading =
+                        routeContextPayload.copy(
+                            status = if (threadId == null) routeContextPayload.status else "loading",
+                            errorCode = null,
+                            errorServerMessage = null,
+                            errorTraceId = null,
+                        )
+                    val seedHoldsAnchor = activitySeedBodies.any { it.id == anchorId }
+                    val candidateSource =
+                        when {
+                            cached != null -> "memory"
+                            supersededFirstFrame != null -> "superseded_memory"
+                            durableLastKnownWithReplies != null -> "durable"
+                            else -> "activity_seed"
+                        }
+                    diagnosticsLogger?.invoke(
+                        "thread_start_anchor_pending threadId=${threadId.orEmpty()} anchor=$anchorId " +
+                            "candidate=$candidateSource candidateMessages=${firstFrameCandidate.messages.size} " +
+                            "seed=$seedHoldsAnchor"
+                    )
+                    if (seedHoldsAnchor) loading.withActivityOpenSeed(activitySeedBodies) else loading
+                } else {
+                    firstFrameCandidate
+                }
+            val visiblePayload =
+                anchoredFirstFrame.let { candidate ->
+                    rememberedAccessFailure?.let { failure ->
+                        candidate
+                            .asRefreshFailed(failure.code)
+                            .withTerminalAccessWriteAuthorityClosed(ThreadAccessResolution.Error)
+                    } ?: candidate
+                }.let { candidate ->
+                    producerContext?.let { context ->
+                        dataSource.restorePendingLocalSends(
+                            provenance = context.provenance,
+                            route = routeIdentity,
+                            canonicalPayload = candidate,
+                        )
+                    } ?: candidate
+                }
+            diagnosticsLogger?.invoke(
+                "thread_visible_payload threadId=${threadId.orEmpty()} status=${visiblePayload.status} " +
+                    "messages=${visiblePayload.messages.size} " + visiblePayload.originDiagnostics()
+            )
+            // Hands 4cf4c781: a reopen that shows this route's memory frame keeps the access this owner
+            // already resolved for it, so the composer / Join bar stays up while the refresh runs. The
+            // refresh still applies the canonical access it returns (canonicalAccessResolved stays false)
+            // and a terminal NoPermission closes it. Reply threads keep their parent-row lookup.
+            val keptResolvedAccess =
+                rememberedAccessFailure == null &&
+                    threadId != null &&
+                    (cached ?: current) != null &&
+                    routeIdentity.surfaceKind != RaftThreadSurfaceKind.ReplyThread &&
+                    producerContext?.provenance?.let { provenance ->
+                        dataSource.hasResolvedThreadAccessIfCurrent(threadId, provenance)
+                    } == true
+            if (keptResolvedAccess) {
+                diagnosticsLogger?.invoke("thread_start_access_kept threadId=${threadId.orEmpty()}")
+            }
+            initialAccessStateMutex.withLock {
+                val admitted =
+                    producerContext?.let { context ->
+                        dataSource.withCurrentReplyCacheProvenance(context.provenance) {
+                            visiblePayloadOwnerScopeId = payloadOwnerScopeId
+                            reduceState(
+                                SharedThreadState(
+                                    payload = visiblePayload,
+                                    highlightedMentions = emptySet(),
+                                    accessResolution =
+                                        when {
+                                            rememberedAccessFailure != null -> ThreadAccessResolution.Error
+                                            keptResolvedAccess -> ThreadAccessResolution.Resolved
+                                            else -> ThreadAccessResolution.Loading
+                                        },
+                                    canonicalAccessResolved = false,
+                                    initialHomeAccessLookupComplete = false,
+                                    initialHomeAccessCandidate = null,
+                                    writeActionsEnabled =
+                                        keptResolvedAccess &&
+                                            visiblePayload.hasWriteAuthorityForAccess(
+                                                accessResolution = ThreadAccessResolution.Resolved,
+                                                homeLookupComplete = false,
+                                                homeAccessCandidate = null,
+                                            ),
+                                    loadingIndicatorRevealed = isLoadingRevealElapsedForCurrentGeneration(),
+                                )
+                            )
+                        }
+                    }
+                if (admitted == null) {
+                    visiblePayloadOwnerScopeId =
+                        dataSource.currentReplyCacheProvenance()?.threadPayloadOwnerScopeId
+                    reduceState(
+                        SharedThreadState(
+                            payload =
+                                if (threadId == null) {
+                                    routeContextPayload
+                                } else {
+                                    routeContextPayload.copy(
+                                        status = "loading",
+                                        messages = emptyList(),
+                                        backgroundRefreshing = false,
+                                        errorCode = null
+                                    )
+                                },
+                            highlightedMentions = emptySet(),
+                            accessResolution = ThreadAccessResolution.Loading,
+                            canonicalAccessResolved = false,
+                            initialHomeAccessLookupComplete = false,
+                            initialHomeAccessCandidate = null,
+                            writeActionsEnabled = false,
+                            loadingIndicatorRevealed = isLoadingRevealElapsedForCurrentGeneration(),
+                        )
+                    )
+                }
+            }
+        }
+        if (!staleTokenStillCurrent(staleToken, "thread_start", "before_refresh", routeContextPayload)) {
+            return
         }
         delay(SharedThreadFirstFrameDelayMillis)
         if (
@@ -5944,15 +6256,50 @@ internal class SharedThreadStore(
 
     private fun clearChannelProfileUpdateStatus() = channelProfileUpdater.clearChannelProfileUpdateStatus()
 
-    private fun reduceState(nextState: SharedThreadState): Boolean {
+    private fun reduceState(nextState: SharedThreadState): Boolean =
+        reduceStateInternal(nextState, manageLoadingTimer = true)
+
+    private fun reduceStateInternal(
+        nextState: SharedThreadState,
+        manageLoadingTimer: Boolean,
+    ): Boolean {
         val previousState = _state.value
-        val projectedState = if (nextState.payload === previousState.payload) nextState else nextState.copy(
-            payload = readStateProjection.project(nextState.payload, visiblePayloadOwnerScopeId)
-        )
-        val synchronizedState = projectedState.withSynchronizedTimelineSlice()
+        val projectedPayload =
+            if (nextState.payload === previousState.payload) {
+                nextState.payload
+            } else {
+                readStateProjection.project(nextState.payload, visiblePayloadOwnerScopeId)
+            }
+        val payloadUpdated =
+            if (projectedPayload === nextState.payload) nextState else nextState.copy(payload = projectedPayload)
+        val awaitsLoadingIndicator = payloadUpdated.awaitsInitialLoadingIndicator()
+        val desiredLoadingIndicatorRevealed =
+            when {
+                !awaitsLoadingIndicator -> false
+                initialLoadingRevealDelayMillis <= 0L -> true
+                else -> payloadUpdated.loadingIndicatorRevealed
+            }
+        val normalizedState =
+            if (payloadUpdated.loadingIndicatorRevealed == desiredLoadingIndicatorRevealed) {
+                payloadUpdated
+            } else {
+                payloadUpdated.copy(loadingIndicatorRevealed = desiredLoadingIndicatorRevealed)
+            }
+        val synchronizedState = normalizedState.withSynchronizedTimelineSlice()
+        if (manageLoadingTimer && !awaitsLoadingIndicator) {
+            cancelLoadingRevealTimer()
+        }
         val emitted = synchronizedState != previousState
-        if (!emitted) return false
+        if (!emitted) {
+            if (manageLoadingTimer && awaitsLoadingIndicator && !synchronizedState.loadingIndicatorRevealed) {
+                ensureLoadingRevealTimerArmed()
+            }
+            return false
+        }
         _state.value = synchronizedState
+        if (manageLoadingTimer && awaitsLoadingIndicator && !synchronizedState.loadingIndicatorRevealed) {
+            ensureLoadingRevealTimerArmed()
+        }
         if (
             synchronizedState.accessResolution.refusesReferenceTarget() &&
             !previousState.accessResolution.refusesReferenceTarget()

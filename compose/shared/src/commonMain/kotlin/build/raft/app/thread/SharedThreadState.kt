@@ -75,6 +75,12 @@ internal data class SharedThreadState(
      * jump until the parent lands (or the load fails).
      */
     val unreadThreadJumpLoading: Boolean = false,
+    /**
+     * #proj-mobile:#265: true only once an initial loading state has remained without renderable
+     * content past [ThreadInitialLoadingRevealDelayMs]. Stays false during fast SQLite/cache reads
+     * so cached opens do not flash [ThreadLoadingState], and resets on route start / clear.
+     */
+    val loadingIndicatorRevealed: Boolean = false,
 )
 
 /**
@@ -225,7 +231,8 @@ internal data class SharedThreadRenderSlice(
     val replyParentAuthority: ReplyParentAuthorityStatus,
     val writeActionsEnabled: Boolean,
     val channelProfileUpdateStatus: ChannelProfileUpdateStatus,
-    val channelProfileUpdateErrorCode: String?
+    val channelProfileUpdateErrorCode: String?,
+    val loadingIndicatorRevealed: Boolean = false,
 )
 
 internal fun SharedThreadState.toRenderSlice(): SharedThreadRenderSlice =
@@ -241,7 +248,8 @@ internal fun SharedThreadState.toRenderSlice(): SharedThreadRenderSlice =
         replyParentAuthority = replyParentAuthority,
         writeActionsEnabled = writeActionsEnabled,
         channelProfileUpdateStatus = channelProfileUpdateStatus,
-        channelProfileUpdateErrorCode = channelProfileUpdateErrorCode
+        channelProfileUpdateErrorCode = channelProfileUpdateErrorCode,
+        loadingIndicatorRevealed = loadingIndicatorRevealed,
     )
 
 /**
@@ -251,8 +259,39 @@ internal fun SharedThreadState.toRenderSlice(): SharedThreadRenderSlice =
  */
 internal enum class LoadMembersStatus { Idle, InFlight, Loaded, Error }
 
+/**
+ * #proj-mobile:#265: true when this store state is in a loading phase that will display
+ * [ThreadLoadingState] once [ThreadInitialLoadingRevealDelayMs] elapses (initial load with no
+ * messages yet, a durable empty stand-in awaiting the first canonical load, or a non-Chat tab
+ * waiting on initial access resolution).
+ */
+internal fun SharedThreadState.awaitsInitialLoadingIndicator(): Boolean {
+    if (accessResolution == ThreadAccessResolution.Error || accessResolution == ThreadAccessResolution.NoPermission) {
+        return false
+    }
+    if (payload.status == "error" || payload.status == "no_permission") return false
+    if (
+        accessResolution == ThreadAccessResolution.Loading &&
+            RaftThreadTab.fromWireValue(payload.selectedTab) != RaftThreadTab.Chat
+    ) {
+        return true
+    }
+    if (payload.messages.isNotEmpty()) return false
+    return payload.status == "loading" ||
+        threadEmptyStandInAwaitsFirstLoad(
+            status = payload.status,
+            durableLastKnown = payload.durableLastKnown,
+            mainLoadFailed = payload.mainLoadFailed,
+        ) ||
+        (
+            accessResolution == ThreadAccessResolution.Loading &&
+                payload.status !in ThreadResolvedContentStatuses
+        )
+}
+
 internal fun SharedThreadState.withSynchronizedTimelineSlice(): SharedThreadState {
-    val nextTimelineSlice = payload.toThreadTimelineSlice()
+    val nextTimelineSlice =
+        payload.toThreadTimelineSlice().copy(loadingIndicatorRevealed = loadingIndicatorRevealed)
     val nextReplyMetadataByParentId = payload.toThreadReplyMetadataMap()
     val timelineChanged = timelineSlice != nextTimelineSlice
     val replyMetadataChanged = replyMetadataByParentId != nextReplyMetadataByParentId
