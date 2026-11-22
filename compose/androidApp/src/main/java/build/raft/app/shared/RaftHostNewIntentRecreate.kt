@@ -16,6 +16,24 @@ import androidx.lifecycle.Lifecycle
 internal fun raftHostRecreatesOnNewIntentNow(state: Lifecycle.State): Boolean =
     state.isAtLeast(Lifecycle.State.RESUMED)
 
+/**
+ * External link trampoline ([build.raft.app.MainActivity]) bringing a live app shell forward while
+ * the link itself rides [build.raft.app.RaftMessageLinkInbox]: recreating the shell here cancels
+ * in-flight link resolution and wipes the Nav3 stack back to Home (#proj-mobile:#311). Only an
+ * already-running app shell with no prior pending recreation receiving an app-shell reveal intent
+ * opts out of recreation; login/destination/notification intents still rebuild as before.
+ */
+internal fun shouldPreserveLiveAppShellOnNewIntent(
+    currentPageName: String,
+    incomingPageName: String,
+    preserveRequested: Boolean,
+    recreatePending: Boolean = false,
+): Boolean =
+    preserveRequested &&
+        !recreatePending &&
+        currentPageName == RaftCmpActivity.PAGE_APP_SHELL &&
+        incomingPageName == RaftCmpActivity.PAGE_APP_SHELL
+
 /** Which way the shell window got to its first frame, for [raftNewWindowFirstFrameLine]. */
 internal enum class RaftNewWindowPath(val wireName: String) {
     /** A new Activity (a new document task). */

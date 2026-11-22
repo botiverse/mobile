@@ -35,6 +35,7 @@ import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
+import org.robolectric.RuntimeEnvironment
 import org.robolectric.annotation.Config
 
 @RunWith(RobolectricTestRunner::class)
@@ -149,5 +150,56 @@ class AndroidShellWindowOrchestrationTest {
         assertEquals(ownerA.shellCanonicalUri(), launchedDocId)
         assertEquals(RaftDocumentShellActivity::class.java, launchedHost)
         assertEquals("server-a", launchedPageData?.optString(RAFT_SHELL_SERVER_ID))
+    }
+
+    @Test
+    fun buildStartIntentMarksPreserveLiveShellOnlyForNonClearAppShellReveals() {
+        val context = RuntimeEnvironment.getApplication()
+        val revealIntent =
+            RaftCmpActivity.buildStartIntent(
+                context = context,
+                pageName = RaftCmpActivity.PAGE_APP_SHELL,
+                pageData = JSONObject(),
+                clearTask = false,
+                hostActivityClass = RaftAppShellActivity::class.java,
+                preserveLiveShell = true,
+            )
+        assertTrue(revealIntent.getBooleanExtra(RaftCmpActivity.KEY_PRESERVE_LIVE_SHELL_ON_NEW_INTENT, false))
+        assertEquals(RaftCmpActivity.PAGE_APP_SHELL, revealIntent.getStringExtra(RaftCmpActivity.KEY_PAGE_NAME))
+        assertEquals(0, revealIntent.flags and Intent.FLAG_ACTIVITY_CLEAR_TASK)
+        assertTrue((revealIntent.flags and Intent.FLAG_ACTIVITY_NEW_TASK) != 0)
+        assertTrue((revealIntent.flags and Intent.FLAG_ACTIVITY_SINGLE_TOP) != 0)
+
+        val defaultIntent =
+            RaftCmpActivity.buildStartIntent(
+                context = context,
+                pageName = RaftCmpActivity.PAGE_APP_SHELL,
+                pageData = JSONObject(),
+                clearTask = false,
+                hostActivityClass = RaftAppShellActivity::class.java,
+                preserveLiveShell = false,
+            )
+        assertFalse(defaultIntent.getBooleanExtra(RaftCmpActivity.KEY_PRESERVE_LIVE_SHELL_ON_NEW_INTENT, false))
+
+        val clearTaskIntent =
+            RaftCmpActivity.buildStartIntent(
+                context = context,
+                pageName = RaftCmpActivity.PAGE_APP_SHELL,
+                pageData = JSONObject(),
+                clearTask = true,
+                hostActivityClass = RaftAppShellActivity::class.java,
+                preserveLiveShell = true,
+            )
+        assertFalse(clearTaskIntent.getBooleanExtra(RaftCmpActivity.KEY_PRESERVE_LIVE_SHELL_ON_NEW_INTENT, false))
+
+        val loginIntent =
+            RaftCmpActivity.buildStartIntent(
+                context = context,
+                pageName = RaftCmpActivity.PAGE_LOGIN,
+                pageData = JSONObject(),
+                clearTask = false,
+                preserveLiveShell = true,
+            )
+        assertFalse(loginIntent.getBooleanExtra(RaftCmpActivity.KEY_PRESERVE_LIVE_SHELL_ON_NEW_INTENT, false))
     }
 }
