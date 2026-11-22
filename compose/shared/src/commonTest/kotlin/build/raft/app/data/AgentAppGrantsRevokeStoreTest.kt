@@ -239,7 +239,10 @@ class AgentAppGrantsRevokeStoreTest {
             revokeGrant = server::revoke,
             loadAppLogins = server::load,
             applyToDetail = detail::dispatch,
-            scope = backgroundScope,
+            // The test's own scope, not backgroundScope: advanceUntilIdle() stops once only
+            // background work is left, so a try launched there would never run. runTest also
+            // fails if a try is left hanging.
+            scope = this,
         )
 
     private fun startStampRevokeAccess(grantIds: List<String> = listOf(STAMP_SIGN_IN.id, STAMP_NOTIFY.id)) =
