@@ -100,6 +100,7 @@ class RaftSideActionHostBridgeTest {
         val icons =
             listOf(
                 RaftLucideIconName.Search,
+                RaftLucideIconName.Users,
                 RaftLucideIconName.Settings,
                 RaftLucideIconName.List,
                 RaftLucideIconName.MapPin,

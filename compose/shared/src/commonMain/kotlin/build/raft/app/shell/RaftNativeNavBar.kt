@@ -598,7 +598,10 @@ internal fun raftLucideIconNameForWire(wireName: String): RaftLucideIconName? = 
 internal fun raftNativeNavBarSymbolFor(id: String): String? =
     when (id) {
         "home-bell" -> "bell"
+        "lounge" -> "person.2"
         "thread-search", SEARCH_IN_TASK_MENU_ITEM_ID -> "magnifyingglass"
+        "thread-side-card-tasks" -> "checklist"
+        "thread-side-card-files" -> "paperclip"
         "thread-settings" -> "gearshape"
         "thread-open-in-channel", VIEW_TASK_IN_CHANNEL_MENU_ITEM_ID -> "mappin.and.ellipse"
         FOCUS_MODE_MENU_ITEM_ID -> "arrow.up.left.and.arrow.down.right"
