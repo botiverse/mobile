@@ -474,7 +474,7 @@ class CanonicalMessageV2DurableLastKnownReaderTest {
             // Channel B: head == null, loose realtime fact 50, context island above it [90..110].
             val scopeB = SyncScopeKey(partitionA, "channel-b", "channel")
             fun envB(seq: Long) = CanonicalMessageEnvelopeV2(
-                fact = fact(seq),
+                fact = fact(seq).copy(id = "channel-b-message-$seq"),
                 context = CanonicalConversationContextV2.TopLevel(TopLevelScopeRefV2.Channel("server-a", "channel-b")),
             )
             store.applyCoverage(
