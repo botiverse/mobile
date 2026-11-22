@@ -17,9 +17,10 @@ import build.raft.designsystem.components.RaftButtonSize
 import build.raft.designsystem.components.RaftButtonVariant
 import build.raft.designsystem.components.RaftIconButton
 import build.raft.app.data.agentRuntimeHasSubagents
-import build.raft.app.data.AgentAppLoginItem
+import build.raft.app.data.AgentAppGrantsRevokeIntent
+import build.raft.app.data.AgentAppGrantsRevokeState
 import build.raft.app.data.AgentAppLoginLoadState
-import build.raft.app.data.AgentAppLoginType
+import build.raft.app.data.isActiveGrant
 import build.raft.app.data.AgentDetailSnapshot
 import build.raft.app.data.AgentScopeSet
 import build.raft.app.data.AgentDetailSummary
@@ -42,6 +43,7 @@ import build.raft.app.model.RaftTimeContext
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.ui.draw.alpha
@@ -55,6 +57,9 @@ import build.raft.designsystem.components.RaftAvatarSize
 import build.raft.designsystem.components.RaftBadge
 import build.raft.designsystem.components.RaftBadgeAppearance
 import build.raft.designsystem.components.RaftBadgeVariant
+import build.raft.designsystem.components.RaftBanner
+import build.raft.designsystem.components.RaftBannerSize
+import build.raft.designsystem.components.RaftBannerStatus
 import build.raft.designsystem.components.RaftSectionEyebrow
 import build.raft.designsystem.components.RaftSeparator
 import build.raft.designsystem.components.RaftIconButtonSize
@@ -93,6 +98,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import org.jetbrains.compose.resources.StringResource
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableStateFlow
 import build.raft.app.data.map
 import kotlinx.coroutines.launch
 import build.raft.designsystem.components.raftClickable
@@ -921,13 +927,21 @@ internal fun MembersAgentAppsTab(
     onOpenUrl: (String) -> Unit,
     appEventsLoader: MembersAgentAppEventsLoader?,
     appEventLoader: MembersAgentAppEventLoader?,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    /** Revoke access and per-grant Revoke (web AgentAppAccessTab); null offers neither. */
+    appAccess: MembersAgentAppAccessBinding? = null
 ) {
     // Web AgentAppAccessTab (`stack-y-6`): the Apps section, then App events.
-    // Not in the app yet: Grant Access (its picker, scopes and MCP connection), MCP App rows,
-    // pending requests and Revoke.
+    // Not in the app yet: Grant Access (its picker, scopes and MCP connection), MCP App rows and
+    // pending requests.
     Column(modifier = modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(24.dp)) {
-        MembersAgentAppsSection(detail = detail, timeContext = timeContext, onOpenUrl = onOpenUrl)
+        MembersAgentAppsSection(
+            agentId = agentId,
+            detail = detail,
+            timeContext = timeContext,
+            onOpenUrl = onOpenUrl,
+            appAccess = appAccess
+        )
         MembersAgentAppEventsSection(
             agentId = agentId,
             loader = appEventsLoader,
@@ -939,11 +953,17 @@ internal fun MembersAgentAppsTab(
 
 @Composable
 private fun MembersAgentAppsSection(
+    agentId: MemberId,
     detail: AgentDetailSnapshot?,
     timeContext: RaftTimeContext,
-    onOpenUrl: (String) -> Unit
+    onOpenUrl: (String) -> Unit,
+    appAccess: MembersAgentAppAccessBinding?
 ) {
     val errorStrings = localizedErrorPresentationStrings()
+    // Web AgentDetailPanel `canManageAgentAccess`: every Revoke, and the confirmation, need it.
+    val canManage = appAccess?.canManage?.invoke(detail) == true
+    val fallbackRevokeState = remember { MutableStateFlow(AgentAppGrantsRevokeState()) }
+    val revokeState by (appAccess?.store?.state ?: fallbackRevokeState).collectAsState()
     // Web AgentAppAccessTab's Apps section (`stack-y-3`): the eyebrow, its description, then the
     // apps or the hint.
     Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -974,123 +994,86 @@ private fun MembersAgentAppsSection(
                     )
                 )
             else -> {
-                val activeItems = appLogins?.items.orEmpty()
-                    .filter { it.type == AgentAppLoginType.Active && it.revokedAt.isNullOrBlank() }
-                if (activeItems.isEmpty()) {
+                // The re-read after a revoke failed: the list stays as it is, and says so (web: the
+                // tab's warning banner with the server's reason), with the request's trace ID.
+                appLogins?.refreshError?.let { error ->
+                    Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        RaftBanner(
+                            description = stringResource(Res.string.member_error_apps_load, error.userFacingMessage(errorStrings)),
+                            status = RaftBannerStatus.Warning,
+                            size = RaftBannerSize.Sm
+                        )
+                        RaftTraceIdNote(error.traceId)
+                    }
+                }
+                // One row per App (`clientId`), however many grants it holds.
+                val items = appLogins?.items.orEmpty()
+                val apps = remember(items) { membersAgentAppGrantGroups(items) }
+                if (apps.isEmpty()) {
                     RaftText(
                         text = stringResource(Res.string.member_state_no_connected_apps),
                         style = RaftTheme.typography.callout,
                         color = RaftTheme.colors.foregroundHint
                     )
                 } else {
-                    activeItems.forEach { item ->
-                        MembersAgentAppLoginCard(
-                            item = item,
-                            timeContext = timeContext,
-                            onOpenUrl = onOpenUrl
-                        )
+                    apps.forEach { app ->
+                        key(app.clientId) {
+                            MembersAgentAppGrantsCard(
+                                group = app,
+                                canManage = canManage,
+                                timeContext = timeContext,
+                                onOpenUrl = onOpenUrl,
+                                onRevoke = { whole, grantIds ->
+                                    appAccess?.store?.dispatch(
+                                        AgentAppGrantsRevokeIntent.Start(
+                                            agentId = agentId,
+                                            clientId = app.clientId,
+                                            appName = app.name,
+                                            whole = whole,
+                                            grantIds = grantIds
+                                        )
+                                    )
+                                }
+                            )
+                        }
                     }
                 }
             }
         }
     }
-}
-
-@Composable
-private fun MembersAgentAppLoginCard(
-    item: AgentAppLoginItem,
-    timeContext: RaftTimeContext,
-    onOpenUrl: (String) -> Unit
-) {
-    // raft-ui Card (default): no shadow, the hairline edge.
-    Column(
-        modifier = Modifier.fillMaxWidth().membersRaftCard().padding(RaftAppSpacing.Md),
-        verticalArrangement = Arrangement.spacedBy(RaftAppSpacing.Sm)
-    ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(RaftAppSpacing.Sm),
-            verticalAlignment = Alignment.Top
-        ) {
-            Column(
-                modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(2.dp)
-            ) {
-                RaftText(
-                    text = item.clientName,
-                    style = RaftTheme.typography.cardTitle,
-                    color = RaftTheme.colors.foreground,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis
-                )
-                item.createdAt?.let {
-                    RaftText(
-                        text = stringResource(
-                            Res.string.member_label_connected_since,
-                            // A clock alone read as today for a grant from any day (artin 11-06).
-                            it.membersReminderShortDateTime(timeContext)
-                        ),
-                        style = RaftTheme.typography.caption,
-                        color = RaftTheme.colors.foregroundHint
-                    )
-                }
-                // Web `GRANT_SOURCE_LABEL`: two grants of one App otherwise read as the same row.
-                item.grantSource?.let(::membersAgentAppGrantSourceLabel)?.let { label ->
-                    RaftText(
-                        text = stringResource(label),
-                        style = RaftTheme.typography.caption,
-                        color = RaftTheme.colors.foregroundHint
-                    )
-                }
-            }
-            MembersAgentAppLoginStatusBadge(stringResource(Res.string.member_label_active))
-        }
-        item.clientDescription?.takeIf { it.isNotBlank() }?.let {
-            RaftText(
-                text = it,
-                style = RaftTheme.typography.callout,
-                color = RaftTheme.colors.foregroundMuted
-            )
-        }
-        // Web AgentAppGrantsRow (slock #14769): one plain sentence with the App as its subject
-        // ("Stamp can sign in as this agent and send notifications"), not raw scope chips. The
-        // App's agent manifest is a developer detail and is not on the row.
-        membersAgentAppCanSummary(item.clientName, item.scopes)?.let { summary ->
-            RaftText(
-                text = summary,
-                style = RaftTheme.typography.callout,
-                color = RaftTheme.colors.foreground
-            )
-        }
-        item.clientHomepageUrl?.takeIf { it.isNotBlank() }?.let { homepageUrl ->
-            RaftButton(
-                text = stringResource(Res.string.member_action_view_service),
-                onClick = { onOpenUrl(homepageUrl) },
-                modifier = Modifier.fillMaxWidth(),
-                size = RaftButtonSize.Lg,
-                // raft-ui 0.26 (#758): an app's homepage leaves Raft: ↗ in the trailing icon's place.
-                trailingIcon = { RaftContentLucideIcon(RaftLucideIconName.ArrowUpRight, size = 18.dp) }
-            )
-        }
+    // Web `revoking && canManageAgentAccess`: this agent's confirmation, listing the grants it
+    // still takes as the list now has them (the revoked ones gone).
+    val revoking = revokeState.revoking?.takeIf { it.agentId == agentId && canManage }
+    if (revoking != null) {
+        MembersAgentAppRevokeDialog(
+            revoke = revoking,
+            grants = detail?.appLogins?.items.orEmpty().filter { it.isActiveGrant && it.id in revoking.grantIds },
+            inFlight = revokeState.inFlight,
+            onIntent = { intent -> appAccess?.store?.dispatch(intent) }
+        )
     }
-}
-
-@Composable
-private fun MembersAgentAppLoginStatusBadge(label: String) {
-    RaftBadge(text = label, appearance = RaftBadgeAppearance.Soft, variant = RaftBadgeVariant.Success)
 }
 
 /**
  * What an App can do for an Agent (web `agentAppGrants.ts` `ABILITIES`, slock #14769). The identity
- * scopes together are one ability, signing in as the Agent; [short] reads after "{app} can".
+ * scopes together are one ability, signing in as the Agent; [short] reads after "{app} can", [long]
+ * names it on its own (a grant's details, the revoke confirmation).
  */
-internal enum class MembersAgentAppAbility(val scopes: List<String>, val short: StringResource) {
-    SignIn(listOf("identity", "openid", "profile"), Res.string.member_app_ability_sign_in),
-    Email(listOf("email"), Res.string.member_app_ability_email),
-    AgentDirectory(listOf("agent:read"), Res.string.member_app_ability_agent_directory),
-    Events(listOf("agent:event:write"), Res.string.member_app_ability_events),
-    Notifications(listOf("agent:notification:write"), Res.string.member_app_ability_notifications),
-    ActionRequests(listOf("agent:action_request:write"), Res.string.member_app_ability_action_requests),
+internal enum class MembersAgentAppAbility(val scopes: List<String>, val short: StringResource, val long: StringResource) {
+    SignIn(listOf("identity", "openid", "profile"), Res.string.member_app_ability_sign_in, Res.string.member_app_ability_sign_in_long),
+    Email(listOf("email"), Res.string.member_app_ability_email, Res.string.member_app_ability_email_long),
+    AgentDirectory(listOf("agent:read"), Res.string.member_app_ability_agent_directory, Res.string.member_app_ability_agent_directory_long),
+    Events(listOf("agent:event:write"), Res.string.member_app_ability_events, Res.string.member_app_ability_events_long),
+    Notifications(
+        listOf("agent:notification:write"),
+        Res.string.member_app_ability_notifications,
+        Res.string.member_app_ability_notifications_long
+    ),
+    ActionRequests(
+        listOf("agent:action_request:write"),
+        Res.string.member_app_ability_action_requests,
+        Res.string.member_app_ability_action_requests_long
+    ),
 }
 
 /** One thing a grant lets the App do: a known [ability], or an unknown [rawScope] shown as itself. */
@@ -1107,9 +1090,9 @@ internal fun membersAgentAppAbilities(scopes: List<String>): List<MembersAgentAp
     return known + unknown
 }
 
-/** Web `agent.apps.canSummary`: "{app} can {abilities}"; null when the grant names no scope. */
+/** Web `agent.apps.canSummary`: "{app} can {abilities}" across [scopes] (all of an App's grants); null when they name none. */
 @Composable
-private fun membersAgentAppCanSummary(appName: String, scopes: List<String>): String? {
+internal fun membersAgentAppCanSummary(appName: String, scopes: List<String>): String? {
     val abilities = membersAgentAppAbilities(scopes)
     if (abilities.isEmpty()) return null
     val words = abilities.map { item -> item.ability?.let { stringResource(it.short) } ?: item.rawScope.orEmpty() }

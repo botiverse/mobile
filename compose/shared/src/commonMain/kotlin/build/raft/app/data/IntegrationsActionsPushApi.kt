@@ -48,6 +48,15 @@ private val integrationsActionsPushJson = Json {
  * `POST /actions/:messageId/execute` is not gated at that SHA (pending contract verification);
  * its error carries the same challenge if it comes. Both as [ScreenError.secondFactorStepUp].
  * Deny is not gated.
+ *
+ * Revoke (botiverse/slock staging 5828cdce3e, routes/integrations.ts `POST /grants/:grantId/revoke`;
+ * web AgentAppAccessTab `confirmRevoke`, #13293): `POST /api/integrations/grants/:grantId/revoke`
+ * with `{}` (the route reads no field). One grant per call; never gated by a second step. 200: the
+ * grant row (already revoked: the same row again). 403 `{ error: "Only server owners and admins can
+ * manage integrations", code: "insufficient_role" }` for someone who is neither the agent's creator
+ * nor has `manageExternalAuth`. 404 `{ error: "Grant not found", code: "not_found" }` for a grant
+ * the server doesn't have (another server's included). 500 `{ error: "Failed to revoke integration
+ * grant", correlationId }`. See [toAgentAppGrantRevokeOutcome].
  */
 internal interface RaftIntegrationsActionsPushApi {
     suspend fun integrationsOverview(): HomeNetworkResponse
@@ -96,7 +105,12 @@ internal class RaftIntegrationsActionsPushNetworkApi(
         networkClient.request(DataRequestPriority.Foreground, "integrations/requests/$requestId/deny", method = "POST")
 
     override suspend fun revokeIntegrationGrant(grantId: String): HomeNetworkResponse =
-        networkClient.request(DataRequestPriority.Foreground, "integrations/grants/$grantId/revoke", method = "POST")
+        networkClient.request(
+            DataRequestPriority.Foreground,
+            "integrations/grants/$grantId/revoke",
+            method = "POST",
+            bodyText = REVOKE_INTEGRATION_GRANT_BODY
+        )
 
     override suspend fun agentIntegrations(agentId: MemberId): HomeNetworkResponse =
         networkClient.request(DataRequestPriority.Visible, "integrations/agents/${agentId.value}")
@@ -189,14 +203,9 @@ internal class RaftIntegrationsActionsPushApiClient(
             IntegrationRequestResult(requestId = id, status = status)
         }
 
-    suspend fun revokeIntegrationGrant(grantId: String): DataResult<IntegrationGrantResult> =
-        transport.revokeIntegrationGrant(grantId).mapApiBody(
-            "integration_grant_revoke_contract_mismatch",
-            IntegrationGrantDto.serializer()
-        ) { wire ->
-            val id = wire.id.takeIf { it.isNotBlank() } ?: return@mapApiBody null
-            IntegrationGrantResult(grantId = id, status = wire.status, revokedAt = wire.revokedAt)
-        }
+    /** One grant's revoke; what the answer means for the Apps tab is [toAgentAppGrantRevokeOutcome]. */
+    suspend fun revokeIntegrationGrant(grantId: String): AgentAppGrantRevokeOutcome =
+        transport.revokeIntegrationGrant(grantId).toAgentAppGrantRevokeOutcome()
 
     suspend fun agentIntegrations(agentId: MemberId): DataResult<AgentIntegrationsPage> =
         transport.agentIntegrations(agentId).mapAgentIntegrations(agentId)
@@ -303,7 +312,60 @@ internal data class IntegrationClientsPage(val clientCount: Int, val firstName: 
 internal data class IntegrationClientCreateResult(val clientId: String, val clientSecretPresent: Boolean)
 internal data class IntegrationApproveResult(val requestId: String, val grantId: String?)
 internal data class IntegrationRequestResult(val requestId: String, val status: String)
-internal data class IntegrationGrantResult(val grantId: String, val status: String?, val revokedAt: String?)
+
+/**
+ * What one grant's revoke came to (web AgentAppAccessTab `confirmRevoke`, botiverse/slock #13293):
+ * it went, it was gone already, or it still stands and [NotRevoked.failure] says why.
+ */
+sealed interface AgentAppGrantRevokeOutcome {
+    /** 2xx: revoked (or it already was). The web reads nothing of the body, so neither does this. */
+    data object Revoked : AgentAppGrantRevokeOutcome
+
+    /**
+     * 404 "Grant not found": the server has nothing left to revoke, so the grant leaves the list as
+     * a revoked one does (a Try again could only 404 again).
+     */
+    data object Gone : AgentAppGrantRevokeOutcome
+
+    data class NotRevoked(val failure: AgentAppGrantRevokeFailure) : AgentAppGrantRevokeOutcome
+}
+
+/**
+ * Why one grant's revoke failed (web `agentAppGrants.ts` `RevokeGrantFailure`). [reason] is the
+ * answer's `error` when it had one; [traceId] its `X-Trace-Id` (AGENTS.md "Errors carry the trace ID").
+ */
+sealed interface AgentAppGrantRevokeFailure {
+    /** 403: the server said no, so trying again won't help; Try again skips it. */
+    data class Refused(val reason: String?, val traceId: String?) : AgentAppGrantRevokeFailure
+
+    /** The server answered with another failure (5xx, 401, ...). */
+    data class Failed(val reason: String?, val traceId: String?) : AgentAppGrantRevokeFailure
+
+    /** No answer at all: the write may or may not have landed (the reload tells). */
+    data object NoAnswer : AgentAppGrantRevokeFailure
+}
+
+/**
+ * The answer to `POST /api/integrations/grants/:grantId/revoke` by its status, as the web reads
+ * its `api.post` result (`revokeGrantFailure`): any 2xx revoked, 404 gone, 403 refused, no
+ * response (code 0, a transport failure or timeout) unknown, anything else a failure; the reason
+ * is the envelope's `error` (`refuse` and `sendJsonServerError` both write it).
+ */
+internal fun HomeNetworkResponse.toAgentAppGrantRevokeOutcome(): AgentAppGrantRevokeOutcome =
+    when {
+        isSuccessful -> AgentAppGrantRevokeOutcome.Revoked
+        code <= 0 -> AgentAppGrantRevokeOutcome.NotRevoked(AgentAppGrantRevokeFailure.NoAnswer)
+        code == 404 -> AgentAppGrantRevokeOutcome.Gone
+        code == 403 ->
+            AgentAppGrantRevokeOutcome.NotRevoked(
+                AgentAppGrantRevokeFailure.Refused(reason = agentIntegrationsServerErrorTextOrNull(), traceId = traceId)
+            )
+        else ->
+            AgentAppGrantRevokeOutcome.NotRevoked(
+                AgentAppGrantRevokeFailure.Failed(reason = agentIntegrationsServerErrorTextOrNull(), traceId = traceId)
+            )
+    }
+
 internal data class AgentIntegrationsPage(
     val agentId: MemberId,
     val items: List<AgentAppLoginItem>
@@ -501,7 +563,11 @@ private fun HomeNetworkResponse.agentIntegrationsFailure(): DataResult<Nothing> 
     }
 }
 
-/** Exact non-2xx envelope for `GET /api/integrations/agents/:agentId`. */
+/**
+ * The `error` of a non-2xx `GET /api/integrations/agents/:agentId` or `POST
+ * /api/integrations/grants/:grantId/revoke` (routes/integrations.ts: `refuse` and
+ * `sendJsonServerError` both write `{ error, code? }`).
+ */
 private fun HomeNetworkResponse.agentIntegrationsServerErrorTextOrNull(): String? {
     val payload = bodyText?.takeIf { it.isNotBlank() }
         ?: errorBodyText?.takeIf { it.isNotBlank() }
@@ -716,13 +782,6 @@ private data class IntegrationRequestDto(
 )
 
 @Serializable
-private data class IntegrationGrantDto(
-    val id: String,
-    val status: String? = null,
-    val revokedAt: String? = null,
-)
-
-@Serializable
 private data class ActionCardResponseDto(
     val messageId: String,
     val metadata: WireActionCardMetadata? = null,
@@ -744,6 +803,9 @@ private data class PushTestResponseDto(
 )
 
 // ── Request bodies ──
+
+/** Body of POST /api/integrations/grants/:grantId/revoke: the web's `EMPTY_BODY`; the route reads no field. */
+internal const val REVOKE_INTEGRATION_GRANT_BODY: String = "{}"
 
 /**
  * Body of POST /api/actions/:messageId/execute (botiverse/slock shared `ExecuteActionRequestBody`).

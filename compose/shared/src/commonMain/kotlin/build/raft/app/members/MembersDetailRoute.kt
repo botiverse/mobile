@@ -48,6 +48,7 @@ import build.raft.app.data.SharedServerMembersState
 import build.raft.app.data.SelectedServerStore
 import build.raft.app.data.sharedAgentDetailOwner
 import build.raft.app.data.agentDetailCacheKey
+import build.raft.app.data.canManageAgentAppAccess
 import build.raft.app.model.ChannelId
 import build.raft.app.model.RuntimeConfig
 import build.raft.app.model.MemberId
@@ -104,6 +105,20 @@ internal fun memberDetailStatusResolverServerId(
 internal fun MemberDetailRouteState.Agent.viewerSeesPrivateAgentSurfaces(detail: AgentDetailSnapshot?): Boolean =
     accessMode.allowsPrivateAgentSurfaces &&
         (server.permissions.canManageSettings || detail?.summary?.creatorId == currentUserId)
+
+/**
+ * Web AgentDetailPanel `canManageAgentAccess` (botiverse/slock 5828cdce3e): who sees the Apps tab's
+ * Revoke access and per-grant Revoke ([canManageAgentAppAccess]), never on another server's agent
+ * (a bounded public projection). Everyone else reads the rows and their details.
+ */
+internal fun MemberDetailRouteState.Agent.viewerManagesAgentAppAccess(detail: AgentDetailSnapshot?): Boolean =
+    accessMode.allowsPrivateAgentSurfaces &&
+        canManageAgentAppAccess(
+            serverRole = server.role,
+            currentUserId = currentUserId,
+            creatorType = detail?.summary?.creatorType,
+            creatorId = detail?.summary?.creatorId,
+        )
 
 internal data class MemberDetailLoadPlan(
     val priority: DataRequestPriority,
@@ -337,7 +352,8 @@ internal class MemberDetailRouteProvider(
         if (state.detailServerId != owner.serverId || state.agentId != detail.agentId) return
         val key = owner.agentDetailCacheKey(detail.agentId)
         val cached = cache.peek(key) ?: return
-        cache.confirm(key, cached.copy(detail = detail))
+        // A failed Apps re-read is this visit's news, not the agent's: the cached page leaves it out.
+        cache.confirm(key, cached.copy(detail = detail.copy(appLogins = detail.appLogins.copy(refreshError = null))))
     }
 
     /**
@@ -855,6 +871,16 @@ internal class MemberDetailRouteProvider(
             )
         )
         // Confirmed profile / avatar edit: the cached page (memory and disk) follows.
+        confirmCachedAgentDetailAsync()
+    }
+
+    /**
+     * The Apps tab's revoke changed the shown agent's App grants ([AgentAppGrantsRevokeStore]): the
+     * store's detail takes [intent], and the cached page follows, so a revoked App doesn't come back
+     * from the cache on the next open.
+     */
+    fun updateAgentAppLogins(intent: SharedAgentDetailIntent) {
+        agentDetailStore.dispatch(intent)
         confirmCachedAgentDetailAsync()
     }
 

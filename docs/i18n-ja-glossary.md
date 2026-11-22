@@ -98,6 +98,7 @@ new product concept gets a Japanese rendering.
 | Install (an app) | インストール | Marketplace app on a Server; button = アプリをインストール |
 | Marketplace | マーケットプレイス | |
 | Login scopes / Data access | ログインのスコープ / データアクセス | An app's permission set (web `appPermissionSet.*`) |
+| Revoke access (an App's grants for an agent) / Grant (one of them) | アクセスを取り消す / 許可 | Agent Apps tab; per grant 取り消す, "Not revoked" = 未取り消し; copied from the web ja catalog (`agent.apps.revoke*`, botiverse/slock #13293) |
 | Owner / Admin | オーナー / 管理者 | |
 | Role | 役割 | |
 | Permission | 権限 | "No permission" = 権限がありません |

@@ -512,6 +512,15 @@ interface MemberRepository {
         agentId: MemberId
     ): DataResult<AgentAppLoginSnapshot> =
         DataResult.Empty(EmptyReason.NoMembers)
+    /**
+     * Web AgentAppAccessTab's Revoke: one App grant of an agent (`POST
+     * /api/integrations/grants/:grantId/revoke`). A repository that can't send it has no answer.
+     */
+    suspend fun revokeAgentAppGrant(
+        priority: DataRequestPriority,
+        grantId: String
+    ): AgentAppGrantRevokeOutcome =
+        AgentAppGrantRevokeOutcome.NotRevoked(AgentAppGrantRevokeFailure.NoAnswer)
     /** Web AgentAppAccessTab › App events: a page of the events apps sent to the agent. */
     suspend fun getAgentAppEvents(
         priority: DataRequestPriority,
