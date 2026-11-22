@@ -58,6 +58,7 @@ internal class AccountLocalData(
         agentDetailCache.clearMemory()
         replyWindowCache?.clearMemory()
         threadPayloadStore.clearAll()
+        build.raft.app.raftFilePreviewAttachmentUrlCache().clear()
         clearViewerMemoryCaches()
         // Agent Lounge v0: Lounges are known per server only; another account must not see this one's.
         RaftAgentLounges.clear()

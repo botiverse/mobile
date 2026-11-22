@@ -72,6 +72,8 @@ internal class ThreadRouteAttachmentActions(
     val renderedTimelineSlice: ThreadTimelineSlice,
     val threadInstanceKey: String,
     val attachmentOwner: AttachmentOwnerLease?,
+    val routeOwnerProvider: () -> build.raft.app.data.AuthenticatedRouteOwner? = { null },
+    val inlineImageUrlBatcher: ThreadInlineAttachmentUrlBatcher? = null,
     val labels: ThreadRouteLabels,
     val imageLightboxEnabled: Boolean,
     val attachmentCommentsDialogStateHolder: MutableState<ThreadAttachmentCommentsDialogState?>,
@@ -408,6 +410,11 @@ internal class ThreadRouteAttachmentActions(
     }
 
     fun requestInlineImageFallback(attachmentId: String) {
+        val batcher = inlineImageUrlBatcher
+        if (batcher != null) {
+            batcher.request(attachmentId)
+            return
+        }
         val (nextState, shouldRequest) = inlineImageFallbackState.beginRequest(attachmentId)
         inlineImageFallbackState = nextState
         if (!shouldRequest) return
@@ -415,6 +422,14 @@ internal class ThreadRouteAttachmentActions(
         coroutineScope.launch {
             when (val response = dataSource.attachmentUrl(DataRequestPriority.Visible, attachmentId, disposition = "inline")) {
                 is ThreadApiResult.Success -> {
+                    routeOwnerProvider()?.normalizedOrNull()?.let { owner ->
+                        raftFilePreviewAttachmentUrlCache().put(
+                            key = RaftFilePreviewAttachmentUrlCacheKey(owner, attachmentId.trim(), "inline"),
+                            url = response.data.url,
+                            expiresAtEpochMillis = parseRaftTimestampEpochMillisOrNull(response.data.expiresAt),
+                            fallbackTtlMillis = RaftFilePreviewAttachmentUrlCache.DefaultInlineFallbackUrlTtlMillis,
+                        )
+                    }
                     inlineImageFallbackState =
                         inlineImageFallbackState.resolve(attachmentId, response.data.url)
                     bridge.log("thread_inline_image_fallback status=resolved attachmentId=${attachmentId.take(8)}")
@@ -428,6 +443,25 @@ internal class ThreadRouteAttachmentActions(
             }
         }
     }
+
+    fun handleInlineImageFallbackError(attachmentId: String, failedUrl: String) {
+        inlineImageUrlBatcher?.invalidateAndRetry(attachmentId, failedUrl)
+    }
+
+    private fun currentInlineImageUrlsFor(attachments: Collection<RaftThreadAttachmentItem>): Map<String, String> {
+        val owner = routeOwnerProvider()?.normalizedOrNull()
+        val urlCache = raftFilePreviewAttachmentUrlCache()
+        val resolved = inlineImageFallbackState.resolvedUrls
+        return buildMap {
+            attachments.forEach { item ->
+                val id = item.id.trim()
+                if (id.isEmpty()) return@forEach
+                val cached = owner?.let { urlCache.get(RaftFilePreviewAttachmentUrlCacheKey(it, id, "inline")) }
+                val inlineUrl = cached ?: resolved[id]
+                if (!inlineUrl.isNullOrBlank()) put(id, inlineUrl)
+            }
+        }
+    }
     /**
      * Desktop and wide windows open images in the lightbox over the app (artin 10-29); phones
      * keep the full-page viewer. [conversationWide]: step through every loaded image of the
@@ -437,8 +471,9 @@ internal class ThreadRouteAttachmentActions(
         if (group.images.isEmpty()) return
         val currentIndex = group.currentIndex.coerceIn(0, group.images.lastIndex)
         val attachment = group.images[currentIndex]
+        val inlineUrlsById = currentInlineImageUrlsFor(group.images)
         if (imageLightboxEnabled) {
-            imageLightboxRequest =
+            val baseRequest =
                 (if (conversationWide) {
                     raftImageLightboxRequestFor(
                         messages = listOfNotNull(renderedTimelineSlice.originMessage) + renderedTimelineSlice.messages,
@@ -448,6 +483,14 @@ internal class ThreadRouteAttachmentActions(
                 } else {
                     null
                 }) ?: RaftImageLightboxRequest(group.images.map { RaftImageLightboxItem(it) }, currentIndex)
+            val allInlineUrls = currentInlineImageUrlsFor(baseRequest.items.map { it.attachment })
+            imageLightboxRequest =
+                baseRequest.copy(
+                    items =
+                        baseRequest.items.map { item ->
+                            item.copy(inlinePlaceholderUrl = allInlineUrls[item.attachment.id] ?: item.inlinePlaceholderUrl)
+                        }
+                )
             bridge.log("thread_image_lightbox status=open count=${imageLightboxRequest?.items?.size ?: 0}")
             return
         }
@@ -457,7 +500,8 @@ internal class ThreadRouteAttachmentActions(
                 kind = "image",
                 imageGallery = group.images,
                 imageGalleryIndex = currentIndex,
-                attachmentCommentsEnabled = attachmentCommentsEnabled
+                attachmentCommentsEnabled = attachmentCommentsEnabled,
+                inlineImageUrlsByAttachmentId = inlineUrlsById,
             )
         )
     }

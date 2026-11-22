@@ -91,7 +91,9 @@ import net.engawapg.lib.zoomable.zoomable
 internal data class RaftImageLightboxItem(
     val attachment: RaftThreadAttachmentItem,
     val senderName: String = "",
-    val timeLabel: String = ""
+    val timeLabel: String = "",
+    /** Inline image URL already displayed in the message list when [attachment.thumbnailUrl] is absent (#proj-mobile:#293). */
+    val inlinePlaceholderUrl: String? = null,
 )
 
 internal data class RaftImageLightboxRequest(
@@ -421,7 +423,11 @@ private fun RaftImageLightboxRemoteImage(
     fullUrl: String?,
     onContentSize: (Size) -> Unit
 ) {
-    val thumbnail = item.attachment.thumbnailUrl?.trim()?.takeIf { it.isNotBlank() }
+    val explicitThumbnail = item.attachment.thumbnailUrl?.trim()?.takeIf { it.isNotBlank() }
+    val inlinePlaceholder = item.inlinePlaceholderUrl?.trim()?.takeIf { it.isNotBlank() }
+    val thumbnail = explicitThumbnail ?: inlinePlaceholder
+    val originalCacheKey = build.raft.app.image.raftAttachmentOriginalImageCacheKey(item.attachment.id)
+    val thumbnailCacheKey = if (explicitThumbnail == null && inlinePlaceholder != null) originalCacheKey else null
     var fullLoaded by remember(fullUrl) { mutableStateOf(false) }
     var thumbnailFailed by remember(thumbnail) { mutableStateOf(false) }
     var fullFailed by remember(fullUrl) { mutableStateOf(false) }
@@ -434,6 +440,7 @@ private fun RaftImageLightboxRemoteImage(
             source = thumbnail,
             contentDescription = item.attachment.name,
             contentScale = ContentScale.Fit,
+            cacheKey = thumbnailCacheKey,
             modifier = Modifier.fillMaxSize(),
             onImageStateChange = { state ->
                 report(state)
@@ -448,6 +455,7 @@ private fun RaftImageLightboxRemoteImage(
             contentScale = ContentScale.Fit,
             modifier = Modifier.fillMaxSize(),
             animated = build.raft.app.image.raftImageMayBeAnimated(item.attachment.mimeType, item.attachment.name),
+            cacheKey = originalCacheKey,
             onImageStateChange = { state ->
                 report(state)
                 if (state is AsyncImagePainter.State.Success) fullLoaded = true
