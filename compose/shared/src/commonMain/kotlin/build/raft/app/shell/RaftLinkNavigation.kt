@@ -21,6 +21,54 @@ import build.raft.app.compat.module.RouterModule
 import build.raft.app.compat.json.JSONObject
 import build.raft.app.compat.pager.Pager
 
+internal enum class Raft241LinkCompareMode(
+    val storageKey: String,
+    val title: String,
+    val detail: String,
+) {
+    SystemDefault(
+        storageKey = "system",
+        title = "A. 系统默认浏览器（现状）",
+        detail = "沿用当前显式默认浏览器 ACTION_VIEW",
+    ),
+    CustomTabsDefault(
+        storageKey = "custom_tabs_default",
+        title = "B. Custom Tabs（绑定默认浏览器）",
+        detail = "默认浏览器支持 Custom Tabs 时指定它打开，不支持则回退默认浏览器",
+    ),
+    CustomTabsAuto(
+        storageKey = "custom_tabs_auto",
+        title = "C. Custom Tabs（不指定包 / 系统自动）",
+        detail = "原生 Custom Tabs Intent，直接验证鸿蒙是否拉起自带简陋浏览器",
+    ),
+    CustomTabsChrome(
+        storageKey = "custom_tabs_chrome",
+        title = "D. Custom Tabs（优先 Chrome）",
+        detail = "装有 Chrome 且支持 Custom Tabs 时优先走 Chrome，否则回退默认浏览器",
+    ),
+    InAppWebView(
+        storageKey = "in_app",
+        title = "E. App 自带 WebView（现状）",
+        detail = "走当前内置 WebView 页面（不共享系统浏览器登录态）",
+    ),
+    ;
+
+    companion object {
+        const val PREF_KEY = "debug:241_link_compare_mode"
+        val Default: Raft241LinkCompareMode = CustomTabsDefault
+
+        fun readCurrent(): Raft241LinkCompareMode =
+            fromKey(raftSharedPreferenceStore().getString(PREF_KEY))
+
+        fun saveCurrent(mode: Raft241LinkCompareMode) {
+            raftSharedPreferenceStore().putString(PREF_KEY, mode.storageKey)
+        }
+
+        fun fromKey(raw: String?): Raft241LinkCompareMode =
+            entries.firstOrNull { it.storageKey == raw } ?: Default
+    }
+}
+
 internal enum class RaftLinkOpenIntent {
     Ordinary,
     ForceExternal,
@@ -389,14 +437,32 @@ internal fun rememberRaftLinkNavigator(
     val artifactConversation = raftArtifactViewerHostConversationOrNull(artifactConversationId)
     return remember(pager, bridge, preferenceRepository, routeScope, rejectedMessage, artifactStoreScope, artifactConversation) {
         RaftLinkNavigator(
-            modeProvider = { effectiveLinkOpenMode(preferenceRepository.value.getLinkOpenModeSync()) },
+            modeProvider = {
+                if (!raftPlatformSupportsInAppBrowser()) {
+                    LinkOpenMode.SystemBrowser
+                } else if (Raft241LinkCompareMode.readCurrent() == Raft241LinkCompareMode.InAppWebView) {
+                    LinkOpenMode.InAppBrowser
+                } else {
+                    LinkOpenMode.SystemBrowser
+                }
+            },
             openInAppBrowser = { url ->
                 when (routeScope) {
                     RaftInAppBrowserRouteScope.InheritShell -> pager.openRaftInAppBrowserPage(url)
                     RaftInAppBrowserRouteScope.Unscoped -> pager.openUnscopedRaftInAppBrowserPage(url)
                 }
             },
-            openExternalBrowser = { url -> bridge.openUrl(url) },
+            openExternalBrowser = { url ->
+                val compareMode =
+                    when (Raft241LinkCompareMode.readCurrent()) {
+                        Raft241LinkCompareMode.SystemDefault -> "system"
+                        Raft241LinkCompareMode.CustomTabsDefault -> "default_browser"
+                        Raft241LinkCompareMode.CustomTabsAuto -> "auto"
+                        Raft241LinkCompareMode.CustomTabsChrome -> "chrome"
+                        Raft241LinkCompareMode.InAppWebView -> null
+                    }
+                bridge.openUrl(url, customTabsMode = compareMode)
+            },
             onRejected = { reason ->
                 bridge.logWarn("link_open_rejected reason=${reason.name.lowercase()}")
                 bridge.toast(rejectedMessage)

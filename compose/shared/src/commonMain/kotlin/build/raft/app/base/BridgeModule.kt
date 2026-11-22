@@ -439,11 +439,17 @@ internal class BridgeModule : Module() {
     }
 
     /** [inBrowser]: `browser: true`, a web browser even for a Raft link (HostLinkCapability.openUrlInBrowser). */
-    fun openUrl(url: String, mimeType: String? = null, inBrowser: Boolean = false) {
+    fun openUrl(
+        url: String,
+        mimeType: String? = null,
+        inBrowser: Boolean = false,
+        customTabsMode: String? = null,
+    ) {
         val methodArgs = JSONObject()
         methodArgs.put("url", url)
         mimeType?.takeIf { it.isNotBlank() }?.let { methodArgs.put("mimeType", it) }
         if (inBrowser) methodArgs.put("browser", true)
+        customTabsMode?.takeIf { it.isNotBlank() }?.let { methodArgs.put("customTabsMode", it) }
         callNativeMethod("openUrl", methodArgs, null)
     }
 

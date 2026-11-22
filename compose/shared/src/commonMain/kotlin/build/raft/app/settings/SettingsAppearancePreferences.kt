@@ -30,6 +30,8 @@ import build.raft.designsystem.components.RaftSwitch
 import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.RaftTheme
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -37,6 +39,8 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.clip
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -214,6 +218,52 @@ internal fun SettingsAppearanceMessageRows(
                     onValueSelected = actions.onLinkOpenModeChange,
                     enabled = linkOpenMode.available && !actionState.busyWith(MOBILE_ACTION_LINK_OPEN_MODE),
                 )
+            }
+        )
+        var compareMode by remember { mutableStateOf(Raft241LinkCompareMode.readCurrent()) }
+        val compareColors = RaftTheme.colors
+        val compareType = RaftTheme.typography
+        SettingsAppearanceRow(
+            title = "#241 链接打开方式实机对比（临时测试开关）",
+            description = "仅影响普通外部链接；应用入口与对话应用卡片仍留在自带 WebView。点链接时会弹 Toast 显示实际命中的浏览器包名。",
+            divider = rows.next(),
+            beta = true,
+            below = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Raft241LinkCompareMode.entries.forEach { option ->
+                        val selected = compareMode == option
+                        val shape = RoundedCornerShape(10.dp)
+                        Column(
+                            modifier =
+                                Modifier
+                                    .fillMaxWidth()
+                                    .clip(shape)
+                                    .background(if (selected) compareColors.brandSoft else compareColors.fillSubtle)
+                                    .border(
+                                        width = if (selected) 1.5.dp else 1.dp,
+                                        color = if (selected) compareColors.brand else compareColors.lineHairline,
+                                        shape = shape,
+                                    )
+                                    .clickable {
+                                        compareMode = option
+                                        Raft241LinkCompareMode.saveCurrent(option)
+                                    }
+                                    .padding(horizontal = 12.dp, vertical = 10.dp),
+                            verticalArrangement = Arrangement.spacedBy(2.dp),
+                        ) {
+                            RaftText(
+                                text = (if (selected) "✓ " else "") + option.title,
+                                style = compareType.body.copy(fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal),
+                                color = if (selected) compareColors.brand else compareColors.foreground,
+                            )
+                            RaftText(
+                                text = option.detail,
+                                style = compareType.callout,
+                                color = compareColors.foregroundMuted,
+                            )
+                        }
+                    }
+                }
             }
         )
     }

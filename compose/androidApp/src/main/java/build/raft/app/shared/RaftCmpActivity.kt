@@ -7904,6 +7904,7 @@ internal class RaftBridgeModule(
         val request = JSONObject(params ?: "{}")
         val url = request.optString("url").takeIf { it.isNotBlank() } ?: return null
         val mimeType = request.optString("mimeType").takeIf { it.isNotBlank() }
+        val customTabsMode = request.optString("customTabsMode").takeIf { it.isNotBlank() }
         val uri = Uri.parse(url)
         // `browser: true` (BridgeModule.openUrl inBrowser): a browser even for a Raft link. Without one,
         // the shared in-app browser rather than a plain VIEW, which Raft's own App Links route back here.
@@ -7915,6 +7916,12 @@ internal class RaftBridgeModule(
                 showRaftHostToast(appContext, appContext.getString(R.string.open_link_no_app_toast))
             }
             return null
+        }
+        val isHttpWebUrl = mimeType == null && uri.scheme?.lowercase() in setOf("http", "https")
+        if (!inBrowser && isHttpWebUrl && customTabsMode != null) {
+            if (openUrlWith241CompareMode(uri, url, customTabsMode)) {
+                return null
+            }
         }
         val viewIntent = externalUrlIntent(uri, mimeType)
         runCatching {
@@ -7930,6 +7937,91 @@ internal class RaftBridgeModule(
             }
         }
         return null
+    }
+
+    private fun openUrlWith241CompareMode(uri: Uri, rawUrl: String, mode: String): Boolean {
+        val pm = appContext.packageManager
+        val ctPackages =
+            runCatching {
+                pm.queryIntentServices(Intent("android.support.customtabs.action.CustomTabsService"), 0)
+                    .mapNotNull { it.serviceInfo?.packageName?.takeIf { pkg -> pkg.isNotBlank() && !pkg.startsWith("build.raft.app") } }
+                    .distinct()
+            }.getOrDefault(emptyList())
+        val defaultBrowser =
+            runCatching {
+                pm.resolveActivity(
+                    Intent(Intent.ACTION_VIEW, Uri.parse("https://example.com/")).addCategory(Intent.CATEGORY_BROWSABLE),
+                    PackageManager.MATCH_DEFAULT_ONLY,
+                )?.activityInfo?.packageName?.takeIf { it.isNotBlank() && !it.startsWith("build.raft.app") && it != "android" }
+            }.getOrNull()
+        val hostActivity = activity
+        fun buildCustomTabsIntent(targetPackage: String?): Intent =
+            Intent(Intent.ACTION_VIEW, uri).apply {
+                putExtras(
+                    Bundle().apply {
+                        putBinder("android.support.customtabs.extra.SESSION", null)
+                    }
+                )
+                putExtra("android.support.customtabs.extra.TITLE_VISIBILITY", 1)
+                putExtra("android.support.customtabs.extra.SHARE_STATE", 1)
+                putExtra("android.support.customtabs.extra.INSTANT_APPS_ENABLED", true)
+                if (!targetPackage.isNullOrBlank()) {
+                    setPackage(targetPackage)
+                }
+                if (hostActivity == null) {
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
+            }
+        val ctSummary = if (ctPackages.isEmpty()) "none" else ctPackages.joinToString(",")
+        val (launchIntent, label) =
+            when (mode) {
+                "system" -> {
+                    val intent = externalUrlIntent(uri, null)
+                    val pkg = intent.component?.packageName ?: defaultBrowser ?: "implicit"
+                    intent to "[#241] A:system -> $pkg (CT=$ctSummary)"
+                }
+                "default_browser" -> {
+                    if (defaultBrowser != null && defaultBrowser in ctPackages) {
+                        buildCustomTabsIntent(defaultBrowser) to "[#241] B:CT(default) -> $defaultBrowser"
+                    } else {
+                        val fallback = externalUrlIntent(uri, null)
+                        val pkg = fallback.component?.packageName ?: defaultBrowser ?: "implicit"
+                        fallback to "[#241] B:CT(default=$defaultBrowser 不支持CT, 回退system) -> $pkg (CT=$ctSummary)"
+                    }
+                }
+                "auto" -> {
+                    buildCustomTabsIntent(null) to "[#241] C:CT(auto未绑包) default=$defaultBrowser CT=$ctSummary"
+                }
+                "chrome" -> {
+                    val chromePkg = "com.android.chrome"
+                    when {
+                        chromePkg in ctPackages -> buildCustomTabsIntent(chromePkg) to "[#241] D:CT(chrome) -> $chromePkg"
+                        defaultBrowser != null && defaultBrowser in ctPackages ->
+                            buildCustomTabsIntent(defaultBrowser) to "[#241] D:CT(无Chrome, 回退default) -> $defaultBrowser"
+                        else -> {
+                            val fallback = externalUrlIntent(uri, null)
+                            val pkg = fallback.component?.packageName ?: defaultBrowser ?: "implicit"
+                            fallback to "[#241] D:CT(无支持包, 回退system) -> $pkg (CT=$ctSummary)"
+                        }
+                    }
+                }
+                else -> return false
+            }
+        RaftAppLog.record("SlockOpenUrl241", "mode=$mode default=$defaultBrowser ct=$ctSummary label=$label")
+        showRaftHostToast(appContext, label)
+        return runCatching {
+            if (hostActivity != null && (launchIntent.flags and Intent.FLAG_ACTIVITY_NEW_TASK) == 0) {
+                hostActivity.startActivity(launchIntent)
+            } else {
+                appContext.startActivity(launchIntent)
+            }
+            true
+        }.onFailure { throwable ->
+            RaftAppLog.record("SlockOpenUrl241", "launch_failed mode=$mode type=${throwable::class.java.simpleName}")
+            if (throwable is ActivityNotFoundException) {
+                openInAppBrowserFallback(rawUrl, null)
+            }
+        }.getOrDefault(false)
     }
 
     /**
