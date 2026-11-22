@@ -124,7 +124,7 @@ tasks.named<Test>("desktopTest") {
 // - recordRoborazziDesktop: record (vcase.mode=record) alongside Roborazzi.
 // - -Pvcase.mode=record|verify|scan and -Pvcase.filter=<id glob> override; -Pvcase.version picks
 //   another release (or 0.1.0-SNAPSHOT from mavenLocal).
-val vcaseVersion = providers.gradleProperty("vcase.version").getOrElse("0.1.2")
+val vcaseVersion = providers.gradleProperty("vcase.version").getOrElse("0.1.5")
 val vcaseDir = screenshotGoldenDir.dir("vcase")
 val vcaseRecording = gradle.startParameter.taskNames.any { it.substringAfterLast(':') == "recordRoborazziDesktop" }
 kotlin {
