@@ -51,16 +51,16 @@ Discipline".
 1. Add it to `compose/designsystem/src/commonMain/kotlin/build/raft/designsystem/components/`
    following the raft-ui recipe (sizes, states, type). Do not fix the visual
    primitive inside one page.
-2. Add a screenshot test in `compose/designsystem/src/desktopTest/...`
-   covering the full state matrix in light AND dark.
+2. Add `@VCase` functions in `compose/designsystem/src/desktopVcase/...`
+   covering the full state matrix (each renders in light AND dark).
 3. Record goldens (Linux; macOS text rasterises differently):
    ```bash
    cd compose
    ./gradlew --no-daemon :designsystem:recordRoborazziDesktop
    ./gradlew --no-daemon :designsystem:verifyRoborazziDesktop   # verify
    ```
-   Goldens: `compose/designsystem/screenshots/<component>_<light|dark>.png`.
-   Review the PNG diff in the PR. Do not loosen the tolerance.
+   Goldens and manifest: `compose/designsystem/screenshots/vcase/` (zero tolerance).
+   Review the PNG diff in the PR.
    A page's Robolectric screenshots (`compose/shared/src/androidUnitTest`,
    `RaftRobolectricScreenshot`) record with `:shared:recordRoborazziDebug`.
    Without local Gradle (and for CJK goldens, always), record both through CI:

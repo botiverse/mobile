@@ -118,8 +118,8 @@ button (`RaftBackButton`, an `icon-lg` button under `LocalRaftBarButtons`, the s
 toolbar's buttons) follows `barButtonRadius`. Button `md` and `xl`, the `md` text field and the
 pickers keep `radius-control` (8) at every pointer, as on the web. `RaftBackButton` and
 `RaftSideActionColumn` keep 44 / 22 (their placement constants assume it). Screenshot tests pin
-`RaftScale.Compact` and `RaftPointerInput.Touch` (`RaftScreenshot.capture`) except
-`desktop-scale_{light,dark}` (wide + fine) and `wide-touch-scale_{light,dark}` (wide + touch).
+`RaftScale.Compact` and `RaftPointerInput.Touch` (`RaftVCaseHost`) except the cases that name
+the `wide` viewport or the `fine` pointer axis.
 
 Hover is driven by pointer events, never by platform: anything that shows on hover (states,
 tooltips, preview cards, the sidebar header's controls) appears for any pointer that hovers (the
@@ -205,34 +205,35 @@ RaftTheme(appearance = RaftAppearance.Light) { ... }
 
 ## Screenshot tests
 
-Each component has one golden per appearance holding its full state matrix, rendered
-offscreen with skiko (`ImageComposeScene`, no window or GPU) at density 2 and sized to
-the content. Goldens: `compose/designsystem/screenshots/<component>_<light|dark>.png`.
-[Roborazzi](https://github.com/takahirom/roborazzi) compares, records and reports them
-(`RaftScreenshot`); the render is ours.
+Each component has `@VCase` functions holding its full state matrix
+(`src/desktopVcase/kotlin/build/raft/designsystem/vcase`). [vcase](https://github.com/botiverse/vcase)
+renders every case in light and dark, offscreen with skiko (`ImageComposeScene`, no window or
+GPU) at density 2 and sized to the content (`RaftVCaseHost`), and compares it with its golden.
+Goldens: `compose/designsystem/screenshots/vcase/desktop-skiko/<id>@<theme>,<viewport>.png`;
+`screenshots/vcase/vcase.manifest.json` lists the cases.
 
 ```sh
 cd compose
 ./gradlew --no-daemon :designsystem:verifyRoborazziDesktop   # verify (plain desktopTest verifies too)
 ./gradlew --no-daemon :designsystem:recordRoborazziDesktop   # record
-./gradlew --no-daemon :designsystem:compareRoborazziDesktop  # comparison images, never fails
+./gradlew --no-daemon :designsystem:desktopTest -Pvcase.filter='ds.badge*'   # some cases
 ```
 
-- Verify fails when more than 0.1% of the pixels differ by more than 8/255 in any
-  channel, or the size changed. `<name>_actual.png` and `<name>_compare.png` (golden, diff,
-  actual side by side) go to `compose/designsystem/build/reports/screenshots/`; the
-  Roborazzi tasks also write an HTML report to `build/reports/roborazzi/desktop/`. CI uploads
-  both as the `designsystem-screenshot-diffs` artifact when the job fails.
-- Record after an intended visual change, then review the PNG diff in the PR. Record only
-  rewrites goldens that are new or changed beyond the tolerance; the rest keep their bytes.
+- Verify has no tolerance: any changed pixel, missing or orphan golden, or manifest drift fails.
+  JUnit reports one test per case (`DesignSystemVCases > ds.badge.gallery`) and a last
+  `manifestAndGoldens`. Actual images, diffs and `report/index.html` go to
+  `compose/designsystem/build/reports/screenshots/vcase/`; CI uploads them as the
+  `designsystem-screenshot-diffs` artifact when the job fails.
+- Record after an intended visual change, then review the PNG diff in the PR. Record rewrites
+  the manifest and the goldens that are new or changed, and deletes orphans.
 - Record without local Gradle: run the Test workflow by hand (`gh workflow run test.yml
   --ref <branch> -f record_screenshots=true`) and download the
-  `designsystem-screenshots-recorded` artifact (only the new or changed goldens); copy them
-  into `compose/designsystem/screenshots/` and commit. The same run records `:shared`'s
+  `designsystem-screenshots-recorded` artifact (only the new or changed files); copy the images
+  into `compose/designsystem/screenshots/vcase/desktop-skiko/` and the manifest into
+  `compose/designsystem/screenshots/vcase/`, and commit. The same run records `:shared`'s
   Robolectric goldens (`shared-screenshots-recorded`; AGENTS.md "Screenshot tests (:shared)").
 - Goldens are recorded on Linux (the CI runner). Skia rasterises text slightly
-  differently on macOS, so a macOS run may need a Linux re-record rather than a looser
-  tolerance.
+  differently on macOS, so record there only to look.
 - The same task runs the unit tests (`src/commonTest`).
 
 Other checks:
