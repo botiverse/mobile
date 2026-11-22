@@ -824,7 +824,7 @@ internal fun AgentMigrationLogLegend() {
             Box(Modifier.size(14.dp, 8.dp).border(1.5.dp, colors.foreground))
         }
         AgentMigrationLegendItem(stringResource(Res.string.agent_migration_log_legend_ring2)) { swatch(RaftUiPalette.success) }
-        AgentMigrationLegendItem(stringResource(Res.string.agent_migration_log_legend_failing)) { swatch(colors.warningGraphic) }
+        AgentMigrationLegendItem(stringResource(Res.string.agent_migration_log_legend_failing, "60%")) { swatch(colors.warningGraphic) }
         AgentMigrationLegendItem(stringResource(Res.string.agent_migration_log_legend_ring3)) { swatch(colors.foreground.copy(alpha = 0.7f)) }
     }
 }

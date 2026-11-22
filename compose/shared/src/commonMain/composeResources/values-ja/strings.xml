@@ -4216,7 +4216,7 @@
     <string name="agent_migration_log_legend_ribbon">帯：太い側が移行元、矢印が移行先。太いほど回数が多い</string>
     <string name="agent_migration_log_legend_ring1">1 番目の輪：移行元 / 移行先</string>
     <string name="agent_migration_log_legend_ring2">2 番目の輪：移行先としての成功率（満ちるほど良い）</string>
-    <string name="agent_migration_log_legend_failing">成功率 60% 未満 / 半分以上失敗したルート</string>
+    <string name="agent_migration_log_legend_failing">成功率 %1$s 未満 / 半分以上失敗したルート</string>
     <string name="agent_migration_log_legend_ring3">3 番目の輪：現在そこにいるエージェント数</string>
     <string name="agent_migration_log_side_hint">エージェントを選ぶとそのルートだけが残ります。1 つ選ぶと移行の順番に番号が付きます。</string>
     <string name="agent_migration_log_side_now_on">現在 %1$s（%2$s）</string>

@@ -4037,7 +4037,7 @@
     <string name="agent_migration_log_legend_ribbon">Лента: широкая там, где перенос начинается, со стрелкой там, где заканчивается; чем шире, тем больше переносов</string>
     <string name="agent_migration_log_legend_ring1">Кольцо 1: исходящие / входящие переносы</string>
     <string name="agent_migration_log_legend_ring2">Кольцо 2: доля успешных входящих переносов (чем полнее, тем лучше)</string>
-    <string name="agent_migration_log_legend_failing">Успешность ниже 60% / маршрут, где сбоем заканчивалась минимум половина переносов</string>
+    <string name="agent_migration_log_legend_failing">Успешность ниже %1$s / маршрут, где сбоем заканчивалась минимум половина переносов</string>
     <string name="agent_migration_log_legend_ring3">Кольцо 3: сколько агентов живёт здесь сейчас</string>
     <string name="agent_migration_log_side_hint">Выберите одного или нескольких агентов, чтобы оставить только их маршруты; если выбран один агент, его переносы пронумерованы по порядку.</string>
     <string name="agent_migration_log_side_now_on">Сейчас на компьютере %1$s (%2$s)</string>

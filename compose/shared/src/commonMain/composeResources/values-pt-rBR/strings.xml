@@ -4037,7 +4037,7 @@
     <string name="agent_migration_log_legend_ribbon">Faixa: larga onde sai, seta onde chega; mais larga, mais migrações</string>
     <string name="agent_migration_log_legend_ring1">Anel 1: saídas / chegadas</string>
     <string name="agent_migration_log_legend_ring2">Anel 2: taxa de sucesso na chegada (mais cheio, melhor)</string>
-    <string name="agent_migration_log_legend_failing">Sucesso abaixo de 60% / rota que falhou pelo menos metade das vezes</string>
+    <string name="agent_migration_log_legend_failing">Sucesso abaixo de %1$s / rota que falhou pelo menos metade das vezes</string>
     <string name="agent_migration_log_legend_ring3">Anel 3: agentes que estão lá agora</string>
     <string name="agent_migration_log_side_hint">Escolha um ou mais agentes para ver só as rotas deles; com um, as migrações são numeradas em ordem.</string>
     <string name="agent_migration_log_side_now_on">Agora em %1$s (%2$s)</string>

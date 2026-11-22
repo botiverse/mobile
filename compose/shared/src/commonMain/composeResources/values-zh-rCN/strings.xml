@@ -4216,7 +4216,7 @@
     <string name="agent_migration_log_legend_ribbon">彩带：宽口出发，箭头到达，越宽次数越多</string>
     <string name="agent_migration_log_legend_ring1">第 1 圈：迁出 / 迁入</string>
     <string name="agent_migration_log_legend_ring2">第 2 圈：迁入成功率（越满越好）</string>
-    <string name="agent_migration_log_legend_failing">成功率低于 60% / 一半以上失败的路线</string>
+    <string name="agent_migration_log_legend_failing">成功率低于 %1$s / 一半以上失败的路线</string>
     <string name="agent_migration_log_legend_ring3">第 3 圈：现在住着几个 Agent</string>
     <string name="agent_migration_log_side_hint">选一个或几个 Agent，图里只留下它们的路线；选一个时，路线按先后编号。</string>
     <string name="agent_migration_log_side_now_on">现在在 %1$s（%2$s）</string>

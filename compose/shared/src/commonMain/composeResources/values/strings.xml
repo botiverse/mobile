@@ -4217,7 +4217,7 @@
     <string name="agent_migration_log_legend_ribbon">Ribbon: wide where it leaves, arrow where it arrives; wider means more moves</string>
     <string name="agent_migration_log_legend_ring1">Ring 1: moves out / in</string>
     <string name="agent_migration_log_legend_ring2">Ring 2: arrival success rate (fuller is better)</string>
-    <string name="agent_migration_log_legend_failing">Success rate under 60% / route that failed at least half the time</string>
+    <string name="agent_migration_log_legend_failing">Success rate under %1$s / route that failed at least half the time</string>
     <string name="agent_migration_log_legend_ring3">Ring 3: agents living there now</string>
     <string name="agent_migration_log_side_hint">Pick one or more agents to keep only their routes; with one, its moves are numbered in order.</string>
     <string name="agent_migration_log_side_now_on">Now on %1$s (%2$s)</string>

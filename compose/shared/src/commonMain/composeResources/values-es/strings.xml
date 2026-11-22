@@ -4037,7 +4037,7 @@
     <string name="agent_migration_log_legend_ribbon">Cinta: ancha donde sale, flecha donde llega; más ancha, más movimientos</string>
     <string name="agent_migration_log_legend_ring1">Anillo 1: salidas / llegadas</string>
     <string name="agent_migration_log_legend_ring2">Anillo 2: tasa de éxito al llegar (más lleno, mejor)</string>
-    <string name="agent_migration_log_legend_failing">Éxito por debajo del 60 % / ruta que falló al menos la mitad de las veces</string>
+    <string name="agent_migration_log_legend_failing">Éxito por debajo del %1$s / ruta que falló al menos la mitad de las veces</string>
     <string name="agent_migration_log_legend_ring3">Anillo 3: agentes que viven ahí ahora</string>
     <string name="agent_migration_log_side_hint">Elige uno o varios agentes para ver solo sus rutas; con uno, sus movimientos se numeran en orden.</string>
     <string name="agent_migration_log_side_now_on">Ahora en %1$s (%2$s)</string>
