@@ -59,7 +59,7 @@ private val visualFixtureMembersById: Map<String, VisualFixtureMember> =
 internal val visualFixtureSenderProfiles: Map<String, SharedActivitySenderProfile> =
     visualFixtureMembersById.mapValues { (_, member) -> SharedActivitySenderProfile(member.displayName) }
 
-private val visualFixtureAvatarResolver =
+internal val visualFixtureAvatarResolver =
     RaftMemberAvatarResolver(
         currentAvatar = { memberId -> visualFixtureMembersById[memberId]?.avatar },
         avatarFlow = { memberId -> flowOf(visualFixtureMembersById[memberId]?.avatar) },

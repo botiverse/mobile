@@ -155,7 +155,7 @@ object VisualFixtureWire {
     {
       "id": "msg-visual-search-2",
       "channelId": "thread-msg-agent-reply",
-      "threadId": null,
+      "threadId": "thread-msg-agent-reply",
       "parentMessageId": "msg-agent-reply",
       "parentMessageContent": "Captured the Android visual artifact for #product:f8e569cb and queued React parity.",
       "parentChannelId": "channel-design",
