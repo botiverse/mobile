@@ -144,7 +144,9 @@ internal fun ThreadRouteDialogs(
                             )
                             composerDraftViewModel.dispatch(SharedThreadComposerDraftIntent.AppendQuote(quote))
                         }
-                    }
+                    },
+                // A sent message's quote points at it (web MessageSelectTextDrawer `messageId`).
+                quoteMessageId = message.id.takeIf { message.canQuoteReply() }
             )
         }
     }

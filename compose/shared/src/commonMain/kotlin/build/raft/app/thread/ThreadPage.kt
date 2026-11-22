@@ -1044,6 +1044,8 @@ private fun ThreadPageScreen(
         LocalThreadAdaptiveInitiationCapture provides adaptiveInitiationCaptureHolder,
         LocalThreadAdaptiveNativeEditingReader provides adaptiveNativeEditingStateReader,
         LocalThreadQuotedPermalinkLoader provides quotedPermalinkLoader,
+        // Live quote replies read their resolved quotes here (ThreadQuoteReply.kt).
+        LocalThreadResolvedQuotesStore provides sharedStores.resolvedQuotesStore,
     ) {
     SharedThreadRouteContent(
         initialPayload = payload,

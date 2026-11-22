@@ -4503,7 +4503,18 @@ private fun ThreadMessagesListContent(
                                         )
                                     },
                                     longPressGestureInstanceKey =
-                                        message.messageListItemKey(duplicateMessageRandomIds)
+                                        message.messageListItemKey(duplicateMessageRandomIds),
+                                    // A quote card's tap (web useJumpToQuotedMessage): the thread's first
+                                    // message scrolls to its row as the timeline's jump does; any other
+                                    // is focused here, loaded around first.
+                                    onJumpToQuotedMessage = { quotedMessageId ->
+                                        listState.noteUserNavigation()
+                                        if (quotedMessageId == (renderPayload.parentMessageId ?: renderPayload.originMessage?.id)) {
+                                            outlineOriginJumpRequestState.value += 1
+                                        } else {
+                                            onThreadEvent(ThreadOutlineJumpAction, quotedMessageId, null, null)
+                                        }
+                                    }
                                 )
                             }
                         }

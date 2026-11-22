@@ -35,9 +35,18 @@ import build.raft.designsystem.theme.RaftTheme
 internal fun threadSelectTextSheetSource(selectedText: String, markdown: String): String =
     selectedText.takeIf { it.isNotBlank() } ?: markdown
 
-/** Quote's Markdown blockquote (`> ` on every line), the same formatter the other quotes use. */
-internal fun threadSelectTextSheetQuote(selectedText: String, markdown: String): String =
-    formatThreadMessageQuote(threadSelectTextSheetSource(selectedText, markdown))
+/**
+ * Quote's Markdown: with [quoteMessageId] (a sent message's), a quote reply of it (web
+ * MessageSelectTextDrawer with its `messageId`): the selection, or with nothing selected the
+ * message's opening line ([threadWholeMessageQuote]). Without one, the plain blockquote (`> ` on
+ * every line) the other quotes use.
+ */
+internal fun threadSelectTextSheetQuote(selectedText: String, markdown: String, quoteMessageId: String? = null): String =
+    when {
+        quoteMessageId == null -> formatThreadMessageQuote(threadSelectTextSheetSource(selectedText, markdown))
+        selectedText.isNotBlank() -> threadSelectionQuote(selectedText, quoteMessageId)
+        else -> threadWholeMessageQuote(markdown, quoteMessageId) ?: formatThreadMessageQuote(markdown)
+    }
 
 /**
  * The composer a quote lands in. On mobile each page has one composer and every message in its
@@ -107,7 +116,8 @@ private fun Modifier.threadSelectTextPressSnapshot(
 /**
  * The sheet in its window. [onCopy] gets the text to copy (the sheet stays open); [onQuote] gets
  * the Markdown quote, and the caller closes the sheet before inserting it, so the composer can
- * take focus. A null [onQuote] (no composer on this page) leaves Copy alone.
+ * take focus. A null [onQuote] (no composer on this page) leaves Copy alone. [quoteMessageId]: the
+ * message a quote replies to ([threadSelectTextSheetQuote]); null quotes plain text.
  */
 @Composable
 internal fun ThreadMessageSelectTextSheet(
@@ -118,6 +128,7 @@ internal fun ThreadMessageSelectTextSheet(
     onDismiss: () -> Unit,
     onCopy: (String) -> Unit,
     onQuote: ((String) -> Unit)?,
+    quoteMessageId: String? = null,
 ) {
     RaftDesignSystemTheme {
         ThreadMessageSelectTextSheetContent(
@@ -129,6 +140,7 @@ internal fun ThreadMessageSelectTextSheet(
             onCopy = onCopy,
             onQuote = onQuote,
             inWindow = true,
+            quoteMessageId = quoteMessageId,
         )
     }
 }
@@ -145,6 +157,7 @@ internal fun ThreadMessageSelectTextSheetContent(
     onQuote: ((String) -> Unit)?,
     inWindow: Boolean,
     modifier: Modifier = Modifier,
+    quoteMessageId: String? = null,
 ) {
     val selection = remember { RaftNativeTextSelection() }
     val press = remember { ThreadSelectTextPressSelection() }
@@ -176,7 +189,7 @@ internal fun ThreadMessageSelectTextSheetContent(
         if (onQuote != null) {
             RaftButton(
                 text = stringResource(Res.string.thread_action_quote),
-                onClick = { onQuote(threadSelectTextSheetQuote(press.take(selection::selectedText), markdown)) },
+                onClick = { onQuote(threadSelectTextSheetQuote(press.take(selection::selectedText), markdown, quoteMessageId)) },
                 modifier = Modifier.weight(1f).threadSelectTextPressSnapshot(press, selection),
                 size = RaftButtonSize.Lg,
                 leadingIcon = { RaftSlotIcon(RaftLucideIconName.TextQuote) },

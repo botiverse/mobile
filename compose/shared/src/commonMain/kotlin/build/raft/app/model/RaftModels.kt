@@ -792,6 +792,34 @@ data class Message(
     @Transient val createdAtEpochMillis: Long? = null,
     /** Wire `mentions` of `message:*` emits; empty when the payload carried none. */
     val mentions: List<MessageMention> = emptyList(),
+    /**
+     * The message's quote replies the server verified for this viewer, by quote block index (wire
+     * `resolvedQuotes`). Empty: a read that attaches them resolved none, so every quote block shows
+     * as a plain blockquote. Null: this copy came from where they never are (a realtime event, the
+     * sync log), so they are read on their own ([build.raft.app.data.SharedResolvedQuotesStore]).
+     */
+    val resolvedQuotes: Map<String, ResolvedInlineQuote>? = null,
+)
+
+/**
+ * A same-conversation quote in a message, as the server verified it for this viewer (botiverse/slock
+ * `packages/shared/src/quoteReply.ts` `ResolvedInlineQuote`): which message it quotes, who wrote that
+ * message and when. Attached on reads only, never in a realtime event.
+ */
+@Serializable
+data class ResolvedInlineQuote(
+    /** The quoted message's id: what a tap on the quote jumps to. */
+    val messageId: String,
+    /** Its 8-character short id, as the quote's `msg=` line names it. */
+    val shortId: String = "",
+    /** The quoted message's author, as the server names them for this viewer. */
+    val authorName: String = "",
+    /** The author's `type` as sent (`user`, `agent`, `external_projection`, `system`); display only. */
+    val authorType: String = "",
+    /** When the quoted message was sent (ISO-8601). */
+    val createdAt: String = "",
+    /** A passage of the message rather than its opening. */
+    val isPartial: Boolean = false,
 )
 
 /**

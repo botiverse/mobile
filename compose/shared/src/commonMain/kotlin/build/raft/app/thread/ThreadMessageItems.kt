@@ -119,6 +119,12 @@ internal data class RaftThreadMessageItem(
     val forwardBundle: ForwardMessageBundle? = null,
     /** Resolved `mentions[]` of the message (name -> type/id); web `buildStructuredMentionMap`. */
     val mentions: List<build.raft.app.model.MessageMention> = emptyList(),
+    /**
+     * Quote replies the server verified for this viewer, by quote block index
+     * ([build.raft.app.model.Message.resolvedQuotes]): a card for each ([ThreadQuoteReplyBody]). Null
+     * for a copy that never carries them (realtime, the sync log): the row reads them on its own.
+     */
+    val resolvedQuotes: Map<String, build.raft.app.model.ResolvedInlineQuote>? = null,
     val deliveryState: String = ThreadMessageDeliverySent,
     val pendingSendContext: RaftThreadPendingSendContext? = null,
     val pendingSendErrorCode: String? = null,

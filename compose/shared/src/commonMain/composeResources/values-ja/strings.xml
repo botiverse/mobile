@@ -930,6 +930,7 @@
     <string name="thread_quoted_permalink_one_file">ファイル 1 件</string>
     <string name="thread_quoted_permalink_images">画像 %1$d 枚</string>
     <string name="thread_quoted_permalink_attachments">添付ファイル %1$d 件</string>
+    <string name="thread_quote_reply_jump">%1$s の元のメッセージへ移動：%2$s</string>
     <string name="thread_member_role_member">メンバー</string>
     <string name="thread_member_role_system">システム</string>
     <string name="thread_settings_preferences">個人設定</string>

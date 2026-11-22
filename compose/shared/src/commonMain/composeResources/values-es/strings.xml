@@ -930,6 +930,7 @@
     <string name="thread_quoted_permalink_one_file">1 archivo</string>
     <string name="thread_quoted_permalink_images">%1$d imágenes</string>
     <string name="thread_quoted_permalink_attachments">%1$d archivos adjuntos</string>
+    <string name="thread_quote_reply_jump">Ir al mensaje citado de %1$s: %2$s</string>
     <string name="thread_member_role_member">Miembro</string>
     <string name="thread_member_role_system">Sistema</string>
     <string name="thread_settings_preferences">Preferencias</string>

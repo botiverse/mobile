@@ -19,6 +19,7 @@ import build.raft.app.data.RaftDisplayPreferenceRuntime
 import build.raft.app.data.ThreadActionCard
 import build.raft.app.data.defaultNowMillis
 import build.raft.app.data.expiredAsOf
+import build.raft.app.data.stripQuoteReplyRefsForPreview
 import build.raft.app.model.ConversationKind
 import build.raft.app.markdown.LocalRaftMarkdownLinkLongPress
 import build.raft.app.markdown.RaftMarkdownOwnTaskStatusScope
@@ -374,6 +375,8 @@ private class ThreadMessageCardCallbacks(
     val onLongPressInputReady: ((String) -> Unit)?,
     val quotedPermalinkLoader: ThreadQuotedPermalinkLoader?,
     val onShowAuthorDescription: ((String, RaftPopoverAnchor) -> Unit)? = null,
+    /** A quote reply's card was tapped: the quoted message's id ([ThreadQuoteReplyBody]); null: cards don't jump. */
+    val onJumpToQuotedMessage: ((String) -> Unit)? = null,
 )
 
 internal @Composable
@@ -456,7 +459,9 @@ fun ThreadMessageCard(
     onShowAuthorDescription: ((String, RaftPopoverAnchor) -> Unit)? = null,
     outerPadding: androidx.compose.ui.unit.Dp = RaftAppSpacing.Sm,
     /** web MessageHoverToolbar: the row's hover toolbar under a mouse or trackpad; null: none. */
-    hoverToolbar: ThreadMessageHoverToolbarActions? = null
+    hoverToolbar: ThreadMessageHoverToolbarActions? = null,
+    /** A quote reply's card was tapped (web useJumpToQuotedMessage): the quoted message's id; null: the cards don't jump. */
+    onJumpToQuotedMessage: ((String) -> Unit)? = null
 )
  {
     // RFC 077 PR 2b (web MessageItem `retracted`): a retracted message is one non-interactive
@@ -549,6 +554,7 @@ fun ThreadMessageCard(
                 onLongPressInputReady = onLongPressInputReady,
                 quotedPermalinkLoader = quotedPermalinkLoader,
                 onShowAuthorDescription = onShowAuthorDescription,
+                onJumpToQuotedMessage = onJumpToQuotedMessage,
             ),
     )
 }
@@ -1610,8 +1616,26 @@ private fun ThreadMessageCardContent(
                                                             LocalRaftMarkdownFindQuery provides
                                                                 (if (searchMatch) LocalThreadFindHighlightQuery.current else null)
                                                           ) {
-                                                            RaftMarkdownBody(
+                                                            // Quote replies (web QuoteReplyBlocks): a verified quote is a
+                                                            // card; any other keeps its words, without its `msg=` line.
+                                                            ThreadQuoteReplyBody(
+                                                                messageId = message.id,
                                                                 body = bodyForRender,
+                                                                resolvedQuotes = message.resolvedQuotes,
+                                                                // While selecting messages a tap selects the row instead.
+                                                                onJumpToQuotedMessage =
+                                                                    callbacks.onJumpToQuotedMessage
+                                                                        ?.takeUnless { shareSelectionActive }
+                                                                        ?.let { jump ->
+                                                                            { quotedMessageId: String ->
+                                                                                tapMovementGate.rejectChildAction("quote_reply")
+                                                                                jump(quotedMessageId)
+                                                                            }
+                                                                        },
+                                                                alignEnd = alignOwnMessageRight,
+                                                            ) { markdownBody ->
+                                                            RaftMarkdownBody(
+                                                                body = markdownBody,
                                                                 fillWidth = !alignOwnMessageRight,
                                                                 textStyle = messageBodyTextStyle,
                                                                 highlightedMentions = highlightedMentions,
@@ -1630,6 +1654,7 @@ private fun ThreadMessageCardContent(
                                                                 performanceKey = messagePerformanceKey,
                                                                 performanceLogger = diagnosticsLogger
                                                             )
+                                                            }
                                                           }
                                                           }
                                                           }
@@ -1638,7 +1663,8 @@ private fun ThreadMessageCardContent(
                                                 } else {
                                                     val findQuery = if (searchMatch) LocalThreadFindHighlightQuery.current else null
                                                     Text(
-                                                        text = AnnotatedString(bodyForRender).withRaftMarkdownFindMarks(findQuery),
+                                                        // A cut preview's quote reply reads without its `msg=` line too.
+                                                        text = AnnotatedString(stripQuoteReplyRefsForPreview(bodyForRender)).withRaftMarkdownFindMarks(findQuery),
                                                         style = messageBodyTextStyle,
                                                         color = RaftColor.TextBlack,
                                                         modifier = if (!alignOwnMessageRight) Modifier.fillMaxWidth() else Modifier
