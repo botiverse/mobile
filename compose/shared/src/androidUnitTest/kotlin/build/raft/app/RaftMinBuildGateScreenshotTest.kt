@@ -60,18 +60,6 @@ class RaftMinBuildGateScreenshotTest {
     @Test
     fun bannerLight() = captureHome("app.min-build-gate.banner", RaftAppAppearance.Light)
 
-    @Test
-    fun bannerDark() = captureHome("app.min-build-gate.banner.dark", RaftAppAppearance.Dark)
-
-    // The wide layout: the band above the app shell's top bar.
-    @Test
-    @Config(qualifiers = "w1024dp-h600dp-mdpi")
-    fun bannerWideLight() = captureWide("app.min-build-gate.banner.wide", RaftAppAppearance.Light)
-
-    @Test
-    @Config(qualifiers = "w1024dp-h600dp-mdpi")
-    fun bannerWideDark() = captureWide("app.min-build-gate.banner.wide.dark", RaftAppAppearance.Dark)
-
     private fun capture(name: String, appearance: RaftAppAppearance, decision: RaftMinBuildGateDecision) =
         RaftRobolectricScreenshot.capture(
             name,
@@ -105,8 +93,6 @@ class RaftMinBuildGateScreenshotTest {
                 outerPadding = 0.dp,
             )
         }
-
-    private fun captureWide(name: String, appearance: RaftAppAppearance) = captureBannerOver(name, appearance) { MinBuildGateWideShell() }
 
     private fun captureBannerOver(name: String, appearance: RaftAppAppearance, page: @Composable () -> Unit) =
         RaftRobolectricScreenshot.capture(

@@ -28,6 +28,9 @@ import kotlinx.serialization.json.JsonObject
  *   (`ActivityTurnAppEventView`), and on a visible trigger `display` (`ActivityTurnTriggerDisplay`,
  *   names from the server's own rows) and `appEvent`; a trigger the server cannot bear out comes
  *   back `{ unresolved: true }` (packages/server/src/services/activityTurnSummaryView.ts).
+ * - A turn that ended on the runtime's provider usage limit carries `usageLimit: { resetsAt? }`
+ *   (`ActivityTurnUsageLimit`, botiverse/slock f273c7d6ff #13050; the server keeps it as the
+ *   daemon sent it, `readDaemonTurnSummary`). Turns from older Computers have none.
  */
 
 private val activityOverviewJson = Json {
@@ -97,6 +100,12 @@ internal data class ActivityTurnProblemWire(
     val at: Long,
 )
 
+/** `ActivityTurnUsageLimit`: when the runtime said the limit resets (epoch ms), if it said. */
+@Serializable
+internal data class ActivityTurnUsageLimitWire(
+    val resetsAt: Long? = null,
+)
+
 @Serializable
 internal data class ActivityTurnSummaryWire(
     /** Row id from the server (absent from older servers). */
@@ -121,6 +130,8 @@ internal data class ActivityTurnSummaryWire(
     val appEventCount: Int? = null,
     /** The last text the runtime output in the turn, sent to no one; the server drops it for viewers it should not reach. */
     val lastText: String? = null,
+    /** The turn ended on the provider usage limit; absent otherwise and from older producers. */
+    val usageLimit: ActivityTurnUsageLimitWire? = null,
 )
 
 /** slock `ACTIVITY_TURN_OUTCOMES`. */
@@ -224,6 +235,15 @@ sealed interface AgentActivityTurnTrigger {
     data class AppEvent(val appName: String, val summary: String)
 }
 
+/**
+ * The turn ended on the runtime's provider usage limit (a used-up quota, e.g. a weekly limit;
+ * `ActivityTurnUsageLimit`). A run of such turns is the daemon retrying until the reset.
+ */
+data class AgentActivityTurnUsageLimit(
+    /** When the runtime said the limit resets; null when it did not say. */
+    val resetsAtEpochMillis: Long? = null,
+)
+
 /** One app notification delivered to the agent during a turn (`ActivityTurnAppEventView`). */
 data class AgentActivityAppEvent(
     val id: String,
@@ -262,6 +282,8 @@ data class AgentActivityTurn(
     val running: Boolean = false,
     /** The last text the runtime output in the turn, sent to no one. */
     val lastText: String? = null,
+    /** The turn ended on the provider usage limit; null otherwise and from older Computers. */
+    val usageLimit: AgentActivityTurnUsageLimit? = null,
 ) {
     /** Stable list key: the row id, or the time span for an older server; the running turn has its own. */
     val key: String
@@ -283,6 +305,67 @@ data class AgentActivityTurnPage(
     /** The running turn, first page only (servers that fold it). */
     val current: AgentActivityTurn? = null,
 )
+
+/**
+ * Web `isQuietFailure` (packages/web/src/components/agent/activityQuietFailures.ts, botiverse/slock
+ * f273c7d6ff #13050): a turn that failed having done nothing, with no tool call, no message and
+ * nothing gone wrong along the way. A runtime that cannot start (a used-up quota, a provider outage)
+ * makes one of these per retry.
+ */
+val AgentActivityTurn.isQuietFailure: Boolean
+    get() = outcome == AgentActivityTurnOutcome.Failed &&
+        toolCalls == 0 &&
+        messagesSent == 0 &&
+        lastReplyMessageId == null &&
+        sentMessageIds.isNullOrEmpty() &&
+        hiddenSentCount == 0 &&
+        problemCount == 0
+
+/** One entry of the overview's turns (web `QuietFailureItem`): a turn, or a run of quiet failures. */
+sealed interface AgentActivityQuietFailureItem {
+    data class Turn(val turn: AgentActivityTurn) : AgentActivityQuietFailureItem
+
+    /** Two or more quiet failures in a row, oldest first: all of them ended on the usage limit, or none. */
+    data class Run(val turns: List<AgentActivityTurn>) : AgentActivityQuietFailureItem {
+        /** The run is the daemon retrying until the usage limit resets (web: the last turn's `usageLimit`). */
+        val endedOnUsageLimit: Boolean
+            get() = turns.last().usageLimit != null
+
+        /** The latest reset a turn of the run reported: a later retry may have heard a newer one (web). */
+        val resetsAtEpochMillis: Long?
+            get() = turns.asReversed().firstNotNullOfOrNull { it.usageLimit?.resetsAtEpochMillis }
+    }
+}
+
+/**
+ * Web `groupQuietFailures`: [turns] in their order, with each run of two or more quiet failures in a
+ * row ([isQuietFailure]) as one [AgentActivityQuietFailureItem.Run]. Turns that ended on the usage
+ * limit and turns that did not are never one run: they say different things. Turns from older
+ * Computers carry no usage limit, so theirs fold as other failures.
+ */
+fun groupAgentActivityQuietFailures(turns: List<AgentActivityTurn>): List<AgentActivityQuietFailureItem> {
+    val items = mutableListOf<AgentActivityQuietFailureItem>()
+    val run = mutableListOf<AgentActivityTurn>()
+    fun flush() {
+        if (run.size >= 2) {
+            items += AgentActivityQuietFailureItem.Run(run.toList())
+        } else {
+            run.forEach { items += AgentActivityQuietFailureItem.Turn(it) }
+        }
+        run.clear()
+    }
+    for (turn in turns) {
+        if (!turn.isQuietFailure) {
+            flush()
+            items += AgentActivityQuietFailureItem.Turn(turn)
+            continue
+        }
+        if (run.isNotEmpty() && (run.first().usageLimit != null) != (turn.usageLimit != null)) flush()
+        run += turn
+    }
+    flush()
+    return items
+}
 
 /**
  * Parses `GET /agents/:id/activity-summaries`. Returns null when the body is not the
@@ -355,6 +438,7 @@ private fun ActivityTurnSummaryWire.toDomain(running: Boolean): AgentActivityTur
         appEventCount = appEventCount,
         lastText = lastText?.takeIf { it.isNotBlank() },
         running = running,
+        usageLimit = usageLimit?.let { AgentActivityTurnUsageLimit(resetsAtEpochMillis = it.resetsAt) },
     )
 
 private fun ActivityTurnTriggerWire.toDomain(): AgentActivityTurnTrigger =

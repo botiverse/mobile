@@ -33,37 +33,6 @@ internal fun channelOnPublicPage(
         channelKind?.trim()?.lowercase() == "channel"
 
 /**
- * The channel-kind glyph for a channel readable on the public page. Web draws one combined
- * "hash with a globe in its bottom-right cell" SVG in place of the `#`
- * (channelKindIcon.tsx `HashGlobeIcon`). Mobile icons are native Lucide renders, so the same
- * mark is composed from the Lucide `hash` (top-left) and a smaller `globe` (bottom-right) inside
- * the same square the plain `#` would occupy. Screen readers get the meaning as text
- * (`channel.publicPageReadable`).
- */
-@Composable
-internal fun RaftHashGlobeIcon(
-    size: Dp,
-    color: String = RaftColor.TextBlackArgb,
-    modifier: Modifier = Modifier,
-) {
-    val label = stringResource(Res.string.channel_public_page_readable)
-    Box(
-        modifier = modifier.size(size).semantics { contentDescription = label },
-    ) {
-        RaftLucideIcon(
-            RaftLucideIconName.Hash,
-            Modifier.size(size * HashGlobeHashScale).align(Alignment.TopStart),
-            color = color,
-        )
-        RaftLucideIcon(
-            RaftLucideIconName.Globe,
-            Modifier.size(size * HashGlobeGlobeScale).align(Alignment.BottomEnd),
-            color = color,
-        )
-    }
-}
-
-/**
  * Small Globe after a server's name when its public page is live (web
  * packages/web/src/components/server/PublicPageGlobe.tsx). Renders nothing when not live.
  * Accessibility text is `layout.server.publicPageLive`.
@@ -84,6 +53,3 @@ internal fun RaftPublicPageGlobe(
         RaftLucideIcon(RaftLucideIconName.Globe, Modifier.size(size), color = color)
     }
 }
-
-private const val HashGlobeHashScale = 0.74f
-private const val HashGlobeGlobeScale = 0.56f

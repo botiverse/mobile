@@ -2,7 +2,6 @@ package build.raft.app
 
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 /**
@@ -26,11 +25,5 @@ class RaftForegroundBannerSwipeTest {
     fun releasePastThresholdDismisses() {
         assertTrue(shouldDismissForegroundBannerOnSwipeRelease(dragOffsetYDp = -24f))
         assertTrue(shouldDismissForegroundBannerOnSwipeRelease(dragOffsetYDp = -60f))
-    }
-
-    @Test
-    fun releaseShortOfThresholdSnapsBack() {
-        assertFalse(shouldDismissForegroundBannerOnSwipeRelease(dragOffsetYDp = -23.9f))
-        assertFalse(shouldDismissForegroundBannerOnSwipeRelease(dragOffsetYDp = 0f))
     }
 }

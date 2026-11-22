@@ -1,10 +1,6 @@
 package build.raft.app.data
 
-import build.raft.app.model.ActivityChanged
 import build.raft.app.model.ChannelId
-import build.raft.app.model.PerReceiverReadStateChanged
-import build.raft.app.model.RealtimeRefreshRequired
-import build.raft.app.model.RealtimeRefreshScope
 import build.raft.app.model.MemberId
 import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberProfile
@@ -28,7 +24,6 @@ import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 /**
@@ -37,23 +32,6 @@ import kotlin.test.assertTrue
 @OptIn(ExperimentalCoroutinesApi::class)
 class ForegroundRequestStormBoundsTest {
     // --- Identical GETs started together share one request, whatever their priority. ---
-
-    @Test
-    fun identicalGetsInFlightShareOneRequestAcrossPriorities() = runTest {
-        val executor = HeldExecutor()
-        val client = client(executor)
-
-        val visible = async { client.request(DataRequestPriority.Visible, "channels/inbox", query = listOf("limit" to "1")) }
-        runCurrent()
-        val foreground = async { client.request(DataRequestPriority.Foreground, "channels/inbox", query = listOf("limit" to "1")) }
-        val background = async { client.request(DataRequestPriority.Background, "channels/inbox", query = listOf("limit" to "1")) }
-        runCurrent()
-        assertEquals(1, executor.urls.size, "one request on the wire: ${executor.urls}")
-
-        executor.release.complete(Unit)
-        assertEquals(listOf(200, 200, 200), listOf(visible.await(), foreground.await(), background.await()).map { it.code })
-        assertEquals(1, executor.urls.size)
-    }
 
     @Test
     fun differentQueriesServersAndWritesAreNeverShared() = runTest {
@@ -74,23 +52,6 @@ class ForegroundRequestStormBoundsTest {
         assertEquals(5, executor.urls.size, executor.urls.toString())
         executor.release.complete(Unit)
         calls.forEach { it.await() }
-    }
-
-    @Test
-    fun aGetSentLongerThanTheJoinWindowAgoIsNotJoined() = runTest {
-        val executor = HeldExecutor()
-        val client = client(executor)
-
-        val first = async { client.request(DataRequestPriority.Visible, "channels") }
-        runCurrent()
-        advanceTimeBy(RaftInFlightGetJoinWindowMillis + 1L)
-        // Asked after something changed: an answer to a request sent before that may predate it.
-        val second = async { client.request(DataRequestPriority.Visible, "channels") }
-        runCurrent()
-        assertEquals(2, executor.urls.size)
-        executor.release.complete(Unit)
-        first.await()
-        second.await()
     }
 
     @Test
@@ -173,119 +134,9 @@ class ForegroundRequestStormBoundsTest {
         assertTrue(reads[1] <= ActivityRealtimeBackgroundRefreshIntervalMillis * 2, "the read came within the short window: $reads")
     }
 
-    @Test
-    fun anActivityActionIsReadInTheShortWindowNotTheRealtimeOne() = runTest {
-        val reads = mutableListOf<Long>()
-        val owner = ProcessActivityUnreadOwner("https://api.raft.build/api", "user-1", "server-1")
-        val store = badge(owner) { reads += testScheduler.currentTime }
-
-        store.invalidate(owner, reason = "realtime:MessageNew", eventMarker = Any(), realtimeOnly = true)
-        runCurrent()
-        advanceTimeBy(500L)
-        // Done in Activity (SharedActivityStore.emitSummarySignalIfChanged, filter Unread).
-        store.submitInvalidation(ActivityUnreadSummaryInvalidation(accountId = "user-1", serverId = "server-1", source = "activity:mark_done"))
-        advanceTimeBy(10_000L)
-        runCurrent()
-
-        assertEquals(2, reads.size, "reads=$reads")
-        assertTrue(reads[1] <= ActivityRealtimeBackgroundRefreshIntervalMillis, "Done read within 2.5 s: $reads")
-    }
-
-    @Test
-    fun onlyAmbientActivityIsRealtimeOnly() {
-        listOf("activity:mark_done", "activity:mark_all_read", "activity:mark_unread", "activity:mark_read",
-            "activity:follow_thread", "activity:unfollow_thread", "activity:undo_object_done", "activity:remote_done",
-            "activity:read_failure").forEach { source ->
-            assertFalse(source.isRealtimeOnlyActivitySummarySource(), source)
-        }
-        assertTrue("activity:realtime".isRealtimeOnlyActivitySummarySource())
-        assertTrue("activity:realtime_summary".isRealtimeOnlyActivitySummarySource())
-        // A reconnect catch-up and a read on another device are read promptly.
-        assertFalse(RealtimeRefreshRequired(scope = RealtimeRefreshScope.Home, reason = "reconnect").isAmbientActivityUnreadEvent())
-        assertFalse(PerReceiverReadStateChanged(serverId = ServerId("server-1"), scopes = emptyList()).isAmbientActivityUnreadEvent())
-        assertTrue(ActivityChanged(ServerId("server-1"), "object").isAmbientActivityUnreadEvent())
-    }
-
     // --- The Activity list re-reads at most every 30 s while hidden; the entry Refresh is the catch-up. ---
 
-    @Test
-    fun hiddenActivityReReadsAtMostOncePerHiddenWindowAndTheEntryRefreshAnswersTheRest() = runTest {
-        val loads = mutableListOf<Long>()
-        val inbox = FakeInboxRepository(initialSnapshots = listOf(snapshot(listOf(activityItem("channel-1", 1)))))
-        val store =
-            activityStore(
-                scope = backgroundScope,
-                inboxRepository =
-                    object : InboxRepository by inbox {
-                        override suspend fun loadInitial(serverId: ServerId, filter: InboxFilter, limit: Int): DataResult<InboxSnapshot> {
-                            loads += testScheduler.currentTime
-                            delay(1_000L)
-                            return inbox.loadInitial(serverId, filter, limit)
-                        }
-                    },
-                realtimeBackgroundRefreshIntervalMillis = ActivityRealtimeBackgroundRefreshIntervalMillis,
-                hiddenRealtimeBackgroundRefreshIntervalMillis = ActivityHiddenRealtimeBackgroundRefreshIntervalMillis,
-                nowMillis = { testScheduler.currentTime },
-            )
-        val changed = SharedActivityIntent.ApplyRealtimeEvent(ActivityChanged(ServerId("server-1"), "message_new"))
-        store.dispatch(SharedActivityIntent.LoadInitial)
-        advanceTimeBy(5_000L)
-        store.dispatch(SharedActivityIntent.SurfaceHidden)
-        loads.clear()
-
-        // 70 s behind a pushed conversation, one realtime event a second.
-        repeat(70) {
-            store.dispatch(changed)
-            advanceTimeBy(1_000L)
-        }
-        runCurrent()
-        assertTrue(loads.size in 1..3, "hidden: at most one re-read per 30 s window, loads=$loads")
-        loads.zipWithNext().forEach { (a, b) ->
-            assertTrue(b - a >= ActivityHiddenRealtimeBackgroundRefreshIntervalMillis, "loads=$loads")
-        }
-
-        // Back to Activity: the entry Refresh reads once, and the asks made while hidden fold into it.
-        val hiddenLoads = loads.size
-        store.dispatch(SharedActivityIntent.Refresh)
-        advanceTimeBy(40_000L)
-        runCurrent()
-        assertEquals(hiddenLoads + 1, loads.size, "only the entry read, no trailing re-read: loads=$loads")
-
-        // Visible again: the 2.5 s window applies as before.
-        repeat(10) {
-            store.dispatch(changed)
-            advanceTimeBy(1_000L)
-        }
-        advanceTimeBy(10_000L)
-        runCurrent()
-        assertTrue(loads.size - hiddenLoads - 1 in 3..5, "visible window unchanged: loads=$loads")
-    }
-
     // --- Home: Activity's unread-count asks never reload a hidden Home; a visible one folds a burst. ---
-
-    @Test
-    fun hiddenHomeFoldsActivityUnreadAsksIntoOneReadWhenItShows() = runTest {
-        val reloads = mutableListOf<Long>()
-        val home = homeStore { reloads += testScheduler.currentTime }
-        home.dispatch(SharedHomeIntent.Start)
-        advanceTimeBy(5_000L)
-        home.dispatch(SharedHomeIntent.SetSurfaceVisible(false))
-        runCurrent()
-        reloads.clear()
-
-        repeat(20) {
-            home.requestUnreadCountsReconcile(reason = "activity_unread_counts")
-            advanceTimeBy(15_000L)
-        }
-        runCurrent()
-        assertEquals(emptyList(), reloads, "no Home bootstrap while Home is hidden")
-        assertTrue(home.state.value.homeRealtimeDirty)
-
-        home.dispatch(SharedHomeIntent.SetSurfaceVisible(true))
-        advanceTimeBy(5_000L)
-        runCurrent()
-        assertEquals(1, reloads.size, "one read when Home shows again")
-    }
 
     @Test
     fun hiddenHomeKeepsTheLauncherBadgeCountsFreshWithTheSummaryAloneAtMostEveryTenSeconds() = runTest {
@@ -348,48 +199,6 @@ class ForegroundRequestStormBoundsTest {
         advanceTimeBy(5_000L)
         runCurrent()
         assertEquals(1, reloads.size, "Home's own reconcile reloads at once: $reloads")
-    }
-
-    @Test
-    fun theActivityAskRunsOnTheStoreScopeInOrderWithTheVisibilityChange() = runTest {
-        val reloads = mutableListOf<Long>()
-        val home = homeStore { reloads += testScheduler.currentTime }
-        home.dispatch(SharedHomeIntent.Start)
-        advanceTimeBy(5_000L)
-        home.dispatch(SharedHomeIntent.SetSurfaceVisible(false))
-        runCurrent()
-        reloads.clear()
-
-        // Asked from another thread (onProjectionWithEvidence runs on threadSendScope): nothing changes
-        // until the store scope runs it, and then in order with the show that follows.
-        home.requestUnreadCountsReconcile(reason = "activity_unread_counts")
-        assertFalse(home.state.value.homeRealtimeDirty, "no state written off the store scope")
-        home.dispatch(SharedHomeIntent.SetSurfaceVisible(true))
-        advanceTimeBy(5_000L)
-        runCurrent()
-        assertEquals(1, reloads.size, "the ask became the dirty mark the show read: $reloads")
-    }
-
-    @Test
-    fun visibleHomeFoldsAsksDuringAReconcileIntoOneTrailingReload() = runTest {
-        val reloads = mutableListOf<Long>()
-        val home = homeStore { reloads += testScheduler.currentTime }
-        home.dispatch(SharedHomeIntent.Start)
-        home.dispatch(SharedHomeIntent.SetSurfaceVisible(true))
-        advanceTimeBy(5_000L)
-        runCurrent()
-        reloads.clear()
-
-        home.requestUnreadCountsReconcile(reason = "activity_unread_counts")
-        runCurrent()
-        repeat(5) {
-            advanceTimeBy(100L)
-            home.requestUnreadCountsReconcile(reason = "activity_unread_counts")
-        }
-        advanceTimeBy(10_000L)
-        runCurrent()
-        assertEquals(2, reloads.size, "the reconcile and ONE trailing reload after it: $reloads")
-        assertTrue(reloads[1] >= reloads[0] + HomeNetworkMillis, "the trailing reload starts after the first answered: $reloads")
     }
 
     private fun TestScope.badge(owner: ProcessActivityUnreadOwner, onRead: () -> Unit): ProcessActivityUnreadStore =

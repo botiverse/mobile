@@ -19,10 +19,27 @@ internal data class AppLoginPending(
     val startedAt: Long,
 )
 
+internal sealed interface AppLoginExchangeResult {
+    data object Succeeded : AppLoginExchangeResult
+    data class Failed(val traceId: String? = null) : AppLoginExchangeResult
+}
+
+internal data class AppLoginStartOutcome(
+    val url: String? = null,
+    val errorTraceId: String? = null,
+)
+
+internal data class AppLoginCompletionOutcome(
+    val status: String,
+    val errorTraceId: String? = null,
+)
+
 internal interface AppLoginRuntime {
     val environment: String
     suspend fun start(returnUri: String, challenge: String): SharedAuthResult<AuthAppLoginStartResponse>
     suspend fun complete(code: String, verifier: String): Boolean
+    suspend fun completeWithResult(code: String, verifier: String): AppLoginExchangeResult =
+        if (complete(code, verifier)) AppLoginExchangeResult.Succeeded else AppLoginExchangeResult.Failed()
 }
 
 internal class AppLoginCoordinator(
@@ -38,20 +55,31 @@ internal class AppLoginCoordinator(
     }.getOrNull()
     private fun clear() = store.putString("pending", null)
 
-    suspend fun start(generation: String, verifier: String, challenge: String, returnUri: String): String? = mutex.withLock {
+    suspend fun start(generation: String, verifier: String, challenge: String, returnUri: String): String? =
+        startWithOutcome(generation, verifier, challenge, returnUri).url
+
+    suspend fun startWithOutcome(
+        generation: String,
+        verifier: String,
+        challenge: String,
+        returnUri: String,
+    ): AppLoginStartOutcome = mutex.withLock {
         clear()
         if (generation.isBlank() || !pkce.matches(verifier) || !pkce.matches(challenge) ||
-            returnUri !in APP_LOGIN_RETURN_URIS) return@withLock null
-        val active = runtime() ?: return@withLock null
+            returnUri !in APP_LOGIN_RETURN_URIS) return@withLock AppLoginStartOutcome()
+        val active = runtime() ?: return@withLock AppLoginStartOutcome()
         val startedAt = now()
         val result = active.start(returnUri, challenge)
-        if (result !is SharedAuthResult.Success || runtime()?.environment != active.environment) return@withLock null
-        if (result.data.requestId.isBlank() || result.data.expiresAt.isBlank()) return@withLock null
+        if (result !is SharedAuthResult.Success) {
+            return@withLock AppLoginStartOutcome(errorTraceId = (result as? SharedAuthResult.Failure)?.traceId)
+        }
+        if (runtime()?.environment != active.environment) return@withLock AppLoginStartOutcome()
+        if (result.data.requestId.isBlank() || result.data.expiresAt.isBlank()) return@withLock AppLoginStartOutcome()
         val url = result.data.loginUrl
-        if (!isAllowedAppLoginUrl(url)) return@withLock null
+        if (!isAllowedAppLoginUrl(url)) return@withLock AppLoginStartOutcome()
         val pending = AppLoginPending(generation, result.data.requestId, verifier, returnUri, active.environment, startedAt)
         store.putString("pending", Json.encodeToString(AppLoginPending.serializer(), pending))
-        url
+        AppLoginStartOutcome(url = url)
     }
 
     /**
@@ -70,11 +98,19 @@ internal class AppLoginCoordinator(
         if (pending()?.generation == generation) clear()
     }
 
-    suspend fun complete(returnUri: String, requestId: String, code: String, error: String): String = mutex.withLock {
+    suspend fun complete(returnUri: String, requestId: String, code: String, error: String): String =
+        completeWithOutcome(returnUri, requestId, code, error).status
+
+    suspend fun completeWithOutcome(
+        returnUri: String,
+        requestId: String,
+        code: String,
+        error: String,
+    ): AppLoginCompletionOutcome = mutex.withLock {
         // One diagnostics line per exit: on a device the branches are otherwise indistinguishable.
-        fun exit(result: String, reason: String): String {
+        fun exit(result: String, reason: String, errorTraceId: String? = null): AppLoginCompletionOutcome {
             logger("app_login_complete result=$result reason=$reason")
-            return result
+            return AppLoginCompletionOutcome(result, errorTraceId)
         }
         val pending = pending() ?: return@withLock exit("ignored", "no_pending")
         if (pending.returnUri != returnUri) return@withLock exit("ignored", "return_uri_mismatch")
@@ -100,10 +136,13 @@ internal class AppLoginCoordinator(
         if (error.isNotBlank()) return@withLock exit("login_error", "callback_error")
         if (code.isBlank()) return@withLock exit("login_error", "callback_no_code")
         val exchanged =
-            runCatchingPreservingCancellation { active.complete(code, pending.verifier) }
+            runCatchingPreservingCancellation { active.completeWithResult(code, pending.verifier) }
                 .onFailure { logger("app_login_complete exchange_threw type=${it::class.simpleName}") }
-                .getOrDefault(false)
-        if (exchanged) exit("app_shell", "exchanged") else exit("login_error", "exchange_failed")
+                .getOrElse { AppLoginExchangeResult.Failed(traceId = null) }
+        when (exchanged) {
+            AppLoginExchangeResult.Succeeded -> exit("app_shell", "exchanged")
+            is AppLoginExchangeResult.Failed -> exit("login_error", "exchange_failed", exchanged.traceId)
+        }
     }
 }
 
@@ -162,9 +201,13 @@ internal object RaftAppLogin {
             .getOrNull()
     suspend fun start(generation: String, verifier: String, challenge: String, returnUri: String) =
         coordinator.start(generation, verifier, challenge, returnUri)
+    suspend fun startWithOutcome(generation: String, verifier: String, challenge: String, returnUri: String) =
+        coordinator.startWithOutcome(generation, verifier, challenge, returnUri)
     suspend fun cancel(generation: String) = coordinator.cancel(generation)
     fun isWaitingFor(requestId: String) = coordinator.isWaitingFor(requestId)
     suspend fun complete(returnUri: String, requestId: String, code: String, error: String) = coordinator.complete(returnUri, requestId, code, error)
+    suspend fun completeWithOutcome(returnUri: String, requestId: String, code: String, error: String) =
+        coordinator.completeWithOutcome(returnUri, requestId, code, error)
 }
 
 internal fun appLoginEnvironmentIdentity(environment: SharedSettingsApiEnvironmentOption): String =
@@ -191,10 +234,12 @@ internal fun createAppLoginRuntime(
         override val environment = identity
         override suspend fun start(returnUri: String, challenge: String): SharedAuthResult<AuthAppLoginStartResponse> =
             if (isCurrent()) auth.startAppLogin(returnUri, challenge) else SharedAuthResult.Unauthenticated
-        override suspend fun complete(code: String, verifier: String): Boolean {
+        override suspend fun complete(code: String, verifier: String): Boolean =
+            completeWithResult(code, verifier) == AppLoginExchangeResult.Succeeded
+        override suspend fun completeWithResult(code: String, verifier: String): AppLoginExchangeResult {
             if (!isCurrent()) {
                 diagnosticsLogger("app_login_exchange result=skipped reason=environment_changed")
-                return false
+                return AppLoginExchangeResult.Failed(traceId = null)
             }
             val result = auth.completeAppLogin(code, verifier, ::isCurrent)
             diagnosticsLogger(
@@ -205,7 +250,11 @@ internal fun createAppLoginRuntime(
                         SharedAuthResult.Unauthenticated -> "unauthenticated"
                     }
             )
-            return result is SharedAuthResult.Success
+            return when (result) {
+                is SharedAuthResult.Success -> AppLoginExchangeResult.Succeeded
+                is SharedAuthResult.Failure -> AppLoginExchangeResult.Failed(result.traceId)
+                SharedAuthResult.Unauthenticated -> AppLoginExchangeResult.Failed(traceId = null)
+            }
         }
     }
 }

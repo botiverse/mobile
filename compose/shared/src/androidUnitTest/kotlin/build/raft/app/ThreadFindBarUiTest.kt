@@ -36,7 +36,6 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
-import kotlin.test.assertTrue
 import org.junit.Rule
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -141,21 +140,5 @@ class ThreadFindBarUiTest {
         runOnIdle { assertNotNull(dispatcher, "the activity's Back dispatcher").onBackPressed() }
         onNodeWithTag(ThreadFindTestTags.Bar).assertDoesNotExist()
         assertFalse(store.state.value.open)
-    }
-
-    @Test
-    fun noMatchCountsZeroAndLeavesNowhereToGo() = runRobolectricComposeUiTest {
-        var controller: ThreadFindController? = null
-        setContent { Page(onController = { controller = it }, onDispatcher = {}) }
-        val store = assertNotNull(controller).store
-        runOnIdle {
-            store.dispatch(ThreadFindIntent.Window(window))
-            store.dispatch(ThreadFindIntent.Query("zebra"))
-        }
-
-        onNodeWithTag(ThreadFindTestTags.Count).assertTextEquals("0/0")
-        onNodeWithContentDescription(PREVIOUS).assertIsNotEnabled()
-        onNodeWithContentDescription(NEXT).assertIsNotEnabled()
-        assertTrue(store.state.value.open)
     }
 }

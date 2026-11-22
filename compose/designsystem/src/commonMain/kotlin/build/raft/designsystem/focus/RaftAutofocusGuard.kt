@@ -1,8 +1,9 @@
 package build.raft.designsystem.focus
 
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.Stable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -16,11 +17,13 @@ import androidx.compose.ui.focus.onFocusChanged
  * take focus from: an open dialog, menu or popover, or another text field (search, a rename
  * dialog's field) that holds focus. A user's own tap or shortcut never consults this.
  *
- * Dialogs, dropdown menus and dismissable floating overlays hold [HoldOpenSurface] while shown;
- * every text field reports its focus through [setFieldFocused] (the app's editors, and the
- * design-system `RaftTextField` / `RaftTextarea` themselves through [raftReportsFocusToAutofocusGuard])
- * unless it is the field the automatic request is for (a conversation composer, inside
- * [LocalRaftAutofocusTargetField]), which reports nothing. Main thread only.
+ * Thin wrapper over the window's [RaftFocusCoordinator] (audit step 4 / #triage:#465). Dialogs hold
+ * a modal token on [RaftFocusCoordinator.HoldModal]; dropdown menus and dismissable floating
+ * overlays hold [HoldOpenSurface] while shown; every non-composer text field reports its focus
+ * through [setFieldFocused] (the app's editors, and the design-system `RaftTextField` /
+ * `RaftTextarea` themselves through [raftReportsFocusToAutofocusGuard]). A conversation composer
+ * (inside [LocalRaftAutofocusTargetField]) opts out of `otherFieldFocused` and reports separately
+ * as a composer to the window's coordinator. Main thread only.
  *
  * One per window ([LocalRaftAutofocusGuard], provided at each window's root): a dialog open or a
  * search field focused in one window never keeps the composer of another window (Android's app
@@ -28,33 +31,31 @@ import androidx.compose.ui.focus.onFocusChanged
  * [Default].
  */
 @Stable
-class RaftAutofocusGuard {
-    private var openSurfaces by mutableStateOf(0)
-    private var focusedFields by mutableStateOf(emptySet<Any>())
-
+class RaftAutofocusGuard(
+    val coordinator: RaftFocusCoordinator = RaftFocusCoordinator(),
+) {
     /** True while an automatic focus request would take focus from something the user is in. */
     val blocksAutofocus: Boolean
-        get() = openSurfaces > 0 || focusedFields.isNotEmpty()
+        get() = coordinator.surfaceOpen || coordinator.otherTextFieldFocused
 
     /** A dialog, menu or popover is shown. */
     val surfaceOpen: Boolean
-        get() = openSurfaces > 0
+        get() = coordinator.surfaceOpen
 
     /** A text field other than a conversation composer holds focus. */
     val otherFieldFocused: Boolean
-        get() = focusedFields.isNotEmpty()
+        get() = coordinator.otherTextFieldFocused
 
-    fun setFieldFocused(owner: Any, focused: Boolean) {
-        val next = if (focused) focusedFields + owner else focusedFields - owner
-        if (next != focusedFields) focusedFields = next
+    fun setFieldFocused(owner: Any, focused: Boolean, region: RaftFocusRegion? = null) {
+        coordinator.setTextFieldFocused(owner, focused, region)
     }
 
     /** Marks a dialog, menu or popover as shown while this is in the composition. */
     @Composable
     fun HoldOpenSurface(enabled: Boolean = true) {
-        DisposableEffect(enabled) {
-            if (enabled) openSurfaces += 1
-            onDispose { if (enabled) openSurfaces -= 1 }
+        DisposableEffect(enabled, coordinator) {
+            if (enabled) coordinator.acquireOpenSurface()
+            onDispose { if (enabled) coordinator.releaseOpenSurface() }
         }
     }
 
@@ -82,9 +83,30 @@ val LocalRaftAutofocusTargetField = staticCompositionLocalOf { false }
 fun Modifier.raftReportsFocusToAutofocusGuard(): Modifier {
     val reports = !LocalRaftAutofocusTargetField.current
     val guard = LocalRaftAutofocusGuard.current
+    val region = LocalRaftFocusRegion.current
     val owner = remember { Any() }
-    DisposableEffect(owner, reports, guard) {
-        onDispose { guard.setFieldFocused(owner, false) }
+    var currentlyFocused by remember { mutableStateOf(false) }
+    SideEffect {
+        if (!reports) {
+            if (currentlyFocused) {
+                currentlyFocused = false
+                guard.setFieldFocused(owner, false, region)
+            }
+        } else if (currentlyFocused) {
+            guard.setFieldFocused(owner, true, region)
+        }
     }
-    return if (reports) onFocusChanged { guard.setFieldFocused(owner, it.isFocused) } else this
+    DisposableEffect(owner, guard) {
+        // `setFieldFocused(owner, false, ...)` removes by `owner` only, so capturing the initial
+        // `region` here has no effect if the field changes regions before disposal.
+        onDispose { guard.setFieldFocused(owner, false, region) }
+    }
+    return if (reports) {
+        onFocusChanged {
+            currentlyFocused = it.isFocused
+            guard.setFieldFocused(owner, it.isFocused, region)
+        }
+    } else {
+        this
+    }
 }

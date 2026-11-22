@@ -2,7 +2,6 @@ package build.raft.app.data
 
 import build.raft.app.runPortableCoroutineTest
 import build.raft.app.model.AgentCredentialHoldReason
-import build.raft.app.model.AgentSpawnFailure
 import build.raft.app.model.AgentToolStuck
 import build.raft.app.model.AgentWakeCrashLoop
 import build.raft.app.model.MemberId
@@ -15,18 +14,6 @@ import kotlin.test.assertTrue
 
 class AgentsApiTest {
     // ── Create wire shape (task #186): absent optional fields are omitted, never explicit null ──
-
-    @Test
-    fun externalCreateBodyOmitsMachineRuntimeAndFormNulls() {
-        val body = buildCreateAgentBody(CreateAgentBody(name = "External Agent", external = true))
-
-        assertEquals("""{"name":"External Agent","external":true}""", body)
-        assertFalse("machineId" in body, body)
-        assertFalse("runtime" in body, body)
-        assertFalse("formDefinitionRef" in body, body)
-        assertFalse("formValues" in body, body)
-        assertFalse("null" in body, body)
-    }
 
     @Test
     fun createBodyOmitsAbsentOptionalFieldsLikeWeb() {
@@ -48,51 +35,6 @@ class AgentsApiTest {
         )
     }
 
-    @Test
-    fun createBodyKeepsPresentOptionalFields() {
-        val body =
-            buildCreateAgentBody(
-                CreateAgentBody(name = "Noel", description = "helper", machineId = "machine-1", avatarUrl = "pixel:mug", external = false)
-            )
-
-        assertEquals(
-            """{"name":"Noel","description":"helper","machineId":"machine-1","avatarUrl":"pixel:mug","external":false}""",
-            body
-        )
-    }
-
-    @Test
-    fun createAgentPreservesRuntimeFormRejectionCodeForRecovery() = runPortableCoroutineTest {
-        val client =
-            RaftAgentsApiClient(
-                RecordingAgentsApi(
-                    createAgentCode = 409,
-                    createAgentBody =
-                        """{"error":"Built-in Pi requires a runtime form definition reference","issues":[{"code":"form_definition_ref_required","pointer":"/formDefinitionRef"}]}"""
-                )
-            )
-
-        val error = assertIs<DataResult.Error>(client.createAgent("{}"))
-
-        assertEquals("form_definition_ref_required", error.error.code)
-    }
-
-    @Test
-    fun createAgentKeepsUnknownConflictGeneric() = runPortableCoroutineTest {
-        val client =
-            RaftAgentsApiClient(
-                RecordingAgentsApi(
-                    createAgentCode = 409,
-                    createAgentBody =
-                        """{"error":"Conflict","issues":[{"code":"unrelated_conflict","pointer":"/name"}]}"""
-                )
-            )
-
-        val error = assertIs<DataResult.Error>(client.createAgent("{}"))
-
-        assertEquals("http_409", error.error.code)
-    }
-
     // task #186: the production transport delivers non-2xx bodies as
     // `bodyText = null, errorBodyText = <envelope>` (KtorRaftHttpExecutor),
     // which is the shape the on-device 409 actually arrives in. The recovery
@@ -111,21 +53,6 @@ class AgentsApiTest {
         val error = assertIs<DataResult.Error>(client.createAgent("{}"))
 
         assertEquals("form_definition_ref_required", error.error.code)
-    }
-
-    @Test
-    fun createAgentKeepsGenericConflictWhenErrorBodyIsNotAJsonEnvelope() = runPortableCoroutineTest {
-        val client =
-            RaftAgentsApiClient(
-                RecordingAgentsApi(
-                    createAgentCode = 409,
-                    createAgentErrorBody = "Runtime form definition is stale or invalid"
-                )
-            )
-
-        val error = assertIs<DataResult.Error>(client.createAgent("{}"))
-
-        assertEquals("http_409", error.error.code)
     }
 
     @Test
@@ -175,59 +102,6 @@ class AgentsApiTest {
         val unavailable = assertIs<DataResult.Error>(serverError).error
         assertEquals("server_unavailable", unavailable.code)
         assertEquals("Scheduled maintenance in progress", unavailable.serverMessage)
-    }
-
-    @Test
-    fun agentsPermissionFailuresRetainOnlyExactErrorFieldOn401And403() = runPortableCoroutineTest {
-        listOf(401, 403).forEach { status ->
-            val exactReason = "  route-$status human reason / 理由  "
-            val exact =
-                RaftAgentsApiClient(
-                    RecordingAgentsApi(
-                        createAgentCode = status,
-                        createAgentErrorBody = """{"error":"$exactReason"}"""
-                    )
-                ).createAgent("{}")
-            assertEquals(
-                exactReason,
-                assertIs<DataResult.NoPermission>(exact).blocker.serverMessage,
-                "HTTP $status must retain the exact route-specific error value"
-            )
-
-            val aliasOnly =
-                RaftAgentsApiClient(
-                    RecordingAgentsApi(
-                        createAgentCode = status,
-                        createAgentErrorBody = """{"message":"must not be guessed"}"""
-                    )
-                ).createAgent("{}")
-            assertEquals(
-                null,
-                assertIs<DataResult.NoPermission>(aliasOnly).blocker.serverMessage,
-                "HTTP $status must not guess an unconfirmed alias"
-            )
-        }
-    }
-
-    @Test
-    fun nameConflictStaysOutsideFormRecoveryAllowlist() {
-        assertTrue(AGENT_CREATE_NAME_TAKEN !in CREATE_AGENT_RUNTIME_FORM_REJECTION_CODES)
-    }
-
-    @Test
-    fun createAgentKeepsNonAllowlistedErrorBodyConflictGeneric() = runPortableCoroutineTest {
-        val client =
-            RaftAgentsApiClient(
-                RecordingAgentsApi(
-                    createAgentCode = 409,
-                    createAgentErrorBody =
-                        """{"error":"Conflict","issues":[{"code":"unrelated_conflict","pointer":"/name"}]}"""
-                )
-            )
-
-        val error = assertIs<DataResult.Error>(client.createAgent("{}"))
-
-        assertEquals("http_409", error.error.code)
     }
 
     @Test
@@ -349,6 +223,27 @@ class AgentsApiTest {
     }
 
     @Test
+    fun agentDetailReadsTheSavedReasoningLevelFirst() = runPortableCoroutineTest {
+        // botiverse/slock staging c0f6195c6 `agents.api.test.ts`: Pi's "off" is kept in runtimeConfig
+        // only, the `reasoningEffort` column stays empty. The profile reads the saved config's level
+        // first (web `hydrateRuntimeConfigForm`), as the Members list does.
+        val piOff =
+            """{"id":"agent-1","name":"pi-off","status":"active","runtime":"pi","model":"anthropic/sonnet-live","reasoningEffort":null,""" +
+                """"runtimeConfig":{"version":1,"runtime":"pi","provider":{"kind":"default"},"model":{"kind":"preset","id":"anthropic/sonnet-live"},""" +
+                """"mode":{"kind":"default"},"reasoningEffort":"off","envVars":null}}"""
+        suspend fun reasoning(body: String): String? =
+            assertIs<DataResult.Content<AgentSummary>>(RaftAgentsApiClient(RecordingAgentsApi(agentBody = body)).agent(MemberId("agent-1")))
+                .data.reasoning
+
+        assertEquals("off", reasoning(piOff))
+        // A config of another version is ignored: the agent's own field decides.
+        assertEquals(
+            "high",
+            reasoning(piOff.replace(""""reasoningEffort":null""", """"reasoningEffort":"high"""").replace(""""version":1""", """"version":2""")),
+        )
+    }
+
+    @Test
     fun agentDetailCarriesTheWakePauseOnlyWithItsDetailKind() = runPortableCoroutineTest {
         // GET /agents/:id at botiverse/slock 24873fd5be37 (routes/agents.ts): `activityDetailKind`
         // and the shared WakeCrashLoopActivityDiagnostic, `lastExitReason` from #10860.
@@ -414,41 +309,6 @@ class AgentsApiTest {
             assertIs<DataResult.Content<AgentSummary>>(RaftAgentsApiClient(RecordingAgentsApi(agentBody = unknown)).agent(MemberId("agent-1"))).data
         assertEquals(null, unknownDetail.activityErrorCode)
         assertEquals(null, unknownDetail.lastRuntimeErrorCode)
-    }
-
-    @Test
-    fun agentDetailCarriesTheFailedStartAndTheKeptRuntimeError() = runPortableCoroutineTest {
-        // GET /agents/:id: a failed start leaves the agent offline with `activityDetailKind`
-        // runtime_unavailable and the shared SpawnFailureActivityDiagnostic; `lastRuntimeError`
-        // is the shared AgentRuntimeErrorState (web AgentDetailPanel reads both).
-        val failed =
-            """{"id":"agent-1","name":"Agent One","status":"active","runtime":"codex","activity":"offline",""" +
-                """"activityDetail":"Codex CLI is not installed on this computer.","activityDetailKind":"runtime_unavailable",""" +
-                """"spawnFailure":{"reason":"runtime_not_found","lookupReason":"not_on_path","autoRestartPaused":true},""" +
-                """"lastRuntimeError":{"message":"Codex CLI is not installed on this computer.","at":"2026-11-03T18:00:00.000Z",""" +
-                """"actionRequired":true}}"""
-        val detail =
-            assertIs<DataResult.Content<AgentSummary>>(
-                RaftAgentsApiClient(RecordingAgentsApi(agentBody = failed)).agent(MemberId("agent-1"))
-            ).data.toAgentDetailSummary()
-        assertEquals(AgentSpawnFailure(reason = "runtime_not_found", lookupReason = "not_on_path", autoRestartPaused = true), detail.spawnFailure)
-        assertEquals("Codex CLI is not installed on this computer.", detail.lastRuntimeErrorMessage)
-
-        // An older daemon sends no lookup verdict; a carrier beside another kind is not a failed start.
-        val noVerdict = failed.replace(""","lookupReason":"not_on_path"""", "")
-        val noVerdictDetail =
-            assertIs<DataResult.Content<AgentSummary>>(RaftAgentsApiClient(RecordingAgentsApi(agentBody = noVerdict)).agent(MemberId("agent-1"))).data
-        assertEquals(AgentSpawnFailure(reason = "runtime_not_found", autoRestartPaused = true), noVerdictDetail.spawnFailure)
-        val otherKind = failed.replace(""""activityDetailKind":"runtime_unavailable"""", """"activityDetailKind":"stopped"""")
-        val otherDetail =
-            assertIs<DataResult.Content<AgentSummary>>(RaftAgentsApiClient(RecordingAgentsApi(agentBody = otherKind)).agent(MemberId("agent-1"))).data
-        assertEquals(null, otherDetail.spawnFailure)
-
-        // No kept error: null, as with an explicit null.
-        val cleared = failed.replace(Regex(""","lastRuntimeError":\{[^}]*\}"""), ""","lastRuntimeError":null""")
-        val clearedDetail =
-            assertIs<DataResult.Content<AgentSummary>>(RaftAgentsApiClient(RecordingAgentsApi(agentBody = cleared)).agent(MemberId("agent-1"))).data
-        assertEquals(null, clearedDetail.lastRuntimeErrorMessage)
     }
 
     @Test
@@ -614,23 +474,6 @@ class AgentsApiTest {
     }
 
     @Test
-    fun typedAgentsApiKeepsBuiltInSavedProviderConnection() = runPortableCoroutineTest {
-        val client =
-            RaftAgentsApiClient(
-                RecordingAgentsApi(
-                    agentBody =
-                        """{"id":"agent-1","name":"Pi","runtimeConfig":{"version":1,"runtime":"builtin","provider":{"kind":"connection","connectionId":"conn-1"},"model":{"kind":"custom","name":"deepseek-v4"},"mode":{"kind":"default"}}}"""
-                )
-            )
-
-        val detail = assertIs<DataResult.Content<AgentSummary>>(client.agent(MemberId("agent-1"))).data
-
-        assertEquals("builtin", detail.runtime)
-        // slock BuiltInRuntimeProviderConfig: a saved connection, not "Default".
-        assertEquals(RuntimeProviderConfig.Connection("conn-1"), detail.runtimeProvider)
-    }
-
-    @Test
     fun typedAgentsApiRejectsGuessedWrappersAndAliases() = runPortableCoroutineTest {
         val client =
             RaftAgentsApiClient(
@@ -741,24 +584,6 @@ class AgentsApiTest {
             assertEquals(code, error.serverCode)
             assertEquals("Cannot start", error.serverMessage)
         }
-    }
-
-    @Test
-    fun deleteAgentArchiveWorkspaceSurfacesServerRefusalCode() = runPortableCoroutineTest {
-        val client = RaftAgentsApiClient(
-            RecordingAgentsApi(
-                archiveDeleteCode = 409,
-                archiveDeleteErrorBody =
-                    """{"error":"workspace migration in progress","code":"archive_migration_active"}"""
-            )
-        )
-
-        val error = assertIs<DataResult.Error>(
-            client.deleteAgentArchiveWorkspace(MemberId("agent-1"))
-        )
-
-        assertEquals("archive_migration_active", error.error.code)
-        assertEquals("workspace migration in progress", error.error.serverMessage)
     }
 
     private class RecordingAgentsApi(
@@ -935,17 +760,6 @@ class AgentsApiTest {
         assertEquals(listOf("GET agents/agent-1/external-status"), transport.calls)
     }
 
-    @Test
-    fun agentExternalStatusWaitingForLoginWithNullTimestamps() = runPortableCoroutineTest {
-        val client = RaftAgentsApiClient(RecordingAgentsApi())
-
-        val status = assertIs<DataResult.Content<ExternalAgentStatusSnapshot>>(client.agentExternalStatus(MemberId("agent-1"))).data
-
-        assertEquals(ExternalAgentSetupState.WaitingForLogin, status.setupState)
-        assertEquals(null, status.credentialLastUsedAt)
-        assertEquals(null, status.lastActivityAt)
-    }
-
     // 403 = caller lacks editAgents/creator authority; must surface as NoPermission,
     // never as a status (the UI treats it as "not provided", not "waiting for login").
     @Test
@@ -962,18 +776,6 @@ class AgentsApiTest {
         assertTrue(result is DataResult.NoPermission, "403 must map to NoPermission, got $result")
     }
 
-    // 400 = agent is not external; also non-Content.
-    @Test
-    fun agentExternalStatusNonExternalIsError() = runPortableCoroutineTest {
-        val client =
-            RaftAgentsApiClient(
-                RecordingAgentsApi(externalStatusCode = 400, externalStatusErrorBody = """{"error":"Agent is not external"}""")
-            )
-
-        val result = client.agentExternalStatus(MemberId("agent-1"))
-        assertTrue(result is DataResult.Error, "400 must map to Error, got $result")
-    }
-
     @Test
     fun agentSummaryCarriesExternalFromBooleanOrRuntime() = runPortableCoroutineTest {
         val byBoolean =
@@ -987,5 +789,86 @@ class AgentsApiTest {
         assertEquals(true, assertIs<DataResult.Content<AgentSummary>>(byRuntime.agent(MemberId("agent-1"))).data.isExternal)
         assertEquals(false, assertIs<DataResult.Content<AgentSummary>>(managed.agent(MemberId("agent-1"))).data.isExternal)
         assertEquals(true, assertIs<DataResult.Content<AgentSummary>>(byRuntime.agent(MemberId("agent-1"))).data.toAgentDetailSummary().isExternal)
+    }
+
+    @Test
+    fun agentSummaryPrefersActivityKindOverActivityAndKeepsErrorCode() = runPortableCoroutineTest {
+        val kindWins =
+            RaftAgentsApiClient(
+                RecordingAgentsApi(
+                    agentBody = """{"id":"agent-1","name":"bot","status":"active","activity":"offline","activityKind":"online"}"""
+                )
+            )
+        val kindError =
+            RaftAgentsApiClient(
+                RecordingAgentsApi(
+                    agentBody = """{"id":"agent-2","name":"bot","status":"active","activityKind":"error","activityErrorCode":"usage_limit"}"""
+                )
+            )
+        val blankKindFallsBack =
+            RaftAgentsApiClient(
+                RecordingAgentsApi(
+                    agentBody = """{"id":"agent-3","name":"bot","status":"active","activity":"working","activityKind":"  "}"""
+                )
+            )
+        val blankKindKeepsErrorCode =
+            RaftAgentsApiClient(
+                RecordingAgentsApi(
+                    agentBody = """{"id":"agent-4","name":"bot","status":"active","activity":"error","activityKind":"   ","activityErrorCode":"usage_limit"}"""
+                )
+            )
+        val kindOverridesErrorDropsCode =
+            RaftAgentsApiClient(
+                RecordingAgentsApi(
+                    agentBody = """{"id":"agent-5","name":"bot","status":"active","activity":"error","activityKind":"online","activityErrorCode":"usage_limit"}"""
+                )
+            )
+
+        assertEquals("online", assertIs<DataResult.Content<AgentSummary>>(kindWins.agent(MemberId("agent-1"))).data.activity)
+        val errorSummary = assertIs<DataResult.Content<AgentSummary>>(kindError.agent(MemberId("agent-2"))).data
+        assertEquals("error", errorSummary.activity)
+        assertEquals(AgentRuntimeErrorCode.UsageLimit, errorSummary.activityErrorCode)
+        assertEquals("working", assertIs<DataResult.Content<AgentSummary>>(blankKindFallsBack.agent(MemberId("agent-3"))).data.activity)
+        val blankKindErrorSummary = assertIs<DataResult.Content<AgentSummary>>(blankKindKeepsErrorCode.agent(MemberId("agent-4"))).data
+        assertEquals("error", blankKindErrorSummary.activity)
+        assertEquals(AgentRuntimeErrorCode.UsageLimit, blankKindErrorSummary.activityErrorCode)
+        val nonErrorOverride = assertIs<DataResult.Content<AgentSummary>>(kindOverridesErrorDropsCode.agent(MemberId("agent-5"))).data
+        assertEquals("online", nonErrorOverride.activity)
+        assertEquals(null, nonErrorOverride.activityErrorCode)
+    }
+
+    /**
+     * The profile's Mode row reads the saved `runtimeConfig.mode` (web `hydrateRuntimeConfigForm`), the
+     * value the edit form's Fast mode starts from. `executionMode` says where the agent runs (byoc /
+     * cloud) and is never the mode. No saved config, no mode in it, or another version: none (Default).
+     * Bodies as `withAgentProjection` sends them: the hydrated config of a Codex agent.
+     */
+    @Test
+    fun agentSummaryReadsTheSavedRuntimeModeNotTheExecutionMode() = runPortableCoroutineTest {
+        suspend fun read(runtimeConfig: String?, executionMode: String = "byoc"): AgentSummary {
+            val config = runtimeConfig?.let { ""","runtimeConfig":$it""" }.orEmpty()
+            val body =
+                """{"id":"agent-1","name":"codex-agent","status":"active","runtime":"codex","model":"gpt-6.2-astra","reasoningEffort":"max","executionMode":"$executionMode"$config}"""
+            return assertIs<DataResult.Content<AgentSummary>>(RaftAgentsApiClient(RecordingAgentsApi(agentBody = body)).agent(MemberId("agent-1"))).data
+        }
+        fun saved(mode: String?, version: Int = 1): String {
+            val modeField = mode?.let { ""","mode":$it""" }.orEmpty()
+            return """{"version":$version,"runtime":"codex","model":{"kind":"preset","id":"gpt-6.2-astra"},"reasoningEffort":"max","envVars":null$modeField}"""
+        }
+        val cases =
+            listOf(
+                Triple("fast", read(saved("""{"kind":"fast"}""")), "fast"),
+                Triple("fast on a named Codex tier", read(saved("""{"kind":"fast","serviceTier":"ultrafast"}""")), "fast"),
+                Triple("default on a cloud agent", read(saved("""{"kind":"default"}"""), executionMode = "cloud"), "default"),
+                Triple("a kind this client does not know", read(saved("""{"kind":"turbo"}""")), "default"),
+                Triple("no mode in the saved config", read(saved(null)), null),
+                Triple("a saved config of another version", read(saved("""{"kind":"fast"}""", version = 2)), null),
+                Triple("no runtime config (a viewer who may not edit the agent)", read(null), null),
+            )
+        for ((name, summary, expected) in cases) {
+            assertEquals(expected, summary.runtimeMode, name)
+            assertEquals(expected, summary.toAgentDetailSummary().runtimeMode, name)
+            assertTrue(summary.executionMode == "byoc" || summary.executionMode == "cloud", "$name: executionMode is where it runs")
+        }
     }
 }

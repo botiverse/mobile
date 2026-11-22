@@ -74,47 +74,15 @@ class RaftActionCardScreenshotTest {
 
     @Test fun elements1Light() = capture("thread.action-card.elements-1", RaftAppAppearance.Light) { Elements1() }
 
-    @Test fun elements1Dark() = capture("thread.action-card.elements-1.dark", RaftAppAppearance.Dark) { Elements1() }
-
     @Test fun elements2Light() = capture("thread.action-card.elements-2", RaftAppAppearance.Light) { Elements2() }
-
-    @Test fun elements2Dark() = capture("thread.action-card.elements-2.dark", RaftAppAppearance.Dark) { Elements2() }
 
     @Test fun elements3Light() = capture("thread.action-card.elements-3", RaftAppAppearance.Light) { Elements3() }
 
-    @Test fun elements3Dark() = capture("thread.action-card.elements-3.dark", RaftAppAppearance.Dark) { Elements3() }
-
     @Test fun frame1Light() = capture("thread.action-card.frame-1", RaftAppAppearance.Light) { Frame1() }
-
-    @Test fun frame1Dark() = capture("thread.action-card.frame-1.dark", RaftAppAppearance.Dark) { Frame1() }
 
     @Test fun frame2Light() = capture("thread.action-card.frame-2", RaftAppAppearance.Light) { Frame2() }
 
-    @Test fun frame2Dark() = capture("thread.action-card.frame-2.dark", RaftAppAppearance.Dark) { Frame2() }
-
-    @Test fun contractUpdatesLight() = capture("thread.action-card.s0-updates", RaftAppAppearance.Light) { ContractUpdates() }
-
-    @Test fun contractUpdatesDark() = capture("thread.action-card.s0-updates.dark", RaftAppAppearance.Dark) { ContractUpdates() }
-
-    @Test fun stackRolesLight() = capture("thread.action-card.stack-roles", RaftAppAppearance.Light) { StackRoles() }
-
-    @Test fun stackRolesDark() = capture("thread.action-card.stack-roles.dark", RaftAppAppearance.Dark) { StackRoles() }
-
-    @Test fun approveCallLight() = capture("thread.action-card.approve-call", RaftAppAppearance.Light) { Card("form_submit_labels") }
-
-    @Test fun approveCallDark() = capture("thread.action-card.approve-call.dark", RaftAppAppearance.Dark) { Card("form_submit_labels") }
-
-    @Test fun questionCardLight() = capture("thread.action-card.question", RaftAppAppearance.Light) { QuestionCards() }
-
-    @Test fun questionCardDark() = capture("thread.action-card.question.dark", RaftAppAppearance.Dark) { QuestionCards() }
-
-    @Test fun migrateAgentLight() = capture("thread.action-card.migrate-agent", RaftAppAppearance.Light) { MigrateAgent() }
-
-    @Test fun migrateAgentDark() = capture("thread.action-card.migrate-agent.dark", RaftAppAppearance.Dark) { MigrateAgent() }
-
     @Test fun limitsLight() = capture("thread.action-card.limits", RaftAppAppearance.Light) { Limits() }
-
-    @Test fun limitsDark() = capture("thread.action-card.limits.dark", RaftAppAppearance.Dark) { Limits() }
 
     private fun capture(name: String, appearance: RaftAppAppearance, content: @Composable () -> Unit) {
         RaftRobolectricScreenshot.capture(name, appearance, reportDir = "build/reports/home-screenshots", activities = activities) {

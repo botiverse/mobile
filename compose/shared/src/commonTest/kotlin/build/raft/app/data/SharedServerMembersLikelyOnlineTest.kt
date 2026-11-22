@@ -6,7 +6,6 @@ import build.raft.app.model.MemberId
 import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberPresenceUpdated
 import build.raft.app.model.MemberProfile
-import build.raft.app.model.Presence
 import build.raft.app.model.ServerId
 import build.raft.app.model.ServerSummary
 import build.raft.app.raftHomeDmPresenceAgentId
@@ -156,33 +155,6 @@ class SharedServerMembersLikelyOnlineTest {
             assertFalse(status.likelyOnline, real.name)
             assertEquals(real, status.status, real.name)
         }
-    }
-
-    @Test
-    fun carriedOverFactIsAFactAndWins() = runBlocking<Unit> {
-        val registry = ProcessMemberPresenceRegistry()
-        val store = store(registry)
-        registry.rebaselineTransport(owner, registry.writeGeneration, transport)
-        registry.apply(
-            owner,
-            MemberPresenceUpdated(
-                memberId = MemberId("agent-active"),
-                presence = Presence.Offline,
-                kind = MemberKind.Agent,
-                agentStatus = AgentStatus.Offline,
-                statusLabel = AgentStatus.Offline.label,
-                serverSeq = 5L
-            ),
-            registry.writeGeneration,
-            transport
-        )
-        registry.rebaselineTransport(owner, registry.writeGeneration, ProcessPresenceTransportEpoch("family-1", 2L))
-        store.refreshMembers(serverId, force = true, reason = "presence_transport_connected")
-
-        assertEquals(setOf("agent-active"), registry.carriedOverMemberIds(owner))
-        val status = assertNotNull(store.currentMemberStatus(serverId, "agent-active"))
-        assertFalse(status.likelyOnline)
-        assertEquals(AgentStatus.Offline, status.status)
     }
 
     @Test

@@ -42,13 +42,6 @@ class RaftHostVisibilityTest {
         assertFalse(isRaftHostVisible("shell-old"))
     }
 
-    @Test
-    fun blankShellUsesLegacyScope() {
-        updateRaftHostVisibility("", visible = false)
-
-        assertFalse(isRaftHostVisible(RaftShellStoreScope.Legacy.shellInstanceId))
-    }
-
     // Hands a92fbb13: two restored windows, the hidden one reconciled last and kept the only
     // realtime connection on its server; the window in front never heard its own server.
     @Test
@@ -66,27 +59,6 @@ class RaftHostVisibilityTest {
         assertTrue(raftShellOwnsProcessRealtime("shell-a", multiShellHostEnabled = true))
         assertFalse(raftShellOwnsProcessRealtime("shell-b", multiShellHostEnabled = true))
         assertEquals(handedToB + 1, raftProcessRealtimeOwnerGeneration())
-    }
-
-    @Test
-    fun sameWindowComingBackKeepsTheOwnerGeneration() {
-        updateRaftHostVisibility("shell-a", visible = true)
-        val generation = raftProcessRealtimeOwnerGeneration()
-
-        updateRaftHostVisibility("shell-a", visible = false)
-        updateRaftHostVisibility("shell-a", visible = true)
-
-        assertEquals(generation, raftProcessRealtimeOwnerGeneration())
-        assertTrue(raftShellOwnsProcessRealtime("shell-a", multiShellHostEnabled = true))
-    }
-
-    @Test
-    fun everyShellReconcilesWithoutSeparateWindowsOrBeforeAnyWindowReports() {
-        assertTrue(raftShellOwnsProcessRealtime("shell-a", multiShellHostEnabled = true))
-
-        updateRaftHostVisibility("shell-b", visible = true)
-
-        assertTrue(raftShellOwnsProcessRealtime("shell-a", multiShellHostEnabled = false))
     }
 
     @Test

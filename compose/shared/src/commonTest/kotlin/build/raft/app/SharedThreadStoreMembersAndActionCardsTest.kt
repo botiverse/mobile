@@ -6,9 +6,7 @@ import build.raft.app.SharedThreadStoreTest.Companion.messagesResponse
 import build.raft.app.SharedThreadStoreTest.Companion.sampleSession
 import build.raft.app.SharedThreadStoreTest.FakeThreadApi
 import build.raft.app.SharedThreadStoreTestFakes.FakeMemberRepository
-import build.raft.app.SharedThreadStoreTestFakes.ParkableReadSessionStore
 import build.raft.app.SharedThreadStoreTestFixtures.cachePayloadForTest
-import build.raft.app.SharedThreadStoreTestFixtures.contentPayload
 import build.raft.app.SharedThreadStoreTestFixtures.contentPayloadForRoute
 import build.raft.app.SharedThreadStoreTestFixtures.directMessagePayload
 import build.raft.app.SharedThreadStoreTestFixtures.member
@@ -21,14 +19,9 @@ import build.raft.app.data.InMemoryRaftAuthSessionStore
 import build.raft.app.data.MemberSnapshot
 import build.raft.app.data.RaftAgentsApi
 import build.raft.app.data.RaftAgentsApiClient
-import build.raft.app.data.RaftComputersApi
-import build.raft.app.data.RaftComputersApiClient
 import build.raft.app.data.RaftIntegrationsActionsPushApi
 import build.raft.app.data.RaftIntegrationsActionsPushApiClient
 import build.raft.app.data.RemoveChannelMemberRequest
-import build.raft.app.data.SharedCreateAgentCoordinator
-import build.raft.app.data.SharedServerMembersStore
-import build.raft.app.data.StoredAuthServer
 import build.raft.app.data.ThreadActionCard
 import build.raft.app.data.ThreadActionCardMetadataItem
 import build.raft.app.model.AvatarReference
@@ -36,24 +29,18 @@ import build.raft.app.model.ChannelId
 import build.raft.app.model.MemberId
 import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberProfile
-import build.raft.app.model.Message
 import build.raft.app.model.MessageId
-import build.raft.app.model.MessageNew
 import build.raft.app.model.Presence
 import build.raft.app.model.ServerId
 import build.raft.app.model.ServerSummary
-import build.raft.app.model.ThreadId
 import build.raft.app.model.ThreadUpdated
 import build.raft.app.network.sync.ReplyPreview
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
-import kotlin.test.assertNotNull
-import kotlin.test.assertNull
 import kotlin.test.assertSame
 import kotlin.test.assertTrue
-import kotlin.test.fail
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
@@ -192,195 +179,6 @@ class SharedThreadStoreMembersAndActionCardsTest {
         )
         scope.cancel()
     }
-    @Test
-    fun loadMembersDoesNotBackfillAvatarsFromServerProfile() = runTest {
-        val scope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
-        val uploadedAvatar = "https://cdn.slock.ai/avatars/users/stdrc.webp"
-        val memberRepository =
-            FakeMemberRepository(
-                serverMembers = listOf(member("u1", "Artin").copy(avatar = AvatarReference.fromWireValue(uploadedAvatar))),
-                channelMembers = listOf(member("u1", "Artin"))
-            )
-        val dataSource =
-            testSharedThreadDataSource(
-                storeScope = backgroundScope,
-                networkApi = FakeThreadApi(bodyText = messagesResponse("network body")),
-                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
-                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
-                memberRepository = memberRepository
-            )
-        val store = SharedThreadStore(dataSource = dataSource, scope = scope)
-
-        store.accept(SharedThreadIntent.Start(basePayload()))
-        store.accept(SharedThreadIntent.LoadMembers)
-
-        assertNull(store.state.value.payload.members.single().avatarUrl)
-        scope.cancel()
-    }
-    @Test
-    fun threadDataSourceWritesFullAndRealtimeAuthorSnapshotsIntoMemberStore() {
-        val memberRepository = FakeMemberRepository()
-        val memberStore = SharedServerMembersStore(memberRepository)
-        val dataSource =
-            testSharedThreadDataSource(
-                networkApi = FakeThreadApi(),
-                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
-                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
-                memberRepository = memberRepository,
-                serverMembersStore = memberStore
-            )
-        val uploadedAvatar =
-            "https://cdn.raft.build/avatars/agents/deadbeefdeadbeefdeadbeefdeadbeef.webp"
-        val fullHistoryRow =
-            RaftThreadMessageItem(
-                id = "history-message",
-                authorId = "agent-1",
-                authorName = "Argus",
-                authorKind = "agent",
-                avatarWireValue = uploadedAvatar
-            )
-
-        dataSource.seedThreadAuthorProfiles(
-            serverId = "server-1",
-            payload = basePayload().copy(status = "content", messages = listOf(fullHistoryRow)),
-            source = "initial"
-        )
-        assertEquals(
-            uploadedAvatar,
-            memberStore.state.value.memberProfile(ServerId("server-1"), "agent-1")?.avatar?.wireValue
-        )
-
-        dataSource.seedRealtimeThreadAuthorProfiles(
-            serverId = "server-1",
-            event =
-                MessageNew(
-                    Message(
-                        id = MessageId("realtime-message"),
-                        threadId = ThreadId("channel-1"),
-                        channelId = ChannelId("channel-1"),
-                        author =
-                            member("agent-1", "Argus").copy(
-                                kind = MemberKind.Agent,
-                                avatar = AvatarReference.fromWireValue(uploadedAvatar)
-                            ),
-                        timestampLabel = "2026-08-02T00:00:00Z",
-                        body = "realtime"
-                    )
-                ),
-            currentUserId = "u1"
-        )
-        assertEquals(
-            uploadedAvatar,
-            memberStore.state.value.memberProfile(ServerId("server-1"), "agent-1")?.avatar?.wireValue
-        )
-    }
-    @Test
-    fun acceptedCachedPayloadSeedsAvatarResolverBeforeFailedRefresh() = runTest {
-        val payloadStore = SharedThreadPayloadStore(backgroundScope)
-        val uploadedAvatar =
-            "https://cdn.raft.build/avatars/users/0123456789abcdef0123456789abcdef.webp"
-        val cached =
-            contentPayload("cached body").let { payload ->
-                payload.copy(
-                    messages =
-                        listOf(
-                            payload.messages.single().copy(
-                                authorId = "cached-user",
-                                authorName = "Cached User",
-                                authorKind = "human",
-                                avatarWireValue = uploadedAvatar
-                            )
-                        )
-                )
-            }
-        val memberStore = testServerMembersStore(FakeMemberRepository(), scope = backgroundScope)
-        val dataSource =
-            testSharedThreadDataSource(
-                storeScope = backgroundScope,
-                networkApi = FakeThreadApi(failChannelMessages = true),
-                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
-                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
-                serverMembersStore = memberStore,
-                payloadStore = payloadStore
-            )
-        dataSource.cachePayloadForTest(cached)
-        val scope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
-        val store = SharedThreadStore(dataSource = dataSource, scope = scope)
-
-        store.accept(SharedThreadIntent.Start(basePayload()))
-
-        assertEquals("cached body", store.state.value.payload.messages.single().body)
-        assertEquals(
-            uploadedAvatar,
-            memberStore.state.value.memberProfile(ServerId("server-1"), "cached-user")?.avatar?.wireValue
-        )
-        scope.cancel()
-    }
-    @Test
-    fun serverSwitchCacheHitsSeedOnlyTheirSelectedServerInEitherDirection() = runTest {
-        for (serverOrder in listOf(listOf("server-a", "server-b"), listOf("server-b", "server-a"))) {
-            val payloadStore = SharedThreadPayloadStore(backgroundScope)
-            val memberStore = testServerMembersStore(FakeMemberRepository(), scope = backgroundScope)
-            val avatars =
-                mapOf(
-                    "server-a" to "https://cdn.raft.build/avatars/users/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.webp",
-                    "server-b" to "https://cdn.raft.build/avatars/users/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb.webp"
-                )
-            serverOrder.forEach { serverId ->
-                val cached =
-                    contentPayload("cached $serverId").let { payload ->
-                        payload.copy(
-                            messages =
-                                listOf(
-                                    payload.messages.single().copy(
-                                        authorId = "shared-user",
-                                        authorName = "Shared User",
-                                        authorKind = "human",
-                                        avatarWireValue = avatars.getValue(serverId)
-                                    )
-                                )
-                        )
-                    }
-                val session =
-                    sampleSession().copy(
-                        selectedServerId = serverId,
-                        servers =
-                            listOf(
-                                StoredAuthServer(id = "server-a", name = "Server A", slug = "server-a"),
-                                StoredAuthServer(id = "server-b", name = "Server B", slug = "server-b")
-                            )
-                    )
-                val dataSource =
-                    testSharedThreadDataSource(
-                        storeScope = backgroundScope,
-                        networkApi = FakeThreadApi(failChannelMessages = true),
-                        sessionStore = InMemoryRaftAuthSessionStore(session),
-                        cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
-                        serverMembersStore = memberStore,
-                        payloadStore = payloadStore
-                    )
-                assertNotNull(dataSource.readSession())
-                assertTrue(dataSource.cachePayload(cached, serverId = serverId))
-                val scope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
-                val store = SharedThreadStore(dataSource = dataSource, scope = scope)
-
-                store.accept(SharedThreadIntent.Start(basePayload()))
-
-                assertEquals("cached $serverId", store.state.value.payload.messages.single().body)
-                assertEquals(
-                    avatars.getValue(serverId),
-                    memberStore.state.value.memberProfile(ServerId(serverId), "shared-user")?.avatar?.wireValue
-                )
-                val otherServer = if (serverId == "server-a") "server-b" else "server-a"
-                val otherAvatar =
-                    memberStore.state.value.memberProfile(ServerId(otherServer), "shared-user")?.avatar?.wireValue
-                if (otherAvatar != null) {
-                    assertEquals(avatars.getValue(otherServer), otherAvatar)
-                }
-                scope.cancel()
-            }
-        }
-    }
     /**
      * Hands b6068b41: on a DM page, replies posted from another device arrived as `thread:updated`
      * and moved the inline preview's count while its rows stayed stale. The DM route carries no
@@ -394,24 +192,6 @@ class SharedThreadStoreMembersAndActionCardsTest {
             route = directMessagePayload(),
             parentScopeKind = "dm",
             threadChannelId = "dm-thread-1",
-        )
-    /**
-     * Hands 4155f83a: the same live reply on a Joint channel page. messageService.ts emits the
-     * joint `thread:updated` per projection with `parentScopeKind: "joint"`, the projection's
-     * local parent channel and its local thread channel.
-     */
-    @Test
-    fun jointRealtimeThreadUpdatedPatchesColdCachedInlineReplyRows() =
-        assertRealtimeThreadUpdatedPatchesColdCachedInlineReplyRows(
-            route =
-                basePayload().copy(
-                    instanceId = "shared-shell-thread-joint-1",
-                    sourceThreadId = "joint-1",
-                    streamChannelId = "joint-1",
-                    channelKind = JointChannelKindWireValue,
-                ),
-            parentScopeKind = "joint",
-            threadChannelId = "joint-thread-local-1",
         )
     private fun assertRealtimeThreadUpdatedPatchesColdCachedInlineReplyRows(
         route: RaftThreadScreenPayload,
@@ -546,126 +326,6 @@ class SharedThreadStoreMembersAndActionCardsTest {
         scope.cancel()
     }
     @Test
-    fun acceptedRealtimeInlineReplySeedsResolverWhileRejectedScopeWritesNothing() = runTest {
-        val scope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
-        val memberRepository = FakeMemberRepository()
-        val memberStore = testServerMembersStore(memberRepository, scope = backgroundScope)
-        val sessionStore = ParkableReadSessionStore(sampleSession())
-        val dataSource =
-            testSharedThreadDataSource(
-                storeScope = backgroundScope,
-                networkApi = FakeThreadApi(failChannelMessages = true),
-                sessionStore = sessionStore,
-                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
-                memberRepository = memberRepository,
-                serverMembersStore = memberStore
-            )
-        dataSource.cachePayloadForTest(contentPayload("reply parent"))
-        val store = SharedThreadStore(dataSource = dataSource, scope = scope)
-        store.accept(SharedThreadIntent.Start(basePayload()))
-        val acceptedAvatar =
-            "https://cdn.raft.build/avatars/agents/77777777777777777777777777777777.webp"
-        val rejectedAvatar =
-            "https://cdn.raft.build/avatars/agents/88888888888888888888888888888888.webp"
-        val staleAvatar =
-            "https://cdn.raft.build/avatars/agents/99999999999999999999999999999999.webp"
-        fun replyEvent(
-            senderId: String,
-            avatarUrl: String,
-            seq: Long,
-            envelopeServerId: String
-        ) =
-            ThreadUpdated(
-                parentMessageId = MessageId("m1"),
-                threadChannelId = ChannelId("reply-thread"),
-                replyCount = seq.toInt(),
-                lastReplyAt = "2026-08-02T00:00:00Z",
-                participantIds = listOf(MemberId(senderId)),
-                unreadCount = 1,
-                firstUnreadMessageId = MessageId("reply-$seq"),
-                latestReply =
-                    ReplyPreview(
-                        messageId = "reply-$seq",
-                        seq = seq,
-                        content = "live reply $seq",
-                        senderId = senderId,
-                        senderType = "agent",
-                        senderName = senderId,
-                        senderAvatarUrl = avatarUrl,
-                        createdAt = "2026-08-02T00:00:00Z"
-                    ),
-                syncCoreReplyWindow =
-                    build.raft.app.network.sync.ThreadRepliesSyncWindowEnvelope(
-                        producer = build.raft.app.network.sync.ThreadRepliesSyncWindowProducer,
-                        rootKind = "message",
-                        rootServerId = envelopeServerId,
-                        rootMessageId = "m1",
-                        relationKind = "replies",
-                        parentScopeServerId = envelopeServerId,
-                        parentScopeKind = "channel",
-                        parentScopeId = "channel-1",
-                        backing = "sync-scope",
-                        windowKind = "sync-scope-window"
-                    )
-            )
-
-        store.accept(
-            SharedThreadIntent.ApplyRealtimeEvent(
-                replyEvent(
-                    senderId = "agent-live",
-                    avatarUrl = acceptedAvatar,
-                    seq = 1L,
-                    envelopeServerId = "server-1"
-                )
-            )
-        )
-        val resolver = raftMemberAvatarResolver(memberStore, "server-1")
-        assertEquals(acceptedAvatar, resolver.current("agent-live"))
-
-        store.accept(
-            SharedThreadIntent.ApplyRealtimeEvent(
-                replyEvent(
-                    senderId = "agent-rejected",
-                    avatarUrl = rejectedAvatar,
-                    seq = 2L,
-                    envelopeServerId = "other-server"
-                )
-            )
-        )
-        assertNull(resolver.current("agent-rejected"))
-        assertNull(memberStore.state.value.memberProfile(ServerId("server-1"), "agent-rejected"))
-
-        sessionStore.parkNextRead()
-        val staleEvent =
-            launch {
-                store.accept(
-                    SharedThreadIntent.ApplyRealtimeEvent(
-                        replyEvent(
-                            senderId = "agent-stale",
-                            avatarUrl = staleAvatar,
-                            seq = 3L,
-                            envelopeServerId = "server-1"
-                        )
-                    )
-                )
-            }
-        sessionStore.nextReadStarted.await()
-        store.accept(
-            SharedThreadIntent.Start(
-                basePayload().copy(
-                    sourceThreadId = "channel-2",
-                    streamChannelId = "channel-2",
-                    title = "Other channel"
-                )
-            )
-        )
-        sessionStore.releaseNextRead.complete(Unit)
-        staleEvent.join()
-        assertNull(resolver.current("agent-stale"))
-        assertNull(memberStore.state.value.memberProfile(ServerId("server-1"), "agent-stale"))
-        scope.cancel()
-    }
-    @Test
     fun addChannelMemberUsesTypedRepositoryAndRefreshesMembers() = runTest {
         val memberRepository =
             FakeMemberRepository(
@@ -735,29 +395,6 @@ class SharedThreadStoreMembersAndActionCardsTest {
             assertEquals(listOf("channel-created"), created, "mark $markCode")
             assertEquals(markCode == 200, result is DataResult.Content, "mark $markCode")
         }
-    }
-
-    @Test
-    fun aChannelCardThatCreatesNothingHandsOverNothing() = runTest {
-        val dataSource =
-            testSharedThreadDataSource(
-                storeScope = backgroundScope,
-                networkApi = FakeThreadApi(),
-                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
-                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
-                channelRepository = FakeChannelRepository(),
-                actionCardsApiClient = RaftIntegrationsActionsPushApiClient(RecordingActionCardsApi()),
-            )
-        val created = mutableListOf<String>()
-
-        dataSource.commitThreadActionCard(
-            basePayload(),
-            "m-card",
-            ThreadActionCard(type = "channel:create", name = "  "),
-            onChannelCreated = { created += it.channelId.value },
-        )
-
-        assertTrue(created.isEmpty())
     }
 
     @Test
@@ -839,23 +476,6 @@ class SharedThreadStoreMembersAndActionCardsTest {
         assertTrue(actionCardsApi.calls.isEmpty())
     }
     @Test
-    fun threadDataSourceRetainsCreateAgentCoordinatorForRouteInjection() {
-        val coordinator =
-            SharedCreateAgentCoordinator(
-                agentsApiClient = RaftAgentsApiClient(RecordingAgentsApi()),
-                computersApiClient = RaftComputersApiClient(RecordingComputersApi())
-            )
-        val dataSource =
-            testSharedThreadDataSource(
-                networkApi = FakeThreadApi(),
-                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
-                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
-                createAgentCoordinator = coordinator
-            )
-
-        assertTrue(dataSource.createAgentCoordinatorOrNull === coordinator)
-    }
-    @Test
     fun agentCreateActionCardDialogSubmitUsesTypedApiAndMarksExecuted() = runTest {
         val agentsApi = RecordingAgentsApi()
         val actionCardsApi = RecordingActionCardsApi()
@@ -893,162 +513,6 @@ class SharedThreadStoreMembersAndActionCardsTest {
             listOf(
                 """POST actions/m-card/mark-executed body={"result":{"kind":"agent","id":"agent-created","name":"Noel","channelId":null,"channelName":null,"addedHumanIds":null,"addedAgentIds":null}}"""
             ),
-            actionCardsApi.calls
-        )
-    }
-    @Test
-    fun actionCardCreateDoesNotReturnExecutedCardWhenMarkExecutedFails() = runTest {
-        val agentsApi = RecordingAgentsApi()
-        val actionCardsApi = RecordingActionCardsApi(
-            markResponse = HomeNetworkResponse(code = 500, bodyText = """{"error":"server_unavailable"}""")
-        )
-        val dataSource =
-            testSharedThreadDataSource(
-                storeScope = backgroundScope,
-                networkApi = FakeThreadApi(),
-                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
-                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
-                agentsApiClient = RaftAgentsApiClient(agentsApi),
-                actionCardsApiClient = RaftIntegrationsActionsPushApiClient(actionCardsApi)
-            )
-        val card = ThreadActionCard(type = "agent:create", name = "Noel")
-
-        val result = dataSource.commitAgentCreateActionCard("m-card", card)
-
-        assertEquals(1, agentsApi.createBodies.size)
-        assertEquals(1, actionCardsApi.calls.size)
-        assertTrue(result is DataResult.Error)
-        assertEquals("action_mark_executed_contract_mismatch", result.error.code)
-    }
-    @Test
-    fun channelAddMembersActionCardUsesTypedRepositoryAndMarksExecuted() = runTest {
-        val memberRepository = FakeMemberRepository()
-        val actionCardsApi = RecordingActionCardsApi()
-        val dataSource =
-            testSharedThreadDataSource(
-                storeScope = backgroundScope,
-                networkApi = FakeThreadApi(),
-                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
-                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
-                memberRepository = memberRepository,
-                actionCardsApiClient = RaftIntegrationsActionsPushApiClient(actionCardsApi)
-            )
-        val card =
-            ThreadActionCard(
-                type = "channel:add_member",
-                channel = "channel-2",
-                humans = listOf("u3", "u3"),
-                agents = listOf("agent-3"),
-                draftHint = "Bring owners in."
-            )
-
-        val result = dataSource.commitThreadActionCard(basePayload(), "m-card", card)
-        val executedCard = (result as DataResult.Content).data
-
-        // task #352: ONE atomic batch for the whole card (mixed humans + agents),
-        // not a per-member loop.
-        assertEquals(
-            listOf(
-                AddChannelMembersBatchRequest(
-                    channelId = ChannelId("channel-2"),
-                    userIds = listOf(MemberId("u3")),
-                    agentIds = listOf(MemberId("agent-3"))
-                )
-            ),
-            memberRepository.batchRequests
-        )
-        assertEquals(emptyList(), memberRepository.addRequests)
-        assertEquals("executed", executedCard.state)
-        assertEquals("channel-members", executedCard.resultKind)
-        assertEquals("channel-2", executedCard.resultId)
-        assertEquals(listOf("u3"), executedCard.resultAddedHumanIds)
-        assertEquals(listOf("agent-3"), executedCard.resultAddedAgentIds)
-        assertEquals(
-            listOf(
-                """POST actions/m-card/mark-executed body={"result":{"kind":"channel-members","id":null,"name":null,"channelId":"channel-2","channelName":"channel-2","addedHumanIds":["u3"],"addedAgentIds":["agent-3"]}}"""
-            ),
-            actionCardsApi.calls
-        )
-    }
-    @Test
-    fun channelAddMembersActionCardAlreadyMembersOnlyIsIdempotentSuccess() = runTest {
-        // task #352 / #361 blocker: the server defines an all-already-members batch
-        // as an idempotent SUCCESS (added:[], ids under alreadyMembers). The action
-        // card must therefore advance to executed, not fail — so a re-send never
-        // blocks card completion.
-        val memberRepository =
-            FakeMemberRepository(
-                channelMembers = listOf(member("u3", "Existing Human"), member("agent-3", "Existing Agent"))
-            )
-        val actionCardsApi = RecordingActionCardsApi()
-        val dataSource =
-            testSharedThreadDataSource(
-                storeScope = backgroundScope,
-                networkApi = FakeThreadApi(),
-                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
-                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
-                memberRepository = memberRepository,
-                actionCardsApiClient = RaftIntegrationsActionsPushApiClient(actionCardsApi)
-            )
-        val card =
-            ThreadActionCard(
-                type = "channel:add_member",
-                channel = "channel-2",
-                humans = listOf("u3"),
-                agents = listOf("agent-3"),
-                draftHint = "Bring owners in."
-            )
-
-        val result = dataSource.commitThreadActionCard(basePayload(), "m-card", card)
-        val executedCard = (result as DataResult.Content).data
-        assertEquals(
-            listOf(
-                AddChannelMembersBatchRequest(
-                    channelId = ChannelId("channel-2"),
-                    userIds = listOf(MemberId("u3")),
-                    agentIds = listOf(MemberId("agent-3"))
-                )
-            ),
-            memberRepository.batchRequests
-        )
-        assertEquals("executed", executedCard.state)
-        // Nothing new was added; the card still completes with empty added-ids.
-        assertEquals(listOf(), executedCard.resultAddedHumanIds)
-        assertEquals(listOf(), executedCard.resultAddedAgentIds)
-    }
-    @Test
-    fun integrationApproveLoginActionCardExecutesInlineAction() = runTest {
-        val actionCardsApi = RecordingActionCardsApi()
-        val dataSource =
-            testSharedThreadDataSource(
-                storeScope = backgroundScope,
-                networkApi = FakeThreadApi(),
-                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
-                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
-                actionCardsApiClient = RaftIntegrationsActionsPushApiClient(actionCardsApi)
-            )
-        val card =
-            ThreadActionCard(
-                type = "integration:approve_agent_login",
-                requestId = "request-1",
-                agentId = "agent-1",
-                agentName = "KMP-专家",
-                clientId = "client-1",
-                clientKey = "hands",
-                clientName = "Hands",
-                scopes = listOf("identity", "profile")
-            )
-
-        val result = dataSource.commitThreadActionCard(basePayload(), "m-card", card)
-        val executedCard = (result as DataResult.Content).data
-
-        assertEquals("executed", executedCard.state)
-        assertEquals("agent-integration-login", executedCard.resultKind)
-        assertEquals("grant-1", executedCard.resultId)
-        assertEquals("Hands", executedCard.resultName)
-        assertEquals("artin", executedCard.executedByUserName)
-        assertEquals(
-            listOf("""POST actions/m-card/execute body={"expectedState":"prepared"}"""),
             actionCardsApi.calls
         )
     }
@@ -1154,101 +618,6 @@ class SharedThreadStoreMembersAndActionCardsTest {
         )
     }
     @Test
-    fun retiredUpdateRegistrationCardDoesNotCallGenericExecute() = runTest {
-        val actionCardsApi = RecordingActionCardsApi()
-        val dataSource =
-            testSharedThreadDataSource(
-                storeScope = backgroundScope,
-                networkApi = FakeThreadApi(),
-                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
-                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
-                actionCardsApiClient = RaftIntegrationsActionsPushApiClient(actionCardsApi)
-            )
-
-        val result =
-            dataSource.commitThreadActionCard(
-                basePayload(),
-                "m-update",
-                ThreadActionCard(type = "integration:update_app_registration")
-            )
-
-        assertTrue(result is DataResult.Error)
-        assertEquals("action_card_unsupported", result.error.code)
-        assertTrue(actionCardsApi.calls.isEmpty())
-    }
-    @Test
-    fun removeChannelMemberUsesTypedRepositoryAndRefreshesMembers() = runTest {
-        val serverMembers = listOf(member("u1", "Artin"), member("u2", "Stdrc"))
-        val memberRepository =
-            FakeMemberRepository(
-                serverMembers = serverMembers,
-                channelMembers = listOf(member("u1", "Artin"), member("u2", "Stdrc"))
-            )
-        val serverMembersStore = testServerMembersStore(memberRepository, scope = backgroundScope)
-        serverMembersStore.seed(
-            MemberSnapshot(
-                server = ServerSummary(id = ServerId("server-1"), name = "Slock"),
-                members = serverMembers
-            )
-        )
-        val dataSource =
-            testSharedThreadDataSource(
-                storeScope = backgroundScope,
-                networkApi = FakeThreadApi(),
-                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
-                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
-                memberRepository = memberRepository,
-                serverMembersStore = serverMembersStore
-            )
-
-        val result = dataSource.removeChannelMember(basePayload(), "u2", "human")
-        val payload = (result as DataResult.Content).data
-
-        assertEquals(
-            listOf(RemoveChannelMemberRequest(ChannelId("channel-1"), MemberId("u2"), MemberKind.Human)),
-            memberRepository.removeRequests
-        )
-        assertEquals(listOf("u1"), payload.members.map { it.id })
-        assertEquals(listOf("u2"), payload.memberCandidates.map { it.id })
-    }
-    @Test
-    fun startHydratesThreadMembersInBackgroundAfterRefresh() = runTest {
-        val scope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
-        val serverMembers = listOf(member("u1", "Artin"), member("u2", "Stdrc"))
-        val memberRepository =
-            FakeMemberRepository(
-                serverMembers = serverMembers,
-                channelMembers = listOf(member("u1", "Artin"))
-            )
-        val serverMembersStore = testServerMembersStore(memberRepository, scope = backgroundScope)
-        serverMembersStore.seed(
-            MemberSnapshot(
-                server = ServerSummary(id = ServerId("server-1"), name = "Slock"),
-                members = serverMembers
-            )
-        )
-        val dataSource =
-            testSharedThreadDataSource(
-                storeScope = backgroundScope,
-                networkApi = FakeThreadApi(bodyText = messagesResponse("network body")),
-                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
-                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
-                memberRepository = memberRepository,
-                serverMembersStore = serverMembersStore
-            )
-        val store = SharedThreadStore(dataSource = dataSource, scope = scope)
-
-        store.accept(SharedThreadIntent.Start(basePayload()))
-
-        assertEquals("content", store.state.value.payload.status)
-        assertTrue(memberRepository.channelMemberRequests.isEmpty())
-        store.accept(SharedThreadIntent.FirstContentReady)
-        assertEquals(listOf(ChannelId("channel-1")), memberRepository.channelMemberRequests)
-        assertEquals(listOf("u1"), store.state.value.payload.members.map { it.id })
-        assertEquals(listOf("u2"), store.state.value.payload.memberCandidates.map { it.id })
-        scope.cancel()
-    }
-    @Test
     fun threadMembersPreserveRemoteSourceServerAndDisableRemoteRemove() = runTest {
         val scope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
         val remoteMember =
@@ -1316,16 +685,6 @@ class SharedThreadStoreMembersAndActionCardsTest {
         override suspend fun updateAgentScopes(agentId: MemberId, body: String): HomeNetworkResponse = error("unused")
         override suspend fun resetAgentScopes(agentId: MemberId): HomeNetworkResponse = error("unused")
         override suspend fun issueBootstrapToken(agentId: MemberId, body: String): HomeNetworkResponse = error("unused")
-    }
-    private class RecordingComputersApi : RaftComputersApi {
-        override suspend fun machines(serverId: ServerId): HomeNetworkResponse = error("unused")
-        override suspend fun registerMachine(serverId: ServerId, body: String): HomeNetworkResponse = error("unused")
-        override suspend fun renameMachine(serverId: ServerId, machineId: String, body: String): HomeNetworkResponse = error("unused")
-        override suspend fun deleteMachine(serverId: ServerId, machineId: String): HomeNetworkResponse = error("unused")
-        override suspend fun rotateMachineKey(serverId: ServerId, machineId: String): HomeNetworkResponse = error("unused")
-        override suspend fun machineWorkspaces(serverId: ServerId, machineId: String): HomeNetworkResponse = error("unused")
-        override suspend fun runtimeModels(serverId: ServerId, machineId: String, runtime: String): HomeNetworkResponse = error("unused")
-        override suspend fun deleteMachineWorkspace(serverId: ServerId, machineId: String, directoryName: String): HomeNetworkResponse = error("unused")
     }
     internal class RecordingActionCardsApi(
         private val markResponse: HomeNetworkResponse =

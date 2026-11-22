@@ -4,15 +4,19 @@ import build.raft.app.resources.*
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import build.raft.app.components.RaftSlotIcon
 import build.raft.app.network.raftValidTraceIdOrNull
+import build.raft.designsystem.components.LocalRaftCopyHandler
+import build.raft.designsystem.components.LocalRaftToastHostState
 import build.raft.designsystem.components.RaftButtonVariant
 import build.raft.designsystem.components.RaftIconButton
 import build.raft.designsystem.components.RaftIconButtonSize
+import build.raft.designsystem.components.RaftToastIntent
 import build.raft.designsystem.components.rememberRaftCopyAction
 import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.RaftTheme
@@ -79,3 +83,40 @@ internal fun RaftTraceIdNote(traceId: String?, modifier: Modifier = Modifier) {
 }
 
 internal const val RaftTraceIdNoteTestTag: String = "trace-id-note"
+
+/**
+ * Posts an error toast through [LocalRaftToastHostState] carrying [traceId] with a Copy action
+ * when a valid `X-Trace-Id` is present, matching [build.raft.app.base.BridgeModule.errorToast]
+ * for Compose surfaces that post directly to [LocalRaftToastHostState].
+ */
+@Composable
+internal fun rememberRaftErrorToast(): (title: String, traceId: String?, intent: RaftToastIntent) -> Unit {
+    val toastHost = LocalRaftToastHostState.current
+    val hasCopyHandler = LocalRaftCopyHandler.current != null
+    val copy = rememberRaftCopyAction()
+    val traceIdFormat = stringResource(Res.string.error_trace_id_value, "%s")
+    val copyLabel = stringResource(Res.string.common_copy)
+    val copiedToast = stringResource(Res.string.error_trace_id_copied)
+    return remember(toastHost, hasCopyHandler, copy, traceIdFormat, copyLabel, copiedToast) {
+        { title, rawTraceId, intent ->
+            val id = raftValidTraceIdOrNull(rawTraceId)
+            toastHost?.show(
+                title = title,
+                description = id?.let { traceIdFormat.replace("%s", raftShortTraceId(it)) },
+                intent = intent,
+                actionLabel = if (id != null) copyLabel else null,
+                onAction =
+                    id?.let { validId ->
+                        {
+                            copy(validId)
+                            // LocalRaftCopyHandler (RaftProvideDesignSystemCopy) already posts a brief
+                            // "Copied" toast; only show a fallback confirmation when no host handler is provided.
+                            if (!hasCopyHandler) {
+                                toastHost.show(copiedToast, durationMillis = 1_500L)
+                            }
+                        }
+                    },
+            )
+        }
+    }
+}

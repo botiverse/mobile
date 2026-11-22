@@ -54,9 +54,10 @@ import build.raft.designsystem.components.appendRaftTextLink
 import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.RaftTheme
 import androidx.compose.ui.text.buildAnnotatedString
-import kotlin.time.Instant
-import kotlinx.datetime.TimeZone
-import kotlinx.datetime.toLocalDateTime
+import build.raft.app.data.ProcessRaftDatetimeFoundationOwner
+import build.raft.app.data.RaftTimeFormatRuntime
+import build.raft.app.model.RaftTimeContext
+import build.raft.app.model.formatRaftLocalClock
 
 internal const val SECOND_FACTOR_STEP_UP_DIALOG_TAG = "second-factor-step-up-dialog"
 
@@ -83,7 +84,7 @@ internal fun SecondFactorStepUpDialog(
     onIntent: (SecondFactorStepUpIntent) -> Unit,
     /** What the step-up is for (web SecondFactorStepUpHost `reason`); changing how you sign in by default. */
     description: String = stringResource(Res.string.settings_step_up_description),
-    formatClock: (Long) -> String = ::secondFactorStepUpLocalClock,
+    formatClock: (Long) -> String = rememberRaftLocalClockFormatter(),
     passkeyAssertion: RaftNativePasskeyAssertion = rememberRaftNativePasskeyAssertion(),
     /** Opens the action's web page: a real browser, where the passkey works ([rememberRaftPasskeyWebPageOpener]). */
     openWebPage: (String) -> Unit = rememberRaftPasskeyWebPageOpener(),
@@ -642,26 +643,29 @@ private fun SecondFactorStepUpTracedBanner(description: String, traceId: String?
  * A settings store's open step-up (`SharedSettingsState.secondFactorStepUp`, any action the store
  * runs through its [build.raft.app.data.SecondFactorStepUpCoordinator]) on a page that is not
  * Account: the dialog in the design-system theme with the generic reason (web
- * SecondFactorStepUpHost `other`), its intents back to the same store. Compose it after the sheet
- * or dialog whose action asked, so it opens over it.
+ * SecondFactorStepUpHost `other`) unless the caller names what asked ([description]), its intents
+ * back to the same store. Compose it after the sheet or dialog whose action asked, so it opens
+ * over it.
  */
 @Composable
 internal fun SettingsSecondFactorStepUpHost(
     state: SecondFactorStepUpDialogState?,
     dispatch: (SharedSettingsIntent) -> Unit,
+    description: String? = null,
 ) {
     val dialog = state ?: return
     RaftDesignSystemTheme {
         SecondFactorStepUpDialog(
             state = dialog,
             onIntent = { intent -> dispatch(SharedSettingsIntent.SecondFactorStepUp(intent)) },
-            description = stringResource(Res.string.settings_step_up_generic_description),
+            description = description ?: stringResource(Res.string.settings_step_up_generic_description),
         )
     }
 }
 
-/** `HH:mm` in this device's time zone (web `formatClock` of `lockedUntil`). */
-internal fun secondFactorStepUpLocalClock(epochMillis: Long): String {
-    val local = Instant.fromEpochMilliseconds(epochMillis).toLocalDateTime(TimeZone.currentSystemDefault())
-    return "${local.hour.toString().padStart(2, '0')}:${local.minute.toString().padStart(2, '0')}"
+/** Local clock (`HH:mm` or `hh:mm AM/PM`) for `lockedUntil` (web `formatClock`). */
+internal fun secondFactorStepUpLocalClock(epochMillis: Long, timeContext: RaftTimeContext? = null): String {
+    if (timeContext != null) return timeContext.formatClock(epochMillis)
+    val offset = ProcessRaftDatetimeFoundationOwner.localOffsetMinutesAt(epochMillis, 0)
+    return formatRaftLocalClock(epochMillis, offset, RaftTimeFormatRuntime.current)
 }

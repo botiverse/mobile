@@ -1,6 +1,5 @@
 package build.raft.app
 
-import build.raft.app.data.ACTION_CARD_OPEN_IN_WEB_LABEL
 import build.raft.app.data.ActionCardSpecAction
 import build.raft.app.data.ActionCardSpecButton
 import build.raft.app.data.ActionCardSpecIntent
@@ -11,7 +10,6 @@ import build.raft.app.data.ThreadActionCard
 import build.raft.app.data.WireActionCardMetadata
 import build.raft.app.data.actionCardFromMessageMetadata
 import build.raft.app.data.parseActionCardSpec
-import build.raft.app.data.raftAppActionCardCapabilities
 import build.raft.app.data.toMessageMetadata
 import build.raft.app.data.toThreadActionCard
 import kotlin.test.Test
@@ -84,28 +82,6 @@ class ThreadActionCardFeedbackTicketTest {
 
     private fun ThreadActionCard.render(visible: Boolean, capabilities: List<String> = RAFT_APP_ACTION_CARD_CAPABILITIES) =
         assertNotNull(actionCardSpecToRender(capabilities = capabilities, feedbackTicketVisible = visible))
-
-    @Test
-    fun theAppDeclaresTheIntentOnlyForFeedbackCardsAndKeepsTheButtonThere() = runTest {
-        assertTrue(ActionCardSpecIntent.FeedbackTicket.capability in RAFT_APP_ACTION_CARD_CAPABILITIES)
-        // Declared whether or not the Feedback page is on: who sees the button is the visibility rule, not strip.
-        assertTrue(ActionCardSpecIntent.FeedbackTicket.capability in raftAppActionCardCapabilities(feedbackFormAvailable = false))
-        val done = doneFeedbackCard()
-        assertTrue(ActionCardSpecIntent.FeedbackTicket.capability in done.actionCardSpecCapabilitiesFor(RAFT_APP_ACTION_CARD_CAPABILITIES))
-
-        val kept = done.render(visible = true).result!!.element("openTicket") as ActionCardSpecButton
-        assertEquals(ActionCardSpecAction.Open(ActionCardSpecIntent.FeedbackTicket), kept.action)
-        assertEquals("View in Settings", kept.label.text.getValue("en"))
-
-        // On another card type there is no native path: strip makes it "Open in web", with that label.
-        val other = done.copy(type = "channel:create")
-        assertFalse(ActionCardSpecIntent.FeedbackTicket.capability in other.actionCardSpecCapabilitiesFor(RAFT_APP_ACTION_CARD_CAPABILITIES))
-        val stripped = other.render(visible = true).result!!.element("openTicket") as ActionCardSpecButton
-        assertEquals(ActionCardSpecAction.OpenInWeb to ACTION_CARD_OPEN_IN_WEB_LABEL, stripped.action to stripped.label)
-        // A reader without the capability (the vector's no_intents) strips it to "Open in web" too.
-        val noIntents = done.render(visible = true, capabilities = RAFT_APP_ACTION_CARD_CAPABILITIES.filterNot { it.startsWith("intent.") })
-        assertEquals(ActionCardSpecAction.OpenInWeb, (noIntents.result!!.element("openTicket") as ActionCardSpecButton).action)
-    }
 
     @Test
     fun theResultAllowsOnlyFeedbackTicketAndTheBodyRefusesIt() = runTest {

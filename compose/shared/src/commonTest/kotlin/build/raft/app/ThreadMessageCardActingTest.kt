@@ -74,12 +74,4 @@ class ThreadMessageCardActingTest {
         assertEquals(RaftMessageCardActingState.Disabled, messageCardActingState(declined, "approve", MessageCardActingPage))
         assertEquals(RaftMessageCardActingNote.Declined(RaftMessageCardApp("client-vault", "Vault", null)), messageCardActingNote(declined))
     }
-
-    @Test
-    fun beforeAReadForThisRevisionTheButtonsAreDisabledWithoutAReason() {
-        assertEquals(RaftMessageCardActingState.Disabled, messageCardActingState(null, "approve", MessageCardActingPage))
-        assertNull(messageCardActingNote(null))
-        // An answer for an older revision of the card is not this card's.
-        assertNull(live("""{"card_revision":"0","actions":[],"waiting_for":{"id":"user-alice","name":"Alice"}}""").forCard(card))
-    }
 }

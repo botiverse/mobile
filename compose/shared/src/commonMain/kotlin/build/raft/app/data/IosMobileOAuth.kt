@@ -40,6 +40,7 @@ data class RaftIosMobileOAuthStartResult(
     val message: String? = null,
     /** With [errorCode] `second_factor_step_up_required`: the server's `methods`, comma-joined. */
     val stepUpMethods: String? = null,
+    val traceId: String? = null,
 )
 
 /** Swift-facing terminal result. */
@@ -48,6 +49,7 @@ data class RaftIosMobileOAuthCompletionResult(
     val message: String? = null,
     val provider: String? = null,
     val generation: String? = null,
+    val traceId: String? = null,
 )
 
 internal data class IosMobileOAuthPendingRequest(
@@ -146,13 +148,17 @@ internal class IosMobileOAuthPendingStore(
 
 internal sealed interface IosMobileOAuthStartOutcome {
     data class Success(val response: AuthMobileOAuthStartResponse) : IosMobileOAuthStartOutcome
-    data class Failure(val message: StringDesc, val stepUpMethods: String? = null) : IosMobileOAuthStartOutcome
+    data class Failure(
+        val message: StringDesc,
+        val stepUpMethods: String? = null,
+        val traceId: String? = null,
+    ) : IosMobileOAuthStartOutcome
     data object Unauthenticated : IosMobileOAuthStartOutcome
 }
 
 internal sealed interface IosNativeAppleStartOutcome {
     data class Success(val response: AuthNativeAppleMobileOAuthStartResponse) : IosNativeAppleStartOutcome
-    data class Failure(val message: StringDesc) : IosNativeAppleStartOutcome
+    data class Failure(val message: StringDesc, val traceId: String? = null) : IosNativeAppleStartOutcome
     data object Unauthenticated : IosNativeAppleStartOutcome
 }
 
@@ -160,13 +166,13 @@ internal sealed interface IosNativeAppleAuthorizationOutcome {
     data class Success(
         val response: AuthNativeAppleMobileOAuthAuthorizationResponse,
     ) : IosNativeAppleAuthorizationOutcome
-    data class Failure(val message: StringDesc) : IosNativeAppleAuthorizationOutcome
+    data class Failure(val message: StringDesc, val traceId: String? = null) : IosNativeAppleAuthorizationOutcome
     data object Unauthenticated : IosNativeAppleAuthorizationOutcome
 }
 
 internal sealed interface IosMobileOAuthLinkOutcome {
     data object Success : IosMobileOAuthLinkOutcome
-    data class Failure(val message: StringDesc) : IosMobileOAuthLinkOutcome
+    data class Failure(val message: StringDesc, val traceId: String? = null) : IosMobileOAuthLinkOutcome
     data object Unauthenticated : IosMobileOAuthLinkOutcome
 }
 
@@ -259,7 +265,7 @@ private class SharedIosMobileOAuthRuntime(
                 )
         ) {
             is SharedAuthResult.Success -> IosMobileOAuthLinkOutcome.Success
-            is SharedAuthResult.Failure -> IosMobileOAuthLinkOutcome.Failure(result.userMessage)
+            is SharedAuthResult.Failure -> IosMobileOAuthLinkOutcome.Failure(result.userMessage, result.traceId)
             SharedAuthResult.Unauthenticated -> IosMobileOAuthLinkOutcome.Unauthenticated
         }
 }
@@ -268,21 +274,21 @@ private fun SharedAuthResult<AuthMobileOAuthStartResponse>.toIosStartOutcome(): 
     when (this) {
         is SharedAuthResult.Success -> IosMobileOAuthStartOutcome.Success(data)
         is SharedAuthResult.Failure ->
-            IosMobileOAuthStartOutcome.Failure(userMessage, secondFactorStepUp?.methods?.joinToString(","))
+            IosMobileOAuthStartOutcome.Failure(userMessage, secondFactorStepUp?.methods?.joinToString(","), traceId)
         SharedAuthResult.Unauthenticated -> IosMobileOAuthStartOutcome.Unauthenticated
     }
 
 private fun SharedAuthResult<AuthNativeAppleMobileOAuthStartResponse>.toIosNativeAppleStartOutcome(): IosNativeAppleStartOutcome =
     when (this) {
         is SharedAuthResult.Success -> IosNativeAppleStartOutcome.Success(data)
-        is SharedAuthResult.Failure -> IosNativeAppleStartOutcome.Failure(userMessage)
+        is SharedAuthResult.Failure -> IosNativeAppleStartOutcome.Failure(userMessage, traceId)
         SharedAuthResult.Unauthenticated -> IosNativeAppleStartOutcome.Unauthenticated
     }
 
 private fun SharedAuthResult<AuthNativeAppleMobileOAuthAuthorizationResponse>.toIosNativeAppleAuthorizationOutcome(): IosNativeAppleAuthorizationOutcome =
     when (this) {
         is SharedAuthResult.Success -> IosNativeAppleAuthorizationOutcome.Success(data)
-        is SharedAuthResult.Failure -> IosNativeAppleAuthorizationOutcome.Failure(userMessage)
+        is SharedAuthResult.Failure -> IosNativeAppleAuthorizationOutcome.Failure(userMessage, traceId)
         SharedAuthResult.Unauthenticated -> IosNativeAppleAuthorizationOutcome.Unauthenticated
     }
 
@@ -361,13 +367,18 @@ internal class IosMobileOAuthCoordinator(
 ) {
     private val mutex = Mutex()
 
-    private fun startError(code: String, message: StringDesc): RaftIosMobileOAuthStartResult =
-        iosMobileOAuthStartError(code, resolveMessage(message))
+    private fun startError(
+        code: String,
+        message: StringDesc,
+        traceId: String? = null,
+    ): RaftIosMobileOAuthStartResult =
+        iosMobileOAuthStartError(code, resolveMessage(message), traceId)
 
     private fun errorCompletion(
         pending: IosMobileOAuthPendingRequest,
         message: StringDesc,
-    ): RaftIosMobileOAuthCompletionResult = iosMobileOAuthErrorCompletion(pending, resolveMessage(message))
+        traceId: String? = null,
+    ): RaftIosMobileOAuthCompletionResult = iosMobileOAuthErrorCompletion(pending, resolveMessage(message), traceId)
 
     suspend fun startBrowser(
         provider: String,
@@ -461,11 +472,13 @@ internal class IosMobileOAuthCoordinator(
                         startError(
                             code = SECOND_FACTOR_STEP_UP_REQUIRED_CODE,
                             message = outcome.message,
+                            traceId = outcome.traceId,
                         ).copy(stepUpMethods = outcome.stepUpMethods)
                     } else {
                         startError(
                             code = "ios_mobile_oauth_start_failed",
                             message = outcome.message,
+                            traceId = outcome.traceId,
                         )
                     }
                 IosMobileOAuthStartOutcome.Unauthenticated ->
@@ -561,6 +574,7 @@ internal class IosMobileOAuthCoordinator(
                     startError(
                         code = "ios_native_apple_start_failed",
                         message = iosMobileOAuthActionFailedMessage("apple", normalizedMode),
+                        traceId = outcome.traceId,
                     )
                 IosNativeAppleStartOutcome.Unauthenticated ->
                     startError(
@@ -643,6 +657,7 @@ internal class IosMobileOAuthCoordinator(
                             errorCompletion(
                                 pending,
                                 iosMobileOAuthActionFailedMessage(pending.provider, pending.mode),
+                                traceId = outcome.traceId,
                             )
                         IosNativeAppleAuthorizationOutcome.Unauthenticated ->
                             errorCompletion(
@@ -748,7 +763,7 @@ internal class IosMobileOAuthCoordinator(
                     message = resolveMessage(Res.string.auth_notice_mobile_oauth_linked.format(pending.provider.iosMobileOAuthProviderName())),
                     provider = pending.provider,
                 )
-            is IosMobileOAuthLinkOutcome.Failure -> errorCompletion(pending, outcome.message)
+            is IosMobileOAuthLinkOutcome.Failure -> errorCompletion(pending, outcome.message, traceId = outcome.traceId)
             IosMobileOAuthLinkOutcome.Unauthenticated ->
                 errorCompletion(
                     pending,
@@ -773,12 +788,17 @@ private fun isApprovedMobileOAuthReturnUri(value: String): Boolean =
             IOS_MOBILE_OAUTH_DEBUG_RETURN_URI,
         )
 
-private fun iosMobileOAuthStartError(code: String, message: String): RaftIosMobileOAuthStartResult =
+private fun iosMobileOAuthStartError(
+    code: String,
+    message: String,
+    traceId: String? = null,
+): RaftIosMobileOAuthStartResult =
     RaftIosMobileOAuthStartResult(
         status = "error",
         code = 0,
         errorCode = code,
         message = message,
+        traceId = traceId,
     )
 
 private fun ignoredCompletion(): RaftIosMobileOAuthCompletionResult =
@@ -787,11 +807,13 @@ private fun ignoredCompletion(): RaftIosMobileOAuthCompletionResult =
 private fun iosMobileOAuthErrorCompletion(
     pending: IosMobileOAuthPendingRequest,
     message: String,
+    traceId: String? = null,
 ): RaftIosMobileOAuthCompletionResult =
     RaftIosMobileOAuthCompletionResult(
         status = if (pending.mode == IOS_MOBILE_OAUTH_LINK_MODE) "settings_account" else "login_error",
         message = message,
         provider = pending.provider,
+        traceId = traceId,
     )
 
 private fun iosMobileOAuthActionFailedMessage(provider: String, mode: String): StringDesc =

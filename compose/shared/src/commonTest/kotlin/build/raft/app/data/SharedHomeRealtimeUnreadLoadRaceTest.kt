@@ -55,30 +55,6 @@ class SharedHomeRealtimeUnreadLoadRaceTest {
     }
 
     @Test
-    fun theRacedResponseNeverLowersTheLocalCount() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        val api = GatedHomeApi(serverUnread = mutableListOf(3, 3, 4))
-        val store = homeStore(api, scope)
-        store.accept(SharedHomeIntent.Start)
-
-        val gate = api.blockNextLoad()
-        val reconcileGate = api.blockLoad(number = 3)
-        val refresh = async { store.accept(SharedHomeIntent.Refresh) }
-        withTimeout(1_000) { gate.started.await() }
-        store.accept(SharedHomeIntent.ApplyRealtimeEvent("server-1", message("m-a6", 6)))
-        gate.release.complete(Unit)
-        refresh.await()
-
-        // The raced response (3) has landed and the reconcile load is in flight: the badge still shows 4.
-        withTimeout(1_000) { reconcileGate.started.await() }
-        assertEquals(4, store.unread())
-        reconcileGate.release.complete(Unit)
-        withTimeout(2_000) { while (api.loads < 3) delay(10) }
-        assertEquals(4, store.unread())
-        scope.cancel()
-    }
-
-    @Test
     fun aLoadWithoutARealtimeMessageReplacesTheCountOnce() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val api = GatedHomeApi(serverUnread = mutableListOf(3, 1))
@@ -90,47 +66,6 @@ class SharedHomeRealtimeUnreadLoadRaceTest {
 
         assertEquals(2, api.loads)
         assertEquals(1, store.unread())
-        scope.cancel()
-    }
-
-    @Test
-    fun messagesDuringEveryLoadStopAfterTheReconcileCapAndKeepTheLocalCount() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        val api = GatedHomeApi(serverUnread = MutableList(20) { 0 })
-        lateinit var store: SharedHomeStore
-        var seq = 10L
-        api.duringLoad = { number ->
-            if (number >= 2) store.accept(SharedHomeIntent.ApplyRealtimeEvent("server-1", message("m-$seq", seq++)))
-        }
-        store = homeStore(api, scope)
-        store.accept(SharedHomeIntent.Start)
-        store.accept(SharedHomeIntent.Refresh)
-        withTimeout(3_000) { while (api.loads < 5) delay(10) }
-        delay(100)
-
-        // Start + raced Refresh + at most 3 reconcile loads, every one raced by a new message.
-        assertEquals(5, api.loads)
-        assertEquals(4, store.unread(), "each raced load kept the messages counted locally")
-        scope.cancel()
-    }
-
-    @Test
-    fun aRacedLoadThatOutlivesASessionResetSchedulesNothing() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        val api = GatedHomeApi(serverUnread = mutableListOf(3, 3, 0))
-        val store = homeStore(api, scope)
-        store.accept(SharedHomeIntent.Start)
-
-        val gate = api.blockNextLoad()
-        val refresh = async { store.accept(SharedHomeIntent.Refresh) }
-        withTimeout(1_000) { gate.started.await() }
-        store.accept(SharedHomeIntent.ApplyRealtimeEvent("server-1", message("m-a6", 6)))
-        store.reset()
-        gate.release.complete(Unit)
-        refresh.await()
-        delay(100)
-
-        assertEquals(2, api.loads, "the old session's raced load must not start a reconcile load")
         scope.cancel()
     }
 

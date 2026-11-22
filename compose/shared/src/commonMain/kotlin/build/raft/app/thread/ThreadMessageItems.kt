@@ -119,6 +119,12 @@ internal data class RaftThreadMessageItem(
     val forwardBundle: ForwardMessageBundle? = null,
     /** Resolved `mentions[]` of the message (name -> type/id); web `buildStructuredMentionMap`. */
     val mentions: List<build.raft.app.model.MessageMention> = emptyList(),
+    /**
+     * Quote replies the server verified for this viewer, by quote block index
+     * ([build.raft.app.model.Message.resolvedQuotes]): a card for each ([ThreadQuoteReplyBody]). Null
+     * for a copy that never carries them (realtime, the sync log): the row reads them on its own.
+     */
+    val resolvedQuotes: Map<String, build.raft.app.model.ResolvedInlineQuote>? = null,
     val deliveryState: String = ThreadMessageDeliverySent,
     val pendingSendContext: RaftThreadPendingSendContext? = null,
     val pendingSendErrorCode: String? = null,
@@ -310,7 +316,8 @@ internal data class ThreadAttachmentCommentsDialogState(
     /** The structural anchor the next comment is sent with (a video timestamp); its chip is [pendingAnchorLabel]. */
     val pendingAnchor: build.raft.app.data.ThreadAttachmentCommentAnchor? = null,
     val errorCode: String? = null,
-    val errorServerMessage: String? = null
+    val errorServerMessage: String? = null,
+    val errorTraceId: String? = null
 )
 
 internal fun ThreadAttachmentCommentsDialogState.withAttachmentCommentEditorValue(
@@ -345,15 +352,17 @@ internal fun ThreadAttachmentCommentsDialogState.withQuotedAttachmentComment(
 
 internal fun ThreadAttachmentCommentsDialogState.clearAttachmentCommentsError():
     ThreadAttachmentCommentsDialogState =
-    copy(errorCode = null, errorServerMessage = null)
+    copy(errorCode = null, errorServerMessage = null, errorTraceId = null)
 
 internal fun ThreadAttachmentCommentsDialogState.withAttachmentCommentsError(
     errorCode: String?,
-    serverMessage: String?
+    serverMessage: String?,
+    traceId: String? = null
 ): ThreadAttachmentCommentsDialogState =
     copy(
         errorCode = errorCode?.trim()?.takeIf { it.isNotBlank() },
-        errorServerMessage = serverMessage?.takeIf { it.isNotBlank() }
+        errorServerMessage = serverMessage?.takeIf { it.isNotBlank() },
+        errorTraceId = traceId?.trim()?.takeIf { it.isNotBlank() }
     )
 
 internal fun attachmentCommentsVisibleErrorMessage(
@@ -495,7 +504,14 @@ internal data class RaftThreadMemberItem(
      * server they take part through, in roster order. Their row reads "Also in Raft, Acme Corp"
      * after the name in quiet text (web #14731). Empty for anyone else.
      */
-    val alsoInServerLabels: List<String> = emptyList()
+    val alsoInServerLabels: List<String> = emptyList(),
+    /**
+     * A computed joint roster row's `inViewerServer` (web `ChannelHuman` / `ChannelAgent`): whether
+     * it is one of the viewed server's members (any role, guests too; an agent whose one server is
+     * the viewed one). A joint channel's members page groups by it ([threadMembersRosterSections],
+     * web `jointMemberGroups`). Null on every other roster and from older servers.
+     */
+    val inViewerServer: Boolean? = null
 )
 
 @Serializable
@@ -517,6 +533,7 @@ internal data class ThreadTimelineRenderConfig(
     val backgroundRefreshing: Boolean,
     val errorCode: String?,
     val errorServerMessage: String? = null,
+    val errorTraceId: String? = null,
     val originPreview: String?,
     val originErrorCode: String?,
     val timeContext: RaftTimeContext,
@@ -528,6 +545,7 @@ internal fun RaftThreadScreenPayload.toThreadTimelineRenderConfig(): ThreadTimel
         backgroundRefreshing = backgroundRefreshing,
         errorCode = errorCode,
         errorServerMessage = errorServerMessage,
+        errorTraceId = errorTraceId,
         originPreview = originPreview,
         originErrorCode = originErrorCode,
         timeContext = toRaftTimeContext(),
@@ -568,8 +586,17 @@ internal fun threadRowTimeAccessibilityLabel(
     timestampLabel: String,
     fallback: String,
     timeContext: RaftTimeContext?,
-): String? =
-    (raftAbsoluteTimestampLabel(timestampLabel, timeContext) ?: fallback.takeIf { it.isNotBlank() })
+): String? {
+    val formatted =
+        timeContext
+            ?.takeIf {
+                it.resolvedTodayEpochDay() != null &&
+                    parseRaftTimestampEpochMillisOrNull(timestampLabel, it.localOffsetMinutes) != null
+            }
+            ?.formatTimestampLabel(timestampLabel)
+            ?.takeIf { it.isNotBlank() }
+    return formatted ?: fallback.takeIf { it.isNotBlank() }
+}
 
 internal fun formatThreadCompactTimestampLabel(
     value: String,

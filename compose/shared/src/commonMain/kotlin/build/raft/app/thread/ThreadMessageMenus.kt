@@ -562,6 +562,10 @@ internal fun ThreadMessageActionMenu(
     onShare: (() -> Unit)? = null
 ) {
     val reactionAtlasImage = LocalThreadReactionAtlasImage.current
+    // web MessageItem "Quote" (quote_reply_v0): the message's opening as a quote reply, into this
+    // page's composer (the append Select Text > Quote makes); no composer on the page, no Quote.
+    val quoteIntoComposer = LocalThreadInPlaceTextSelectionHost.current?.quoteIntoComposer
+    val menuQuote = if (quoteIntoComposer != null) threadMessageMenuQuote(message) else null
     val actions =
         remember(
             message,
@@ -600,6 +604,9 @@ internal fun ThreadMessageActionMenu(
             onCopySelection,
             onDownloadVideo,
             link != null,
+            menuQuote,
+            quoteIntoComposer,
+            onDismiss,
             onShare
         ) {
             threadMessageMenuActions(
@@ -639,6 +646,13 @@ internal fun ThreadMessageActionMenu(
                 onMarkThreadUnread = onMarkThreadUnread,
                 onMarkConversationUnread = onMarkConversationUnread,
                 onDownloadVideo = onDownloadVideo,
+                showQuoteAction = menuQuote != null && quoteIntoComposer != null,
+                onQuote = {
+                    if (menuQuote != null && quoteIntoComposer != null) {
+                        onDismiss()
+                        quoteIntoComposer(menuQuote)
+                    }
+                },
                 onShare = onShare
             )
         }
@@ -948,7 +962,10 @@ internal data class ThreadQuickReactionBarRequest(
 internal class ThreadMessageHoverToolbarActions(
     /** Add Reaction: the quick reactions under the button (web `canReact && !isSystem`). */
     val reaction: Boolean,
-    /** Reply in Thread: not on the rows of a thread (web `hideThreadActions`). */
+    /**
+     * Reply in Thread: not on the rows of a thread (web `hideThreadActions`). Kept on a message that
+     * shows its thread, which the menu drops it from (botiverse/slock #15524).
+     */
     val reply: Boolean,
     /** Forward: where the message can be forwarded (web `canForwardThisMessage`). */
     val forward: Boolean,

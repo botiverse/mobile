@@ -3,6 +3,10 @@ package build.raft.app
 import androidx.compose.foundation.layout.WindowInsetsSides
 import build.raft.designsystem.components.raftConsumeSafeAreaHorizontal
 import build.raft.designsystem.components.raftSafeAreaHorizontalPadding
+import build.raft.designsystem.focus.LocalRaftFocusInteractionObserverInstalled
+import build.raft.designsystem.focus.RaftFocusRegion
+import build.raft.designsystem.focus.RaftFocusRegionHost
+import build.raft.designsystem.focus.raftObserveFocusInteractions
 import build.raft.app.resources.*
 import build.raft.app.compat.ui.nativeEvent
 import androidx.compose.runtime.Composable
@@ -33,6 +37,7 @@ import androidx.compose.material3.Text
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.positionChangedIgnoreConsumed
@@ -143,6 +148,8 @@ internal fun RaftAppShellSurface(
     leadingNavigation: (@Composable () -> Unit)? = null,
     /** The wide layout's top bar, above [leadingNavigation] and the content (web AppTopBar). */
     topNavigation: (@Composable () -> Unit)? = null,
+    /** Optional signed-in notice banner (under [topNavigation] on wide layouts; via body top banner on compact). */
+    topNoticeBanner: (@Composable () -> Unit)? = null,
     /** Drawn over the whole shell, top bar and rail included (the top bar's server panel). */
     shellOverlay: (@Composable () -> Unit)? = null,
     /** D1a: draws the bar's current-server tab (see [RaftBottomTabBar]). */
@@ -155,11 +162,13 @@ internal fun RaftAppShellSurface(
     val imeVisible = raftImeVisible()
     val bottomTabsShown = raftAppShellBottomTabsShown(showBottomTabs, imeVisible)
     val effectiveModalHostState = modalHostState ?: ownedModalHostState
+    val effectiveTopNoticeBanner: (@Composable () -> Unit)? =
+        if (networkStatus == RaftAppShellNetworkStatus.Offline) null else topNoticeBanner
     val bodyTopBanner: (@Composable () -> Unit)? =
-        if (networkStatus == RaftAppShellNetworkStatus.Offline) {
-            { RaftAppShellNetworkBanner() }
-        } else {
-            null
+        when {
+            networkStatus == RaftAppShellNetworkStatus.Offline -> ({ RaftAppShellNetworkBanner() })
+            topNavigation == null -> effectiveTopNoticeBanner
+            else -> null
         }
     RaftInputFocusDismissHost { focusDismissModifier ->
         val drawerOpenGesture = LocalRaftHomeDrawerOpenGesture.current
@@ -175,10 +184,12 @@ internal fun RaftAppShellSurface(
         Box(
             modifier =
                 modifier
+                    .raftObserveFocusInteractions()
                     .then(focusDismissModifier)
                     .fillMaxSize()
                     .background(RaftColor.SurfaceWhite)
         ) {
+            CompositionLocalProvider(LocalRaftFocusInteractionObserverInstalled provides true) {
             RaftUnifiedDialogHostProvider(effectiveModalHostState) {
                 Column(
                     modifier =
@@ -195,10 +206,28 @@ internal fun RaftAppShellSurface(
                                 }
                             )
                 ) {
-                    topNavigation?.invoke()
+                    if (topNavigation != null) {
+                        RaftFocusRegionHost(region = RaftFocusRegion.TopBar, modifier = Modifier.fillMaxWidth()) {
+                            topNavigation()
+                        }
+                    }
+                    if (topNavigation != null && effectiveTopNoticeBanner != null) {
+                        effectiveTopNoticeBanner()
+                        Box(
+                            modifier =
+                                Modifier
+                                    .fillMaxWidth()
+                                    .height(RaftAppStroke.Thin)
+                                    .background(RaftColor.BorderSeam.compositeOver(RaftColor.Canvas))
+                        )
+                    }
                     Box(modifier = Modifier.fillMaxWidth().weight(1f)) {
                         Row(modifier = Modifier.fillMaxSize()) {
-                            leadingNavigation?.invoke()
+                            if (leadingNavigation != null) {
+                                RaftFocusRegionHost(region = RaftFocusRegion.Navigation, modifier = Modifier.fillMaxHeight()) {
+                                    leadingNavigation()
+                                }
+                            }
                             Box(
                                 modifier =
                                     Modifier
@@ -247,13 +276,15 @@ internal fun RaftAppShellSurface(
                         enter = RaftAppShellBottomBarReturn,
                         exit = RaftAppShellBottomBarLeave
                     ) {
-                        RaftAppBottomTabBarHost(
-                            items = bottomTabs,
-                            onSelect = onBottomTabSelected,
-                            modifier = Modifier.fillMaxWidth(),
-                            bottomSafeArea = shellScope.bottomSafeArea,
-                            serverTab = bottomServerTab,
-                        )
+                        RaftFocusRegionHost(region = RaftFocusRegion.Navigation, modifier = Modifier.fillMaxWidth()) {
+                            RaftAppBottomTabBarHost(
+                                items = bottomTabs,
+                                onSelect = onBottomTabSelected,
+                                modifier = Modifier.fillMaxWidth(),
+                                bottomSafeArea = shellScope.bottomSafeArea,
+                                serverTab = bottomServerTab,
+                            )
+                        }
                     }
                 }
                 if (interactionLocked) {
@@ -272,6 +303,7 @@ internal fun RaftAppShellSurface(
                     modifier = Modifier.fillMaxSize(),
                     bottomInset = shellScope.globalDialogBottomInset(bottomTabsShown)
                 )
+            }
             }
         }
     }

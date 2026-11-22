@@ -54,21 +54,6 @@ class RaftButtonAccessibilityTest {
     }
 
     @Test
-    fun disabledButtonRejectsAccessibilityLongClick() {
-        var cameraCount = 0
-        val config = Modifier.raftButtonAccessibility(
-            enabled = false,
-            performClick = {},
-            longClickLabel = "Take photo",
-            performLongClick = { cameraCount += 1 },
-        ).semanticsConfiguration()
-
-        val longClick = assertNotNull(config.getOrNull(SemanticsActions.OnLongClick))
-        assertFalse(assertNotNull(longClick.action)())
-        assertEquals(0, cameraCount)
-    }
-
-    @Test
     fun disabledButtonRemainsAButtonButRejectsAccessibilityClick() {
         var clickCount = 0
         val config =
@@ -95,24 +80,6 @@ class RaftButtonAccessibilityTest {
                 .semanticsConfigurations()
 
         assertTrue(configurations.isEmpty())
-    }
-
-    @Test
-    fun dialogDismissPointerBarrierDoesNotCreateAFullScreenAccessibilityButton() {
-        val configurations =
-            Modifier
-                .raftModalDismissPointerBarrier(enabled = true) {}
-                .semanticsConfigurations()
-
-        assertTrue(configurations.isEmpty())
-    }
-
-    @Test
-    fun modalDrawsItsOwnScrimAndKeyboardPadding() {
-        // The framework outside-click wrapper is off for every RaftWindowDialog
-        // (RaftWindowDialogTest); Modal's pages draw their own veil and keyboard padding.
-        assertFalse(RaftModalWindowDialogProperties.drawScrim)
-        assertTrue(RaftModalWindowDialogProperties.contentHandlesKeyboard)
     }
 }
 

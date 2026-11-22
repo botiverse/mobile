@@ -5,7 +5,6 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
-import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /**
@@ -70,27 +69,6 @@ class RaftFilePreviewPdfTest {
     }
 
     @Test
-    fun hostAnswersOtherThanReadyEndTheDownload() {
-        // (status, path) -> expected state after a running download.
-        listOf(
-            Triple("download_failed", null, RaftFilePreviewPdfState.Failed(RaftFilePreviewPdfFailure.Download, "Network down")),
-            Triple("storage_failed", null, RaftFilePreviewPdfState.Failed(RaftFilePreviewPdfFailure.Download, "Network down")),
-            Triple("ready", "", RaftFilePreviewPdfState.Failed(RaftFilePreviewPdfFailure.Download, "Network down")),
-            Triple(null, null, RaftFilePreviewPdfState.Failed(RaftFilePreviewPdfFailure.Download, "Network down")),
-            Triple("cancelled", null, RaftFilePreviewPdfState.Idle),
-        ).forEach { (status, path, expected) ->
-            assertEquals(
-                expected,
-                RaftFilePreviewPdfState.Downloading().onPdfPrepared(status = status, path = path, message = "Network down"),
-                "status=$status path=$path"
-            )
-        }
-        val failed = RaftFilePreviewPdfState.Downloading().onPdfPrepared(status = "download_failed", path = null, message = " ")
-        assertNull((failed as RaftFilePreviewPdfState.Failed).message, "a blank message falls back to the default copy")
-        assertTrue(failed.canRetry)
-    }
-
-    @Test
     fun aPasswordOrADamagedFileFailsTheShownDocumentWithoutRetry() {
         val ready = RaftFilePreviewPdfState.Ready("/cache/att/spec.pdf")
         listOf(
@@ -110,24 +88,29 @@ class RaftFilePreviewPdfTest {
     @Test
     fun shareIsOfferedOnceThePdfIsOnTheDevice() {
         val ready = RaftFilePreviewPdfState.Ready("/cache/att/spec.pdf")
+        val idle = RaftFilePreviewPdfState.Idle
         val downloading = RaftFilePreviewPdfState.Downloading()
         // (canOpenWith, public download state, preview state) -> Share shown.
         listOf(
             Triple(true, RaftFilePreviewDownloadUiState.NotDownloaded, ready) to true, // the cached copy on screen
             Triple(true, RaftFilePreviewDownloadUiState.Downloaded, downloading) to true, // saved to Downloads
-            Triple(true, RaftFilePreviewDownloadUiState.NotDownloaded, downloading) to false, // nothing on the device yet
+            Triple(true, RaftFilePreviewDownloadUiState.Downloaded, idle) to true, // saved to Downloads before preview prepares
+            Triple(true, RaftFilePreviewDownloadUiState.NotDownloaded, idle) to false, // preview preparation not started yet
+            Triple(true, RaftFilePreviewDownloadUiState.NotDownloaded, downloading) to false, // preview download in progress
             Triple(true, RaftFilePreviewDownloadUiState.Downloading, ready) to false, // a save is running
             Triple(false, RaftFilePreviewDownloadUiState.Downloaded, ready) to false, // not an attachment
         ).forEach { (input, expected) ->
             val (canOpenWith, downloadState, pdfState) = input
-            assertEquals(expected, raftFilePreviewPdfShowsShareAction(canOpenWith, downloadState, pdfState), "$input")
+            assertEquals(
+                expected,
+                raftFilePreviewOverflowShowsShare(
+                    canOpenWith = canOpenWith,
+                    downloadState = downloadState,
+                    supportsAttachmentShare = true,
+                    previewPreparing = pdfState is RaftFilePreviewPdfState.Idle || pdfState is RaftFilePreviewPdfState.Downloading
+                ),
+                "$input"
+            )
         }
-    }
-
-    @Test
-    fun pageIndicatorIsOneBasedAndWaitsForThePageCount() {
-        assertNull(raftFilePreviewPdfPageIndicatorArgs(currentPage = 0, pageCount = 0))
-        assertEquals("3" to "12", raftFilePreviewPdfPageIndicatorArgs(currentPage = 2, pageCount = 12))
-        assertEquals("12" to "12", raftFilePreviewPdfPageIndicatorArgs(currentPage = 40, pageCount = 12))
     }
 }

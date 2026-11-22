@@ -14,8 +14,10 @@ import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
+import androidx.compose.ui.platform.LocalUriHandler
 import build.raft.app.base.Utils
 import build.raft.designsystem.components.RaftButton
 import build.raft.designsystem.components.RaftButtonSize
@@ -55,6 +57,7 @@ import build.raft.app.compat.pager.Page
 import build.raft.app.compat.module.RouterModule
 import build.raft.app.compat.json.JSONObject
 import build.raft.app.compat.pager.Pager
+import build.raft.app.nav.RAFT_REPLACE_CURRENT_PAGE
 
 const val SETTINGS_WEB_VIEW_PAGE = "compose_settings_webview"
 internal const val SETTINGS_WEB_VIEW_SURFACE = "settingsWebViewSurface"
@@ -77,6 +80,7 @@ internal fun settingsWebViewPageData(
     anchor: SettingsSearchAnchorRequest? = null,
     /** An App bot's owning App row id (`?installed_app=<id>`, botiverse/slock #14286). */
     installedAppId: String? = null,
+    replaceCurrentPage: Boolean = false,
 ): JSONObject =
     JSONObject().apply {
         put("pageName", SETTINGS_WEB_VIEW_PAGE)
@@ -84,6 +88,7 @@ internal fun settingsWebViewPageData(
         put(SETTINGS_WEB_VIEW_SURFACE, surface.diagnosticsName)
         put(RAFT_SHELL_INSTANCE_ID, storeScope.shellInstanceId)
         storeScope.initialServerId?.let { put(RAFT_SHELL_SERVER_ID, it) }
+        if (replaceCurrentPage) put(RAFT_REPLACE_CURRENT_PAGE, true)
         if (surface == SettingsWebViewSurface.ReleaseNotes) {
             releaseNotesSanitizeVersionCode(versionCode).takeIf { it.isNotBlank() }?.let {
                 put(SETTINGS_WEB_VIEW_VERSION_CODE, it)
@@ -110,10 +115,11 @@ internal fun Pager.openSettingsWebViewPage(
     versionCode: String = "",
     anchor: SettingsSearchAnchorRequest? = null,
     installedAppId: String? = null,
+    replaceCurrentPage: Boolean = false,
 ) {
     acquireModule<RouterModule>(RouterModule.MODULE_NAME).openPage(
         SETTINGS_WEB_VIEW_PAGE,
-        settingsWebViewPageData(surface, storeScope, versionCode, anchor, installedAppId),
+        settingsWebViewPageData(surface, storeScope, versionCode, anchor, installedAppId, replaceCurrentPage = replaceCurrentPage),
     )
 }
 
@@ -229,12 +235,13 @@ private fun SettingsWebViewScreen() {
         // Keep old settings-webview route payloads compatible while rendering
         // the Hands-hosted Release Notes WebView.
         SettingsWebViewSurface.ReleaseNotes -> ReleaseNotesScreen()
+        SettingsWebViewSurface.WebPage -> SettingsOwnWebViewPage(pager)
         null -> SettingsWebViewInvalidRoute(pager)
     }
 }
 
 @Composable
-private fun SettingsWebViewInvalidRoute(pager: Pager) {
+internal fun SettingsWebViewInvalidRoute(pager: Pager) {
     Column(modifier = Modifier.fillMaxSize().background(RaftTheme.colors.layerCanvas)) {
         RaftTopPageHeader(
             title = stringResource(Res.string.settings_title),
@@ -274,8 +281,18 @@ internal data class StandaloneSettingsWebViewSpec(
      */
     val allowNavigation: Boolean = true,
     val allowedNavigationSchemes: Set<String> = setOf("http", "https"),
+    /**
+     * When true, locks main-frame navigation to the origin of [buildWebUrl] (`mainFrameOrigin`),
+     * routing off-origin navigations through `onNavigationBlocked` instead of loading third-party
+     * sites inside the authenticated Settings WebView.
+     */
+    val lockToWebOrigin: Boolean = false,
+    /** [RaftWebViewConfig.frameHosts] for embedded sub-frames (e.g. Artifact content fallback on Desktop). */
+    val frameHosts: Set<String> = emptySet(),
     val bottomContentPadding: Dp = 0.dp,
     val hostEventsEnabled: Boolean = false,
+    /** Uses non-persistent/incognito WebView storage (e.g. Desktop Wry or iOS own-web fallback). */
+    val ephemeral: Boolean = raftPlatformUsesEphemeralAuthWebView(),
     val buildWebUrl: (webBaseUrl: String?, session: StoredAuthSession?, localeTag: String) -> String,
 )
 
@@ -291,7 +308,14 @@ internal fun StandaloneSettingsWebViewPage(
     title: String,
     iconName: RaftLucideIconName,
     spec: StandaloneSettingsWebViewSpec,
+    controller: RaftWebViewController = rememberRaftWebViewController(),
     onHostMessage: (String, JSONObject) -> Unit = { _, _ -> },
+    trailingContent: (@Composable BoxScope.() -> Unit)? = null,
+    nativeActions: List<RaftNativeNavBarAction> = emptyList(),
+    onNavigationStateChange: (SettingsWebViewNavigationUpdate) -> Unit = {},
+    onOpenExternalLink: ((String) -> Unit)? = null,
+    onOpenBlockedNavigation: ((String) -> Unit)? = null,
+    routesMainFrameNavigation: ((String) -> Boolean)? = null,
 ) {
     SettingsWebViewPageScaffold(
         pager = pager,
@@ -299,13 +323,22 @@ internal fun StandaloneSettingsWebViewPage(
         title = title,
         iconName = iconName,
         headerFollowsDocumentTitle = spec.headerFollowsDocumentTitle,
-    ) { controller, onNavigationStateChange ->
+        webViewController = controller,
+        trailingContent = trailingContent,
+        nativeActions = nativeActions,
+    ) { scaffoldController, onScaffoldNavigationStateChange ->
         StandaloneSettingsWebViewBody(
             pager = pager,
             spec = spec,
-            controller = controller,
-            onNavigationStateChange = onNavigationStateChange,
+            controller = scaffoldController,
+            onNavigationStateChange = { update ->
+                onScaffoldNavigationStateChange(update)
+                onNavigationStateChange(update)
+            },
             onHostMessage = onHostMessage,
+            onOpenExternalLink = onOpenExternalLink,
+            onOpenBlockedNavigation = onOpenBlockedNavigation,
+            routesMainFrameNavigation = routesMainFrameNavigation,
         )
     }
 }
@@ -317,13 +350,15 @@ internal fun SettingsWebViewPageScaffold(
     title: String,
     iconName: RaftLucideIconName,
     headerFollowsDocumentTitle: Boolean = false,
+    webViewController: RaftWebViewController = rememberRaftWebViewController(),
+    trailingContent: (@Composable BoxScope.() -> Unit)? = null,
+    nativeActions: List<RaftNativeNavBarAction> = emptyList(),
     content: @Composable (
         controller: RaftWebViewController,
         onNavigationStateChange: (SettingsWebViewNavigationUpdate) -> Unit,
     ) -> Unit,
 ) {
     var bodyReady by remember { mutableStateOf(false) }
-    val webViewController = rememberRaftWebViewController()
     var navigationState by remember { mutableStateOf(RaftWebViewNavigationState()) }
     var headerTitleState by remember(surface) { mutableStateOf(SettingsWebViewHeaderTitleState()) }
     LaunchedEffect(Unit) {
@@ -373,6 +408,8 @@ internal fun SettingsWebViewPageScaffold(
                 backgroundColor = RaftColor.SurfaceWhite,
                 applyTopSafeArea = !wideDetail,
                 onBack = if (settingsWebViewHandlesBack(wideDetail, navigationState.canGoBack)) ::goBackOrClose else null,
+                trailingContent = trailingContent,
+                nativeActions = nativeActions,
             )
         }
         // One load line for the body: it stays composed while the placeholder gives way to the page.
@@ -464,6 +501,9 @@ private fun StandaloneSettingsWebViewBody(
     controller: RaftWebViewController,
     onNavigationStateChange: (SettingsWebViewNavigationUpdate) -> Unit,
     onHostMessage: (String, JSONObject) -> Unit,
+    onOpenExternalLink: ((String) -> Unit)? = null,
+    onOpenBlockedNavigation: ((String) -> Unit)? = null,
+    routesMainFrameNavigation: ((String) -> Boolean)? = null,
 ) {
     val bridge = Utils.bridgeModule(pager.pagerId)
     val sharedStores = remember(bridge) { build.raft.app.data.RaftSharedStoreRegistry.get(bridge) }
@@ -497,8 +537,10 @@ private fun StandaloneSettingsWebViewBody(
         accessTokenRefresher = accessTokenRefresher,
         accessTokenRefreshVisible = rememberRaftPagerAppeared(pager),
         onUrlChange = { url ->
-            // Never the query: a Settings URL can carry tokens.
-            bridge.log("settings_${spec.surface.diagnosticsName}_webview_url_changed url=${raftWebViewUrlForLog(url)}")
+            // Never the query; WebPage also drops path segments past the first (invite/share tokens).
+            val loggedUrl =
+                if (spec.surface == SettingsWebViewSurface.WebPage) raftOwnWebUrlForLog(url) else raftWebViewUrlForLog(url)
+            bridge.log("settings_${spec.surface.diagnosticsName}_webview_url_changed url=$loggedUrl")
         },
         onLoadCommit = {
             bridge.log("settings_${spec.surface.diagnosticsName}_webview_load_commit")
@@ -511,6 +553,9 @@ private fun StandaloneSettingsWebViewBody(
         },
         onNavigationStateChange = onNavigationStateChange,
         onHostMessage = onHostMessage,
+        onOpenExternalLink = onOpenExternalLink,
+        onOpenBlockedNavigation = onOpenBlockedNavigation,
+        routesMainFrameNavigation = routesMainFrameNavigation,
     )
 }
 
@@ -530,19 +575,98 @@ internal fun StandaloneSettingsWebViewContent(
     accessTokenSyncLogger: (String) -> Unit = {},
     accessTokenRefresher: SettingsWebViewAccessTokenRefresher? = null,
     accessTokenRefreshVisible: Boolean = true,
+    onOpenExternalLink: ((String) -> Unit)? = null,
+    onOpenBlockedNavigation: ((String) -> Unit)? = null,
+    routesMainFrameNavigation: ((String) -> Boolean)? = null,
 ) {
+    val linkNavigator = LocalRaftLinkNavigator.current
+    val uriHandler = LocalUriHandler.current
+    val defaultOpenExternalLink: (String) -> Unit =
+        remember(linkNavigator, uriHandler) {
+            { targetUrl ->
+                if (linkNavigator != null) linkNavigator.open(targetUrl) else uriHandler.openUri(targetUrl)
+            }
+        }
+    val openExternalLink = onOpenExternalLink ?: defaultOpenExternalLink
+    val currentOpenExternalLink by rememberUpdatedState(openExternalLink)
+    val currentOpenBlockedNavigation by rememberUpdatedState(onOpenBlockedNavigation ?: openExternalLink)
+    val currentLogger by rememberUpdatedState(accessTokenSyncLogger)
     val session = authSnapshot.session
     val localeTag = rememberStandaloneSettingsLocaleTag(spec.includeLocaleQuery)
     val webUrl =
         remember(spec, session, webBaseUrl, localeTag) {
             spec.buildWebUrl(webBaseUrl, session, localeTag)
         }
+    val mainFrameOrigin =
+        remember(spec.lockToWebOrigin, webUrl) {
+            if (spec.lockToWebOrigin) raftWebOriginOf(webUrl) else null
+        }
     val hostAuthBinding = rememberSettingsWebViewHostAuthBinding(authSnapshot, controller)
+    val hostOpenExternalDeduper =
+        remember(webUrl, hostAuthBinding?.webViewGeneration) {
+            SettingsWebViewHostOpenExternalDeduper()
+        }
+    val hostOpenExternalClock =
+        remember(webUrl, hostAuthBinding?.webViewGeneration) {
+            kotlin.time.TimeSource.Monotonic.markNow()
+        }
+    // Deferred out of synchronous onUrlChange (iOS decidePolicyForNavigationAction runs before
+    // decisionHandler(Allow), so running replaceState synchronously would test the old hash).
+    var pendingHostOpenExternal by
+        remember(webUrl, hostAuthBinding?.webViewGeneration) {
+            mutableStateOf<SettingsWebViewHostOpenExternalDecision?>(null)
+        }
     val injectedJavaScript =
-        remember(spec.surface, session, hostAuthBinding) {
-            standaloneSettingsWebViewInjectedJavaScript(session, hostAuthBinding, spec.surface)
+        remember(spec.surface, session, hostAuthBinding, webUrl) {
+            standaloneSettingsWebViewInjectedJavaScript(session, hostAuthBinding, spec.surface, webOrigin = webUrl)
         }
     var documentReady by remember(webUrl, hostAuthBinding?.webViewGeneration) { mutableStateOf(false) }
+
+    LaunchedEffect(pendingHostOpenExternal) {
+        val decision = pendingHostOpenExternal ?: return@LaunchedEffect
+        val clearScript = settingsWebViewHostOpenExternalTakenScript(webUrl, decision.previousHash)
+        if (clearScript.isNotEmpty()) {
+            controller.evaluateJavaScript(clearScript)
+        }
+        val target = decision.targetUrl
+        if (target != null) {
+            val loggedUrl =
+                if (spec.surface == SettingsWebViewSurface.WebPage) raftOwnWebUrlForLog(target) else raftWebViewUrlForLog(target)
+            currentLogger(
+                "settings_${spec.surface.diagnosticsName}_host_open_external " +
+                    "result=open url=$loggedUrl"
+            )
+            currentOpenExternalLink(target)
+        } else {
+            currentLogger(
+                "settings_${spec.surface.diagnosticsName}_host_open_external " +
+                    "result=dropped reason=not_http_url"
+            )
+        }
+        pendingHostOpenExternal = null
+    }
+
+    fun handleHostOpenExternal(candidateUrl: String, retryClearWhenSettled: Boolean = false) {
+        val decision =
+            hostOpenExternalDeduper.observe(
+                pageUrl = candidateUrl,
+                webOrigin = webUrl,
+                nowMs = hostOpenExternalClock.elapsedNow().inWholeMilliseconds,
+            )
+        if (decision != null) {
+            pendingHostOpenExternal = decision
+        } else if (
+            retryClearWhenSettled &&
+            pendingHostOpenExternal == null &&
+            hostOpenExternalDeduper.awaitingHashClear &&
+            settingsWebViewAsksHostOpenExternal(candidateUrl, webUrl)
+        ) {
+            // If an earlier replaceState was queued or overwritten while the document was still loading,
+            // retry clearing the stuck hash once loading settles without re-opening the external link.
+            val clearScript = settingsWebViewHostOpenExternalTakenScript(webUrl, hostOpenExternalDeduper.activePreviousHash)
+            if (clearScript.isNotEmpty()) controller.evaluateJavaScript(clearScript)
+        }
+    }
 
     // The page's session goes in at document start (injectedJavaScript), so it cannot load before
     // the session is known (it would open signed out). The load starts as soon as it is. One load
@@ -556,19 +680,52 @@ internal fun StandaloneSettingsWebViewContent(
                 modifier = modifier,
                 diagnosticsName = "settings_${spec.surface.diagnosticsName}",
                 allowedNavigationSchemes = spec.allowedNavigationSchemes,
+                mainFrameOrigin = mainFrameOrigin,
+                frameHosts = spec.frameHosts,
                 allowNavigation = spec.allowNavigation,
                 hostEventsEnabled = spec.hostEventsEnabled,
                 bottomContentPadding = spec.bottomContentPadding,
+                ephemeral = spec.ephemeral,
                 injectedJavaScript = injectedJavaScript,
                 controller = controller,
                 generationKey = hostAuthBinding?.webViewGeneration,
                 onLoadCommit = onLoadCommit,
                 onLoadSuccess = onLoadSuccess,
-                onUrlChange = onUrlChange,
+                onUrlChange = { changedUrl ->
+                    handleHostOpenExternal(changedUrl)
+                    onUrlChange(changedUrl)
+                },
+                filterStaleUrlCallbacks = true,
                 onLoadFailure = onLoadFailure,
-                onNavigationStateChange = onNavigationStateChange,
+                onNavigationBlocked = { blockedUrl ->
+                    val target = settingsWebViewBlockedNavigationUrlOrNull(blockedUrl)
+                    if (target != null) {
+                        val loggedUrl =
+                            if (spec.surface == SettingsWebViewSurface.WebPage) raftOwnWebUrlForLog(target) else raftWebViewUrlForLog(target)
+                        currentLogger(
+                            "settings_${spec.surface.diagnosticsName}_navigation_blocked " +
+                                "action=open url=$loggedUrl"
+                        )
+                        currentOpenBlockedNavigation(target)
+                    } else {
+                        currentLogger(
+                            "settings_${spec.surface.diagnosticsName}_navigation_blocked " +
+                                "action=ignored scheme=${settingsWebViewSchemeForLog(blockedUrl)}"
+                        )
+                    }
+                },
+                onNavigationStateChange = { update ->
+                    if (update.state.url.isNotBlank()) {
+                        handleHostOpenExternal(
+                            candidateUrl = update.state.url,
+                            retryClearWhenSettled = !update.state.isLoading,
+                        )
+                    }
+                    onNavigationStateChange(update)
+                },
                 onHostMessage = onHostMessage,
                 onDocumentReadyChange = { documentReady = it },
+                routesMainFrameNavigation = routesMainFrameNavigation,
             )
         }
     }
@@ -583,6 +740,7 @@ internal fun StandaloneSettingsWebViewContent(
         logger = accessTokenSyncLogger,
         refresher = accessTokenRefresher,
         visible = accessTokenRefreshVisible,
+        webOrigin = webUrl,
     )
 }
 
@@ -609,8 +767,11 @@ internal fun SettingsWebViewContent(
     stallTimeoutMs: Long = RAFT_WEB_VIEW_LOAD_STALL_TIMEOUT_MS,
     hostEventsEnabled: Boolean = false,
     allowedNavigationSchemes: Set<String> = setOf("http", "https"),
+    mainFrameOrigin: String? = null,
+    frameHosts: Set<String> = emptySet(),
     allowNavigation: Boolean = true,
     bottomContentPadding: Dp = 0.dp,
+    ephemeral: Boolean = raftPlatformUsesEphemeralAuthWebView(),
     injectedJavaScript: String = "",
     controller: RaftWebViewController = rememberRaftWebViewController(),
     generationKey: Any? = null,
@@ -624,6 +785,7 @@ internal fun SettingsWebViewContent(
     onHostMessage: (String, JSONObject) -> Unit = { _, _ -> },
     onWebViewInvalidated: () -> Unit = {},
     onDocumentReadyChange: (Boolean) -> Unit = {},
+    routesMainFrameNavigation: ((String) -> Boolean)? = null,
 ) {
     var reloadKey by remember(url, generationKey) { mutableStateOf(0) }
     /** The document committed (first content on its way); gates [documentReady], not visibility. */
@@ -687,14 +849,21 @@ internal fun SettingsWebViewContent(
                             .padding(bottom = bottomContentPadding),
                     allowNavigation = allowNavigation,
                     allowedNavigationSchemes = allowedNavigationSchemes,
+                    mainFrameOrigin = mainFrameOrigin,
+                    frameHosts = frameHosts,
                     domStorageEnabled = true,
                     cacheEnabled = true,
-                    ephemeral = false,
+                    ephemeral = ephemeral,
                     injectedJavaScript = injectedJavaScript,
                     hostEventsEnabled = hostEventsEnabled,
                     controller = controller,
                     loadWatchdog = loadWatchdog,
-                    diagnosticsSurface = "settings_web_view",
+                    diagnosticsSurface =
+                        if (diagnosticsName == SETTINGS_WEB_PAGE_DIAGNOSTICS_NAME) {
+                            SETTINGS_WEB_PAGE_DIAGNOSTICS_NAME
+                        } else {
+                            "settings_web_view"
+                        },
                     onLoadCommit = {
                         loadError = null
                         committed = true
@@ -716,7 +885,9 @@ internal fun SettingsWebViewContent(
                             onLoadFailure(reason)
                         }
                     },
-                    onNavigationBlocked = onNavigationBlocked,
+                    onNavigationBlocked = { blockedUrl ->
+                        if (navigationAuthority.accepts(navigationOwner)) onNavigationBlocked(blockedUrl)
+                    },
                     onHostMessage = { kind, payload ->
                         if (navigationAuthority.accepts(navigationOwner)) {
                             // The page's own bridge `ready` is a ready signal too.
@@ -724,6 +895,7 @@ internal fun SettingsWebViewContent(
                             onHostMessage(kind, payload)
                         }
                     },
+                    routesMainFrameNavigation = routesMainFrameNavigation,
                     onNavigationStateChange = { state ->
                         if (navigationAuthority.accepts(navigationOwner)) {
                             if (state.isLoading && !navigationState.isLoading) onWebViewInvalidated()
@@ -980,17 +1152,12 @@ internal fun standaloneSettingsWebViewInjectedJavaScript(
     session: StoredAuthSession?,
     hostBinding: SettingsWebViewHostAuthBinding?,
     surface: SettingsWebViewSurface,
+    webOrigin: String,
 ): String {
     val writes = settingsWebViewAuthStorageJavaScript(session, hostBinding)
-    val clientKind = ""
-    return """
-        (function() {
-          try {
-            $writes;
-            $clientKind
-          } catch (error) {
-            console.error("slock_mobile_${surface.diagnosticsName}_injected_js_error", error && (error.stack || error.message || error));
-          }
-        })();
-    """.trimIndent()
+    return settingsWebViewGuardedAuthJavaScript(
+        webOrigin = webOrigin,
+        body = "$writes;",
+        errorTag = "slock_mobile_${surface.diagnosticsName}_injected_js_error",
+    )
 }

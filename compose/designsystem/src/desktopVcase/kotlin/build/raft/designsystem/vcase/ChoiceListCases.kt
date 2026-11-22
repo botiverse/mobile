@@ -107,6 +107,8 @@ fun ChoiceListMultiple() {
         Column(Modifier.width(358.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Caption("No items")
             MultiCase(values = emptySet(), items = emptyList())
+            Caption("A disabled row: its avatar fades with its text")
+            MultiCase(values = emptySet(), items = people(disabled = "agent:cindy"))
         }
     }
 }
@@ -160,7 +162,7 @@ private fun SingleCase(items: List<RaftChoiceListItem<String>>, value: String?, 
 }
 
 @Composable
-private fun people(): List<RaftChoiceListItem<String>> =
+private fun people(disabled: String? = null): List<RaftChoiceListItem<String>> =
     listOf(
         Triple("agent:cindy", "Cindy", "Chief of Staff"),
         Triple("agent:ux", "Product UX Designer", "Turns product feedback, screenshots, and release notes into actionable UX specs."),
@@ -173,6 +175,7 @@ private fun people(): List<RaftChoiceListItem<String>> =
             label = name,
             descriptions = listOf(AnnotatedString(description)),
             searchText = "$name $description",
+            enabled = value != disabled,
             group = if (agent) "agent" else "human",
             media = {
                 RaftAvatar(

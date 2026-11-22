@@ -162,6 +162,14 @@ fun RaftPagerHost(
                 PagerManager.register(pager)
                 pager.willInit()
                 pager.created()
+                // Deliver sticky host window facts (e.g. desktop Frame-1 `slockAdaptivePaneChanged`)
+                // published before the page attached, so Frame 1 already composes in the right
+                // layout. Because this runs ahead of the first composition, it reaches
+                // `Pager.onReceivePagerEvent` overrides directly — NOT `IPagerEventObserver`s
+                // registered later in `DisposableEffect`.
+                host.events.replaySticky { event, data ->
+                    pager.onReceivePagerEvent(event, data.toKuiklyJson())
+                }
             }
         }
     // Applied during composition, ahead of the page content that reads them. Applying them in a
@@ -262,7 +270,7 @@ fun RaftPagerHost(
                             RaftPageHorizontalSafeAreaShell {
                                 (pager as? ComposeContainer)?.composedContent?.invoke()
                                 // The upgrade dialog this page opened (RaftUpgradeDialog.kt), if any.
-                                if (RaftUpgradeDialogState.request?.pagerId == pager.pagerId) {
+                                if (RaftUpgradeDialogState.observeRequest()?.pagerId == pager.pagerId) {
                                     RaftDesignSystemTheme { RaftUpgradeDialogHost(pager) }
                                 }
                             }

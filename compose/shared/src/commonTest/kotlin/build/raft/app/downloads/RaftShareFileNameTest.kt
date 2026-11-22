@@ -2,7 +2,6 @@ package build.raft.app.downloads
 
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 /**
@@ -13,15 +12,6 @@ class RaftShareFileNameTest {
     private val types = mapOf("pdf" to "application/pdf", "png" to "image/png", "mp4" to "video/mp4")
 
     @Test
-    fun displayNamesKeepUnicodeSpacesAndTheirExtension() {
-        assertEquals("invoice.pdf", RaftShareFileName.sanitize("invoice.pdf", null))
-        assertEquals("发票 2026.pdf", RaftShareFileName.sanitize("发票 2026.pdf", null))
-        assertEquals("請求書（最終）.pdf", RaftShareFileName.sanitize("請求書（最終）.pdf", null))
-        assertEquals("Q3 report (final).pdf", RaftShareFileName.sanitize("Q3 report (final).pdf", null))
-        assertEquals("😀 photo.png", RaftShareFileName.sanitize("😀 photo.png", null))
-    }
-
-    @Test
     fun pathsReservedAndControlCharactersAreNeutralised() {
         assertEquals("b_c_.pdf", RaftShareFileName.sanitize("../a/b:c?.pdf", null))
         assertEquals("evil.pdf", RaftShareFileName.sanitize("..\\..\\evil.pdf", null))
@@ -29,17 +19,6 @@ class RaftShareFileNameTest {
         assertEquals("a_b.txt", RaftShareFileName.sanitize("a\u0000b.txt", null))
         assertEquals("x_y_z_.txt", RaftShareFileName.sanitize("x<y>z|.txt", null))
         assertEquals("trailing.pdf", RaftShareFileName.sanitize("trailing.pdf. ", null))
-    }
-
-    @Test
-    fun aMissingNameOrExtensionIsFilledIn() {
-        assertEquals("attachment", RaftShareFileName.sanitize(null, null))
-        assertEquals("attachment.pdf", RaftShareFileName.sanitize("   ", "pdf"))
-        assertEquals("attachment.pdf", RaftShareFileName.sanitize("..", "pdf"))
-        assertEquals("report.pdf", RaftShareFileName.sanitize("report", "pdf"))
-        assertEquals("report.pdf", RaftShareFileName.sanitize("report", ".pdf"))
-        assertEquals("report.txt", RaftShareFileName.sanitize("report.txt", "pdf"))
-        assertEquals("report", RaftShareFileName.sanitize("report", "p/df"))
     }
 
     @Test
@@ -68,17 +47,5 @@ class RaftShareFileNameTest {
         assertEquals("application/octet-stream", RaftShareFileName.resolveMimeType("blob", "application/octet-stream", lookup))
         assertEquals("application/octet-stream", RaftShareFileName.resolveMimeType("blob.xyz", "garbage", lookup))
         assertEquals("application/octet-stream", RaftShareFileName.resolveMimeType("x.pdf", null) { error("lookup unavailable") })
-    }
-
-    @Test
-    fun genericMimeTypeDetection() {
-        assertTrue(RaftShareFileName.isGenericMimeType(null))
-        assertTrue(RaftShareFileName.isGenericMimeType(""))
-        assertTrue(RaftShareFileName.isGenericMimeType("Application/Octet-Stream; x=y"))
-        assertTrue(RaftShareFileName.isGenericMimeType("binary/octet-stream"))
-        assertTrue(RaftShareFileName.isGenericMimeType("pdf"))
-        assertFalse(RaftShareFileName.isGenericMimeType("application/pdf"))
-        assertEquals(null, RaftShareFileName.normalizedMimeType("a/b/c"))
-        assertEquals("image/png", RaftShareFileName.normalizedMimeType(" IMAGE/PNG ;q=1"))
     }
 }

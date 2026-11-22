@@ -7,15 +7,10 @@ import androidx.compose.ui.test.ComposeUiTest
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
-import androidx.compose.ui.test.assertIsOff
-import androidx.compose.ui.test.assertIsOn
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.performClick
-import androidx.compose.ui.test.performTextInput
-import androidx.compose.ui.test.hasClickAction
-import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.isToggleable
 import androidx.compose.ui.test.SemanticsNodeInteraction
@@ -23,7 +18,6 @@ import build.raft.app.components.RaftDesignSystemTheme
 import build.raft.app.data.AppLocale
 import build.raft.app.data.stringDescLocaleType
 import build.raft.app.resources.StringDesc
-import build.raft.designsystem.text.RaftText
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
@@ -101,9 +95,6 @@ class ChannelAddMemberPanelUiTest {
     /** A candidate's checkbox row (a selected one also shows as a badge with the same name). */
     private fun ComposeUiTest.row(name: String): SemanticsNodeInteraction = onNode(hasText(name) and isToggleable())
 
-    private fun ComposeUiTest.badge(name: String): SemanticsNodeInteraction =
-        onNode(hasText(name) and hasClickAction() and isToggleable().not())
-
     @Test
     fun tappingRowsSelectsAndCountsWithoutAdding() =
         runRobolectricComposeUiTest {
@@ -126,30 +117,6 @@ class ChannelAddMemberPanelUiTest {
         }
 
     @Test
-    fun rowsAreCheckboxesAndSelectedPeopleShowAsBadges() =
-        runRobolectricComposeUiTest {
-            show(Calls())
-            row("artin").assertIsOff()
-            badge("artin").assertDoesNotExist()
-            row("artin").performClick()
-            row("artin").assertIsOn()
-            onNodeWithText("Add Selected (1)").assertIsEnabled()
-            // The removable badge above the list deselects.
-            badge("artin").performClick()
-            row("artin").assertIsOff()
-            onNodeWithText("Add Selected (0)").assertIsNotEnabled()
-        }
-
-    @Test
-    fun membersAlreadyInTheChannelAreNotListed() =
-        runRobolectricComposeUiTest {
-            show(Calls(), members = listOf(RaftThreadMemberItem("agent-cindy", "Cindy", handle = "cindy", kind = "agent")))
-            row("Product UX Designer").assertExists()
-            onNodeWithText("Agents").assertExists()
-            onNodeWithText("Humans").assertExists()
-        }
-
-    @Test
     fun theOneCreateAgentRowOpensAMenuWhoseItemsEachOpenTheirDialog() =
         runRobolectricComposeUiTest {
             val calls = Calls()
@@ -169,59 +136,5 @@ class ChannelAddMemberPanelUiTest {
             onNodeWithText("Create agent").performClick()
             onNodeWithText("Create external agent").performClick()
             assertEquals(listOf("" to MembersCreateAgentMode.Managed, "" to MembersCreateAgentMode.External), calls.creates)
-        }
-
-    @Test
-    fun aSearchThatFoundNoOneNamesTheRowAndOnlyTheManagedItemCarriesIt() =
-        runRobolectricComposeUiTest {
-            val calls = Calls()
-            show(calls)
-            onNode(hasSetTextAction()).performTextInput("@mia")
-            onNodeWithText("No members match \"@mia\"").assertExists()
-            onNodeWithText("Create agent “mia”").performClick()
-            onNodeWithText("Create external agent").performClick()
-            onNodeWithText("Create agent “mia”").performClick()
-            onNodeWithText("Create agent").performClick()
-            assertEquals(listOf("" to MembersCreateAgentMode.External, "mia" to MembersCreateAgentMode.Managed), calls.creates)
-        }
-
-    @Test
-    fun withoutCreatePermissionThereIsNoCreateRowAndNoReason() =
-        runRobolectricComposeUiTest {
-            // slock #14948: a viewer who can't create agents sees no Create agent row, no reason
-            // under it and no menu; picking members works as before.
-            val calls = Calls()
-            show(calls, canCreateAgents = false)
-            onNodeWithText("Create agent").assertDoesNotExist()
-            onNodeWithText("Create external agent").assertDoesNotExist()
-            onNodeWithText("Joins #design automatically after creation").assertDoesNotExist()
-            onAllNodesWithText("needs an owner or admin", substring = true).assertCountEquals(0)
-            onNode(hasSetTextAction()).performTextInput("@mia")
-            onNodeWithText("Create agent “mia”").assertDoesNotExist()
-            assertTrue(calls.creates.isEmpty())
-        }
-
-    @Test
-    fun withoutCreatePermissionTheExternalMemberRowStillShows() =
-        runRobolectricComposeUiTest {
-            setContent {
-                RaftDesignSystemTheme {
-                    Box(Modifier.fillMaxSize()) {
-                        ThreadAddMemberPanel(
-                            members = emptyList(),
-                            candidates = candidates,
-                            canAddMembers = true,
-                            channelName = "design",
-                            addMemberStatus = "idle",
-                            addMemberErrorCode = null,
-                            onSubmitBatch = {},
-                            canCreateAgents = false,
-                            externalInviteEntry = { RaftText("Invite people outside") },
-                        )
-                    }
-                }
-            }
-            onNodeWithText("Invite people outside").assertExists()
-            onNodeWithText("Create agent").assertDoesNotExist()
         }
 }

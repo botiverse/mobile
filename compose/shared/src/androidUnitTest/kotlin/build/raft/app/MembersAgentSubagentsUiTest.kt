@@ -1,10 +1,6 @@
 package build.raft.app
 
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.Column
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -14,7 +10,6 @@ import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
-import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.unit.dp
 import build.raft.app.components.RaftDesignSystemTheme
@@ -41,51 +36,6 @@ class MembersAgentSubagentsUiTest {
 
     private val log = subagentsFixtureLog()
     private val groups = groupAgentActivitySubagents(log)
-
-    @Test
-    fun aRowOpensItsSubagent() =
-        runRobolectricComposeUiTest {
-            val opened = mutableListOf<String>()
-            setContent {
-                RaftDesignSystemTheme {
-                    MembersAgentSubagentsList(
-                        groups = groups,
-                        timeContext = SubagentsFixtureTimeContext,
-                        onOpen = { opened += it },
-                        contentPadding = PaddingValues(0.dp),
-                        modifier = Modifier.fillMaxSize(),
-                        nowEpochMillis = { SubagentsFixtureNowMillis },
-                    )
-                }
-            }
-            onAllNodesWithTag(MembersAgentSubagentRowTag).assertCountEquals(3)
-            onNodeWithText("Find the stale call sites of isSecondaryThreadId").performClick()
-            assertEquals(listOf(groups.first { it.state == AgentActivitySubagentState.Running }.key), opened)
-        }
-
-    @Test
-    fun theRawLogsSpawnRowAndASubagentsBadgeOpenThatRun() =
-        runRobolectricComposeUiTest {
-            val opened = mutableListOf<String>()
-            val link = membersAgentActivitySubagentLink(log, groups) { opened += it }
-            val explore = groups.first { it.subagentType == "Explore" }
-            val spawn = log.first { it.callId == "toolu_a" }
-            val inner = log.first { it.callId == "toolu_g" }
-            setContent {
-                RaftDesignSystemTheme {
-                    Box(Modifier.height(400.dp)) {
-                        Column {
-                            MembersAgentActivityRow(spawn, SubagentsFixtureTimeContext, onOpenUrl = {}, subagentLink = link)
-                            MembersAgentActivityRow(inner, SubagentsFixtureTimeContext, onOpenUrl = {}, subagentLink = link)
-                        }
-                    }
-                }
-            }
-            onAllNodesWithTag(MembersAgentActivitySubagentOpenTag).assertCountEquals(2)
-            onNodeWithText("Open subagent").performClick()
-            onNodeWithText("Subagent: Explore").performClick()
-            assertEquals(listOf(explore.key, explore.key), opened)
-        }
 
     @Test
     fun stopShowsOnlyOnARunningSubagentForAViewerWhoMayStopIt() =

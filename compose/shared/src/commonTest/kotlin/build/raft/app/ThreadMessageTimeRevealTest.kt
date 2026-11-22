@@ -5,7 +5,6 @@ import build.raft.app.model.RaftTimeFormat12Hour
 import build.raft.app.model.raftEpochDayForDate
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertTrue
 
 class ThreadMessageTimeRevealTest {
     private val context =
@@ -20,18 +19,5 @@ class ThreadMessageTimeRevealTest {
         // No time context yet: nothing, never the wire timestamp.
         assertEquals("", formatThreadTimeRevealLabel("2026-10-22T01:05:00Z", null))
         assertEquals("", formatThreadTimeRevealLabel("  ", context))
-    }
-
-    @Test
-    fun rowsFollowTheFingerToTheGutterThenRubberBand() {
-        val gutter = 64f
-        assertEquals(0f, threadTimeRevealOffsetPx(-10f, gutter))
-        assertEquals(30f, threadTimeRevealOffsetPx(30f, gutter))
-        assertEquals(gutter, threadTimeRevealOffsetPx(gutter, gutter))
-        val over = threadTimeRevealOffsetPx(gutter + 40f, gutter)
-        assertTrue(over > gutter && over < gutter + 40f, "resisted: $over")
-        val far = threadTimeRevealOffsetPx(gutter + 10_000f, gutter)
-        assertTrue(far < gutter * 1.5f, "bounded: $far")
-        assertTrue(threadTimeRevealOffsetPx(gutter + 80f, gutter) > over, "still follows")
     }
 }

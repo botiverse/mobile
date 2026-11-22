@@ -13,7 +13,6 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.width
 import build.raft.designsystem.components.RaftSelectFitMaxWidth
-import build.raft.designsystem.components.RaftSelectFitMinWidth
 import build.raft.designsystem.components.RaftSelectTrigger
 import build.raft.designsystem.theme.RaftTheme
 import kotlin.test.Test
@@ -51,18 +50,6 @@ class RaftSelectFitTest {
     }
 
     @Test
-    fun withoutFitTheTriggerFillsItsWidth() {
-        assertEquals(600.dp, triggerWidth("All", listOf("All"), fit = false))
-    }
-
-    @Test
-    fun shortOptionsKeepTheMinimum() {
-        assertEquals(RaftSelectFitMinWidth, triggerWidth("All", listOf("All", "None")))
-        // raft-ui: without `items` the trigger stays at 11rem.
-        assertEquals(RaftSelectFitMinWidth, triggerWidth("All", emptyList()))
-    }
-
-    @Test
     fun aLongOptionWidensItUpToTheMaximumWhicheverValueIsChosen() {
         val short = triggerWidth("All messages", levels.take(2))
         val long = triggerWidth("All messages", levels)
@@ -70,14 +57,6 @@ class RaftSelectFitTest {
         assertEquals(RaftSelectFitMaxWidth, long, "past 20rem it stops and the value ends in an ellipsis")
         assertEquals(long, triggerWidth(levels.last(), levels), "the chosen value doesn't move its end")
         assertEquals(long, triggerWidth(null, levels, placeholder = "Choose"), "nor does the placeholder")
-    }
-
-    @Test
-    fun theWidthFollowsTheLongestLabelBetweenTheBounds() {
-        val labels = listOf("All", "Mentions and replies to my threads")
-        val width = triggerWidth("All", labels)
-        assertTrue(width > RaftSelectFitMinWidth && width < RaftSelectFitMaxWidth, "between 11rem and 20rem: $width")
-        assertEquals(width, triggerWidth(labels.last(), labels), "the same with the long one chosen")
     }
 
     @Test

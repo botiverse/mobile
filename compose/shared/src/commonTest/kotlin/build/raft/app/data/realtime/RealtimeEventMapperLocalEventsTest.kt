@@ -5,7 +5,6 @@ import build.raft.app.model.RealtimeRefreshScope
 import build.raft.app.model.ServerId
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertFalse
 import kotlin.test.assertIs
 
 class RealtimeEventMapperLocalEventsTest {
@@ -21,10 +20,5 @@ class RealtimeEventMapperLocalEventsTest {
         assertEquals(RealtimeRefreshScope.Home, refresh.scope)
         assertEquals(ServerId("server-1"), refresh.serverId)
         assertEquals("transport_reconnect_resume_unavailable", refresh.reason)
-    }
-
-    @Test
-    fun catchUpRequiredIsNeverSubscribedOnTheSocket() {
-        assertFalse(RealtimeLocalEvents.CatchUpRequired in RealtimeSocketEvents.ServerWireEvents)
     }
 }

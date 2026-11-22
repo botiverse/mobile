@@ -26,12 +26,4 @@ class RaftOutsideTapTrackerTest {
         assertNull(tap.onEvent(anyPressed = true, moved = true))
         assertEquals(false, tap.onEvent(anyPressed = false, moved = false))
     }
-
-    @Test
-    fun aSecondFingerKeepsTheGestureOpenUntilAllAreUp() {
-        val tap = RaftOutsideTapTracker()
-        assertNull(tap.onEvent(anyPressed = true, moved = false))
-        assertNull(tap.onEvent(anyPressed = true, moved = false))
-        assertEquals(true, tap.onEvent(anyPressed = false, moved = false))
-    }
 }

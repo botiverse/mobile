@@ -26,6 +26,8 @@ import build.raft.app.compat.pager.RaftPaneRole
 import build.raft.app.resources.*
 import build.raft.designsystem.components.LocalRaftPaneGridColumnShown
 import build.raft.designsystem.components.RaftPaneGridExpand
+import build.raft.designsystem.focus.RaftFocusRegion
+import build.raft.designsystem.focus.RaftFocusRegionHost
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.contentOrNull
@@ -684,17 +686,19 @@ internal fun RaftWorkspaceDetailGrid(
             raftProfileColumn(now.cells) { cell ->
                 RaftColumnCellShownReport(host = reportHost, key = cell.id, cells = profileShownCells, report = onShown)
                 CompositionLocalProvider(LocalRaftHost provides shellHost) {
-                    RaftProfileColumnCellStack(
-                        cell = cell,
-                        panes = panes,
-                        active = active,
-                        onChange = change,
-                        openDetail = openDetail,
-                        openArtifact = openArtifact,
-                        // An Artifact column opened after the profile's last page closes first.
-                        backOn = { !(currentArtifactDeclared && currentArtifact().isOnTopOf(currentPanes())) },
-                        page = page,
-                    )
+                    RaftFocusRegionHost(region = RaftFocusRegion.SupportingPane, modifier = Modifier.fillMaxSize()) {
+                        RaftProfileColumnCellStack(
+                            cell = cell,
+                            panes = panes,
+                            active = active,
+                            onChange = change,
+                            openDetail = openDetail,
+                            openArtifact = openArtifact,
+                            // An Artifact column opened after the profile's last page closes first.
+                            backOn = { !(currentArtifactDeclared && currentArtifact().isOnTopOf(currentPanes())) },
+                            page = page,
+                        )
+                    }
                 }
             }
         } else {
@@ -705,15 +709,17 @@ internal fun RaftWorkspaceDetailGrid(
             raftArtifactColumn {
                 RaftColumnCellShownReport(host = reportHost, key = RAFT_ARTIFACT_COLUMN_CELL, cells = artifactShownCells, report = onArtifactShown)
                 CompositionLocalProvider(LocalRaftHost provides shellHost) {
-                    RaftArtifactColumnCell(
-                        pane = artifact,
-                        active = active,
-                        backOn = { currentArtifact().isOnTopOf(currentPanes()) || !currentProfileDeclared },
-                        openArtifact = openArtifact,
-                        onChange = changeArtifact,
-                        openSupporting = { name, data -> change(currentPanes().open(name, data)) },
-                        page = page,
-                    )
+                    RaftFocusRegionHost(region = RaftFocusRegion.SupportingPane, modifier = Modifier.fillMaxSize()) {
+                        RaftArtifactColumnCell(
+                            pane = artifact,
+                            active = active,
+                            backOn = { currentArtifact().isOnTopOf(currentPanes()) || !currentProfileDeclared },
+                            openArtifact = openArtifact,
+                            onChange = changeArtifact,
+                            openSupporting = { name, data -> change(currentPanes().open(name, data)) },
+                            page = page,
+                        )
+                    }
                 }
             }
         } else {

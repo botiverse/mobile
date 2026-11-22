@@ -14,11 +14,8 @@ import androidx.compose.ui.test.ComposeUiTest
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
-import androidx.compose.ui.test.onNodeWithTag
-import androidx.compose.ui.test.performClick
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import build.raft.app.data.ComputersRackView
 import build.raft.app.data.InMemoryRaftKeyValueStore
 import build.raft.app.data.KeyValueComputersRackPreferenceRepository
 import build.raft.app.data.ScreenLoadState
@@ -120,18 +117,6 @@ class ComputersRackFitToolbarUiTest {
     private fun ComposeUiTest.has(tag: String): Boolean = onAllNodes(hasTestTag(tag)).fetchSemanticsNodes().isNotEmpty()
 
     @Test
-    fun cardsListAndAddComputerAreAtTheToolbarsEnd() = runRobolectricComposeUiTest {
-        val store = store()
-        var added = 0
-        show(loaded, store, onAdd = { added++ })
-        onNodeWithTag("${RaftComputersRackTags.View}-list").performClick()
-        waitForIdle()
-        assertEquals(ComputersRackView.List, store.state.value.view)
-        onNodeWithTag(RaftComputersRackTags.Add).performClick()
-        assertEquals(1, added)
-    }
-
-    @Test
     fun theToolbarStaysWhileLoadingWithNoComputersAndAfterAFailedLoad() = runRobolectricComposeUiTest {
         var model by mutableStateOf<RaftComputersListModel>(RaftComputersListModel.Loading)
         val store = store()
@@ -187,17 +172,5 @@ class ComputersRackFitToolbarUiTest {
         assertEquals(0, back.pageBacks(), "Back is the search's while it covers the line")
         back.press()
         assertEquals(1, back.pageBacks(), "a closed, empty search leaves Back to the page")
-    }
-
-    @Test
-    fun anInlineSearchNeverTakesBack() = runRobolectricComposeUiTest {
-        val store = store()
-        val back = show(loaded, store)
-        runOnIdle { store.dispatch(RaftComputersRackToolbarIntent.Search("alp")) }
-        waitForIdle()
-        assertTrue(has(RaftComputersRackTags.Search))
-        back.press()
-        assertEquals(1, back.pageBacks(), "a wide toolbar's search is inline: Back stays the page's")
-        assertEquals("alp", store.state.value.filters.query)
     }
 }

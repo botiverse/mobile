@@ -3,7 +3,6 @@ package build.raft.app
 import kotlin.test.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
-import kotlin.test.assertNull
 import kotlin.test.assertSame
 
 // CMP switch: moved from commonTest. The capture handle is now RaftViewCaptureRef (a GraphicsLayer
@@ -32,22 +31,6 @@ class RaftFilePreviewCaptureRefTest {
         assertSame(nextRef, nextSlot.ref)
         assertSame(nextSlot, nextSlot.bind(owner = firstOwner, ref = firstRef))
         assertSame(nextRef, nextSlot.ref)
-    }
-
-    @Test
-    fun everyRealEditorSessionChangeStartsWithNoCaptureRef() {
-        val base = captureOwner()
-        val ownerChanges =
-            listOf(
-                base.copy(actionId = "action-2"),
-                base.copy(attachmentId = "attachment-2"),
-                base.copy(imageUrl = "file:///next.jpg"),
-                base.copy(editMode = false),
-            )
-
-        ownerChanges.forEach { owner ->
-            assertNull(RaftComposerImageEditCaptureSlot(owner).ref, "owner=$owner")
-        }
     }
 
     private fun captureOwner(

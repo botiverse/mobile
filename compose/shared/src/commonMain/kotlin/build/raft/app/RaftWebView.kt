@@ -288,9 +288,15 @@ internal fun RaftWebView(
     onUrlChange: (String) -> Unit = {},
     controller: RaftWebViewController,
     allowedNavigationSchemes: Set<String> = emptySet(),
+    /** [RaftWebViewConfig.mainFrameOrigin]. */
+    mainFrameOrigin: String? = null,
+    /** [RaftWebViewConfig.frameHosts]. */
+    frameHosts: Set<String> = emptySet(),
     onNavigationStateChange: (RaftWebViewNavigationState) -> Unit = {},
     onHostMessage: (String, JSONObject) -> Unit = { _, _ -> },
     loadWatchdog: RaftWebViewLoadWatchdog? = null,
+    /** A new top-level document routed as a link (see [RaftWebViewEvents.routesMainFrameNavigation]); null: loaded. */
+    routesMainFrameNavigation: ((String) -> Boolean)? = null,
     /** [RaftWebViewConfig.diagnosticsSurface]. */
     diagnosticsSurface: String = RAFT_WEBVIEW_SURFACE_DEFAULT,
     /** [RaftWebViewConfig.showsFormAccessoryBar]. */
@@ -314,8 +320,11 @@ internal fun RaftWebView(
         onUrlChange = onUrlChange,
         controller = controller,
         allowedNavigationSchemes = allowedNavigationSchemes,
+        mainFrameOrigin = mainFrameOrigin,
+        frameHosts = frameHosts,
         onNavigationStateChange = onNavigationStateChange,
         onHostMessage = onHostMessage,
+        routesMainFrameNavigation = routesMainFrameNavigation,
         diagnosticsSurface = diagnosticsSurface,
         showsFormAccessoryBar = showsFormAccessoryBar
     )

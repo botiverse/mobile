@@ -19,6 +19,7 @@ import build.raft.app.data.RaftDisplayPreferenceRuntime
 import build.raft.app.data.ThreadActionCard
 import build.raft.app.data.defaultNowMillis
 import build.raft.app.data.expiredAsOf
+import build.raft.app.data.stripQuoteReplyRefsForPreview
 import build.raft.app.model.ConversationKind
 import build.raft.app.markdown.LocalRaftMarkdownLinkLongPress
 import build.raft.app.markdown.RaftMarkdownOwnTaskStatusScope
@@ -205,7 +206,6 @@ internal fun ThreadQuotedPermalinkCard(
             val avatarWireValue =
                 resolveThreadRowAvatarWireValue(rememberRaftMemberAvatarWireValue(memberAvatarResolver, item.authorId))
                     ?: item.avatarWireValue
-            val liveTimeContext = currentRaftTimeContextProvider?.current
             build.raft.designsystem.components.RaftMessageQuotedPreview(
                 authorName = item.localizedAuthorName().ifBlank { stringResource(Res.string.thread_comments_unknown_author) },
                 text = markdownToPreviewText(item.body).takeIf { it.isNotBlank() }
@@ -248,7 +248,6 @@ internal fun ThreadQuotedPermalinkCard(
                         {
                             RaftRelativeTimestampText(
                                 value = item.timestampLabel,
-                                timeContext = liveTimeContext,
                                 displayGroup = RaftTimestampDisplayGroup.Conversation,
                                 style = build.raft.designsystem.components.RaftMessageQuotedPreviewDefaults.TimeStyle,
                                 color = build.raft.designsystem.components.RaftMessageQuotedPreviewDefaults.TimeInk,
@@ -376,6 +375,8 @@ private class ThreadMessageCardCallbacks(
     val onLongPressInputReady: ((String) -> Unit)?,
     val quotedPermalinkLoader: ThreadQuotedPermalinkLoader?,
     val onShowAuthorDescription: ((String, RaftPopoverAnchor) -> Unit)? = null,
+    /** A quote reply's card was tapped: the quoted message's id ([ThreadQuoteReplyBody]); null: cards don't jump. */
+    val onJumpToQuotedMessage: ((String) -> Unit)? = null,
 )
 
 internal @Composable
@@ -458,7 +459,9 @@ fun ThreadMessageCard(
     onShowAuthorDescription: ((String, RaftPopoverAnchor) -> Unit)? = null,
     outerPadding: androidx.compose.ui.unit.Dp = RaftAppSpacing.Sm,
     /** web MessageHoverToolbar: the row's hover toolbar under a mouse or trackpad; null: none. */
-    hoverToolbar: ThreadMessageHoverToolbarActions? = null
+    hoverToolbar: ThreadMessageHoverToolbarActions? = null,
+    /** A quote reply's card was tapped (web useJumpToQuotedMessage): the quoted message's id; null: the cards don't jump. */
+    onJumpToQuotedMessage: ((String) -> Unit)? = null
 )
  {
     // RFC 077 PR 2b (web MessageItem `retracted`): a retracted message is one non-interactive
@@ -551,6 +554,7 @@ fun ThreadMessageCard(
                 onLongPressInputReady = onLongPressInputReady,
                 quotedPermalinkLoader = quotedPermalinkLoader,
                 onShowAuthorDescription = onShowAuthorDescription,
+                onJumpToQuotedMessage = onJumpToQuotedMessage,
             ),
     )
 }
@@ -672,8 +676,9 @@ private fun ThreadMessageCardContent(
             message.authorId.takeIf { message.externalAuthor == null && !message.authorKind.equals("system", ignoreCase = true) },
         )
     // Settings > Appearance "Show member descriptions" (web #14653): off, no description here.
+    val showSenderDescription = RaftDisplayPreferenceRuntime.observeShowSenderDescription()
     val authorDescription =
-        threadAuthorRowDescription(message, authorFacts, showDescription = RaftDisplayPreferenceRuntime.showSenderDescription)
+        threadAuthorRowDescription(message, authorFacts, showDescription = showSenderDescription)
     val authorGuestLabel =
         if (threadAuthorRowShowsGuest(message, authorFacts)) stringResource(Res.string.channel_member_role_guest) else null
     // Member labels (web botiverse/slock #14535): a sender from another server carries that server's
@@ -833,7 +838,7 @@ private fun ThreadMessageCardContent(
     val compactTimestampGutter = compactConsecutiveMessages
     // Screen readers hear every row's time: a compact row without its header has no visible one
     // (only while pressed), so its avatar slot carries it, as the header would show it.
-    val rowTimeContext = currentRaftTimeContextProvider?.current
+    val rowTimeContext = currentRaftDateTimeContext(null)
     val rowTimeAccessibilityLabel =
         if (showTimestampInHeader) {
             null
@@ -1087,6 +1092,10 @@ private fun ThreadMessageCardContent(
                             deferLongPressAt =
                                 inPlaceSelection?.let { selection ->
                                     { offset -> selection.bodyContainsRowOffset(offset) }
+                                },
+                            isInPlaceSelectionTaken =
+                                inPlaceSelection?.let { selection ->
+                                    { selection.hasSelection || selection.linkLongPressOwnsGesture }
                                 },
                             onPointerDown =
                                 inPlaceSelection?.let { selection ->
@@ -1607,8 +1616,26 @@ private fun ThreadMessageCardContent(
                                                             LocalRaftMarkdownFindQuery provides
                                                                 (if (searchMatch) LocalThreadFindHighlightQuery.current else null)
                                                           ) {
-                                                            RaftMarkdownBody(
+                                                            // Quote replies (web QuoteReplyBlocks): a verified quote is a
+                                                            // card; any other keeps its words, without its `msg=` line.
+                                                            ThreadQuoteReplyBody(
+                                                                messageId = message.id,
                                                                 body = bodyForRender,
+                                                                resolvedQuotes = message.resolvedQuotes,
+                                                                // While selecting messages a tap selects the row instead.
+                                                                onJumpToQuotedMessage =
+                                                                    callbacks.onJumpToQuotedMessage
+                                                                        ?.takeUnless { shareSelectionActive }
+                                                                        ?.let { jump ->
+                                                                            { quotedMessageId: String ->
+                                                                                tapMovementGate.rejectChildAction("quote_reply")
+                                                                                jump(quotedMessageId)
+                                                                            }
+                                                                        },
+                                                                alignEnd = alignOwnMessageRight,
+                                                            ) { markdownBody ->
+                                                            RaftMarkdownBody(
+                                                                body = markdownBody,
                                                                 fillWidth = !alignOwnMessageRight,
                                                                 textStyle = messageBodyTextStyle,
                                                                 highlightedMentions = highlightedMentions,
@@ -1627,6 +1654,7 @@ private fun ThreadMessageCardContent(
                                                                 performanceKey = messagePerformanceKey,
                                                                 performanceLogger = diagnosticsLogger
                                                             )
+                                                            }
                                                           }
                                                           }
                                                           }
@@ -1635,10 +1663,11 @@ private fun ThreadMessageCardContent(
                                                 } else {
                                                     val findQuery = if (searchMatch) LocalThreadFindHighlightQuery.current else null
                                                     Text(
-                                                        text = AnnotatedString(bodyForRender).withRaftMarkdownFindMarks(findQuery),
+                                                        // A cut preview's quote reply reads without its `msg=` line too.
+                                                        text = AnnotatedString(stripQuoteReplyRefsForPreview(bodyForRender)).withRaftMarkdownFindMarks(findQuery),
                                                         style = messageBodyTextStyle,
                                                         color = RaftColor.TextBlack,
-                                                        modifier = Modifier
+                                                        modifier = if (!alignOwnMessageRight) Modifier.fillMaxWidth() else Modifier
                                                     )
                                                 }
                                             }

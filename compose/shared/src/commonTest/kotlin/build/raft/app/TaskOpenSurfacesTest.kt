@@ -1,15 +1,21 @@
 package build.raft.app
 
+import build.raft.app.data.DataRequestPriority
 import build.raft.app.data.HomeNetworkResponse
 import build.raft.app.data.RaftTasksApi
 import build.raft.app.data.SharedTasksDataSource
+import build.raft.app.data.SharedTasksDataStore
 import build.raft.app.data.ThreadApiResult
 import build.raft.app.data.parseSharedServerTasksPayload
 import build.raft.app.model.ChannelId
+import build.raft.app.model.RaftTimeContext
 import build.raft.app.model.ServerId
 import build.raft.app.model.TaskId
 import build.raft.app.model.TaskStatus
 import build.raft.app.model.TaskSummary
+import build.raft.app.model.raftEpochDayForDate
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -29,18 +35,16 @@ class TaskOpenSurfacesTest {
         val preV2 = task("""{"messageId":"msg-host","hostMessageId":"msg-host","conversationChannelId":null,"conversationAnchored":false,"isLegacy":false}""")
         val v2 = task("""{"messageId":"t-1","hostMessageId":null,"conversationChannelId":"conv-1","conversationAnchored":true,"isLegacy":false}""")
         val v2Lazy = task("""{"messageId":"t-1","hostMessageId":null,"conversationChannelId":null,"conversationAnchored":true,"isLegacy":false}""")
-        // (case, task, flag) -> (surface kind or null, page target)
-        data class Case(val name: String, val task: TaskSummary, val taskV2: Boolean, val surface: String?, val target: TaskOpenTarget)
+        // (case, task) -> (surface kind or null, page target)
+        data class Case(val name: String, val task: TaskSummary, val surface: String?, val target: TaskOpenTarget)
         listOf(
-            Case("legacy", legacy, true, "Legacy", TaskOpenTarget.LegacyPanel),
-            Case("legacy, flag off", legacy, false, "Legacy", TaskOpenTarget.LegacyPanel),
-            Case("pre-v2, flag off", preV2, false, null, TaskOpenTarget.HostThread),
-            Case("pre-v2, flag on", preV2, true, "Pending", TaskOpenTarget.PendingConversation),
-            Case("v2", v2, true, null, TaskOpenTarget.Conversation(ChannelId("conv-1"))),
-            Case("v2 without a conversation yet", v2Lazy, false, "Pending", TaskOpenTarget.PendingConversation),
+            Case("legacy", legacy, "Legacy", TaskOpenTarget.LegacyPanel),
+            Case("pre-v2", preV2, "Pending", TaskOpenTarget.PendingConversation),
+            Case("v2", v2, null, TaskOpenTarget.Conversation(ChannelId("conv-1"))),
+            Case("v2 without a conversation yet", v2Lazy, "Pending", TaskOpenTarget.PendingConversation),
         ).forEach { case ->
-            assertEquals(case.target, case.task.taskOpenTarget(case.taskV2), case.name)
-            assertEquals(case.surface, case.task.taskOpenSurface(case.taskV2)?.let { it::class.simpleName }, case.name)
+            assertEquals(case.target, case.task.taskOpenTarget(), case.name)
+            assertEquals(case.surface, case.task.taskOpenSurface()?.let { it::class.simpleName }, case.name)
         }
     }
 
@@ -133,7 +137,7 @@ class TaskOpenSurfacesTest {
         assertEquals(preV2, flow.surface?.task)
         // The conversation's own `task:updated` does not open it a second time.
         val anchored = preV2.copy(conversationChannelId = ChannelId("conv-local"), conversationAnchored = true)
-        assertEquals(null, flow.onTaskChanged(anchored, taskV2Enabled = true), "the page it opens is already on its way")
+        assertEquals(null, flow.onTaskChanged(anchored), "the page it opens is already on its way")
         flow.finishHandOff()
         assertEquals(null, flow.surface, "it gives way to the conversation page")
         assertFalse(flow.handingOff)
@@ -152,18 +156,18 @@ class TaskOpenSurfacesTest {
         flow.open(TaskOpenSurface.Pending(preV2))
         flow.onDraftChange("server-1", "t-1", "half a thought")
         // Another task's update, and the same copy: nothing changes.
-        assertEquals(null, flow.onTaskChanged(preV2.copy(id = TaskId("t-2")), taskV2Enabled = true))
-        assertEquals(null, flow.onTaskChanged(preV2, taskV2Enabled = true))
+        assertEquals(null, flow.onTaskChanged(preV2.copy(id = TaskId("t-2"))))
+        assertEquals(null, flow.onTaskChanged(preV2))
         // `task:updated` with a new status, still no conversation: the page shows the new copy.
         val reviewed = preV2.copy(status = TaskStatus.InReview, revision = 2L)
-        assertEquals(null, flow.onTaskChanged(reviewed, taskV2Enabled = true))
+        assertEquals(null, flow.onTaskChanged(reviewed))
         assertEquals(reviewed, flow.surface?.task)
         // A store still holding the older revision does not put the old status back.
-        assertEquals(null, flow.onTaskChanged(preV2, taskV2Enabled = true))
+        assertEquals(null, flow.onTaskChanged(preV2))
         assertEquals(reviewed, flow.surface?.task)
         // Someone else wrote first: the conversation exists; the caller opens it.
         val anchored = reviewed.copy(conversationChannelId = ChannelId("conv-1"), conversationAnchored = true)
-        assertEquals(anchored, flow.onTaskChanged(anchored, taskV2Enabled = true))
+        assertEquals(anchored, flow.onTaskChanged(anchored))
         assertEquals(null, flow.surface)
         assertEquals("half a thought", flow.draft("server-1", "t-1"), "the draft is kept while the page lives")
     }
@@ -208,6 +212,137 @@ class TaskOpenSurfacesTest {
         gate.finish("t-2")
         now = 2_000L
         assertTrue(gate.tryBegin("t-1"), "a later open goes through")
+    }
+
+    @OptIn(ExperimentalCoroutinesApi::class)
+    @Test
+    fun tasksTabOpenHydratesSummaryRowAndAlwaysReleasesGateOnMismatchOr404() = runTest {
+        val summaryOnly =
+            task("""{"messageId":"t-1","hostMessageId":null,"conversationAnchored":false,"isLegacy":false,"hasDescription":true,"sourceSenderType":"user","sourceSenderId":"user-1"}""")
+        assertFalse(summaryOnly.conversationDetailsLoaded)
+
+        // 1. Hydrates a summary-only row -> opens its Conversation page.
+        var nextTaskByNumberResponse =
+            HomeNetworkResponse(
+                200,
+                """{"task":{"id":"t-1","channelId":"channel-1","channelName":"general","channelType":"channel","taskNumber":7,"title":"Ship it","status":"todo","sourceMessageId":"msg-host","conversationReplyCount":2,"createdByType":"user","createdById":"user-1","createdByName":"artin","revision":1,"conversationChannelId":"conv-7","conversationAnchored":true,"isLegacy":false}}""",
+            )
+        val api =
+            object : RaftTasksApi {
+                override suspend fun serverTasks(serverId: ServerId, priority: DataRequestPriority) =
+                    HomeNetworkResponse(code = 501, bodyText = null)
+
+                override suspend fun updateTaskStatus(taskId: TaskId, status: TaskStatus) =
+                    HomeNetworkResponse(code = 501, bodyText = null)
+
+                override suspend fun taskByNumber(
+                    serverId: ServerId,
+                    channelId: ChannelId,
+                    taskNumber: Int,
+                    priority: DataRequestPriority,
+                ) = nextTaskByNumberResponse
+            }
+        val store = SharedTasksDataStore(currentServerIdProvider = { "server-1" })
+        val dataSource = SharedTasksDataSource(api, diagnosticsLogger = {})
+        var clockMs = 0L
+        val gate = TaskOpenGate(repeatWindowMs = 700L, nowMs = { clockMs })
+        val openedPages = mutableListOf<Pair<TaskSummary, ChannelId?>>()
+        val openedSurfaces = mutableListOf<TaskOpenSurface>()
+        var loadErrors = 0
+        var notFounds = 0
+
+        launchTasksTabTaskOpen(
+            task = summaryOnly,
+            serverId = "server-1",
+            tasksDataStore = store,
+            tasksDataSource = dataSource,
+            gate = gate,
+            scope = this,
+            isStillActive = { true },
+            openSurface = { openedSurfaces += it },
+            openPage = { opened, convId -> openedPages += opened to convId },
+            onLoadError = { loadErrors += 1 },
+            onNoPermission = {},
+            onNotFound = { notFounds += 1 },
+            log = {},
+        )
+        advanceUntilIdle()
+        assertEquals(1, openedPages.size)
+        assertEquals(ChannelId("conv-7"), openedPages.single().first.conversationChannelId)
+        assertTrue(openedSurfaces.isEmpty())
+
+        // 2. ID mismatch releases gate and calls onNotFound instead of wedging TaskOpenGate.
+        clockMs = 2_000L
+        nextTaskByNumberResponse =
+            HomeNetworkResponse(
+                200,
+                """{"task":{"id":"t-other","channelId":"channel-1","channelName":"general","channelType":"channel","taskNumber":7,"title":"Wrong","status":"todo","revision":1,"conversationChannelId":"conv-other","conversationAnchored":true,"isLegacy":false}}""",
+            )
+        val freshStore = SharedTasksDataStore(currentServerIdProvider = { "server-1" })
+        launchTasksTabTaskOpen(
+            task = summaryOnly,
+            serverId = "server-1",
+            tasksDataStore = freshStore,
+            tasksDataSource = dataSource,
+            gate = gate,
+            scope = this,
+            isStillActive = { true },
+            openSurface = { openedSurfaces += it },
+            openPage = { opened, convId -> openedPages += opened to convId },
+            onLoadError = { loadErrors += 1 },
+            onNoPermission = {},
+            onNotFound = { notFounds += 1 },
+            log = {},
+        )
+        advanceUntilIdle()
+        assertEquals(1, notFounds)
+        clockMs = 4_000L
+        assertTrue(gate.tryBegin("t-next"), "gate must be released after id mismatch")
+        gate.finish("t-next")
+
+        // 3. 404 reports load error rather than falsely opening Pending even when replyCount == 0.
+        clockMs = 6_000L
+        nextTaskByNumberResponse = HomeNetworkResponse(404, """{"error":"Task not found"}""")
+        launchTasksTabTaskOpen(
+            task = summaryOnly,
+            serverId = "server-1",
+            tasksDataStore = freshStore,
+            tasksDataSource = dataSource,
+            gate = gate,
+            scope = this,
+            isStillActive = { true },
+            openSurface = { openedSurfaces += it },
+            openPage = { opened, convId -> openedPages += opened to convId },
+            onLoadError = { loadErrors += 1 },
+            onNoPermission = {},
+            onNotFound = { notFounds += 1 },
+            log = {},
+        )
+        advanceUntilIdle()
+        assertEquals(1, loadErrors)
+        assertTrue(openedSurfaces.isEmpty())
+    }
+
+    @Test
+    fun timeContextProviderDateContextIgnoresMinuteTicksAndUpdatesOnMidnightOrOffsetShift() {
+        val day1 = raftEpochDayForDate(2026, 11, 21)
+        val day2 = raftEpochDayForDate(2026, 11, 22)
+        val initial = RaftTimeContext(localOffsetMinutes = -420, todayEpochDay = day1, nowEpochMillis = 1_000L)
+        val provider = RaftTimeContextProvider(initial)
+        val firstDateContext = provider.dateContext
+        assertEquals(RaftTimeContext(localOffsetMinutes = -420, todayEpochDay = day1, nowEpochMillis = null), firstDateContext)
+
+        // 1-minute tick leaves dateContext equal (same instance, no recomposition invalidation).
+        provider.update(initial.copy(nowEpochMillis = 61_000L))
+        assertTrue(provider.dateContext === firstDateContext)
+
+        // DST / offset change updates dateContext with paired offset + day.
+        provider.update(initial.copy(localOffsetMinutes = -480, nowEpochMillis = 121_000L))
+        assertEquals(RaftTimeContext(localOffsetMinutes = -480, todayEpochDay = day1, nowEpochMillis = null), provider.dateContext)
+
+        // Midnight updates dateContext.
+        provider.update(initial.copy(localOffsetMinutes = -480, todayEpochDay = day2, nowEpochMillis = 86_400_000L))
+        assertEquals(RaftTimeContext(localOffsetMinutes = -480, todayEpochDay = day2, nowEpochMillis = null), provider.dateContext)
     }
 
     private fun task(fields: String): TaskSummary {

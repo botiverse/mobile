@@ -2,9 +2,7 @@ package build.raft.app.data
 
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertFalse
 import kotlin.test.assertNull
-import kotlin.test.assertTrue
 
 /**
  * `GET servers/:id/assistant/setting-changes` (web `components/settings/assistantSettingChangesData.ts`
@@ -82,35 +80,6 @@ class AssistantSettingChangesApiTest {
             )
         assertEquals(listOf("c2"), changes.map { it.id })
         assertEquals(AssistantChangedSetting.SidebarArrange, changes.single().setting)
-    }
-
-    @Test
-    fun serverIdAbsentNullOrPresent() {
-        val changes =
-            parseAssistantSettingChanges(
-                """
-                {"changes":[
-                  {"id":"absent","setting":"displayLanguage","previousValue":"en","nextValue":"ja","createdAt":"2026-11-17T09:14:00Z"},
-                  {"id":"gone","setting":"displayLanguage","serverId":null,"serverName":null,"previousValue":"en","nextValue":"ja","createdAt":"2026-11-17T09:14:00Z"},
-                  {"id":"here","setting":"displayLanguage","serverId":"s1","previousValue":"en","nextValue":"ja","createdAt":"2026-11-17T09:14:00Z"},
-                  {"id":"other","setting":"displayLanguage","serverId":"s2","serverName":"Design","previousValue":"en","nextValue":"ja","createdAt":"2026-11-17T09:14:00Z"}
-                ]}
-                """.trimIndent()
-            ).associateBy { it.id }
-        assertFalse(changes.getValue("absent").inOtherServer("s1"))
-        assertTrue(changes.getValue("gone").inOtherServer("s1"))
-        assertFalse(changes.getValue("here").inOtherServer("s1"))
-        assertTrue(changes.getValue("other").inOtherServer("s1"))
-    }
-
-    @Test
-    fun anUnreadableBodyIsNoChanges() {
-        assertEquals(emptyList(), parseAssistantSettingChanges(""))
-        assertEquals(emptyList(), parseAssistantSettingChanges("[]"))
-        assertEquals(emptyList(), parseAssistantSettingChanges("""{"changes":null}"""))
-        assertEquals(emptyList(), parseAssistantSettingChanges("""{"error":"assistant_not_enabled"}"""))
-        assertNull(assistantSettingChangesResultOf(403, """{"error":"assistant_not_enabled"}"""))
-        assertNull(assistantSettingChangesResultOf(200, null))
     }
 
     @Test

@@ -13,9 +13,12 @@
 //   decide     POST .../release-settings-decision     { id_token, attempt_id, request_id } -> { state, attempt_id, request_id }
 //
 // The same client fetches the login acceptance input (#216) for the claimed case login-email-password
-// (testbed_login_acceptance_input.mjs), with the claim credential of stamp_report.sh claim:
+// (testbed_login_acceptance_input.mjs) and reports its result (testbed_login_acceptance_result.mjs), with
+// the claim credential of stamp_report.sh claim:
 //   input      POST .../login-acceptance-input        { id_token }                    -> HTTP 200 only: the six-field input
 //                                                      (botiverse/testbed worker/src/login-acceptance.ts)
+//   result     POST .../login-acceptance-result       { id_token, verdict, reason }   -> HTTP 200 only (also for an identical
+//                                                      resend); 409: Testbed already holds another result
 //
 // (all under /api/agent/run-cases/{run_case_id}/; after the claim also X-Testbed-CI-Job-Ref and
 // X-Testbed-Claim-Token). Any refusal, missing field or transport failure is a stop: nothing here
@@ -27,8 +30,13 @@ const RUN_CASE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$
 const ATTEMPT_ID = /^pla_[0-9a-f]{32}$/;
 const HEX64 = /^[0-9a-f]{64}$/;
 const REQUEST_ID = /^[0-9a-f]{32}$/;
+// A login acceptance verdict and the shape of its reason code (lowercase words joined by "_", at most 40
+// characters): nothing else, no id or 64-hex ref, can travel in a result report.
+const ACCEPTANCE_VERDICTS = ["pass", "fail", "unknown"];
+const REASON_CODE = /^(?=.{1,40}$)[a-z]+(?:_[a-z]+)*$/;
 export const RELEASE_LOGIN_MODE = "release-prelogin";
-export const ENDPOINTS = ["release-settings-job", "release-settings-claim", "release-settings-observation", "release-settings-decision", "login-acceptance-input"];
+export const ENDPOINTS = ["release-settings-job", "release-settings-claim", "release-settings-observation", "release-settings-decision",
+  "login-acceptance-input", "login-acceptance-result"];
 
 export class TestbedReleaseError extends Error {}
 const fail = (code) => { throw new TestbedReleaseError(code); };
@@ -86,8 +94,11 @@ export function createTestbedReleaseClient({ env = process.env, fetchImpl = fetc
   // a timeout, a 5xx or an unreadable reply, a bounded number of times. Testbed answers a repeated
   // dedicated claim from the same job with the original result, so a claim whose reply was lost
   // is recovered rather than abandoned. A 4xx is a refusal: never retried. `status`: the only
-  // success status the endpoint has (any other 2xx is a failure too).
-  const post = async (endpoint, body, { claimed = true, retry = false, status = null } = {}) => {
+  // success status the endpoint has (any other 2xx is a failure too). `statusOnly`: the status is the
+  // whole answer and the body is never read; only `status` succeeds, only a transport failure, a
+  // timeout or a 5xx is retried, and any other status (a redirect too: never followed) stops at once,
+  // as `refusals[status]` where the endpoint names it.
+  const post = async (endpoint, body, { claimed = true, retry = false, status = null, statusOnly = false, refusals = {} } = {}) => {
     const audience = releaseSettingsAudience(testbedUrl, runCaseId, endpoint);
     const idToken = await requestOidcToken({ env, fetchImpl, audience });
     if (claimed && !claimToken) fail("claim_token_missing");
@@ -100,6 +111,7 @@ export function createTestbedReleaseClient({ env = process.env, fetchImpl = fetc
         ...(claimed ? { "X-Testbed-Claim-Token": claimToken } : {}),
       },
       body: JSON.stringify({ id_token: idToken, ...body }),
+      ...(statusOnly ? { redirect: "manual" } : {}),
     };
     const delays = retry ? retryDelaysMs : [];
     let lastFailure = `${endpoint}_no_reply`;
@@ -110,6 +122,13 @@ export function createTestbedReleaseClient({ env = process.env, fetchImpl = fetc
         response = await fetchImpl(audience, { ...request, signal: AbortSignal.timeout(30_000) });
       } catch {
         lastFailure = `${endpoint}_no_reply`;
+        continue;
+      }
+      if (statusOnly) {
+        await response.body?.cancel().catch(() => {});
+        if (response.status === status) return null;
+        if (response.status < 500) fail(refusals[response.status] ?? `${endpoint}_http_${response.status}`);
+        lastFailure = `${endpoint}_http_${response.status}`;
         continue;
       }
       if (response.status >= 400 && response.status < 500) fail(`${endpoint}_http_${response.status}`);
@@ -156,6 +175,19 @@ export function createTestbedReleaseClient({ env = process.env, fetchImpl = fetc
      */
     async loginAcceptanceInput() {
       return post("login-acceptance-input", {}, { retry: true, status: 200 });
+    },
+    /**
+     * The login acceptance result of this attempt (#216): the body is exactly { id_token, verdict, reason }
+     * (Testbed derives the attempt from the claim and the approved GitHub job). Success is HTTP 200 only,
+     * which Testbed also answers to an identical resend, so a lost reply or a 5xx is retried like the
+     * claim. 409 means Testbed already holds a different result: login-acceptance-result_conflict, never
+     * retried. Any other status stops at once.
+     */
+    async loginAcceptanceResult({ verdict, reason }) {
+      if (!ACCEPTANCE_VERDICTS.includes(verdict) || typeof reason !== "string" || !REASON_CODE.test(reason)) fail("login-acceptance-result_request_invalid");
+      await post("login-acceptance-result", { verdict, reason }, {
+        retry: true, status: 200, statusOnly: true, refusals: { 409: "login-acceptance-result_conflict" },
+      });
     },
   };
 }

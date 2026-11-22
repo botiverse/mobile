@@ -15,6 +15,7 @@ import build.raft.app.data.DataResult
 import build.raft.app.data.ScreenError
 import build.raft.app.data.SharedCreateAgentFormStore
 import build.raft.app.data.ExistingAgentRuntimeOptions
+import build.raft.app.data.raftRuntimeModelSupportsFastMode
 import build.raft.app.data.runtimeDeprecatedForAgent
 import build.raft.app.components.RaftUiBanner
 import build.raft.app.components.RaftUiBannerSize
@@ -33,7 +34,6 @@ import build.raft.app.model.MemberId
 import build.raft.app.model.MemberProfile
 import build.raft.app.model.Presence
 import build.raft.app.model.supportsRuntimeFastMode
-import build.raft.app.model.supportsRuntimeReasoningEffort
 import build.raft.app.model.RaftTimeContext
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -537,12 +537,20 @@ internal fun MembersAgentRuntimeConfigSection(
         val runtimeModelsCatalog = canonicalRuntimeId?.let(agentRuntimeModelsByRuntime::get)
         // The agent's server: its catalog says whether the runtime is deprecated there.
         val runtimeCatalogServerId = member.serverId?.value ?: agentProfileEditAuthority?.serverId?.value
+        val runtimeCatalog = build.raft.app.data.RaftRuntimeCatalogNames.observeCatalog(runtimeCatalogServerId)
+        val runtimeDeprecated =
+            canonicalRuntimeId?.let { id ->
+                runtimeDeprecatedForAgent(id, agentRuntimeOptions, runtimeCatalogServerId) { rt ->
+                    val normalized = rt.trim()
+                    (runtimeCatalog?.entry(normalized) ?: build.raft.app.data.BundledRuntimeCatalog.entry(normalized))?.deprecated == true
+                }
+            }
         MembersAgentRuntimeConfigRows(
             resolution = runtimeConfigResolution,
             runtimeModelsCatalog = runtimeModelsCatalog,
             machineId = summary?.machineId ?: member.membersComputerId,
             serverId = runtimeCatalogServerId,
-            runtimeDeprecated = canonicalRuntimeId?.let { runtimeDeprecatedForAgent(it, agentRuntimeOptions, runtimeCatalogServerId) }
+            runtimeDeprecated = runtimeDeprecated
         )
         // Web AgentProfileInfo: under the runtime rows (`mt-3`), before Environment Variables, only
         // when the server says the session reported Raft default limits (botiverse/slock #13492).
@@ -640,6 +648,8 @@ internal fun MembersAgentRuntimeConfigRows(
         return
     }
     build.raft.app.data.EnsureServerModelLabelCatalog(serverId)
+    build.raft.app.data.RaftModelLabelCatalogs.observeCatalog(serverId)
+    build.raft.app.data.RaftRuntimeCatalogNames.observeCatalog(serverId)
     val runtimeId = runtimeConfig.runtime
     val modelLabel =
         membersAgentRuntimeModelDisplayLabel(
@@ -678,22 +688,13 @@ internal fun MembersAgentRuntimeConfigRows(
                 RaftText(text = modelLabel, style = membersInfoValueStyle(mono = true), color = RaftTheme.colors.foreground)
             }
         }
-        // kimi-sdk (task #275): the chip is gated on the selected model's LIVE
-        // catalog capability (never the static runtime set).
-        if (
-            supportsRuntimeReasoningEffort(runtimeId) ||
-            membersKimiSdkModelDeclaresReasoning(
-                runtime = runtimeId,
-                model = runtimeConfig.toMembersRuntimeModelValue(),
-                liveModels = runtimeModelsCatalog?.models.orEmpty()
-            )
-        ) {
+        // Web AgentProfileInfo `reasoningLabel` (botiverse/slock #15691): the value the Members list's
+        // agent rows show too; no row where the runtime takes no reasoning effort.
+        membersReasoningEffortDisplayLabel(runtimeId, runtimeConfig.reasoningEffort)?.let { reasoning ->
             MembersAgentInfoField(stringResource(Res.string.member_label_reasoning)) {
                 // Web `<span>`: the plain callout value.
                 RaftText(
-                    text = runtimeConfig.reasoningEffort?.let { effort ->
-                        membersReasoningEffortLabel(effort)?.let { stringResource(it) } ?: effort.toMembersDisplayLabel()
-                    } ?: stringResource(Res.string.member_label_default),
+                    text = reasoning.localized(),
                     style = membersInfoValueStyle(),
                     color = RaftTheme.colors.foreground
                 )
@@ -702,7 +703,7 @@ internal fun MembersAgentRuntimeConfigRows(
         if (supportsRuntimeFastMode(runtimeId)) {
             MembersAgentInfoField(stringResource(Res.string.member_label_mode)) {
                 RaftText(
-                    text = if (runtimeConfig.mode is RuntimeModeConfig.Fast) stringResource(Res.string.member_label_fast) else stringResource(Res.string.member_label_default),
+                    text = if (membersRuntimeConfigFastMode(runtimeConfig)) stringResource(Res.string.member_label_fast) else stringResource(Res.string.member_label_default),
                     style = membersInfoValueStyle(),
                     color = RaftTheme.colors.foreground
                 )
@@ -789,8 +790,9 @@ internal fun membersAgentRuntimeModelDisplayLabel(
         this?.trim()?.takeIf { it.isNotBlank() && it != normalizedModelId }
 
     // Server model-label catalog first (web `projectRuntimeModelLabelPresentation`, slock #15780):
-    // always read during composition so Compose tracks catalog refreshes (including after live detect)
-    // instead of letting a stale per-runtime `runtimeModelsCatalog` mask updated labels.
+    // always checked before `runtimeModelsCatalog` so updated labels (including after live detect)
+    // win instead of letting a stale per-runtime `runtimeModelsCatalog` mask them. Callers in
+    // composition subscribe via `RaftModelLabelCatalogs.observeCatalog` / `RaftRuntimeCatalogNames.observeCatalog`.
     return build.raft.app.data.RaftModelLabelCatalogs.label(serverId, machineId, normalizedRuntimeId, normalizedModelId)
         ?.trim()
         ?.takeIf { it.isNotBlank() }
@@ -1134,31 +1136,23 @@ internal fun AgentDetailSummary?.toMembersRuntimeConfigResolution(): MembersAgen
         runtime = runtime,
         provider = summary.runtimeProvider,
         model = membersRuntimeModelConfig(runtime, model, summary.runtimeModelKind),
-        mode = if (summary.executionMode?.trim()?.lowercase() == "fast") {
-            RuntimeModeConfig.Fast
-        } else {
-            RuntimeModeConfig.Default
-        },
+        // The saved `runtimeConfig.mode` (web `hydrateRuntimeConfigForm`), the value the edit form's
+        // Fast mode / Speed start from (server `valuesFromRuntimeConfig`); none saved is Default. Never
+        // `executionMode`: that is where the agent runs (byoc / cloud), not a mode.
+        mode = if (summary.runtimeMode == "fast") RuntimeModeConfig.Fast else RuntimeModeConfig.Default,
         reasoningEffort = summary.reasoning?.takeIf { it.isNotBlank() },
         envVars = summary.envVars.takeIf { it.isNotEmpty() }
     ))
 }
 
 /**
- * kimi-sdk shows a reasoning row only when the computer's live catalog entry for [model] declares
- * efforts with a valid default (task #275); there is no static fallback for kimi-sdk.
+ * The profile's Mode row, web `runtimeConfigFastMode`: fast mode as it launches. A saved fast mode on a
+ * model that does not run fast (shared `runtimeModelSupportsFastMode`: Claude Opus 4.8) launches at the
+ * standard speed, so it reads Default, as the edit form's Fast mode starts unchecked for it.
  */
-private fun membersKimiSdkModelDeclaresReasoning(
-    runtime: String,
-    model: String,
-    liveModels: List<SharedCreateAgentRuntimeModelOption>
-): Boolean {
-    if (runtime != "kimi-sdk") return false
-    val live = liveModels.firstOrNull { it.id == model.trim() } ?: return false
-    val default = live.defaultReasoningEffort
-    val efforts = live.supportedReasoningEfforts.orEmpty()
-    return efforts.isNotEmpty() && !default.isNullOrBlank() && default in efforts
-}
+internal fun membersRuntimeConfigFastMode(config: RuntimeConfig): Boolean =
+    config.mode is RuntimeModeConfig.Fast &&
+        raftRuntimeModelSupportsFastMode(config.runtime, config.toMembersRuntimeModelValue())
 
 internal fun membersRuntimeModelConfig(
     runtime: String,

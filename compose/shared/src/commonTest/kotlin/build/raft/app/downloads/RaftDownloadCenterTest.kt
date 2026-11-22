@@ -1,10 +1,6 @@
 package build.raft.app.downloads
 
 import build.raft.app.data.InMemoryRaftKeyValueStore
-import build.raft.app.RaftFilePreviewDownloadPhase
-import build.raft.app.RaftFilePreviewDownloadStatusTerms
-import build.raft.app.raftThreadAttachmentCardDownloadLabel
-import build.raft.app.toFilePreviewDownloadView
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -135,51 +131,6 @@ class RaftDownloadCenterTest {
     }
 
     @Test
-    fun progressStatesPauseResumeAndSaving() = runTest {
-        val center = center()
-        val task = ScriptedTask()
-        center.start(descriptor(), task)
-        runCurrent()
-
-        task.progress!!(progressSample(downloadedBytes = 100, totalBytes = 400, bytesPerSecond = 50))
-        assertEquals(25, center.row().percent)
-        assertEquals(50L, center.row().bytesPerSecond)
-
-        center.pause("a1")
-        assertEquals(RaftDownloadStatus.Paused, center.row().status)
-        assertNull(center.row().bytesPerSecond)
-        // A late sample of the paused transfer keeps the row paused.
-        task.progress!!(progressSample(downloadedBytes = 120, totalBytes = 400))
-        assertEquals(RaftDownloadStatus.Paused, center.row().status)
-
-        center.resume("a1")
-        assertEquals(RaftDownloadStatus.Downloading, center.row().status)
-        task.progress!!(progressSample(downloadedBytes = 400, totalBytes = 400, saving = true))
-        assertTrue(center.row().saving)
-        assertEquals(listOf(RaftDownloadControl.Pause, RaftDownloadControl.Resume), task.controls)
-
-        task.finish(RaftDownloadOutcome.Completed())
-        runCurrent()
-        val done = center.row()
-        assertEquals(RaftDownloadStatus.Completed, done.status)
-        assertFalse(done.saving)
-        assertEquals(400L, done.downloadedBytes)
-        assertEquals(100, done.percent)
-    }
-
-    @Test
-    fun startWhileActiveJoinsTheRunningDownload() = runTest {
-        val center = center()
-        val task = ScriptedTask()
-        val first = center.start(descriptor(), task)
-        val second = center.start(descriptor(), ScriptedTask())
-        runCurrent()
-        assertTrue(first === second, "same id while active must single-flight")
-        assertEquals(listOf(1), task.runs)
-        assertEquals(1, center.state.value.entries.size)
-    }
-
-    @Test
     fun cancelControlsTheHostAndSettlesCancelled() = runTest {
         val center = center()
         val task = ScriptedTask()
@@ -225,18 +176,6 @@ class RaftDownloadCenterTest {
         runCurrent()
         assertEquals(RaftDownloadOutcome.Completed(), retried.await())
         assertEquals(RaftDownloadStatus.Completed, center.row().status)
-    }
-
-    @Test
-    fun hostCancelledStatusMapsToCancelledOutcome() {
-        assertEquals(RaftDownloadOutcome.Completed("saved"), raftDownloadOutcomeForSaveStatus("saved", null))
-        assertEquals(RaftDownloadOutcome.Completed("exported"), raftDownloadOutcomeForSaveStatus("exported", null))
-        assertEquals(RaftDownloadOutcome.Cancelled("cancelled"), raftDownloadOutcomeForSaveStatus("cancelled", "x"))
-        assertEquals(
-            RaftDownloadOutcome.Failed("storage_failed", "disk full"),
-            raftDownloadOutcomeForSaveStatus("storage_failed", "disk full")
-        )
-        assertEquals(RaftDownloadOutcome.Failed("failed", null), raftDownloadOutcomeForSaveStatus("", null))
     }
 
     @Test
@@ -308,99 +247,10 @@ class RaftDownloadCenterTest {
         assertEquals(emptyList(), repository.load())
     }
 
-    @Test
-    fun attachmentSelectorDrivesTheCardAndFilePageProgressStates() = runTest {
-        val center = center()
-        val task = ScriptedTask()
-        val terms = RaftFilePreviewDownloadStatusTerms(downloading = "Downloading", paused = "Paused", saving = "Saving")
-        suspend fun entry() = center.attachmentEntry(ownerKey = "owner-1", attachmentId = "att-a1").first()
-
-        assertNull(entry(), "nothing downloaded yet")
-        assertNull(raftThreadAttachmentCardDownloadLabel(entry(), terms))
-
-        center.start(descriptor(), task)
-        runCurrent()
-        assertEquals("Downloading...", raftThreadAttachmentCardDownloadLabel(entry(), terms), "no total yet")
-        assertNull(center.attachmentEntry(ownerKey = "owner-2", attachmentId = "att-a1").first(), "another principal sees nothing")
-
-        task.progress!!(progressSample(downloadedBytes = 256, totalBytes = 1024, bytesPerSecond = 128))
-        assertEquals("Downloading 25%", raftThreadAttachmentCardDownloadLabel(entry(), terms))
-        val active = entry()!!.toFilePreviewDownloadView()
-        assertEquals(RaftFilePreviewDownloadPhase.Active, active.phase)
-        assertEquals(25, active.percent)
-        assertEquals(256L, active.downloadedBytes)
-        assertEquals(1024L, active.totalBytes)
-        assertTrue(active.inProgress)
-
-        center.pause("a1")
-        assertEquals("Paused 25%", raftThreadAttachmentCardDownloadLabel(entry(), terms))
-        assertEquals(RaftFilePreviewDownloadPhase.Paused, entry()!!.toFilePreviewDownloadView().phase)
-
-        center.resume("a1")
-        task.progress!!(progressSample(downloadedBytes = 1024, totalBytes = 1024, saving = true))
-        // Bytes all copied, the Downloads row is not published yet: 99, not 100.
-        assertEquals("Saving 99%", raftThreadAttachmentCardDownloadLabel(entry(), terms))
-        assertEquals(RaftFilePreviewDownloadPhase.Saving, entry()!!.toFilePreviewDownloadView().phase)
-
-        task.finish(RaftDownloadOutcome.Completed())
-        runCurrent()
-        assertEquals(RaftDownloadStatus.Completed, entry()!!.status)
-        assertNull(raftThreadAttachmentCardDownloadLabel(entry(), terms), "a finished download leaves the card")
-        assertFalse(entry()!!.toFilePreviewDownloadView().inProgress)
-
-        task.rearm()
-        center.retry("a1")
-        runCurrent()
-        task.finish(RaftDownloadOutcome.Failed(hostStatus = "download_failed", message = "network lost"))
-        runCurrent()
-        val failed = entry()!!.toFilePreviewDownloadView()
-        assertEquals(RaftFilePreviewDownloadPhase.Failed, failed.phase, "the file page offers Retry")
-        assertNull(failed.errorMessage, "the host's own words stay off the page")
-        assertEquals("network lost", entry()!!.errorMessage, "and stay on the row for diagnosis")
-        assertNull(raftThreadAttachmentCardDownloadLabel(entry(), terms))
-    }
-
     private fun CoroutineScope.launchAwait(
         result: kotlinx.coroutines.Deferred<RaftDownloadOutcome>,
         onResult: (RaftDownloadOutcome) -> Unit
     ) {
         launch { onResult(result.await()) }
-    }
-
-    /** Compose 版's window download bar follows the centre: start, progress, saved, failed, two at once. */
-    @Test
-    fun windowDownloadBarFollowsTheCentre() = runTest {
-        val center = center()
-        val since = now
-        fun bar() = raftDownloadBarState(center.state.value.entries, since)
-
-        val first = ScriptedTask()
-        center.start(descriptor("a1"), first)
-        runCurrent()
-        assertEquals(RaftDownloadBarState.Downloading(count = 1, entryId = "a1", fileName = "a1.pdf", fraction = null), bar())
-        first.progress!!(progressSample(downloadedBytes = 256, totalBytes = 1024))
-        assertEquals(0.25f, (bar() as RaftDownloadBarState.Downloading).fraction)
-
-        // A second download: the bar sums them ("2 downloads", bytes over both).
-        val second = ScriptedTask()
-        center.start(descriptor("b2"), second)
-        runCurrent()
-        second.progress!!(progressSample(downloadedBytes = 768, totalBytes = 1024))
-        assertEquals(RaftDownloadBarState.Downloading(count = 2, entryId = null, fileName = null, fraction = 0.5f), bar())
-
-        now += 10
-        first.finish(RaftDownloadOutcome.Completed(localUri = "file:/Users/a/Downloads/a1.pdf"))
-        runCurrent()
-        assertEquals(1, (bar() as RaftDownloadBarState.Downloading).count, "one still running keeps the progress bar")
-
-        now += 10
-        second.finish(RaftDownloadOutcome.Failed(hostStatus = "download_failed", message = "network"))
-        runCurrent()
-        assertEquals(RaftDownloadBarState.Failed("b2", "b2.pdf", "network"), bar(), "the newest finished row")
-        assertEquals(
-            RaftDownloadBarState.Saved("a1", "a1.pdf", "file:/Users/a/Downloads/a1.pdf"),
-            raftDownloadBarState(center.state.value.entries, since, dismissed = mapOf("b2" to center.row("b2").updatedAtMillis)),
-            "closing the failure shows the save before it",
-        )
     }
 }

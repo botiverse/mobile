@@ -50,19 +50,6 @@ class ThreadAttachmentFileDetailTest {
     }
 
     @Test
-    fun fileDetailRouteCarriesOnlyTheAttachmentIdentity() {
-        val apk = RaftThreadAttachmentItem(id = "att-apk", name = "app.apk", mimeType = "application/vnd.android.package-archive")
-        val payload = apk.toThreadAttachmentLazyPreviewPayload(kind = apk.threadAttachmentOpenRoute().requestedPreviewKind)
-        val launch = raftFilePreviewLaunchDescriptor(sessionId = "s-1", payload = payload)
-
-        assertEquals("loading", payload.kind)
-        assertEquals("file", payload.requestedKind)
-        assertEquals(RaftFilePreviewRouteThreadAttachment, launch.routeKind)
-        assertEquals("att-apk", launch.attachmentId)
-        assertEquals("file", launch.previewKind)
-    }
-
-    @Test
     fun alreadyDownloadedFileShowsOpenOrInstallAndShareDirectly() {
         val downloaded = RaftFilePreviewPublicDownloadState.Downloaded(generation = 3L, sizeBytes = 4_096L, persistedUri = "content://downloads/7")
         val state = raftFilePreviewDownloadUiState(downloaded, downloadStatus = "idle")

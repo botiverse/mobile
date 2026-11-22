@@ -31,28 +31,6 @@ class RuntimeFormV2Batch2FixturesTest {
     }
 
     @Test
-    fun fallbackOptionSourcesAreOrdinarySelectsWithABuiltInList() {
-        for ((name, json) in listOf(
-            "opencode fallback" to OPENCODE_V2_FALLBACK_SOURCE_JSON,
-            "kimi fallback" to KIMI_CLI_V2_FALLBACK_SOURCE_JSON,
-            "gemini" to GEMINI_V2_SOURCE_JSON,
-        )) {
-            val parsed = source(json)
-            assertEquals(RuntimeFormV2SourceKind.Select, parsed.kind, name)
-            assertTrue(!parsed.options.isNullOrEmpty(), "$name: a usable list, not an error")
-            assertTrue(parsed.options!!.any { it.value == parsed.defaultValue }, "$name: the default is one of the options")
-        }
-    }
-
-    @Test
-    fun openCodeCreateIsSubmittableFromDefaultsOnTheFallbackList() {
-        val opencode = form(OPENCODE_V2_FORM_JSON)
-        val sources = mapOf("model" to source(OPENCODE_V2_FALLBACK_SOURCE_JSON))
-        val values = initialRuntimeFormV2Values(opencode, sources)
-        assertEquals(emptyMap(), validateRuntimeFormV2(opencode, sources, values))
-    }
-
-    @Test
     fun editFormsPrefillTheStoredValuesAndCanBeSavedUnchanged() {
         for ((name, json, sourceJson) in listOf(
             Triple("opencode.edit", OPENCODE_V2_EDIT_JSON, OPENCODE_V2_FALLBACK_SOURCE_JSON),

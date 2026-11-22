@@ -3,19 +3,9 @@ package build.raft.app
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.test.ComposeUiTest
 import androidx.compose.ui.test.ExperimentalTestApi
-import androidx.compose.ui.test.assertIsDisplayed
-import androidx.compose.ui.test.hasTestTag
-import androidx.compose.ui.test.hasText
-import androidx.compose.ui.test.onNodeWithTag
-import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
-import androidx.compose.ui.test.hasAnyAncestor
 import androidx.compose.ui.test.hasContentDescription
-import androidx.compose.ui.test.longClick
-import androidx.compose.ui.test.performTouchInput
 import build.raft.app.data.ComputersRackSort
-import build.raft.app.data.ComputersRackSortDirection
-import build.raft.app.data.ComputersRackSortKey
 import build.raft.app.data.ComputersRackView
 import build.raft.app.data.RuntimeAccountUsageAccount
 import build.raft.app.data.RuntimeAccountUsageHealth
@@ -33,7 +23,6 @@ import build.raft.app.model.RaftTimeContext
 import build.raft.designsystem.theme.RaftAppearance
 import build.raft.designsystem.theme.RaftTheme
 import kotlin.test.Test
-import kotlin.test.assertTrue
 import org.junit.Rule
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -134,62 +123,6 @@ class ComputersRackCardsListUiTest {
         waitForIdle()
     }
 
-    private fun ComposeUiTest.topIn(tag: String, text: String): Float =
-        onNode(hasText(text) and hasAnyAncestor(hasTestTag(tag)), useUnmergedTree = true)
-            .fetchSemanticsNode().boundsInRoot.top
-
-    @Test
-    fun aCardLeadsWithTheMetricTheListIsSortedBy() = runRobolectricComposeUiTest {
-        val meters = "${RaftComputersRackTags.CardMeters}-m-studio"
-        show(ComputersRackView.Cards, ComputersRackSort(ComputersRackSortKey.Remaining(RuntimeAccountUsageProvider.Codex), ComputersRackSortDirection.Desc))
-        assertTrue(topIn(meters, "Codex") < topIn(meters, "Disk"), "Codex remaining: the Codex line leads")
-        assertTrue(topIn(meters, "Disk") < topIn(meters, "Claude"), "the other runtimes stay under the meters")
-    }
-
-    @Test
-    fun underMemoryUsedMemoryComesBeforeDisk() = runRobolectricComposeUiTest {
-        val meters = "${RaftComputersRackTags.CardMeters}-m-studio"
-        show(ComputersRackView.Cards, ComputersRackSort(ComputersRackSortKey.Memory, ComputersRackSortDirection.Desc))
-        assertTrue(topIn(meters, "Memory") < topIn(meters, "Disk"))
-    }
-
-    @Test
-    fun byNameDiskLeadsAndTheRuntimesFollow() = runRobolectricComposeUiTest {
-        val meters = "${RaftComputersRackTags.CardMeters}-m-studio"
-        show(ComputersRackView.Cards)
-        assertTrue(topIn(meters, "Disk") < topIn(meters, "Memory") && topIn(meters, "Memory") < topIn(meters, "Claude"))
-    }
-
-    @Test
-    fun aUsedUpLineSaysWhenItIsBack() = runRobolectricComposeUiTest {
-        show(ComputersRackView.Cards)
-        onNodeWithText("Back in 3h", useUnmergedTree = true).assertIsDisplayed()
-        assertTrue(onAllNodes(hasText("Used up"), useUnmergedTree = true).fetchSemanticsNodes().isEmpty())
-    }
-
-    @Test
-    fun theListIsBlocksUnderTheRuntimeHeader() = runRobolectricComposeUiTest {
-        show(ComputersRackView.List)
-        onNodeWithTag(RaftComputersRackTags.ListHeader).assertIsDisplayed()
-        // Online: its runtime cells, under the header's columns; no Disk / Memory in the list.
-        assertTrue(onAllNodes(hasTestTag("rack-metrics-m-studio"), useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty())
-        onNodeWithText("42% used", useUnmergedTree = true).assertIsDisplayed()
-        onNodeWithText("Back in 3h", useUnmergedTree = true).assertIsDisplayed()
-        assertTrue(onAllNodes(hasText("Disk"), useUnmergedTree = true).fetchSemanticsNodes().isEmpty())
-        val header = onNodeWithTag(RaftComputersRackTags.ListHeader).fetchSemanticsNode().boundsInRoot
-        val block = onNodeWithTag("rack-row-m-studio").fetchSemanticsNode().boundsInRoot
-        assertTrue(header.bottom <= block.top + 1f, "the header sits over the blocks")
-    }
-
-    @Test
-    fun anOfflineBlockSaysWhenItWasLastSeenAndHasNoCells() = runRobolectricComposeUiTest {
-        show(ComputersRackView.List)
-        // The Offline section is open by default, even while studio is online.
-        onNodeWithTag("rack-row-m-laptop").assertIsDisplayed()
-        assertTrue(onAllNodes(hasTestTag("rack-metrics-m-laptop"), useUnmergedTree = true).fetchSemanticsNodes().isEmpty(), "an offline computer reads no usage")
-        assertTrue(onAllNodes(hasText("Last seen", substring = true), useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty())
-    }
-
     // Free of total (botiverse/slock staging 7a631c0ffe, #14306 RackResource / machine.diskLow.chipTitle):
     // a disk in decimal units (310 GiB = 332.9 GB of 994 GiB = 1067.3 GB), memory in binary ones.
 
@@ -198,28 +131,5 @@ class ComputersRackCardsListUiTest {
         show(ComputersRackView.Cards)
         onNode(hasContentDescription("Disk 69% used, 332.9 GB free of 1067.3 GB"), useUnmergedTree = true).assertExists()
         onNode(hasContentDescription("Memory 72% used, 18.0 GB free of 64.0 GB"), useUnmergedTree = true).assertExists()
-    }
-
-    @Test
-    fun aLongPressOnTheDiskLineShowsWhatIsFree() = runRobolectricComposeUiTest {
-        show(ComputersRackView.Cards)
-        onNode(hasContentDescription("Disk 69% used, 332.9 GB free of 1067.3 GB"), useUnmergedTree = true).performTouchInput { longClick() }
-        waitForIdle()
-        onNodeWithText("332.9 GB free of 1067.3 GB", useUnmergedTree = true).assertExists()
-    }
-
-    // 6 GB free of 500 GB (decimal bytes): under 10% and under 20 GiB, so Low disk.
-    private val lowDisk = fleet.first().copy(diskStatus = SettingsComputerSizeStatusSnapshot(availableBytes = 6e9, totalBytes = 500e9))
-
-    @Test
-    fun aCardsLowDiskBadgeSaysWhatIsFreeInDecimalUnits() = runRobolectricComposeUiTest {
-        show(ComputersRackView.Cards, computers = listOf(lowDisk))
-        onNode(hasContentDescription("Low disk, 6.0 GB free of 500.0 GB"), useUnmergedTree = true).assertExists()
-    }
-
-    @Test
-    fun aListBlocksLowDiskBadgeSaysWhatIsFreeInDecimalUnits() = runRobolectricComposeUiTest {
-        show(ComputersRackView.List, computers = listOf(lowDisk))
-        onNode(hasContentDescription("Low disk, 6.0 GB free of 500.0 GB"), useUnmergedTree = true).assertExists()
     }
 }

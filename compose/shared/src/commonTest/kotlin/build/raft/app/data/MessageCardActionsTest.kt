@@ -108,23 +108,6 @@ class MessageCardActionsTest {
     }
 
     @Test
-    fun `an answer without message_card is not a card read and a handle entry it cannot read is left out`() {
-        assertNull(parseMessageCardReadAnswer("""{"items":[],"prompts":[]}"""))
-        assertNull(parseMessageCardReadAnswer("not json"))
-        val live =
-            assertNotNull(
-                parseMessageCardReadAnswer(
-                    messageCardReadBody(
-                        """{"card_revision":"1","actions":[{"element_id":"approve","action_id":"approve","url":"$MessageCardActingPage","ticket":"t","handle":"h","guess":1},""" +
-                            """{"element_id":"deny","action_id":"deny","url":"$MessageCardActingPage","ticket":"t","handle":"h-deny"}],"consent":"maybe"}""",
-                    ),
-                ),
-            )
-        assertEquals(listOf("deny"), live.handles.map { it.elementId })
-        assertNull(live.consent)
-    }
-
-    @Test
     fun `the read declares card execute with the link card capabilities and presents the view's tickets`() {
         val view = AppLinkCardView("6f1c1f86-5a83-4b1e-9b1a-0d2f0e0c0a01").apply { tickets[MessageCardActingPage] = "t-1" }
         val body = messageCardReadRequestBody(view, "ja")

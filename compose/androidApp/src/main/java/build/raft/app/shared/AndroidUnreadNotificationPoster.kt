@@ -39,6 +39,8 @@ import java.util.concurrent.Executors
 import java.util.concurrent.ScheduledExecutorService
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicLong
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.asCoroutineDispatcher
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -150,6 +152,11 @@ internal object AndroidUnreadNotificationPoster {
         Executors.newSingleThreadScheduledExecutor { runnable ->
             Thread(runnable, "raft-unread-notifications").apply { isDaemon = true }
         }
+    }
+
+    /** Serialized single-thread dispatcher shared with realtime notification post/retract work. */
+    internal val backgroundDispatcher: CoroutineDispatcher by lazy {
+        backgroundExecutor.asCoroutineDispatcher()
     }
 
     /** Runs a deferred summary update; tests replace it to run the update when they choose. */
@@ -921,23 +928,44 @@ internal object AndroidUnreadNotificationPoster {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
-    internal fun unreadNotificationLaunchIntent(context: Context, request: JSONObject): Intent? {
-        val appContext = context.applicationContext
-        val basePageData =
-            RaftCmpActivity.buildNotificationTapAppShellPageData(request) ?: return null
-        val multiShellHostEnabled =
+    internal fun unreadNotificationLaunchIntent(
+        context: Context,
+        request: JSONObject,
+        multiShellHostEnabled: Boolean =
             runCatching {
                 KeyValueChatLayoutPreferenceStore(raftSharedPreferenceStore())
                     .readMultiShellHostEnabledSync()
-            }.getOrDefault(false)
+            }.getOrDefault(false),
+        currentOwner: AndroidShellRouteOwner? = currentAndroidShellRouteOwner(context.applicationContext),
+        appTasksProvider: () -> List<AndroidAppTaskSnapshot>? = { snapshotAndroidAppTasks(context.applicationContext) },
+    ): Intent? {
+        val appContext = context.applicationContext
+        val basePageData =
+            RaftCmpActivity.buildNotificationTapAppShellPageData(request) ?: return null
+        val notificationServerId =
+            basePageData.optString(RaftCmpActivity.KEY_APP_SHELL_NOTIFICATION_SERVER_ID).trim().takeIf { it.isNotEmpty() }
+                ?: request.optString("serverId").trim().takeIf { it.isNotEmpty() }
+        val routeOwner = notificationAndroidShellRouteOwner(currentOwner, notificationServerId)
+        val launcherOwnsNotificationServer =
+            multiShellHostEnabled &&
+                routeOwner != null &&
+                run {
+                    val liveLauncher = AndroidShellWindowRegistry.windowOrNull(DEFAULT_ANDROID_SHELL_INSTANCE_ID)?.first
+                    val persistedLauncherServer =
+                        AndroidShellWindowStore.persistedLauncherServerId(routeOwner.environmentId, routeOwner.accountId)
+                    val effectiveLiveLauncherServer = persistedLauncherServer ?: liveLauncher?.serverId
+                    (liveLauncher != null && effectiveLiveLauncherServer == routeOwner.serverId) ||
+                        AndroidShellWindowStore.reconcile(
+                            appTasks = appTasksProvider(),
+                            environmentId = routeOwner.environmentId,
+                            accountId = routeOwner.accountId,
+                            prune = false,
+                        ).any { !it.documentShell && it.serverId == routeOwner.serverId }
+                }
         val pageData =
             basePageData.apply {
-                put(ANDROID_DOCUMENT_SHELL_KEY, true)
-                val notificationServerId =
-                    optString(RaftCmpActivity.KEY_APP_SHELL_NOTIFICATION_SERVER_ID).trim().takeIf { it.isNotEmpty() }
-                        ?: request.optString("serverId").trim().takeIf { it.isNotEmpty() }
-                notificationAndroidShellRouteOwner(currentAndroidShellRouteOwner(appContext), notificationServerId)
-                    ?.let { withAndroidShellRouteOwner(it) }
+                put(ANDROID_DOCUMENT_SHELL_KEY, !launcherOwnsNotificationServer)
+                routeOwner?.let { withAndroidShellRouteOwner(it) }
             }
         val target = resolveAndroidShellLaunchTarget(pageData, multiShellHostEnabled)
         val resolvedPageData = pageData.withAndroidShellLaunchTarget(target)

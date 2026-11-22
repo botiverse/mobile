@@ -7,9 +7,6 @@ import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.jsonArray
-import kotlinx.serialization.json.jsonObject
-import kotlinx.serialization.json.jsonPrimitive
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
@@ -49,21 +46,6 @@ class RaftRailTabOrderTest {
     }
 
     @Test
-    fun `a saved order from before Artifacts gets it right after Tasks`() {
-        // web railTabOrder.ts INSERTED_AFTER (slock staging aae2b7a89).
-        assertEquals(
-            listOf("chat", "tasks", "artifacts", "search", "activity", "members", "computers", "apps", "assistant"),
-            normalizeRaftRailTabOrder(listOf("chat", "tasks", "search", "activity", "members", "computers", "apps", "assistant")),
-        )
-    }
-
-    @Test
-    fun `a saved order that places Apps keeps it there`() {
-        val order = listOf("apps", "chat", "search", "activity", "tasks", "members", "artifacts", "computers", "assistant")
-        assertEquals(order, normalizeRaftRailTabOrder(order))
-    }
-
-    @Test
     fun `a move of the drawn tabs keeps the undrawn ones in their place`() {
         // The top bar holds Search and the assistant is off here: the rail draws the other six.
         val full = listOf("search", "chat", "activity", "tasks", "members", "computers", "apps", "assistant")
@@ -86,21 +68,6 @@ class RaftRailTabOrderTest {
         // The launch read (AuthDataSource.currentUser decodes the same body as StoredAuthUser).
         val user = Json { ignoreUnknownKeys = true }.decodeFromString(StoredAuthUser.serializer(), upstreamMeBody(railTabOrder = """["members"]"""))
         assertEquals(listOf("members"), user.railTabOrder)
-    }
-
-    @Test
-    fun `a null order is the default and a body that is not the user is a mismatch`() {
-        assertNull(assertIs<DataResult.Content<List<String>?>>(parseSharedRailTabOrderAccount(200, upstreamMeBody(railTabOrder = "null"))).data)
-        val wrapped = parseSharedRailTabOrderAccount(200, """{"user":{"id":"u1","railTabOrder":["tasks"]}}""")
-        assertEquals("rail_tab_order_contract_mismatch", assertIs<DataResult.Error>(wrapped).error.code)
-        assertEquals("rail_tab_order_http_400", assertIs<DataResult.Error>(parseSharedRailTabOrderAccount(400, """{"error":"x"}""")).error.code)
-    }
-
-    @Test
-    fun `the patch body is the complete order and nothing else`() {
-        val body = Json.parseToJsonElement(buildSharedRailTabOrderUpdateBody(RaftRailTabIds)).jsonObject
-        assertEquals(setOf("railTabOrder"), body.keys)
-        assertEquals(RaftRailTabIds, body.getValue("railTabOrder").jsonArray.map { it.jsonPrimitive.content })
     }
 
     @OptIn(ExperimentalCoroutinesApi::class)

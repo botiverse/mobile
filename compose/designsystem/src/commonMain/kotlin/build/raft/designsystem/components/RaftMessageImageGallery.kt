@@ -155,7 +155,7 @@ fun raftMessageImageSingleSize(image: RaftMessageImageDimensions, availableWidth
  * One image cell (`message-image-gallery-item`): `fill-muted` behind the media (the
  * letterbox of a `contain` image), a `line-hairline` border, `rounded-control`, or
  * `rounded-container` for a lone image. Size it with [modifier]; [content] fills it.
- * Pressing or a mouse / trackpad hover (faded over 75ms) dims the image a step (`ink-8`); keyboard focus draws the inset outline. [pending]
+ * Pressing or a mouse / trackpad hover dims the image a step (`ink-8`); keyboard focus draws the inset outline. [pending]
  * (an image still sending) covers it with `layer-veil` under a spinner in its default colour.
  */
 @Composable

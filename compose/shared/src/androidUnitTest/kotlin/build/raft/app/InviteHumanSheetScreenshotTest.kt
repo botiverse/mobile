@@ -50,9 +50,6 @@ class InviteHumanSheetScreenshotTest {
     @Test
     fun linkLight() = capture("members.invite-human.link", RaftAppAppearance.Light, InviteHumanTab.Link)
 
-    @Test
-    fun linkDark() = capture("members.invite-human.link.dark", RaftAppAppearance.Dark, InviteHumanTab.Link)
-
     private fun capture(name: String, appearance: RaftAppAppearance, tab: InviteHumanTab) {
         RaftRobolectricScreenshot.capture(name, appearance, reportDir = "build/reports/home-screenshots", activities = activities) {
             val pager =

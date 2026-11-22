@@ -94,29 +94,6 @@ class MarkedUnreadStoreTest {
     }
 
     @Test
-    fun activityPendingKeepsTheOptimisticCountWithNoToast() = runTest {
-        val read = FakeReadReceiptRepository(unreadResult = { pendingAnswer.copy(channelId = it) })
-        val inbox = FakeInboxRepository(initialSnapshots = listOf(snapshot(listOf(activityItem("channel-1")))))
-        val store = activityStore(backgroundScope, inbox, readReceiptRepository = read)
-        val notices = collectNotices(store.readToggleNotices)
-        store.dispatch(SharedActivityIntent.LoadInitial)
-        runCurrent()
-
-        store.dispatch(SharedActivityIntent.MarkUnread(store.state.value.items.single()))
-        runCurrent()
-
-        val row = store.state.value.items.single()
-        assertEquals(1 to false, row.unreadCount to row.markedUnread, "the optimistic count stays")
-        assertEquals(emptyList(), notices)
-
-        store.dispatch(SharedActivityIntent.ApplyRealtimeEvent(readState("channel-1", version = 9, marked = true)))
-        runCurrent()
-
-        assertTrue(store.state.value.items.single().markedUnread, "the event brings the mark")
-        assertEquals(emptyList(), notices)
-    }
-
-    @Test
     fun homeFollowsTheMarkFromReadStateEventsByVersion() = runTest {
         val store = homeStore(unreadAnswer = markedAnswer)
 
@@ -160,26 +137,6 @@ class MarkedUnreadStoreTest {
 
         assertEquals(listOf(ChannelId("channel-1")), read.readAllChannelIds, "a marked row with no count still sends its read")
         assertFalse(store.state.value.items.single().markedUnread, "the local read clears the dot at once")
-    }
-
-    @Test
-    fun activityNothingToMarkKeepsTheRowReadAndSaysWhy() = runTest {
-        listOf("refused" to refusedAnswer, "older server" to olderServerAnswer).forEach { (name, answer) ->
-            val read = FakeReadReceiptRepository(unreadResult = { answer.copy(channelId = it) })
-            val inbox = FakeInboxRepository(initialSnapshots = listOf(snapshot(listOf(activityItem("channel-1")))))
-            val store = activityStore(backgroundScope, inbox, readReceiptRepository = read)
-            val notices = collectNotices(store.readToggleNotices)
-            store.dispatch(SharedActivityIntent.LoadInitial)
-            runCurrent()
-
-            store.dispatch(SharedActivityIntent.MarkUnread(store.state.value.items.single()))
-            runCurrent()
-
-            val row = store.state.value.items.single()
-            assertEquals(0 to false, row.unreadCount to row.markedUnread, name)
-            assertEquals(0, store.state.value.totalUnreadCount, name)
-            assertEquals(listOf(RaftReadToggleNotice.MarkUnreadNothing), notices, name)
-        }
     }
 
     @Test

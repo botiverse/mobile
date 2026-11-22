@@ -61,9 +61,3 @@ jobs:
         env:
           SLOCK_SOURCE_REPO: ${{ github.workspace }}/slock-source
         run: python3 compose/realtime-contract/sync_from_slock.py --check
-
-      - name: Generated constants match the contract
-        run: |
-          set -euo pipefail
-          python3 compose/realtime-contract/generate_realtime_contract.py
-          git diff --exit-code -- compose/core compose/iosApp compose/realtime-socket

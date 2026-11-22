@@ -5,6 +5,9 @@ import android.app.ApplicationExitInfo
 import android.content.Context
 import android.content.SharedPreferences
 import android.os.Build
+import android.os.Process
+import android.os.SystemClock
+import androidx.annotation.RequiresApi
 import build.hands.update.HandsFeedback
 import build.hands.update.HandsDeviceId
 import build.hands.update.HandsFeedbackException
@@ -1271,6 +1274,220 @@ internal fun startupPhaseExtras(
         }
     }
 
+/**
+ * How the app restarted after a system kill and how long it stayed without UI recovery (#proj-mobile:#220).
+ */
+internal data class SystemKillRestartInfo(
+    /** `"sticky_service"`, `"background_process"`, `"user_launch"`, or `"unknown"`. */
+    val restartKind: String,
+    /** True when the system restarted the process (`"sticky_service"` or `"background_process"`). */
+    val restartedBySystem: Boolean,
+    /** Wall-clock time of the first main-process start after the exit; null when unknown. */
+    val restartAtMillis: Long?,
+    /** Elapsed millis from `exit.timestampMillis` to `restartAtMillis`; null when unknown or clock rolled back. */
+    val restartDelayMs: Long?,
+    /**
+     * Elapsed millis from `exit.timestampMillis` until UI recovery (`firstActivityAtMillis`, or
+     * `restartAtMillis` for direct `user_launch`); null when unknown or clock rolled back.
+     */
+    val outageMs: Long?,
+) {
+    companion object {
+        const val KindStickyService = "sticky_service"
+        const val KindBackgroundProcess = "background_process"
+        const val KindUserLaunch = "user_launch"
+        const val KindUnknown = "unknown"
+    }
+}
+
+/**
+ * Maximum gap between process start and first Activity creation for a non-sticky process to still
+ * count as a direct user launch; a longer gap means the process started in the background (FCM,
+ * WorkManager, ContentProvider) and an Activity was opened later in that same process.
+ */
+private const val DirectUserLaunchActivityWindowMillis = 60_000L
+
+/** Upper bound on plausible restart/outage intervals; larger values indicate a wall-clock jump (e.g. NTP sync). */
+internal const val MaxPlausibleRestartDurationMillis: Long = 30L * 24 * 60 * 60 * 1000
+
+private data class RestartCandidateProcess(
+    val startMillis: Long,
+    val firstActivityAtMillis: Long,
+    val firstActivityAfterStartMs: Long,
+    val stickyServiceRestart: Boolean,
+    val reachedActivity: Boolean,
+)
+
+/**
+ * Resolves how the app restarted after [exit] and the outage duration until UI recovery, using the
+ * persisted [startupRecords] from [RaftStartupPhaseMarker] plus the current process's live state.
+ */
+internal fun resolveSystemKillRestart(
+    exit: SystemKillExit,
+    startupRecords: List<StartupPhaseRecord>,
+    currentProcessStartMillis: Long?,
+    currentFirstActivityAtMillis: Long = -1L,
+    currentFirstActivityAfterStartMs: Long = -1L,
+    currentStickyRestart: Boolean = false,
+): SystemKillRestartInfo {
+    val exitAt = exit.timestampMillis
+    val candidatesByStart = LinkedHashMap<Long, RestartCandidateProcess>()
+
+    for (record in startupRecords) {
+        if (exit.processName.isNotEmpty() && record.processName.isNotEmpty() && record.processName != exit.processName) {
+            continue
+        }
+        // Never treat the exited process itself as its own restart, even if wall clock stepped
+        // backward between process start and exit (so record.processStartMillis > exitAt).
+        if (record.pid == exit.pid) continue
+        if (record.processStartMillis < exitAt) continue
+        val reachedActivity =
+            record.firstActivityAtMillis >= 0L ||
+                record.firstActivityAfterStartMs >= 0L ||
+                record.phase.ordinal >= RaftStartupPhaseMarker.Phase.ActivityCreated.ordinal
+        val effectiveFirstActivity =
+            when {
+                record.firstActivityAtMillis >= 0L -> record.firstActivityAtMillis
+                record.phase == RaftStartupPhaseMarker.Phase.ActivityCreated -> record.phaseAtMillis
+                else -> -1L
+            }
+        val candidate =
+            RestartCandidateProcess(
+                startMillis = record.processStartMillis,
+                firstActivityAtMillis = effectiveFirstActivity,
+                firstActivityAfterStartMs = record.firstActivityAfterStartMs,
+                stickyServiceRestart = record.stickyServiceRestart,
+                reachedActivity = reachedActivity,
+            )
+        val existing = candidatesByStart[record.processStartMillis]
+        candidatesByStart[record.processStartMillis] =
+            if (existing == null) {
+                candidate
+            } else {
+                existing.copy(
+                    firstActivityAtMillis =
+                        when {
+                            existing.firstActivityAtMillis >= 0L && candidate.firstActivityAtMillis >= 0L ->
+                                minOf(existing.firstActivityAtMillis, candidate.firstActivityAtMillis)
+                            candidate.firstActivityAtMillis >= 0L -> candidate.firstActivityAtMillis
+                            else -> existing.firstActivityAtMillis
+                        },
+                    firstActivityAfterStartMs =
+                        when {
+                            existing.firstActivityAfterStartMs >= 0L && candidate.firstActivityAfterStartMs >= 0L ->
+                                minOf(existing.firstActivityAfterStartMs, candidate.firstActivityAfterStartMs)
+                            candidate.firstActivityAfterStartMs >= 0L -> candidate.firstActivityAfterStartMs
+                            else -> existing.firstActivityAfterStartMs
+                        },
+                    stickyServiceRestart = existing.stickyServiceRestart || candidate.stickyServiceRestart,
+                    reachedActivity = existing.reachedActivity || candidate.reachedActivity,
+                )
+            }
+    }
+
+    if (currentProcessStartMillis != null && currentProcessStartMillis >= exitAt) {
+        val currentReachedActivity = currentFirstActivityAtMillis >= 0L || currentFirstActivityAfterStartMs >= 0L
+        val existing = candidatesByStart[currentProcessStartMillis]
+        candidatesByStart[currentProcessStartMillis] =
+            if (existing == null) {
+                RestartCandidateProcess(
+                    startMillis = currentProcessStartMillis,
+                    firstActivityAtMillis = currentFirstActivityAtMillis,
+                    firstActivityAfterStartMs = currentFirstActivityAfterStartMs,
+                    stickyServiceRestart = currentStickyRestart,
+                    reachedActivity = currentReachedActivity,
+                )
+            } else {
+                existing.copy(
+                    firstActivityAtMillis =
+                        if (currentFirstActivityAtMillis >= 0L) currentFirstActivityAtMillis else existing.firstActivityAtMillis,
+                    firstActivityAfterStartMs =
+                        if (currentFirstActivityAfterStartMs >= 0L) {
+                            currentFirstActivityAfterStartMs
+                        } else {
+                            existing.firstActivityAfterStartMs
+                        },
+                    stickyServiceRestart = existing.stickyServiceRestart || currentStickyRestart,
+                    reachedActivity = existing.reachedActivity || currentReachedActivity,
+                )
+            }
+    }
+
+    val timeline = candidatesByStart.values.sortedBy { it.startMillis }
+    val first = timeline.firstOrNull()
+        ?: return SystemKillRestartInfo(
+            restartKind = SystemKillRestartInfo.KindUnknown,
+            restartedBySystem = false,
+            restartAtMillis = null,
+            restartDelayMs = null,
+            outageMs = null,
+        )
+
+    val restartAt = first.startMillis
+    val restartDelayMs = (restartAt - exitAt).takeIf { it in 0L..MaxPlausibleRestartDurationMillis }
+
+    val isDirectUserLaunch =
+        !first.stickyServiceRestart &&
+            first.reachedActivity &&
+            when {
+                // Prefer monotonic process-start -> first-activity offset so a backward NTP step
+                // during cold start never misclassifies a direct launch as background_process.
+                first.firstActivityAfterStartMs >= 0L ->
+                    first.firstActivityAfterStartMs <= DirectUserLaunchActivityWindowMillis
+                first.firstActivityAtMillis >= 0L ->
+                    (first.firstActivityAtMillis - first.startMillis) in 0L..DirectUserLaunchActivityWindowMillis
+                else -> true
+            }
+
+    val restartKind =
+        when {
+            first.stickyServiceRestart -> SystemKillRestartInfo.KindStickyService
+            isDirectUserLaunch -> SystemKillRestartInfo.KindUserLaunch
+            else -> SystemKillRestartInfo.KindBackgroundProcess
+        }
+    val restartedBySystem =
+        restartKind == SystemKillRestartInfo.KindStickyService ||
+            restartKind == SystemKillRestartInfo.KindBackgroundProcess
+
+    val outageMs: Long? =
+        if (restartKind == SystemKillRestartInfo.KindUserLaunch) {
+            restartDelayMs
+        } else {
+            val recoveryAt =
+                timeline.firstNotNullOfOrNull { candidate ->
+                    when {
+                        candidate.firstActivityAtMillis >= candidate.startMillis && candidate.firstActivityAtMillis >= exitAt ->
+                            candidate.firstActivityAtMillis
+                        candidate.firstActivityAfterStartMs >= 0L && candidate.startMillis >= exitAt ->
+                            candidate.startMillis + candidate.firstActivityAfterStartMs
+                        candidate.firstActivityAtMillis < 0L && candidate.reachedActivity && candidate.startMillis >= exitAt ->
+                            candidate.startMillis
+                        else -> null
+                    }
+                }
+            recoveryAt?.let { (it - exitAt).takeIf { delta -> delta in 0L..MaxPlausibleRestartDurationMillis } }
+        }
+
+    return SystemKillRestartInfo(
+        restartKind = restartKind,
+        restartedBySystem = restartedBySystem,
+        restartAtMillis = restartAt,
+        restartDelayMs = restartDelayMs,
+        outageMs = outageMs,
+    )
+}
+
+internal fun systemKillRestartExtras(restart: SystemKillRestartInfo?): Map<String, Any?> {
+    if (restart == null) return emptyMap()
+    return buildMap {
+        put("crash_restart_kind", restart.restartKind)
+        put("crash_restarted_by_system", restart.restartedBySystem)
+        restart.restartAtMillis?.let { put("crash_restart_at", it) }
+        restart.restartDelayMs?.let { put("crash_restart_delay_ms", it) }
+        restart.outageMs?.let { put("crash_outage_ms", it) }
+    }
+}
+
 /** Ticket metadata (merged into Hands `metadata_json`), in the `crash_*` vocabulary ANR tickets use. */
 internal fun systemKillExtras(
     exit: SystemKillExit,
@@ -1285,6 +1502,8 @@ internal fun systemKillExtras(
     reporter: SystemKillReporterBuild? = null,
     /** The exited process's startup progress ([RaftStartupPhaseMarker]); null when none was found. */
     startup: StartupPhaseRecord? = null,
+    /** How the app restarted and outage duration until UI recovery ([resolveSystemKillRestart]); omitted when null. */
+    restart: SystemKillRestartInfo? = null,
 ): Map<String, Any?> =
     buildMap {
         installId?.let { put("crash_exit_event_id", systemKillExitEventId(it, exit)) }
@@ -1347,6 +1566,7 @@ internal fun systemKillExtras(
         put("crash_memory_sample", if (telemetry == null) "none" else "matched")
         exit.summaryState?.let { put("crash_exit_summary", it.label) }
         putAll(startupPhaseExtras(exit, startup, reporter))
+        putAll(systemKillRestartExtras(restart))
         // The app's recent foreground evidence (see classifySystemKill), next to the raw fields:
         // crash_exit_importance, crash_foreground (the exit importance) and crash_trim are never
         // replaced by an inference. Names proposed in botiverse/hands#955.
@@ -1396,6 +1616,7 @@ internal fun systemKillMessage(
     exit: SystemKillExit,
     telemetry: MemoryTelemetrySnapshot?,
     startup: StartupPhaseRecord? = null,
+    restart: SystemKillRestartInfo? = null,
 ): String =
     buildString {
         val at = exit.timestampMillis
@@ -1407,6 +1628,13 @@ internal fun systemKillMessage(
             append("\nstartup reached ").append(startup.phase.label)
             append(" (").append(beforeExit(at, startup.phaseAtMillis)).append("), ")
             append((at - startup.processStartMillis).coerceAtLeast(0L)).append(" ms after process start")
+        }
+        if (restart != null) {
+            append("\nrestart ").append(restart.restartKind)
+            append(" (by_system=").append(restart.restartedBySystem)
+            restart.restartDelayMs?.let { append(", delay=").append(it / 1000L).append('s') }
+            restart.outageMs?.let { append(", outage=").append(it / 1000L).append('s') }
+            append(')')
         }
         if (telemetry == null) return@buildString
         val system =
@@ -1506,10 +1734,10 @@ internal object AndroidSystemKillReporter {
         if (!started.compareAndSet(false, true)) return
         val appContext = context.applicationContext
         uploadScope.launch {
-            // Keep only the newest startup records; local only, nothing is sent here.
-            runCatching { RaftStartupPhaseMarker.prune(appContext.filesDir) }
             val privacyMode = RaftServicesPrivacyGate.awaitLaunchDecision()
             if (!RaftServicesPrivacyGate.allowsAutomatic(privacyMode)) {
+                // Keep enough startup records for a later launch to resolve intermediate sticky restarts.
+                runCatching { RaftStartupPhaseMarker.prune(appContext.filesDir, keep = MaxExitsQueried) }
                 RaftAndroidLocalDiagnostics.recordLog(
                     "info",
                     Tag,
@@ -1517,27 +1745,32 @@ internal object AndroidSystemKillReporter {
                 )
                 return@launch
             }
-            runCatching {
-                val feedback by lazy {
-                    // Version comes from each exit's extras (stamp, its process's record, or the
-                    // installed build when it predates the exit), never set here for this install.
-                    HandsFeedback(
-                        context = appContext,
-                        baseUrl = baseUrl,
-                        appSlug = appSlug,
-                        versionName = null,
-                        versionCode = null,
-                        channel = channel,
-                        clientKey = clientKey,
-                    )
+            try {
+                runCatching {
+                    val feedback by lazy {
+                        // Version comes from each exit's extras (stamp, its process's record, or the
+                        // installed build when it predates the exit), never set here for this install.
+                        HandsFeedback(
+                            context = appContext,
+                            baseUrl = baseUrl,
+                            appSlug = appSlug,
+                            versionName = null,
+                            versionCode = null,
+                            channel = channel,
+                            clientKey = clientKey,
+                        )
+                    }
+                    reportPending(appContext) { message, extras, submissionId ->
+                        val submission =
+                            feedback.submitReport(message = message, kind = "crash", extras = extras, submissionId = submissionId)
+                        SystemKillSubmission(ticketId = submission.ticketId, merged = submission.merged)
+                    }
+                }.onFailure { error ->
+                    RaftAndroidLocalDiagnostics.recordLog("warn", Tag, "system_kill_report_failed class=${error.javaClass.name}")
                 }
-                reportPending(appContext) { message, extras, submissionId ->
-                    val submission =
-                        feedback.submitReport(message = message, kind = "crash", extras = extras, submissionId = submissionId)
-                    SystemKillSubmission(ticketId = submission.ticketId, merged = submission.merged)
-                }
-            }.onFailure { error ->
-                RaftAndroidLocalDiagnostics.recordLog("warn", Tag, "system_kill_report_failed class=${error.javaClass.name}")
+            } finally {
+                // Prune only after reportPending has read startup records so intermediate sticky restarts stay visible.
+                runCatching { RaftStartupPhaseMarker.prune(appContext.filesDir) }
             }
         }
     }
@@ -1546,6 +1779,7 @@ internal object AndroidSystemKillReporter {
         context: Context,
         submit: suspend (message: String, extras: Map<String, Any?>, submissionId: String?) -> SystemKillSubmission,
     ) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return
         val activityManager = context.getSystemService(ActivityManager::class.java) ?: return
         val snapshots = RaftMemoryTelemetry.previousSnapshots.await()
         val preferences = context.getSharedPreferences(PreferencesName, Context.MODE_PRIVATE)
@@ -1559,6 +1793,8 @@ internal object AndroidSystemKillReporter {
             SystemKillReporterBuild(BuildConfig.VERSION_NAME, BuildConfig.VERSION_CODE.toLong(), packageUpdatedMillis, now)
         // Startup progress of earlier processes (RaftStartupPhaseMarker), joined to exits by pid.
         val startupRecords = runCatching { RaftStartupPhaseMarker.readAll(context.filesDir) }.getOrDefault(emptyList())
+        val fallbackCurrentProcessStartMillis =
+            now - (SystemClock.elapsedRealtime() - Process.getStartElapsedRealtime())
         // The SDK's own native-crash records still on disk (read-only; see HandsNativeExitCorrelation.kt).
         val nativeScan =
             runCatching { scanHandsNativePendingRecords(handsNativeCrashDir(context.filesDir)) }
@@ -1601,8 +1837,25 @@ internal object AndroidSystemKillReporter {
             },
             buildReport = { item ->
                 val startup = startupRecordForExit(startupRecords, item.exit.pid, item.exit.timestampMillis)
-                systemKillMessage(item.exit, item.telemetry, startup) to
-                    systemKillExtras(item.exit, item.telemetry, installId = installId, reporter = reporter, startup = startup)
+                val current = RaftStartupPhaseMarker.current()
+                val restart =
+                    resolveSystemKillRestart(
+                        exit = item.exit,
+                        startupRecords = startupRecords,
+                        currentProcessStartMillis = current?.processStartMillis ?: fallbackCurrentProcessStartMillis,
+                        currentFirstActivityAtMillis = current?.firstActivityAtMillis ?: -1L,
+                        currentFirstActivityAfterStartMs = current?.firstActivityAfterStartMs ?: -1L,
+                        currentStickyRestart = current?.stickyServiceRestart ?: false,
+                    )
+                systemKillMessage(item.exit, item.telemetry, startup, restart) to
+                    systemKillExtras(
+                        item.exit,
+                        item.telemetry,
+                        installId = installId,
+                        reporter = reporter,
+                        startup = startup,
+                        restart = restart,
+                    )
             },
             newBatchId = { UUID.randomUUID().toString() },
             submit = submit,
@@ -1710,26 +1963,27 @@ internal object AndroidSystemKillReporter {
             },
         )
     }
-
-    private fun ApplicationExitInfo.toSystemKillExit(): SystemKillExit =
-        SystemKillExit(
-            pid = pid,
-            timestampMillis = timestamp,
-            reasonCode = reason,
-            status = status,
-            importance = importance,
-            pssKb = pss,
-            rssKb = rss,
-            build = RaftBuildStamp.decodeStamp(processStateSummary),
-            summaryState = ExitSummaryState.of(processStateSummary),
-            processName = processName.orEmpty(),
-            description = description,
-            // realUid/packageUid/definingUid are API 30, like the reporter (start() returns below R).
-            isolatedProcess = realUid != packageUid,
-            packageUid = packageUid,
-            definingUid = definingUid,
-        )
 }
+
+@RequiresApi(Build.VERSION_CODES.R)
+internal fun ApplicationExitInfo.toSystemKillExit(): SystemKillExit =
+    SystemKillExit(
+        pid = pid,
+        timestampMillis = timestamp,
+        reasonCode = reason,
+        status = status,
+        importance = importance,
+        pssKb = pss,
+        rssKb = rss,
+        build = RaftBuildStamp.decodeStamp(processStateSummary),
+        summaryState = ExitSummaryState.of(processStateSummary),
+        processName = processName.orEmpty(),
+        description = description,
+        // realUid/packageUid/definingUid are API 30, like the reporter (start() returns below R).
+        isolatedProcess = realUid != packageUid,
+        packageUid = packageUid,
+        definingUid = definingUid,
+    )
 
 /**
  * HTTP statuses that are not the report's fault and may pass once fixed or later: 401 (Hands

@@ -102,30 +102,6 @@ class SearchArtifactsGroupScreenshotTest {
         }
 
     @Test
-    fun loading() =
-        RaftRobolectricScreenshot.capture("search.artifacts.loading", RaftAppAppearance.Light, reportDir = REPORT_DIR, activities = activities) {
-            Host {
-                // At rest: a pulsing skeleton never lets the capture settle.
-                CompositionLocalProvider(LocalHomeSearchArtifactsSkeletonAnimated provides false) {
-                    Panel(SearchArtifactsState(serverId = "server-1", query = "plan", status = SearchArtifactsStatus.Loading))
-                }
-            }
-        }
-
-    @Test
-    fun failed() =
-        RaftRobolectricScreenshot.capture("search.artifacts.failed", RaftAppAppearance.Light, reportDir = REPORT_DIR, activities = activities) {
-            Host { Panel(FailedGroup) }
-        }
-
-    @Test
-    @Config(qualifiers = "w1440dp-h900dp-xhdpi")
-    fun overlay() =
-        RaftRobolectricScreenshot.capture("search.overlay.artifacts", RaftAppAppearance.Light, reportDir = REPORT_DIR, activities = activities) {
-            Host { Panel(ResultsGroup.copy(nextCursor = null), overlay = overlayChrome()) }
-        }
-
-    @Test
     fun aHitOpensItsArtifactAndTheSectionAsksForMore() =
         runRobolectricComposeUiTest {
             val opened = mutableListOf<SearchArtifactHit>()

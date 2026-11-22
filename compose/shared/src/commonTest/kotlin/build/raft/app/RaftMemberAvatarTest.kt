@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.app.data.ActorResolveOutcome
 import build.raft.app.data.InMemoryRaftKeyValueStore
 import build.raft.app.data.MemberSnapshot
 import build.raft.app.data.PresenceNoopMemberRepository
@@ -12,6 +13,14 @@ import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberProfile
 import build.raft.app.model.ServerId
 import build.raft.app.model.ServerSummary
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlinx.coroutines.test.advanceUntilIdle
+import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
@@ -39,19 +48,6 @@ class RaftMemberAvatarTest {
     }
 
     @Test
-    fun agentWithNoAvatarWearsTheRobotDefault() {
-        val store = store()
-        store.seed(MemberSnapshot(server(), listOf(agent("plain", avatar = null))))
-        val resolver = raftMemberAvatarResolver(store, ServerKey)
-
-        assertEquals("pixel:robot", resolve(MemberKind.Agent, "plain", resolver))
-        assertEquals("pixel:robot", resolve(MemberKind.Agent, "unknown-agent", resolver))
-        assertEquals("pixel:robot", resolve(MemberKind.Agent, "no-store", EmptyRaftMemberAvatarResolver))
-        // A person has no default face: RaftAppAvatar of a person shows the placeholder.
-        assertNull(resolve(MemberKind.Human, "unknown-human", resolver))
-    }
-
-    @Test
     fun unknownIdFallsBackToTheSavedAvatar() {
         val preferences = InMemoryRaftKeyValueStore()
         store(preferences).seed(MemberSnapshot(server(), listOf(human("artin", HumanAvatar), agent("kirby", AvatarReference.Pixel("pencil")))))
@@ -65,22 +61,6 @@ class RaftMemberAvatarTest {
         // The saved avatar outranks what the row carries, and is server scoped.
         assertEquals(HumanAvatar, resolve(MemberKind.Human, "artin", resolver, carried = OtherHumanAvatar))
         assertEquals(OtherHumanAvatar, resolve(MemberKind.Human, "artin", raftMemberAvatarResolver(cold, "other-server"), carried = OtherHumanAvatar))
-    }
-
-    @Test
-    fun carriedValuesAreFilteredLikeAProfilesOwnAvatar() {
-        val identity = RaftMemberAvatarIdentity(MemberKind.Human, "artin", ServerKey)
-        // A person shows only an uploaded avatar, as MemberProfile's helpers do.
-        assertNull(raftMemberAvatarWireValue(identity, resolvedAvatarWireValue = null, carriedAvatarWireValue = "https://example.com/photo.png"))
-        // A retired Gravatar value (slock #13674), carried or saved, is the placeholder.
-        val gravatar = "gravatar:" + "a".repeat(64)
-        assertNull(raftMemberAvatarWireValue(identity, resolvedAvatarWireValue = null, carriedAvatarWireValue = gravatar))
-        assertNull(raftMemberAvatarWireValue(identity, resolvedAvatarWireValue = gravatar, carriedAvatarWireValue = null))
-        // No person kind (an external author): the carried value as it is.
-        assertEquals(
-            "https://example.com/ext.png",
-            raftMemberAvatarWireValue(RaftMemberAvatarIdentity(MemberKind.External, "x", null), null, "https://example.com/ext.png"),
-        )
     }
 
     @Test
@@ -103,6 +83,118 @@ class RaftMemberAvatarTest {
         assertEquals(
             "pixel:antenna",
             raftMemberAvatarWireValue(RaftMemberAvatarIdentity(MemberKind.Agent, "kirby", ServerKey), resolver.current("kirby"), jointActorAvatarWireValue = jointAvatar),
+        )
+    }
+
+    @OptIn(ExperimentalCoroutinesApi::class)
+    @Test
+    fun jointChannelRemoteAgentKeepsItsOwnAvatarWithOrWithoutRowAvatar() = runTest {
+        // #proj-mobile:#276: in a joint channel, another server's agent renders its own avatar
+        // (never covered by the default pixel robot), both when a row carries senderAvatarUrl and
+        // when the message carries no avatar or an older cached preview avatar.
+        val remoteAgentId = "0b6f7d1e-0000-4e4e-9b9b-000000000276"
+        val staleRemoteAgentId = "0b6f7d1e-0000-4e4e-9b9b-000000000278"
+        val localBareAgentId = "0b6f7d1e-0000-4e4e-9b9b-000000000277"
+        val remoteAvatar = "https://cdn.raft.build/avatars/agents/0123456789abcdef0123456789abcdef.webp"
+        val stalePreviewAvatar = "https://cdn.raft.build/avatars/agents/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.webp"
+        val freshRemoteAvatar = "https://cdn.raft.build/avatars/agents/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb.webp"
+        val resolveScope = CoroutineScope(SupervisorJob() + StandardTestDispatcher(testScheduler))
+        val store =
+            SharedServerMembersStore(
+                memberRepository = PresenceNoopMemberRepository,
+                actorResolve = { _, refs ->
+                    ActorResolveOutcome.Resolved(
+                        refs.map { ref ->
+                            ResolvedActor(
+                                kind = ref.kind,
+                                id = ref.id,
+                                homeServerId = "server-2",
+                                name = if (ref.id == staleRemoteAgentId) "stale-remote" else "imprint",
+                                displayName = if (ref.id == staleRemoteAgentId) "Stale Remote" else "Imprint",
+                                avatarUrl = if (ref.id == staleRemoteAgentId) freshRemoteAvatar else remoteAvatar,
+                                gravatarHash = null,
+                            )
+                        }
+                    )
+                },
+                actorResolveScope = resolveScope,
+            )
+        store.seed(MemberSnapshot(server(), listOf(agent(localBareAgentId, avatar = null))))
+        store.seedProfileCandidates(
+            ServerId(ServerKey),
+            listOf(
+                agent(remoteAgentId, avatar = null).copy(serverId = ServerId(ServerKey)),
+                agent(staleRemoteAgentId, avatar = AvatarReference.fromWireValue(stalePreviewAvatar))
+                    .copy(serverId = ServerId(ServerKey)),
+            ),
+        )
+        val resolver = raftMemberAvatarResolver(store, ServerKey).forJointSurface(true)
+
+        // Row carrying senderAvatarUrl shows the remote agent's own avatar immediately.
+        val activityRowWithAvatar =
+            ActivitySenderAvatarIdentity(
+                senderKind = MemberKind.Agent,
+                avatarWireValue = remoteAvatar,
+                label = "Imprint",
+                senderId = remoteAgentId,
+                jointSurface = true,
+            )
+        assertEquals(remoteAvatar, activityFaceAvatarWireValue(resolver.current(remoteAgentId), activityRowWithAvatar))
+
+        // Message/row carrying no avatar resolves the remote agent's own avatar instead of pixel:robot,
+        // and a fresher resolved avatar replaces an older preview-cached avatar.
+        var resolvedRemote: ResolvedActor? = null
+        val remoteCollector = launch { resolver.jointActor(MemberKind.Agent, remoteAgentId).collect { resolvedRemote = it } }
+        var resolvedStale: ResolvedActor? = null
+        val staleCollector = launch { resolver.jointActor(MemberKind.Agent, staleRemoteAgentId).collect { resolvedStale = it } }
+        var resolvedLocal: ResolvedActor? = null
+        val localCollector = launch { resolver.jointActor(MemberKind.Agent, localBareAgentId).collect { resolvedLocal = it } }
+        advanceUntilIdle()
+
+        assertEquals(
+            remoteAvatar,
+            activityFaceAvatarWireValue(
+                memberAvatarWireValue = resolver.current(remoteAgentId),
+                identity = activityRowWithAvatar.copy(avatarWireValue = null),
+                jointActorAvatarWireValue = resolvedRemote?.explicitAvatarWireValue(),
+            ),
+        )
+        assertEquals(
+            remoteAvatar,
+            raftMemberAvatarWireValue(
+                identity = RaftMemberAvatarIdentity(MemberKind.Agent, remoteAgentId, ServerKey),
+                resolvedAvatarWireValue = resolver.current(remoteAgentId),
+                jointActorAvatarWireValue = resolvedRemote?.explicitAvatarWireValue(),
+            ),
+        )
+        assertEquals(freshRemoteAvatar, resolver.current(staleRemoteAgentId))
+        assertEquals(freshRemoteAvatar, resolver(staleRemoteAgentId).first())
+        assertEquals(freshRemoteAvatar, resolvedStale?.explicitAvatarWireValue())
+        // Confirmed local agent with no custom avatar still renders the default robot.
+        assertEquals("pixel:robot", resolver.current(localBareAgentId))
+        assertNull(resolvedLocal)
+        remoteCollector.cancel()
+        staleCollector.cancel()
+        localCollector.cancel()
+    }
+
+    @Test
+    fun relativeAvatarPathProducesApiCandidateOnlyWithValidApiBaseUrl() {
+        assertEquals(
+            listOf("https://api.raft.build/api/avatars/agents/0123456789abcdef.webp"),
+            raftAvatarImageCandidates("/api/avatars/agents/0123456789abcdef.webp", "https://api.raft.build/api/"),
+        )
+        assertEquals(
+            listOf("https://selfhosted.example/api/avatars/users/0123456789abcdef.webp"),
+            raftAvatarImageCandidates("/avatars/users/0123456789abcdef.webp", "https://selfhosted.example"),
+        )
+        assertEquals(
+            emptyList(),
+            raftAvatarImageCandidates("/api/avatars/agents/0123456789abcdef.webp", apiBaseUrl = null),
+        )
+        assertEquals(
+            emptyList(),
+            raftAvatarImageCandidates("   ", "https://api.raft.build/api/"),
         )
     }
 

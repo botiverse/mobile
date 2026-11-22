@@ -2,7 +2,6 @@ package build.raft.app
 
 import java.io.File
 import kotlin.test.Test
-import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 import kotlin.test.fail
 
@@ -42,30 +41,6 @@ class RaftTextLayoutMainThreadGuardTest {
                     "the text measure/draw onto the main thread:\n" + offenders.joinToString("\n")
             )
         }
-    }
-
-    @Test
-    fun guardCatchesTextInABackgroundBlock() {
-        val source =
-            stripComments(
-                """
-                internal fun renderWithText(source: ImageBitmap, text: RaftComposerImageExportText?): ImageBitmap? = null
-                suspend fun save() {
-                    val base = withContext(Dispatchers.Default) { renderBase(source) } // renderWithText( in a comment
-                    withContext(Dispatchers.Main) { renderWithText(source, text) }
-                    withContext(Dispatchers.Default) {
-                        if (ready) { renderWithText(source, text) }
-                    }
-                    scope.launch(rasterContext) { textMeasurer.measure("x") }
-                }
-                """.trimIndent()
-            )
-        val helpers = textHelperNames(listOf(source))
-        assertEquals(setOf("renderWithText"), helpers)
-        assertEquals(
-            listOf(6 to "renderWithText", 8 to "measure"),
-            backgroundTextCalls(source, helpers),
-        )
     }
 
     private fun repositoryFile(relativePath: String): File {

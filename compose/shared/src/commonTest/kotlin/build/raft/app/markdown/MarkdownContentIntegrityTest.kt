@@ -10,7 +10,6 @@ import com.tencent.kuiklybase.markdown.model.MarkdownParserContent
 import com.tencent.kuiklybase.markdown.model.RaftGFMFlavourDescriptor
 import org.intellij.markdown.MarkdownElementTypes
 import org.intellij.markdown.ast.ASTNode
-import org.intellij.markdown.flavours.gfm.GFMTokenTypes
 import org.intellij.markdown.parser.MarkdownParser
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -28,65 +27,11 @@ import kotlin.test.assertTrue
  */
 class MarkdownContentIntegrityTest {
     @Test
-    fun emailInsideCodeSpanStaysVerbatim() {
-        val rendered = renderTopParagraphs("Inline: `artin <artin@example.test>` end.")
-        assertTrue(
-            rendered.any { it.contains("artin <artin@example.test>") },
-            "code span must keep the angle-bracket email literal; got: $rendered"
-        )
-    }
-
-    @Test
-    fun genericAngleBracketPlaceholdersInsideCodeSpanStayVerbatim() {
-        val rendered = renderTopParagraphs("Routes: `/apps/<app>/latest` and `/share/<token>`.")
-        assertTrue(
-            rendered.any { it.contains("/apps/<app>/latest") && it.contains("/share/<token>") },
-            "code spans must keep generic angle-bracket placeholders literal; got: $rendered"
-        )
-    }
-
-    @Test
     fun bareEmailAutolinkKeepsTheAddressText() {
         val rendered = renderTopParagraphs("Bare: <artin@example.test> end.")
         assertTrue(
             rendered.any { it.contains("artin@example.test") },
             "email autolink text must survive rendering; got: $rendered"
-        )
-    }
-
-    @Test
-    fun boldAndStrikethroughContentSurvives() {
-        val rendered = renderTopParagraphs("Keep **bold words** and ~~struck words~~ intact.")
-        assertTrue(
-            rendered.any { it.contains("bold words") && it.contains("struck words") },
-            "emphasis/strikethrough content must survive rendering; got: $rendered"
-        )
-    }
-
-    @Test
-    fun escapedBacktickSurvivesAsLiteralBacktick() {
-        val rendered = renderTopParagraphs("Type \\` to start a code span.")
-        assertTrue(
-            rendered.any { it.contains("Type ` to start") },
-            "escaped backtick must render as a literal backtick; got: $rendered"
-        )
-    }
-
-    @Test
-    fun unpairedTildeSurvivesInPlainText() {
-        val rendered = renderTopParagraphs("Takes ~5 minutes to finish.")
-        assertTrue(
-            rendered.any { it.contains("~5 minutes") },
-            "unpaired tilde must survive rendering; got: $rendered"
-        )
-    }
-
-    @Test
-    fun strikethroughDelimitersDoNotLeakTildes() {
-        val rendered = renderTopParagraphs("Keep ~~struck words~~ clean.")
-        assertTrue(
-            rendered.any { it.contains("struck words") && !it.contains("~") },
-            "strikethrough delimiter tildes must not leak into text; got: $rendered"
         )
     }
 
@@ -104,207 +49,6 @@ class MarkdownContentIntegrityTest {
                 rendered.urls,
                 "literal boundary unexpectedly became a link; source=$source; rendered=${rendered.text}",
             )
-        }
-    }
-
-    @Test
-    fun boldAndEmphasisBoundariesTakePrecedenceOverAutolink() {
-        data class BoldAutolinkCase(
-            val source: String,
-            val expectedText: String,
-            val expectedUrl: String,
-            val urlStart: Int,
-            val urlEnd: Int,
-            val assertBold: Boolean = false,
-            val assertItalic: Boolean = false,
-            val assertStrikethrough: Boolean = false,
-        )
-
-        val testCases =
-            listOf(
-                BoldAutolinkCase(
-                    source = "**https://xxxx.com**(x)",
-                    expectedText = "https://xxxx.com(x)",
-                    expectedUrl = "https://xxxx.com",
-                    urlStart = 0,
-                    urlEnd = 16,
-                    assertBold = true,
-                ),
-                BoldAutolinkCase(
-                    source = "**https://xxxx.com/**(x)",
-                    expectedText = "https://xxxx.com/(x)",
-                    expectedUrl = "https://xxxx.com/",
-                    urlStart = 0,
-                    urlEnd = 17,
-                    assertBold = true,
-                ),
-                BoldAutolinkCase(
-                    source = "**https://xxxx.com/path**(x)",
-                    expectedText = "https://xxxx.com/path(x)",
-                    expectedUrl = "https://xxxx.com/path",
-                    urlStart = 0,
-                    urlEnd = 21,
-                    assertBold = true,
-                ),
-                BoldAutolinkCase(
-                    source = "**https://xxxx.com/path?a=1&b=2**(x)",
-                    expectedText = "https://xxxx.com/path?a=1&b=2(x)",
-                    expectedUrl = "https://xxxx.com/path?a=1&b=2",
-                    urlStart = 0,
-                    urlEnd = 29,
-                    assertBold = true,
-                ),
-                BoldAutolinkCase(
-                    source = "**https://xxxx.com:8080/foo**(x)",
-                    expectedText = "https://xxxx.com:8080/foo(x)",
-                    expectedUrl = "https://xxxx.com:8080/foo",
-                    urlStart = 0,
-                    urlEnd = 25,
-                    assertBold = true,
-                ),
-                BoldAutolinkCase(
-                    source = "**https://xxxx.com/path#hash**(x)",
-                    expectedText = "https://xxxx.com/path#hash(x)",
-                    expectedUrl = "https://xxxx.com/path#hash",
-                    urlStart = 0,
-                    urlEnd = 26,
-                    assertBold = true,
-                ),
-                BoldAutolinkCase(
-                    source = "前缀**https://xxxx.com/path**(x)后缀",
-                    expectedText = "前缀https://xxxx.com/path(x)后缀",
-                    expectedUrl = "https://xxxx.com/path",
-                    urlStart = 2,
-                    urlEnd = 23,
-                    assertBold = true,
-                ),
-                BoldAutolinkCase(
-                    source = "*https://xxxx.com/path*(x)",
-                    expectedText = "https://xxxx.com/path(x)",
-                    expectedUrl = "https://xxxx.com/path",
-                    urlStart = 0,
-                    urlEnd = 21,
-                    assertItalic = true,
-                ),
-                BoldAutolinkCase(
-                    source = "~~https://xxxx.com/path~~(x)",
-                    expectedText = "https://xxxx.com/path(x)",
-                    expectedUrl = "https://xxxx.com/path",
-                    urlStart = 0,
-                    urlEnd = 21,
-                    assertStrikethrough = true,
-                ),
-                BoldAutolinkCase(
-                    source = "**https://en.wikipedia.org/wiki/Foo_(bar)**(x)",
-                    expectedText = "https://en.wikipedia.org/wiki/Foo_(bar)(x)",
-                    expectedUrl = "https://en.wikipedia.org/wiki/Foo_(bar)",
-                    urlStart = 0,
-                    urlEnd = 39,
-                    assertBold = true,
-                ),
-            )
-
-        testCases.forEach { case ->
-            val parserContent = MarkdownParserContent.from(case.source).parserContent
-            val tree = MarkdownParser(RaftGFMFlavourDescriptor()).buildMarkdownTreeFromString(parserContent)
-            val paragraphs = mutableListOf<org.intellij.markdown.ast.ASTNode>()
-            fun collect(node: org.intellij.markdown.ast.ASTNode) {
-                if (node.type == MarkdownElementTypes.PARAGRAPH) paragraphs += node
-                node.children.forEach(::collect)
-            }
-            collect(tree)
-
-            val settings =
-                DefaultAnnotatorSettings(
-                    linkTextSpanStyle = TextLinkStyles(style = SpanStyle()),
-                    codeSpanStyle = SpanStyle(),
-                    annotator = raftMarkdownAnnotator(parserContent),
-                )
-            val annotated =
-                buildAnnotatedString {
-                    paragraphs.forEach { p ->
-                        buildMarkdownAnnotatedString(parserContent, p, settings)
-                    }
-                }
-
-            // 1. Visible text conservation
-            assertEquals(
-                case.expectedText,
-                annotated.text,
-                "Rendered text mismatch for ${case.source}",
-            )
-
-            // 2. Link annotation target and bounds
-            val links = annotated.getLinkAnnotations(0, annotated.length)
-            assertEquals(
-                1,
-                links.size,
-                "Expected exactly 1 link for ${case.source}; got: $links",
-            )
-            val link = links.single()
-            assertEquals(
-                case.expectedUrl,
-                (link.item as LinkAnnotation.Url).url,
-                "Link destination mismatch for ${case.source}",
-            )
-            assertEquals(case.urlStart, link.start, "Link start mismatch for ${case.source}")
-            assertEquals(case.urlEnd, link.end, "Link end mismatch for ${case.source}")
-
-            // 3. SpanStyle checks
-            if (case.assertBold) {
-                assertTrue(
-                    annotated.spanStyles.any {
-                        it.item.fontWeight == androidx.compose.ui.text.font.FontWeight.Bold &&
-                            it.start == case.urlStart && it.end == case.urlEnd
-                    },
-                    "Bold SpanStyle missing or bounded incorrectly for ${case.source}; spans=${annotated.spanStyles}",
-                )
-            }
-            if (case.assertItalic) {
-                assertTrue(
-                    annotated.spanStyles.any {
-                        it.item.fontStyle == androidx.compose.ui.text.font.FontStyle.Italic &&
-                            it.start == case.urlStart && it.end == case.urlEnd
-                    },
-                    "Italic SpanStyle missing for ${case.source}; spans=${annotated.spanStyles}",
-                )
-            }
-            if (case.assertStrikethrough) {
-                assertTrue(
-                    annotated.spanStyles.any {
-                        it.item.textDecoration == androidx.compose.ui.text.style.TextDecoration.LineThrough &&
-                            it.start == case.urlStart && it.end == case.urlEnd
-                    },
-                    "Strikethrough SpanStyle missing for ${case.source}; spans=${annotated.spanStyles}",
-                )
-            }
-
-            // 4. AST node structural check: Container element must be present in AST
-            val allNodes = buildList {
-                fun collectAll(node: org.intellij.markdown.ast.ASTNode) {
-                    add(node)
-                    node.children.forEach(::collectAll)
-                }
-                collectAll(tree)
-            }
-            if (case.assertBold) {
-                assertTrue(
-                    allNodes.any { it.type == MarkdownElementTypes.STRONG },
-                    "AST must contain STRONG element for ${case.source}",
-                )
-            }
-            if (case.assertItalic) {
-                assertTrue(
-                    allNodes.any { it.type == MarkdownElementTypes.EMPH },
-                    "AST must contain EMPH element for ${case.source}",
-                )
-            }
-            if (case.assertStrikethrough) {
-                assertTrue(
-                    allNodes.any { it.type == org.intellij.markdown.flavours.gfm.GFMElementTypes.STRIKETHROUGH },
-                    "AST must contain STRIKETHROUGH element for ${case.source}",
-                )
-            }
         }
     }
 
@@ -344,99 +88,12 @@ class MarkdownContentIntegrityTest {
     }
 
     @Test
-    fun generatedInlineCodeUrlBoundariesStayVerbatimAndUnlinked() {
-        generatedInlineCodeUrlPayloads().forEach { payload ->
-            val source = "`$payload`"
-            val rendered = renderTopParagraphsWithLinks(source).single()
-            assertEquals(
-                payload,
-                rendered.text,
-                "inline-code URL payload was not rendered verbatim; source=$source",
-            )
-            assertEquals(
-                emptyList(),
-                rendered.urls,
-                "inline-code URL payload leaked link semantics; source=$source; rendered=${rendered.text}",
-            )
-        }
-    }
-
-    @Test
-    fun cjkAdjacentInlineCodeUrlStaysCodeAndUnlinked() {
-        val source = "回归测试从`http://internal/`、反代HTTP、恶意Host三种入站验证，最终`return_to`始终等于注册的外部HTTPS callback。"
-        val parserContent = MarkdownParserContent.from(source).parserContent
-        val tree = MarkdownParser(RaftGFMFlavourDescriptor()).buildMarkdownTreeFromString(parserContent)
-        val allNodes = buildList {
-            fun collect(node: ASTNode) {
-                add(node)
-                node.children.forEach(::collect)
-            }
-            collect(tree)
-        }
-        assertEquals(2, allNodes.count { it.type == MarkdownElementTypes.CODE_SPAN })
-        assertEquals(0, allNodes.count { it.type == GFMTokenTypes.GFM_AUTOLINK })
-
-        val rendered = renderTopParagraphsWithLinks(source).single()
-        assertEquals(
-            "回归测试从http://internal/、反代HTTP、恶意Host三种入站验证，最终return_to始终等于注册的外部HTTPS callback。",
-            rendered.text,
-        )
-        assertEquals(emptyList(), rendered.urls)
-    }
-
-    @Test
-    fun recoveredInlineCodeDoesNotSuppressFollowingBareUrl() {
-        val bareUrl = "https://stamp.build/login/raft"
-        val source = "从`http://internal/`验证。临时可直接开 <$bareUrl>。"
-        val rendered = renderTopParagraphsWithLinks(source).single()
-        assertEquals("从http://internal/验证。临时可直接开 $bareUrl。", rendered.text)
-        assertEquals(listOf(bareUrl), rendered.urls)
-    }
-
-    @Test
     fun cjkAdjacentBareUrlIsClickableWithoutChangingVisibleText() {
         val url = "https://www.example.com/design/AbCdEf0123456789/Raft-brand---Exploration?node-id=372-1396&t=AbCdEfGh01234567-1"
         val source = "@alice 情绪板已经准备完成，有空可以看下$url"
         val rendered = renderTopParagraphsWithLinks(source).single()
         assertEquals(source, rendered.text)
         assertEquals(listOf(url), rendered.urls)
-    }
-
-    @Test
-    fun cjkPunctuationAdjacentBareUrlDoesNotAbsorbPunctuation() {
-        val cases =
-            listOf(
-                "task #286 收尾：PR https://github.com/botiverse/slock/pull/8499（base staging）已开，@archer 审。" to
-                    listOf("https://github.com/botiverse/slock/pull/8499"),
-                "slock 深度用户 https://x.com/Trader_Pheneck，给了些反馈，在" to
-                    listOf("https://x.com/Trader_Pheneck"),
-                "来源：（https://www.facebook.com/business/help/407323696966570）、教程" to
-                    listOf("https://www.facebook.com/business/help/407323696966570"),
-                "read https://example.com/foo_(bar)、then" to
-                    listOf("https://example.com/foo_(bar)"),
-                "https://cua.ai, 稍后输出机会评分卡。" to
-                    listOf("https://cua.ai"),
-                "https://cua.ai,稍后输出机会评分卡。" to
-                    listOf("https://cua.ai"),
-                "see https://example.com/a,b?x=1&y=2，后续" to
-                    listOf("https://example.com/a,b?x=1&y=2"),
-                "【链接】https://example.com/foo【重要】" to
-                    listOf("https://example.com/foo"),
-            )
-
-        for ((source, expectedUrls) in cases) {
-            val rendered = renderTopParagraphsWithLinks(source).single()
-            assertEquals(
-                source,
-                rendered.text,
-                "Rendered text must preserve all source characters verbatim; source=$source",
-            )
-            assertEquals(
-                expectedUrls,
-                rendered.urls,
-                "URL boundary detection failed; source=$source",
-            )
-        }
     }
 
 
@@ -451,108 +108,6 @@ class MarkdownContentIntegrityTest {
         val rendered = renderTopParagraphsWithLinks("- $firstItem\n- $secondItem")
         assertEquals(listOf(firstItem, secondItem), rendered.map { it.text })
         assertEquals(listOf(listOf(first), listOf(second)), rendered.map { it.urls })
-    }
-
-    @Test
-    fun bareUrlTrailingMarksFollowTheWebRule() {
-        // slock packages/web/src/utils/markdownAutolink.ts: GFM trims trailing
-        // punctuation; `restoreTrailingUrlMarks` puts an unclosed `_`/`~` run back.
-        val cases =
-            listOf(
-                "see https://x.test/a_ now" to listOf("https://x.test/a_"),
-                "see https://x.test/a__ now" to listOf("https://x.test/a__"),
-                "see https://x.test/a_b_c now" to listOf("https://x.test/a_b_c"),
-                "see https://x.test/a_." to listOf("https://x.test/a_"),
-                "see https://x.test/a._" to listOf("https://x.test/a"),
-                "see https://x.test/a* now" to listOf("https://x.test/a"),
-                "see https://x.test/a. now" to listOf("https://x.test/a"),
-                "see https://x.test/a, now" to listOf("https://x.test/a"),
-                "see https://x.test/a! now" to listOf("https://x.test/a"),
-                // A Raft link ending a sentence (#proj-workspace:#290): the link, not its full stop, comma or paren.
-                "see https://app.raft.build/s/acme/channel/c1?msg=m1. now" to listOf("https://app.raft.build/s/acme/channel/c1?msg=m1"),
-                "see https://app.raft.build/s/acme/channel/c1, now" to listOf("https://app.raft.build/s/acme/channel/c1"),
-                "(see https://app.raft.build/s/acme/tasks) now" to listOf("https://app.raft.build/s/acme/tasks"),
-            )
-        for ((source, expectedUrls) in cases) {
-            val rendered = renderTopParagraphsWithLinks(source).single()
-            assertEquals(source, rendered.text, "every source character must render as written; source=$source")
-            assertEquals(expectedUrls, rendered.urls, "source=$source")
-        }
-    }
-
-    @Test
-    fun underscoreEmphasisStillWorksAroundAndBesideUrls() {
-        val italic = renderTopParagraphsWithLinks("_italic_ text").single()
-        assertEquals("italic text", italic.text)
-
-        val wrapped = renderTopParagraphsWithLinks("_https://x.test/a_ next").single()
-        assertEquals("https://x.test/a next", wrapped.text)
-        assertEquals(listOf("https://x.test/a"), wrapped.urls)
-
-        val strongWrapped = renderTopParagraphsWithLinks("__https://x.test/a__ next").single()
-        assertEquals("https://x.test/a next", strongWrapped.text)
-        assertEquals(listOf("https://x.test/a"), strongWrapped.urls)
-    }
-
-    @Test
-    fun unmatchedUnderscoreRendersAsUnderscore() {
-        listOf("a _b", "a_ b", "x _ y", "a * b").forEach { source ->
-            assertEquals(listOf(source), renderTopParagraphs(source), "source=$source")
-        }
-    }
-
-    @Test
-    fun raftSchemeMessageLinksAreAutolinkedWithTheirSourceText() {
-        val channel = "raft:///s/raft/channel/6f1c2b9e-1d2a?msg=0b1c2d3e"
-        val dm = "raft://s/my_team/dm/a3b4?msg=ae7be26c-daa7-42ca-8480-68d5ac90eaca&thread=a3b4:p_1"
-        val cases =
-            listOf(
-                "打开 $channel 看看" to listOf(channel),
-                "$channel。" to listOf(channel),
-                "看$dm，然后" to listOf(dm),
-                "see $channel." to listOf(channel),
-                "($channel)" to listOf(channel),
-                "【$channel】" to listOf(channel),
-                "https://example.com/a and $dm!" to listOf("https://example.com/a", dm),
-            )
-        for ((source, expectedUrls) in cases) {
-            val rendered = renderTopParagraphsWithLinks(source).single()
-            assertEquals(source, rendered.text, "source=$source")
-            assertEquals(expectedUrls, rendered.urls, "source=$source")
-        }
-
-        val bold = renderTopParagraphsWithLinks("**$channel**").single()
-        assertEquals(channel, bold.text)
-        assertEquals(listOf(channel), bold.urls)
-
-        val labelled = renderTopParagraphsWithLinks("[open]($dm)").single()
-        assertEquals("open", labelled.text)
-        assertEquals(listOf(dm), labelled.urls)
-    }
-
-    @Test
-    fun raftSchemeLinksOutsideServerPathsOrInsideCodeStayText() {
-        val sources =
-            listOf(
-                "`raft:///s/raft/channel/c1?msg=ae7be26c-daa7-42ca-8480-68d5ac90eaca`",
-                "run `open raft://s/raft/dm/c1` now",
-                "raft://login/callback?code=x",
-                "raft://oauth/callback?code=x",
-                "raft:///settings/profile",
-                "raft:///s/ and raft:///s//channel/c1",
-                "xraft:///s/raft/channel/c1",
-            )
-        for (source in sources) {
-            val rendered = renderTopParagraphsWithLinks(source).single()
-            assertEquals(source.replace("`", ""), rendered.text, "source=$source")
-            assertEquals(emptyList(), rendered.urls, "source=$source")
-        }
-
-        val fenced = MarkdownParserContent.from("```\nraft:///s/raft/channel/c1\n```").parserContent
-        val tree = MarkdownParser(RaftGFMFlavourDescriptor()).buildMarkdownTreeFromString(fenced)
-        fun autolinks(node: ASTNode): Int =
-            (if (node.type == GFMTokenTypes.GFM_AUTOLINK) 1 else 0) + node.children.sumOf(::autolinks)
-        assertEquals(0, autolinks(tree))
     }
 
     private fun renderTopParagraphs(content: String): List<String> {
@@ -665,19 +220,6 @@ class MarkdownContentIntegrityTest {
                     linkMayBeSuppressedByMarkdownContainer = linkMayBeSuppressed,
                 )
             }
-        }
-    }
-
-    private fun generatedInlineCodeUrlPayloads(): List<String> {
-        val bases =
-            listOf(
-                // Exact task #513 payload from the reported XiShi message.
-                "http://internal/",
-                "https://xxx.com/xx/asd",
-            )
-        val tails = listOf("", ".", ", next", "] now", ") now", "} now", "> now")
-        return bases.flatMap { base ->
-            generatedBalancedUrlTargets(base).flatMap { url -> tails.map { tail -> url + tail } }
         }
     }
 

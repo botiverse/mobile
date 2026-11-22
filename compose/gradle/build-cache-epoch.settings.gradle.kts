@@ -7,8 +7,7 @@
 // build of unchanged inputs produces the same file names, the save hits "entry with key already
 // exists", and the new Gradle-home metadata points back at the old (possibly poisoned) blob.
 // Putting the epoch in the directory name puts it in every file name, so a rotation always
-// yields a new build-cache entry. Proven by the epoch guard jobs in gradle-cache-policy-lint.yml,
-// which apply this same file.
+// yields a new build-cache entry.
 val buildCacheEpoch = providers.environmentVariable("RAFT_GRADLE_BUILD_CACHE_EPOCH").orNull
 if (!buildCacheEpoch.isNullOrBlank()) {
     require(Regex("[A-Za-z0-9_.-]{1,32}").matches(buildCacheEpoch)) {

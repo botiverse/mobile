@@ -347,9 +347,12 @@ internal fun SettingsFormErrorText(text: String) {
 
 @Composable
 internal fun SettingsFormErrorText(actionState: SharedSettingsActionState) {
-    actionState
-        .userFacingErrorMessage(localizedErrorPresentationStrings())
-        ?.let { SettingsFormErrorText(it) }
+    val message = actionState.userFacingErrorMessage(localizedErrorPresentationStrings()) ?: return
+    val traceId = actionState.screenError?.traceId ?: actionState.permissionBlocker?.traceId
+    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        SettingsFormErrorText(message)
+        RaftTraceIdNote(traceId)
+    }
 }
 
 @Composable

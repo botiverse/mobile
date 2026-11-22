@@ -58,6 +58,8 @@ class TaskCreateFromMessageDialogScreenshotTest {
                             senderName = "artin",
                             text = "preview 包好了把下载方式贴给我，我在模拟器上逐项测，结果贴在这里。",
                         ),
+                    // Recorded without the Status field (its goldens predate it); production always shows it.
+                    statusField = false,
                     submitting = false,
                     errorText = if (failed) "Cannot create more than 50 tasks at once" else null,
                     onDismiss = {},

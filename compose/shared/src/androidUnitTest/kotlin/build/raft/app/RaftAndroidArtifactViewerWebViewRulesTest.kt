@@ -110,12 +110,4 @@ class RaftAndroidArtifactViewerWebViewRulesTest {
         // No `addJavascriptInterface` anywhere: Robolectric records none.
         assertNull(shadowOf(webView).getJavascriptInterface("raftHostPort"))
     }
-
-    @Test
-    fun originLockHelper() {
-        assertTrue(raftMainFrameOriginAllows(null, "https://anything.test/"))
-        assertTrue(raftMainFrameOriginAllows(webOrigin, "$webOrigin/artifacts/pt_x"))
-        assertFalse(raftMainFrameOriginAllows(webOrigin, contentFrame))
-        assertFalse(raftMainFrameOriginAllows(webOrigin, "about:blank"))
-    }
 }

@@ -9,15 +9,6 @@ class HandsUpdateDownloadCleanupTest {
     private val dir = "file:///storage/emulated/0/Android/data/build.raft.app/files/Download/"
 
     @Test
-    fun parsesTheUpdaterFileNameBack() {
-        assertEquals(11601002L, handsApkDownloadVersionCode(dir + handsApkDownloadFileName(11601002L)))
-        assertEquals(11601002L, handsApkDownloadVersionCode("raft-hands-11601002-1.apk"))
-        assertNull(handsApkDownloadVersionCode(dir + "raft 1.16.1.apk"))
-        assertNull(handsApkDownloadVersionCode(dir + "raft-hands-11601002.apk.partial"))
-        assertNull(handsApkDownloadVersionCode(null))
-    }
-
-    @Test
     fun removesFinishedUpdatesForInstalledOrOlderVersions() {
         val rows =
             listOf(

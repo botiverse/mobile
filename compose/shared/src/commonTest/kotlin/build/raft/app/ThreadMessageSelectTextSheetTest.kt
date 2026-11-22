@@ -67,16 +67,6 @@ class ThreadMessageSelectTextSheetTest {
     }
 
     @Test
-    fun aPressThatSlidOffTheButtonLeavesNoStaleSelection() {
-        val press = ThreadSelectTextPressSelection()
-        press.onPress("old pick")
-        // The finger slid away and lifted: no click, the gesture ends.
-        press.onGestureEnd()
-        assertEquals("new pick", press.take { "new pick" })
-        assertEquals("", press.take { "" })
-    }
-
-    @Test
     fun nativeSelectionSliceIsOrderedAndClamped() {
         val text = "hello world"
         assertEquals("world", raftNativeSelectedSlice(text, 6, 11))

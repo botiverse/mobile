@@ -34,9 +34,6 @@ class FilePreviewCsvTableScreenshotTest {
     @Test
     fun csvTableLight() = capture("file.preview.csv.table", RaftAppAppearance.Light)
 
-    @Test
-    fun csvTableDark() = capture("file.preview.csv.table.dark", RaftAppAppearance.Dark)
-
     private fun capture(name: String, appearance: RaftAppAppearance) =
         RaftRobolectricScreenshot.capture(name, appearance, reportDir = "build/reports/home-screenshots", activities = activities) {
             val pager =

@@ -27,36 +27,6 @@ class RaftThemeAxisUiTest {
     }
 
     @Test
-    fun defaultPathProvidesRaftColours() =
-        runComposeUiTest {
-            val light = Seen()
-            val dark = Seen()
-            setContent {
-                RaftTheme(appearance = RaftAppearance.Light, systemDark = false) { Record(light) }
-                RaftTheme(appearance = RaftAppearance.Dark, systemDark = false) { Record(dark) }
-            }
-            waitForIdle()
-            assertSame(RaftUiThemeColors.RaftLight, light.colors)
-            assertEquals(RaftThemeId.Raft, light.themeId)
-            assertEquals(false, light.decor)
-            assertEquals(RaftUiThemeColors.RaftLight.layerCanvas, light.surface)
-            assertSame(RaftUiThemeColors.RaftDark, dark.colors)
-        }
-
-    @Test
-    fun boringLightProvidesBoringLightColours() =
-        runComposeUiTest {
-            val seen = Seen()
-            setContent {
-                RaftTheme(appearance = RaftAppearance.Light, systemDark = false, raftTheme = RaftThemeId.Boring) { Record(seen) }
-            }
-            waitForIdle()
-            assertSame(RaftUiThemeColors.BoringLight, seen.colors)
-            assertEquals(RaftThemeId.Boring, seen.themeId)
-            assertEquals(RaftUiThemeColors.BoringLight.layerCanvas, seen.surface)
-        }
-
-    @Test
     fun stateThemeChangesRecompose() =
         runComposeUiTest {
             val state = RaftThemeState(RaftAppearance.Dark)

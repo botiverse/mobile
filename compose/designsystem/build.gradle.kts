@@ -62,7 +62,7 @@ kotlin {
                 implementation(kotlin("test-junit"))
                 // Semantics and input tests (runComposeUiTest).
                 implementation(libs.cmp.ui.test)
-                // Screenshot compare / record / report (RaftScreenshot); the capture stays ours.
+                // Only the Roborazzi Gradle tasks (verify / record) are used: they run the vcase cases.
                 // Its runtime pins CMP 1.10.3's macOS arm64 desktop natives: the host's come from
                 // compose.desktop.currentOs, and ui-test-junit4 is lifted to composePlugin.
                 implementation("io.github.takahirom.roborazzi:roborazzi-compose-desktop:${libs.versions.roborazzi.get()}") {
@@ -82,13 +82,9 @@ compose.resources {
     generateResClass = always
 }
 
-// Screenshot tests (src/desktopTest), compared and recorded by Roborazzi. See README.md.
+// The Roborazzi tasks run desktopTest, whose screenshots are the vcase cases below. See README.md.
 // - desktopTest / verifyRoborazziDesktop: verify against the committed goldens.
 // - recordRoborazziDesktop: write goldens whose render changed (or are new); others stay as is.
-// - compareRoborazziDesktop: write the comparison images without failing.
-// Goldens stay at screenshots/<name>.png (RaftScreenshot passes that path to Roborazzi);
-// actual and comparison images go to build/reports/screenshots, the HTML report (Roborazzi
-// tasks only) to build/reports/roborazzi/desktop.
 val screenshotGoldenDir = layout.projectDirectory.dir("screenshots")
 val screenshotReportDir = layout.buildDirectory.dir("reports/screenshots")
 // A roborazzi.test.* Gradle property picks the mode itself; otherwise a bare desktopTest verifies.
@@ -105,7 +101,6 @@ tasks.named<Test>("desktopTest") {
     inputs.files(fileTree(screenshotGoldenDir)).withPropertyName("screenshotGoldens")
     // The Roborazzi tasks overwrite this (record / compare / verify) when the test starts.
     if (!roborazziModeProperty.get()) systemProperty("roborazzi.test.verify", "true")
-    systemProperty("raft.screenshot.goldenDir", screenshotGoldenDir.asFile.absolutePath)
     systemProperty("raft.screenshot.reportDir", screenshotReportDir.get().asFile.absolutePath)
     systemProperty("java.awt.headless", "true")
     // A failure's assertion message and stack in the CI log, not only "AssertionError at
@@ -116,15 +111,14 @@ tasks.named<Test>("desktopTest") {
 }
 
 // vcase pilot (vcase repo, docs/pilot-raft-mobile.md; Raft #proj-mobile:#211). desktopTest also
-// compiles src/desktopVcase (the @VCase cases, RaftVCaseHost and DesignSystemVCases; a temporary
-// LegacyGoldenParityTest joins them while a batch migrates) against build.raft.vcase.
-// Goldens live next to the Roborazzi ones, at screenshots/vcase/desktop-skiko/, with the manifest
-// at screenshots/vcase/vcase.manifest.json, so the record_screenshots dispatch collects them too.
+// compiles src/desktopVcase (the @VCase cases, RaftVCaseHost and DesignSystemVCases) against
+// build.raft.vcase. Goldens live at screenshots/vcase/desktop-skiko/, with the manifest at
+// screenshots/vcase/vcase.manifest.json, so the record_screenshots dispatch collects them too.
 // - desktopTest / verifyRoborazziDesktop: verify, zero tolerance (inputs: screenshotGoldens covers screenshots/vcase).
-// - recordRoborazziDesktop: record (vcase.mode=record) alongside Roborazzi.
+// - recordRoborazziDesktop: record (vcase.mode=record).
 // - -Pvcase.mode=record|verify|scan and -Pvcase.filter=<id glob> override; -Pvcase.version picks
 //   another release (or 0.1.0-SNAPSHOT from mavenLocal).
-val vcaseVersion = providers.gradleProperty("vcase.version").getOrElse("0.1.2")
+val vcaseVersion = providers.gradleProperty("vcase.version").getOrElse("0.1.5")
 val vcaseDir = screenshotGoldenDir.dir("vcase")
 val vcaseRecording = gradle.startParameter.taskNames.any { it.substringAfterLast(':') == "recordRoborazziDesktop" }
 kotlin {

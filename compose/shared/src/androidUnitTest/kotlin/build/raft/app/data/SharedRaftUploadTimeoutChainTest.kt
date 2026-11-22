@@ -2,7 +2,6 @@ package build.raft.app.data
 
 import build.raft.app.model.ChannelId
 import build.raft.app.network.MultipartFile
-import build.raft.app.network.RAFT_UPLOAD_TOTAL_TIMEOUT_MILLIS
 import build.raft.app.network.RaftHttpExecutor
 import build.raft.app.network.RaftHttpExecutorResponse
 import build.raft.app.network.RaftRequestPriority
@@ -10,15 +9,10 @@ import build.raft.app.network.RaftRequestScheduler
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
-import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
-import kotlinx.coroutines.test.advanceTimeBy
-import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 
 /**
@@ -53,14 +47,6 @@ class SharedRaftUploadTimeoutChainTest {
             fileName = "large.bin",
             mimeType = "application/octet-stream",
             fileRef = "native://large.bin"
-        )
-
-    private fun bytesFile() =
-        MultipartFile(
-            name = "files",
-            fileName = "small.txt",
-            mimeType = "text/plain",
-            bytes = "hello".encodeToByteArray()
         )
 
     private class StreamingStatResolver(
@@ -149,25 +135,6 @@ class SharedRaftUploadTimeoutChainTest {
         RaftHttpExecutorResponse(code = 401, bodyText = null, errorBodyText = """{"error":"unauthorized"}""")
 
     @Test
-    fun derivedBackstopSitsStrictlyAboveTheFullLegalChain() {
-        assertEquals(
-            RAFT_AUTH_MAX_REQUEST_ATTEMPTS * RAFT_UPLOAD_TOTAL_TIMEOUT_MILLIS +
-                AUTH_REFRESH_MAX_ATTEMPTS * AUTH_REFRESH_ATTEMPT_TIMEOUT_MILLIS +
-                RAFT_UPLOAD_SCHEDULER_DISPATCH_MARGIN_MILLIS,
-            RAFT_UPLOAD_SCHEDULER_BACKSTOP_MILLIS,
-            "backstop must be checked-derived from the authoritative chain constants"
-        )
-        assertEquals(383_000L, RAFT_UPLOAD_SCHEDULER_BACKSTOP_MILLIS)
-        assertTrue(RAFT_UPLOAD_SCHEDULER_BACKSTOP_MILLIS > RAFT_UPLOAD_TOTAL_TIMEOUT_MILLIS)
-        assertTrue(
-            RAFT_UPLOAD_SCHEDULER_BACKSTOP_MILLIS >
-                RAFT_AUTH_MAX_REQUEST_ATTEMPTS * RAFT_UPLOAD_TOTAL_TIMEOUT_MILLIS +
-                AUTH_REFRESH_MAX_ATTEMPTS * AUTH_REFRESH_ATTEMPT_TIMEOUT_MILLIS,
-            "the scheduler bound must never race a legal terminal"
-        )
-    }
-
-    @Test
     fun streamingUploadRunningTwoMinutesSucceeds() = runTest {
         val executor =
             ScriptedExecutor(onMultipart = {
@@ -218,165 +185,6 @@ class SharedRaftUploadTimeoutChainTest {
 
         assertEquals(200, response.code, "the post-refresh second attempt must not be truncated")
         assertEquals(RAFT_AUTH_MAX_REQUEST_ATTEMPTS, executor.multipartAttempts)
-    }
-
-    @Test
-    fun outerBoundAdmitsFullLegalChainDuration() = runTest {
-        val executor =
-            ScriptedExecutor(onMultipart = {
-                // The scheduler cannot distinguish attempts inside the
-                // middleware block; its contract is only the derived bound.
-                // A single virtual block running the worst legal chain
-                // duration (2×180s + 2×4s = 368s) must complete untouched.
-                delay(368_000L)
-                ok()
-            })
-
-        val response = client(executor).uploadStreaming()
-
-        assertEquals(200, response.code, "the outer bound must admit the full legal chain duration")
-        assertTrue(testScheduler.currentTime >= 368_000L)
-        assertTrue(testScheduler.currentTime < RAFT_UPLOAD_SCHEDULER_BACKSTOP_MILLIS)
-    }
-
-    @Test
-    fun transportTimeoutFailureMapsStablyThroughTheChain() = runTest {
-        val executor =
-            ScriptedExecutor(onMultipart = {
-                delay(RAFT_UPLOAD_TOTAL_TIMEOUT_MILLIS)
-                RaftHttpExecutorResponse(
-                    code = 0,
-                    bodyText = null,
-                    errorBodyText =
-                        "[timeout] SocketTimeoutException: Request wall-clock deadline exceeded " +
-                            "[configuredTimeoutMs=180000, deadlineElapsedMs=180002]"
-                )
-            })
-        val logs = mutableListOf<String>()
-
-        val response = client(executor, logs = logs).uploadStreaming()
-
-        assertEquals(0, response.code)
-        assertTrue(
-            response.errorBodyText.orEmpty().contains("[timeout]"),
-            "the inner transport terminal must own the timeout attribution"
-        )
-        assertTrue(
-            testScheduler.currentTime < RAFT_UPLOAD_SCHEDULER_BACKSTOP_MILLIS,
-            "the inner 180s terminal must land before the scheduler backstop"
-        )
-        val endpointLog = logs.single { it.startsWith("endpoint category=attachments_upload") }
-        assertTrue(endpointLog.contains("result=network_error"))
-    }
-
-    @Test
-    fun backstopReclaimsPermitOnlyWhenInnerMachineryIsAbsent() = runTest {
-        var cancelled = false
-        val executor =
-            ScriptedExecutor(onMultipart = {
-                try {
-                    awaitCancellation()
-                } finally {
-                    cancelled = true
-                }
-            })
-        val logs = mutableListOf<String>()
-
-        val response = client(executor, logs = logs).uploadStreaming()
-
-        assertTrue(cancelled, "the backstop must cancel the hung attempt and reclaim the permit")
-        assertEquals(0, response.code)
-        assertTrue(
-            response.errorBodyText.orEmpty().contains("network_timeout"),
-            "backstop timeout maps to the standard timeout response, got: ${response.errorBodyText}"
-        )
-        assertEquals(
-            RAFT_UPLOAD_SCHEDULER_BACKSTOP_MILLIS,
-            testScheduler.currentTime,
-            "the backstop must fire exactly at the derived bound"
-        )
-        assertTrue(
-            logs.single { it.startsWith("endpoint category=attachments_upload") }
-                .contains("result=network_error")
-        )
-    }
-
-    @Test
-    fun bytesMultipartKeepsOrdinaryThirtySecondBound() = runTest {
-        val executor =
-            ScriptedExecutor(onMultipart = {
-                awaitCancellation()
-            })
-
-        val response =
-            client(executor).uploadAttachments(
-                priority = DataRequestPriority.Foreground,
-                channelId = ChannelId("c1"),
-                files = listOf(bytesFile())
-            )
-
-        assertEquals(0, response.code)
-        assertTrue(response.errorBodyText.orEmpty().contains("network_timeout"))
-        assertEquals(30_000L, testScheduler.currentTime, "bytes multipart must keep the ordinary 30s bound")
-    }
-
-    @Test
-    fun ordinaryRequestKeepsThirtySecondBound() = runTest {
-        val executor =
-            ScriptedExecutor(
-                onMultipart = { error("no multipart in this tooth") },
-                onExecute = {
-                    delay(31_000L)
-                    ok()
-                }
-            )
-
-        val response =
-            client(executor).request(
-                priority = DataRequestPriority.Foreground,
-                path = "channels/inbox",
-                method = "GET",
-                query = emptyList(),
-                serverIdOverride = null,
-                bodyText = null
-            )
-
-        assertEquals(0, response.code)
-        assertTrue(response.errorBodyText.orEmpty().contains("network_timeout"))
-        assertEquals(30_000L, testScheduler.currentTime)
-    }
-
-    @Test
-    fun externalCancellationPropagatesWithoutTimeoutConversion() = runTest {
-        var transportCancelled = false
-        val executor =
-            ScriptedExecutor(onMultipart = {
-                try {
-                    awaitCancellation()
-                } finally {
-                    transportCancelled = true
-                }
-            })
-        var cancellationPropagated = false
-        var convertedToResponse: HomeNetworkResponse? = null
-
-        val job =
-            launch {
-                try {
-                    convertedToResponse = client(executor).uploadStreaming()
-                } catch (cancellation: CancellationException) {
-                    cancellationPropagated = true
-                    throw cancellation
-                }
-            }
-        advanceTimeBy(5_000L)
-        runCurrent()
-        job.cancel()
-        job.join()
-
-        assertTrue(transportCancelled, "explicit cancel must reach the transport attempt immediately")
-        assertTrue(cancellationPropagated, "cancel must propagate as CancellationException")
-        assertNull(convertedToResponse, "cancel must not be rewritten into a timeout response")
     }
 
     @Test

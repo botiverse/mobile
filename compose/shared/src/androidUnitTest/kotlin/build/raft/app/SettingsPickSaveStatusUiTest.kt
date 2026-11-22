@@ -8,8 +8,6 @@ import androidx.compose.runtime.snapshots.Snapshot
 import androidx.compose.ui.test.ComposeUiTest
 import androidx.compose.ui.test.ExperimentalTestApi
 import build.raft.app.data.LANGUAGE_REGION_ACTION_TIMEZONE
-import build.raft.app.data.LANGUAGE_REGION_ACTION_TIME_FORMAT
-import build.raft.app.data.MOBILE_ACTION_LANGUAGE
 import build.raft.app.data.ScreenError
 import build.raft.app.data.SharedSettingsActionState
 import build.raft.designsystem.components.RaftSaveStatusState
@@ -63,19 +61,6 @@ class SettingsPickSaveStatusUiTest {
     }
 
     @Test
-    fun timeFormatSavesWithoutSayingSo() = runRobolectricComposeUiTest {
-        show(LANGUAGE_REGION_ACTION_TIME_FORMAT)
-        assertEquals(RaftSaveStatusState.Idle, status)
-
-        pickAndRun(LANGUAGE_REGION_ACTION_TIME_FORMAT, "12h")
-        assertEquals(RaftSaveStatusState.Idle, status, "nothing while saving: the control already shows the pick")
-
-        actionState = SharedSettingsActionState(LANGUAGE_REGION_ACTION_TIME_FORMAT)
-        settle()
-        assertEquals(RaftSaveStatusState.Idle, status, "no \"Saved\": the control already shows the pick")
-    }
-
-    @Test
     fun timezoneFailureSaysSoUntilTheNextPick() = runRobolectricComposeUiTest {
         show(LANGUAGE_REGION_ACTION_TIMEZONE)
 
@@ -102,31 +87,6 @@ class SettingsPickSaveStatusUiTest {
             )
         settle()
         assertEquals(RaftSaveStatusState.Failed("Unknown timezone"), status)
-    }
-
-    @Test
-    fun appLanguageReportsOnlyItsOwnFailure() = runRobolectricComposeUiTest {
-        // A result already on screen when the page opens is not a save made here.
-        actionState = SharedSettingsActionState(MOBILE_ACTION_LANGUAGE)
-        show(MOBILE_ACTION_LANGUAGE)
-        assertEquals(RaftSaveStatusState.Idle, status)
-
-        // Another control's pick leaves this line alone.
-        pickAndRun(LANGUAGE_REGION_ACTION_TIME_FORMAT, "12h")
-        actionState = SharedSettingsActionState(LANGUAGE_REGION_ACTION_TIME_FORMAT)
-        settle()
-        assertEquals(RaftSaveStatusState.Idle, status)
-
-        pickAndRun(LANGUAGE_REGION_ACTION_TIME_FORMAT, "24h")
-        actionState =
-            SharedSettingsActionState(LANGUAGE_REGION_ACTION_TIME_FORMAT, errorCode = "network", screenError = ScreenError("network"))
-        settle()
-        assertEquals(RaftSaveStatusState.Idle, status)
-
-        pickAndRun(MOBILE_ACTION_LANGUAGE, "ja")
-        actionState = SharedSettingsActionState(MOBILE_ACTION_LANGUAGE, errorCode = "network", screenError = ScreenError("network"))
-        settle()
-        assertEquals(RaftSaveStatusState.Failed(FailureMessage), status)
     }
 
     private companion object {

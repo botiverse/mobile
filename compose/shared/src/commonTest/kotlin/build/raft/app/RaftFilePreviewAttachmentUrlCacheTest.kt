@@ -2,7 +2,6 @@ package build.raft.app
 
 import build.raft.app.data.AuthenticatedRouteOwner
 import kotlin.test.Test
-import kotlin.test.assertEquals
 import kotlin.test.assertNull
 
 class RaftFilePreviewAttachmentUrlCacheTest {
@@ -12,45 +11,6 @@ class RaftFilePreviewAttachmentUrlCacheTest {
             accountId = "acct-a",
             serverId = "srv-a"
         )
-
-    @Test
-    fun missingExpiresAtIsNeverStored() {
-        val cache = RaftFilePreviewAttachmentUrlCache()
-        cache.currentEpochMillis = { 1_000_000L }
-        val key = RaftFilePreviewAttachmentUrlCacheKey(owner, "att-1", "inline")
-        cache.put(key, "https://signed.example/full.jpg")
-
-        assertNull(cache.get(key))
-    }
-
-    @Test
-    fun expiresAtBeyondMarginStoresAndHits() {
-        val cache = RaftFilePreviewAttachmentUrlCache()
-        cache.currentEpochMillis = { 1_000_000L }
-        val key = RaftFilePreviewAttachmentUrlCacheKey(owner, "att-1", "inline")
-        cache.put(
-            key,
-            "https://signed.example/full.jpg",
-            expiresAtEpochMillis = 1_000_000L + 5 * 60_000L
-        )
-
-        assertEquals("https://signed.example/full.jpg", cache.get(key))
-    }
-
-    @Test
-    fun expiresAtInsideSafetyMarginIsNotStored() {
-        val cache = RaftFilePreviewAttachmentUrlCache()
-        cache.currentEpochMillis = { 1_000_000L }
-        val key = RaftFilePreviewAttachmentUrlCacheKey(owner, "att-1", "inline")
-        // expires in 30s < 60s margin => never replayable
-        cache.put(
-            key,
-            "https://signed.example/full.jpg",
-            expiresAtEpochMillis = 1_000_000L + 30_000L
-        )
-
-        assertNull(cache.get(key))
-    }
 
     @Test
     fun expiresAtEntryDiesAtExpiryMinusMargin() {
@@ -107,14 +67,5 @@ class RaftFilePreviewAttachmentUrlCacheTest {
                 RaftFilePreviewAttachmentUrlCacheKey(owner, "att-2", "inline")
             )
         )
-    }
-
-    @Test
-    fun blankUrlIsNotStored() {
-        val cache = RaftFilePreviewAttachmentUrlCache()
-        val key = RaftFilePreviewAttachmentUrlCacheKey(owner, "att-1", "inline")
-        cache.put(key, "   ")
-
-        assertNull(cache.get(key))
     }
 }

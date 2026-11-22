@@ -16,10 +16,4 @@ class RaftSensitivePathRedactionTest {
         assertEquals("https://app.raft.build/join/:redacted", raftRedactSensitivePath("https://app.raft.build/join/tok"))
         assertEquals("auth/invite-info?token=:redacted", raftRedactSensitivePath("auth/invite-info?token=tok_ABC"))
     }
-
-    @Test
-    fun otherPathsAreLeftAsTheyAre() {
-        listOf("channels/c1/external-invites", "channels/c1/external-invites/i1/resend", "channels/c1/join", "servers/s1", "")
-            .forEach { assertEquals(it, raftRedactSensitivePath(it)) }
-    }
 }

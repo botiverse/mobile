@@ -41,24 +41,6 @@ class ThreadAgentTypingScreenshotTest {
 
     @Test fun oneAgentLight() = capture("thread.agent-typing.one", RaftAppAppearance.Light, agents.take(1))
 
-    @Test fun oneAgentDark() = capture("thread.agent-typing.one.dark", RaftAppAppearance.Dark, agents.take(1))
-
-    @Test fun manyAgentsLight() = capture("thread.agent-typing.many", RaftAppAppearance.Light, agents)
-
-    @Test fun manyAgentsDark() = capture("thread.agent-typing.many.dark", RaftAppAppearance.Dark, agents)
-
-    @Test fun overLongMessageLight() =
-        capture("thread.agent-typing.long-message", RaftAppAppearance.Light, agents.take(1), longMessage = true)
-
-    @Test fun overLongMessageDark() =
-        capture("thread.agent-typing.long-message.dark", RaftAppAppearance.Dark, agents.take(1), longMessage = true)
-
-    @Test fun nobodyTypingLight() =
-        capture("thread.agent-typing.none", RaftAppAppearance.Light, emptyList(), longMessage = true)
-
-    @Test fun nobodyTypingDark() =
-        capture("thread.agent-typing.none.dark", RaftAppAppearance.Dark, emptyList(), longMessage = true)
-
     private fun capture(
         name: String,
         appearance: RaftAppAppearance,

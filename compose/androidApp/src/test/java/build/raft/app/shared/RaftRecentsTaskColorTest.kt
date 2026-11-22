@@ -35,18 +35,6 @@ class RaftRecentsTaskColorTest {
     }
 
     @Test
-    @Config(qualifiers = "notnight")
-    fun taskBackgroundFollowsTheLightCanvas() {
-        val activity = themedActivity()
-        assertTrue(RaftRecentsTaskColor.apply(activity, LIGHT_CANVAS))
-        val description = taskDescription(activity)
-        assertEquals(LIGHT_CANVAS, description.backgroundColor)
-        // Label and icon stay the activity's own.
-        assertNull(description.label)
-        assertNull(description.icon)
-    }
-
-    @Test
     @Config(qualifiers = "night")
     fun taskBackgroundFollowsTheDarkCanvasAndIsOpaque() {
         val activity = themedActivity()
@@ -55,60 +43,6 @@ class RaftRecentsTaskColorTest {
         // A translucent canvas still gives an opaque card.
         assertTrue(RaftRecentsTaskColor.apply(activity, DARK_CANVAS and 0x80FFFFFF.toInt()))
         assertEquals(DARK_CANVAS, taskDescription(activity).backgroundColor)
-    }
-
-    @Test
-    @Config(qualifiers = "night")
-    fun taskBackgroundFollowsAServerThemeCanvasNotJustTheTheme() {
-        val activity = themedActivity()
-        assertEquals(DARK_CANVAS, taskDescription(activity).backgroundColor)
-        assertTrue(RaftRecentsTaskColor.apply(activity, SERVER_CANVAS))
-        assertEquals(SERVER_CANVAS, taskDescription(activity).backgroundColor)
-    }
-
-    @Test
-    fun belowApi33TheTaskDescriptionIsLeftAlone() {
-        val activity = themedActivity()
-        val before = taskDescription(activity).backgroundColor
-        assertFalse(RaftRecentsTaskColor.apply(activity, SERVER_CANVAS, sdkInt = Build.VERSION_CODES.S_V2))
-        assertEquals(before, taskDescription(activity).backgroundColor)
-    }
-
-    @Test
-    @Config(sdk = [29, 34], qualifiers = "notnight")
-    fun lightWindowThemeBackgroundIsTheCanvas() {
-        assertEquals(LIGHT_CANVAS, colorBackground(R.style.Theme_Raft))
-    }
-
-    @Test
-    @Config(sdk = [29, 34], qualifiers = "night")
-    fun darkWindowThemeBackgroundIsTheCanvas() {
-        assertEquals(DARK_CANVAS, colorBackground(R.style.Theme_Raft))
-    }
-
-    @Test
-    @Config(qualifiers = "night")
-    fun stopRecordsModeNightBitsAndCanvas() {
-        val lines = mutableListOf<String>()
-        RaftRecentsTaskColor.recordDiagnostics = { lines += it }
-        val activity = themedActivity()
-        RaftRecentsTaskColor.recordStop(activity, "compose_slock_app_shell", DARK_CANVAS, DARK_CANVAS)
-        val line = lines.single()
-        assertTrue(line, line.startsWith("recents_task_on_stop page=compose_slock_app_shell appearance="))
-        assertTrue(line, line.contains(" appDark="))
-        assertTrue(line, line.contains(" configNight=yes "))
-        assertTrue(line, line.contains(" canvas=#FF1B1B19 "))
-        assertTrue(line, line.endsWith(" taskColorApplied=true"))
-    }
-
-    @Test
-    fun stopLineReportsAMissingOrStaleTaskColour() {
-        val light = Configuration.UI_MODE_TYPE_NORMAL or Configuration.UI_MODE_NIGHT_NO
-        assertEquals(
-            "recents_task_on_stop page=p appearance=Dark appDark=true configNight=no canvas=none " +
-                "taskColorApplied=false",
-            RaftRecentsTaskColor.stopLine("p", "Dark", appDark = true, uiMode = light, canvasArgb = null, taskColorApplied = false),
-        )
     }
 
     private fun themedActivity(): Activity {

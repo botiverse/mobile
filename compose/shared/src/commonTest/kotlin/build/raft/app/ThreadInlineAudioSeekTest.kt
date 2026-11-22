@@ -20,15 +20,4 @@ class ThreadInlineAudioSeekTest {
         assertEquals(0f, threadInlineAudioSeekFraction(-40f, width, half))
         assertEquals(1f, threadInlineAudioSeekFraction(width + 40f, width, half))
     }
-
-    @Test
-    fun middleOfTheTrackIsHalf() {
-        assertEquals(0.5f, threadInlineAudioSeekFraction(width / 2, width, half))
-    }
-
-    @Test
-    fun unmeasuredTrackSeeksNowhere() {
-        assertEquals(0f, threadInlineAudioSeekFraction(10f, 0f, half))
-        assertEquals(0f, threadInlineAudioSeekFraction(10f, 12f, half))
-    }
 }

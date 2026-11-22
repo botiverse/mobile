@@ -118,7 +118,7 @@ internal fun ThreadRouteDialogs(
         val quoteTarget = selectionQuoteTarget
         // Same time source as the message list: the live provider when there is one, else the payload's.
         val timeContext =
-            currentRaftTimeContextProvider?.current ?: payload.toRaftTimeCapabilities().staticContext()
+            currentRaftDateTimeContext(null) ?: payload.toRaftTimeCapabilities().staticContext()
         key(message.id, message.body) {
             ThreadMessageSelectTextSheet(
                 markdown = message.body,
@@ -144,7 +144,9 @@ internal fun ThreadRouteDialogs(
                             )
                             composerDraftViewModel.dispatch(SharedThreadComposerDraftIntent.AppendQuote(quote))
                         }
-                    }
+                    },
+                // A sent message's quote points at it (web MessageSelectTextDrawer `messageId`).
+                quoteMessageId = message.id.takeIf { message.canQuoteReply() }
             )
         }
     }
@@ -236,6 +238,7 @@ internal fun ThreadRouteDialogs(
             onDismiss = { actionCardSpecStore.dispatch(ThreadActionCardSpecIntent.DismissForm) },
             candidates = candidates,
             formError = threadActionCardSpecErrorText(formState.error),
+            formErrorTraceId = formState.error.traceIdOrNull(),
         )
     }
     // Last of the card dialogs, so it opens over the install confirmation or spec sheet that asked.

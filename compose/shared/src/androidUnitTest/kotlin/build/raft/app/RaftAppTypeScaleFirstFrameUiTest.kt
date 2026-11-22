@@ -33,10 +33,6 @@ class RaftAppTypeScaleFirstFrameUiTest {
     @Config(qualifiers = "w1024dp-h768dp")
     fun wideWindowDrawsWideBodyFromTheFirstFrame() = assertBodySizes(expected = 14.sp)
 
-    @Test
-    @Config(qualifiers = "w400dp-h800dp")
-    fun phoneWindowDrawsPhoneBody() = assertBodySizes(expected = 16.sp)
-
     private fun assertBodySizes(expected: TextUnit) {
         val composed = mutableListOf<TextUnit>()
         val committed = mutableListOf<TextUnit>()

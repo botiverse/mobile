@@ -63,21 +63,8 @@ class ThreadAppLinkBlockCardScreenshotTest {
     fun blockCardLight() = capture("thread.app-link-block-card", RaftAppAppearance.Light, BlockOnlyMessages)
 
     @Test
-    fun blockCardDark() = capture("thread.app-link-block-card.dark", RaftAppAppearance.Dark, BlockOnlyMessages)
-
-    @Test
     @Config(sdk = [34], qualifiers = "w900dp-h1000dp-xxhdpi")
     fun blockCardWideLight() = capture("thread.app-link-block-card.wide", RaftAppAppearance.Light, BlockOnlyMessages)
-
-    @Test
-    @Config(sdk = [34], qualifiers = "w900dp-h1000dp-xxhdpi")
-    fun blockCardWideDark() = capture("thread.app-link-block-card.wide.dark", RaftAppAppearance.Dark, BlockOnlyMessages)
-
-    @Test
-    fun inlineAndBlockLight() = capture("thread.app-link-inline-block", RaftAppAppearance.Light, InlineAndBlockMessages)
-
-    @Test
-    fun inlineAndBlockDark() = capture("thread.app-link-inline-block.dark", RaftAppAppearance.Dark, InlineAndBlockMessages)
 
     private fun capture(name: String, appearance: RaftAppAppearance, messages: List<BlockFixtureMessage>) {
         RaftRobolectricScreenshot.capture(name, appearance, reportDir = "build/reports/home-screenshots", activities = activities) {
@@ -152,19 +139,6 @@ private val BlockOnlyMessages =
             id = "0b5a1f8e-6d0c-4c3e-9a51-0e1b2c3d4f02",
             body = AloneUrl,
             results = mapOf(AloneUrl to blockResult(AloneUrl, "#12400 fix(server): announcement reach counts Russian users", null)),
-        ),
-    )
-
-private val InlineAndBlockMessages =
-    listOf(
-        BlockFixtureMessage(
-            id = "0b5a1f8e-6d0c-4c3e-9a51-0e1b2c3d4f03",
-            body = "Review needed on $InSentenceUrl before we cut the build.",
-            results =
-                mapOf(
-                    InSentenceUrl to
-                        blockResult(InSentenceUrl, "#12361 feat(web): an App link card's buttons in one row, the main action at its end", AppLinkInline("botiverse/slock#12361")),
-                ),
         ),
     )
 

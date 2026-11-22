@@ -2,9 +2,9 @@ package build.raft.app.data
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.setValue
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.key
+import androidx.compose.runtime.remember
 import build.raft.app.model.ServerId
 import kotlinx.atomicfu.locks.SynchronizedObject
 import kotlinx.atomicfu.locks.synchronized
@@ -120,12 +120,13 @@ internal fun decodeServerModelLabelCatalog(body: String): ServerModelLabelCatalo
 /**
  * Process-wide reactive registry of per-server model-label catalogs.
  *
- * Publishes both Compose snapshot state (so Composables like agent profiles, preview cards, and
- * member rows recompose when a catalog arrives or refreshes) and a [Flow] (so
- * `RaftMemberModelLabelResolver` updates message author rows reactively).
+ * Backed solely by a [MutableStateFlow] (no top-level Compose `mutableStateOf`) so lazy cold-start
+ * initialization off the main thread can never create snapshot state with a snapshot ID newer than
+ * an in-flight `Recomposer` `MutableSnapshot` (Hands `25b91174`, `#proj-mobile-release:#35`).
+ * Composables observe updates via [observeCatalog] / [observeLabel] and store-driven resolvers via
+ * [catalogFlow].
  */
 internal class RaftModelLabelCatalogRegistry {
-    private var catalogs by mutableStateOf<Map<String, ServerModelLabelCatalog>>(emptyMap())
     private val stateFlow = MutableStateFlow<Map<String, ServerModelLabelCatalog>>(emptyMap())
     private val publishLock = SynchronizedObject()
 
@@ -133,38 +134,50 @@ internal class RaftModelLabelCatalogRegistry {
         val key = serverId.trim()
         if (key.isBlank()) return
         synchronized(publishLock) {
-            if (catalogs[key] != catalog) {
-                val next = catalogs + (key to catalog)
-                catalogs = next
-                stateFlow.value = next
+            val current = stateFlow.value
+            if (current[key] != catalog) {
+                stateFlow.value = current + (key to catalog)
             }
         }
     }
 
     fun clear() {
         synchronized(publishLock) {
-            catalogs = emptyMap()
             stateFlow.value = emptyMap()
         }
     }
 
-    /** Snapshot-tracked read for Composables. */
-    fun catalog(serverId: String?): ServerModelLabelCatalog? =
-        serverId?.trim()?.takeIf { it.isNotBlank() }?.let { catalogs[it] }
+    /** Snapshot-free immediate read of [serverId]'s catalog. */
+    fun catalog(serverId: String?): ServerModelLabelCatalog? = currentCatalog(serverId)
 
     /** Non-snapshot read (safe outside composition). */
     fun currentCatalog(serverId: String?): ServerModelLabelCatalog? =
         serverId?.trim()?.takeIf { it.isNotBlank() }?.let { stateFlow.value[it] }
 
-    /** Snapshot-tracked label lookup for `(serverId, machineId, runtimeId, modelId)`. */
+    /** Snapshot-free label lookup for `(serverId, machineId, runtimeId, modelId)`. */
     fun label(serverId: String?, machineId: String?, runtimeId: String?, modelId: String?): String? =
-        catalog(serverId)?.label(machineId, runtimeId, modelId)
+        currentCatalog(serverId)?.label(machineId, runtimeId, modelId)
 
     /** Reactive flow of [serverId]'s catalog for store-driven resolvers (message author rows). */
     fun catalogFlow(serverId: String): Flow<ServerModelLabelCatalog?> {
         val key = serverId.trim()
         return stateFlow.map { it[key] }.distinctUntilChanged()
     }
+
+    /** Composition-safe reactive observation of [serverId]'s catalog. */
+    @Composable
+    fun observeCatalog(serverId: String?): ServerModelLabelCatalog? {
+        val serverKey = serverId?.trim()?.takeIf { it.isNotBlank() } ?: return null
+        return key(this, serverKey) {
+            val flow = remember { catalogFlow(serverKey) }
+            flow.collectAsState(initial = currentCatalog(serverKey)).value
+        }
+    }
+
+    /** Composition-safe reactive label lookup for `(serverId, machineId, runtimeId, modelId)`. */
+    @Composable
+    fun observeLabel(serverId: String?, machineId: String?, runtimeId: String?, modelId: String?): String? =
+        observeCatalog(serverId)?.label(machineId, runtimeId, modelId)
 }
 
 /** The process-wide registry every model-label surface reads. */

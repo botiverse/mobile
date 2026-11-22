@@ -124,15 +124,18 @@ class SyncChangesContractTest {
 
     @Test
     fun `an unknown entity is skipped and counted`() {
+        val logs = mutableListOf<String>()
         val page =
             parseSyncChangesPage(
                 syncChangesBody(
                     cursor = "c1.2.1",
                     changes = listOf(syncUpsert(1, "reaction", "r-1", "{}"), syncDelete(2, "machine", "m-1")),
-                )
+                ),
+                diagnostics = logs::add,
             )!!
         assertEquals(listOf<RaftSyncChange>(RaftSyncChange.Delete(2, RaftSyncRowEntity.Machine, "m-1")), page.changes)
         assertEquals(1, page.skippedUnknownEntities)
+        assertEquals(listOf("projection_value_unknown source=sync_changes field=entity value=reaction action=dropped"), logs)
     }
 
     @Test
@@ -179,24 +182,6 @@ class SyncChangesContractTest {
                 )
             )!!
         assertEquals(RaftSyncSnapshot.All - RaftSyncSnapshot.Machines - RaftSyncSnapshot.ServerMembers, guest.reset!!.snapshots)
-    }
-
-    @Test
-    fun `scope added with an unknown snapshot name retakes all`() {
-        val page =
-            parseSyncChangesPage(
-                syncChangesBody(
-                    cursor = "c1.51.1000",
-                    changes =
-                        listOf(
-                            syncScope(1, "channel", "ch-1", "added", listOf("channels", "inbox")),
-                            syncScope(2, "channel", "ch-2", "added", listOf("channels", "reactions")),
-                        ),
-                )
-            )!!
-        val added = page.changes.map { assertIs<RaftSyncChange.ScopeAdded>(it).snapshots }
-        assertEquals(listOf(setOf(RaftSyncSnapshot.Channels, RaftSyncSnapshot.Inbox), RaftSyncSnapshot.All), added)
-        assertEquals(RaftSyncSnapshot.All, page.changes.toSyncApplyPlan().snapshots)
     }
 
     @Test

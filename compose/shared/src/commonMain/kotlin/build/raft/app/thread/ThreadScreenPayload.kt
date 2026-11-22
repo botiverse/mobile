@@ -54,6 +54,11 @@ internal data class RaftThreadScreenPayload(
      */
     val durableReachedOldest: Boolean = false,
     /**
+     * Message storage design 2026-10-27 (Phase 2d): derived inline timeline gaps between stored
+     * message islands. Reconstructed from SQLite segments on bounded reads; never persisted.
+     */
+    val timelineGaps: List<ThreadTimelineGap> = emptyList(),
+    /**
      * True while the last main timeline load (not a page of older/newer messages) failed transiently —
      * a network error or an unusable answer. Set and cleared only by the refresh result, so recovery
      * never mistakes a paging failure or a permission answer for it (LiBai #2782).
@@ -109,6 +114,8 @@ internal data class RaftThreadScreenPayload(
     val newerMessagesStatus: String = "idle",
     val errorCode: String? = null,
     val errorServerMessage: String? = null,
+    @Transient
+    val errorTraceId: String? = null,
     val emptyTitle: String = "No messages yet",
     val emptyDetail: String = "This conversation has no messages yet.",
     val composer: RaftThreadComposerPayload = RaftThreadComposerPayload(),

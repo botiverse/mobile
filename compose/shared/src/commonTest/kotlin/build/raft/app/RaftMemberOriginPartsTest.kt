@@ -1,10 +1,6 @@
 package build.raft.app
 
-import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
-import build.raft.app.data.SharedConversationDirectoryProjection
 import build.raft.app.data.SharedMembersMemberSuggestion
-import build.raft.app.model.ConversationKind
 import build.raft.app.model.MemberId
 import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberProfile
@@ -26,47 +22,6 @@ class RaftMemberOriginPartsTest {
     private val viewer = "server-1"
     private val peer = MemberServerRef("server-peer", "Peer Labs", "peer-labs")
     private val acme = MemberServerRef("server-acme", "Acme", "acme")
-
-    @Test
-    fun theCornerTakesAShareOfTheFaceAndIsADotOnSmallFaces() {
-        // web: `size-[clamp(7px,42cqw,19px)]`, `-top/-left-[clamp(3px,9cqw,5px)]`, initial `clamp(8px,23cqw,11px)`.
-        val message = raftAvatarOriginCornerGeometry(35.dp)
-        assertEquals(14.7f, message.tile.value, 0.01f)
-        assertEquals(3.15f, message.overhang.value, 0.01f)
-        assertEquals(8.05f, message.initialSize.value, 0.01f)
-        assertFalse(message.dot)
-
-        val card = raftAvatarOriginCornerGeometry(51.dp)
-        assertEquals(19.dp, card.tile)
-        assertEquals(4.59f, card.overhang.value, 0.01f)
-        assertEquals(11.sp, card.initialSize)
-
-        // `@max-[26px]/origin`: a plain dot under a 26dp face; the @ list's xs faces always.
-        val small = raftAvatarOriginCornerGeometry(19.dp)
-        assertTrue(small.dot)
-        assertEquals(7.98f, small.tile.value, 0.01f)
-        assertEquals(3.dp, small.overhang)
-        assertTrue(raftAvatarOriginCornerGeometry(35.dp, small = true).dot)
-    }
-
-    @Test
-    fun aSmallFacesRoundLogoIsAtLeastTenDpAndTheDotKeepsTheFormula() {
-        // #proj-raft-ui:#276: a small face's corner shows the server's logo, round, never under 10dp;
-        // without a logo it stays the plain dot at 42% (7dp floor).
-        val mention = 19.dp
-        val withLogo = raftAvatarOriginCornerGeometry(mention, small = true, hasLogo = true)
-        assertTrue(withLogo.dot)
-        assertEquals(10.dp, withLogo.tile)
-        val withoutLogo = raftAvatarOriginCornerGeometry(mention, small = true, hasLogo = false)
-        assertTrue(withoutLogo.dot)
-        assertEquals(7.98f, withoutLogo.tile.value, 0.01f)
-        // A face big enough for 42% to clear 10dp keeps the formula with a logo too.
-        assertEquals(10.5f, raftAvatarOriginCornerGeometry(25.dp, hasLogo = true).tile.value, 0.01f)
-        // Large faces are unchanged: a tile, the 7dp floor does not move.
-        val large = raftAvatarOriginCornerGeometry(35.dp, hasLogo = true)
-        assertFalse(large.dot)
-        assertEquals(14.7f, large.tile.value, 0.01f)
-    }
 
     @Test
     fun serversReadAsTheirNamesAndOnlyTheViewersOwnServersBringALogo() {
@@ -212,71 +167,5 @@ class RaftMemberOriginPartsTest {
                 .toRaftComposerMemberItem(inThread = false, knownServers = listOf(peerWithLogo))
         assertEquals("Peer Labs", localItem.sourceServerLabel)
         assertEquals(emptyList(), localItem.mentionOriginServers())
-    }
-
-    @Test
-    fun threadChannelJointServersResolvesDirectAndParentChannelFallback() {
-        val peerWithLogo = peer.copy(avatarUrl = "/peer-logo.webp")
-        val jointProjection =
-            SharedConversationDirectoryProjection(
-                serverId = viewer,
-                canonicalChannelId = "joint-ch",
-                aliases = setOf("joint-ch"),
-                conversationKind = ConversationKind.Joint,
-                surfaceKind = RaftThreadSurfaceKind.Channel,
-                channelKind = "joint",
-                title = "partner-sync",
-                jointServers = listOf(peerWithLogo),
-            )
-        val threadProjection =
-            SharedConversationDirectoryProjection(
-                serverId = viewer,
-                canonicalChannelId = "reply-stream",
-                aliases = setOf("reply-stream"),
-                conversationKind = ConversationKind.Thread,
-                surfaceKind = RaftThreadSurfaceKind.ReplyThread,
-                channelKind = "thread",
-                title = "Reply",
-                parentChannelId = "joint-ch",
-                jointServers = emptyList(),
-            )
-        val projections = mapOf("joint-ch" to jointProjection, "reply-stream" to threadProjection)
-
-        // Direct channel lookup
-        assertEquals(
-            listOf(peerWithLogo),
-            threadChannelJointServers(
-                lookupIds = listOf("joint-ch"),
-                parentChannelId = null,
-                taskParentChannelId = null,
-                serverId = viewer,
-                projections = projections,
-                conversationIdentityProvider = null,
-            ),
-        )
-        // Reply thread resolves through parentChannelId
-        assertEquals(
-            listOf(peerWithLogo),
-            threadChannelJointServers(
-                lookupIds = listOf("reply-stream"),
-                parentChannelId = "joint-ch",
-                taskParentChannelId = null,
-                serverId = viewer,
-                projections = projections,
-                conversationIdentityProvider = null,
-            ),
-        )
-        // Task conversation resolves through taskParentChannelId
-        assertEquals(
-            listOf(peerWithLogo),
-            threadChannelJointServers(
-                lookupIds = listOf("task-conv-1"),
-                parentChannelId = null,
-                taskParentChannelId = "joint-ch",
-                serverId = viewer,
-                projections = projections,
-                conversationIdentityProvider = null,
-            ),
-        )
     }
 }

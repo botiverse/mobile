@@ -29,6 +29,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
@@ -40,6 +41,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import build.raft.designsystem.motion.RaftMotion
+import build.raft.designsystem.motion.rememberRaftReducedMotion
 import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.LocalRaftContentColor
 import build.raft.designsystem.theme.LocalRaftStrings
@@ -160,6 +162,9 @@ object RaftSideDrawerDefaults {
     const val EnterMillis = 240
 }
 
+internal val RaftSideDrawerWindowProperties =
+    RaftWindowDialogProperties(drawScrim = false, platformTransition = false)
+
 /**
  * raft-ui Drawer from the side: [RaftSideDrawerSurface] at the end of the window over the
  * scrim, the window's full height, sliding in from the end (240ms, `ease-slide`). On a phone it
@@ -184,30 +189,47 @@ fun RaftSideDrawer(
 ) {
     val dismiss by rememberUpdatedState(onDismissRequest)
     val scrimDismisses by rememberUpdatedState(dismissOnScrimTap)
-    RaftWindowDialog(onDismissRequest = onDismissRequest) {
-        val slide = remember { Animatable(1f) }
-        LaunchedEffect(Unit) { slide.animateTo(0f, tween(RaftSideDrawerDefaults.EnterMillis, easing = RaftMotion.EaseSlide)) }
+    val reducedMotion = rememberRaftReducedMotion()
+    RaftWindowDialog(onDismissRequest = onDismissRequest, properties = RaftSideDrawerWindowProperties) {
+        val slide = remember { Animatable(if (reducedMotion) 0f else 1f) }
+        LaunchedEffect(reducedMotion) {
+            if (reducedMotion) {
+                slide.snapTo(0f)
+            } else {
+                withFrameNanos { }
+                slide.animateTo(0f, tween(RaftSideDrawerDefaults.EnterMillis, easing = RaftMotion.EaseSlide))
+            }
+        }
         val direction = if (LocalLayoutDirection.current == LayoutDirection.Rtl) -1f else 1f
-        Box(
-            Modifier
-                .fillMaxSize()
-                .pointerInput(Unit) { detectTapGestures { if (scrimDismisses) dismiss() } },
-            contentAlignment = Alignment.CenterEnd,
-        ) {
-            RaftSideDrawerSurface(
-                title = title,
-                onClose = onDismissRequest,
-                modifier =
-                    modifier
-                        .graphicsLayer { translationX = size.width * slide.value * direction }
-                        .pointerInput(Unit) { detectTapGestures { } },
-                titleTrailing = titleTrailing,
-                closeLabel = closeLabel,
-                closeEnabled = closeEnabled,
-                insets = WindowInsets.safeDrawing.asPaddingValues(),
-                footer = footer,
-                content = content,
+        Box(Modifier.fillMaxSize()) {
+            val scrim = RaftTheme.scrim
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    .graphicsLayer { alpha = 1f - slide.value }
+                    .background(scrim),
             )
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    .pointerInput(Unit) { detectTapGestures { if (scrimDismisses) dismiss() } },
+                contentAlignment = Alignment.CenterEnd,
+            ) {
+                RaftSideDrawerSurface(
+                    title = title,
+                    onClose = onDismissRequest,
+                    modifier =
+                        modifier
+                            .graphicsLayer { translationX = size.width * slide.value * direction }
+                            .pointerInput(Unit) { detectTapGestures { } },
+                    titleTrailing = titleTrailing,
+                    closeLabel = closeLabel,
+                    closeEnabled = closeEnabled,
+                    insets = WindowInsets.safeDrawing.asPaddingValues(),
+                    footer = footer,
+                    content = content,
+                )
+            }
         }
     }
 }

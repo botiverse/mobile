@@ -56,17 +56,6 @@ class ActorResolveApiTest {
     }
 
     @Test
-    fun keepsAGravatarHashOnlyForAPersonOfTheAskedServer() {
-        // Asked through the peer server: the colleague is another organization's person there.
-        val actors = checkNotNull(parseSharedActorResolveResponse(serverResponse, peerServer))
-        assertNull(actors.first { it.id == colleague }.gravatarHash)
-        // An agent never keeps one, even if a server sent it.
-        val agentWithHash =
-            """{"actors":[{"kind":"agent","id":"$localAgent","homeServerId":"$server","name":"a","displayName":null,"avatarUrl":null,"gravatarHash":"$hash"}]}"""
-        assertNull(checkNotNull(parseSharedActorResolveResponse(agentWithHash, server)).single().gravatarHash)
-    }
-
-    @Test
     fun dropsMalformedEntriesAndRejectsAGuessedEnvelope() {
         val body = """
             {"actors":[

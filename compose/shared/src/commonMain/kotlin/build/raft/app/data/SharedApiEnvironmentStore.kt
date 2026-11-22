@@ -1,5 +1,7 @@
 package build.raft.app.data
 
+import kotlinx.atomicfu.locks.SynchronizedObject
+import kotlinx.atomicfu.locks.synchronized
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -7,11 +9,21 @@ import kotlinx.coroutines.flow.asStateFlow
 class SharedApiEnvironmentStore(
     private val store: RaftKeyValueStore
 ) {
+    private val writeLock = SynchronizedObject()
     private val mutableState = MutableStateFlow(currentEnvironment(store.getString(KEY_ENVIRONMENT)))
     val state: StateFlow<SharedSettingsApiEnvironmentOption> = mutableState.asStateFlow()
 
-    fun current(): SharedSettingsApiEnvironmentOption =
-        currentEnvironment(store.getString(KEY_ENVIRONMENT)).also { mutableState.value = it }
+    /**
+     * Returns the cached active API environment without hitting backing key-value storage.
+     * Safe to call on UI / Composable hot paths (e.g. avatar URL resolution during scroll flings).
+     */
+    fun current(): SharedSettingsApiEnvironmentOption = mutableState.value
+
+    /** Re-reads the persisted API environment from backing storage and refreshes [state]. */
+    fun reload(): SharedSettingsApiEnvironmentOption =
+        synchronized(writeLock) {
+            currentEnvironment(store.getString(KEY_ENVIRONMENT)).also { mutableState.value = it }
+        }
 
     fun developerSnapshot(feedback: String? = null): SharedSettingsDeveloperSnapshot {
         val current = current()
@@ -26,39 +38,41 @@ class SharedApiEnvironmentStore(
         )
     }
 
-    fun select(key: String): SharedSettingsApiEnvironmentOption? {
-        val environment = predefined.firstOrNull { it.key == key } ?: return null
-        store.putString(KEY_ENVIRONMENT, environment.key)
-        mutableState.value = environment
-        return environment
-    }
-
-    fun save(request: SharedSettingsApiEnvironmentRequest): SharedSettingsApiEnvironmentOption? {
-        predefined.firstOrNull { it.key == request.key }?.let { environment ->
+    fun select(key: String): SharedSettingsApiEnvironmentOption? =
+        synchronized(writeLock) {
+            val environment = predefined.firstOrNull { it.key == key } ?: return@synchronized null
             store.putString(KEY_ENVIRONMENT, environment.key)
             mutableState.value = environment
-            return environment
+            environment
         }
-        val apiBaseUrl = request.apiBaseUrl.trim()
-        val socketBaseUrl = request.socketBaseUrl.trim()
-        val webUrl = request.webUrl.trim()
-        if (!apiBaseUrl.startsWith("http") || !socketBaseUrl.startsWith("http")) return null
-        val custom =
-            SharedSettingsApiEnvironmentOption(
-                key = CustomKey,
-                label = request.label.trim().ifBlank { "Custom" },
-                apiBaseUrl = apiBaseUrl,
-                socketBaseUrl = socketBaseUrl,
-                webUrl = webUrl
-            )
-        store.putString(KEY_ENVIRONMENT, CustomKey)
-        store.putString(KEY_CUSTOM_LABEL, custom.label)
-        store.putString(KEY_CUSTOM_API_BASE_URL, custom.apiBaseUrl)
-        store.putString(KEY_CUSTOM_SOCKET_BASE_URL, custom.socketBaseUrl)
-        store.putString(KEY_CUSTOM_WEB_URL, custom.webUrl)
-        mutableState.value = custom
-        return custom
-    }
+
+    fun save(request: SharedSettingsApiEnvironmentRequest): SharedSettingsApiEnvironmentOption? =
+        synchronized(writeLock) {
+            predefined.firstOrNull { it.key == request.key }?.let { environment ->
+                store.putString(KEY_ENVIRONMENT, environment.key)
+                mutableState.value = environment
+                return@synchronized environment
+            }
+            val apiBaseUrl = request.apiBaseUrl.trim()
+            val socketBaseUrl = request.socketBaseUrl.trim()
+            val webUrl = request.webUrl.trim()
+            if (!apiBaseUrl.startsWith("http") || !socketBaseUrl.startsWith("http")) return@synchronized null
+            val custom =
+                SharedSettingsApiEnvironmentOption(
+                    key = CustomKey,
+                    label = request.label.trim().ifBlank { "Custom" },
+                    apiBaseUrl = apiBaseUrl,
+                    socketBaseUrl = socketBaseUrl,
+                    webUrl = webUrl
+                )
+            store.putString(KEY_ENVIRONMENT, CustomKey)
+            store.putString(KEY_CUSTOM_LABEL, custom.label)
+            store.putString(KEY_CUSTOM_API_BASE_URL, custom.apiBaseUrl)
+            store.putString(KEY_CUSTOM_SOCKET_BASE_URL, custom.socketBaseUrl)
+            store.putString(KEY_CUSTOM_WEB_URL, custom.webUrl)
+            mutableState.value = custom
+            custom
+        }
 
     fun rewriteApiUrl(url: String): String {
         val current = current()

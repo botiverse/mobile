@@ -49,6 +49,7 @@ import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.layout.layout
 import build.raft.designsystem.components.RaftAvatarSize
 import build.raft.designsystem.components.RaftBadge
@@ -579,6 +580,7 @@ internal fun MembersAgentProfileHeader(
  * above it.
  */
 @Composable
+@OptIn(ExperimentalLayoutApi::class)
 internal fun MembersAgentProfileStatus(
     member: MemberProfile,
     summary: AgentDetailSummary?,
@@ -599,6 +601,57 @@ internal fun MembersAgentProfileStatus(
     val appBot = !member.managedByAppInstallId.isNullOrBlank()
     // Web AgentDisplayState.blocked (botiverse/slock #13575): held agents say why, not their activity.
     val blocked = (agentStatusIndicatorState ?: agentStatusObservedState)?.blocked?.takeIf { !appBot }
+    val external = member.isExternal || summary?.isExternal == true || agentStatusIndicatorState?.external == true
+    // Web AgentStatusBadge (#proj-raft-computer:#68): server-composed readiness (already trimmed per viewer)
+    // takes precedence over ordinary idle/online activity when the agent is held (e.g. quota_exhausted / rate_limited).
+    val holdingReadiness =
+        effectiveHoldingReadiness(
+            readiness = (agentStatusIndicatorState ?: agentStatusObservedState)?.readiness ?: member.agentReadiness,
+            blocked = blocked,
+            external = external,
+            paused = !member.assistantPausedAt.isNullOrBlank(),
+            appBot = appBot,
+        )
+    val readinessCopy =
+        rememberAgentReadinessDisplayCopy(
+            readiness = holdingReadiness,
+            fallbackRuntimeId = summary?.runtime ?: agentStatusIndicatorState?.runtime ?: member.roleDescription,
+            timeContext = timeContext,
+        )
+    if (readinessCopy != null) {
+        val openUrl = LocalMembersRuntimeAccountUsageAccess.current?.auth?.openUrl
+        val uriHandler = LocalUriHandler.current
+        FlowRow(
+            modifier = Modifier.padding(top = itemTop),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+            itemVerticalAlignment = Alignment.CenterVertically,
+        ) {
+            RaftBadge(
+                text = readinessCopy.title,
+                appearance = RaftBadgeAppearance.Soft,
+                variant = readinessCopy.light.badgeVariant(),
+                modifier = Modifier.semantics { contentDescription = readinessCopy.fullDetail },
+                icon = { RaftStatusIndicator(color = readinessCopy.light.dotColor()) },
+            )
+            val portalUrl = readinessCopy.verificationPortalUrl
+            if (showActivityDetail && portalUrl != null) {
+                AgentReadinessVerificationLink(
+                    onOpenUrl = {
+                        if (openUrl != null) openUrl(portalUrl) else runCatching { uriHandler.openUri(portalUrl) }
+                    },
+                )
+            }
+            if (readinessCopy.offersRetry && onRetry != null) {
+                AgentStatusRetryLink(inProgress = retryInProgress, onRetry = onRetry)
+            }
+        }
+        AgentReadinessStatusNotice(
+            text = readinessCopy.fullDetail,
+            modifier = Modifier.padding(top = itemTop),
+        )
+        return
+    }
     // Web AgentStatusBadge: a failed start's typed copy stands in for the daemon's detail
     // (botiverse/slock #13460). It gets its own lines under the chip (as the stuck-tool notice
     // does), so the chip keeps the status words and never cuts the copy.
@@ -609,7 +662,6 @@ internal fun MembersAgentProfileStatus(
                 blocked == null &&
                 agentSpawnFailureCopy(it.spawnFailure, it.daemonDetail, nowMs = Long.MIN_VALUE) != null
         }
-    val external = member.isExternal || summary?.isExternal == true || agentStatusIndicatorState?.external == true
     // Web AgentStatusBadge `credentialReason` (botiverse/slock #13276): an unusable sign-in, plan or
     // balance reads as the error light; the reason is a detail of the error, for its managers only.
     val credentialReason =

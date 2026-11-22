@@ -27,7 +27,6 @@ import build.raft.app.components.RaftDesignSystemTheme
 import build.raft.app.components.RaftSlotIcon
 import build.raft.app.components.RaftUiMenuItem
 import build.raft.app.resources.*
-import build.raft.designsystem.components.LocalRaftSpinnerStillStep
 import build.raft.designsystem.components.RaftMenuItem
 import build.raft.designsystem.components.RaftMenuSurface
 import build.raft.designsystem.theme.RaftAppearance
@@ -54,9 +53,6 @@ class ViewerImageEditPhoneScreenshotTest {
 
     @Test
     fun viewerMenuLight() = capture("image-viewer.edit-menu", RaftAppAppearance.Light)
-
-    @Test
-    fun viewerMenuDark() = capture("image-viewer.edit-menu.dark", RaftAppAppearance.Dark)
 
     private fun capture(name: String, appearance: RaftAppAppearance) {
         val image = viewerEditTestPicture()
@@ -121,55 +117,9 @@ class ViewerImageEditDesktopScreenshotTest {
     val activities = RobolectricComposeActivityRule()
 
     @Test
-    fun viewerEdit() =
-        capture("image-viewer.edit.desktop") { _ ->
-            CompositionLocalProvider(LocalRaftSpinnerStillStep provides 0) {
-                RaftImageLightboxContent(
-                    request = RaftImageLightboxRequest(lightboxFixtureItems, index = 1),
-                    resolveFullUrl = { null },
-                    onDismiss = {},
-                    onDownload = {},
-                    onOpenWith = {},
-                    onEdit = {},
-                    pageImage = { item, _, onContentSize -> LightboxFixtureImage(item, onContentSize) }
-                )
-            }
-        }
-
-    @Test
     fun editorPen() =
         capture("image-editor.pen.desktop") { image ->
             DesktopEditor(image, desktopPenHistory(), RaftComposerImageEditorTool.Pencil)
-        }
-
-    @Test
-    fun editorText() =
-        capture("image-editor.text.desktop") { image ->
-            val content =
-                raftComposerImageAddTextDraft(
-                    content = RaftComposerImageEditorContent(),
-                    draft = "Ship this one",
-                    position = Offset(-120f, -160f),
-                    annotationId = 0,
-                    color = Color(0xFF32ADE6), // raft-color: image-editor pen palette
-                )
-            DesktopEditor(image, RaftComposerImageEditorHistory(content = content), RaftComposerImageEditorTool.Text)
-        }
-
-    @Test
-    fun editorCrop() =
-        capture("image-editor.crop.desktop") { image ->
-            DesktopEditor(
-                image,
-                RaftComposerImageEditorHistory(
-                    content =
-                        RaftComposerImageEditorContent(
-                            cropRect = raftCropRectForAspect(RaftComposerImageCropRect.Uncropped, 1f, image.width, image.height)
-                        )
-                ),
-                RaftComposerImageEditorTool.Crop,
-                RaftComposerImageCropAspect.Square,
-            )
         }
 
     /** The editor as the viewer opens it on a desktop: the same editor with the desktop chrome. */

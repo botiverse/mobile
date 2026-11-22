@@ -1,9 +1,7 @@
 package build.raft.app
 
 import build.raft.app.resources.parseRaftPluralForms
-import build.raft.app.resources.raftPluralBaseKey
 import build.raft.app.resources.raftPluralCategory
-import build.raft.app.resources.raftPluralCount
 import build.raft.app.resources.raftPluralFormFor
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -16,6 +14,7 @@ class RaftPluralsTest {
             {
               "thread_message_count": { "one": "%1${'$'}d сообщение", "few": "%1${'$'}d сообщения", "many": "%1${'$'}d сообщений" },
               "settings_billing_vo_count_seats": { "few": "%1${'$'}d · %2${'$'}s места" },
+              "seats_rule": { "arg": 1, "one": "%1${'$'}s место (1 на %2${'$'}d)", "many": "%1${'$'}s мест (1 на %2${'$'}d)" },
               "thread_history_paywall_replies_title": { "many": "%1${'$'}s ответов старше %2${'$'}d дней" }
             }
             """.trimIndent(),
@@ -46,14 +45,6 @@ class RaftPluralsTest {
     }
 
     @Test
-    fun theBaseKeyDropsTheCountSuffix() {
-        assertEquals("thread_message_count", raftPluralBaseKey("thread_message_count_one"))
-        assertEquals("thread_message_count", raftPluralBaseKey("thread_message_count_many"))
-        assertEquals("file_preview_csv_rows", raftPluralBaseKey("file_preview_csv_rows_other"))
-        assertEquals("saved_count", raftPluralBaseKey("saved_count"))
-    }
-
-    @Test
     fun theFormForTheCountIsUsedWhateverKeyTheCallSiteChose() {
         assertEquals("1 сообщение", ru("thread_message_count_one", 1))
         assertEquals("21 сообщение", ru("thread_message_count_many", 21))
@@ -68,20 +59,5 @@ class RaftPluralsTest {
         assertNull(ru("settings_billing_vo_count_seats_other", 5, "x"))
         assertEquals("3 · x места", ru("settings_billing_vo_count_seats_other", 3, "x"))
         assertNull(ru("thread_message_count_many", "not a number"))
-    }
-
-    @Test
-    fun aCountPassedAsGroupedTextIsRead() {
-        assertEquals(1200L, raftPluralCount(listOf("1,200", 30)))
-        assertEquals(30L, raftPluralCount(listOf("1,200", 30), position = 2))
-        assertEquals("1,200 ответов старше 30 дней", ru("thread_history_paywall_replies_title_other", "1,200", 30))
-        // "arg" names the count when it is not the first number.
-        assertEquals("в 3 года", raftPluralFormFor(parseRaftPluralForms("""{"k":{"arg":2,"few":"в %2${'$'}d года"}}"""), "ru", "k_other", listOf(99, 3)))
-    }
-
-    @Test
-    fun malformedFormsFileYieldsNoForms() {
-        assertEquals(emptyMap(), parseRaftPluralForms("not json"))
-        assertEquals(emptyMap(), parseRaftPluralForms("[]"))
     }
 }

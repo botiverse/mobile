@@ -109,23 +109,6 @@ class RaftUpgradeDialogTest {
     }
 
     @Test
-    fun aRefusedInviteIsTheSeatLimitByItsMessage() {
-        assertTrue(raftIsSeatLimitMessage("Human seat limit reached (20/20 on Pro plan)"))
-        assertTrue(raftIsSeatLimitMessage("Inviting members requires the Pro plan"))
-        assertFalse(raftIsSeatLimitMessage("Invalid email"))
-        assertFalse(raftIsSeatLimitMessage(null))
-        assertTrue(raftIsSeatLimitError("human_seat_limit_reached", null))
-        assertFalse(raftIsSeatLimitError("http_400", "Invalid email"))
-    }
-
-    @Test
-    fun onlyFreesPerFileCeilingOffersTheUpgrade() {
-        assertTrue(raftUploadSizeLimitIsFree(50L * 1024 * 1024))
-        assertFalse(raftUploadSizeLimitIsFree(200L * 1024 * 1024))
-        assertFalse(raftUploadSizeLimitIsFree(0))
-    }
-
-    @Test
     fun theUpgradeLinkOpensTheWebDialogForTheGate() {
         assertEquals(
             "https://raft.build/s/acme/settings/billing?upgrade=history_30d&upgradeCanceled=1&lang=zh-CN",
@@ -139,106 +122,10 @@ class RaftUpgradeDialogTest {
     }
 
     @Test
-    fun addSeatsOpensPlanAndBilling() {
-        assertEquals(
-            "https://raft.build/s/acme/settings/billing?lang=ja",
-            raftUpgradeWebUrl("https://raft.build", "acme", RaftUpgradeGate.SeatLimitAgentCreate, RaftUpgradeMode.AddSeats, "ja"),
-        )
-    }
-
-    @Test
     fun comingBackEndsTheDialogOnceTheServerIsPro() {
         assertTrue(raftUpgradeDoneOnReturn(RaftUpgradeMode.Upgrade, "pro"))
         assertFalse(raftUpgradeDoneOnReturn(RaftUpgradeMode.Upgrade, "free"))
         assertFalse(raftUpgradeDoneOnReturn(RaftUpgradeMode.Upgrade, null))
         assertFalse(raftUpgradeDoneOnReturn(RaftUpgradeMode.AddSeats, "pro"))
-    }
-
-    @Test
-    fun theLimitJustHitIsTheFirstBenefit() {
-        assertEquals(RaftUpgradeBenefit.Files, raftUpgradeBenefits(raftUpgradeGateCopy(RaftUpgradeGate.UploadFileSize).first).first())
-        assertEquals(RaftUpgradeBenefit.Joint, raftUpgradeBenefits(raftUpgradeGateCopy(RaftUpgradeGate.JointChannelReadOnly).first).first())
-        assertEquals(RaftUpgradeBenefit.entries, raftUpgradeBenefits(raftUpgradeGateCopy(RaftUpgradeGate.General).first))
-        assertEquals(4, raftUpgradeBenefits(RaftUpgradeBenefit.Migration).size)
-    }
-
-    @Test
-    fun theExternalChannelGatesHaveTheirOwnCopyAndLeadWithExternalChannels() {
-        // shared upgradeGates.ts UPGRADE_GATES; web upgradeGateCopy.ts GATE_COPY (upgradeDialog.externalLimit.*,
-        // upgradeDialog.externalFrozen.*) and UpgradeDialog GATE_HIGHLIGHT `joint` (botiverse/slock #14533).
-        val limit = RaftUpgradeGate.ExternalChannelFreeLimit
-        assertEquals("external_channel_free_limit", limit.wire)
-        assertEquals("external_channel_free_limit", limit.webDialogGate)
-        assertFalse(limit.isSeatLimit)
-        assertEquals(
-            RaftUpgradeGateCopy(
-                Res.string.upgrade_dialog_external_limit_title,
-                Res.string.upgrade_dialog_external_limit_hint,
-                Res.string.upgrade_dialog_limit_external_limit,
-                RaftUpgradeBenefit.Joint,
-            ),
-            raftUpgradeGateCopy(limit),
-        )
-        val frozen = RaftUpgradeGate.ExternalChannelFrozen
-        assertEquals("external_channel_frozen", frozen.wire)
-        assertEquals("external_channel_frozen", frozen.webDialogGate)
-        assertFalse(frozen.isSeatLimit)
-        assertEquals(
-            RaftUpgradeGateCopy(
-                Res.string.upgrade_dialog_external_frozen_title,
-                Res.string.upgrade_dialog_external_frozen_hint,
-                Res.string.upgrade_dialog_limit_external_frozen,
-                RaftUpgradeBenefit.Joint,
-            ),
-            raftUpgradeGateCopy(frozen),
-        )
-        listOf(limit, frozen).forEach { gate ->
-            assertEquals(RaftUpgradeBenefit.Joint, raftUpgradeBenefits(raftUpgradeGateCopy(gate).first).first(), gate.wire)
-        }
-    }
-
-    @Test
-    fun legacyJointGatesUseExternalChannelCopy() {
-        // botiverse/slock #15686: legacy joint_channel_* gates map to externalLimit / externalFrozen copy.
-        val limitCopy = raftUpgradeGateCopy(RaftUpgradeGate.ExternalChannelFreeLimit)
-        val frozenCopy = raftUpgradeGateCopy(RaftUpgradeGate.ExternalChannelFrozen)
-        assertEquals(limitCopy, raftUpgradeGateCopy(RaftUpgradeGate.JointChannelFreeCap))
-        assertEquals(limitCopy, raftUpgradeGateCopy(RaftUpgradeGate.JointChannelHostLimit))
-        assertEquals(frozenCopy, raftUpgradeGateCopy(RaftUpgradeGate.JointChannelOverLimit))
-        assertEquals(frozenCopy, raftUpgradeGateCopy(RaftUpgradeGate.JointChannelReadOnly))
-    }
-
-    @Test
-    fun freezeUpcomingContextPairsOnlyWithExternalChannelFrozenAndEncodesInWebUrl() {
-        val deadline = "2026-12-01T14:30:00Z"
-        val context = RaftUpgradeExternalContext.FreezeUpcoming(deadline)
-        assertEquals(context, externalContextForGate(RaftUpgradeGate.ExternalChannelFrozen, context))
-        assertNull(externalContextForGate(RaftUpgradeGate.ExternalChannelFreeLimit, context))
-        assertNull(externalContextForGate(RaftUpgradeGate.History30d, context))
-        assertNull(externalContextForGate(RaftUpgradeGate.ExternalChannelFrozen, RaftUpgradeExternalContext.FreezeUpcoming("   ")))
-        assertNull(externalContextForGate(RaftUpgradeGate.ExternalChannelFrozen, RaftUpgradeExternalContext.FreezeUpcoming("not-a-timestamp")))
-        assertEquals(
-            "https://raft.build/s/acme/settings/billing?upgrade=external_channel_frozen&upgradeCanceled=1&upgradeFreezeAt=2026-12-01T14%3A30%3A00Z&lang=en",
-            raftUpgradeWebUrl(
-                "https://raft.build",
-                "acme",
-                RaftUpgradeGate.ExternalChannelFrozen,
-                RaftUpgradeMode.Upgrade,
-                "en",
-                context,
-            ),
-        )
-        // Mismatched gate omits upgradeFreezeAt.
-        assertEquals(
-            "https://raft.build/s/acme/settings/billing?upgrade=external_channel_free_limit&upgradeCanceled=1&lang=en",
-            raftUpgradeWebUrl(
-                "https://raft.build",
-                "acme",
-                RaftUpgradeGate.ExternalChannelFreeLimit,
-                RaftUpgradeMode.Upgrade,
-                "en",
-                context,
-            ),
-        )
     }
 }

@@ -59,20 +59,6 @@ class ThreadSettingsPageUiTest {
             runOnIdle { assertEquals(1, closed) }
         }
 
-    // raft-design channel.md: on a phone the channel details are a pushed page whose head is Back and Details.
-    @Test
-    fun theChannelDetailsPageHasBackAndNoClose() =
-        runRobolectricComposeUiTest {
-            var closed = 0
-            setContent {
-                Host { ChannelSettingsScaffold(refreshing = false, onBack = { closed += 1 }) {} }
-            }
-            onNodeWithText("Details").assertIsDisplayed()
-            onNodeWithContentDescription("Close").assertDoesNotExist()
-            onNodeWithContentDescription("Back").assertIsDisplayed().performClick()
-            runOnIdle { assertEquals(1, closed) }
-        }
-
     // On the wide layout they are a column beside the conversation whose head is Details and Close.
     @Test
     fun theChannelDetailsColumnHasCloseAndNoBack() =

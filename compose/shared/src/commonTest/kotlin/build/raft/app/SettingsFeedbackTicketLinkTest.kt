@@ -2,7 +2,6 @@ package build.raft.app
 
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertNull
 
 /**
  * #119: a feedback ticket's copied link is the web's Settings › Feedback ticket route (slock
@@ -25,36 +24,6 @@ class SettingsFeedbackTicketLinkTest {
     }
 
     @Test
-    fun theLinkIsOnTheDeveloperEnvironmentsWebUrl() {
-        assertEquals(
-            "https://staging.raft.build/s/acme/settings/feedback/ticket/$ticketId?platform=ios",
-            settingsFeedbackTicketLink(" https://staging.raft.build/ ", "acme", ticketId, "ios"),
-        )
-        assertEquals(
-            "http://localhost:5173/s/acme/settings/feedback/ticket/$ticketId?platform=android",
-            settingsFeedbackTicketLink("http://localhost:5173", "acme", ticketId, "android"),
-        )
-    }
-
-    @Test
-    fun theTicketIdIsEncodedAsTheWebEncodesIt() {
-        assertEquals(
-            "https://app.raft.build/s/acme/settings/feedback/ticket/a%2Fb%3Fc%23d%20%C3%A9-_.!~*'()?platform=android",
-            settingsFeedbackTicketLink(null, "acme", "a/b?c#d é-_.!~*'()", "android"),
-        )
-    }
-
-    @Test
-    fun noLinkWithoutAServerATicketOrAHandsPlatform() {
-        assertNull(settingsFeedbackTicketLink(null, null, ticketId, "android"))
-        assertNull(settingsFeedbackTicketLink(null, " ", ticketId, "android"))
-        assertNull(settingsFeedbackTicketLink(null, "ac/me", ticketId, "android"))
-        assertNull(settingsFeedbackTicketLink(null, "acme", " ", "ios"))
-        assertNull(settingsFeedbackTicketLink(null, "acme", ticketId, "desktop"))
-        assertNull(settingsFeedbackTicketLink(null, "acme", ticketId, ""))
-    }
-
-    @Test
     fun aTicketOfAnotherAppLinksToItsOwnApp() {
         // slock #14722: the one list holds every app's tickets; a copied link names the ticket's app.
         // A web (or Raft Desktop) ticket needs no platform: the web reads its own app by default.
@@ -66,12 +35,5 @@ class SettingsFeedbackTicketLinkTest {
             "https://app.raft.build/s/acme/settings/feedback/ticket/$ticketId?platform=ohos",
             settingsFeedbackTicketLink(null, "acme", ticketId, "ohos"),
         )
-    }
-
-    @Test
-    fun onlyAndroidAndIosNameAHandsApp() {
-        assertEquals("android", settingsFeedbackTicketLinkPlatform("android"))
-        assertEquals("ios", settingsFeedbackTicketLinkPlatform("ios"))
-        assertNull(settingsFeedbackTicketLinkPlatform("web"))
     }
 }

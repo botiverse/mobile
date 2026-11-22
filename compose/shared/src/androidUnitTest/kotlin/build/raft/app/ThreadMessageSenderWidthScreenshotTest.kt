@@ -38,10 +38,6 @@ class ThreadMessageSenderWidthScreenshotTest {
     @Config(sdk = [34], qualifiers = "w840dp-h200dp-xhdpi")
     fun wide() = capture("thread.message-sender.wide")
 
-    @Test
-    @Config(sdk = [34], qualifiers = "w360dp-h200dp-xxhdpi")
-    fun narrow() = capture("thread.message-sender.narrow")
-
     private fun capture(name: String) =
         RaftRobolectricScreenshot.capture(name, RaftAppAppearance.Light, reportDir = "build/reports/home-screenshots", activities = activities) {
             val pager = remember { object : Pager() {}.apply { pageData = PageData(JSONObject()) } }

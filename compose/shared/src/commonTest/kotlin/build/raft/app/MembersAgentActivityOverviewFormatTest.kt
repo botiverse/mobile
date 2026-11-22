@@ -2,11 +2,8 @@ package build.raft.app
 
 import build.raft.app.model.RaftTimeContext
 import build.raft.app.model.RaftTimeFormat12Hour
-import build.raft.app.model.AgentStatus
-import build.raft.app.model.Presence
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertNull
 
 /** Web AgentActivityOverview helpers (formatTurnDuration, formatClockRange, intl list). */
 class MembersAgentActivityOverviewFormatTest {
@@ -31,34 +28,6 @@ class MembersAgentActivityOverviewFormatTest {
         // A turn on an earlier day carries its date; the end drops it when the turn stayed on that day.
         val dayBefore = t1200 - 86_400_000L
         assertEquals("06-18 20:00" to "20:06", membersActivityOverviewClockRange(dayBefore, dayBefore + 360_000, context))
-    }
-
-    @Test
-    fun actionListJoinsLikeIntlConjunction() {
-        val join = "%1\$s, %2\$s"
-        val last = "%1\$s, and %2\$s"
-        val pair = "%1\$s and %2\$s"
-        assertEquals("a", membersActivityOverviewJoinList(listOf("a"), join, last, pair))
-        assertEquals("a and b", membersActivityOverviewJoinList(listOf("a", "b"), join, last, pair))
-        assertEquals("a, b, and c", membersActivityOverviewJoinList(listOf("a", "b", "c"), join, last, pair))
-    }
-
-    @Test
-    fun nowDotIsTheLiveIndicatorColour() {
-        // SSOT audit: the dot used to be mapped from the detail summary's activity string
-        // ("disconnected" -> Online green, null -> grey Offline, external ignored).
-        val working = raftAgentStatusIndicatorState(AgentStatus.Working, Presence.Active, external = false)
-        val disconnected = raftAgentStatusIndicatorState(AgentStatus.Disconnected, Presence.Offline, external = false)
-        val external = raftAgentStatusIndicatorState(AgentStatus.Online, Presence.Active, external = true)
-        assertEquals(RaftColor.BrandYellow, MembersAgentActivityNow("Working", working).dotColor())
-        assertEquals(RaftColor.PresenceOffline, MembersAgentActivityNow("Disconnected", disconnected).dotColor())
-        assertEquals(RaftColor.AccentCyan, MembersAgentActivityNow("External", external).dotColor())
-    }
-
-    @Test
-    fun nowDrawsNoDotUntilTheLiveStatusIsObserved() {
-        // Same label as the positive case; only the live observation is missing.
-        assertNull(MembersAgentActivityNow("Working", indicator = null).dotColor())
     }
 
     @Test

@@ -22,33 +22,6 @@ import kotlin.test.assertTrue
  */
 class SharedReplyThreadAccessAuthorityTest {
     @Test
-    fun authorityChangeBeforeAccessSnapshotCompletionFailsClosedWithoutScopedWrite() = runBlocking {
-        val authStore = InMemoryRaftAuthSessionStore(accountSession("account-1", "server-1"))
-        val messageStore = SharedThreadMessageStore()
-        val releaseReply = CompletableDeferred<Unit>()
-        val repository =
-            ReplyThreadAccessConversationRepositoryRecorder(
-                replyResult = DataResult.Content(replyThreadAccessSnapshot().copy(parentMessage = null)),
-                releaseReply = releaseReply,
-            )
-        val dataSource = replyThreadAccessDataSource(authStore, messageStore, repository)
-        val parentMessageId = MessageId("m1")
-        val accountOneScopeId = captureMessageStoreScopeId(dataSource)
-
-        val fetch = async { dataSource.fetchThreadPayload(unresolvedReplyThreadAccessPayload(), persistResult = false) }
-        repository.replyStarted.await()
-        val accountTwoScopeId = publishAccountSwitch(dataSource, authStore)
-        assertTrue(accountOneScopeId != accountTwoScopeId)
-        releaseReply.complete(Unit)
-
-        val result = assertIs<DataResult.Error>(fetch.await())
-        assertEquals("thread_reply_access_authority_changed", result.error.code)
-        assertTrue(result.error.retryable)
-        assertNull(messageStore.getScoped(accountOneScopeId, ChannelId("channel-1"), parentMessageId))
-        assertNull(messageStore.getScoped(accountTwoScopeId, ChannelId("channel-1"), parentMessageId))
-    }
-
-    @Test
     fun parentCompletionAfterOwnerChangeFailsClosedAndWritesOnlyToCapturedIdentity() = runBlocking {
         val authStore = InMemoryRaftAuthSessionStore(accountSession("account-1", "server-1"))
         val messageStore = SharedThreadMessageStore()

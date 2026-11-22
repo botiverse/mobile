@@ -41,7 +41,9 @@
 // after the selection step is server_not_selected. Receipts, refs, the nonce,
 // ids and screen text stay in this process. The record gets one more field, `acceptance`:
 // {case_id, run_case_id, attempt, verdict: pass|fail|unknown, reason: <LOGIN_ACCEPTANCE_REASONS code>};
-// only a pass completes the record (fail and unknown leave it "unknown", so nothing is captured).
+// only a pass completes the record (fail and unknown leave it "unknown", so nothing is captured). A later
+// qa-acceptance.yml step reports that verdict and reason to Testbed (testbed_login_acceptance_result.mjs,
+// through readRecordAcceptance).
 //
 // On Android the CI job first builds its driver with scripts/qa/build_login_form.sh
 // "$RUNNER_TEMP/qa-login-form.jar" in a step without the account environment.
@@ -78,7 +80,9 @@ const RECEIPT = /app_login_complete result=(\S+) reason=(\S+)/;
 const OWNER_MARKER = "/data/local/tmp/qa-run-owner";
 
 // Login acceptance (#216): the one Testbed case that turns it on, and every reason code a verdict
-// can carry (the record's `acceptance.reason`).
+// can carry (the record's `acceptance.reason`). LOGIN_ACCEPTANCE_REASONS is the one allowlist of the
+// verdict/reason pairs a record can hold (isLoginAcceptancePair): testbed_login_acceptance_result.mjs
+// reports any other pair to Testbed as unknown/reason_unlisted.
 export const LOGIN_ACCEPTANCE_CASE = "login-email-password";
 export const LOGIN_ACCEPTANCE_REASONS = {
   pass: ["signed_in_as_expected"],
@@ -99,6 +103,9 @@ export const LOGIN_ACCEPTANCE_REASONS = {
     "not_finished", "record_invalidated", // the phase never finished; a later step invalidated the record
   ],
 };
+/** Whether verdict/reason is a pair of LOGIN_ACCEPTANCE_REASONS (strings only, own keys only). */
+export const isLoginAcceptancePair = (verdict, reason) => typeof verdict === "string" && typeof reason === "string" &&
+  Object.hasOwn(LOGIN_ACCEPTANCE_REASONS, verdict) && LOGIN_ACCEPTANCE_REASONS[verdict].includes(reason);
 const RUN_CASE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const ATTEMPT_ID = /^pla_[0-9a-f]{32}$/;
 const HEX64 = /^[0-9a-f]{64}$/;
@@ -162,6 +169,31 @@ export function markUnknown(out, reason, env = process.env, acceptanceReason = "
 export function readRecord(out, env = process.env) {
   let r;
   try { r = JSON.parse(fs.readFileSync(path.join(out, RECORD), "utf8")); } catch { return { ok: false, reason: "login record missing or unreadable" }; }
+  return checkRecord(r, env);
+}
+
+/**
+ * The login acceptance (#216) of the record in `out`, whatever the record's status, for the report to
+ * Testbed (testbed_login_acceptance_result.mjs): null when there is no readable qa-login-record/v1 object
+ * or it has no acceptance object; else { run: the record's run, acceptance: the object as written,
+ * completed: whether readRecord accepts this same record as a completed password login, which with an
+ * acceptance it does only for a pass (a pass counts only on such a record) }.
+ */
+export function readRecordAcceptance(out, env = process.env) {
+  let r;
+  try { r = JSON.parse(fs.readFileSync(path.join(out, RECORD), "utf8")); } catch { return null; }
+  if (!r || typeof r !== "object" || Array.isArray(r) || r.contract !== CONTRACT) return null;
+  const acceptance = r.acceptance;
+  if (!acceptance || typeof acceptance !== "object" || Array.isArray(acceptance)) return null;
+  let completed = false;
+  try {
+    completed = r.mode === "password" && r.status === "complete" && checkRecord(r, env).ok;
+  } catch { /* A field readRecord cannot even read (an object for login_end): no completed login. */ }
+  return { run: r.run, acceptance, completed };
+}
+
+// readRecord's rules for a parsed record.
+function checkRecord(r, env) {
   if (!r || typeof r !== "object" || Array.isArray(r) || r.contract !== CONTRACT) return { ok: false, reason: "login record malformed" };
   if (r.run !== runId(env)) return { ok: false, reason: "login record belongs to another run" };
   if (r.mode === "password" && r.status === "complete" && THREADTIME.test(`${r.login_end} `)) {
@@ -203,7 +235,8 @@ export function testbedInputProblem(input, env = process.env) {
  *   { "case_id": "login-email-password", "run_case_id": "<uuid>", "attempt": <Testbed's attempt number>,
  *     "attempt_id": "pla_<32 hex>", "nonce": "<64 hex>",
  *     "expected_target": { "user_id": "...", "server_id": "...", "server_slug": "..." } }
- * It is read once (never through a link) and deleted at once, whatever it holds.
+ * The pre-emulator account check can read it without consuming it. The login phase deletes it
+ * immediately after reading, whatever it holds. Neither reader follows a link.
  * Without `required`, only an input that explicitly selects case_id "login-email-password" turns the
  * acceptance on; anything else (no file, unreadable, not a JSON object, another case) returns null and
  * the login phase runs as it does without one. With `required` (--require-acceptance: the job's
@@ -213,7 +246,7 @@ export function testbedInputProblem(input, env = process.env) {
  * request ids, the expected refs (computed from the same nonce the reads send, as the app does) and the
  * slug of the expected server }; the raw ids end here.
  */
-export function readTestbedInput(file, env = process.env, { required = false } = {}) {
+export function readTestbedInput(file, env = process.env, { required = false, consume = true } = {}) {
   let text = null;
   let state = "missing";
   let guarded = false;
@@ -233,7 +266,9 @@ export function readTestbedInput(file, env = process.env, { required = false } =
     } catch (error) {
       state = error?.code === "ENOENT" ? "missing" : "unreadable"; // a link (ELOOP), a directory, no permission
     }
-    try { fs.rmSync(file, { force: true }); } catch { /* Best effort: the runner temp directory goes with the job. */ }
+    if (consume) {
+      try { fs.rmSync(file, { force: true }); } catch { /* The job also removes the private directory. */ }
+    }
   }
   const unusable = (problem) => (required ? { binding: acceptanceBinding({ case_id: LOGIN_ACCEPTANCE_CASE, run_case_id: env.STAMP_RUN_CASE_ID }), problem } : null);
   if (state !== "read") return unusable(state === "missing" ? "input_missing" : "input_unreadable");

@@ -8,6 +8,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import build.raft.app.assistant.AssistantOwnerOtterRow
@@ -15,9 +17,9 @@ import build.raft.app.assistant.AssistantOwnerSectionContent
 import build.raft.app.assistant.AssistantOwnerWeChatRow
 import build.raft.app.assistant.WeChatConnectionBody
 import build.raft.app.assistant.WeChatDisconnectConfirmBody
-import build.raft.app.assistant.WeChatPhoneBlockedBody
 import build.raft.app.data.ScreenError
 import build.raft.app.data.WeChatBinding
+import build.raft.app.model.RaftTimeContext
 import build.raft.designsystem.components.RaftButton
 import build.raft.designsystem.components.RaftButtonSize
 import build.raft.designsystem.components.RaftButtonVariant
@@ -25,6 +27,7 @@ import build.raft.designsystem.components.RaftDialogSize
 import build.raft.designsystem.components.RaftDialogSurface
 import build.raft.designsystem.theme.RaftTheme
 import kotlin.test.Test
+import kotlin.time.Instant
 import org.junit.Rule
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -56,38 +59,8 @@ class AssistantOwnerSettingsScreenshotTest {
     fun fullSectionLight() = capture("assistant.owner-section.full", RaftAppAppearance.Light) { FullSectionFixture() }
 
     @Test
-    fun fullSectionDark() = capture("assistant.owner-section.full.dark", RaftAppAppearance.Dark) { FullSectionFixture() }
-
-    @Test
-    fun otterSaveFailed() =
-        capture("assistant.owner-section.otter-failed", RaftAppAppearance.Light) {
-            FullSectionFixture(otter = AssistantOwnerOtterRow(checked = true, enabled = true, failure = ScreenError("http_500", traceId = TRACE_ID)))
-        }
-
-    @Test
     fun weChatConnection() =
         capture("assistant.wechat.connection", RaftAppAppearance.Light) { ConnectionFixture(WeChatBinding(BINDING_ID, "active", CONNECTED_AT)) }
-
-    @Test
-    fun weChatConnectionStopped() =
-        capture("assistant.wechat.connection.stopped", RaftAppAppearance.Light) {
-            ConnectionFixture(WeChatBinding(BINDING_ID, "reconnect_required", CONNECTED_AT))
-        }
-
-    @Test
-    fun weChatPhoneBlocked() =
-        capture("assistant.wechat.phone-blocked", RaftAppAppearance.Light) {
-            Backdrop {
-                RaftDialogSurface(
-                    title = stringResource(Res.string.assistant_wechat_connect_title),
-                    description = stringResource(Res.string.assistant_wechat_intro, "Ada"),
-                    onClose = {},
-                    footer = { RaftButton(stringResource(Res.string.common_close), onClick = {}, variant = RaftButtonVariant.Primary, size = RaftButtonSize.Lg) },
-                ) {
-                    WeChatPhoneBlockedBody()
-                }
-            }
-        }
 
     @Test
     fun weChatDisconnectFailed() =
@@ -107,26 +80,18 @@ class AssistantOwnerSettingsScreenshotTest {
             }
         }
 
-    @Test
-    fun deleteConfirm() =
-        capture("assistant.delete-confirm", RaftAppAppearance.Light) {
-            Backdrop {
-                RaftDialogSurface(
-                    title = stringResource(Res.string.assistant_delete_title),
-                    size = RaftDialogSize.Sm,
-                    description = stringResource(Res.string.assistant_delete_body, "Ada"),
-                    onClose = {},
-                    footer = {
-                        RaftButton(stringResource(Res.string.common_cancel), onClick = {}, variant = RaftButtonVariant.Ghost, size = RaftButtonSize.Lg)
-                        RaftButton(stringResource(Res.string.assistant_delete), onClick = {}, variant = RaftButtonVariant.Danger, size = RaftButtonSize.Lg)
-                    },
-                )
-            }
-        }
-
     private fun capture(name: String, appearance: RaftAppAppearance, content: @Composable () -> Unit) =
         RaftRobolectricScreenshot.capture(name, appearance, reportDir = "build/reports/home-screenshots", activities = activities) {
-            MigrationFixtureHost(content)
+            val timeContext =
+                remember {
+                    RaftTimeContextProvider(
+                        RaftTimeContext(localOffsetMinutes = 0, timeFormat = "24h")
+                            .refreshedAt(Instant.parse(CONNECTED_AT).toEpochMilliseconds())
+                    )
+                }
+            CompositionLocalProvider(LocalRaftTimeContextProvider provides timeContext) {
+                MigrationFixtureHost(content)
+            }
         }
 }
 

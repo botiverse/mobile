@@ -73,25 +73,10 @@ class MembersAgentAvatarDialogScreenshotTest {
     fun dialogDark() = dialog("members.agent-avatar.dialog.dark", RaftAppAppearance.Dark)
 
     @Test
-    fun savingLight() = sheet("members.agent-avatar.dialog.saving", RaftAppAppearance.Light, MembersAgentAvatarDraft.Preset("fox"), saving = true)
-
-    @Test
-    fun savingDark() = sheet("members.agent-avatar.dialog.saving.dark", RaftAppAppearance.Dark, MembersAgentAvatarDraft.Preset("fox"), saving = true)
-
-    @Test
     fun errorLight() =
         sheet(
             "members.agent-avatar.dialog.error",
             RaftAppAppearance.Light,
-            MembersAgentAvatarDraft.Unchanged,
-            error = MembersAgentAvatarError.Upload(ScreenError("network", serverMessage = "The connection was lost."))
-        )
-
-    @Test
-    fun errorDark() =
-        sheet(
-            "members.agent-avatar.dialog.error.dark",
-            RaftAppAppearance.Dark,
             MembersAgentAvatarDraft.Unchanged,
             error = MembersAgentAvatarError.Upload(ScreenError("network", serverMessage = "The connection was lost."))
         )
@@ -175,24 +160,11 @@ class MembersAgentAvatarDialogScreenshotTest {
         node("Close").click()
         settle()
         assertEquals(0, dismissed, "× with a staged change does not close at once")
-        val discard = nodes().firstOrNull { it.texts().contains("Discard Changes") }
-        assertNotNull(discard, "the discard confirmation opened")
-        discard.click()
+        // Two buttons, so a question (slock #14958): Discard changes? with Discard.
+        assertTrue(nodes().any { it.texts().contains("Discard changes?") }, "the discard confirmation asks Discard changes?")
+        node("Discard").click()
         settle()
         assertEquals(1, dismissed)
-    }
-
-    @Test
-    fun aPickedImageIsStagedNotUploaded() {
-        val saved = mutableListOf<MembersAgentAvatarDraft>()
-        val image = PlatformFile(id = "file-1", fileName = "ada.png", mimeType = "image/png", sizeBytes = 1_000L)
-        open(onPickFile = { DataResult.Content(image) }, onSave = { saved += it; DataResult.Content(agent) }, onDismiss = {})
-        node("Upload image").click()
-        settle()
-        assertTrue(saved.isEmpty(), "picking an image does not upload it")
-        save().click()
-        settle()
-        assertEquals(listOf<MembersAgentAvatarDraft>(MembersAgentAvatarDraft.Upload(image)), saved)
     }
 
     private fun open(

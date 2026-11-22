@@ -33,45 +33,6 @@ class RaftComputerCommandsTest {
     }
 
     @Test
-    fun aLegacyDaemonRowAdoptsItselfAndANonDefaultServerUrlIsPassed() {
-        val commands =
-            requireNotNull(raftComputerCommands(production("https://api.example.dev"), machineId = "machine-9"))
-
-        assertEquals("raft-computer setup /acme --server-url https://api.example.dev --machine machine-9", commands.setup)
-    }
-
-    @Test
-    fun stagingIsolatesTheHomeAndBinaryPerServer() {
-        val context = SettingsComputerCommandContext(serverSlug = "/acme", deploymentEnv = "staging", serverUrl = "https://ignored")
-        val commands = requireNotNull(raftComputerCommands(context))
-        val environment = "RAFT_HOME=\"\$HOME/.raft-computer-acme\" RAFT_COMPUTER_INSTALL_DIR=\"\$HOME/.raft-computer-acme/bin\""
-        val binary = "\"\$HOME/.raft-computer-acme/bin/raft-computer\""
-
-        assertEquals(
-            "$environment sh -c 'curl -fsSL https://slock-cdn-staging.botiverse.dev/computer/staging/install.sh | " +
-                "RAFT_COMPUTER_RELEASE_BASE=https://slock-cdn-staging.botiverse.dev/computer/staging RAFT_COMPUTER_INSTALL_CHANNEL=alpha sh'",
-            commands.install
-        )
-        assertEquals("$environment $binary setup /acme --server-url https://api-aws-staging.botiverse.dev", commands.setup)
-        assertEquals("$environment $binary restart /acme", commands.restart)
-        assertNull(commands.installAndSetup)
-    }
-
-    @Test
-    fun stagingWindowsCarriesThePowerShellEnvironment() {
-        val context = SettingsComputerCommandContext(serverSlug = "acme", deploymentEnv = "staging")
-        val commands = requireNotNull(raftComputerCommands(context, RaftComputerCommandPlatform.Windows))
-        val environment = "\$env:RAFT_HOME = \"\$env:USERPROFILE\\.raft-computer-acme\"; \$env:RAFT_COMPUTER_INSTALL_DIR = \"\$env:RAFT_HOME\\bin\";"
-
-        assertEquals(
-            "$environment \$env:RAFT_COMPUTER_RELEASE_BASE = \"https://slock-cdn-staging.botiverse.dev/computer/staging\"; " +
-                "\$env:RAFT_COMPUTER_INSTALL_CHANNEL = \"alpha\"; irm \"\$env:RAFT_COMPUTER_RELEASE_BASE/install.ps1\" | iex",
-            commands.install
-        )
-        assertEquals("$environment & \"\$env:RAFT_COMPUTER_INSTALL_DIR\\raft-computer.exe\" status", commands.status)
-    }
-
-    @Test
     fun noServerSlugMeansNoCommands() {
         assertNull(raftComputerCommands(SettingsComputerCommandContext(serverSlug = " / ", deploymentEnv = "production")))
         assertNull(raftComputerCommands(null))

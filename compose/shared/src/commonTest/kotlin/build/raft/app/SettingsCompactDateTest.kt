@@ -28,8 +28,11 @@ class SettingsCompactDateTest {
     }
 
     @Test
-    fun nothingWithoutANowOrATimestamp() {
-        assertNull(settingsCompactDate("2026-11-18T00:05:00.000Z", context.copy(nowEpochMillis = null)))
+    fun fallsBackToLocalIsoDateWithoutTodayAndNullForInvalidOrMissingContext() {
+        assertEquals(
+            SettingsCompactDate.IsoDate("2026-11-18"),
+            settingsCompactDate("2026-11-18T00:05:00.000Z", context.copy(todayEpochDay = null, nowEpochMillis = null)),
+        )
         assertNull(settingsCompactDate("yesterday", context))
         assertNull(settingsCompactDate("2026-11-18T00:05:00.000Z", null))
     }

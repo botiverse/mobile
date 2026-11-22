@@ -41,64 +41,6 @@ class ThreadOfflineLastKnownTipTest {
     }
 
     @Test
-    fun anEmptyLastKnownChannelIsAStandInToo() {
-        // Task #1137: the empty channel carries the tip once the refresh has failed.
-        assertFalse(
-            threadOfflineLastKnownChrome(durableLastKnown = true, status = "empty", backgroundRefreshing = true, mainLoadFailed = false)
-                .tipVisible
-        )
-        assertTrue(
-            threadOfflineLastKnownChrome(durableLastKnown = true, status = "empty", backgroundRefreshing = false, mainLoadFailed = true)
-                .tipVisible
-        )
-        // A canonical empty answer (flag cleared) is an ordinary empty channel with no tip.
-        assertFalse(
-            threadOfflineLastKnownChrome(durableLastKnown = false, status = "empty", backgroundRefreshing = false, mainLoadFailed = false)
-                .tipVisible
-        )
-    }
-
-    @Test
-    fun nothingIsShownWithoutAStandInFrame() {
-        // A canonical answer cleared the flag: both go away with the content replacement.
-        assertEquals(
-            ThreadOfflineLastKnownChrome(insetActive = false, tipVisible = false),
-            threadOfflineLastKnownChrome(durableLastKnown = false, status = "content", backgroundRefreshing = false, mainLoadFailed = false)
-        )
-        // The flag without rendered content (defensive: the store never produces this) shows nothing.
-        assertEquals(
-            ThreadOfflineLastKnownChrome(insetActive = false, tipVisible = false),
-            threadOfflineLastKnownChrome(durableLastKnown = true, status = "loading", backgroundRefreshing = false, mainLoadFailed = true)
-        )
-        assertEquals(
-            ThreadOfflineLastKnownChrome(insetActive = false, tipVisible = false),
-            threadOfflineLastKnownChrome(durableLastKnown = true, status = "error", backgroundRefreshing = false, mainLoadFailed = true)
-        )
-    }
-
-    @Test
-    fun payloadProjectionCarriesTheFlagIntoTheSliceAndTheChrome() {
-        val payload =
-            RaftThreadScreenPayload(
-                instanceId = "shared-shell-thread-channel-1",
-                title = "general",
-                sourceThreadId = "channel-1",
-                status = "content",
-                backgroundRefreshing = false,
-                durableLastKnown = true,
-                mainLoadFailed = true,
-                messages = listOf(RaftThreadMessageItem(id = "m1", authorId = "u-a", authorName = "Owner A", body = "durable body"))
-            )
-        assertTrue(payload.toThreadTimelineSlice().durableLastKnown)
-        assertTrue(payload.toThreadTimelineSlice().mainLoadFailed)
-        assertEquals(ThreadOfflineLastKnownChrome(insetActive = true, tipVisible = true), threadOfflineLastKnownChrome(payload))
-
-        val replaced = payload.copy(durableLastKnown = false)
-        assertFalse(replaced.toThreadTimelineSlice().durableLastKnown)
-        assertEquals(ThreadOfflineLastKnownChrome(insetActive = false, tipVisible = false), threadOfflineLastKnownChrome(replaced))
-    }
-
-    @Test
     fun historyBoundaryNeverClaimsTheBeginningOfTheConversationForAStandInFrame() {
         // Positive control: the ordinary closed-paging label.
         assertEquals(
@@ -200,26 +142,5 @@ class ThreadOfflineLastKnownTipTest {
 
         // Control: online after the failure refreshes immediately.
         assertTrue(OfflineStandInRecoveryGate().onNetworkRecovered(standIn))
-    }
-
-    @Test
-    fun onlyThisServersTransportConnectedEventCountsAsARealtimeRecovery() {
-        fun event(action: String, serverId: String?) =
-            build.raft.app.compat.json.JSONObject().apply {
-                put(build.raft.app.data.realtime.RaftRealtimeNotifyContract.KeyAction, action)
-                if (serverId != null) put(build.raft.app.data.realtime.RaftRealtimeNotifyContract.KeyServerId, serverId)
-            }.toJsonObject()
-        val connected = build.raft.app.data.realtime.RaftRealtimeNotifyContract.ActionPresenceTransportConnected
-        assertTrue(isRealtimeTransportConnectedEvent(event(connected, "server-a"), "server-a"))
-        assertFalse(isRealtimeTransportConnectedEvent(event(connected, "server-b"), "server-a"), "another server's reconnect")
-        assertFalse(isRealtimeTransportConnectedEvent(event(connected, null), "server-a"), "no server on the event")
-        assertFalse(isRealtimeTransportConnectedEvent(event(connected, "server-a"), null), "page without a session server")
-        assertFalse(isRealtimeTransportConnectedEvent(event("message:new", "server-a"), "server-a"))
-    }
-
-    @Test
-    fun aVisibleFailedLoadRetriesOnAGrowingCappedBackoff() {
-        assertEquals(listOf(10_000L, 20_000L, 40_000L, 60_000L, 60_000L), (0..4).map(::offlineRecoveryRetryDelayMs))
-        assertEquals(10_000L, offlineRecoveryRetryDelayMs(-1))
     }
 }

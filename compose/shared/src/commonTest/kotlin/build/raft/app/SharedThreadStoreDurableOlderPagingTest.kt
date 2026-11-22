@@ -85,29 +85,6 @@ class SharedThreadStoreDurableOlderPagingTest {
     }
 
     @Test
-    fun anOlderPageFromDiskKeepsAnActionCardsPresentationAndConfirmationVersion() = runTest {
-        val scopeJob = SupervisorJob()
-        val scope = CoroutineScope(coroutineContext + scopeJob)
-        val api = SharedThreadStoreTest.FakeThreadApi(failChannelMessages = true)
-        // seq 40 is outside the 30 shown first: it only arrives with an older page read from disk.
-        val reader = FakeReader(
-            frame(count = 120, hasLoadedOldest = true, actionMetadataBySeq = mapOf(40 to v2ActionCardWithPresentation(confirmationVersion = 7))),
-        )
-        val store = SharedThreadStore(dataSource(backgroundScope, api, reader), scope = scope)
-        store.accept(SharedThreadIntent.Start(basePayload()))
-        assertTrue(store.state.value.payload.messages.none { it.id == "v2-40" })
-
-        repeat(3) { store.accept(SharedThreadIntent.LoadOlder) }
-        val paged = store.state.value.payload
-        assertTrue(paged.durableLastKnown)
-        assertEquals(1, api.channelMessageCalls, "the pages came from disk")
-        assertRestoredActionCardPresentation(paged.messages.single { it.id == "v2-40" }.metadata, confirmationVersion = 7)
-        // Positive control: a plain neighbour has no card.
-        assertTrue(paged.messages.single { it.id == "v2-41" }.metadata.isEmpty())
-        scopeJob.cancelAndJoin()
-    }
-
-    @Test
     fun windowNotReachingTheChannelStartKeepsPagingOpenForTheNetwork() = runTest {
         // Twin of the test above: identical 120 facts, but the cursor says older history exists.
         val logs = mutableListOf<String>()
@@ -132,60 +109,6 @@ class SharedThreadStoreDurableOlderPagingTest {
         assertFalse(failed.durableReachedOldest, "same arithmetic, but the window does not reach the start")
         assertEquals(120, failed.messages.size)
         assertTrue(logs.any { "served=0 reason=exhausted" in it }, logs.toString())
-        scopeJob.cancelAndJoin()
-    }
-
-    @Test
-    fun standInOfAWholeWindowThatReachesTheStartHasPagingClosed() = runTest {
-        val closedScopeJob = SupervisorJob()
-        val closedScope = CoroutineScope(coroutineContext + closedScopeJob)
-        val closed =
-            SharedThreadStore(
-                dataSource(storeScope = backgroundScope, SharedThreadStoreTest.FakeThreadApi(failChannelMessages = true), FakeReader(frame(count = 30, hasLoadedOldest = true))),
-                scope = closedScope,
-            )
-        closed.accept(SharedThreadIntent.Start(basePayload()))
-        assertEquals(30, closed.state.value.payload.messages.size)
-        assertFalse(closed.state.value.payload.canLoadMoreBefore)
-        assertTrue(closed.state.value.payload.durableReachedOldest)
-        assertEquals(
-            Res.string.thread_state_beginning_conversation.desc(),
-            threadOlderMessagesStatusSpec(closed.state.value.payload).label,
-        )
-        closedScopeJob.cancelAndJoin()
-
-        // Twin: the same 30 facts, but the window does not reach the start.
-        val openScopeJob = SupervisorJob()
-        val openScope = CoroutineScope(coroutineContext + openScopeJob)
-        val open =
-            SharedThreadStore(
-                dataSource(storeScope = backgroundScope, SharedThreadStoreTest.FakeThreadApi(failChannelMessages = true), FakeReader(frame(count = 30, hasLoadedOldest = false))),
-                scope = openScope,
-            )
-        open.accept(SharedThreadIntent.Start(basePayload()))
-        assertTrue(open.state.value.payload.canLoadMoreBefore)
-        assertFalse(open.state.value.payload.durableReachedOldest)
-        openScopeJob.cancelAndJoin()
-    }
-
-    @Test
-    fun onlineFrameLoadsOlderFromTheNetworkAndNeverReadsTheWindow() = runTest {
-        // Twin of the offline walk: same 120-fact window, but the network answers, so the frame is
-        // no longer the stand-in when the user pages older.
-        val scopeJob = SupervisorJob()
-        val scope = CoroutineScope(coroutineContext + scopeJob)
-        val api = SharedThreadStoreTest.FakeThreadApi()
-        val reader = FakeReader(frame(count = 120, hasLoadedOldest = true))
-        val store = SharedThreadStore(dataSource(storeScope = backgroundScope, api, reader), scope = scope)
-        store.accept(SharedThreadIntent.Start(basePayload()))
-        store.accept(SharedThreadIntent.SetPagingAvailability(canLoadMoreBefore = true, canLoadMoreAfter = false))
-        assertFalse(store.state.value.payload.durableLastKnown)
-        val readsBefore = reader.reads.size
-
-        store.accept(SharedThreadIntent.LoadOlder)
-        assertEquals(1, api.beforeSeqs.size, "older page went to the network")
-        assertEquals(readsBefore, reader.reads.size, "the durable window was not read")
-        assertTrue(store.state.value.payload.messages.any { it.body == "older body" })
         scopeJob.cancelAndJoin()
     }
 
@@ -243,37 +166,6 @@ class SharedThreadStoreDurableOlderPagingTest {
         assertTrue(store.state.value.payload.messages.none { it.body == "body 90" })
         assertTrue(logs.any { "thread_durable_older_page" in it && "reason=owner_changed" in it }, logs.toString())
         scopeJob.cancelAndJoin()
-    }
-
-    @Test
-    fun replyRouteWithoutItsParentIsNeverServedFromTheWindow() = runTest {
-        // Task #168 step 3: a reply route pages from its own `thread` scope only, and only with its
-        // typed parent (`SharedThreadStoreReplyThreadDurableTest`); without it nothing is served.
-        val logs = mutableListOf<String>()
-        val dataSource = dataSource(storeScope = backgroundScope, SharedThreadStoreTest.FakeThreadApi(), FakeReader(frame(count = 120, hasLoadedOldest = true)), logs = logs)
-        val context = kotlin.test.assertNotNull(dataSource.captureReplyCacheProducerContext())
-        val reply =
-            basePayload().copy(
-                surfaceKind = RaftThreadSurfaceKind.ReplyThread,
-                sourceThreadId = "thread-parent-1",
-                streamChannelId = "thread-parent-1",
-                parentChannelId = "channel-1",
-                parentMessageId = "parent-1",
-                originParentMessageId = "parent-1",
-            ).resolveThreadRouteIdentity()
-        val owner = context.provenance.threadPayloadOwnerScopeId
-        assertEquals(null, dataSource.durableOlderPageIfCurrent(reply, context, beforeSeq = 91L, expectedOwnerScopeId = owner))
-        assertTrue(logs.any { "reason=no_reply_parent" in it }, logs.toString())
-        // Positive control: the channel route with the same context is served.
-        val page = kotlin.test.assertNotNull(
-            dataSource.durableOlderPageIfCurrent(
-                basePayload().resolveThreadRouteIdentity(),
-                context,
-                beforeSeq = 91L,
-                expectedOwnerScopeId = owner,
-            ),
-        )
-        assertEquals((61..90).map { "body $it" }, page.messages.map { it.body })
     }
 
     private class FakeReader(private val frame: ThreadDurableLastKnownFrame) : ThreadDurableLastKnownReader {

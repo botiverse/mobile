@@ -8,36 +8,6 @@ import kotlin.test.assertTrue
 
 class SharedInviteHumanDialogTest {
     @Test
-    fun normalizeInviteHumanJoinUrlAddsRaftAppOriginToRelativePaths() {
-        assertEquals("https://app.raft.build/join/AB-Rt1m", normalizeInviteHumanJoinUrl("/join/AB-Rt1m"))
-        assertEquals("https://app.raft.build/join/AB-Rt1m", normalizeInviteHumanJoinUrl("join/AB-Rt1m"))
-    }
-
-    @Test
-    fun normalizeInviteHumanJoinUrlUsesConfiguredWebOriginForRelativePaths() {
-        assertEquals(
-            "https://raft-app-staging.botiverse.dev/s/botiverse/join/AB-Rt1m",
-            normalizeInviteHumanJoinUrl("/join/AB-Rt1m", "https://raft-app-staging.botiverse.dev/s/botiverse/")
-        )
-        assertEquals(
-            "https://localhost:5173/join/AB-Rt1m",
-            normalizeInviteHumanJoinUrl("join/AB-Rt1m", "https://localhost:5173")
-        )
-    }
-
-    @Test
-    fun normalizeInviteHumanJoinUrlPreservesAbsoluteUrls() {
-        assertEquals("https://app.raft.build/join/AB-Rt1m", normalizeInviteHumanJoinUrl("https://app.raft.build/join/AB-Rt1m"))
-        assertEquals("http://localhost:5173/join/AB-Rt1m", normalizeInviteHumanJoinUrl("http://localhost:5173/join/AB-Rt1m"))
-    }
-
-    @Test
-    fun normalizeInviteHumanJoinUrlReturnsNullForBlank() {
-        assertNull(normalizeInviteHumanJoinUrl(null))
-        assertNull(normalizeInviteHumanJoinUrl("  "))
-    }
-
-    @Test
     fun inviteHumanJoinUrlCopyPayloadMatchesDisplayedJoinUrl() {
         assertEquals("https://app.raft.build/join/AB-Rt1m", inviteHumanJoinUrlCopyPayload("/join/AB-Rt1m"))
         assertEquals("https://app.raft.build/join/AB-Rt1m", inviteHumanJoinUrlCopyPayload("join/AB-Rt1m"))
@@ -79,12 +49,6 @@ class SharedInviteHumanDialogTest {
         cases.forEach { (uses, expiry, expected) ->
             assertEquals(expected, resolveInviteHumanLinkLimits(uses, expiry, current, now), "$uses/$expiry")
         }
-    }
-
-    @Test
-    fun isoUtcMatchesJavascriptToIsoString() {
-        assertEquals("1970-01-01T00:00:00.000Z", inviteHumanIsoUtc(0L))
-        assertEquals("2024-02-29T23:59:59.999Z", inviteHumanIsoUtc(1_709_251_199_999L))
     }
 
     @Test

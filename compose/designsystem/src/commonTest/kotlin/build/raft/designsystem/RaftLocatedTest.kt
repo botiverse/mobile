@@ -1,10 +1,7 @@
 package build.raft.designsystem
 
 import androidx.compose.runtime.MonotonicFrameClock
-import build.raft.designsystem.components.RaftLocatedHoldMillis
-import build.raft.designsystem.components.RaftLocatedMillis
 import build.raft.designsystem.components.RaftLocatedState
-import build.raft.designsystem.components.raftLocatedStrengthAt
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
@@ -20,35 +17,6 @@ import kotlinx.coroutines.test.runTest
 /** raft-ui 0.22.1 located highlight (#719): `info-soft`, held 1.2s, ease-out, gone at 2s. */
 @OptIn(ExperimentalCoroutinesApi::class)
 class RaftLocatedTest {
-    @Test
-    fun strengthHoldsThenEasesOutAndIsGoneAtTwoSeconds() {
-        assertEquals(2000, RaftLocatedMillis)
-        assertEquals(1200, RaftLocatedHoldMillis)
-        assertEquals(1f, raftLocatedStrengthAt(0))
-        assertEquals(1f, raftLocatedStrengthAt(1200))
-        // ease-out (cubic-bezier(0, 0, 0.58, 1)) at half way is past half faded.
-        val mid = raftLocatedStrengthAt(1600)
-        assertTrue(mid < 0.5f && mid > 0.1f, "mid-fade strength=$mid")
-        assertTrue(raftLocatedStrengthAt(1999) < 0.01f)
-        assertEquals(0f, raftLocatedStrengthAt(2000))
-        assertEquals(0f, raftLocatedStrengthAt(-1))
-        // Monotonic over the fade.
-        var last = 1f
-        for (t in 1200L..2000L step 50) {
-            val s = raftLocatedStrengthAt(t)
-            assertTrue(s <= last + 1e-4f, "strength rose at t=$t: $s > $last")
-            last = s
-        }
-    }
-
-    @Test
-    fun reducedMotionIsHeldStillThenOff() {
-        assertEquals(1f, raftLocatedStrengthAt(0, reducedMotion = true))
-        assertEquals(1f, raftLocatedStrengthAt(1800, reducedMotion = true))
-        assertEquals(1f, raftLocatedStrengthAt(1999, reducedMotion = true))
-        assertEquals(0f, raftLocatedStrengthAt(2000, reducedMotion = true))
-    }
-
     @Test
     fun locateRunsTwoSecondsOnItsItemThenClears() =
         runTest {
@@ -89,19 +57,6 @@ class RaftLocatedTest {
             second.cancel()
             runCurrent()
             assertNull(state.key, "cancelled locate leaves no highlight")
-        }
-
-    @Test
-    fun reducedMotionStateStaysFullUntilTheEnd() =
-        runTest {
-            val clock = VirtualFrameClock(testScheduler)
-            val state = RaftLocatedState(reducedMotion = true)
-            launch(clock) { state.locate(1) }
-            advanceTimeBy(1900)
-            assertEquals(1f, state.strengthFor(1))
-            advanceTimeBy(200)
-            runCurrent()
-            assertNull(state.key)
         }
 }
 

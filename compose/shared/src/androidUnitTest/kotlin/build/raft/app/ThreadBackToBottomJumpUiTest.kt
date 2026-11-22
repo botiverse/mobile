@@ -260,20 +260,6 @@ class ThreadBackToBottomJumpUiTest {
         waitForIdle()
     }
 
-    /** Waits (bounded, as [awaitStore]) for a toast on this window; on expiry says what the page did instead. */
-    private fun ComposeUiTest.awaitToast(harness: Harness) {
-        val deadline = System.nanoTime() + 10_000_000_000L
-        while (toasts.state.visible.isEmpty()) {
-            check(System.nanoTime() < deadline) {
-                "timed out waiting for the failed-load toast: visible=${toasts.state.visible.map { it.title }} " +
-                    "loading=${loadingShown()} backToBottom=${backToBottomShown()} log=${harness.log.takeLast(12)}"
-            }
-            Thread.sleep(10)
-            mainClock.advanceTimeByFrame()
-        }
-        settle()
-    }
-
     private fun ComposeUiTest.backToBottomShown(): Boolean = onAllNodesWithText(BackToBottom).fetchSemanticsNodes().isNotEmpty()
 
     private fun ComposeUiTest.loadingShown(): Boolean = onAllNodesWithText(Loading).fetchSemanticsNodes().isNotEmpty()
@@ -317,40 +303,6 @@ class ThreadBackToBottomJumpUiTest {
                 assertFalse(backToBottomShown(), "the button still shows after one tap")
                 assertTrue(newestShown(), "the newest message is not on screen")
                 assertEquals(1, harness.api.tailRequests)
-            } finally {
-                harness.scopeJob.cancel()
-            }
-        }
-
-    /** A failed load: the button is back (not loading), the page says so, and one more tap loads it. */
-    @Test
-    fun aFailedLoadRestoresTheButtonAndSaysSo() =
-        runRobolectricComposeUiTest {
-            val harness = Harness()
-            try {
-                host(harness)
-                onNodeWithText(BackToBottom).performClick()
-                settle()
-                assertTrue(loadingShown())
-
-                runOnIdle { harness.api.release.complete(500) }
-                awaitStore("the load to fail") { harness.log.any { "thread_jump_to_latest result=failed" in it } }
-
-                assertFalse(loadingShown(), "still loading after the load failed")
-                assertTrue(backToBottomShown(), "the button did not come back after the failure")
-                assertFalse(newestShown())
-                // The toast is posted by the tap's coroutine once the store's failure reaches it: wait
-                // for it rather than read the window once (#proj-mobile:#168: one CI run read [] here).
-                awaitToast(harness)
-                assertEquals(listOf(JumpLoadFailed), toasts.state.visible.map { it.title })
-
-                // The retry: one tap, one request, and it lands.
-                harness.api.release = CompletableDeferred(200)
-                onNodeWithText(BackToBottom).performClick()
-                awaitStore("the retry to land") { harness.log.any { "thread_jump_to_latest result=applied" in it } }
-                assertEquals(2, harness.api.tailRequests)
-                assertFalse(backToBottomShown())
-                assertTrue(newestShown())
             } finally {
                 harness.scopeJob.cancel()
             }

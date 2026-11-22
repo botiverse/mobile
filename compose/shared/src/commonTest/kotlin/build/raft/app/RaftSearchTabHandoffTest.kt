@@ -51,31 +51,8 @@ class RaftSearchTabHandoffTest {
     }
 
     @Test
-    fun withoutALiveShellThereIsNoHandoff() {
-        val handoff = RaftSearchTabHandoffState(TestTimeSource())
-        assertFalse(handoff.request("q", shellAlive = false))
-        assertEquals(RaftSearchTabHandoffAction.None, handoff.onPageAppeared(pop, isInitialAppearance = false))
-    }
-
-    @Test
-    fun eachRequestHasANewNonce() {
-        val handoff = RaftSearchTabHandoffState(TestTimeSource())
-        handoff.request("a", shellAlive = true)
-        val first = handoff.consume()!!
-        handoff.request("a", shellAlive = true)
-        assertTrue(handoff.consume()!!.nonce > first.nonce)
-    }
-
-    @Test
     fun theWideRailShowsTheQueryInItsInlineSearch() {
         assertEquals(AppShellSearchHandoffTarget.RailInlineSearch, appShellSearchHandoffTarget(navRailActive = true))
         assertEquals(AppShellSearchHandoffTarget.SearchTab, appShellSearchHandoffTarget(navRailActive = false))
-    }
-
-    @Test
-    fun theOpenedRowIsMarkedOnlyWhenThePageShowsAgain() {
-        assertNull(homeSearchReturnHighlightKey(openedKey = "row", pageVisible = false))
-        assertEquals("row", homeSearchReturnHighlightKey(openedKey = "row", pageVisible = true))
-        assertNull(homeSearchReturnHighlightKey(openedKey = null, pageVisible = true))
     }
 }

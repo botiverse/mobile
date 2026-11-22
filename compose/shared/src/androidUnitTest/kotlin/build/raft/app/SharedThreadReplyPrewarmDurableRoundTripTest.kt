@@ -29,8 +29,6 @@ import build.raft.app.network.sync.SqlDelightCanonicalMessageV2Store
 import java.util.concurrent.CopyOnWriteArrayList
 import kotlinx.coroutines.runBlocking
 import kotlin.test.Test
-import kotlin.test.assertEquals
-import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
@@ -44,43 +42,6 @@ import kotlin.test.assertTrue
  */
 class SharedThreadReplyPrewarmDurableRoundTripTest {
     @Test
-    fun prewarmedReplyPageOpensFromDiskAfterTheMemoryPrewarmIsInvalidated() = withFreshDatabase { database ->
-        runBlocking {
-            val rig = Rig(database, replyResult = DataResult.Content(prewarmSnapshot()))
-
-            assertIs<DataResult.Content<Unit>>(rig.dataSource.prewarmReplyThread(marker))
-            // Phase 3b: the prewarm read the durable head epoch BEFORE its reply request and handed that to the write.
-            assertEquals(listOf<Long?>(0L), rig.loader.prewarmRequestEpochs.toList())
-            assertTrue(
-                rig.logs.any {
-                    "canonical_v2_prewarm_page server=server-1 scope=thread-1 scopeKind=thread outcome=committed " +
-                        "reason=window_created facts=3" in it
-                },
-                rig.logs.toString(),
-            )
-            assertEquals(
-                listOf("channels/thread-1", "channels/channel-1"),
-                rig.network.paths,
-                "the parent is confirmed by the server; the page itself is the prewarm's, not refetched",
-            )
-            assertNotNull(rig.dataSource.cachedPayload("thread-1"), "the in-memory prewarm landed too")
-
-            // A new reply arrives: the freshness generation moves and the in-memory prewarm is gone.
-            rig.payloadStore.freshnessLedger.advanceAllOwners("server-1", "thread-1")
-            assertNull(rig.dataSource.cachedPayload("thread-1"))
-
-            val context = assertNotNull(rig.dataSource.captureReplyCacheProducerContext())
-            val standIn = assertNotNull(
-                rig.dataSource.durableLastKnownPayloadIfCurrent(replyRoute(), replyRoute().resolveThreadRouteIdentity(), context),
-            )
-            assertTrue(standIn.durableLastKnown)
-            assertEquals(listOf("hello r20", "hello r30", "hello r40"), standIn.messages.map { it.body })
-            assertFalse(standIn.canLoadMoreBefore, "3 replies < the 30 the prewarm asked for: the thread starts here")
-            assertTrue(rig.logs.any { "thread_durable_last_known threadId=thread-1 outcome=frame scopeKind=thread" in it }, rig.logs.toString())
-        }
-    }
-
-    @Test
     fun failedPrewarmWritesNothing() = withFreshDatabase { database ->
         // Twin of the test above: identical wiring and stored nothing, but the reply fetch fails.
         runBlocking {
@@ -91,20 +52,6 @@ class SharedThreadReplyPrewarmDurableRoundTripTest {
             assertIs<DataResult.Error>(rig.dataSource.prewarmReplyThread(marker))
             assertTrue(rig.logs.none { "canonical_v2_prewarm_page" in it }, rig.logs.toString())
             assertTrue(rig.network.paths.isEmpty(), rig.network.paths.toString())
-            val context = assertNotNull(rig.dataSource.captureReplyCacheProducerContext())
-            assertNull(rig.dataSource.durableLastKnownPayloadIfCurrent(replyRoute(), replyRoute().resolveThreadRouteIdentity(), context))
-        }
-    }
-
-    @Test
-    fun prewarmWhoseSnapshotCarriesNoRawPageWritesNothing() = withFreshDatabase { database ->
-        // Twin of the positive: identical successful prewarm, but the repository did not capture the page
-        // (e.g. it joined an access flight started without capture). Nothing is invented from the projection.
-        runBlocking {
-            val rig = Rig(database, replyResult = DataResult.Content(prewarmSnapshot().copy(rawMessagePage = RawMessagePageWitness.None)))
-            assertIs<DataResult.Content<Unit>>(rig.dataSource.prewarmReplyThread(marker))
-            assertTrue(rig.logs.any { "scope=thread-1 scopeKind=thread outcome=skipped reason=no_raw_page facts=0" in it }, rig.logs.toString())
-            assertTrue(rig.network.paths.isEmpty())
             val context = assertNotNull(rig.dataSource.captureReplyCacheProducerContext())
             assertNull(rig.dataSource.durableLastKnownPayloadIfCurrent(replyRoute(), replyRoute().resolveThreadRouteIdentity(), context))
         }

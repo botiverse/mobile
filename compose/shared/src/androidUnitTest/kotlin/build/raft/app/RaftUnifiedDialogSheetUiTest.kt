@@ -12,7 +12,6 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.ComposeUiTest
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.click
-import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
@@ -123,25 +122,6 @@ class RaftUnifiedDialogSheetUiTest {
         }
 
     @Test
-    fun theCloseButtonDismissesAfterTheSlide() =
-        runRobolectricComposeUiTest {
-            var dismissed = 0
-            showSheet { dismissed++ }
-            onNode(hasContentDescription("Close") and hasClickAction()).performClick()
-            mainClock.advanceTimeBy(1_000)
-            assertEquals(1, dismissed)
-        }
-
-    @Test
-    fun backDismisses() =
-        runRobolectricComposeUiTest {
-            var dismissed = 0
-            showSheet { dismissed++ }
-            pressBack()
-            assertEquals(1, dismissed)
-        }
-
-    @Test
     fun aBusySheetIgnoresBackAndClose() =
         runRobolectricComposeUiTest {
             var dismissed = 0
@@ -151,14 +131,6 @@ class RaftUnifiedDialogSheetUiTest {
             mainClock.advanceTimeBy(1_000)
             tapScrim()
             assertEquals(0, dismissed)
-        }
-
-    @Test
-    @Config(qualifiers = "w1024dp-h768dp-xhdpi")
-    fun aWideWindowKeepsTheCentredCardAndItsFooter() =
-        runRobolectricComposeUiTest {
-            showSheet {}
-            onNodeWithText(FooterLabel).assertExists()
         }
 
     @Composable

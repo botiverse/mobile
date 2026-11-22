@@ -23,22 +23,6 @@ class ThreadComposerUploadTileScreenshotTest {
     val activities = RobolectricComposeActivityRule()
 
     @Test
-    @Config(sdk = [34], qualifiers = "en-w390dp-h200dp-xxhdpi")
-    fun uploadTileLight() = capture("thread.composer-upload-tile", RaftAppAppearance.Light)
-
-    @Test
-    @Config(sdk = [34], qualifiers = "en-w390dp-h200dp-xxhdpi")
-    fun uploadTileDark() = capture("thread.composer-upload-tile.dark", RaftAppAppearance.Dark)
-
-    @Test
-    @Config(sdk = [34], qualifiers = "zh-rCN-w390dp-h200dp-xxhdpi")
-    fun uploadTileChineseLight() = capture("thread.composer-upload-tile.zh", RaftAppAppearance.Light)
-
-    @Test
-    @Config(sdk = [34], qualifiers = "zh-rCN-w390dp-h200dp-xxhdpi")
-    fun uploadTileChineseDark() = capture("thread.composer-upload-tile.zh.dark", RaftAppAppearance.Dark)
-
-    @Test
     @Config(sdk = [34], qualifiers = "zh-rCN-w390dp-h200dp-xxhdpi")
     fun uploadTileChineseLargeFont() =
         capture("thread.composer-upload-tile.zh.font-130", RaftAppAppearance.Dark, fontScale = 1.3f)

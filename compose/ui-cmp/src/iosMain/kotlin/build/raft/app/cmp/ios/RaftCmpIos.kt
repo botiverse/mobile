@@ -1,8 +1,10 @@
 package build.raft.app.cmp.ios
 
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.uikit.LocalUIViewController
 import androidx.compose.ui.uikit.OnFocusBehavior
 import androidx.compose.ui.window.ComposeUIViewController
@@ -250,6 +252,13 @@ object RaftCmpIos {
                 // Read from composition, not captured in this lambda: a Kotlin closure holding the
                 // controller that holds this content would be an ObjC/Kotlin retain cycle.
                 val controller = LocalUIViewController.current
+                val focusManager = LocalFocusManager.current
+                // Clear Compose focus when another iOS page covers this UIViewController so stale
+                // non-text region/window focus cannot linger in the shared focus coordinator.
+                DisposableEffect(coverSignal, focusManager) {
+                    val registration = coverSignal.register { focusManager.clearFocus(force = true) }
+                    onDispose { registration.unregister() }
+                }
                 // Text fields hide their edit menu through the guard, so an empty caret menu
                 // cannot come back as a lone "Select All" once text arrives (RaftTextToolbarGuard).
                 ProvideRaftTextToolbarGuard {

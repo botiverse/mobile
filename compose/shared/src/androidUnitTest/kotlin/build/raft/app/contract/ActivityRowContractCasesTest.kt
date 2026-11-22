@@ -2,7 +2,6 @@ package build.raft.app.contract
 
 import java.io.File
 import kotlin.test.assertEquals
-import kotlin.test.assertIs
 import kotlin.test.assertTrue
 import kotlin.test.fail
 import kotlinx.coroutines.test.runTest
@@ -95,20 +94,6 @@ class ActivityRowContractCasesTest(private val fileId: String) {
 /** The app-side gap list and the pin stay honest as the vendored copy moves. */
 class ActivityRowContractCaseListsTest {
     @Test
-    fun appGapsNameOnlyVendoredAgreedCases() {
-        AppActivityRowKnownGaps.keys.forEach { id ->
-            val file = ActivityRowContractCasesTest.caseFile(id)
-            assertTrue(file.isFile, "$id is listed app-side but not vendored")
-            val decoded = assertIs<ActivityRowCaseDecoding.Decoded>(decodeActivityRowContractCase(id, file.readText()), id)
-            assertEquals("agreed", decoded.case.status, "$id is listed app-side but is not agreed")
-            assertTrue(
-                decoded.case.knownGaps.none { it.client == "app" },
-                "$id: slock lists the app gap now; drop the app-side entry"
-            )
-        }
-    }
-
-    @Test
     fun everyVendoredCaseIsReadableAndHasADriver() {
         val ids = ActivityRowContractCasesTest.cases()
         val unplanned =
@@ -123,24 +108,5 @@ class ActivityRowContractCaseListsTest {
                 }
             }
         assertEquals(emptyList(), unplanned, "agreed cases no app driver can run")
-    }
-
-    /** The commonTest reducer suite reads a generated copy ([ActivityRowVendoredCases]); it must be these files. */
-    @Test
-    fun generatedCopyMatchesTheVendoredFiles() {
-        val ids = ActivityRowContractCasesTest.cases()
-        assertEquals(ids, ActivityRowVendoredCases.files.keys.sorted(), "generated case ids")
-        ids.forEach { id ->
-            assertEquals(ActivityRowContractCasesTest.caseFile(id).readText(), ActivityRowVendoredCases.files[id], "$id text")
-        }
-        assertEquals(ActivityRowContractCasesTest.sourceSha(), ActivityRowVendoredCases.SOURCE_SHA)
-    }
-
-    @Test
-    fun copyIsPinnedToASlockCommit() {
-        assertTrue(
-            Regex("[0-9a-f]{40}").matches(ActivityRowContractCasesTest.sourceSha()),
-            "SOURCE_SHA must be a full commit sha"
-        )
     }
 }

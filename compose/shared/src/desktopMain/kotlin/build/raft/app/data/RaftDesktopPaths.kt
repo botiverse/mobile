@@ -15,6 +15,9 @@ import java.nio.file.attribute.PosixFilePermissions
  * auth session, so it is private to the user (0700) where the file system has POSIX permissions.
  */
 object RaftDesktopPaths {
+    @Volatile
+    private var dataDirInitialized = false
+
     val dataDir: File by lazy {
         val override = System.getProperty("raft.desktop.dataDir")?.takeIf { it.isNotBlank() }
         val home = System.getProperty("user.home").orEmpty()
@@ -29,8 +32,13 @@ object RaftDesktopPaths {
         dir.apply {
             mkdirs()
             RaftDesktopPrivateFiles.restrictToOwner(toPath(), directory = true)
+            dataDirInitialized = true
         }
     }
+
+    /** Returns the persistent WebView data directory only if desktop storage was initialized and it exists. */
+    internal fun existingWebViewDataDirOrNull(): File? =
+        if (dataDirInitialized) File(dataDir, "webview").takeIf { it.isDirectory } else null
 
     val keyValueDir: File get() = File(dataDir, "kv").apply { mkdirs() }
 

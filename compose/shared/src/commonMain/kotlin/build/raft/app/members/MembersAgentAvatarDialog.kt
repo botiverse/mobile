@@ -384,12 +384,15 @@ internal fun MembersAgentAvatarDialog(
     }
 }
 
-/** Web AlertDialog `agent-profile-edit-discard`: Keep Editing, then the red Discard Changes. */
+/**
+ * Web AlertDialog `agent-profile-edit-discard`: Discard changes?, Keep Editing, then the red
+ * Discard (a question with two buttons, slock #14958; the web keeps this one an AlertDialog).
+ */
 @Composable
 private fun MembersAgentAvatarDiscardDialog(onKeepEditing: () -> Unit, onDiscard: () -> Unit) {
     RaftDialog(
         onDismissRequest = onKeepEditing,
-        title = stringResource(Res.string.member_avatar_unsaved_title),
+        title = stringResource(Res.string.member_avatar_discard_title),
         description = stringResource(Res.string.member_avatar_discard_body),
         dismissOnClickOutside = false,
         showClose = false,
@@ -401,7 +404,7 @@ private fun MembersAgentAvatarDiscardDialog(onKeepEditing: () -> Unit, onDiscard
                 size = RaftButtonSize.Lg
             )
             RaftButton(
-                text = stringResource(Res.string.member_avatar_discard_changes),
+                text = stringResource(Res.string.member_avatar_discard),
                 onClick = onDiscard,
                 variant = RaftButtonVariant.Danger,
                 size = RaftButtonSize.Lg
@@ -429,9 +432,10 @@ internal fun ColumnScope.MembersAgentAvatarDialogBody(
 ) {
     val colors = RaftTheme.colors
     val typography = RaftTheme.typography
-    val defaultKey = PixelAvatarActiveDefaultKey
+    val avatarData = RaftPixelAvatarRuntime.observeCurrent()
+    val defaultKey = avatarData.defaultKey
     val selectedPreset = membersAgentAvatarSelectedPreset(draft, member, defaultKey)
-    val groups = remember(RaftPixelAvatarRuntime.current) { pixelAvatarPickerGroups() }
+    val groups = remember(avatarData) { pixelAvatarPickerGroups(avatarData) }
     val scroll = rememberScrollState()
     // The banner sits under the preview, so a failure shows where the list starts.
     LaunchedEffect(error) { if (error != null) scroll.animateScrollTo(0) }

@@ -45,12 +45,6 @@ class LiveAgentActivityScreenshotTest {
     val activities = RobolectricComposeActivityRule()
 
     @Test
-    fun homeBarLight() = capture("screens.home.working-now", RaftAppAppearance.Light) { PhoneHome(open = false) }
-
-    @Test
-    fun homeBarDark() = capture("screens.home.working-now.dark", RaftAppAppearance.Dark) { PhoneHome(open = false) }
-
-    @Test
     fun homeBarOpenLight() = capture("screens.home.working-now.open", RaftAppAppearance.Light) { PhoneHome(open = true) }
 
     @Test
@@ -70,9 +64,6 @@ class LiveAgentActivityTopBarScreenshotTest {
 
     @Test
     fun topBarLight() = captureLiveAgentActivity(activities, "shell.top-bar.working-now", RaftAppAppearance.Light) { WideTopBar() }
-
-    @Test
-    fun topBarDark() = captureLiveAgentActivity(activities, "shell.top-bar.working-now.dark", RaftAppAppearance.Dark) { WideTopBar() }
 }
 
 private fun captureLiveAgentActivity(

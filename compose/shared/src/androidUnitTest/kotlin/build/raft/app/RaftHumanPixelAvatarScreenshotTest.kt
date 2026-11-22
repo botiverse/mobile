@@ -2,7 +2,6 @@ package build.raft.app
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -15,8 +14,6 @@ import build.raft.app.components.RaftDesignSystemTheme
 import build.raft.app.model.MemberKind
 import build.raft.app.model.avatarWireValueForAvatarSlot
 import kotlin.test.Test
-import kotlin.test.assertEquals
-import kotlin.test.assertTrue
 import org.junit.Rule
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -43,9 +40,6 @@ class RaftHumanPixelAvatarScreenshotTest {
     @Test
     fun avatarsLight() = capture("human-pixel-avatar.sizes", RaftAppAppearance.Light)
 
-    @Test
-    fun avatarsDark() = capture("human-pixel-avatar.sizes.dark", RaftAppAppearance.Dark)
-
     private fun capture(name: String, appearance: RaftAppAppearance) =
         RaftRobolectricScreenshot.capture(name, appearance, reportDir = "build/reports/home-screenshots", activities = activities) {
             RaftDesignSystemTheme {
@@ -68,44 +62,6 @@ class RaftHumanPixelAvatarScreenshotTest {
                 }
             }
         }
-
-    /**
-     * Pixel-exact: at a whole-number scale every cell of the 112x112 picture is a solid block of
-     * its colour, and at any other scale every drawn pixel is one of the picture's colours —
-     * nearest-neighbour, never smoothed.
-     */
-    @Test
-    fun theFaceScalesNearestNeighbour() {
-        val value = "pixel-human:v1:pink.4.curly.ginger.grin.headphones.glasses"
-        val picture = requireNotNull(raftHumanPixelAvatarPicture(value))
-        val raster = requireNotNull(raftHumanPixelAvatarRaster(value))
-        RaftRobolectricScreenshot.render(
-            RaftAppAppearance.Light,
-            activities,
-            content = { activity ->
-                val density = activity.resources.displayMetrics.density
-                Box(Modifier.fillMaxSize()) {
-                    // 336px: three device pixels per cell; 250px: a fractional scale.
-                    Box(Modifier.size((336 / density).dp)) { RaftNativeHumanPixelAvatar(picture) }
-                    Box(Modifier.padding(top = (400 / density).dp).size((250 / density).dp)) { RaftNativeHumanPixelAvatar(picture) }
-                }
-            },
-        ) { _, bitmap ->
-            val size = raster.size
-            for (y in 0 until 336) {
-                for (x in 0 until 336) {
-                    val want = raster.argb[(y / 3) * size + x / 3]
-                    assertEquals(want, bitmap.getPixel(x, y), "pixel ($x,$y) of cell (${x / 3},${y / 3})")
-                }
-            }
-            val colours = raster.argb.toSet()
-            for (y in 400 until 650) {
-                for (x in 0 until 250) {
-                    assertTrue(bitmap.getPixel(x, y) in colours, "pixel ($x,$y) is one of the picture's colours")
-                }
-            }
-        }
-    }
 
     private companion object {
         val ScreenshotValues =

@@ -451,7 +451,7 @@ class RealConversationRepository private constructor(
         if (request.channelId.value.isBlank() || request.filename.isBlank() || request.mimeType.isBlank() ||
             request.sizeBytes <= 0L || request.clientRequestId.isBlank()
         ) {
-            return DataResult.Error(ScreenError("attachment_upload_session_invalid_request", retryable = false))
+            return DataResult.Error(ScreenError("attachment_upload_session_invalid_request", retryable = false, traceId = null))
         }
         return executeConversation(
             emptyReason = EmptyReason.NoMessages,
@@ -475,7 +475,7 @@ class RealConversationRepository private constructor(
         if (directSessionAuthority == null) return directSessionAuthorityRequired()
         currentContext() ?: return authRequired()
         if (bytes.isEmpty()) {
-            return DataResult.Error(ScreenError("attachment_upload_session_empty_body", retryable = false))
+            return DataResult.Error(ScreenError("attachment_upload_session_empty_body", retryable = false, traceId = null))
         }
         return executeAttachmentUploadUnit(
             source = "attachment_upload_session_put_bytes",
@@ -498,7 +498,7 @@ class RealConversationRepository private constructor(
         if (directSessionAuthority == null) return directSessionAuthorityRequired()
         currentContext() ?: return authRequired()
         if (file.fileRef.isNullOrBlank() && file.bytes.isEmpty()) {
-            return DataResult.Error(ScreenError("attachment_upload_session_empty_body", retryable = false))
+            return DataResult.Error(ScreenError("attachment_upload_session_empty_body", retryable = false, traceId = null))
         }
         return executeAttachmentUploadUnit(
             source = "attachment_upload_session_put_file",
@@ -521,7 +521,7 @@ class RealConversationRepository private constructor(
         val normalizedRef = file.fileRef?.trim()?.takeIf { it.isNotBlank() }
         if (normalizedRef != null && file.bytes.isNotEmpty()) {
             return DataResult.Error(
-                ScreenError("attachment_file_input_conflict", retryable = false)
+                ScreenError("attachment_file_input_conflict", retryable = false, traceId = null)
             )
         }
         val preparation = networkClient.prepareAttachmentUploadFile(
@@ -531,7 +531,7 @@ class RealConversationRepository private constructor(
             is RaftPlatformFilePreparationResult.Ready -> {
                 val size = preparation.sizeBytes
                 if (size <= 0L) {
-                    DataResult.Error(ScreenError("attachment_size_unavailable", retryable = false))
+                    DataResult.Error(ScreenError("attachment_size_unavailable", retryable = false, traceId = null))
                 } else {
                     DataResult.Content(
                         file.copy(
@@ -543,12 +543,13 @@ class RealConversationRepository private constructor(
             }
             is RaftPlatformFilePreparationResult.Rejected ->
                 if (preparation.code == "auth_authority_changed") {
-                    DataResult.Error(ScreenError("auth_authority_changed", retryable = true))
+                    DataResult.Error(ScreenError("auth_authority_changed", retryable = true, traceId = null))
                 } else {
                     DataResult.Error(
                         ScreenError(
                             code = preparation.code.ifBlank { "attachment_size_unavailable" },
                             retryable = preparation.retryable,
+                            traceId = null,
                         )
                     )
                 }
@@ -562,7 +563,7 @@ class RealConversationRepository private constructor(
         val context = currentContext() ?: return authRequired()
         val normalizedId = uploadId.trim()
         if (normalizedId.isBlank()) {
-            return DataResult.Error(ScreenError("attachment_upload_session_invalid_request", retryable = false))
+            return DataResult.Error(ScreenError("attachment_upload_session_invalid_request", retryable = false, traceId = null))
         }
         return executeConversation(
             emptyReason = EmptyReason.NoMessages,
@@ -585,7 +586,7 @@ class RealConversationRepository private constructor(
         val context = currentContext() ?: return authRequired()
         val normalizedId = uploadId.trim()
         if (normalizedId.isBlank()) {
-            return DataResult.Error(ScreenError("attachment_upload_session_invalid_request", retryable = false))
+            return DataResult.Error(ScreenError("attachment_upload_session_invalid_request", retryable = false, traceId = null))
         }
         return executeConversation(
             emptyReason = EmptyReason.NoMessages,
@@ -608,7 +609,7 @@ class RealConversationRepository private constructor(
         val context = currentContext() ?: return authRequired()
         val normalizedId = uploadId.trim()
         if (normalizedId.isBlank()) {
-            return DataResult.Error(ScreenError("attachment_upload_session_invalid_request", retryable = false))
+            return DataResult.Error(ScreenError("attachment_upload_session_invalid_request", retryable = false, traceId = null))
         }
         return executeConversation(
             emptyReason = EmptyReason.NoMessages,
@@ -1330,11 +1331,15 @@ class RealConversationRepository private constructor(
             } catch (cancellation: kotlinx.coroutines.CancellationException) {
                 throw cancellation
             } catch (exception: Exception) {
-                return DataResult.Error(ScreenError(code = "task_conversation_ref_network", retryable = true))
+                return DataResult.Error(ScreenError(code = "task_conversation_ref_network", retryable = true, traceId = null))
             }
         if (!response.isSuccessful) {
             return DataResult.Error(
-                ScreenError(code = "task_conversation_ref_${response.code}", retryable = response.code >= 500)
+                ScreenError(
+                    code = "task_conversation_ref_${response.code}",
+                    retryable = response.code >= 500,
+                    traceId = response.traceId,
+                )
             )
         }
         val ref = parseTaskConversationChannelDetail(response.bodyText.orEmpty())
@@ -1412,11 +1417,11 @@ class RealConversationRepository private constructor(
                 effectiveEnvironmentId = routeEnvironmentIdProvider?.invoke(),
             )
         ) {
-            return DataResult.Error(ScreenError("external_share_authority_changed", retryable = true))
+            return DataResult.Error(ScreenError("external_share_authority_changed", retryable = true, traceId = null))
         }
         if (request.files.isEmpty()) return DataResult.Empty(EmptyReason.NoMessages)
         val boundNetwork = networkClient as? AuthorityBoundRaftNetworkClient
-            ?: return DataResult.Error(ScreenError("attachment_upload_authority_binding_unsupported", retryable = false))
+            ?: return DataResult.Error(ScreenError("attachment_upload_authority_binding_unsupported", retryable = false, traceId = null))
         return executeConversation(
             emptyReason = EmptyReason.NoMessages,
             block = {
@@ -1521,7 +1526,7 @@ class RealConversationRepository private constructor(
             when (action.trim().lowercase()) {
                 "invite", "add" -> "invite"
                 "notify", "notify_only" -> "notify"
-                else -> return DataResult.Error(ScreenError(code = "mention_action_unsupported", retryable = false))
+                else -> return DataResult.Error(ScreenError(code = "mention_action_unsupported", retryable = false, traceId = null))
             }
         val normalizedResolutionIds = resolutionIds.map { it.trim() }.filter { it.isNotBlank() }.distinct()
         if (normalizedResolutionIds.isEmpty()) return DataResult.Empty(EmptyReason.NoMessages)
@@ -2002,7 +2007,7 @@ class RealConversationRepository private constructor(
             warningLogger(
                 "conversation_binary_failed source=$source exception=${exception::class.simpleName}"
             )
-            DataResult.Error(ScreenError(code = "network_request_failed", retryable = true))
+            DataResult.Error(ScreenError(code = "network_request_failed", retryable = true, traceId = null))
         }
     }
 
@@ -2600,6 +2605,7 @@ private suspend fun <T> executeConversationWithDiagnostics(
                 code = "network_parse_failed",
                 retryable = true,
                 recoverySessionIds = recoverySessionIds,
+                traceId = null,
             )
         )
     }
@@ -2608,6 +2614,7 @@ private suspend fun <T> executeConversationWithDiagnostics(
 private fun <T> HomeNetworkResponse.toConversationDataError(): DataResult<T> {
     val serverMessage = conversationRouteErrorTextOrNull()
     val serverCode = conversationRouteStructuredErrorCodeOrNull()
+    val responseTraceId = traceId
     return when (code) {
         0 ->
             DataResult.Error(
@@ -2615,6 +2622,7 @@ private fun <T> HomeNetworkResponse.toConversationDataError(): DataResult<T> {
                     code = errorBodyText.toConversationTransportErrorCode(),
                     retryable = true,
                     serverCode = serverCode,
+                    traceId = null,
                 )
             )
         401 -> authRequired(serverMessage)
@@ -2626,6 +2634,7 @@ private fun <T> HomeNetworkResponse.toConversationDataError(): DataResult<T> {
                         retryable = false,
                         serverMessage = serverMessage,
                         serverCode = serverCode,
+                        traceId = responseTraceId,
                     )
                 )
             } else {
@@ -2634,7 +2643,8 @@ private fun <T> HomeNetworkResponse.toConversationDataError(): DataResult<T> {
                         code = "server_forbidden",
                         requiredCapability = "server_access",
                         serverMessage = serverMessage,
-                        serverCode = serverCode
+                        serverCode = serverCode,
+                        traceId = responseTraceId,
                     )
                 )
             }
@@ -2646,6 +2656,7 @@ private fun <T> HomeNetworkResponse.toConversationDataError(): DataResult<T> {
                     serverMessage = serverMessage,
                     serverCode = serverCode,
                     retryAfterSeconds = raftRetryAfterSecondsIfRwOverloaded(),
+                    traceId = responseTraceId,
                 )
             )
         413 ->
@@ -2655,6 +2666,7 @@ private fun <T> HomeNetworkResponse.toConversationDataError(): DataResult<T> {
                     retryable = false,
                     serverMessage = serverMessage,
                     serverCode = serverCode,
+                    traceId = responseTraceId,
                 )
             )
         else ->
@@ -2670,6 +2682,7 @@ private fun <T> HomeNetworkResponse.toConversationDataError(): DataResult<T> {
                         } else {
                             null
                         },
+                    traceId = responseTraceId,
                 )
             )
     }
@@ -2738,5 +2751,6 @@ private fun directSessionAuthorityRequired(): DataResult.Error =
         ScreenError(
             code = "attachment_upload_authority_binding_required",
             retryable = false,
+            traceId = null,
         )
     )

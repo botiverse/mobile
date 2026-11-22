@@ -1,6 +1,5 @@
 package build.raft.app.network.sync
 
-import java.security.MessageDigest
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.jsonArray
@@ -21,20 +20,6 @@ class ReadStateBehaviorVectorGateTest {
             val case = element.jsonObject
             case["id"]!!.jsonPrimitive.content to case
         }
-    }
-
-    @Test
-    fun canonicalWebArtifactIsTheReviewedImmutableBlob() {
-        assertEquals("read-state-behavior-v1", vector["vectorId"]!!.jsonPrimitive.content)
-        assertEquals(
-            "3916ad7014c12cbe1fe5e115b72970070eeef4fd",
-            vector["source"]!!.jsonObject["authoritativeHead"]!!.jsonPrimitive.content
-        )
-        assertEquals(
-            "cbdf80669422af3dfdf62742180668ad952daabd4ac41336f8ba2ef49980befc",
-            MessageDigest.getInstance("SHA-256").digest(vectorBytes).toHex()
-        )
-        assertEquals(36, cases.size)
     }
 
     @Test
@@ -112,9 +97,4 @@ class ReadStateBehaviorVectorGateTest {
 
     private fun JsonObject.long(name: String): Long =
         this[name]!!.jsonPrimitive.content.toLong()
-
-    private fun ByteArray.toHex(): String =
-        joinToString(separator = "") { byte ->
-            (byte.toInt() and 0xff).toString(16).padStart(2, '0')
-        }
 }

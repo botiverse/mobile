@@ -1,5 +1,10 @@
 package build.raft.app.shared
 
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -23,86 +28,47 @@ class AndroidDefaultNetworkCallbackLifecycleTest {
         assertTrue("hidden while the service runs or starts", wanted(foreground = false, keepAlive = false, service = true))
     }
 
-    private class FakeConnectivity {
-        val calls = mutableListOf<String>()
-        var failRegister = false
-        var failUnregister = false
-        fun registration() =
-            AndroidDefaultNetworkCallbackRegistration(
-                register = {
-                    if (failRegister) throw IllegalStateException("too many requests")
-                    calls += "register"
-                },
-                unregister = {
-                    if (failUnregister) throw IllegalArgumentException("not registered")
-                    calls += "unregister"
-                },
-            )
-    }
-
     @Test
-    fun hiddenUnregistersAndShownRegistersAgainOnce() {
-        val connectivity = FakeConnectivity()
-        val registration = connectivity.registration()
+    fun backgroundWhileRegisterInFlightStillUnregistersAndNeverLeaks() = runTest {
+        val ioScope = CoroutineScope(SupervisorJob() + StandardTestDispatcher(testScheduler))
+        try {
+            val events = mutableListOf<String>()
+            val statuses = mutableListOf<Pair<Boolean, String>>()
+            var foreground = false
+            lateinit var coordinator: AndroidAsyncNetworkCallbackCoordinator
+            val registration =
+                AndroidDefaultNetworkCallbackRegistration(
+                    register = {
+                        events += "register"
+                        // Simulate Main thread transitioning to background while register is in flight.
+                        foreground = false
+                        coordinator.onBackground("app_hidden")
+                    },
+                    unregister = { events += "unregister" },
+                )
+            coordinator =
+                AndroidAsyncNetworkCallbackCoordinator(
+                    ioScope = ioScope,
+                    registration = registration,
+                    isWanted = { foreground },
+                    queryOnline = {
+                        events += "query"
+                        true
+                    },
+                    onOnlineStatus = { online, source -> statuses += online to source },
+                    onAppBackgrounded = { events += "backgrounded" },
+                    onTransition = { _, _ -> },
+                )
 
-        assertEquals(AndroidNetworkCallbackTransition.Registered, registration.sync(wanted = true))
-        assertEquals(AndroidNetworkCallbackTransition.Unchanged, registration.sync(wanted = true))
-        assertEquals(AndroidNetworkCallbackTransition.Unregistered, registration.sync(wanted = false))
-        assertEquals(AndroidNetworkCallbackTransition.Unchanged, registration.sync(wanted = false))
-        assertEquals(AndroidNetworkCallbackTransition.Registered, registration.sync(wanted = true))
+            foreground = true
+            coordinator.onForeground("app_shown")
+            testScheduler.advanceUntilIdle()
 
-        assertEquals(listOf("register", "unregister", "register"), connectivity.calls)
-        assertTrue(registration.registered)
-    }
-
-    @Test
-    fun aFailedRegisterIsTriedAgainOnTheNextSync() {
-        val connectivity = FakeConnectivity()
-        val registration = connectivity.registration()
-        connectivity.failRegister = true
-
-        assertEquals(AndroidNetworkCallbackTransition.RegisterFailed, registration.sync(wanted = true))
-        assertFalse(registration.registered)
-
-        connectivity.failRegister = false
-        assertEquals(AndroidNetworkCallbackTransition.Registered, registration.sync(wanted = true))
-    }
-
-    @Test
-    fun aFailedUnregisterStillCountsAsGoneSoTheNextShowRegisters() {
-        val connectivity = FakeConnectivity()
-        val registration = connectivity.registration()
-        registration.sync(wanted = true)
-        connectivity.failUnregister = true
-
-        assertEquals(AndroidNetworkCallbackTransition.UnregisterFailed, registration.sync(wanted = false))
-        assertFalse(registration.registered)
-        assertEquals(AndroidNetworkCallbackTransition.Registered, registration.sync(wanted = true))
-    }
-
-    @Test
-    fun hiddenCallbacksAreSummarizedOncePerMinute() {
-        val counter = AndroidHiddenNetworkCallbackCounter(windowMillis = 60_000L)
-
-        assertNull("foreground callbacks are not counted", counter.record(AndroidNetworkCallbackKind.Capabilities, hidden = false, nowMillis = 0L))
-        assertNull(counter.record(AndroidNetworkCallbackKind.Capabilities, hidden = true, nowMillis = 1_000L))
-        assertNull(counter.record(AndroidNetworkCallbackKind.Capabilities, hidden = true, nowMillis = 2_000L))
-        assertNull(counter.record(AndroidNetworkCallbackKind.Lost, hidden = true, nowMillis = 30_000L))
-        assertNull(counter.record(AndroidNetworkCallbackKind.Available, hidden = true, nowMillis = 60_999L))
-
-        val summary = counter.record(AndroidNetworkCallbackKind.LinkProperties, hidden = true, nowMillis = 61_000L)
-        assertEquals(
-            "app_scope_network_callback_hidden_summary windowMs=60000 total=4 " +
-                "available=1 capabilities=2 link_properties=0 lost=1",
-            summary,
-        )
-
-        // The callback that closed the window opens the next one.
-        assertEquals(
-            "app_scope_network_callback_hidden_summary windowMs=4000 total=1 " +
-                "available=0 capabilities=0 link_properties=1 lost=0",
-            counter.flush(65_000L),
-        )
-        assertNull("nothing left to report", counter.flush(70_000L))
+            assertFalse("callback registered before rapid background must be unregistered", registration.registered)
+            assertEquals(listOf("register", "backgrounded", "unregister"), events)
+            assertTrue("superseded foreground status query must be skipped", statuses.isEmpty())
+        } finally {
+            ioScope.cancel()
+        }
     }
 }

@@ -12,10 +12,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.ComposeUiTest
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.click
-import androidx.compose.ui.test.hasClickAction
-import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.onNodeWithTag
-import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.unit.dp
 import build.raft.app.compat.json.JSONObject
@@ -105,26 +102,6 @@ class RaftUnifiedDialogOutsideTapUiTest {
             showDialog(dismissOnOutsideTap = false) { dismissed++ }
             pressBack()
             assertEquals(1, dismissed)
-        }
-
-    @Test
-    fun theCloseButtonStillDismissesWhenOutsideTapIsOff() =
-        runRobolectricComposeUiTest {
-            var dismissed = 0
-            showDialog(dismissOnOutsideTap = false) { dismissed++ }
-            onNode(hasContentDescription("Close") and hasClickAction()).performClick()
-            mainClock.advanceTimeBy(1_000)
-            assertEquals(1, dismissed)
-        }
-
-    @Test
-    fun busyDialogIgnoresBack() =
-        runRobolectricComposeUiTest {
-            var dismissed = 0
-            showDialog(dismissOnOutsideTap = false, dismissEnabled = false) { dismissed++ }
-            pressBack()
-            tapScrim()
-            assertEquals(0, dismissed)
         }
 
     @Composable

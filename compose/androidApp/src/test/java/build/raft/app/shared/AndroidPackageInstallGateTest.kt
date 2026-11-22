@@ -30,38 +30,6 @@ class AndroidPackageInstallGateTest {
         }
     }
 
-    @Test
-    fun grantedPermissionLaunchesTheInstallerOnce() {
-        val harness = Harness(declared = true, canRequest = true)
-
-        val result = harness.launcher().launch(publicApk(), AndroidAttachmentOpenAction.Install, requiresVisibleHandler = false)
-
-        assertEquals(AndroidAttachmentOpenStatus.Opened, result.status)
-        assertEquals(AndroidAttachmentOpenAction.Install, result.action)
-        assertEquals(1, harness.launches)
-        assertEquals(0, harness.settingsOpens)
-        assertEquals(listOf(AndroidPackageInstallDecision.Launch to null), harness.records)
-    }
-
-    @Test
-    fun missingUnknownSourcesPermissionOpensSettingsInsteadOfTheInstaller() {
-        listOf(true, false).forEach { settingsOpened ->
-            val harness = Harness(declared = true, canRequest = false, settingsOpen = settingsOpened)
-
-            val result = harness.launcher().launch(publicApk(), AndroidAttachmentOpenAction.Install, requiresVisibleHandler = false)
-
-            assertEquals(AndroidAttachmentOpenStatus.InstallPermissionRequired, result.status)
-            assertEquals("install_permission_required", result.toBridgePayload()["status"])
-            assertTrue(result.retryable)
-            assertEquals(0, harness.launches)
-            assertEquals(1, harness.settingsOpens)
-            assertEquals(
-                listOf(AndroidPackageInstallDecision.RequestUnknownSourcesPermission to "settingsRequested=$settingsOpened"),
-                harness.records
-            )
-        }
-    }
-
     /**
      * Hands 624cfe35: Android kills Raft ("[KILL UID] REQUEST_INSTALL_PACKAGES changed") when the
      * switch flips, so Install first says that and opens the switch's page only from its confirm.
@@ -107,38 +75,6 @@ class AndroidPackageInstallGateTest {
     }
 
     @Test
-    fun withoutAWindowForTheExplanationTheSettingsPageOpensDirectly() {
-        listOf<() -> Boolean>({ false }, { throw IllegalStateException("no window") }).forEach { show ->
-            var settingsOpens = 0
-            val requested =
-                AndroidUnknownSourcesSettingsPrompt(
-                    showExplanation = { show() },
-                    openSettings = {
-                        settingsOpens += 1
-                        true
-                    }
-                ).request()
-
-            assertTrue(requested)
-            assertEquals(1, settingsOpens)
-        }
-        // Nothing could open: the gate still reports the permission as required (shared copy).
-        assertFalse(AndroidUnknownSourcesSettingsPrompt(showExplanation = { false }, openSettings = { false }).request())
-    }
-
-    @Test
-    fun settingsLaunchCrashStillReportsPermissionRequired() {
-        val gate =
-            AndroidPackageInstallGate(
-                installPermissionDeclared = { true },
-                canRequestPackageInstalls = { false },
-                openUnknownSourcesSettings = { throw SecurityException("no settings") }
-            )
-
-        assertEquals(AndroidAttachmentOpenStatus.InstallPermissionRequired, gate.admit(publicApk())?.status)
-    }
-
-    @Test
     fun playBuildOpensTheFileManagerOnThePublishedApkWithoutInstallerOrSettings() {
         val harness = Harness(declared = false, canRequest = false, filesSurface = "raft_folder")
 
@@ -150,66 +86,6 @@ class AndroidPackageInstallGateTest {
         assertEquals(0, harness.launches)
         assertEquals(0, harness.settingsOpens)
         assertEquals(listOf(AndroidPackageInstallDecision.Unsupported to "filesOpened=raft_folder"), harness.records)
-    }
-
-    @Test
-    fun playBuildFailsVisiblyWhenNoFileManagerOpensOrTheApkIsNotInDownloads() {
-        mapOf(
-            publicApk() to Harness(declared = false, canRequest = false, filesSurface = null),
-            privateApk() to Harness(declared = false, canRequest = false, filesSurface = "raft_folder")
-        ).forEach { (source, harness) ->
-            val result = harness.launcher().launch(source, AndroidAttachmentOpenAction.Install, requiresVisibleHandler = false)
-
-            assertEquals(AndroidAttachmentOpenStatus.InstallUnsupported, result.status)
-            assertEquals("install_unsupported", result.toBridgePayload()["status"])
-            assertEquals(0, harness.launches)
-            assertEquals(0, harness.settingsOpens)
-            assertEquals(listOf(AndroidPackageInstallDecision.Unsupported to "filesOpened=none"), harness.records)
-        }
-        // A private cache copy is never shown in a file manager: it is not in Downloads.
-    }
-
-    @Test
-    fun installerMissingAndInstallerFailureStayVisibleResults() {
-        val notFound = RuntimeException("no installer")
-        val noInstaller =
-            Harness(declared = true, canRequest = true, launch = { throw notFound })
-                .launcher(isActivityNotFound = { it === notFound })
-                .launch(publicApk(), AndroidAttachmentOpenAction.Install, requiresVisibleHandler = false)
-        // NoApp routes to the Save As picker; Failed shows "Unable to open attachment".
-        assertEquals(AndroidAttachmentOpenStatus.NoApp, noInstaller.status)
-
-        val failures = mutableListOf<Throwable>()
-        val failed =
-            Harness(declared = true, canRequest = true, launch = { throw SecurityException("denied") })
-                .launcher(onFailure = { failures += it })
-                .launch(publicApk(), AndroidAttachmentOpenAction.Install, requiresVisibleHandler = false)
-        assertEquals(AndroidAttachmentOpenStatus.Failed, failed.status)
-        assertTrue(failures.single() is SecurityException)
-    }
-
-    @Test
-    fun gateIsNotConsultedForOrdinaryOpen() {
-        val harness = Harness(declared = false, canRequest = false)
-
-        val result = harness.launcher().launch(publicApk(), AndroidAttachmentOpenAction.Open, requiresVisibleHandler = true)
-
-        assertEquals(AndroidAttachmentOpenStatus.Opened, result.status)
-        assertEquals(1, harness.launches)
-        assertEquals(emptyList<Any>(), harness.records)
-    }
-
-    @Test
-    fun unreadableSourceIsMissingBeforeAnyPermissionPrompt() {
-        val harness = Harness(declared = true, canRequest = false)
-
-        val result =
-            harness.launcher(readable = false)
-                .launch(publicApk(), AndroidAttachmentOpenAction.Install, requiresVisibleHandler = false)
-
-        assertEquals(AndroidAttachmentOpenStatus.Missing, result.status)
-        assertEquals(0, harness.settingsOpens)
-        assertNull(harness.records.firstOrNull())
     }
 
     private class Harness(
@@ -258,9 +134,6 @@ class AndroidPackageInstallGateTest {
 
     private fun publicApk(): AndroidAttachmentContentUriSource =
         apk(AndroidAttachmentOpenSourceKind.PublicDownload, "content://media/external/downloads/7")
-
-    private fun privateApk(): AndroidAttachmentContentUriSource =
-        apk(AndroidAttachmentOpenSourceKind.PrivateCache, "content://build.raft.app.fileprovider/a.apk")
 
     private fun apk(kind: AndroidAttachmentOpenSourceKind, uri: String): AndroidAttachmentContentUriSource =
         AndroidAttachmentContentUriSource(

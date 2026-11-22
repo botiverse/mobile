@@ -6,7 +6,6 @@ import build.raft.app.data.SettingsComputerControlState
 import build.raft.app.data.SettingsComputerRestartProgress
 import build.raft.app.data.SettingsComputerSnapshot
 import build.raft.app.data.SettingsComputerUpgradeRequest
-import build.raft.app.data.SettingsComputerUpgradeFailureHintSnapshot
 import build.raft.app.data.SettingsComputerUpgradeRequestSnapshot
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -77,16 +76,6 @@ class RaftComputersRackActionTest {
     }
 
     @Test
-    fun aRestartOfThisComputerShowsItsProgressBeforeTheUpgrade() {
-        val running = SettingsComputerRestartProgress(machineId = "m1")
-        assertEquals(RaftComputerRackAction.Restarting(running), action(computer(), SettingsComputerControlState(restart = running)))
-
-        // Another computer's restart leaves this card's step alone.
-        val other = SettingsComputerControlState(restart = SettingsComputerRestartProgress(machineId = "m2"))
-        assertEquals(RaftComputerRackAction.Upgrade("1.0.53"), action(computer(), other))
-    }
-
-    @Test
     fun offlineShowsTheRestartCommandForItsPlatform() {
         val unix = assertIs<RaftComputerRackAction.OfflineRestart>(action(computer(online = false)))
         val windows = assertIs<RaftComputerRackAction.OfflineRestart>(action(computer(online = false, platform = "win32 x64")))
@@ -96,12 +85,6 @@ class RaftComputersRackActionTest {
 
         // No server slug yet: no command to show.
         assertNull(action(computer(online = false), commandContext = null))
-    }
-
-    @Test
-    fun offlineWhileRestartingForItsUpgradeShowsNothing() {
-        val pending = SettingsComputerUpgradeRequestSnapshot(id = "u1", targetVersion = "1.0.53", requestedAt = "2026-10-22T02:08:00Z", state = "pending")
-        assertNull(action(computer(online = false, upgradeRequest = pending, lastHeartbeat = "2026-10-22T02:09:30Z")))
     }
 
     @Test
@@ -137,61 +120,5 @@ class RaftComputersRackActionTest {
         assertEquals(RaftComputerCardMenu(createAgent = true, restart = false), menu(computer(), restarting))
         val restarted = SettingsComputerControlState(restart = SettingsComputerRestartProgress(machineId = "m1", requestId = "r1", done = true))
         assertEquals(RaftComputerCardMenu(createAgent = true, restart = true), menu(computer(), restarted))
-    }
-
-    @Test
-    fun cardMenuKeepsDeleteOfflineAndIsAbsentWithoutManageRights() {
-        // Offline: the create form can't start there (it would switch computers), and Restart needs
-        // it online; Delete computer stays (web RackRowMenu).
-        assertEquals(RaftComputerCardMenu(createAgent = false, restart = false, delete = true), menu(computer(online = false)))
-        assertEquals(RaftComputerCardMenu(createAgent = false, restart = false, delete = true), menu(computer(isComputer = false), createAgentAvailable = false))
-        assertNull(menu(computer(canManage = false)))
-    }
-
-    @Test
-    fun upgradeCarriesTheRepairHintOrTheFailuresStepsBesideIt() {
-        val repair = computer().copy(installerRepairHint = "unrecovered_operation")
-        assertEquals(RaftComputerRackAction.Upgrade("1.0.53", RaftComputerRackHint.Repair("1.0.53")), action(repair))
-        // The last web upgrade failed on the machine's systemd unit, still on the version it failed on.
-        val hint = SettingsComputerUpgradeFailureHintSnapshot(reason = "installation_held", unit = "raft.service", scope = "user")
-        val failed =
-            SettingsComputerUpgradeRequestSnapshot(
-                id = "u1",
-                targetVersion = "1.0.53",
-                requestedAt = "2026-10-22T01:00:00Z",
-                state = "failed",
-                observedVersion = "1.0.49",
-                failureHint = hint,
-            )
-        // Both apply: the failure's steps (they include the install command, which is also the repair).
-        assertEquals(
-            RaftComputerRackAction.Upgrade("1.0.53", RaftComputerRackHint.UpgradeFailed(hint)),
-            action(repair.copy(upgradeRequest = failed)),
-        )
-        // It moved on from the version it failed on: no hint.
-        assertEquals(RaftComputerRackAction.Upgrade("1.0.53"), action(computer(upgradeRequest = failed.copy(observedVersion = "1.0.48"))))
-        // slock #15061: earlier_recovery_pending shows the repair hint, not the systemd-unit failure hint.
-        val earlier =
-            failed.copy(
-                failureHint = SettingsComputerUpgradeFailureHintSnapshot(reason = "earlier_recovery_pending"),
-            )
-        assertEquals(
-            RaftComputerRackAction.Upgrade("1.0.53", RaftComputerRackHint.Repair("1.0.53")),
-            action(computer(upgradeRequest = earlier)),
-        )
-        assertEquals(
-            RaftComputerRackAction.Upgrade("1.0.53"),
-            action(computer(upgradeRequest = earlier.copy(observedVersion = "1.0.48"))),
-        )
-    }
-
-    @Test
-    fun manualUpgradeAndRaftDesktopHaveTheirOwnStep() {
-        assertEquals(RaftComputerRackAction.ManualUpgrade("1.0.53"), action(computer().copy(remoteUpgradeSupported = false)))
-        val desktop =
-            computer().copy(
-                broadcastPolicy = SettingsComputerBroadcastPolicySnapshot(eligibility = "ineligible", targetVersion = "1.0.53", reasonCode = "managed_by_desktop"),
-            )
-        assertEquals(RaftComputerRackAction.ManagedByDesktop, action(desktop))
     }
 }

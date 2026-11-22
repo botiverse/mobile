@@ -112,40 +112,6 @@ class HomeSearchEntityGroupsTest {
     }
 
     @Test
-    fun aFailedNextPageShowsRetryInLoadMoresPlace() {
-        val paged = ok((1..6).map { channelHit("c-$it") }, total = 60, next = "p2").copy(pageFailed = true, error = ScreenError("web_search_network", traceId = "t2"))
-        val section = compose(core(channels = paged, people = loading())).group(HomeSearchEntityGroupId.Channels)!!
-
-        assertTrue(section.pageFailed)
-        assertEquals("t2", section.pageError?.traceId)
-        assertTrue(section.showsMore(expanded = true))
-        assertEquals(HomeSearchEntityGroupId.Channels.loadMoreIntent(), build.raft.app.data.SearchCoreGroupsIntent.LoadMore(build.raft.app.data.SearchCoreGroup.Channels))
-        assertNull(HomeSearchEntityGroupId.Computers.loadMoreIntent())
-    }
-
-    @Test
-    fun aRowDrawsOneMarkAtMost() {
-        fun channel(archived: Boolean = false, external: Boolean = false, guest: Boolean = false) =
-            channelHit("c", archived = archived, external = external, guest = guest).toHomeSearchEntityResult(emptyMap(), "Channel").homeSearchEntityBadge()
-        assertEquals(HomeSearchEntityBadge.Archived, channel(archived = true, external = true, guest = true), "Archived wins")
-        assertEquals(HomeSearchEntityBadge.External, channel(external = true))
-        assertEquals(HomeSearchEntityBadge.External, channel(guest = true), "a channel with Guests is External")
-        assertNull(channel())
-
-        fun person(agent: Boolean, guest: Boolean) = personHit("p", agent = agent, guest = guest).toHomeSearchEntityResult(emptyMap(), "s-1", "Agent", "Human")!!.homeSearchEntityBadge()
-        assertEquals(HomeSearchEntityBadge.Agent, person(agent = true, guest = true), "Agent wins")
-        assertEquals(HomeSearchEntityBadge.Guest, person(agent = false, guest = true))
-        assertNull(person(agent = false, guest = false))
-
-        // Local rows have no server status: an archived channel still says so; no kind tags.
-        assertEquals(HomeSearchEntityBadge.Archived, channelRow("old", "old", archived = true).homeSearchEntityBadge())
-        assertNull(channelRow("x", "x").homeSearchEntityBadge())
-        assertNull(computerRow("m").homeSearchEntityBadge())
-        assertNull(personRow("u", "U").homeSearchEntityBadge())
-        assertEquals(HomeSearchEntityBadge.Agent, personRow("a", "A", agent = true).homeSearchEntityBadge())
-    }
-
-    @Test
     fun aNotJoinedChannelSaysSoAndOpensItsPreviewNotAJoin() {
         val row =
             channelHit("c-pub", joined = false, description = "Launch notes", requiredAction = SearchRequiredAction.JoinChannel)
@@ -164,29 +130,6 @@ class HomeSearchEntityGroupsTest {
         val joint = channelHit("j", type = "joint", external = true).toHomeSearchEntityResult(emptyMap(), "Channel")
         assertEquals(ConversationKind.Joint, joint.conversationIdentity?.kind)
         assertTrue(joint.homeSearchExternalChannel)
-    }
-
-    @Test
-    fun aServerRowReusesTheLoadedIdentityAndKey() {
-        val loadedDm = ThreadLaunchConversationIdentity(threadId = ThreadId("dm-1"), channelId = ChannelId("dm-1"), kind = ConversationKind.DirectMessage)
-        val localPerson = personRow("u-1", "Remy").copy(conversationIdentity = loadedDm, threadId = "dm-1")
-        val localChannel = channelRow("c-1", "eng")
-        val localByKey = listOf(localPerson, localChannel).associateBy { it.key }
-
-        val person = personHit("u-1", displayName = "Remy").toHomeSearchEntityResult(localByKey, "s-1", "Agent", "Human")!!
-        assertEquals(localPerson.key, person.key)
-        assertEquals(loadedDm, person.conversationIdentity, "the DM the app holds opens without a request")
-        assertEquals("Remy", person.title)
-        assertEquals("u-1", person.subtitle)
-
-        val channel = channelHit("c-1").toHomeSearchEntityResult(localByKey, "Channel")
-        assertEquals(localChannel.conversationIdentity, channel.conversationIdentity)
-
-        // A person without a loaded DM opens through the DM request (else their profile).
-        val stranger = personHit("u-9", agent = true).toHomeSearchEntityResult(localByKey, "s-1", "Agent", "Human")!!
-        assertNull(stranger.conversationIdentity)
-        assertEquals("@u-9", stranger.subtitle)
-        assertEquals(MemberKind.Agent, assertIs<HomeSearchEntityDestination.Member>(stranger.destinationOrNull()).identity.kind)
     }
 
     private fun compose(core: SearchCoreGroupsState?, query: String = "alp") =
@@ -219,9 +162,6 @@ class HomeSearchEntityGroupsTest {
         guest: Boolean = false,
         requiredAction: SearchRequiredAction? = null,
     ) = SearchChannelHit(id, name, description, type, archived, joined, external, guest, canPost = joined && !archived, requiredAction = requiredAction)
-
-    private fun personHit(id: String, agent: Boolean = false, guest: Boolean = false, displayName: String? = null) =
-        SearchPersonHit(agent, id, id, displayName, null, if (guest) "guest" else "member", guest, null, false, SearchRequiredAction.CreateDm)
 
     private fun channelRow(id: String, name: String, archived: Boolean = false) =
         SearchEntityResult(

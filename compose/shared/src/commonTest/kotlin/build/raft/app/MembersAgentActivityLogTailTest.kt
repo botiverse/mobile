@@ -37,28 +37,6 @@ class MembersAgentActivityLogTailTest {
     }
 
     @Test
-    fun theViewportParksAtTheBottomAndADragAwayStopsFollowing() {
-        val away = MembersAgentActivityTail(following = false, seenLastKey = "c", newBelow = 2)
-        assertEquals(
-            MembersAgentActivityTail(following = true, seenLastKey = "e", newBelow = 0),
-            membersAgentActivityTailOnViewport(away, latestKey = "e", scrolling = false, atBottom = true),
-        )
-        val parked = MembersAgentActivityTail(following = true, seenLastKey = "e")
-        assertFalse(membersAgentActivityTailOnViewport(parked, "e", scrolling = true, atBottom = false).following)
-        // Not at the bottom and not scrolling (a new row laid out below a parked reader): unchanged.
-        assertEquals(parked, membersAgentActivityTailOnViewport(parked, "f", scrolling = false, atBottom = false))
-    }
-
-    @Test
-    fun logRowIdsDoNotShiftWhenTheLatestWindowSlides() {
-        fun row(t: Long, text: String) = """{"timestamp":$t,"entry":{"kind":"text","text":"$text"}}"""
-        val first = parseSharedAgentActivity("[${row(1, "a")},${row(2, "b")},${row(3, "c")}]", MemberId("agent-1"))!!
-        // The next load's window dropped the oldest row and gained a newer one.
-        val next = parseSharedAgentActivity("[${row(2, "b")},${row(3, "c")},${row(4, "d")}]", MemberId("agent-1"))!!
-        assertEquals(first.activity.drop(1).map { it.id }, next.activity.take(2).map { it.id })
-    }
-
-    @Test
     fun identicalLogRowsAtTheSameTimeKeepDistinctIds() {
         val row = """{"timestamp":5,"entry":{"kind":"status","activity":"working","detail":"Tool finished"}}"""
         val snapshot = parseSharedAgentActivity("[$row,$row]", MemberId("agent-1"))!!

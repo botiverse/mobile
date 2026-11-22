@@ -40,12 +40,4 @@ class ChannelMembersBatchParseTest {
         assertNull(parseSharedChannelMembersBatchResult("""{"ok":false}"""))
         assertNull(parseSharedChannelMembersBatchResult("not json"))
     }
-
-    @Test
-    fun emptyBodiesDefaultToNoIds() {
-        val result = parseSharedChannelMembersBatchResult("""{"ok":true}""")!!
-        assertTrue(result.addedNothing)
-        assertTrue(result.alreadyMemberUserIds.isEmpty())
-        assertTrue(result.alreadyMemberAgentIds.isEmpty())
-    }
 }

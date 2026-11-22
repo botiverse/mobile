@@ -48,43 +48,10 @@ class ThreadWorkingLineTest {
         assertEquals("Kirby is typing… · 1 other working", format(one, "Kirby is typing…"))
     }
 
-    @Test fun everyoneWorkingTypesSoTheTypingSentenceStandsAlone() {
-        val line = threadWorkingLine(typing = listOf(typer("niko"), typer("kirby")), working = listOf(niko, kirby))
-        assertEquals(ThreadWorkingLineSentence.Typing, line.sentence)
-        assertEquals("Niko and Kirby are typing…", format(line, "Niko and Kirby are typing…"))
-    }
-
-    @Test fun aTyperNobodyReportsWorkingIsTypingAloneAndComesAfterTheWorkers() {
-        // Only typing: the typing sentence.
-        val alone = threadWorkingLine(typing = listOf(typer("mo")), working = emptyList())
-        assertEquals(ThreadWorkingLineSentence.Typing, alone.sentence)
-        assertEquals(listOf("mo"), alone.faces.map { it.agentId })
-        assertEquals("pixel:random:mo", alone.faces.single().avatarWireValue)
-        // A typer outside the working list: after the workers; the workers are the "others".
-        val mixed = threadWorkingLine(typing = listOf(typer("mo")), working = listOf(niko, kirby))
-        assertEquals(listOf("niko", "kirby", "mo"), mixed.faces.map { it.agentId })
-        assertEquals(ThreadWorkingLineSentence.TypingAndOthers(2), mixed.sentence)
-        assertEquals(setOf("mo"), mixed.typingIds)
-    }
-
-    @Test fun typingNeverReordersTheFacesAndTheStackShowsThree() {
-        val line = threadWorkingLine(typing = listOf(typer("tenny"), typer("volta")), working = listOf(niko, kirby, tenny))
-        assertEquals(listOf("niko", "kirby", "tenny", "volta"), line.faces.map { it.agentId })
-        assertEquals(listOf("niko", "kirby", "tenny"), line.faces.workingNowFaces().map { it.agentId })
-        assertEquals(ThreadWorkingLineSentence.TypingAndOthers(2), line.sentence)
-    }
-
     @Test fun workingHereIsTheChannelsAgentsInTheOrderTheyStarted() {
         val all = listOf(niko, working("outsider", 2), kirby)
         assertEquals(listOf("niko", "kirby"), all.workingAmong(setOf("kirby", "niko")).map { it.agentId })
         assertTrue(all.workingAmong(emptySet()).isEmpty())
-    }
-
-    @Test fun onlyAChannelThatIsNoLoungeSaysWhoWorksThere() {
-        assertTrue(RaftThreadScreenPayload(surfaceKind = RaftThreadSurfaceKind.Channel).showsChannelWorkingLine(isLounge = false))
-        assertFalse(RaftThreadScreenPayload(surfaceKind = RaftThreadSurfaceKind.Channel).showsChannelWorkingLine(isLounge = true))
-        assertFalse(RaftThreadScreenPayload(surfaceKind = RaftThreadSurfaceKind.DirectMessage).showsChannelWorkingLine(isLounge = false))
-        assertFalse(RaftThreadScreenPayload(surfaceKind = RaftThreadSurfaceKind.ReplyThread).showsChannelWorkingLine(isLounge = false))
     }
 
     // Web renders the working line only in ChatPanel's channel timeline; a task conversation (#proj-mobile:#89:

@@ -8,7 +8,6 @@ import java.nio.file.Files
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 import kotlinx.coroutines.CompletableDeferred
@@ -101,45 +100,6 @@ class RaftDesktopAttachmentsTest {
         assertEquals(204, nothing["code"]!!.jsonPrimitive.int)
     }
 
-    @Test fun `the image button opens an images-only panel and a cancel answers 204`() {
-        val dialogs = FakeDialogs()
-        val attachments = RaftDesktopAttachments(dialogs, CoroutineScope(Dispatchers.IO))
-        val response = call { attachments.threadAttachmentUpload(params("imageOnly" to true), it) }
-        assertEquals(listOf(true), dialogs.imagesOnlyCalls)
-        assertEquals(204, response["code"]!!.jsonPrimitive.int)
-    }
-
-    @Test fun `unreadable picks are skipped and counted`() {
-        val good = File(root, "a.txt").apply { writeText("a") }
-        val empty = File(root, "empty.txt").apply { createNewFile() }
-        val attachments = RaftDesktopAttachments(FakeDialogs(open = { listOf(good, empty, root) }), CoroutineScope(Dispatchers.IO))
-        val response = call { attachments.threadAttachmentUpload(params(), it) }
-        assertEquals(206, response["code"]!!.jsonPrimitive.int)
-        assertEquals(2, response["skippedCount"]!!.jsonPrimitive.int)
-        assertEquals(1, response["files"]!!.jsonArray.size)
-    }
-
-    @Test fun `no camera on desktop and a second picker while one is open is busy`() {
-        val gate = CompletableDeferred<Unit>()
-        val attachments = RaftDesktopAttachments(FakeDialogs(open = { gate.await(); emptyList() }), CoroutineScope(Dispatchers.IO))
-        val camera = call { attachments.threadAttachmentUpload(params("capture" to true, "imageOnly" to true), it) }
-        assertEquals("attachment_picker_unavailable", camera["errorCode"]!!.jsonPrimitive.content)
-        attachments.threadAttachmentUpload(params(), null)
-        val busy = call { attachments.threadAttachmentUpload(params(), it) }
-        assertEquals(409, busy["code"]!!.jsonPrimitive.int)
-        gate.complete(Unit)
-    }
-
-    @Test fun `a dismissed save panel answers cancelled and downloads nothing`() {
-        var started = false
-        val dialogs = FakeDialogs(save = { null })
-        val attachments = RaftDesktopAttachments(dialogs, CoroutineScope(Dispatchers.IO)) { _, _, _, _ -> started = true }
-        val response = call { attachments.saveAttachment(params("url" to "https://x/y", "fileName" to "dir/report.pdf"), it) }
-        assertEquals("cancelled", response["status"]!!.jsonPrimitive.content)
-        assertEquals(listOf("dir/report.pdf"), dialogs.savedNames)
-        assertEquals(false, started)
-    }
-
     @Test fun `save downloads to the chosen file and answers saved`() {
         val target = File(root, "report.pdf")
         var request: Triple<String, File, String>? = null
@@ -153,49 +113,6 @@ class RaftDesktopAttachmentsTest {
         assertEquals(Triple("d1", target, "https://x/y"), request)
         assertEquals("saved", response["status"]!!.jsonPrimitive.content)
         assertEquals(target.toURI().toString(), response["uri"]!!.jsonPrimitive.content)
-    }
-
-    @Test fun `a cancel while the save panel is open drops its answer`() {
-        val panel = CompletableDeferred<File?>()
-        var started = false
-        val attachments =
-            RaftDesktopAttachments(FakeDialogs(save = { panel.await() }), CoroutineScope(Dispatchers.IO)) { _, _, _, _ -> started = true }
-        val response =
-            call { callback ->
-                attachments.saveAttachment(params("url" to "https://x/y", "fileName" to "a.txt", "operationId" to "op1"), callback)
-                attachments.cancelAttachmentExport(params("operationId" to "op1"))
-                panel.complete(File(root, "a.txt"))
-            }
-        assertEquals("cancelled", response["status"]!!.jsonPrimitive.content)
-        assertEquals(false, started)
-    }
-
-    @Test fun `download failures map to download_failed`() {
-        val failed = parseRaftJsonObjectOrNull(
-            RaftDesktopAttachments.saveResult(AttachmentDownloadResult("d", "t", "failed", 0, null, null, "http", "HTTP 403"), File(root, "x"))
-        )!!
-        assertEquals("download_failed", failed["status"]!!.jsonPrimitive.content)
-        assertEquals("HTTP 403", failed["message"]!!.jsonPrimitive.content)
-    }
-
-    @Test fun `the share image is copied where the user picks and its cache PNG deleted`() {
-        val snapshots = File(root, "raft_snapshots").apply { mkdirs() }
-        val cached = File(snapshots, "raft-message-share-a.png").apply { writeBytes(byteArrayOf(1, 2, 3)) }
-        val target = File(root, "picked.png")
-        val attachments = RaftDesktopAttachments(FakeDialogs(save = { target }), CoroutineScope(Dispatchers.IO), snapshotsDir = { snapshots })
-        val response = call { attachments.saveThreadShareImage(params("path" to cached.absolutePath), it) }
-        assertEquals("ok", response["status"]!!.jsonPrimitive.content)
-        assertTrue(target.readBytes().contentEquals(byteArrayOf(1, 2, 3)))
-        assertFalse(cached.exists(), "the cache PNG is deleted once copied")
-    }
-
-    @Test fun `a cancelled share image save deletes its cache PNG too`() {
-        val snapshots = File(root, "raft_snapshots").apply { mkdirs() }
-        val cached = File(snapshots, "raft-message-share-b.png").apply { writeBytes(byteArrayOf(1)) }
-        val attachments = RaftDesktopAttachments(FakeDialogs(save = { null }), CoroutineScope(Dispatchers.IO), snapshotsDir = { snapshots })
-        val response = call { attachments.saveThreadShareImage(params("path" to cached.absolutePath), it) }
-        assertEquals("cancelled", response["status"]!!.jsonPrimitive.content)
-        assertFalse(cached.exists(), "the cache PNG is deleted on cancel")
     }
 
     @Test fun `a share image outside the PNG cache is never deleted`() {

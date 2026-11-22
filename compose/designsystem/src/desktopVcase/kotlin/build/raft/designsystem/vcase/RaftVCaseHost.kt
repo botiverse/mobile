@@ -20,10 +20,9 @@ import dev.vcase.core.ManifestViewport
 import dev.vcase.core.VCaseVariant
 
 /**
- * How the design system renders a vcase case: the same frame as [build.raft.designsystem.screenshot.RaftScreenshot]
- * (RaftTheme with the axis appearance, the theme canvas, 16dp of padding, sized to the content,
- * at most 1200 x 2400 dp unless the case sets `maxWidth` / `maxHeight`, 1dp = 2px), so a case
- * and the gallery test it replaces should give the same pixels.
+ * How the design system renders a vcase case: RaftTheme with the axis appearance, the theme
+ * canvas, 16dp of padding, sized to the content, at most 1200 x 2400 dp unless the case sets
+ * `maxWidth` / `maxHeight`, 1dp = 2px.
  *
  * Axes: theme light / dark -> [RaftAppearance]; pointer touch / fine -> [RaftPointerInput];
  * viewport `compact` -> [RaftScale.Compact], the opt-in `wide` (same bounds, size class
@@ -41,7 +40,7 @@ object RaftVCaseHost : VCaseHost {
             viewport =
                 listOf(
                     ManifestViewport("compact", 1200, 2400, 2f),
-                    // RaftScreenshot.capture(scale = RaftScale.Wide): only cases that name it.
+                    // RaftScale.Wide: only cases that name it.
                     ManifestViewport("wide", 1200, 2400, 2f, optIn = true, sizeClass = VCaseSizeClass.WIDE),
                 ),
             locale = listOf("en"),

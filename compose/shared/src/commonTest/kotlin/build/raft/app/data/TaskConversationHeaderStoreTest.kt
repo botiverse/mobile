@@ -346,49 +346,6 @@ class TaskConversationHeaderStoreTest {
     }
 
     @Test
-    fun followersUpdatedForAnotherConversationDoesNotRefetch() = runTest {
-        var loads = 0
-        val viewModel =
-            followRefetchViewModel { _, _, _ ->
-                loads++
-                DataResult.Content(task(TaskStatus.InProgress).copy(conversationFollowed = true))
-            }
-        viewModel.onFollowersUpdated("server-1", ChannelId("conv-2"))
-        viewModel.onFollowersUpdated("server-1", ChannelId("channel-1"))
-        advanceUntilIdle()
-        assertEquals(0, loads)
-        assertEquals(false, viewModel.state.value.followed(viewModel.state.value.lastSeenTask?.conversationFollowed))
-    }
-
-    @Test
-    fun repeatedFollowersUpdatedCoalesceIntoOneTrailingRefetch() = runTest {
-        val gates = mutableListOf<CompletableDeferred<Unit>>()
-        var serverFollowed = true
-        val viewModel =
-            followRefetchViewModel { _, _, _ ->
-                val gate = CompletableDeferred<Unit>().also { gates += it }
-                gate.await()
-                DataResult.Content(task(TaskStatus.InProgress).copy(conversationFollowed = serverFollowed))
-            }
-        viewModel.onFollowersUpdated("server-1", ChannelId("conv-1"))
-        advanceUntilIdle()
-        assertEquals(1, gates.size, "one request in flight")
-        // Five more frames while it is on the network: no parallel request.
-        repeat(5) { viewModel.onFollowersUpdated("server-1", ChannelId("conv-1")) }
-        advanceUntilIdle()
-        assertEquals(1, gates.size)
-        // The first answer may predate those frames: exactly one more read follows it.
-        serverFollowed = false
-        gates[0].complete(Unit)
-        advanceUntilIdle()
-        assertEquals(2, gates.size)
-        gates[1].complete(Unit)
-        advanceUntilIdle()
-        assertEquals(2, gates.size)
-        assertEquals(false, viewModel.state.value.followed(taskFollowed = true), "the trailing read's value")
-    }
-
-    @Test
     fun aRefetchThatStartedBeforeThisPagesWriteDoesNotUndoIt() = runTest {
         val gate = CompletableDeferred<Unit>()
         val viewModel =

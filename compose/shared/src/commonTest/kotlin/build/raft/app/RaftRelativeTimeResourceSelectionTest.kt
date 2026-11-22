@@ -48,32 +48,6 @@ class RaftRelativeTimeResourceSelectionTest {
     }
 
     @Test
-    fun hourSelectionWiresNowSingularManyPastAndFuture() {
-        val hour = RaftRelativeTimeUnit.Hour
-
-        assertEquals(
-            RaftRelativeTimeStringSelection(Res.string.relative_time_hour_now),
-            relative(0, hour).selectLocalizedStringResource()
-        )
-        assertEquals(
-            RaftRelativeTimeStringSelection(Res.string.relative_time_hour_past_one),
-            relative(-1, hour).selectLocalizedStringResource()
-        )
-        assertEquals(
-            RaftRelativeTimeStringSelection(Res.string.relative_time_hour_past_many, 3),
-            relative(-3, hour).selectLocalizedStringResource()
-        )
-        assertEquals(
-            RaftRelativeTimeStringSelection(Res.string.relative_time_hour_future_one),
-            relative(1, hour).selectLocalizedStringResource()
-        )
-        assertEquals(
-            RaftRelativeTimeStringSelection(Res.string.relative_time_hour_future_many, 3),
-            relative(3, hour).selectLocalizedStringResource()
-        )
-    }
-
-    @Test
     fun daySelectionWiresNamedDaysAndManyPastFuture() {
         val day = RaftRelativeTimeUnit.Day
 

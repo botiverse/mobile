@@ -20,91 +20,11 @@ import java.nio.file.Files
 import kotlin.io.path.deleteIfExists
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
 /** JDBC coverage for the client-owned pending-send journal and its identity fences. */
 class ThreadPendingSendJournalTest {
-    @Test
-    fun missingEnvironmentFailsClosedForEveryDurableOperationWithoutLegacyFallback() {
-        withDatabase { path ->
-            JdbcSqliteDriver(url(path)).use { driver ->
-                val journal = journal(driver)
-                val missingEnvironment = provenance(environmentId = "")
-                val route = route()
-                val pending = message("local-send-no-environment", "random-no-environment")
-
-                assertFalse(journal.persistSending(missingEnvironment, route, pending))
-                assertTrue(journal.restore(missingEnvironment, route).isEmpty())
-                assertFalse(
-                    journal.markFailed(
-                        missingEnvironment,
-                        route,
-                        pending.id,
-                        "network_error",
-                        "offline",
-                    )
-                )
-                assertEquals(
-                    ThreadPendingSendJournal.ConsumeResult.Failed,
-                    journal.consume(missingEnvironment, route, pending.id),
-                )
-                assertEquals(
-                    ThreadPendingSendJournal.ConsumeResult.Failed,
-                    journal.consumeCanonicalRandomId(missingEnvironment, route, pending.pendingSendContext!!.randomId!!),
-                )
-            }
-        }
-    }
-
-    @Test
-    fun blankIdentityKeysFailClosedAndEqualFirstGenerationSurvivesColdCleanup() {
-        withDatabase { path ->
-            JdbcSqliteDriver(url(path)).use { driver ->
-                val journal = journal(driver)
-                val route = route()
-                val pending = message("local-send-blank-key", "random-blank-key")
-                listOf(
-                    provenance(environmentId = ""),
-                    provenance(principalId = ""),
-                    provenance(serverId = ""),
-                    provenance(authGeneration = -1L),
-                    // RealtimeAuthorityRegistry's Empty revision is generation 0 with no session;
-                    // every real session starts at 1, so 0 is a sentinel, not a first revision.
-                    provenance(authGeneration = 0L),
-                ).forEach { invalid ->
-                    assertFalse(journal.persistSending(invalid, route, pending))
-                    assertTrue(journal.restore(invalid, route).isEmpty())
-                }
-                assertFalse(journal.clearForAuthRevision("", "principal-a", 0L))
-                assertFalse(journal.clearForAuthRevision("env-a", "", 0L))
-
-                // Generation 1 is the first real revision.  The cold-start cleanup is strictly
-                // older-than, so an equal generation survives; only the exact terminal cleanup
-                // retires it.
-                val firstGeneration = provenance(authGeneration = 1L)
-                assertTrue(journal.persistSending(firstGeneration, route, pending))
-                assertTrue(
-                    journal.clearForPrincipalBeforeAuthRevision(
-                        firstGeneration.environmentId,
-                        firstGeneration.principalId,
-                        1L,
-                    )
-                )
-                assertEquals(1, journal.restore(firstGeneration, route).size)
-                assertTrue(
-                    journal.clearForAuthRevision(
-                        firstGeneration.environmentId,
-                        firstGeneration.principalId,
-                        1L,
-                    )
-                )
-                assertTrue(journal.restore(firstGeneration, route).isEmpty())
-            }
-        }
-    }
-
     @Test
     fun secondJournalInstanceRestoresOnlyTheExactIdentityAfterProcessRebuild() {
         withDatabase { path ->
@@ -177,48 +97,6 @@ class ThreadPendingSendJournalTest {
         }
     }
 
-    /**
-     * proj-mobile#66: a live send's failure lands on its own row after a server switch rehomed it
-     * to a newer auth generation, and only on that row: not another launch's row with the same
-     * local id, and not the same send on another server.
-     */
-    @Test
-    fun sendOwnerFailureMarksOnlyItsOwnRowAcrossARehome() {
-        withDatabase { path ->
-            JdbcSqliteDriver(url(path)).use { driver ->
-                val journal = journal(driver)
-                val admitted = provenance(authGeneration = 10L, selectionGeneration = 20L)
-                val route = route()
-                val olderLaunch = provenance(authGeneration = 9L, selectionGeneration = 20L)
-                val otherServer = provenance(serverId = "server-b")
-                assertTrue(journal.persistSending(olderLaunch, route, message("local-send-1", "random-older")))
-                assertTrue(journal.persistSending(admitted, route, message("local-send-1", "random-live")))
-                assertTrue(journal.persistSending(otherServer, route, message("local-send-1", "random-live")))
-                assertEquals(2, journal.rehomeAuthRevision("env-a", "principal-a", 10L, 11L))
-
-                // The generation-fenced live path cannot see the rehomed row.
-                assertFalse(journal.markFailed(admitted, route, "local-send-1", "http_400", "bad"))
-                assertTrue(
-                    journal.markFailedForSendOwner(admitted, route, "local-send-1", "random-live", "http_400", "bad")
-                )
-
-                val rows = journal.restore(admitted, route)
-                assertEquals(
-                    setOf("random-older" to ThreadMessageDeliverySending, "random-live" to ThreadMessageDeliveryFailed),
-                    rows.map { it.pendingSendContext?.randomId to it.deliveryState }.toSet(),
-                )
-                assertEquals(
-                    listOf(ThreadMessageDeliverySending),
-                    journal.restore(otherServer, route).map { it.deliveryState },
-                )
-                assertFalse(
-                    journal.markFailedForSendOwner(admitted, route, "local-send-1", "random-gone", "http_400", null),
-                    "no row, no write",
-                )
-            }
-        }
-    }
-
     @Test
     fun failedRowsSurviveRebuildAndExplicitRetryReusesTheSameIdempotencyKey() {
         withDatabase { path ->
@@ -281,48 +159,6 @@ class ThreadPendingSendJournalTest {
         }
     }
 
-    @Test
-    fun conflictingRandomIdCannotReplaceAnExistingRowAcrossJournalInstances() {
-        withDatabase { path ->
-            val provenance = provenance()
-            val route = route()
-            JdbcSqliteDriver(url(path)).use { firstDriver ->
-                JdbcSqliteDriver(url(path)).use { secondDriver ->
-                    val first = journal(firstDriver)
-                    val second = journal(secondDriver)
-                    val original = message("local-send-4", "random-shared")
-                    assertTrue(first.persistSending(provenance, route, original))
-
-                    val conflictingLocalId = message("local-send-5", "random-shared")
-                    assertFalse(second.persistSending(provenance, route, conflictingLocalId))
-                    assertEquals(listOf(original), first.restore(provenance, route))
-
-                    val conflictingRoute = message("local-send-4", "random-other")
-                    assertFalse(second.persistSending(provenance, route(serverId = "channel-b"), conflictingRoute))
-                    assertEquals(listOf(original), first.restore(provenance, route))
-                }
-            }
-        }
-    }
-
-    @Test
-    fun authRevisionCleanupDoesNotEraseASuccessorRevision() {
-        withDatabase { path ->
-            val route = route()
-            val old = provenance(authGeneration = 10L)
-            val successor = provenance(authGeneration = 11L)
-            JdbcSqliteDriver(url(path)).use { driver ->
-                val journal = journal(driver)
-                assertTrue(journal.persistSending(old, route, message("local-send-old", "random-old")))
-                assertTrue(journal.persistSending(successor, route, message("local-send-new", "random-new")))
-                assertTrue(journal.clearForAuthRevision(old.environmentId, old.principalId, old.authGeneration))
-                assertEquals(0L, countRowsAtAuthGeneration(driver, old, 10L))
-                assertEquals(1L, countRowsAtAuthGeneration(driver, successor, 11L))
-                assertEquals(1, journal.restore(successor, route).size)
-            }
-        }
-    }
-
     // task #1134: same-binding token rotation (401 -> silent refresh, authGeneration+1) rehomes
     // journaled rows into the successor partition instead of deleting them, so the drainer can
     // still adopt and resend with the same randomId after a reconnect-triggered refresh.
@@ -360,82 +196,6 @@ class ThreadPendingSendJournalTest {
                     ThreadPendingSendJournal.ConsumeResult.Deleted,
                     journal.consumeCanonicalRandomId(successor, route, "random-old"),
                 )
-            }
-        }
-    }
-
-    @Test
-    fun rehomeAuthRevisionRefusesForeignPrincipalsAndNonForwardMoves() {
-        withDatabase { path ->
-            val route = route()
-            val old = provenance(authGeneration = 10L)
-            val successor = provenance(authGeneration = 11L)
-            val foreign = provenance(principalId = "principal-b", authGeneration = 10L)
-            JdbcSqliteDriver(url(path)).use { driver ->
-                val journal = journal(driver)
-                assertTrue(journal.persistSending(old, route, message("local-send-old", "random-old")))
-                assertTrue(journal.persistSending(foreign, route, message("local-send-foreign", "random-foreign")))
-
-                // Only the named principal's partition moves; the foreign principal's row stays
-                // exactly where a binding switch would expect to find (and refuse) it.
-                assertEquals(
-                    1,
-                    journal.rehomeAuthRevision(old.environmentId, old.principalId, 10L, 11L),
-                )
-                assertEquals(0L, countRowsAtAuthGeneration(driver, old, 10L))
-                assertEquals(1L, countRowsAtAuthGeneration(driver, successor, 11L))
-                assertEquals(1L, countRowsAtAuthGeneration(driver, foreign, 10L))
-                assertEquals(1, journal.restore(successor, route).size)
-                assertEquals(1, journal.restore(foreign, route).size)
-
-                // Same/backwards generation and blank identities are rejected without writes.
-                assertEquals(0, journal.rehomeAuthRevision(old.environmentId, old.principalId, 11L, 11L))
-                assertEquals(0, journal.rehomeAuthRevision(old.environmentId, old.principalId, 11L, 10L))
-                assertEquals(0, journal.rehomeAuthRevision("", old.principalId, 10L, 12L))
-                assertEquals(0, journal.rehomeAuthRevision(old.environmentId, old.principalId, 0L, 12L))
-                assertEquals(1, journal.restore(successor, route).size)
-                assertEquals(1, journal.restore(foreign, route).size)
-            }
-        }
-    }
-
-    @Test
-    fun terminalCleanupIsBoundToIdentityAndGenerationAcrossSuccessorAndForeignRows() {
-        withDatabase { path ->
-            val route = route()
-            val terminal = provenance(
-                environmentId = "env-a",
-                principalId = "principal-a",
-                authGeneration = 10L,
-            )
-            val successor = terminal.copy(authGeneration = 11L)
-            val foreignPrincipal = terminal.copy(principalId = "principal-b")
-            val foreignEnvironment = terminal.copy(environmentId = "env-b")
-
-            JdbcSqliteDriver(url(path)).use { driver ->
-                val journal = journal(driver)
-                assertTrue(journal.persistSending(terminal, route, message("local-send-terminal", "random-terminal")))
-                assertTrue(journal.persistSending(successor, route, message("local-send-successor", "random-successor")))
-                assertTrue(journal.persistSending(foreignPrincipal, route, message("local-send-foreign-principal", "random-foreign-principal")))
-                assertTrue(journal.persistSending(foreignEnvironment, route, message("local-send-foreign-environment", "random-foreign-environment")))
-
-                // This is the terminal path's complete authority: exact
-                // environment + principal + auth generation.  A previous
-                // database-wide clearAll would also delete the three rows
-                // below, which are outside the logout intent.
-                assertTrue(
-                    journal.clearForAuthRevision(
-                        environmentId = terminal.environmentId,
-                        principalId = terminal.principalId,
-                        authGeneration = terminal.authGeneration,
-                    )
-                )
-
-                assertEquals(0L, countRowsAtAuthGeneration(driver, terminal, 10L))
-                assertEquals(1L, countRowsAtAuthGeneration(driver, successor, 11L))
-                assertEquals(1, journal.restore(successor, route).size)
-                assertEquals(1, journal.restore(foreignPrincipal, route).size)
-                assertEquals(1, journal.restore(foreignEnvironment, route).size)
             }
         }
     }

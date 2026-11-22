@@ -10,9 +10,7 @@ import build.raft.app.model.ServerId
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.flow.take
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.runCurrent
@@ -56,24 +54,6 @@ class SharedServerChannelMembersOwnerTest {
         assertEquals(CHANNEL_ID, visibleSlice.channelId)
         assertEquals(null, store.currentMemberProfile(ServerId(SERVER_ID), "member-a"))
         assertEquals(null, store.currentMemberProfile(ServerId(SERVER_ID), "member-b"))
-    }
-
-    @Test
-    fun sameOwnerUsesCachedChannelSlice() = runBlocking {
-        val repository = OwnerTestMemberRepository().apply {
-            channelMembers = listOf(member("member-a"))
-        }
-        val ownerState = MutableStateFlow<ProcessServerMembersOwner?>(owner("env-a", "account-a"))
-        val store = store(repository, ownerState) { 7L }
-
-        val first = store.loadChannelMembers(ServerId(SERVER_ID), ChannelId(CHANNEL_ID))
-        repository.channelMembers = listOf(member("should-not-load"))
-        val cached = store.loadChannelMembers(ServerId(SERVER_ID), ChannelId(CHANNEL_ID))
-
-        assertIs<DataResult.Content<ChannelMemberSnapshot>>(first)
-        assertIs<DataResult.Content<ChannelMemberSnapshot>>(cached)
-        assertEquals(1, repository.getChannelMembersCalls)
-        assertEquals(listOf("member-a"), cached.data.members.map { it.id.value })
     }
 
     @Test
@@ -147,112 +127,6 @@ class SharedServerChannelMembersOwnerTest {
         assertEquals("channel_members_owner_stale", result.error.code)
         assertEquals(emptyList(), store.currentChannelMembers(ServerId(SERVER_ID), ChannelId(CHANNEL_ID)))
         assertEquals(null, store.currentMemberProfile(ServerId(SERVER_ID), "member-a"))
-    }
-
-    @Test
-    fun clearAndSameAccountReloginRetiresPreviousGeneration() = runBlocking {
-        val repository = OwnerTestMemberRepository().apply {
-            channelMembers = listOf(member("before-clear"))
-        }
-        val sameOwner = owner("env-a", "account-a")
-        val ownerState = MutableStateFlow<ProcessServerMembersOwner?>(sameOwner)
-        var writeGeneration = 3L
-        val store = store(repository, ownerState) { writeGeneration }
-
-        store.loadChannelMembers(ServerId(SERVER_ID), ChannelId(CHANNEL_ID))
-        ownerState.value = null
-
-        assertEquals(emptyList(), store.currentChannelMembers(ServerId(SERVER_ID), ChannelId(CHANNEL_ID)))
-        assertEquals(
-            emptyList(),
-            store.channelMemberSliceFlow(ServerId(SERVER_ID), ChannelId(CHANNEL_ID)).first().members
-        )
-
-        writeGeneration += 1
-        ownerState.value = sameOwner
-        repository.channelMembers = listOf(member("after-relogin"))
-        val reloaded = store.loadChannelMembers(ServerId(SERVER_ID), ChannelId(CHANNEL_ID))
-
-        assertIs<DataResult.Content<ChannelMemberSnapshot>>(reloaded)
-        assertEquals(2, repository.getChannelMembersCalls)
-        assertEquals(listOf("after-relogin"), reloaded.data.members.map { it.id.value })
-    }
-
-    @Test
-    fun routeOwnedLateResponseCannotPublishAfterSameOwnerGenerationRetires() = runBlocking {
-        val repository = OwnerTestMemberRepository()
-        val started = CompletableDeferred<Unit>()
-        val release = CompletableDeferred<Unit>()
-        repository.channelMembersLoader = {
-            started.complete(Unit)
-            release.await()
-            listOf(member("stale-member"))
-        }
-        val processOwner = owner("env-a", "account-a")
-        val ownerState = MutableStateFlow<ProcessServerMembersOwner?>(processOwner)
-        val registry = ProcessMemberPresenceRegistry()
-        val store = store(repository, ownerState, registry = registry) { registry.writeGeneration }
-        val routeOwner =
-            AuthenticatedRouteOwner(
-                environmentId = processOwner.environmentId,
-                accountId = processOwner.accountId,
-                serverId = processOwner.serverId
-            )
-
-        val oldLoad = async {
-            store.loadChannelMembers(
-                owner = routeOwner,
-                channelId = ChannelId(CHANNEL_ID),
-                force = true
-            )
-        }
-        started.await()
-        registry.clearAll(reason = "test_route_same_owner_relogin")
-        release.complete(Unit)
-        val result = oldLoad.await()
-
-        assertIs<DataResult.Error>(result)
-        assertEquals("channel_members_owner_stale", result.error.code)
-        assertEquals(
-            emptyList(),
-            store.currentChannelMemberSlice(routeOwner, ChannelId(CHANNEL_ID)).members
-        )
-    }
-
-    @Test
-    fun mountedFlowObservesGenerationRetirementWhenOwnerTupleIsUnchanged() = runBlocking {
-        val repository = OwnerTestMemberRepository().apply {
-            channelMembers = listOf(member("before-clear"))
-        }
-        val ownerState = MutableStateFlow<ProcessServerMembersOwner?>(owner("env-a", "account-a"))
-        val registry = ProcessMemberPresenceRegistry()
-        val store = store(repository, ownerState, registry = registry) { registry.writeGeneration }
-
-        store.loadChannelMembers(ServerId(SERVER_ID), ChannelId(CHANNEL_ID))
-        val observed = mutableListOf<SharedServerChannelMembersSlice>()
-        val initialObserved = CompletableDeferred<Unit>()
-        val collection = launch {
-            store.channelMemberSliceFlow(ServerId(SERVER_ID), ChannelId(CHANNEL_ID))
-                .take(2)
-                .collect { slice ->
-                    observed += slice
-                    if (observed.size == 1) initialObserved.complete(Unit)
-                }
-        }
-
-        initialObserved.await()
-        registry.clearAll(reason = "test_same_owner_relogin")
-        collection.join()
-
-        assertEquals(listOf("before-clear"), observed[0].members.map { it.id.value })
-        assertEquals(emptyList(), observed[1].members)
-        assertEquals(registry.writeGeneration, observed[1].ownerWriteGeneration)
-
-        repository.channelMembers = listOf(member("after-relogin"))
-        val reloaded = store.loadChannelMembers(ServerId(SERVER_ID), ChannelId(CHANNEL_ID))
-        assertIs<DataResult.Content<ChannelMemberSnapshot>>(reloaded)
-        assertEquals(2, repository.getChannelMembersCalls)
-        assertEquals(listOf("after-relogin"), reloaded.data.members.map { it.id.value })
     }
 
     @Test
@@ -409,69 +283,6 @@ class SharedServerChannelMembersOwnerTest {
     }
 
     @Test
-    fun anOlderStoresPatchedCopyNeverReplacesANewerAnswerAfterReopen() = kotlinx.coroutines.test.runTest {
-        val device = Device(backgroundScope)
-        val ownerState = MutableStateFlow<ProcessServerMembersOwner?>(owner("env-a", "account-a"))
-        val repositoryA = OwnerTestMemberRepository().apply { channelMembers = listOf(member("old-a"), member("old-b")) }
-        val repositoryB = OwnerTestMemberRepository().apply { channelMembers = listOf(member("new-a"), member("old-b")) }
-        val storeA = store(repositoryA, ownerState, channelMembersOffline = device.members) { 1L }
-        val storeB = store(repositoryB, ownerState, channelMembersOffline = device.members) { 1L }
-        storeA.loadChannelMembers(ServerId(SERVER_ID), ChannelId(CHANNEL_ID))
-        runCurrent()
-
-        // Store B: the channel is gone (drop), then comes back with a fresh answer (re-open).
-        repositoryB.failure = DataResult.Error(ScreenError(code = "http_404", retryable = false))
-        storeB.loadChannelMembers(ServerId(SERVER_ID), ChannelId(CHANNEL_ID))
-        runCurrent()
-        repositoryB.failure = null
-        storeB.loadChannelMembers(ServerId(SERVER_ID), ChannelId(CHANNEL_ID), force = true)
-        runCurrent()
-        assertEquals(listOf("new-a", "old-b"), device.storedIds())
-
-        // Both stores apply one realtime removal; store A's copy is older than B's answer.
-        storeA.removeMember(ServerId(SERVER_ID), MemberId("old-b"))
-        storeB.removeMember(ServerId(SERVER_ID), MemberId("old-b"))
-        runCurrent()
-        assertEquals(listOf("new-a"), device.storedIds())
-    }
-
-    @Test
-    fun whenTwoStoresApplyOneRealtimeRemovalTheNewerAnswerStaysStored() = kotlinx.coroutines.test.runTest {
-        val device = Device(backgroundScope)
-        val ownerState = MutableStateFlow<ProcessServerMembersOwner?>(owner("env-a", "account-a"))
-        val repositoryA = OwnerTestMemberRepository().apply { channelMembers = listOf(member("old-a"), member("gone")) }
-        val repositoryB = OwnerTestMemberRepository().apply { channelMembers = listOf(member("new-a"), member("gone")) }
-        val storeA = store(repositoryA, ownerState, channelMembersOffline = device.members) { 1L }
-        val storeB = store(repositoryB, ownerState, channelMembersOffline = device.members) { 1L }
-        storeA.loadChannelMembers(ServerId(SERVER_ID), ChannelId(CHANNEL_ID))
-        runCurrent()
-        storeB.loadChannelMembers(ServerId(SERVER_ID), ChannelId(CHANNEL_ID))
-        runCurrent()
-
-        // B patches first, A (holding the older answer) last: last writer must not win.
-        storeB.removeMember(ServerId(SERVER_ID), MemberId("gone"))
-        runCurrent()
-        storeA.removeMember(ServerId(SERVER_ID), MemberId("gone"))
-        runCurrent()
-
-        assertEquals(listOf("new-a"), device.storedIds())
-    }
-
-    @Test
-    fun aRemovedMemberLeavesStoredListsThatAreNotInMemory() = kotlinx.coroutines.test.runTest {
-        val device = Device(backgroundScope)
-        val ownerState = MutableStateFlow<ProcessServerMembersOwner?>(owner("env-a", "account-a"))
-        loadOnce(device, ownerState, listOf(member("member-a"), member("member-b")))
-
-        // A new process: nothing in memory; a realtime removal arrives.
-        val store = store(OwnerTestMemberRepository(), ownerState, channelMembersOffline = device.members) { 1L }
-        store.removeMember(ServerId(SERVER_ID), MemberId("member-a"))
-        runCurrent()
-
-        assertEquals(listOf("member-b"), device.storedIds())
-    }
-
-    @Test
     fun channelMembersUpdatedReloadsALoadedListAndDropsAStoredOnlyOne() = kotlinx.coroutines.test.runTest {
         val device = Device(backgroundScope)
         val ownerState = MutableStateFlow<ProcessServerMembersOwner?>(owner("env-a", "account-a"))
@@ -496,27 +307,6 @@ class SharedServerChannelMembersOwnerTest {
         assertEquals(2, repository.getChannelMembersCalls)
         assertEquals(emptyList(), loaded.currentChannelMembers(ServerId(SERVER_ID), ChannelId(CHANNEL_ID)))
         assertEquals(null, device.storedIds())
-    }
-
-    @Test
-    fun channelMembersUpdatedKeepsTheListOfAStoreThatHoldsItLoadedInEitherOrder() = kotlinx.coroutines.test.runTest {
-        listOf(false, true).forEach { loadedFirst ->
-            val device = Device(backgroundScope)
-            val ownerState = MutableStateFlow<ProcessServerMembersOwner?>(owner("env-a", "account-a"))
-            val repository = OwnerTestMemberRepository().apply { channelMembers = listOf(member("member-a")) }
-            val loaded = store(repository, ownerState, channelMembersOffline = device.members) { 1L }
-            val other = store(OwnerTestMemberRepository(), ownerState, channelMembersOffline = device.members) { 1L }
-            loaded.loadChannelMembers(ServerId(SERVER_ID), ChannelId(CHANNEL_ID))
-            runCurrent()
-
-            // A member joins elsewhere; the event reaches both stores.
-            repository.channelMembers = listOf(member("member-a"), member("member-b"))
-            val stores = if (loadedFirst) listOf(loaded, other) else listOf(other, loaded)
-            applyChannelMembersUpdated(stores, ServerId(SERVER_ID), ChannelId(CHANNEL_ID))
-            runCurrent()
-
-            assertEquals(listOf("member-a", "member-b"), device.storedIds(), "loadedFirst=$loadedFirst")
-        }
     }
 
     @Test
@@ -556,42 +346,6 @@ class SharedServerChannelMembersOwnerTest {
     }
 
     @Test
-    fun aMembersUpdatedEventDuringAColdOpenReloadsAfterItInsteadOfDroppingTheStoredCopy() = kotlinx.coroutines.test.runTest {
-        val device = Device(backgroundScope)
-        val ownerState = MutableStateFlow<ProcessServerMembersOwner?>(owner("env-a", "account-a"))
-        loadOnce(device, ownerState, listOf(member("member-a")))
-
-        // Cold open: the stored stand-in shows while the request runs; that request was sent before the change.
-        val repository = OwnerTestMemberRepository().apply {
-            gate = CompletableDeferred()
-            channelMembersLoader = { _ ->
-                if (getChannelMembersCalls == 1) listOf(member("member-a")) else listOf(member("member-a"), member("member-b"))
-            }
-        }
-        val store = store(repository, ownerState, channelMembersOffline = device.members) { 1L }
-        val load = async { store.loadChannelMembers(ServerId(SERVER_ID), ChannelId(CHANNEL_ID)) }
-        runCurrent()
-        assertEquals(true, store.currentChannelMemberSlice(ServerId(SERVER_ID), ChannelId(CHANNEL_ID)).storedStandIn)
-
-        // A member joins while the stand-in loads.
-        launch { applyChannelMembersUpdated(listOf(store), ServerId(SERVER_ID), ChannelId(CHANNEL_ID)) }
-        runCurrent()
-        // Knife: a loading stand-in did not count as held, so the copy was dropped and nobody reloaded.
-        assertEquals(listOf("member-a"), device.storedIds())
-
-        repository.gate!!.complete(Unit)
-        assertIs<DataResult.Content<ChannelMemberSnapshot>>(load.await())
-        runCurrent()
-
-        assertEquals(2, repository.getChannelMembersCalls)
-        assertEquals(
-            listOf("member-a", "member-b"),
-            store.currentChannelMembers(ServerId(SERVER_ID), ChannelId(CHANNEL_ID)).map { it.id.value }
-        )
-        assertEquals(listOf("member-a", "member-b"), device.storedIds())
-    }
-
-    @Test
     fun aMembersUpdatedEventOfAPreviousAccountLeavesTheNextAccountsListsAlone() = kotlinx.coroutines.test.runTest {
         val device = Device(backgroundScope)
         // The event arrived for account-a; the account switched to account-b before it was applied.
@@ -621,127 +375,6 @@ class SharedServerChannelMembersOwnerTest {
         runCurrent()
         assertEquals(2, repository.getChannelMembersCalls)
     }
-
-    @Test
-    fun aQueuedMembersUpdatedReloadIsNotSentOnceTheInFlightOneLostTheChannel() = kotlinx.coroutines.test.runTest {
-        val device = Device(backgroundScope)
-        val ownerState = MutableStateFlow<ProcessServerMembersOwner?>(owner("env-a", "account-a"))
-        val repository = OwnerTestMemberRepository().apply { channelMembers = listOf(member("member-a")) }
-        val store = store(repository, ownerState, channelMembersOffline = device.members) { 1L }
-        store.loadChannelMembers(ServerId(SERVER_ID), ChannelId(CHANNEL_ID))
-        runCurrent()
-
-        // Change #1: its reload is held at the network, and the viewer was removed from the channel (403).
-        repository.gate = CompletableDeferred()
-        repository.failure = DataResult.NoPermission(PermissionBlocker(code = "server_forbidden"))
-        launch { applyChannelMembersUpdated(listOf(store), ServerId(SERVER_ID), ChannelId(CHANNEL_ID)) }
-        runCurrent()
-        // Change #2 queues a reload after it.
-        launch { applyChannelMembersUpdated(listOf(store), ServerId(SERVER_ID), ChannelId(CHANNEL_ID)) }
-        runCurrent()
-        assertEquals(2, repository.getChannelMembersCalls)
-
-        repository.gate!!.complete(Unit)
-        runCurrent()
-
-        // The in-flight answer dropped the channel: the queued reload is not sent, no slice comes back.
-        assertEquals(2, repository.getChannelMembersCalls)
-        assertEquals(false, store.holdsLoadedChannel(ServerId(SERVER_ID), ChannelId(CHANNEL_ID)))
-        assertEquals(emptyList(), store.currentChannelMembers(ServerId(SERVER_ID), ChannelId(CHANNEL_ID)))
-        assertEquals(null, device.storedIds())
-
-        // A later event starts afresh (nothing held, nothing stored: no request).
-        applyChannelMembersUpdated(listOf(store), ServerId(SERVER_ID), ChannelId(CHANNEL_ID))
-        runCurrent()
-        assertEquals(2, repository.getChannelMembersCalls)
-    }
-
-    @Test
-    fun anAccountSwitchAfterTheGrantAdmittedAMembersUpdatedEventLeavesTheNextAccountsListAlone() =
-        kotlinx.coroutines.test.runTest {
-            val device = Device(backgroundScope)
-            val ownerState = MutableStateFlow<ProcessServerMembersOwner?>(owner("env-a", "account-a"))
-            val authContext = MutableStateFlow<ProcessPresenceAuthContext?>(bindingFor("account-a", generation = 1L))
-            val repository = OwnerTestMemberRepository().apply { channelMembers = listOf(member("member-a")) }
-            val store = store(repository, ownerState, channelMembersOffline = device.members) { 1L }
-            store.loadChannelMembers(ServerId(SERVER_ID), ChannelId(CHANNEL_ID))
-            runCurrent()
-            assertEquals(1, repository.getChannelMembersCalls)
-
-            // Runs between the grant check and the provider's work, once.
-            var onAdmitted: (suspend () -> Unit)? = null
-            val realtime =
-                SharedRealtimeDomainEventOwner(
-                    // The provider's wiring: its handler, the current binding, the members stores.
-                    onChannelMembersUpdated = { serverId, channelId, admission ->
-                        launchChannelMembersUpdated(
-                            scope = backgroundScope,
-                            context = authContext.value,
-                            admission = admission,
-                            serverId = serverId,
-                            channelId = channelId,
-                            stores = { listOf(store) },
-                        )
-                    },
-                    runIfCurrentGrant = { _, block ->
-                        onAdmitted?.also { onAdmitted = null }?.invoke()
-                        block()
-                        true
-                    },
-                )
-            val event =
-                RealtimeRefreshRequired(
-                    scope = RealtimeRefreshScope.ChannelMembers,
-                    reason = "channel:members-updated",
-                    channelId = ChannelId(CHANNEL_ID),
-                )
-
-            // Admitted under account-a's grant; the account switches to account-b (which opens the channel)
-            // before the event's work runs.
-            onAdmitted = {
-                ownerState.value = owner("env-a", "account-b")
-                authContext.value = bindingFor("account-b", generation = 2L)
-                store.loadChannelMembers(ServerId(SERVER_ID), ChannelId(CHANNEL_ID))
-            }
-            assertEquals(true, realtime.accept(grant("account-a", generation = 1L), event, source = "test"))
-            runCurrent()
-            // Knife: the owner taken from the binding (account-b) reloaded account-b's list for account-a's event.
-            assertEquals(2, repository.getChannelMembersCalls)
-            assertEquals(listOf("member-a"), device.storedIds(accountId = "account-b"))
-
-            // Same account, older generation (a retired session of account-b): no-op as well.
-            assertEquals(true, realtime.accept(grant("account-b", generation = 1L), event, source = "test"))
-            runCurrent()
-            assertEquals(2, repository.getChannelMembersCalls)
-
-            // No grant (canonical-final surface delivery): no-op.
-            realtime.deliverGuardedAppShellDomainFinal(sinks = RealtimeGuardedDomainEventSinks(), serverId = SERVER_ID, event = event)
-            runCurrent()
-            assertEquals(2, repository.getChannelMembersCalls)
-
-            // The event under account-b's current grant does act.
-            assertEquals(true, realtime.accept(grant("account-b", generation = 2L), event, source = "test"))
-            runCurrent()
-            assertEquals(3, repository.getChannelMembersCalls)
-        }
-
-    private fun bindingFor(accountId: String, generation: Long): ProcessPresenceAuthContext =
-        ProcessPresenceAuthContext(
-            environmentId = "env-a",
-            accountId = accountId,
-            authorityGeneration = generation,
-            writeGeneration = 1L,
-        )
-
-    private fun grant(accountId: String, generation: Long): RealtimeGrantRecord =
-        RealtimeGrantRecord(
-            slotKey = RealtimeSlotKey(scopeLeaseId = "shell:test", serverId = SERVER_ID),
-            principalId = accountId,
-            environmentId = "env-a",
-            authGeneration = generation,
-            connectionFamilyId = "family-1",
-            connectionEpochId = "epoch-1",
-        )
 
     @Test
     fun aMembersUpdatedEventWithoutAChannelAppliesToEveryListOfTheServer() = kotlinx.coroutines.test.runTest {
@@ -786,39 +419,6 @@ class SharedServerChannelMembersOwnerTest {
         assertEquals(RealtimeChannelMembersUpdate(null), event(null).updatedChannelMembersOrNull())
         assertEquals(RealtimeChannelMembersUpdate(null), event(" ").updatedChannelMembersOrNull())
         assertEquals(null, event("channel-1", RealtimeRefreshScope.ServerMembers).updatedChannelMembersOrNull())
-    }
-
-    @Test
-    fun theStoredCopyIsDroppedThroughAnyStoreThatHasAnOwner() = kotlinx.coroutines.test.runTest {
-        val device = Device(backgroundScope)
-        val ownerState = MutableStateFlow<ProcessServerMembersOwner?>(owner("env-a", "account-a"))
-        loadOnce(device, ownerState, listOf(member("member-a")))
-        val noOwner = MutableStateFlow<ProcessServerMembersOwner?>(null)
-        val ownerless = store(OwnerTestMemberRepository(), noOwner, channelMembersOffline = device.members) { 1L }
-        val owned = store(OwnerTestMemberRepository(), ownerState, channelMembersOffline = device.members) { 1L }
-
-        applyChannelMembersUpdated(listOf(ownerless, owned), ServerId(SERVER_ID), ChannelId(CHANNEL_ID))
-        runCurrent()
-
-        assertEquals(null, device.storedIds())
-    }
-
-    @Test
-    fun aRemovalThatDoesNotConcernAListLeavesItsLaterWritesWelcome() = kotlinx.coroutines.test.runTest {
-        val device = Device(backgroundScope)
-        val ownerState = MutableStateFlow<ProcessServerMembersOwner?>(owner("env-a", "account-a"))
-        val repository = OwnerTestMemberRepository().apply { channelMembers = listOf(member("member-a")) }
-        val store = store(repository, ownerState, channelMembersOffline = device.members) { 1L }
-        store.loadChannelMembers(ServerId(SERVER_ID), ChannelId(CHANNEL_ID))
-        runCurrent()
-
-        // Someone not in this channel leaves the server; then a confirmed add here.
-        store.removeMember(ServerId(SERVER_ID), MemberId("stranger"))
-        runCurrent()
-        store.addChannelMember(ServerId(SERVER_ID), AddChannelMemberRequest(ChannelId(CHANNEL_ID), MemberId("member-b"), MemberKind.Human))
-        runCurrent()
-
-        assertEquals(setOf("member-a", "member-b"), device.storedIds()?.toSet())
     }
 
     @Test

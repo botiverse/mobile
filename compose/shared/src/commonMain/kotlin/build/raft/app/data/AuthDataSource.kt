@@ -13,6 +13,8 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.jsonPrimitive
 import build.raft.app.image.raftClearImageCaches
+import build.raft.app.network.raftResponseTraceIdOrNull
+import build.raft.app.network.raftValidTraceIdOrNull
 import build.raft.app.resources.*
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.withContext
@@ -31,7 +33,8 @@ class SharedAuthDataSource(
     private val api: RaftAuthApi,
     private val sessionStore: RaftAuthSessionStore,
     private val diagnosticsLogger: (String) -> Unit = {},
-    private val criticalDiagnosticsLogger: (String) -> Unit = diagnosticsLogger
+    private val criticalDiagnosticsLogger: (String) -> Unit = diagnosticsLogger,
+    private val clearWebViewAuthStorage: suspend () -> Unit = { build.raft.app.raftClearWebViewAuthStorage() },
 ) {
     private var avatarCacheRuntime: RaftAvatarCacheRuntime? = null
     private var avatarCacheNativeCache: RaftAvatarNativeCache = UnsupportedRaftAvatarNativeCache
@@ -64,12 +67,14 @@ class SharedAuthDataSource(
         transport: RaftAuthTransport,
         sessionStore: RaftAuthSessionStore,
         diagnosticsLogger: (String) -> Unit = {},
-        criticalDiagnosticsLogger: (String) -> Unit = diagnosticsLogger
+        criticalDiagnosticsLogger: (String) -> Unit = diagnosticsLogger,
+        clearWebViewAuthStorage: suspend () -> Unit = { build.raft.app.raftClearWebViewAuthStorage() },
     ) : this(
         api = RaftAuthApiClient(transport, diagnosticsLogger),
         sessionStore = sessionStore,
         diagnosticsLogger = diagnosticsLogger,
-        criticalDiagnosticsLogger = criticalDiagnosticsLogger
+        criticalDiagnosticsLogger = criticalDiagnosticsLogger,
+        clearWebViewAuthStorage = clearWebViewAuthStorage,
     )
 
     fun logDiagnostics(message: String) {
@@ -578,7 +583,7 @@ class SharedAuthDataSource(
             is AuthApiResult.Success -> Unit
             is AuthApiResult.Failure -> {
                 val failure = response.toSharedAuthFailure()
-                return SharedEmailVerificationResult.Failure(failure.code, failure.message, failure.display)
+                return SharedEmailVerificationResult.Failure(failure.code, failure.message, failure.display, failure.traceId)
             }
         }
         return refreshEmailVerificationStatus()
@@ -1021,7 +1026,8 @@ class SharedAuthDataSource(
     suspend fun createServer(
         name: String,
         slug: String? = null,
-        region: String? = null
+        region: String? = null,
+        selectCreatedServer: Boolean = true,
     ): SharedAuthResult<StoredAuthSession> {
         var session = sessionStore.readSession() ?: return SharedAuthResult.Unauthenticated
         val normalizedName = name.trim()
@@ -1099,6 +1105,14 @@ class SharedAuthDataSource(
             ).also { persisted = it }
         }
         val updated = persisted ?: return SharedAuthResult.Unauthenticated
+        if (!selectCreatedServer) {
+            return SharedAuthResult.Success(
+                updated.copy(
+                    selectedServerId = selected.id,
+                    selectedServerSlug = selected.slug,
+                )
+            )
+        }
         return selectStoredAuthServer(
             sessionStore = sessionStore,
             expectedSession = updated,
@@ -1436,6 +1450,7 @@ class SharedAuthDataSource(
             sessionStore.clearSession(reason = "logout", source = "auth_data_source_logout")
             retireCapturedAvatarOwners(avatarRetirement, source = "logout")
             clearAccountImageCaches(source = "logout")
+            clearAccountWebViewStorage(source = "logout")
             diagnosticsLogger("auth_logout_cleared serverRevocation=$serverRevocation")
             SharedAuthResult.Success(Unit)
         }
@@ -1445,6 +1460,7 @@ class SharedAuthDataSource(
         sessionStore.clearSession(reason = reason, source = source)
         retireCapturedAvatarOwners(capture, source)
         clearAccountImageCaches(source)
+        clearAccountWebViewStorage(source)
     }
 
     private suspend fun replaceAuthenticatedSessionAndRetireChangedAccount(
@@ -1458,9 +1474,17 @@ class SharedAuthDataSource(
             previous
                 ?.takeIf { accountChanged }
                 ?.let(::captureAvatarOwnerRetirement)
+        if (accountChanged) {
+            if (!isCurrent()) return false
+            // Clear and await previous account's WebView auth storage BEFORE persisting the new
+            // session so async cleanup can never race and wipe the new account's injected token.
+            clearAccountWebViewStorage(source)
+        }
         if (!sessionStore.replaceAuthenticatedSessionIfCurrent(session, isCurrent)) return false
         retireCapturedAvatarOwners(capture, source)
-        if (accountChanged) clearAccountImageCaches(source)
+        if (accountChanged) {
+            clearAccountImageCaches(source)
+        }
         return true
     }
 
@@ -1468,6 +1492,12 @@ class SharedAuthDataSource(
     private suspend fun clearAccountImageCaches(source: String) {
         runCatchingPreservingCancellation { raftClearImageCaches() }
             .onFailure { diagnosticsLogger("image_cache_clear result=failure source=$source") }
+    }
+
+    /** Persistent WebView storage holds the previous account's web access token; drop it. */
+    private suspend fun clearAccountWebViewStorage(source: String) {
+        runCatchingPreservingCancellation { clearWebViewAuthStorage() }
+            .onFailure { diagnosticsLogger("webview_storage_clear result=failure source=$source") }
     }
 
     private fun captureAvatarOwnerRetirement(session: StoredAuthSession?): RaftAvatarOwnerRetirementCapture? =
@@ -2036,7 +2066,8 @@ sealed interface AuthApiResult<out T> {
     data class Failure(
         val code: Int,
         val errorBodyText: String? = null,
-        val contractCode: String? = null
+        val contractCode: String? = null,
+        val traceId: String? = null,
     ) : AuthApiResult<Nothing>
 }
 
@@ -2247,10 +2278,15 @@ data class ServerSwitcherOrderPreference(
 data class AuthNetworkResponse(
     val code: Int,
     val bodyText: String?,
-    val errorBodyText: String? = null
+    val errorBodyText: String? = null,
+    val responseHeaders: Map<String, List<String>> = emptyMap(),
 ) {
     val isSuccessful: Boolean
         get() = code in 200..299
+
+    /** The server's `X-Trace-Id` header on this response, or null when unanswered/absent. */
+    val traceId: String?
+        get() = responseHeaders.raftResponseTraceIdOrNull()
 }
 
 sealed interface SharedAuthResult<out T> {
@@ -2266,7 +2302,9 @@ sealed interface SharedAuthResult<out T> {
         /** A 403 `second_factor_step_up_required` (linking a sign-in method): what to step up with. */
         val secondFactorStepUp: SecondFactorStepUpChallenge? = null,
         /** The client's own copy for this failure, in the app language; null shows [message]. */
-        val display: StringDesc? = null
+        val display: StringDesc? = null,
+        /** The failed server response's `X-Trace-Id`, or null for local / unanswered failures. */
+        val traceId: String? = null,
     ) : SharedAuthResult<Nothing>
 }
 
@@ -2282,7 +2320,9 @@ sealed interface SharedEmailVerificationResult {
         val code: SharedAuthErrorCode,
         val message: String,
         /** As [SharedAuthResult.Failure.display]. */
-        val display: StringDesc? = null
+        val display: StringDesc? = null,
+        /** The failed server response's `X-Trace-Id`, or null for local / unanswered failures. */
+        val traceId: String? = null,
     ) : SharedEmailVerificationResult
 }
 
@@ -2378,6 +2418,7 @@ data class AuthLogoutRequestBody(
  * read) is for logs only.
  */
 internal fun AuthApiResult.Failure.toSharedAuthFailure(): SharedAuthResult.Failure {
+    val responseTraceId = if (code == 0) null else raftValidTraceIdOrNull(traceId)
     val errorDto = errorBodyText?.let { body ->
         runCatching { authJson.decodeFromString(AuthErrorBodyDto.serializer(), body) }.getOrNull()
     }
@@ -2388,7 +2429,8 @@ internal fun AuthApiResult.Failure.toSharedAuthFailure(): SharedAuthResult.Failu
             SharedAuthErrorCode.Unknown,
             challenge.serverMessage ?: message ?: SECOND_FACTOR_STEP_UP_REQUIRED_CODE,
             secondFactorStepUp = challenge,
-            display = if (challenge.serverMessage == null && message == null) Res.string.auth_error_sign_in_failed.desc() else null
+            display = if (challenge.serverMessage == null && message == null) Res.string.auth_error_sign_in_failed.desc() else null,
+            traceId = responseTraceId,
         )
     }
     // web authErrors.ts: the server's English for wrong credentials reads as the client's copy.
@@ -2400,38 +2442,44 @@ internal fun AuthApiResult.Failure.toSharedAuthFailure(): SharedAuthResult.Failu
             SharedAuthResult.Failure(
                 SharedAuthErrorCode.LegalAcceptanceRequired,
                 "Review and accept Raft's Terms of Service and Privacy Policy to continue.",
-                display = Res.string.auth_error_legal_acceptance_required.desc()
+                display = Res.string.auth_error_legal_acceptance_required.desc(),
+                traceId = responseTraceId,
             )
         contractCode != null ->
             SharedAuthResult.Failure(
                 SharedAuthErrorCode.Unknown,
                 contractCode,
-                display = Res.string.auth_error_sign_in_failed.desc()
+                display = Res.string.auth_error_sign_in_failed.desc(),
+                traceId = responseTraceId,
             )
         code == 0 ->
             SharedAuthResult.Failure(
                 SharedAuthErrorCode.Network,
                 message ?: "Network unavailable. Check your connection.",
-                display = if (message == null) Res.string.error_network_connection_failed.desc() else null
+                display = if (message == null) Res.string.error_network_connection_failed.desc() else null,
+                traceId = null,
             )
         code == 400 ->
             SharedAuthResult.Failure(
                 SharedAuthErrorCode.Validation,
                 message ?: "Check the fields and try again.",
-                display = if (message == null) Res.string.auth_error_check_fields.desc() else null
+                display = if (message == null) Res.string.auth_error_check_fields.desc() else null,
+                traceId = responseTraceId,
             )
         code == 401 ->
             SharedAuthResult.Failure(
                 SharedAuthErrorCode.InvalidCredentials,
                 message ?: "Email or password is incorrect.",
                 display =
-                    if (message == null || incorrectCredentials) Res.string.auth_error_incorrect_credentials.desc() else null
+                    if (message == null || incorrectCredentials) Res.string.auth_error_incorrect_credentials.desc() else null,
+                traceId = responseTraceId,
             )
         code in 500..599 ->
             SharedAuthResult.Failure(
                 SharedAuthErrorCode.Server,
                 message ?: "Raft is unavailable. Try again soon.",
-                display = if (message == null) Res.string.error_server_unavailable.desc() else null
+                display = if (message == null) Res.string.error_server_unavailable.desc() else null,
+                traceId = responseTraceId,
             )
         else ->
             SharedAuthResult.Failure(
@@ -2442,13 +2490,14 @@ internal fun AuthApiResult.Failure.toSharedAuthFailure(): SharedAuthResult.Failu
                         incorrectCredentials -> Res.string.auth_error_incorrect_credentials.desc()
                         message == null -> Res.string.auth_error_sign_in_failed.desc()
                         else -> null
-                    }
+                    },
+                traceId = responseTraceId,
             )
     }
 }
 
 private fun AuthNetworkResponse.toAuthApiFailure(): AuthApiResult.Failure =
-    AuthApiResult.Failure(code = code, errorBodyText = errorBodyText)
+    AuthApiResult.Failure(code = code, errorBodyText = errorBodyText, traceId = traceId)
 
 private fun List<String>.authServerOrderDiagnosticsValue(): String =
     joinToString(separator = ",", prefix = "[", postfix = "]")
@@ -2472,7 +2521,7 @@ private inline fun <Wire, T> AuthNetworkResponse.mapAuthBody(
 ): AuthApiResult<T> {
     if (!isSuccessful) return toAuthApiFailure()
     val body = bodyText?.takeIf { it.isNotBlank() }
-        ?: return AuthApiResult.Failure(code = code, contractCode = contractCode).also {
+        ?: return AuthApiResult.Failure(code = code, contractCode = contractCode, traceId = traceId).also {
             diagnosticsLogger("auth_contract_mismatch contract=$contractCode http=$code bodyShape=missing bodyBytes=0")
         }
     val wire = try {
@@ -2482,7 +2531,7 @@ private inline fun <Wire, T> AuthNetworkResponse.mapAuthBody(
             "auth_contract_mismatch contract=$contractCode http=$code " +
                 "${body.authBodyDiagnostics()} errorType=${error.safeDiagnosticsType()}"
         )
-        return AuthApiResult.Failure(code = code, contractCode = contractCode)
+        return AuthApiResult.Failure(code = code, contractCode = contractCode, traceId = traceId)
     }
     return AuthApiResult.Success(transform(wire))
 }

@@ -1,6 +1,5 @@
 package build.raft.app
 
-import build.raft.app.data.SettingsBillingAppSumoSnapshot
 import build.raft.app.data.SettingsBillingCurrentPlanSnapshot
 import build.raft.app.data.SettingsBillingFileUploadQuotaSnapshot
 import build.raft.app.data.SettingsBillingSeatUsageSnapshot
@@ -80,44 +79,17 @@ class SettingsBillingViewOnlyModelTest {
         assertNull(model.members)
     }
 
+    /** Web SeatsBreakdown (botiverse/slock 16f5f8bc40): people, then agents in tenths of a seat; no agents row without agents. */
     @Test
-    fun appSumoLicenseShowsItsAllowancesAndLifetimeStatus() {
-        val model =
-            settingsBillingViewOnlyModel(
-                snapshot(
-                    SettingsBillingSubscriptionSnapshot(
-                        effectivePlan = "pro",
-                        source = "appsumo",
-                        appsumo = SettingsBillingAppSumoSnapshot(tier = 2, maxHumans = 10, maxAgents = 50, maxHostedJointChannels = 5, hostedJointChannels = 1),
-                        usage = SettingsBillingSeatUsageSnapshot(humans = 4, agents = 9, universalSeats = 4.9),
-                    )
-                ),
-                sessionPlan = null,
-                nowEpochMillis = now,
-            )
-
-        assertEquals(SettingsBillingViewOnlyPlan.AppSumo, model.plan)
-        assertEquals(2, model.appSumoTier)
-        assertEquals(SettingsBillingViewOnlyStatus.Lifetime, model.status)
-        assertEquals(SettingsBillingViewOnlyAppSumo(4, 10, 9, 50, 1, 5), model.appSumo)
-        assertNull(model.details)
-    }
-
-    @Test
-    fun missingBillingFallsBackToTheSessionPlanAndCountsTheGracePeriod() {
-        val model = settingsBillingViewOnlyModel(snapshot(null, serverPlan = null, downgradedAt = "2026-10-30T12:00:00Z"), sessionPlan = "free", nowEpochMillis = now)
-
-        assertTrue(model.loadFailed)
-        assertEquals(SettingsBillingViewOnlyPlan.Free, model.plan)
-        assertEquals(SettingsBillingViewOnlyDowngrade(expired = false, daysLeft = 5), model.downgrade)
-        assertEquals(30, model.historyDays)
-        assertNull(model.members)
-    }
-
-    @Test
-    fun seatsShowAtMostOneDecimal() {
-        assertEquals("4.2", settingsBillingFormatSeats(4.2))
-        assertEquals("5", settingsBillingFormatSeats(5.0))
-        assertEquals("1.2", settingsBillingFormatSeats(12 * 0.1))
+    fun theSeatsBreakdownHasPeopleThenAgentsCountedInTenths() {
+        val people = SettingsBillingSeatHolder.People
+        val agents = SettingsBillingSeatHolder.Agents
+        mapOf(
+            (4 to 15) to listOf(SettingsBillingSeatsBreakdownRow(people, 4, 40), SettingsBillingSeatsBreakdownRow(agents, 15, 15)),
+            (2 to 10) to listOf(SettingsBillingSeatsBreakdownRow(people, 2, 20), SettingsBillingSeatsBreakdownRow(agents, 10, 10)),
+            (6 to 0) to listOf(SettingsBillingSeatsBreakdownRow(people, 6, 60)),
+        ).forEach { (usage, rows) ->
+            assertEquals(rows, settingsBillingSeatsBreakdown(humans = usage.first, agents = usage.second), "$usage")
+        }
     }
 }

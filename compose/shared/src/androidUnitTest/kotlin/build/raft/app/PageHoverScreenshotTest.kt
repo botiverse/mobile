@@ -68,36 +68,8 @@ class PageHoverScreenshotTest {
     val activities = RobolectricComposeActivityRule()
 
     @Test
-    fun messageRowLight() = capture("hover.message-row", RaftAppAppearance.Light) { HoverMessageRow(it) }
-
-    @Test
-    fun messageRowDark() = capture("hover.message-row.dark", RaftAppAppearance.Dark) { HoverMessageRow(it) }
-
-    @Test
     fun messageRowToolbarLight() =
         capture("hover.message-row-toolbar", RaftAppAppearance.Light) { HoverMessageRowWithToolbar(it, RaftAppAppearance.Light) }
-
-    @Test
-    fun messageRowToolbarDark() =
-        capture("hover.message-row-toolbar.dark", RaftAppAppearance.Dark) { HoverMessageRowWithToolbar(it, RaftAppAppearance.Dark) }
-
-    @Test
-    fun activityRowLight() = capture("hover.activity-row", RaftAppAppearance.Light) { HoverActivityRow(it) }
-
-    @Test
-    fun activityRowDark() = capture("hover.activity-row.dark", RaftAppAppearance.Dark) { HoverActivityRow(it) }
-
-    @Test
-    fun serverTileLight() = capture("hover.server-tile", RaftAppAppearance.Light) { HoverServerTile(it) }
-
-    @Test
-    fun serverTileDark() = capture("hover.server-tile.dark", RaftAppAppearance.Dark) { HoverServerTile(it) }
-
-    @Test
-    fun markdownLinkLight() = capture("hover.markdown-link", RaftAppAppearance.Light) { HoverMarkdownLink(it) }
-
-    @Test
-    fun markdownLinkDark() = capture("hover.markdown-link.dark", RaftAppAppearance.Dark) { HoverMarkdownLink(it) }
 
     private fun capture(name: String, appearance: RaftAppAppearance, content: @Composable (HoverTarget) -> Unit) {
         val target = HoverTarget()
@@ -293,11 +265,6 @@ internal fun HoverActivityRowContent() {
         onOpenMenu = {},
         modifier = Modifier.fillMaxWidth(),
     )
-}
-
-@Composable
-private fun HoverActivityRow(target: HoverTarget) {
-    RestAndHovered(target) { modifier -> Box(modifier.fillMaxWidth()) { HoverActivityRowContent() } }
 }
 
 private val hoverServers =

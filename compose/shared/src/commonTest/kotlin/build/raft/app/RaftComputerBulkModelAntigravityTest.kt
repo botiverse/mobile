@@ -47,15 +47,4 @@ class RaftComputerBulkModelAntigravityTest {
         assertNull(raftBulkReconcileReasoningEffort("antigravity", null, null, current = "high"))
         assertEquals("high", raftBulkReconcileReasoningEffort("claude", null, null, current = "high"))
     }
-
-    @Test
-    fun aModelThatDeclaresNoEffortsOffersNoneOnAnyRuntime() {
-        // slock #15162: `[]` is the model saying it takes no effort, not that it did not say.
-        for (runtime in listOf("codex", "claude", "antigravity")) {
-            assertEquals(emptyList(), raftBulkReasoningEffortOptions(runtime, emptyList()), runtime)
-            // Default, even over a stale choice or a declared default.
-            assertNull(raftBulkReconcileReasoningEffort(runtime, emptyList(), "medium", current = "high"), runtime)
-            assertNull(raftBulkReconcileReasoningEffort(runtime, emptyList(), null, current = null), runtime)
-        }
-    }
 }

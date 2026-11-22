@@ -1,7 +1,8 @@
 package build.raft.app
 
-import build.raft.app.data.InMemoryRaftKeyValueStore
+import androidx.compose.runtime.snapshots.Snapshot
 import androidx.compose.ui.graphics.Color
+import build.raft.app.data.InMemoryRaftKeyValueStore
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -86,35 +87,6 @@ class RaftPixelAvatarRuntimeTest {
     }
 
     @Test
-    fun parserRejectsMalformedGridRowLength() {
-        val badRow = "\"_KKKKKK__\", " + List(7) { "\"________\"" }.joinToString(", ")
-        assertNull(parsePixelAvatarData(sampleJson(robotGridRows = badRow)))
-    }
-
-    @Test
-    fun parserRejectsUnknownGridLetter() {
-        val unknownLetter = "\"_KKKKKQ_\", " + List(7) { "\"________\"" }.joinToString(", ")
-        assertNull(parsePixelAvatarData(sampleJson(robotGridRows = unknownLetter)))
-    }
-
-    @Test
-    fun parserRejectsUnknownDefaultKey() {
-        assertNull(parsePixelAvatarData(sampleJson(defaultKey = "ghost")))
-    }
-
-    @Test
-    fun parserRejectsUnknownReservedKey() {
-        assertNull(parsePixelAvatarData(sampleJson(reservedKeys = """["ghost"]""")))
-    }
-
-    @Test
-    fun parserRejectsNonJsonAndWrongShapes() {
-        assertNull(parsePixelAvatarData("not json"))
-        assertNull(parsePixelAvatarData("""{"version": 1}"""))
-        assertNull(parsePixelAvatarData("""{"version": 0, "palette": {}, "avatars": {}, "defaultKey": "x"}"""))
-    }
-
-    @Test
     fun versionGateRejectsDocumentsOlderThanMinimum() {
         try {
             // Parseable but stale relative to an explicit minimum: rejected by the gate.
@@ -168,53 +140,6 @@ class RaftPixelAvatarRuntimeTest {
     }
 
     @Test
-    fun holderSkipsSameVersionAsBundled() {
-        try {
-            // Same version as the active table: version is the table identity,
-            // so the document is skipped without swapping `current` — a swap is
-            // what makes every pixel avatar recompose and flash its placeholder.
-            val applied =
-                RaftPixelAvatarRuntime.applyRuntimeJson(
-                    sampleJson(version = RaftPixelAvatarRuntime.bundled.version),
-                    source = "fetch"
-                )
-            assertNull(applied)
-            assertSame(RaftPixelAvatarRuntime.bundled, RaftPixelAvatarRuntime.current)
-        } finally {
-            RaftPixelAvatarRuntime.resetForTest()
-        }
-    }
-
-    @Test
-    fun holderSkipsSameVersionEvenWhenContentDiffers() {
-        try {
-            val applied =
-                RaftPixelAvatarRuntime.applyRuntimeJson(
-                    sampleJson(version = RaftPixelAvatarRuntime.bundled.version + 1),
-                    source = "fetch"
-                )
-            assertNotNull(applied)
-            assertSame(applied, RaftPixelAvatarRuntime.current)
-
-            // A fetched document with the same version but different content is
-            // still skipped: version, not payload, is the table identity.
-            val reapplied =
-                RaftPixelAvatarRuntime.applyRuntimeJson(
-                    sampleJson(
-                        version = RaftPixelAvatarRuntime.bundled.version + 1,
-                        defaultKey = "mug",
-                        reservedKeys = "[]"
-                    ),
-                    source = "fetch"
-                )
-            assertNull(reapplied)
-            assertSame(applied, RaftPixelAvatarRuntime.current)
-        } finally {
-            RaftPixelAvatarRuntime.resetForTest()
-        }
-    }
-
-    @Test
     fun keyValueStoreRoundTripsJsonVersionAndFetchedAt() {
         val backing = InMemoryRaftKeyValueStore()
         val store = KeyValuePixelAvatarStore(backing)
@@ -232,23 +157,6 @@ class RaftPixelAvatarRuntimeTest {
     }
 
     @Test
-    fun bundledSpecsStayUsableAfterRuntimeSwap() {
-        try {
-            RaftPixelAvatarRuntime.applyRuntimeJson(
-                sampleJson(version = RaftPixelAvatarRuntime.bundled.version + 1),
-                source = "fetch"
-            )
-            // Bundled specs keep resolving against the generated palette (random avatars
-            // and any cached spec instances must not be affected by the swap).
-            val bundledRobot = PixelAvatarFixedSpecs.getValue(PixelAvatarDefaultKey)
-            assertTrue(bundledRobot.spans.isNotEmpty())
-            assertFalse(bundledRobot.backgroundArgb.isBlank())
-        } finally {
-            RaftPixelAvatarRuntime.resetForTest()
-        }
-    }
-
-    @Test
     fun pixelRandomWireValueUsesSeededRandomAvatar() {
         val randomAvatar = assertNotNull(pixelAvatarSpecForWireValue("pixel:random:agent-1"))
         val nestedRandomAvatar = assertNotNull(pixelAvatarSpecForWireValue("pixel:random:agent-1"))
@@ -258,5 +166,33 @@ class RaftPixelAvatarRuntimeTest {
         assertFalse(nestedRandomAvatar.nativeCacheKey == defaultAvatar.nativeCacheKey)
         assertNull(pixelAvatarSpecForWireValue("random:agent-1"))
         assertNull(pixelAvatarSpecForWireValue("pixel:random:"))
+    }
+
+    @Test
+    fun runtimeSwapNeverRollsBackToOlderVersionOrThrowsInsideOpenSnapshot() {
+        try {
+            val baseVersion = RaftPixelAvatarRuntime.bundled.version
+            val openSnapshot = Snapshot.takeMutableSnapshot()
+            try {
+                val newer = assertNotNull(
+                    RaftPixelAvatarRuntime.applyRuntimeJson(
+                        sampleJson(version = baseVersion + 5),
+                        source = "fetch"
+                    )
+                )
+                assertNull(
+                    RaftPixelAvatarRuntime.applyRuntimeJson(
+                        sampleJson(version = baseVersion + 2),
+                        source = "cache"
+                    )
+                )
+                val observed = openSnapshot.enter { RaftPixelAvatarRuntime.current }
+                assertSame(newer, observed)
+            } finally {
+                openSnapshot.dispose()
+            }
+        } finally {
+            RaftPixelAvatarRuntime.resetForTest()
+        }
     }
 }

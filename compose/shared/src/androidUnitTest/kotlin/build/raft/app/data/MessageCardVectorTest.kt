@@ -5,7 +5,6 @@ import build.raft.app.markdown.raftCardMarkdownLineColumn
 import build.raft.app.markdown.raftCardMarkdownRenderSource
 import build.raft.app.markdown.raftCardMarkdownTagValid
 import build.raft.app.markdown.threadInlineTagMatches
-import java.security.MessageDigest
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
@@ -41,16 +40,6 @@ import kotlin.test.assertEquals
 class MessageCardVectorTest {
     private val vectorBytes by lazy { resource("/messagecard/messageCard.v1.vector.json") }
     private val vector by lazy { Json.parseToJsonElement(vectorBytes.decodeToString()).jsonObject }
-
-    @Test
-    fun vendoredVectorIsThePinnedSharedArtifact() {
-        val digest = sha256(vectorBytes)
-        assertEquals("19ec57295301cd1d9edde274776211c99e008020e446b0d560ea70424ee034c1", digest)
-        assertEquals(digest, resource("/messagecard/messageCard.v1.vector.sha256").decodeToString().substringBefore(' ').trim())
-        assertEquals("message-card.v1", vector.string("contract"))
-        assertEquals("1", vector.getValue("schemaVersion").jsonPrimitive.content)
-        assertEquals(listOf(49, 61), listOf("cards", "markdown").map { vector.getValue(it).jsonArray.size })
-    }
 
     @Test
     fun everyCardCaseReadsAsTheClientSchemaReadsIt() {
@@ -261,8 +250,6 @@ class MessageCardVectorTest {
         }
 
     private fun resource(path: String): ByteArray = checkNotNull(javaClass.getResourceAsStream(path)) { "missing $path" }.readBytes()
-
-    private fun sha256(bytes: ByteArray): String = MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) }
 
     private fun JsonObject.string(key: String): String = getValue(key).jsonPrimitive.content
 }

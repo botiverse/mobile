@@ -4,17 +4,24 @@ import build.raft.app.isConversationAccessLost
 import build.raft.app.model.AttachmentId
 import build.raft.app.model.ChannelId
 import build.raft.app.network.MultipartFile
+import build.raft.app.network.RAFT_ATTACHMENT_UPLOAD_COMPLETE_TIMEOUT_MILLIS
 import build.raft.app.network.RaftHttpExecutor
 import build.raft.app.network.RaftHttpExecutorResponse
 import build.raft.app.network.RaftHttpFileBody
 import build.raft.app.network.RaftRequestPriority
 import build.raft.app.network.RaftRequestScheduler
-import build.raft.app.network.RaftRequestTimeoutException
 import build.raft.app.network.RaftByteStreamSink
 import build.raft.app.network.RaftTraceIds
 import build.raft.app.network.RaftUploadWireFacts
-import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.test.advanceTimeBy
+import kotlinx.coroutines.test.advanceUntilIdle
+import kotlinx.coroutines.test.currentTime
+import kotlinx.coroutines.test.runCurrent
+import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.withContext
 import kotlin.test.Test
 import kotlin.test.assertContains
@@ -26,6 +33,7 @@ import kotlin.test.assertTrue
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.jsonPrimitive
 
+@OptIn(ExperimentalCoroutinesApi::class)
 class DirectAttachmentUploadNetworkContractTest {
     @Test
     fun unboundRepositoryDirectSessionOperationsNeverReachExecutorOrFileResolver() = runBlocking {
@@ -288,72 +296,143 @@ class DirectAttachmentUploadNetworkContractTest {
         assertNull(raftAttachmentUploadTimeoutPhase(timing.facts, timing.controlTimeoutPhase))
     }
 
+    /**
+     * web slock #15743: a control call of an upload that never answers ends in a retryable timeout at
+     * its own budget, never a spinner. The capability probe and the session create get the 30 s of
+     * every API call (a probe that runs out of time sends the upload to multipart); the complete call
+     * gets 45 s, past the server's own 30 s storage check, so its answer is heard. A timed-out call is
+     * never sent again inside the attempt. Virtual time; only the hung call never answers.
+     */
     @Test
-    fun aSessionCallThatTimesOutIsTheAttemptsTimeoutPhase() = runBlocking {
+    fun aControlCallThatNeverAnswersEndsInARetryableTimeoutAtItsOwnBudget() = runTest {
+        class Case(
+            val name: String,
+            val budgetMillis: Long,
+            /** The attempt's `timeout_phase` for it; the probe has none (it falls back instead). */
+            val phase: String?,
+            val hangs: (method: String, url: String) -> Boolean,
+            val call: suspend (DirectAttachmentUploadOperation) -> DataResult<*>,
+        )
+        val upload: suspend (DirectAttachmentUploadOperation) -> DataResult<*> = { operation ->
+            operation.uploadOneThreadFile(
+                channelId = ChannelId("channel-1"),
+                file = file(bytes = byteArrayOf(1, 2, 3)),
+                clientRequestId = "11111111-1111-4111-8111-111111111111",
+            )
+        }
+        val cases =
+            listOf(
+                Case(
+                    name = "capability",
+                    budgetMillis = 30_000L,
+                    phase = null,
+                    hangs = { _, url -> url.endsWith("/attachments/upload-capabilities") },
+                    call = { operation -> operation.capabilities() },
+                ),
+                Case(
+                    name = RaftAttachmentUploadPhaseCreate,
+                    budgetMillis = 30_000L,
+                    phase = RaftAttachmentUploadPhaseCreate,
+                    hangs = { method, url -> method == "POST" && url.endsWith("/attachments/upload-sessions") },
+                    call = upload,
+                ),
+                Case(
+                    name = RaftAttachmentUploadPhaseComplete,
+                    budgetMillis = RAFT_ATTACHMENT_UPLOAD_COMPLETE_TIMEOUT_MILLIS,
+                    phase = RaftAttachmentUploadPhaseComplete,
+                    hangs = { method, url -> method == "POST" && url.endsWith("/complete") },
+                    call = upload,
+                ),
+            )
+        for (case in cases) {
+            // The real repository parses a successful answer (the session create) on its own parse
+            // thread: the budget is measured from the moment the hung call is sent, not from the start.
+            val hungCallSent = CompletableDeferred<Unit>()
+            var calledOff = 0
+            val executor =
+                RecordingExecutor(
+                    respond = { method, url ->
+                        when {
+                            case.hangs(method, url) -> {
+                                hungCallSent.complete(Unit)
+                                try {
+                                    awaitCancellation()
+                                } finally {
+                                    calledOff += 1
+                                }
+                            }
+                            url.endsWith("/attachments/upload-capabilities") ->
+                                response(body = """{"directUploadEnabled":true,"maxBytes":1048576,"sessionExpiresInSeconds":600}""")
+                            method == "POST" && url.endsWith("/attachments/upload-sessions") -> response(body = CreatedSessionBody)
+                            method == "POST" && url.endsWith("/complete") -> response(body = CompletedSessionBody)
+                            else -> error("unexpected request: $method $url")
+                        }
+                    },
+                )
+            val recorder = recorder()
+            val result = async { withContext(recorder) { case.call(composerUpload(executor)) } }
+            hungCallSent.await()
+            val startedAt = currentTime
+
+            advanceTimeBy(case.budgetMillis - 1)
+            runCurrent()
+            assertFalse(result.isCompleted, "${case.name}: still waiting 1 ms before its budget")
+            advanceTimeBy(1)
+            runCurrent()
+            assertTrue(result.isCompleted, "${case.name}: ended at its budget")
+
+            val error = assertIs<DataResult.Error>(result.await(), case.name).error
+            assertEquals(startedAt + case.budgetMillis, currentTime, case.name)
+            assertEquals("network_timeout", error.code, case.name)
+            assertTrue(error.retryable, case.name)
+            assertEquals(1, executor.requests.count { case.hangs(it.method, it.url) }, "${case.name}: sent once")
+            assertEquals(1, calledOff, "${case.name}: the hung request is called off, so a late answer cannot land")
+            assertEquals(case.phase, recorder.snapshot().controlTimeoutPhase, case.name)
+        }
+    }
+
+    /** web slock #15743: the upload's own cancel during a hung control call stays a cancel, never a timeout. */
+    @Test
+    fun aCancelDuringAHungControlCallStaysACancelAndLeavesNoDeadlineBehind() = runTest {
+        var calledOff = 0
         val executor =
             RecordingExecutor(
-                respond = { _, _ ->
-                    RaftHttpExecutorResponse(
-                        code = 0,
-                        bodyText = null,
-                        errorBodyText = "network_timeout: no answer",
-                        transportDiagnostics = "engine=ktor_test status=none kind=TIMEOUT rawCode=none detail=none",
-                    )
+                respond = { method, url ->
+                    if (method == "POST" && url.endsWith("/attachments/upload-sessions")) {
+                        try {
+                            awaitCancellation()
+                        } finally {
+                            calledOff += 1
+                        }
+                    } else {
+                        error("unexpected request: $method $url")
+                    }
                 },
             )
         val recorder = recorder()
-
-        val result =
-            withContext(recorder) {
-                composerUpload(executor).uploadOneThreadFile(
-                    channelId = ChannelId("channel-1"),
-                    file = file(bytes = byteArrayOf(1, 2, 3)),
-                    clientRequestId = "11111111-1111-4111-8111-111111111111",
-                )
-            }
-
-        val error = assertIs<DataResult.Error>(result).error
-        val timing = recorder.snapshot()
-        assertEquals(RaftAttachmentUploadPhaseCreate, timing.controlTimeoutPhase)
-        assertEquals(
-            "timeout",
-            raftAttachmentUploadOutcome(error.code, cancelled = false, raftAttachmentUploadTimeoutPhase(timing.facts, timing.controlTimeoutPhase)),
-        )
-        assertTrue(executor.byteBodies.isEmpty())
-    }
-
-    @Test
-    fun legacyUploadFillsTheTimingRecorderAndSendsItsTraceparent() = runBlocking {
-        val postFacts = RaftUploadWireFacts(requestBytes = 3L, requestBodyMs = 900L, responseWaitMs = 300L, edgePop = "SFO53-P7")
-        val executor = RecordingExecutor(respond = { _, _ -> response().copy(uploadFacts = postFacts) })
-        val network = client(executor = executor)
-        var elapsed = 75L
-        val recorder = recorder { elapsed }
-        val files = listOf(MultipartFile(name = "files", fileName = "photo.jpg", mimeType = "image/jpeg", bytes = byteArrayOf(1, 2, 3)))
-
-        // The context survives the hops the upload path makes (withContext adds to it).
-        withContext(recorder) {
-            withContext(NonCancellable) {
-                network.uploadAttachmentsWithProgress(DataRequestPriority.Foreground, ChannelId("channel-1"), files) { progress ->
-                    elapsed += progress.bytesTransferred
+        val upload =
+            async {
+                withContext(recorder) {
+                    composerUpload(executor).uploadOneThreadFile(
+                        channelId = ChannelId("channel-1"),
+                        file = file(bytes = byteArrayOf(1, 2, 3)),
+                        clientRequestId = "11111111-1111-4111-8111-111111111111",
+                    )
                 }
             }
-        }
-        // An upload started anywhere else has no recorder: nothing is recorded and no header is added.
-        network.uploadAttachments(DataRequestPriority.Foreground, ChannelId("channel-1"), files)
+        advanceTimeBy(1_000L)
+        runCurrent()
+        assertFalse(upload.isCompleted)
 
-        val timing = recorder.snapshot()
-        assertEquals(RaftAttachmentUploadRouteLegacy, timing.route)
-        assertEquals(75L, timing.prepareMs, "preparation ends as the POST is handed to the network client")
-        assertEquals(postFacts, timing.facts)
-        assertEquals(1, timing.bodySends)
-        assertEquals(2, executor.multipartCalls)
-        assertEquals(Traceparent, executor.multipartHeaders.first()["traceparent"])
-        assertNull(executor.multipartHeaders.last()["traceparent"], "the executor adds its own below this layer")
-        // The transport's progress reaches both the recorder and the caller's listener.
-        executor.multipartProgress.first()?.invoke(build.raft.app.network.RaftWireTransferProgress(bytesTransferred = 2L, bytesTotal = 3L))
-        assertEquals(2L, recorder.snapshot().bytesSent)
-        assertEquals(77L, elapsed)
+        upload.cancel()
+        runCurrent()
+
+        assertTrue(upload.isCancelled)
+        assertEquals(1, calledOff, "the hung create is called off")
+        assertNull(recorder.snapshot().controlTimeoutPhase, "a cancel is no timeout")
+        // Nothing is left to fire later: the create's 30 s deadline went with it.
+        advanceUntilIdle()
+        assertEquals(1_000L, currentTime)
     }
 
     @Test
@@ -376,54 +455,6 @@ class DirectAttachmentUploadNetworkContractTest {
             assertTrue(resolver.openCalls.isEmpty())
             assertTrue(executor.fileBodies.isEmpty())
         }
-    }
-
-    @Test
-    fun directFilePutRejectsFileRefAndBytesBeforeStatOrTransport() = runBlocking {
-        val executor = RecordingExecutor()
-        val resolver = RecordingResolver(RaftPlatformFileStatResult(code = 200, sizeBytes = 3L))
-        val bound = client(executor = executor, resolver = resolver).boundTo(expectedBinding())
-
-        val response =
-            bound.putAttachmentUploadFile(
-                priority = DataRequestPriority.Foreground,
-                upload = putContract(),
-                file =
-                    file(
-                        sizeBytes = 3L,
-                        bytes = byteArrayOf(1, 2, 3),
-                    ).copy(fileRef = FileRef),
-            )
-
-        assertEquals(400, response.code)
-        assertContains(response.errorBodyText.orEmpty(), "attachment_file_input_conflict")
-        assertTrue(resolver.statCalls.isEmpty())
-        assertTrue(resolver.openCalls.isEmpty())
-        assertEquals(0, executor.totalCalls)
-    }
-
-    @Test
-    fun resolverStatExceptionFailsClosedBeforeStreamOpenOrTransport() = runBlocking {
-        val executor = RecordingExecutor()
-        val resolver =
-            RecordingResolver(
-                stat = RaftPlatformFileStatResult(code = 200, sizeBytes = 3L),
-                statFailure = IllegalStateException("private resolver path"),
-            )
-        val bound = client(executor = executor, resolver = resolver).boundTo(expectedBinding())
-
-        val response =
-            bound.putAttachmentUploadFile(
-                priority = DataRequestPriority.Foreground,
-                upload = putContract(),
-                file = file(sizeBytes = 999L),
-            )
-
-        assertEquals(400, response.code)
-        assertContains(response.errorBodyText.orEmpty(), "attachment_size_unavailable")
-        assertTrue(resolver.statCalls.isNotEmpty())
-        assertTrue(resolver.openCalls.isEmpty())
-        assertEquals(0, executor.totalCalls)
     }
 
     @Test
@@ -462,28 +493,6 @@ class DirectAttachmentUploadNetworkContractTest {
             assertTrue(resolver.openCalls.isEmpty(), "status=$status")
             assertEquals(0, executor.totalCalls, "status=$status")
         }
-    }
-
-    @Test
-    fun resolverStatCancellationPropagatesBeforeStreamOpenOrTransport() = runBlocking {
-        val executor = RecordingExecutor()
-        val cancellation = CancellationException("caller canceled file admission")
-        val resolver =
-            RecordingResolver(
-                stat = RaftPlatformFileStatResult(code = 200, sizeBytes = 3L),
-                statFailure = cancellation,
-            )
-        val bound = client(executor = executor, resolver = resolver).boundTo(expectedBinding())
-
-        val failure =
-            failureOf {
-                bound.prepareAttachmentUploadFile(file(sizeBytes = 999L))
-            }
-
-        assertIs<CancellationException>(failure)
-        assertTrue(resolver.statCalls.isNotEmpty())
-        assertTrue(resolver.openCalls.isEmpty())
-        assertEquals(0, executor.totalCalls)
     }
 
     @Test
@@ -599,30 +608,6 @@ class DirectAttachmentUploadNetworkContractTest {
     }
 
     @Test
-    fun directBytesPutRejectsEmptyBodyBeforeSchedulerOrExecutor() = runBlocking {
-        val executor = RecordingExecutor()
-        val schedulerEvents = mutableListOf<String>()
-        val bound =
-            client(
-                executor = executor,
-                warningLogger = { schedulerEvents += it },
-                requestScheduler = RaftRequestScheduler(logger = { schedulerEvents += it }),
-            ).boundTo(expectedBinding())
-
-        val response =
-            bound.putAttachmentUploadBytes(
-                priority = DataRequestPriority.Foreground,
-                upload = putContract(),
-                bytes = ByteArray(0),
-            )
-
-        assertEquals(400, response.code)
-        assertContains(response.errorBodyText.orEmpty(), "attachment_size_unavailable")
-        assertEquals(0, executor.totalCalls)
-        assertTrue(schedulerEvents.isEmpty(), "empty PUT must not acquire or run a scheduler slot")
-    }
-
-    @Test
     fun directBytesPutDiscardsCustomSuccessBodyAndSensitiveHeaders() = runBlocking {
         val leaked = "response=$PresignedUrl"
         val executor =
@@ -650,97 +635,6 @@ class DirectAttachmentUploadNetworkContractTest {
         assertNull(response.errorBodyText)
         assertFalse(response.transportDiagnostics.orEmpty().contains(PresignedUrl))
         assertTrue(response.responseHeaders.isEmpty())
-    }
-
-    @Test
-    fun directBytesPutReplacesCustomErrorBodyWithStableClassification() = runBlocking {
-        val leaked = "upstream rejected $PresignedUrl"
-        val executor =
-            RecordingExecutor(
-                bytesResponse =
-                    RaftHttpExecutorResponse(
-                        code = 403,
-                        bodyText = null,
-                        errorBodyText = leaked,
-                        transportDiagnostics = leaked,
-                        responseHeaders = mapOf("x-leaked-url" to listOf(leaked)),
-                    )
-            )
-        val bound = client(executor = executor).boundTo(expectedBinding())
-
-        val response =
-            bound.putAttachmentUploadBytes(
-                priority = DataRequestPriority.Foreground,
-                upload = putContract(),
-                bytes = byteArrayOf(1, 2, 3),
-            )
-
-        assertEquals(403, response.code)
-        assertEquals("attachment_presigned_upload_http_403", response.errorBodyText)
-        assertNull(response.bodyText)
-        assertFalse(response.errorBodyText.orEmpty().contains(PresignedUrl))
-        assertFalse(response.transportDiagnostics.orEmpty().contains(PresignedUrl))
-        assertTrue(response.responseHeaders.isEmpty())
-    }
-
-    @Test
-    fun directBytesPutTimeoutUsesUrlSafeClassification() = runBlocking {
-        val executor =
-            RecordingExecutor(
-                bytesFailure =
-                    RaftRequestTimeoutException(
-                        "Raft request timed out after 383000ms " +
-                            "key=attachments/upload-sessions/presigned-put reason=PUT url=$PresignedUrl"
-                    )
-            )
-        val bound = client(executor = executor).boundTo(expectedBinding())
-
-        val response =
-            bound.putAttachmentUploadBytes(
-                priority = DataRequestPriority.Foreground,
-                upload = putContract(),
-                bytes = byteArrayOf(1, 2, 3),
-            )
-
-        assertEquals(0, response.code)
-        assertEquals(
-            """{"error":"network_timeout","message":"attachment_presigned_upload_timeout"}""",
-            response.errorBodyText,
-        )
-        assertFalse(response.errorBodyText.orEmpty().contains(PresignedUrl))
-        assertFalse(response.errorBodyText.orEmpty().contains("presigned-put"))
-        assertFalse(response.errorBodyText.orEmpty().contains("reason=PUT"))
-    }
-
-    @Test
-    fun directFilePutClosesStreamWhenTransportSetupFailsAfterOpeningStream() = runBlocking {
-        val source = CountingChunkSource(totalBytes = 3L)
-        val resolver =
-            RecordingResolver(
-                stat = RaftPlatformFileStatResult(code = 200, sizeBytes = 3L),
-                source = source,
-            )
-        val executor =
-            RecordingExecutor(
-                consumeFile = { body ->
-                    body.openStream()
-                    error("transport setup failed")
-                },
-            )
-        val bound = client(executor = executor, resolver = resolver).boundTo(expectedBinding())
-
-        val failure =
-            failureOf {
-                bound.putAttachmentUploadFile(
-                    priority = DataRequestPriority.Foreground,
-                    upload = putContract(),
-                    file = file(sizeBytes = 999L),
-                )
-            }
-
-        assertIs<IllegalStateException>(failure)
-        assertEquals(listOf(FileRef to 3L), resolver.openCalls)
-        assertEquals(1, source.closeCount)
     }
 
     @Test

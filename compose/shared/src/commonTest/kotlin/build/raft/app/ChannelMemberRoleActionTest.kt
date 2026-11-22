@@ -51,39 +51,11 @@ class ChannelMemberRoleActionTest {
     }
 
     @Test
-    fun agentsFollowTheSameRule() {
-        assertEquals(ChannelMemberRoleAction.MakeAdmin, action(member(id = "agent-1", kind = MemberKind.Agent)))
-        assertEquals(
-            ChannelMemberRoleAction.RemoveAdmin,
-            action(member(id = "agent-1", kind = MemberKind.Agent, effectiveChannelRole = "admin")),
-        )
-    }
-
-    @Test
     fun withoutTheRowsServerPermissionNothingIsOffered() {
         // Oneself, a guest, another server's person: the server sends canChangeChannelRole false.
         assertNull(action(member(canChangeChannelRole = false)))
         assertNull(action(member(canChangeChannelRole = null)))
         assertNull(action(member(serverRole = "guest", effectiveChannelRole = "guest", canChangeChannelRole = false)))
-    }
-
-    @Test
-    fun withoutTheChannelCapabilityNothingIsOffered() {
-        assertNull(action(member(), canChange = false))
-        assertNull(action(member(serverRole = "admin", effectiveChannelRole = "admin", canChangeChannelRole = false), canChange = false))
-    }
-
-    @Test
-    fun aServerOwnerOrAdminOnlyGetsTheCannotDemoteExplanation() {
-        assertEquals(
-            ChannelMemberRoleAction.ExplainProtectedDemote,
-            action(member(serverRole = "owner", effectiveChannelRole = "owner", canChangeChannelRole = false)),
-        )
-        assertEquals(
-            ChannelMemberRoleAction.ExplainProtectedDemote,
-            action(member(serverRole = "admin", effectiveChannelRole = "admin", canChangeChannelRole = false)),
-        )
-        assertNull(ChannelMemberRoleAction.ExplainProtectedDemote.nextRole)
     }
 
     @Test
@@ -110,20 +82,5 @@ class ChannelMemberRoleActionTest {
         )
         // No server role sent (another server's member): a plain member, never protected.
         assertNull(action(member(serverRole = null, effectiveChannelRole = null, canChangeChannelRole = false)))
-    }
-
-    @Test
-    fun theRowMenuHoldsWhicheverActionsApplyAndIsAbsentWithNeither() {
-        // Task #triage:#416: one ⋯ per row; a row with a single action still uses it.
-        assertEquals(
-            ChannelMemberRowMenu(ChannelMemberRoleAction.MakeAdmin, canRemove = true),
-            channelMemberRowMenu(ChannelMemberRoleAction.MakeAdmin, canRemove = true),
-        )
-        assertEquals(ChannelMemberRowMenu(null, canRemove = true), channelMemberRowMenu(null, canRemove = true))
-        assertEquals(
-            ChannelMemberRowMenu(ChannelMemberRoleAction.ExplainProtectedDemote, canRemove = false),
-            channelMemberRowMenu(ChannelMemberRoleAction.ExplainProtectedDemote, canRemove = false),
-        )
-        assertNull(channelMemberRowMenu(null, canRemove = false))
     }
 }

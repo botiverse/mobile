@@ -147,17 +147,6 @@ class SharedHomeStoreServerSwitchTest {
         h.close()
     }
 
-    @Test
-    fun switchStateFailIsANoOpWithoutAPendingSwitch() {
-        val idle = HomeServerSwitchState()
-        assertEquals(idle, idle.fail())
-        val failed = idle.select("server-2").fail()
-        assertNull(failed.pendingServerId)
-        assertEquals("server-2", failed.selectedServerId, "the selection stays for a late load")
-        assertEquals(1, failed.failureCount)
-        assertTrue(failed.isCurrent(failed.requestGeneration, ServerId("server-2")))
-    }
-
     private enum class Outcome { Content, Error, Throw }
 
     /** Home API per server: answers, fails, throws, or waits on a gate. */

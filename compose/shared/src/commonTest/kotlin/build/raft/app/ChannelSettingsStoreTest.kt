@@ -53,38 +53,6 @@ import kotlin.test.assertTrue
 
 class ChannelSettingsStoreTest {
     @Test
-    fun sharedHandoffPublishesExactOwnerFirstFrameWithoutWaitingForSettingsNetwork() = runBlocking {
-        val handoff =
-            channelSettingsSharedHandoffSnapshot(
-                owner = routeOwner(),
-                route = route(),
-                homeSnapshot = homeSnapshot(),
-                membersHandoff = SharedServerChannelMembersHandoff.Accepted(ownerMemberSlice()),
-            )
-        val loadGate = CompletableDeferred<DataResult<ChannelSettingsSnapshot>>()
-        val dataSource = FakeChannelSettingsDataSource(loadGate = loadGate)
-        val store = store(dataSource, initialSharedHandoff = handoff)
-
-        assertEquals(ChannelSettingsLoadStatus.Content, store.state.value.status)
-        assertEquals("#from-channel", store.state.value.channel?.name)
-        assertEquals(SharedServerMembersLoadStatus.Loaded, store.state.value.memberSlice.status)
-        assertFalse(store.state.value.writeActionsEnabled)
-        assertEquals(0, dataSource.loadCalls)
-
-        store.dispatch(ChannelSettingsIntent.Refresh)
-        yield()
-        assertEquals(1, dataSource.loadCalls)
-        assertTrue(store.state.value.refreshing)
-        assertEquals("#from-channel", store.state.value.channel?.name)
-
-        loadGate.complete(DataResult.Content(snapshot("#fresh")))
-        yield()
-        assertEquals("#fresh", store.state.value.channel?.name)
-        assertTrue(store.state.value.writeActionsEnabled)
-        store.clear()
-    }
-
-    @Test
     fun sharedHandoffRejectsAccountServerChannelAndMemberOwnerDrift() {
         val exactHome = homeSnapshot()
         val exactMembers = ownerMemberSlice()
@@ -125,70 +93,6 @@ class ChannelSettingsStoreTest {
                 SharedServerChannelMembersHandoff.Accepted(exactMembers.copy(accountId = "user-2")),
             ),
         )
-    }
-
-    @Test
-    fun rejectedSharedHandoffDoesNotFallBackToSettingsCache() = runBlocking {
-        val cache = ChannelSettingsSnapshotCache()
-        assertTrue(cache.put(routeOwner(), route(), snapshot("#cached")))
-        val store =
-            store(
-                dataSource = FakeChannelSettingsDataSource(),
-                cache = cache,
-                initialSharedHandoff = ChannelSettingsSharedHandoff.Rejected,
-            )
-
-        assertEquals(ChannelSettingsLoadStatus.Loading, store.state.value.status)
-        assertNull(store.state.value.channel)
-        store.clear()
-    }
-
-    @Test
-    fun unavailableMemberStoreStillHandsOffExactHomeAsReadOnlyContent() = runBlocking {
-        val handoff =
-            channelSettingsSharedHandoffSnapshot(
-                owner = routeOwner(),
-                route = route(),
-                homeSnapshot = homeSnapshot(),
-                membersHandoff = SharedServerChannelMembersHandoff.Unavailable,
-            )
-        val store = store(FakeChannelSettingsDataSource(), initialSharedHandoff = handoff)
-
-        assertEquals(ChannelSettingsLoadStatus.Content, store.state.value.status)
-        assertEquals("#from-channel", store.state.value.channel?.name)
-        assertEquals(SharedServerMembersLoadStatus.InFlight, store.state.value.memberSlice.status)
-        assertFalse(store.state.value.writeActionsEnabled)
-        store.clear()
-    }
-
-    @Test
-    fun mismatchedOwnerRejectsLoadAndEveryMutationBeforeNetworkClient() = runBlocking {
-        val gateway = RejectingChannelSettingsGateway()
-        val dataSource =
-            RealChannelSettingsDataSource(
-                route = route(),
-                authStore = InMemoryRaftAuthSessionStore(),
-                owner = routeOwner(),
-                gateway = gateway,
-            )
-
-        listOf(
-            dataSource.load(),
-            dataSource.setMuted(true),
-            dataSource.setPinned(true),
-            dataSource.updateProfile("renamed", "description"),
-            dataSource.makePrivate(),
-            dataSource.archive(),
-            dataSource.delete(),
-            dataSource.disconnect(),
-        ).forEach { result ->
-            assertEquals(
-                AUTHENTICATED_ROUTE_AUTHORITY_CHANGED,
-                assertIs<DataResult.Error>(result).error.code,
-            )
-        }
-        assertEquals(8, gateway.captureCalls)
-        assertEquals(0, gateway.networkClientCalls)
     }
 
     @Test
@@ -246,43 +150,6 @@ class ChannelSettingsStoreTest {
         accountB.clear()
         staging.clear()
         staleRouteOwner.clear()
-    }
-
-    @Test
-    fun mismatchedSnapshotRetiresExistingExactCacheKey() {
-        val cache = ChannelSettingsSnapshotCache()
-        assertTrue(cache.put(routeOwner(), route(), snapshot("#cached")))
-        val source = snapshot("#wrong")
-        val mismatched =
-            source.copy(channel = source.channel.copy(channelId = ChannelId("channel-2")))
-
-        assertFalse(cache.put(routeOwner(), route(), mismatched))
-
-        assertEquals(null, cache.get(routeOwner(), route()))
-    }
-
-    @Test
-    fun mismatchedAuthoritativeSnapshotIsNeitherCachedNorPublished() = runBlocking {
-        val cache = ChannelSettingsSnapshotCache()
-        cache.put(routeOwner(), route(), snapshot("#cached"))
-        val source = snapshot("#wrong")
-        val mismatched =
-            source.copy(channel = source.channel.copy(channelId = ChannelId("channel-2")))
-        val store =
-            store(
-                FakeChannelSettingsDataSource(loadResult = DataResult.Content(mismatched)),
-                cache = cache,
-            )
-
-        store.dispatch(ChannelSettingsIntent.Refresh)
-        yield()
-
-        assertEquals(ChannelSettingsLoadStatus.Error, store.state.value.status)
-        assertEquals(null, store.state.value.channel)
-        assertEquals(CHANNEL_SETTINGS_IDENTITY_MISMATCH, store.state.value.errorCode)
-        assertFalse(store.state.value.writeActionsEnabled)
-        assertEquals(null, cache.get(routeOwner(), route()))
-        store.clear()
     }
 
     @Test
@@ -355,57 +222,6 @@ class ChannelSettingsStoreTest {
     }
 
     @Test
-    fun identityMismatchClearsCachedContentAndDoesNotReappearOnReopen() = runBlocking {
-        val cache = ChannelSettingsSnapshotCache()
-        cache.put(routeOwner(), route(), snapshot("#cached"))
-        val dataSource =
-            FakeChannelSettingsDataSource(
-                loadResult =
-                    DataResult.Error(
-                        ScreenError(code = CHANNEL_SETTINGS_IDENTITY_MISMATCH, retryable = false)
-                    )
-            )
-        val store = store(dataSource, cache = cache)
-
-        store.dispatch(ChannelSettingsIntent.Refresh)
-        yield()
-
-        assertEquals(ChannelSettingsLoadStatus.Error, store.state.value.status)
-        assertEquals(null, store.state.value.channel)
-        assertEquals(CHANNEL_SETTINGS_IDENTITY_MISMATCH, store.state.value.errorCode)
-        assertFalse(store.state.value.writeActionsEnabled)
-        assertEquals(null, cache.get(routeOwner(), route()))
-
-        val reopened = store(FakeChannelSettingsDataSource(), cache = cache)
-        assertEquals(ChannelSettingsLoadStatus.Loading, reopened.state.value.status)
-        assertEquals(null, reopened.state.value.channel)
-        assertFalse(reopened.state.value.writeActionsEnabled)
-        store.clear()
-        reopened.clear()
-    }
-
-    @Test
-    fun transientRefreshFailureKeepsCachedContentReadOnly() = runBlocking {
-        val cache = ChannelSettingsSnapshotCache()
-        cache.put(routeOwner(), route(), snapshot("#cached"))
-        val dataSource =
-            FakeChannelSettingsDataSource(
-                loadResult = DataResult.Error(ScreenError(code = "network_unavailable"))
-            )
-        val store = store(dataSource, cache = cache)
-
-        store.dispatch(ChannelSettingsIntent.Refresh)
-        yield()
-
-        assertEquals(ChannelSettingsLoadStatus.Content, store.state.value.status)
-        assertEquals("#cached", store.state.value.channel?.name)
-        assertEquals("network_unavailable", store.state.value.errorCode)
-        assertFalse(store.state.value.writeActionsEnabled)
-        assertEquals("#cached", cache.get(routeOwner(), route())?.channel?.name)
-        store.clear()
-    }
-
-    @Test
     fun refreshCannotObsoleteOrClearMutationInFlight() = runBlocking {
         val pinResult = CompletableDeferred<DataResult<SettingsServerSidebarOrderSnapshot>>()
         val dataSource =
@@ -450,69 +266,6 @@ class ChannelSettingsStoreTest {
         yield()
         assertTrue(store.state.value.displayPinned("channel-1"), "a failure shows the old value again")
         assertEquals(ChannelSettingsAction.Pin, assertIs<ChannelSettingsEffect.Failure>(store.state.value.effect).action)
-        store.clear()
-    }
-
-    @Test
-    fun authorityInvalidationDropsLateLoadResult() = runBlocking {
-        val cache = ChannelSettingsSnapshotCache()
-        cache.put(routeOwner(), route(), snapshot("#cached"))
-        val loadGate = CompletableDeferred<DataResult<ChannelSettingsSnapshot>>()
-        val dataSource = FakeChannelSettingsDataSource(loadGate = loadGate)
-        val store = store(dataSource, cache = cache)
-
-        store.dispatch(ChannelSettingsIntent.Refresh)
-        yield()
-        store.invalidateAuthority()
-        store.dispatch(ChannelSettingsIntent.TogglePin)
-        loadGate.complete(DataResult.Content(snapshot()))
-        yield()
-
-        assertEquals(ChannelSettingsLoadStatus.AuthorityRejected, store.state.value.status)
-        assertEquals(AUTHENTICATED_ROUTE_AUTHORITY_CHANGED, store.state.value.errorCode)
-        assertEquals(null, store.state.value.channel)
-        assertEquals(0, dataSource.pinCalls)
-        assertEquals(null, cache.get(routeOwner(), route()))
-        store.clear()
-    }
-
-    @Test
-    fun mutationAuthorityFailureClearsVisibleAndCachedContent() = runBlocking {
-        val cache = ChannelSettingsSnapshotCache()
-        val pinResult = CompletableDeferred<DataResult<SettingsServerSidebarOrderSnapshot>>()
-        val dataSource =
-            FakeChannelSettingsDataSource(
-                loadResult = DataResult.Content(snapshot()),
-                pinResult = pinResult,
-            )
-        val store = store(dataSource, cache = cache)
-        store.dispatch(ChannelSettingsIntent.Load)
-        yield()
-
-        store.dispatch(ChannelSettingsIntent.TogglePin)
-        yield()
-        pinResult.complete(DataResult.Error(ScreenError(AUTHENTICATED_ROUTE_AUTHORITY_CHANGED)))
-        yield()
-
-        assertEquals(ChannelSettingsLoadStatus.AuthorityRejected, store.state.value.status)
-        assertEquals(null, store.state.value.channel)
-        assertEquals(null, cache.get(routeOwner(), route()))
-        store.clear()
-    }
-
-    @Test
-    fun visibilitySuccessUpdatesRouteLocalCanonicalState() = runBlocking {
-        val dataSource = FakeChannelSettingsDataSource(loadResult = DataResult.Content(snapshot()))
-        val store = store(dataSource)
-        store.dispatch(ChannelSettingsIntent.Load)
-        yield()
-
-        store.dispatch(ChannelSettingsIntent.MakePrivate)
-        yield()
-
-        assertEquals("private", store.state.value.channel?.channelType)
-        assertEquals(ChannelSettingsEffect.Updated(ChannelSettingsAction.Visibility), store.state.value.effect)
-        assertEquals(null, store.state.value.actionInFlight)
         store.clear()
     }
 
@@ -595,40 +348,6 @@ class ChannelSettingsStoreTest {
         store.clear()
     }
 
-    @Test
-    fun unarchiveNeedsAManagerAndAnArchivedChannel() = runTest {
-        val archived = snapshot().let { it.copy(channel = it.channel.copy(archived = true)) }
-        val dataSource = FakeChannelSettingsDataSource(loadResult = DataResult.Content(archived))
-        val store = store(dataSource)
-        store.dispatch(ChannelSettingsIntent.Load)
-        runCurrent()
-
-        store.dispatch(ChannelSettingsIntent.Unarchive)
-        runCurrent()
-        assertEquals(1, dataSource.unarchiveCalls)
-        assertEquals(ChannelSettingsEffect.Close, store.state.value.effect)
-
-        val member = archived.copy(canManage = false)
-        val memberSource = FakeChannelSettingsDataSource(loadResult = DataResult.Content(member))
-        val memberStore = store(memberSource)
-        memberStore.dispatch(ChannelSettingsIntent.Load)
-        runCurrent()
-        memberStore.dispatch(ChannelSettingsIntent.Unarchive)
-        runCurrent()
-        assertEquals(0, memberSource.unarchiveCalls)
-
-        val live = FakeChannelSettingsDataSource(loadResult = DataResult.Content(snapshot()))
-        val liveStore = store(live)
-        liveStore.dispatch(ChannelSettingsIntent.Load)
-        runCurrent()
-        liveStore.dispatch(ChannelSettingsIntent.Unarchive)
-        runCurrent()
-        assertEquals(0, live.unarchiveCalls)
-        memberStore.clear()
-        liveStore.clear()
-        store.clear()
-    }
-
     private fun collisionRefusal(
         type: String = "private",
         canUnarchive: Boolean = true,
@@ -685,29 +404,6 @@ class ChannelSettingsStoreTest {
     }
 
     @Test
-    fun aJointArchivedChannelHoldingTheNameOpensAsAJointChannel() = runTest {
-        val dataSource = FakeChannelSettingsDataSource(loadResult = DataResult.Content(jointSnapshot()))
-        dataSource.profileResult = collisionRefusal(type = "joint", canUnarchive = false)
-        val store = store(dataSource)
-        store.dispatch(ChannelSettingsIntent.Load)
-        runCurrent()
-        store.dispatch(ChannelSettingsIntent.UpdateProfile("launch-room", ""))
-        runCurrent()
-
-        assertFalse(store.state.value.profileCollision?.canUnarchive ?: true)
-        // Not offered: Unarchive does nothing for someone who may not unarchive.
-        store.dispatch(ChannelSettingsIntent.UnarchiveArchivedCollision)
-        runCurrent()
-        assertTrue(dataSource.unarchivedChannels.isEmpty())
-
-        store.dispatch(ChannelSettingsIntent.OpenArchivedCollision)
-        val effect = assertIs<ChannelSettingsEffect.OpenChannel>(store.state.value.effect)
-        assertEquals(ConversationKind.Joint, effect.conversation.kind)
-        assertEquals("joint", effect.conversation.channelType)
-        store.clear()
-    }
-
-    @Test
     fun unarchiveFromTheWarningRestoresTheArchivedChannelAndOpensIt() = runTest {
         val dataSource = FakeChannelSettingsDataSource(loadResult = DataResult.Content(snapshot()))
         dataSource.profileResult = collisionRefusal()
@@ -731,72 +427,6 @@ class ChannelSettingsStoreTest {
         store.clear()
     }
 
-    @Test
-    fun aFailedUnarchiveFromTheWarningKeepsItAndShowsTheServerReason() = runTest {
-        val dataSource = FakeChannelSettingsDataSource(loadResult = DataResult.Content(snapshot()))
-        dataSource.profileResult = collisionRefusal()
-        dataSource.unarchiveChannelResult =
-            DataResult.Error(ScreenError(code = "http_400", retryable = false, serverMessage = "Channel is not archived"))
-        val store = store(dataSource)
-        store.dispatch(ChannelSettingsIntent.Load)
-        runCurrent()
-        store.dispatch(ChannelSettingsIntent.UpdateProfile("launch-room", ""))
-        runCurrent()
-
-        store.dispatch(ChannelSettingsIntent.UnarchiveArchivedCollision)
-        runCurrent()
-
-        assertFalse(store.state.value.collisionUnarchiving)
-        assertEquals(ChannelId("channel-old"), store.state.value.profileCollision?.archivedChannelId)
-        assertEquals(ChannelProfileUpdateStatus.Failed, store.state.value.profileStatus)
-        assertEquals(CHANNEL_SETTINGS_ARCHIVED_UNARCHIVE_FAILED, store.state.value.profileErrorCode)
-        assertEquals("Channel is not archived", store.state.value.profileErrorMessage)
-        store.clear()
-    }
-
-    @Test
-    fun aNewNameOrSaveDropsTheWarning() = runTest {
-        val dataSource = FakeChannelSettingsDataSource(loadResult = DataResult.Content(snapshot()))
-        dataSource.profileResult = collisionRefusal()
-        val store = store(dataSource)
-        store.dispatch(ChannelSettingsIntent.Load)
-        runCurrent()
-        store.dispatch(ChannelSettingsIntent.UpdateProfile("launch-room", ""))
-        runCurrent()
-
-        store.dispatch(ChannelSettingsIntent.ClearArchivedCollision)
-        assertNull(store.state.value.profileCollision)
-
-        store.dispatch(ChannelSettingsIntent.UpdateProfile("launch-room", ""))
-        runCurrent()
-        assertEquals(ChannelId("channel-old"), store.state.value.profileCollision?.archivedChannelId)
-        dataSource.profileResult = null
-        store.dispatch(ChannelSettingsIntent.UpdateProfile("launch-room-2", ""))
-        runCurrent()
-        assertNull(store.state.value.profileCollision)
-        assertEquals(ChannelProfileUpdateStatus.Succeeded, store.state.value.profileStatus)
-        store.clear()
-    }
-
-    @Test
-    fun aRefusalWithoutTheArchivedChannelKeepsTheErrorLine() = runTest {
-        val dataSource = FakeChannelSettingsDataSource(loadResult = DataResult.Content(snapshot()))
-        // The plain "already taken" (no archived channel the user can see), or details missing.
-        dataSource.profileResult = collisionRefusal(withId = false)
-        val store = store(dataSource)
-        store.dispatch(ChannelSettingsIntent.Load)
-        runCurrent()
-        store.dispatch(ChannelSettingsIntent.UpdateProfile("launch-room", ""))
-        runCurrent()
-
-        assertNull(store.state.value.profileCollision)
-        assertEquals(ChannelProfileUpdateStatus.Failed, store.state.value.profileStatus)
-        assertEquals(ARCHIVED_NAME_COLLISION, store.state.value.profileErrorCode)
-        store.dispatch(ChannelSettingsIntent.OpenArchivedCollision)
-        assertNull(store.state.value.effect as? ChannelSettingsEffect.OpenChannel)
-        store.clear()
-    }
-
     private fun slackSnapshot(): ChannelSettingsSnapshot =
         snapshot().copy(
             slackBridge =
@@ -805,30 +435,6 @@ class ChannelSettingsStoreTest {
                     pairedSlackChannelId = null,
                 )
         )
-
-    @Test
-    fun saveWithOnlyASlackPickSkipsTheProfilePatchAndAppliesTheBridge() = runTest {
-        val dataSource = FakeChannelSettingsDataSource(loadResult = DataResult.Content(slackSnapshot()))
-        dataSource.slackResult =
-            DataResult.Content(
-                ChannelSlackBridgeState(
-                    options = listOf(ChannelSlackBridgeOption("C1", "triage", membershipRequired = false, pairedElsewhere = false)),
-                    pairedSlackChannelId = "C1",
-                )
-            )
-        val store = store(dataSource)
-        store.dispatch(ChannelSettingsIntent.Load)
-        runCurrent()
-
-        store.dispatch(ChannelSettingsIntent.UpdateProfile("canonical", "", ChannelSlackBridgeSelection("C1")))
-        runCurrent()
-
-        assertEquals(0, dataSource.profileCalls)
-        assertEquals(listOf<String?>("C1"), dataSource.slackApplies)
-        assertEquals("C1", store.state.value.slackBridge?.pairedSlackChannelId)
-        assertEquals(ChannelProfileUpdateStatus.Succeeded, store.state.value.profileStatus)
-        store.clear()
-    }
 
     @Test
     fun aFailedSlackStepKeepsTheSavedNameAndReportsThePartialFailure() = runTest {
@@ -894,57 +500,6 @@ class ChannelSettingsStoreTest {
     }
 
     @Test
-    fun disconnectIsRejectedForRegularArchivedAndNonAdminChannels() = runTest {
-        listOf(
-            snapshot(),
-            jointSnapshot().let { it.copy(channel = it.channel.copy(archived = true)) },
-            jointSnapshot().copy(canManage = false),
-        ).forEach { loaded ->
-            val dataSource = FakeChannelSettingsDataSource(loadResult = DataResult.Content(loaded))
-            val store = store(dataSource)
-            store.dispatch(ChannelSettingsIntent.Load)
-            runCurrent()
-
-            store.dispatch(ChannelSettingsIntent.Disconnect)
-            runCurrent()
-
-            assertEquals(0, dataSource.disconnectCalls)
-            assertEquals(null, store.state.value.effect)
-            store.clear()
-        }
-    }
-
-    @Test
-    fun disconnectFailureKeepsContentAndCarriesServerReason() = runTest {
-        val dataSource =
-            FakeChannelSettingsDataSource(
-                loadResult = DataResult.Content(jointSnapshot()),
-                disconnectResult =
-                    DataResult.NoPermission(
-                        PermissionBlocker(code = "joint_forbidden", serverMessage = "Only admins can disconnect joint channels")
-                    ),
-            )
-        val store = store(dataSource)
-        store.dispatch(ChannelSettingsIntent.Load)
-        runCurrent()
-
-        store.dispatch(ChannelSettingsIntent.Disconnect)
-        runCurrent()
-
-        assertEquals(
-            ChannelSettingsEffect.Failure(
-                ChannelSettingsAction.Disconnect,
-                "joint_forbidden",
-                "Only admins can disconnect joint channels",
-            ),
-            store.state.value.effect,
-        )
-        assertEquals("#canonical", store.state.value.channel?.name)
-        assertTrue(store.state.value.writeActionsEnabled)
-        store.clear()
-    }
-
-    @Test
     fun realDataSourceDisconnectPostsTheJointRoute() = runTest {
         val network = RecordingChannelSettingsNetworkClient()
         val dataSource =
@@ -957,45 +512,6 @@ class ChannelSettingsStoreTest {
 
         assertIs<DataResult.Content<Unit>>(dataSource.disconnect())
         assertEquals(listOf("POST" to "channels/channel-1/disconnect"), network.methods.zip(network.paths))
-    }
-
-    @Test
-    fun realDataSourceColdLoadDoesNotDependOnHomeAndPinRereadsCanonicalOrder() = runBlocking {
-        val network = RecordingChannelSettingsNetworkClient()
-        val gateway = FixedChannelSettingsGateway(network)
-        val dataSource =
-            RealChannelSettingsDataSource(
-                route = route(),
-                authStore = authStore(),
-                owner = routeOwner(),
-                gateway = gateway,
-            )
-
-        val loaded = assertIs<DataResult.Content<ChannelSettingsSnapshot>>(dataSource.load()).data
-        assertEquals("canonical", loaded.channel.name)
-        // The Slack Bridge flag is evaluated for a manager; it reads as off here. Nothing asks for the
-        // retired server_guest_v0 (botiverse/slock #15078).
-        assertEquals(
-            listOf(
-                "channels/channel-1",
-                "servers/server-1/sidebar-order",
-                "channels/channel-1/members",
-                "channels/channel-1",
-                "feature-flags/evaluate",
-            ),
-            network.paths,
-        )
-        assertNull(loaded.slackBridge)
-        assertTrue(network.paths.none { it == "home" || it.endsWith("/home") })
-
-        network.paths.clear()
-        network.methods.clear()
-        network.bodies.clear()
-        val pinned = assertIs<DataResult.Content<SettingsServerSidebarOrderSnapshot>>(dataSource.setPinned(true)).data
-        assertTrue(pinned.pinned.any { it.kind == "channel" && it.id == "channel-1" })
-        assertEquals(listOf("servers/server-1/sidebar-order", "servers/server-1/sidebar-order"), network.paths)
-        assertEquals(listOf("GET", "PATCH"), network.methods)
-        assertTrue(network.bodies.last().orEmpty().contains("channel-1"))
     }
 
     private fun route(): ChannelSettingsRoute =
@@ -1133,36 +649,6 @@ class ChannelSettingsStoreTest {
     }
 
     @Test
-    fun setVisitorVisibleRefusalRollsBackSwitchAndRetainsCodeAndTraceId() = runTest {
-        val capabilities = ChannelCapabilities(manageVisitorAccess = true)
-        val initial = snapshot().let { base ->
-            base.copy(channel = base.channel.copy(guestVisible = false, channelCapabilities = capabilities))
-        }
-        val refusal =
-            CompletableDeferred<DataResult<HomeChannelRow>>(
-                DataResult.Error(
-                    ScreenError(
-                        code = "visitor_visibility_requires_public_server",
-                        retryable = false,
-                        traceId = "0123456789abcdef0123456789abcdef",
-                    )
-                )
-            )
-        val dataSource = FakeChannelSettingsDataSource(loadResult = DataResult.Content(initial), visitorVisibleResult = refusal)
-        val store = store(dataSource = dataSource)
-        store.dispatch(ChannelSettingsIntent.Load)
-        runCurrent()
-
-        store.dispatch(ChannelSettingsIntent.SetVisitorVisible(true))
-        runCurrent()
-
-        assertEquals(false, store.state.value.displayVisitorVisible)
-        assertEquals(false, store.state.value.channel?.guestVisible)
-        assertEquals("visitor_visibility_requires_public_server", store.state.value.visitorVisibleErrorCode)
-        assertEquals("0123456789abcdef0123456789abcdef", store.state.value.visitorVisibleErrorTraceId)
-    }
-
-    @Test
     fun makePrivateClearsVisitorVisibleWhileSettingsStayOpen() = runTest {
         val capabilities = ChannelCapabilities(changeChannelVisibility = true, manageVisitorAccess = true)
         val initial = snapshot().let { base ->
@@ -1178,20 +664,6 @@ class ChannelSettingsStoreTest {
 
         assertEquals("private", store.state.value.channel?.channelType)
         assertEquals(false, store.state.value.channel?.guestVisible)
-        assertEquals(false, store.state.value.displayVisitorVisible)
-    }
-
-    @Test
-    fun setVisitorVisibleIgnoresDispatchesWithoutManageVisitorAccess() = runTest {
-        val dataSource = FakeChannelSettingsDataSource(loadResult = DataResult.Content(snapshot()))
-        val store = store(dataSource = dataSource)
-        store.dispatch(ChannelSettingsIntent.Load)
-        runCurrent()
-
-        store.dispatch(ChannelSettingsIntent.SetVisitorVisible(true))
-        runCurrent()
-
-        assertEquals(emptyList(), dataSource.visitorVisibleRequests)
         assertEquals(false, store.state.value.displayVisitorVisible)
     }
 

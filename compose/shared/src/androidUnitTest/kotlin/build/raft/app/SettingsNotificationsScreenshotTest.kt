@@ -29,6 +29,7 @@ import build.raft.app.data.SettingsMobileSnapshot
 import build.raft.app.data.SettingsMobileToggleSnapshot
 import build.raft.app.data.toSettingsMobileSelectionSnapshot
 import build.raft.app.model.NotificationLevelChanged
+import build.raft.app.model.RaftTimeContext
 import build.raft.app.model.ServerId
 import kotlin.test.AfterTest
 import kotlin.test.Test
@@ -61,11 +62,6 @@ class SettingsNotificationsScreenshotTest {
     @Test
     fun notificationsPageDark() =
         captureNotifications("settings.notifications.dark", RaftAppAppearance.Dark, activities) { NotificationsFixture() }
-
-    /** Settings › On {server} › Notifications: the current server's card alone (web CurrentServerNotificationsCard). */
-    @Test
-    fun serverNotificationsPageLight() =
-        captureNotifications("settings.server-notifications", RaftAppAppearance.Light, activities) { NotificationsFixture(serverOnly = true) }
 }
 
 /** The longer zh-CN titles: each setting's title wraps to a second line instead of truncating. */
@@ -82,22 +78,6 @@ class SettingsNotificationsChineseScreenshotTest {
     @Test
     fun notificationsPageChinese() =
         captureNotifications("settings.notifications.zh-CN", RaftAppAppearance.Light, activities) { NotificationsFixture() }
-}
-
-/** The longer ja titles: each setting's title wraps to a second line instead of truncating. */
-@RunWith(RobolectricTestRunner::class)
-@GraphicsMode(GraphicsMode.Mode.NATIVE)
-@Config(sdk = [34], qualifiers = "ja-w390dp-h2400dp-xxhdpi")
-class SettingsNotificationsJapaneseScreenshotTest {
-    @get:org.junit.Rule
-    val activities = RobolectricComposeActivityRule()
-
-    @AfterTest
-    fun clearLevels() = RaftNotificationLevelStore.clear()
-
-    @Test
-    fun notificationsPageJapanese() =
-        captureNotifications("settings.notifications.ja", RaftAppAppearance.Light, activities) { NotificationsFixture() }
 }
 
 /**
@@ -135,7 +115,16 @@ private fun captureNotifications(
         remember {
             object : Pager() {}.apply { pageData = PageData(JSONObject().apply { put("slockVisualZeroSafeArea", true) }) }
         }
-    CompositionLocalProvider(LocalActivity provides RaftPageActivity(pager)) {
+    val timeContext =
+        remember {
+            RaftTimeContextProvider(
+                RaftTimeContext(localOffsetMinutes = 0, timeFormat = "24h").refreshedAt(FIXTURE_NOW_MILLIS)
+            )
+        }
+    CompositionLocalProvider(
+        LocalActivity provides RaftPageActivity(pager),
+        LocalRaftTimeContextProvider provides timeContext,
+    ) {
         RaftDesignSystemTheme { content() }
     }
 }

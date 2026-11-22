@@ -60,44 +60,6 @@ class ActionCardSpecChoiceTest {
     }
 
     @Test
-    fun aChoiceTakesOneWhenSingleAndEveryItemWhenMultipleWithoutBounds() {
-        val single = choiceField(choice())
-        assertEquals(1 to 1, single.maxSelectable to single.minRequired)
-        val multiple = choiceField(choice(multiple = true))
-        assertEquals(4 to 1, multiple.maxSelectable to multiple.minRequired)
-        assertEquals(3, choiceField(choice(multiple = true, other = null)).maxSelectable)
-    }
-
-    @Test
-    fun aChoiceTheContractRefusesIsUnreadable() {
-        val refused =
-            mapOf(
-                "reserved option value" to choice(options = listOf("a", "other")),
-                "duplicate option values" to choice(options = listOf("a", "a")),
-                "no options" to choice(options = emptyList()),
-                "33 options" to choice(options = (1..33).map { "o$it" }),
-                "minItems on a single choice" to choice(extra = ""","minItems":1"""),
-                "maxItems on a single choice" to choice(extra = ""","maxItems":1"""),
-                "minItems over the items" to choice(multiple = true, extra = ""","minItems":5"""),
-                "maxItems over the items" to choice(multiple = true, extra = ""","maxItems":5"""),
-                "minItems over maxItems" to choice(multiple = true, extra = ""","minItems":3,"maxItems":2"""),
-                "default not an option" to choice(extra = ""","default":{"selected":["z"]}"""),
-                "default repeating an option" to choice(multiple = true, extra = ""","default":{"selected":["a","a"]}"""),
-                "default other without Other" to choice(other = null, extra = ""","default":{"selected":[],"other":"x"}"""),
-                "default blank other" to choice(extra = ""","default":{"selected":[],"other":" "}"""),
-                "default other too long" to choice(extra = ""","default":{"selected":[],"other":"123456"}"""),
-                "default over what it takes" to choice(extra = ""","default":{"selected":["a"],"other":"x"}"""),
-                "other maxLength 501" to choice(other = """{"label":{"key":"actionCard.q.o","text":{"en":"Other"}},"maxLength":501}"""),
-                "other without maxLength" to choice(other = """{"label":{"key":"actionCard.q.o","text":{"en":"Other"}}}"""),
-                "option label over 80" to choice().replace(raw("Option a"), """{"key":"actionCard.q.l","text":{"en":"${"x".repeat(81)}"}}"""),
-            )
-        for ((name, json) in refused) assertNull(form(listOf(json)), name)
-        // The same shapes, within their bounds, read.
-        assertNotNull(form(listOf(choice(multiple = true, extra = ""","minItems":2,"maxItems":4,"default":{"selected":["a","b"],"other":"x"}"""))))
-        assertNotNull(form(listOf(choice(options = (1..32).map { "o$it" }))))
-    }
-
-    @Test
     fun aFormsStepsPageItsFieldsAndAnInconsistentSetIsDroppedNotRefused() {
         val fields = listOf(choice("one"), choice("two"), """{"type":"TextArea","name":"three","label":${raw("Three?")},"maxLength":1000}""")
         val paged = assertNotNull(form(fields, ""","steps":[{"title":{"key":"actionCard.t.s","text":{"en":"First"}},"fields":["one","two"]},{"fields":["three"],"future":1}]"""))

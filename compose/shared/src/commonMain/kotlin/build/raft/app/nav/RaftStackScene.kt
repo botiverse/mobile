@@ -4,6 +4,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.key
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
@@ -16,6 +17,7 @@ import androidx.navigation3.scene.SceneStrategy
 import androidx.navigation3.scene.SceneStrategyScope
 import build.raft.app.compat.pager.RaftPageRegistry
 import build.raft.app.compat.pager.RaftPaneRole
+import build.raft.designsystem.components.LocalRaftToastAvoidanceActive
 
 /**
  * A window's one scene: the whole back stack, the top entry drawn full-window and every
@@ -37,10 +39,14 @@ class RaftStackScene<T : Any>(override val entries: List<NavEntry<T>>) : Scene<T
 
     override val content: @Composable () -> Unit = {
         val topKey = entries.last().contentKey
+        val parentAvoidanceActive = LocalRaftToastAvoidanceActive.current
         entries.forEach { entry ->
+            val isTop = entry.contentKey == topKey
             key(entry.contentKey) {
-                Box(if (entry.contentKey == topKey) Modifier.fillMaxSize() else Modifier.size(0.dp)) {
-                    entry.Content()
+                CompositionLocalProvider(LocalRaftToastAvoidanceActive provides (parentAvoidanceActive && isTop)) {
+                    Box(if (isTop) Modifier.fillMaxSize() else Modifier.size(0.dp)) {
+                        entry.Content()
+                    }
                 }
             }
         }

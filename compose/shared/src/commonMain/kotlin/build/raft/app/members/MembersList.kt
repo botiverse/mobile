@@ -907,7 +907,8 @@ internal fun MembersMenuIcon(name: RaftLucideIconName) {
  * badge and the role tag (web `useMemberTileTag`: Owner, Admin or Guest, never Member; "You" or
  * "You · Owner" on the viewer's own row). The second line is, on the Agents tab ([runtimeLine]),
  * what the agent runs on (runtime · model · computer, the computer left out when [machineName] is
- * null); elsewhere an agent's model, a Guest's channel, or a person's description.
+ * null) and its reasoning effort (the web list's Reasoning column); elsewhere an agent's model, a
+ * Guest's channel, or a person's description.
  */
 @Composable
 private fun MembersListRow(
@@ -928,6 +929,12 @@ private fun MembersListRow(
     // botiverse/slock #11273 `MemberAgentRow`: an App Bot's name carries the Bot badge.
     val appBot = remember(member) { member.appBotIdentityOrNull() }
     if (member.kind == MemberKind.Agent) build.raft.app.data.EnsureServerModelLabelCatalog(member.serverId?.value)
+    val modelLabelCatalog =
+        if (member.kind == MemberKind.Agent) {
+            build.raft.app.data.RaftModelLabelCatalogs.observeCatalog(member.serverId?.value)
+        } else {
+            null
+        }
     val subtitle =
         when {
             member.kind == MemberKind.Agent && runtimeLine -> {
@@ -938,11 +945,14 @@ private fun MembersListRow(
                         (if (member.isExternal) "external" else member.roleDescription?.trim()?.takeIf { it.isNotEmpty() })
                             ?.let { runtimeLabelWithStatus(it, member.serverId?.value) }
                     }
-                listOfNotNull(runtime, member.modelLabel(), machineName?.takeIf { it.isNotBlank() })
+                // botiverse/slock #15691: the reasoning effort its profile shows ("Reasoning: High"),
+                // last, so on a phone it gives way before the computer does.
+                val reasoning = member.membersAgentReasoningEffortLine()?.localized()
+                listOfNotNull(runtime, member.modelLabel(catalog = modelLabelCatalog), machineName?.takeIf { it.isNotBlank() }, reasoning)
                     .joinToString(" · ")
                     .takeIf { it.isNotEmpty() }
             }
-            member.kind == MemberKind.Agent -> member.modelLabel()
+            member.kind == MemberKind.Agent -> member.modelLabel(catalog = modelLabelCatalog)
             membersHumanRoleBadge(member.serverRole, member.roleDescription) == MembersHumanRoleBadge.Guest &&
                 !member.guestChannel?.name.isNullOrBlank() -> "#${member.guestChannel?.name}"
             else -> member.description?.takeIf { it.isNotBlank() }
@@ -1080,8 +1090,9 @@ private fun MembersListRowAvatar(
         // The Members tab does not subscribe to detailed agent:activity: coarse state only.
         rememberRaftAgentStatusIndicatorState(agentStatusResolver, member.id.value.takeIf { showsStatus })
             ?.withoutActivityDetail()
+    val holdingReadiness = if (showsStatus) effectiveHoldingReadiness(rawStatus) else null
     val signIn =
-        if (showsStatus) {
+        if (showsStatus && holdingReadiness == null) {
             rememberAgentRuntimeSignInState(
                 state = rawStatus,
                 fallbackRuntime = member.roleDescription,
@@ -1090,7 +1101,12 @@ private fun MembersListRowAvatar(
         } else {
             null
         }
-    val status = if (signIn != null) rawStatus?.copy(color = RaftColor.AccentOrange) else rawStatus
+    val status =
+        when {
+            holdingReadiness != null -> rawStatus?.copy(color = holdingReadiness.dotColor())
+            signIn != null -> rawStatus?.copy(color = RaftColor.AccentOrange)
+            else -> rawStatus
+        }
     MembersAvatar(
         member = member,
         showStatusOverlay = showsStatus && status != null,
@@ -1160,35 +1176,46 @@ internal data class MembersAgentGroup(
  * emulator display.
  */
 @Composable
-internal fun ErrorBanner(text: String, action: String? = null, onAction: (() -> Unit)? = null) {
-    Row(
+internal fun ErrorBanner(
+    text: String,
+    action: String? = null,
+    onAction: (() -> Unit)? = null,
+    traceId: String? = null,
+) {
+    Column(
         modifier = Modifier
             .fillMaxWidth()
             .raftCardSurface(fill = RaftColor.FillMuted)
             .padding(12.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(8.dp)
+        verticalArrangement = Arrangement.spacedBy(4.dp)
     ) {
-        RaftLucideIcon(
-            RaftLucideIconName.TriangleAlert,
-            modifier = Modifier.size(16.dp),
-            color = "#FFD32F2F"
-        )
-        Text(
-            text = text,
-            // Web Banner: text-callout (14/20 400).
-            style = RaftType.Callout,
-            color = RaftColor.TextBlack,
-            modifier = Modifier.weight(1f)
-        )
-        if (action != null && onAction != null) {
-            RaftButton(
-                text = action,
-                onClick = onAction,
-                variant = RaftButtonVariant.Default,
-                size = RaftButtonSize.Md
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            RaftLucideIcon(
+                RaftLucideIconName.TriangleAlert,
+                modifier = Modifier.size(16.dp),
+                color = "#FFD32F2F"
             )
+            Text(
+                text = text,
+                // Web Banner: text-callout (14/20 400).
+                style = RaftType.Callout,
+                color = RaftColor.TextBlack,
+                modifier = Modifier.weight(1f)
+            )
+            if (action != null && onAction != null) {
+                RaftButton(
+                    text = action,
+                    onClick = onAction,
+                    variant = RaftButtonVariant.Default,
+                    size = RaftButtonSize.Md
+                )
+            }
         }
+        RaftTraceIdNote(traceId)
     }
 }
 

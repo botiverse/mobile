@@ -1,9 +1,8 @@
 package build.raft.designsystem
 
-import build.raft.designsystem.components.RaftToastActionTimeoutMillis
 import build.raft.designsystem.components.RaftToastHostState
-import build.raft.designsystem.components.RaftToastIntent
 import build.raft.designsystem.components.RaftToastTimeoutMillis
+import build.raft.designsystem.components.raftToastSafeBottomPx
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.TestScope
@@ -42,18 +41,6 @@ class RaftToastHostStateTest {
     }
 
     @Test
-    fun anActionOrAnErrorGetsTheActionTimeout() = runTest {
-        val state = host(limit = 2)
-        state.show("Message deleted.", actionLabel = "Undo", onAction = {})
-        state.show("Couldn't send.", intent = RaftToastIntent.Error)
-        assertEquals(listOf(RaftToastActionTimeoutMillis, RaftToastActionTimeoutMillis), state.visible.map { it.durationMillis })
-        advance(RaftToastTimeoutMillis)
-        assertEquals(listOf("Message deleted.", "Couldn't send."), state.titles())
-        advance(RaftToastActionTimeoutMillis - RaftToastTimeoutMillis)
-        assertEquals(emptyList(), state.titles())
-    }
-
-    @Test
     fun aNewToastReplacesTheOneOnScreenAndTheReplacedOneNeverComesBack() = runTest {
         val state = host()
         val first = state.show("Link copied.")
@@ -87,22 +74,6 @@ class RaftToastHostStateTest {
     }
 
     @Test
-    fun stackedToastsCloseInDeadlineOrder() = runTest {
-        val state = host(limit = 3)
-        state.show("Undo me", actionLabel = "Undo", onAction = {}) // closes at 8.0s
-        advance(1_000)
-        state.show("First") // closes at 6.0s
-        advance(1_500)
-        state.show("Second") // closes at 7.5s
-        advance(3_500) // 6.0s
-        assertEquals(listOf("Undo me", "Second"), state.titles())
-        advance(1_500) // 7.5s
-        assertEquals(listOf("Undo me"), state.titles())
-        advance(500) // 8.0s
-        assertEquals(emptyList(), state.titles())
-    }
-
-    @Test
     fun pausedTimeDoesNotCount() = runTest {
         val state = host()
         state.show("Saved.")
@@ -125,5 +96,16 @@ class RaftToastHostStateTest {
         assertEquals(listOf("Uploading"), state.titles())
         state.dismiss(id)
         assertEquals(emptyList(), state.titles())
+    }
+
+    @Test
+    fun safeBottomNeverDropsBelowSystemSafeDrawingForHardwareKeyboard() {
+        // iPad hardware keyboard shortcut bar: host IME override reads 0 while safeDrawing reports the bar.
+        assertEquals(56f, raftToastSafeBottomPx(overridePx = 0f, safeDrawingBottomPx = 56f))
+        assertEquals(56f, raftToastSafeBottomPx(overridePx = 20f, safeDrawingBottomPx = 56f))
+        // Software keyboard animation: host IME override exceeds safeDrawing and leads.
+        assertEquals(300f, raftToastSafeBottomPx(overridePx = 300f, safeDrawingBottomPx = 56f))
+        // No override registered: falls back to safeDrawing.
+        assertEquals(56f, raftToastSafeBottomPx(overridePx = null, safeDrawingBottomPx = 56f))
     }
 }

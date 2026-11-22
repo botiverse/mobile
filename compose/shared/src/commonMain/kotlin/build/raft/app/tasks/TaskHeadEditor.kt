@@ -193,6 +193,30 @@ private fun TaskSummary.fieldValue(field: TaskHeadEditField): String =
  */
 internal fun TaskSummary.canAmendText(canWriteChannel: Boolean = true): Boolean = canWriteChannel && !isLegacy && readOnlyReason == null
 
+/** Which of the head's edit buttons show ([taskHeadEditButtons]). */
+internal data class TaskHeadEditButtons(val editTitle: Boolean, val addDescription: Boolean, val editDescription: Boolean)
+
+/**
+ * The head's edit buttons (web TaskModalHead): none to a reader who may not edit ([canEdit]) or
+ * while a field is open ([editingField]); otherwise the title's pencil and, beside it, Add a
+ * description when the task has none, or the description's own pencil when it has one. Neither of
+ * those two before the description is loaded ([descriptionLoaded]): a summary row has no text to
+ * start from, and a save from nothing could wipe what is stored.
+ */
+internal fun taskHeadEditButtons(
+    canEdit: Boolean,
+    descriptionLoaded: Boolean,
+    hasDescription: Boolean,
+    editingField: TaskHeadEditField?,
+): TaskHeadEditButtons {
+    val offered = canEdit && editingField == null
+    return TaskHeadEditButtons(
+        editTitle = offered,
+        addDescription = offered && descriptionLoaded && !hasDescription,
+        editDescription = offered && descriptionLoaded && hasDescription,
+    )
+}
+
 internal const val TaskHeadTitleEditTestTag = "task-head-title-edit"
 internal const val TaskHeadDescriptionEditTestTag = "task-head-description-edit"
 internal const val TaskHeadAddDescriptionTestTag = "task-head-add-description"
@@ -201,29 +225,41 @@ internal const val TaskHeadDescriptionInputTestTag = "task-head-description-inpu
 internal const val TaskHeadEditSaveTestTag = "task-head-edit-save"
 internal const val TaskHeadEditCancelTestTag = "task-head-edit-cancel"
 
-/** The pencil beside the title or the description (web `TaskHeadEditButton`; always shown by touch). */
+/**
+ * The pencil beside the title or the description (web `TaskHeadEditButton`; always shown by touch):
+ * named [label], its tooltip and its screen readers' label. [icon] is its glyph, a pencil unless
+ * given (Add a description draws its own).
+ */
 @Composable
-internal fun TaskHeadEditButton(label: String, testTag: String, onClick: () -> Unit) {
+internal fun TaskHeadEditButton(
+    label: String,
+    testTag: String,
+    icon: @Composable () -> Unit = { RaftGlyphIcon(RaftGlyph.Pencil) },
+    onClick: () -> Unit,
+) {
     RaftIconButton(
         onClick = onClick,
         tooltip = label,
         variant = RaftButtonVariant.Ghost,
         size = RaftIconButtonSize.Sm,
         modifier = Modifier.testTag(testTag),
-    ) {
-        RaftGlyphIcon(RaftGlyph.Pencil)
-    }
+        icon = icon,
+    )
 }
 
-/** "Add a description" (web: a quiet ghost button where a description would be). */
+/**
+ * Add a description (web slock #15639): with no description, an icon button beside the title's
+ * pencil (Lucide `text-align-start`, as the web's), shown as the pencil is, instead of a row of its
+ * own: almost every task has none, and that row took room above the conversation. It opens the
+ * description's editor.
+ */
 @Composable
 internal fun TaskHeadAddDescriptionButton(onClick: () -> Unit) {
-    RaftButton(
-        text = stringResource(Res.string.task_amend_add_description),
+    TaskHeadEditButton(
+        label = stringResource(Res.string.task_amend_add_description),
+        testTag = TaskHeadAddDescriptionTestTag,
+        icon = { RaftContentLucideIcon(RaftLucideIconName.TextAlignStart) },
         onClick = onClick,
-        variant = RaftButtonVariant.Ghost,
-        size = RaftButtonSize.Md,
-        modifier = Modifier.testTag(TaskHeadAddDescriptionTestTag),
     )
 }
 

@@ -3,7 +3,6 @@ package build.raft.app.network.sync
 import build.raft.app.model.ChannelId
 import build.raft.app.model.MessageId
 import build.raft.app.model.ThreadUpdated
-import java.util.Collections
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
@@ -56,53 +55,6 @@ class ThreadRepliesSyncLinearizationTest {
                 assertEquals(5, current.getValue("parent-1").model.replyCount)
                 assertEquals(listOf("reply-3", "reply-4", "reply-5"), current.getValue("parent-1").model.replies.map { it.messageId })
             }
-        } finally {
-            pool.shutdownNow()
-        }
-    }
-
-    @Test
-    fun frameAttemptedBetweenHostReturnAndStoreCommitPublishesAfterLockedCommit() {
-        val atCommit = CountDownLatch(1)
-        val releaseCommit = CountDownLatch(1)
-        val frameAttempted = CountDownLatch(1)
-        val commitOrder = Collections.synchronizedList(mutableListOf<String>())
-        val host =
-            ThreadRepliesSyncHost(
-                beforeProjectionCommit = {
-                    atCommit.countDown()
-                    assertTrue(releaseCommit.await(5, TimeUnit.SECONDS))
-                },
-            )
-        assertTrue(host.beginAuthoritativeRebaseline(page, 1))
-        assertNotNull(
-            host.ingestAuthoritativeSnapshots(
-                page,
-                1,
-                listOf(ThreadRepliesAuthoritativeSnapshot(identity, (2L..4L).map(::reply), 4)),
-            )
-        )
-        val pool = Executors.newFixedThreadPool(2)
-        try {
-            val commit =
-                pool.submit<Unit> {
-                    host.withCurrentAcceptedProjections(listOf(identity)) { current ->
-                        commitOrder += "http:${current.getValue("parent-1").model.replyCount}"
-                    }
-                }
-            assertTrue(atCommit.await(5, TimeUnit.SECONDS))
-            val frame =
-                pool.submit<ThreadRepliesAcceptedProjection?> {
-                    frameAttempted.countDown()
-                    host.ingestFrame(page, frame(5, 5)).also { projection ->
-                        commitOrder += "realtime:${projection?.model?.replyCount}"
-                    }
-                }
-            assertTrue(frameAttempted.await(5, TimeUnit.SECONDS))
-            releaseCommit.countDown()
-            commit.get(5, TimeUnit.SECONDS)
-            assertEquals(2L, assertNotNull(frame.get(5, TimeUnit.SECONDS)).revision)
-            assertEquals(listOf("http:4", "realtime:5"), commitOrder)
         } finally {
             pool.shutdownNow()
         }

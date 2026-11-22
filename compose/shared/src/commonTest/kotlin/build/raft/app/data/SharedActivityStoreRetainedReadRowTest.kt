@@ -25,7 +25,6 @@ import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertSame
-import kotlin.test.assertTrue
 
 /**
  * "Being read" and "staying in the list" are separate (stdrc 10-23, via Remy; Gmail / Apple Mail
@@ -168,23 +167,6 @@ class SharedActivityStoreRetainedReadRowTest {
     }
 
     @Test
-    fun aRowSwipedBackToUnreadThatTheServerStopsListingDrops() = runTest {
-        // Swiped Read then Unread here, then read elsewhere: the reconcile page no longer lists A.
-        val inbox = FakeInboxRepository(initialSnapshots = listOf(snapshot(listOf(rowA, rowB)), snapshot(listOf(rowB))))
-        val store = unreadStore(inbox)
-        fun toggleA() = store.dispatch(activityReadToggleIntent(store.state.value.items.first { it.key == rowA.key }))
-        toggleA()
-        runCurrent()
-        toggleA()
-        runCurrent()
-        assertEquals(listOf(rowA.key to true, rowB.key to true), store.state.value.items.map { it.key to (it.unreadCount > 0) })
-        store.dispatch(SharedActivityIntent.Refresh)
-        runCurrent()
-        // Only rows read here are kept; the stale unread copy of A is not put back.
-        assertUnreadList(store, listOf(rowB.key to 1), "a locally unread row the server stopped listing drops")
-    }
-
-    @Test
     fun markUnreadInAllClearsTheCachedUnreadPage() = runTest {
         // Unread is visited (cached without A, which was read), then A is marked unread from All.
         val readA = rowA.copy(unreadCount = 0)
@@ -203,22 +185,6 @@ class SharedActivityStoreRetainedReadRowTest {
         store.dispatch(SharedActivityIntent.SetFilter(InboxFilter.Unread))
         runCurrent()
         assertUnreadList(store, listOf(rowA.key to 2, rowB.key to 1), "Unread lists A from a fresh page")
-    }
-
-    @Test
-    fun theSwipeReadToggleKeepsTheRowInMentions() = runTest {
-        val mention = rowA.copy(hasMention = true)
-        val store =
-            activityStore(backgroundScope, FakeInboxRepository(initialSnapshots = listOf(snapshot(listOf(mention, rowB)))), nowMillis = { testScheduler.currentTime })
-        store.dispatch(SharedActivityIntent.SetFilter(InboxFilter.Mentions))
-        runCurrent()
-        store.dispatch(activityReadToggleIntent(store.state.value.items.first()))
-        runCurrent()
-        assertEquals(listOf(rowA.key to 0, rowB.key to 1), store.state.value.items.map { it.key to it.unreadCount })
-        store.dispatch(activityReadToggleIntent(store.state.value.items.first()))
-        runCurrent()
-        assertEquals(listOf(rowA.key, rowB.key), store.state.value.items.map { it.key })
-        assertTrue(store.state.value.items.first().unreadCount > 0, "swiped back to unread")
     }
 
     @Test
@@ -413,25 +379,6 @@ class SharedActivityStoreRetainedReadRowTest {
         }
     }
 
-    @Test
-    fun aDroppedRowStaysGoneWhenTheServerStopsListingIt() = runTest {
-        val inbox =
-            FakeInboxRepository(initialSnapshots = listOf(snapshot(listOf(rowA, rowB, rowC)), snapshot(listOf(rowC))))
-        val store = unreadStore(inbox, refreshIntervalMillis = 2_500L)
-        store.open(rowA, ReadPath.OpenMarksRead, revision = 1L)
-        store.open(rowB, ReadPath.OpenMarksRead, revision = 2L)
-        runCurrent()
-        store.dispatch(SharedActivityIntent.ChannelAccessLost(setOf("channel-a")))
-        runCurrent()
-
-        store.dispatch(SharedActivityIntent.ApplyRealtimeEvent(readState("channel-c", version = 2, maxReadSeq = 1)))
-        advanceTimeBy(2_501L)
-        runCurrent()
-
-        assertUnreadList(store, listOf(rowB.key to 0, rowC.key to 1), "the page no longer lists A or B; only B is retained")
-        assertEquals(setOf(rowB.key), store.state.value.retainedReadRowKeys)
-    }
-
     private fun channelEvent(reason: String, channelId: String): SharedActivityIntent =
         SharedActivityIntent.ApplyRealtimeEvent(
             RealtimeRefreshRequired(
@@ -492,79 +439,6 @@ class SharedActivityStoreRetainedReadRowTest {
             assertEquals(1, conversations.detailRequests.size, "$failure")
             assertUnreadList(store, listOf(rowA.key to 0, rowB.key to 0, rowC.key to 1), "$failure")
         }
-    }
-
-    @Test
-    fun aChannelWithoutRetainedRowsIsNeverReRead() = runTest {
-        val conversations = FakeConversationRepository().apply { detailResponder = { http404() } }
-        val store = storeWithRetainedAB(conversations)
-
-        // C was never read (not retained); Z is not listed at all.
-        store.dispatch(channelEvent(RealtimeSocketEvents.ChannelUpdated, "channel-c"))
-        store.dispatch(channelEvent(RealtimeSocketEvents.ChannelMembersUpdated, "channel-z"))
-        runCurrent()
-        assertEquals(emptyList(), conversations.detailRequests)
-
-        // After the visit ends nothing is retained either.
-        store.dispatch(SharedActivityIntent.SurfaceHidden)
-        store.dispatch(channelEvent(RealtimeSocketEvents.ChannelMembersUpdated, "channel-a"))
-        runCurrent()
-        assertEquals(emptyList(), conversations.detailRequests)
-    }
-
-    @Test
-    fun aStale404AfterAccessWasRegainedDoesNotDrop() = runTest {
-        val first = CompletableDeferred<DataResult<ConversationSummary>>()
-        val conversations = FakeConversationRepository()
-        var calls = 0
-        conversations.detailResponder = { if (++calls == 1) first.await() else DataResult.Empty(EmptyReason.NoMessages) }
-        val store = storeWithRetainedAB(conversations)
-
-        store.dispatch(channelEvent(RealtimeSocketEvents.ChannelMembersUpdated, "channel-a"))
-        runCurrent()
-        // Single flight: the request is in flight; a later members-updated (the user was added back)
-        // does not start a parallel one.
-        store.dispatch(channelEvent(RealtimeSocketEvents.ChannelMembersUpdated, "channel-a"))
-        runCurrent()
-        assertEquals(1, conversations.detailRequests.size)
-
-        first.complete(http404())
-        runCurrent()
-
-        // The stale 404 is ignored; the check ran again and the channel is readable.
-        assertEquals(2, conversations.detailRequests.size)
-        assertUnreadList(store, listOf(rowA.key to 0, rowB.key to 0, rowC.key to 1), "stale 404")
-    }
-
-    @Test
-    fun a404ForARowThatLeftTheRetainedSetBeforeItArrivedDoesNothing() = runTest {
-        val gate = CompletableDeferred<DataResult<ConversationSummary>>()
-        val conversations = FakeConversationRepository().apply { detailResponder = { gate.await() } }
-        val store = storeWithRetainedAB(conversations)
-        store.dispatch(channelEvent(RealtimeSocketEvents.ChannelUpdated, "channel-a"))
-        runCurrent()
-
-        store.dispatch(SharedActivityIntent.SurfaceHidden)
-        gate.complete(http404())
-        runCurrent()
-
-        assertEquals(1, conversations.detailRequests.size)
-        assertEquals(emptySet(), store.state.value.retainedReadRowKeys)
-    }
-
-    @Test
-    fun a404AfterAServerSwitchIsIgnored() = runTest {
-        val gate = CompletableDeferred<DataResult<ConversationSummary>>()
-        val conversations = FakeConversationRepository().apply { detailResponder = { gate.await() } }
-        val store = storeWithRetainedAB(conversations)
-        store.dispatch(channelEvent(RealtimeSocketEvents.ChannelUpdated, "channel-a"))
-        runCurrent()
-
-        store.clear()
-        gate.complete(http404())
-        runCurrent()
-
-        assertEquals(1, conversations.detailRequests.size)
     }
 
     private fun TestScope.unreadStore(

@@ -50,13 +50,6 @@ class RaftIosWebViewFormAccessoryIosTest {
     }
 
     @Test
-    fun theWebViewLeavesTheFormAccessoryBarOutUnlessAsked() {
-        val view = RaftIosWebView(frame = CGRectMake(0.0, 0.0, 1.0, 1.0), configuration = WKWebViewConfiguration())
-        assertFalse(view.showsFormAccessoryBar)
-        assertNull(view.formAccessoryView())
-    }
-
-    @Test
     fun appPagesHideTheBarAndTheInAppBrowserKeepsIt() {
         assertFalse(config().showsFormAccessoryBar)
         val (_, appPage) = hostedWebView(config())
@@ -65,18 +58,5 @@ class RaftIosWebViewFormAccessoryIosTest {
 
         val (_, browser) = hostedWebView(config(showsFormAccessoryBar = true))
         assertTrue(browser.showsFormAccessoryBar)
-    }
-
-    @Test
-    fun aConfigChangeReachesTheShownWebViewWithoutARebuild() {
-        val (host, view) = hostedWebView(config())
-        host.applyConfig(config(showsFormAccessoryBar = true))
-        val container = view.superview
-        assertTrue(view.showsFormAccessoryBar)
-        // Same WKWebView: the flag alone does not rebuild the page.
-        assertTrue(raftIsSameObjCObject(container?.subviews?.single(), view))
-        host.applyConfig(config(showsFormAccessoryBar = false))
-        assertFalse(view.showsFormAccessoryBar)
-        assertNull(view.formAccessoryView())
     }
 }

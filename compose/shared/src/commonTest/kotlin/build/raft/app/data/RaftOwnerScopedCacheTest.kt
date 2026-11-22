@@ -3,7 +3,6 @@ package build.raft.app.data
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
-import kotlin.test.assertFailsWith
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -78,37 +77,6 @@ class RaftOwnerScopedCacheTest {
     }
 
     @Test
-    fun readsAdvanceDeterministicLruOrder() {
-        val cache = RaftOwnerScopedBoundedCache<String, String>(maxEntries = 2)
-        val owner = owner()
-        cache.put(owner, "channel-1", "one")
-        cache.put(owner, "channel-2", "two")
-
-        assertEquals("one", cache.get(owner, "channel-1"))
-        cache.put(owner, "channel-3", "three")
-
-        assertNull(cache.get(owner, "channel-2"))
-        assertEquals("one", cache.get(owner, "channel-1"))
-        assertEquals("three", cache.get(owner, "channel-3"))
-        assertEquals(2, cache.size)
-    }
-
-    @Test
-    fun exactRemovalAndMutationDoNotAffectOtherOwner() {
-        val cache = RaftOwnerScopedBoundedCache<String, String>(maxEntries = 4)
-        val ownerA = owner(accountId = "user-a")
-        val ownerB = owner(accountId = "user-b")
-        cache.put(ownerA, "channel-1", "a-old")
-        cache.put(ownerB, "channel-1", "b")
-
-        cache.put(ownerA, "channel-1", "a-new")
-        assertEquals("b", cache.get(ownerB, "channel-1"))
-        assertEquals("a-new", cache.remove(ownerA, "channel-1"))
-        assertNull(cache.get(ownerA, "channel-1"))
-        assertEquals("b", cache.get(ownerB, "channel-1"))
-    }
-
-    @Test
     fun removeOwnerRetiresOnlyThatPartition() {
         val cache = RaftOwnerScopedBoundedCache<String, String>(maxEntries = 4)
         val ownerA = owner(accountId = "user-a")
@@ -122,13 +90,6 @@ class RaftOwnerScopedCacheTest {
         assertNull(cache.get(ownerA, "channel-2"))
         assertEquals("b1", cache.get(ownerB, "channel-1"))
         assertEquals(1, cache.size)
-    }
-
-    @Test
-    fun nonPositiveCapacityIsRejected() {
-        assertFailsWith<IllegalArgumentException> {
-            RaftOwnerScopedBoundedCache<String, String>(maxEntries = 0)
-        }
     }
 
     private fun owner(

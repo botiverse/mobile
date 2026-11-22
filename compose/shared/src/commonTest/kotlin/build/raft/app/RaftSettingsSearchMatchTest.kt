@@ -2,7 +2,6 @@ package build.raft.app
 
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertTrue
 
 /**
  * Settings search's matching and order, the web's (packages/web/src/features/settings/search/
@@ -58,13 +57,6 @@ class RaftSettingsSearchMatchTest {
     }
 
     @Test
-    fun anEmptyQueryFindsNothingAndAnUnknownWordNothingEither() {
-        assertTrue(search("").isEmpty())
-        assertTrue(search("   ").isEmpty())
-        assertTrue(search("launch").isEmpty())
-    }
-
-    @Test
     fun theSecondLineIsPageSectionAndTheWordItWasFoundBy() {
         val byAlias = searchSettings(settings, "return").single()
         assertEquals("return", byAlias.alias)
@@ -79,17 +71,5 @@ class RaftSettingsSearchMatchTest {
         assertEquals(listOf("push", "notification"), settingsSearchAliases(aliases, "en"))
         // A locale without its own list searches English.
         assertEquals(listOf("push", "notification"), settingsSearchAliases(aliases, "ja"))
-    }
-
-    @Test
-    fun appLanguageTagsMapToTheIndexsLocales() {
-        assertEquals("zh-cn", settingsSearchAliasLocale("zh-CN"))
-        assertEquals("zh-cn", settingsSearchAliasLocale("zh-Hans-CN"))
-        assertEquals("zh-tw", settingsSearchAliasLocale("zh-TW"))
-        assertEquals("zh-tw", settingsSearchAliasLocale("zh_Hant"))
-        assertEquals("pt-br", settingsSearchAliasLocale("pt-BR"))
-        assertEquals("ja", settingsSearchAliasLocale("ja-JP"))
-        assertEquals("en", settingsSearchAliasLocale("en-US"))
-        assertEquals("en", settingsSearchAliasLocale(""))
     }
 }

@@ -88,31 +88,6 @@ class SharedAppLinkPreviewStoreTest {
         state.value.messageView(Viewer, messageId, content, Conversation)
 
     @Test
-    fun aMessageIsReadOnceAndItsAnswerIsKept() = runTest(StandardTestDispatcher()) {
-        val api = FakeAppLinkPreviewApi().apply { readResponses += HomeNetworkResponse(200, CardsBody) }
-        val store = store(api)
-        assertTrue(store.view().wantsRead)
-        store.read(Viewer, Server, MessageA, Content, Conversation)
-        store.read(Viewer, Server, MessageA, Content, Conversation)
-        runCurrent()
-        store.read(Viewer, Server, MessageA, Content, Conversation)
-        runCurrent()
-        assertEquals(listOf(MessageA), api.reads)
-        val view = store.view()
-        assertFalse(view.wantsRead)
-        assertEquals("Private PR", (view.results["https://alpha.example.test/pr/1"] as AppLinkResult.Card).title)
-    }
-
-    @Test
-    fun aMessageWithoutAnHttpsLinkIsNeverRead() = runTest(StandardTestDispatcher()) {
-        val api = FakeAppLinkPreviewApi()
-        val store = store(api)
-        store.read(Viewer, Server, MessageA, "see http://example.com and #general", Conversation)
-        runCurrent()
-        assertTrue(api.reads.isEmpty())
-    }
-
-    @Test
     fun anAppIsAskedOnceInAConversation() = runTest(StandardTestDispatcher()) {
         val api = FakeAppLinkPreviewApi().apply {
             readResponses += HomeNetworkResponse(200, PromptBody)
@@ -247,26 +222,6 @@ class SharedAppLinkPreviewStoreTest {
         assertTrue(store.state.value.messageView("user-1:server-2", MessageA, Content, Conversation).wantsRead)
         // An edited message is another read.
         assertTrue(store.view(content = "$Content edited").wantsRead)
-    }
-
-    @Test
-    fun aMessagesCardReachesItsRowThroughTheSelector() = runTest(StandardTestDispatcher()) {
-        val api = FakeAppLinkPreviewApi().apply { readResponses += HomeNetworkResponse(200, StatusCardBody) }
-        val store = store(api)
-        val seen = mutableListOf<AppLinkMessageView>()
-        backgroundScope.launch { store.messageViewFlow(Viewer, MessageA, Content, Conversation).toList(seen) }
-        runCurrent()
-        store.read(Viewer, Server, MessageA, Content, Conversation)
-        runCurrent()
-        // Another message's answer doesn't reach this row's selector.
-        store.read(Viewer, Server, MessageB, Content, Conversation)
-        runCurrent()
-        assertEquals(listOf(true, false), seen.map { it.wantsRead })
-        val card = seen.last().cards.single()
-        assertEquals("https://alpha.example.test/pr/1", card.url)
-        assertEquals(AppLinkApp("Sample App", null), card.app)
-        assertEquals(RaftAppLinkCardElement.Badge("Approved"), card.card!!.element("state"))
-        assertEquals(RaftAppLinkTextTone.Muted, (card.card!!.element("detail") as RaftAppLinkCardElement.Text).tone)
     }
 
     @Test

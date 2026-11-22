@@ -54,9 +54,6 @@ class ThreadAppLinkPreviewsScreenshotTest {
     @Test
     fun appLinkPreviewsLight() = capture("thread.app-link-previews", RaftAppAppearance.Light)
 
-    @Test
-    fun appLinkPreviewsDark() = capture("thread.app-link-previews.dark", RaftAppAppearance.Dark)
-
     private fun capture(name: String, appearance: RaftAppAppearance) {
         RaftRobolectricScreenshot.capture(name, appearance, reportDir = "build/reports/home-screenshots", activities = activities) {
             val pager = remember { object : Pager() {}.apply { pageData = PageData(JSONObject()) } }

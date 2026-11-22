@@ -6,6 +6,9 @@ import java.io.ByteArrayInputStream
 import java.io.File
 import java.io.InputStream
 import java.nio.file.Files
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicReference
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
@@ -49,18 +52,6 @@ class AndroidExternalShareIntakeTest {
     }
 
     @Test
-    fun declaredAndStreamedBoundsRejectBeforePublishingAnything() = withFixture(
-        files = mapOf("content://one" to ByteArray(4)),
-        declaredSizes = mapOf("content://one" to 4L),
-        limits = limits(maxItemBytes = 3)
-    ) { fixture ->
-        val declared = fixture.inbox.admit(spec("declared", "content://one"))
-        assertRejected("external_share_item_too_large", declared)
-        assertEquals(0, fixture.source.openCalls)
-        assertTrue(fixture.root.listFiles().orEmpty().isEmpty())
-    }
-
-    @Test
     fun unknownSizeStreamOverflowRollsBackPartialDirectory() = withFixture(
         files = mapOf("content://one" to ByteArray(4)),
         declaredSizes = mapOf("content://one" to null),
@@ -70,29 +61,6 @@ class AndroidExternalShareIntakeTest {
         assertRejected("external_share_item_too_large", streamed)
         assertEquals(1, fixture.source.openCalls)
         assertTrue(fixture.root.listFiles().orEmpty().isEmpty())
-    }
-
-    @Test
-    fun atomicEnvelopeFailureNeverPublishesPendingToken() {
-        val root = Files.createTempDirectory("external-share-atomic").toFile()
-        val inbox =
-            AndroidExternalShareInbox(
-                root = root,
-                source = FakeSource(emptyMap(), emptyMap()),
-                limits = limits(),
-                tokenFactory = { "atomic-token-123456" },
-                clock = { 1_000L },
-                atomicWriter = { _, _ -> error("short_write") },
-                atomicReader = { file -> file.readText() }
-            )
-        try {
-            val result = inbox.admit(spec("atomic"))
-            assertRejected("external_share_copy_failed", result)
-            assertEquals(null, inbox.pendingLaunchOrNull())
-            assertTrue(root.listFiles().orEmpty().isEmpty())
-        } finally {
-            root.deleteRecursively()
-        }
     }
 
     @Test
@@ -142,22 +110,54 @@ class AndroidExternalShareIntakeTest {
     }
 
     @Test
-    fun conflictingConsumptionIdFailsClosed() = withFixture(emptyMap(), emptyMap()) { fixture ->
-        val token =
-            (fixture.inbox.admit(spec("text")) as AndroidExternalShareIntakeResult.Admitted).launch.token
+    fun concurrentPendingLaunchProbeDuringWritePendingTokenNeverPoisonsNegativeCache() {
+        val root = Files.createTempDirectory("external-share-concurrent-write").toFile()
+        val pendingWriteStarted = CountDownLatch(1)
+        val allowPendingWriteFinish = CountDownLatch(1)
+        val inbox =
+            AndroidExternalShareInbox(
+                root = root,
+                source = FakeSource(emptyMap(), emptyMap()),
+                limits = limits(),
+                tokenFactory = { "concurrent-token-123456" },
+                clock = { 1_000L },
+                atomicWriter = { file, bytes ->
+                    if (file.name == AndroidExternalShareInbox.PendingFileName) {
+                        pendingWriteStarted.countDown()
+                        assertTrue(allowPendingWriteFinish.await(5L, TimeUnit.SECONDS))
+                    }
+                    file.parentFile?.mkdirs()
+                    file.writeBytes(bytes)
+                    file.setLastModified(1_000L)
+                },
+                atomicReader = { file -> file.readText() }
+            )
+        val admitted = AtomicReference<AndroidExternalShareIntakeResult?>(null)
+        val writerThread =
+            Thread {
+                admitted.set(inbox.admit(spec("concurrent-share")))
+            }
+        try {
+            writerThread.start()
+            assertTrue(pendingWriteStarted.await(5L, TimeUnit.SECONDS))
 
-        assertEquals(
-            RaftExternalShareEnvelopeHostMutationResult.Success,
-            fixture.inbox.consume(token, "external-share-consume:$token")
-        )
-        val conflict = fixture.inbox.consume(token, "external-share-consume:another-token")
-        assertEquals(
-            RaftExternalShareEnvelopeHostMutationResult.Failure(
-                "external_share_consumption_identity_invalid",
-                retryable = false
-            ),
-            conflict
-        )
+            // pending.txt is not renamed into place yet, so the probe observes null,
+            // but it must NOT poison the negative cache while the write is in flight.
+            assertEquals(null, inbox.pendingLaunchOrNull())
+            assertFalse(inbox.isKnownNoPendingLaunch())
+
+            allowPendingWriteFinish.countDown()
+            writerThread.join(5_000L)
+            assertFalse(writerThread.isAlive)
+
+            val launch = (admitted.get() as AndroidExternalShareIntakeResult.Admitted).launch
+            assertFalse(inbox.isKnownNoPendingLaunch())
+            assertEquals(launch, inbox.pendingLaunchOrNull())
+        } finally {
+            allowPendingWriteFinish.countDown()
+            writerThread.join(1_000L)
+            root.deleteRecursively()
+        }
     }
 
     private fun spec(text: String, vararg refs: String): AndroidExternalShareSpec =

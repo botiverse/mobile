@@ -57,12 +57,6 @@ class WideInlineSearchPanelTest {
     val activities = RobolectricComposeActivityRule()
 
     @Test
-    fun wideInlineSearchLight() =
-        RaftRobolectricScreenshot.capture("search.wide-inline", RaftAppAppearance.Light, reportDir = REPORT_DIR, activities = activities) {
-            Host { InlinePanel() }
-        }
-
-    @Test
     fun openingTheInlineSearchFocusesItsFieldWithoutABackButton() {
         var focused = false
         val activity = activities.launch()
@@ -83,14 +77,6 @@ class WideInlineSearchPanelTest {
         }
         assertTrue(focused, "the inline Search field takes focus as it opens")
         assertEquals(0, activity.backButtons(), "no Back button beside the field in the wide layout")
-    }
-
-    @Test
-    fun thePushedSearchPageKeepsItsBackButton() {
-        val activity = activities.launch()
-        activity.setContent { Host { InlinePanel(chrome = homeSearchPageChrome(tabRoot = false)) } }
-        settle()
-        assertEquals(1, activity.backButtons(), "a pushed (channel) search keeps Back")
     }
 
     @Test

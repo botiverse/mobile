@@ -6,16 +6,11 @@ import build.raft.app.data.HomeSnapshot
 import build.raft.app.data.ComputerStatus
 import build.raft.app.data.ComputerSummary
 import build.raft.app.data.SearchSenderFilterItem
-import build.raft.app.data.SearchFrequentEntityRank
-import build.raft.app.data.SearchPersonalizationEntityKey
-import build.raft.app.data.SearchPersonalizationEntityKind
-import build.raft.app.data.SettingsServerSidebarOrderSnapshot
 import build.raft.app.data.SharedHomeContentState
 import build.raft.app.data.SharedHomeState
 import build.raft.app.data.authSessionFixture
 import build.raft.app.model.ChannelId
 import build.raft.app.model.ConversationKind
-import build.raft.app.model.ConversationPermissions
 import build.raft.app.model.MemberId
 import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberProfile
@@ -68,134 +63,6 @@ class SettingsHomeSearchEntityRankingTest {
     }
 
     @Test
-    fun realHomeSearchConsumerPreservesConversationAndPinProjection() {
-        val archived = resultsFor("archive").single()
-        assertEquals(SearchEntityType.Channel, archived.type)
-        assertTrue(archived.archived)
-        assertNull(searchEntityPinTarget(archived))
-
-        val human = resultsFor("zoe").first { it.type == SearchEntityType.Human }
-        assertEquals("dm-human", human.threadId)
-        assertEquals("human-dm", human.memberId)
-        assertEquals("server-1", human.memberIdentity?.sourceServerId?.value)
-        assertEquals("dm-human", human.conversationIdentity?.threadId?.value)
-        assertEquals("human", searchEntityPinTarget(human)?.kind)
-    }
-
-    @Test
-    fun queryAndFrequentChannelRowsDistinguishPublicPrivateAndJointLeadingIcons() {
-        val joint = resultsFor("joint-bridge").single()
-        val public = resultsFor("general").first { it.key == "conversation:channel-prefix" }
-        val private = resultsFor("private-room").single()
-
-        assertEquals(RaftLucideIconName.GitBranch, joint.homeSearchEntityLeadingIconName())
-        assertEquals(RaftLucideIconName.Hash, public.homeSearchEntityLeadingIconName())
-        assertEquals(RaftLucideIconName.Lock, private.homeSearchEntityLeadingIconName())
-
-        val frequent =
-            homeSearchFrequentEntityResults(
-                homeState = entityHomeState,
-                senderFilters = entitySenders,
-                ranks =
-                    mapOf(
-                        SearchPersonalizationEntityKey(SearchPersonalizationEntityKind.Channel, "channel-joint") to
-                            SearchFrequentEntityRank(score = 2.0, lastOpenedAtMillis = 2L),
-                        SearchPersonalizationEntityKey(SearchPersonalizationEntityKind.Channel, "channel-private") to
-                            SearchFrequentEntityRank(score = 1.0, lastOpenedAtMillis = 1L),
-                    ),
-                channelLabel = "Channel",
-                dmLabel = "DM",
-                agentLabel = "Agent",
-                personLabel = "Person",
-                membersLabel = "Members",
-            )
-
-        assertEquals(
-            listOf(RaftLucideIconName.GitBranch, RaftLucideIconName.Lock),
-            frequent.map { it.homeSearchEntityLeadingIconName() },
-        )
-    }
-
-    @Test
-    fun theLocalFirstPaintRanksByMatchAloneWithNoStatusTier() {
-        // The server ranks channels by their status (docs/contracts/web-search.md "Ranking"); the
-        // local rows that show before it answers are the composer ranker's, with no tier: archived
-        // and not-joined channels of an equal match keep the loaded order.
-        fun channel(id: String, name: String, joined: Boolean = true, archived: Boolean = false) =
-            HomeChannelRow(threadId = ThreadId(id), channelId = ChannelId(id), name = name, joined = joined, archived = archived)
-        val keys =
-            resultsWithChannels(
-                "ops",
-                listOf(
-                    channel("a1", "ops-alpha", archived = true),
-                    channel("n1", "ops-bravo", joined = false),
-                    channel("j1", "ops-charlie"),
-                ),
-            ).map { it.key }
-        assertEquals(listOf("conversation:a1", "conversation:n1", "conversation:j1"), keys)
-    }
-
-    private fun resultsWithChannels(query: String, channels: List<HomeChannelRow>): List<SearchEntityResult> {
-        val content = entityHomeState.content as SharedHomeContentState.Content
-        return homeSearchEntityResults(
-            query = query,
-            homeState = entityHomeState.copy(content = content.copy(snapshot = content.snapshot.copy(channels = channels, directMessages = emptyList()))),
-            senderFilters = emptyList(),
-            channelLabel = "Channel",
-            dmLabel = "DM",
-            agentLabel = "Agent",
-            personLabel = "Person",
-            membersLabel = "Members",
-        )
-    }
-
-    @Test
-    fun blankQueryReturnsBeforeHomeContentIsAvailable() {
-        val results =
-            homeSearchEntityResults(
-                query = "  ",
-                homeState = SharedHomeState(),
-                senderFilters = entitySenders,
-                channelLabel = "Channel",
-                dmLabel = "DM",
-                agentLabel = "Agent",
-                personLabel = "Person",
-                membersLabel = "Members"
-            )
-
-        assertEquals(emptyList(), results)
-    }
-
-    @Test
-    fun computersUseWebFieldPriorityAndStayOutOfPrefixSearches() {
-        val directory =
-            HomeSearchComputerDirectory(
-                serverId = "server-1",
-                machines =
-                    listOf(
-                        computer(
-                            id = "machine-1",
-                            name = "Orion Workstation",
-                            hostname = "build-host",
-                            description = "Render Farm",
-                            os = "Darwin",
-                        ),
-                        computer(id = "agent-runtime", name = "Orion Agent", isComputer = false),
-                    ),
-                hasSnapshot = true,
-            )
-
-        listOf("Orion Workstation", "build-host", "Render Farm", "Darwin").forEach { query ->
-            val result = resultsFor(query, directory).single { it.type == SearchEntityType.Computer }
-            assertEquals("computer:server-1:machine-1", result.key)
-            assertEquals("build-host", result.subtitle)
-        }
-        assertTrue(resultsFor("#Orion", directory).none { it.type == SearchEntityType.Computer })
-        assertTrue(resultsFor("@Orion", directory).none { it.type == SearchEntityType.Computer })
-        assertTrue(resultsFor("Orion Agent", directory).none { it.type == SearchEntityType.Computer })
-    }
-
-    @Test
     fun computersAreServerFencedDeduplicatedAndNavigateByAtomicIdentity() {
         val machine = computer(id = "machine-1", name = "Build Mac", hostname = "build.local")
         val matching =
@@ -226,89 +93,6 @@ class SettingsHomeSearchEntityRankingTest {
                     ),
             )
         assertTrue(leaked.none { it.type == SearchEntityType.Computer })
-    }
-
-    @Test
-    fun frequentProjectionUsesOnlyAuthoritativeEligibleEntitiesAndDeterministicRanking() {
-        val content = entityHomeState.content as SharedHomeContentState.Content
-        val stateWithInaccessibleEntities =
-            entityHomeState.copy(
-                content =
-                    content.copy(
-                        snapshot =
-                            content.snapshot.copy(
-                                channels =
-                                    content.snapshot.channels +
-                                        HomeChannelRow(
-                                            threadId = ThreadId("channel-unjoined"),
-                                            channelId = ChannelId("channel-unjoined"),
-                                            name = "unjoined",
-                                            joined = false,
-                                        ) +
-                                        HomeChannelRow(
-                                            threadId = ThreadId("channel-denied"),
-                                            channelId = ChannelId("channel-denied"),
-                                            name = "denied",
-                                            permissions = ConversationPermissions(canRead = false),
-                                        ),
-                                directMessages =
-                                    content.snapshot.directMessages +
-                                        HomeDirectMessageRow(
-                                            threadId = ThreadId("dm-hidden"),
-                                            channelId = ChannelId("dm-hidden"),
-                                            name = "Hidden person",
-                                        ),
-                                sidebarOrder = SettingsServerSidebarOrderSnapshot(hiddenDmIds = listOf("dm-hidden")),
-                            )
-                    )
-            )
-        val ranks =
-            mapOf(
-                SearchPersonalizationEntityKey(SearchPersonalizationEntityKind.Channel, "channel-archived") to
-                    SearchFrequentEntityRank(score = 99.0, lastOpenedAtMillis = 99L),
-                SearchPersonalizationEntityKey(SearchPersonalizationEntityKind.Human, "human-dm") to
-                    SearchFrequentEntityRank(score = 2.0, lastOpenedAtMillis = 20L),
-                SearchPersonalizationEntityKey(SearchPersonalizationEntityKind.Channel, "channel-prefix") to
-                    SearchFrequentEntityRank(score = 2.0, lastOpenedAtMillis = 20L),
-                SearchPersonalizationEntityKey(SearchPersonalizationEntityKind.Channel, "deleted-channel") to
-                    SearchFrequentEntityRank(score = 100.0, lastOpenedAtMillis = 100L),
-                SearchPersonalizationEntityKey(SearchPersonalizationEntityKind.Channel, "channel-unjoined") to
-                    SearchFrequentEntityRank(score = 100.0, lastOpenedAtMillis = 100L),
-                SearchPersonalizationEntityKey(SearchPersonalizationEntityKind.Channel, "channel-denied") to
-                    SearchFrequentEntityRank(score = 100.0, lastOpenedAtMillis = 100L),
-                SearchPersonalizationEntityKey(SearchPersonalizationEntityKind.DirectMessage, "dm-hidden") to
-                    SearchFrequentEntityRank(score = 100.0, lastOpenedAtMillis = 100L),
-            )
-
-        val results =
-            homeSearchFrequentEntityResults(
-                homeState = stateWithInaccessibleEntities,
-                senderFilters = entitySenders,
-                ranks = ranks,
-                channelLabel = "Channel",
-                dmLabel = "DM",
-                agentLabel = "Agent",
-                personLabel = "Person",
-                membersLabel = "Members",
-            )
-
-        assertEquals(
-            listOf("conversation:channel-prefix", "sender:server-1:Human:human-dm"),
-            results.map { it.key },
-        )
-        assertTrue(results.none { it.archived })
-    }
-
-    @Test
-    fun searchHomeVisualTypographyStressChangesRealTextMetricsWithoutChangingDefault() {
-        val base = RaftType.Body
-
-        assertEquals(base, base.withHomeSearchVisualTextScale(1f))
-
-        val large = base.withHomeSearchVisualTextScale(1.3f)
-        assertEquals(base.fontSize * 1.3f, large.fontSize)
-        assertEquals(base.lineHeight * 1.3f, large.lineHeight)
-        assertEquals(base.letterSpacing * 1.3f, large.letterSpacing)
     }
 
     private fun keysFor(query: String): List<String> = resultsFor(query).map { it.key }

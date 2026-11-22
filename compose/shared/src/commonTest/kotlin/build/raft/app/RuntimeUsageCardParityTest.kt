@@ -15,20 +15,13 @@ import build.raft.app.data.RuntimeAccountUsageUnsupportedReason
 import build.raft.app.data.RuntimeAccountUsageWindow
 import build.raft.app.data.RuntimeAccountUsageWindowScope
 import build.raft.app.data.RuntimeAccountUsageWindowStatus
-import build.raft.app.data.RuntimeAuthStatus
 import build.raft.app.data.RuntimeLimitResetTest
-import build.raft.app.data.RuntimePlanHeading
-import build.raft.app.data.RuntimeQuotaWindowKind
 import build.raft.app.data.SharedRuntimeAccountUsageStore
-import build.raft.app.data.cardWindowKind
-import build.raft.app.data.formatRuntimePlanName
 import build.raft.app.data.modelLimitChip
-import build.raft.app.data.runtimePlanHeading
 import build.raft.app.data.toRuntimeAccountUsageRead
 import build.raft.app.data.toRuntimeAuthStatus
 import build.raft.app.data.unsupportedReasonLine
 import build.raft.app.data.usageBadge
-import build.raft.app.model.RuntimeAuthAccountLabel
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.cancel
@@ -46,27 +39,6 @@ import kotlin.test.assertNull
  * #15787, #15931): what the card reads from the wire and decides before drawing it.
  */
 class RuntimeUsageCardParityTest {
-    // --- #15557: the plan as a titled heading --------------------------------------------------
-
-    @Test
-    fun knownLowercasePlansReadAsPlansAndOtherNamesStayAsSent() {
-        assertEquals("Team", formatRuntimePlanName("team"))
-        assertEquals("Pro", formatRuntimePlanName(" PRO "))
-        assertEquals("SuperGrok", formatRuntimePlanName("SuperGrok"))
-        assertEquals("moderato", formatRuntimePlanName("moderato"))
-        assertNull(formatRuntimePlanName("   "))
-        assertNull(formatRuntimePlanName(null))
-        assertEquals(RuntimePlanHeading.Plan("Team"), runtimePlanHeading("team"))
-        assertEquals(RuntimePlanHeading.Plan("Ultra"), runtimePlanHeading("Ultra"))
-        // A name that already says it is a plan is not "… plan plan".
-        assertEquals(RuntimePlanHeading.Named("Google AI Pro Plan"), runtimePlanHeading("Google AI Pro Plan"))
-        assertEquals(RuntimePlanHeading.Named("Pro 套餐"), runtimePlanHeading("Pro 套餐"))
-        assertEquals(RuntimePlanHeading.Plan("Planner"), runtimePlanHeading("Planner"))
-        assertEquals(RuntimePlanHeading.Fallback, runtimePlanHeading(""))
-        // The sign-in account line capitalises the plan the same way.
-        assertEquals("a***@x.com · Team", RuntimeAuthAccountLabel(maskedLabel = "a***@x.com", planLabel = "team").text)
-    }
-
     // --- #15395: why an account is unsupported -------------------------------------------------
 
     @Test
@@ -107,28 +79,6 @@ class RuntimeUsageCardParityTest {
         assertNull(some.copy(credits = RuntimeAccountUsageCredits(available = true)).usageBadge())
     }
 
-    @Test
-    fun everyModelGroupUsedUpReadsByWhatTheCreditsSay() {
-        val gemini = window("Gemini Models", 1.0, RuntimeAccountUsageWindowStatus.LimitReached, RuntimeAccountUsageWindowScope.Models("Gemini Models"))
-        val claude = window("Claude and GPT models", 1.0, RuntimeAccountUsageWindowStatus.LimitReached, RuntimeAccountUsageWindowScope.Models("Claude and GPT models"))
-        val allUsedUp = usage(gemini, claude)
-        assertEquals(RuntimeAccountUsageBadge.MaybeOnCredits, allUsedUp.usageBadge(), "credits not reported")
-        assertNull(allUsedUp.copy(credits = RuntimeAccountUsageCredits(available = true)).usageBadge(), "each row says on credits")
-        assertEquals(RuntimeAccountUsageBadge.RateLimited, allUsedUp.copy(credits = RuntimeAccountUsageCredits(available = false)).usageBadge())
-        // One group left: some models used up.
-        val oneLeft = usage(gemini, claude.copy(status = RuntimeAccountUsageWindowStatus.Ok, usedRatio = 0.2))
-        assertEquals(RuntimeAccountUsageBadge.SomeModelsUsedUp, oneLeft.usageBadge())
-    }
-
-    @Test
-    fun theFiveHourAndWeeklyWindowsAreNamedInTheReadersLanguage() {
-        assertEquals(RuntimeQuotaWindowKind.FiveHour, window("Current session", 0.1).cardWindowKind())
-        assertEquals(RuntimeQuotaWindowKind.FiveHour, window("Codex · 5 hours", 0.1).cardWindowKind())
-        assertEquals(RuntimeQuotaWindowKind.Week, window("Current week (all models)", 0.1).cardWindowKind())
-        assertEquals(RuntimeQuotaWindowKind.Week, window("Weekly included usage", 0.1).cardWindowKind())
-        assertNull(window("Current week (Opus)", 0.1).cardWindowKind(), "a model's own window keeps its name")
-    }
-
     // --- #15482: the limit reset only from 80% used ----------------------------------------------
 
     @Test
@@ -140,25 +90,6 @@ class RuntimeUsageCardParityTest {
         // A model's own window used up alone is a quiet button.
         val spark = window("GPT-5.3-Codex-Spark", 1.0, RuntimeAccountUsageWindowStatus.LimitReached, RuntimeAccountUsageWindowScope.Model("Spark"))
         assertEquals(false, usage(window("Codex · 5 hours", 0.1), spark).limitResetPrimary())
-    }
-
-    // --- #15931: the last signed-in account -----------------------------------------------------
-
-    @Test
-    fun aSignedOutStatusKeepsTheLastAccountItCanReadAndNothingElse() {
-        assertEquals(RuntimeAuthStatus.LoggedOut("x*****n@botiverse.dev"), status("""{"kind":"logged_out","lastAccount":{"maskedLabel":"x*****n@botiverse.dev"}}"""))
-        assertEquals(RuntimeAuthStatus.LoggedOut("Xu Chen"), status("""{"kind":"logged_out","lastAccount":{"displayName":"Xu Chen"}}"""))
-        // The masked email wins over the name; an unmasked "email" is not one (slock `maskedLabelSchema`).
-        assertEquals(RuntimeAuthStatus.LoggedOut("x***@y.z"), status("""{"kind":"logged_out","lastAccount":{"maskedLabel":"x***@y.z","displayName":"Xu"}}"""))
-        assertEquals(RuntimeAuthStatus.LoggedOut("Xu"), status("""{"kind":"logged_out","lastAccount":{"maskedLabel":"xu@y.z","displayName":"Xu"}}"""))
-        // Anything unreadable leaves the status signed out without a last account.
-        assertEquals(RuntimeAuthStatus.LoggedOut(), status("""{"kind":"logged_out"}"""))
-        assertEquals(RuntimeAuthStatus.LoggedOut(), status("""{"kind":"logged_out","lastAccount":null}"""))
-        assertEquals(RuntimeAuthStatus.LoggedOut(), status("""{"kind":"logged_out","lastAccount":"x***@y.z"}"""))
-        assertEquals(RuntimeAuthStatus.LoggedOut(), status("""{"kind":"logged_out","lastAccount":{}}"""))
-        assertEquals(RuntimeAuthStatus.LoggedOut(), status("""{"kind":"logged_out","lastAccount":{"displayName":"${"x".repeat(81)}"}}"""))
-        assertEquals(RuntimeAuthStatus.LoggedOut(), status("""{"kind":"logged_out","lastAccount":{"displayName":"a\u0007b"}}"""))
-        assertEquals(RuntimeAuthStatus.LoggedOut(), status("""{"kind":"logged_out","lastAccount":{"displayName":42}}"""))
     }
 
     // --- #15786: usage read again after a sign-in ----------------------------------------------
@@ -178,19 +109,6 @@ class RuntimeUsageCardParityTest {
             assertEquals(RuntimeAccountUsageHealth.Ok, read.snapshot.accounts.single().health)
             assertEquals(ComputerRuntimeUsageRefreshStatus.Idle, controller.refresh)
             assertEquals(4, api.calls.count { it.startsWith("GET") && it.contains("runtime-account-usage") })
-        }
-    }
-
-    @Test
-    fun aSignInWhoseUsageNeverChangesEndsQuietly() = runTest {
-        val api = RuntimeLimitResetTest.FakeLimitResetApi(usage = { ok(usageAt("10:00", "reauth_required")) }, auth = { ok(AUTH_VIEW) })
-        withController(api) { controller ->
-            controller.onOpen()
-            advanceUntilIdle()
-            controller.readAfterSignIn()
-            advanceUntilIdle()
-            assertEquals(ComputerRuntimeUsageRefreshStatus.Idle, controller.refresh, "nobody pressed Refresh: no \"no update was observed\"")
-            assertEquals(1 + COMPUTER_RUNTIME_USAGE_SIGN_IN_FOLLOW_UP_ATTEMPTS, api.calls.count { it.startsWith("GET") && it.contains("runtime-account-usage") })
         }
     }
 

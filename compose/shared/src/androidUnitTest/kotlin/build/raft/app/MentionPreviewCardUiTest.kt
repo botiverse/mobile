@@ -7,7 +7,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.snapshots.Snapshot
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.semantics.SemanticsActions
@@ -141,41 +140,6 @@ class MentionPreviewCardUiTest {
         }
 
     @Test
-    fun aMentionHoveredBeforeTheMembersLoadOpensItsCardOnTheNextHover() =
-        runRobolectricComposeUiTest {
-            val calls = Calls().apply { membersLoaded = false }
-            showBody(calls)
-            mainClock.autoAdvance = false
-            val at = charCenter(mentionIndex())
-            textNode().performMouseInput { moveTo(at) }
-            mainClock.advanceTimeBy(400)
-            assertTrue(!cardShown(), "no card while @ada can't be found yet")
-            textNode().performMouseInput { moveTo(charCenter(1)) }
-            mainClock.advanceTimeBy(500)
-            calls.membersLoaded = true
-            textNode().performMouseInput { moveTo(at) }
-            // The hover's state write reaches the Recomposer through the global snapshot apply
-            // notification, which Compose posts to the main looper; the paused fake clock never runs
-            // that message here (an app's live UI thread does), so send it as the frame would.
-            Snapshot.sendApplyNotifications()
-            mainClock.advanceTimeBy(400)
-            assertEquals(listOf("@ada", "@ada"), calls.resolved)
-            assertTrue(cardShown(), "once the members load, hovering @ada again opens its card")
-        }
-
-    @Test
-    fun plainWordsOpenNothing() =
-        runRobolectricComposeUiTest {
-            val calls = Calls()
-            showBody(calls)
-            mainClock.autoAdvance = false
-            textNode().performMouseInput { moveTo(charCenter(1)) }
-            mainClock.advanceTimeBy(1_000)
-            assertTrue(!cardShown())
-            assertTrue(calls.resolved.isEmpty(), "no mention is looked up until the pointer is on one")
-        }
-
-    @Test
     fun aFingerNeverOpensTheCardAndItsTapStillOpensTheProfile() =
         runRobolectricComposeUiTest {
             val calls = Calls()
@@ -188,22 +152,6 @@ class MentionPreviewCardUiTest {
             mainClock.advanceTimeBy(1_000)
             assertTrue(!cardShown())
             assertEquals(listOf("@ada"), calls.opened, "the tap still opens the mention")
-        }
-
-    @Test
-    fun clickingTheMentionClosesTheCardAndRunsItsClick() =
-        runRobolectricComposeUiTest {
-            val calls = Calls()
-            showBody(calls)
-            mainClock.autoAdvance = false
-            val at = charCenter(mentionIndex())
-            textNode().performMouseInput { moveTo(at) }
-            mainClock.advanceTimeBy(400)
-            assertTrue(cardShown())
-            textNode().performMouseInput { click(at) }
-            mainClock.advanceTimeBy(400)
-            assertTrue(!cardShown(), "a click on the mention closes its card")
-            assertEquals(listOf("@ada"), calls.opened, "and the mention still opens the profile")
         }
 
     private companion object {

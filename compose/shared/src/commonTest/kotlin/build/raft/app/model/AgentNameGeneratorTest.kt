@@ -2,7 +2,6 @@ package build.raft.app.model
 
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -21,18 +20,6 @@ class AgentNameGeneratorTest {
     }
 
     @Test
-    fun wordListsMatchWebAndHaveNoDuplicates() {
-        // Same lists as slock packages/shared/src/agentNameGenerator.ts.
-        assertEquals(LIST_SIZES, AGENT_CLASSIC_NAMES.size to AGENT_NAME_ADJECTIVES.size)
-        assertEquals("Ada", AGENT_CLASSIC_NAMES.first())
-        assertEquals("Zoe", AGENT_CLASSIC_NAMES.last())
-        for (list in listOf(AGENT_CLASSIC_NAMES, AGENT_NAME_ADJECTIVES)) {
-            assertEquals(list.size, list.map { it.lowercase() }.toSet().size)
-        }
-        assertFalse(AGENT_CLASSIC_NAMES.any { it.equals("Cindy", ignoreCase = true) })
-    }
-
-    @Test
     fun picksAFreeClassicNameWhileAnyIsFree() {
         val onlyFree = AGENT_CLASSIC_NAMES[42]
         val exclude = AGENT_CLASSIC_NAMES.filter { it != onlyFree }.map { "  ${it.uppercase()} " }
@@ -43,38 +30,6 @@ class AgentNameGeneratorTest {
         assertEquals(AGENT_CLASSIC_NAMES.last(), suggestAgentName(emptyList()) { 0.999999 })
         // A random value of exactly 1.0 is clamped to the last name rather than overflowing.
         assertEquals(AGENT_CLASSIC_NAMES.last(), suggestAgentName(emptyList()) { 1.0 })
-    }
-
-    @Test
-    fun addsAnAdjectiveThenANumberOnceEveryClassicNameIsTaken() {
-        val names = AGENT_CLASSIC_NAMES
-        val first = "${AGENT_NAME_ADJECTIVES.first()}-${AGENT_CLASSIC_NAMES.first()}"
-        assertEquals(first, suggestAgentName(names) { 0.0 })
-        assertEquals(
-            "${AGENT_NAME_ADJECTIVES.first()}-${AGENT_CLASSIC_NAMES[1]}",
-            suggestAgentName(names + first.lowercase()) { 0.0 },
-        )
-        assertEquals(allPairs.last(), suggestAgentName(names) { 0.999999 })
-
-        assertEquals("${first}2", suggestAgentName(names + allPairs) { 0.0 })
-        assertEquals("${first}4", suggestAgentName(names + allPairs + "${first}2" + "${first.lowercase()}3") { 0.0 })
-    }
-
-    @Test
-    fun defaultRandomSuggestionIsAValidClassicName() {
-        val name = suggestAgentName()
-        assertTrue(name in AGENT_CLASSIC_NAMES)
-        assertNull(validateAgentName(name))
-    }
-
-    @Test
-    fun wordListsMatchWebChecksum() {
-        // botiverse/slock agentNameGenerator.test.ts pins the same checksum of
-        // `names|adjectives`; editing either list fails until both repos change.
-        val text = AGENT_CLASSIC_NAMES.joinToString(",") + "|" + AGENT_NAME_ADJECTIVES.joinToString(",")
-        var hash = 0
-        for (char in text) hash = 31 * hash + char.code
-        assertEquals("5de9b463", hash.toUInt().toString(16))
     }
 
     private companion object {

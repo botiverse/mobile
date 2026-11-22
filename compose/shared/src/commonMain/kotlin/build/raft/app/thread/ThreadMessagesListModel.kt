@@ -424,6 +424,30 @@ internal fun threadMenuUsesShellHost(
 internal fun threadInitialFirstVisibleItemIndex(latestItemIndex: Int): Int =
     latestItemIndex.coerceAtLeast(0)
 
+/**
+ * Initial physical `LazyListState` index for a thread message list (#proj-mobile:#258).
+ *
+ * When the entry payload already carries its focused target message in cache, start at that row
+ * instead of the latest/bottom row so Frame 1 never renders the bottom of the conversation before
+ * jumping to the target. Reversed lists pair this with [ThreadInitialFocusedPlacementOwner] to
+ * align the measured row before the first frame draws.
+ */
+internal fun threadInitialFirstVisibleItemIndex(
+    reverseLayout: Boolean,
+    latestItemIndex: Int,
+    lazyItemCount: Int,
+    focusedItemIndex: Int,
+): Int {
+    if (focusedItemIndex in 0 until lazyItemCount) {
+        return if (reverseLayout) {
+            reversedThreadListIndex(focusedItemIndex, lazyItemCount)
+        } else {
+            focusedItemIndex
+        }
+    }
+    return if (reverseLayout) 0 else threadInitialFirstVisibleItemIndex(latestItemIndex = latestItemIndex)
+}
+
 internal fun threadInitialBottomAnchorTargetItemIndex(
     latestMessageItemIndex: Int,
     bottomPaddingItemIndex: Int

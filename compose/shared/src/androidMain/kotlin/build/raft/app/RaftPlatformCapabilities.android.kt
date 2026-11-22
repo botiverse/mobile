@@ -1,10 +1,12 @@
 package build.raft.app
 
+import android.content.Context
 import android.content.pm.PackageManager
 import android.content.res.Resources
 import android.os.Build
 import java.text.BreakIterator
 import java.util.Locale
+import java.util.concurrent.atomic.AtomicReference
 import androidx.compose.ui.platform.ClipEntry
 import androidx.lifecycle.Lifecycle
 import build.raft.app.components.RaftPullToRefreshStyle
@@ -33,18 +35,47 @@ internal actual fun raftPlatformAppShellChildPagePrewarmMode(): AppShellChildPag
 internal actual fun raftPlatformSupportsMultiShellHost(): Boolean = true
 
 /**
+ * Process-level cache for [PackageManager.FEATURE_SENSOR_HINGE_ANGLE]. Hardware feature support
+ * never changes within an Android process lifetime, so caching avoids a synchronous
+ * `PackageManager.hasSystemFeature` Binder IPC on every Settings recomposition. Keyed by
+ * application [Context] identity so isolated Robolectric test contexts never share stale entries.
+ */
+internal object RaftAndroidHingeSensorCache {
+    private data class Entry(val context: Context, val hasHingeAngle: Boolean)
+
+    private val cached = AtomicReference<Entry?>(null)
+
+    fun hasHingeAngle(
+        context: Context,
+        query: (Context) -> Boolean = { ctx ->
+            ctx.packageManager.hasSystemFeature(PackageManager.FEATURE_SENSOR_HINGE_ANGLE)
+        },
+    ): Boolean {
+        val key = context.applicationContext ?: context
+        cached.get()?.takeIf { it.context === key }?.let { return it.hasHingeAngle }
+        val detected = runCatching { query(key) }.getOrNull() ?: return false
+        cached.set(Entry(key, detected))
+        return detected
+    }
+
+    internal fun resetForTest() {
+        cached.set(null)
+    }
+}
+
+/**
  * A tablet (the smallest width at least 600dp, Android's `sw600dp`, the same line the User-Agent
  * draws) or a foldable (a hinge sensor: folded, its outer screen is phone-sized, unfolded it is
- * large). Read at each call: a foldable's smallest width follows its fold.
+ * large). Smallest width is read at each call (a foldable's smallest width follows its fold); the
+ * hinge-angle hardware feature check is cached in [RaftAndroidHingeSensorCache].
  */
 internal actual fun raftPlatformLargeScreenPossible(): Boolean {
     // Plain JVM unit tests have no Android framework: no large screen there.
     val smallestWidthDp = runCatching { Resources.getSystem().configuration.smallestScreenWidthDp }.getOrNull() ?: return false
     if (smallestWidthDp >= RAFT_ANDROID_TABLET_SMALLEST_WIDTH_DP) return true
     if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return false
-    return runCatching {
-        RaftAndroidSqlDatabaseContext.require().packageManager.hasSystemFeature(PackageManager.FEATURE_SENSOR_HINGE_ANGLE)
-    }.getOrDefault(false)
+    val context = runCatching { RaftAndroidSqlDatabaseContext.require() }.getOrNull() ?: return false
+    return RaftAndroidHingeSensorCache.hasHingeAngle(context)
 }
 
 internal actual fun raftPlatformSupportsConversationForwardGesture(): Boolean = false
@@ -58,6 +89,10 @@ internal actual fun raftPlatformHasFinePointer(): Boolean = false
 internal actual fun raftPlatformShortcutsUseCommand(): Boolean = false
 
 internal actual fun raftPlatformSupportsInAppBrowser(): Boolean = true
+
+internal actual fun raftPlatformSupportsEmbeddedOwnWebView(): Boolean = true
+
+internal actual fun raftPlatformUsesEphemeralAuthWebView(): Boolean = false
 
 internal actual fun raftPlatformClipboardHasAttachments(): Boolean = false
 

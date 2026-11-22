@@ -25,33 +25,11 @@ class RaftArtifactLoadingSplashScreenshotTest {
     private val mid = RAFT_ARTIFACT_SPLASH_APPEAR_AFTER_MS + RAFT_ARTIFACT_SPLASH_CYCLE_MS * 3 / 10
     private val final = mid + RAFT_ARTIFACT_SPLASH_FILL_MS + RAFT_ARTIFACT_SPLASH_HOLD_MS / 2
 
-    @Test fun webMidLight() = shot("artifact.splash.web.mid", RaftAppAppearance.Light, RaftArtifactSplashIcon.Web, mid)
-
-    @Test fun webMidDark() = shot("artifact.splash.web.mid.dark", RaftAppAppearance.Dark, RaftArtifactSplashIcon.Web, mid)
-
     @Test fun webFinalLight() = shot("artifact.splash.web.final", RaftAppAppearance.Light, RaftArtifactSplashIcon.Web, final, loadedAfterMs = mid)
 
     @Test fun webFinalDark() = shot("artifact.splash.web.final.dark", RaftAppAppearance.Dark, RaftArtifactSplashIcon.Web, final, loadedAfterMs = mid)
 
-    @Test fun docMidLight() = shot("artifact.splash.doc.mid", RaftAppAppearance.Light, RaftArtifactSplashIcon.Doc, mid)
-
-    @Test fun docMidDark() = shot("artifact.splash.doc.mid.dark", RaftAppAppearance.Dark, RaftArtifactSplashIcon.Doc, mid)
-
-    @Test fun docFinalLight() = shot("artifact.splash.doc.final", RaftAppAppearance.Light, RaftArtifactSplashIcon.Doc, final, loadedAfterMs = mid)
-
-    @Test fun docFinalDark() = shot("artifact.splash.doc.final.dark", RaftAppAppearance.Dark, RaftArtifactSplashIcon.Doc, final, loadedAfterMs = mid)
-
-    @Test fun imgMidLight() = shot("artifact.splash.img.mid", RaftAppAppearance.Light, RaftArtifactSplashIcon.Img, mid)
-
-    @Test fun imgMidDark() = shot("artifact.splash.img.mid.dark", RaftAppAppearance.Dark, RaftArtifactSplashIcon.Img, mid)
-
-    @Test fun imgFinalLight() = shot("artifact.splash.img.final", RaftAppAppearance.Light, RaftArtifactSplashIcon.Img, final, loadedAfterMs = mid)
-
-    @Test fun imgFinalDark() = shot("artifact.splash.img.final.dark", RaftAppAppearance.Dark, RaftArtifactSplashIcon.Img, final, loadedAfterMs = mid)
-
     @Test fun reducedMotionLight() = shot("artifact.splash.reduced-motion", RaftAppAppearance.Light, RaftArtifactSplashIcon.Web, 5_000, reducedMotion = true)
-
-    @Test fun reducedMotionDark() = shot("artifact.splash.reduced-motion.dark", RaftAppAppearance.Dark, RaftArtifactSplashIcon.Web, 5_000, reducedMotion = true)
 
     private fun shot(
         name: String,

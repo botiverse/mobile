@@ -256,6 +256,7 @@ internal fun ActionCardQuestionButtonRow(
     onSend: (Map<String, ActionCardFormValue>) -> Unit,
     modifier: Modifier = Modifier,
     serverIssuesTraceId: String? = null,
+    errorTraceId: String? = null,
 ) {
     RaftDesignSystemTheme {
         Column(
@@ -282,7 +283,10 @@ internal fun ActionCardQuestionButtonRow(
                     )
                 hint != null -> QuestionHint(hint)
             }
-            error?.takeIf { it.isNotBlank() }?.let { RaftBanner(description = it, status = RaftBannerStatus.Warning, size = RaftBannerSize.Sm) }
+            error?.takeIf { it.isNotBlank() }?.let {
+                RaftBanner(description = it, status = RaftBannerStatus.Warning, size = RaftBannerSize.Sm)
+                RaftTraceIdNote(errorTraceId)
+            }
         }
     }
 }

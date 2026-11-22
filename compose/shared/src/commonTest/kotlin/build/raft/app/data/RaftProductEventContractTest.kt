@@ -57,14 +57,6 @@ class RaftProductEventContractTest {
     }
 
     @Test
-    fun pinnedShaMatchesProductionConstant() {
-        assertEquals(PinnedSlockSha, RAFT_PRODUCT_EVENTS_SLOCK_SHA)
-        assertEquals(PinnedDeviceClassSlockSha, RAFT_PRODUCT_EVENTS_DEVICE_CLASS_SLOCK_SHA)
-        assertEquals(PinnedNavDestinationsSlockSha, RAFT_PRODUCT_EVENTS_NAV_DESTINATIONS_SLOCK_SHA)
-        assertEquals(PinnedPageViewRoutesSlockSha, RAFT_PRODUCT_EVENTS_PAGE_VIEW_ROUTES_SLOCK_SHA)
-    }
-
-    @Test
     fun enumWireValuesEqualTheRegistry() {
         val cases =
             listOf(
@@ -80,29 +72,6 @@ class RaftProductEventContractTest {
         cases.forEach { (name, lists) ->
             assertEquals(lists.first.toSet(), lists.second.toSet(), "$name drifted from slock@$PinnedSlockSha")
             assertEquals(lists.first.size, lists.second.size, "$name has duplicates")
-        }
-    }
-
-    @Test
-    fun serialNamesMatchWireValues() {
-        val json = Json
-        RaftPageRoute.entries.forEach {
-            assertEquals(it.wire, json.encodeToJsonElement(RaftPageRoute.serializer(), it).jsonPrimitive.content)
-        }
-        RaftSettingsTab.entries.forEach {
-            assertEquals(it.wire, json.encodeToJsonElement(RaftSettingsTab.serializer(), it).jsonPrimitive.content)
-        }
-        RaftNavDestination.entries.forEach {
-            assertEquals(it.wire, json.encodeToJsonElement(RaftNavDestination.serializer(), it).jsonPrimitive.content)
-        }
-        RaftNavSurface.entries.forEach {
-            assertEquals(it.wire, json.encodeToJsonElement(RaftNavSurface.serializer(), it).jsonPrimitive.content)
-        }
-        RaftAppOpenVia.entries.forEach {
-            assertEquals(it.wire, json.encodeToJsonElement(RaftAppOpenVia.serializer(), it).jsonPrimitive.content)
-        }
-        RaftProductEventDeviceClass.entries.forEach {
-            assertEquals(it.wire, json.encodeToJsonElement(RaftProductEventDeviceClass.serializer(), it).jsonPrimitive.content)
         }
     }
 

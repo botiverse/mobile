@@ -24,7 +24,7 @@ internal sealed interface RaftComposerDraftUploadOutcome {
     /** The server confirmed the upload: [attachments] are the ready rows that replace the local one. */
     data class Succeeded(val attachments: List<SharedThreadComposerAttachment>) : RaftComposerDraftUploadOutcome
 
-    data class Failed(val errorCode: String) : RaftComposerDraftUploadOutcome
+    data class Failed(val errorCode: String, val traceId: String? = null) : RaftComposerDraftUploadOutcome
 }
 
 /**
@@ -157,9 +157,9 @@ internal class RaftComposerServerUploads(
         }
     }
 
-    fun fail(draftKey: String, localAttachmentId: String, attemptToken: Long, errorCode: String) {
+    fun fail(draftKey: String, localAttachmentId: String, attemptToken: Long, errorCode: String, traceId: String? = null) {
         updateAttempt(draftKey, localAttachmentId, attemptToken) { upload ->
-            if (!upload.inFlight) upload else upload.copy(outcome = RaftComposerDraftUploadOutcome.Failed(errorCode))
+            if (!upload.inFlight) upload else upload.copy(outcome = RaftComposerDraftUploadOutcome.Failed(errorCode, traceId))
         }
     }
 

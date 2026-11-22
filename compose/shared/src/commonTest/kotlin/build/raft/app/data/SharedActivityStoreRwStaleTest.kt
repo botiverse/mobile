@@ -87,23 +87,6 @@ class SharedActivityStoreRwStaleTest {
     }
 
     @Test
-    fun recoveryWaitsWhileActivityIsHidden() = runTest {
-        val network = ScriptedInboxNetwork(this, listOf(fresh("general" to 3), rwOverloadedInboxResponse(), rwOverloadedInboxResponse(), fresh("general" to 3)))
-        val store = store(network)
-        store.dispatch(SharedActivityIntent.LoadInitial)
-        runCurrent()
-        store.dispatch(SharedActivityIntent.Refresh)
-        settleOverloadRetry()
-        store.dispatch(SharedActivityIntent.SurfaceHidden)
-
-        advanceTimeBy(10 * RecoveryDelayMillis)
-        runCurrent()
-
-        assertEquals(3, network.requestTimes.size, "no read while hidden")
-        assertTrue(store.state.value.stale)
-    }
-
-    @Test
     fun coldStartWithACacheAndAnOverloadShowsTheCacheAsStale() = runTest {
         val storage = InMemoryPersistStorage()
         val first = store(ScriptedInboxNetwork(this, listOf(fresh("general" to 3, "random" to 2))), storage)

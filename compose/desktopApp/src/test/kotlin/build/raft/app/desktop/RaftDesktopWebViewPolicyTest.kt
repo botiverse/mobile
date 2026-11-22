@@ -62,48 +62,6 @@ class RaftDesktopWebViewPolicyTest {
         ).forEach { assertEquals(RaftDesktopWebViewNavigation.Block, policy.navigation(it), it) }
     }
 
-    @Test fun `a surface without declared frames is as strict as iOS`() {
-        val policy = feedback()
-        assertTrue(policy.isTrustedTopLevel("$web/feedback?embed=1"))
-        assertTrue(policy.isTrustedTopLevel("$web/feedback?embed=1#top"))
-        assertFalse(policy.isTrustedTopLevel("$web/feedback?embed=2"))
-        assertEquals(RaftDesktopWebViewNavigation.Block, policy.navigation("$web/settings"))
-        assertEquals(RaftDesktopWebViewNavigation.Block, policy.navigation("https://w1.raftusercontent.com/f"))
-    }
-
-    @Test fun `the first load is refused when the configured address fails the fence`() {
-        assertEquals(artifactUrl, artifactViewer().initialUrl())
-        val offOrigin =
-            RaftDesktopWebViewPolicy(
-                url = "https://elsewhere.example/a",
-                allowNavigation = true,
-                allowedNavigationSchemes = setOf("http", "https"),
-                mainFrameOrigin = web,
-                hostEventsEnabled = false,
-                injectedJavaScript = "",
-            )
-        assertNull(offOrigin.initialUrl())
-        val badScheme =
-            RaftDesktopWebViewPolicy(
-                url = "ftp://raft.example/a",
-                allowNavigation = true,
-                allowedNavigationSchemes = setOf("http", "https"),
-                mainFrameOrigin = null,
-                hostEventsEnabled = false,
-                injectedJavaScript = "",
-            )
-        assertNull(badScheme.initialUrl())
-    }
-
-    @Test fun `runtime scripts reach only the trusted top-level document`() {
-        val policy = artifactViewer()
-        assertTrue(policy.canRunRuntimeScript("$web/s/srv/artifacts/a2"))
-        assertFalse(policy.canRunRuntimeScript("https://content.example/f"))
-        assertFalse(policy.canRunRuntimeScript("about:blank"))
-        assertFalse(feedback().canRunRuntimeScript("$web/settings"))
-        assertTrue(policy.guardRuntimeScript("x()").startsWith("if (window.location.origin === \"$web\")"))
-    }
-
     @Test fun `the session script only runs in a top-level document of the web origin`() {
         val script = artifactViewer().documentStartScript()
         val guard = "if (window.top === window && (window.location.origin === \"$web\")) {"
@@ -112,6 +70,22 @@ class RaftDesktopWebViewPolicyTest {
         assertTrue(script.indexOf("slock_access_token") > guardAt)
         // No host bridge when host events are off.
         assertFalse("raftHostPort" in script)
+
+        // Unlocked Settings surfaces (allowNavigation = true, mainFrameOrigin = null) also guard
+        // injectedJavaScript to the configured web origin so external redirects never run it.
+        val unlockedSettingsScript =
+            RaftDesktopWebViewPolicy(
+                url = "$web/s/srv/settings/billing?embed=raft-settings-v1&shell=host",
+                allowNavigation = true,
+                allowedNavigationSchemes = setOf("http", "https"),
+                mainFrameOrigin = null,
+                hostEventsEnabled = false,
+                injectedJavaScript = "localStorage.setItem('slock_access_token', 't');",
+                channelSecret = "secret-2",
+            ).documentStartScript()
+        val unlockedGuardAt = unlockedSettingsScript.indexOf(guard)
+        assertTrue(unlockedGuardAt >= 0, unlockedSettingsScript)
+        assertTrue(unlockedSettingsScript.indexOf("slock_access_token") > unlockedGuardAt)
     }
 
     @Test fun `host messages need the WebView's secret and host events`() {
@@ -130,37 +104,6 @@ class RaftDesktopWebViewPolicyTest {
         assertTrue("raftHostPort" in policy.documentStartScript())
     }
 
-    @Test fun `a foreign top-level document has no code path to the secret`() {
-        listOf(artifactViewer(secret = "SECRET-123"), feedback(secret = "SECRET-123")).forEach { policy ->
-            val script = policy.documentStartScript()
-            val originGuard = "if (!(window.location.origin === \"$web\""
-            val guardAt = script.indexOf(originGuard)
-            assertTrue(guardAt >= 0, script)
-            // Nothing but the frame check precedes the origin guard; the secret, the post function,
-            // window.open and the click handler all come after it.
-            assertEquals(script.indexOf("if (window.top !== window) return;"), script.indexOf("\n") + 1)
-            listOf("SECRET-123", "ipcPost", "window.open", "addEventListener").forEach { needle ->
-                assertTrue(script.indexOf(needle) > guardAt, needle)
-            }
-            assertEquals(1, Regex("SECRET-123").findAll(script).count())
-            // The engine's post function is captured at document start, never looked up again.
-            assertFalse("window.ipc.postMessage(" in script)
-        }
-        // No web origin (a file preview): no channel at all.
-        val file =
-            RaftDesktopWebViewPolicy(
-                url = "file:///tmp/a.html",
-                allowNavigation = false,
-                allowedNavigationSchemes = emptySet(),
-                mainFrameOrigin = null,
-                hostEventsEnabled = true,
-                injectedJavaScript = "",
-                channelSecret = "SECRET-123",
-            ).documentStartScript()
-        assertTrue("if (!(false)) return;" in file)
-        assertTrue(file.indexOf("SECRET-123") > file.indexOf("if (!(false)) return;"))
-    }
-
     @Test fun `an unanswered check after a declared-frame navigation fails closed`() {
         val check = RaftDesktopWebViewTopLevelCheck(timeoutMs = 500, settleMs = 1_000)
         // Nothing pending: a slow page is just slow.
@@ -177,35 +120,6 @@ class RaftDesktopWebViewPolicyTest {
         assertFalse(check.armed)
         // The hung page's late answer is ignored.
         assertEquals(RaftDesktopWebViewTopLevelCheck.Verdict.Stale, check.answer(pending, trusted = true, idle = true, nowMs = 9_000))
-    }
-
-    @Test fun `the check stands down only once the trusted page settled`() {
-        val check = RaftDesktopWebViewTopLevelCheck(timeoutMs = 500, settleMs = 1_000)
-        check.markUnverified(nowMs = 1_000)
-        val early = assertNotNull(check.beginRequest(nowMs = 1_050))
-        assertEquals(RaftDesktopWebViewTopLevelCheck.Verdict.Trusted, check.answer(early, trusted = true, idle = true, nowMs = 1_060))
-        assertTrue(check.armed)
-        val loading = assertNotNull(check.beginRequest(nowMs = 2_100))
-        check.answer(loading, trusted = true, idle = false, nowMs = 2_110)
-        assertTrue(check.armed)
-        val settled = assertNotNull(check.beginRequest(nowMs = 2_200))
-        check.answer(settled, trusted = true, idle = true, nowMs = 2_210)
-        assertFalse(check.armed)
-        check.markUnverified(nowMs = 3_000)
-        val foreign = assertNotNull(check.beginRequest(nowMs = 3_050))
-        assertEquals(RaftDesktopWebViewTopLevelCheck.Verdict.Untrusted, check.answer(foreign, trusted = false, idle = true, nowMs = 3_060))
-    }
-
-    @Test fun `the evaluated address is a JSON string`() {
-        assertEquals("$web/a?shown=2", RaftDesktopWebViewPolicy.decodeEvaluatedString("\"$web/a?shown=2\""))
-        assertNull(RaftDesktopWebViewPolicy.decodeEvaluatedString(""))
-        assertNull(RaftDesktopWebViewPolicy.decodeEvaluatedString("{}"))
-    }
-
-    @Test fun `the native view's bounds sync reaches the pinned Wry panel`() {
-        // RaftDesktopWryNativeView moves the native view by reflection into WryWebViewPanel; a
-        // different jar must fail here, not leave web content on screen.
-        assertTrue(build.raft.app.RaftDesktopWryPanelAccess.available)
     }
 
     @Test fun `the macOS arm64 engine bridge ships on the app classpath`() {

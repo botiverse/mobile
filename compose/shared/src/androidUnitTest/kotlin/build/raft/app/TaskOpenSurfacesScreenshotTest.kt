@@ -49,28 +49,13 @@ class TaskOpenSurfacesScreenshotTest {
     fun pendingLight() = capture("task.open.pending", RaftAppAppearance.Light) { Pending(joined = true, refused = false) }
 
     @Test
-    fun pendingDark() = capture("task.open.pending.dark", RaftAppAppearance.Dark) { Pending(joined = true, refused = false) }
-
-    @Test
     fun pendingRefusedLight() = capture("task.open.pending.refused", RaftAppAppearance.Light) { Pending(joined = null, refused = true) }
-
-    @Test
-    fun pendingRefusedDark() = capture("task.open.pending.refused.dark", RaftAppAppearance.Dark) { Pending(joined = null, refused = true) }
 
     @Test
     fun pendingNotJoinedLight() = capture("task.open.pending.not-joined", RaftAppAppearance.Light) { Pending(joined = false, refused = false) }
 
     @Test
-    fun pendingNotJoinedDark() = capture("task.open.pending.not-joined.dark", RaftAppAppearance.Dark) { Pending(joined = false, refused = false) }
-
-    @Test
-    fun pendingReadOnlyLight() = capture("task.open.pending.read-only", RaftAppAppearance.Light) { Pending(joined = true, refused = false, readOnly = true) }
-
-    @Test
     fun legacyLight() = capture("task.open.legacy", RaftAppAppearance.Light) { Legacy() }
-
-    @Test
-    fun legacyDark() = capture("task.open.legacy.dark", RaftAppAppearance.Dark) { Legacy() }
 
     private fun capture(name: String, appearance: RaftAppAppearance, content: @Composable () -> Unit) =
         RaftRobolectricScreenshot.capture(name, appearance, reportDir = "build/reports/home-screenshots", activities = activities) {

@@ -70,6 +70,10 @@ internal actual fun raftPlatformShortcutsUseCommand(): Boolean = true
 
 internal actual fun raftPlatformSupportsInAppBrowser(): Boolean = true
 
+internal actual fun raftPlatformSupportsEmbeddedOwnWebView(): Boolean = true
+
+internal actual fun raftPlatformUsesEphemeralAuthWebView(): Boolean = false
+
 // Images and no text on the clipboard (a screenshot's "Copy and Delete"): the one rule for the edit
 // menu and ⌘V (raftIosClipboardHoldsOnlyImages). Asking does not read
 // the clipboard, so iOS shows no paste prompt for it.

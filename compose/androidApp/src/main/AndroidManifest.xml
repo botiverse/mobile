@@ -23,6 +23,9 @@
             <category android:name="android.intent.category.DEFAULT" />
             <data android:mimeType="*/*" />
         </intent>
+        <intent>
+            <action android:name="android.support.customtabs.action.CustomTabsService" />
+        </intent>
         <!-- Share out: the name of the app the person picked in the share sheet ("Opened <App>"). -->
         <intent>
             <action android:name="android.intent.action.SEND" />

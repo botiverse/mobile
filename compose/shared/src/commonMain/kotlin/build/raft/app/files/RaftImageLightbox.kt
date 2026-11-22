@@ -210,6 +210,7 @@ internal fun RaftImageLightbox(
     onDismiss: () -> Unit,
     onDownload: (RaftThreadAttachmentItem) -> Unit,
     onOpenWith: ((RaftThreadAttachmentItem) -> Unit)?,
+    onShare: ((RaftThreadAttachmentItem) -> Unit)? = null,
     onEdit: ((RaftThreadAttachmentItem) -> Unit)? = null
 ) {
     // The window's top safe area, read in the page (the lightbox covers the whole window).
@@ -221,6 +222,7 @@ internal fun RaftImageLightbox(
             onDismiss = onDismiss,
             onDownload = onDownload,
             onOpenWith = onOpenWith,
+            onShare = onShare,
             topSafeArea = topSafeArea,
             onEdit = onEdit
         )
@@ -240,6 +242,7 @@ internal fun RaftImageLightboxContent(
     onOpenWith: ((RaftThreadAttachmentItem) -> Unit)?,
     modifier: Modifier = Modifier,
     topSafeArea: Dp = 0.dp,
+    onShare: ((RaftThreadAttachmentItem) -> Unit)? = null,
     /** Edit this image; the result goes to the composer as a new image (RaftViewerImageEdit.kt). */
     onEdit: ((RaftThreadAttachmentItem) -> Unit)? = null,
     pageImage: @Composable (item: RaftImageLightboxItem, fullUrl: String?, onContentSize: (Size) -> Unit) -> Unit =
@@ -324,6 +327,7 @@ internal fun RaftImageLightboxContent(
                 position = pagerState.currentPage + 1,
                 count = items.size,
                 onDownload = { onDownload(current.attachment) },
+                onShare = onShare?.let { share -> { share(current.attachment) } },
                 onOpenWith = onOpenWith?.let { open -> { open(current.attachment) } },
                 onEdit = onEdit?.let { edit -> { edit(current.attachment) } },
                 onClose = { currentOnDismiss() },
@@ -469,6 +473,7 @@ private fun RaftImageLightboxTopBar(
     position: Int,
     count: Int,
     onDownload: () -> Unit,
+    onShare: (() -> Unit)?,
     onOpenWith: (() -> Unit)?,
     onClose: () -> Unit,
     padding: PaddingValues,
@@ -537,6 +542,14 @@ private fun RaftImageLightboxTopBar(
                 variant = RaftButtonVariant.Ghost,
                 size = RaftIconButtonSize.Lg
             ) { RaftSlotIcon(RaftLucideIconName.Download) }
+            if (onShare != null) {
+                RaftIconButton(
+                    onClick = onShare,
+                    tooltip = stringResource(Res.string.common_share),
+                    variant = RaftButtonVariant.Ghost,
+                    size = RaftIconButtonSize.Lg
+                ) { RaftSlotIcon(RaftLucideIconName.Share2) }
+            }
             if (onOpenWith != null) {
                 RaftIconButton(
                     onClick = onOpenWith,

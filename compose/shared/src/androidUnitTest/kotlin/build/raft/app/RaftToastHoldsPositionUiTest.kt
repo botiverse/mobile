@@ -1,16 +1,22 @@
 package build.raft.app
 
+import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshots.Snapshot
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.test.ComposeUiTest
 import androidx.compose.ui.test.ExperimentalTestApi
@@ -19,6 +25,12 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.height
+import build.raft.app.compat.json.JSONObject
+import build.raft.app.compat.pager.LocalActivity
+import build.raft.app.compat.pager.PageData
+import build.raft.app.compat.pager.Pager
+import build.raft.app.compat.pager.RaftPageActivity
 import build.raft.designsystem.components.LocalRaftToastHostState
 import build.raft.designsystem.components.RaftToastHost
 import build.raft.designsystem.components.RaftToastHostState
@@ -87,27 +99,6 @@ class RaftToastHoldsPositionUiTest {
     }
 
     @Test
-    fun aToastDoesNotDropWhenThePageChangesUnderIt() = runRobolectricComposeUiTest {
-        val state = RaftToastHostState()
-        var bar by mutableStateOf(120.dp)
-        mainClock.autoAdvance = false
-        host(state) { bar }
-        state.show("First")
-        settle()
-        val appeared = bottomOf("First")
-
-        bar = 0.dp
-        settle()
-        assertEquals(appeared, bottomOf("First"), "the page changed; the toast stays")
-
-        state.dismissAll()
-        settle()
-        state.show("Second")
-        settle()
-        assertTrue(bottomOf("Second") > appeared, "a new toast takes the page it appears on")
-    }
-
-    @Test
     fun aToastMovesUpForSomethingTallerAndStaysThere() = runRobolectricComposeUiTest {
         val state = RaftToastHostState()
         var bar by mutableStateOf(0.dp)
@@ -158,5 +149,82 @@ class RaftToastHoldsPositionUiTest {
         settle()
         val closed = bottomOf("Typing")
         assertEquals(onKeyboard + 200.dp, closed, "down by the keyboard's height, still above the composer")
+    }
+
+    @Test
+    fun zeroSizedAndHorizontallyClippedAvoidanceNodesDoNotShootToastToTop() = runRobolectricComposeUiTest {
+        val state = RaftToastHostState()
+        mainClock.autoAdvance = false
+        setContent {
+            RaftTheme(appearance = RaftAppearance.Light, scale = RaftScale.Compact) {
+                CompositionLocalProvider(LocalRaftToastHostState provides state) {
+                    Box(Modifier.fillMaxSize().clipToBounds()) {
+                        // Zero-sized avoided node (e.g., collapsed footer or hidden 0x0 subtree): ignored.
+                        Box(Modifier.size(0.dp).raftToastAvoid())
+                        // Horizontally translated completely offscreen inside a clipped parent (Frame 1 of push slide):
+                        // positionInRoot().y stays at bottom - 100dp instead of boundsInRoot()'s clipped Rect.Zero (top = 0).
+                        Box(
+                            Modifier
+                                .fillMaxSize()
+                                .graphicsLayer { translationX = 2_000f }
+                        ) {
+                            Box(
+                                Modifier
+                                    .align(Alignment.BottomCenter)
+                                    .fillMaxWidth()
+                                    .height(100.dp)
+                                    .raftToastAvoid()
+                            )
+                        }
+                        RaftToastHost(state)
+                    }
+                }
+            }
+        }
+        state.show("Sliding")
+        settle()
+        val rootBottom = onRoot().getBoundsInRoot().bottom
+        val toastTop = onNodeWithText("Sliding").getBoundsInRoot().top
+        val toastBottom = bottomOf("Sliding")
+        assertTrue(toastTop > 100.dp, "toast must stay near bottom instead of shooting to y=0 ($toastTop)")
+        assertTrue(toastBottom <= rootBottom - 116.dp, "toast still clears the 100dp bar on the offscreen sliding page")
+    }
+
+    @Test
+    fun realRaftTabBarHostReportsBottomBarAvoidanceToHostToast() = runRobolectricComposeUiTest {
+        val state = RaftToastHostState()
+        val items =
+            listOf(
+                RaftBottomTabItemPayload(key = "home", label = "Home", selected = true),
+                RaftBottomTabItemPayload(key = "tasks", label = "Tasks"),
+            )
+        mainClock.autoAdvance = false
+        setContent {
+            val pager = remember { object : Pager() {}.apply { pageData = PageData(JSONObject()) } }
+            CompositionLocalProvider(
+                LocalActivity provides RaftPageActivity(pager),
+                LocalRaftToastHostState provides state,
+            ) {
+                RaftTheme(appearance = RaftAppearance.Light, scale = RaftScale.Compact) {
+                    Box(Modifier.fillMaxSize()) {
+                        RaftAppBottomTabBarHost(
+                            items = items,
+                            onSelect = {},
+                            modifier = Modifier.align(Alignment.BottomCenter),
+                            bottomSafeArea = 0.dp,
+                        )
+                        RaftToastHost(state)
+                    }
+                }
+            }
+        }
+        state.show("AboveTabBar")
+        settle()
+        val rootBottom = onRoot().getBoundsInRoot().bottom
+        val barHeight = raftSharedBottomTabBarHostHeight(0.dp)
+        assertTrue(
+            bottomOf("AboveTabBar") <= rootBottom - barHeight - 16.dp,
+            "toast clears real RaftAppBottomTabBarHost height ($barHeight)",
+        )
     }
 }

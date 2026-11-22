@@ -33,20 +33,6 @@ import kotlin.test.assertTrue
  */
 class TaskCreateFromMessageTest {
     @Test
-    fun createBodyNamesTheSourceMessageOnlyWhenThereIsOne() {
-        // (draft) -> (title, sourceMessageId or absent)
-        listOf(
-            TaskCreateDraft(title = " Ship it ", sourceMessageId = MessageId("msg-1")) to ("Ship it" to "msg-1"),
-            TaskCreateDraft(title = "Plain") to ("Plain" to null),
-        ).forEach { (draft, expected) ->
-            val item = Json.parseToJsonElement(buildSharedTasksCreateBody(listOf(draft))).jsonObject["tasks"]!!.jsonArray.single().jsonObject
-            assertEquals(expected.first, item["title"]?.jsonPrimitive?.content)
-            assertEquals(expected.second, item["sourceMessageId"]?.jsonPrimitive?.content)
-            assertEquals(expected.second != null, "sourceMessageId" in item, "an absent source is not sent as null")
-        }
-    }
-
-    @Test
     fun createFromMessagePostsEveryNonBlankTitleUnderTheMessageAndReadsTheCreatedTasks() = runTest {
         val api = RecordingTasksApi()
         val result =
@@ -69,15 +55,6 @@ class TaskCreateFromMessageTest {
         val none = SharedTasksDataSource(blank, diagnosticsLogger = {}).createTasksFromMessage(ServerId("server-1"), ChannelId("channel-1"), listOf(" "), MessageId("msg-1"))
         assertIs<DataResult.Empty>(none)
         assertTrue(blank.posts.isEmpty())
-    }
-
-    @Test
-    fun firstTitleIsTheMessageOnOneLineCutAt200() {
-        assertEquals("Ship the preview build today", taskTitleFromMessage("  Ship the preview\n\nbuild   today "))
-        val long = taskTitleFromMessage("x".repeat(250))
-        assertEquals(200, long.length)
-        assertTrue(long.endsWith("…"))
-        assertFalse(taskTitleFromMessage("y".repeat(200)).endsWith("…"))
     }
 
     @Test

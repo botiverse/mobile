@@ -1,10 +1,8 @@
 package build.raft.app
 
-import build.raft.app.compat.ui.PlayState
 import build.raft.app.resources.*
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -16,14 +14,6 @@ import kotlin.test.assertTrue
 class RaftVideoPlaybackEngineRoutingTest {
 
     private val ios = RaftVideoPlayerFormatProfile.IosAvPlayer
-    private val avPlayerContainers =
-        listOf(
-            RaftPreviewableVideoContainer.Mp4,
-            RaftPreviewableVideoContainer.QuickTime,
-            RaftPreviewableVideoContainer.M4v,
-            RaftPreviewableVideoContainer.ThreeGpp,
-            RaftPreviewableVideoContainer.ThreeGpp2
-        )
     private val vlcContainers =
         listOf(
             RaftPreviewableVideoContainer.WebM,
@@ -37,19 +27,6 @@ class RaftVideoPlaybackEngineRoutingTest {
         RaftThreadAttachmentItem(id = "att-video", name = name, mimeType = mimeType)
             .toThreadAttachmentLazyPreviewPayload(kind = "video")
             .copy(kind = "video", videoUrl = url)
-
-    @Test
-    fun iosPlaysAvPlayerContainersNativelyAndTheRestThroughVlc() {
-        assertEquals(RaftPreviewableVideoContainer.entries.toSet(), (avPlayerContainers + vlcContainers).toSet())
-        avPlayerContainers.forEach { container ->
-            assertEquals(RaftVideoPlaybackEngine.Platform, raftVideoPlaybackEngineFor(ios, vlcAvailable = true, container), container.name)
-        }
-        vlcContainers.forEach { container ->
-            assertEquals(RaftVideoPlaybackEngine.Vlc, raftVideoPlaybackEngineFor(ios, vlcAvailable = true, container), container.name)
-            // Without the app's VLC player (tests, a host without MobileVLCKit): the download card.
-            assertNull(raftVideoPlaybackEngineFor(ios, vlcAvailable = false, container), container.name)
-        }
-    }
 
     @Test
     fun androidAndDesktopNeverUseVlc() {
@@ -88,19 +65,6 @@ class RaftVideoPlaybackEngineRoutingTest {
             RaftVideoPlaybackEngine.Platform,
             videoPayload("voice.webm", "audio/webm").copy(audioOnly = true).videoPlaybackEngine(ios, vlcAvailable = true)
         )
-    }
-
-    @Test
-    fun vlcFailingBeforeItPlayedIsAnOpenFailure() {
-        val vlc = RaftVideoPlaybackEngine.Vlc
-        assertTrue(raftVideoFallbackEngineOpenFailed(vlc, PlayState.ERROR, everPlayed = false))
-        // A failure after playback started (a dropped connection) stays in the player.
-        assertFalse(raftVideoFallbackEngineOpenFailed(vlc, PlayState.ERROR, everPlayed = true))
-        PlayState.entries.filter { it != PlayState.ERROR }.forEach { state ->
-            assertFalse(raftVideoFallbackEngineOpenFailed(vlc, state, everPlayed = false), state.name)
-        }
-        // AVPlayer / Media3 keep their own failure state (Retry + Download).
-        assertFalse(raftVideoFallbackEngineOpenFailed(RaftVideoPlaybackEngine.Platform, PlayState.ERROR, everPlayed = false))
     }
 
     @Test

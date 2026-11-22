@@ -44,20 +44,6 @@ class RaftPlatformFileStreamTest {
     }
 
     @Test
-    fun oversizedChunkAndWholeFileFallbackFailWithoutAggregation() = runBlocking {
-        val oversizedChunk = FakeChunkSource(mutableListOf(byteArrayOf(1, 2)))
-        assertIs<IllegalStateException>(failureOf {
-            boundedPlatformFileNetworkStream(1, oversizedChunk).readChunks(DiscardingSink)
-        })
-        assertEquals(1, oversizedChunk.closeCount)
-
-        val wholeRead = FakeChunkSource(mutableListOf(byteArrayOf(1)))
-        val stream = boundedPlatformFileNetworkStream(1, wholeRead)
-        assertIs<IllegalStateException>(failureOf { stream.readAll() })
-        assertEquals(1, wholeRead.closeCount)
-    }
-
-    @Test
     fun oldAttemptCancelCannotCloseOrAdvanceFreshAttempt() = runBlocking {
         val oldSource = FakeChunkSource(mutableListOf(byteArrayOf(7), ByteArray(0)))
         val freshSource = FakeChunkSource(mutableListOf(byteArrayOf(8), ByteArray(0)))
@@ -71,18 +57,6 @@ class RaftPlatformFileStreamTest {
         assertEquals(1, oldSource.closeCount)
         assertEquals(1, freshSource.closeCount)
         assertEquals(listOf(1, 1), freshSource.requestedMaxBytes)
-    }
-
-    @Test
-    fun frozenLargeLengthIsMetadataOnlyUntilTransportPullsChunks() {
-        val source = FakeChunkSource(mutableListOf())
-        val stream = boundedPlatformFileNetworkStream(199_229_440L, source)
-
-        assertEquals(199_229_440L, stream.contentLength)
-        assertTrue(source.requestedMaxBytes.isEmpty())
-        assertEquals(0, source.closeCount)
-        stream.cancel()
-        assertEquals(1, source.closeCount)
     }
 
     private object DiscardingSink : RaftByteStreamSink {

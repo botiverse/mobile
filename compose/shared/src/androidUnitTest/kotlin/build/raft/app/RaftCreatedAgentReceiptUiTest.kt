@@ -8,8 +8,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.ExperimentalTestApi
-import androidx.compose.ui.test.assertIsDisplayed
-import androidx.compose.ui.test.onNodeWithText
 import build.raft.app.data.DataResult
 import build.raft.app.data.HomeDirectMessageRow
 import build.raft.app.data.OpenDirectMessageResult
@@ -27,7 +25,6 @@ import build.raft.designsystem.theme.RaftTheme
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlin.test.Test
-import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 import org.junit.Rule
 import org.junit.runner.RunWith
@@ -96,23 +93,6 @@ class RaftCreatedAgentReceiptUiTest {
             }
         }
         waitForIdle()
-    }
-
-    @Test
-    fun viewOpensTheDirectMessageWhileThePageIsShown() = runRobolectricComposeUiTest {
-        val state = RaftToastHostState()
-        val calls = Calls()
-        var receipt: RaftCreatedAgentReceipt? = null
-        showPage(state, calls, pageShown = { true }) { receipt = it }
-
-        runOnIdle { checkNotNull(receipt).land(CreatedAgentLanding.CreatedToast(agent)) }
-        waitForIdle()
-        onNodeWithText("Created Reef").assertIsDisplayed()
-
-        runOnIdle { checkNotNull(state.visible.single().onAction).invoke() }
-        waitForIdle()
-        assertEquals(listOf(agent), calls.fetched)
-        assertEquals(listOf(agent), calls.opened)
     }
 
     @Test

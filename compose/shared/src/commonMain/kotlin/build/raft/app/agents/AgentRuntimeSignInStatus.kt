@@ -188,7 +188,7 @@ internal fun rememberAgentRuntimeSignInState(
     LaunchedEffect(controller) { controller?.read() }
     if (!needed || runtimeId == null) return null
 
-    val runtimeName = raftAgentRuntimeDisplayName(runtimeId)
+    val runtimeName = observeAgentRuntimeDisplayName(runtimeId)
     val rawComputerName =
         (state?.machineName ?: fallbackMachineName)?.trim()?.takeIf { it.isNotEmpty() }
             ?: if (serverId != null && machineId != null) {

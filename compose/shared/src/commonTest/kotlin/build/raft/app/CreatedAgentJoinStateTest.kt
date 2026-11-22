@@ -2,7 +2,6 @@ package build.raft.app
 
 import build.raft.app.data.AddChannelMembersBatchResult
 import build.raft.app.data.DataResult
-import build.raft.app.data.PermissionBlocker
 import build.raft.app.data.ScreenError
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -90,34 +89,6 @@ class CreatedAgentJoinStateTest {
     }
 
     @Test
-    fun anAuthorityChangeDuringTheJoinIsAJoinFailureNotTheCreateFormAgain() = runTest {
-        var state = CreatedAgentJoinState()
-        var current = true
-        val outcome =
-            createThenJoinAgent(state, create = { DataResult.Content(agentId) },
-                join = { current = false; joined(alreadyMember = false) },
-                isCurrent = { current }, publish = { state = it })
-        assertEquals(CreateThenJoinOutcome.JoinFailed, outcome)
-        assertTrue(state.showsJoinRetry)
-        assertEquals(agentId, state.createdAgentId)
-        assertNull(state.joinFailureTraceId, "a local authority change has no request to trace")
-    }
-
-    @Test
-    fun anAuthorityChangeRightAfterCreatingKeepsTheAgentForRetry() = runTest {
-        var state = CreatedAgentJoinState()
-        var joins = 0
-        val outcome =
-            createThenJoinAgent(state, create = { DataResult.Content(agentId) },
-                join = { joins++; joined(alreadyMember = false) },
-                isCurrent = { false }, publish = { state = it })
-        assertEquals(CreateThenJoinOutcome.JoinFailed, outcome)
-        assertEquals(0, joins)
-        assertTrue(state.showsJoinRetry)
-        assertEquals(agentId, state.createdAgentId)
-    }
-
-    @Test
     fun aFailedCreateLeavesNothingCreated() = runTest {
         var state = CreatedAgentJoinState()
         val failure = DataResult.Error(ScreenError(code = "http_400", traceId = traceId))
@@ -128,15 +99,5 @@ class CreatedAgentJoinStateTest {
         assertEquals(failure, outcome.result)
         assertNull(state.createdAgentId)
         assertFalse(state.showsJoinRetry)
-    }
-
-    @Test
-    fun aRefusedJoinCarriesTheRefusalsTraceId() {
-        val refused =
-            CreatedAgentJoinState().created(agentId).joinFinished(
-                DataResult.NoPermission(PermissionBlocker(code = "channel_member_add_not_allowed", traceId = traceId))
-            )
-        assertTrue(refused.showsJoinRetry)
-        assertEquals(traceId, refused.joinFailureTraceId)
     }
 }

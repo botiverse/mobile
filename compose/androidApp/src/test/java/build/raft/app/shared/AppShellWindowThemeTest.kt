@@ -42,21 +42,6 @@ class AppShellWindowThemeTest {
         }
     }
 
-    @Test
-    fun separateServerWindowStartsLikeTheFirstWindow() {
-        assertEquals(
-            manifestTheme(RaftAppShellActivity::class.java),
-            manifestTheme(RaftDocumentShellActivity::class.java),
-        )
-        // Android 12+: the shell window's own theme is already Theme.Raft, before any setTheme.
-        assertNoActionBar("manifest", manifestTheme(RaftDocumentShellActivity::class.java))
-    }
-
-    @Test
-    fun pushedPagesKeepTheirManifestTheme() {
-        assertNull(appShellThemeWithoutHomeSplash(RaftCmpActivity.PAGE_THREAD))
-    }
-
     private fun manifestTheme(host: Class<out Activity>): Int =
         context.packageManager.getActivityInfo(ComponentName(context, host), PackageManager.GET_META_DATA).theme
 

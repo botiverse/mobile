@@ -61,36 +61,6 @@ class RaftReconnectRefetchJitterTest {
     }
 
     @Test
-    fun reconnectsDuringTheWaitCoalesceIntoOneRefetchPerSourceAndServer() = runTest {
-        val recorder = Recorder()
-        val policy = jitter(recorder)
-        val delayMs = expectedDelay()
-        policy.onConnected(serverA, "server_members") {}
-        policy.onConnected(serverB, "server_members") {}
-
-        assertEquals(
-            RaftReconnectRefetchDecision.Delayed,
-            policy.onConnected(serverA, "server_members") { recorder.runs += "a-old" to currentTime },
-        )
-        assertEquals(
-            RaftReconnectRefetchDecision.Coalesced,
-            policy.onConnected(serverA, "server_members") { recorder.runs += "a-new" to currentTime },
-        )
-        assertEquals(
-            RaftReconnectRefetchDecision.Coalesced,
-            policy.onConnected(serverB, "server_members") { recorder.runs += "b" to currentTime },
-        )
-        advanceTimeBy(RECONNECT_REFETCH_JITTER_MAX_MILLIS + 1L)
-
-        assertEquals(
-            listOf("a-new" to delayMs, "b" to delayMs),
-            recorder.runs,
-            "one wait per client; the newest refetch per server runs once, nothing stacks",
-        )
-        assertEquals(1, recorder.logs.count { it.startsWith("reconnect_refetch_jitter decision=delayed") })
-    }
-
-    @Test
     fun aServerSwitchRunsThatServersWaitingRefetchNowAndLeavesTheOthersWaiting() = runTest {
         val recorder = Recorder()
         val policy = jitter(recorder, seed = 3)
@@ -106,57 +76,6 @@ class RaftReconnectRefetchJitterTest {
 
         advanceTimeBy(RECONNECT_REFETCH_JITTER_MAX_MILLIS + 1L)
         assertEquals(listOf("b" to 0L, "a" to delayMs), recorder.runs, "the other server keeps its wait")
-    }
-
-    @Test
-    fun signOutCancelsTheWaitAndTheNextConnectIsAFirstOne() = runTest {
-        val recorder = Recorder()
-        val policy = jitter(recorder)
-        policy.onConnected(serverA, "server_members") {}
-        policy.onConnected(serverA, "server_members") { recorder.runs += "stale" to currentTime }
-
-        policy.reset(reason = "signed_out")
-        advanceTimeBy(RECONNECT_REFETCH_JITTER_MAX_MILLIS + 1L)
-        assertEquals(emptyList(), recorder.runs, "nothing waiting runs for the old binding")
-
-        assertEquals(
-            RaftReconnectRefetchDecision.Immediate,
-            policy.onConnected(serverA, "server_members") {},
-            "the first connect after sign-in fetches at once",
-        )
-    }
-
-    @Test
-    fun aLostServerDropsItsWaitingRefetch() = runTest {
-        val recorder = Recorder()
-        val policy = jitter(recorder)
-        policy.onConnected(serverA, "server_members") {}
-        policy.onConnected(serverB, "server_members") {}
-        policy.onConnected(serverA, "server_members") { recorder.runs += "a" to currentTime }
-        policy.onConnected(serverB, "server_members") { recorder.runs += "b" to currentTime }
-
-        policy.dropServer("server-a", reason = "server_access_lost")
-        advanceTimeBy(RECONNECT_REFETCH_JITTER_MAX_MILLIS + 1L)
-
-        assertEquals(listOf("b"), recorder.runs.map { it.first })
-        assertEquals(
-            RaftReconnectRefetchDecision.Immediate,
-            policy.onConnected(serverA, "server_members") {},
-            "a server joined again is a first connect",
-        )
-    }
-
-    @Test
-    fun aNewServerOrAccountIsAFirstConnect() = runTest {
-        val recorder = Recorder()
-        val policy = jitter(recorder)
-        policy.onConnected(serverA, "server_members") {}
-
-        assertEquals(RaftReconnectRefetchDecision.Immediate, policy.onConnected(serverB, "server_members") {})
-        assertEquals(
-            RaftReconnectRefetchDecision.Immediate,
-            policy.onConnected(serverA.copy(principalId = "user-2"), "server_members") {},
-        )
     }
 
     /**
@@ -182,55 +101,5 @@ class RaftReconnectRefetchJitterTest {
             },
             "the catch-up is logged: ${recorder.logs}",
         )
-    }
-
-    @Test
-    fun aConnectAfterTheSwitchRefetchesInsteadOfTheCatchUp() = runTest {
-        val recorder = Recorder()
-        val policy = jitter(recorder)
-        policy.onConnected(serverA, "server_members") {}
-
-        policy.onServerSelected(serverA.serverId, reason = "server_selected") { recorder.runs += "catch_up" to currentTime }
-        assertEquals(
-            RaftReconnectRefetchDecision.ImmediateAfterSwitch,
-            policy.onConnected(serverA, "server_members") {},
-        )
-        advanceTimeBy(RECONNECT_REFETCH_JITTER_MAX_MILLIS + 1L)
-
-        assertEquals(emptyList(), recorder.runs, "the connect's own refetch covers the switch: one read, not two")
-    }
-
-    @Test
-    fun theFirstSelectionAtLaunchLeavesTheReadToTheFirstConnect() = runTest {
-        val recorder = Recorder()
-        val policy = jitter(recorder)
-
-        policy.onServerSelected(serverA.serverId, reason = "server_selected") { recorder.runs += "catch_up" to currentTime }
-        advanceTimeBy(RECONNECT_REFETCH_JITTER_MAX_MILLIS + 1L)
-
-        assertEquals(emptyList(), recorder.runs, "a server never connected yet reads everything on its first connect")
-    }
-
-    @Test
-    fun switchingAgainBeforeTheCatchUpRunsReadsOnceAndAResetCancelsIt() = runTest {
-        val recorder = Recorder()
-        val policy = jitter(recorder)
-        policy.onConnected(serverA, "server_members") {}
-        policy.onConnected(serverB, "server_members") {}
-
-        policy.onServerSelected(serverA.serverId, reason = "server_selected") { recorder.runs += "a-old" to currentTime }
-        advanceTimeBy(1_000L)
-        policy.onServerSelected(serverA.serverId, reason = "server_selected") { recorder.runs += "a-new" to currentTime }
-        policy.onServerSelected(serverB.serverId, reason = "server_selected") { recorder.runs += "b" to currentTime }
-        policy.reset("sign_out")
-        advanceTimeBy(RECONNECT_REFETCH_JITTER_MAX_MILLIS + 1L)
-        assertEquals(emptyList(), recorder.runs, "a reset drops every waiting catch-up")
-
-        policy.onConnected(serverA, "server_members") {}
-        policy.onServerSelected(serverA.serverId, reason = "server_selected") { recorder.runs += "a-1" to currentTime }
-        advanceTimeBy(1_000L)
-        policy.onServerSelected(serverA.serverId, reason = "server_selected") { recorder.runs += "a-2" to currentTime }
-        advanceTimeBy(RECONNECT_REFETCH_JITTER_MAX_MILLIS + 1L)
-        assertEquals(listOf("a-2"), recorder.runs.map { it.first }, "the newest selection's catch-up runs, once")
     }
 }

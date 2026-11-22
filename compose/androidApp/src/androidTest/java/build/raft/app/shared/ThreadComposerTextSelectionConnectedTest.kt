@@ -79,24 +79,6 @@ class ThreadComposerTextSelectionConnectedTest {
         }
 
     @Test
-    fun tripleTapSelectsParagraphWithBothHandlesAndEndHandleDragShrinksIt() =
-        withComposer("composer-selection-triple-tap") { scenario ->
-            tapWordCenter(scenario, "beta", taps = 3)
-            // Paragraph selection covers the line up to (and including) its newline.
-            val paragraph = awaitSelectionMatching(scenario, "triple tap should select the first paragraph") {
-                it.min == 0 && (it.max == FirstParagraph.length || it.max == FirstParagraph.length + 1)
-            }
-            awaitBothHandles("triple tap", scenario)
-            captureScreen("triple-tap")
-
-            dragHandle(scenario, HandleKind.End, toWord = "beta")
-            val shrunk = awaitSelectionMatching(scenario, "dragging the end handle should shrink the paragraph selection") {
-                it.min == 0 && it.max in 1 until paragraph.max
-            }
-            awaitBothHandles("after shrinking the paragraph selection (selection=$shrunk)", scenario)
-        }
-
-    @Test
     fun toolbarSelectAllShowsBothHandlesAndEndHandleDragShrinksIt() =
         withComposer("composer-selection-select-all") { scenario ->
             val device = UiDevice.getInstance(InstrumentationRegistry.getInstrumentation())

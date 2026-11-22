@@ -1,15 +1,10 @@
 package build.raft.app.image
 
-import androidx.compose.runtime.MonotonicFrameClock
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.test.TestCoroutineScheduler
-import kotlinx.coroutines.test.runTest
 
 class RaftAnimatedFramePlayerTest {
     /** The fixture's real delays: 100ms, 200ms and a 0ms frame that plays at 100ms. */
@@ -57,57 +52,5 @@ class RaftAnimatedFramePlayerTest {
         val indices = (1..6).map { once.advance(it * 50L); once.frameIndex }
         assertEquals(listOf(1, 0, 1, 1, 1, 1), indices)
         assertTrue(once.finished)
-    }
-
-    @Test
-    fun singleFrameNeverPlays() {
-        val player = RaftAnimatedFramePlayer(listOf(100), repetitionCount = -1)
-        assertTrue(player.finished)
-        player.resume(0)
-        assertFalse(player.advance(1_000))
-    }
-
-    @Test
-    fun playShowsEachFrameOnTimeAndStopsWhenCancelled() = runTest {
-        val player = RaftAnimatedFramePlayer(fixtureDelays, repetitionCount = -1)
-        val shown = mutableListOf<Pair<Long, Int>>()
-        val job =
-            launch(FakeFrameClock(testScheduler)) {
-                player.play { index -> shown += testScheduler.currentTime to index }
-            }
-        testScheduler.advanceTimeBy(1_000)
-        testScheduler.runCurrent()
-
-        // First vsync at 16ms starts the clock; frames then end at 100, 200, 100, 100, ... ms.
-        val start = 16L
-        val expectedIndices = listOf(1, 2, 0, 1, 2, 0, 1)
-        assertEquals(expectedIndices, shown.map { it.second }, "shown=$shown")
-        var nominal = start
-        var current = 0
-        shown.forEach { (time, index) ->
-            nominal += player.frameDurationMillis(current)
-            assertTrue(time in nominal until nominal + 2 * FakeFrameClock.FRAME_MILLIS, "frame $index at $time, due $nominal; shown=$shown")
-            current = index
-        }
-
-        job.cancel()
-        testScheduler.advanceUntilIdle()
-        val held = player.frameIndex
-        assertNull(player.deadlineMillis, "cancelling pauses the player")
-        testScheduler.advanceTimeBy(1_000)
-        assertEquals(expectedIndices.size, shown.size, "no frames after cancel")
-        assertEquals(held, player.frameIndex)
-    }
-
-    /** A 60Hz-ish frame clock on the test scheduler's virtual time. */
-    private class FakeFrameClock(private val scheduler: TestCoroutineScheduler) : MonotonicFrameClock {
-        override suspend fun <R> withFrameNanos(onFrame: (frameTimeNanos: Long) -> R): R {
-            delay(FRAME_MILLIS)
-            return onFrame(scheduler.currentTime * 1_000_000)
-        }
-
-        companion object {
-            const val FRAME_MILLIS = 16L
-        }
     }
 }

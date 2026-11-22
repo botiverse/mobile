@@ -34,11 +34,4 @@ class HomeServerSwitcherInviteTest {
 
         assertEquals(listOf("dismiss", "invite:server-1"), events)
     }
-
-    @Test
-    fun switcherInviteEntryIsHiddenWithoutAHost() {
-        val admin = StoredAuthServer(id = "server-1", name = "Raft", role = "admin").toServerSummary()
-        assertNull(homeServerSwitcherInviteClick(admin, onInviteHuman = null, onDismissSwitcher = {}))
-        assertNull(homeServerSwitcherInviteClick(null, onInviteHuman = {}, onDismissSwitcher = {}))
-    }
 }

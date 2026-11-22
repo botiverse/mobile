@@ -1,5 +1,7 @@
 package build.raft.app
 
+import build.raft.app.compat.json.JSONObject
+
 import build.raft.app.resources.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -17,6 +19,8 @@ import build.raft.app.data.RaftSharedStoreRegistry
 import build.raft.app.data.RaftShellStoreScope
 import build.raft.app.data.StoredAuthSession
 import build.raft.app.data.kuiklyBridgeCallContext
+import build.raft.app.data.raftNowEpochMillis
+import build.raft.app.data.raftProcessRealtimeSessionDemand
 import build.raft.app.data.runCatchingPreservingCancellation
 import build.raft.app.compat.pager.LocalActivity
 import build.raft.app.compat.pager.Page
@@ -136,18 +140,32 @@ private fun AuthChooseServerPageContent() {
                 )
             }
         }
-        else ->
+        else -> {
+            val currentSourceServerId =
+                restoredSession.currentServerId?.trim()?.takeIf { it.isNotEmpty() }
+                    ?: sourceStoreScope.initialServerId?.trim()?.takeIf { it.isNotEmpty() }
+            val currentSourceScope =
+                if (fromShell && currentSourceServerId != null) {
+                    RaftShellStoreScope.create(sourceStoreScope.shellInstanceId, currentSourceServerId)
+                } else {
+                    sourceStoreScope
+                }
+            val selectInCurrentShell = !(fromShell && raftMultiShellHostEnabled())
             AppShellServerGateContent(
                 session = restoredSession.copy(selectedServerId = null, selectedServerSlug = null),
                 authDataSource = authDataSource,
                 skipInitialLoad = skipInitialLoad,
+                selectServerInCurrentShell = selectInCurrentShell,
                 onReady = { readySession ->
                     pager.openAppShellForSelectedServer(
                         readySession = readySession,
-                        sourceStoreScope = sourceStoreScope,
+                        sourceStoreScope = currentSourceScope,
                         sourceDocumentShell = sourceDocumentShell,
                         environmentId = sharedStores.apiEnvironmentStore.current().apiBaseUrl,
                         bridge = bridge,
+                        fromShell = fromShell,
+                        onSameServerInShell = closeChooser,
+                        noteServerSelected = sharedStores::noteServerSwitchedToWindow,
                     )
                 },
                 onSignOut = {
@@ -156,6 +174,7 @@ private fun AuthChooseServerPageContent() {
                 },
                 onBack = closeChooser.takeIf { fromShell }
             )
+        }
     }
 }
 
@@ -169,30 +188,93 @@ internal fun Pager.openAppShellForSelectedServer(
     sourceDocumentShell: Boolean,
     environmentId: String,
     bridge: BridgeModule,
+    fromShell: Boolean = true,
+    onSameServerInShell: (() -> Unit)? = null,
+    noteServerSelected: (String) -> Unit = {},
+    shellShowingServer: (serverId: String, exceptShellInstanceId: String) -> String? =
+        raftProcessRealtimeSessionDemand::shellShowing,
+    nowEpochMillis: () -> Long = ::raftNowEpochMillis,
 ) {
-    val multiShellHostEnabled = raftMultiShellHostEnabled()
-    val opensDocumentShell =
-        isMultiShellCrossServerSelection(
-            sourceStoreScope = sourceStoreScope,
-            selectedServerId = readySession.selectedServerId,
-            multiShellHostEnabled = multiShellHostEnabled
-        )
-    if (!opensDocumentShell) {
-        bridge.realtimeDisconnect("server_changed")
-    }
-    openAppShellReplacingCurrentPage(
-        pageData =
-            appShellPageDataForServerSelection(
-                sourceStoreScope = sourceStoreScope,
-                sourceDocumentShell = sourceDocumentShell,
-                selectedServerId = readySession.selectedServerId,
-                multiShellHostEnabled = multiShellHostEnabled,
-                suppressRestoreLanding = true,
-                routeOwner = AuthenticatedRouteOwner(
-                    environmentId = environmentId,
-                    accountId = readySession.user.id,
-                    serverId = readySession.selectedServerId.orEmpty()
-                ).normalizedOrNull()
-            )
+    dispatchOpenAppShellForSelectedServer(
+        readySession = readySession,
+        sourceStoreScope = sourceStoreScope,
+        sourceDocumentShell = sourceDocumentShell,
+        environmentId = environmentId,
+        multiShellHostEnabled = raftMultiShellHostEnabled(),
+        fromShell = fromShell,
+        onSameServerInShell = onSameServerInShell,
+        noteServerSelected = noteServerSelected,
+        shellShowingServer = shellShowingServer,
+        nowEpochMillis = nowEpochMillis,
+        disconnectRealtime = bridge::realtimeDisconnect,
+        openReplacingCurrentPage = ::openAppShellReplacingCurrentPage,
     )
+}
+
+internal fun dispatchOpenAppShellForSelectedServer(
+    readySession: StoredAuthSession,
+    sourceStoreScope: RaftShellStoreScope,
+    sourceDocumentShell: Boolean,
+    environmentId: String,
+    multiShellHostEnabled: Boolean,
+    fromShell: Boolean = true,
+    onSameServerInShell: (() -> Unit)? = null,
+    noteServerSelected: (String) -> Unit = {},
+    shellShowingServer: (serverId: String, exceptShellInstanceId: String) -> String? = { _, _ -> null },
+    nowEpochMillis: () -> Long = { 0L },
+    disconnectRealtime: (reason: String) -> Unit,
+    openReplacingCurrentPage: (JSONObject) -> Unit,
+) {
+    val selectedServerId = readySession.selectedServerId?.trim()?.takeIf { it.isNotEmpty() }
+    if (
+        fromShell &&
+        selectedServerId != null &&
+        selectedServerId == sourceStoreScope.initialServerId?.trim() &&
+        onSameServerInShell != null
+    ) {
+        onSameServerInShell()
+        return
+    }
+    val opensDocumentShell =
+        fromShell &&
+            isMultiShellCrossServerSelection(
+                sourceStoreScope = sourceStoreScope,
+                selectedServerId = selectedServerId,
+                multiShellHostEnabled = multiShellHostEnabled
+            )
+    val windowShowing =
+        if (fromShell && multiShellHostEnabled && selectedServerId != null) {
+            shellShowingServer(selectedServerId, sourceStoreScope.shellInstanceId)
+        } else {
+            null
+        }
+    if (!opensDocumentShell && windowShowing == null) {
+        disconnectRealtime("server_changed")
+    }
+    val pageData =
+        appShellPageDataForServerSelection(
+            sourceStoreScope = sourceStoreScope,
+            sourceDocumentShell = sourceDocumentShell,
+            selectedServerId = selectedServerId,
+            multiShellHostEnabled = multiShellHostEnabled,
+            suppressRestoreLanding = true,
+            routeOwner = AuthenticatedRouteOwner(
+                environmentId = environmentId,
+                accountId = readySession.user.id,
+                serverId = selectedServerId.orEmpty()
+            ).normalizedOrNull(),
+            fromShell = fromShell,
+            windowShowingPickedServer = windowShowing,
+        )
+    if (opensDocumentShell || windowShowing != null) {
+        pageData.put(RAFT_SERVER_SWITCH_TAP_EPOCH_MILLIS, nowEpochMillis())
+        openAppShellServerSwitchWindow(
+            serverId = selectedServerId.orEmpty(),
+            pageData = pageData,
+            noteServerSelected = noteServerSelected,
+            open = openReplacingCurrentPage,
+        )
+    } else {
+        openReplacingCurrentPage(pageData)
+    }
 }

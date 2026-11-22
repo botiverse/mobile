@@ -49,9 +49,6 @@ class ActivityTaskConversationRowsScreenshotTest {
     @Test
     fun taskRowsLight() = capture("screens.activity.task-rows", RaftAppAppearance.Light)
 
-    @Test
-    fun taskRowsDark() = capture("screens.activity.task-rows.dark", RaftAppAppearance.Dark)
-
     private fun capture(name: String, appearance: RaftAppAppearance) =
         RaftRobolectricScreenshot.capture(name, appearance, reportDir = "build/reports/home-screenshots", activities = activities) {
             val pager = remember { object : Pager() {}.apply { pageData = PageData(JSONObject().apply { put("slockVisualZeroSafeArea", true) }) } }

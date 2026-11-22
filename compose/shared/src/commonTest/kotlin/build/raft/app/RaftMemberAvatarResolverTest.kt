@@ -17,19 +17,6 @@ import kotlin.test.assertNull
 
 class RaftMemberAvatarResolverTest {
     @Test
-    fun resolverExposesSynchronousSeedBeforeFlowCollection() {
-        val updates = MutableStateFlow<String?>("pixel:seed")
-        val resolver =
-            RaftMemberAvatarResolver(
-                currentAvatar = { memberId -> "pixel:${memberId ?: "none"}" },
-                avatarFlow = { updates }
-            )
-
-        assertEquals("pixel:member-1", resolver.current("member-1"))
-        assertEquals("pixel:seed", runBlocking { resolver("member-1").first() })
-    }
-
-    @Test
     fun resolverWithoutSeedStillPublishesLaterUpdate() = runBlocking {
         val updates = MutableStateFlow<String?>(null)
         val resolver =
@@ -113,10 +100,5 @@ class RaftMemberAvatarResolverTest {
             state.currentMemberAvatarWireValue(ServerId("server-b"), sharedMemberId.value)
         )
         assertNull(state.currentMemberAvatarWireValue(ServerId("server-c"), sharedMemberId.value))
-    }
-
-    @Test
-    fun missingServerScopeReturnsEmptyAvatarResolver() {
-        assertNull(raftMemberAvatarResolver(null, null).current("member-1"))
     }
 }

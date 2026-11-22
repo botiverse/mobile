@@ -46,6 +46,7 @@ class SharedForegroundBannerStoreTest {
 
         store.clearVisibleRoute("owner-b")
         assertNull(store.visibleRouteIdentity())
+        assertEquals(emptyList(), store.visibleRouteIdentities())
         store.clear()
     }
 

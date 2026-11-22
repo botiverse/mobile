@@ -5,6 +5,7 @@ package build.raft.app
 import platform.CoreGraphics.CGRectMake
 import platform.Foundation.NSURL
 import platform.UIKit.UIView
+import platform.WebKit.WKUserScript
 import platform.WebKit.WKWebView
 import platform.WebKit.WKWebViewConfiguration
 import kotlin.test.AfterTest
@@ -100,19 +101,78 @@ class RaftSandboxWebViewNavigationFenceIosTest {
     }
 
     @Test
-    fun callbacksFromAnotherWebViewAreIgnoredButTheHostsOwnWebViewIsRecognised() {
+    fun injectedUserScriptTargetsMainFrameOnlyEvenOnUnlockedHosts() {
+        val container = UIView(frame = CGRectMake(0.0, 0.0, 320.0, 480.0))
+        val host = RaftIosSandboxWebView(container, events)
+        hosts += host
+        val tokenScript = "/* settings-auth-script */"
+        host.applyConfig(
+            RaftWebViewConfig(
+                url = trusted,
+                allowScripts = true,
+                allowNavigation = true,
+                domStorageEnabled = true,
+                useWideViewPort = false,
+                cacheEnabled = false,
+                ephemeral = true,
+                injectedJavaScript = tokenScript,
+                allowedNavigationSchemes = setOf("https"),
+                hostEventsEnabled = false,
+                mainFrameOrigin = null,
+            )
+        )
+        val webView = container.subviews.single() as WKWebView
+        val scripts = webView.configuration.userContentController.userScripts.filterIsInstance<WKUserScript>()
+        val injected = scripts.single { it.source == tokenScript }
+        assertTrue(injected.forMainFrameOnly)
+    }
+
+    @Test
+    fun newWindowActionCancelsWithoutMutatingUrlAndReportsBlockedOnce() {
+        val urlChanges = mutableListOf<String>()
+        events.onUrlChange = { urlChanges += it }
         val (host, webView) = host(allowNavigation = true)
+        urlChanges.clear()
+        blocked.clear()
+
+        val externalTarget = "https://third-party.example/app"
+        assertFalse(
+            host.decideNavigationAction(
+                source = webView,
+                targetURL = NSURL.URLWithString(externalTarget),
+                isNewWindow = true,
+                isMainFrame = false,
+            )
+        )
+        assertEquals(listOf(externalTarget), blocked)
+        assertEquals(emptyList<String>(), urlChanges)
+
+        // Same-origin target="_blank" also routes through onNavigationBlocked without mutating URL.
+        blocked.clear()
+        val sameOriginTarget = "https://example.test/other"
+        assertFalse(
+            host.decideNavigationAction(
+                source = webView,
+                targetURL = NSURL.URLWithString(sameOriginTarget),
+                isNewWindow = true,
+                isMainFrame = false,
+            )
+        )
+        assertEquals(listOf(sameOriginTarget), blocked)
+        assertEquals(emptyList<String>(), urlChanges)
+
+        // Foreign WebView new-window action is silently rejected.
+        blocked.clear()
         val stranger = WKWebView(frame = CGRectMake(0.0, 0.0, 1.0, 1.0), configuration = WKWebViewConfiguration())
-
-        // A stale/foreign WebView is cancelled silently, even for the trusted URL.
-        assertFalse(host.decideNavigationPolicy(stranger, NSURL.URLWithString(trusted), isMainFrame = true))
+        assertFalse(
+            host.decideNavigationAction(
+                source = stranger,
+                targetURL = NSURL.URLWithString(externalTarget),
+                isNewWindow = true,
+                isMainFrame = false,
+            )
+        )
         assertEquals(emptyList<String>(), blocked)
-
-        // The WebView read back from the view hierarchy is a freshly bridged reference to the
-        // host's own WebView; pointer identity must still match it (`===` is not reliable here).
-        assertTrue(raftIsSameObjCObject(webView, webView.superview!!.subviews.single()))
-        assertFalse(raftIsSameObjCObject(webView, stranger))
-        assertFalse(raftIsSameObjCObject(webView, null))
-        assertTrue(host.decideNavigationPolicy(webView, NSURL.URLWithString(trusted), isMainFrame = true))
+        assertEquals(emptyList<String>(), urlChanges)
     }
 }

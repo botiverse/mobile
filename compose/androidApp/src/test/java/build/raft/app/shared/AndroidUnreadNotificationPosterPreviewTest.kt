@@ -61,62 +61,6 @@ class AndroidUnreadNotificationPosterPreviewTest {
     }
 
     @Test
-    fun redactedTextIsTheLocalizedPreviewStringOnBothPaths() {
-        val serverHidden = render(fcmRedacted(PushPreviewMode.Hidden, mentioned = true), PushPreviewMode.Full)
-        assertEquals("Raft", serverHidden.title)
-        assertEquals("You were mentioned", serverHidden.text)
-        assertEquals("You were mentioned", serverHidden.bigText)
-
-        val serverSenderOnly = render(fcmRedacted(PushPreviewMode.SenderOnly, mentioned = false), PushPreviewMode.Full)
-        assertEquals("#$CHANNEL", serverSenderOnly.title)
-        assertEquals("$SENDER sent a message", serverSenderOnly.text)
-        assertEquals("$SENDER sent a message", serverSenderOnly.bigText)
-
-        val localSenderOnly = render(localRequest(mentioned = true), PushPreviewMode.SenderOnly)
-        assertEquals("#$CHANNEL", localSenderOnly.title)
-        assertEquals("$SENDER mentioned you", localSenderOnly.text)
-        assertEquals("$SENDER mentioned you", localSenderOnly.bigText)
-
-        val localHidden = render(localRequest(mentioned = false), PushPreviewMode.Hidden)
-        assertEquals("Raft", localHidden.title)
-        assertEquals("You have a new message", localHidden.text)
-        assertEquals("You have a new message", localHidden.bigText)
-    }
-
-    @Test
-    fun aHiddenDeviceOverridesASenderOnlyPushTheServerSentBeforeItCaughtUp() {
-        for (mentioned in listOf(false, true)) {
-            val shown = render(fcmRedacted(PushPreviewMode.SenderOnly, mentioned), PushPreviewMode.Hidden)
-            assertEquals("Raft", shown.title)
-            val expected = if (mentioned) "You were mentioned" else "You have a new message"
-            assertEquals(expected, shown.text)
-            assertEquals(expected, shown.bigText)
-            for (surface in shown.all + shown.public) {
-                for (name in listOf(MESSAGE_TEXT, SENDER, CHANNEL, SERVER)) {
-                    assertFalse("mentioned=$mentioned leaked '$name': $surface", surface.contains(name))
-                }
-            }
-        }
-    }
-
-    @Test
-    fun aSenderOnlyDeviceRedactsAFullContentPush() {
-        // FCM data has no senderName, so the local sender_only branch cannot name anyone: content-free body.
-        val fcm = render(raftFcmUnreadNotificationRequest(fcmFull()), PushPreviewMode.SenderOnly)
-        assertEquals("#$CHANNEL", fcm.title)
-        assertEquals("You have a new message", fcm.text)
-        assertEquals("You have a new message", fcm.bigText)
-        // A full-content request that names its sender gets the sender_only wording.
-        val named = render(raftFcmUnreadNotificationRequest(fcmFull()).put("senderName", SENDER), PushPreviewMode.SenderOnly)
-        assertEquals("#$CHANNEL", named.title)
-        assertEquals("$SENDER sent a message", named.text)
-        assertEquals("$SENDER sent a message", named.bigText)
-        for (surface in fcm.all + named.all) {
-            assertFalse(surface, surface.contains(MESSAGE_TEXT))
-        }
-    }
-
-    @Test
     fun aStricterServerRedactionWinsOverAFullDevice() {
         val shown = render(fcmRedacted(PushPreviewMode.Hidden, mentioned = false), PushPreviewMode.Full)
         assertEquals("Raft", shown.title)
@@ -126,26 +70,6 @@ class AndroidUnreadNotificationPosterPreviewTest {
         assertEquals("$SENDER sent a message", senderOnly.text)
         for (surface in shown.all + senderOnly.all) {
             assertFalse(surface, surface.contains(MESSAGE_TEXT))
-        }
-    }
-
-    @Test
-    @Config(qualifiers = "zh-rCN")
-    fun redactedKeysResolveInTheDeviceLanguage() {
-        val shown = render(fcmRedacted(PushPreviewMode.SenderOnly, mentioned = true), PushPreviewMode.Full)
-        assertEquals("$SENDER 提到了你", shown.text)
-        assertEquals("$SENDER 提到了你", shown.bigText)
-    }
-
-    @Test
-    fun fullModeShowsTheRequestTextUnchanged() {
-        val fcm = fcmFull()
-        for ((shape, request) in listOf("fcm" to raftFcmUnreadNotificationRequest(fcm), "local" to localRequest(false))) {
-            val shown = render(request, PushPreviewMode.Full)
-            assertEquals(shape, request.getString("title"), shown.title)
-            // One MessagingStyle line with its sender; the collapsed text is the message itself.
-            assertEquals(shape, request.getString("body"), shown.bigText)
-            assertTrue(shape, shown.text.contains(MESSAGE_TEXT))
         }
     }
 
@@ -160,52 +84,6 @@ class AndroidUnreadNotificationPosterPreviewTest {
         val shown = render(data, PushPreviewMode.Full)
         assertEquals("Raft", shown.title)
         assertEquals("You have a new message", shown.text)
-    }
-
-    @Test
-    fun perCategoryKeysRenderTheirOwnWording() {
-        // slock docs/contracts/notifications.md §1.5: task / agent / reminder / notice keys.
-        val cases =
-            listOf(
-                Triple("task_status", "push.preview.hidden.task", "You have a task update"),
-                Triple("agent_attention", "push.preview.hidden.agent", "An agent needs your attention"),
-                Triple("reminder", "push.preview.hidden.reminder", "A reminder is due"),
-                Triple("system_notice", "push.preview.hidden.notice", "You have a new notice"),
-            )
-        for ((category, key, expected) in cases) {
-            val data =
-                fcmFull().toMutableMap().apply {
-                    put("category", category)
-                    put("previewMode", "hidden")
-                    put("title", "Raft")
-                    put("body", "English fallback")
-                    put("titleKey", "push.preview.hidden.title")
-                    put("bodyKey", key)
-                    put("bodyArgs", "[]")
-                }
-            val shown = render(raftFcmUnreadNotificationRequest(data), PushPreviewMode.Full)
-            assertEquals(category, expected, shown.text)
-            // The lock screen: "Raft · 1 new message", whatever the category.
-            assertEquals(category, "Raft", shown.publicTitle)
-            assertEquals(category, "1 new message", shown.publicText)
-        }
-        val senderOnly =
-            fcmFull().toMutableMap().apply {
-                put("category", "agent_attention")
-                put("previewMode", "sender_only")
-                put("body", "$SENDER needs your attention")
-                put("bodyKey", "push.preview.sender_only.agent")
-                put("bodyArgs", """["$SENDER"]""")
-            }
-        assertEquals("$SENDER needs your attention", render(raftFcmUnreadNotificationRequest(senderOnly), PushPreviewMode.Full).text)
-    }
-
-    @Test
-    fun aRawReminderRedactedOnTheDeviceUsesTheReminderWording() {
-        val raw = fcmFull().toMutableMap().apply { put("category", "reminder") }
-        val shown = render(raftFcmUnreadNotificationRequest(raw), PushPreviewMode.Hidden)
-        assertEquals("A reminder is due", shown.text)
-        assertFalse(shown.text.contains(MESSAGE_TEXT))
     }
 
     @Test

@@ -332,6 +332,9 @@ sealed interface HomeConversationRow {
     /** task #396: external bridge provider (e.g. "slack"); only channels carry one. */
     val bridgeProvider: String?
         get() = null
+    /** A Slack channel's stopped sync ([RaftSlackSyncProblem], from `channel.bridge`); only channels carry one. */
+    val slackSyncProblem: RaftSlackSyncProblem?
+        get() = null
     /** Channel `guestVisible` (see [HomeChannelWireDto.guestVisible]); only channels carry one. */
     val guestVisible: Boolean
         get() = false
@@ -397,6 +400,7 @@ data class HomeChannelRow(
     override val jointOverLimitGraceEndsAt: String? = null,
     override val externalFreezeAt: String? = null,
     override val bridgeProvider: String? = null,
+    override val slackSyncProblem: RaftSlackSyncProblem? = null,
     override val guestVisible: Boolean = false,
     override val hasExternalRelation: Boolean = false,
     override val activityNotificationPreference: ChannelActivityNotificationPreference =
@@ -495,6 +499,7 @@ fun HomeConversationRow.toConversationSummary(): ConversationSummary =
         jointOverLimitGraceEndsAt = jointOverLimitGraceEndsAt,
         externalFreezeAt = externalFreezeAt,
         bridgeProvider = bridgeProvider,
+        slackSyncProblem = slackSyncProblem,
         guestVisible = guestVisible,
         hasExternalRelation = hasExternalRelation,
         activityNotificationPreference = activityNotificationPreference,
@@ -542,6 +547,7 @@ fun ConversationSummary.toHomeChannelRow(): HomeChannelRow =
         jointOverLimitGraceEndsAt = jointOverLimitGraceEndsAt,
         externalFreezeAt = externalFreezeAt,
         bridgeProvider = bridgeProvider,
+        slackSyncProblem = slackSyncProblem,
         guestVisible = guestVisible,
         hasExternalRelation = hasExternalRelation,
         activityNotificationPreference = activityNotificationPreference,
@@ -1023,6 +1029,11 @@ data class AgentDetailSummary(
     val runtimeModelKind: String? = null,
     val runtimeProvider: build.raft.app.model.RuntimeProviderConfig? = null,
     val reasoning: String? = null,
+    /**
+     * The saved fast mode, `runtimeConfig.mode.kind` (`fast` / `default`); null without one (Default).
+     * Not [executionMode], which says where the agent runs (`byoc` / `cloud`).
+     */
+    val runtimeMode: String? = null,
     val executionMode: String? = null,
     val machineId: String? = null,
     val machineName: String? = null,
@@ -1197,8 +1208,17 @@ data class AgentAppLoginSnapshot(
     val loadState: AgentAppLoginLoadState = AgentAppLoginLoadState.Content,
     val errorCode: String? = null,
     val screenError: ScreenError? = null,
-    val permissionBlocker: PermissionBlocker? = null
+    val permissionBlocker: PermissionBlocker? = null,
+    /**
+     * The Apps tab's re-read after a revoke failed (web AgentAppAccessTab's `error` banner): [items]
+     * keep what was shown, and this says why they may be stale. The next read replaces the snapshot.
+     */
+    val refreshError: ScreenError? = null
 )
+
+/** An App's live grant (web `groupGrantsByApp` reads `type === "active"`; a revoked one isn't listed). */
+internal val AgentAppLoginItem.isActiveGrant: Boolean
+    get() = type == AgentAppLoginType.Active && revokedAt.isNullOrBlank()
 
 enum class AgentAppLoginLoadState {
     Content,

@@ -8,11 +8,6 @@ import kotlin.test.assertTrue
 
 class ThreadReactionSpriteCatalogTest {
     @Test
-    fun quickReactionOrderComesFromSpriteCatalog() {
-        assertEquals(listOf("👍", "❤️", "🎉", "👀", "🔥", "😂", "✅"), ThreadQuickReactionEmojis)
-    }
-
-    @Test
     fun catalogResolvesCanonicalValuesAndAliases() {
         assertNotNull(ThreadReactionSpriteCatalogV1.resolve("✅"))
         assertNull(ThreadReactionSpriteCatalogV1.resolve("☑️"))

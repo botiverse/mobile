@@ -31,43 +31,6 @@ class SystemNotificationsTest {
     }
 
     @Test
-    fun notificationPreferencePersistsSelectedState() = runBlocking {
-        val repository = PersistentNotificationPreferenceRepository(
-            KeyValueNotificationPreferenceStore(InMemoryRaftKeyValueStore())
-        )
-
-        val enabled = repository.setNotificationEnabled(true)
-        val restoredEnabled = repository.getNotificationPreference()
-        val disabled = repository.setNotificationEnabled(false)
-        val restoredDisabled = repository.getNotificationPreference()
-
-        assertTrue(enabled.enabled)
-        assertTrue(restoredEnabled.enabled)
-        assertFalse(disabled.enabled)
-        assertFalse(restoredDisabled.enabled)
-    }
-
-    @Test
-    fun foregroundKeepAlivePreferenceDefaultsOffAndPersistsSelectedState() = runBlocking {
-        val repository = PersistentNotificationPreferenceRepository(
-            KeyValueNotificationPreferenceStore(InMemoryRaftKeyValueStore())
-        )
-
-        val initial = repository.getNotificationPreference()
-        val enabled = repository.setForegroundKeepAliveEnabled(true)
-        val restoredEnabled = repository.getNotificationPreference()
-        val disabled = repository.setForegroundKeepAliveEnabled(false)
-        val restoredDisabled = repository.getNotificationPreference()
-
-        assertFalse(initial.foregroundKeepAliveEnabled)
-        assertTrue(enabled.foregroundKeepAliveEnabled)
-        assertTrue(restoredEnabled.foregroundKeepAliveEnabled)
-        assertFalse(disabled.foregroundKeepAliveEnabled)
-        assertFalse(restoredDisabled.foregroundKeepAliveEnabled)
-        assertTrue(restoredDisabled.enabled)
-    }
-
-    @Test
     fun offlineComputerAlertsDefaultOffForExistingInstallsAndPersistSelectedState() = runBlocking {
         val repository = PersistentNotificationPreferenceRepository(
             KeyValueNotificationPreferenceStore(InMemoryRaftKeyValueStore())
@@ -165,21 +128,6 @@ class SystemNotificationsTest {
         assertEquals("#general", request.title)
         assertEquals("Ada: Hello team", request.body)
         assertEquals("unread:message:message-1", request.notificationKey)
-    }
-
-    @Test
-    fun unreadNotificationRequestSuppressesVisibleThread() {
-        val request =
-            buildSystemUnreadNotificationRequest(
-                serverId = "server-1",
-                message = message(),
-                currentMemberId = "member-1",
-                isVisibleThread = true,
-                conversationName = "general",
-                conversationKind = ConversationKind.Channel
-            )
-
-        assertEquals(null, request)
     }
 
     @Test

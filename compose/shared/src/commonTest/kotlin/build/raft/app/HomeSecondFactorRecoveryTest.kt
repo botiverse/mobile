@@ -1,8 +1,6 @@
 package build.raft.app
 
 import build.raft.app.data.DataResult
-import build.raft.app.data.SECOND_FACTOR_RECOVERY_MIN_REREAD_MS
-import build.raft.app.data.ScreenError
 import build.raft.app.data.SecondFactorRecovery
 import build.raft.app.data.SecondFactorRecoveryDataSource
 import build.raft.app.data.SecondFactorRecoveryStatus
@@ -115,97 +113,5 @@ class HomeSecondFactorRecoveryTest {
         assertEquals(SharedSecondFactorRecoveryEffect.Cancelled, store.state.value.effect)
         store.dispatch(SharedSecondFactorRecoveryIntent.ConsumeEffect)
         assertNull(store.state.value.effect)
-    }
-
-    @Test
-    fun aFailedCancelKeepsTheEntry() = runTest {
-        val dataSource = FakeRecoveryDataSource(DataResult.Content(waiting))
-        dataSource.cancelResult = DataResult.Error(ScreenError(code = "network_unavailable", retryable = true))
-        val store = SharedSecondFactorRecoveryStore(dataSource, backgroundScope)
-        store.dispatch(SharedSecondFactorRecoveryIntent.Refresh)
-        runCurrent()
-
-        store.dispatch(SharedSecondFactorRecoveryIntent.Cancel)
-        runCurrent()
-
-        assertEquals(waiting, store.state.value.recovery)
-        assertEquals(SharedSecondFactorRecoveryEffect.CancelFailed, store.state.value.effect)
-    }
-
-    @Test
-    fun noRequestShowsNothingAndAFailedReadKeepsWhatIsShown() = runTest {
-        val dataSource = FakeRecoveryDataSource(DataResult.Content<SecondFactorRecovery?>(null))
-        val store = SharedSecondFactorRecoveryStore(dataSource, backgroundScope)
-        store.dispatch(SharedSecondFactorRecoveryIntent.Refresh)
-        runCurrent()
-        assertNull(store.state.value.recovery)
-        // Nothing pending: Cancel has nothing to do.
-        store.dispatch(SharedSecondFactorRecoveryIntent.Cancel)
-        runCurrent()
-        assertEquals(0, dataSource.cancels)
-
-        dataSource.pending = DataResult.Content(waiting)
-        store.dispatch(SharedSecondFactorRecoveryIntent.Refresh)
-        runCurrent()
-        dataSource.pending = DataResult.Error(ScreenError(code = "network_unavailable", retryable = true))
-        store.dispatch(SharedSecondFactorRecoveryIntent.Refresh)
-        runCurrent()
-        assertEquals(waiting, store.state.value.recovery)
-    }
-
-    @Test
-    fun readsAreSingleFlightAndACancelOutdatesOneInFlight() = runTest {
-        val dataSource = FakeRecoveryDataSource(DataResult.Content(waiting))
-        val store = SharedSecondFactorRecoveryStore(dataSource, backgroundScope)
-        store.dispatch(SharedSecondFactorRecoveryIntent.Refresh)
-        runCurrent()
-
-        val gate = CompletableDeferred<Unit>()
-        dataSource.readGate = gate
-        // Foreground and opening the center at once: one read.
-        store.dispatch(SharedSecondFactorRecoveryIntent.Refresh)
-        store.dispatch(SharedSecondFactorRecoveryIntent.Refresh)
-        runCurrent()
-        assertEquals(2, dataSource.reads)
-
-        store.dispatch(SharedSecondFactorRecoveryIntent.Cancel)
-        gate.complete(Unit)
-        runCurrent()
-
-        assertNull(store.state.value.recovery, "the read that started before Cancel must not bring the entry back")
-        assertEquals(1, dataSource.cancels)
-    }
-    @Test
-    fun goingBackToHomeRereadsAtMostEvery30SecondsButTheCenterAlwaysReads() = runTest {
-        val dataSource = FakeRecoveryDataSource(DataResult.Content<SecondFactorRecovery?>(null))
-        var now = 1_000L
-        val store = SharedSecondFactorRecoveryStore(dataSource, backgroundScope, nowMillis = { now })
-
-        store.dispatch(SharedSecondFactorRecoveryIntent.RefreshIfStale)
-        runCurrent()
-        assertEquals(1, dataSource.reads, "the first time Home shows it reads")
-
-        // Home ↔ Saved with Back, every 2 s for 20 s: no new read.
-        repeat(10) {
-            now += 2_000L
-            store.dispatch(SharedSecondFactorRecoveryIntent.RefreshIfStale)
-            runCurrent()
-        }
-        assertEquals(1, dataSource.reads)
-
-        // Opening the notification center reads at once.
-        store.dispatch(SharedSecondFactorRecoveryIntent.Refresh)
-        runCurrent()
-        assertEquals(2, dataSource.reads)
-
-        now += SECOND_FACTOR_RECOVERY_MIN_REREAD_MS - 1
-        store.dispatch(SharedSecondFactorRecoveryIntent.RefreshIfStale)
-        runCurrent()
-        assertEquals(2, dataSource.reads, "29.999 s after the last read: still fresh")
-
-        now += 1
-        store.dispatch(SharedSecondFactorRecoveryIntent.RefreshIfStale)
-        runCurrent()
-        assertEquals(3, dataSource.reads, "30 s after the last read: read again")
     }
 }

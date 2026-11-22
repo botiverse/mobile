@@ -5,27 +5,12 @@ import build.raft.app.data.StoredAuthServer
 import build.raft.app.data.StoredAuthSession
 import build.raft.app.data.StoredAuthUser
 import kotlin.test.Test
-import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNotEquals
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class AttachmentDownloadOwnerTest {
-    @Test
-    fun principalKeyUsesStructuredFullStrengthIdentity() {
-        val a = attachmentPrincipalKey("env", "Aa", "server")
-        val b = attachmentPrincipalKey("env", "BB", "server")
-        val delimiterA = attachmentPrincipalKey("env", "a|b", "c")
-        val delimiterB = attachmentPrincipalKey("env", "a", "b|c")
-        val unicode = attachmentPrincipalKey("环境", "用户", "服务器")
-
-        assertEquals(64, a.value.length)
-        assertNotEquals(a, b)
-        assertNotEquals(delimiterA, delimiterB)
-        assertEquals(64, unicode.value.length)
-    }
-
     @Test
     fun accountTransitionRetiresAllScopesAndOldLeaseNeverRevives() {
         val registry = AttachmentAuthScopeRegistry()

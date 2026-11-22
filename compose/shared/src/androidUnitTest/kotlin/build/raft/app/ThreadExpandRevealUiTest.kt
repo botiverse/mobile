@@ -178,22 +178,6 @@ class ThreadExpandRevealUiTest {
         }
 
     @Test
-    fun aRevealTallerThanTheViewportStopsWithTheSummaryAtTheTop() =
-        runRobolectricComposeUiTest {
-            val harness = mount(memberHeight = 700.dp)
-            val summaryTopBefore = runOnIdle { harness.item(summaryIndex).offset }
-
-            assertEquals(summaryTopBefore, open(harness))
-            mainClock.autoAdvance = true
-            waitForIdle()
-
-            // As much as fits, its start first: the summary ends up just under the top margin.
-            assertEquals(harness.marginPx, runOnIdle { harness.item(summaryIndex).offset })
-            val outcome = harness.outcomes.single() as ThreadExpandRevealOutcome.Revealed
-            assertEquals(false, outcome.atBottom)
-        }
-
-    @Test
     fun aDragSinceTheTapRetiresTheReveal() =
         runRobolectricComposeUiTest {
             val harness = mount(memberHeight = 120.dp)

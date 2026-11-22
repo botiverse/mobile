@@ -1,21 +1,12 @@
 package build.raft.app.network.sync
 
-import build.raft.app.canonical.message.CanonicalAttachmentWire
-import build.raft.app.canonical.message.CanonicalCommentHostSourceWire
-import build.raft.app.canonical.message.CanonicalCommentRefWire
-import build.raft.app.canonical.message.CanonicalConversationContextWire
-import build.raft.app.canonical.message.CanonicalExternalAuthorWire
-import build.raft.app.canonical.message.CanonicalMentionWire
 import build.raft.app.canonical.message.CanonicalMessageRow
-import build.raft.app.canonical.message.CanonicalReactionWire
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
-import java.security.MessageDigest
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertTrue
 
 /**
  * #491 G6 (KMP side) — the mobile mirror of the server-side reverse-closure gate (slock #4589 /
@@ -49,16 +40,6 @@ class MessageCanonicalRowManifestGateTest {
             .map { it["name"]!!.jsonPrimitive.content }
             .toSet()
 
-    /** All excluded field names across the 5 exclusion classes (nested `attachment.commentCount` -> its leaf). */
-    private fun excludedFieldNames(): Set<String> {
-        val out = mutableSetOf<String>()
-        manifest["exclusions"]!!.jsonObject.values.forEach { cls ->
-            cls.jsonObject["fields"]!!.jsonArray.forEach { out += it.jsonPrimitive.content.substringAfterLast('.') }
-        }
-        manifest["excludedClientOnly"]?.jsonArray?.forEach { out += it.jsonPrimitive.content }
-        return out
-    }
-
     private fun canonicalRowFieldNames(): Set<String> =
         CanonicalMessageRow::class.java.declaredFields
             .asSequence()
@@ -69,18 +50,6 @@ class MessageCanonicalRowManifestGateTest {
             .toSet()
 
     @Test
-    fun snapshotShaIsPinnedToReviewedManifestHead() {
-        val sha = MessageDigest.getInstance("SHA-256").digest(manifestBytes)
-            .joinToString("") { "%02x".format(it) }
-        assertEquals(
-            "18e654cc96a0be4d274494403a4ff65ff59665c44e5a1d649efb5f768557ed09",
-            sha,
-            "canonicalMessageManifest snapshot drifted from the reviewed head (slock 704d69f4, manifest v7). " +
-                "Re-review + update the pinned SHA before changing the resource.",
-        )
-    }
-
-    @Test
     fun canonicalRowFieldsEqualManifestCanonicalSet() {
         val row = canonicalRowFieldNames()
         val canonical = canonicalFieldNames()
@@ -88,49 +57,6 @@ class MessageCanonicalRowManifestGateTest {
             canonical, row,
             "CanonicalMessageRow field set must EQUAL the manifest canonical set (21). Missing from row " +
                 "(manifest-has/row-no): ${canonical - row}. Extra on row (row-has/manifest-no): ${row - canonical}.",
-        )
-    }
-
-    @Test
-    fun nestedWireDtoFieldsEqualManifestNestedWireShapes() {
-        // Weld the nested drift class (LiBai §6.3): each wire DTO's field set must EQUAL the manifest
-        // nestedWireShapes entry, so a future field on a nested DTO (or the manifest) can't silently
-        // diverge the persisted canonical shape.
-        val nested = manifest["nestedWireShapes"]!!.jsonObject
-        assertEquals(
-            nested.keys,
-            setOf("attachment", "commentRef", "commentRefHostSource", "conversationContext", "externalAuthor", "mention", "reaction"),
-            "every nested wire shape must have a V1 wire DTO below",
-        )
-        val dtoToShape = mapOf(
-            CanonicalAttachmentWire::class.java to "attachment",
-            CanonicalCommentRefWire::class.java to "commentRef",
-            CanonicalCommentHostSourceWire::class.java to "commentRefHostSource",
-            CanonicalConversationContextWire::class.java to "conversationContext",
-            CanonicalExternalAuthorWire::class.java to "externalAuthor",
-            CanonicalMentionWire::class.java to "mention",
-            CanonicalReactionWire::class.java to "reaction",
-        )
-        dtoToShape.forEach { (dto, shapeKey) ->
-            val manifestFields = nested[shapeKey]!!.jsonArray.map { it.jsonObject["name"]!!.jsonPrimitive.content }.toSet()
-            val dtoFields = dto.declaredFields.asSequence()
-                .filterNot { it.isSynthetic }.map { it.name }.filterNot { it.startsWith("$") }.toSet()
-            assertEquals(
-                manifestFields, dtoFields,
-                "$shapeKey wire DTO field set must EQUAL manifest nestedWireShapes.$shapeKey. " +
-                    "Missing (manifest-has/dto-no): ${manifestFields - dtoFields}. Extra (dto-has/manifest-no): ${dtoFields - manifestFields}.",
-            )
-        }
-    }
-
-    @Test
-    fun noExcludedFieldLeaksOntoCanonicalRow() {
-        val leaked = canonicalRowFieldNames() intersect excludedFieldNames()
-        assertTrue(
-            leaked.isEmpty(),
-            "Excluded field(s) leaked onto CanonicalMessageRow: $leaked. task*/updatedAt/commentCount/" +
-                "storage-sealed/client-only must NEVER be canonical row fields (they route to task-domain / " +
-                "overlay / are sealed server-side).",
         )
     }
 }

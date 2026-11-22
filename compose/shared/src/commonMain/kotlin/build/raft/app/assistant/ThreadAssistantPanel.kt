@@ -17,7 +17,6 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.geometry.Rect
-import androidx.compose.runtime.SideEffect
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -38,6 +37,7 @@ import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.rememberUpdatedState
@@ -292,9 +292,8 @@ internal fun ThreadAssistantPanelSheet(
     // at once) without closing it, and it comes back with the conversation (ThreadAssistantPanelState).
     var drawerShown by remember { mutableStateOf(false) }
     if (!wide && otter.panelShown && !drawerShown) drawerShown = true
-    val coversPage = !wide && otter.panelShown
+    if (wide && drawerShown) drawerShown = false
     val coversPageChange by rememberUpdatedState(onCoversPageChange)
-    SideEffect { coversPageChange(coversPage) }
     if (if (wide) !otter.panelShown else !drawerShown) return
     val close by rememberUpdatedState { otter.onPanelOpenChange(false) }
     val panel: @Composable () -> Unit = {
@@ -328,11 +327,23 @@ internal fun ThreadAssistantPanelSheet(
             modifier = Modifier.testTag(ThreadAssistantPanelSheetTestTag),
             clearNavigationBar = false,
             visible = otter.panelShown,
-            onHidden = { drawerShown = false },
+            onHidden = {
+                // Release window coverage in the same snapshot as unmounting the drawer so the
+                // root banner host re-appears on the exact frame the Dialog leaves composition.
+                coversPageChange(false)
+                drawerShown = false
+            },
             overlay = windowOverlay,
             state = drawerState,
             fill = RaftDrawerFill.Canvas,
         ) {
+            // Report coverage from inside the drawer's own Dialog window so the host never hides
+            // its banner before the Dialog has entered composition, and releases coverage on the
+            // exact frame the Dialog leaves composition (zero double-draw, zero blank-frame gap).
+            DisposableEffect(Unit) {
+                coversPageChange(true)
+                onDispose { coversPageChange(false) }
+            }
             // Composed in the drawer's window, after its own Back (which closes it): pulled up to
             // the whole window, Back first brings it back down to 82%.
             RaftBackHandler(

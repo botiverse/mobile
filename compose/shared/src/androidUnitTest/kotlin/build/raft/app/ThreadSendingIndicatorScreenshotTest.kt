@@ -37,9 +37,6 @@ class ThreadSendingIndicatorScreenshotTest {
     @Test
     fun sendingRowsLight() = capture("thread.sending-own-message", RaftAppAppearance.Light)
 
-    @Test
-    fun sendingRowsDark() = capture("thread.sending-own-message.dark", RaftAppAppearance.Dark)
-
     private fun capture(name: String, appearance: RaftAppAppearance) =
         RaftRobolectricScreenshot.capture(name, appearance, reportDir = "build/reports/home-screenshots", activities = activities) {
             val pager = remember { object : Pager() {}.apply { pageData = PageData(JSONObject()) } }

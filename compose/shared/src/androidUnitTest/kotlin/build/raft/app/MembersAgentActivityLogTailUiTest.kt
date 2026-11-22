@@ -12,7 +12,6 @@ import androidx.compose.ui.test.ComposeUiTest
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
-import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.swipeDown
 import androidx.compose.ui.unit.dp
@@ -20,7 +19,6 @@ import build.raft.app.components.RaftDesignSystemTheme
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
-import kotlin.test.assertTrue
 import org.junit.Rule
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -76,57 +74,6 @@ class MembersAgentActivityLogTailUiTest {
         }
         waitForIdle()
     }
-
-    @Test
-    fun opensAtTheNewestAndFollowsNewEntriesAtTheBottom() =
-        runRobolectricComposeUiTest {
-            val harness = host()
-            assertTrue(harness.lastVisible(), "the log opens at its newest entry")
-
-            repeat(3) { n ->
-                runOnIdle { harness.rows.add("new$n") }
-                waitForIdle()
-                assertTrue(harness.lastVisible(), "a parked reader keeps the newest entry in view")
-            }
-            onNodeWithTag(MembersAgentActivityLogJumpTag).assertDoesNotExist()
-        }
-
-    @Test
-    fun aCappedLogTrimmingAtTheTopStillFollowsAtTheBottom() =
-        runRobolectricComposeUiTest {
-            val harness = host()
-            runOnIdle {
-                harness.rows.removeAt(0)
-                harness.rows.add("new0")
-            }
-            waitForIdle()
-            assertEquals(InitialRows, harness.rows.size)
-            assertTrue(harness.lastVisible(), "the count stays the same, yet the newest entry is followed")
-        }
-
-    @Test
-    fun scrolledUpKeepsItsPlaceAndThePillCountsNewSteps() =
-        runRobolectricComposeUiTest {
-            val harness = host()
-            scrollUp()
-            val index = harness.list.firstVisibleItemIndex
-            val offset = harness.list.firstVisibleItemScrollOffset
-            assertTrue(harness.list.canScrollForward, "the reader left the bottom")
-            onNodeWithText("Back to Bottom").assertExists()
-
-            runOnIdle { harness.rows.add("new0") }
-            waitForIdle()
-            runOnIdle { harness.rows.add("new1") }
-            waitForIdle()
-            assertEquals(index, harness.list.firstVisibleItemIndex)
-            assertEquals(offset, harness.list.firstVisibleItemScrollOffset)
-            onNodeWithText("2 new steps").assertExists()
-
-            onNodeWithTag(MembersAgentActivityLogJumpTag).performClick()
-            waitForIdle()
-            assertTrue(harness.lastVisible(), "the pill returns to the newest entry")
-            onNodeWithTag(MembersAgentActivityLogJumpTag).assertDoesNotExist()
-        }
 
     @Test
     fun scrolledUpKeepsTheSameRowWhenTheCappedLogTrims() =

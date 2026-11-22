@@ -168,22 +168,6 @@ class RaftFilePreviewCsvTest {
     }
 
     @Test
-    fun aRestoredRouteWithoutTheFileNameStillDrawsTheServerCsvTable() = runTest {
-        val network =
-            FakeCsvPreviewNetwork(
-                previewBody = """{"status":"ok","data":{"kind":"csv","delimiter":";","headers":["a"],"rows":[["1"]],"rowCount":9,"columnCount":1},"truncated":true}"""
-            )
-        val restored = csvLoadingPayload().copy(name = "", path = "", externalFileName = "", externalMimeType = "")
-
-        val loaded = assertNotNull(restored.load(network))
-
-        assertEquals("csv", loaded.kind)
-        val carrier = assertNotNull(parseRaftFilePreviewCsv(loaded.csvTableJson))
-        assertEquals(true, carrier.truncated)
-        assertEquals(9, carrier.rowCount)
-    }
-
-    @Test
     fun withoutAServerCsvPreviewATextCsvFallsBackToPlainTextAndAnExcelExportToNoPreview() = runTest {
         val unsupported = """{"status":"unsupported","reason":"too_large"}"""
 

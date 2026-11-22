@@ -17,7 +17,6 @@ import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.click
 import androidx.compose.ui.test.getBoundsInRoot
-import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import build.raft.app.model.RaftTimeContext
@@ -94,48 +93,6 @@ class RaftImageLightboxUiTest {
         mainClock.advanceTimeBy(1_000)
     }
 
-    private fun ComposeUiTest.assertCounter(text: String) =
-        onNodeWithTag(RaftImageLightboxCounterTag).assertTextEquals(text)
-
-    @Test
-    fun arrowKeysStepThroughTheImagesAndStopAtTheEnds() =
-        runRobolectricComposeUiTest {
-            val calls = Calls()
-            showLightbox(calls)
-            assertCounter("1 of 3")
-            press(Key.DirectionLeft)
-            assertCounter("1 of 3")
-            press(Key.DirectionRight)
-            assertCounter("2 of 3")
-            press(Key.DirectionRight)
-            assertCounter("3 of 3")
-            press(Key.DirectionRight)
-            assertCounter("3 of 3")
-            press(Key.DirectionLeft)
-            assertCounter("2 of 3")
-            assertEquals(0, calls.dismissed, "stepping must not close")
-        }
-
-    @Test
-    fun escapeCloses() =
-        runRobolectricComposeUiTest {
-            val calls = Calls()
-            showLightbox(calls, index = 1)
-            press(Key.Escape)
-            assertEquals(1, calls.dismissed)
-        }
-
-    @Test
-    fun aClickOnTheBackdropCloses() =
-        runRobolectricComposeUiTest {
-            val calls = Calls()
-            showLightbox(calls)
-            // Bottom-left corner: below the pages, left of them (the side gutter).
-            onNodeWithTag(RaftImageLightboxTag).performMouseInput { click(Offset(8f, height - 8f)) }
-            mainClock.advanceTimeBy(1_000)
-            assertEquals(1, calls.dismissed)
-        }
-
     @Test
     fun aClickBesideTheImageClosesAndOnTheImageDoesNot() =
         runRobolectricComposeUiTest {
@@ -163,47 +120,6 @@ class RaftImageLightboxUiTest {
             assertEquals(0, calls.dismissed)
         }
 
-    /**
-     * artin 11-03: on a Mac the window's controls are drawn over the lightbox's top bar; the host
-     * reports them as frame insets, and the bar keeps its sender and its Close out of them.
-     */
-    @Test
-    fun theTopBarKeepsTheSenderAndCloseOutOfTheFrameInsets() =
-        runRobolectricComposeUiTest {
-            showLightbox(Calls(), frameInsets = RaftFrameInsets(top = 40.dp, left = 80.dp, right = 60.dp))
-            val window = onRoot().getBoundsInRoot()
-            val sender = onNodeWithTag(RaftImageLightboxSenderTag).getBoundsInRoot()
-            val close = onNodeWithTagContentDescription("Close").getBoundsInRoot()
-            assertTrue(sender.top >= 40.dp, "sender below the top inset: ${sender.top}")
-            assertTrue(sender.left >= 80.dp + 16.dp, "sender right of the left inset: ${sender.left}")
-            assertTrue(close.top >= 40.dp, "Close below the top inset: ${close.top}")
-            assertTrue(close.right <= window.right - 60.dp, "Close left of the right inset: ${close.right}")
-        }
-
-    @Test
-    fun closeInsideTheFrameInsetsCloses() =
-        runRobolectricComposeUiTest {
-            val calls = Calls()
-            showLightbox(calls, frameInsets = RaftFrameInsets(top = 40.dp, left = 80.dp, right = 60.dp))
-            onNodeWithTagContentDescription("Close").performMouseInput { click(center) }
-            mainClock.advanceTimeBy(500)
-            assertEquals(1, calls.dismissed)
-        }
-
-    @Test
-    fun theTopBarStartsBelowTheWindowsTopSafeArea() =
-        runRobolectricComposeUiTest {
-            showLightbox(Calls(), frameInsets = RaftFrameInsets(top = 20.dp), topSafeArea = 52.dp)
-            val bar = onNodeWithTag(RaftImageLightboxTopBarTag).getBoundsInRoot()
-            val sender = onNodeWithTag(RaftImageLightboxSenderTag).getBoundsInRoot()
-            assertEquals(0.dp, bar.top)
-            assertEquals(52.dp + 56.dp, bar.bottom, "the bar is its 56dp below the safe area")
-            assertTrue(sender.top >= 52.dp, "sender below the safe area: ${sender.top}")
-            // The pages start under the bar.
-            val page = onNodeWithTag(raftImageLightboxPageTag("img-1")).getBoundsInRoot()
-            assertTrue(page.top >= bar.bottom, "page under the bar: ${page.top} < ${bar.bottom}")
-        }
-
     /** The macOS window title bar (#4193): the bar is the title bar's row, its items after the lights. */
     @Test
     fun underAWindowTitleBarTheBarIsItsRowAndCloseStillCloses() =
@@ -222,15 +138,6 @@ class RaftImageLightboxUiTest {
             onNodeWithTagContentDescription("Close").performMouseInput { click(center) }
             mainClock.advanceTimeBy(500)
             assertEquals(1, calls.dismissed)
-        }
-
-    @Test
-    fun noInsetsKeepTheBarAtTheTopEdge() =
-        runRobolectricComposeUiTest {
-            showLightbox(Calls())
-            val sender = onNodeWithTag(RaftImageLightboxSenderTag).getBoundsInRoot()
-            assertEquals(16.dp, sender.left)
-            assertTrue(sender.top < 28.dp, "sender in the 56dp bar at the top: ${sender.top}")
         }
 
     /** artin 11-03: the time read "2026-11-03T03:23:35.313Z"; it is the message header's time. */

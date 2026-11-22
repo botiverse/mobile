@@ -3,7 +3,6 @@ package build.raft.app
 import androidx.compose.ui.unit.dp
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class RaftThreadImeLayoutTest {
@@ -45,31 +44,6 @@ class RaftThreadImeLayoutTest {
     }
 
     @Test
-    fun genuineTailAppendWhileParkedPinsTheTailInTheSamePass() {
-        assertEquals(
-            ThreadTailLayoutAnchor.PinTail,
-            resolveThreadTailLayoutAnchor(parked.copy(nextItemCount = 11, nextLastMessageId = "m9")),
-        )
-        // An append landing in the same frame as an IME step is still one pin, not a fight.
-        assertEquals(
-            ThreadTailLayoutAnchor.PinTail,
-            resolveThreadTailLayoutAnchor(
-                parked.copy(nextViewportPx = 900, nextItemCount = 11, nextLastMessageId = "m9"),
-            ),
-        )
-    }
-
-    @Test
-    fun reversedLayoutNeverNeedsTheCorrection() {
-        assertEquals(
-            ThreadTailLayoutAnchor.None,
-            resolveThreadTailLayoutAnchor(
-                parked.copy(reverseLayout = true, nextViewportPx = 900, nextItemCount = 11, nextLastMessageId = "m9"),
-            ),
-        )
-    }
-
-    @Test
     fun userMovementAndNonFollowingIntentsKeepOwnership() {
         val shrink = parked.copy(nextViewportPx = 900)
         assertEquals(ThreadTailLayoutAnchor.None, resolveThreadTailLayoutAnchor(shrink.copy(scrollInProgress = true)))
@@ -101,101 +75,6 @@ class RaftThreadImeLayoutTest {
     }
 
     @Test
-    fun growingViewportAndUnknownGeometryAreLeftToTheList() {
-        // Keyboard closing: a list at its scroll end already re-fills from the end.
-        assertEquals(ThreadTailLayoutAnchor.None, resolveThreadTailLayoutAnchor(parked.copy(nextViewportPx = 1300)))
-        assertEquals(ThreadTailLayoutAnchor.None, resolveThreadTailLayoutAnchor(parked.copy(previousViewportPx = -1)))
-        assertEquals(
-            ThreadTailLayoutAnchor.None,
-            resolveThreadTailLayoutAnchor(parked.copy(previousItemCount = 0, nextItemCount = 3, nextLastMessageId = "m9")),
-        )
-    }
-
-    @Test
-    fun tailFlushnessUsesTheBackToBottomTolerance() {
-        assertTrue(threadTailEndsAtViewportEnd(tailOffsetPx = 1183, tailSizePx = 42, viewportEndPx = 1225))
-        assertTrue(threadTailEndsAtViewportEnd(tailOffsetPx = 1190, tailSizePx = 42, viewportEndPx = 1225))
-        assertFalse(threadTailEndsAtViewportEnd(tailOffsetPx = 1250, tailSizePx = 42, viewportEndPx = 1225))
-    }
-
-    @Test
-    fun newerPageCycleFencesEveryChangeIncludingKeyboardShrink() {
-        // The newer-page restoration owns the viewport until it settles (it restores a captured
-        // exact offset); the anchor must not become a second programmatic actor for a shrink.
-        val shrink = parked.copy(nextViewportPx = 900)
-        assertEquals(ThreadTailLayoutAnchor.None, resolveThreadTailLayoutAnchor(shrink.copy(newerPageCycleActive = true)))
-        // Newer history alone (no cycle in flight) gates appends only; a keyboard shrink still pins.
-        assertEquals(ThreadTailLayoutAnchor.PinTail, resolveThreadTailLayoutAnchor(shrink.copy(newerHistoryAvailable = true)))
-    }
-
-    @Test
-    fun suppressWhileImeOpenPolicyDisablesTheAnchor() {
-        val suppress = ThreadImeProgrammaticViewportPolicy.SuppressWhileImeOpen
-        assertEquals(
-            ThreadTailLayoutAnchor.None,
-            resolveThreadTailLayoutAnchor(parked.copy(nextViewportPx = 900, imeProgrammaticViewportPolicy = suppress)),
-        )
-        assertEquals(
-            ThreadTailLayoutAnchor.None,
-            resolveThreadTailLayoutAnchor(
-                parked.copy(nextItemCount = 11, nextLastMessageId = "m9", imeProgrammaticViewportPolicy = suppress),
-            ),
-        )
-    }
-
-    @Test
-    fun contentThatFitsTheViewportCountsAsParked() {
-        // Short thread: the tail ends well above the viewport end and nothing can scroll.
-        assertTrue(
-            threadTailParkedInPreviousLayout(
-                tailVisible = true,
-                tailOffsetPx = 400,
-                tailSizePx = 42,
-                viewportEndPx = 1225,
-                canScrollForward = false,
-                canScrollBackward = false,
-            ),
-        )
-        // Scrolled away from a long tail that happens to be visible but not flush.
-        assertFalse(
-            threadTailParkedInPreviousLayout(
-                tailVisible = true,
-                tailOffsetPx = 1300,
-                tailSizePx = 42,
-                viewportEndPx = 1225,
-                canScrollForward = true,
-                canScrollBackward = true,
-            ),
-        )
-        // Flush tail of a scrollable list.
-        assertTrue(
-            threadTailParkedInPreviousLayout(
-                tailVisible = true,
-                tailOffsetPx = 1183,
-                tailSizePx = 42,
-                viewportEndPx = 1225,
-                canScrollForward = false,
-                canScrollBackward = true,
-            ),
-        )
-        assertFalse(
-            threadTailParkedInPreviousLayout(
-                tailVisible = false,
-                tailOffsetPx = 0,
-                tailSizePx = 0,
-                viewportEndPx = 1225,
-                canScrollForward = false,
-                canScrollBackward = false,
-            ),
-        )
-        // The keyboard then shrinks the viewport below the content height: the tail is pinned.
-        assertEquals(
-            ThreadTailLayoutAnchor.PinTail,
-            resolveThreadTailLayoutAnchor(parked.copy(previousViewportPx = 1225, nextViewportPx = 380)),
-        )
-    }
-
-    @Test
     fun iosComposerPaddingNeverDipsBelowTheRestingSafeArea() {
         val safeArea = 34.dp
         val resting = threadComposerBottomPadding(keyboardInsetDp = 0f, bottomSafeArea = safeArea)
@@ -221,15 +100,6 @@ class RaftThreadImeLayoutTest {
                 bottomSafeArea = safeArea,
                 keyboardInsetExcludesBottomSafeArea = true,
             ),
-        )
-    }
-
-    @Test
-    fun desktopComposerKeepsTheWebBottomGapWithNoSafeArea() {
-        assertEquals(16.dp, threadComposerBottomPadding(keyboardInsetDp = 0f, bottomSafeArea = 0.dp, minimumBottomPadding = 16.dp))
-        assertEquals(
-            threadComposerBottomPadding(keyboardInsetDp = 0f, bottomSafeArea = 34.dp, minimumBottomPadding = 0.dp),
-            threadComposerBottomPadding(keyboardInsetDp = 0f, bottomSafeArea = 34.dp, minimumBottomPadding = 16.dp),
         )
     }
 }

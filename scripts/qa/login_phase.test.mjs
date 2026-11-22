@@ -911,6 +911,40 @@ test("#216 a later invalidation keeps the run binding and makes the verdict unkn
   }
 });
 
+test("#216 readRecordAcceptance: any record's acceptance, completed only where readRecord accepts a completed login; isLoginAcceptancePair: listed pairs only", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "acceptance-read-"));
+  const stamp = "11-21 10:00:00.000";
+  const pass = { ...BINDING, verdict: "pass", reason: "signed_in_as_expected" };
+  const write = (fields) => phase.writeRecord(dir, { mode: "password", status: "complete", login_end: stamp, reason: "x", ...fields }, RUN);
+  try {
+    assert.equal(phase.readRecordAcceptance(dir, RUN), null, "no record");
+    write({ acceptance: pass });
+    assert.deepEqual(phase.readRecordAcceptance(dir, RUN), { run: "4242:1", acceptance: pass, completed: true });
+    assert.equal(phase.readRecordAcceptance(dir, { ...RUN, GITHUB_RUN_ATTEMPT: "2" }).completed, false, "readRecord refuses another run's record");
+    phase.markUnknown(dir, "login-like surface on screen", RUN);
+    assert.deepEqual(phase.readRecordAcceptance(dir, RUN), { run: "4242:1", acceptance: { ...BINDING, verdict: "unknown", reason: "record_invalidated" }, completed: false });
+    // readRecord accepts a no-login record whatever it carries: that is no completed login.
+    write({ mode: "none", status: "no-login", login_end: null, acceptance: pass });
+    assert.deepEqual([phase.readRecord(dir, RUN).ok, phase.readRecordAcceptance(dir, RUN).completed], [true, false]);
+    for (const acceptance of [undefined, null, "pass", [pass]]) {
+      write({ acceptance });
+      assert.equal(phase.readRecordAcceptance(dir, RUN), null, JSON.stringify(acceptance));
+    }
+    fs.writeFileSync(path.join(dir, "login-record.json"), JSON.stringify({ contract: "qa-login-record/v0", run: "4242:1", acceptance: pass }));
+    assert.equal(phase.readRecordAcceptance(dir, RUN), null, "another contract");
+    // The one allowlist of the pairs a record can hold: every listed pair, nothing else.
+    for (const [verdict, reasons] of Object.entries(phase.LOGIN_ACCEPTANCE_REASONS)) {
+      for (const reason of reasons) assert.equal(phase.isLoginAcceptancePair(verdict, reason), true, `${verdict}/${reason}`);
+    }
+    for (const pair of [["pass", "user_mismatch"], ["fail", "signed_in_as_expected"], ["unknown", "record_missing"], [["pass"], "signed_in_as_expected"],
+      ["pass", ["signed_in_as_expected"]], ["constructor", "constructor"], ["__proto__", "user_mismatch"], [undefined, undefined]]) {
+      assert.equal(phase.isLoginAcceptancePair(...pair), false, JSON.stringify(pair));
+    }
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 // ---- #216 --require-acceptance: the claimed case login-email-password makes the acceptance mandatory ----
 
 test("#216 --require-acceptance: no usable input ends unknown before any device call; without it the same input selects nothing", async () => {
@@ -988,15 +1022,21 @@ test("#216 qa-acceptance requires the login acceptance only for the claimed case
   assert.match(claim, /claimed_case=\$\(node -e '.*typeof v\.case_id==="string"&&\/\^\[a-z0-9\]\[a-z0-9-\]\{0,63\}\$\/\.test\(v\.case_id\)\?v\.case_id:""\)' "\$spec"\)\n/);
   const outputFile = /echo "bootstrap_required=\$required" >> ("\$\w+")/.exec(claim)[1];
   assert.ok(claim.includes(`echo "claimed_case=$claimed_case" >> ${outputFile}\n`), "claimed_case is a step output");
-  // Only that case sets up the certificate check and fetches its input, after the claim and right before the emulator step.
-  for (const name of ["Setup JDK 17 for the login acceptance certificate check", "Install build-tools 36.0.0 for the login acceptance certificate check", "Fetch the login acceptance input from Testbed"]) {
+  // Only that case sets up the certificate check and fetches its input. The account check precedes the emulator.
+  for (const name of ["Setup JDK 17 for the login acceptance certificate check", "Install build-tools 36.0.0 for the login acceptance certificate check"]) {
     assert.ok(step(name).includes(forCase), name);
     assert.ok(source.indexOf(`- name: ${name}`) > source.indexOf("- name: Stage release login credential") && source.indexOf(`- name: ${name}`) < source.indexOf("- name: Run acceptance agent"), name);
   }
   assert.match(step("Install build-tools 36.0.0 for the login acceptance certificate check"), /run: sdkmanager "build-tools;36\.0\.0"/);
   const fetchStep = step("Fetch the login acceptance input from Testbed");
+  assert.ok(fetchStep.includes(forCase));
+  const claimAt = source.indexOf("- name: Claim Stamp run case and resolve auth mode");
+  const inputAt = source.indexOf("- name: Fetch the login acceptance input from Testbed");
+  const probeAt = source.indexOf("- name: Preflight — QA account must not see the production server");
+  assert.ok(claimAt < inputAt && inputAt < probeAt && probeAt < source.indexOf("- name: Run acceptance agent"));
+  assert.match(step("Preflight — QA account must not see the production server"), /if \[ "\$STAMP_CLAIMED_CASE" = "login-email-password" \]; then\s+node scripts\/qa\/visible_servers_probe\.mjs --testbed-input/);
   assert.match(fetchStep, /continue-on-error: true\n/);
-  assert.match(fetchStep, /run: node scripts\/qa\/testbed_login_acceptance_input\.mjs\n?$/);
+  assert.match(fetchStep.split("\n      #")[0].trimEnd(), /run: node scripts\/qa\/testbed_login_acceptance_input\.mjs$/);
   assert.deepEqual([...fetchStep.matchAll(/^ {10}([A-Z_]+):/gm)].map((m) => m[1]), ["STAMP_RUN_CASE_ID", "STAMP_URL", "STAMP_TOKEN"], "no QA account in the fetch step");
   assert.ok(step("Remove the login acceptance input").includes("if: ${{ always() && steps.stamp-claim.outputs.claimed_case == 'login-email-password' }}"));
   assert.match(step("Run acceptance agent"), /STAMP_CLAIMED_CASE: \$\{\{ steps\.stamp-claim\.outputs\.claimed_case \|\| '' \}\}/);

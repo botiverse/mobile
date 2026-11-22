@@ -36,6 +36,7 @@ import build.raft.designsystem.components.RaftAvatarAttentionLight
 import build.raft.designsystem.components.RaftAvatarBadgeBox
 import build.raft.designsystem.components.RaftAvatar
 import build.raft.designsystem.components.RaftAvatarSize
+import build.raft.designsystem.components.raftAvatarTriggerFace
 import build.raft.designsystem.components.RaftPresence
 import build.raft.designsystem.components.RaftGlyph
 import build.raft.designsystem.components.RaftMentionMarker
@@ -66,8 +67,6 @@ import build.raft.app.components.RaftDesignSystemTheme
 import androidx.compose.foundation.interaction.PressInteraction
 import androidx.compose.foundation.layout.RowScope
 import build.raft.app.base.Utils
-import build.raft.app.components.RaftExternalBridgeBadge
-import build.raft.app.components.externalBridgeBadgeVisible
 import build.raft.app.components.RaftPublicPageGlobe
 import build.raft.app.components.channelOnPublicPage
 import build.raft.app.components.RaftAppSkeleton
@@ -116,9 +115,11 @@ import build.raft.app.model.MemberId
 import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberProfile
 import build.raft.app.model.Presence
+import build.raft.app.model.RaftSlackSyncProblem
 import build.raft.app.model.ServerId
 import build.raft.app.model.ThreadId
 import build.raft.app.model.agentAvatarFallbackWireValue
+import build.raft.app.model.isRelativeAppAvatarPath
 import build.raft.app.model.parseRaftTimestampEpochMillisOrNull
 import build.raft.app.compat.pager.BridgeManager
 import build.raft.app.compat.module.RouterModule
@@ -277,8 +278,8 @@ private val HomeSidebarSectionEmptyHintPaddingHorizontal = 12.dp
 // under the CHANNELS / DIRECT MESSAGES section headers (4 + 3 rows in the
 // React app) instead of a bare shell.
 // Web Sidebar's loading rows per section (sidebarSkeletonRows fallbacks): none for Pinned,
-// 2 for Joint Channels, 4 for Channels, 3 for Direct Messages.
-private const val HomeLoadingJointChannelSkeletonRows = 2
+// 4 for Channels, 3 for Direct Messages. External is not drawn while the lists load
+// ([homeSidebarSectionOrder]), so it has none.
 private const val HomeLoadingChannelSkeletonRows = 4
 private const val HomeLoadingDirectMessageSkeletonRows = 3
 // Web SidebarRowsSkeleton: one line of a fixed `w-32` (128px), at most the row's width.
@@ -441,8 +442,11 @@ data class RaftHomeConversationItem(
     val archived: Boolean = false,
     val activityMuted: Boolean = false,
     val activityMuteSupported: Boolean = false,
-    // task #396: external bridge provider ("slack") from `channel.bridge.provider`.
+    // task #396: external bridge provider ("slack") from `channel.bridge.provider`: the Slack glyph and
+    // the External section ([isHomeExternalSectionChannel]).
     val bridgeProvider: String? = null,
+    /** A Slack channel's stopped sync: the warning Badge after the row's name (botiverse/slock #16042). */
+    val slackSyncProblem: RaftSlackSyncProblem? = null,
     /** Channel `guestVisible`; combine with the server's publicPageLive via [channelOnPublicPage]. */
     val guestVisible: Boolean = false,
     /** Channel `hasExternalRelation` (a Guest or an open external invite); see [raftChannelKindGlyph]. */
@@ -599,6 +603,7 @@ data class RaftHomeInlineError(
     val detail: String,
     val code: String,
     val actionLabel: String = "",
+    val traceId: String? = null,
 )
 
 internal data class RaftHomeInlineErrorVisibleCopy(
@@ -654,7 +659,8 @@ data class RaftHomeShellLabels(
     val saved: String = "Saved",
     val drafts: String = "Drafts",
     val channels: String = "Channels",
-    val jointChannels: String = "Joint Channels",
+    /** Title of the External section, where joint channels sit (web `layout.sidebar.external`, slock #15939). */
+    val external: String = "External",
     val directMessages: String = "Direct Messages",
     val pinned: String = "Pinned",
     val pin: String = "Pin",
@@ -682,7 +688,6 @@ data class RaftHomeShellLabels(
     val createChannel: String = "Create channel",
     val sectionEmpty: String = "No conversations",
     val pinnedSectionEmpty: String = "Long-press a channel or DM to pin it",
-    val jointChannelsEmpty: String = "No joint channels yet",
     val newSectionMenu: String = "New section",
     val renameSection: String = "Edit section",
     val deleteSection: String = "Delete section",
@@ -692,7 +697,8 @@ data class RaftHomeShellLabels(
     val sectionNameLabel: String = "Name",
     val sectionNamePlaceholder: String = "My Project",
     val addChannel: String = "Add channel",
-    val createJointChannel: String = "Create Joint Channel",
+    /** The External section's "+" (web `layout.sidebar.createExternalChannel`). */
+    val createExternalChannel: String = "Create external channel",
     val noServersAvailable: String = "No servers available",
     val joinChineseCommunityServer: String = "Join Chinese Community",
     val joinCommunityServer: String = "Join Community",
@@ -710,7 +716,7 @@ data class RaftHomeShellLabels(
             saved = stringResource(Res.string.home_nav_saved),
             drafts = stringResource(Res.string.home_nav_drafts),
             channels = stringResource(Res.string.home_section_channels),
-            jointChannels = stringResource(Res.string.home_section_joint_channels),
+            external = stringResource(Res.string.home_section_external),
             directMessages = stringResource(Res.string.home_section_direct_messages),
             pinned = stringResource(Res.string.home_section_pinned),
             pin = stringResource(Res.string.home_action_pin),
@@ -736,7 +742,6 @@ data class RaftHomeShellLabels(
             createChannel = stringResource(Res.string.home_section_create_channel),
             sectionEmpty = stringResource(Res.string.home_section_empty),
             pinnedSectionEmpty = stringResource(Res.string.home_section_pinned_empty),
-            jointChannelsEmpty = stringResource(Res.string.home_section_joint_empty),
             newSectionMenu = stringResource(Res.string.home_section_new_menu),
             renameSection = stringResource(Res.string.home_section_rename),
             deleteSection = stringResource(Res.string.home_section_delete),
@@ -746,7 +751,7 @@ data class RaftHomeShellLabels(
             sectionNameLabel = stringResource(Res.string.home_section_name_label),
             sectionNamePlaceholder = stringResource(Res.string.home_section_name_placeholder),
             addChannel = stringResource(Res.string.home_action_add_channel),
-            createJointChannel = stringResource(Res.string.home_section_create_joint_channel),
+            createExternalChannel = stringResource(Res.string.home_section_create_external_channel),
             noServersAvailable = stringResource(Res.string.home_state_no_servers),
             joinChineseCommunityServer = stringResource(Res.string.home_server_switcher_join_chinese_community),
             joinCommunityServer = stringResource(Res.string.home_server_switcher_join_community),
@@ -1746,7 +1751,10 @@ internal class RaftStructuralHomeShellCallbacks(
     /** Server switcher "Invite Human"; null hides it (web gates on `inviteMembers`). */
     val onInviteHumanClick: (() -> Unit)? = null,
     val onCreateChannelClick: () -> Unit = {},
-    /** Joint Channels section "+" (web Sidebar `canCreateJointChannel`); null hides it. */
+    /**
+     * External section "+" (web Sidebar `canCreateJointChannel`); null hides it. Only drawn with the
+     * section, which an empty External is not ([homeSidebarSectionOrder]).
+     */
     val onCreateJointChannelClick: (() -> Unit)? = null,
     val onTabSelected: (String) -> Unit = {},
     val onInboxClick: () -> Unit = {},
@@ -2312,12 +2320,12 @@ private fun RaftStructuralHomeShellContent(
         )
     }
     // Web Sidebar.tsx (typed pinned section, #4569): a pinned channel or DM leaves its system
-    // section — Channels / Joint Channels / Direct Messages list and count only what is not
+    // section — Channels / External / Direct Messages list and count only what is not
     // already shown under Pinned. Only rows the Pinned section actually renders are removed, so
     // a stale pin can never hide a conversation from every section.
     val pinnedShownConversationIds = remember(displayedPinned) { displayedPinned.sidebarPinnedConversationIds() }
     val baseDisplayedChannels = remember(channels, channelOrder, channelSortModeState, customPlacedConversationIds, pinnedShownConversationIds) {
-        val regularChannels = channels.filter { it.kind != JointChannelKindWireValue }
+        val regularChannels = channels.filter { !it.isHomeExternalSectionChannel() }
         regularChannels
             .filter { it.id !in customPlacedConversationIds && it.id !in pinnedShownConversationIds }
             .orderedBySidebarIds(channelOrder, pinnedFirstId = allChannelId)
@@ -2327,9 +2335,13 @@ private fun RaftStructuralHomeShellContent(
     val sortableDisplayedChannels = remember(baseDisplayedChannels, allChannelId) {
         baseDisplayedChannels.withoutSidebarPinnedItem(allChannelId)
     }
+    // External (web useSidebarItems `orderedJointChannels`, botiverse/slock #16042): joint and
+    // external channels and the channels connected to Slack ([isHomeExternalSectionChannel]). The web's
+    // "Show joined channels only" also hides an unjoined Slack channel here; Home has no such
+    // setting and lists every channel, like the web with it off.
     val displayedJointChannels = remember(channels, channelOrder, jointChannelSortModeState, customPlacedConversationIds, pinnedShownConversationIds) {
         channels
-            .filter { it.kind == JointChannelKindWireValue }
+            .filter { it.isHomeExternalSectionChannel() }
             .filter { it.id !in customPlacedConversationIds && it.id !in pinnedShownConversationIds }
             .orderedBySidebarIds(channelOrder)
             .sortedForSidebar(jointChannelSortModeState) { it.name }
@@ -2390,8 +2402,6 @@ private fun RaftStructuralHomeShellContent(
         }
     val hasDisplayedPinned = displayedPinned.isNotEmpty()
     val hasDisplayedJointChannels = displayedJointChannels.isNotEmpty()
-    // Web keeps an empty Joint Channels section while its "+" can create one.
-    val canCreateJointChannel = onCreateJointChannelClick != null
     // Keep the DMs section while its rows are still loading (skeletons).
     val hasDisplayedDirectMessages = directMessageSectionRows.isNotEmpty() || showLoadingSkeletons
     val displayedSidebarSections =
@@ -2402,8 +2412,7 @@ private fun RaftStructuralHomeShellContent(
             hasDisplayedPinned,
             hasDisplayedJointChannels,
             hasDisplayedDirectMessages,
-            hideEmptySections,
-            canCreateJointChannel
+            hideEmptySections
         ) {
             homeSidebarSectionOrder(
                 sectionOrder = sectionOrder,
@@ -2412,8 +2421,7 @@ private fun RaftStructuralHomeShellContent(
                 hasPinned = hasDisplayedPinned,
                 hasJointChannels = hasDisplayedJointChannels,
                 hasDirectMessages = hasDisplayedDirectMessages,
-                hideEmptySections = hideEmptySections,
-                canCreateJointChannel = canCreateJointChannel
+                hideEmptySections = hideEmptySections
             )
         }
     val pinnedSectionHasUnread = remember(displayedPinned) { displayedPinned.any { it.conversation?.homeConversationBadgeProjection()?.hasUnread == true } }
@@ -2469,12 +2477,6 @@ private fun RaftStructuralHomeShellContent(
             hasInlineError = inlineError != null,
             channelSkeletonCount =
                 if (channelsExpanded && loadingSkeletonRowsShown) HomeLoadingChannelSkeletonRows else 0,
-            jointSkeletonCount =
-                if (jointChannelsExpanded && displayedJointChannels.isEmpty() && loadingSkeletonRowsShown) {
-                    HomeLoadingJointChannelSkeletonRows
-                } else {
-                    0
-                },
             directMessageSkeletonCount =
                 if (directMessagesExpanded && loadingSkeletonRowsShown) HomeLoadingDirectMessageSkeletonRows else 0
         )
@@ -3075,7 +3077,7 @@ private fun RaftStructuralHomeShellContent(
                                                         joined = pinned.joined,
                                                         hasDraft = pinned.hasDraft,
                                                         muted = pinned.activityMuted,
-                                                        bridgeProvider = pinned.bridgeProvider,
+                                                        slackSyncProblem = pinned.slackSyncProblem,
                                                         unreadCount = pinned.unreadCount,
                                                         markedUnread = pinned.markedUnread,
                                                         mentioned = pinned.mentioned,
@@ -3093,10 +3095,12 @@ private fun RaftStructuralHomeShellContent(
                                         if (pinnedExpanded && !(displayedPinned.isEmpty() && showLoadingSkeletons)) item(key = "pinned-list-bottom:$currentServerId") { HomeSidebarListEdge(HomeSidebarListEdgeInset) }
                                     }
 
+                                    // External: only here while it holds a channel ([homeSidebarSectionOrder]),
+                                    // so it has no empty line and no loading rows.
                                     RaftHomeSidebarSection.JointChannels -> {
                                         item {
                                             HomeSidebarSectionHeader(
-                                                title = labels.jointChannels,
+                                                title = labels.external,
                                                 count = displayedJointChannels.size,
                                                 expanded = jointChannelsExpanded,
                                                 onExpandedChange = { if (sidebarInteractionsEnabled) jointChannelsExpanded = it },
@@ -3104,14 +3108,14 @@ private fun RaftStructuralHomeShellContent(
                                                 menuOpen = activeSystemSectionMenu == RaftHomeSortSection.JointChannels,
                                                 sortMenuOpen = activeSortMenu == RaftHomeSortSection.JointChannels,
                                                 attention = jointChannelSectionHasUnread,
-                                                sortLabel = "${labels.sortChannels} ${labels.jointChannels}",
+                                                sortLabel = "${labels.sortChannels} ${labels.external}",
                                                 onSortClick = { anchor ->
                                                     if (sidebarInteractionsEnabled) {
                                                         activeSortMenu = if (activeSortMenu == RaftHomeSortSection.JointChannels) null else RaftHomeSortSection.JointChannels
                                                         sortMenuAnchor = anchor
                                                     }
                                                 },
-                                                addLabel = labels.createJointChannel.takeIf { onCreateJointChannelClick != null },
+                                                addLabel = labels.createExternalChannel.takeIf { onCreateJointChannelClick != null },
                                                 onAddClick = onCreateJointChannelClick,
                                                 addEnabled = sidebarInteractionsEnabled,
                                                 onLongPress =
@@ -3126,18 +3130,7 @@ private fun RaftStructuralHomeShellContent(
                                                 modifier = Modifier.padding(horizontal = HomeListRowHorizontalPadding)
                                             )
                                         }
-                                        if (jointChannelsExpanded) item(key = "joint-list-top:$currentServerId") { HomeSidebarListEdge(if (displayedJointChannels.isEmpty() && showLoadingSkeletons && !loadingSkeletonRowsShown) HomeSidebarEmptyListHeight else HomeSidebarListEdgeInset) }
-                                        if (jointChannelsExpanded && displayedJointChannels.isEmpty() && !showLoadingSkeletons) {
-                                            item(key = "joint-empty:$currentServerId") {
-                                                HomeSidebarSectionEmptyHint(labels.jointChannelsEmpty, Modifier.padding(horizontal = HomeListRowHorizontalPadding))
-                                            }
-                                        }
-                                        // Web: an empty Joint Channels section shows two loading rows while the lists load.
-                                        if (jointChannelsExpanded && displayedJointChannels.isEmpty() && loadingSkeletonRowsShown) {
-                                            items(HomeLoadingJointChannelSkeletonRows, key = { index -> "joint-skeleton-$index" }) {
-                                                HomeSidebarSkeletonRow(modifier = Modifier.padding(horizontal = HomeListRowHorizontalPadding))
-                                            }
-                                        }
+                                        if (jointChannelsExpanded) item(key = "joint-list-top:$currentServerId") { HomeSidebarListEdge(HomeSidebarListEdgeInset) }
                                         if (jointChannelsExpanded) {
                                             items(displayedJointChannels.size, key = { index -> jointChannelLazyKeys[index] }) { index ->
                                                 val channel = displayedJointChannels[index]
@@ -3148,7 +3141,7 @@ private fun RaftStructuralHomeShellContent(
                                                     joined = channel.joined,
                                                     hasDraft = channel.hasDraft,
                                                     muted = channel.activityMuted,
-                                                    bridgeProvider = channel.bridgeProvider,
+                                                    slackSyncProblem = channel.slackSyncProblem,
                                                     unreadCount = channel.unreadCount,
                                                     markedUnread = channel.markedUnread,
                                                     mentioned = channel.mentioned,
@@ -3167,7 +3160,7 @@ private fun RaftStructuralHomeShellContent(
                                                 )
                                             }
                                         }
-                                        if (jointChannelsExpanded && !(displayedJointChannels.isEmpty() && showLoadingSkeletons && !loadingSkeletonRowsShown)) item(key = "joint-list-bottom:$currentServerId") { HomeSidebarListEdge(HomeSidebarListEdgeInset) }
+                                        if (jointChannelsExpanded) item(key = "joint-list-bottom:$currentServerId") { HomeSidebarListEdge(HomeSidebarListEdgeInset) }
                                     }
 
                                     RaftHomeSidebarSection.Channels -> {
@@ -3214,7 +3207,7 @@ private fun RaftStructuralHomeShellContent(
                                                     joined = channel.joined,
                                                     hasDraft = channel.hasDraft,
                                                     muted = channel.activityMuted,
-                                                    bridgeProvider = channel.bridgeProvider,
+                                                    slackSyncProblem = channel.slackSyncProblem,
                                                     unreadCount = channel.unreadCount,
                                                     markedUnread = channel.markedUnread,
                                                     mentioned = channel.mentioned,
@@ -3423,7 +3416,7 @@ private fun RaftStructuralHomeShellContent(
                                                         joined = item.joined,
                                                         hasDraft = item.hasDraft,
                                                         muted = item.activityMuted,
-                                                        bridgeProvider = item.bridgeProvider,
+                                                        slackSyncProblem = item.slackSyncProblem,
                                                         unreadCount = item.unreadCount,
                                                         markedUnread = item.markedUnread,
                                                         mentioned = item.mentioned,
@@ -3784,7 +3777,7 @@ private fun RaftStructuralHomeShellContent(
                             customSections = customSections,
                             pinned = moveTargetIsPinned,
                             placementSectionId = moveTargetCurrentSectionId,
-                            joint = moveTargetDm == null && moveTargetChannel?.homeChannelKind() == JointChannelKindWireValue,
+                            joint = moveTargetDm == null && moveTargetChannel?.isHomeExternalSectionChannel() == true,
                             directMessage = moveTargetDm != null
                         )
                     RaftBaseMenuOverlay(
@@ -3903,7 +3896,7 @@ private fun RaftStructuralHomeShellContent(
                 RaftSidebarSortOverlay(
                     title = when (section) {
                         RaftHomeSortSection.Pinned -> labels.pinned
-                        RaftHomeSortSection.JointChannels -> labels.jointChannels
+                        RaftHomeSortSection.JointChannels -> labels.external
                         RaftHomeSortSection.DirectMessages -> labels.directMessages
                         RaftHomeSortSection.Channels -> labels.channels
                     },
@@ -4124,8 +4117,7 @@ internal fun homeLazyItemCount(
     pinnedExpanded: Boolean = false,
     hasInlineError: Boolean = false,
     channelSkeletonCount: Int = 0,
-    directMessageSkeletonCount: Int = 0,
-    jointSkeletonCount: Int = 0
+    directMessageSkeletonCount: Int = 0
 ): Int {
     val fixedItems =
         1 + // top spacer
@@ -4142,7 +4134,6 @@ internal fun homeLazyItemCount(
         pinnedSectionItems +
         (if (hasInlineError) 1 else 0) +
         channelSkeletonCount.coerceAtLeast(0) +
-        jointSkeletonCount.coerceAtLeast(0) +
         directMessageSkeletonCount.coerceAtLeast(0) +
         (if (channelsExpanded) channelsCount else 0) +
         (if (jointChannelsExpanded) jointCount else 0) +
@@ -4168,10 +4159,19 @@ internal sealed interface RaftHomeSidebarSection {
  * interleave in the user's order, and ids missing from it fall back to system
  * sections in canonical order, then custom sections in declaration order.
  * Visibility follows web's "Hide Empty Sections" display preference
- * (sidebarEmptySectionVisibility.ts): when on, empty Pinned / Joint Channels /
- * DMs drop out; Joint Channels stays while [canCreateJointChannel] (its "+" is the only way
- * to create one); Channels always shows (it carries the empty-state hint) and so
- * does every custom section in [customSectionRows], empty or not.
+ * (sidebarEmptySectionVisibility.ts): when on, empty Pinned / DMs drop out;
+ * Channels always shows (it carries the empty-state hint) and so does every custom
+ * section in [customSectionRows], empty or not.
+ *
+ * External (`system:joint`, [hasJointChannels]) shows only while it holds a channel,
+ * whatever that preference (web SidebarChatSections `isEmptySectionHidden(…, alwaysHide)`,
+ * slock #15939): an empty one is not drawn, not even for its "+"; Create Channel's External
+ * choice (the Channels "+") still makes one. While the lists load it goes by the rows in
+ * hand: the web keeps a loading section unless it was empty the last time
+ * (`rememberedRows`), and here the last time is the durable Home cache, which opens with the
+ * server's external channels when it had some. The loading shell (no cache, no rows) has
+ * nothing to go on and most servers have none, so it does not draw External rather than
+ * have it come and go.
  */
 internal fun homeSidebarSectionOrder(
     sectionOrder: List<String>,
@@ -4180,16 +4180,13 @@ internal fun homeSidebarSectionOrder(
     hasPinned: Boolean,
     hasJointChannels: Boolean,
     hasDirectMessages: Boolean = true,
-    hideEmptySections: Boolean = true,
-    canCreateJointChannel: Boolean = false
+    hideEmptySections: Boolean = true
 ): List<RaftHomeSidebarSection> {
     val rowsBySectionId = customSectionRows.associateBy { it.section.id }
     return normalizeSidebarSectionOrder(sectionOrder, customSections).mapNotNull { id ->
         when (id) {
             "system:pinned" -> RaftHomeSidebarSection.Pinned.takeIf { hasPinned || !hideEmptySections }
-            "system:joint" -> RaftHomeSidebarSection.JointChannels.takeIf {
-                    hasJointChannels || canCreateJointChannel || !hideEmptySections
-                }
+            "system:joint" -> RaftHomeSidebarSection.JointChannels.takeIf { hasJointChannels }
             "system:channels" -> RaftHomeSidebarSection.Channels
             "system:dms" -> RaftHomeSidebarSection.DirectMessages.takeIf { hasDirectMessages || !hideEmptySections }
             else -> rowsBySectionId[id]?.let { RaftHomeSidebarSection.Custom(it) }
@@ -4469,8 +4466,9 @@ internal fun raftHomePinnedMemberMenuItems(
  * [create channel (Channels only)] / Sort: Manual, Recent, A-Z (current one
  * checked) / Display: Hide Empty Sections (checked when on) / [rename] /
  * New Section… / [delete]. Rename and delete only exist on custom sections.
- * Web also offers "Create Joint Channel" on the Joint Channels menu; mobile
- * has no create-joint-channel flow yet, so it is omitted.
+ * Web also offers "Create external channel" on the External menu; here that is
+ * the External header's "+" (shown with the menu's section, which is only
+ * drawn while it has channels), so the menu leaves it out.
  */
 internal fun raftHomeSectionMenuItems(
     labels: RaftHomeShellLabels = RaftHomeShellLabels(),
@@ -4527,7 +4525,7 @@ internal fun raftHomeSectionMenuItems(
 /**
  * "Move to section" submenu (web SidebarRowContextMenu, slock #15514), the same choices as
  * channel settings' Sidebar section select ([ChannelSectionPlacement.options]): the
- * conversation's home section (Channels, Joint Channels or Direct Messages) first, then Pinned
+ * conversation's home section (Channels, External or Direct Messages) first, then Pinned
  * and the custom sections, the one the row is shown in checked (bold); then New section. There
  * is no "Remove from section": the home row moves it back (and unpins it). Item ids: `home`,
  * `pinned`, `section:<id>`, `create`.
@@ -4547,7 +4545,7 @@ internal fun raftHomeMoveToSectionMenuItems(
                             label =
                                 when {
                                     placement.directMessage -> labels.directMessages
-                                    placement.joint -> labels.jointChannels
+                                    placement.joint -> labels.external
                                     else -> labels.channels
                                 },
                             icon = RaftLucideIconName.FolderInput,
@@ -4862,7 +4860,7 @@ internal fun homeConversationSectionForSelection(
     }
     val channel = channels.firstOrNull { it.id == selectedChannelId }
     if (channel != null) {
-        return if (channel.homeChannelKind() == JointChannelKindWireValue) {
+        return if (channel.isHomeExternalSectionChannel()) {
             RaftHomeConversationSection.JointChannel
         } else {
             RaftHomeConversationSection.Channel
@@ -4892,9 +4890,9 @@ internal fun RaftHomeConversationItem.homeChannelSymbol(): String =
     homeChannelKind().toRaftChannelSymbol()
 
 /**
- * Row glyph symbol from the one chooser ([raftChannelRecordKindGlyph]): the External glyph for an
- * external channel, the public-page hash-globe for a regular
- * channel readable on the server's live public page (web channelKindIcon.tsx), else the kind's own.
+ * Row glyph symbol from the one chooser ([raftChannelRecordKindGlyph], web channelKindIcon.tsx): the
+ * globe for a regular channel readable on the server's live public page, the Slack mark for a
+ * channel connected to Slack, two people for one with people from outside, else the kind's own.
  * Interaction identities keep using the plain [homeChannelSymbol] so they never change with it.
  */
 internal fun RaftHomeConversationItem.homeChannelSymbol(serverPublicPageLive: Boolean): String {
@@ -4909,8 +4907,18 @@ internal fun RaftHomeConversationItem.homeChannelSymbol(serverPublicPageLive: Bo
                 archived = archived,
             ),
         hasExternalRelation = hasExternalRelation,
+        bridgeProvider = bridgeProvider,
     ).symbol
 }
+
+/**
+ * The row sits in the External section, not in Channels (web sidebarChannelVisibility.ts
+ * `isSidebarExternalSectionChannel`, botiverse/slock #16042): a joint or external channel, or one
+ * connected to Slack ([isRaftExternalSectionChannel]). The sidebar, the server drawer, the selected
+ * row's section and Move to section all place a channel by it.
+ */
+internal fun RaftHomeConversationItem.isHomeExternalSectionChannel(): Boolean =
+    !isDirectMessageConversation() && isRaftExternalSectionChannel(homeChannelKind(), hasExternalRelation, bridgeProvider)
 
 /**
  * The same row glyph symbol for a Home snapshot channel row ([raftChannelKindGlyph]), so other
@@ -4918,8 +4926,6 @@ internal fun RaftHomeConversationItem.homeChannelSymbol(serverPublicPageLive: Bo
  */
 internal fun HomeChannelRow.homeChannelSymbol(serverPublicPageLive: Boolean): String =
     raftChannelKindGlyph(serverPublicPageLive).symbol
-
-internal const val HomeChannelSymbolHashGlobe = "hash-globe"
 
 internal fun String?.toRaftChannelSymbol(): String =
     raftChannelKindGlyph(this).symbol
@@ -5017,12 +5023,12 @@ internal fun homeServerDrawerRows(
                     .sortedForSidebar(RaftSidebarSortMode.fromWireValue(drawerSection.dmSortMode)) { it.name }
             val regularChannels =
                 drawerSection.channels
-                    .filter { it.kind != JointChannelKindWireValue }
+                    .filter { !it.isHomeExternalSectionChannel() }
                     .orderedBySidebarIds(drawerSection.channelOrder)
                     .sortedForSidebar(RaftSidebarSortMode.fromWireValue(drawerSection.channelSortMode)) { it.name }
             val jointChannels =
                 drawerSection.channels
-                    .filter { it.kind == JointChannelKindWireValue }
+                    .filter { it.isHomeExternalSectionChannel() }
                     .orderedBySidebarIds(drawerSection.channelOrder)
                     .sortedForSidebar(RaftSidebarSortMode.fromWireValue(drawerSection.channelSortMode)) { it.name }
             val pinned =
@@ -6164,6 +6170,7 @@ internal fun HomeInlineErrorCard(
                         maxLines = 3,
                         overflow = TextOverflow.Ellipsis
                     )
+                    RaftTraceIdNote(error.traceId)
                 }
             }
             if (showAction) {
@@ -6662,7 +6669,7 @@ private fun HomeServerDrawerSectionHeader(
         when (section) {
             RaftHomeConversationSection.Pinned -> labels.pinned
             RaftHomeConversationSection.Channel -> labels.channels
-            RaftHomeConversationSection.JointChannel -> labels.jointChannels
+            RaftHomeConversationSection.JointChannel -> labels.external
             RaftHomeConversationSection.DirectMessage -> labels.directMessages
         }
     Row(
@@ -6715,7 +6722,7 @@ private fun HomeServerDrawerConversationRow(
                 joined = item.joined,
                 hasDraft = item.hasDraft,
                 muted = item.activityMuted,
-                bridgeProvider = item.bridgeProvider,
+                slackSyncProblem = item.slackSyncProblem,
                 unreadCount = item.unreadCount,
                 markedUnread = item.markedUnread,
                 mentioned = item.mentioned,
@@ -7534,11 +7541,12 @@ internal fun homeConversationRowTone(
 
 /**
  * A channel in the Home list: raft-ui SidebarChannelItem ([RaftSidebarChannelItem]) for `#`
- * and private channels; a joint channel's `git-branch` and a public-page channel's
- * hash-globe go through the same [RaftSidebarItem] with their own glyph. Right after the
- * name (it truncates, they do not): the bridge badge and the muted bell. Web ChannelRow
- * aside: the pink unread count, else the grey number of a quiet (muted / not joined)
- * unread, else the draft pencil. [menuOpen]: this row's long-press menu is open.
+ * and private channels; a joint channel's `git-branch`, a public-page channel's globe, the
+ * external channel's two people and the Slack mark go through the same [RaftSidebarItem] with
+ * their own glyph. Right after the name (it truncates, they do not): a Slack channel's stopped
+ * sync ([RaftSlackSyncBadge]; no "Slack" label, the glyph says it, botiverse/slock #16042) and the
+ * muted bell. Web ChannelRow aside: the pink unread count, else the grey number of a quiet
+ * (muted / not joined) unread, else the draft pencil. [menuOpen]: this row's long-press menu is open.
  */
 @Composable
 private fun HomeSidebarChannelRow(
@@ -7553,7 +7561,7 @@ private fun HomeSidebarChannelRow(
     mentioned: Boolean = false,
     followedThreadUnreadCount: Int = 0,
     hasDraft: Boolean = false,
-    bridgeProvider: String? = null,
+    slackSyncProblem: RaftSlackSyncProblem? = null,
     interactionIdentity: String = "channel:$symbol:$name",
     menuOpen: Boolean = false,
     onClick: (() -> Unit)? = null,
@@ -7572,17 +7580,17 @@ private fun HomeSidebarChannelRow(
     val loudCount = marks.loudCount
     val loudThreadCount = marks.loudThreadCount
     val quietLabel = marks.quietLabel
-    val showBridge = externalBridgeBadgeVisible(bridgeProvider)
     val showDraft = marks.showDraft
     val mutedIcon = homeConversationMutedIndicatorIcon(muted)
     val titleTrailing: (@Composable () -> Unit)? =
-        if (showBridge || mutedIcon != null) {
+        if (slackSyncProblem != null || mutedIcon != null) {
             {
                 Row(
                     horizontalArrangement = Arrangement.spacedBy(RaftAppSpacing.Xs),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    if (showBridge) RaftExternalBridgeBadge(bridgeProvider)
+                    // Web ChannelRow `ChannelSlackSyncBadge`: the header's warning Badge.
+                    RaftSlackSyncBadge(slackSyncProblem)
                     mutedIcon?.let { HomeSidebarLucideIcon(it, HomeSidebarMetaIconSize) }
                 }
             }
@@ -7666,7 +7674,7 @@ private fun HomeSidebarChannelRow(
 
 /**
  * The glyph of a [homeChannelSymbol] (`SidebarItemChannelIcon`): `#`, lock, joint branch, the
- * External glyph or the public-page hash-globe, at [size] in the current ink ([LocalRaftContentColor]). Home sidebar rows
+ * external channel's two people, the Slack mark or the public-page globe, at [size] in the current ink ([LocalRaftContentColor]). Home sidebar rows
  * draw it at the row's icon size; Activity draws it in a list row's channel tile and as a card's
  * title icon.
  */
@@ -8289,14 +8297,20 @@ private fun DirectMessageAvatar(
     kind: RaftAvatarKind
 ) {
     val status = rememberDirectMessageAgentStatus(agentStatusResolver, agentMemberId)
+    val holdingReadiness = effectiveHoldingReadiness(status)
     val signIn =
-        if (agentMemberId != null) {
+        if (agentMemberId != null && holdingReadiness == null) {
             rememberAgentRuntimeSignInState(status, fallbackName = avatarLabel)
         } else {
             null
         }
     RaftAvatarWithStatus(
-        statusColor = if (signIn != null && status?.external != true) RaftColor.AccentOrange else status?.color,
+        statusColor =
+            when {
+                holdingReadiness != null -> holdingReadiness.dotColor()
+                signIn != null && status?.external != true -> RaftColor.AccentOrange
+                else -> status?.color
+            },
         avatarSize = ChannelAvatarSize,
     ) {
         RaftAppAvatar(
@@ -8325,6 +8339,26 @@ private fun DirectMessageAgentMeta(
     modifier: Modifier = Modifier
 ) {
     val status = rememberDirectMessageAgentStatus(agentStatusResolver, agentMemberId)
+    val readinessCopy =
+        if (agentMemberId != null && status?.external != true) {
+            rememberAgentReadinessDisplayCopy(status)
+        } else {
+            null
+        }
+    if (readinessCopy != null) {
+        Text(
+            readinessCopy.title,
+            style = RaftType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp, fontFamily = RaftMonoFamily),
+            color = if (selected) RaftColor.StickerInk else RaftColor.ForegroundHint,
+            modifier =
+                modifier
+                    .testTag(AgentReadinessTestTags.SidebarShort)
+                    .semantics { contentDescription = readinessCopy.fullDetail },
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+        return
+    }
     val signIn =
         if (agentMemberId != null && status?.external != true) {
             rememberAgentRuntimeSignInState(status, fallbackName = agentName)
@@ -8345,6 +8379,7 @@ private fun DirectMessageAgentMeta(
         )
         return
     }
+    build.raft.app.data.RaftRuntimeCatalogNames.observeCatalogs()
     val meta = raftHomeDmAgentMeta(status) ?: return
     val (text, style, color) =
         when (meta) {
@@ -8444,10 +8479,14 @@ internal fun RaftAppAvatar(
     val displayAvatarWireValue = remember(kind, avatarWireValue) { raftAvatarFaceWireValue(kind, avatarWireValue) }
     val httpAvatarSource = remember(displayAvatarWireValue) {
         displayAvatarWireValue?.takeIf {
-            it.startsWith("http://") || it.startsWith("https://")
+            it.startsWith("http://") || it.startsWith("https://") || it.isRelativeAppAvatarPath()
         }
     }
-    val pixelSpec = remember(displayAvatarWireValue) {
+    val isPixelWire = remember(displayAvatarWireValue) {
+        displayAvatarWireValue?.trim()?.startsWith(PixelAvatarProtocolPrefix) == true
+    }
+    val pixelAvatarData = if (isPixelWire) RaftPixelAvatarRuntime.observeCurrent() else null
+    val pixelSpec = remember(displayAvatarWireValue, pixelAvatarData) {
         traceMarkdownSectionNonComposable(RaftAvatarTraceNames.IDENTIFY) {
             displayAvatarWireValue?.toPixelAvatarSpec()
         }
@@ -8581,7 +8620,13 @@ internal fun RaftAppAvatarFrame(
         contentAlignment = Alignment.Center
     ) {
         Box(
-            modifier = Modifier.fillMaxSize().padding(edge).clip(RaftAvatarFaceShape),
+            modifier =
+                Modifier
+                    .fillMaxSize()
+                    .padding(edge)
+                    .clip(RaftAvatarFaceShape)
+                    // A 0 edge is a face in RaftAvatar's slot, which has the overlay itself.
+                    .then(if (edge > 0.dp) raftAvatarTriggerFace() else Modifier),
             contentAlignment = Alignment.Center,
             content = face
         )
@@ -8606,7 +8651,8 @@ private fun RaftAppAvatarFallback(kind: RaftAvatarKind, label: String, step: Raf
     val initials = remember(kind, label, step) { if (kind == RaftAvatarKind.Labeled) raftAppAvatarInitials(label, step) else "" }
     when (raftAvatarFallbackFace(kind, initials)) {
         RaftAvatarFallbackFace.DefaultPixel -> {
-            val spec = remember { pixelAvatarSpecForWireValue(agentAvatarFallbackWireValue("")) }
+            val pixelAvatarData = RaftPixelAvatarRuntime.observeCurrent()
+            val spec = remember(pixelAvatarData) { pixelAvatarSpecForWireValue(agentAvatarFallbackWireValue("")) }
             if (spec != null) RaftNativePixelAvatar(spec)
         }
         RaftAvatarFallbackFace.Placeholder ->

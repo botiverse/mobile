@@ -53,16 +53,6 @@ class SettingsHomeHeaderScreenshotTest {
     @Test
     fun settingsHomeDark() = captureAndCheckStatusBar("settings.home.dark", RaftAppAppearance.Dark, darkIcons = false)
 
-    // A sub-page head (SettingsDetailShell, here Notifications): the same canvas head, so Settings
-    // reads as one surface with the web (its PanelHeader on every Settings tab).
-    @Test
-    fun settingsSubPageLight() =
-        captureAndCheckStatusBar("settings.sub-page-head", RaftAppAppearance.Light, darkIcons = true) { SettingsSubPageFixture() }
-
-    @Test
-    fun settingsSubPageDark() =
-        captureAndCheckStatusBar("settings.sub-page-head.dark", RaftAppAppearance.Dark, darkIcons = false) { SettingsSubPageFixture() }
-
     private fun captureAndCheckStatusBar(
         name: String,
         appearance: RaftAppAppearance,

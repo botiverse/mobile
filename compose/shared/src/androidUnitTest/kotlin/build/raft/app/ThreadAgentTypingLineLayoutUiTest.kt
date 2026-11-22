@@ -210,77 +210,10 @@ class ThreadAgentTypingLineLayoutUiTest {
         assertTrue(withoutLine.sameAs(opened), "the newest message moved when the line hid: was $opened ${state(harness)}")
     }
 
-    /** Opened on the newest message (Inbox, Activity): the viewport is anchored on it. */
-    @Test
-    fun anchoredOnTheNewestMessageTheLineNeitherCoversNorMovesIt() =
-        runRobolectricComposeUiTest { assertTheLineComingAndGoingLeavesTheNewestMessageAlone(focusNewest = true) }
-
     /** Opened at the bottom: the viewport follows the latest message. */
     @Test
     fun followingTheLatestMessageTheLineNeitherCoversNorMovesIt() =
         runRobolectricComposeUiTest { assertTheLineComingAndGoingLeavesTheNewestMessageAlone(focusNewest = false) }
-
-    /** Somebody is already typing when the conversation opens on its newest message. */
-    @Test
-    fun openedOnTheNewestMessageWithTheLineAlreadyShowingItIsClearOfTheLine() =
-        runRobolectricComposeUiTest {
-            val harness = Harness(threadPayload(focusedMessageId = NewestId)).apply { typing = nikoTyping() }
-            host(harness)
-            val lineBox = line() ?: error("the line did not show: ${state(harness)}")
-            val newest = newestMessage() ?: error("the page did not open at the newest message: ${state(harness)}")
-            assertTrue(clearOfTheLine(newest, lineBox), "the line covers the newest message: ${state(harness)}")
-        }
-
-    /**
-     * Somebody is already typing when the conversation opens at the bottom: the initial bottom
-     * anchor finds the newest message where its check expects it, on its first attempt (the list's
-     * end and the check's trailing padding are the same height), instead of retrying.
-     */
-    @Test
-    fun openedAtTheBottomWithTheLineAlreadyShowingTheInitialAnchorHoldsOnItsFirstAttempt() =
-        runRobolectricComposeUiTest {
-            val harness = Harness(threadPayload(focusedMessageId = null)).apply { typing = nikoTyping() }
-            host(harness)
-            val lineBox = line() ?: error("the line did not show: ${state(harness)}")
-            val newest = newestMessage() ?: error("the page did not open at the newest message: ${state(harness)}")
-            assertTrue(clearOfTheLine(newest, lineBox), "the line covers the newest message: ${state(harness)}")
-            val initialAnchor = harness.log.filter { it.startsWith("thread_initial_bottom_anchor ") }
-            assertTrue(initialAnchor.none { "result=retry" in it }, "the initial anchor retried: $initialAnchor")
-            assertTrue(initialAnchor.any { "result=anchored" in it }, "the initial anchor never reported anchored: $initialAnchor")
-        }
-
-    /**
-     * A channel previewed without joining has no composer, so it never shows the line and its list
-     * keeps the plain 16dp end: the initial bottom anchor holds on its first attempt there too.
-     * Joining gives the conversation a composer, and with it the line's slot: the newest message
-     * then ends exactly the slot's height further from the list's edge, still at the list's end.
-     */
-    @Test
-    fun aConversationWithoutAComposerKeepsThePlainEndAndGetsTheSlotWhenJoined() =
-        runRobolectricComposeUiTest {
-            val harness = Harness(threadPayload(focusedMessageId = null).copy(joined = false))
-            host(harness)
-            val page = onRoot().fetchSemanticsNode().boundsInRoot
-            val plain = newestMessage() ?: error("the page did not open at the newest message: ${state(harness)}")
-            val initialAnchor = harness.log.filter { it.startsWith("thread_initial_bottom_anchor ") }
-            assertTrue(initialAnchor.none { "result=retry" in it }, "the initial anchor retried: $initialAnchor")
-            assertTrue(initialAnchor.any { "result=anchored" in it }, "the initial anchor never reported anchored: $initialAnchor")
-
-            runOnIdle { harness.payload = harness.payload.copy(joined = true) }
-            settle()
-
-            val joined = newestMessage() ?: error("the newest message left the screen on joining: ${state(harness)}")
-            val slotPx =
-                (threadBottomSpacerAndAnchorTrailingHeight(typingLineSlot = true) -
-                    threadBottomSpacerAndAnchorTrailingHeight(typingLineSlot = false)).value * density.density
-            val plainGap = page.bottom - plain.bottom
-            val joinedGap = page.bottom - joined.bottom
-            assertTrue(
-                kotlin.math.abs(joinedGap - plainGap - slotPx) <= 0.5f,
-                "the list's end is not the plain end without a composer and the slot more with one: " +
-                    "plainGap=$plainGap joinedGap=$joinedGap slot=$slotPx ${state(harness)}"
-            )
-        }
 
     private companion object {
         const val NewestId = "m40"

@@ -66,14 +66,6 @@ class ExternalInvitesScreenshotTest {
     /** The emails empty, "Connect your servers" with one checked (web `ExternalInviteServersField`). */
     private val servers = ExternalInviteDialogState(servers = ownServers, serverIds = setOf("s3"))
 
-    private val serversReview =
-        ExternalInviteDialogState(
-            text = "lena@contoso.com",
-            preview = ExternalInvitePreview(valid = listOf("lena@contoso.com"), slotsLeft = 28),
-            servers = ownServers,
-            serverIds = setOf("s2", "s3"),
-        )
-
     @Test
     fun serversLight() = sheet("channel.external-invite.servers", RaftAppAppearance.Light, servers, historyHint = true)
 
@@ -81,22 +73,10 @@ class ExternalInvitesScreenshotTest {
     fun serversDark() = sheet("channel.external-invite.servers.dark", RaftAppAppearance.Dark, servers, historyHint = true)
 
     @Test
-    fun serversReviewLight() = sheet("channel.external-invite.servers-review", RaftAppAppearance.Light, serversReview)
-
-    @Test
-    fun emailsLight() = sheet("channel.external-invite.emails", RaftAppAppearance.Light, emails)
-
-    @Test
     fun reviewLight() = sheet("channel.external-invite.review", RaftAppAppearance.Light, review)
 
     @Test
-    fun reviewDark() = sheet("channel.external-invite.review.dark", RaftAppAppearance.Dark, review)
-
-    @Test
     fun invitedRowsLight() = rows("channel.external-invite.rows", RaftAppAppearance.Light)
-
-    @Test
-    fun invitedRowsDark() = rows("channel.external-invite.rows.dark", RaftAppAppearance.Dark)
 
     private fun sheet(name: String, appearance: RaftAppAppearance, state: ExternalInviteDialogState, historyHint: Boolean = false) =
         capture(name, appearance) {

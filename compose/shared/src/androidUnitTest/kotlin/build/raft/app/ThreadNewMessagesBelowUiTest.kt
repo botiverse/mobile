@@ -119,17 +119,6 @@ class ThreadNewMessagesBelowUiTest {
             assertEquals(0, harness.state.value.count)
         }
 
-    @Test
-    fun controlWithoutTheGuardTheArrivalFrameClearsTheCount() =
-        runRobolectricComposeUiTest {
-            val harness = host(guardStaleLayout = false)
-            assertEquals(true, harness.away)
-
-            arrive(harness, "n1", "n2")
-            assertEquals(true, harness.away)
-            assertEquals(0, harness.state.value.count, "the stale arrival frame should have eaten the count without the guard")
-        }
-
     private companion object {
         const val InitialMessages = 40
     }

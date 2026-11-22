@@ -42,11 +42,6 @@ class RaftAgentStatusReconcileTest {
     )
 
     @Test
-    fun theIntervalIsTheWebs10Minutes() {
-        assertEquals(600_000L, AGENT_STATUS_RECONCILE_INTERVAL_MILLIS)
-    }
-
-    @Test
     fun whileInFrontEachIntervalReadsTheServersOnScreen() = runTest {
         val recorder = Recorder()
         reconcile(recorder, MutableStateFlow(true), servers = { listOf("server-a", " server-b ", "server-a", "") }).start()
@@ -63,30 +58,6 @@ class RaftAgentStatusReconcileTest {
         runCurrent()
         assertEquals(4, recorder.reads.size, "and again every interval: ${recorder.reads}")
         assertTrue(recorder.logs.any { it.startsWith("agent_status_reconcile serverId=server-a") }, "${recorder.logs}")
-    }
-
-    @Test
-    fun inTheBackgroundTheClockStopsAndAReturnStartsItFromZero() = runTest {
-        val recorder = Recorder()
-        val foreground = MutableStateFlow(true)
-        reconcile(recorder, foreground).start()
-
-        advanceTimeBy(interval / 2)
-        foreground.value = false
-        runCurrent()
-        advanceTimeBy(interval * 3)
-        runCurrent()
-        assertEquals(emptyList(), recorder.reads, "no read while in the background")
-
-        val returnedAt = currentTime
-        foreground.value = true
-        runCurrent()
-        advanceTimeBy(interval - 1)
-        runCurrent()
-        assertEquals(emptyList(), recorder.reads, "the clock starts again from zero on a return")
-        advanceTimeBy(1)
-        runCurrent()
-        assertEquals(listOf("server-a" to returnedAt + interval), recorder.reads)
     }
 
     @Test

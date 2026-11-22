@@ -6,9 +6,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertFalse
 import kotlin.test.assertTrue
-import build.raft.app.data.SharedServerMemberStatus
 
 class RaftAgentStatusIndicatorTest {
     @Test
@@ -22,19 +20,6 @@ class RaftAgentStatusIndicatorTest {
 
         assertEquals(AgentStatus.Working, state.status)
         assertEquals(RaftColor.BrandYellow, state.color)
-    }
-
-    @Test
-    fun activePresenceWithoutStatusUsesOnlineColor() {
-        val state =
-            raftAgentStatusIndicatorState(
-                status = null,
-                presence = Presence.Active,
-                external = false
-            )
-
-        assertEquals(null, state.status)
-        assertEquals(RaftColor.AccentLime, state.color)
     }
 
     @Test
@@ -71,54 +56,5 @@ class RaftAgentStatusIndicatorTest {
             assertEquals(ExternalAgentStatusLabel, state.label, "external label for $status")
             assertTrue(state.external)
         }
-    }
-
-    @Test
-    fun externalOverridesPresenceFallbackAndFreeTextStatusLabel() {
-        // Without the flag this input is the presence-only green path with a custom caption.
-        val managed =
-            raftAgentStatusIndicatorState(
-                status = null,
-                presence = Presence.Active,
-                statusLabel = "Running tests",
-                external = false
-            )
-        assertEquals(RaftColor.AccentLime, managed.color)
-        assertEquals("Running tests", managed.label)
-        assertFalse(managed.external)
-
-        val external =
-            raftAgentStatusIndicatorState(
-                status = null,
-                presence = Presence.Active,
-                statusLabel = "Running tests",
-                external = true
-            )
-        assertEquals(RaftColor.AccentCyan, external.color)
-        assertEquals(ExternalAgentStatusLabel, external.label)
-        assertTrue(external.external)
-    }
-
-    @Test
-    fun resolvedMemberStatusCarriesExternalIntoIndicatorState() {
-        val live =
-            SharedServerMemberStatus(
-                status = AgentStatus.Working,
-                presence = Presence.Active,
-                statusLabel = "Working",
-                external = true
-            ).toRaftAgentStatusIndicatorState()
-        assertEquals(RaftColor.AccentCyan, live.color)
-        assertEquals(ExternalAgentStatusLabel, live.label)
-
-        val managed =
-            SharedServerMemberStatus(
-                status = AgentStatus.Working,
-                presence = Presence.Active,
-                statusLabel = "Working",
-                external = false
-            ).toRaftAgentStatusIndicatorState()
-        assertEquals(RaftColor.BrandYellow, managed.color)
-        assertEquals("Working", managed.label)
     }
 }

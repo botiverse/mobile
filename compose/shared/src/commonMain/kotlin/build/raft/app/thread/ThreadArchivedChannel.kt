@@ -8,7 +8,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.Dp
-import build.raft.app.compat.ui.LocalRaftPageActive
 import build.raft.app.resources.*
 import build.raft.designsystem.components.RaftBadge
 import build.raft.designsystem.components.RaftBadgeAppearance
@@ -131,7 +130,7 @@ internal fun ThreadFooterNoticeDock(
                     end = horizontalPadding,
                     bottom = bottomPadding + bottomSafeArea,
                 )
-                .raftToastAvoid(enabled = LocalRaftPageActive.current)
+                .raftToastAvoid()
     ) {
         content()
     }

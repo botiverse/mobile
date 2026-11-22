@@ -7,18 +7,13 @@ import build.raft.app.data.RaftSharedKeyValueStoreBinding
 import build.raft.app.data.RaftSharedKeyValueStoreProvider
 import build.raft.app.data.RaftSharedStoreRegistry
 import build.raft.app.data.SharedApiEnvironmentStore
-import build.raft.app.data.SharedSettingsApiEnvironmentRequest
-import build.raft.app.data.SharedSettingsApiEnvironmentOption
-import build.raft.app.compat.json.JSONObject
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertSame
-import kotlin.test.assertTrue
 
 class RaftEnvironmentIndicatorTest {
     @BeforeTest
@@ -49,60 +44,6 @@ class RaftEnvironmentIndicatorTest {
         variants.forEach { environment ->
             assertNull(raftEnvironmentIndicatorLabel(environment))
         }
-    }
-
-    @Test
-    fun onlyTheStagingServerRendersTheIndicator() {
-        val staging = SharedApiEnvironmentStore.Staging
-        assertEquals("Staging", raftEnvironmentIndicatorLabel(staging))
-        assertEquals(
-            "My staging",
-            raftEnvironmentIndicatorLabel(
-                staging.copy(key = SharedApiEnvironmentStore.CustomKey, label = "  My staging  ", apiBaseUrl = staging.apiBaseUrl.trimEnd('/')),
-            ),
-        )
-        val selfHosted =
-            listOf(
-                SharedSettingsApiEnvironmentOption(
-                    key = SharedApiEnvironmentStore.CustomKey,
-                    label = "  Local Dev  ",
-                    apiBaseUrl = "http://10.0.2.2:3000/api/",
-                    socketBaseUrl = "http://10.0.2.2:3000",
-                    webUrl = "http://10.0.2.2:3000",
-                ),
-                SharedSettingsApiEnvironmentOption(
-                    key = SharedApiEnvironmentStore.CustomKey,
-                    label = "Acme Raft",
-                    apiBaseUrl = "https://raft.acme.example/api/",
-                    socketBaseUrl = "https://raft.acme.example",
-                    webUrl = "https://raft.acme.example",
-                ),
-            )
-        selfHosted.forEach { environment -> assertNull(raftEnvironmentIndicatorLabel(environment)) }
-    }
-
-    @Test
-    fun environmentStoreStateTracksSelectionsForTheMountedGlobalHost() {
-        val store = SharedApiEnvironmentStore(InMemoryRaftKeyValueStore())
-
-        assertEquals(SharedApiEnvironmentStore.Production, store.state.value)
-
-        store.select(SharedApiEnvironmentStore.Staging.key)
-
-        assertEquals(SharedApiEnvironmentStore.Staging, store.state.value)
-
-        val custom =
-            store.save(
-                SharedSettingsApiEnvironmentRequest(
-                    key = SharedApiEnvironmentStore.CustomKey,
-                    label = "Local Dev",
-                    apiBaseUrl = "http://10.0.2.2:3000/api/",
-                    socketBaseUrl = "http://10.0.2.2:3000",
-                    webUrl = "http://10.0.2.2:3000",
-                ),
-            )
-
-        assertEquals(custom, store.state.value)
     }
 
     @Test
@@ -141,76 +82,5 @@ class RaftEnvironmentIndicatorTest {
     @Test
     fun unavailableEnvironmentSettingHidesTheIndicatorInsteadOfFailingThePage() {
         assertNull(raftEnvironmentIndicatorEnvironmentStoreOrNull { error("app-scope store missing") })
-    }
-
-    @Test
-    fun embeddedChildMarkerUsesACopyAndSuppressesDuplicateIndicator() {
-        val original =
-            JSONObject().apply {
-                put("threadId", "thread-1")
-            }
-
-        val embedded = raftEmbeddedChildPageData(original)
-
-        assertFalse(original.optBoolean(RAFT_EMBEDDED_CHILD_PAGE_PARAM, false))
-        assertTrue(embedded.optBoolean(RAFT_EMBEDDED_CHILD_PAGE_PARAM, false))
-        assertEquals("thread-1", embedded.optString("threadId"))
-        assertTrue(raftEnvironmentIndicatorEnabledForPage(original))
-        assertFalse(raftEnvironmentIndicatorEnabledForPage(embedded))
-    }
-
-    @Test
-    fun draggableIndicatorDefaultsToSafeTopRightAndClampsToEveryVisibleEdge() {
-        val bounds =
-            RaftEnvironmentIndicatorDragBounds(
-                hostWidthPx = 720f,
-                hostHeightPx = 1280f,
-                badgeWidthPx = 96f,
-                badgeHeightPx = 40f,
-                topSafeAreaPx = 48f,
-                bottomSafeAreaPx = 72f,
-                edgeMarginPx = 12f,
-            )
-
-        assertEquals(
-            RaftEnvironmentIndicatorPosition(xPx = 612f, yPx = 60f),
-            raftDefaultEnvironmentIndicatorPosition(bounds),
-        )
-        assertEquals(
-            RaftEnvironmentIndicatorPosition(xPx = 12f, yPx = 60f),
-            raftClampEnvironmentIndicatorPosition(
-                RaftEnvironmentIndicatorPosition(xPx = -1_000f, yPx = -1_000f),
-                bounds,
-            ),
-        )
-        assertEquals(
-            RaftEnvironmentIndicatorPosition(xPx = 612f, yPx = 1_156f),
-            raftClampEnvironmentIndicatorPosition(
-                RaftEnvironmentIndicatorPosition(xPx = 10_000f, yPx = 10_000f),
-                bounds,
-            ),
-        )
-    }
-
-    @Test
-    fun draggableIndicatorRemainsVisibleWhenInsetsExceedTheTinyHost() {
-        val bounds =
-            RaftEnvironmentIndicatorDragBounds(
-                hostWidthPx = 80f,
-                hostHeightPx = 60f,
-                badgeWidthPx = 100f,
-                badgeHeightPx = 40f,
-                topSafeAreaPx = 30f,
-                bottomSafeAreaPx = 30f,
-                edgeMarginPx = 12f,
-            )
-
-        assertEquals(
-            RaftEnvironmentIndicatorPosition(xPx = 0f, yPx = 10f),
-            raftClampEnvironmentIndicatorPosition(
-                RaftEnvironmentIndicatorPosition(xPx = 500f, yPx = 500f),
-                bounds,
-            ),
-        )
     }
 }

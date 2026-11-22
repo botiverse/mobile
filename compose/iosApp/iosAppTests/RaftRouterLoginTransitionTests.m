@@ -1,4 +1,5 @@
 #import <XCTest/XCTest.h>
+#import <SafariServices/SafariServices.h>
 #import "../iosApp/Cmp/RaftPageRouter.h"
 #import "../iosApp/Cmp/RaftPageViewController.h"
 
@@ -49,6 +50,18 @@
                   completion:(void (^)(void))completion {
     self.presentationCount += 1;
     self.recordedPresentation = viewControllerToPresent;
+}
+
+@end
+
+@interface RaftStubPresentedPageViewController : RaftPageViewController
+@property (nonatomic, strong, nullable) UIViewController *stubPresentedViewController;
+@end
+
+@implementation RaftStubPresentedPageViewController
+
+- (UIViewController *)presentedViewController {
+    return self.stubPresentedViewController ?: [super presentedViewController];
 }
 
 @end
@@ -303,6 +316,112 @@
     XCTAssertEqual(navigation.replacementCount, 0u);
     XCTAssertEqual(navigation.viewControllers.count, 3u);
     XCTAssertEqual(navigation.viewControllers.firstObject, initialLogin);
+}
+
+- (void)testReplaceCurrentHonorsOpenWithoutAnimation {
+    RaftPageViewController *shell = [self renderPage:@"compose_slock_app_shell"];
+    RaftPageViewController *pendingTask = [self renderPage:@"compose_task_pending"];
+    RaftRouterRecordingNavigationController *navigation = [self navigationWithPages:@[shell, pendingTask]];
+
+    [self.router openPageWithName:@"compose_thread"
+                         pageData:@{
+                             @"slockReplaceCurrentPage": @YES,
+                             @"slockOpenWithoutAnimation": @YES,
+                         }
+                       controller:pendingTask];
+    XCTAssertEqual(navigation.replacementCount, 1u);
+    XCTAssertEqual(navigation.pushCount, 0u);
+    XCTAssertFalse(navigation.lastRequestedAnimation,
+                   @"Replacing a pending task page with its conversation must honor slockOpenWithoutAnimation");
+    XCTAssertEqual(navigation.viewControllers.count, 2u);
+    XCTAssertEqual(navigation.viewControllers.firstObject, shell);
+    XCTAssertNotEqual(navigation.topViewController, pendingTask);
+
+    UIViewController *thread = navigation.topViewController;
+    [self.router openPageWithName:@"compose_thread"
+                         pageData:@{@"slockReplaceCurrentPage": @YES}
+                       controller:thread];
+    XCTAssertEqual(navigation.replacementCount, 2u);
+    XCTAssertTrue(navigation.lastRequestedAnimation,
+                  @"Replacement without slockOpenWithoutAnimation keeps animated=YES");
+}
+
+- (void)testReplaceCurrentReplacesSourceControllerIndexNotUnrelatedTop {
+    RaftPageViewController *shell = [self renderPage:@"compose_slock_app_shell"];
+    RaftPageViewController *pendingTask = [self renderPage:@"compose_task_pending"];
+    RaftPageViewController *coveringPage = [self renderPage:@"compose_thread"];
+    RaftRouterRecordingNavigationController *navigation =
+        [self navigationWithPages:@[shell, pendingTask, coveringPage]];
+
+    [self.router openPageWithName:@"compose_thread"
+                         pageData:@{
+                             @"slockReplaceCurrentPage": @YES,
+                             @"slockOpenWithoutAnimation": @YES,
+                         }
+                       controller:pendingTask];
+    XCTAssertEqual(navigation.replacementCount, 1u);
+    XCTAssertEqual(navigation.viewControllers.count, 3u);
+    XCTAssertEqual(navigation.viewControllers[0], shell);
+    XCTAssertNotEqual(navigation.viewControllers[1], pendingTask,
+                      @"Source controller at index 1 must be replaced in place");
+    XCTAssertEqual(navigation.viewControllers[2], coveringPage,
+                   @"Covering page above the source controller must stay untouched");
+
+    // Replacing again from the already-removed pendingTask with slockOpenWithoutAnimation is a safe no-op.
+    [self.router openPageWithName:@"compose_thread"
+                         pageData:@{
+                             @"slockReplaceCurrentPage": @YES,
+                             @"slockOpenWithoutAnimation": @YES,
+                         }
+                       controller:pendingTask];
+    XCTAssertEqual(navigation.replacementCount, 1u,
+                   @"Detached source with slockOpenWithoutAnimation must not replace another controller on the stack");
+
+    // Ordinary slockReplaceCurrentPage (without slockOpenWithoutAnimation) from an embedded child
+    // controller keeps replacing the top stack entry so container-hosted flows (auth/OAuth/gates) stay intact.
+    UIViewController *embeddedChild = [UIViewController new];
+    [coveringPage addChildViewController:embeddedChild];
+    [embeddedChild didMoveToParentViewController:coveringPage];
+    XCTAssertEqual(embeddedChild.navigationController, navigation);
+    XCTAssertEqual([navigation.viewControllers indexOfObjectIdenticalTo:embeddedChild], NSNotFound);
+
+    [self.router openPageWithName:@"compose_slock_app_shell"
+                         pageData:@{@"slockReplaceCurrentPage": @YES}
+                       controller:embeddedChild];
+    XCTAssertEqual(navigation.replacementCount, 2u);
+    XCTAssertTrue(navigation.lastRequestedAnimation);
+    XCTAssertEqual(navigation.viewControllers.count, 3u);
+    XCTAssertNotEqual(navigation.topViewController, coveringPage,
+                      @"Ordinary replaceCurrent from an embedded child controller must still replace the top entry");
+    XCTAssertTrue(((RaftPageViewController *)navigation.topViewController).raftIsAppShellPage);
+}
+
+- (void)testViewWillDisappearSkipsCoverHookWhenPresentingSafariViewController {
+    RaftStubPresentedPageViewController *page =
+        [[RaftStubPresentedPageViewController alloc] initWithPageName:@"compose_settings_computers" pageData:@{}];
+    __block NSUInteger coverCount = 0;
+    page.raftPageWillBeCoveredHook = ^{
+        coverCount += 1;
+    };
+
+    // Presenting SFSafariViewController (e.g. runtime OAuth "Open Sign-in Page") must keep the
+    // page's open sign-in dialog and Computer login session alive until the user closes Safari.
+    page.stubPresentedViewController =
+        [[SFSafariViewController alloc] initWithURL:[NSURL URLWithString:@"https://accounts.google.com/o/oauth2/v2/auth"]];
+    [page viewWillDisappear:NO];
+    XCTAssertEqual(coverCount, 0u,
+                   @"Presenting SFSafariViewController must not fire raftPageWillBeCoveredHook");
+
+    // A normal navigation push (no Safari modal) and a non-Safari modal presentation still fire it.
+    page.stubPresentedViewController = nil;
+    [page viewWillDisappear:NO];
+    XCTAssertEqual(coverCount, 1u,
+                   @"A normal page cover must still fire raftPageWillBeCoveredHook");
+
+    page.stubPresentedViewController = [UINavigationController new];
+    [page viewWillDisappear:NO];
+    XCTAssertEqual(coverCount, 2u,
+                   @"A non-Safari modal presentation must still fire raftPageWillBeCoveredHook");
 }
 
 @end

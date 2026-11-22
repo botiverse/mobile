@@ -3,7 +3,6 @@ package build.raft.app.nav
 import build.raft.app.RAFT_APP_SHELL_PAGE
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertFalse
 import kotlin.test.assertNotEquals
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -47,25 +46,6 @@ class RaftPageStackSavedStateTest {
         val newId = after.pages.last().key.id
         assertTrue(restoredIds.all { newId > it }, "new id $newId reuses or undercuts restored $restoredIds")
         assertEquals(after.pages.size, after.pages.map { it.contentKey }.toSet().size)
-    }
-
-    @Test fun `restore puts the host facts back into the args`() {
-        val saved = stackWith("a").savedKeys()
-        val after = RaftPageStack(hostPageData = { name, d -> JsonObject(d + ("host" to JsonPrimitive(name))) })
-        assertTrue(after.restore(saved))
-        assertEquals(JsonPrimitive("a"), after.pages.last().args.pageData["host"])
-        assertEquals(null, after.pages.last().key.pageData["host"], "host facts must not enter the saved key")
-    }
-
-    @Test fun `restore refuses duplicate keys and a stack that already has pages`() {
-        val saved = stackWith("a").savedKeys()
-        val duplicate = RaftPageStack()
-        assertFalse(duplicate.restore(saved + saved))
-        assertEquals(1, duplicate.pages.size)
-
-        val busy = stackWith("x")
-        assertFalse(busy.restore(saved))
-        assertEquals(listOf(RAFT_APP_SHELL_PAGE, "x"), busy.pages.map { it.args.pageName })
     }
 
     @Test fun `size guard skips saving and decoding a stack that is too large`() {

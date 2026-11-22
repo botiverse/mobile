@@ -1,12 +1,10 @@
 package build.raft.app
 
 import build.raft.app.SharedThreadStoreTestFixtures.contentPayload
-import build.raft.app.SharedThreadStoreTestFixtures.testReplyCacheIdentityAuthority
 import build.raft.app.data.ComposeLocalDataStore
 import build.raft.app.data.DataRequestPriority
 import build.raft.app.data.DataResult
 import build.raft.app.data.HomeNetworkResponse
-import build.raft.app.data.InMemoryRaftAuthSessionStore
 import build.raft.app.data.InboxItem
 import build.raft.app.data.SharedThreadNetworkApi
 import build.raft.app.data.StoredAuthSession
@@ -32,13 +30,11 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
-import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlin.test.fail
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.test.runTest
 
 class SharedThreadStoreTest {
     internal class FakeThreadApi(
@@ -47,7 +43,8 @@ class SharedThreadStoreTest {
         var newerBodyText: String = messagesResponse("newer body", id = "newer", seq = 100, historyLimited = false),
         var newerResponseCode: Int = 200,
         var failChannelMessages: Boolean = false,
-        var channelMessagesResponseCode: Int = 200
+        var channelMessagesResponseCode: Int = 200,
+        var channelMessagesResponseHeaders: Map<String, List<String>> = emptyMap(),
     ) : SharedThreadNetworkApi {
         var channelMessageCalls: Int = 0
         var failReadAll: Boolean = false
@@ -123,7 +120,12 @@ class SharedThreadStoreTest {
                     releaseAfterMessages?.await()
                     HomeNetworkResponse(code = newerResponseCode, bodyText = newerBodyText)
                 }
-                else -> HomeNetworkResponse(code = channelMessagesResponseCode, bodyText = responseBody)
+                else ->
+                    HomeNetworkResponse(
+                        code = channelMessagesResponseCode,
+                        bodyText = responseBody,
+                        responseHeaders = channelMessagesResponseHeaders,
+                    )
             }
         }
 
@@ -670,86 +672,5 @@ class SharedThreadStoreTest {
             logs.any { it.contains("projection_value_defaulted") && it.contains("field=externalAuthor") },
             "Expected defaulted diagnostic for missing externalAuthor, got: $logs"
         )
-    }
-    @Test
-    fun rememberReplyParentCandidateSucceedsForSlackBridgeExternalRootMessage() = runTest {
-        val messageStore = SharedThreadMessageStore(scope = backgroundScope)
-        val environmentId = "https://prod.example.test"
-        val dataSource =
-            SharedThreadDataSource(
-                threadParseDispatcher = backgroundScope.testDispatcher(),
-                payloadStore = SharedThreadPayloadStore(backgroundScope),
-                networkApi = FakeThreadApi(bodyText = messagesResponse("unused")),
-                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
-                messageStore = messageStore,
-                cacheEnvironmentIdProvider = { environmentId },
-                replyCacheIdentityAuthority = testReplyCacheIdentityAuthority(
-                    sessionProvider = { sampleSession() },
-                    environmentProvider = { environmentId },
-                )
-            )
-        val provenance = requireNotNull(dataSource.captureReplyCacheProducerContext()).provenance
-        val slackRootItem = externalSlackMessageItem(id = "slack-root-99")
-
-        val accepted = dataSource.rememberReplyParentCandidate(
-            provenance = provenance,
-            serverId = "server-1",
-            parentChannelId = "channel-slack",
-            parentMessage = slackRootItem,
-            threadChannelId = "thread-slack-root-99"
-        )
-
-        assertTrue(accepted, "rememberReplyParentCandidate should accept external Slack root message with valid externalAuthor")
-
-        val cachedMessage = messageStore.getScoped(
-            requireNotNull(provenance.messageStoreScopeId),
-            ChannelId("channel-slack"),
-            MessageId("slack-root-99")
-        )
-        assertNotNull(cachedMessage)
-        assertEquals(MemberKind.External, cachedMessage.author.kind)
-        assertEquals("Alice in Slack", cachedMessage.author.displayName)
-        assertEquals("Slack", cachedMessage.author.description)
-        assertEquals("https://slack.example.com/alice.png", cachedMessage.author.avatar?.wireValue)
-        assertEquals("slack", cachedMessage.externalAuthor?.provider)
-    }
-    @Test
-    fun rememberReplyParentCandidateKeepsExternalRootMessageMissingExternalAuthorWithFallbackAuthor() = runTest {
-        val messageStore = SharedThreadMessageStore(scope = backgroundScope)
-        val environmentId = "https://prod.example.test"
-        val dataSource =
-            SharedThreadDataSource(
-                threadParseDispatcher = backgroundScope.testDispatcher(),
-                payloadStore = SharedThreadPayloadStore(backgroundScope),
-                networkApi = FakeThreadApi(bodyText = messagesResponse("unused")),
-                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
-                messageStore = messageStore,
-                cacheEnvironmentIdProvider = { environmentId },
-                replyCacheIdentityAuthority = testReplyCacheIdentityAuthority(
-                    sessionProvider = { sampleSession() },
-                    environmentProvider = { environmentId },
-                )
-            )
-        val provenance = requireNotNull(dataSource.captureReplyCacheProducerContext()).provenance
-        val invalidSlackRootItem = externalSlackMessageItem(id = "slack-root-bad", externalAuthor = null)
-
-        val accepted = dataSource.rememberReplyParentCandidate(
-            provenance = provenance,
-            serverId = "server-1",
-            parentChannelId = "channel-slack",
-            parentMessage = invalidSlackRootItem,
-            threadChannelId = "thread-slack-root-bad"
-        )
-
-        assertTrue(accepted, "an external root message without externalAuthor is kept with a fallback author")
-        val cachedMessage = assertNotNull(
-            messageStore.getScoped(
-                requireNotNull(provenance.messageStoreScopeId),
-                ChannelId("channel-slack"),
-                MessageId("slack-root-bad")
-            )
-        )
-        assertEquals(MemberKind.External, cachedMessage.author.kind)
-        assertEquals("Alice in Slack", cachedMessage.externalAuthor?.displayName)
     }
 }

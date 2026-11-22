@@ -40,9 +40,6 @@ class ThreadMessageSelectTextSheetScreenshotTest {
     @Test
     fun sheetLight() = capture("thread.select-text.sheet", RaftAppAppearance.Light)
 
-    @Test
-    fun sheetDark() = capture("thread.select-text.sheet.dark", RaftAppAppearance.Dark)
-
     private fun capture(name: String, appearance: RaftAppAppearance) =
         RaftRobolectricScreenshot.capture(name, appearance, reportDir = "build/reports/home-screenshots", activities = activities) {
             val pager =

@@ -1,10 +1,7 @@
 package build.raft.app
 
-import build.raft.app.data.TaskConversationHeaderState
-import build.raft.app.data.TaskStatusOption
 import build.raft.app.data.TasksContent
 import build.raft.app.data.boardColumns
-import build.raft.app.model.ChannelId
 import build.raft.app.model.TaskId
 import build.raft.app.model.TaskStatus
 import build.raft.app.model.TaskSummary
@@ -16,7 +13,7 @@ import kotlin.test.assertEquals
  * botiverse/slock #12884: `getTaskStatusOptions(task, ..., taskV2)` drops in_review on a task that
  * `opensAsTaskConversation(task, taskV2)` unless it is the current status
  * (`tests/taskStatusRetiredInReview.test.ts`), and TasksPanel drops the In Review lane only while
- * task v2 is on and nothing is in it, so a pre-v2 task still in it stays reachable.
+ * nothing is in it, so a pre-v2 task still in it stays reachable.
  */
 class TaskInReviewRetiredTest {
     private val withoutInReview = listOf(TaskStatus.Todo, TaskStatus.InProgress, TaskStatus.Done, TaskStatus.Closed)
@@ -24,62 +21,39 @@ class TaskInReviewRetiredTest {
     /** A task v2 task's menu: Backlog first (slock #12963), no In Review. */
     private val v2Choices = listOf(TaskStatus.Backlog) + withoutInReview
 
-    /** A pre-v2 task's menu: every status but Backlog (task v2 only); Unknown is never a choice. */
+    /** A legacy orphan's menu: every status but Backlog (task v2 only); Unknown is never a choice. */
     private val everyChoice = listOf(TaskStatus.Todo, TaskStatus.InProgress, TaskStatus.InReview, TaskStatus.Done, TaskStatus.Closed)
 
     @Test
-    fun aV2TaskIsNotOfferedInReviewWithTaskV2On() {
-        assertEquals(v2Choices, task().statusMenuChoices(taskV2Enabled = true))
-        // A task made the v2 way opens as its conversation even where the flag is off (web `isTaskV2Task`).
-        assertEquals(v2Choices, task(conversationAnchored = true).statusMenuChoices(taskV2Enabled = false))
+    fun aTaskIsNotOfferedInReview() {
+        // A pre-v2 task opens as its conversation too, so it gets the same menu as a task made the v2 way.
+        assertEquals(v2Choices, task().statusMenuChoices())
+        assertEquals(v2Choices, task(conversationAnchored = true).statusMenuChoices())
     }
 
     @Test
     fun aTaskStillInReviewKeepsItAsItsCurrentOption() {
-        assertEquals(TaskStatus.known, task(status = TaskStatus.InReview).statusMenuChoices(taskV2Enabled = true))
+        assertEquals(TaskStatus.known, task(status = TaskStatus.InReview).statusMenuChoices())
     }
 
     @Test
-    fun aLegacyTaskAndTaskV2OffKeepEveryStatus() {
-        assertEquals(everyChoice, task(isLegacy = true).statusMenuChoices(taskV2Enabled = true))
-        assertEquals(everyChoice, task().statusMenuChoices(taskV2Enabled = false))
+    fun aLegacyTaskKeepsEveryStatus() {
+        assertEquals(everyChoice, task(isLegacy = true).statusMenuChoices())
     }
 
     @Test
-    fun theTaskConversationBarDropsInReviewUnlessTheTaskIsInIt() {
-        fun barStatuses(task: TaskSummary) =
-            task.taskConversationHeaderBarModel(TaskConversationHeaderState(ChannelId("conv-1")), statusUpdating = false)
-                .statusOptions.map(TaskStatusOption::status)
-        assertEquals(v2Choices, barStatuses(task(conversationAnchored = true)))
-        assertEquals(TaskStatus.known, barStatuses(task(status = TaskStatus.InReview, conversationAnchored = true)))
-        // Closed -> Todo still reads "Reopen to Todo".
-        val closed =
-            task(status = TaskStatus.Closed, conversationAnchored = true)
-                .taskConversationHeaderBarModel(TaskConversationHeaderState(ChannelId("conv-1")), statusUpdating = false)
-        assertEquals(listOf(TaskStatus.Todo), closed.statusOptions.filter { it.reopensToTodo }.map { it.status })
-    }
-
-    @Test
-    fun theBoardHasNoEmptyInReviewColumnWithTaskV2On() {
+    fun theBoardHasNoEmptyInReviewColumn() {
         val content = content(task(id = "t1"), task(id = "t2", status = TaskStatus.Todo))
         // Task v2 adds the Backlog column first (raft-design tasks.md board order).
-        assertEquals(listOf(TaskStatus.Backlog) + withoutInReview, content.boardColumns(renderLimit = 0, taskV2Enabled = true).map { it.status })
+        assertEquals(listOf(TaskStatus.Backlog) + withoutInReview, content.boardColumns(renderLimit = 0).map { it.status })
     }
 
     @Test
     fun aLegacyTaskStillInReviewKeepsItsColumn() {
         val legacy = task(id = "legacy", status = TaskStatus.InReview, isLegacy = true)
-        val columns = content(task(id = "t1"), legacy).boardColumns(renderLimit = 0, taskV2Enabled = true)
+        val columns = content(task(id = "t1"), legacy).boardColumns(renderLimit = 0)
         assertEquals(TaskStatus.known, columns.map { it.status })
         assertEquals(listOf("legacy"), columns.single { it.status == TaskStatus.InReview }.tasks.map { it.id.value })
-    }
-
-    @Test
-    fun taskV2OffKeepsTheEmptyInReviewColumn() {
-        assertEquals(
-            everyChoice,
-            content(task(id = "t1")).boardColumns(renderLimit = 0, taskV2Enabled = false).map { it.status },
-        )
     }
 
     private fun content(vararg tasks: TaskSummary) = TasksContent(summaryCounts = emptyMap(), tasks = tasks.toList())

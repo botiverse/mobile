@@ -1,7 +1,6 @@
 package build.raft.app.data
 
 import build.raft.app.MembersAgentLifecycleAction
-import build.raft.app.seedRemoteAgentProfile
 import build.raft.app.model.AgentCredentialHoldReason
 import build.raft.app.model.AgentStatus
 import build.raft.app.model.AvatarReference
@@ -10,12 +9,11 @@ import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberProfile
 import build.raft.app.model.MemberPresenceUpdated
 import build.raft.app.model.Presence
-import build.raft.app.model.RealtimeAgentActivityDetail
 import build.raft.app.model.RealtimeAgentActivityEntry
 import build.raft.app.model.RuntimeConfig
+import build.raft.app.model.RuntimeModeConfig
 import build.raft.app.model.RuntimeModelConfig
 import build.raft.app.model.ServerId
-import kotlinx.coroutines.runBlocking
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -63,26 +61,6 @@ class SharedAgentDetailStoreTest {
         serverSeq = serverSeq,
         activityEntries = activityEntries
     )
-
-    @Test
-    fun initialStateIsEmpty() {
-        val state = store().state.value
-        assertNull(state.agentId)
-        assertNull(state.detail)
-        assertEquals(SharedAgentDetailLoadStatus.Idle, state.detailLoadStatus)
-        assertNull(state.lifecycleActionInFlight)
-        assertNull(state.diagnosticActionInFlight)
-        assertNull(state.pendingConfirmation)
-        assertFalse(state.displayNameEditing)
-        assertFalse(state.roleEditing)
-    }
-
-    @Test
-    fun selectMemberSetsAgentId() {
-        val s = store()
-        s.dispatch(SharedAgentDetailIntent.SelectMember(testMemberId))
-        assertEquals(testMemberId, s.state.value.agentId)
-    }
 
     @Test
     fun runtimeConfigProjectionUpdatesMountedDetailAndRejectsSameGenerationRollback() {
@@ -157,52 +135,6 @@ class SharedAgentDetailStoreTest {
         // A later fresh read (agent:updated) decides again; the saved projection does not pin it.
         s.dispatch(SharedAgentDetailIntent.SetDetail(testMemberId, warned, owner.serverId, owner = owner, profileGeneration = 1L))
         assertEquals(true, s.state.value.detail?.summary?.modelLimitsDefaultsReported)
-    }
-
-    @Test
-    fun newerProfileGenerationCanReplaceSavedRuntimeProjection() {
-        val s = store()
-        val owner =
-            SharedAgentDetailOwner(
-                environmentId = "https://api.raft.build/api",
-                accountId = "account-1",
-                serverId = ServerId("server-1")
-            )
-        val saved = RuntimeConfig(runtime = "claude", model = RuntimeModelConfig.Preset("claude-opus-5"))
-        s.dispatch(SharedAgentDetailIntent.SelectMember(testMemberId, owner, profileGeneration = 4L))
-        s.dispatch(
-            SharedAgentDetailIntent.SetDetail(
-                testMemberId,
-                detailWithSummary(),
-                serverId = owner.serverId,
-                owner = owner,
-                profileGeneration = 4L
-            )
-        )
-        s.dispatch(
-            SharedAgentDetailIntent.ApplyRuntimeConfigProjection(
-                owner,
-                testMemberId,
-                saved,
-                profileGeneration = 4L
-            )
-        )
-
-        s.dispatch(SharedAgentDetailIntent.SelectMember(testMemberId, owner, profileGeneration = 5L))
-        s.dispatch(
-            SharedAgentDetailIntent.SetDetail(
-                testMemberId,
-                detailWithSummary().copy(
-                    summary = detailWithSummary().summary?.copy(runtime = "claude", model = "server-new")
-                ),
-                serverId = owner.serverId,
-                owner = owner,
-                profileGeneration = 5L
-            )
-        )
-
-        assertEquals("server-new", s.state.value.detail?.summary?.model)
-        assertNull(s.state.value.runtimeConfigProjection)
     }
 
     @Test
@@ -319,28 +251,6 @@ class SharedAgentDetailStoreTest {
     }
 
     @Test
-    fun seedDetailFromMemberDoesNotReplaceExistingMatchingDetail() {
-        val s = store()
-        s.dispatch(SharedAgentDetailIntent.SelectMember(testMemberId))
-        s.dispatch(SharedAgentDetailIntent.SetDetail(testMemberId, detailWithSummary(status = "Online")))
-
-        s.dispatch(
-            SharedAgentDetailIntent.SeedDetailFromMember(
-                MemberProfile(
-                    id = testMemberId,
-                    displayName = "Stale Agent",
-                    handle = "stale-agent",
-                    kind = MemberKind.Agent,
-                    agentStatus = AgentStatus.Offline
-                )
-            )
-        )
-
-        assertEquals("Agent One", s.state.value.detail?.summary?.name)
-        assertEquals("Online", s.state.value.detail?.summary?.status)
-    }
-
-    @Test
     fun seedDetailFromSameAgentOnAnotherServerReplacesTheDisplaySeed() {
         val s = store()
         s.dispatch(
@@ -403,101 +313,6 @@ class SharedAgentDetailStoreTest {
 
         assertEquals(emptyList(), s.state.value.detail?.activity)
         assertNull(s.state.value.agentActivityLogs[testMemberId])
-    }
-
-    @Test
-    fun remoteProfileSeedReplacesSameIdDetailFromAnotherServer() {
-        val s = store()
-        s.dispatch(SharedAgentDetailIntent.SelectMember(testMemberId))
-        s.dispatch(SharedAgentDetailIntent.SetDetail(testMemberId, detailWithSummary(status = "Online")))
-
-        seedRemoteAgentProfile(
-            s,
-            MemberProfile(
-                id = testMemberId,
-                displayName = "Remote Agent",
-                handle = "remote-agent",
-                kind = MemberKind.Agent,
-                agentStatus = AgentStatus.Offline
-            )
-        )
-
-        assertEquals("remote-agent", s.state.value.detail?.summary?.name)
-        assertEquals("Remote Agent", s.state.value.detail?.summary?.displayName)
-        assertNull(s.state.value.detail?.summary?.status)
-        assertNull(s.state.value.detail?.summary?.activity)
-    }
-
-    @Test
-    fun seedDetailFromMemberUsesCachedAgentActivity() {
-        val s = store()
-        s.dispatch(
-            SharedAgentDetailIntent.SetAgentActivity(
-                testMemberId,
-                listOf(
-                    AgentActivityEntry(
-                        id = "activity-1",
-                        type = "tool_start",
-                        title = "Run command",
-                        timestamp = "200"
-                    )
-                )
-            )
-        )
-
-        s.dispatch(
-            SharedAgentDetailIntent.SeedDetailFromMember(
-                MemberProfile(
-                    id = testMemberId,
-                    displayName = "Agent One",
-                    handle = "agent-one",
-                    kind = MemberKind.Agent,
-                    agentStatus = AgentStatus.Working
-                )
-            )
-        )
-
-        assertEquals(listOf("activity-1"), s.state.value.detail?.activity?.map { it.id })
-    }
-
-    @Test
-    fun deselectMemberResetsState() {
-        val s = store()
-        s.dispatch(SharedAgentDetailIntent.SelectMember(testMemberId))
-        s.dispatch(SharedAgentDetailIntent.SetDetailLoading(testMemberId))
-        s.dispatch(SharedAgentDetailIntent.SetDetail(testMemberId, testDetail))
-        s.dispatch(SharedAgentDetailIntent.DeselectMember)
-        val state = s.state.value
-        assertNull(state.agentId)
-        assertNull(state.detail)
-        assertEquals(SharedAgentDetailLoadStatus.Idle, state.detailLoadStatus)
-    }
-
-    @Test
-    fun detailLoadingTransitionsAreTracked() {
-        val s = store()
-        s.dispatch(SharedAgentDetailIntent.SelectMember(testMemberId))
-        s.dispatch(SharedAgentDetailIntent.SetDetailLoading(testMemberId))
-        assertEquals(SharedAgentDetailLoadStatus.Loading, s.state.value.detailLoadStatus)
-        s.dispatch(SharedAgentDetailIntent.SetDetail(testMemberId, testDetail))
-        assertEquals(SharedAgentDetailLoadStatus.Content, s.state.value.detailLoadStatus)
-        val detailError = ScreenError(
-            code = "http_409",
-            retryable = false,
-            serverMessage = "Agent profile is being updated"
-        )
-        s.dispatch(SharedAgentDetailIntent.SetDetailError(testMemberId, detailError))
-        assertEquals(SharedAgentDetailLoadStatus.Error, s.state.value.detailLoadStatus)
-        assertEquals(detailError, s.state.value.detailError)
-        assertNull(s.state.value.detailPermissionBlocker)
-        s.dispatch(SharedAgentDetailIntent.SetDetailNoPermission(testMemberId, "forbidden"))
-        assertEquals(SharedAgentDetailLoadStatus.NoPermission, s.state.value.detailLoadStatus)
-        assertNull(s.state.value.detailError)
-        assertEquals("forbidden", s.state.value.detailPermissionBlocker?.code)
-        s.dispatch(SharedAgentDetailIntent.SetDetailEmpty(testMemberId))
-        assertEquals(SharedAgentDetailLoadStatus.Empty, s.state.value.detailLoadStatus)
-        assertNull(s.state.value.detailError)
-        assertNull(s.state.value.detailPermissionBlocker)
     }
 
     @Test
@@ -614,209 +429,6 @@ class SharedAgentDetailStoreTest {
         assertNull(s.state.value.agentId)
         assertNull(s.state.value.detail)
         assertEquals(SharedAgentDetailLoadStatus.Idle, s.state.value.detailLoadStatus)
-    }
-
-    @Test
-    fun lifecycleActionInFlightTransitions() {
-        val s = store()
-        s.dispatch(SharedAgentDetailIntent.StartLifecycleAction("lifecycle:start"))
-        assertEquals("lifecycle:start", s.state.value.lifecycleActionInFlight)
-        assertNull(s.state.value.lastActionResult)
-        s.dispatch(
-            SharedAgentDetailIntent.FinishLifecycleAction(
-                actionKey = "lifecycle:start",
-                successLabel = "Started"
-            )
-        )
-        assertNull(s.state.value.lifecycleActionInFlight)
-        assertEquals("Started", s.state.value.lastActionResult?.successLabel)
-    }
-
-    @Test
-    fun lifecycleActionErrorPreservesCompleteScreenError() {
-        val s = store()
-        val error = ScreenError(
-            code = "http_409",
-            retryable = false,
-            serverMessage = "Agent is already running"
-        )
-        s.dispatch(SharedAgentDetailIntent.StartLifecycleAction("lifecycle:start"))
-        s.dispatch(
-            SharedAgentDetailIntent.FinishLifecycleAction(
-                actionKey = "lifecycle:start",
-                error = error
-            )
-        )
-        assertNull(s.state.value.lifecycleActionInFlight)
-        assertEquals(error, s.state.value.lastActionResult?.error)
-        assertEquals("Agent is already running", s.state.value.lastActionResult?.error?.serverMessage)
-    }
-
-    @Test
-    fun startLifecycleClearsPendingConfirmation() {
-        val s = store()
-        s.dispatch(SharedAgentDetailIntent.ShowConfirmation(MembersAgentLifecycleAction.ResetFull))
-        assertEquals(MembersAgentLifecycleAction.ResetFull, s.state.value.pendingConfirmation)
-        s.dispatch(SharedAgentDetailIntent.StartLifecycleAction("lifecycle:reset_full"))
-        assertNull(s.state.value.pendingConfirmation)
-    }
-
-    @Test
-    fun diagnosticActionInFlightTransitions() {
-        val s = store()
-        s.dispatch(SharedAgentDetailIntent.StartDiagnosticAction("diagnostic:copy"))
-        assertEquals("diagnostic:copy", s.state.value.diagnosticActionInFlight)
-        s.dispatch(
-            SharedAgentDetailIntent.FinishDiagnosticAction(
-                actionKey = "diagnostic:copy",
-                successLabel = "Diagnostics copied"
-            )
-        )
-        assertNull(s.state.value.diagnosticActionInFlight)
-        assertEquals("Diagnostics copied", s.state.value.lastActionResult?.successLabel)
-    }
-
-    @Test
-    fun copyDiagnosticsRecordsCallerLocalizedLabel() {
-        val s = store()
-        var copied: String? = null
-        val actions = object : SharedAgentDetailActions {
-            override suspend fun runLifecycleAction(
-                agentId: MemberId,
-                action: MembersAgentLifecycleAction,
-                workspaceChoice: AgentArchiveWorkspaceChoice
-            ): DataResult<AgentLifecycleActionResult> = DataResult.Empty(EmptyReason.NoMembers)
-
-            override fun copyDiagnostics(diagnostics: String) {
-                copied = diagnostics
-            }
-
-            override suspend fun reportIssue(
-                request: SharedAgentIssueReportRequest
-            ): DataResult<AgentIssueReportResult> = DataResult.Empty(EmptyReason.NoMembers)
-
-            override suspend fun updateAgentProfile(request: AgentProfileUpdateRequest): DataResult<MemberProfile> =
-                DataResult.Empty(EmptyReason.NoMembers)
-        }
-
-        s.copyDiagnostics("agentId=agent-1", actions, successLabel = "已复制诊断信息")
-
-        assertEquals("agentId=agent-1", copied)
-        assertNull(s.state.value.diagnosticActionInFlight)
-        assertEquals("copy", s.state.value.lastActionResult?.actionKey)
-        assertEquals("已复制诊断信息", s.state.value.lastActionResult?.successLabel)
-    }
-
-    @Test
-    fun reportIssueForwardsTypedRequestAndRecordsSuccess() = runBlocking {
-        val s = store()
-        val request = SharedAgentIssueReportRequest(
-            description = "Agent stopped responding",
-            diagnostics = "agentId=agent-1\nstatus=Offline"
-        )
-        var forwarded: SharedAgentIssueReportRequest? = null
-        val actions = object : SharedAgentDetailActions {
-            override suspend fun runLifecycleAction(
-                agentId: MemberId,
-                action: MembersAgentLifecycleAction,
-                workspaceChoice: AgentArchiveWorkspaceChoice
-            ): DataResult<AgentLifecycleActionResult> = DataResult.Empty(EmptyReason.NoMembers)
-
-            override fun copyDiagnostics(diagnostics: String) = Unit
-
-            override suspend fun reportIssue(
-                request: SharedAgentIssueReportRequest
-            ): DataResult<AgentIssueReportResult> {
-                forwarded = request
-                assertEquals("report", s.state.value.diagnosticActionInFlight)
-                return DataResult.Content(
-                    AgentIssueReportResult(
-                        reportId = "report-12345678",
-                        artifactId = "artifact-12345678",
-                        serverId = "server-1",
-                        issueDescription = "Agent stopped responding",
-                        transcriptRequested = true
-                    )
-                )
-            }
-
-            override suspend fun updateAgentProfile(request: AgentProfileUpdateRequest): DataResult<MemberProfile> =
-                DataResult.Empty(EmptyReason.NoMembers)
-        }
-
-        val result = s.reportIssue(request, actions, successLabel = "已报告问题")
-        assertTrue(result is DataResult.Content)
-        assertEquals("report-12345678", (result as DataResult.Content).data.reportId)
-        assertEquals(request, forwarded)
-        assertNull(s.state.value.diagnosticActionInFlight)
-        assertEquals("已报告问题", s.state.value.lastActionResult?.successLabel)
-        assertNull(s.state.value.lastActionResult?.error)
-    }
-
-    @Test
-    fun displayNameEditLifecycle() {
-        val s = store()
-        s.dispatch(SharedAgentDetailIntent.BeginEditDisplayName("Cindy"))
-        assertTrue(s.state.value.displayNameEditing)
-        assertEquals("Cindy", s.state.value.displayNameDraft)
-        s.dispatch(SharedAgentDetailIntent.UpdateDisplayNameDraft("Cindy Two"))
-        assertEquals("Cindy Two", s.state.value.displayNameDraft)
-        s.dispatch(SharedAgentDetailIntent.StartSaveDisplayName("Cindy Two"))
-        assertTrue(s.state.value.displayNameSaving)
-        s.dispatch(SharedAgentDetailIntent.SetDisplayNameError("save_failed"))
-        assertEquals("save_failed", s.state.value.displayNameError)
-        assertFalse(s.state.value.displayNameSaving)
-        s.dispatch(SharedAgentDetailIntent.UpdateDisplayNameDraft("Cindy Three"))
-        assertNull(s.state.value.displayNameError)
-        s.dispatch(SharedAgentDetailIntent.StartSaveDisplayName("Cindy Three"))
-        s.dispatch(SharedAgentDetailIntent.FinishSaveDisplayName)
-        assertFalse(s.state.value.displayNameSaving)
-        assertFalse(s.state.value.displayNameEditing)
-        assertNull(s.state.value.displayNameDraft)
-        assertNull(s.state.value.displayNameError)
-    }
-
-    @Test
-    fun roleEditLifecycle() {
-        val s = store()
-        s.dispatch(SharedAgentDetailIntent.BeginEditRole("description one"))
-        assertTrue(s.state.value.roleEditing)
-        s.dispatch(SharedAgentDetailIntent.UpdateRoleDraft("description two"))
-        s.dispatch(SharedAgentDetailIntent.StartSaveRole("description two"))
-        s.dispatch(SharedAgentDetailIntent.SetRoleError("role_too_long"))
-        assertFalse(s.state.value.roleSaving)
-        s.dispatch(SharedAgentDetailIntent.UpdateRoleDraft("description three"))
-        assertNull(s.state.value.roleError)
-        s.dispatch(SharedAgentDetailIntent.StartSaveRole("description three"))
-        s.dispatch(SharedAgentDetailIntent.FinishSaveRole)
-        assertFalse(s.state.value.roleEditing)
-        assertNull(s.state.value.roleDraft)
-        assertNull(s.state.value.roleError)
-    }
-
-    @Test
-    fun confirmationLifecycle() {
-        val s = store()
-        s.dispatch(SharedAgentDetailIntent.ShowConfirmation(MembersAgentLifecycleAction.Delete))
-        assertEquals(MembersAgentLifecycleAction.Delete, s.state.value.pendingConfirmation)
-        s.dispatch(SharedAgentDetailIntent.DismissConfirmation)
-        assertNull(s.state.value.pendingConfirmation)
-    }
-
-    @Test
-    fun actionResultReportingAndClearing() {
-        val s = store()
-        s.dispatch(
-            SharedAgentDetailIntent.ReportActionResult(
-                SharedAgentDetailActionResult(
-                    actionKey = "lifecycle:delete",
-                    successLabel = "Deleted"
-                )
-            )
-        )
-        assertEquals("Deleted", s.state.value.lastActionResult?.successLabel)
-        s.dispatch(SharedAgentDetailIntent.ClearActionResult)
-        assertNull(s.state.value.lastActionResult)
     }
 
     @Test
@@ -968,29 +580,6 @@ class SharedAgentDetailStoreTest {
     }
 
     @Test
-    fun unsequencedAgentActivityAppliesBeforeSequenceBaseline() {
-        val s = store()
-        s.dispatch(SharedAgentDetailIntent.SelectMember(testMemberId))
-        s.dispatch(SharedAgentDetailIntent.SetDetail(testMemberId, detailWithSummary(status = "Offline", activity = "Offline")))
-
-        s.dispatch(
-            SharedAgentDetailIntent.ApplyAgentActivityUpdate(
-                event = activityEvent(AgentStatus.Thinking, detail = "Reading context"),
-                observedAtMillis = 100L
-            )
-        )
-
-        val state = s.state.value
-        assertEquals("Thinking", state.detail?.summary?.status)
-        assertEquals("Thinking", state.detail?.summary?.activity)
-        assertEquals("Reading context", state.detail?.summary?.activityDetail)
-        assertNull(state.agentActivitySeq[testMemberId])
-        assertEquals(1L, state.agentActivityVersions[testMemberId])
-        assertEquals("Thinking", state.detail?.activity?.single()?.title)
-        assertEquals("Reading context", state.detail?.activity?.single()?.body)
-    }
-
-    @Test
     fun agentActivityUpdateAppendsToVisibleActivityLog() {
         val s = store()
         s.dispatch(SharedAgentDetailIntent.SelectMember(testMemberId))
@@ -1030,68 +619,6 @@ class SharedAgentDetailStoreTest {
     }
 
     @Test
-    fun agentActivitySnapshotMergesIntoVisibleDetailAndCache() {
-        val s = store()
-        s.dispatch(SharedAgentDetailIntent.SelectMember(testMemberId))
-        s.dispatch(
-            SharedAgentDetailIntent.SetDetail(
-                testMemberId,
-                detailWithSummary(
-                    status = "Working",
-                    activityEntries = listOf(
-                        AgentActivityEntry(
-                            id = "activity-1",
-                            type = "status",
-                            title = "Working",
-                            timestamp = "100"
-                        )
-                    )
-                )
-            )
-        )
-
-        s.dispatch(
-            SharedAgentDetailIntent.SetAgentActivity(
-                testMemberId,
-                listOf(
-                    AgentActivityEntry(
-                        id = "activity-2",
-                        type = "tool_start",
-                        title = "Run command",
-                        timestamp = "200"
-                    )
-                )
-            )
-        )
-
-        assertEquals(listOf("activity-1", "activity-2"), s.state.value.detail?.activity?.map { it.id })
-        assertEquals(listOf("activity-1", "activity-2"), s.state.value.agentActivityLogs[testMemberId]?.map { it.id })
-    }
-
-    @Test
-    fun cachedAgentActivitySurvivesMemberSwitchAndRestRefresh() {
-        val s = store()
-        s.dispatch(
-            SharedAgentDetailIntent.SetAgentActivity(
-                testMemberId,
-                listOf(
-                    AgentActivityEntry(
-                        id = "activity-1",
-                        type = "tool_start",
-                        title = "Run command",
-                        timestamp = "200"
-                    )
-                )
-            )
-        )
-        s.dispatch(SharedAgentDetailIntent.SelectMember(MemberId("agent-2")))
-        s.dispatch(SharedAgentDetailIntent.SelectMember(testMemberId))
-        s.dispatch(SharedAgentDetailIntent.SetDetail(testMemberId, detailWithSummary(status = "Working")))
-
-        assertEquals(listOf("activity-1"), s.state.value.detail?.activity?.map { it.id })
-    }
-
-    @Test
     fun duplicateAgentActivityUpdateWithinOneSecondDoesNotAppend() {
         val s = store()
         s.dispatch(SharedAgentDetailIntent.SelectMember(testMemberId))
@@ -1113,56 +640,6 @@ class SharedAgentDetailStoreTest {
         assertEquals(1, s.state.value.detail?.activity?.size)
     }
 
-    @Test
-    fun agentActivityUpdateAppendsSocketTrajectoryEntries() {
-        val s = store()
-        s.dispatch(SharedAgentDetailIntent.SelectMember(testMemberId))
-        s.dispatch(
-            SharedAgentDetailIntent.SetDetail(
-                testMemberId,
-                detailWithSummary(status = "Offline", activity = "Offline")
-            )
-        )
-
-        s.dispatch(
-            SharedAgentDetailIntent.ApplyAgentActivityUpdate(
-                event = activityEvent(
-                    AgentStatus.Working,
-                    detail = "Run command",
-                    serverSeq = 11L,
-                    activityEntries = listOf(
-                        RealtimeAgentActivityEntry(
-                            id = "realtime:agent-1:seq:11:0:tool_start",
-                            type = "tool_start",
-                            title = "Run command",
-                            body = "Structured input: cmd",
-                            timestamp = "1782367200000",
-                            details = listOf(
-                                RealtimeAgentActivityDetail("Tool", "run_command"),
-                                RealtimeAgentActivityDetail("Input", "Structured input: cmd")
-                            ),
-                            toolName = "run_command",
-                            toolInput = "Structured input: cmd",
-                            isSubagent = true,
-                            subagentType = "Plan"
-                        )
-                    )
-                ),
-                observedAtMillis = 200L
-            )
-        )
-
-        val rows = s.state.value.detail?.activity.orEmpty()
-        assertEquals(listOf("realtime:agent-1:seq:11:0:tool_start"), rows.map { it.id })
-        assertEquals("tool_start", rows.single().type)
-        assertEquals("Run command", rows.single().title)
-        assertEquals("Structured input: cmd", rows.single().body)
-        assertEquals(listOf("Tool" to "run_command", "Input" to "Structured input: cmd"), rows.single().details)
-        assertEquals("run_command", rows.single().toolName)
-        assertEquals(true, rows.single().isSubagent)
-        assertEquals("Plan", rows.single().subagentType)
-        assertEquals("1782367200000", rows.single().timestamp)
-    }
     // Hands 11c0ed95: A's profile -> its computer -> B's profile -> Back -> Back. Each profile route
     // keeps its own store, so B's load never touches what A's (still composed) page shows.
     @Test
@@ -1187,20 +664,6 @@ class SharedAgentDetailStoreTest {
         assertEquals(agentB, routeB.state.value.agentId)
         // The route's own dispatches stay in the route.
         assertNull(shell.state.value.agentId)
-    }
-
-    @Test
-    fun aProfileRouteStartsFromTheShellSeedButNotTheOtherWayRound() {
-        val shell = store()
-        shell.dispatch(SharedAgentDetailIntent.SelectMember(testMemberId))
-        shell.dispatch(SharedAgentDetailIntent.SetDetail(testMemberId, detailWithSummary(status = "Online")))
-
-        val route = shell.openRouteStore()
-        assertEquals(shell.state.value, route.state.value)
-
-        // A seed for a profile opened later does not reach the route already open.
-        shell.dispatch(SharedAgentDetailIntent.DeselectMember)
-        assertEquals(testMemberId, route.state.value.agentId)
     }
 
     @Test

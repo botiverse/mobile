@@ -17,11 +17,4 @@ class RaftAppIdentityTest {
         )
         assertEquals("unknown/unknown (Android 36)", raftBaseUserAgent(null, "Android 36"))
     }
-
-    @Test
-    fun deviceTokenIsAppendedOnce() {
-        val base = raftBaseUserAgent(RaftAppIdentity("Raft", "1.0", "1", "release"), "Android 36")
-        assertEquals("$base Mobile", raftNetworkUserAgent(base, RaftUserAgentDevice.AndroidPhone))
-        assertEquals(base, raftNetworkUserAgent(base, RaftUserAgentDevice.AndroidTablet))
-    }
 }

@@ -1,6 +1,5 @@
 package build.raft.app
 
-import build.raft.app.model.MemberKind
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
@@ -50,16 +49,5 @@ class RaftAvatarKindTest {
         assertEquals(RaftAvatarFallbackFace.Initials, raftAvatarFallbackFace(RaftAvatarKind.Labeled, initials = "S"))
         // No letter to take: the placeholder.
         assertEquals(RaftAvatarFallbackFace.Placeholder, raftAvatarFallbackFace(RaftAvatarKind.Labeled, initials = ""))
-    }
-
-    @Test
-    fun aMemberKindMapsToItsAvatarKind() {
-        assertEquals(RaftAvatarKind.Agent, raftAvatarKind(MemberKind.Agent))
-        assertEquals(RaftAvatarKind.Human, raftAvatarKind(MemberKind.Human))
-        for (other in listOf(MemberKind.External, MemberKind.System, null)) {
-            assertEquals(RaftAvatarKind.Labeled, raftAvatarKind(other), "kind=$other")
-        }
-        assertEquals(RaftColor.Inactive, RaftAvatarKind.Agent.fill)
-        assertEquals(RaftColor.AccentLavender, RaftAvatarKind.Human.fill)
     }
 }

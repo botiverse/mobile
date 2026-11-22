@@ -18,6 +18,31 @@ internal fun serverRoleCanMigrateAgents(role: String?): Boolean =
     role == "owner" || role == "admin"
 
 /**
+ * `manageExternalAuth` (botiverse/slock 5828cdce3e serverPermissions.ts: every admin capability
+ * but billing, SSO and data export, so owner and admin): approving, denying, granting and revoking
+ * an App's access to an agent, with the agent's human creator (routes/integrations.ts `canManageAgentAccess`).
+ */
+internal fun serverRoleCanManageExternalAuth(role: String?): Boolean =
+    when (role?.trim()?.lowercase()) {
+        "owner", "admin" -> true
+        else -> false
+    }
+
+/**
+ * Web AgentDetailPanel `canManageAgentAccess` = `canViewAgentPrivateSurfaces(agent, user,
+ * capabilities.manageExternalAuth)`: the capability, or the agent's creator when a person created it.
+ * (The server also lets a personal assistant's owner only; it refuses anyone else with a 403.)
+ */
+internal fun canManageAgentAppAccess(
+    serverRole: String?,
+    currentUserId: String?,
+    creatorType: String?,
+    creatorId: String?,
+): Boolean =
+    serverRoleCanManageExternalAuth(serverRole) ||
+        (!currentUserId.isNullOrBlank() && creatorType == "user" && creatorId == currentUserId)
+
+/**
  * Web `canStopTurn` for a Computer agent: the controlAgentRuntime capability
  * or creator authority, on a live (not archived) agent that is online. Cloud
  * (external) agents are left out: mobile does not model their hosted runtime

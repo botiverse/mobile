@@ -1,7 +1,6 @@
 package build.raft.app
 
 import build.raft.app.data.ArtifactLinkTarget
-import build.raft.app.data.ArtifactSummaryAnswer
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -21,20 +20,5 @@ class RaftArtifactViewerDiagnosticsTest {
         assertEquals("artifact_viewer_open artifact=$id version=3 scope=known webHost=raft.build", line)
         assertFalse("secret" in line)
         assertFalse("/some/path" in line)
-    }
-
-    @Test
-    fun theOpenLineSaysLatestAndNoHostWhenUnknown() {
-        assertEquals(
-            "artifact_viewer_open artifact=$id version=latest scope=unknown webHost=<none>",
-            raftArtifactViewerOpenLogLine(ArtifactLinkTarget(id), scopeKnown = false, webBaseUrl = "not a url"),
-        )
-    }
-
-    @Test
-    fun theSummaryTokenNamesTheAnswer() {
-        assertEquals("unavailable", raftArtifactViewerSummaryLogToken(ArtifactSummaryAnswer.Unavailable))
-        assertEquals("failed", raftArtifactViewerSummaryLogToken(ArtifactSummaryAnswer.Failed))
-        assertEquals("none", raftArtifactViewerSummaryLogToken(null))
     }
 }

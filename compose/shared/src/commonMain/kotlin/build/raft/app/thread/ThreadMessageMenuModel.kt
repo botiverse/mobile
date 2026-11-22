@@ -443,7 +443,8 @@ internal fun threadTaskStatusMenuIcon(isDone: Boolean): RaftLucideIconName =
  * with web MessageItem's context menu (botiverse/slock 9be029411):
  *  - quick reactions, and the reaction row's trailing Add Reaction (full picker): `!isSystem && canReact`
  *  - Select Message: not system, not a guest
- *  - Reply in Thread: `!hideThreadActions`
+ *  - Reply in Thread: `!hideThreadActions`; the menu also drops it once the message shows its
+ *    thread ([threadMessageMenuShowsReplyInThread]), the hover toolbar keeps it
  *  - Forward: `showForwardAction` (non-guest, source channel) and `getForwardableMessages`
  *  - Follow/Unfollow: `canShowThreadFollowAction && hasThreadConversation`
  *  - Mark as Done/Reopen and Convert to Task: never for external senders
@@ -528,13 +529,6 @@ internal fun threadMessageMenuCapabilities(
     slice: ThreadTimelineSlice,
     writeActionsEnabled: Boolean,
     translate: ThreadMessageMenuTranslateState = ThreadMessageMenuTranslateState.Hidden,
-    taskConvertPending: Boolean = false,
-    /**
-     * `task_v2_conversations_v0` (web MessageItem menu): a message's tasks are its list, never a
-     * single linked task, so there is no Mark as Done / Reopen here, and "Create Task from Message"
-     * replaces "Convert to Task" — offered on a message that already has tasks too.
-     */
-    taskV2Enabled: Boolean = false,
     /** The open reply thread's origin reply facts (its thread channel, followed), for Mark Thread as Unread. */
     originReplyMetadata: ThreadReplyMetadata? = null
 ): ThreadMessageMenuCapabilities {
@@ -573,26 +567,57 @@ internal fun threadMessageMenuCapabilities(
                 !localSend &&
                 threadFollowSurface &&
                 shouldShowThreadFollowAction(message, replyMetadata),
-        taskStatus =
-            !taskV2Enabled &&
-                slice.showTaskStatusActions &&
-                !localSend &&
-                !external &&
-                !message.taskId.isNullOrBlank(),
+        // Task v2 (web MessageItem menu): a message's tasks are its list, never a single linked task,
+        // so there is no Mark as Done / Reopen here, and "Create Task from Message" replaces "Convert
+        // to Task" — offered on a message that already has tasks too.
+        taskStatus = false,
         convertToTask =
             slice.canConvertMessagesToTasks &&
-                !taskConvertPending &&
                 !external &&
                 !cutBody &&
-                if (taskV2Enabled) message.canCreateTaskFromMessage() else message.canConvertToTask(),
+                message.canCreateTaskFromMessage(),
         cancelLocalSend = writeActionsEnabled && message.isSendingLocalSend(),
         deleteLocalSend = writeActionsEnabled && message.isFailedLocalSend(),
-        createTaskFromMessage = taskV2Enabled,
+        createTaskFromMessage = true,
         markThreadUnreadChannelId =
             if (localSend) null else threadMessageMarkThreadUnreadChannelId(slice, replyMetadata, originReplyMetadata),
         markConversationUnread = if (localSend) null else threadListMarkConversationUnreadKind(slice),
         copyText = !cutBody
     )
+}
+
+/**
+ * botiverse/slock #15524 (web MessageItem `showMenuReplyInThread`): the message menu (long press,
+ * right click, the hover toolbar's More) offers Reply in Thread only while the message does not
+ * show its thread. Its inline replies, or else its replies badge (replies or a reply draft), open
+ * that thread already; both are read here as the message's row draws them. Where the menu never
+ * offers it ([ThreadMessageMenuCapabilities.reply]: a reply thread, on a phone's thread page or in a
+ * wide layout's side panel, or a task conversation), it stays out. The hover toolbar keeps its
+ * Reply button ([ThreadMessageHoverToolbarActions.reply]).
+ */
+internal fun threadMessageMenuShowsReplyInThread(
+    capabilities: ThreadMessageMenuCapabilities,
+    message: RaftThreadMessageItem,
+    replyMetadata: ThreadReplyMetadata,
+    slice: ThreadTimelineSlice,
+    hasReplyDraft: Boolean,
+): Boolean {
+    if (!capabilities.reply) return false
+    val inlineReplies =
+        threadInlineReplyPresentationForMessage(
+            model = message.inlineReplies,
+            replyMetadata = replyMetadata,
+            hasDraft = hasReplyDraft,
+            showReplyAction = slice.showReplyActions,
+        )
+    val repliesBadge =
+        threadRepliesBadgeSpec(
+            replyMetadata = replyMetadata,
+            hasDraft = hasReplyDraft,
+            showReplyAction = slice.showReplyActions,
+            hasInlineReplies = inlineReplies != null,
+        )
+    return inlineReplies == null && repliesBadge == null
 }
 
 /**
@@ -631,6 +656,8 @@ internal fun threadMessageMenuActions(
     showMarkThreadUnreadAction: Boolean = false,
     /** botiverse/slock #14222: the list's "Mark channel/DM as unread", last of the just-for-me section. */
     markConversationUnread: ThreadMarkConversationUnreadKind? = null,
+    /** web MessageItem "Quote" (quote_reply_v0): the message quoted into this page's composer, after Reply in Thread. */
+    showQuoteAction: Boolean = false,
     /**
      * A right-click menu opened over selected text in the message: "Copy" copies it, first in the
      * copy group (web: the browser's own Copy). Null otherwise (long press, nothing selected).
@@ -656,6 +683,7 @@ internal fun threadMessageMenuActions(
     onMarkConversationUnread: () -> Unit = {},
     /** Downloads the message's video ([threadMessageMenuDownloadVideoAttachmentId]); null hides it. */
     onDownloadVideo: (() -> Unit)? = null,
+    onQuote: () -> Unit = {},
     /** Share loop: Share (the system share sheet), after Forward; null (the loop off) hides it. */
     onShare: (() -> Unit)? = null
 ): List<ThreadMessageMenuAction> =
@@ -673,6 +701,9 @@ internal fun threadMessageMenuActions(
         }
         if (showReplyAction) {
             add(ThreadMessageMenuAction(Res.string.thread_action_reply_in_thread.desc(), RaftLucideIconName.Thread, "message", onClick = onReply))
+        }
+        if (showQuoteAction && copyText) {
+            add(ThreadMessageMenuAction(Res.string.thread_action_quote.desc(), RaftLucideIconName.TextQuote, "message", onClick = onQuote))
         }
         val followThreadChannelId = replyMetadata.threadChannelId?.takeIf { it.isNotBlank() }
         if (showFollowAction && shouldShowThreadFollowAction(message, replyMetadata)) {

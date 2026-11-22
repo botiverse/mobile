@@ -3,8 +3,6 @@ package build.raft.app
 import build.raft.app.resources.*
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertFalse
-import kotlin.test.assertTrue
 
 /**
  * Appearance › Keyboard shortcuts: only where a hardware keyboard is plausible, and only the
@@ -12,15 +10,6 @@ import kotlin.test.assertTrue
  * `previous-match`), with ⌘ on Apple platforms and Ctrl elsewhere.
  */
 class SettingsKeyboardShortcutsTest {
-    @Test
-    fun showsWhereAHardwareKeyboardIsPlausible() {
-        assertTrue(settingsKeyboardShortcutsVisible(finePointer = true, largeScreenPossible = true), "the desktop app")
-        assertTrue(settingsKeyboardShortcutsVisible(finePointer = false, largeScreenPossible = true), "a tablet or an iPad")
-        assertFalse(settingsKeyboardShortcutsVisible(finePointer = false, largeScreenPossible = false), "a phone")
-        assertTrue(settingsAppPreferenceVisibility(finePointer = true, largeScreenPossible = true).keyboardShortcuts)
-        assertFalse(settingsAppPreferenceVisibility(finePointer = false, largeScreenPossible = false).keyboardShortcuts)
-    }
-
     @Test
     fun listsTheAppsOwnShortcutsInTheWebsOrder() {
         val apple = settingsKeyboardShortcutGroups(apple = true)

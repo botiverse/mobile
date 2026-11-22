@@ -120,6 +120,7 @@ LUCIDE_ICONS = [
     "menu",
     "eraser",
     "external-channel",
+    "external-channel-private",
     "external-link",
     "eye",
     "eye-off",
@@ -254,6 +255,7 @@ LUCIDE_ICONS = [
     "plug",
     "plus",
     "presentation",
+    "public-page-channel",
     "refresh-cw",
     "reopen-task",
     "artifact",
@@ -276,6 +278,8 @@ LUCIDE_ICONS = [
     "shield",
     "shield-alert",
     "shield-check",
+    "slack-channel",
+    "slack-channel-private",
     "sliders-horizontal",
     "smartphone",
     "smile-plus",
@@ -286,6 +290,7 @@ LUCIDE_ICONS = [
     "square-terminal",
     "store",
     "terminal",
+    "text-align-start",
     "text-quote",
     "timer-reset",
     "thread",
@@ -336,10 +341,25 @@ CUSTOM_ICONS = {
     "unfollow-artifact": os.path.join(RAFT_UI_ICON_SOURCE_DIR, "unfollow-artifact.svg"),
     "message": os.path.join(RAFT_UI_ICON_SOURCE_DIR, "message.svg"),
     "direct-message": os.path.join(RAFT_UI_ICON_SOURCE_DIR, "direct-message.svg"),
-    # The web's External channel glyph (botiverse/slock packages/web/src/components/channel/
-    # channelKindIcon.tsx EXTERNAL_CHANNEL_PATH): lucide's lock shrunk into the top-left cells
-    # with an arrow out of the bottom-right corner, one path.
+    # The web's channel kind glyphs (botiverse/slock 6b0965841, #16060,
+    # packages/web/src/components/channel/channelKindIcon.tsx; raft-design channel.md): the glyph
+    # is the widest group that can read the channel, and the corner holds only the lock, for a
+    # channel private in the server. Copied path for path:
+    # - external-channel: people outside the server can read it, lucide's users-round as one
+    #   path (USERS_PATH, stroked);
+    # - external-channel-private: the same with the corner lock (EXTERNAL_PRIVATE_CHANNEL_PATH);
+    # - public-page-channel: anyone on the web can read it, lucide's globe as one path
+    #   (GLOBE_PATH, stroked);
+    # - slack-channel / slack-channel-private: the Slack mark at the size of Lucide's glyphs
+    #   (3 to 21), and with the corner lock (SLACK_PATH / SLACK_LOCK_PATH).
+    # A glyph with the corner lock keeps its size and place, the lock sits in the bottom-right
+    # cell (14 to 22), the glyph cut 1.6 short of it; drawn as one filled outline path
+    # (fill-rule evenodd).
     "external-channel": os.path.join(RAFT_UI_ICON_SOURCE_DIR, "external-channel.svg"),
+    "external-channel-private": os.path.join(RAFT_UI_ICON_SOURCE_DIR, "external-channel-private.svg"),
+    "public-page-channel": os.path.join(RAFT_UI_ICON_SOURCE_DIR, "public-page-channel.svg"),
+    "slack-channel": os.path.join(RAFT_UI_ICON_SOURCE_DIR, "slack-channel.svg"),
+    "slack-channel-private": os.path.join(RAFT_UI_ICON_SOURCE_DIR, "slack-channel-private.svg"),
 }
 
 BRAND_SVGS = {
@@ -1418,6 +1438,14 @@ def main():
         )
     if "shared" in targets:
         ok &= generate_shared_catalog(icons, os.path.abspath(args.shared_catalog_output), check=args.check)
+    if args.check:
+        # The iOS native bars draw these glyphs from the asset catalog (`lucide-<name>`).
+        try:
+            validate_ios_assets(LUCIDE_ICONS, os.path.abspath(args.ios_asset_catalog))
+            print(f"up to date: {args.ios_asset_catalog} covers the manifest")
+        except RuntimeError as error:
+            print(f"OUT OF DATE: {error}")
+            ok = False
     if "brand-assets" in targets:
         generate_brand_assets(
             os.path.abspath(args.shared_asset_output),

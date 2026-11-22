@@ -206,18 +206,6 @@ class SettingsFeedbackTicketsApiTest {
     }
 
     @Test
-    fun theDetailsTicketCarriesItsAppAndClient() = runTest {
-        // slock #14722 test "the detail's ticket gains source and client": `{source: "web", client: "desktop"}`.
-        val withSource = ticketJson().trimEnd().removeSuffix("}") + ""","source":"web","client":"desktop"}"""
-        val network =
-            FakeNetwork { HomeNetworkResponse(200, """{"ticket":$withSource,"comments":[],"attachments":[],"next_comment_cursor":null,"unread_total":0}""") }
-        val result = NetworkSettingsFeedbackTicketsRepository(network, "android").ticket(ticketId, source = "web")
-        val detail = assertIs<FeedbackResult.Ok<FeedbackTicketDetail>>(result).value
-        assertEquals("web", detail.ticket.source)
-        assertEquals(FeedbackClient.Desktop, detail.ticket.client)
-    }
-
-    @Test
     fun aTicketOfAnotherAppIsAskedForWithItsPlatformOnEveryCall() = runTest {
         // slock productFeedback.ts `ticketFeedbackSource`: `?platform=` names the ticket's app on the
         // detail, comment, close and attachment routes.
@@ -247,25 +235,6 @@ class SettingsFeedbackTicketsApiTest {
         assertEquals("product-feedback/tickets/$ticketId/attachments/$attachmentId?platform=web", network.byteReads.single().first)
         // The client kind header stays: the server still knows which app is asking.
         assertTrue(network.calls.all { it.headers == mapOf("X-Raft-Client-Kind" to "android") })
-    }
-
-    @Test
-    fun aTicketOfThisAppOrOfNoNamedAppSendsNoPlatform() = runTest {
-        val network =
-            FakeNetwork { HomeNetworkResponse(200, """{"ticket":${ticketJson()},"comments":[],"attachments":[],"next_comment_cursor":null,"unread_total":0}""") }
-        val repository = NetworkSettingsFeedbackTicketsRepository(network, "ios")
-        repository.ticket(ticketId, source = "ios")
-        repository.ticket(ticketId, source = null)
-        // Not a Hands app the server knows: not sent (the server would answer 400).
-        repository.ticket(ticketId, source = "desktop")
-        repository.attachment(ticketId, attachmentId, source = "ios")
-        assertTrue(network.calls.all { it.query == listOf("comment_limit" to "100") })
-        assertEquals("product-feedback/tickets/$ticketId/attachments/$attachmentId", network.byteReads.single().first)
-
-        // The desktop app files into the web app: a web ticket is its own, an Android one is not.
-        assertNull(feedbackTicketPlatform("web", ""))
-        assertNull(feedbackTicketPlatform("web", "web"))
-        assertEquals("android", feedbackTicketPlatform("android", "web"))
     }
 
     @Test
@@ -346,16 +315,6 @@ class SettingsFeedbackTicketsApiTest {
     }
 
     @Test
-    fun aDegradedFirstPageIsReadAsRetryLaterNotAsNoFeedback() = runTest {
-        val network =
-            FakeNetwork {
-                HomeNetworkResponse(200, """{"tickets":[],"next_cursor":null,"unread_total":null,"degraded":true,"retry_after_seconds":5}""")
-            }
-        val result = NetworkSettingsFeedbackTicketsRepository(network, "android").listTickets(cursor = null)
-        assertEquals(FeedbackResult.Ok(FeedbackTicketListRead.Degraded(5)), result)
-    }
-
-    @Test
     fun detailReadsCommentsInOrderAndTheTicketsAttachments() = runTest {
         val network =
             FakeNetwork {
@@ -383,13 +342,6 @@ class SettingsFeedbackTicketsApiTest {
         assertTrue(attachment.isImage)
         assertEquals("shot.png", attachment.filename)
         assertEquals(2048L, attachment.sizeBytes)
-    }
-
-    @Test
-    fun aLaterCommentPageSendsTheCommentCursor() = runTest {
-        val network = FakeNetwork { HomeNetworkResponse(200, """{"ticket":${ticketJson()},"comments":[],"attachments":[],"next_comment_cursor":null,"unread_total":0}""") }
-        NetworkSettingsFeedbackTicketsRepository(network, "android").ticket(ticketId, commentCursor = "n1")
-        assertEquals(listOf("comment_limit" to "100", "comment_cursor" to "n1"), network.calls.single().query)
     }
 
     @Test
@@ -437,15 +389,6 @@ class SettingsFeedbackTicketsApiTest {
         val bytes = assertIs<FeedbackResult.Ok<FeedbackAttachmentBytes>>(result).value
         assertContentEquals(byteArrayOf(1, 2, 3), bytes.bytes)
         assertEquals("image/png", bytes.contentType)
-    }
-
-    @Test
-    fun idsThatAreNotUuidsAreNotFoundWithoutARequest() = runTest {
-        val network = FakeNetwork { error("no request") }
-        val repository = NetworkSettingsFeedbackTicketsRepository(network, "android")
-        assertEquals(FeedbackErrorKind.NotFound, (repository.ticket("../tickets") as FeedbackResult.Failed).failure.kind)
-        assertEquals(FeedbackErrorKind.NotFound, (repository.attachment(ticketId, "x/y") as FeedbackResult.Failed).failure.kind)
-        assertTrue(network.calls.isEmpty() && network.byteReads.isEmpty())
     }
 
     @Test

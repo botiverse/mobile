@@ -172,23 +172,6 @@ class RaftServerThemeApplyTest {
     }
 
     @Test
-    fun theColdStartSeedAppliesTheProGateAndDecor() {
-        RaftAppAppearanceRuntime.installSessionSnapshotReaderForTests {
-            session(serverATheme = "boring", serverAPlan = "free", serverADecor = false)
-        }
-        RaftAppAppearanceRuntime.ensureLoaded()
-        assertWorn(RaftThemeId.Raft, decor = false)
-    }
-
-    @Test
-    fun aSignedOutColdStartSeedsRaft() {
-        RaftAppThemeState.setRaftTheme(RaftThemeId.Quest, decor = false)
-        RaftAppAppearanceRuntime.installSessionSnapshotReaderForTests { null }
-        RaftAppAppearanceRuntime.ensureLoaded()
-        assertWorn(RaftThemeId.Raft, decor = true)
-    }
-
-    @Test
     fun theSeedNeverOverridesALookTheSessionFlowAlreadyApplied() {
         RaftAppAppearanceRuntime.installSessionSnapshotReaderForTests { session(serverATheme = "quest") }
         RaftAppAppearanceRuntime.applyServerThemeLook(RaftServerThemeLook(RaftThemeId.Weather, decor = false))

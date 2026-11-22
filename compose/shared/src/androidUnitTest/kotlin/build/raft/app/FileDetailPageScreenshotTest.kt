@@ -42,20 +42,7 @@ class FileDetailPageScreenshotTest {
     fun downloadingLight() = capture("file.detail.downloading", RaftAppAppearance.Light, FileDetailState.Downloading)
 
     @Test
-    fun downloadingDark() = capture("file.detail.downloading.dark", RaftAppAppearance.Dark, FileDetailState.Downloading)
-
-    @Test
     fun doneLight() = capture("file.detail.done", RaftAppAppearance.Light, FileDetailState.Done)
-
-    @Test
-    fun doneDark() = capture("file.detail.done.dark", RaftAppAppearance.Dark, FileDetailState.Done)
-
-    /** Compose 版 after the save panel: Show in Finder, Open, and where it went. */
-    @Test
-    fun desktopSavedLight() = capture("file.detail.desktop-saved", RaftAppAppearance.Light, FileDetailState.DesktopSaved)
-
-    @Test
-    fun desktopSavedDark() = capture("file.detail.desktop-saved.dark", RaftAppAppearance.Dark, FileDetailState.DesktopSaved)
 
     private fun capture(name: String, appearance: RaftAppAppearance, state: FileDetailState) =
         RaftRobolectricScreenshot.capture(name, appearance, reportDir = "build/reports/home-screenshots", activities = activities) {

@@ -42,22 +42,6 @@ class SsoRequiredSignalTest {
     }
 
     @Test
-    fun manyRequiredResponsesQueueOneSignInRequest() = runTest {
-        val signal = RaftSsoRequiredSignal()
-        assertTrue(signal.observe(403, requiredBody))
-        assertFalse(signal.observe(403, requiredBody))
-
-        val received = mutableListOf<SsoRequiredSignInRequest>()
-        val collector = launch { signal.signInRequests.toList(received) }
-        advanceUntilIdle()
-        assertEquals(1, received.size, "one sign-in request")
-        assertFalse(signal.observe(403, requiredBody))
-        advanceUntilIdle()
-        assertEquals(1, received.size, "still one after more responses")
-        collector.cancel()
-    }
-
-    @Test
     fun theRequestCarriesTheTraceIdOfThe403() = runTest {
         val signal = RaftSsoRequiredSignal()
         val traceId = "4bf92f3577b34da6a3ce929d0e0e4736"

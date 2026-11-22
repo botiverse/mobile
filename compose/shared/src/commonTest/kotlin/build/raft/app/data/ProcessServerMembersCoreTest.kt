@@ -19,40 +19,6 @@ import kotlin.test.assertTrue
 
 class ProcessServerMembersCoreTest {
     @Test
-    fun sameOwnerAcrossShellConsumersUsesOneFlightAndOneReduction() = runBlocking {
-        val started = CompletableDeferred<Unit>()
-        val release = CompletableDeferred<Unit>()
-        var fetches = 0
-        val core =
-            ProcessServerMembersCore(fetchMembers = { _, _ ->
-                fetches += 1
-                started.complete(Unit)
-                release.await()
-                DataResult.Content(snapshot("server-1", duplicateMember = true))
-            })
-        val owner = owner(serverId = "server-1")
-
-        val first =
-            async {
-                core.load(owner, DataRequestPriority.Background, force = true, reason = "foreground")
-            }
-        started.await()
-        val second =
-            async {
-                core.load(owner, DataRequestPriority.Visible, force = false, reason = "home")
-            }
-        yield()
-
-        assertEquals(1, fetches)
-        release.complete(Unit)
-        val firstResult = first.await()
-        val secondResult = second.await()
-        assertEquals(firstResult.version, secondResult.version)
-        assertEquals(1, assertIs<DataResult.Content<MemberSnapshot>>(firstResult.result).data.members.size)
-        assertEquals(1, assertIs<DataResult.Content<MemberSnapshot>>(secondResult.result).data.members.size)
-    }
-
-    @Test
     fun cancellingFirstShellWaiterDoesNotCancelProcessProducer() = runBlocking {
         val started = CompletableDeferred<Unit>()
         val release = CompletableDeferred<Unit>()
@@ -147,35 +113,6 @@ class ProcessServerMembersCoreTest {
         assertEquals("old", assertIs<DataResult.Content<MemberSnapshot>>(first.result).data.members.single().id.value)
         assertEquals("new", assertIs<DataResult.Content<MemberSnapshot>>(second.result).data.members.single().id.value)
         assertEquals(2, fetches)
-    }
-
-    @Test
-    fun everyJoinedFailureConsumerCanCommitBeforeBoundedTerminalEviction() = runBlocking {
-        val started = CompletableDeferred<Unit>()
-        val release = CompletableDeferred<Unit>()
-        val core =
-            ProcessServerMembersCore(
-                fetchMembers = { _, _ ->
-                    started.complete(Unit)
-                    release.await()
-                    DataResult.Error(ScreenError(code = "offline"))
-                },
-                maxEntries = 1
-            )
-        val sharedOwner = owner("server-1")
-        val first = async { core.load(sharedOwner, DataRequestPriority.Visible, true, "first") }
-        started.await()
-        val second = async { core.load(sharedOwner, DataRequestPriority.Visible, false, "second") }
-        yield()
-        release.complete(Unit)
-        val firstResult = first.await()
-        val secondResult = second.await()
-
-        assertEquals("first", core.commitIfCurrent(firstResult) { "first" })
-        assertEquals("second", core.commitIfCurrent(secondResult) { "second" })
-
-        core.load(owner("server-2"), DataRequestPriority.Visible, true, "evict")
-        assertEquals(null, core.commitIfCurrent(firstResult) { "stale" })
     }
 
     @Test

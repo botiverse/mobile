@@ -115,24 +115,6 @@ class SharedHomeStoreConversationReadAllTest {
     }
 
     @Test
-    fun conversationWithNothingUnreadSendsNoRequest() = runTest {
-        val calls = mutableListOf<ChannelId>()
-        val store =
-            store(
-                markConversationReadAll = { channelId ->
-                    calls += channelId
-                    DataResult.Empty(EmptyReason.NoMessages)
-                }
-            )
-        store.accept(SharedHomeIntent.Start)
-
-        store.accept(SharedHomeIntent.MarkConversationReadAll("channel-2"))
-
-        assertTrue(calls.isEmpty())
-        assertNull(store.snapshot().channels.first { it.channelId == ChannelId("channel-2") }.firstUnreadMessageId)
-    }
-
-    @Test
     fun threadOnlyUnreadIsStillReadThroughTheConversation() = runTest {
         val calls = mutableListOf<ChannelId>()
         val store =

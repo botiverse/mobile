@@ -45,34 +45,7 @@ class LeaveChannelScreenshotTest {
     fun menuLight() = menu("home.leave-channel.menu", RaftAppAppearance.Light)
 
     @Test
-    @Config(qualifiers = "w390dp-h440dp-xxhdpi")
-    fun menuDark() = menu("home.leave-channel.menu.dark", RaftAppAppearance.Dark)
-
-    @Test
     fun publicLight() = dialog("home.leave-channel.dialog.public", RaftAppAppearance.Light, LeaveChannelConfirmVariant.Public)
-
-    @Test
-    fun publicDark() = dialog("home.leave-channel.dialog.public.dark", RaftAppAppearance.Dark, LeaveChannelConfirmVariant.Public)
-
-    @Test
-    fun privateLight() = dialog("home.leave-channel.dialog.private", RaftAppAppearance.Light, LeaveChannelConfirmVariant.Private)
-
-    @Test
-    fun privateDark() = dialog("home.leave-channel.dialog.private.dark", RaftAppAppearance.Dark, LeaveChannelConfirmVariant.Private)
-
-    @Test
-    fun jointLight() = dialog("home.leave-channel.dialog.joint", RaftAppAppearance.Light, LeaveChannelConfirmVariant.Joint)
-
-    @Test
-    fun jointDark() = dialog("home.leave-channel.dialog.joint.dark", RaftAppAppearance.Dark, LeaveChannelConfirmVariant.Joint)
-
-    @Test
-    fun lastMemberLight() =
-        dialog("home.leave-channel.dialog.last-member", RaftAppAppearance.Light, LeaveChannelConfirmVariant.LastMember)
-
-    @Test
-    fun lastMemberDark() =
-        dialog("home.leave-channel.dialog.last-member.dark", RaftAppAppearance.Dark, LeaveChannelConfirmVariant.LastMember)
 
     private fun menu(name: String, appearance: RaftAppAppearance) =
         RaftRobolectricScreenshot.capture(name, appearance, reportDir = "build/reports/home-screenshots", activities = activities) {

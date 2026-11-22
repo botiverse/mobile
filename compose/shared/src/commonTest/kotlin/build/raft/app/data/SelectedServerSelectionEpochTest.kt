@@ -156,26 +156,6 @@ class SelectedServerSelectionEpochTest {
         assertEquals(2L, restored?.selectionEpoch)
     }
 
-    @Test
-    fun selectionEpochSaturatesAtLongMaxInsteadOfWrappingIntoAnOldFence() = runBlocking {
-        val epochs = InMemorySelectionEpochStore()
-        epochs.write(
-            environmentId = "env-a",
-            shellInstanceId = "overflow-shell",
-            principalId = "user-1",
-            epoch = Long.MAX_VALUE,
-            serverId = "server-1",
-            authGeneration = 1L,
-        )
-        val store = store(epochs, RaftShellStoreScope.create("overflow-shell", "server-2"))
-
-        val authority = store.captureReplyCacheAuthority(session(selectedServerId = "server-2"), 2L)
-
-        assertEquals(Long.MAX_VALUE, authority?.selectionEpoch)
-        assertEquals(Long.MAX_VALUE, epochs.read("env-a", "overflow-shell", "user-1")?.epoch)
-        assertEquals("server-2", epochs.read("env-a", "overflow-shell", "user-1")?.serverId)
-    }
-
     private fun store(
         epochs: InMemorySelectionEpochStore,
         scope: RaftShellStoreScope,

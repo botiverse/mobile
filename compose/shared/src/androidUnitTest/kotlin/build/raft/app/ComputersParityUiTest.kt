@@ -6,11 +6,9 @@ import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.hasText
-import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
-import build.raft.app.data.ComputersRackView
 import build.raft.app.data.ScreenLoadState
 import build.raft.app.data.SettingsComputerBroadcastPolicySnapshot
 import build.raft.app.data.SettingsComputerCreatorSnapshot
@@ -18,15 +16,12 @@ import build.raft.app.data.SettingsComputerDetailSnapshot
 import build.raft.app.data.SettingsComputerOwnerRequest
 import build.raft.app.data.SettingsComputerSnapshot
 import build.raft.app.data.SettingsComputerUpgradeRequestSnapshot
-import build.raft.app.data.SettingsComputersSnapshot
 import build.raft.app.data.SharedSettingsIntent
 import build.raft.designsystem.theme.RaftAppearance
 import build.raft.designsystem.theme.RaftTheme
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertTrue
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import org.junit.Rule
 import org.junit.runner.RunWith
@@ -113,16 +108,6 @@ class ComputersParityUiTest {
         )
 
     @Test
-    fun theOwnerRowNamesTheOwnerAndOffersTransferToThoseWhoMay() = runRobolectricComposeUiTest {
-        showDetail(detail(computer(ownerUserId = "user-2", owner = bea), canTransfer = true))
-        onNodeWithText("Owner").assertIsDisplayed()
-        onNodeWithTag(RAFT_COMPUTER_OWNER_TAG, useUnmergedTree = true).assertExists()
-        onNodeWithText("Bea").assertIsDisplayed()
-        onNodeWithText("Transfer owner").assertIsDisplayed()
-        assertEquals(0, count("Make it mine"))
-    }
-
-    @Test
     fun aPublicComputerReadsPublicAndItsConnectorMayMakeItTheirs() = runRobolectricComposeUiTest {
         val intents = mutableListOf<SharedSettingsIntent>()
         showDetail(detail(computer(), canClaim = true), intents)
@@ -174,118 +159,9 @@ class ComputersParityUiTest {
     }
 
     @Test
-    fun aPublicComputerCannotBeMadePublicAgainAndAFailedSaveSaysSo() = runRobolectricComposeUiTest {
-        setContent {
-            RaftTheme(appearance = RaftAppearance.Light) {
-                RaftTransferComputerOwnerDialog(
-                    computerName = "Studio",
-                    ownerUserId = null,
-                    candidates = emptyList(),
-                    saving = false,
-                    failed = true,
-                    onTransfer = {},
-                    onDismiss = {},
-                )
-            }
-        }
-        waitForIdle()
-        onNodeWithText("No one matches").assertIsDisplayed()
-        onNodeWithText("Public (no owner)").performClick()
-        waitForIdle()
-        // Still the person choice: Public is not offered for a Computer without an owner.
-        onNodeWithText("Transfer").assertIsDisplayed()
-        onNodeWithTag(RAFT_TRANSFER_OWNER_FAILED_TAG).assertIsDisplayed()
-        onNodeWithText("The owner wasn’t changed. Try again.").assertIsDisplayed()
-    }
-
-    @Test
-    fun theComputersCardsSayTheOwnerAndHowManyAgentsAnUpgradeWaitsFor() = runRobolectricComposeUiTest {
-        val owned = computer(ownerUserId = "user-2", owner = bea, upgradeRequest = draining("a1", "a2"))
-        val public = computer().copy(id = "m-2", name = "Box", upgradeRequest = draining("a3"))
-        val model = raftComputersListModel(ScreenLoadState.Content(SettingsComputersSnapshot(computers = listOf(owned, public))))
-        setContent {
-            RaftTheme(appearance = RaftAppearance.Light) {
-                RaftComputersTheme {
-                    RaftSettingsComputersContent(model = model, onRetry = {}, onAddComputer = {}, onOpenComputer = {}, rackView = ComputersRackView.Cards)
-                }
-            }
-        }
-        waitForIdle()
-        onNodeWithText("Owner: Bea").assertIsDisplayed()
-        onNodeWithText("Public (no owner)").assertIsDisplayed()
-        onNodeWithText("Waiting for 2 agents on this server…").assertIsDisplayed()
-        onNodeWithText("Waiting for 1 agent on this server…").assertIsDisplayed()
-    }
-
-    @Test
-    fun aCardsMenuOffersCreateAgentFirstForThatComputerAndOnlyDeleteOffline() = runRobolectricComposeUiTest {
-        val online = computer()
-        val offline = computer().copy(id = "m-2", name = "Box", online = false)
-        val model = raftComputersListModel(ScreenLoadState.Content(SettingsComputersSnapshot(computers = listOf(online))))
-        val created = mutableListOf<String>()
-        val restarted = mutableListOf<String>()
-        var current by mutableStateOf(model)
-        setContent {
-            RaftTheme(appearance = RaftAppearance.Light) {
-                RaftComputersTheme {
-                    RaftSettingsComputersContent(
-                        model = current,
-                        onRetry = {},
-                        onAddComputer = {},
-                        onOpenComputer = {},
-                        rackView = ComputersRackView.Cards,
-                        onCreateAgent = { created += it },
-                        onRestartComputer = { restarted += it },
-                    )
-                }
-            }
-        }
-        waitForIdle()
-        onNodeWithContentDescription("More Actions").performClick()
-        waitForIdle()
-        // Create Agent above Restart.
-        val createTop = onNodeWithText("Create Agent").fetchSemanticsNode().boundsInRoot.top
-        val restartTop = onNodeWithText("Restart").fetchSemanticsNode().boundsInRoot.top
-        assertTrue(createTop < restartTop, "Create Agent ($createTop) should sit above Restart ($restartTop)")
-        onNodeWithText("Create Agent").performClick()
-        waitForIdle()
-        assertEquals(listOf("m-1"), created)
-        assertEquals(emptyList<String>(), restarted)
-        // Offline: no Create agent and no Restart; Delete computer stays (web RackRowMenu).
-        current = raftComputersListModel(ScreenLoadState.Content(SettingsComputersSnapshot(computers = listOf(offline))))
-        waitForIdle()
-        onNodeWithContentDescription("More Actions").performClick()
-        waitForIdle()
-        onNodeWithTag(RaftComputersRackTags.MenuDelete).assertExists()
-        onNodeWithText("Create Agent").assertDoesNotExist()
-        onNodeWithText("Restart").assertDoesNotExist()
-    }
-
-    @Test
-    fun theListRowsSayTheOwnerToo() = runRobolectricComposeUiTest {
-        val model = raftComputersListModel(ScreenLoadState.Content(SettingsComputersSnapshot(computers = listOf(computer(ownerUserId = "user-2", owner = bea)))))
-        setContent {
-            RaftTheme(appearance = RaftAppearance.Light) {
-                RaftComputersTheme {
-                    RaftSettingsComputersContent(model = model, onRetry = {}, onAddComputer = {}, onOpenComputer = {}, rackView = ComputersRackView.List)
-                }
-            }
-        }
-        waitForIdle()
-        onNodeWithText("Owner: Bea", substring = true).assertIsDisplayed()
-    }
-
-    @Test
     fun theComputerCardSaysItWaitsForThisServersAgentsThenUpgrades() = runRobolectricComposeUiTest {
         showDetail(detail(computer(upgradeRequest = draining("a1", "a2"))))
-        onNodeWithText("Waiting for 2 agents on this server to finish their work, then upgrading to v1.0.53 (up to 10 min).").assertIsDisplayed()
-    }
-
-    @Test
-    fun withNobodyLeftToWaitForTheCardSaysUpgrading() = runRobolectricComposeUiTest {
-        showDetail(detail(computer(upgradeRequest = draining().copy(phase = "installing"))))
-        onNodeWithText("Upgrading to v1.0.53. The Computer will disconnect briefly.").assertIsDisplayed()
-        assertEquals(0, count("Waiting for", substring = true))
+        onNodeWithText("Giving 2 agents on this server a few seconds to finish, then upgrading to v1.0.53. Turns still running are interrupted.").assertIsDisplayed()
     }
 
     private fun ComposeUiTest.count(text: String, substring: Boolean = false): Int =

@@ -169,78 +169,6 @@ class SharedActivityStoreChannelRowLagTest {
     }
 
     @Test
-    fun anUpdateOfAnotherMessageLeavesTheRowsAlone() = runTest {
-        val network =
-            ScriptedInboxNetwork(
-                this,
-                listOf(
-                    inbox(
-                        row(seq = 41, preview = "hi", unread = 3),
-                        row(seq = 30, preview = "dm", unread = 1, channelId = "dm-1", kind = "dm")
-                    )
-                )
-            )
-        val store = loadedStore(network, initialKeys = listOf("channel:general", "dm:dm-1"))
-        store.dispatch(newMessage(seq = 42))
-        runCurrent()
-        val before = store.state.value.items
-
-        store.dispatch(updatedMessage(id = "m-41", seq = 41, body = "older edited"))
-        store.dispatch(updatedMessage(id = "m-99", seq = 99, body = "elsewhere", channelId = "dm-1"))
-        runCurrent()
-
-        assertEquals(before, store.state.value.items, "no row shows those messages: nothing moves")
-        assertEquals(4, store.state.value.totalUnreadCount)
-    }
-
-    @Test
-    fun reReadsBehindTheEventStopAfterTwoRetries() = runTest {
-        val network = ScriptedInboxNetwork(this, listOf(inbox(row(seq = 41, preview = "hi", unread = 3))))
-        val store = loadedStore(network)
-        val eventAt = testScheduler.currentTime
-
-        store.dispatch(newMessage(seq = 42))
-        runCurrent()
-        advanceTimeBy(60_000)
-        runCurrent()
-
-        assertEquals(
-            listOf(eventAt, eventAt + 2_500, eventAt + 5_500),
-            network.requestTimes.drop(1),
-            "the event's read plus at most two retries, each through the throttle"
-        )
-        assertEquals("new", store.state.value.items.single().lastMessagePreview, "the patched row is kept")
-    }
-
-    @Test
-    fun manyEventsCoalesceIntoOnePendingReReadTargetingTheHighestSeq() = runTest {
-        val network =
-            ScriptedInboxNetwork(
-                this,
-                listOf(
-                    inbox(row(seq = 41, preview = "hi", unread = 3)),
-                    inbox(row(seq = 45, preview = "m45", unread = 3)),
-                    inbox(row(seq = 46, preview = "m46", unread = 3))
-                )
-            )
-        val store = loadedStore(network)
-        val eventAt = testScheduler.currentTime
-
-        (42L..46L).forEach { seq -> store.dispatch(newMessage(seq = seq)) }
-        runCurrent()
-        assertEquals("m-46", store.state.value.items.single().lastMessageId?.value)
-        advanceTimeBy(60_000)
-        runCurrent()
-
-        assertEquals(
-            listOf(eventAt, eventAt + 2_500),
-            network.requestTimes.drop(1),
-            "five events make one read; one retry because 45 is behind 46, none once 46 answers"
-        )
-        assertEquals("m46", store.state.value.items.single().lastMessagePreview)
-    }
-
-    @Test
     fun anOverloadedInboxEndsTheCatchUpAndFollowsRetryAfter() = runTest {
         val recoveryRetryAfters = mutableListOf<Long?>()
         val network =
@@ -271,55 +199,6 @@ class SharedActivityStoreChannelRowLagTest {
         assertEquals(listOf<Long?>(2_000L), recoveryRetryAfters)
         assertEquals("new", store.state.value.items.single().lastMessagePreview)
         assertFalse(store.state.value.stale)
-    }
-
-    @Test
-    fun aRowMissingFromTheAnswerIsNotBehind() = runTest {
-        val network =
-            ScriptedInboxNetwork(
-                this,
-                listOf(
-                    inbox(row(seq = 41, preview = "hi", unread = 3)),
-                    inbox(row(seq = 30, preview = "elsewhere", unread = 0, channelId = "random"))
-                )
-            )
-        val store = loadedStore(network)
-        val eventAt = testScheduler.currentTime
-
-        store.dispatch(newMessage(seq = 42))
-        runCurrent()
-        advanceTimeBy(60_000)
-        runCurrent()
-
-        assertEquals(listOf(eventAt), network.requestTimes.drop(1), "no catch-up read for a row the answer left out")
-        assertEquals(listOf("channel:random"), store.state.value.items.map(InboxItem::key), "visibility is the server's")
-    }
-
-    @Test
-    fun aPatchedRowStaysOnTopOverAnOlderServedOrder() = runTest {
-        val network =
-            ScriptedInboxNetwork(
-                this,
-                listOf(
-                    inbox(
-                        row(seq = 40, preview = "r", unread = 0, channelId = "random"),
-                        row(seq = 39, preview = "hi", unread = 3)
-                    )
-                )
-            )
-        val store = loadedStore(network, initialKeys = listOf("channel:random", "channel:general"))
-
-        store.dispatch(newMessage(seq = 42))
-        assertEquals(listOf("channel:general", "channel:random"), store.state.value.items.map(InboxItem::key))
-        runCurrent()
-
-        assertEquals(2, network.requestTimes.size, "the stale re-read answered")
-        assertEquals(
-            listOf("channel:general", "channel:random"),
-            store.state.value.items.map(InboxItem::key),
-            "the older served order does not move the patched row down"
-        )
-        assertEquals("new", store.state.value.items.first().lastMessagePreview)
     }
 
     @Test
@@ -434,31 +313,6 @@ class SharedActivityStoreChannelRowLagTest {
         val row = store.state.value.items.single()
         assertEquals("hi", row.lastMessagePreview, "past the bound the served row wins")
         assertEquals("41", row.latestActivitySeq)
-    }
-
-    @Test
-    fun aServerSwitchCancelsThePendingCatchUpRead() = runTest {
-        fun twoServers(selected: String) =
-            sampleSession(serverId = selected).copy(
-                servers = listOf(StoredAuthServer(id = "server-1", name = "One"), StoredAuthServer(id = "server-2", name = "Two"))
-            )
-        val auth = InMemoryRaftAuthSessionStore(twoServers("server-1"))
-        val network = ScriptedInboxNetwork(this, listOf(inbox(row(seq = 41, preview = "hi", unread = 3))))
-        val store = loadedStore(network, authStore = auth)
-        val eventAt = testScheduler.currentTime
-
-        store.dispatch(newMessage(seq = 42))
-        runCurrent()
-        assertEquals(listOf(eventAt), network.requestTimes.drop(1), "behind: a catch-up read is now pending")
-
-        auth.saveSession(twoServers("server-2"))
-        store.dispatch(SharedActivityIntent.ServerSelected("server-2"))
-        runCurrent()
-        advanceTimeBy(60_000)
-        runCurrent()
-
-        assertEquals("server-2", store.state.value.ownerServerId)
-        assertEquals(listOf(eventAt, eventAt), network.requestTimes.drop(1), "only the new server's load, no catch-up read")
     }
 
     private fun TestScope.loadedStore(

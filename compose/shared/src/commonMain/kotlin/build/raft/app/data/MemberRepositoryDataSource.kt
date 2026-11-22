@@ -1091,6 +1091,12 @@ class RealMemberRepository(
         return integrationsApiClient.agentIntegrations(agentId).map { it.toSnapshot() }
     }
 
+    override suspend fun revokeAgentAppGrant(priority: DataRequestPriority, grantId: String): AgentAppGrantRevokeOutcome {
+        // Signed out: nothing is sent, and the dialog says it didn't revoke.
+        currentContext() ?: return AgentAppGrantRevokeOutcome.NotRevoked(AgentAppGrantRevokeFailure.Failed(reason = null, traceId = null))
+        return integrationsApiClient.revokeIntegrationGrant(grantId)
+    }
+
     override suspend fun getAgentAppEvents(
         priority: DataRequestPriority,
         agentId: MemberId,

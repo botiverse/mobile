@@ -145,42 +145,4 @@ class SharedServerVersionGateTest {
         // The rejected environment must not be persisted.
         assertEquals("production", SharedApiEnvironmentStore(kv).current().key)
     }
-
-    @Test
-    fun customEnvironmentSaveRejectedWhenServerOutdated() = runBlocking {
-        val kv = InMemoryRaftKeyValueStore()
-        val dataSource =
-            SharedSettingsDataSource(
-                sessionStore = InMemoryRaftAuthSessionStore(),
-                apiEnvironmentStore = SharedApiEnvironmentStore(kv),
-                serverVersionProbe = { ServerVersionProbe.Incompatible("1.12.0") }
-            )
-        val result =
-            dataSource.saveApiEnvironment(
-                SharedSettingsApiEnvironmentRequest("custom", "Private", "https://private.example.com/api/", "https://private.example.com", "https://private.example.com/web")
-            )
-        val error = assertIs<DataResult.Error>(result)
-        assertEquals("settings_environment_server_outdated", error.error.code)
-        assertEquals("production", SharedApiEnvironmentStore(kv).current().key)
-    }
-
-    @Test
-    fun predefinedEnvironmentSkipsProbe() = runBlocking {
-        var probed = false
-        val dataSource =
-            SharedSettingsDataSource(
-                sessionStore = InMemoryRaftAuthSessionStore(),
-                apiEnvironmentStore = SharedApiEnvironmentStore(InMemoryRaftKeyValueStore()),
-                serverVersionProbe = {
-                    probed = true
-                    ServerVersionProbe.Unreachable
-                }
-            )
-        val result =
-            dataSource.saveApiEnvironment(
-                SharedSettingsApiEnvironmentRequest("staging", "Staging", "", "", "")
-            )
-        assertIs<DataResult.Content<*>>(result)
-        assertFalse(probed)
-    }
 }

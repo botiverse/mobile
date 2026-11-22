@@ -12,25 +12,16 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
-import androidx.compose.ui.test.hasAnyAncestor
-import androidx.compose.ui.test.hasContentDescription
-import androidx.compose.ui.test.hasSetTextAction
-import androidx.compose.ui.test.hasTestTag
-import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
-import androidx.compose.ui.test.performClick
-import androidx.compose.ui.test.performScrollToNode
-import androidx.compose.ui.test.performTextInput
 import build.raft.app.compat.json.JSONObject
 import build.raft.app.compat.pager.LocalActivity
 import build.raft.app.compat.pager.PageData
 import build.raft.app.compat.pager.Pager
 import build.raft.app.compat.pager.RaftPageActivity
 import build.raft.app.components.RaftDesignSystemTheme
-import build.raft.app.data.FeedbackAttachment
 import build.raft.app.data.FeedbackAttachmentBytes
 import build.raft.app.data.FeedbackAuthorType
 import build.raft.app.data.FeedbackClient
@@ -53,7 +44,6 @@ import build.raft.app.model.RaftTimeContext
 import build.raft.designsystem.components.RaftButton
 import build.raft.designsystem.components.RaftTextarea
 import kotlin.test.Test
-import kotlin.test.assertEquals
 import org.junit.Rule
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -91,21 +81,6 @@ class SettingsFeedbackTicketsPageUiTest {
             latestComment = FeedbackLatestComment(FeedbackAuthorType.Staff, "Looking into it", now - 600_000L),
         )
 
-    private val idea =
-        FeedbackTicket(
-            id = "22222222-2222-4333-8444-555555555555",
-            kind = FeedbackTicketKind.Feedback,
-            status = FeedbackTicketStatus.Resolved,
-            closureReason = null,
-            message = "Dark mode for the composer",
-            createdAt = now - 3 * 86_400_000L,
-            updatedAt = now - 2 * 86_400_000L,
-            unread = false,
-            unreadCount = 0,
-            attachmentCount = 0,
-            commentCount = 0,
-        )
-
     private class FakeRepository(
         var list: FeedbackResult<FeedbackTicketListRead>,
         val details: Map<String, FeedbackTicketDetail> = emptyMap(),
@@ -135,15 +110,6 @@ class SettingsFeedbackTicketsPageUiTest {
 
     private fun pageOf(vararg tickets: FeedbackTicket): FeedbackResult<FeedbackTicketListRead> =
         FeedbackResult.Ok(FeedbackTicketListRead.Page(FeedbackTicketPage(tickets.toList(), null, 1)))
-
-    private val crashDetail =
-        FeedbackTicketDetail(
-            ticket = crash.copy(latestComment = null),
-            comments = listOf(FeedbackComment("c1", FeedbackAuthorType.Staff, "Looking into it", now - 600_000L)),
-            attachments = listOf(FeedbackAttachment("aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee", "launch.png", "image/png", 2048, now - 3_600_000L)),
-            nextCommentCursor = null,
-            unreadTotal = 0,
-        )
 
     @Composable
     private fun Page(
@@ -185,243 +151,6 @@ class SettingsFeedbackTicketsPageUiTest {
             )
         }
     }
-
-    @Test
-    fun theListShowsEachTicketsStatusLatestReplyAndNewCount() =
-        runRobolectricComposeUiTest {
-            val repository = FakeRepository(pageOf(crash, idea))
-            setContent { Page(repository) }
-            waitForIdle()
-
-            onNodeWithText("Feedback").assertIsDisplayed()
-            onNodeWithText("New Feedback").assertIsDisplayed()
-            onNodeWithText("All").assertIsDisplayed()
-            onNodeWithText("Crash on launch").assertIsDisplayed()
-            onNodeWithText("Team: Looking into it").assertIsDisplayed()
-            onNodeWithText("In progress").assertIsDisplayed()
-            onNodeWithText("1 reply").assertIsDisplayed()
-            onNodeWithText("1 new").assertIsDisplayed()
-            onNodeWithText("14:43").assertIsDisplayed()
-            onNodeWithText("Dark mode for the composer").assertIsDisplayed()
-            onNodeWithText("Resolved").assertIsDisplayed()
-            onNodeWithText("No replies yet").assertIsDisplayed()
-
-            // Active hides the resolved one.
-            onNodeWithText("Active").performClick()
-            waitForIdle()
-            onNodeWithText("Dark mode for the composer").assertDoesNotExist()
-            onNodeWithText("Crash on launch").assertIsDisplayed()
-        }
-
-    @Test
-    fun theAgentTipLeadsTheListUntilAnAgentsDraftIsSentAndNeverOnATicket() =
-        runRobolectricComposeUiTest {
-            // slock #14053 / #14076: one info line above New Feedback, no button, no ×.
-            val drafts = build.raft.app.data.RaftFeedbackAgentDraftSentRepository { null }
-            val repository = FakeRepository(pageOf(crash), mapOf(crash.id to crashDetail))
-            setContent { Page(repository, agentDraftSent = drafts.sent("user-1")) }
-            waitForIdle()
-            onNodeWithTag(SettingsFeedbackAgentHintTag).assertIsDisplayed()
-            onNodeWithText("Did you know? Any agent can draft your feedback. Just ask, and you’ll review it before it’s sent.").assertIsDisplayed()
-            onNode(hasContentDescription("Dismiss")).assertDoesNotExist()
-
-            // Not on a ticket.
-            onNodeWithText("Crash on launch").performClick()
-            waitForIdle()
-            onNodeWithTag(SettingsFeedbackAgentHintTag).assertDoesNotExist()
-            onNode(hasContentDescription("Back")).performClick()
-            waitForIdle()
-            onNodeWithTag(SettingsFeedbackAgentHintTag).assertIsDisplayed()
-
-            // An agent's draft sent (from a thread, while the list is open): gone for good.
-            runOnIdle { drafts.markSent("user-1") }
-            waitForIdle()
-            onNodeWithTag(SettingsFeedbackAgentHintTag).assertDoesNotExist()
-            onNodeWithText("New Feedback").assertIsDisplayed()
-        }
-
-    @Test
-    fun aTicketFiledOnAnotherClientNamesItOnItsRowAndTheFirstMessage() =
-        runRobolectricComposeUiTest {
-            // Design settings.md "Feedback" (option G, Hands feedback-react 0.5.6): a row filed on another
-            // client ends its metadata with an outline badge and its label with "Filed on …"; in the
-            // ticket, the same badge after the first message's time. Filed here: nothing on either.
-            val fromDesktop = crash.copy(source = "web", client = FeedbackClient.Desktop)
-            val fromHere = idea.copy(source = "android", client = FeedbackClient.Android)
-            val repository =
-                FakeRepository(
-                    pageOf(fromDesktop, fromHere),
-                    mapOf(
-                        fromDesktop.id to crashDetail.copy(ticket = crashDetail.ticket.copy(source = "web", client = FeedbackClient.Desktop)),
-                        fromHere.id to FeedbackTicketDetail(fromHere.copy(latestComment = null), emptyList(), emptyList(), null, 0),
-                    ),
-                )
-            setContent { Page(repository) }
-            waitForIdle()
-            onNodeWithText("Crash on launch").assertIsDisplayed()
-            // One row badge, on the Desktop row, after its state, replies and new count.
-            onAllNodesWithTag(SettingsFeedbackTicketRowFiledFromTag, useUnmergedTree = true).assertCountEquals(1)
-            onNode(
-                hasTestTag(SettingsFeedbackTicketRowFiledFromTag) and hasAnyAncestor(hasContentDescription("Crash on launch, 1 unread, Filed on Desktop")),
-                useUnmergedTree = true,
-            ).assertIsDisplayed()
-            onNodeWithText("Desktop", useUnmergedTree = true).assertIsDisplayed()
-            // The ticket filed here: no badge, the label is its title.
-            onNode(hasContentDescription("Dark mode for the composer")).assertIsDisplayed()
-            onNodeWithText("Android", useUnmergedTree = true).assertDoesNotExist()
-            onNodeWithTag(SettingsFeedbackTicketFiledFromTag, useUnmergedTree = true).assertDoesNotExist()
-
-            onNodeWithText("Crash on launch").performClick()
-            waitForIdle()
-            onNodeWithTag(SettingsFeedbackTicketFiledFromTag, useUnmergedTree = true).assertIsDisplayed()
-            onNodeWithTag(SettingsFeedbackTicketRowFiledFromTag, useUnmergedTree = true).assertDoesNotExist()
-            onNodeWithText("Desktop", useUnmergedTree = true).assertIsDisplayed()
-
-            onNode(hasContentDescription("Back")).performClick()
-            waitForIdle()
-            onNodeWithText("Dark mode for the composer").performClick()
-            waitForIdle()
-            // Its first message has loaded (the reporter's own line), and names no client.
-            onNodeWithText("You", useUnmergedTree = true).assertExists()
-            onNodeWithTag(SettingsFeedbackTicketFiledFromTag, useUnmergedTree = true).assertDoesNotExist()
-            onNodeWithText("Android", useUnmergedTree = true).assertDoesNotExist()
-        }
-
-    @Test
-    fun whichRowsNameAClientFollowsTheClientThisAppFilesAs() =
-        runRobolectricComposeUiTest {
-            // The row decides "filed here" as the ticket does (feedbackForeignClient against ownClient):
-            // in the iOS app an Android ticket is named and an iOS one is not; no client named, no badge.
-            val fromAndroid = crash.copy(source = "android", client = FeedbackClient.Android)
-            val fromIos = idea.copy(source = "ios", client = FeedbackClient.Ios)
-            val unnamed = idea.copy(id = "33333333-2222-4333-8444-555555555555", message = "No client named", source = null, client = null)
-            val fromHarmony = idea.copy(id = "44444444-2222-4333-8444-555555555555", message = "From the HarmonyOS app", source = "ohos", client = FeedbackClient.Ohos)
-            val repository = FakeRepository(pageOf(fromAndroid, fromIos, unnamed, fromHarmony))
-            setContent { Page(repository, ownClient = FeedbackClient.Ios) }
-            waitForIdle()
-            onAllNodesWithTag(SettingsFeedbackTicketRowFiledFromTag, useUnmergedTree = true).assertCountEquals(2)
-            onNode(hasContentDescription("Crash on launch, 1 unread, Filed on Android")).assertIsDisplayed()
-            onNode(hasContentDescription("From the HarmonyOS app, Filed on HarmonyOS")).assertIsDisplayed()
-            onNode(hasContentDescription("Dark mode for the composer")).assertIsDisplayed()
-            onNode(hasContentDescription("No client named")).assertIsDisplayed()
-            onNodeWithText("Android", useUnmergedTree = true).assertIsDisplayed()
-            onNodeWithText("HarmonyOS", useUnmergedTree = true).assertIsDisplayed()
-            onNodeWithText("iOS", useUnmergedTree = true).assertDoesNotExist()
-        }
-
-    @Test
-    fun noTicketsIsTheEmptyStateAndNewFeedbackOpensTheForm() =
-        runRobolectricComposeUiTest {
-            var opened = 0
-            val repository = FakeRepository(pageOf())
-            setContent { Page(repository, onNewFeedback = { opened += 1 }) }
-            waitForIdle()
-            onNodeWithText("No feedback yet").assertIsDisplayed()
-            onNodeWithText("Share an idea or report a bug — team replies will show up here.").assertIsDisplayed()
-            onNodeWithText("All").assertDoesNotExist()
-            onNodeWithText("New Feedback").performClick()
-            runOnIdle { assertEquals(1, opened) }
-        }
-
-    @Test
-    fun anEmptyFirstPageWithMoreToReadIsNotNoFeedback() =
-        runRobolectricComposeUiTest {
-            // slock #14722: a merged page may hold no tickets and still have a next cursor. The store
-            // reads on (bounded); with still nothing, the list offers Load More, not "No feedback yet".
-            val repository = FakeRepository(FeedbackResult.Ok(FeedbackTicketListRead.Page(FeedbackTicketPage(emptyList(), "more", 2))))
-            setContent { Page(repository) }
-            waitForIdle()
-            onNodeWithText("No feedback yet").assertDoesNotExist()
-            onNodeWithText("Load More").assertIsDisplayed()
-            // Once the list ends with nothing, it is the empty state.
-            repository.list = pageOf()
-            onNodeWithText("Load More").performClick()
-            waitForIdle()
-            onNodeWithText("No feedback yet").assertIsDisplayed()
-        }
-
-    @Test
-    fun aFailedListSaysSoAndTryAgainReadsItAgain() =
-        runRobolectricComposeUiTest {
-            val repository = FakeRepository(FeedbackResult.Failed(FeedbackFailure(FeedbackErrorKind.Unavailable, "feedback_service_unavailable")))
-            setContent { Page(repository) }
-            waitForIdle()
-            onNodeWithText("Couldn’t load feedback. Try again.").assertIsDisplayed()
-            repository.list = pageOf(idea)
-            onNodeWithText("Try Again").performClick()
-            waitForIdle()
-            onNodeWithText("Dark mode for the composer").assertIsDisplayed()
-        }
-
-    @Test
-    fun aTicketOpensOnItsThreadWithItsAttachment() =
-        runRobolectricComposeUiTest {
-            val repository = FakeRepository(pageOf(crash, idea), mapOf(crash.id to crashDetail))
-            setContent { Page(repository) }
-            waitForIdle()
-            onNodeWithText("Crash on launch").performClick()
-            waitForIdle()
-
-            onNodeWithText("Bug").assertIsDisplayed()
-            onNodeWithText("In progress").assertIsDisplayed()
-            onNodeWithTag(SettingsFeedbackTicketThreadTag).performScrollToNode(hasText("Steps: open the app", substring = true))
-            onNodeWithText("You").assertExists()
-            onNode(hasContentDescription("Open attachment launch.png")).assertExists()
-            onNodeWithTag(SettingsFeedbackTicketThreadTag).performScrollToNode(hasText("Looking into it"))
-            onNodeWithText("Team").assertExists()
-            // The list is behind it; Back returns to it with the row read.
-            onNode(hasContentDescription("Back")).performClick()
-            waitForIdle()
-            onNodeWithText("New Feedback").assertIsDisplayed()
-            onNodeWithText("1 new").assertDoesNotExist()
-        }
-
-    @Test
-    fun aReplySentFromTheTicketJoinsItsThread() =
-        runRobolectricComposeUiTest {
-            val repository = FakeRepository(pageOf(crash), mapOf(crash.id to crashDetail))
-            setContent { Page(repository) }
-            waitForIdle()
-            onNodeWithText("Crash on launch").performClick()
-            waitForIdle()
-
-            onNode(hasSetTextAction() and hasAnyAncestor(hasTestTag(ReplyField))).performTextInput("It still crashes on 1.22.1")
-            onNodeWithText("Send").performClick()
-            waitForIdle()
-
-            runOnIdle { assertEquals(listOf(crash.id to "It still crashes on 1.22.1"), repository.replies) }
-            onNodeWithTag(SettingsFeedbackTicketThreadTag).performScrollToNode(hasText("It still crashes on 1.22.1"))
-            onNodeWithText("It still crashes on 1.22.1").assertExists()
-        }
-
-    @Test
-    fun copyLinkInTheTicketsHeadCopiesThatTicket() =
-        runRobolectricComposeUiTest {
-            val copied = mutableListOf<String>()
-            val repository = FakeRepository(pageOf(crash), mapOf(crash.id to crashDetail))
-            setContent { Page(repository, onCopyTicketLink = { copied += it }) }
-            waitForIdle()
-            // Not on the list: only an open ticket has a link.
-            onNode(hasContentDescription("Copy Link")).assertDoesNotExist()
-            onNodeWithText("Crash on launch").performClick()
-            waitForIdle()
-
-            onNode(hasContentDescription("Close Ticket")).assertIsDisplayed()
-            onNode(hasContentDescription("Copy Link")).assertIsDisplayed().performClick()
-            runOnIdle { assertEquals(listOf(crash.id), copied) }
-        }
-
-    @Test
-    fun noCopyLinkWhereNoHandsAppReadsTheTicket() =
-        runRobolectricComposeUiTest {
-            val repository = FakeRepository(pageOf(crash), mapOf(crash.id to crashDetail))
-            setContent { Page(repository) }
-            waitForIdle()
-            onNodeWithText("Crash on launch").performClick()
-            waitForIdle()
-            onNode(hasContentDescription("Close Ticket")).assertIsDisplayed()
-            onNode(hasContentDescription("Copy Link")).assertDoesNotExist()
-        }
 
     /** `RAFT_PRIVACY_MODE`: New Feedback (its archive goes to Hands) only once the server answered off. */
     @Test

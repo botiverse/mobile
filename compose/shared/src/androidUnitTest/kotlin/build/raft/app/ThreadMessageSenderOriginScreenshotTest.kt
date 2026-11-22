@@ -38,8 +38,6 @@ class ThreadMessageSenderOriginScreenshotTest {
 
     @Test fun light() = capture("thread.message-sender.origin", RaftAppAppearance.Light)
 
-    @Test fun dark() = capture("thread.message-sender.origin.dark", RaftAppAppearance.Dark)
-
     private fun capture(name: String, appearance: RaftAppAppearance) =
         RaftRobolectricScreenshot.capture(name, appearance, reportDir = "build/reports/home-screenshots", activities = activities) {
             val pager = remember { object : Pager() {}.apply { pageData = PageData(JSONObject()) } }

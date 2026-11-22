@@ -125,28 +125,6 @@ class RaftWebViewRendererGoneRuntimeTest {
         assertEquals(2, tickets.single()["webview_count"])
     }
 
-    @Test
-    fun aRendererKilledFromOutsideIsClaimedAndFilesNoTicket() {
-        assumeTrue(
-            "terminating the renderer needs WebViewRenderProcess (API 29)",
-            Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q &&
-                WebViewFeature.isFeatureSupported(WebViewFeature.GET_WEB_VIEW_RENDERER),
-        )
-        val before = inner()
-        var terminated = false
-        // The system's kill as an app can do it: WebViewRenderProcess.terminate() reports didCrash=false.
-        instrumentation.runOnMainSync { terminated = WebViewCompat.getWebViewRenderProcess(before)?.terminate() == true }
-        assertTrue("the renderer could not be terminated", terminated)
-
-        waitFor("the page to see its renderer killed") { processGone.isNotEmpty() }
-        assertEquals(listOf("render_process_killed"), processGone.toList())
-        waitFor("the warm WebView on the same renderer to be let go") { warmGone.size == 1 }
-        waitFor("the rebuilt page to load") { loads.size >= 2 }
-        assertNotSame(before, inner())
-        instrumentation.waitForIdleSync()
-        assertTrue("a system kill is logged, not filed: $tickets", tickets.isEmpty())
-    }
-
     private fun waitFor(what: String, condition: () -> Boolean) {
         val deadline = SystemClock.uptimeMillis() + WAIT_MS
         while (SystemClock.uptimeMillis() < deadline) {

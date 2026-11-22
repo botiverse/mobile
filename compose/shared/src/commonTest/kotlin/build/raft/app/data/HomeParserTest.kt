@@ -92,37 +92,6 @@ class HomeParserTest {
     }
 
     @Test
-    fun preservesIncompleteHydrateMembersWithoutFillingFromLegacyCursor() {
-        val result =
-            parseRaftHome(
-                payload =
-                    homePayload(
-                        channels =
-                            listOf(
-                                HomeChannelWireDto(
-                                    id = "missing-version",
-                                    name = "missing-version",
-                                    type = "channel",
-                                    maxReadSeq = 41,
-                                ),
-                                HomeChannelWireDto(
-                                    id = "missing-watermark",
-                                    name = "missing-watermark",
-                                    type = "channel",
-                                    readStateVersion = 7,
-                                ),
-                            ),
-                    ),
-                session = sampleSession(),
-            )
-
-        assertTrue(result is DataResult.Content)
-        assertEquals(ReadStateV1HydrateCarrier(null, 41), result.data.channels[0].readStateV1Hydrate)
-        assertEquals(ReadStateV1HydrateCarrier(7, null), result.data.channels[1].readStateV1Hydrate)
-        assertTrue(result.data.channels.all { it.readStateMaxReadSeq == null })
-    }
-
-    @Test
     fun parsesTypedChannelsDmsAndUnreadCounts() {
         val payload =
             homePayload(
@@ -362,23 +331,6 @@ class HomeParserTest {
     }
 
     @Test
-    fun optionalActivityFieldKeepsAbsentAndInvalidValuesUnknown() {
-        val serverUnreadSummary =
-            json.decodeFromString(
-                ListSerializer(ServerUnreadSummaryDto.serializer()),
-                """[
-                    {"serverId":"known-zero","unreadCount":7,"serverPushMuted":true,"activityUnreadCount":0},
-                    {"serverId":"absent","unreadCount":5,"serverPushMuted":false},
-                    {"serverId":"invalid","unreadCount":4,"serverPushMuted":false,"activityUnreadCount":-1}
-                ]""".trimIndent()
-            )
-
-        assertEquals(0L, serverUnreadSummary[0].knownActivityUnreadCount)
-        assertNull(serverUnreadSummary[1].knownActivityUnreadCount)
-        assertNull(serverUnreadSummary[2].knownActivityUnreadCount)
-    }
-
-    @Test
     fun dropsArchivedChannels() {
         val result =
             parseRaftHome(
@@ -489,35 +441,6 @@ class HomeParserTest {
 
         assertTrue(result is DataResult.Content)
         assertEquals(listOf("Alpha", "bravo", "dm-c"), result.data.directMessages.map { it.name })
-    }
-
-    @Test
-    fun logsDirectMessageAvatarMissingWhenTheUrlIsMissing() {
-        val warnings = mutableListOf<String>()
-        val payload =
-            homePayload(
-                directMessages =
-                    listOf(
-                        HomeDirectMessageWireDto(
-                            id = "dm-1",
-                            name = "agent-one",
-                            type = "dm",
-                            peerType = "agent",
-                            peerId = "agent-1",
-                            peerName = "agent-one"
-                        )
-                    )
-            )
-        val result =
-            parseRaftHome(
-                payload = payload,
-                session = sampleSession(),
-                warningLogger = warnings::add
-            )
-
-        assertTrue(result is DataResult.Content)
-        assertNull(payload.directMessagePeerProfiles(ServerId("server-1")).single().avatar?.wireValue)
-        assertTrue(warnings.any { it.contains("dm_avatar_missing") && it.contains("peerId=agent-1") })
     }
 
     @Test

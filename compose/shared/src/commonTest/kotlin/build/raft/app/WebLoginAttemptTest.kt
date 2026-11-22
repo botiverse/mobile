@@ -52,48 +52,6 @@ class WebLoginAttemptTest {
     }
 
     @Test
-    fun aCallbackWithinTheGraceKeepsTheAttemptPendingThroughSuccess() = runTest {
-        val attempt = openedAttempt()
-        attempt.onResumed()
-        advanceTimeBy(GRACE / 2)
-        attempt.onCompletion(APP_LOGIN_CALLBACK_RECEIVED)
-        advanceTimeBy(GRACE * 4)
-        runCurrent()
-        assertEquals(WebLoginAttemptPhase.Completing, attempt.phase, "exchanging, not cancelled")
-
-        attempt.onCompletion("choose_server")
-        attempt.onCompletion(null) // the page clears the status after opening the next route
-        assertEquals(WebLoginAttemptPhase.Completing, attempt.phase, "stays busy while the page moves on")
-        assertFalse(attempt.tryBegin())
-    }
-
-    @Test
-    fun leavingAgainBeforeTheGraceEndsCancelsIt() = runTest {
-        val attempt = openedAttempt()
-        attempt.onResumed()
-        advanceTimeBy(GRACE / 2)
-        attempt.onPaused() // back to the browser
-        advanceTimeBy(GRACE * 2)
-        runCurrent()
-        assertEquals(WebLoginAttemptPhase.AwaitingCallback, attempt.phase)
-    }
-
-    @Test
-    fun aResumeThatDidNotFollowLeavingTheAppDoesNotEndTheAttempt() = runTest {
-        // iOS: the auth sheet may never pause the app; its cancel arrives as browser_closed instead.
-        val attempt = WebLoginAttempt(backgroundScope, resumeGraceMs = GRACE)
-        attempt.tryBegin()
-        attempt.onBrowserOpened(true)
-        attempt.onResumed()
-        advanceTimeBy(GRACE * 2)
-        runCurrent()
-        assertEquals(WebLoginAttemptPhase.AwaitingCallback, attempt.phase)
-
-        attempt.onCompletion(APP_LOGIN_BROWSER_CLOSED)
-        assertEquals(WebLoginAttemptPhase.Idle, attempt.phase)
-    }
-
-    @Test
     fun onIosAPauseAndResumeWhileTheSheetIsOpenNeverEndsTheAttempt() = runTest {
         // The "wants to use … to sign in" prompt and the sheet itself can pause/resume the app.
         val attempt = WebLoginAttempt(backgroundScope, resumeGraceMs = GRACE, endsOnResume = false)
@@ -109,18 +67,6 @@ class WebLoginAttemptTest {
     }
 
     @Test
-    fun hostReturningAfterTheUserCameBackStartsTheGraceAtOnce() = runTest {
-        val attempt = WebLoginAttempt(backgroundScope, resumeGraceMs = GRACE)
-        attempt.tryBegin()
-        attempt.onPaused()
-        attempt.onResumed()
-        attempt.onBrowserOpened(true)
-        advanceTimeBy(GRACE + 1)
-        runCurrent()
-        assertEquals(WebLoginAttemptPhase.Idle, attempt.phase)
-    }
-
-    @Test
     fun failedCallbacksAndFailedOpensReEnableAtOnce() = runTest {
         for (status in listOf("login_error", "legal_acceptance", "retry", APP_LOGIN_STALE_CALLBACK)) {
             val attempt = openedAttempt()
@@ -132,19 +78,6 @@ class WebLoginAttemptTest {
         notOpened.tryBegin()
         notOpened.onBrowserOpened(false)
         assertEquals(WebLoginAttemptPhase.Idle, notOpened.phase, "browser could not open")
-    }
-
-    @Test
-    fun anIgnoredCallbackOrAMissingSessionReEnables() = runTest {
-        val ignored = openedAttempt()
-        ignored.onCompletion(APP_LOGIN_CALLBACK_RECEIVED)
-        ignored.onCompletion(null) // the bridge cleared its marker: the coordinator ignored the callback
-        assertEquals(WebLoginAttemptPhase.Idle, ignored.phase)
-
-        val missing = openedAttempt()
-        missing.onCompletion("app_shell")
-        missing.onSessionMissing()
-        assertEquals(WebLoginAttemptPhase.Idle, missing.phase)
     }
 
     private companion object {

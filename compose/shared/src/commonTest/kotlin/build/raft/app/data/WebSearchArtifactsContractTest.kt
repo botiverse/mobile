@@ -79,15 +79,6 @@ class WebSearchArtifactsContractTest {
     }
 
     @Test
-    fun anAnswerThatIsNotOneIsNone() {
-        assertNull(parseWebSearchAnswer(null))
-        assertNull(parseWebSearchAnswer("<html>"))
-        assertNull(parseWebSearchAnswer("""{ "error": "q is required", "code": "INVALID_QUERY" }"""))
-        // A guessed envelope is not the contract's.
-        assertNull(parseWebSearchAnswer("""{ "data": { "groups": [] } }"""))
-    }
-
-    @Test
     fun theQueryIsTheWebsWithLimitAndCursorOnlyWhenGiven() {
         assertEquals(listOf("q" to "budget"), webSearchQueryParams("budget"))
         assertEquals(

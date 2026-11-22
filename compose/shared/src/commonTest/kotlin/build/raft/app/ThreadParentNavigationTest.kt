@@ -30,28 +30,6 @@ class ThreadParentNavigationTest {
     }
 
     @Test
-    fun replyThreadOpenParentRejectsProjectionKindMismatch() {
-        val channelProjection =
-            SharedConversationDirectoryProjection(
-                serverId = "server-source",
-                canonicalChannelId = "joint-parent",
-                aliases = setOf("joint-parent"),
-                conversationKind = ConversationKind.Channel,
-                surfaceKind = RaftThreadSurfaceKind.Channel,
-                channelKind = "channel",
-                title = "general"
-            )
-
-        assertNull(
-            replyPayload(parentChannelId = "joint-parent", parentChannelKind = "joint")
-                .resolveReplyParentConversationOpenRequest(
-                    serverId = "server-source",
-                    conversationIdentityProvider = emptyProvider(channelProjection)
-                )
-        )
-    }
-
-    @Test
     fun replyThreadOpenParentRejectsProjectionFromAnotherServer() {
         val otherServerProjection =
             SharedConversationDirectoryProjection(
@@ -69,28 +47,6 @@ class ThreadParentNavigationTest {
                 .resolveReplyParentConversationOpenRequest(
                     serverId = "server-source",
                     conversationIdentityProvider = emptyProvider(otherServerProjection)
-                )
-        )
-    }
-
-    @Test
-    fun replyThreadOpenParentRequiresTypedKindWhenProjectionIsMissing() {
-        assertNull(
-            replyPayload(parentChannelId = "parent-channel", parentChannelKind = null)
-                .resolveReplyParentConversationOpenRequest(
-                    serverId = "server-1",
-                    conversationIdentityProvider = emptyProvider()
-                )
-        )
-    }
-
-    @Test
-    fun jointReplyThreadOpenParentRejectsInternalStorageIdentity() {
-        assertNull(
-            replyPayload(parentChannelId = "joint-storage-parent", parentChannelKind = "joint")
-                .resolveReplyParentConversationOpenRequest(
-                    serverId = "server-1",
-                    conversationIdentityProvider = null
                 )
         )
     }

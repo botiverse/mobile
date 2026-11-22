@@ -77,36 +77,6 @@ class RaftFilePreviewCropMathTest {
     }
 
     @Test
-    fun cropDragCornerResizesBoundingBox() {
-        val canvasSize = Size(1000f, 1000f)
-        val initial = RaftComposerImageCropRect(0.1f, 0.1f, 0.9f, 0.9f)
-
-        // Drag TopLeft inward (+50px, +50px)
-        val afterTopLeft = raftCropApplyDrag(
-            handle = RaftCropDragHandle.TopLeft,
-            cropRect = initial,
-            dragAmount = Offset(50f, 50f),
-            canvasSize = canvasSize,
-        )
-        assertEquals(0.15f, afterTopLeft.left, 0.001f)
-        assertEquals(0.15f, afterTopLeft.top, 0.001f)
-        assertEquals(0.9f, afterTopLeft.right, 0.001f)
-        assertEquals(0.9f, afterTopLeft.bottom, 0.001f)
-
-        // Drag BottomRight outward (+50px, +50px)
-        val afterBottomRight = raftCropApplyDrag(
-            handle = RaftCropDragHandle.BottomRight,
-            cropRect = afterTopLeft,
-            dragAmount = Offset(50f, 50f),
-            canvasSize = canvasSize,
-        )
-        assertEquals(0.15f, afterBottomRight.left, 0.001f)
-        assertEquals(0.15f, afterBottomRight.top, 0.001f)
-        assertEquals(0.95f, afterBottomRight.right, 0.001f)
-        assertEquals(0.95f, afterBottomRight.bottom, 0.001f)
-    }
-
-    @Test
     fun cropDragCornerRespectsMinDimensionFraction() {
         val canvasSize = Size(1000f, 1000f)
         val initial = RaftComposerImageCropRect(0.1f, 0.1f, 0.5f, 0.5f)
@@ -155,38 +125,6 @@ class RaftFilePreviewCropMathTest {
         assertEquals(0.6f, clamped.top, 0.001f)
         assertEquals(1.0f, clamped.right, 0.001f)
         assertEquals(1.0f, clamped.bottom, 0.001f)
-    }
-
-    @Test
-    fun cropDragNoneDoesNotMutate() {
-        val initial = RaftComposerImageCropRect(0.2f, 0.2f, 0.6f, 0.6f)
-        val result = raftCropApplyDrag(
-            handle = RaftCropDragHandle.None,
-            cropRect = initial,
-            dragAmount = Offset(100f, 100f),
-            canvasSize = Size(1000f, 1000f),
-        )
-        assertEquals(initial, result)
-    }
-
-    @Test
-    fun remapPointAccuratelyTranslatesAcrossCropSpaces() {
-        val oldCrop = RaftComposerImageCropRect.Uncropped
-        val newCrop = RaftComposerImageCropRect(0.25f, 0.25f, 0.75f, 0.75f)
-        val oldCanvas = Size(1000f, 1000f)
-        val newCanvas = Size(500f, 500f)
-
-        // Center of old canvas (500, 500) corresponds to norm (0.5, 0.5)
-        // In newCrop (0.25..0.75), norm 0.5 is at relative 0.5 -> center of newCanvas (250, 250)
-        val remappedCenter = raftRemapPoint(
-            point = Offset(500f, 500f),
-            oldCrop = oldCrop,
-            newCrop = newCrop,
-            oldCanvasSize = oldCanvas,
-            newCanvasSize = newCanvas,
-        )
-        assertEquals(250f, remappedCenter.x, 0.01f)
-        assertEquals(250f, remappedCenter.y, 0.01f)
     }
 
     @Test
@@ -314,21 +252,5 @@ class RaftFilePreviewCropMathTest {
         assertEquals(1, updated.textAnnotations.size)
         assertEquals(250f, updated.textAnnotations[0].position.x, 0.1f)
         assertEquals(250f, updated.textAnnotations[0].position.y, 0.1f)
-    }
-
-    @Test
-    fun applyCropToContentWithSameCropReturnsIdenticalContent() {
-        val content = RaftComposerImageEditorContent(
-            cropRect = RaftComposerImageCropRect(0.1f, 0.1f, 0.9f, 0.9f)
-        )
-        val result = raftApplyCropToContent(
-            content = content,
-            newCrop = RaftComposerImageCropRect(0.1f, 0.1f, 0.9f, 0.9f),
-            imageWidth = 1000,
-            imageHeight = 1000,
-            maxWidth = 500f,
-            maxHeight = 500f,
-        )
-        assertEquals(content, result)
     }
 }

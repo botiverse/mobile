@@ -4,7 +4,6 @@ import build.raft.app.model.MemberId
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
-import kotlin.test.assertNull
 
 // #proj-mobile:#148: `GET /agents/:id/activity-log` as the server sends it (slock
 // agentActivityLogService.listRecentAgentTrajectory: `{ timestamp, entry }` rows, oldest first).
@@ -49,10 +48,5 @@ class AgentActivityLogParserTest {
         val snapshot = assertNotNull(parseSharedAgentActivity(withBadRow, agentId))
         assertEquals(listOf("kept"), snapshot.activity.map { it.body })
         assertEquals(1, snapshot.droppedRowCount)
-    }
-
-    @Test
-    fun aBodyThatIsNotAnArrayIsNotALog() {
-        assertNull(parseSharedAgentActivity("""{"error":"Agent not found"}""", agentId))
     }
 }

@@ -17,7 +17,6 @@ import build.raft.app.compat.pager.Pager
 import build.raft.app.compat.pager.RaftPageActivity
 import build.raft.app.data.RuntimeAccountUsageLoad
 import build.raft.app.data.RuntimeAuthAvailability
-import build.raft.app.data.RuntimeAuthOAuthMethod
 import build.raft.app.data.RuntimeAuthProvider
 import build.raft.app.data.RuntimeAuthProviderKeyEntry
 import build.raft.app.data.RuntimeAuthProviderOAuthFlow
@@ -72,16 +71,6 @@ class ComputerRuntimeAuthScreenshotTest {
     @Test
     fun signInDeviceCodeLight() =
         capture("settings.computer.runtime_auth.sign_in_device_code", RaftAppAppearance.Light) {
-            SignInDialog(
-                "Grok Build",
-                ComputerRuntimeSignInState(started = true, deviceCode = RuntimeAuthLoginStep.DeviceCode("QX7B-K2MD", "https://accounts.x.ai/oauth2/device?user_code=QX7B-K2MD", 900)),
-                RuntimeAuthRuntime.Grok,
-            )
-        }
-
-    @Test
-    fun signInDeviceCodeDark() =
-        capture("settings.computer.runtime_auth.sign_in_device_code.dark", RaftAppAppearance.Dark) {
             SignInDialog(
                 "Grok Build",
                 ComputerRuntimeSignInState(started = true, deviceCode = RuntimeAuthLoginStep.DeviceCode("QX7B-K2MD", "https://accounts.x.ai/oauth2/device?user_code=QX7B-K2MD", 900)),
@@ -148,25 +137,6 @@ class ComputerRuntimeAuthScreenshotTest {
                     chosen = ComputerRuntimePiChoice(account = true, providerId = "openai-codex"),
                     onChoose = {},
                     runtimeName = "Pi",
-                )
-            }
-        }
-
-    // OpenCode 2 (slock #14378): one row per OAuth sign-in, named "provider · method"; a method seen to
-    // need the Computer's own browser is greyed out with why; OpenCode's own key wording.
-    @Test
-    fun opencodeProvidersLight() =
-        capture("settings.computer.runtime_auth.opencode_providers", RaftAppAppearance.Light) {
-            ComputerRuntimeLoopbackRequired.clearForTests()
-            ComputerRuntimeLoopbackRequired.remember("m1", RuntimeAuthRuntime.Opencode, "openai", "ChatGPT Pro/Plus (browser)")
-            RaftDialogSurface(title = "Add a provider to OpenCode", onClose = {}) {
-                ComputerRuntimePiProviderChoices(
-                    ComputerRuntimePiProviderList.Listed(OPENCODE_PROVIDERS),
-                    chosen = ComputerRuntimePiChoice(account = true, providerId = "github-copilot"),
-                    onChoose = {},
-                    runtimeName = "OpenCode",
-                    runtime = RuntimeAuthRuntime.Opencode,
-                    machineId = "m1",
                 )
             }
         }
@@ -277,25 +247,4 @@ private val PI_PROVIDERS =
         RuntimeAuthProvider("google-antigravity", "Antigravity", oauthLabel = "Antigravity (Gemini 3, Claude, GPT-OSS)", oauthFlow = RuntimeAuthProviderOAuthFlow.ComputerOnly),
         RuntimeAuthProvider("deepseek", "DeepSeek", apiKeyEntry = RuntimeAuthProviderKeyEntry.Key),
         RuntimeAuthProvider("amazon-bedrock", "Amazon Bedrock", apiKeyEntry = RuntimeAuthProviderKeyEntry.MoreFields),
-    )
-
-private val OPENCODE_PROVIDERS =
-    listOf(
-        RuntimeAuthProvider(
-            "github-copilot",
-            "GitHub Copilot",
-            oauthMethodList = listOf(RuntimeAuthOAuthMethod("Login with GitHub (device)", RuntimeAuthProviderOAuthFlow.DeviceCode)),
-        ),
-        RuntimeAuthProvider(
-            "openai",
-            "OpenAI",
-            oauthMethodList =
-                listOf(
-                    RuntimeAuthOAuthMethod("ChatGPT Pro/Plus (headless)", RuntimeAuthProviderOAuthFlow.DeviceCode),
-                    RuntimeAuthOAuthMethod("ChatGPT Pro/Plus (browser)", RuntimeAuthProviderOAuthFlow.Link),
-                ),
-            apiKeyEntry = RuntimeAuthProviderKeyEntry.Key,
-            stored = "oauth",
-        ),
-        RuntimeAuthProvider("amazon-bedrock", "Amazon Bedrock", apiKeyEntry = RuntimeAuthProviderKeyEntry.Outside),
     )

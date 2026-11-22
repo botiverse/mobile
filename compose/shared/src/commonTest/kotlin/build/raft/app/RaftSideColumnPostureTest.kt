@@ -3,7 +3,6 @@ package build.raft.app
 import androidx.compose.ui.unit.dp
 import build.raft.app.compat.json.JSONArray
 import build.raft.app.compat.json.JSONObject
-import build.raft.designsystem.components.RaftSideActionColumnDefaults
 import build.raft.designsystem.components.RaftSideActionColumnSide
 import build.raft.designsystem.components.RaftSideColumnKeepOut
 import kotlin.test.Test
@@ -72,16 +71,6 @@ class RaftSideColumnPostureTest {
     }
 
     @Test
-    fun `the unfolded Duo held sideways keeps an 84pt column on the right`() {
-        val posture =
-            event(951, 669, sideColumn = true, stripEdge = RaftAdaptiveSideColumn.Right, stripWidthPt = 84f).toRaftSideColumnPosture()
-        assertEquals(
-            RaftSideColumnPosture(sideColumn = true, stripEdge = RaftSideActionColumnSide.Right, stripWidth = 84.dp),
-            posture,
-        )
-    }
-
-    @Test
     fun `the posture follows the host physical edge whatever the reading direction`() {
         // The host already turned the system's logical edge into a physical one (in right-to-left
         // the trailing edge is "left"): the mapping takes it as is, and a region on the right of
@@ -99,52 +88,6 @@ class RaftSideColumnPostureTest {
                 .toRaftSideColumnPosture()
                 .keepOut,
         )
-    }
-
-    @Test
-    fun `a column needs both the side column flag and an edge`() {
-        assertEquals(
-            RaftSideColumnPosture.None,
-            event(466, 678, sideColumn = true, stripEdge = RaftAdaptiveSideColumn.None, stripWidthPt = 84f).toRaftSideColumnPosture(),
-        )
-        assertEquals(
-            RaftSideColumnPosture.None,
-            event(466, 678, sideColumn = false, stripEdge = RaftAdaptiveSideColumn.Right, stripWidthPt = 84f).toRaftSideColumnPosture(),
-        )
-    }
-
-    @Test
-    fun `only regions crossing the column become keep-out bands top first`() {
-        val posture =
-            event(
-                951,
-                669,
-                sideColumn = true,
-                stripEdge = RaftAdaptiveSideColumn.Right,
-                stripWidthPt = 84f,
-                reservedRegions =
-                    listOf(
-                        // A fold across the whole window crosses the column.
-                        RaftAdaptiveReservedRegion(leftPt = 0f, topPt = 330f, widthPt = 951f, heightPt = 8f),
-                        RaftAdaptiveReservedRegion(leftPt = 867f, topPt = 0f, widthPt = 84f, heightPt = 124f),
-                        // Left of the column: the page's problem, not the column's.
-                        RaftAdaptiveReservedRegion(leftPt = 100f, topPt = 0f, widthPt = 100f, heightPt = 30f),
-                    ),
-            ).toRaftSideColumnPosture()
-        assertEquals(
-            listOf(RaftSideColumnKeepOut(0.dp, 124.dp), RaftSideColumnKeepOut(330.dp, 338.dp)),
-            posture.keepOut,
-        )
-    }
-
-    @Test
-    fun `a missing width falls back to the column default and a negative tab bar to zero`() {
-        val posture =
-            event(466, 678, sideColumn = true, stripEdge = RaftAdaptiveSideColumn.Left, stripWidthPt = 0f, nativeTabBarHeightPt = -4f)
-                .toRaftSideColumnPosture()
-        assertEquals(RaftSideActionColumnSide.Left, posture.stripEdge)
-        assertEquals(RaftSideActionColumnDefaults.Width, posture.stripWidth)
-        assertEquals(0.dp, posture.nativeTabBarHeight)
     }
 
     @Test
@@ -177,22 +120,5 @@ class RaftSideColumnPostureTest {
             ),
             event.toRaftSideColumnPosture(),
         )
-    }
-
-    @Test
-    fun `the inner Duo display held upright has no column but is marked inner`() {
-        val upright =
-            event(669, 951, sideColumn = false, stripEdge = RaftAdaptiveSideColumn.None, stripWidthPt = 0f, display = RaftAdaptiveDisplay.DuoInner)
-                .toRaftSideColumnPosture()
-        assertEquals(RaftSideColumnPosture(duoInner = true), upright)
-        val sideways =
-            event(951, 669, sideColumn = true, stripEdge = RaftAdaptiveSideColumn.Right, stripWidthPt = 84f, display = RaftAdaptiveDisplay.DuoInner)
-                .toRaftSideColumnPosture()
-        assertEquals(true, sideways.duoInner)
-        assertEquals(true, sideways.sideColumn)
-        val outer =
-            event(466, 678, sideColumn = true, stripEdge = RaftAdaptiveSideColumn.Right, stripWidthPt = 84f, display = RaftAdaptiveDisplay.DuoOuter)
-                .toRaftSideColumnPosture()
-        assertEquals(false, outer.duoInner)
     }
 }

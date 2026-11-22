@@ -21,7 +21,6 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -35,7 +34,6 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
-import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
@@ -79,6 +77,7 @@ import build.raft.designsystem.components.RaftButton
 import build.raft.designsystem.components.RaftButtonSize
 import build.raft.designsystem.components.RaftButtonVariant
 import build.raft.designsystem.components.RaftDropdownMenu
+import build.raft.designsystem.components.RaftEmptyState
 import build.raft.designsystem.components.RaftEmptyStateDefaults
 import build.raft.designsystem.components.RaftMenuItem
 import build.raft.designsystem.components.RaftMeter
@@ -92,7 +91,6 @@ import build.raft.designsystem.components.RaftSwitch
 import build.raft.designsystem.components.rememberRaftSkeletonDelayPassed
 import build.raft.designsystem.motion.rememberRaftReducedMotion
 import build.raft.designsystem.text.RaftText
-import build.raft.designsystem.theme.LocalRaftContentColor
 import build.raft.designsystem.theme.RaftTheme
 import kotlin.math.abs
 import kotlinx.coroutines.CancellationException
@@ -870,7 +868,7 @@ private fun AgentUsageModelsSection(figures: AgentUsageFigures) {
                         overflow = TextOverflow.Ellipsis,
                     )
                     RaftText(
-                        text = model.runtime?.let(::raftAgentRuntimeDisplayName) ?: dash,
+                        text = model.runtime?.let { observeAgentRuntimeDisplayName(it) } ?: dash,
                         style = typography.monoMeta,
                         color = colors.foregroundHint,
                         maxLines = 1,
@@ -936,50 +934,19 @@ private fun AgentUsageUnsupportedEmptyState(
     )
 }
 
-/**
- * Matches web `EmptyState` (raft-ui `EmptyState` geometry) while allowing multi-line sentence titles
- * (`agent.usage.noComputer` / `agent.usage.runtimeNoUsage`) to wrap cleanly on phone widths.
- */
+/** The usage tab's [RaftEmptyState] (web `EmptyState`). */
 @Composable
-private fun AgentUsageEmptyState(
+internal fun AgentUsageEmptyState(
     title: String,
     action: (@Composable () -> Unit)?,
     modifier: Modifier = Modifier,
 ) {
-    val colors = RaftTheme.colors
-    val typography = RaftTheme.typography
-    Column(
-        modifier = modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 48.dp),
-        verticalArrangement = Arrangement.Center,
-        horizontalAlignment = Alignment.CenterHorizontally,
-    ) {
-        Column(
-            modifier = Modifier.widthIn(max = RaftEmptyStateDefaults.ContentMaxWidth),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-        ) {
-            Box(
-                modifier = Modifier.size(RaftEmptyStateDefaults.IconSize).clearAndSetSemantics {},
-                contentAlignment = Alignment.Center,
-            ) {
-                CompositionLocalProvider(LocalRaftContentColor provides colors.foregroundHint) {
-                    RaftContentLucideIcon(RaftLucideIconName.ChartColumn, size = RaftEmptyStateDefaults.IconSize)
-                }
-            }
-            RaftText(
-                text = title,
-                modifier = Modifier.semantics { heading() },
-                style = typography.headline,
-                color = colors.foregroundMuted,
-                textAlign = TextAlign.Center,
-                maxLines = 4,
-                overflow = TextOverflow.Ellipsis,
-            )
-        }
-        if (action != null) {
-            Box(Modifier.padding(top = 20.dp)) { action() }
-        }
-    }
+    RaftEmptyState(
+        title = title,
+        modifier = modifier,
+        icon = { RaftContentLucideIcon(RaftLucideIconName.ChartColumn, size = RaftEmptyStateDefaults.IconSize) },
+        actions = action,
+    )
 }
 
 internal enum class AgentUsagePluralForm { One, Few, Other }

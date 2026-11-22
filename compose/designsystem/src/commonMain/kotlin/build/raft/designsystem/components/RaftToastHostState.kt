@@ -2,7 +2,9 @@ package build.raft.designsystem.components
 
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.Stable
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateMapOf
+import androidx.compose.ui.unit.Density
 import kotlin.time.ComparableTimeMark
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.milliseconds
@@ -36,6 +38,7 @@ class RaftToastData internal constructor(
     val actionLabel: String?,
     val onAction: (() -> Unit)?,
     val durationMillis: Long,
+    val appearAtOnce: Boolean = false,
 ) {
     internal fun isSameMessage(title: String, description: String?, intent: RaftToastIntent?, actionLabel: String?): Boolean =
         this.title == title && this.description == description && this.intent == intent && this.actionLabel == actionLabel
@@ -130,7 +133,17 @@ class RaftToastHostState(
             val newest = m.entries.lastOrNull()
             if (newest != null && newest.toast.isSameMessage(title, description, intent, actionLabel)) {
                 shown = newest.toast.id
-                val refreshed = RaftToastData(newest.toast.id, title, description, intent, actionLabel, onAction, duration)
+                val refreshed =
+                    RaftToastData(
+                        id = newest.toast.id,
+                        title = title,
+                        description = description,
+                        intent = intent,
+                        actionLabel = actionLabel,
+                        onAction = onAction,
+                        durationMillis = duration,
+                        appearAtOnce = newest.toast.appearAtOnce,
+                    )
                 m.copy(entries = m.entries.dropLast(1) + Entry(refreshed, deadline), pausedAt = pausedAt)
             } else {
                 shown = m.nextId
@@ -196,13 +209,95 @@ class RaftToastHostState(
         }
     }
 
-    private fun mutate(transform: (Model) -> Model) {
+    private fun mutate(carryHeldPageHeightPx: Float = 0f, transform: (Model) -> Model) {
         model.update { transform(it) }
-        // Published after the model: the flow always ends on the latest model's list.
-        visibleFlow.value = model.value.toasts
+        val toasts = model.value.toasts
+        if (toasts.isEmpty()) {
+            heldPageHeightPx.value = 0f
+        } else if (carryHeldPageHeightPx > 0f) {
+            heldPageHeightPx.update { maxOf(it, carryHeldPageHeightPx) }
+        }
+        // Published after the model and held height: collectors always observe both consistently.
+        visibleFlow.value = toasts
+    }
+
+    /**
+     * Moves every live toast from this host to [target] (when a window leaves the screen for
+     * another foreground window), keeping each toast's remaining timeout, suppressing its entry
+     * slide (`appearAtOnce = true`), and carrying this host's held bottom height so the toast does
+     * not drop onto a shorter bar on [target].
+     */
+    fun handOffTo(target: RaftToastHostState) {
+        if (target === this) return
+        val fromNow = timeSource.markNow()
+        var drained: List<Entry> = emptyList()
+        var drainedPausedAt: ComparableTimeMark? = null
+        val carryHeldPx = heldPageHeightPx.value
+        mutate { m ->
+            drained = m.entries
+            drainedPausedAt = m.pausedAt
+            if (m.entries.isEmpty()) m else m.copy(entries = emptyList(), pausedAt = null)
+        }
+        if (drained.isEmpty()) return
+        val referenceNow = drainedPausedAt ?: fromNow
+        val remainingEntries =
+            drained.mapNotNull { entry ->
+                val remaining = entry.deadline?.let { it - referenceNow }
+                if (remaining != null && !remaining.isPositive()) null else entry.toast to remaining
+            }
+        if (remainingEntries.isEmpty()) return
+        val targetNow = target.timeSource.markNow()
+        target.mutate(carryHeldPageHeightPx = carryHeldPx) { m ->
+            val pausedAt = if (m.entries.isEmpty()) null else m.pausedAt
+            val start = pausedAt ?: targetNow
+            var nextId = m.nextId
+            val additions =
+                remainingEntries.map { (toast, remaining) ->
+                    val transferred =
+                        RaftToastData(
+                            id = nextId++,
+                            title = toast.title,
+                            description = toast.description,
+                            intent = toast.intent,
+                            actionLabel = toast.actionLabel,
+                            onAction = toast.onAction,
+                            durationMillis = toast.durationMillis,
+                            appearAtOnce = true,
+                        )
+                    Entry(transferred, remaining?.let { start + it })
+                }
+            m.copy(
+                entries = (m.entries + additions).takeLast(target.limit),
+                pausedAt = pausedAt,
+                nextId = nextId,
+            )
+        }
     }
 
     // ---- Where the toasts sit (raft-ui `--toast-viewport-bottom`) ----
+
+    /** High-water page avoidance height (px) held while a toast stack is on screen; resets when empty. */
+    private val heldPageHeightPx = MutableStateFlow(0f)
+
+    internal val currentHeldPageHeightPx: Float get() = heldPageHeightPx.value
+
+    internal class BottomInsetOverride(val key: Any, val provider: Density.() -> Float)
+
+    /** Optional host-provided bottom safe-area + keyboard inset override (px), insertion-ordered (last wins). */
+    internal val bottomInsetOverrides = mutableStateListOf<BottomInsetOverride>()
+
+    internal fun putBottomInsetOverride(key: Any, provider: Density.() -> Float) {
+        val index = bottomInsetOverrides.indexOfFirst { it.key == key }
+        val entry = BottomInsetOverride(key, provider)
+        if (index >= 0) bottomInsetOverrides[index] = entry else bottomInsetOverrides.add(entry)
+    }
+
+    internal fun removeBottomInsetOverride(key: Any) {
+        bottomInsetOverrides.removeAll { it.key == key }
+    }
+
+    internal fun bottomInsetOverrideOrNull(): (Density.() -> Float)? =
+        bottomInsetOverrides.lastOrNull()?.provider
 
     /** What holds the bottom of the page, by registrant: the toasts sit above the highest one. */
     internal val avoidances = mutableStateMapOf<Any, RaftToastAvoidance>()
@@ -221,7 +316,27 @@ class RaftToastHostState(
 
     /** [avoidedHeightPx] with what the keyboard adds left out: the height a toast may hold on to. */
     internal fun pageAvoidedHeightPx(hostBottomPx: Float): Float =
-        avoidances.values.maxOfOrNull { it.heightAbove(hostBottomPx) - it.keyboardPx }?.coerceAtLeast(0f) ?: 0f
+        avoidances.values.maxOfOrNull { it.restingHeightAbove(hostBottomPx) }?.coerceAtLeast(0f) ?: 0f
+
+    /**
+     * Resolves the bottom clearance (px, before [RaftToastViewportOffset]) for the current frame's
+     * placement pass: monotonically holds [pageAvoidedHeightPx] while toasts are visible (never
+     * dropping on page changes or `hostBottomPx` changes), follows taller avoidances and the live
+     * keyboard, and never drops below [safeBottomPx].
+     */
+    internal fun resolveBottomClearancePx(hostBottomPx: Float, safeBottomPx: Float): Float {
+        val liveAvoidedPx = avoidedHeightPx(hostBottomPx)
+        val pageAvoidedPx = pageAvoidedHeightPx(hostBottomPx)
+        val heldPx =
+            if (model.value.entries.isEmpty()) {
+                0f
+            } else {
+                val next = maxOf(heldPageHeightPx.value, pageAvoidedPx)
+                if (next != heldPageHeightPx.value) heldPageHeightPx.value = next
+                next
+            }
+        return maxOf(heldPx, liveAvoidedPx, safeBottomPx.coerceAtLeast(0f))
+    }
 }
 
 /** Something a toast must stay above (a tab bar, a composer, a host-drawn bar). */
@@ -229,12 +344,41 @@ class RaftToastHostState(
 internal sealed interface RaftToastAvoidance {
     fun heightAbove(hostBottomPx: Float): Float
 
+    /**
+     * Resting (non-keyboard) height above [hostBottomPx] that a visible toast may hold on to.
+     * Derived from placement-time geometry so live keyboard motion never pollutes
+     * [RaftToastHostState.heldPageHeightPx].
+     */
+    fun restingHeightAbove(hostBottomPx: Float): Float =
+        (heightAbove(hostBottomPx) - keyboardPx).coerceAtLeast(0f)
+
     /** How much of that height is the keyboard under it (a composer rides on the keyboard). */
     val keyboardPx: Float get() = 0f
 
-    /** An element whose top edge is at [topPx] in root coordinates, [keyboardPx] of it from the keyboard. */
-    data class TopEdge(val topPx: Float, override val keyboardPx: Float = 0f) : RaftToastAvoidance {
-        override fun heightAbove(hostBottomPx: Float): Float = hostBottomPx - topPx
+    /**
+     * An element whose top edge was placed at [topPx] in root coordinates with [keyboardPx] of
+     * keyboard lift beneath it. When [liveKeyboardPx] is provided, [heightAbove] pairs the
+     * placement-time resting height (`hostBottomPx - topPx - keyboardPx`) with the live frame's
+     * keyboard lift so [RaftToastHost]'s shallower layout pass stays in lockstep with a deeply
+     * nested composer on the very first frame of keyboard open/close before `onPlaced` runs.
+     */
+    data class TopEdge(
+        val topPx: Float,
+        override val keyboardPx: Float = 0f,
+        val liveKeyboardPx: (() -> Float)? = null,
+    ) : RaftToastAvoidance {
+        override fun restingHeightAbove(hostBottomPx: Float): Float {
+            if (hostBottomPx.isNaN()) return 0f
+            val placedKeyboard = keyboardPx.takeIf { it.isFinite() }?.coerceAtLeast(0f) ?: 0f
+            return (hostBottomPx - topPx - placedKeyboard).coerceAtLeast(0f)
+        }
+
+        override fun heightAbove(hostBottomPx: Float): Float {
+            if (hostBottomPx.isNaN()) return 0f
+            val liveReader = liveKeyboardPx ?: return hostBottomPx - topPx
+            val liveKeyboard = liveReader().takeIf { it.isFinite() }?.coerceAtLeast(0f) ?: 0f
+            return restingHeightAbove(hostBottomPx) + liveKeyboard
+        }
     }
 
     /** A band [heightPx] tall on the window's bottom edge (a host-drawn tab bar). */

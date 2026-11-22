@@ -7,6 +7,12 @@ import android.os.Looper
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.platform.LocalContext
+import kotlin.coroutines.resume
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 
 /**
  * Android keep-alive for [RaftWebViewConfig.keepAliveKey]: one parked [RaftAndroidSandboxWebView]
@@ -100,6 +106,154 @@ internal actual fun raftWebViewKeepAliveClear() {
         RaftAndroidWebViewKeepAlive.drop("cleared")
     } else {
         Handler(Looper.getMainLooper()).post { RaftAndroidWebViewKeepAlive.drop("cleared") }
+    }
+}
+
+internal interface RaftAndroidWebStorageClearTarget {
+    fun deleteAllData()
+}
+
+internal interface RaftAndroidCookieClearTarget {
+    suspend fun clearOrigin(origin: String)
+    suspend fun clearAll()
+    fun flush()
+}
+
+internal suspend fun clearAndroidWebViewAuthStorage(
+    origins: Set<String>,
+    dropKeepAlive: () -> Unit,
+    webStorage: RaftAndroidWebStorageClearTarget?,
+    cookies: RaftAndroidCookieClearTarget?,
+) {
+    runCatching { dropKeepAlive() }
+    // Chromium's WebStorage.deleteOrigin() (aw_quota_manager_bridge.cc DeleteOriginFramework)
+    // only clears FILE_SYSTEMS | INDEXEDDB and omits LOCAL_STORAGE; only deleteAllData()
+    // (DeleteAllDataFramework) clears localStorage where slock_access_token is stored.
+    // Always call deleteAllData() so sign-out / account switch never leaves a web access token
+    // behind on shared devices, while still clearing cookies per-origin so third-party cookie
+    // logins in InAppBrowserPage survive.
+    runCatching { webStorage?.deleteAllData() }
+    if (cookies != null) {
+        if (origins.isNotEmpty()) {
+            for (origin in origins) {
+                try {
+                    cookies.clearOrigin(origin)
+                } catch (cancel: CancellationException) {
+                    throw cancel
+                } catch (_: Throwable) {
+                }
+            }
+        } else {
+            try {
+                cookies.clearAll()
+            } catch (cancel: CancellationException) {
+                throw cancel
+            } catch (_: Throwable) {
+            }
+        }
+        runCatching { cookies.flush() }
+    }
+}
+
+internal actual suspend fun raftClearPlatformWebViewAuthStorage(origins: Set<String>) {
+    val mainLooper = runCatching { Looper.getMainLooper() }.getOrNull() ?: return
+    val clearAction: suspend () -> Unit = {
+        val storage = runCatching { android.webkit.WebStorage.getInstance() }.getOrNull()
+        val cookieManager = runCatching { android.webkit.CookieManager.getInstance() }.getOrNull()
+        clearAndroidWebViewAuthStorage(
+            origins = origins,
+            dropKeepAlive = { RaftAndroidWebViewKeepAlive.drop("logout") },
+            webStorage =
+                storage?.let { instance ->
+                    object : RaftAndroidWebStorageClearTarget {
+                        override fun deleteAllData() = instance.deleteAllData()
+                    }
+                },
+            cookies =
+                cookieManager?.let { manager ->
+                    object : RaftAndroidCookieClearTarget {
+                        override suspend fun clearOrigin(origin: String) {
+                            clearAndroidCookiesForOrigin(manager, origin)
+                        }
+
+                        override suspend fun clearAll() {
+                            withTimeoutOrNull(2_000L) {
+                                suspendCancellableCoroutine<Unit> { cont ->
+                                    runCatching {
+                                        manager.removeAllCookies {
+                                            if (cont.isActive) cont.resume(Unit)
+                                        }
+                                    }.onFailure {
+                                        if (cont.isActive) cont.resume(Unit)
+                                    }
+                                }
+                            }
+                        }
+
+                        override fun flush() {
+                            manager.flush()
+                        }
+                    }
+                },
+        )
+    }
+    if (Looper.myLooper() == mainLooper) {
+        clearAction()
+    } else {
+        try {
+            withContext(Dispatchers.Main.immediate) { clearAction() }
+        } catch (cancel: CancellationException) {
+            throw cancel
+        } catch (_: Throwable) {
+            // Fallback when Main dispatcher is absent (unit tests without Robolectric Main).
+            Handler(mainLooper).post {
+                runCatching { RaftAndroidWebViewKeepAlive.drop("logout") }
+                runCatching { android.webkit.WebStorage.getInstance().deleteAllData() }
+            }
+        }
+    }
+}
+
+private suspend fun clearAndroidCookiesForOrigin(
+    cookieManager: android.webkit.CookieManager,
+    origin: String,
+) {
+    val cookieHeader = runCatching { cookieManager.getCookie(origin) }.getOrNull().orEmpty()
+    if (cookieHeader.isBlank()) return
+    val host = origin.substringAfter("://", "").substringBefore(':').lowercase().trimEnd('.')
+    val secureSuffix = if (origin.startsWith("https://", ignoreCase = true)) "; Secure" else ""
+    val cookieNames =
+        cookieHeader
+            .split(';')
+            .mapNotNull { part -> part.substringBefore('=').trim().takeIf { it.isNotEmpty() } }
+            .distinct()
+    val domains =
+        buildList {
+            add(null)
+            if (host.isNotEmpty()) {
+                add(host)
+                val dotIndex = host.indexOf('.')
+                if (dotIndex > 0 && host.indexOf('.', dotIndex + 1) > 0) {
+                    add(host.substring(dotIndex + 1))
+                }
+            }
+        }
+    for (name in cookieNames) {
+        for (domain in domains) {
+            val domainAttr = if (domain != null) "; Domain=.$domain" else ""
+            val expired = "$name=; Max-Age=0; Expires=Thu, 01 Jan 1970 00:00:00 GMT; Path=/$domainAttr$secureSuffix"
+            withTimeoutOrNull(500L) {
+                suspendCancellableCoroutine<Unit> { cont ->
+                    runCatching {
+                        cookieManager.setCookie(origin, expired) {
+                            if (cont.isActive) cont.resume(Unit)
+                        }
+                    }.onFailure {
+                        if (cont.isActive) cont.resume(Unit)
+                    }
+                }
+            }
+        }
     }
 }
 

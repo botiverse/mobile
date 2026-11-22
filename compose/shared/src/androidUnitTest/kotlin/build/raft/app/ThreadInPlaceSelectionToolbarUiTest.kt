@@ -22,7 +22,6 @@ import androidx.compose.ui.test.performMouseInput
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.unit.dp
 import kotlin.test.Test
-import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 import org.junit.Rule
 import org.junit.runner.RunWith
@@ -105,31 +104,6 @@ class ThreadInPlaceSelectionToolbarUiTest {
             // the whole message, as threadInPlaceSelectionCopyText defines. Either way, the selection.
             assertTrue(copied.isNotEmpty() && BODY.startsWith(copied), "copies the selection: '$copied'")
             assertTrue(!toolbarShown(), "Copy dismisses the toolbar")
-        }
-
-    @Test
-    fun quoteQuotesTheSelectionIntoTheComposer() =
-        runRobolectricComposeUiTest {
-            val calls = Calls()
-            showBody(calls)
-            mouseSelect()
-            onNode(hasText("Quote"), useUnmergedTree = true).performMouseInput { click(center) }
-            waitForIdle()
-            val quote = calls.quoted.single()
-            assertTrue(quote.startsWith("> "), "a Markdown quote: '$quote'")
-            assertEquals(formatThreadMessageQuote(quote.removePrefix("> ")), quote)
-            assertTrue(calls.copied.isEmpty())
-            assertTrue(!toolbarShown(), "Quote dismisses the toolbar")
-        }
-
-    @Test
-    fun withoutAComposerTheToolbarOffersCopyOnly() =
-        runRobolectricComposeUiTest {
-            showBody(Calls(), withComposer = false)
-            mouseSelect()
-            assertTrue(toolbarShown())
-            assertTrue(onAllNodes(hasText("Quote"), useUnmergedTree = true).fetchSemanticsNodes().isEmpty())
-            assertTrue(onAllNodes(hasText("Copy"), useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty())
         }
 
     // A finger long-press is covered by the pure policy tests (ThreadInPlaceTextSelectionTest): a

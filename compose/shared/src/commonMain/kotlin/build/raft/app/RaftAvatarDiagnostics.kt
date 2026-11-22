@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.app.model.isRelativeAppAvatarPath
 import kotlin.random.Random
 
 private val RaftAvatarDiagnosticsSessionSalt = Random.nextLong().toString(16)
@@ -34,7 +35,7 @@ internal fun String?.raftAvatarDiagnosticsHash(): String {
 /** Diagnostic source contract: no raw URL, token, or identity ever leaves this boundary. */
 internal fun String?.raftAvatarDiagnosticsSource(): String {
     val value = this?.trim()?.takeIf { it.isNotBlank() } ?: return "none"
-    return if (value.startsWith("http://") || value.startsWith("https://")) {
+    return if (value.startsWith("http://") || value.startsWith("https://") || value.isRelativeAppAvatarPath()) {
         "url(${value.raftAvatarDiagnosticsHash()})"
     } else {
         "none"
@@ -49,6 +50,7 @@ internal fun String?.raftAvatarDiagnosticsSource(): String {
  */
 internal fun String?.raftAvatarDiagnosticsUrlShape(apiBaseUrl: String?): String {
     val value = this?.trim()?.takeIf { it.isNotBlank() } ?: return "shape=none"
+    if (value.isRelativeAppAvatarPath()) return "shape=host=api,path=avatars"
     if (!value.startsWith("http://") && !value.startsWith("https://")) return "shape=none"
     val authorityStart = value.indexOf("://") + 3
     val authorityEnd = value.indexOf('/', startIndex = authorityStart).let { if (it < 0) value.length else it }

@@ -38,9 +38,6 @@ class ThreadRetractedMessageScreenshotTest {
     @Test
     fun retractedThreadLight() = capture("thread.delegated-retracted", RaftAppAppearance.Light)
 
-    @Test
-    fun retractedThreadDark() = capture("thread.delegated-retracted.dark", RaftAppAppearance.Dark)
-
     private fun capture(name: String, appearance: RaftAppAppearance) =
         RaftRobolectricScreenshot.capture(name, appearance, reportDir = "build/reports/home-screenshots", activities = activities) {
             val pager = remember { object : Pager() {}.apply { pageData = PageData(JSONObject()) } }

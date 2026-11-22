@@ -64,8 +64,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 60
     # React was the round's critical path (one worker, ~200 cases, ~22 min; headers-and-visual.md):
-    # four jobs each take every fourth case of the manifest. A targeted case_filter round uses
-    # shard 0 only; the other shards no-op.
+    # four jobs each take every fourth case, of the manifest or of a targeted case_filter; a shard
+    # left without a case no-ops.
     strategy:
       fail-fast: false
       matrix:
@@ -80,7 +80,12 @@ jobs:
         env:
           CASE_FILTER: ${{ inputs.case_filter }}
         run: |
-          if [ -n "$CASE_FILTER" ] && [ "${{ matrix.shard }}" != "0" ]; then
+          # A targeted round's cases, every fourth one from this shard's index, like a full round's.
+          CASES="$(python3 -c 'import sys
+          cases = [c.strip() for c in sys.argv[1].split(",") if c.strip()]
+          print(",".join(c for n, c in enumerate(cases) if n % 4 == int(sys.argv[2])))' "$CASE_FILTER" "${{ matrix.shard }}")"
+          echo "cases=$CASES" >> "$GITHUB_OUTPUT"
+          if [ -n "$CASE_FILTER" ] && [ -z "$CASES" ]; then
             echo "active=false" >> "$GITHUB_OUTPUT"
           else
             echo "active=true" >> "$GITHUB_OUTPUT"
@@ -148,6 +153,7 @@ jobs:
         env:
           CASE_FILTER: ${{ inputs.case_filter }}
           SHARD: ${{ matrix.shard }}
+          SHARD_FILTER: ${{ steps.plan.outputs.cases }}
         run: |
           if [ -z "$CASE_FILTER" ]; then
             # The cases an unfiltered capture takes (cli.mjs selectedCases: not pending, not
@@ -165,7 +171,7 @@ jobs:
           fi
 
           status=0
-          IFS=',' read -ra CASES <<< "$CASE_FILTER"
+          IFS=',' read -ra CASES <<< "$SHARD_FILTER"
           for CASE_ID in "${CASES[@]}"; do
             CASE_ID="$(echo "$CASE_ID" | xargs)"
             if [ -z "$CASE_ID" ]; then
@@ -923,6 +929,15 @@ jobs:
         env:
           SLOCK_SOURCE_REPO: ${{ github.workspace }}/slock-source
         run: node scripts/slock-visual-testing.mjs generate-fixture-data --check
+
+      # The list of compared cases check_visual_pairs.py holds pull requests to. A warning only: a
+      # case new on the web must not stop the round that shows it.
+      - name: Check compared cases list
+        working-directory: mobile
+        run: |
+          python3 scripts/ci/check_visual_pairs.py \
+            --manifest ../slock-source/packages/visual-testing/shared/sharedCases.json ||
+            echo "::warning::Compared cases and slock's manifest differ (scripts/ci/visual_paired_cases.txt)."
 
       # Pixel avatar drift gate (task #352): mobile's generated
       # RaftPixelAvatarData.kt must match slock's canonical pixelAvatars.json.

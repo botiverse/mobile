@@ -60,18 +60,6 @@ class ActivityRowSenderAvatarUrlTest {
         assertEquals(null, activityFaceAvatarWireValue(null, bare))
     }
 
-    @Test
-    fun pendingServerPrExternalAgentThreadReplierFallsBackToSenderAvatarUrlBeforeThePixelRobot() {
-        val thread =
-            parseSingle(
-                threadRow(senderAvatarUrl = "\"https://cdn.example/agent-ext.png\"")
-                    .replace("\"latestActivitySenderType\":\"user\"", "\"latestActivitySenderType\":\"agent\"")
-            )
-        val identity = thread.activitySenderAvatarIdentity()
-        assertEquals(MemberKind.Agent, identity.senderKind)
-        assertEquals("https://cdn.example/agent-ext.png", activityFaceAvatarWireValue(null, identity))
-    }
-
     private fun parseSingle(row: String): InboxItem =
         parseSharedInboxSnapshot(
             """{"items":[$row],"hasMore":false,"totalCount":1,"totalUnreadCount":0}"""

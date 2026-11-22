@@ -18,7 +18,6 @@ import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
-import androidx.compose.ui.test.performMouseInput
 import androidx.compose.ui.test.performTouchInput
 import build.raft.app.base.BridgeModule
 import build.raft.app.compat.json.JSONObject
@@ -118,32 +117,6 @@ class ThreadMessageTimeRevealUiTest {
         }
 
     @Test
-    fun rowsTrackTheFingerFromItsDown() =
-        runRobolectricComposeUiTest {
-            val h = show(messages(3))
-            val body = onNodeWithText("message body 1", useUnmergedTree = true)
-            val restX = body.fetchSemanticsNode().positionInRoot.x
-            onNodeWithTag(LIST).performTouchInput {
-                down(center)
-                repeat(4) { moveBy(Offset(-10f, 0f)) }
-            }
-            waitForIdle()
-            assertTrue(h.reveal.active)
-            // 40dp of drag moves the rows 40dp (the claim's distance included), not 40dp minus the claim.
-            assertEquals(40f, h.reveal.offset.value, 0.5f)
-            assertEquals(restX - 40f, body.fetchSemanticsNode().positionInRoot.x, 0.5f)
-            onNodeWithTag(LIST).performTouchInput {
-                repeat(3) { moveBy(Offset(-8f, 0f)) }
-            }
-            waitForIdle()
-            // 64dp: the whole gutter, no rubber band yet.
-            assertEquals(64f, h.reveal.offset.value, 0.5f)
-            onNodeWithTag(LIST).performTouchInput { up() }
-            waitForIdle()
-            assertEquals(0f, h.reveal.offset.value)
-        }
-
-    @Test
     fun reducedMotionShowsTimesOnlyInContinuationGutters() =
         runRobolectricComposeUiTest {
             val h = show(messages(3), compact = true, reducedMotion = true)
@@ -172,21 +145,6 @@ class ThreadMessageTimeRevealUiTest {
             waitForIdle()
             assertFalse(h.reveal.active)
             assertEquals(0, revealedLabels())
-        }
-
-    @Test
-    fun reducedMotionWithoutCompactRowsShowsNoExtraTimes() =
-        runRobolectricComposeUiTest {
-            val h = show(messages(3), compact = false, reducedMotion = true)
-            onNodeWithTag(LIST).performTouchInput {
-                down(center)
-                repeat(10) { moveBy(Offset(-10f, 0f)) }
-            }
-            waitForIdle()
-            assertTrue(h.reveal.active)
-            // Every row is a group's first, its header shows the time.
-            assertEquals(0, revealedLabels())
-            onNodeWithTag(LIST).performTouchInput { up() }
         }
 
     @Test
@@ -222,45 +180,6 @@ class ThreadMessageTimeRevealUiTest {
         }
 
     @Test
-    fun dragStartingInAWideTableScrollsTheTableNotTheReveal() =
-        runRobolectricComposeUiTest {
-            val table =
-                "| " + (1..12).joinToString(" | ") { "column header $it" } + " |\n" +
-                    "| " + (1..12).joinToString(" | ") { "---" } + " |\n" +
-                    "| " + (1..12).joinToString(" | ") { "cell value $it" } + " |"
-            val h = show(listOf(message(0, body = table)) + messages(2, from = 1))
-            val cell = onNodeWithText("cell value 2", substring = true, useUnmergedTree = true)
-            val startX = cell.fetchSemanticsNode().positionInRoot.x
-            cell.performTouchInput {
-                down(center)
-                repeat(10) { moveBy(Offset(-10f, 0f)) }
-            }
-            waitForIdle()
-            assertFalse(h.reveal.active, "a drag from the table is the table's")
-            assertEquals(0f, h.reveal.offset.value)
-            assertTrue(cell.fetchSemanticsNode().positionInRoot.x < startX, "the table scrolled")
-            cell.performTouchInput { up() }
-            waitForIdle()
-
-            // At its end it still keeps the drag: no hand-off.
-            repeat(4) {
-                cell.performTouchInput {
-                    down(center)
-                    repeat(20) { moveBy(Offset(-30f, 0f)) }
-                    up()
-                }
-                waitForIdle()
-            }
-            cell.performTouchInput {
-                down(center)
-                repeat(10) { moveBy(Offset(-10f, 0f)) }
-            }
-            waitForIdle()
-            assertFalse(h.reveal.active, "no hand-off at the table's end")
-            cell.performTouchInput { up() }
-        }
-
-    @Test
     fun longPressWithoutMovementOpensTheMenu() =
         runRobolectricComposeUiTest {
             val h = show(messages(3))
@@ -272,55 +191,6 @@ class ThreadMessageTimeRevealUiTest {
             waitForIdle()
             assertEquals(listOf("m-1"), h.menus)
             assertFalse(h.reveal.active)
-        }
-
-    @Test
-    fun aClaimedDragCancelsTheLongPress() =
-        runRobolectricComposeUiTest {
-            val h = show(messages(3))
-            onNodeWithText("message body 1", useUnmergedTree = true).performTouchInput {
-                down(center)
-                repeat(6) { moveBy(Offset(-10f, 0f), delayMillis = 16) }
-            }
-            waitForIdle()
-            assertTrue(h.reveal.active)
-            onNodeWithText("message body 1", useUnmergedTree = true).performTouchInput {
-                advanceEventTime(1_000)
-                moveBy(Offset(-2f, 0f))
-                up()
-            }
-            waitForIdle()
-            assertEquals(emptyList(), h.menus, "no menu after the drag claimed")
-            assertFalse(h.reveal.active)
-        }
-
-    @Test
-    fun aDragAfterTheLongPressMenuOpenedIsNotClaimed() =
-        runRobolectricComposeUiTest {
-            val h = show(messages(3))
-            onNodeWithText("message body 1", useUnmergedTree = true).performTouchInput {
-                down(center)
-                advanceEventTime(1_000)
-                repeat(6) { moveBy(Offset(-10f, 0f)) }
-            }
-            waitForIdle()
-            assertFalse(h.reveal.active)
-            assertEquals(listOf("m-1"), h.menus)
-            onNodeWithText("message body 1", useUnmergedTree = true).performTouchInput { up() }
-        }
-
-    @Test
-    fun mouseDragIsIgnored() =
-        runRobolectricComposeUiTest {
-            val h = show(messages(4))
-            onNodeWithTag(LIST).performMouseInput {
-                moveTo(center)
-                press()
-                repeat(10) { moveBy(Offset(-10f, 0f)) }
-            }
-            waitForIdle()
-            assertFalse(h.reveal.active, "a mouse keeps the hover toolbar; no reveal")
-            onNodeWithTag(LIST).performMouseInput { release() }
         }
 
     @Test

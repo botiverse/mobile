@@ -171,7 +171,7 @@ private val ActivityWeekdayResources =
         Res.string.activity_list_day_weekday_saturday,
     )
 
-private val ActivityMonthResources =
+internal val ActivityMonthResources =
     listOf(
         Res.string.activity_list_day_month_january,
         Res.string.activity_list_day_month_february,

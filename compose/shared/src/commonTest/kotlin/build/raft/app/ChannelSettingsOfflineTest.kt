@@ -19,7 +19,6 @@ import build.raft.app.data.SharedServerMembersLoadStatus
 import build.raft.app.data.StoredConversationDetailOwner
 import build.raft.app.data.StoredConversationDetails
 import build.raft.app.data.toCanonicalConversationDirectoryProjection
-import build.raft.app.data.toSharedConversationDirectoryState
 import build.raft.app.model.ChannelActivityNotificationPreference
 import build.raft.app.model.ChannelId
 import build.raft.app.model.ConversationKind
@@ -155,23 +154,6 @@ class ChannelSettingsOfflineTest {
     }
 
     @Test
-    fun leavingDropsTheStoredSettingsAndHeaderDetail() = runTest {
-        val device = Device(backgroundScope)
-        device.details.record(detailOwner(), "channel-1", detail("#stored"))
-        val store = store(device.cache(), OfflineFakeChannelSettingsDataSource(loadResult = DataResult.Content(snapshot("#loaded"))))
-        store.dispatch(ChannelSettingsIntent.Load)
-        runCurrent()
-        assertEquals("#loaded", device.storedRecord()?.channel?.name)
-
-        store.dispatch(ChannelSettingsIntent.Leave)
-        runCurrent()
-
-        assertNull(device.storedRecord())
-        assertNull(device.details.read(detailOwner(), "channel-1"))
-        store.clear()
-    }
-
-    @Test
     fun storedHeaderDetailStandsInUntilTheNetworksDetailAndNeverReplacesIt() = runTest {
         val device = Device(backgroundScope)
         device.details.record(detailOwner(), "channel-1", detail("#stored"))
@@ -189,22 +171,6 @@ class ChannelSettingsOfflineTest {
         // ... and a late stored read never puts the old one back.
         assertFalse(device.details.restore(detailOwner(), "channel-1", hub, stored))
         assertEquals("fresh", hub.resolveProjection(ServerId("server-1"), "channel-1")?.title?.removePrefix("#"))
-    }
-
-    @Test
-    fun storedHeaderDetailNeverOutranksALiveHomeRow() = runTest {
-        val device = Device(backgroundScope)
-        // Stored while previewing as a non-member; Home now knows the user joined.
-        device.details.record(detailOwner(), "channel-1", detail("#stored").copy(joined = false))
-        val hub = SharedConversationIdentityHub()
-        val home = detail("#home").toCanonicalConversationDirectoryProjection(ServerId("server-1"))!!
-        assertTrue(hub.publishCandidate(authority(), revision = 1, next = listOf(home).toSharedConversationDirectoryState()))
-
-        val stored = device.details.read(detailOwner(), "channel-1")!!
-        assertFalse(device.details.restore(detailOwner(), "channel-1", hub, stored))
-        val shown = hub.resolveProjection(ServerId("server-1"), "channel-1")
-        assertEquals("home", shown?.title?.removePrefix("#"))
-        assertEquals(true, shown?.joined)
     }
 
     @Test

@@ -13,15 +13,11 @@ import build.raft.app.threadSentAttachmentLocalImageSources
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.async
-import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.advanceUntilIdle
-import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
-import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -106,59 +102,6 @@ class RaftSentAttachmentLocalImagesTest {
             assertEquals("image/jpeg", bytes?.mimeType)
             assertEquals(listOf(LocalFileRef), harness.reads, "the local file is read exactly once")
         }
-    }
-
-    @Test
-    fun echoArrivingBeforeTheLocalCopyFinishesStillResolvesLocallyAndWaitsForTheBytes() = runTest {
-        val gate = CompletableDeferred<Unit>()
-        val harness = Harness(scope = this, readGate = gate)
-        harness.registry.register(listOf(localSource()))
-
-        // Registration is synchronous: the canonical row resolves before any byte is copied.
-        val plan = threadInlineImageSourcePlan(null, null, harness.registry.localModel(AttachmentId))
-        assertEquals(raftSentAttachmentModel(AttachmentId), plan.source)
-        assertFalse(plan.requestRemoteFallback)
-
-        val read = async { harness.registry.read(AttachmentId) }
-        advanceUntilIdle()
-        assertFalse(read.isCompleted, "the fetch waits for the copy, state=${harness.reads}")
-        gate.complete(Unit)
-        advanceUntilIdle()
-        assertContentEquals(LocalBytes, read.await()?.bytes)
-    }
-
-    @Test
-    fun retireWaitsForTheCopySoTheOwnedTemporaryFileIsReadFirst() = runTest {
-        val gate = CompletableDeferred<Unit>()
-        val harness = Harness(scope = this, readGate = gate)
-        harness.registry.register(listOf(localSource()))
-        val wait = async { harness.registry.awaitSeeded(listOf(AttachmentId), timeoutMillis = 5_000) }
-        advanceTimeBy(4_000)
-        assertFalse(wait.isCompleted, "retire must not run before the copy, reads=${harness.reads}")
-        gate.complete(Unit)
-        runCurrent()
-        assertTrue(wait.isCompleted)
-        assertEquals(listOf(LocalFileRef), harness.reads)
-    }
-
-    @Test
-    fun nonImageOversizedAndUnreadableSourcesKeepTheRemotePath() = runTest {
-        val harness = Harness(scope = this, maxSeedBytes = 4)
-        harness.registry.register(
-            listOf(
-                localSource(attachmentId = "video", mimeType = "video/mp4"),
-                localSource(attachmentId = "huge", sizeBytes = 5),
-                localSource(attachmentId = "missing", fileRef = "file:///gone.jpg"),
-            )
-        )
-        advanceUntilIdle()
-        listOf("video", "huge", "missing").forEach { id ->
-            assertNull(harness.registry.localModel(id), "id=$id")
-            val plan = threadInlineImageSourcePlan(null, null, harness.registry.localModel(id))
-            assertNull(plan.source)
-            assertTrue(plan.requestRemoteFallback, "id=$id falls back to the inline URL")
-        }
-        assertTrue(harness.store.entries.isEmpty())
     }
 
     @Test

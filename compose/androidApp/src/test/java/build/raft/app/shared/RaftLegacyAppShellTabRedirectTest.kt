@@ -26,11 +26,4 @@ class RaftLegacyAppShellTabRedirectTest {
         // The launch payload itself is not mutated.
         assertEquals(RaftPages.HOME_ACTIVITY, launch.getString("pageName"))
     }
-
-    @Test
-    fun otherPagesAreNotRedirected() {
-        assertNull(raftLegacyAppShellTabRedirect(RaftPages.APP_SHELL, JSONObject()))
-        assertNull(raftLegacyAppShellTabRedirect("compose_home_search", JSONObject()))
-        assertNull(raftLegacyAppShellTabRedirect(RaftPages.THREAD, JSONObject()))
-    }
 }

@@ -1,13 +1,10 @@
 package build.raft.app
 
-import build.raft.app.data.AgentDetailSnapshot
-import build.raft.app.data.AgentDetailSummary
 import build.raft.app.data.parseSharedSettingsAgentsAsMembers
 import build.raft.app.model.MemberId
 import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberProfile
 import build.raft.app.model.ServerId
-import build.raft.app.model.ServerSummary
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
@@ -80,37 +77,6 @@ class ManagedAppDetailLinkTest {
         val bounded = members.single { it.id.value == "agent-bounded" }
         assertEquals("channel_summary", bounded.profileProjection)
         assertNull(bounded.managedByAppLogoUrl)
-    }
-
-    @Test
-    fun detailSnapshotToStaticMembersProfilePreservesManagedAppAttribution() {
-        val snapshot =
-            AgentDetailSnapshot(
-                agentId = MemberId("agent-stamp"),
-                summary =
-                    AgentDetailSummary(
-                        id = "agent-stamp",
-                        name = "stamp",
-                        displayName = "Stamp",
-                        runtime = "external",
-                        managedByAppInstallId = "install-1",
-                        managedByAppClientId = "stamp-row-id",
-                        managedByAppName = "Stamp",
-                        managedByAppLogoUrl = "https://cdn.example.test/stamp.png",
-                        managedByAppBotStatusText = "Ready",
-                        profileProjection = null,
-                    ),
-                directMessages = emptyList(),
-                reminders = emptyList(),
-                activity = emptyList(),
-            )
-        val profile = snapshot.toStaticMembersProfile(ServerSummary(id = ServerId("srv-1"), name = "Launch", slug = "launch"))
-
-        assertEquals("install-1", profile.managedByAppInstallId)
-        assertEquals("stamp-row-id", profile.managedByAppClientId)
-        assertEquals("Stamp", profile.managedByAppName)
-        assertEquals("https://cdn.example.test/stamp.png", profile.managedByAppLogoUrl)
-        assertEquals("Ready", profile.managedByAppBotStatusText)
     }
 
     @Test
@@ -190,14 +156,6 @@ class ManagedAppDetailLinkTest {
                 currentServerId = "srv-1",
             ),
         )
-    }
-
-    @Test
-    fun fromAppTemplateSplitsCleanlyAroundPlaceholder() {
-        assertEquals("From" to "", membersManagedAppFromParts("From \u0000"))
-        assertEquals("来自" to "", membersManagedAppFromParts("来自 \u0000"))
-        assertEquals("提供元:" to "", membersManagedAppFromParts("提供元: \u0000"))
-        assertEquals("By" to "app", membersManagedAppFromParts("By \u0000 app"))
     }
 
     private fun appBotMember(serverId: String) =

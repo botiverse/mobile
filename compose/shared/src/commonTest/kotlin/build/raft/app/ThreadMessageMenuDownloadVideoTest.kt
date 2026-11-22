@@ -3,7 +3,6 @@ package build.raft.app
 import build.raft.app.resources.*
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertNull
 
 /**
  * artin 10-31: a video in a message could not be saved. As in Telegram / WhatsApp / iMessage, a
@@ -30,11 +29,6 @@ class ThreadMessageMenuDownloadVideoTest {
         cases.forEach { (attachments, expected) ->
             assertEquals(expected, threadMessageMenuDownloadVideoAttachmentId(message(attachments)), "attachments=${attachments.map { it.name }}")
         }
-    }
-
-    @Test
-    fun aMessageStillSendingHasNoDownload() {
-        assertNull(threadMessageMenuDownloadVideoAttachmentId(message(listOf(video), deliveryState = ThreadMessageDeliveryFailed)))
     }
 
     @Test

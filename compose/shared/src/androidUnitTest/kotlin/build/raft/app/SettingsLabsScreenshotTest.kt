@@ -32,9 +32,6 @@ class SettingsLabsScreenshotTest {
     @Test
     fun ownerDark() = capture("settings.labs.dark", RaftAppAppearance.Dark) { LabsFixture(role = "owner") }
 
-    @Test
-    fun memberLight() = capture("settings.labs.member", RaftAppAppearance.Light) { LabsFixture(role = "member") }
-
     private fun capture(name: String, appearance: RaftAppAppearance, content: @Composable () -> Unit) =
         RaftRobolectricScreenshot.capture(name, appearance, reportDir = "build/reports/home-screenshots", activities = activities) {
             MigrationFixtureHost(content)

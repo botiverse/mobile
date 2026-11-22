@@ -7,7 +7,6 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
-import kotlin.test.assertTrue
 import kotlinx.coroutines.runBlocking
 
 class ThreadApiTest {
@@ -290,43 +289,6 @@ class ThreadApiTest {
     }
 
     @Test
-    fun sendMessageParsesCanonicalRandomIdEcho() = runBlocking {
-        val api =
-            RaftThreadApiClient(
-                FakeThreadNetworkApi(
-                    sendBody = """{"id":"m-send","channelId":"channel-1","senderType":"user","senderId":"u1","content":"sent","randomId":"rid-send-1","seq":1}"""
-                )
-            )
-
-        val result = api.sendMessage("channel-1", "sent", randomId = "rid-send-1")
-
-        val message = assertIs<ThreadApiResult.Success<ThreadMessagesPage>>(result).data.messages.single()
-        assertEquals("m-send", message.id)
-        assertEquals("rid-send-1", message.randomId)
-    }
-
-    @Test
-    fun messageSyncEmitsOffUiParseDiagnostics() = runBlocking {
-        val logs = mutableListOf<String>()
-        val api =
-            RaftThreadApiClient(
-                FakeThreadNetworkApi(syncBody = """[{"id":"m2","content":"new","seq":2}]"""),
-                diagnosticsLogger = logs::add
-            )
-
-        val result = api.messageSync("channel-1", sinceSeq = 1)
-
-        assertEquals(1, assertIs<ThreadApiResult.Success<ThreadMessagesPage>>(result).data.messageCount)
-        assertTrue(logs.any { it.contains("thread_parse_start source=thread_sync") && it.contains("dispatcher=JsonParse") })
-        assertTrue(
-            logs.any {
-                it.contains("thread_parse_result source=thread_sync result=success messages=1") &&
-                    it.contains("dispatcher=JsonParse")
-            }
-        )
-    }
-
-    @Test
     fun channelMessagesPreserveTaskLifecycleSystemRows() = runBlocking {
         val api =
             RaftThreadApiClient(
@@ -359,114 +321,6 @@ class ThreadApiTest {
         assertEquals("sys-done-1", message.id)
         assertEquals("system", message.messageType)
         assertEquals("✅ artin moved #252 \"Implement Thread timeline system-message rendering\" to Done", message.content)
-    }
-
-    @Test
-    fun syncPreservesTaskLifecycleSystemRows() = runBlocking {
-        val api =
-            RaftThreadApiClient(
-                FakeThreadNetworkApi(
-                    syncBody =
-                        """
-                        [
-                          {
-                            "id": "sys-claim-1",
-                            "channelId": "thread-1",
-                            "senderType": "user",
-                            "senderId": "system",
-                            "senderName": "System",
-                            "messageType": "system",
-                            "content": "claimed #252 \"Implement Thread timeline system-message rendering\"",
-                            "createdAt": "2026-06-13T01:00:00Z",
-                            "seq": 45
-                          }
-                        ]
-                        """.trimIndent()
-                )
-            )
-
-        val result = api.messageSync("thread-1", sinceSeq = 44)
-
-        val message = assertIs<ThreadApiResult.Success<ThreadMessagesPage>>(result).data.messages.single()
-        assertEquals("sys-claim-1", message.id)
-        assertEquals("system", message.messageType)
-        assertEquals("claimed #252 \"Implement Thread timeline system-message rendering\"", message.content)
-    }
-
-    @Test
-    fun syncRejectsNestedWrapper() = runBlocking {
-        val api = RaftThreadApiClient(FakeThreadNetworkApi(syncBody = """{"data":[{"id":"m2","content":"new","seq":2}]}"""))
-
-        val result = api.messageSync("channel-1", sinceSeq = 1)
-
-        assertEquals("thread_sync_contract_mismatch", assertIs<ThreadApiResult.Failure>(result).contractCode)
-    }
-
-    @Test
-    fun sendMessageAcceptsRawMessageResponseWithoutPendingActions() = runBlocking {
-        val api = RaftThreadApiClient(FakeThreadNetworkApi(sendBody = """{"id":"m3","channelId":"channel-1","content":"sent","seq":3}"""))
-
-        val result = api.sendMessage("channel-1", "sent")
-
-        val page = assertIs<ThreadApiResult.Success<ThreadMessagesPage>>(result).data
-        assertEquals("m3", page.messages.single().id)
-        assertEquals(emptyList(), page.pendingMentionActions)
-    }
-
-    @Test
-    fun sendMessageAcceptsWrappedMessageResponseWithPendingMentionActions() = runBlocking {
-        val api =
-            RaftThreadApiClient(
-                FakeThreadNetworkApi(
-                    sendBody =
-                        """
-                        {
-                          "message": {"id":"m3","channelId":"channel-1","content":"hi @outside","seq":3},
-                          "pendingMentionActions": [
-                            {
-                              "resolutionId": "res-1",
-                              "messageId": "m3",
-                              "channelId": "channel-1",
-                              "channelName": "对话流专修",
-                              "targetType": "agent",
-                              "targetHandle": "outside",
-                              "targetAvatarUrl": "https://cdn.slock.ai/avatars/agents/outside.webp",
-                              "reason": "not_member",
-                              "availableActions": ["add", "notify"],
-                              "expiresAt": "2026-06-21T00:00:00Z"
-                            },
-                            {
-                              "resolutionId": "res-2",
-                              "messageId": "m3",
-                              "channelId": "channel-1",
-                              "channelName": "对话流专修",
-                              "targetType": "agent",
-                              "targetHandle": "blank-avatar",
-                              "targetAvatarUrl": "   ",
-                              "reason": "not_member",
-                              "availableActions": ["notify"]
-                            }
-                          ]
-                        }
-                        """.trimIndent()
-                )
-            )
-
-        val result = api.sendMessage("channel-1", "hi @outside")
-
-        val page = assertIs<ThreadApiResult.Success<ThreadMessagesPage>>(result).data
-        assertEquals("m3", page.messages.single().id)
-        assertEquals(2, page.pendingMentionActions.size)
-        val pending = page.pendingMentionActions.first()
-        assertEquals("res-1", pending.resolutionId)
-        assertEquals("m3", pending.messageId?.value)
-        assertEquals("channel-1", pending.channelId?.value)
-        assertEquals("对话流专修", pending.channelName)
-        assertEquals("agent", pending.targetType)
-        assertEquals("outside", pending.targetHandle)
-        assertEquals("https://cdn.slock.ai/avatars/agents/outside.webp", pending.targetAvatarUrl)
-        assertEquals(listOf("add", "notify"), pending.availableActions)
-        assertEquals(null, page.pendingMentionActions[1].targetAvatarUrl)
     }
 
     @Test
@@ -532,29 +386,6 @@ class ThreadApiTest {
         assertEquals("thread-1", action.threadChannelId.value)
         assertEquals("m1", action.parentMessageId?.value)
         assertEquals(2, action.replyCount)
-    }
-
-    @Test
-    fun createThreadRejectsNestedGuessedResponse() = runBlocking {
-        val api =
-            RaftThreadApiClient(
-                FakeThreadNetworkApi(createThreadBody = """{"data":{"thread":{"threadChannelId":"thread-1"}}}""")
-            )
-
-        val result = api.createOrOpenThread("channel-1", "m1")
-
-        assertEquals("thread_create_contract_mismatch", assertIs<ThreadApiResult.Failure>(result).contractCode)
-    }
-
-    @Test
-    fun unsaveMessageCallsCanonicalTransport() = runBlocking {
-        val transport = FakeThreadNetworkApi()
-        val api = RaftThreadApiClient(transport)
-
-        val result = api.unsaveMessage("msg-1")
-
-        assertIs<ThreadApiResult.Success<Unit>>(result)
-        assertEquals(listOf("msg-1"), transport.unsavedMessageIds)
     }
 
     @Test

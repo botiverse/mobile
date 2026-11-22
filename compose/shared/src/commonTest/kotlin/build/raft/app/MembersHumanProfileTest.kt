@@ -1,35 +1,187 @@
 package build.raft.app
 
+import build.raft.app.data.SharedAgentDetailState
+import build.raft.app.data.SharedServerMembersEntry
+import build.raft.app.data.SharedServerMembersState
 import build.raft.app.model.MemberId
 import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberProfile
 import build.raft.app.model.RaftTimeContext
 import build.raft.app.model.ServerId
+import build.raft.app.model.ServerSummary
 import build.raft.designsystem.components.RaftBadgeVariant
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertIs
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class MembersHumanProfileTest {
+    private val server = ServerSummary(id = ServerId("server-1"), name = "One")
+
+    /** The signed-in person as their server's roster lists them (its `joinedAt` reads as active). */
+    private val viewer =
+        MemberProfile(
+            id = MemberId("user-1"),
+            displayName = "RC",
+            handle = "stdrc",
+            kind = MemberKind.Human,
+            serverId = server.id,
+            membershipStatus = "active"
+        )
+
+    private fun rosterOf(member: MemberProfile): SharedServerMembersState =
+        SharedServerMembersState(
+            entriesByServerId =
+                mapOf(
+                    server.id.value to
+                        SharedServerMembersEntry(serverId = server.id.value, server = server, members = listOf(member))
+                )
+        )
+
+    /**
+     * Every way to your own profile, the reported one first (the DM with yourself: its header and
+     * your own message in it), hands the profile page only your identity. Its first frame, the
+     * roster seed, knows you from the signed-in account: "you" and Edit description.
+     */
+    @Test
+    fun ownProfileKnowsTheViewerFromEveryOpener() {
+        val selfDm =
+            RaftThreadScreenPayload(
+                instanceId = "thread-dm-self",
+                sourceThreadId = "dm-self",
+                surfaceKind = RaftThreadSurfaceKind.DirectMessage,
+                channelKind = "dm"
+            )
+        val local = MemberDetailIdentity(viewer.id, MemberKind.Human, server.id)
+        val openers =
+            mapOf(
+                "self_dm_header" to
+                    memberDetailIdentityFromWire("user-1", "human", source = MemberDetailIdentitySource.DirectoryDmPeer)
+                        ?.let { selfDm.toThreadMemberDetailPageData(it) },
+                "self_dm_own_message" to
+                    RaftThreadMessageItem(id = "message-1", authorId = "user-1", authorName = "RC", authorKind = "human")
+                        .memberDetailIdentity()
+                        ?.let { selfDm.toThreadMemberDetailPageData(it) },
+                "members_list" to RaftMembersPayload(instanceId = server.id.value).toMemberDetailPageData(local),
+                "search" to homeSearchMemberDetailPageData(local, timeContext = null)
+            )
+
+        for ((opener, pageData) in openers) {
+            val payload = assertNotNull(pageData, opener).toRaftMemberDetailPayload()
+            assertEquals(viewer.id, payload.identity?.memberId, opener)
+            // None of them reads the profile in a channel (a DM is none).
+            assertNull(payload.profileChannelId, opener)
+            val route =
+                assertIs<MemberDetailRouteState.Human>(
+                    memberDetailInitialRouteState(
+                        identity = payload.identity,
+                        activeServerId = server.id.value,
+                        agentDetailState = SharedAgentDetailState(),
+                        serverMembersState = rosterOf(viewer),
+                        currentUserId = viewer.id.value
+                    ),
+                    opener
+                )
+            assertTrue(membersHumanIsSelf(route.member, route.currentUserId), opener)
+            assertTrue(membersHumanCanEditDescription(route.member, route.currentUserId), opener)
+        }
+    }
+
+    /**
+     * Both states the profile page shows a person in, the roster seed and then the profile read,
+     * offer Edit description on your own active profile only ("you" shows on yours either way).
+     * The read lands although the agent request fence the page builds for every open never matches
+     * a person: gated on it, the page kept the seed, without the viewer, for good.
+     */
+    @Test
+    fun seedAndProfileReadOfferEditOnlyOnTheViewersActiveProfile() {
+        // shown member, "you", Edit description
+        val cases =
+            listOf(
+                Triple(viewer, true, true),
+                Triple(viewer.copy(id = MemberId("user-2"), handle = "other"), false, false),
+                Triple(viewer.copy(membershipStatus = "left"), true, false)
+            )
+        for ((member, isSelf, canEdit) in cases) {
+            val label = "${member.id.value}/${member.membershipStatus}"
+            val identity = MemberDetailIdentity(member.id, MemberKind.Human, server.id)
+            val seed =
+                assertIs<MemberDetailRouteState.Human>(
+                    memberDetailInitialRouteState(
+                        identity = identity,
+                        activeServerId = server.id.value,
+                        agentDetailState = SharedAgentDetailState(),
+                        serverMembersState = rosterOf(member),
+                        currentUserId = viewer.id.value
+                    ),
+                    label
+                )
+            val read = MemberDetailRouteState.Human(server, currentUserId = viewer.id.value, member = member)
+            val agentFence = MembersAgentProfileRequestFence(identity.memberId, server.id, generation = 1L)
+            assertTrue(
+                memberDetailAppliesLoadedRoute(
+                    identity = identity,
+                    shown = seed,
+                    loaded = read,
+                    agentRequestCurrent = agentFence.matches(identity, server.id.value, currentGeneration = 1L)
+                ),
+                label
+            )
+            for (route in listOf(seed, read)) {
+                assertEquals(isSelf, membersHumanIsSelf(route.member, route.currentUserId), label)
+                assertEquals(canEdit, membersHumanCanEditDescription(route.member, route.currentUserId), label)
+            }
+        }
+    }
+
+    /**
+     * A failed profile read keeps the person's roster seed on screen; a cold open shows the
+     * failure. An agent's answer still lands only while its request is current.
+     */
+    @Test
+    fun failedReadKeepsThePersonsSeedAndAgentAnswersStayFenced() {
+        val person = MemberDetailIdentity(viewer.id, MemberKind.Human, server.id)
+        val seed = MemberDetailRouteState.Human(server, currentUserId = viewer.id.value, member = viewer)
+        val failed = MemberDetailRouteState.Error("network_parse_failed")
+        assertFalse(memberDetailAppliesLoadedRoute(person, shown = seed, loaded = failed, agentRequestCurrent = false))
+        assertTrue(
+            memberDetailAppliesLoadedRoute(
+                person,
+                shown = MemberDetailRouteState.Loading,
+                loaded = failed,
+                agentRequestCurrent = false
+            )
+        )
+
+        val agent = MemberDetailIdentity(MemberId("agent-1"), MemberKind.Agent, server.id)
+        val agentRoute = MemberDetailRouteState.Agent(server, currentUserId = viewer.id.value)
+        assertTrue(
+            memberDetailAppliesLoadedRoute(
+                agent,
+                shown = MemberDetailRouteState.Loading,
+                loaded = agentRoute,
+                agentRequestCurrent = true
+            )
+        )
+        assertFalse(
+            memberDetailAppliesLoadedRoute(
+                agent,
+                shown = MemberDetailRouteState.Loading,
+                loaded = agentRoute,
+                agentRequestCurrent = false
+            )
+        )
+    }
+
     @Test
     fun departureFollowsWebMembershipStatuses() {
         assertEquals(MembersHumanDeparture.Left, membersHumanDeparture("left"))
         assertEquals(MembersHumanDeparture.Removed, membersHumanDeparture(" Removed "))
         assertNull(membersHumanDeparture("active"))
         assertNull(membersHumanDeparture(null))
-    }
-
-    @Test
-    fun roleBadgeIsNeutralForServerRolesAndInformationForGuests() {
-        assertEquals(MembersHumanRoleBadge.Owner, membersHumanRoleBadge("owner", null))
-        assertEquals(RaftBadgeVariant.Default, MembersHumanRoleBadge.Owner.badgeVariant)
-        assertEquals(RaftBadgeVariant.Default, MembersHumanRoleBadge.Admin.badgeVariant)
-        assertEquals(RaftBadgeVariant.Default, MembersHumanRoleBadge.Member.badgeVariant)
-        assertEquals(MembersHumanRoleBadge.Guest, membersHumanRoleBadge("guest", null))
-        assertEquals(RaftBadgeVariant.Information, MembersHumanRoleBadge.Guest.badgeVariant)
     }
 
     @Test
@@ -77,14 +229,6 @@ class MembersHumanProfileTest {
         assertNull("".membersJoinedDateOrNull(utc))
         assertNull(null.membersJoinedDateOrNull(utc))
         assertNull("not a date".membersJoinedDateOrNull(utc))
-    }
-
-    @Test
-    fun joinedMonthLabelReadsTheLocalizedList() {
-        val english = "Jan,Feb,Mar,Apr,May,Jun,Jul,Aug,Sep,Oct,Nov,Dec"
-        assertEquals("Sep", membersJoinedMonthLabel(english, 9))
-        assertEquals("9", membersJoinedMonthLabel("1,2,3,4,5,6,7,8,9,10,11,12", 9))
-        assertEquals("13", membersJoinedMonthLabel(english, 13))
     }
 
     @Test

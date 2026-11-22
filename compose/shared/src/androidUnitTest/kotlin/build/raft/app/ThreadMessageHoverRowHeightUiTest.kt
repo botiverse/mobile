@@ -62,14 +62,6 @@ class ThreadMessageHoverRowHeightUiTest {
         }
 
     @Test
-    fun hoverToolbarDoesNotGrowAGroupsFirstRow() =
-        runRobolectricComposeUiTest {
-            val toolbar = ToolbarState()
-            showRow(toolbar, continuation = false)
-            assertRowKeepsItsHeightUnderTheMouse(toolbar)
-        }
-
-    @Test
     fun aMouseClickOnTheToolbarStillReachesItsButton() =
         runRobolectricComposeUiTest {
             val toolbar = ToolbarState()

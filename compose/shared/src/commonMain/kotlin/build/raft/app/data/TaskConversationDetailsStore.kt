@@ -23,7 +23,7 @@ internal sealed interface TaskDetailLoad<out T> {
 
     data class Loaded<T>(val value: T) : TaskDetailLoad<T>
 
-    data object Failed : TaskDetailLoad<Nothing>
+    data class Failed(val traceId: String? = null) : TaskDetailLoad<Nothing>
 }
 
 internal val <T> TaskDetailLoad<T>.valueOrNull: T?
@@ -106,7 +106,8 @@ internal fun TaskConversationDetailsState.reduce(intent: TaskConversationDetails
                     is DataResult.Empty -> copy(history = TaskDetailLoad.Loaded(emptyList()))
                     // A refresh that fails keeps what was shown (web shows the error only with nothing loaded).
                     is DataResult.Error,
-                    is DataResult.NoPermission -> if (history is TaskDetailLoad.Loaded) this else copy(history = TaskDetailLoad.Failed)
+                    is DataResult.NoPermission ->
+                        if (history is TaskDetailLoad.Loaded) this else copy(history = TaskDetailLoad.Failed(result.failureTraceIdOrNull()))
                 }
             }
         is TaskConversationDetailsIntent.SourceStarted ->
@@ -115,7 +116,11 @@ internal fun TaskConversationDetailsState.reduce(intent: TaskConversationDetails
             if (intent.messageId != sourceMessageId) {
                 this
             } else {
-                copy(source = (intent.result as? DataResult.Content)?.let { TaskDetailLoad.Loaded(it.data) } ?: TaskDetailLoad.Failed)
+                copy(
+                    source =
+                        (intent.result as? DataResult.Content)?.let { TaskDetailLoad.Loaded(it.data) }
+                            ?: TaskDetailLoad.Failed(intent.result.failureTraceIdOrNull())
+                )
             }
         is TaskConversationDetailsIntent.EarlierStarted ->
             copy(
@@ -128,7 +133,8 @@ internal fun TaskConversationDetailsState.reduce(intent: TaskConversationDetails
             } else {
                 copy(
                     earlierDiscussion =
-                        (intent.result as? DataResult.Content)?.let { TaskDetailLoad.Loaded(it.data) } ?: TaskDetailLoad.Failed
+                        (intent.result as? DataResult.Content)?.let { TaskDetailLoad.Loaded(it.data) }
+                            ?: TaskDetailLoad.Failed(intent.result.failureTraceIdOrNull())
                 )
             }
     }
@@ -226,6 +232,6 @@ internal class TaskConversationDetailsViewModel(
         } catch (cancellation: CancellationException) {
             throw cancellation
         } catch (_: Throwable) {
-            DataResult.Error(ScreenError(code = code, retryable = true))
+            DataResult.Error(ScreenError(code = code, retryable = true, traceId = null))
         }
 }

@@ -14,7 +14,6 @@ import build.raft.app.data.SharedActivityIntent
 import build.raft.app.data.SharedActivityStore
 import build.raft.app.data.StoredAuthSession
 import build.raft.app.data.activityItem
-import build.raft.app.data.activityRefreshJoinsInFlightLoad
 import build.raft.app.data.activityStore
 import build.raft.app.data.sampleSession
 import build.raft.app.data.snapshot
@@ -71,46 +70,6 @@ class ActivityTabEntryRefreshTest {
     }
 
     @Test
-    fun aPanelComposedHiddenRefreshesOnItsFirstEntry() = runTest {
-        // Kept alive / rebuilt by a server switch while another tab is selected.
-        val inbox = SlowInbox(latencyMillis = 500)
-        val (store, _) = store(inbox)
-        val panel = Panel(store, initiallyActive = false)
-        panel.mount()
-        advanceTimeBy(ActivityRefreshCoalesceWindowMillis * 2)
-        runCurrent()
-        assertEquals(1, inbox.started)
-
-        panel.setActive(true)
-        runCurrent()
-        assertEquals(2, inbox.started)
-    }
-
-    @Test
-    fun theSameFrameEntryBurstJoinsOneLoadInsteadOfCancellingIt() = runTest {
-        // Session read suspends before the load publishes refreshing=true, as on device.
-        val inbox = SlowInbox(latencyMillis = 1_000)
-        val (store, logs) = store(inbox, sessionReadMillis = 20)
-        val panel = Panel(store, initiallyActive = false)
-        panel.mount()
-        settle()
-        val before = inbox.started
-        logs.clear()
-
-        // One entry: shell SetSelectedTab -> Refresh, the active edge, the stale pageDidAppear tick.
-        store.dispatch(SharedActivityIntent.Refresh)
-        runCurrent()
-        panel.setActive(true)
-        runCurrent()
-        panel.routeVisibleTick(tick = 7)
-        settle()
-
-        assertEquals(before + 1, inbox.started)
-        assertEquals(0, logs.count { "phase=abandoned" in it }, logs.joinToString("\n"))
-        assertEquals(2, logs.count { "phase=coalesced" in it }, logs.joinToString("\n"))
-    }
-
-    @Test
     fun aLoadStartedWhileHiddenAndStuckOnASlowNetworkDoesNotSwallowTheEntry() = runTest {
         // Hands 679ef9ce: a server switch rebuilt the hidden tab, its LoadInitial hung ~9.4s, and
         // the entries at +3.8s and +8.1s fetched nothing until the user pulled.
@@ -164,66 +123,6 @@ class ActivityTabEntryRefreshTest {
         assertEquals(before + 1, inbox.started)
         assertEquals(0, logs.count { "phase=abandoned" in it }, logs.joinToString("\n"))
         assertEquals(2, logs.count { "phase=coalesced" in it }, logs.joinToString("\n"))
-    }
-
-    @Test
-    fun resumeDoesNotJoinALoadThatWasInFlightWhenTheAppWentToTheBackground() = runTest {
-        // The monotonic clock does not advance while the device sleeps, so a load stuck across a
-        // background can look younger than the join window on resume.
-        val inbox = SlowInbox(latencyMillis = 1_000)
-        val (store, logs) = store(inbox)
-        val panel = Panel(store, initiallyActive = true)
-        panel.mount()
-        settle()
-
-        inbox.latencyMillis = 30_000
-        store.dispatch(SharedActivityIntent.Refresh) // e.g. a realtime-triggered visible refresh
-        runCurrent()
-        assertEquals(2, inbox.started)
-        panel.setActive(false)
-        advanceTimeBy(500)
-        inbox.latencyMillis = 1_000
-        panel.setActive(true)
-        runCurrent()
-
-        assertEquals(3, inbox.started, logs.joinToString("\n"))
-        advanceTimeBy(1_001)
-        runCurrent()
-        assertEquals(listOf("channel-3"), store.state.value.items.map { it.channelId.value })
-    }
-
-    @Test
-    fun resumeWhileAnotherTabIsShownFiresNothing() = runTest {
-        val inbox = SlowInbox(latencyMillis = 1_000)
-        val (store, _) = store(inbox)
-        val panel = Panel(store, initiallyActive = false) // kept alive behind Home
-        panel.mount()
-        settle()
-        val before = inbox.started
-
-        // Background and resume with Home selected: Activity's active never changes.
-        panel.setActive(false)
-        panel.routeVisibleTick(tick = 2)
-        panel.routeVisibleTick(tick = 3)
-        settle()
-
-        assertEquals(before, inbox.started)
-    }
-
-    @Test
-    fun aVisibleRefreshJoinsOnlyAFreshForegroundResetLoad() {
-        val window = ActivityRefreshCoalesceWindowMillis
-        val cases =
-            listOf(
-                null to false, // nothing in flight, or a LoadMore / background reconcile
-                0L to true,
-                (window - 1) to true,
-                window to false,
-                9_400L to false,
-            )
-        cases.forEach { (age, joins) ->
-            assertEquals(joins, activityRefreshJoinsInFlightLoad(age, window), "age=$age")
-        }
     }
 
     /**

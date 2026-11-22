@@ -3,6 +3,8 @@ package build.raft.app.data
 import build.raft.app.raftLogInfo
 import build.raft.app.raftLogWarn
 import kotlin.concurrent.Volatile
+import kotlinx.atomicfu.locks.SynchronizedObject
+import kotlinx.atomicfu.locks.synchronized
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
@@ -309,6 +311,8 @@ internal interface RaftPushRegistrationLifecycleSink {
 }
 
 internal object RaftPushRegistrationLifecycle {
+    private val lock = SynchronizedObject()
+
     @Volatile
     private var sink: RaftPushRegistrationLifecycleSink? = null
 
@@ -322,19 +326,23 @@ internal object RaftPushRegistrationLifecycle {
     private var lastObservedGeneration = 0L
 
     fun install(next: RaftPushRegistrationLifecycleSink) {
-        sink = next
-        startObserversIfReady()
+        synchronized(lock) {
+            sink = next
+            startObserversIfReadyLocked()
+        }
     }
 
     fun observeSessionEvents(source: SharedFlow<AuthSessionEvent>, scope: CoroutineScope) {
-        if (sessionEvents !== source) {
-            sessionEventsObserverJob?.cancel()
-            sessionEventsObserverJob = null
-            lastObservedGeneration = 0L
+        synchronized(lock) {
+            if (sessionEvents !== source) {
+                sessionEventsObserverJob?.cancel()
+                sessionEventsObserverJob = null
+                lastObservedGeneration = 0L
+            }
+            sessionEvents = source
+            observerScope = scope
+            startObserversIfReadyLocked()
         }
-        sessionEvents = source
-        observerScope = scope
-        startObserversIfReady()
     }
 
     fun onSessionSaved() {
@@ -352,15 +360,17 @@ internal object RaftPushRegistrationLifecycle {
     fun installationIdOrNull(): String? = runCatching { sink?.installationIdOrNull() }.getOrNull()
 
     internal fun clearForTests() {
-        sessionEventsObserverJob?.cancel()
-        sessionEventsObserverJob = null
-        sink = null
-        sessionEvents = null
-        observerScope = null
-        lastObservedGeneration = 0L
+        synchronized(lock) {
+            sessionEventsObserverJob?.cancel()
+            sessionEventsObserverJob = null
+            sink = null
+            sessionEvents = null
+            observerScope = null
+            lastObservedGeneration = 0L
+        }
     }
 
-    private fun startObserversIfReady() {
+    private fun startObserversIfReadyLocked() {
         if (sink == null) return
         val scope = observerScope ?: return
         if (sessionEventsObserverJob == null) {

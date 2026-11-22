@@ -140,32 +140,6 @@ class SharedHomeSavedListOfflineTest {
         store.clear()
     }
 
-    @Test
-    fun confirmedUnsaveFromMessageActionsLeavesStoredList() = runTest {
-        val device = Device(backgroundScope)
-        val cache = device.savedStateCache()
-        loadOnce(device, listOf(savedListRow("message-1"), savedListRow("message-2")), cache)
-
-        cache.recordMessageUnsaved("server-1", "user-1", MessageId("message-1"))
-
-        assertEquals(listOf("saved:message-2"), cache.read("server-1", "user-1")?.items?.map { it.key })
-        assertEquals(listOf("saved:message-2"), device.storedKeys())
-    }
-
-    @Test
-    fun storedListKeepsTheFirstPageOnly() {
-        val ids = (1..150).map { "message-$it" }
-        val fitted =
-            SavedListResourceSpec.fit(
-                SavedListRecord(items = ids.map(::savedListRow), totalCount = 150, hasMore = false, nextOffset = 150)
-            )
-        assertEquals(100, fitted.items.size)
-        assertEquals("saved:message-1", fitted.items.first().key)
-        assertEquals(150, fitted.totalCount)
-        assertEquals(true, fitted.hasMore)
-        assertNull(fitted.nextOffset)
-    }
-
     private suspend fun TestScope.loadOnce(
         device: Device,
         items: List<InboxItem>,

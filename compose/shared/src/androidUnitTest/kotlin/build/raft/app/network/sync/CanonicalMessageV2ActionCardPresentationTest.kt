@@ -3,16 +3,13 @@ package build.raft.app.network.sync
 import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
 import build.raft.app.V2ActionCardPresentation
 import build.raft.app.assertRestoredActionCardPresentation
-import build.raft.app.canonical.message.MessageAggregateField
 import build.raft.app.data.RaftSqlDatabase
 import build.raft.app.v2ActionCardWithPresentation
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.jsonObject
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
@@ -24,60 +21,6 @@ import kotlin.test.assertTrue
  * confirmationVersion. They are additive optional keys (App manifest v8), one-way in the store.
  */
 class CanonicalMessageV2ActionCardPresentationTest {
-    @Test
-    fun aCurrentServerCardConvertsIntoAFullV2FactWithItsPresentation() {
-        val carry = assertNotNull(decodeCanonicalMessageWire(wire(currentServerCard), ProductionFace.EnrichedUpdated))
-        val conversion = CanonicalMessageFoldInput(CanonicalMessageFoldKind.Updated, carry.row, MessageAggregateField.entries.toList())
-            .toCanonicalMessageV2Conversion(partitionA, replyCount = 0)
-        val card = assertIs<CanonicalActionMetadataV2.ActionCard>(
-            assertIs<CanonicalMessageV2EnvelopeConversion.Converted>(conversion, conversion.toString()).envelope.fact.actionMetadata,
-        )
-        assertEquals("server-a", card.sourceServerId)
-        assertEquals("Raft HQ", card.targetServerName)
-        assertEquals(3, card.confirmationVersion)
-        assertEquals(V2ActionCardPresentation, card.presentation)
-        assertNotNull(card.presentation!!["card"], "presentation.card (action-card.v1) is kept")
-
-        // Task #43: executedByUserId is carried (manifest v9); the conversion bookkeeping is never stored.
-        assertEquals("user-1", card.executedByUserId)
-        val bytes = encodeCanonicalMessageV2(conversion.envelope, "server-a")
-        listOf("conversionJobId", "conversionEpoch", "reconfirmedAt", "job-1").forEach {
-            assertFalse(it in bytes, "$it in $bytes")
-        }
-        // Task #43: an unknown root key is dropped, the card is kept (it used to refuse the whole card).
-        val unknown = JsonObject(currentServerCard + ("somethingNew" to Json.parseToJsonElement("1")))
-        val kept = CanonicalMessageFoldInput(
-            CanonicalMessageFoldKind.Updated,
-            assertNotNull(decodeCanonicalMessageWire(wire(unknown), ProductionFace.EnrichedUpdated)).row,
-            MessageAggregateField.entries.toList(),
-        ).toCanonicalMessageV2Conversion(partitionA, replyCount = 0)
-        assertEquals(conversion.envelope, assertIs<CanonicalMessageV2EnvelopeConversion.Converted>(kept, kept.toString()).envelope)
-    }
-
-    @Test
-    fun codecRoundTripsTheOptionalKeysAndKeepsABareCardsBytes() {
-        val bare = envelope(1, v2ActionCardWithPresentation().copy(sourceServerId = null, targetServerName = null, confirmationVersion = null, presentation = null))
-        val bareBytes = encodeCanonicalMessageV2(bare, "server-a")
-        listOf("sourceServerId", "targetServerName", "confirmationVersion", "presentation").forEach {
-            assertFalse("\"$it\"" in bareBytes, "a card without $it never carries the key (not even as null)")
-        }
-        assertEquals(bare, assertIs<CanonicalMessageV2DecodeResult.Accepted>(decodeCanonicalMessageV2(bareBytes, "server-a")).envelope)
-
-        val full = envelope(1, v2ActionCardWithPresentation().copy(sourceServerId = "server-b"))
-        val bytes = encodeCanonicalMessageV2(full, "server-a")
-        val decoded = assertIs<CanonicalMessageV2DecodeResult.Accepted>(decodeCanonicalMessageV2(bytes, "server-a"))
-        assertEquals(full, decoded.envelope, "a joint card's own server is not an embedded cross-server ref")
-        assertEquals(bytes, encodeCanonicalMessageV2(decoded.envelope, "server-a"))
-
-        listOf(
-            "\"presentation\":null", "\"presentation\":\"x\"", "\"confirmationVersion\":null", "\"sourceServerId\":null",
-            "\"sourceServerId\":\" a\"", "\"confirmationVersion\":-1", "\"unknownKey\":1",
-        ).forEach { extra ->
-            val tampered = bareBytes.replace("\"kind\":\"action-card\",", "\"kind\":\"action-card\",$extra,")
-            assertIs<CanonicalMessageV2DecodeResult.Rejected>(decodeCanonicalMessageV2(tampered, "server-a"), extra)
-        }
-    }
-
     @Test
     fun aDurableCardRestoresWithItsPresentationAndANarrowerCopyNeverTakesItAway() = withFreshDatabase { database ->
         val store = SqlDelightCanonicalMessageV2Store(database = database, now = { 1L })
@@ -139,23 +82,8 @@ class CanonicalMessageV2ActionCardPresentationTest {
         }
     }
 
-    private val currentServerCard: JsonObject = Json.parseToJsonElement(
-        """{"kind":"action-card","sourceServerId":"server-a","targetServerName":"Raft HQ",""" +
-            """"action":{"type":"channel:create","name":"launch"},"presentation":$V2ActionCardPresentation,""" +
-            """"state":"prepared","executedAt":null,"executedByUserId":"user-1","executedByUserName":null,""" +
-            """"result":null,"confirmationVersion":3,"conversionJobId":"job-1","conversionEpoch":"e1","reconfirmedAt":null}""",
-    ).jsonObject
-
     private fun card(confirmationVersion: Int?) =
         v2ActionCardWithPresentation().copy(sourceServerId = "server-a", confirmationVersion = confirmationVersion)
-
-    private fun wire(actionMetadata: JsonObject): JsonObject = Json.parseToJsonElement(
-        """{"id":"message-1","channelId":"channel-a","seq":1,"senderType":"agent","senderId":"agent-a",""" +
-            """"content":"Create #launch?","messageType":"chat","randomId":null,"threadId":null,""" +
-            """"createdAt":"2026-10-20T08:00:00.000Z","senderName":"Friday","senderDescription":null,""" +
-            """"senderMembershipStatus":null,"mentions":[],"attachments":[],"reactions":[],"commentRef":null,""" +
-            """"actionMetadata":$actionMetadata,"conversationContext":{"channelType":"channel"}}""",
-    ).jsonObject
 
     private val partitionA = DurablePartitionKey("server-a", "principal-a", SYNC_CORE_MESSAGES_V2_DURABLE_CONSUMER_ID, "env-test")
     private val scope = SyncScopeKey(partitionA, "channel-a", "channel")

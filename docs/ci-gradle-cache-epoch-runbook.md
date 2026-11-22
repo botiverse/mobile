@@ -28,10 +28,7 @@ compile; attribution in #proj-chat task #781, design review in task #786).
   (applied by `compose/settings.gradle.kts`) points the local build cache at
   `caches/build-cache-epoch-<epoch>`. The epoch is then in every build-cache file name, so a
   rotation always produces a new build-cache entry and the old one is never restored again.
-  Local builds (variable unset) keep Gradle's default directory. Proven on every change by the
-  "Gradle build-cache epoch guard" jobs in `gradle-cache-policy-lint.yml` (seed + poison under
-  epoch a; same-epoch reader must restore the poison; rotated writer/reader under epoch b must
-  restore their own entry and never the poison).
+  Local builds (variable unset) keep Gradle's default directory.
 - `.github/gradle-cache-quarantine` — incident-response file, EMPTY in steady state. Allowlisted
   bundle names (`dependencies`, `transforms`), one per line (final newline optional — a trailing
   active entry is honored; CR rejected). Listed bundles are exported as
@@ -44,10 +41,8 @@ compile; attribution in #proj-chat task #781, design review in task #786).
   when the first real incident uses this, verify that line in the run log and attach it to the
   incident PR.
 - `.github/actions/gradle-cache-policy` — the fail-closed reader every workflow job runs
-  immediately before `gradle/actions/setup-gradle`. Malformed policy fails the job.
-- `scripts/ci/check_gradle_cache_policy_wiring.py` — CI invariant (workflow
-  `gradle-cache-policy-lint.yml`): every `setup-gradle` step must be preceded by the policy step,
-  and both policy files must be valid. Prevents wiring drift when workflows are added.
+  immediately before `gradle/actions/setup-gradle`. Malformed policy fails the job. A new
+  workflow job that sets up Gradle runs it first (no CI check enforces that since 2026-11-22).
 
 ## When CI fails on a corrupted shared cache entry
 

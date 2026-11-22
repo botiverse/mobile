@@ -48,6 +48,7 @@ import build.raft.app.data.SharedServerMembersState
 import build.raft.app.data.SelectedServerStore
 import build.raft.app.data.sharedAgentDetailOwner
 import build.raft.app.data.agentDetailCacheKey
+import build.raft.app.data.canManageAgentAppAccess
 import build.raft.app.model.ChannelId
 import build.raft.app.model.RuntimeConfig
 import build.raft.app.model.MemberId
@@ -104,6 +105,20 @@ internal fun memberDetailStatusResolverServerId(
 internal fun MemberDetailRouteState.Agent.viewerSeesPrivateAgentSurfaces(detail: AgentDetailSnapshot?): Boolean =
     accessMode.allowsPrivateAgentSurfaces &&
         (server.permissions.canManageSettings || detail?.summary?.creatorId == currentUserId)
+
+/**
+ * Web AgentDetailPanel `canManageAgentAccess` (botiverse/slock 5828cdce3e): who sees the Apps tab's
+ * Revoke access and per-grant Revoke ([canManageAgentAppAccess]), never on another server's agent
+ * (a bounded public projection). Everyone else reads the rows and their details.
+ */
+internal fun MemberDetailRouteState.Agent.viewerManagesAgentAppAccess(detail: AgentDetailSnapshot?): Boolean =
+    accessMode.allowsPrivateAgentSurfaces &&
+        canManageAgentAppAccess(
+            serverRole = server.role,
+            currentUserId = currentUserId,
+            creatorType = detail?.summary?.creatorType,
+            creatorId = detail?.summary?.creatorId,
+        )
 
 internal data class MemberDetailLoadPlan(
     val priority: DataRequestPriority,
@@ -186,7 +201,12 @@ internal fun memberDetailInitialRouteState(
     identity: MemberDetailIdentity?,
     activeServerId: String?,
     agentDetailState: SharedAgentDetailState,
-    serverMembersState: SharedServerMembersState
+    serverMembersState: SharedServerMembersState,
+    /**
+     * The signed-in account ([MemberDetailRouteProvider.accountBinding]): a person's roster seed
+     * knows the viewer, so their own profile shows "you" and Edit description from the first frame.
+     */
+    currentUserId: String? = null
 ): MemberDetailRouteState? {
     identity ?: return null
     val sourceServerId = identity.sourceServerId?.value?.trim()?.takeIf { it.isNotBlank() }
@@ -224,7 +244,7 @@ internal fun memberDetailInitialRouteState(
         MemberKind.Human ->
             MemberDetailRouteState.Human(
                 server = server,
-                currentUserId = null,
+                currentUserId = currentUserId?.trim()?.takeIf { it.isNotBlank() },
                 member = member.copy(serverId = identity.sourceServerId ?: member.serverId),
                 accessMode = identity.memberDetailAccessMode(activeServer)
             )
@@ -233,6 +253,28 @@ internal fun memberDetailInitialRouteState(
         MemberKind.External -> null
     }
 }
+
+/**
+ * Whether the member-detail route takes the state its load answered ([loaded]) over [shown].
+ *
+ * An agent's answer lands only while its request is still current ([agentRequestCurrent], the
+ * [MembersAgentProfileRequestFence]). That fence never matches a person, so a person's answer is
+ * not gated on it: it lands, and with it the viewer ([MemberDetailRouteState.Human.currentUserId]).
+ * A failed read keeps the person's roster seed already on screen, as a cached agent page keeps
+ * its cache; a cold open shows the failure.
+ */
+internal fun memberDetailAppliesLoadedRoute(
+    identity: MemberDetailIdentity,
+    shown: MemberDetailRouteState,
+    loaded: MemberDetailRouteState,
+    agentRequestCurrent: Boolean
+): Boolean =
+    if (identity.kind == MemberKind.Agent) {
+        agentRequestCurrent
+    } else {
+        loaded !is MemberDetailRouteState.Error ||
+            (shown as? MemberDetailRouteState.Human)?.member?.id != identity.memberId
+    }
 
 internal fun seedRemoteAgentProfile(
     agentDetailStore: SharedAgentDetailStore,
@@ -337,7 +379,8 @@ internal class MemberDetailRouteProvider(
         if (state.detailServerId != owner.serverId || state.agentId != detail.agentId) return
         val key = owner.agentDetailCacheKey(detail.agentId)
         val cached = cache.peek(key) ?: return
-        cache.confirm(key, cached.copy(detail = detail))
+        // A failed Apps re-read is this visit's news, not the agent's: the cached page leaves it out.
+        cache.confirm(key, cached.copy(detail = detail.copy(appLogins = detail.appLogins.copy(refreshError = null))))
     }
 
     /**
@@ -855,6 +898,16 @@ internal class MemberDetailRouteProvider(
             )
         )
         // Confirmed profile / avatar edit: the cached page (memory and disk) follows.
+        confirmCachedAgentDetailAsync()
+    }
+
+    /**
+     * The Apps tab's revoke changed the shown agent's App grants ([AgentAppGrantsRevokeStore]): the
+     * store's detail takes [intent], and the cached page follows, so a revoked App doesn't come back
+     * from the cache on the next open.
+     */
+    fun updateAgentAppLogins(intent: SharedAgentDetailIntent) {
+        agentDetailStore.dispatch(intent)
         confirmCachedAgentDetailAsync()
     }
 

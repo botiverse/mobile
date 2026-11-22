@@ -49,16 +49,6 @@ class MembersAgentProfileHeaderScreenshotTest {
     @Test
     fun headerDark() = capture("members.agent-profile-header.dark", RaftAppAppearance.Dark)
 
-    // A long name, a long handle and the longest runtime label at a 360dp phone width: the
-    // tags wrap (web `flex-wrap`) instead of cutting the runtime chip.
-    @Test
-    @Config(sdk = [34], qualifiers = "w360dp-h240dp-xxhdpi")
-    fun headerLongLight() = capture("members.agent-profile-header.long", RaftAppAppearance.Light, long = true)
-
-    @Test
-    @Config(sdk = [34], qualifiers = "w360dp-h240dp-xxhdpi")
-    fun headerLongDark() = capture("members.agent-profile-header.long.dark", RaftAppAppearance.Dark, long = true)
-
     private fun capture(name: String, appearance: RaftAppAppearance, long: Boolean = false) =
         RaftRobolectricScreenshot.capture(
             name,

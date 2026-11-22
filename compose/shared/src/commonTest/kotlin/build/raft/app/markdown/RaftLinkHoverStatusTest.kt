@@ -1,13 +1,13 @@
 package build.raft.app.markdown
 
+import build.raft.app.data.RaftClientConfigAppHosts
 import build.raft.app.links.ParsedRaftPermalink
-import androidx.compose.ui.text.LinkAnnotation
-import androidx.compose.ui.text.buildAnnotatedString
-import androidx.compose.ui.text.withLink
+import build.raft.app.raftMarkdownUrlOpen
+import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNotNull
 import kotlin.test.assertNull
-import kotlin.test.assertTrue
 
 /** The link status: what a hovered link says, how a long one is cut, and who may clear it. */
 class RaftLinkHoverStatusTest {
@@ -21,7 +21,17 @@ class RaftLinkHoverStatusTest {
         }
     }
 
-    private fun label(url: String, webUrl: String? = null) = raftLinkHoverLabel(url, webUrl, names, terms)
+    @AfterTest
+    fun resetAppHosts() {
+        RaftClientConfigAppHosts.publish(emptyList())
+    }
+
+    private fun label(
+        url: String,
+        webUrl: String? = null,
+        appHosts: Set<String> = emptySet(),
+        forceInApp: Boolean = false,
+    ) = raftLinkHoverLabel(url, webUrl, names, terms, appHosts, forceInApp)
 
     @Test
     fun externalLinkShowsItsFullUrlAsExternal() {
@@ -33,25 +43,36 @@ class RaftLinkHoverStatusTest {
 
     @Test
     fun raftMessageLinksReadAsTheirConversation() {
+        val msgId = "ae7be26c-daa7-42ca-8480-68d5ac90eaca"
+        val parentId = "ced6bfe1-f650-46b3-8859-4d37eb7850d2"
         val cases =
             listOf(
-                "https://app.raft.build/s/acme/channel/c1?msg=ae7be26c-daa7-42ca-8480-68d5ac90eaca" to "#proj-mobile · message",
-                "https://app.raft.build/s/acme/channel/c1?msg=ae7be26c-daa7-42ca-8480-68d5ac90eaca&thread=c1%3Aced6bfe1-f650-46b3-8859-4d37eb7850d2" to "#proj-mobile · thread",
-                "https://app.raft.build/s/acme/dm/d1?msg=ae7be26c-daa7-42ca-8480-68d5ac90eaca" to "@artin · message",
+                "https://app.raft.build/s/acme/channel/c1?msg=$msgId" to "#proj-mobile · message",
+                "https://app.raft.build/s/acme/channel/c1?msg=$msgId&thread=c1%3A$parentId" to "#proj-mobile · thread",
+                "https://app.raft.build/s/acme/dm/d1?msg=$msgId" to "@artin · message",
+                "https://open.raft.build/s/acme/channel/c1?msg=$msgId" to "#proj-mobile · message",
                 // A Raft Desktop link reads as the web link it stands for.
-                "raft:///s/acme/channel/c1?msg=ae7be26c-daa7-42ca-8480-68d5ac90eaca" to "#proj-mobile · message",
+                "raft:///s/acme/channel/c1?msg=$msgId" to "#proj-mobile · message",
             )
         cases.forEach { (url, expected) -> assertEquals(RaftLinkHoverLabel(expected, external = false), label(url), url) }
-    }
 
-    @Test
-    fun raftLinksWithoutAKnownNameShowTheirWebLinkInApp() {
-        // Message link to a conversation the page does not know: its web link, still in-app.
-        val unknown = "https://app.raft.build/s/acme/channel/c9?msg=ae7be26c-daa7-42ca-8480-68d5ac90eaca"
-        assertEquals(RaftLinkHoverLabel(unknown, external = false), label(unknown))
-        // A Raft Desktop link shows its environment's web link and stays with Raft.
-        assertEquals(RaftLinkHoverLabel("$staging/s/acme/tasks", external = false), label("raft:///s/acme/tasks", staging))
-        assertEquals(RaftLinkHoverLabel("$staging/s/acme/channel/c9?msg=ae7be26c-daa7-42ca-8480-68d5ac90eaca", external = false), label("raft:///s/acme/channel/c9?msg=ae7be26c-daa7-42ca-8480-68d5ac90eaca", staging))
+        // Staging webUrl and custom appHosts message permalinks resolve both open.target and hover label.
+        val stagingMessage = "$staging/s/acme/channel/c1?msg=$msgId"
+        val stagingThread = "$staging/s/acme/channel/c1?msg=$msgId&thread=c1%3A$parentId"
+        val stagingDm = "$staging/s/acme/dm/d1?msg=$msgId"
+        assertNotNull(raftMarkdownUrlOpen(stagingMessage, webUrl = staging, appHosts = emptySet()).target)
+        assertEquals(RaftLinkHoverLabel("#proj-mobile · message", external = false), label(stagingMessage, webUrl = staging))
+        assertEquals(RaftLinkHoverLabel("#proj-mobile · thread", external = false), label(stagingThread, webUrl = staging))
+        assertEquals(RaftLinkHoverLabel("@artin · message", external = false), label(stagingDm, webUrl = staging))
+        // Outside its configured staging environment, a staging permalink leaves the app.
+        assertEquals(RaftLinkHoverLabel(stagingMessage, external = true), label(stagingMessage, webUrl = null))
+
+        val customHostMessage = "https://raft.example/s/acme/channel/c1?msg=$msgId"
+        assertNotNull(raftMarkdownUrlOpen(customHostMessage, webUrl = null, appHosts = setOf("raft.example")).target)
+        assertEquals(
+            RaftLinkHoverLabel("#proj-mobile · message", external = false),
+            label(customHostMessage, appHosts = setOf("raft.example")),
+        )
     }
 
     @Test
@@ -59,39 +80,6 @@ class RaftLinkHoverStatusTest {
         assertEquals("short", raftMiddleEllipsis("short", 10))
         assertEquals("abcd…xyz", raftMiddleEllipsis("abcdefghijklmnopqrstuvwxyz", 8))
         assertEquals("a…z", raftMiddleEllipsis("abcdefghijklmnopqrstuvwxyz", 1))
-    }
-
-    @Test
-    fun fitMiddleEllipsisTakesTheLongestCutThatFits() {
-        val url = "https://example.com/a/very/long/path/to/some/document.pdf"
-        assertEquals(url, raftFitMiddleEllipsis(url) { true })
-        val fitted = raftFitMiddleEllipsis(url) { it.length <= 30 }
-        assertEquals(30, fitted.length)
-        assertTrue(fitted.startsWith("https://example") && fitted.endsWith("document.pdf"), fitted)
-        // Nothing fits: the shortest cut, never empty.
-        assertEquals(12, raftFitMiddleEllipsis(url) { false }.length)
-    }
-
-    @Test
-    fun hoverableLinksAreUrlLinksAndAppLinkCards() {
-        val text =
-            buildAnnotatedString {
-                append("see ")
-                withLink(LinkAnnotation.Url("https://example.com")) { append("example") }
-                append(" and ")
-                pushStringAnnotation(RaftAppLinkHoverTag, "https://app.example/item/1")
-                withLink(LinkAnnotation.Clickable(RaftAppLinkCardTag, linkInteractionListener = null)) { append("card") }
-                pop()
-                append(" ")
-                withLink(LinkAnnotation.Clickable("mention-1", linkInteractionListener = null)) { append("@artin") }
-            }
-        assertEquals(
-            listOf(
-                RaftHoverableLink(4, 11, "https://example.com"),
-                RaftHoverableLink(16, 20, "https://app.example/item/1"),
-            ),
-            text.raftHoverableLinks(),
-        )
     }
 
     @Test

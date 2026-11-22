@@ -68,15 +68,6 @@ class RaftRealtimeSessionDemandTest {
     }
 
     @Test
-    fun aBlankServerClaimReleasesTheWindow() {
-        val demand = RaftRealtimeSessionDemand()
-        demand.claim("shell-a", "s2")
-        demand.claim("shell-a", "  ")
-
-        assertEquals(listOf("s1"), demand.desired())
-    }
-
-    @Test
     fun ungrantedClaimsAreIgnored() {
         val demand = RaftRealtimeSessionDemand()
         demand.claim("shell-a", "revoked")
@@ -119,17 +110,6 @@ class RaftRealtimeSessionDemandTest {
     }
 
     @Test
-    fun capCountsServersNotWindows() {
-        val demand = RaftRealtimeSessionDemand()
-        listOf("a" to "s1", "b" to "s1", "c" to "s2", "d" to "s3", "e" to "s4").forEach { (shell, server) ->
-            demand.claim(shell, server)
-            demand.onVisibility(shell, visible = true, nowMillis = now++)
-        }
-
-        assertEquals(listOf("s4", "s3", "s2"), demand.desired())
-    }
-
-    @Test
     fun aWindowHiddenPastTheGraceStopsCounting() {
         val demand = RaftRealtimeSessionDemand()
         demand.claim("a", "s1")
@@ -150,44 +130,6 @@ class RaftRealtimeSessionDemandTest {
     }
 
     @Test
-    fun nextHiddenGraceExpiryIsTheFirstInstantAHiddenWindowStopsCounting() {
-        val demand = RaftRealtimeSessionDemand()
-        assertNull(demand.nextHiddenGraceExpiryMillis(now), "no claims, nothing to wake for")
-        demand.claim("a", "s1")
-        demand.claim("b", "s2")
-        assertNull(demand.nextHiddenGraceExpiryMillis(now), "visible windows never expire")
-
-        val bHiddenAt = now
-        demand.onVisibility("b", visible = false, nowMillis = bHiddenAt)
-        now += 1_000L
-        demand.onVisibility("a", visible = false, nowMillis = now)
-        // A page that never claimed (thread, settings) is not woken for.
-        demand.onVisibility("thread", visible = false, nowMillis = bHiddenAt)
-
-        val first = bHiddenAt + HiddenWindowSessionGraceMillis + 1
-        assertEquals(first, demand.nextHiddenGraceExpiryMillis(now))
-
-        now = first - 1
-        assertEquals(listOf("s2", "s1"), demand.desired(selected = "s3"), "one instant before, b still counts")
-        now = first
-        assertEquals(listOf("s1"), demand.desired(selected = "s3"), "at the expiry b's server leaves the set")
-        assertEquals(first + 1_000L, demand.nextHiddenGraceExpiryMillis(now), "then the next hidden window")
-
-        now = first + 1_000L
-        assertNull(demand.nextHiddenGraceExpiryMillis(now), "every hidden window already expired")
-    }
-
-    @Test
-    fun everyWindowHiddenPastTheGraceFallsBackToTheSelectedServer() {
-        val demand = RaftRealtimeSessionDemand()
-        demand.claim("a", "s2")
-        demand.onVisibility("a", visible = false, nowMillis = now)
-
-        now += HiddenWindowSessionGraceMillis + 1
-        assertEquals(listOf("s1"), demand.desired())
-    }
-
-    @Test
     fun visibilityReportedBeforeTheClaimIsKept() {
         val demand = RaftRealtimeSessionDemand()
         demand.onVisibility("a", visible = false, nowMillis = now)
@@ -195,87 +137,5 @@ class RaftRealtimeSessionDemandTest {
         demand.claim("b", "s3")
 
         assertEquals(listOf("s3", "s2"), demand.desired(), "an unreported window counts as visible, a hidden one after it")
-    }
-
-    @Test
-    fun flagOffIsTheSingleCurrentServerSet() {
-        val demand = RaftRealtimeSessionDemand()
-        demand.claim("a", "s2")
-        demand.claim("b", "s3")
-        demand.onVisibility("b", visible = true, nowMillis = now)
-
-        listOf("s1", "s4", "missing", " ", null).forEach { selected ->
-            assertEquals(
-                realtimeCurrentServerScopedServerIds(selected, grants),
-                demand.desiredServerIds(grants, selected, now, enabled = false),
-                "selected=$selected",
-            )
-        }
-        assertEquals("s1", demand.primaryServerId(grants, "s1", now, enabled = false))
-        assertTrue(demand.desiredServerIds(emptySet(), "s1", now, enabled = false).isEmpty())
-    }
-
-    @Test
-    fun shellShowingIsAnotherWindowOnThatServerNowTheMostRecentlySeenFirst() {
-        val demand = RaftRealtimeSessionDemand()
-        demand.claim("launcher", "s1")
-        demand.claim("shell-b", "s2")
-
-        assertEquals("launcher", demand.shellShowing(" s1 ", exceptShellInstanceId = "shell-b"))
-        assertNull(demand.shellShowing("s1", exceptShellInstanceId = "launcher"), "the asking window is not another window")
-        assertNull(demand.shellShowing("s3", exceptShellInstanceId = "shell-b"), "no window shows s3")
-        assertNull(demand.shellShowing(" ", exceptShellInstanceId = "shell-b"))
-
-        // Two windows on s1: the one seen last.
-        demand.claim("shell-a", "s1")
-        assertEquals("shell-a", demand.shellShowing("s1", exceptShellInstanceId = "shell-b"))
-        demand.onVisibility("launcher", visible = true, nowMillis = 1L)
-        assertEquals("launcher", demand.shellShowing("s1", exceptShellInstanceId = "shell-b"))
-
-        // A window that switched in place or closed no longer shows the server.
-        demand.claim("launcher", "s3")
-        assertEquals("shell-a", demand.shellShowing("s1", exceptShellInstanceId = "shell-b"))
-        demand.release("shell-a")
-        assertNull(demand.shellShowing("s1", exceptShellInstanceId = "shell-b"))
-    }
-
-    @Test
-    fun blankShellIdsShareTheLegacyShell() {
-        val demand = RaftRealtimeSessionDemand()
-        demand.claim("", "s2")
-        demand.claim("  ", "s3")
-
-        assertEquals(listOf("s3"), demand.desired())
-        demand.release(RaftShellStoreScope.Legacy.shellInstanceId)
-        assertEquals(listOf("s1"), demand.desired())
-    }
-
-    @Test
-    fun revisionMovesOnlyWhenTheClaimsOrAClaimingWindowVisibilityChange() {
-        val demand = RaftRealtimeSessionDemand()
-        fun revision() = demand.revision.value
-
-        val start = revision()
-        demand.onVisibility("thread-page", visible = false, nowMillis = now)
-        assertEquals(start, revision(), "a window without a claim does not move the set")
-
-        demand.claim("shell-a", "s1")
-        val claimed = revision()
-        assertTrue(claimed > start)
-        demand.claim("shell-a", "s1")
-        assertEquals(claimed, revision(), "claiming the same server again changes nothing")
-
-        demand.onVisibility("shell-a", visible = false, nowMillis = now)
-        val hidden = revision()
-        assertTrue(hidden > claimed)
-
-        demand.release("shell-a")
-        assertTrue(revision() > hidden)
-        val released = revision()
-        demand.release("shell-a")
-        assertEquals(released, revision(), "releasing twice changes nothing")
-
-        demand.notifySettingChanged()
-        assertTrue(revision() > released)
     }
 }

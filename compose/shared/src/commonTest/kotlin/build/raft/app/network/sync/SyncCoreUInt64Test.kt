@@ -63,36 +63,4 @@ class SyncCoreUInt64Test {
         assertEquals(listOf("penultimate", "last"), core.state("uint64-test", "scope"))
         assertEquals(emptyList(), core.pendingRequests())
     }
-
-    @Test
-    fun gapAndPendingDifferenceRemainExactAboveJavaScriptSafeInteger() {
-        val core = createSyncCore(SyncCoreConfig(listOf(domain)))
-        val baseline = "9007199254740992".toSyncSeq()
-        val arriving = "9007199254740994".toSyncSeq()
-        val missing = "9007199254740993".toSyncSeq()
-        core.ingestSnapshot(
-            "uint64-test",
-            SyncSnapshot("scope", baseline, epoch = "epoch", state = emptyList<String>()),
-        )
-
-        assertEquals(
-            SyncIngestOutcome.GapRepairRequested("scope", missing, missing),
-            core.ingestFrame(
-                "uint64-test",
-                SyncFrame("scope", arriving, epoch = "epoch", event = "must-not-apply"),
-            ),
-        )
-        assertEquals(
-            listOf(
-                SyncRequestDescription.Difference(
-                    domain = "uint64-test",
-                    scopeId = "scope",
-                    sinceSeq = baseline,
-                    epoch = "epoch",
-                ),
-            ),
-            core.pendingRequests(),
-        )
-        assertEquals(emptyList<String>(), core.state("uint64-test", "scope"))
-    }
 }

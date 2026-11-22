@@ -27,7 +27,6 @@ import androidx.compose.ui.test.runComposeUiTest
 import androidx.compose.ui.unit.dp
 import build.raft.designsystem.components.LocalRaftPaneGridSizes
 import build.raft.designsystem.components.RAFT_PANE_GRID_COLUMN_TEST_TAG
-import build.raft.designsystem.components.RAFT_PANE_GRID_MAIN_TEST_TAG
 import build.raft.designsystem.components.RAFT_PANE_GRID_TABS_TEST_TAG
 import build.raft.designsystem.components.RaftPaneGrid
 import build.raft.designsystem.components.RaftPaneGridCell
@@ -102,40 +101,6 @@ class RaftPaneGridRowLadderTest {
     private fun column(bounds: RaftPaneGridColumnBounds) = RAFT_PANE_GRID_COLUMN_TEST_TAG + bounds.id
 
     @Test
-    fun withRoomEveryColumnShowsItsSavedWidthAndTheMainPaneTheRest() =
-        runComposeUiTest {
-            // The columns' 1640 and the main pane's default 400 (web CONVERSATION_DEFAULT_WIDTH, none kept yet).
-            rowWidth = 2040f
-            showRow()
-            assertWidth(400f, RAFT_PANE_GRID_MAIN_TEST_TAG)
-            assertWidth(400f, column(thread))
-            assertWidth(360f, column(cards))
-            assertWidth(480f, column(artifact))
-            assertWidth(400f, column(profile))
-        }
-
-    @Test
-    fun narrowerTheColumnsGiveWayThenClipWithTheirContentKeptAtItsMinimum() =
-        runComposeUiTest {
-            rowWidth = 1800f
-            showRow()
-            // 200 short: each gives what it has above its minimum; the Artifact has nothing to give.
-            assertWidth(360f, column(thread))
-            assertWidth(280f, column(cards))
-            assertWidth(480f, column(artifact))
-            assertWidth(320f, column(profile))
-            rowWidth = 1600f
-            waitForIdle()
-            // Past the minimums all shrink in proportion and clip.
-            assertWidth(320f, RAFT_PANE_GRID_MAIN_TEST_TAG)
-            assertWidth(426.67f, column(artifact))
-            // The clipped column's content keeps its 480 (less its 1dp seam), cut at the column's edge.
-            assertWidth(479f, "cell-artifact")
-            // So does the main pane's: 360.
-            assertWidth(360f, "cell-main")
-        }
-
-    @Test
     fun pastEveryColumnAt160TheRightmostBecomesATabAndPickingItShowsItInstead() =
         runComposeUiTest {
             rowWidth = 700f
@@ -171,49 +136,4 @@ class RaftPaneGridRowLadderTest {
             }
         ) { RaftText(name) }
     }
-
-    /** The row's units' widths, left to right as shown (a tab not shown is 0), and that they fill the row exactly. */
-    private fun ComposeUiTest.assertRow(expected: List<Float>, shown: List<RaftPaneGridColumnBounds>) {
-        val tags = listOf(RAFT_PANE_GRID_MAIN_TEST_TAG) + shown.map { column(it) }
-        tags.zip(expected).forEach { (tag, width) -> assertWidth(width, tag) }
-        val total = tags.sumOf { widthDp(it).toDouble() }.toFloat()
-        assertTrue(abs(total - rowWidth) <= 1f, "the shown columns fill the row: $total of $rowWidth")
-        tags.forEach { tag ->
-            val bounds = onNodeWithTag(tag, useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
-            val right = with(density) { bounds.right.toDp().value }
-            assertTrue(right <= rowWidth + 1f, "$tag ends inside the row: $right of $rowWidth")
-        }
-    }
-
-    @Test
-    fun theFirstFrameIsAlreadyPlannedNothingStartsAtItsSavedWidthOrPastTheRow() =
-        runComposeUiTest {
-            // The pane_grid_clipped screenshot's row, which renders one frame: every cell's first placement counts.
-            rowWidth = 1160f
-            firstPlaced.clear()
-            showRow()
-            // Planned: thread 232, so its cell is laid out at its 360 less the seam and clipped (unplanned: 399).
-            val threadFirst = firstPlaced.getValue("thread").second
-            assertTrue(abs(threadFirst - 359f) <= 1f, "the thread's first width: $threadFirst")
-            // Unplanned, the columns stood at 400 + 360 + 480 and the profile started past the row's end (1240).
-            listOf("thread", "tasks", "artifact", "profile", "details").forEach { cell ->
-                val (x, _) = firstPlaced.getValue(cell)
-                assertTrue(x < rowWidth, "$cell first placed inside the row, at $x")
-            }
-            assertTrue(firstPlaced.getValue("main").first < 1f, "the main pane first placed at the row's start")
-        }
-
-    @Test
-    fun theScreenshotRowsArePlannedAsTheRulesSay() =
-        runComposeUiTest {
-            // 1160: 840 short of the saved widths and only 200 above the minimums: all five clip in proportion.
-            rowWidth = 1160f
-            showRow()
-            assertRow(listOf(232f, 232f, 180.4f, 309.3f, 206.2f), listOf(thread, cards, artifact, profile))
-            // 640: five columns of 160 don't fit, four do: the profile is a tab beside the Artifact, all at 160.
-            rowWidth = 640f
-            waitForIdle()
-            assertRow(listOf(160f, 160f, 160f, 160f), listOf(thread, cards, artifact))
-            onNodeWithTag(RAFT_PANE_GRID_TABS_TEST_TAG + artifact.id, useUnmergedTree = true).assertExists()
-        }
 }

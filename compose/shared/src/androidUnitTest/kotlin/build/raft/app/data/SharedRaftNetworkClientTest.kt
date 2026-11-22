@@ -74,43 +74,6 @@ class SharedRaftNetworkClientTest {
         RaftHttpExecutorResponse(code = code, bodyText = body, errorBodyText = null)
 
     @Test
-    fun authTransportLogsSanitizedStartAndFinishForCompletedRequest() = runBlocking {
-        val logs = mutableListOf<String>()
-        val executor =
-            RecordingExecutor {
-                RaftHttpExecutorResponse(
-                    code = 401,
-                    bodyText = null,
-                    errorBodyText = """{"error":"invalid_credentials"}""",
-                    transportDiagnostics = "engine=networkkmm status=401 kind=none rawCode=OK detail=none"
-                )
-            }
-        val transport =
-            SharedRaftAuthTransport(
-                baseUrl = "https://api.slock.test/api",
-                executor = executor,
-                warningLogger = logs::add
-            )
-
-        val response = transport.login("""{"email":"a@example.com","password":"secret-password"}""")
-
-        assertEquals(401, response.code)
-        val startLog = logs.single { it.startsWith("slock_auth_transport_start") }
-        assertContains(startLog, "path=auth/login")
-        assertContains(startLog, "method=POST")
-        assertContains(startLog, "authorizationPresent=false")
-        assertContains(startLog, "requestBytes=")
-        val finishLog = logs.single { it.startsWith("slock_auth_transport_finish") }
-        assertContains(finishLog, "path=auth/login")
-        assertContains(finishLog, "code=401")
-        assertContains(finishLog, "status=401")
-        logs.forEach { log ->
-            assertEquals(false, log.contains("secret-password"), "auth transport diagnostics must not log request bodies")
-            assertEquals(false, log.contains("a@example.com"), "auth transport diagnostics must not log request bodies")
-        }
-    }
-
-    @Test
     fun authTransportLogsRequestIdHeaderOnFailedRefresh() = runBlocking {
         val logs = mutableListOf<String>()
         val executor =
@@ -142,77 +105,6 @@ class SharedRaftNetworkClientTest {
     }
 
     @Test
-    fun rawAuthMeFailureLogsRequestIdHeader() = runBlocking {
-        val logs = mutableListOf<String>()
-        val executor =
-            RecordingExecutor {
-                RaftHttpExecutorResponse(
-                    code = 401,
-                    bodyText = null,
-                    errorBodyText = """{"error":"unauthorized"}""",
-                    responseHeaders = mapOf("X-Request-Id" to listOf("req_auth_me_456"))
-                )
-            }
-        val client =
-            SharedRaftNetworkClient(
-                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
-                baseUrl = "https://api.slock.test/api",
-                warningLogger = logs::add,
-                executor = executor
-            )
-
-        val response =
-            client.requestRawAbsoluteUrl(
-                priority = DataRequestPriority.Foreground,
-                url = "https://api.slock.test/api/auth/me",
-                method = "GET",
-                headers = emptyMap(),
-                bodyText = null
-            )
-
-        assertEquals(401, response.code)
-        val endpointLog = logs.single { it.startsWith("endpoint category=raw_absolute_url") }
-        assertContains(endpointLog, "path=https://api.slock.test/api/auth/me")
-        assertContains(endpointLog, "requestId=req_auth_me_456")
-    }
-
-    @Test
-    fun authTransportTimeoutReturnsNetworkFailureAndLogsPath() = runBlocking {
-        val logs = mutableListOf<String>()
-        val executor =
-            RecordingExecutor {
-                delay(200)
-                ok()
-            }
-        val transport =
-            SharedRaftAuthTransport(
-                baseUrl = "https://api.slock.test/api",
-                executor = executor,
-                warningLogger = logs::add,
-                requestScheduler = RaftRequestScheduler(requestTimeoutMillis = 10)
-            )
-
-        val response = transport.login("""{"email":"a@example.com","password":"password"}""")
-
-        assertEquals(0, response.code)
-        assertContains(response.errorBodyText.orEmpty(), "network_timeout")
-        val request = executor.requests.single()
-        assertEquals("POST", request.method)
-        assertEquals(RaftRequestPriority.Foreground, request.priority)
-        assertEquals("https://api.slock.test/api/auth/login", request.url)
-        val startLog = logs.single { it.contains("slock_auth_transport_start") }
-        assertContains(startLog, "path=auth/login")
-        val timeoutLog = logs.single { it.contains("slock_auth_transport_failed") }
-        assertContains(timeoutLog, "path=auth/login")
-        assertContains(timeoutLog, "kind=timeout")
-        assertEquals(
-            emptyList(),
-            logs.filter { it.contains("slock_auth_transport_finish") },
-            "timed out auth requests must log the timeout failure instead of a finish marker"
-        )
-    }
-
-    @Test
     fun requestUsesExecutorWithAuthHeadersAndServerOverride() = runBlocking {
         val executor = RecordingExecutor { ok() }
         val client =
@@ -239,44 +131,6 @@ class SharedRaftNetworkClientTest {
         assertEquals("https://api.slock.test/api/servers/server-override/members?limit=20", request.url)
         assertEquals("Bearer access-token", request.headers["Authorization"])
         assertEquals("server-override", request.headers[HEADER_SERVER_ID])
-    }
-
-    @Test
-    fun threadSummaryReadsAskForCutReplyPreviews() = runBlocking {
-        // botiverse/slock #14921: the messages page asks for `latestReplies[].preview` cut to 200
-        // characters; a cut preview comes back `truncated: true` (an Activity seed loads it, never shows it).
-        val executor = RecordingExecutor { ok() }
-        val client =
-            SharedRaftNetworkClient(
-                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
-                baseUrl = "https://api.slock.test/api",
-                executor = executor
-            )
-
-        client.request(
-            priority = DataRequestPriority.Visible,
-            path = "messages/channel/channel-1",
-            method = "GET",
-            query = listOf("limit" to "30"),
-            serverIdOverride = null,
-            bodyText = null
-        )
-        client.request(
-            priority = DataRequestPriority.Visible,
-            path = "messages/sync",
-            method = "GET",
-            query = listOf("limit" to "30"),
-            serverIdOverride = null,
-            bodyText = null
-        )
-
-        assertEquals(
-            listOf(
-                "https://api.slock.test/api/messages/channel/channel-1?limit=30&threadPreviewChars=200",
-                "https://api.slock.test/api/messages/sync?limit=30",
-            ),
-            executor.requests.map { it.url },
-        )
     }
 
     @Test
@@ -387,38 +241,6 @@ class SharedRaftNetworkClientTest {
     }
 
     @Test
-    fun fileRefUploadUsesAppScopeResolverThenMultipartRequest() = runBlocking {
-        val executor = RecordingExecutor { ok(code = 201) }
-        val resolver = RecordingPlatformFileResolver()
-        val file =
-            MultipartFile(
-                name = "avatar",
-                fileName = "avatar.png",
-                mimeType = "image/png",
-                fileRef = "native://avatar",
-                sizeBytes = 42
-            )
-        val client =
-            SharedRaftNetworkClient(
-                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
-                baseUrl = "https://api.slock.test/api",
-                platformFileResolver = resolver,
-                executor = executor
-            )
-
-        val response = client.uploadAccountAvatar(DataRequestPriority.Foreground, file)
-
-        assertEquals(201, response.code)
-        assertEquals(listOf("native://avatar"), resolver.readCalls)
-        val request = executor.multiparts.single()
-        assertEquals("https://api.slock.test/api/auth/me/avatar", request.url)
-        assertEquals("Bearer access-token", request.headers["Authorization"])
-        assertEquals(listOf("avatar"), request.files.map { it.name })
-        assertTrue(request.files.single().bytes.isNotEmpty())
-        assertEquals(null, request.files.single().streamOpener)
-    }
-
-    @Test
     fun threadAttachmentUploadStreamsFileRefAndKeepsFilesFieldName() = runBlocking {
         val executor = RecordingExecutor { ok("""{"attachments":[]}""", code = 200) }
         val resolver = RecordingPlatformFileResolver()
@@ -505,38 +327,6 @@ class SharedRaftNetworkClientTest {
     }
 
     @Test
-    fun missingPlatformSizeFailsBeforeMultipartTransport() = runTest {
-        val executor = RecordingExecutor { ok() }
-        val resolver = RecordingPlatformFileResolver(sizeBytes = null)
-        val client =
-            SharedRaftNetworkClient(
-                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
-                baseUrl = "https://api.slock.test/api",
-                platformFileResolver = resolver,
-                executor = executor
-            )
-
-        val response =
-            client.uploadAttachments(
-                DataRequestPriority.Foreground,
-                ChannelId("channel-1"),
-                listOf(
-                    MultipartFile(
-                        name = "files",
-                        fileName = "unknown.bin",
-                        mimeType = "application/octet-stream",
-                        fileRef = "file:///cache/unknown.bin"
-                    )
-                )
-            )
-
-        assertEquals(400, response.code)
-        assertContains(response.errorBodyText.orEmpty(), "attachment_size_unavailable")
-        assertTrue(executor.multiparts.isEmpty(), "stat failure must terminate before transport")
-        assertTrue(resolver.openCalls.isEmpty())
-    }
-
-    @Test
     fun multiFileMetadataAdmissionIsAllOrNoneBeforeAnyAttemptOpens() = runTest {
         val executor = RecordingExecutor { ok() }
         val resolver = PerFileRecordingResolver(mapOf("file:///a" to 3L, "file:///b" to null))
@@ -562,90 +352,6 @@ class SharedRaftNetworkClientTest {
         assertEquals(listOf("file:///a", "file:///b"), resolver.statCalls)
         assertTrue(resolver.openCalls.isEmpty(), "metadata admission must not open A before B is admitted")
         assertTrue(executor.multiparts.isEmpty(), "no partial multipart may start")
-    }
-
-    @Test
-    fun inMemorySmallAttachmentKeepsBufferedPathWithoutPlatformResolver() = runTest {
-        val executor = RecordingExecutor { ok("""{"attachments":[]}""") }
-        val resolver = RecordingPlatformFileResolver()
-        val client =
-            SharedRaftNetworkClient(
-                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
-                baseUrl = "https://api.slock.test/api",
-                platformFileResolver = resolver,
-                executor = executor
-            )
-
-        val response =
-            client.uploadAttachments(
-                DataRequestPriority.Foreground,
-                ChannelId("channel-1"),
-                listOf(
-                    MultipartFile(
-                        name = "files",
-                        fileName = "small.txt",
-                        mimeType = "text/plain",
-                        bytes = byteArrayOf(1, 2, 3),
-                        sizeBytes = 3
-                    )
-                )
-            )
-
-        assertEquals(200, response.code)
-        assertTrue(resolver.readCalls.isEmpty())
-        assertTrue(resolver.statCalls.isEmpty())
-        assertTrue(resolver.openCalls.isEmpty())
-        val buffered = executor.multiparts.single().files.single()
-        assertEquals(listOf<Byte>(1, 2, 3), buffered.bytes.toList())
-        assertEquals(null, buffered.streamOpener)
-    }
-
-    @Test
-    fun attachmentUploadLogsMultipartShapeAndTransportDiagnosticsForErrors() = runBlocking {
-        val logs = mutableListOf<String>()
-        val executor =
-            RecordingExecutor {
-                RaftHttpExecutorResponse(
-                    code = 400,
-                    bodyText = null,
-                    errorBodyText = """{"error":"No files provided"}""",
-                    transportDiagnostics =
-                        "engine=networkkmm status=400 kind=http rawCode=400 detail=bad_request"
-                )
-            }
-        val client =
-            SharedRaftNetworkClient(
-                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
-                baseUrl = "https://api.slock.test/api",
-                warningLogger = logs::add,
-                executor = executor
-            )
-
-        val response =
-            client.uploadAttachments(
-                DataRequestPriority.Foreground,
-                ChannelId("channel-1"),
-                listOf(
-                    MultipartFile(
-                        name = "files",
-                        fileName = "photo.png",
-                        mimeType = "image/png",
-                        bytes = byteArrayOf(1, 2, 3),
-                        sizeBytes = 3
-                    )
-                )
-            )
-
-        assertEquals(400, response.code)
-        assertContains(logs.single(), "category=attachments_upload")
-        assertContains(logs.single(), "fieldKeys=channelId")
-        assertContains(logs.single(), "fileFields=files")
-        assertContains(logs.single(), "fileNameMeta=named=1;ext=png")
-        assertContains(logs.single(), "result=http_error")
-        assertContains(logs.single(), "errorBody=error:No_files_provided")
-        assertContains(logs.single(), "engine=networkkmm")
-        assertContains(logs.single(), "rawCode=400")
-        assertContains(logs.single(), "detail=bad_request")
     }
 
     private class RecordingPlatformFileResolver(

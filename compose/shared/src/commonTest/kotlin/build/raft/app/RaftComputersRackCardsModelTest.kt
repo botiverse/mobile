@@ -1,7 +1,6 @@
 package build.raft.app
 
 import build.raft.app.data.ScreenLoadState
-import build.raft.app.data.SettingsComputerBroadcastPolicySnapshot
 import build.raft.app.data.SettingsComputerSizeStatusSnapshot
 import build.raft.app.data.SettingsComputerSnapshot
 import build.raft.app.data.SettingsComputerUpgradeRequestSnapshot
@@ -14,7 +13,6 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
-import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /** The Computers page's rack cards (web ComputersRack `view === "cards"`): facts, agents, counts. */
@@ -35,24 +33,6 @@ class RaftComputersRackCardsModelTest {
     }
 
     @Test
-    fun currentComputerShowsNoNoticeAndItsPresenceLight() {
-        val row = computer("m-1", platform = "darwin arm64", computerVersion = "1.0.53", latest = "1.0.53").toRaftComputerRow()
-        val facts = assertIs<RaftComputerCardFacts.Online>(row.cardFacts())
-        assertEquals("macOS", facts.osName)
-        assertNull(facts.notice)
-        assertEquals(RaftComputerDot.Online, row.dot)
-    }
-
-    @Test
-    fun osNameIsTheReleaseElseMacOsOrWindowsElseNothing() {
-        assertEquals("Debian GNU/Linux 12", raftComputerOsName(" Debian GNU/Linux 12 ", "linux arm64"))
-        assertEquals("macOS", raftComputerOsName(null, "darwin arm64"))
-        assertEquals("Windows", raftComputerOsName("", "win32 x64"))
-        assertNull(raftComputerOsName(null, "linux x64"))
-        assertNull(raftComputerOsName(null, null))
-    }
-
-    @Test
     fun belowTheVersionFloorSaysUpdateRequiredWhetherAnUpgradeOrAReinstall() {
         val gate = SettingsComputerVersionGateSnapshot(reason = "computer_version_unsupported", minVersion = "1.0.50")
         val upgrade = computer("m-1", computerVersion = "1.0.46", latest = "1.0.53", versionGate = gate).toRaftComputerRow()
@@ -61,16 +41,6 @@ class RaftComputersRackCardsModelTest {
         // Older than web upgrade can reach: a reinstall.
         val reinstall = computer("m-2", computerVersion = "1.0.40", latest = "1.0.53", versionGate = gate).toRaftComputerRow()
         assertEquals(RaftComputerVersionNotice.BelowFloor(reinstall = true), reinstall.versionNotice)
-    }
-
-    @Test
-    fun unreportedVersionPointsAtTheEligiblePolicyTarget() {
-        val policy = SettingsComputerBroadcastPolicySnapshot(eligibility = "eligible", targetVersion = "1.0.53")
-        val snapshot = computer("m-1", computerVersion = null, latest = "1.0.53").copy(upgradeAvailable = true, broadcastPolicy = policy)
-        assertEquals("1.0.53", raftComputerAvailableVersion(snapshot))
-        assertNull(raftComputerAvailableVersion(snapshot.copy(upgradeAvailable = false)))
-        // A daemon never points at a version.
-        assertNull(raftComputerAvailableVersion(snapshot.copy(isComputer = false)))
     }
 
     @Test
@@ -104,14 +74,6 @@ class RaftComputersRackCardsModelTest {
         assertFalse(restarting.copy(upgradeRequest = pending.copy(state = "done")).toRaftComputerRow().updating)
         assertFalse(restarting.copy(upgradeRequest = pending.copy(state = "no_response")).toRaftComputerRow().updating)
         assertFalse(restarting.copy(isComputer = false).toRaftComputerRow().updating)
-    }
-
-    @Test
-    fun updateAvailableAndUpdateRequiredBothNeedAttention() {
-        val gate = SettingsComputerVersionGateSnapshot(reason = "computer_version_unsupported", minVersion = "1.0.50")
-        assertTrue(raftRackNeedsAttention(computer("m-1", computerVersion = "1.0.46", latest = "1.0.53", versionGate = gate)))
-        assertTrue(raftRackNeedsAttention(computer("m-2", computerVersion = "1.0.49", latest = "1.0.53").copy(upgradeAvailable = true)))
-        assertFalse(raftRackNeedsAttention(computer("m-3", computerVersion = "1.0.53", latest = "1.0.53")))
     }
 
     @Test

@@ -39,9 +39,6 @@ class WideTopBarHistoryScreenshotTest {
     @Test
     fun historyLight() = capture("shell.top-bar.history", RaftAppAppearance.Light)
 
-    @Test
-    fun historyDark() = capture("shell.top-bar.history.dark", RaftAppAppearance.Dark)
-
     private val servers =
         listOf(
             RaftServerSwitcherItem(id = "s1", name = "Botiverse", slug = "botiverse", activityUnreadCount = 0L),

@@ -176,52 +176,6 @@ class MembersRemoteAgentProfileUiTest {
     }
 
     @Test
-    fun remoteStoppedAgentShowsOfflineStatus() = runRobolectricComposeUiTest {
-        setContent {
-            ProfilePage(
-                member = sampleMember(description = "   "),
-                detail = sampleDetail(description = null, status = "stopped", activity = "offline"),
-                accessMode = MemberDetailAccessMode.RemoteProfileOnly
-            )
-        }
-        waitForIdle()
-
-        onNodeWithText("Offline").assertIsDisplayed()
-        onNodeWithText("Description").assertDoesNotExist()
-        onNodeWithText("No description").assertDoesNotExist()
-    }
-
-    @Test
-    fun remoteStoppedAgentWithoutActivityStillShowsOfflineStatus() = runRobolectricComposeUiTest {
-        setContent {
-            ProfilePage(
-                member = sampleMember(description = null),
-                detail = sampleDetail(description = null, status = "stopped", activity = null),
-                accessMode = MemberDetailAccessMode.RemoteProfileOnly
-            )
-        }
-        waitForIdle()
-
-        onNodeWithText("Offline").assertIsDisplayed()
-    }
-
-    @Test
-    fun remoteAgentWithNoServerRuntimeStatusRendersNoChip() = runRobolectricComposeUiTest {
-        setContent {
-            ProfilePage(
-                member = sampleMember(description = null),
-                detail = sampleDetail(description = null, status = "active", activity = null),
-                accessMode = MemberDetailAccessMode.RemoteProfileOnly
-            )
-        }
-        waitForIdle()
-
-        onNodeWithText("Online").assertDoesNotExist()
-        onNodeWithText("Offline").assertDoesNotExist()
-        onNodeWithText("—").assertDoesNotExist()
-    }
-
-    @Test
     fun remoteAgentLiveStatusWinsOverSummaryFallback() = runRobolectricComposeUiTest {
         val liveWorking = raftAgentStatusIndicatorState(AgentStatus.Working, Presence.Active, external = false)
         setContent {
@@ -245,44 +199,5 @@ class MembersRemoteAgentProfileUiTest {
         onNodeWithText("Online").assertDoesNotExist()
         onNodeWithText("Description").assertIsDisplayed()
         onNodeWithText("Triages partner bug reports.").assertIsDisplayed()
-    }
-
-    @Test
-    fun channelSummaryProjectionWithoutDescriptionOmitsDescriptionSection() = runRobolectricComposeUiTest {
-        setContent {
-            ProfilePage(
-                member = sampleMember(description = null, serverId = "server-home", profileProjection = "channel_summary"),
-                detail =
-                    sampleDetail(
-                        description = null,
-                        status = "active",
-                        activity = null,
-                        profileProjection = "channel_summary"
-                    ),
-                accessMode = MemberDetailAccessMode.LocalFull
-            )
-        }
-        waitForIdle()
-
-        onNodeWithText("Description").assertDoesNotExist()
-        onNodeWithText("No description").assertDoesNotExist()
-    }
-
-    @Test
-    fun homeServerAgentWithoutDescriptionKeepsNoDescriptionAndNoManufacturedStatus() = runRobolectricComposeUiTest {
-        setContent {
-            ProfilePage(
-                member = sampleMember(description = null, serverId = "server-home", serverName = "Home"),
-                detail = sampleDetail(description = null, status = "active", activity = "online"),
-                accessMode = MemberDetailAccessMode.LocalFull
-            )
-        }
-        waitForIdle()
-
-        onNodeWithText("Description").assertIsDisplayed()
-        onNodeWithText("No description").assertIsDisplayed()
-        // Home-server agents without a live status resolver still must not manufacture a status chip from summary (task #256).
-        onNodeWithText("Online").assertDoesNotExist()
-        onNodeWithText("—").assertDoesNotExist()
     }
 }

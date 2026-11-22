@@ -685,7 +685,11 @@ data class HomeNetworkResponse(
     val isSuccessful: Boolean
         get() = code in 200..299
 
-    /** The server's `X-Trace-Id` for this request (validated); null when it got no answer. */
+    /**
+     * The server's `X-Trace-Id` for this request (validated); null when no response header carries
+     * one (unanswered requests have no headers; `awaitMachineOperation` timeouts intentionally
+     * preserve the initiating request's trace id).
+     */
     val traceId: String?
         get() = responseHeaders.raftResponseTraceIdOrNull()
 }

@@ -214,11 +214,19 @@ private fun SharedTasksDataStoreState.foldCanonicalTask(
     // The same revision with its description, over a summary row that left it out: take the fuller copy.
     val gainsDescription =
         currentFact != null && revisionOrder == 0 && !currentFact.descriptionLoaded && incomingFact.descriptionLoaded
+    // The same revision with full conversation details (conversationChannelId / conversationAnchored /
+    // hostMessageId) over a `detail=summary` row that omitted them: take the fuller copy.
+    val gainsConversationDetails =
+        currentFact != null &&
+            revisionOrder == 0 &&
+            !currentFact.conversationDetailsLoaded &&
+            incomingFact.conversationDetailsLoaded
     val acceptsIncoming =
         currentFact == null ||
             revisionOrder > 0 ||
             gainsConversation ||
             gainsDescription ||
+            gainsConversationDetails ||
             (currentFact.revision == null && incomingFact.revision == null && currentServerHasRoute) ||
             (authoritativeRefresh && currentlyConflicted && revisionOrder == 0)
     if (currentlyConflicted && !acceptsIncoming) {
@@ -267,10 +275,86 @@ private fun TaskSummary.withViewerConversationFollow(incoming: TaskSummary, curr
     val known = listOf(this, incoming, current).firstOrNull { it?.sourceMessageReported == true }
     val source = known?.sourceMessageId ?: sourceMessageId
     val reported = known != null
-    return if (conversationFollowed == followed && sourceMessageId == source && sourceMessageReported == reported) {
+    // `sourceSenderType` / `sourceSenderId` are sent only on `detail=summary` rows; keep them when a
+    // full row arrives so the Tasks board's `from_my_message` relation stays intact.
+    val knownSourceSender = listOf(this, incoming, current).firstOrNull { it?.sourceSenderReported == true }
+    val senderType = knownSourceSender?.sourceSenderType ?: sourceSenderType
+    val senderId = knownSourceSender?.sourceSenderId ?: sourceSenderId
+    val senderReported = knownSourceSender != null
+    // A task's conversation channel, pre-v2 host message, and v2 anchor are write-once / monotonic:
+    // if a newer-revision `detail=summary` row arrives (omitting `conversationChannelId`,
+    // `conversationAnchored`, and `hostMessageId`), carry forward what is already known so the task
+    // keeps its conversation, pre-v2 "Earlier discussion", or v2 anchor without re-conflicting.
+    val knownConversation =
+        if (!conversationDetailsLoaded && conversationChannelId == null) {
+            listOf(incoming, current).firstOrNull { it?.conversationChannelId != null }
+        } else {
+            null
+        }
+    val knownLoadedDetails =
+        if (!conversationDetailsLoaded && knownConversation == null) {
+            listOf(incoming, current).firstOrNull { it?.conversationDetailsLoaded == true }
+        } else {
+            null
+        }
+    val nextConversationChannelId = knownConversation?.conversationChannelId ?: conversationChannelId
+    val nextConversationAnchored =
+        when {
+            knownConversation != null -> knownConversation.conversationAnchored
+            knownLoadedDetails != null -> conversationAnchored || knownLoadedDetails.conversationAnchored
+            else -> conversationAnchored
+        }
+    val nextConversationDetailsLoaded = conversationDetailsLoaded || knownConversation != null
+    val nextHostMessageId =
+        when {
+            knownConversation != null -> knownConversation.hostMessageId
+            knownLoadedDetails != null -> hostMessageId ?: knownLoadedDetails.hostMessageId
+            else -> hostMessageId
+        }
+    val nextMessageId =
+        when {
+            knownConversation != null -> knownConversation.messageId
+            knownLoadedDetails != null && (nextConversationAnchored || nextHostMessageId != null) ->
+                if (nextConversationAnchored) null else nextHostMessageId
+            else -> messageId
+        }
+    val nextParentMessageId =
+        when {
+            knownConversation != null -> knownConversation.parentMessageId
+            knownLoadedDetails != null && (nextConversationAnchored || nextHostMessageId != null) ->
+                if (nextConversationAnchored) null else nextHostMessageId
+            else -> parentMessageId
+        }
+    return if (
+        conversationFollowed == followed &&
+        sourceMessageId == source &&
+        sourceMessageReported == reported &&
+        sourceSenderType == senderType &&
+        sourceSenderId == senderId &&
+        sourceSenderReported == senderReported &&
+        conversationChannelId == nextConversationChannelId &&
+        conversationAnchored == nextConversationAnchored &&
+        conversationDetailsLoaded == nextConversationDetailsLoaded &&
+        hostMessageId == nextHostMessageId &&
+        messageId == nextMessageId &&
+        parentMessageId == nextParentMessageId
+    ) {
         this
     } else {
-        copy(conversationFollowed = followed, sourceMessageId = source, sourceMessageReported = reported)
+        copy(
+            conversationFollowed = followed,
+            sourceMessageId = source,
+            sourceMessageReported = reported,
+            sourceSenderType = senderType,
+            sourceSenderId = senderId,
+            sourceSenderReported = senderReported,
+            conversationChannelId = nextConversationChannelId,
+            conversationAnchored = nextConversationAnchored,
+            conversationDetailsLoaded = nextConversationDetailsLoaded,
+            hostMessageId = nextHostMessageId,
+            messageId = nextMessageId,
+            parentMessageId = nextParentMessageId,
+        )
     }
 }
 
@@ -303,8 +387,12 @@ private fun TaskSummary.hasSameCanonicalTaskFact(other: TaskSummary): Boolean =
         title == other.title &&
         status == other.status &&
         taskNumber == other.taskNumber &&
-        messageId == other.messageId &&
-        parentMessageId == other.parentMessageId &&
+        // A `detail=summary` row omits `conversationChannelId`, `conversationAnchored`, and
+        // `hostMessageId` (`conversationDetailsLoaded == false`), so its compatibility `messageId`
+        // differs from the full row's real `hostMessageId` (often null) at the same revision.
+        ((messageId == other.messageId && parentMessageId == other.parentMessageId) ||
+            !conversationDetailsLoaded ||
+            !other.conversationDetailsLoaded) &&
         threadId == other.threadId &&
         isThreadTask == other.isThreadTask &&
         assignee.taskPrincipalIdentity() == other.assignee.taskPrincipalIdentity() &&

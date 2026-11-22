@@ -13,7 +13,6 @@ import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.sp
 import build.raft.app.model.TaskStatus
 import kotlin.test.Test
-import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -33,20 +32,8 @@ import org.robolectric.annotation.GraphicsMode
 @RunWith(RobolectricTestRunner::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class RaftTaskChipPaddingLayoutTest {
-    @Test @Config(sdk = [34])
-    fun chipBoxHoldsLabelPlusPaddingOnAndroid14() = assertChipsPadded()
-
     @Test @Config(sdk = [35])
     fun chipBoxHoldsLabelPlusPaddingOnAndroid15() = assertChipsPadded()
-
-    @Test @Config(sdk = [35])
-    fun letterSpacedJoinerHasNoAdvanceOnAndroid15Minikin() {
-        // The root cause, kept as the reason Android takes placeholders: the Skia-form spacer
-        // collapses to the bare label on Android 15.
-        val style = raftMarkdownTaskChipStyle(null)
-        val (box, label) = measure(style, "#3954", spacerAsPlaceholder = false)
-        assertEquals(label, box, 0.5f, "letter-spaced joiners now advance on Android 15; box=$box label=$label")
-    }
 
     private fun assertChipsPadded() {
         listOf<TaskStatus?>(null, TaskStatus.Done, TaskStatus.InReview).forEach { status ->

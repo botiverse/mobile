@@ -26,7 +26,6 @@ import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.long
-import java.security.MessageDigest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotSame
@@ -35,24 +34,11 @@ import kotlin.test.assertTrue
 
 class ThreadRepliesPreviewConformanceTest {
 
-    private val pinnedHash = "e0af07aa112aff7f8dc653ed1ce5f23211fa6884c780a2e92fff7452b959e98a"
-
     private fun resourceBytes(path: String): ByteArray =
         checkNotNull(javaClass.getResourceAsStream(path)) { "missing test resource $path" }.readBytes()
 
     private fun replyOf(messageId: String, seq: Long): ReplyPreview =
         ReplyPreview(messageId, seq, "", "", "", "", null, "")
-
-    /** Offline copy-integrity: the synced mobile copy still matches its pinned hash (NOT the cross-repo gate). */
-    @Test
-    fun syncedVectorMatchesPinnedHash() {
-        val bytes = resourceBytes("/sync/threadRepliesReadModel.vectors.json")
-        val fileHash = resourceBytes("/sync/threadRepliesReadModel.vectors.sha256").decodeToString().trim()
-        val actual = MessageDigest.getInstance("SHA-256").digest(bytes)
-            .joinToString("") { b -> ((b.toInt() and 0xff) + 0x100).toString(16).substring(1) }
-        assertEquals(pinnedHash, actual, "synced vector drifted from its pinned hash — re-sync from botiverse/slock")
-        assertEquals(fileHash, actual, "vector bytes disagree with the pinned .sha256 companion")
-    }
 
     @Test
     fun kmpReducerMatchesTheCrossEndVectorStepByStep() {

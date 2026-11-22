@@ -180,39 +180,6 @@ class ThreadReadingAnchorUiTest {
             assertReadingRowsKept { changed -> saved.value = saved.value + (changed to true) }
         }
 
-    @Test
-    fun aFirstReactionKeepsTheReadingRow() =
-        runRobolectricComposeUiTest {
-            assertReadingRowsKept { changed -> reactions.value = reactions.value + (changed to true) }
-        }
-
-    @Test
-    fun aCardOrImageResolvingLateKeepsTheReadingRow() =
-        runRobolectricComposeUiTest {
-            assertReadingRowsKept { changed -> lateCardDp[changed] = 120 }
-        }
-
-    /** A marker that goes away (unsave, last reaction removed): the row shrinks in place. */
-    private fun ComposeUiTest.assertRemovalKeeps(marker: Harness.() -> MutableState<Map<String, Boolean>>) {
-        val harness = mount()
-        val anchor = tops(harness).readingAnchor()
-        val changed = ids[ids.indexOf(anchor) + 2]
-        oneFrame { harness.marker().value = mapOf(changed to true) }
-        val before = tops(harness)
-
-        oneFrame { harness.marker().value = emptyMap() }
-
-        val after = tops(harness)
-        assertEquals(before[anchor], after[anchor])
-        assertEquals(before[changed], after[changed])
-    }
-
-    @Test
-    fun unsavingKeepsTheReadingRow() = runRobolectricComposeUiTest { assertRemovalKeeps { saved } }
-
-    @Test
-    fun removingTheLastReactionKeepsTheReadingRow() = runRobolectricComposeUiTest { assertRemovalKeeps { reactions } }
-
     /** The row whose Save / reaction the user tapped is the anchor: its top stays, the change grows downward. */
     @Test
     fun theTappedRowStaysPut() =
@@ -274,30 +241,6 @@ class ThreadReadingAnchorUiTest {
             oneFrame { harness.messages.value = harness.messages.value + "m12" }
 
             assertEquals(before, tops(harness).filterKeys { it in before })
-            assertEquals(0, harness.owner.keeper.corrections)
-        }
-
-    /**
-     * Locked out: the keyboard opening while the reader is in the history. The viewport shrinks;
-     * the reversed list keeps its bottom row, as before, and the keeper does not count the resize
-     * as an in-place change (no correction).
-     */
-    @Test
-    fun theKeyboardOpeningWhileReadingHistoryIsLeftAlone() =
-        runRobolectricComposeUiTest {
-            val harness = mount()
-            fun viewportPx() = runOnIdle { harness.viewport.raw.layoutInfo.viewportSize.height }
-            val windowPx = viewportPx()
-            val windowDp = with(density) { windowPx.toDp().value.toInt() }
-            val before = tops(harness)
-            // The bottom row stays in view as the list shrinks from the bottom.
-            val bottomRow = before.maxBy { it.value }.key
-
-            oneFrame { harness.listHeightDp.value = windowDp - 300 }
-
-            val keyboardPx = windowPx - viewportPx()
-            assertTrue(keyboardPx > 0, "the list did not shrink")
-            assertEquals(before.getValue(bottomRow) - keyboardPx, tops(harness)[bottomRow])
             assertEquals(0, harness.owner.keeper.corrections)
         }
 

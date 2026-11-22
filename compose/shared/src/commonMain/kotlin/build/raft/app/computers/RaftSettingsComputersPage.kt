@@ -95,13 +95,11 @@ import build.raft.app.compat.pager.LocalActivity
 import build.raft.app.compat.pager.Page
 import build.raft.app.compat.pager.Pager
 import build.raft.app.data.COMPUTER_ACTION_DELETE
-import build.raft.app.data.ProcessRaftDatetimeFoundationOwner
 import build.raft.app.data.COMPUTER_ACTION_DESCRIPTION
 import build.raft.app.data.COMPUTER_ACTION_RENAME
 import build.raft.app.data.COMPUTER_ACTION_OWNER
 import build.raft.app.model.MemberProfile
 import build.raft.app.data.SettingsComputerOwnerRequest
-import build.raft.designsystem.components.LocalRaftToastHostState
 import build.raft.designsystem.components.RaftToastIntent
 import build.raft.app.data.COMPUTER_ACTION_SCAN_WORKSPACES
 import build.raft.app.data.RaftAuthSessionStore
@@ -123,6 +121,7 @@ import build.raft.app.data.SettingsComputerWorkspaceSnapshot
 import build.raft.app.data.SharedSettingsActionState
 import build.raft.app.data.SettingsComputerUpgradeFailureHintSnapshot
 import build.raft.app.data.SharedSettingsDestination
+import build.raft.app.data.AddComputerCodeSubmitting
 import build.raft.app.data.SharedSettingsEffect
 import build.raft.app.data.SharedSettingsIntent
 import build.raft.app.data.SharedSettingsViewModel
@@ -680,8 +679,15 @@ private fun RaftSettingsComputersScreen(pager: Pager, pageVisibleResumeTick: Int
     settingsState.addComputerDialog?.let { dialog ->
         AddComputerDialog(state = dialog, onIntent = settingsViewModel::dispatch, runtimeCatalog = runtimeCatalog)
     }
-    // Registering the computer with two-step verification on: "Verify it's you" over the sheet.
-    SettingsSecondFactorStepUpHost(settingsState.secondFactorStepUp, settingsViewModel::dispatch)
+    // Registering the computer, or approving a terminal's code from it, with two-step verification
+    // on: "Verify it's you" over the sheet (for a code, the device login page's notice, web
+    // `pages.deviceLogin.stepUpNotice`).
+    val approvingCode = settingsState.addComputerDialog?.code?.submitting == AddComputerCodeSubmitting.Approve
+    SettingsSecondFactorStepUpHost(
+        settingsState.secondFactorStepUp,
+        settingsViewModel::dispatch,
+        description = if (approvingCode) stringResource(Res.string.settings_computers_code_step_up_notice) else null,
+    )
     // A card's ⋯ → Delete computer (web RackRowMenu → DeleteComputerDialog): the Computer page's
     // confirm; the agents on it are the ones the cards show.
     deleteComputerId?.let { machineId ->
@@ -3076,7 +3082,7 @@ private fun RaftComputerDetailBody(
     val ownerAction = currentAction?.takeIf { it.action == COMPUTER_ACTION_OWNER }
     val ownerSaving = ownerAction?.inProgress == true
     val ownerFailed = ownerAction != null && !ownerAction.inProgress && ownerAction.hasComputerActionError()
-    val toastHost = LocalRaftToastHostState.current
+    val showErrorToast = rememberRaftErrorToast()
     val makeMineFailed = stringResource(Res.string.settings_computers_owner_make_mine_failed)
     LaunchedEffect(ownerSaving, ownerFailed) {
         if (ownerSaving) return@LaunchedEffect
@@ -3084,7 +3090,10 @@ private fun RaftComputerDetailBody(
         if (transferOwnerOpen && transferSubmitted && ownerAction != null && !ownerFailed) transferOwnerOpen = false
         if (claimingOwner) {
             claimingOwner = false
-            if (ownerFailed) toastHost?.show(makeMineFailed, intent = RaftToastIntent.Error)
+            if (ownerFailed) {
+                val traceId = ownerAction.screenError?.traceId ?: ownerAction.permissionBlocker?.traceId
+                showErrorToast(makeMineFailed, traceId, RaftToastIntent.Error)
+            }
         }
     }
     val nowMillis = currentRaftTimeContextProvider?.current?.nowEpochMillis ?: defaultNowMillis()
@@ -3653,10 +3662,7 @@ private fun RaftComputerCreatorAvatar(creator: RaftComputerCreatorModel) {
 @Composable
 private fun raftComputerCreatedDate(createdAt: String?): String? {
     val value = createdAt?.trim()?.takeIf { it.isNotEmpty() } ?: return null
-    val context =
-        currentRaftTimeContextProvider?.current
-            ?: RaftTimeContext(localOffsetMinutes = ProcessRaftDatetimeFoundationOwner.localOffsetMinutesAt(defaultNowMillis(), 0))
-    return value.membersLocalizedCreatedDateOrNull(context)
+    return value.membersLocalizedCreatedDateOrNull(currentRaftEffectiveDateTimeContext())
 }
 
 @Composable
@@ -3968,6 +3974,8 @@ private fun RaftComputerAgentRow(
             statusText == stringResource(Res.string.member_row_status_online) ||
             statusText == stringResource(Res.string.member_row_status_offline) ||
             statusText == stringResource(Res.string.member_row_status_likely_online)
+    build.raft.app.data.RaftModelLabelCatalogs.observeCatalog(serverId)
+    build.raft.app.data.RaftRuntimeCatalogNames.observeCatalogs()
     RaftListRow(
         title = agent.name,
         onClick = onClick,

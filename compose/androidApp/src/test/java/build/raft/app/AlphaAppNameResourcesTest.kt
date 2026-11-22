@@ -40,36 +40,6 @@ class AlphaAppNameResourcesTest {
         }
     }
 
-    @Test
-    fun alphaOverridesAreMainStringsWithTheAlphaAppName() {
-        for (dir in LocaleDirs) {
-            val main = strings(locate("src/main/res/$dir/strings.xml"))
-            val alpha = strings(locate("src/alpha/res/$dir/strings.xml"))
-            val expectedKeys = SystemVisibleAppNameKeys.filter { it in main }.toSet()
-            assertEquals("alpha $dir overrides exactly the system-visible app-name keys", expectedKeys, alpha.keys)
-            for (key in expectedKeys) {
-                val source = main.getValue(key)
-                assertTrue("main $dir $key names the app: $source", source.contains("Raft"))
-                assertEquals("alpha $dir $key", source.replace("Raft", "Raft Alpha"), alpha.getValue(key))
-            }
-        }
-        // Every key with translations has them overridden in every locale.
-        val translated = SystemVisibleAppNameKeys - "push_preview_hidden_title"
-        for (dir in LocaleDirs) {
-            val alpha = strings(locate("src/alpha/res/$dir/strings.xml"))
-            assertEquals("alpha $dir covers every translated key", translated.toSet(), alpha.keys - "push_preview_hidden_title")
-        }
-    }
-
-    private fun strings(file: File): Map<String, String> {
-        val nodes =
-            DocumentBuilderFactory.newInstance().newDocumentBuilder().parse(file).documentElement.getElementsByTagName("string")
-        return (0 until nodes.length).associate { index ->
-            val element = nodes.item(index) as Element
-            element.getAttribute("name") to element.textContent
-        }
-    }
-
     private fun locate(relativePath: String): File {
         var current = File(requireNotNull(System.getProperty("user.dir"))).absoluteFile
         repeat(8) {

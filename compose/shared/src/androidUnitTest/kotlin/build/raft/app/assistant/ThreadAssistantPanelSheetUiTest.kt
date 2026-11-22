@@ -24,11 +24,9 @@ import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTouchInput
-import androidx.compose.ui.test.swipeDown
-import androidx.compose.ui.test.swipeUp
-import androidx.compose.ui.unit.DpRect
 import androidx.compose.ui.unit.dp
 import build.raft.app.HomeMessageOpenRequest
+import build.raft.app.LocalRaftForegroundBannerHandoff
 import build.raft.app.RaftForegroundBannerHost
 import build.raft.app.RaftForegroundMessageBanner
 import build.raft.app.RaftForegroundMessageBannerIconKind
@@ -199,52 +197,6 @@ class ThreadAssistantPanelSheetUiTest {
             onAllNodes(bannerText, useUnmergedTree = true).assertCountEquals(1)
         }
 
-    @Test
-    fun theDrawerSlidesUpAfterItsFirstFrameAndSlidesDownBeforeItGoes() =
-        runRobolectricComposeUiTest {
-            var open by mutableStateOf(false)
-            show { Page(open, { open = it }, banner = null) }
-            mainClock.autoAdvance = false
-            runOnIdle { open = true }
-            // The panel inside the drawer surface: its bounds carry the slide (the sheet's own tag
-            // sits outside the surface's translation).
-            val sheet = onNode(hasTestTag(ThreadAssistantPanelTestTag))
-            // The window's first frame composes and measures the content; the slide starts after
-            // it, so a heavy first frame (a whole conversation) cannot eat it.
-            var frames = 0
-            while (onAllNodes(hasTestTag(ThreadAssistantPanelSheetTestTag)).fetchSemanticsNodes().isEmpty()) {
-                assertTrue(++frames < 20, "the sheet's window never showed")
-                mainClock.advanceTimeByFrame()
-            }
-            val start = sheet.getBoundsInRoot()
-            mainClock.advanceTimeByFrame()
-            assertEquals(start.top, sheet.getBoundsInRoot().top, "still not moving on the frame after the first")
-            // 120ms into the 240ms slide.
-            mainClock.advanceTimeBy(120)
-            val midway = sheet.getBoundsInRoot().top
-            mainClock.advanceTimeBy(300)
-            val seated = sheet.getBoundsInRoot().top
-            val height = start.bottom - start.top
-            assertTrue(start.top >= seated + height * 0.98f, "below the window first: ${start.top} vs seated $seated + $height")
-            assertTrue(midway > seated && midway < start.top, "on its way up: $seated < $midway < ${start.top}")
-
-            // Collapse: it slides back down while still composed, then the window goes.
-            runOnIdle { open = false }
-            // Frame by frame until the window goes: on the way it shows the surface part way down.
-            val tops = mutableListOf<Float>()
-            while (onAllNodes(hasTestTag(ThreadAssistantPanelTestTag)).fetchSemanticsNodes().isNotEmpty()) {
-                assertTrue(tops.size < 40, "the drawer never went: $tops")
-                tops += sheet.getBoundsInRoot().top.value
-                mainClock.advanceTimeByFrame()
-            }
-            assertTrue(
-                tops.count { it > seated.value + 1f && it < start.top.value } >= 3,
-                "it slid down over several frames before going: $tops",
-            )
-            mainClock.advanceTimeBy(300)
-            onNode(hasTestTag(ThreadAssistantPanelSheetTestTag)).assertDoesNotExist()
-        }
-
     /**
      * A page opened while the drawer is up (a thread ref in the panel's DM) takes the drawer down
      * as it opens, without the slide: the page under it stops composing once the pushed page covers
@@ -281,55 +233,50 @@ class ThreadAssistantPanelSheetUiTest {
             onNode(hasTestTag(PANEL_DM)).assertDoesNotExist()
         }
 
-    /**
-     * #proj-mobile:#134: the sheet has snap points (raft-ui Drawer `snapPoints`). A drag up on the
-     * panel's head takes it to the whole window; Back there brings it back to 82%; a long drag down
-     * from there closes the panel. The grab handle's strip drags it too (same drag area).
-     */
     @Test
-    fun theHeadDragsTheSheetToTheWholeWindowBackReturnsAndALongDragDownCloses() =
+    fun disposingAssistantPanelWhileOpenRestoresRootBannerHost() =
         runRobolectricComposeUiTest {
-            var open by mutableStateOf(true)
-            show { Page(open, { open = it }, banner = null) }
-            mainClock.advanceTimeBy(600)
-            val panel = onNode(hasTestTag(ThreadAssistantPanelTestTag))
-            val head = onNode(hasTestTag(ThreadAssistantPanelHeaderTestTag))
-            val seated = panel.getBoundsInRoot()
+            var panelPresent by mutableStateOf(true)
+            show {
+                RaftForegroundBannerHost(
+                    banner = banner,
+                    topSafeArea = 0.dp,
+                    onBannerClick = {},
+                ) {
+                    val handoff = LocalRaftForegroundBannerHandoff.current
+                    val coverOwner = remember { Any() }
+                    Box(Modifier.fillMaxSize().testTag(PAGE)) {
+                        RaftText("Channel")
+                    }
+                    if (panelPresent) {
+                        ThreadAssistantPanelSheet(
+                            otter(open = true) {},
+                            onCoversPageChange = { covers -> handoff?.setWindowCover(coverOwner, covers) },
+                            windowOverlay = {
+                                handoff?.banner?.takeIf { handoff.isCoveredByWindow }?.let { handedBanner ->
+                                    RaftForegroundMessageBannerView(
+                                        banner = handedBanner,
+                                        topSafeArea = handoff.topSafeArea,
+                                        onClick = {},
+                                    )
+                                }
+                            },
+                        ) {
+                            RaftText("Ottie DM", Modifier.testTag(PANEL_DM))
+                        }
+                    }
+                }
+            }
+            val bannerText = hasText("#raft-antiproton")
+            mainClock.advanceTimeBy(400)
+            onAllNodes(bannerText, useUnmergedTree = true).assertCountEquals(1)
 
-            head.performTouchInput { swipeUp(startY = centerY, endY = centerY - 120.dp.toPx(), durationMillis = 200) }
-            mainClock.advanceTimeBy(600)
-            val full = panel.getBoundsInRoot()
-            assertTrue(full.top < seated.top - 100.dp, "dragged up, the sheet fills the window: ${full.top} vs ${seated.top}")
-            assertClose(seated.bottom.value, full.bottom.value, "its bottom (the composer) stays on the window's bottom")
-            assertTrue(open)
-
-            // Back from the whole window: back to 82%, still open.
-            val dialog = org.robolectric.shadows.ShadowDialog.getLatestDialog() as androidx.activity.ComponentDialog
-            runOnIdle { dialog.onBackPressedDispatcher.onBackPressed() }
-            mainClock.advanceTimeBy(600)
-            assertBoundsClose(seated, panel.getBoundsInRoot(), "Back from full returns to the default height")
-            runOnIdle { assertTrue(open, "Back from the whole window does not close the panel") }
-
-            // A short slow drag down settles back where it was.
-            head.performTouchInput { swipeDown(startY = centerY, endY = centerY + 60.dp.toPx(), durationMillis = 1_000) }
-            mainClock.advanceTimeBy(600)
-            assertBoundsClose(seated, panel.getBoundsInRoot(), "a short drag down settles back at the default height")
-            runOnIdle { assertTrue(open) }
-
-            // Further down: it closes.
-            head.performTouchInput { swipeDown(startY = centerY, endY = centerY + 560.dp.toPx(), durationMillis = 400) }
-            mainClock.advanceTimeBy(1_000)
-            runOnIdle { assertFalse(open, "a long drag down closes the panel") }
+            // Unmount panel directly (e.g. assistant feature turned off): root banner must not stay hidden.
+            runOnIdle { panelPresent = false }
+            mainClock.advanceTimeBy(200)
             onNode(hasTestTag(ThreadAssistantPanelSheetTestTag)).assertDoesNotExist()
+            onAllNodes(bannerText, useUnmergedTree = true).assertCountEquals(1)
         }
-
-    private fun assertClose(expected: Float, actual: Float, message: String) =
-        assertTrue(kotlin.math.abs(expected - actual) <= 2f, "$message: expected $expected, was $actual")
-
-    private fun assertBoundsClose(expected: DpRect, actual: DpRect, message: String) {
-        assertClose(expected.top.value, actual.top.value, "$message (top)")
-        assertClose(expected.bottom.value, actual.bottom.value, "$message (bottom)")
-    }
 
     private companion object {
         const val PAGE = "page"

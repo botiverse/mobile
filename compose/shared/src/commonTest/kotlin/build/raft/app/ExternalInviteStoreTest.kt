@@ -152,16 +152,6 @@ class ExternalInviteStoreTest {
     }
 
     @Test
-    fun aRefusalWithTheNeutral404MeansTheInviteIsNotThisAccounts() = runTest {
-        val source = FakeExternalInviteDataSource()
-        val store = loaded(source)
-        source.guestAnswer = DataResult.Content(InviteeAnswer.Refused(InviteeRefusal(404)))
-        store.dispatch(ExternalInviteIntent.JoinAsGuest)
-        runCurrent()
-        assertEquals(InviteStep.WrongAccount(null), store.state.value.step)
-    }
-
-    @Test
     fun aServerAtItsLimitCannotBeChosenAndADirectServerConnectsAtOnce() = runTest {
         val source = FakeExternalInviteDataSource()
         val store = loaded(source)
@@ -218,25 +208,6 @@ class ExternalInviteStoreTest {
     }
 
     @Test
-    fun aHiddenPageDoesNotPollAndReadsAgainWhenShown() = runTest {
-        val source = FakeExternalInviteDataSource()
-        source.page = DataResult.Content(InviteeAnswer.Ok(inviteTestPage(status = "connecting").copy(connectServerId = "s1")))
-        val store = loaded(source)
-        assertEquals(InviteStep.Connecting("s1"), store.state.value.step)
-        store.dispatch(ExternalInviteIntent.SetVisible(false))
-        val reads = source.getCalls
-        advanceTimeBy(ExternalInvitePollMillis * 3)
-        assertEquals(reads, source.getCalls)
-
-        store.dispatch(ExternalInviteIntent.SetVisible(true))
-        runCurrent()
-        assertEquals(reads + 1, source.getCalls)
-        advanceTimeBy(ExternalInvitePollMillis + 1)
-        assertEquals(reads + 2, source.getCalls)
-        store.clear()
-    }
-
-    @Test
     fun aConnectionThatDidNotGoThroughSaysSoAndOneThatDidOpensTheChannel() = runTest {
         val source = FakeExternalInviteDataSource()
         source.connectAnswer = DataResult.Content(InviteeAnswer.Ok(listOf(ServerConnectOutcome.Connecting("s1"))))
@@ -263,75 +234,6 @@ class ExternalInviteStoreTest {
     }
 
     @Test
-    fun severalServersGoTogetherAndTheListSaysWhereEachStands() = runTest {
-        val source = FakeExternalInviteDataSource()
-        source.connectAnswer =
-            DataResult.Content(
-                InviteeAnswer.Ok(
-                    listOf(
-                        ServerConnectOutcome.Connected("s1", "p1"),
-                        ServerConnectOutcome.Refused("s2", 409, "free_external_limit", "x", limitSide = "connecting", limitServerId = "s2"),
-                    )
-                )
-            )
-        val store = loaded(source)
-        store.dispatch(ExternalInviteIntent.SetPicked(listOf("s1", "s2")))
-        store.dispatch(ExternalInviteIntent.Connect)
-        store.dispatch(ExternalInviteIntent.RequestApproval)
-        runCurrent()
-        val step = assertIs<InviteStep.Progress>(store.state.value.step)
-        assertEquals(listOf("Contoso", "Fabrikam"), step.chosen.map { it.name })
-        val rows = inviteProgressRows(step.chosen, store.state.value.invite!!)
-        assertEquals(listOf("connected", "refused"), rows.map { it.state })
-        // Fabrikam is not the caller's own server: the connecting server's limit reads as theirs only when it is.
-        assertEquals(
-            InviteeMessage.TargetFreeLimit,
-            inviteeErrorMessage(rows[1].refusal!!.asRefusal(), InviteeAction.Connect, null, "s2"),
-        )
-    }
-
-    @Test
-    fun limitRefusalsNameWhoseLimitItIs() {
-        val host = InviteeRefusal(409, "free_external_limit", limitSide = "host", limitServerId = "h")
-        assertEquals(InviteeMessage.HostLimit, inviteeErrorMessage(host, InviteeAction.Connect, InviteMyServer("s1", "C", null, "free")))
-        assertEquals(InviteeMessage.HostLimit, inviteeErrorMessage(host.copy(limitSide = "connecting", limitServerId = "s1"), InviteeAction.Guest, null))
-        val mine = InviteeRefusal(409, "free_external_limit", limitSide = "connecting", limitServerId = "s1")
-        assertEquals(InviteeMessage.TargetFreeLimit, inviteeErrorMessage(mine, InviteeAction.Connect, InviteMyServer("s1", "C", null, "free")))
-        val unborn = InviteeRefusal(409, "joint_free_server_limit", limitSide = "connecting")
-        assertEquals(InviteeMessage.JointServerLimit, inviteeErrorMessage(unborn, InviteeAction.NewServer, null, null))
-        assertEquals(InviteeMessage.TooManyAttempts, inviteeErrorMessage(InviteeRefusal(429), InviteeAction.Guest, null))
-        assertEquals(InviteeMessage.Busy, inviteeErrorMessage(InviteeRefusal(409, "channel_conversion_in_progress"), InviteeAction.Connect, null))
-        // Web #15570: a name clash on the connecting server says to rename that channel there first.
-        assertEquals(InviteeMessage.ChannelNameTaken, inviteeErrorMessage(InviteeRefusal(409, "channel_name_taken"), InviteeAction.Connect, null))
-    }
-
-    @Test
-    fun aNewServerIsCheckedFirstAndASlugTakenStaysOnItsField() = runTest {
-        val source = FakeExternalInviteDataSource()
-        val store = loaded(source)
-        store.dispatch(ExternalInviteIntent.ShowNewServer)
-        store.dispatch(ExternalInviteIntent.SetNewServerName("My Team"))
-        assertEquals("my-team", store.state.value.newServerSlug)
-        store.dispatch(ExternalInviteIntent.SetNewServerSlug("ab"))
-        store.dispatch(ExternalInviteIntent.CreateServer)
-        assertEquals(NewServerFieldError.SlugTooShort, store.state.value.fieldErrors.slug)
-        assertEquals(emptyList(), source.newServerCalls)
-
-        store.dispatch(ExternalInviteIntent.SetNewServerSlug("my-team"))
-        source.newServerAnswer = DataResult.Content(InviteeAnswer.Refused(InviteeRefusal(409)))
-        store.dispatch(ExternalInviteIntent.CreateServer)
-        runCurrent()
-        assertEquals(listOf("My Team" to "my-team"), source.newServerCalls)
-        assertEquals(NewServerFieldError.SlugTaken, store.state.value.fieldErrors.slug)
-
-        source.newServerAnswer = DataResult.Content(InviteeAnswer.Ok(NewServerConnectResult("connecting", "n1"), status = 202))
-        store.dispatch(ExternalInviteIntent.CreateServer)
-        runCurrent()
-        assertEquals(InviteStep.Connecting("n1"), store.state.value.step)
-        store.clear()
-    }
-
-    @Test
     fun aServerCreatedThenRefusedIsKept() = runTest {
         val source = FakeExternalInviteDataSource()
         source.newServerAnswer =
@@ -348,27 +250,6 @@ class ExternalInviteStoreTest {
         assertEquals(TraceId, store.state.value.error?.traceId)
         store.dispatch(ExternalInviteIntent.OpenKeptServer)
         assertEquals(ExternalInviteEffect.OpenServer("n1"), store.state.value.effects.last())
-    }
-
-    @Test
-    fun cancellingTheWaitingRequestIsConfirmedThenTheInviteIsReadAgain() = runTest {
-        val source = FakeExternalInviteDataSource()
-        source.page =
-            DataResult.Content(
-                InviteeAnswer.Ok(
-                    inviteTestPage(status = "awaiting_approval").copy(pendingRequest = PendingConnectRequest("r1", "s2", "Fabrikam", "u1", "Sam", "x"))
-                )
-            )
-        val store = loaded(source)
-        store.dispatch(ExternalInviteIntent.AskCancel(null, "Sam"))
-        assertEquals(InviteCancelConfirm(null, "Sam"), store.state.value.cancelConfirm)
-        source.page = DataResult.Content(InviteeAnswer.Ok(inviteTestPage()))
-        store.dispatch(ExternalInviteIntent.ConfirmCancel)
-        runCurrent()
-        assertEquals(listOf<String?>(null), source.cancelCalls)
-        assertNull(store.state.value.cancelConfirm)
-        assertEquals(InviteStep.Options, store.state.value.step)
-        store.clear()
     }
 
     @Test

@@ -24,7 +24,10 @@ class RaftAndroidSandboxWebViewNavigationFenceTest {
     private val events = RaftWebViewEvents().apply { onNavigationBlocked = { blocked += it } }
     private val controller = RaftWebViewController()
 
-    private fun host(allowNavigation: Boolean): WebView {
+    private fun host(
+        allowNavigation: Boolean,
+        injectedJavaScript: String = "",
+    ): WebView {
         val host = RaftAndroidSandboxWebView(RuntimeEnvironment.getApplication(), events)
         host.applyConfig(
             RaftWebViewConfig(
@@ -35,7 +38,7 @@ class RaftAndroidSandboxWebViewNavigationFenceTest {
                 useWideViewPort = false,
                 cacheEnabled = false,
                 ephemeral = true,
-                injectedJavaScript = "",
+                injectedJavaScript = injectedJavaScript,
                 allowedNavigationSchemes = setOf("https"),
                 hostEventsEnabled = false,
             )
@@ -89,18 +92,6 @@ class RaftAndroidSandboxWebViewNavigationFenceTest {
     }
 
     @Test
-    fun disallowedSchemesAreBlockedInSubframesAndEvenWhenNavigationIsAllowed() {
-        val fenced = host(allowNavigation = false)
-        assertTrue(fenced.overrides("javascript:alert(1)", mainFrame = false))
-        assertTrue(fenced.overrides("intent://scan/#Intent;scheme=zxing;end", mainFrame = false))
-
-        val open = host(allowNavigation = true)
-        assertFalse(open.overrides("https://other.test/anything"))
-        assertTrue(open.overrides("http://other.test/anything"))
-        assertTrue(open.overrides("file:///android_asset/index.html"))
-    }
-
-    @Test
     fun runtimeScriptsReachOnlyTheTrustedDocumentOfAFencedHost() {
         val webView = host(allowNavigation = false)
         webView.finishLoading(trusted)
@@ -120,17 +111,35 @@ class RaftAndroidSandboxWebViewNavigationFenceTest {
     }
 
     @Test
-    fun hostThatAllowsNavigationDeliversRuntimeScriptsToSameOriginRoutes() {
-        val webView = host(allowNavigation = true)
-        webView.finishLoading(trusted)
+    fun unlockedHostNeverEvaluatesInjectedJavaScriptOnOffOriginPageFinished() {
+        val tokenScript = "window.localStorage.setItem('slock_access_token', 'secret');"
+        val webView = host(allowNavigation = true, injectedJavaScript = tokenScript)
+        assertEquals(null, shadowOf(webView).lastEvaluatedJavascript)
 
-        shadowOf(webView).webViewClient.doUpdateVisitedHistory(webView, "https://example.test/account/", false)
-        controller.evaluateJavaScript("window.__onRoute = 1")
-        assertEquals("window.__onRoute = 1", shadowOf(webView).lastEvaluatedJavascript)
+        // Navigating to a third-party site (e.g. Stripe checkout or an App's external page) on an
+        // unlocked Settings WebView must never evaluate injectedJavaScript on onPageFinished.
+        webView.finishLoading("https://evil.test/login")
+        assertEquals(null, shadowOf(webView).lastEvaluatedJavascript)
 
-        // Cross-origin documents never receive runtime scripts.
-        shadowOf(webView).webViewClient.doUpdateVisitedHistory(webView, "https://evil.test/", false)
-        controller.evaluateJavaScript("window.__onEvil = 1")
-        assertEquals("window.__onRoute = 1", shadowOf(webView).lastEvaluatedJavascript)
+        webView.finishLoading("https://checkout.stripe.com/c/pay/cs_test")
+        assertEquals(null, shadowOf(webView).lastEvaluatedJavascript)
+
+        // Same-origin Raft routes still receive the bootstrap script (including explicit default port).
+        webView.finishLoading("https://example.test:443/s/workspace/settings/billing")
+        assertEquals(tokenScript, shadowOf(webView).lastEvaluatedJavascript)
+
+        // Even a stale same-origin callback cannot evaluate once webView.url has moved off-origin
+        // or to a non-http(s) document like about:blank.
+        val sentinel = "window.__sentinel = 1"
+        webView.evaluateJavascript(sentinel, null)
+        assertEquals(sentinel, shadowOf(webView).lastEvaluatedJavascript)
+
+        webView.loadUrl("https://evil.test/next")
+        shadowOf(webView).webViewClient.onPageFinished(webView, "https://example.test/s/workspace/settings/billing")
+        assertEquals(sentinel, shadowOf(webView).lastEvaluatedJavascript)
+
+        webView.loadUrl("about:blank")
+        shadowOf(webView).webViewClient.onPageFinished(webView, "https://example.test/s/workspace/settings/billing")
+        assertEquals(sentinel, shadowOf(webView).lastEvaluatedJavascript)
     }
 }

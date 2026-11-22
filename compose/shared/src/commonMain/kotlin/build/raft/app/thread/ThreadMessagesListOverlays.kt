@@ -102,7 +102,8 @@ internal fun BoxWithConstraintsScope.ThreadMessagesListOverlays(
             }
         val outlineOriginId = renderPayload.originMessage?.id
         val outlineTimeContext =
-            currentRaftTimeContextProvider?.current?.copy(timeFormat = renderConfig.timeContext.timeFormat)
+            currentRaftDateTimeContext(renderConfig.timeContext)
+                ?.takeIf { it.resolvedTodayEpochDay() != null }
                 ?: renderConfig.timeContext.refreshedAt(defaultNowMillis())
         ThreadOutlineHost(
             state = LocalThreadOutlineState.current,
@@ -117,6 +118,7 @@ internal fun BoxWithConstraintsScope.ThreadMessagesListOverlays(
             // would show the raw UTC wire timestamp. Same day source as the date dividers.
             formatTime = { value -> outlineTimeContext.formatTimestampLabel(value) },
             onJump = { messageId ->
+                listState.noteUserNavigation()
                 // The thread's first message heads the list and isn't among the replies the
                 // page focuses: scroll to its row (web `jumpToParent`); a reply is focused.
                 if (messageId == (renderPayload.parentMessageId ?: outlineOriginId)) {

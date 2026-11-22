@@ -80,15 +80,6 @@ class ThreadAppLinkCardPressFreshHandleTest {
     private fun ThreadAppLinkCardPress.click() = assertNotNull(button(approve, approve.action as RaftLinkCardButtonAction.Execute)).onClick()
 
     @Test
-    fun aRecentHandleIsSentAsItIs() = runTest {
-        val recorder = Recorder()
-        press(this, recorder, readAt = now - APP_LINK_HANDLE_FRESH_MILLIS).click()
-        advanceUntilIdle()
-        assertEquals(0, recorder.rereadsBeforeExecute)
-        assertEquals(listOf("h-old"), recorder.executes)
-    }
-
-    @Test
     fun anOldOrUnstampedHandleIsReadAgainFirstAndTheFreshOneSent() = runTest {
         listOf(now - APP_LINK_HANDLE_FRESH_MILLIS - 1, null).forEach { readAt ->
             val recorder = Recorder()

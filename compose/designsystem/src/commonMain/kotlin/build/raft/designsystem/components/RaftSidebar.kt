@@ -188,7 +188,7 @@ enum class RaftSidebarItemVariant(
  * `brand` fill, 1.5dp `sticker-ink` edge, die-cut edge in dark, `sticker-ink` for every
  * part, and `selected` in semantics; it takes no hover or press overlay. An unselected row
  * is a list cell (raft-ui lib/list-cell.ts): a mouse or trackpad hover lays
- * `fill-cell-hover` on its rounded shape (faded over 150ms) and press `fill-cell-press`;
+ * `fill-cell-hover` on its rounded shape and press `fill-cell-press`;
  * keyboard focus draws the focus ring outside the box. [onClick] = null is a
  * display-only row (`interactive={false}`): no press, no focus, not a button.
  *
@@ -338,7 +338,7 @@ private fun RaftSidebarItemLayout(
     val source = interactionSource ?: remember { MutableInteractionSource() }
     val interactive = onClick != null
     // A list cell (raft-ui lib/list-cell.ts): hover lays `fill-cell-hover` on the row's
-    // shape, faded over 150ms; press `fill-cell-press` at once; an open menu keeps the hover
+    // shape; press `fill-cell-press`; an open menu keeps the hover
     // fill. A selected (sticker) row answers neither.
     val overlay =
         rememberRaftStateOverlay(

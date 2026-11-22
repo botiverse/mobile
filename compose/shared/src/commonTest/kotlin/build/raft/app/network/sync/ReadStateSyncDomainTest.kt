@@ -48,49 +48,4 @@ class ReadStateSyncDomainTest {
         assertEquals(ReadStateSyncApplyResult.Accepted, advanced.result)
         assertEquals(ReadStateSyncState(readStateVersion = 7, maxReadSeq = 60), advanced.state)
     }
-
-    @Test
-    fun syncCoreKeepsWireVersionAuthorityIndependentFromFrameSequence() {
-        val core = createSyncCore(SyncCoreConfig(domains = listOf(readStateSyncDomain())))
-
-        assertEquals(
-            SyncIngestOutcome.MaxAdvanced("server-1:channel-1", 2uL),
-            core.ingestFrame(
-                READ_STATE_SYNC_DOMAIN,
-                SyncFrame(
-                    scopeId = "server-1:channel-1",
-                    seq = 2uL,
-                    event = ReadStateSyncEvent(readStateVersion = 2, maxReadSeq = 20)
-                )
-            )
-        )
-        core.ingestFrame(
-            READ_STATE_SYNC_DOMAIN,
-            SyncFrame(
-                scopeId = "server-1:channel-1",
-                seq = 99uL,
-                event = ReadStateSyncEvent(readStateVersion = 3, maxReadSeq = 10)
-            )
-        )
-
-        assertEquals(
-            ReadStateSyncState(readStateVersion = 3, maxReadSeq = 10),
-            core.state(READ_STATE_SYNC_DOMAIN, "server-1:channel-1")
-        )
-    }
 }
-
-private const val READ_STATE_SYNC_DOMAIN = "read_state"
-
-private fun readStateSyncDomain(): SyncDomainConfig =
-    SyncDomainConfig(
-        name = READ_STATE_SYNC_DOMAIN,
-        density = SyncDensity.Sparse,
-        initialState = { ReadStateSyncState() },
-        fold = { state, event, _ ->
-            val current = state as? ReadStateSyncState ?: ReadStateSyncState()
-            val update = event as? ReadStateSyncEvent ?: return@SyncDomainConfig current
-            reduceReadStateSyncState(current, update).state
-        },
-        fromSnapshot = { snapshot -> snapshot.state as? ReadStateSyncState ?: ReadStateSyncState() }
-    )

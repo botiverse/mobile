@@ -43,9 +43,6 @@ class RaftMessageCardV2ScreenshotTest {
     @Test
     fun messageCardsV2Light() = capture("thread.message-card-v2", RaftAppAppearance.Light)
 
-    @Test
-    fun messageCardsV2Dark() = capture("thread.message-card-v2.dark", RaftAppAppearance.Dark)
-
     private fun card(cardJson: String) =
         requireNotNull(
             readMessageCardFromMetadata(

@@ -165,7 +165,11 @@ fun RaftAvatar(
             },
     ) {
         Box(
-            Modifier.fillMaxSize().clip(RoundedCornerShape(RaftRadius.Xs)).clearAndSetSemantics { },
+            Modifier
+                .fillMaxSize()
+                .clip(RoundedCornerShape(RaftRadius.Xs))
+                .then(raftAvatarTriggerFace())
+                .clearAndSetSemantics { },
             contentAlignment = Alignment.Center,
         ) {
             when {
@@ -279,8 +283,8 @@ fun RaftAvatarEmpty(
 ) {
     val colors = RaftTheme.colors
     val source = interactionSource ?: remember { MutableInteractionSource() }
-    // `hover:bg-fill-medium active:bg-fill-medium`, faded over the avatar's 150ms.
-    val overlay = rememberRaftStateOverlay(source, RaftHoverTier.Medium, enabled = onClick != null && enabled, fadeMillis = 150)
+    // `enabled:hover:bg-fill-medium enabled:active:bg-fill-medium`.
+    val overlay = rememberRaftStateOverlay(source, RaftHoverTier.Medium, enabled = onClick != null && enabled)
     val edge = if (enabled) colors.foregroundHint else colors.lineHairline
     val ink = if (enabled) colors.foregroundHint else colors.foregroundDisabled
     val radius = RaftRadius.Sticker

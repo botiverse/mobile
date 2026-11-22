@@ -113,9 +113,9 @@ cd compose
 ./gradlew :androidApp:assembleDebug
 ```
 
-The shared Gradle task `:shared:verifyNoProductionVisualPages` enforces this
-boundary by failing if production source sets contain visual `@Page`
-registrations.
+`scripts/ci/verify_no_production_visual_pages.py` (source-constraints-lint.yml)
+enforces this boundary by failing if production source sets contain visual
+`@Page` registrations.
 
 Artifacts are mirrored for `adb pull` here:
 

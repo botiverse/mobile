@@ -524,7 +524,7 @@ private fun RaftTextareaBox(
         Modifier
             .fillMaxWidth()
             .heightIn(min = minHeight)
-            .raftFieldChrome(look, focused)
+            .raftFieldChrome(look, focused, RaftTheme.controls.controlRadius)
             // CSS `py-2.5 px-3` sit inside the 1dp border.
             .padding(horizontal = 12.dp + RaftStroke.Field, vertical = 10.dp + RaftStroke.Field),
     ) {
@@ -567,15 +567,19 @@ private fun raftFieldTextStyle(color: Color): TextStyle = RaftTheme.typography.f
  * The field box: focus ring outside, fill, and the 1dp `line-field` border inside. A tap
  * focuses a text field but draws no ring (the caret marks it); the ring shows after keyboard
  * navigation only (raft-ui 0.9.6 input modality, raft-design States > Focus).
+ *
+ * [radius]: `--control-radius` (10, 8 under a fine pointer) for a field at the control height
+ * and a textarea (input.recipe.ts, textarea.tsx, input-group.tsx); the `md` input group keeps
+ * `rounded-control` (8).
  */
 @Composable
-private fun Modifier.raftFieldChrome(look: RaftFieldBoxLook, focused: Boolean): Modifier {
-    val shape = RoundedCornerShape(RaftRadius.Control)
+private fun Modifier.raftFieldChrome(look: RaftFieldBoxLook, focused: Boolean, radius: Dp): Modifier {
+    val shape = RoundedCornerShape(radius)
     val keyboardMode = LocalInputModeManager.current.inputMode == InputMode.Keyboard
     val focusedPreview = LocalRaftFocusedPreview.current
     val ring = focused && (keyboardMode || focusedPreview)
     return this
-        .raftFocusRing(ring, RaftRadius.Control, RaftTheme.colors)
+        .raftFocusRing(ring, radius, RaftTheme.colors)
         .background(look.fill, shape)
         .border(RaftStroke.Field, look.border, shape)
 }
@@ -610,6 +614,8 @@ private fun RaftInputBox(
     val hasStart = leading != null || prefix != null || leadingAction != null
     val hasEnd = trailing != null || suffix != null || hasAction
     val container = addonVariant == RaftTextFieldAddonVariant.Container
+    // `lg`: `rounded-(--control-radius)`; `md`: `rounded-control` at every pointer (input-group.tsx).
+    val radius = if (size == RaftTextFieldSize.Md) RaftRadius.Control else RaftTheme.controls.controlRadius
     val prefixCell = container && prefix != null
     val suffixCell = container && suffix != null
     Row(
@@ -620,9 +626,9 @@ private fun RaftInputBox(
             .heightIn(min = if (size == RaftTextFieldSize.Md) RaftTheme.controls.rowHeight ?: RaftTextFieldDefaults.HeightMd else RaftTheme.controls.height)
             // A container cell runs the box's full height (`self-stretch`).
             .then(if (container) Modifier.height(IntrinsicSize.Min) else Modifier)
-            .raftFieldChrome(look, focused)
+            .raftFieldChrome(look, focused, radius)
             // Its fill stays inside the rounded corners; the ring and border are drawn outside the clip.
-            .then(if (container) Modifier.clip(RoundedCornerShape(RaftRadius.Control)) else Modifier),
+            .then(if (container) Modifier.clip(RoundedCornerShape(radius)) else Modifier),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         if (leadingAction != null) {

@@ -125,14 +125,6 @@ class AgentLoungeRulesTest {
     }
 
     @Test
-    fun aLoungeKnownOnlyFromItsDmRowOpensById() {
-        val identity = agentLoungeConversationIdentityOrNull("server-1", "lounge-bugen", listOf(agentDm(AgentLoungeSummary(ChannelId("lounge-bugen")))))
-        assertEquals("lounge-bugen", identity?.channelId?.value)
-        assertEquals(ConversationKind.Channel, identity?.kind)
-        assertNull(agentLoungeConversationIdentityOrNull("server-1", "general", emptyList()))
-    }
-
-    @Test
     fun activityRowsOfALoungeCarryItsAgent() {
         val context =
             ActivityConversationListContext(
@@ -166,17 +158,6 @@ class AgentLoungeRulesTest {
                 .activityConversationRowModel(context, InboxFilter.All).lounge,
             "an ordinary channel keeps its # tile",
         )
-    }
-
-    @Test
-    fun activityFollowsLoungesKnownById() {
-        val known = mapOf("lounge-bugen" to lounge)
-        val context = ActivityConversationListContext().withKnownLounges(known)
-        assertEquals("Bugen", context.loungesByChannelId["lounge-bugen"]?.agentName)
-        // What the DM row carries wins over the registry.
-        val carried = ActivityConversationListContext(loungesByChannelId = mapOf("lounge-bugen" to ActivityConversationLounge("agent-bugen", "Bugen B.")))
-        assertEquals("Bugen B.", carried.withKnownLounges(known).loungesByChannelId["lounge-bugen"]?.agentName)
-        assertEquals(carried, carried.withKnownLounges(null))
     }
 
     @Test

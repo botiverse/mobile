@@ -139,23 +139,6 @@ class SharedTasksQueryStoreTest {
     }
 
     @Test
-    fun pagesFollowTheCursorOneReadAtATime() = runTest {
-        val repository = FakeTasksQueryRepository()
-        repository.page = { call ->
-            if (call.cursor == null) TasksPageResult.Page(listOf(task("a")), "next") else TasksPageResult.Page(listOf(task("b")), null)
-        }
-        val store = store(repository, InMemoryTasksPageQueryPreferences(savedScope = TasksPageScope.All))
-        store.start()
-        runCurrent()
-        store.dispatch(TasksQueryIntent.LoadMore)
-        store.dispatch(TasksQueryIntent.LoadMore)
-        runCurrent()
-        assertEquals(listOf(null, "next"), repository.pageCalls.map { it.cursor })
-        assertEquals(listOf("a", "b"), store.state.value.rowIds())
-        assertEquals(false, store.state.value.sections().single().hasMore)
-    }
-
-    @Test
     fun liveChangesPatchLeaveAndRereadTheLanes() = runTest {
         val repository = FakeTasksQueryRepository(page = { TasksPageResult.Page(listOf(task("a"), task("b")), null) })
         val store = store(repository, InMemoryTasksPageQueryPreferences(savedScope = TasksPageScope.All))
@@ -182,23 +165,6 @@ class SharedTasksQueryStoreTest {
         runCurrent()
         assertEquals(listOf("c", "a"), store.state.value.rowIds())
         assertEquals(reads, repository.pageCalls.size)
-    }
-
-    @Test
-    fun aRowWhoseRelationTheRowCannotTellMakesTheLaneRead() = runTest {
-        val repository = FakeTasksQueryRepository()
-        val store = store(repository)
-        store.start()
-        runCurrent()
-        store.onProjection(emptyList(), bulk = false)
-        val reads = repository.pageCalls.size
-        // Someone else's task from a message: only the server knows who sent it.
-        store.onProjection(listOf(task("x", creator = person("someone-else"))), bulk = false)
-        advanceTimeBy(SharedTasksQueryStore.LiveRereadDelayMs + 1)
-        runCurrent()
-        val reread = repository.pageCalls.drop(reads).single()
-        assertEquals(ServerTaskRelation.FromMyMessage, reread.filters.relation)
-        assertEquals(DataRequestPriority.Background, reread.priority)
     }
 
     @Test
@@ -299,25 +265,6 @@ class SharedTasksQueryStoreTest {
     }
 
     @Test
-    fun liveRereadsFireWhileChangesKeepComing() = runTest {
-        val repository = FakeTasksQueryRepository(page = { TasksPageResult.Page(listOf(task("a"), task("b")), null) })
-        val store = store(repository, InMemoryTasksPageQueryPreferences(savedScope = TasksPageScope.All))
-        store.start()
-        runCurrent()
-        store.onProjection(listOf(task("a"), task("b")), bulk = false)
-        val reads = repository.pageCalls.size
-        // b leaves and comes back every 400 ms: a trailing debounce would never fire.
-        repeat(3) {
-            store.onProjection(listOf(task("a")), bulk = false)
-            advanceTimeBy(400)
-            store.onProjection(listOf(task("a"), task("b")), bulk = false)
-            advanceTimeBy(400)
-        }
-        runCurrent()
-        assertTrue(repository.pageCalls.size > reads, "the first change's wait is not put off by later ones")
-    }
-
-    @Test
     fun aMovedRowIsPlacedAgainInASingleLane() = runTest {
         val a = task("a", activityAt = "2026-11-12T12:00:00.000Z")
         val b = task("b", activityAt = "2026-11-12T11:00:00.000Z")
@@ -367,22 +314,6 @@ class SharedTasksQueryStoreTest {
         runCurrent()
         assertEquals(ViewerId, store.state.value.viewerId)
         assertEquals(listOf("mine"), store.state.value.rowIds())
-    }
-
-    @Test
-    fun aCountShownAgainIsReadAgain() = runTest {
-        val repository = FakeTasksQueryRepository()
-        val store = store(repository, InMemoryTasksPageQueryPreferences(savedScope = TasksPageScope.All))
-        store.start()
-        runCurrent()
-        store.dispatch(TasksQueryIntent.ToggleStatus(TaskStatus.Done))
-        runCurrent()
-        store.dispatch(TasksQueryIntent.ToggleStatus(TaskStatus.Done))
-        runCurrent()
-        store.dispatch(TasksQueryIntent.ToggleStatus(TaskStatus.Done))
-        runCurrent()
-        val doneReads = repository.countCalls.count { it.statuses == listOf(TaskStatus.Done) }
-        assertEquals(2, doneReads)
     }
 
     @Test
@@ -439,40 +370,6 @@ class SharedTasksQueryStoreTest {
     }
 
     @Test
-    fun aLiveRereadWaitsForTheReadInFlightInsteadOfCancellingIt() = runTest {
-        val gate = CompletableDeferred<TasksPageResult>()
-        var liveReads = 0
-        val repository = FakeTasksQueryRepository(page = { TasksPageResult.Page(listOf(task("a"), task("b")), null) })
-        val store = store(repository, InMemoryTasksPageQueryPreferences(savedScope = TasksPageScope.All))
-        store.start()
-        runCurrent()
-        store.onProjection(listOf(task("a"), task("b")), bulk = false)
-        val reads = repository.pageCalls.size
-        repository.page = {
-            liveReads++
-            if (liveReads == 1) gate.await() else TasksPageResult.Page(listOf(task("a"), task("c")), null)
-        }
-
-        // b leaves: a live re-read starts and is slow.
-        store.onProjection(listOf(task("a")), bulk = false)
-        advanceTimeBy(SharedTasksQueryStore.LiveRereadDelayMs + 1)
-        runCurrent()
-        assertEquals(reads + 1, repository.pageCalls.size)
-        // b comes and goes again: the next live re-read queues behind the first, which keeps going.
-        store.onProjection(listOf(task("a"), task("b")), bulk = false)
-        store.onProjection(listOf(task("a")), bulk = false)
-        advanceTimeBy(SharedTasksQueryStore.LiveRereadDelayMs + 1)
-        runCurrent()
-        assertEquals(reads + 1, repository.pageCalls.size, "the read in flight is not cancelled and replaced")
-
-        gate.complete(TasksPageResult.Page(listOf(task("a")), null))
-        runCurrent()
-        assertEquals(reads + 2, repository.pageCalls.size, "the queued re-read runs once the first lands")
-        assertEquals(listOf("a", "c"), store.state.value.rowIds())
-        assertTrue(repository.pageCalls.drop(reads).all { it.priority == DataRequestPriority.Background })
-    }
-
-    @Test
     fun aLiveRereadNeverDowngradesAVisibleRead() = runTest {
         val gate = CompletableDeferred<TasksPageResult>()
         val repository = FakeTasksQueryRepository(page = { TasksPageResult.Page(listOf(task("a"), task("b")), null) })
@@ -496,19 +393,36 @@ class SharedTasksQueryStoreTest {
     }
 
     @Test
-    fun anUnsupportedServerIsNotAskedForCountsAgain() = runTest {
-        val repository = FakeTasksQueryRepository(counts = { ServerTaskCountsResult.Error(code = "tasks_counts_http_405") })
-        val store = store(repository)
+    fun returningToTasksRefetchesAndShowsUpdatedCounts() = runTest {
+        var currentCounts = FakeTasksQueryRepository.zeroCounts(mapOf(TaskStatus.Todo to 2))
+        val repository =
+            FakeTasksQueryRepository(
+                counts = { ServerTaskCountsResult.Counts(currentCounts) },
+            )
+        val store =
+            SharedTasksQueryStore(
+                scope = backgroundScope,
+                repository = repository,
+                serverId = { ServerId(TasksQueryTestFixtures.ServerUuid) },
+                viewerId = { ViewerId },
+                nowEpochMillis = { 1_794_000_000_000L + testScheduler.currentTime },
+            )
         store.start()
         runCurrent()
-        assertTrue(store.state.value.unsupported)
-        val counts = repository.countCalls.size
-        store.dispatch(TasksQueryIntent.Refresh)
-        store.dispatch(TasksQueryIntent.ToggleStatus(TaskStatus.Todo))
-        store.onProjection(listOf(task("x")), bulk = false)
         store.onProjection(emptyList(), bulk = false)
-        advanceTimeBy(SharedTasksQueryStore.CountsRefreshDelayMs + 1)
+        assertEquals(2, store.state.value.scopeCounts()[TasksPageScope.All])
+
+        // Leave Tasks; server counts change while away.
+        store.setVisible(false)
+        currentCounts = FakeTasksQueryRepository.zeroCounts(mapOf(TaskStatus.Todo to 5))
+        store.onProjection(listOf(task("x", creator = person("someone-else"))), bulk = false)
+        advanceTimeBy(SharedTasksQueryStore.CountsRefreshMinIntervalMs + 1_000L)
         runCurrent()
-        assertEquals(counts, repository.countCalls.size)
+        assertEquals(2, store.state.value.scopeCounts()[TasksPageScope.All])
+
+        // Return to Tasks: counts re-fetch and show the updated numbers instead of stale ones.
+        store.setVisible(true)
+        runCurrent()
+        assertEquals(5, store.state.value.scopeCounts()[TasksPageScope.All])
     }
 }

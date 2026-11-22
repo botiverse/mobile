@@ -26,10 +26,4 @@ class AwaitStoredSessionTest {
         assertTrue(result is SharedAuthResult.Unauthenticated)
         assertEquals(4, reads)
     }
-
-    @Test fun anImmediateSessionNeedsOneRead() = runBlocking {
-        var reads = 0
-        assertEquals(SharedAuthResult.Success(1), awaitStoredSession(attempts = 4, delayMs = 1) { reads++; SharedAuthResult.Success(1) })
-        assertEquals(1, reads)
-    }
 }

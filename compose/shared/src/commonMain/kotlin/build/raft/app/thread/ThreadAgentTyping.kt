@@ -42,6 +42,7 @@ import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import build.raft.app.data.AgentTypingSentenceTemplates
 import build.raft.app.data.RaftAgentLounges
@@ -262,8 +263,9 @@ internal fun rememberThreadAgentTyping(
     val inChannel =
         server != null && conversation != null &&
             payload.showsChannelWorkingLine(isLounge = lounges[server]?.containsKey(conversation.first) == true)
+    val showLiveAgentActivity = RaftDisplayPreferenceRuntime.observeShowLiveAgentActivity()
     val workingSource =
-        if (inChannel && server != null && RaftDisplayPreferenceRuntime.showLiveAgentActivity) {
+        if (inChannel && server != null && showLiveAgentActivity) {
             remember(sharedStores, storeScope, server) { sharedStores.liveAgentActivity(storeScope).itemsFlow(server) }
         } else {
             null
@@ -308,10 +310,11 @@ internal fun rememberThreadAgentTyping(
 internal val ThreadAgentTypingLineHeight = 24.dp
 
 /**
- * web `AgentTypingListEnd` `h-7.5`: the line's slot at the list's end. Part of the list's end
+ * web `AgentTypingListEnd` `h-7.5`: the line's slot at the list's end. The list's whole end
  * ([threadBottomSpacerAndAnchorTrailingHeight]) in every conversation that can show the line
- * ([agentTypingLineCanShow]), not only while the line shows, so the line coming or going moves no
- * message.
+ * ([agentTypingLineCanShow]), in place of its 16dp end, not only while the line shows, so the line
+ * coming or going moves no message. It is the line's row ([ThreadAgentTypingLineHeight]) and 6dp
+ * between it and the newest message.
  */
 internal val ThreadAgentTypingListEndHeight = 30.dp
 
@@ -333,10 +336,10 @@ internal val ThreadMessageListEndFadeHeight = 24.dp
  * The list's bottom edge over the composer (raft-ui `MessageListEndFade`, raft-design
  * `spacing.md` "Timeline rhythm"): always on, the panel color at the bottom to transparent upward
  * over the section step, so a message scrolled under the edge softens instead of being cut, and at
- * the end of the list it lies over the empty end. While the typing line shows, the fade grows by
- * exactly the line's height: a solid strip of panel color under the line, the same fade above it.
- * The switch is instant, like the line itself. Under the typing line and the jump controls; takes
- * no pointer input and is hidden from accessibility.
+ * the end of the list it lies over the empty end. While the typing line shows, a solid strip of
+ * panel color lies under the line and the fade above it stays inside the list's end
+ * ([threadMessageListEndFadeGradientHeight]). The switch is instant, like the line itself. Under
+ * the typing line and the jump controls; takes no pointer input and is hidden from accessibility.
  */
 @Composable
 internal fun ThreadMessageListEndFade(typingLineShown: Boolean, modifier: Modifier = Modifier) {
@@ -345,7 +348,7 @@ internal fun ThreadMessageListEndFade(typingLineShown: Boolean, modifier: Modifi
         Box(
             Modifier
                 .fillMaxWidth()
-                .height(ThreadMessageListEndFadeHeight)
+                .height(threadMessageListEndFadeGradientHeight(typingLineShown))
                 .background(Brush.verticalGradient(listOf(panel.copy(alpha = 0f), panel))),
         )
         if (typingLineShown) {
@@ -353,6 +356,17 @@ internal fun ThreadMessageListEndFade(typingLineShown: Boolean, modifier: Modifi
         }
     }
 }
+
+/**
+ * The fade's height above the solid strip: the section step while the typing line is hidden; while
+ * it shows, only the room the list's end leaves above the line ([ThreadAgentTypingListEndHeight]
+ * minus [ThreadAgentTypingLineHeight]), so the strip and its fade end where the newest message
+ * rests and never cover its last line (artin 11-22: the 24dp fade above the line covered it once
+ * #5315 made the end 30dp). The web's end grows while the line shows and keeps a 16px fade above
+ * it; that behaviour is #proj-mobile:#271.
+ */
+internal fun threadMessageListEndFadeGradientHeight(typingLineShown: Boolean): Dp =
+    if (typingLineShown) ThreadAgentTypingListEndHeight - ThreadAgentTypingLineHeight else ThreadMessageListEndFadeHeight
 
 /**
  * The line itself, on the composer's 20dp edge. It has no fade of its own: it sits on the list's

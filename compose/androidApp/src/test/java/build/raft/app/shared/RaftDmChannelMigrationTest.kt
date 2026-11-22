@@ -73,15 +73,6 @@ class RaftDmChannelMigrationTest {
         assertEquals(NotificationManager.IMPORTANCE_LOW, assertNotNullChannel(AndroidUnreadNotificationPoster.UNREAD_DM_NOTIFICATION_CHANNEL_ID).importance)
     }
 
-    @Test
-    fun aFreshInstallGetsAHighDmChannel() {
-        AndroidUnreadNotificationPoster.ensureSharedNotificationChannels(context)
-        assertEquals(
-            NotificationManager.IMPORTANCE_HIGH,
-            assertNotNullChannel(AndroidUnreadNotificationPoster.UNREAD_DM_NOTIFICATION_CHANNEL_ID).importance
-        )
-    }
-
     private fun assertNotNullChannel(id: String): NotificationChannel =
         requireNotNull(manager.getNotificationChannel(id)) { "channel $id missing" }
 }

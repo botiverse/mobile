@@ -33,6 +33,7 @@ import build.raft.app.data.appLinkClientRequestId
 import build.raft.designsystem.components.RaftButton
 import build.raft.designsystem.components.RaftButtonVariant
 import build.raft.designsystem.components.RaftDialog
+import build.raft.designsystem.components.RaftDialogSize
 import build.raft.designsystem.components.RaftPreviewCardButton
 import build.raft.designsystem.components.RaftPreviewCardButtonKind
 import build.raft.designsystem.components.RaftToastIntent
@@ -62,6 +63,8 @@ internal class ThreadAppLinkCardActionHost(
     val toast: (String) -> Unit,
     /** [toast] with the tone Raft gives an operation's state (web `showToast`); plain where none is wired. */
     val toastWithIntent: (String, RaftToastIntent?) -> Unit = { text, _ -> toast(text) },
+    /** Failed action toast carrying this response's `X-Trace-Id` when present; plain where none is wired. */
+    val errorToast: (String, String?) -> Unit = { text, _ -> toast(text) },
     /** `POST /link-cards/status` for an operation; null where it is not wired (no following). */
     val status: (suspend (operationId: String) -> AppLinkOperationStatus)? = null,
     /** This server's `link_card.operation_changed` hints (RFC 076 §6.8); null: none followed. */
@@ -114,9 +117,10 @@ internal fun rememberThreadAppLinkCardPress(
     val changed = stringResource(Res.string.thread_link_preview_action_changed)
     val appSays = stringResource(Res.string.thread_link_preview_action_app_says)
     val appSaysUnnamed = stringResource(Res.string.thread_link_preview_action_app_says_unnamed)
+    val working = stringResource(Res.string.thread_link_preview_action_working)
     val press =
         remember(key, actions) {
-            ThreadAppLinkCardPress(card, actions, scope, failed, undo, refreshFailed, changed) { app, text ->
+            ThreadAppLinkCardPress(card, actions, scope, failed, undo, refreshFailed, changed, workingLabel = working) { app, text ->
                 if (app.isBlank()) appSaysUnnamed.replace("%1\$s", text) else appSays.replace("%1\$s", app).replace("%2\$s", text)
             }
         }
@@ -160,6 +164,12 @@ internal class ThreadAppLinkCardPress(
     private val refreshFailedText: String,
     /** The card changed since it was drawn (web `message.appLink.action.changed`): nothing was sent. */
     private val changedText: String = refreshFailedText,
+    /**
+     * The busy button's spinner name, "Working…" (web `message.appLink.action.working`, the
+     * `loadingLabel` of LinkCardActions' and MessageCardActingButtons' buttons): a card's running
+     * state never says a task status such as In progress (slock #14958). Null: the theme's Loading.
+     */
+    private val workingLabel: String? = null,
     /** "{App}: {text}" (web `message.appLink.action.appSays`): the App's own words, shown as the App's. */
     private val appSaysText: (app: String, text: String) -> String = { app, text -> if (app.isBlank()) text else "$app: $text" },
 ) {
@@ -243,6 +253,7 @@ internal class ThreadAppLinkCardPress(
             disabledReason = button.disabledReason,
             enabled = counting || (running == null && undoing == null),
             loading = running == id,
+            loadingLabel = workingLabel,
         )
     }
 
@@ -257,6 +268,7 @@ internal class ThreadAppLinkCardPress(
             disabledReason = button.disabledReason,
             enabled = running == null && undoing == null,
             loading = running == ReadBusyKey,
+            loadingLabel = workingLabel,
         )
     }
 
@@ -417,7 +429,7 @@ internal class ThreadAppLinkCardPress(
     }
 
     private suspend fun failure(host: ThreadAppLinkCardActionHost, failed: AppLinkActionResult.Failed) {
-        host.toast(failed.message ?: failedText)
+        host.errorToast(failed.message ?: failedText, failed.traceId)
         if (failed.outOfDate) host.reread(card.url)
     }
 
@@ -427,6 +439,10 @@ internal class ThreadAppLinkCardPress(
      * shows "Run by {App}" with its icon under the title and, last, that this Server made it and
      * Raft has not reviewed it. Its undo-window button is asked about by its label (Run "label"?),
      * confirmed with the button's own label, or Cancel (as the web).
+     *
+     * A confirmation, so the small dialog (web `LinkCardConfirmDialog`, raft-ui Dialog
+     * `size="sm"`, DS PreviewCard › Item card; slock #14958): × in the head, Cancel first and the
+     * confirm last, `primary`, as the protocol says only that the action does something.
      */
     @Composable
     fun Confirmation() {
@@ -437,6 +453,9 @@ internal class ThreadAppLinkCardPress(
         RaftDialog(
             onDismissRequest = ::dismissConfirmation,
             title = description?.title ?: stringResource(Res.string.thread_link_preview_unreviewed_run_title, pending.label),
+            // Web `data-link-card-confirm`.
+            modifier = Modifier.testTag(AppLinkConfirmDialogTestTag),
+            size = RaftDialogSize.Sm,
             // Who is speaking goes right under the title, before the App's own body (slock #14724).
             description = description?.body?.takeUnless { attribution != null },
             footer = {
@@ -497,6 +516,9 @@ internal class ThreadAppLinkCardPress(
         val RereadWaitsMs = listOf(2000L, 5000L, 15000L)
     }
 }
+
+/** [ThreadAppLinkCardPress.Confirmation]'s dialog (web `data-link-card-confirm`). */
+internal const val AppLinkConfirmDialogTestTag = "link-card-confirm"
 
 /**
  * The App attribution row shown before an App's own prepared-action copy in [ThreadAppLinkCardPress.Confirmation]

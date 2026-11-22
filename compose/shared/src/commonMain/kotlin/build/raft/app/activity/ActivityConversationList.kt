@@ -171,7 +171,7 @@ internal data class ActivityConversationListContext(
     val currentMemberId: String? = null,
     /**
      * Home channel rows keyed by channel id: the glyph the Home sidebar draws for that channel
-     * ([homeChannelSymbol]: `#`, lock, joint branch, public-page hash-globe, External).
+     * ([homeChannelSymbol]: `#`, lock, joint branch, the public-page globe, two people, the Slack mark).
      */
     val channelSymbolsByChannelId: Map<String, String> = emptyMap(),
     /**
@@ -527,10 +527,12 @@ internal fun InboxItem.activityConversationMuted(
  * the row's channel (a thread: its parent channel). The type is the item's own wire `channelType` /
  * `parentChannelType` (private → lock, joint → branch, channel → `#`); the public-page globe needs the
  * Home channel row (guestVisible, archived) and the server's live page, so it comes from the Home
- * sidebar's symbol for that channel, and so does the External glyph (`hasExternalRelation`, or a
- * joint channel: [raftChannelKindGlyph]). A channel Home doesn't list draws its type alone, like the
- * web `ChannelIcon` fallback (joint: git-branch). An item without a wire type (built from a realtime
- * event) uses the Home row's symbol, else its folded kind (joint), else `#`.
+ * sidebar's symbol for that channel, and so do the glyphs only the channel record can choose
+ * ([RaftChannelKindGlyph.needsChannelRecord]: two people for `hasExternalRelation` or a joint
+ * channel, the Slack mark for `bridge`; botiverse/slock #16060). A channel Home doesn't list draws
+ * its type alone, like the web `ChannelIcon` fallback (joint: git-branch). An item without a wire
+ * type (built from a realtime event) uses the Home row's symbol, else its folded kind (joint), else
+ * `#`.
  */
 internal fun InboxItem.activityChannelSymbol(homeChannelSymbols: Map<String, String>): String {
     val thread = kind == InboxItemKind.Thread
@@ -542,9 +544,10 @@ internal fun InboxItem.activityChannelSymbol(homeChannelSymbols: Map<String, Str
             ?: raftChannelKindGlyph((if (thread) parentChannelKind else channelKind)?.toWireChannelKindOrNull()).symbol
     }
     val symbol = raftChannelKindGlyph(wireType).symbol
+    val homeGlyph = RaftChannelKindGlyph.fromSymbol(homeSymbol)
     return when {
-        homeSymbol == RaftChannelKindGlyph.External.symbol -> homeSymbol
-        symbol == "#" && homeSymbol == HomeChannelSymbolHashGlobe -> homeSymbol
+        homeGlyph != null && homeGlyph.needsChannelRecord -> homeGlyph.symbol
+        symbol == "#" && homeGlyph == RaftChannelKindGlyph.PublicPage -> RaftChannelKindGlyph.PublicPage.symbol
         else -> symbol
     }
 }
@@ -746,6 +749,10 @@ internal fun activityObjectBodyText(line: ActivityObjectLine, senderStyle: SpanS
             ActivityObjectEventVerb.MentionedYou -> stringResource(Res.string.artifacts_activity_mentioned_you, ActivityObjectNameMark)
             ActivityObjectEventVerb.Commented -> stringResource(Res.string.artifacts_activity_commented, ActivityObjectNameMark)
             ActivityObjectEventVerb.EditedComment -> stringResource(Res.string.artifacts_activity_edited_comment, ActivityObjectNameMark)
+            ActivityObjectEventVerb.Settled -> stringResource(Res.string.artifacts_activity_settled, ActivityObjectNameMark)
+            ActivityObjectEventVerb.Unsettled -> stringResource(Res.string.artifacts_activity_unsettled, ActivityObjectNameMark)
+            ActivityObjectEventVerb.PublishedVersionSinceSettled ->
+                stringResource(Res.string.artifacts_activity_published_version_since_settled, ActivityObjectNameMark, line.version ?: 0)
             ActivityObjectEventVerb.PublishedVersion ->
                 stringResource(Res.string.artifacts_activity_published_version, ActivityObjectNameMark, line.version ?: 0)
             ActivityObjectEventVerb.Published -> stringResource(Res.string.artifacts_activity_published, ActivityObjectNameMark)
@@ -972,6 +979,8 @@ internal fun ActivityConversationListRow(
     modifier: Modifier = Modifier,
     /** The swipe's Done button (ActivitySwipeActionsBox); null: no Done button. */
     onSwipeDone: (() -> Unit)? = null,
+    /** Called synchronously at swipe-Done commit time; returning false cancels the exit cleanly. */
+    onSwipeDoneStart: (() -> Boolean)? = null,
     /**
      * The row's trailing Mark as Done button (web InboxRowDone, raft-ui `InboxItemActions
      * reveal="hover"`): the menu's Done. A mouse or trackpad shows it while the row is hovered, open
@@ -983,6 +992,10 @@ internal fun ActivityConversationListRow(
     /** The swipe's Unfollow / Mute button ([activitySwipeEndAction]); null action or callback: none. */
     swipeEndAction: ActivitySwipeEndAction? = null,
     onSwipeEnd: (() -> Unit)? = null,
+    /** Typed variant of [onSwipeEnd] carrying the tapped [ActivitySwipeEndAction]. */
+    onSwipeEndAction: ((ActivitySwipeEndAction) -> Unit)? = null,
+    /** Called synchronously at swipe-Unfollow commit time; returning false cancels the exit cleanly. */
+    onSwipeEndStart: ((ActivitySwipeEndAction) -> Boolean)? = null,
     /**
      * The swipe toward the end's Read / Unread button (raft-design #793, [activitySwipeStartButton]): the
      * menu's Mark as read / unread. Null: no start button.
@@ -994,6 +1007,18 @@ internal fun ActivityConversationListRow(
     onSwipeOpenChange: (ActivitySwipeSide?) -> Unit = {},
     /** Where the open row is, so a tap outside it closes it ([ActivitySwipeOpenRowGeometry]). */
     onSwipeOpenRowPlaced: ((LayoutCoordinates) -> Unit)? = null,
+    /**
+     * Stable owner+row key for the swipe reveal / exit controller so unrelated list reorders
+     * (which bump [openGestureKey]'s presentation generation) do not abort an in-progress Done
+     * exit animation or snap an open row closed. Defaults to [openGestureKey].
+     */
+    swipeStateKey: String = openGestureKey,
+    /** True while a non-swipe Done / Unfollow (row button, menu, a11y) collapses this row out. */
+    exiting: Boolean = false,
+    /** Called once [exiting]'s height collapse finishes at zero px. */
+    onExitCollapsed: () -> Unit = {},
+    /** Called when an in-flight swipe or collapse exit disposes before its completion callback ran. */
+    onInFlightExitDisposed: () -> Unit = {},
     /** Screenshots only: the row slid by this share of its width on top of [swipeOpenSide] (negative: toward the end). */
     swipePreviewRevealFraction: Float = 0f,
     /** Screenshots only: draw the row as a mouse hovers it (the trailing Done button shown under a fine pointer). */
@@ -1071,19 +1096,25 @@ internal fun ActivityConversationListRow(
     val swipeButtons =
         activitySwipeButtons(
             doneEnabled = canMarkDone && onSwipeDone != null,
-            endActions = listOfNotNull(swipeEndAction.takeIf { onSwipeEnd != null }),
+            endActions = listOfNotNull(swipeEndAction.takeIf { onSwipeEnd != null || onSwipeEndAction != null }),
         )
     ActivitySwipeActionsBox(
         gestureKey = openGestureKey,
+        stateKey = swipeStateKey,
         buttons = swipeButtons,
         openSide = swipeOpenSide,
         onOpenChange = onSwipeOpenChange,
         onDone = { onSwipeDone?.invoke() },
-        onAction = { onSwipeEnd?.invoke() },
+        onAction = { action -> onSwipeEndAction?.invoke(action) ?: onSwipeEnd?.invoke() },
         startButton = item.activitySwipeStartButton().takeIf { onSwipeToggleRead != null },
         onToggleRead = { onSwipeToggleRead?.invoke() },
         modifier = modifier.fillMaxWidth(),
         onOpenRowPlaced = onSwipeOpenRowPlaced,
+        exiting = exiting,
+        onExitCollapsed = onExitCollapsed,
+        onBeforeDone = { onSwipeDoneStart?.invoke() ?: true },
+        onBeforeExitAction = { action -> onSwipeEndStart?.invoke(action) ?: true },
+        onInFlightExitDisposed = onInFlightExitDisposed,
         previewRevealFraction = swipePreviewRevealFraction,
     ) {
         Box(
@@ -1483,7 +1514,7 @@ internal fun ActivityConversationLeading(
         } else {
             // A channel is a place, not a face: the neutral tile at the avatar's 35dp step, with the
             // channel's own glyph as the Home sidebar draws it. A DM (or a thread in one) whose peer is
-            // not loaded yet shows the DM icon, never `#`.
+            // not loaded yet shows the DM glyph in the tile's ink (web `DirectMessageIcon`), never `#`.
             RaftIconTile(size = RaftIconTileSize.Md) {
                 val objectIcon = model.objectIcon
                 if (flipped && model.taskConversation) {
@@ -1493,7 +1524,7 @@ internal fun ActivityConversationLeading(
                 } else if (model.leadingKind == ActivityConversationLeadingKind.Object && objectIcon != null) {
                     RaftLucideIcon(objectIcon, Modifier.size(ConversationTileGlyph), color = raftArgbHex(colors.foregroundMuted))
                 } else if (model.leadingKind == ActivityConversationLeadingKind.DirectMessage || model.threadInDirectMessage) {
-                    RaftLucideIcon(RaftLucideIconName.MessageCircle, Modifier.size(ConversationTileGlyph), color = raftArgbHex(colors.foregroundMuted))
+                    RaftConversationKindIcon(RaftConversationKindGlyph.DirectMessage, size = ConversationTileGlyph)
                 } else {
                     HomeSidebarChannelGlyph(model.channelSymbol, size = ConversationTileGlyph)
                 }

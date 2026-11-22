@@ -51,6 +51,7 @@ internal val raftProductPageFactories: Map<String, () -> Pager> =
         "compose_settings_webview" to { build.raft.app.ComposeSettingsWebViewPage() },
         "compose_slock_app_shell" to { build.raft.app.ComposeRaftAppShellPage() },
         "compose_tab_pager_probe" to { build.raft.app.RaftTabPagerProbePage() },
+        "compose_task_pending" to { build.raft.app.ComposeTaskPendingPage() },
         "compose_thread" to { build.raft.app.ComposeThreadPage() },
         "compose_thread_forward_bundle_page" to { build.raft.app.ComposeThreadForwardBundlePage() },
         "compose_thread_members" to { build.raft.app.ComposeThreadMembersPage() },

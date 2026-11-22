@@ -47,7 +47,10 @@ internal object RaftRecentsTaskColor {
                 appDark = RaftAppAppearanceRuntime.isDark,
                 uiMode = activity.resources.configuration.uiMode,
                 canvasArgb = canvasArgb,
-                taskColorApplied = taskColorArgb != null && taskColorArgb == canvasArgb,
+                taskColorApplied =
+                    taskColorArgb != null &&
+                        canvasArgb != null &&
+                        opaque(taskColorArgb) == opaque(canvasArgb),
             )
         )
     }
@@ -77,7 +80,7 @@ internal object RaftRecentsTaskColor {
         RaftAndroidLocalDiagnostics.recordLog("info", LOG_TAG, message)
     }
 
-    private fun opaque(argb: Int): Int = argb or (0xFF shl 24)
+    internal fun opaque(argb: Int): Int = argb or (0xFF shl 24)
 
     private fun themePrimaryColor(activity: Activity): Int? {
         val array = activity.theme.obtainStyledAttributes(intArrayOf(android.R.attr.colorPrimary))
@@ -86,5 +89,55 @@ internal object RaftRecentsTaskColor {
         } finally {
             array.recycle()
         }
+    }
+}
+
+/**
+ * Defers [RaftRecentsTaskColor.apply] onto `activity.window.decorView.post(...)` and deduplicates
+ * repeated or superseded colour updates so `Activity.setTaskDescription` Binder IPCs never stall
+ * `onCreate` or page-transition Frame 1.
+ */
+internal class DeferredRecentsTaskColor(
+    private val sdkInt: Int = Build.VERSION.SDK_INT,
+    private val postToDecorView: (Activity, Runnable) -> Boolean = { activity, runnable ->
+        activity.window?.decorView?.post(runnable) == true
+    },
+    private val applyNow: (Activity, Int, Int) -> Boolean = RaftRecentsTaskColor::apply,
+) {
+    var appliedArgb: Int? = null
+        private set
+    private var scheduledArgb: Int? = null
+    private var pendingGeneration: Int = 0
+
+    fun schedule(activity: Activity, canvasArgb: Int): Boolean {
+        if (sdkInt < Build.VERSION_CODES.TIRAMISU) return false
+        val opaqueArgb = RaftRecentsTaskColor.opaque(canvasArgb)
+        if (scheduledArgb == opaqueArgb) return false
+        if (appliedArgb == opaqueArgb) {
+            if (scheduledArgb != null) cancel()
+            return false
+        }
+        scheduledArgb = opaqueArgb
+        val generation = ++pendingGeneration
+        val runnable =
+            Runnable {
+                if (pendingGeneration != generation) return@Runnable
+                scheduledArgb = null
+                if (activity.isFinishing || activity.isDestroyed) return@Runnable
+                if (appliedArgb == opaqueArgb) return@Runnable
+                if (applyNow(activity, opaqueArgb, sdkInt)) {
+                    appliedArgb = opaqueArgb
+                }
+            }
+        if (!postToDecorView(activity, runnable)) {
+            scheduledArgb = null
+            return false
+        }
+        return true
+    }
+
+    fun cancel() {
+        pendingGeneration += 1
+        scheduledArgb = null
     }
 }

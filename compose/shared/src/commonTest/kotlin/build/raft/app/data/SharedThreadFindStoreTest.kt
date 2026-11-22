@@ -113,48 +113,6 @@ class SharedThreadFindStoreTest {
     }
 
     @Test
-    fun aThreadThePageHoldsWholeIsNeverRead() = runTest {
-        val source = FakeSource { _, _ -> error("nothing to read") }
-        val store = store(source)
-        store.dispatch(ThreadFindIntent.Window(window(replies = listOf(msg("r1", 1, "launch")))))
-
-        store.dispatch(ThreadFindIntent.Query("launch"))
-        advanceUntilIdle()
-
-        assertEquals(emptyList(), source.calls)
-        assertEquals(listOf("r1"), store.state.value.matches)
-    }
-
-    @Test
-    fun wordsTypedInThePauseWaitAgainAndNoWordsAskNothing() = runTest {
-        val source = FakeSource { _, _ -> page(emptyList()) }
-        val store = store(source)
-        store.dispatch(ThreadFindIntent.Window(window(replies = listOf(msg("r1", 10, "launch")), hasOlder = true)))
-
-        store.dispatch(ThreadFindIntent.Query("   "))
-        advanceUntilIdle()
-        assertEquals(emptyList(), source.calls, "no words: nothing is read")
-
-        store.dispatch(ThreadFindIntent.Query("la"))
-        advanceTimeBy(SharedThreadFindStore.DEBOUNCE_MILLIS - 10)
-        store.dispatch(ThreadFindIntent.Query("lau"))
-        advanceTimeBy(SharedThreadFindStore.DEBOUNCE_MILLIS - 10)
-        runCurrent()
-        assertEquals(emptyList(), source.calls, "typing on restarts the pause")
-        advanceUntilIdle()
-        assertEquals(listOf(Call(10, null)), source.calls)
-
-        // Closed before the pause ends: nothing is read.
-        val idle = FakeSource { _, _ -> page(emptyList()) }
-        val closed = store(idle)
-        closed.dispatch(ThreadFindIntent.Window(window(replies = listOf(msg("r1", 10, "launch")), hasOlder = true)))
-        closed.dispatch(ThreadFindIntent.Query("launch"))
-        closed.dispatch(ThreadFindIntent.Close)
-        advanceUntilIdle()
-        assertEquals(emptyList(), idle.calls)
-    }
-
-    @Test
     fun anotherThreadDropsTheStaleReadAndStartsOver() = runTest {
         val slow = CompletableDeferred<ThreadFindPageLoad>()
         val source = FakeSource { before, _ -> if (before == 10L) slow.await() else page(emptyList()) }

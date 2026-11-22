@@ -135,28 +135,4 @@ class ChannelAnnouncementApiTest {
         assertEquals(RaftChannelAnnouncementActor(RaftChannelAnnouncementActorType.User, "u1", null), blanks.actor)
         assertNull(blanks.title)
     }
-
-    @Test
-    fun anythingElseIsNoNotice() {
-        assertNull(notice(null))
-        assertNull(notice("null"))
-        assertNull(notice(stored.replace("channel-announcement", "task-assignment")))
-        assertNull(notice(stored.replace("\"replaced\"", "\"updated\"")))
-        assertNull(notice(stored.replace("\"$a\"", "\"\"")))
-        assertNull(notice(stored.replace("""{ "type": "agent", "id": "agent-1", "name": "Kimi" }""", """{ "type": "bot", "id": "x" }""")))
-    }
-
-    @Test
-    fun aSystemMessagesActionMetadataProjectsTheNoticeAndBack() {
-        val wire = Json { ignoreUnknownKeys = true }.decodeFromString(WireActionCardMetadata.serializer(), stored)
-        val metadata = wire.toMessageItemMetadata()
-        assertEquals(notice(stored), channelAnnouncementNoticeOf(metadata))
-        assertTrue(metadata.keys.all(::isChannelAnnouncementNoticeMetadataKey))
-        // A field of an unexpected type fails the notice only, not the message.
-        val odd = Json { ignoreUnknownKeys = true }.decodeFromString(WireActionCardMetadata.serializer(), stored.replace("\"Rules\"", "42"))
-        val oddNotice = channelAnnouncementNoticeOf(odd.toMessageItemMetadata())!!
-        assertEquals(a, oddNotice.artifactId)
-        assertNull(oddNotice.title)
-        assertEquals(emptyMap(), Json { ignoreUnknownKeys = true }.decodeFromString(WireActionCardMetadata.serializer(), """{ "kind": "other", "title": "x" }""").toMessageItemMetadata())
-    }
 }

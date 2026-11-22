@@ -6,6 +6,7 @@ import build.raft.app.resources.*
 import build.raft.designsystem.components.RaftButton
 import build.raft.designsystem.components.RaftButtonVariant
 import build.raft.designsystem.components.RaftButtonSize
+import build.raft.designsystem.components.raftToastAvoid
 import build.raft.app.data.ThreadFindIntent
 import build.raft.app.data.RaftProductEvents
 import build.raft.app.components.RaftUiBanner
@@ -91,6 +92,8 @@ internal data class ThreadPageContentData(
     val agentFollowersHeader: @Composable () -> Unit,
     /** Task v2: the task conversation's status / assignee / follow bar under the header; null elsewhere. */
     val taskConversationBar: (@Composable () -> Unit)? = null,
+    /** A conversion to an external channel under way: its strip, before the announcement (ChannelConversionStrip.kt); null where none can show. */
+    val channelConversionStrip: (@Composable () -> Unit)? = null,
     /** Channel announcements: the strip above the timeline (ChannelAnnouncementHost.kt); null where none can show. */
     val channelAnnouncementStrip: (@Composable () -> Unit)? = null,
     /** Task v2: the top bar's task title and More menu rows; null elsewhere or before the task is known. */
@@ -146,7 +149,6 @@ internal data class ThreadPageContentData(
     val contentExtrasVisible: Boolean,
     val highlightedMentions: Set<String>,
     val pendingActionCardIds: Set<String>,
-    val pendingTaskConvertMessageIds: Set<String>,
     val markdownReferencePendingActionId: String?,
     val attachmentOpenStates: Map<String, ThreadAttachmentOpenUiState>,
     val composerSendKeyEnabled: Boolean,
@@ -216,6 +218,7 @@ fun ThreadPageContent(
     lounge: ThreadPageLounge? = null,
     agentFollowersHeader: @Composable () -> Unit = {},
     taskConversationBar: (@Composable () -> Unit)? = null,
+    channelConversionStrip: (@Composable () -> Unit)? = null,
     channelAnnouncementStrip: (@Composable () -> Unit)? = null,
     taskConversationChrome: TaskConversationHeaderChrome? = null,
     taskConversationHead: TaskHeadScrollState? = null,
@@ -287,7 +290,6 @@ fun ThreadPageContent(
     onComposerLayoutProbe: (phase: String, metadata: Map<String, String>) -> Unit = { _, _ -> },
     onComposerPixelProbe: suspend (Float, Float, Float, Float, Long) -> JSONObject? = { _, _, _, _, _ -> null },
     pendingActionCardIds: Set<String> = emptySet(),
-    pendingTaskConvertMessageIds: Set<String> = emptySet(),
     markdownReferencePendingActionId: String? = null,
     attachmentOpenStates: Map<String, ThreadAttachmentOpenUiState> = emptyMap(),
     composerSendKeyEnabled: Boolean = false,
@@ -337,6 +339,7 @@ fun ThreadPageContent(
                 lounge = lounge,
                 agentFollowersHeader = agentFollowersHeader,
                 taskConversationBar = taskConversationBar,
+                channelConversionStrip = channelConversionStrip,
                 channelAnnouncementStrip = channelAnnouncementStrip,
                 taskConversationChrome = taskConversationChrome,
                 taskConversationHead = taskConversationHead,
@@ -387,7 +390,6 @@ fun ThreadPageContent(
                 contentExtrasVisible = contentExtrasVisible,
                 highlightedMentions = highlightedMentions,
                 pendingActionCardIds = pendingActionCardIds,
-                pendingTaskConvertMessageIds = pendingTaskConvertMessageIds,
                 markdownReferencePendingActionId = markdownReferencePendingActionId,
                 attachmentOpenStates = attachmentOpenStates,
                 composerSendKeyEnabled = composerSendKeyEnabled,
@@ -563,7 +565,6 @@ private fun ThreadPageContentContent(
     val onComposerLayoutProbe = callbacks.onComposerLayoutProbe
     val onComposerPixelProbe = callbacks.onComposerPixelProbe
     val pendingActionCardIds = data.pendingActionCardIds
-    val pendingTaskConvertMessageIds = data.pendingTaskConvertMessageIds
     val markdownReferencePendingActionId = data.markdownReferencePendingActionId
     val attachmentOpenStates = data.attachmentOpenStates
     val composerSendKeyEnabled = data.composerSendKeyEnabled
@@ -1015,20 +1016,27 @@ private fun ThreadPageContentContent(
     val isMarkdownTagValid = markdownTagResolution.isMarkdownTagValid
     val markdownTagContextSignature = markdownTagResolution.markdownTagContextSignature
     val resolveMarkdownTagLabel = markdownTagResolution.resolveMarkdownTagLabel
+    val effectiveTimeFormat = currentRaftDateTimeContext(null)?.timeFormat ?: payload.timeFormat
     val timelineRenderConfig =
         remember(
             payload.backgroundRefreshing,
             payload.errorCode,
             payload.errorServerMessage,
+            payload.errorTraceId,
             payload.originPreview,
             payload.originErrorCode,
             payload.localOffsetMinutes,
             payload.todayEpochDay,
             payload.nowEpochMillis,
-            payload.timeFormat,
+            effectiveTimeFormat,
             payload.members
         ) {
-            payload.toThreadTimelineRenderConfig()
+            val config = payload.toThreadTimelineRenderConfig()
+            if (config.timeContext.timeFormat == effectiveTimeFormat) {
+                config
+            } else {
+                config.copy(timeContext = config.timeContext.withTimeFormat(effectiveTimeFormat))
+            }
         }
     val selectThreadTab: (RaftThreadTab) -> Unit = { tab ->
         onSelectedTabChanged(tab)
@@ -1310,7 +1318,8 @@ private fun ThreadPageContentContent(
                 },
             body = {
             if (externalFreezeState != ExternalFreezeState.Active && jointBillingNotice != JointBillingNotice.None) {
-                val deadlineLabel = jointGraceDeadlineLabel?.takeIf { it.isNotBlank() }
+                val rawDeadline = jointGraceDeadlineLabel?.takeIf { it.isNotBlank() }
+                val deadlineLabel = if (rawDeadline != null) raftLocalizedMediumDateTime(rawDeadline) else null
                 RaftUiBanner(
                     status =
                         if (jointBillingNotice == JointBillingNotice.Locked) RaftUiBannerStatus.Destructive
@@ -1355,6 +1364,9 @@ private fun ThreadPageContentContent(
             if (conversationLounge != null) {
                 AgentLoungeAudienceNotice(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
             }
+            // A conversion to an external channel under way: before the announcement, which stays next
+            // to the messages; not in a Lounge (web ChatPanel `!isLounge`).
+            if (conversationLounge == null) data.channelConversionStrip?.invoke()
             // The channel's announcement: last of the top regions, right above the timeline (raft-design channel.md).
             data.channelAnnouncementStrip?.invoke()
             val threadTabContent: @Composable ColumnScope.() -> Unit = {
@@ -1426,7 +1438,12 @@ private fun ThreadPageContentContent(
                                 bottomSafeArea = composerBottomSafeArea,
                                 keyboardInsetExcludesBottomSafeArea =
                                     composerKeyboardInsetExcludesBottomSafeArea
-                            )
+                            ),
+                        keyboardLiftPx =
+                            rememberThreadComposerKeyboardLiftPx(
+                                bottomSafeArea = composerBottomSafeArea,
+                                keyboardInsetExcludesBottomSafeArea = composerKeyboardInsetExcludesBottomSafeArea,
+                            ),
                     ) {
                         ThreadComposerRestingHeightPlaceholder(composerSurface)
                     }
@@ -1508,6 +1525,7 @@ private fun ThreadPageContentContent(
                             .onGloballyPositioned { coordinates ->
                                 shareState.shareCaptureViewportBottomPx = coordinates.positionInRoot().y
                             }
+                            .raftToastAvoid(enabled = !shareState.shareCaptureMode)
                             .alpha(if (shareState.shareCaptureMode) 0f else 1f)
                 ) {
                     ThreadShareSelectionToolbar(
@@ -1653,7 +1671,7 @@ private fun ThreadPageContentContent(
                 ThreadJoinFooter(
                     label = localizedThreadJoinLabel(payload.joinLabel),
                     onJoin = { onThreadEvent("joinChannel", null, null, null) },
-                    joining = ThreadChannelJoinsInFlight.isJoining(payload.joinChannelTargetId()),
+                    joining = ThreadChannelJoinsInFlight.observeIsJoining(payload.joinChannelTargetId()),
                     bottomSafeArea = composerBottomSafeArea,
                 )
             } else if (showComposerForSelectedTab) {
@@ -1692,7 +1710,12 @@ private fun ThreadPageContentContent(
                             data.taskConversationHead?.let { taskHead ->
                                 Modifier.onFocusChanged { if (it.hasFocus) taskHead.closeFloat() }
                             } ?: Modifier
-                        )
+                        ),
+                    keyboardLiftPx =
+                        rememberThreadComposerKeyboardLiftPx(
+                            bottomSafeArea = composerBottomSafeArea,
+                            keyboardInsetExcludesBottomSafeArea = composerKeyboardInsetExcludesBottomSafeArea,
+                        ),
                 ) {
                     CompositionLocalProvider(
                         LocalThreadComposerSuggestionPortal provides composerSuggestionPortal,
@@ -2046,7 +2069,7 @@ private fun ThreadPageContentContent(
                                                 "forwardMessagesFailed",
                                                 outcome.failureCode ?: ThreadForwardFailureCodePartial,
                                                 null,
-                                                null
+                                                outcome.traceId
                                             )
                                         }
                                     } finally {

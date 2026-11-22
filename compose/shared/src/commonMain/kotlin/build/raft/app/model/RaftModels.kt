@@ -129,6 +129,17 @@ data class ChannelActivityNotificationPreference(
     }
 }
 
+/**
+ * Why a Slack channel's sync stopped, as its header and sidebar row say it (botiverse/slock
+ * packages/web/src/components/channel/slackSyncHeaderState.ts `slackSyncHeaderState().kind`,
+ * features/channel/ChannelSlackSyncBadge.tsx; the row since #16042): [Paused] (the pair or its Slack
+ * app stopped), [Waiting] (Raft messages held for Slack), [Stalled] (held too long). No value while it
+ * syncs or while the pair is being set up. Derived from `channel.bridge` by
+ * [build.raft.app.data.slackSyncProblemOrNull].
+ */
+@Serializable
+enum class RaftSlackSyncProblem { Paused, Waiting, Stalled }
+
 @Serializable
 data class ConversationSummary(
     val threadId: ThreadId,
@@ -169,6 +180,8 @@ data class ConversationSummary(
     val jointOverLimitGraceEndsAt: String? = null,
     val externalFreezeAt: String? = null,
     val bridgeProvider: String? = null,
+    /** A Slack channel's stopped sync (see [RaftSlackSyncProblem]); null while it syncs. */
+    val slackSyncProblem: RaftSlackSyncProblem? = null,
     /**
      * Channel row `guestVisible` (see [build.raft.app.data.HomeChannelWireDto.guestVisible]).
      * Only meaningful for `type == "channel"`; never true for DMs / threads.
@@ -413,6 +426,7 @@ sealed class AvatarReference {
                     Pixel(normalized.removePrefix("pixel:").ifBlank { "robot" })
                 normalized.startsWith("http://") || normalized.startsWith("https://") ->
                     normalized.takeUnless { it.isLegacyGravatarAvatarUrl() }?.let(::Url)
+                normalized.isRelativeAppAvatarPath() -> Url(normalized)
                 isRaftHumanPixelAvatarUrl(normalized) -> HumanPixel(normalized)
                 else -> null
             }
@@ -484,6 +498,13 @@ data class MemberProfile(
      */
     val lastRuntimeErrorSpawnFailureReason: String? = null,
     /**
+     * `GET /agents` server-composed `readiness` (botiverse/slock `f43f9245` `routes/agents.ts` /
+     * `packages/shared/src/readiness.ts`), already trimmed per viewer. Carries holding states such
+     * as `quota_exhausted`, `rate_limited`, `verification_required`, `computer_restarting`, etc.
+     * Cleared by `withoutVolatileStatus()` so disk caches never flash stale holds on cold start.
+     */
+    val agentReadiness: AgentReadiness? = null,
+    /**
      * External agents (runtime `external`) have no managed liveness. Web keeps
      * `agent.external === true || runtime === "external"` as parallel sources
      * (agentStore.ts resolveAgentDisplayState); producers fold both via
@@ -510,6 +531,13 @@ data class MemberProfile(
      * never carried a model — the header label stays absent, never a raw id.
      */
     val model: String? = null,
+    /**
+     * The agent's runtime and reasoning effort as its profile reads them, from `GET /agents` and its
+     * sync rows ([build.raft.app.data.hydrateAgentReasoningSetting]): what the Members list's
+     * Reasoning shows (botiverse/slock #15691). Null when the payload carried no agent row (humans,
+     * identity seeds); the list then shows none.
+     */
+    val agentReasoning: AgentReasoningSetting? = null,
     val joinedAt: String? = null,
     val membershipStatus: String? = null,
     val agentDeletedAt: String? = null,
@@ -651,6 +679,18 @@ data class MemberProfile(
 }
 
 /**
+ * An agent's runtime and reasoning effort as shared `hydrateRuntimeConfig` reads them (web
+ * `hydrateRuntimeConfigForm`, which the profile and the Members list read through): built by
+ * [build.raft.app.data.hydrateAgentReasoningSetting].
+ */
+@Serializable
+data class AgentReasoningSetting(
+    val runtime: String,
+    /** The saved level, raw: a shared id (`xhigh`) or a runtime's own (Kimi Code's); null when none is set. */
+    val reasoningEffort: String? = null,
+)
+
+/**
  * Slack-bridge (or future provider) participant projected into a channel's
  * member roster (web parity: `externalMembers` in ChannelMembers.tsx).
  * Display-only rows — never selectable, never removable, never a member-detail
@@ -753,6 +793,34 @@ data class Message(
     @Transient val createdAtEpochMillis: Long? = null,
     /** Wire `mentions` of `message:*` emits; empty when the payload carried none. */
     val mentions: List<MessageMention> = emptyList(),
+    /**
+     * The message's quote replies the server verified for this viewer, by quote block index (wire
+     * `resolvedQuotes`). Empty: a read that attaches them resolved none, so every quote block shows
+     * as a plain blockquote. Null: this copy came from where they never are (a realtime event, the
+     * sync log), so they are read on their own ([build.raft.app.data.SharedResolvedQuotesStore]).
+     */
+    val resolvedQuotes: Map<String, ResolvedInlineQuote>? = null,
+)
+
+/**
+ * A same-conversation quote in a message, as the server verified it for this viewer (botiverse/slock
+ * `packages/shared/src/quoteReply.ts` `ResolvedInlineQuote`): which message it quotes, who wrote that
+ * message and when. Attached on reads only, never in a realtime event.
+ */
+@Serializable
+data class ResolvedInlineQuote(
+    /** The quoted message's id: what a tap on the quote jumps to. */
+    val messageId: String,
+    /** Its 8-character short id, as the quote's `msg=` line names it. */
+    val shortId: String = "",
+    /** The quoted message's author, as the server names them for this viewer. */
+    val authorName: String = "",
+    /** The author's `type` as sent (`user`, `agent`, `external_projection`, `system`); display only. */
+    val authorType: String = "",
+    /** When the quoted message was sent (ISO-8601). */
+    val createdAt: String = "",
+    /** A passage of the message rather than its opening. */
+    val isPartial: Boolean = false,
 )
 
 /**
@@ -1009,6 +1077,14 @@ data class TaskSummary(
      * offer to add one over it (web TaskModalHead `descriptionLoaded`).
      */
     val descriptionLoaded: Boolean = true,
+    /**
+     * False for a `detail=summary` row from `GET /api/tasks/server?detail=summary` (slock
+     * `toServerTaskSummary`), which omits `conversationChannelId`, `conversationAnchored`, and
+     * `hostMessageId` (web `isSummaryOnlyTask`). A null [conversationChannelId] on such a row does
+     * not mean the task has no discussion yet — fetch the full row via
+     * `GET /api/tasks/channel/:channelId/number/:taskNumber` before treating it as pending.
+     */
+    val conversationDetailsLoaded: Boolean = true,
     /**
      * When the task last moved (slock `activityAt`: lastActivityAt ?? updatedAt), what the Tasks
      * page's `sort=activity` orders by; null from a source without it.
@@ -1386,6 +1462,13 @@ data class RealtimeRefreshRequired(
      * (`archivedAt` set). Null when the frame did not say (an id-only `{ channelId }` frame).
      */
     val channelArchived: Boolean? = null,
+    /**
+     * `channel:updated` carrying the channel's row with its conversion (slock routes/channels.ts
+     * `emitChannelConversionState` after every phase, `emitChannelConversionCompletion` when the
+     * job ends): [channelId]'s conversion as the row says it. Null when the frame carried none
+     * (an id-only frame, or a row without the conversion fields).
+     */
+    val channelConversion: build.raft.app.data.RaftChannelConversion? = null,
 ) : RealtimeEvent
 
 @Serializable

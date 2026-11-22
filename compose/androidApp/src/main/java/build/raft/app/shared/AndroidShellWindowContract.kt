@@ -1,14 +1,18 @@
 package build.raft.app.shared
 
 import android.content.Context
+import android.content.Intent
 import build.raft.app.core.data.auth.AndroidApiServerEnvironmentStore
 import build.raft.app.core.data.auth.androidMMKVAuthKeyValueStore
 import build.raft.app.RAFT_ROUTE_ACCOUNT_ID
 import build.raft.app.RAFT_ROUTE_ENVIRONMENT_ID
 import build.raft.app.RAFT_ROUTE_SERVER_ID
 import build.raft.app.RAFT_SERVER_SWITCH_KEEP_WINDOW
+import build.raft.app.RAFT_SERVER_SWITCH_TAP_EPOCH_MILLIS
 import build.raft.app.RAFT_SERVER_SWITCH_WINDOW_ID
+import build.raft.app.RAFT_SHELL_SERVER_ID
 import build.raft.app.data.KeyValueAuthSessionStore
+import build.raft.app.data.RaftDesktopShortcutContract
 import java.net.URLEncoder
 import java.util.concurrent.ConcurrentHashMap
 import org.json.JSONObject
@@ -21,7 +25,7 @@ internal const val ANDROID_DOCUMENT_SHELL_KEY = "slockDocumentShell"
 // shared/shell/RaftShellStoreLaunch.kt (made public so androidApp reads them).
 private const val ANDROID_ROUTE_ENVIRONMENT_ID_KEY = RAFT_ROUTE_ENVIRONMENT_ID
 private const val ANDROID_ROUTE_ACCOUNT_ID_KEY = RAFT_ROUTE_ACCOUNT_ID
-private const val ANDROID_ROUTE_SERVER_ID_KEY = RAFT_ROUTE_SERVER_ID
+internal const val ANDROID_ROUTE_SERVER_ID_KEY = RAFT_ROUTE_SERVER_ID
 
 /**
  * Canonical document-shell identity: the authenticated route owner the shell
@@ -143,6 +147,7 @@ internal fun resolveAndroidShellLaunchTarget(
 internal data class AndroidServerSwitchExistingWindow(
     val target: AndroidShellLaunchTarget,
     val bringForwardTaskId: Int?,
+    val isDead: Boolean = false,
 )
 
 /**
@@ -173,13 +178,118 @@ internal fun androidServerSwitchExistingWindowOrNull(
     )
 }
 
+internal fun JSONObject.optNonNullString(key: String): String =
+    if (isNull(key)) "" else optString(key).trim()
+
+internal fun androidServerSwitchReconciledWindowOrNull(
+    pageData: JSONObject,
+    multiShellHostEnabled: Boolean,
+    reconciledWindows: List<ReconciledAndroidShellWindow>,
+): AndroidServerSwitchExistingWindow? {
+    if (!multiShellHostEnabled) return null
+    val owner = pageData.androidShellRouteOwnerOrNull() ?: return null
+    val match =
+        reconciledWindows.firstOrNull {
+            it.routeOwner == owner && it.isAlive
+        } ?: reconciledWindows.firstOrNull {
+            it.routeOwner == owner
+        } ?: return null
+    val hasRichDestination =
+        pageData.optNonNullString(RaftCmpActivity.KEY_APP_SHELL_NOTIFICATION_THREAD_ID).isNotEmpty() ||
+            pageData.optNonNullString(RaftCmpActivity.KEY_APP_SHELL_NOTIFICATION_TASK_ID).isNotEmpty() ||
+            pageData.optNonNullString(RaftCmpActivity.KEY_APP_SHELL_NOTIFICATION_TARGET).isNotEmpty() ||
+            pageData.optNonNullString(RaftDesktopShortcutContract.KeyTargetId).isNotEmpty() ||
+            pageData.optNonNullString("slockInitialSettingsDestination").isNotEmpty() ||
+            pageData.optNonNullString("slockDiagnosticsDeepLinkId").isNotEmpty()
+    val hasExplicitTab =
+        pageData.optNonNullString(RaftCmpActivity.KEY_APP_SHELL_INITIAL_TAB).let { it.isNotEmpty() && it != "home" }
+    val hasExplicitDestination = hasRichDestination || hasExplicitTab
+    val keepWindow = !hasRichDestination && (pageData.optBoolean(RAFT_SERVER_SWITCH_KEEP_WINDOW, false) || !hasExplicitDestination)
+    val target =
+        if (match.documentShell) {
+            AndroidShellLaunchTarget(
+                shellInstanceId = match.shellInstanceId,
+                serverId = match.serverId,
+                documentShell = true,
+                routeOwner = match.routeOwner,
+            )
+        } else {
+            AndroidShellLaunchTarget(
+                shellInstanceId = DEFAULT_ANDROID_SHELL_INSTANCE_ID,
+                serverId = null,
+                documentShell = false,
+            )
+        }
+    // Live window without destination -> moveToFront.
+    // Dead launcher task without rich destination -> moveToFront (+ PendingLauncherTaskLaunch for
+    // any kept tab), because startActivity on RaftAppShellActivity cannot reliably revive a dead
+    // MainActivity task; with a rich notification/shortcut/settings/diagnostics payload, fall
+    // through to startActivity so the full payload reaches RaftAppShellActivity intact.
+    // Dead document task without destination -> moveToFront; with destination -> startActivity so
+    // documentLaunchMode="intoExisting" reuses the dead task and delivers the new destination directly.
+    val bringForwardTaskId =
+        when {
+            match.isAlive -> match.taskId.takeIf { keepWindow }
+            !match.documentShell -> match.taskId.takeIf { !hasRichDestination }
+            keepWindow -> match.taskId
+            else -> null
+        }
+    return AndroidServerSwitchExistingWindow(
+        target = target,
+        bringForwardTaskId = bringForwardTaskId,
+        isDead = !match.isAlive,
+    )
+}
+
 internal fun JSONObject.withAndroidShellLaunchTarget(target: AndroidShellLaunchTarget): JSONObject =
     JSONObject(toString()).apply {
         put(ANDROID_SHELL_INSTANCE_ID_KEY, target.shellInstanceId)
         put(ANDROID_DOCUMENT_SHELL_KEY, target.documentShell)
-        target.serverId?.let { put(ANDROID_SHELL_SERVER_ID_KEY, it) }
+        target.serverId?.let {
+            put(ANDROID_SHELL_SERVER_ID_KEY, it)
+            put(RAFT_SHELL_SERVER_ID, it)
+        }
         target.routeOwner?.let { withAndroidShellRouteOwner(it) }
     }
+
+/**
+ * Strips one-shot launch intents (notification tap, kept-tab switch, desktop shortcut, diagnostics
+ * deep link) when Android re-delivers a task's `baseIntent` with `FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY`
+ * (reopening from Recents after process death). Preserves window & route identity so the window
+ * opens cleanly on its own bound workspace's Home instead of replaying an old notification or tab.
+ */
+internal fun sanitizeAppShellPageDataForHistoryLaunch(pageData: JSONObject): JSONObject {
+    val sanitized = JSONObject(pageData.toString())
+    val keysToRemove = mutableListOf<String>()
+    val iter = sanitized.keys()
+    while (iter.hasNext()) {
+        val key = iter.next()
+        if (key.startsWith("slockNotification") || key.startsWith("slockShortcut")) {
+            keysToRemove += key
+        }
+    }
+    keysToRemove +=
+        listOf(
+            RaftCmpActivity.KEY_APP_SHELL_INITIAL_TAB,
+            "slockInitialSettingsDestination",
+            "slockDiagnosticsDeepLinkId",
+            "slockDiagnosticsDeepLinkAutoCloseMs",
+            RAFT_SERVER_SWITCH_TAP_EPOCH_MILLIS,
+            RAFT_SERVER_SWITCH_WINDOW_ID,
+            RAFT_SERVER_SWITCH_KEEP_WINDOW,
+            "slockSuppressRestoreLanding",
+            RaftDesktopShortcutContract.KeyServerId,
+            RaftDesktopShortcutContract.KeyTargetId,
+            RaftDesktopShortcutContract.KeyTargetKind,
+            RaftDesktopShortcutContract.KeyLaunchId,
+            RaftDesktopShortcutContract.KeyTitle,
+        )
+    keysToRemove.forEach { sanitized.remove(it) }
+    if (sanitized.optString("instanceId").startsWith("notification-app-shell-")) {
+        sanitized.remove("instanceId")
+    }
+    return sanitized
+}
 
 internal fun normalizeAndroidAppShellPageData(
     pageData: JSONObject,
@@ -276,4 +386,67 @@ private fun JSONObject.explicitAndroidDocumentShell(): Boolean? =
         null
     }
 
-private const val DEFAULT_ANDROID_SHELL_INSTANCE_ID = "android-default-app-shell"
+internal fun isAndroidIntentLaunchedFromHistory(flags: Int): Boolean =
+    (flags and Intent.FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY) != 0
+
+/**
+ * True when [pageData] already names an explicit target server (shell route, document route owner,
+ * notification tap, or desktop shortcut) so launcher server-restoration must not overwrite it.
+ *
+ * Non-document launcher payloads (`postLoginAppShellPageData`, `settingsAccountAppShellPageData`)
+ * carry `slockRouteServerId` as route-owner metadata, which the launcher shell never reads as its
+ * shell server (`RaftShellStoreLaunch.kt` reads `slockRouteServerId` only when `slockDocumentShell`
+ * is true), so a bare route owner must not suppress persisted launcher server restoration.
+ */
+internal fun hasExplicitAndroidShellServer(pageData: JSONObject): Boolean =
+    pageData.optNonNullString(RAFT_SHELL_SERVER_ID).isNotEmpty() ||
+        pageData.optNonNullString(ANDROID_SHELL_SERVER_ID_KEY).isNotEmpty() ||
+        (pageData.optBoolean(ANDROID_DOCUMENT_SHELL_KEY, false) &&
+            pageData.optNonNullString(ANDROID_ROUTE_SERVER_ID_KEY).isNotEmpty()) ||
+        pageData.optNonNullString(RaftCmpActivity.KEY_APP_SHELL_NOTIFICATION_SERVER_ID).isNotEmpty() ||
+        pageData.optNonNullString(RaftDesktopShortcutContract.KeyServerId).isNotEmpty()
+
+/**
+ * Merges a one-shot dead-launcher switch handoff or persisted launcher server into [intent]'s
+ * app-shell page data before cold-start splash gating and strips `FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY`
+ * once the merged payload is written. Returns true when a stashed switch specifies an explicit tab
+ * destination (so restored Nav3 sub-pages should be cleared).
+ */
+internal fun prepareAndroidAppShellCreateIntent(
+    intent: Intent?,
+    taskId: Int,
+    multiShellHostEnabled: Boolean,
+    currentOwner: () -> AndroidShellRouteOwner?,
+): Boolean {
+    if (intent == null) return false
+    val pendingLauncherLaunch = AndroidPendingLauncherTaskLaunchStore.consume(taskId)
+    if (pendingLauncherLaunch != null) {
+        val merged = JSONObject(RaftCmpActivity.resolvedPageData(intent).text)
+        pendingLauncherLaunch.serverId?.let {
+            merged.put(ANDROID_SHELL_SERVER_ID_KEY, it)
+            merged.put(RAFT_SHELL_SERVER_ID, it)
+        }
+        pendingLauncherLaunch.initialTab?.let { merged.put(RaftCmpActivity.KEY_APP_SHELL_INITIAL_TAB, it) }
+        if (pendingLauncherLaunch.tapEpochMillis > 0L) {
+            merged.put(RAFT_SERVER_SWITCH_TAP_EPOCH_MILLIS, pendingLauncherLaunch.tapEpochMillis)
+        }
+        intent.putExtra(RaftCmpActivity.KEY_PAGE_DATA, RaftPageData.fromJson(merged).text)
+        intent.flags = intent.flags and Intent.FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY.inv()
+        return pendingLauncherLaunch.hasExplicitDestination
+    }
+    val merged = JSONObject(RaftCmpActivity.resolvedPageData(intent).text)
+    if (multiShellHostEnabled && !hasExplicitAndroidShellServer(merged)) {
+        currentOwner()?.let { owner ->
+            AndroidShellWindowStore.persistedLauncherServerId(owner.environmentId, owner.accountId)
+                ?.let { serverId ->
+                    merged.put(ANDROID_SHELL_SERVER_ID_KEY, serverId)
+                    merged.put(RAFT_SHELL_SERVER_ID, serverId)
+                    intent.putExtra(RaftCmpActivity.KEY_PAGE_DATA, RaftPageData.fromJson(merged).text)
+                    intent.flags = intent.flags and Intent.FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY.inv()
+                }
+        }
+    }
+    return false
+}
+
+internal const val DEFAULT_ANDROID_SHELL_INSTANCE_ID = "android-default-app-shell"

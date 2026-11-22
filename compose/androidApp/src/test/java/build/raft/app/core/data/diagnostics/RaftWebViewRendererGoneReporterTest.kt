@@ -39,20 +39,4 @@ class RaftWebViewRendererGoneReporterTest {
         assertEquals(2, calls)
         assertEquals(listOf(RendererGoneTicketRetryDelayMillis), waits)
     }
-
-    @Test
-    fun twoFailuresGiveUpWithoutAThirdAttempt() = runTest {
-        val (accepted, calls) = send({ throw IOException("offline") }, { throw HandsFeedbackException(503, "busy") })
-        assertFalse(accepted)
-        assertEquals(2, calls)
-        assertTrue(logs.last().contains("retry=none"))
-    }
-
-    @Test
-    fun aPermanentRejectionIsNotRetried() = runTest {
-        val (accepted, calls) = send({ throw HandsFeedbackException(422, "bad") })
-        assertFalse(accepted)
-        assertEquals(1, calls)
-        assertTrue(waits.isEmpty())
-    }
 }

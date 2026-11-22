@@ -78,15 +78,17 @@ class RaftKmpRealtimeSocketTransport(
             val token = auth["token"].orEmpty()
             val serverId = auth["serverId"]
             logger("transport_connect_start serverId=${serverId.orEmpty()} hasToken=${token.isNotBlank()}")
+            // mobile.realtime.session_health: this connection's health (RaftRealtimeSessionHealth.kt).
+            val health = RaftRealtimeSocketHealthProbe(context.serverId.value)
             val client =
                 RaftSocketIoClient(
                     config = RaftSocketIoConfig(baseUrl = socketUrl),
-                    connector = connector,
+                    connector = health.connector(connector),
                     parentScope = parentScope,
                     dispatcher = dispatcherFactory(),
                     logger = logger,
                 )
-            val connection = Connection(context, client)
+            val connection = Connection(context, client, health)
             current = connection
             connection.socket =
                 client.socket(
@@ -95,7 +97,7 @@ class RaftKmpRealtimeSocketTransport(
                         authProvider = {
                             raftHandshakeAuth(token, serverId, auth["clientKind"] ?: clientKind, RealtimeSocketEvents.HandshakeCapabilities)
                         },
-                        listener = connection,
+                        listener = health.listener(connection),
                     ),
                 )
             connection.socket?.connect()
@@ -167,6 +169,7 @@ class RaftKmpRealtimeSocketTransport(
     private inner class Connection(
         val context: RealtimeSocketConnectionContext,
         val client: RaftSocketIoClient,
+        val health: RaftRealtimeSocketHealthProbe,
     ) : RaftSocketIoListener {
         var socket: build.raft.realtime.socket.RaftSocketIoNamespace? = null
         private val unlisted = mutableSetOf<String>()
@@ -184,8 +187,12 @@ class RaftKmpRealtimeSocketTransport(
 
         override fun onEvent(connection: RaftSocketConnection, event: RaftSocketEvent, ack: RaftSocketIncomingAck?) {
             val delivered = fire(this, event.name, event.args.firstOrNull()?.toTransportPlain())
-            if (!delivered && unlisted.add(event.name)) {
-                logger("projection_value_unknown source=realtime_socket_transport field=event_name value=${event.name}")
+            if (!delivered) {
+                // No listener takes it: dropped here, as the iOS socket drops what it does not subscribe to.
+                health.onEventUnhandled()
+                if (unlisted.add(event.name)) {
+                    logger("projection_value_unknown source=realtime_socket_transport field=event_name value=${event.name}")
+                }
             }
         }
 

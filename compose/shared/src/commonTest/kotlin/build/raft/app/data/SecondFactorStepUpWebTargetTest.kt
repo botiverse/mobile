@@ -64,6 +64,7 @@ class SecondFactorStepUpWebTargetTest {
                 Triple(ACCOUNT_ACTION_PROVIDER_CONNECT, "github", SecondFactorStepUpWebTarget.Account),
                 Triple(ACCOUNT_ACTION_PROVIDER_DISCONNECT, "google", SecondFactorStepUpWebTarget.Account),
                 Triple(COMPUTER_ACTION_REGISTER, null, SecondFactorStepUpWebTarget.Computers),
+                Triple(COMPUTER_ACTION_APPROVE_DEVICE_CODE, null, SecondFactorStepUpWebTarget.Computers),
                 Triple(COMPUTER_ACTION_ROTATE_KEY, "m-42", SecondFactorStepUpWebTarget.Computer("m-42")),
                 Triple(COMPUTER_ACTION_ROTATE_KEY, null, SecondFactorStepUpWebTarget.Computers),
                 Triple("somethingElse", null, null),

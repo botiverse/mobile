@@ -47,7 +47,8 @@ internal data class AgentTurnStopState(
     val inFlightAgentId: MemberId? = null,
     /** One-shot feedback for [agentId]; the UI shows it once and dispatches [AgentTurnStopIntent.ConsumeFeedback]. */
     val feedback: AgentTurnStopFeedback? = null,
-    val feedbackAgentId: MemberId? = null
+    val feedbackAgentId: MemberId? = null,
+    val feedbackTraceId: String? = null
 )
 
 internal sealed interface AgentTurnStopIntent {
@@ -73,7 +74,7 @@ internal class AgentTurnStopStore(
             AgentTurnStopIntent.ConsumeFeedback -> {
                 val current = mutableState.value
                 if (current.feedback != null) {
-                    mutableState.value = current.copy(feedback = null, feedbackAgentId = null)
+                    mutableState.value = current.copy(feedback = null, feedbackAgentId = null, feedbackTraceId = null)
                 }
             }
         }
@@ -81,7 +82,7 @@ internal class AgentTurnStopStore(
 
     private fun stop(agentId: MemberId) {
         if (mutableState.value.inFlightAgentId != null) return
-        mutableState.value = mutableState.value.copy(inFlightAgentId = agentId, feedback = null, feedbackAgentId = null)
+        mutableState.value = mutableState.value.copy(inFlightAgentId = agentId, feedback = null, feedbackAgentId = null, feedbackTraceId = null)
         scope.launch {
             val result =
                 try {
@@ -90,13 +91,14 @@ internal class AgentTurnStopStore(
                     mutableState.value = mutableState.value.copy(inFlightAgentId = null)
                     throw cancellation
                 } catch (_: Throwable) {
-                    DataResult.Error(ScreenError(AgentControlErrorCodes.NetworkError))
+                    DataResult.Error(ScreenError(AgentControlErrorCodes.NetworkError, traceId = null))
                 }
             mutableState.value =
                 mutableState.value.copy(
                     inFlightAgentId = null,
                     feedback = result.toAgentTurnStopFeedback(),
-                    feedbackAgentId = agentId
+                    feedbackAgentId = agentId,
+                    feedbackTraceId = result.failureTraceIdOrNull()
                 )
         }
     }

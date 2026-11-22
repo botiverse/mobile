@@ -2,6 +2,8 @@ package build.raft.designsystem.components
 
 import androidx.compose.runtime.ReadOnlyComposable
 import build.raft.designsystem.focus.LocalRaftAutofocusGuard
+import build.raft.designsystem.focus.LocalRaftFocusInteractionObserverInstalled
+import build.raft.designsystem.focus.raftObserveFocusInteractions
 import build.raft.designsystem.gesture.RaftBlockBackSwipe
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -463,7 +465,8 @@ fun RaftDropdownMenu(
     val nav = remember { RaftMenuNav() }
     // A right swipe must not pop the page underneath an open menu.
     RaftBlockBackSwipe()
-    LocalRaftAutofocusGuard.current.HoldOpenSurface()
+    val autofocusGuard = LocalRaftAutofocusGuard.current
+    autofocusGuard.HoldOpenSurface()
     // A page pushed over this one closes the menu first: the covered page stops composing.
     RaftDismissOnPageCover { dismiss() }
     // raft-ui 0.102.6 (`usePopupAnchorDismiss`, elevation.md): a menu whose trigger is scrolled
@@ -495,6 +498,11 @@ fun RaftDropdownMenu(
         Box(
             Modifier
                 .raftMenuHeightCap(windowMargin, insets, area)
+                .raftObserveFocusInteractions(
+                    coordinator = autofocusGuard.coordinator,
+                    observeWindowFocus = false,
+                    forceInstall = true,
+                )
                 .pointerInput(Unit) { detectTapGestures { dismiss() } }
                 .padding(
                     start = RaftPopupInsets.Horizontal,
@@ -503,7 +511,10 @@ fun RaftDropdownMenu(
                     bottom = RaftPopupInsets.Bottom,
                 ),
         ) {
-            CompositionLocalProvider(LocalRaftMenuNav provides nav) {
+            CompositionLocalProvider(
+                LocalRaftMenuNav provides nav,
+                LocalRaftFocusInteractionObserverInstalled provides true,
+            ) {
                 RaftMenuSurface(
                     // Swallows taps on the surface's own padding.
                     modifier

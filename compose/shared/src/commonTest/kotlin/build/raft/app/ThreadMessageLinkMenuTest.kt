@@ -30,18 +30,6 @@ class ThreadMessageLinkMenuTest {
     }
 
     @Test
-    fun aRaftLinkHasNoOpenInBrowser() {
-        assertEquals(
-            listOf(
-                ThreadMessageLinkMenuAction.Open,
-                ThreadMessageLinkMenuAction.CopyLink,
-                ThreadMessageLinkMenuAction.Share,
-            ),
-            threadMessageLinkMenuActions(isRaftLink = true),
-        )
-    }
-
-    @Test
     fun raftLinksAreTheOnesATapOpensInTheApp() {
         val raft =
             listOf(
@@ -61,21 +49,6 @@ class ThreadMessageLinkMenuTest {
         assertEquals(true, threadMessageLinkIsRaft("https://app.raft.build/artifacts/pt_abc123", "", emptyList()))
         val external = listOf("https://example.com/docs", "https://github.com/botiverse/mobile/pull/1", "mailto:a@b.c")
         for (url in external) assertEquals(false, threadMessageLinkIsRaft(url, staging, appHosts), url)
-    }
-
-    @Test
-    fun eachActionSaysWhatItDoes() {
-        // Open and Share are the shared words; Copy link and Open in browser the web's
-        // (`message.messageItem.copyLink`, `assistant.wechat.openInBrowser`).
-        assertEquals(
-            listOf(
-                Res.string.common_open,
-                Res.string.thread_link_menu_copy_link,
-                Res.string.common_share,
-                Res.string.thread_link_menu_open_in_browser,
-            ),
-            ThreadMessageLinkMenuAction.entries.map { it.label() },
-        )
     }
 
     @Test

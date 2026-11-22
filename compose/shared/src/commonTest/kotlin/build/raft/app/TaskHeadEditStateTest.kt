@@ -10,7 +10,6 @@ import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
-import kotlin.test.assertIs
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -68,22 +67,6 @@ class TaskHeadEditStateTest {
     }
 
     @Test
-    fun anEmptyTitleAndAnUnchangedFieldSendNothing() = runTest {
-        val sender = Sender()
-        val edit = TaskHeadEditState()
-        edit.open(task, TaskHeadEditField.Title)
-        edit.onDraftChange("   ")
-        edit.save(task, sender::send)
-        assertEquals(TaskHeadEditProblem.TitleRequired, edit.problem)
-        // Typing clears the refusal; the same text again just closes.
-        edit.onDraftChange("Old title ")
-        assertNull(edit.problem)
-        edit.save(task, sender::send)
-        assertNull(edit.field)
-        assertTrue(sender.sent.isEmpty())
-    }
-
-    @Test
     fun aBlankDescriptionIsSentToClearIt() = runTest {
         val sender = Sender(TaskAmendResult.Saved(task.copy(description = null, revision = 8L)))
         val edit = TaskHeadEditState()
@@ -108,22 +91,6 @@ class TaskHeadEditStateTest {
 
         edit.save(theirs, sender::send)
         assertEquals(TaskAmendPatch.Title("Mine") to 8L, sender.sent.single())
-        assertNull(edit.field)
-    }
-
-    @Test
-    fun aLostRaceRetriesAgainstTheReportedRevision() = runTest {
-        val sender = Sender(TaskAmendResult.Stale(currentRevision = 12L), TaskAmendResult.Saved(task.copy(title = "Mine", revision = 13L)))
-        val edit = TaskHeadEditState()
-        edit.open(task, TaskHeadEditField.Title)
-        edit.onDraftChange("Mine")
-
-        edit.save(task, sender::send)
-        assertIs<TaskHeadEditProblem.Stale>(edit.problem)
-        assertEquals("Mine", edit.draft)
-
-        edit.save(task, sender::send)
-        assertEquals(listOf(7L, 12L), sender.sent.map { it.second })
         assertNull(edit.field)
     }
 

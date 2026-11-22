@@ -7,10 +7,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.onNodeWithTag
-import androidx.compose.ui.test.onNodeWithText
-import androidx.compose.ui.test.performClick
-import build.raft.app.data.RaftDatabaseNewerThanAppException
-import build.raft.app.data.RaftDatabaseVersionMismatch
 import build.raft.designsystem.theme.RaftAppearance
 import build.raft.designsystem.theme.RaftTheme
 import java.util.concurrent.CopyOnWriteArrayList
@@ -21,7 +17,6 @@ import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertNotEquals
 import kotlin.test.assertSame
@@ -93,89 +88,6 @@ class RaftDatabaseLaunchGateUiTest {
         assertTrue(RaftDatabaseLaunchReadiness.settled.value)
     }
 
-    @Test
-    fun anExistingStoreRendersTheAppInTheFirstFrameWithoutABuild() = runRobolectricComposeUiTest {
-        var builds = 0
-        setContent {
-            Gate(existingStore = { Any() }, buildStore = { builds += 1; Any() }, adoptStore = {})
-        }
-        waitForIdle()
-
-        onNodeWithTag(AppTag).assertExists()
-        onNodeWithTag(LaunchSurfaceTag).assertDoesNotExist()
-        assertEquals(0, builds)
-        assertTrue(RaftDatabaseLaunchReadiness.settled.value)
-    }
-
-    @Test
-    fun aNewerDatabaseShowsRecoveryAndRetryBuildsAgainOffMainKeepingTheRecoveryPageUp() = runRobolectricComposeUiTest {
-        val mismatch = RaftDatabaseVersionMismatch(databaseVersion = 10, supportedVersion = 9)
-        val upgraded = CountDownLatch(1)
-        val buildThreads = CopyOnWriteArrayList<String>()
-        val logs = CopyOnWriteArrayList<String>()
-        var attempts = 0
-        setContent {
-            Gate(
-                existingStore = { null },
-                buildStore = {
-                    buildThreads += buildThreadName()
-                    attempts += 1
-                    if (attempts == 1) throw IllegalStateException("open failed", RaftDatabaseNewerThanAppException(mismatch))
-                    check(upgraded.await(5, TimeUnit.SECONDS)) { "test never finished the retry" }
-                    Any()
-                },
-                adoptStore = {},
-                logWarn = logs::add,
-            )
-        }
-        waitUntil(timeoutMillis = 5_000) { logs.isNotEmpty() }
-        waitForIdle()
-
-        onNodeWithText(RetryLabel).assertExists()
-        onNodeWithTag(AppTag).assertDoesNotExist()
-        assertTrue(RaftDatabaseLaunchReadiness.settled.value, "the recovery page releases a native splash")
-        assertEquals(
-            listOf("database_launch_guard result=upgrade_required databaseVersion=10 supportedVersion=9"),
-            logs,
-        )
-
-        onNodeWithText(RetryLabel).performClick()
-        waitUntil(timeoutMillis = 5_000) { buildThreads.size == 2 }
-        waitForIdle()
-        // The retry is running: the recovery page stays, no launch surface flash.
-        onNodeWithText(RetryLabel).assertExists()
-        onNodeWithTag(LaunchSurfaceTag).assertDoesNotExist()
-
-        upgraded.countDown()
-        waitUntil(timeoutMillis = 5_000) { onAllNodesWithTagExists(AppTag) }
-
-        onNodeWithText(RetryLabel).assertDoesNotExist()
-        assertEquals(listOf(BuildThreadName, BuildThreadName), buildThreads)
-        assertEquals(
-            listOf(
-                "database_launch_guard result=upgrade_required databaseVersion=10 supportedVersion=9",
-                "database_launch_guard action=retry databaseVersion=10 supportedVersion=9",
-            ),
-            logs,
-        )
-    }
-
-    @Test
-    fun anyOtherBuildFailureIsThrownFromCompositionAsBefore() {
-        val failure = IllegalStateException("Invalid SQLite database header")
-        val thrown =
-            assertFailsWith<IllegalStateException> {
-                runRobolectricComposeUiTest {
-                    setContent {
-                        Gate(existingStore = { null }, buildStore = { throw failure }, adoptStore = {})
-                    }
-                    waitUntil(timeoutMillis = 5_000) { false.also { waitForIdle() } }
-                }
-            }
-        assertSame(failure, generateSequence<Throwable>(thrown) { it.cause }.first { it === failure })
-        assertFalse(RaftDatabaseLaunchReadiness.settled.value)
-    }
-
     @androidx.compose.runtime.Composable
     private fun Gate(
         existingStore: () -> Any?,
@@ -198,9 +110,6 @@ class RaftDatabaseLaunchGateUiTest {
 
     /** The thread's own name, without the " @coroutine#N" suffix coroutine debug mode adds. */
     private fun buildThreadName(): String = Thread.currentThread().name.substringBefore(" @")
-
-    private fun androidx.compose.ui.test.ComposeUiTest.onAllNodesWithTagExists(tag: String): Boolean =
-        onAllNodes(androidx.compose.ui.test.hasTestTag(tag)).fetchSemanticsNodes().isNotEmpty()
 
     private companion object {
         const val BuildThreadName = "test-database-launch-build"

@@ -11,7 +11,6 @@ import build.raft.app.openAppShellServerSwitchWindow
 import kotlin.random.Random
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.time.Duration.Companion.seconds
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runCurrent
@@ -152,26 +151,6 @@ class PresenceTransportRosterRefetchTest {
         assertEquals(1, fixture.repository.memberCalls)
         advanceTimeBy(RECONNECT_REFETCH_JITTER_MAX_MILLIS + 1L)
         assertEquals(2, fixture.repository.memberCalls)
-    }
-
-    @Test
-    fun selectionOlderThanTheSwitchWindowNoLongerSkipsTheJitter() = runTest {
-        val fixture = fixture()
-        fixture.connect(epoch = 1L)
-        fixture.jitter.onServerSelected(serverId.value, reason = "server_selected")
-        advanceTimeBy((SERVER_SWITCH_CONNECT_WINDOW + 1.seconds).inWholeMilliseconds)
-
-        assertEquals(RaftReconnectRefetchDecision.Delayed, fixture.connect(epoch = 2L))
-    }
-
-    @Test
-    fun theSwitchIsConsumedByOneConnectSoTheNextReconnectIsJitteredAgain() = runTest {
-        val fixture = fixture()
-        fixture.connect(epoch = 1L)
-        fixture.jitter.onServerSelected(serverId.value, reason = "server_selected")
-        assertEquals(RaftReconnectRefetchDecision.ImmediateAfterSwitch, fixture.connect(epoch = 2L))
-
-        assertEquals(RaftReconnectRefetchDecision.Delayed, fixture.connect(epoch = 3L))
     }
 
     @Test

@@ -17,9 +17,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.isSpecified
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.TextFieldValue
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -35,6 +36,8 @@ import build.raft.designsystem.components.RaftBannerStatus
 import build.raft.designsystem.components.RaftButton
 import build.raft.designsystem.components.RaftButtonSize
 import build.raft.designsystem.components.RaftButtonVariant
+import build.raft.designsystem.components.RaftEmptyState
+import build.raft.designsystem.components.RaftEmptyStateDefaults
 import build.raft.designsystem.components.RaftListRow
 import build.raft.designsystem.components.RaftListRowText
 import build.raft.designsystem.components.RaftSpinner
@@ -211,12 +214,20 @@ internal fun ChannelMembersRow(
  * Lumen Labs"), and web `JointServerBadges`' "Also in Raft, Acme Corp" for a member of the viewed
  * server who is also in another (#14731, it was a blue chip): caption, regular, `foreground-hint`,
  * one line, truncated; capped so the name keeps its room (the web lets the text give way first).
+ * [spokenText], when given, is what a screen reader says in place of [names] (web #12853: "{name}
+ * is also a member of {servers}" for a person in a computed joint roster).
  */
 @Composable
-internal fun ChannelMemberOriginServerNames(names: String, testTag: String = ChannelMemberOriginServersTestTag) {
+internal fun ChannelMemberOriginServerNames(
+    names: String,
+    testTag: String = ChannelMemberOriginServersTestTag,
+    spokenText: String? = null,
+) {
     RaftText(
         names,
-        modifier = Modifier.widthIn(max = 140.dp).testTag(testTag),
+        modifier =
+            Modifier.widthIn(max = 140.dp).testTag(testTag)
+                .then(spokenText?.let { spoken -> Modifier.semantics { contentDescription = spoken } } ?: Modifier),
         style = RaftTheme.typography.caption.copy(fontWeight = FontWeight.Normal),
         color = RaftTheme.colors.foregroundHint,
         maxLines = 1,
@@ -242,45 +253,19 @@ internal fun ChannelMembersLoading() {
     }
 }
 
-/**
- * raft-ui EmptyState (web `EmptyState`): a bare 36dp icon in `foreground-hint` (no frame), the
- * title in `text-headline` bold `foreground-muted`, an optional `text-callout` hint line and
- * an action.
- */
+/** The members page's [RaftEmptyState]: an app icon, the title and, when a retry helps, an action. */
 @Composable
 internal fun ChannelMembersEmptyState(
     icon: RaftLucideIconName,
     title: String,
-    detail: String? = null,
     actionLabel: String? = null,
     onAction: () -> Unit = {},
 ) {
-    Column(
-        Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 48.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        RaftLucideIcon(icon, modifier = Modifier.size(36.dp), color = raftArgbHex(RaftTheme.colors.foregroundHint))
-        RaftText(
-            title,
-            modifier = Modifier.padding(bottom = 8.dp),
-            style = RaftTheme.typography.headline,
-            color = RaftTheme.colors.foregroundMuted,
-            textAlign = TextAlign.Center,
-        )
-        if (detail != null) {
-            RaftText(
-                detail,
-                modifier = Modifier.widthIn(max = 300.dp),
-                style = RaftTheme.typography.callout,
-                color = RaftTheme.colors.foregroundHint,
-                textAlign = TextAlign.Center,
-            )
-        }
-        if (actionLabel != null) {
-            RaftButton(text = actionLabel, onClick = onAction)
-        }
-    }
+    RaftEmptyState(
+        title = title,
+        icon = { RaftContentLucideIcon(icon, size = RaftEmptyStateDefaults.IconSize) },
+        actions = actionLabel?.let { label -> { RaftButton(text = label, onClick = onAction) } },
+    )
 }
 
 /** A page-level warning above the roster (web `Banner intent="warning" className="m-3"`). */

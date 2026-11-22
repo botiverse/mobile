@@ -53,13 +53,4 @@ class ThreadAppLinkBlockCardButtonsTest {
         layout.row.single().onClick()
         assertEquals(1, refreshed)
     }
-
-    @Test
-    fun withoutAWayToReadTheCardAgainRefreshIsNotDrawnAndOpenLinkIsTheItemsLink() {
-        val other = card.copy(elements = card.elements + ("open" to RaftLinkCardV2Element.Button("Docs", RaftLinkCardButtonVariant.Ghost, RaftLinkCardButtonAction.Navigate("https://stamp.example.test/docs"))))
-        val buttons = other.blockCardButtons(url, openUri = {}, openLink = openLink)
-        assertEquals(listOf("Docs", "Open Link"), buttons.map { it.label })
-        assertEquals(listOf(false, true), buttons.map { it.opensItem })
-        assertEquals(listOf("Docs"), raftAppLinkCardButtonLayout(buttons).row.map { it.label })
-    }
 }

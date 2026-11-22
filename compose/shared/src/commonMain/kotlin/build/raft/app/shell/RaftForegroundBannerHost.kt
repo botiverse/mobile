@@ -44,7 +44,7 @@ import build.raft.app.model.conversationSafeDisplayTitleOrNull
 import build.raft.app.model.threadIdentity
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
-import androidx.compose.runtime.MutableState
+import androidx.compose.runtime.Stable
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -152,11 +152,15 @@ internal class SharedForegroundBannerStore(
     private val scope: CoroutineScope,
     private val awaitAutoDismiss: suspend () -> Unit = { delay(ForegroundBannerAutoDismissMs) }
 ) {
+    private data class VisibleRouteEntry(
+        val route: ThreadRouteIdentity,
+        val isOverlay: Boolean,
+    )
+
     private val lock = SynchronizedObject()
     private val mutableBanner = MutableStateFlow<RaftForegroundMessageBanner?>(null)
     private var autoDismissJob: Job? = null
-    private var visibleRouteOwnerId: String? = null
-    private var visibleRoute: ThreadRouteIdentity? = null
+    private val visibleRoutes = LinkedHashMap<String, VisibleRouteEntry>()
 
     val banner: StateFlow<RaftForegroundMessageBanner?> = mutableBanner.asStateFlow()
 
@@ -198,45 +202,78 @@ internal class SharedForegroundBannerStore(
             autoDismissJob?.cancel()
             autoDismissJob = null
             mutableBanner.value = null
-            visibleRouteOwnerId = null
-            visibleRoute = null
+            visibleRoutes.clear()
         }
     }
 
-    fun setVisibleRoute(ownerId: String, route: ThreadRouteIdentity) {
+    fun setVisibleRoute(ownerId: String, route: ThreadRouteIdentity, isOverlay: Boolean = false) {
         synchronized(lock) {
-            visibleRouteOwnerId = ownerId
-            visibleRoute = route
+            visibleRoutes.remove(ownerId)
+            visibleRoutes[ownerId] = VisibleRouteEntry(route = route, isOverlay = isOverlay)
         }
     }
 
     fun clearVisibleRoute(ownerId: String) {
         synchronized(lock) {
-            if (visibleRouteOwnerId != ownerId) return
-            visibleRouteOwnerId = null
-            visibleRoute = null
+            visibleRoutes.remove(ownerId)
         }
     }
 
-    fun visibleRouteIdentity(): ThreadRouteIdentity? = synchronized(lock) { visibleRoute }
+    /** Latest primary (non-overlay) route on screen, falling back to any active overlay route. */
+    fun visibleRouteIdentity(): ThreadRouteIdentity? =
+        synchronized(lock) {
+            visibleRoutes.values.lastOrNull { !it.isOverlay }?.route
+                ?: visibleRoutes.values.lastOrNull()?.route
+        }
+
+    /** Every conversation route currently visible in this window (main pane, side thread, assistant panel). */
+    fun visibleRouteIdentities(): List<ThreadRouteIdentity> =
+        synchronized(lock) {
+            visibleRoutes.values.map { it.route }
+        }
 }
+
+private val foregroundBannerRouteOwnerLock = SynchronizedObject()
+private var nextForegroundBannerRouteOwnerSeq = 0L
+
+/** Unique per-mount owner id so retained sibling tabs displaying the same conversation never collide. */
+internal fun nextForegroundBannerRouteOwnerId(prefix: String): String =
+    synchronized(foregroundBannerRouteOwnerLock) { "$prefix:${++nextForegroundBannerRouteOwnerSeq}" }
 
 /**
  * The page's banner as its host would show it, handed to [content] ([LocalRaftForegroundBannerHandoff])
  * for a window opened over the page that must show it on top instead (the assistant's panel
- * sheet: the page's own banner would sit under its scrim). While [coveredByWindow] is true the page
- * leaves its banner to that window. Read through the local, not captured: ThreadPage's content
+ * sheet: the page's own banner would sit under its scrim). Owners register/clear coverage by
+ * distinct identity via [setWindowCover] so sibling retained tabs in the same shell cannot
+ * clobber an open drawer's cover. Read through the local, not captured: ThreadPage's content
  * lambda is at the JVM's limit for captured values.
  */
+@Stable
 internal class RaftForegroundBannerHandoff(
-    val banner: RaftForegroundMessageBanner?,
-    val topSafeArea: Dp,
-    val serverMembersStore: SharedServerMembersStore?,
-    val currentServerId: ServerId?,
-    val onClick: (RaftForegroundMessageBanner) -> Unit,
-    val onDismiss: (RaftForegroundMessageBanner) -> Unit,
-    val coveredByWindow: MutableState<Boolean>,
-)
+    banner: RaftForegroundMessageBanner?,
+    topSafeArea: Dp,
+    serverMembersStore: SharedServerMembersStore?,
+    currentServerId: ServerId?,
+    onClick: (RaftForegroundMessageBanner) -> Unit,
+    onDismiss: (RaftForegroundMessageBanner) -> Unit,
+) {
+    var banner: RaftForegroundMessageBanner? by mutableStateOf(banner)
+    var topSafeArea: Dp by mutableStateOf(topSafeArea)
+    var serverMembersStore: SharedServerMembersStore? by mutableStateOf(serverMembersStore)
+    var currentServerId: ServerId? by mutableStateOf(currentServerId)
+    var onClick: (RaftForegroundMessageBanner) -> Unit by mutableStateOf(onClick)
+    var onDismiss: (RaftForegroundMessageBanner) -> Unit by mutableStateOf(onDismiss)
+
+    private var coveringWindowOwners by mutableStateOf<Set<Any>>(emptySet())
+
+    val isCoveredByWindow: Boolean
+        get() = coveringWindowOwners.isNotEmpty()
+
+    fun setWindowCover(owner: Any, covered: Boolean) {
+        val next = if (covered) coveringWindowOwners + owner else coveringWindowOwners - owner
+        if (next != coveringWindowOwners) coveringWindowOwners = next
+    }
+}
 
 internal val LocalRaftForegroundBannerHandoff = compositionLocalOf<RaftForegroundBannerHandoff?> { null }
 
@@ -258,29 +295,50 @@ internal fun RaftForegroundBannerHost(
     currentServerIdOverride: ServerId? = null,
     onBannerClick: (RaftForegroundMessageBanner) -> Unit,
     onBannerDismiss: (RaftForegroundMessageBanner) -> Unit = {},
-    handoff: RaftForegroundBannerHandoff? = null,
     content: @Composable () -> Unit
 ) {
+    // An ancestor host in this window already owns drawing the single banner and receives modal
+    // drawer handoffs (SettingsHomePage wrapping embedded ThreadPage in wide split-pane, side
+    // thread, Tasks detail, or compact DetailOnly; or a ThreadPage wrapping the assistant's DM).
+    if (LocalRaftForegroundBannerHandoff.current != null) {
+        content()
+        return
+    }
     val currentSessionFlow =
         remember(currentServerStore) {
             currentServerStore?.observeSession() ?: flowOf(null)
         }
     val currentSession by currentSessionFlow.collectAsState(null)
     val currentServerId = foregroundBannerMemberServerId(banner, currentServerIdOverride ?: currentSession?.currentServerId)
-    Box(modifier = Modifier.fillMaxSize()) {
-        if (handoff == null) {
-            content()
-        } else {
-            CompositionLocalProvider(LocalRaftForegroundBannerHandoff provides handoff, content = content)
-        }
-        if (banner != null) {
-            RaftForegroundMessageBannerView(
+    val effectiveHandoff =
+        remember {
+            RaftForegroundBannerHandoff(
                 banner = banner,
                 topSafeArea = topSafeArea,
                 serverMembersStore = serverMembersStore,
                 currentServerId = currentServerId,
-                onClick = { onBannerClick(banner) },
-                onDismiss = { onBannerDismiss(banner) }
+                onClick = onBannerClick,
+                onDismiss = onBannerDismiss,
+            )
+        }.apply {
+            this.banner = banner
+            this.topSafeArea = topSafeArea
+            this.serverMembersStore = serverMembersStore
+            this.currentServerId = currentServerId
+            this.onClick = onBannerClick
+            this.onDismiss = onBannerDismiss
+        }
+    Box(modifier = Modifier.fillMaxSize()) {
+        CompositionLocalProvider(LocalRaftForegroundBannerHandoff provides effectiveHandoff, content = content)
+        val shownBanner = banner?.takeIf { !effectiveHandoff.isCoveredByWindow }
+        if (shownBanner != null) {
+            RaftForegroundMessageBannerView(
+                banner = shownBanner,
+                topSafeArea = topSafeArea,
+                serverMembersStore = serverMembersStore,
+                currentServerId = currentServerId,
+                onClick = { onBannerClick(shownBanner) },
+                onDismiss = { onBannerDismiss(shownBanner) }
             )
         }
     }
@@ -546,6 +604,7 @@ internal fun raftForegroundMessageBannerProjection(
     currentMemberId: String?,
     visibleConversationKey: String?,
     visibleRouteIdentity: ThreadRouteIdentity? = null,
+    visibleRouteIdentities: Collection<ThreadRouteIdentity> = emptyList(),
     conversationDirectory: SharedConversationDirectoryState = SharedConversationDirectoryState()
 ): RaftForegroundMessageBanner? =
     raftForegroundMessageBannerProjectionResult(
@@ -555,6 +614,7 @@ internal fun raftForegroundMessageBannerProjection(
         currentMemberId = currentMemberId,
         visibleConversationKey = visibleConversationKey,
         visibleRouteIdentity = visibleRouteIdentity,
+        visibleRouteIdentities = visibleRouteIdentities,
         conversationDirectory = conversationDirectory
     ).banner
 
@@ -574,6 +634,7 @@ internal fun raftForegroundMessageBannerProjectionResult(
     currentMemberId: String?,
     visibleConversationKey: String?,
     visibleRouteIdentity: ThreadRouteIdentity? = null,
+    visibleRouteIdentities: Collection<ThreadRouteIdentity> = emptyList(),
     conversationDirectory: SharedConversationDirectoryState = SharedConversationDirectoryState()
 ): RaftForegroundMessageBannerProjectionResult {
     val normalizedServerId =
@@ -596,7 +657,7 @@ internal fun raftForegroundMessageBannerProjectionResult(
         message.resolveForegroundBannerOpenRequest(normalizedServerId, projection, conversationDirectory)
             ?: return RaftForegroundMessageBannerProjectionResult(null, projection, "conversation_missing")
     val conversation = openRequest.conversationIdentity
-    if (conversation.matchesForegroundVisibleRoute(visibleConversationKey, visibleRouteIdentity)) {
+    if (conversation.matchesForegroundVisibleRoute(visibleConversationKey, visibleRouteIdentity, visibleRouteIdentities)) {
         return RaftForegroundMessageBannerProjectionResult(null, projection, "visible_conversation")
     }
     val sender = message.shownAuthorName().ifBlank { message.author.handle.ifBlank { "Someone" } }
@@ -888,18 +949,22 @@ private fun Message.foregroundBannerLookupIds(): List<String> =
 
 private fun ThreadLaunchConversationIdentity.matchesForegroundVisibleRoute(
     visibleConversationKey: String?,
-    visibleRouteIdentity: ThreadRouteIdentity?
+    visibleRouteIdentity: ThreadRouteIdentity?,
+    visibleRouteIdentities: Collection<ThreadRouteIdentity> = emptyList(),
 ): Boolean {
     val targetRoute = resolveThreadRouteIdentity()
     val selectedKey = visibleConversationKey?.takeIf { it.isNotBlank() }
     if (selectedKey != null && selectedKey in targetRoute.foregroundRouteMatchKeys(threadId.value)) return true
-    val route = visibleRouteIdentity ?: return false
-    if (targetRoute.instanceKey == route.instanceKey) return true
-    val targetTimeline = targetRoute.timelineChannelId
-    if (targetTimeline != null && targetTimeline == route.timelineChannelId) return true
-    val targetParent = targetRoute.parentKey
-    if (targetParent != null && targetParent == route.parentKey) return true
-    return false
+    fun matches(route: ThreadRouteIdentity): Boolean {
+        if (targetRoute.instanceKey == route.instanceKey) return true
+        val targetTimeline = targetRoute.timelineChannelId
+        if (targetTimeline != null && targetTimeline == route.timelineChannelId) return true
+        val targetParent = targetRoute.parentKey
+        if (targetParent != null && targetParent == route.parentKey) return true
+        return false
+    }
+    if (visibleRouteIdentity != null && matches(visibleRouteIdentity)) return true
+    return visibleRouteIdentities.any(::matches)
 }
 
 private fun ThreadRouteIdentity.foregroundRouteMatchKeys(threadId: String): Set<String> =
@@ -924,6 +989,7 @@ internal fun raftNotificationPushBannerOrNull(
     currentServerId: String?,
     visibleConversationKey: String?,
     visibleRouteIdentity: ThreadRouteIdentity? = null,
+    visibleRouteIdentities: Collection<ThreadRouteIdentity> = emptyList(),
     conversationDirectory: SharedConversationDirectoryState = SharedConversationDirectoryState(),
     onSuppressed: (String) -> Unit = {}
 ): RaftForegroundMessageBanner? {
@@ -955,7 +1021,7 @@ internal fun raftNotificationPushBannerOrNull(
             ?.request
             ?: return null.also { onSuppressed("identity_incomplete") }
     val conversation = openRequest.conversationIdentity
-    if (!otherServer && conversation.matchesForegroundVisibleRoute(visibleConversationKey, visibleRouteIdentity)) {
+    if (!otherServer && conversation.matchesForegroundVisibleRoute(visibleConversationKey, visibleRouteIdentity, visibleRouteIdentities)) {
         onSuppressed("visible_conversation")
         return null
     }

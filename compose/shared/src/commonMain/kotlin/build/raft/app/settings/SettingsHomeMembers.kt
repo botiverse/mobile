@@ -32,7 +32,6 @@ import build.raft.app.model.MemberProfile
 import build.raft.app.model.Presence
 import build.raft.app.model.ServerId
 import build.raft.app.model.ServerSummary
-import build.raft.app.model.RaftTimeFormat24Hour
 import build.raft.app.model.RaftTimeContext
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.MutableState
@@ -235,9 +234,9 @@ internal fun SharedMembersScreen(
                         content
                     }
                     is DataResult.NoPermission ->
-                        previousContent ?: SharedMembersUiState.Error(response.blocker.code)
+                        previousContent ?: SharedMembersUiState.Error(response.blocker.code, response.blocker.traceId)
                     is DataResult.Error ->
-                        previousContent ?: SharedMembersUiState.Error(response.error.code)
+                        previousContent ?: SharedMembersUiState.Error(response.error.code, response.error.traceId)
                 }
         } catch (cancellation: CancellationException) {
             throw cancellation
@@ -261,6 +260,7 @@ internal fun SharedMembersScreen(
             MembersPageErrorContent(
                 message = membersLoadFailedMessage,
                 code = current.code,
+                traceId = current.traceId,
                 onBack = onBack,
                 onRetry = {
                     membersRetryForce = true
@@ -613,10 +613,10 @@ internal fun buildHostMembersPayload(
     RaftMembersPayload(
         instanceId = server.id.value,
         title = "Members",
-        localOffsetMinutes = timeContext?.localOffsetMinutes ?: 0,
+        localOffsetMinutes = timeContext?.localOffsetMinutes,
         todayEpochDay = timeContext?.todayEpochDay,
         nowEpochMillis = timeContext?.nowEpochMillis,
-        timeFormat = timeContext?.timeFormat ?: RaftTimeFormat24Hour,
+        timeFormat = timeContext?.timeFormat,
         agentPanelTabOrder = agentPanelTabOrder,
         // Product mapping for now: create-agent follows server admin/settings permission
         // until the API exposes a dedicated capability.
@@ -627,7 +627,7 @@ internal fun buildHostMembersPayload(
 
 internal sealed interface SharedMembersUiState {
     data object Loading : SharedMembersUiState
-    data class Error(val code: String) : SharedMembersUiState
+    data class Error(val code: String, val traceId: String? = null) : SharedMembersUiState
     data class Content(
         val server: ServerSummary,
         val members: List<MemberProfile>,

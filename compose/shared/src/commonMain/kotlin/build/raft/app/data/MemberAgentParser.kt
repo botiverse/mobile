@@ -5,6 +5,10 @@ import build.raft.app.strictProjectionDiagnosticsLogger
 import build.raft.app.toRaftAvatarLabel
 import build.raft.app.model.isExternalAgent
 import build.raft.app.model.AgentActivitySubagentLineage
+import build.raft.app.model.AgentReadiness
+import build.raft.app.model.AgentReadinessFact
+import build.raft.app.model.AgentReadinessResource
+import build.raft.app.model.AgentReasoningSetting
 import build.raft.app.model.AgentStatus
 import build.raft.app.model.AgentProfile
 import build.raft.app.model.AvatarReference
@@ -27,6 +31,7 @@ import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.contentOrNull
 
 private val memberAgentJson = Json {
@@ -145,6 +150,13 @@ private data class WireAgent(
     val canRemoveFromChannel: Boolean? = null,
     val model: String? = null,
     val reasoningEffort: String? = null,
+    /**
+     * The hydrated `RuntimeConfig`, for viewers who may edit the agent (`withAgentProjection`;
+     * `stripEnvVars` leaves it out for everyone else). Only its version, runtime and level are read
+     * ([toAgentReasoningSetting]), leniently: a shape this client can't read leaves the row to its
+     * own fields instead of dropping it.
+     */
+    val runtimeConfig: JsonElement? = null,
     val executionMode: String? = null,
     val computerId: String? = null,
     val computerName: String? = null,
@@ -154,6 +166,7 @@ private data class WireAgent(
     val creatorId: String? = null,
     val machineId: String? = null,
     val activity: String? = null,
+    val activityKind: String? = null,
     val activityDetail: String? = null,
     val deletedAt: String? = null,
     /**
@@ -200,6 +213,12 @@ private data class WireAgent(
     val profileProjection: String? = null,
     /** `GET /agents` `lastRuntimeError` (slock #15273/#15282): carries `spawnFailureReason` for sign-in status. */
     val lastRuntimeError: WireAgentLastRuntimeError? = null,
+    /**
+     * `GET /agents` composed `readiness` (botiverse/slock `f43f9245` `routes/agents.ts`): kept raw
+     * as [JsonElement] and parsed defensively in [parseWireAgentReadiness] so additive fields or
+     * unexpected shapes never fail decoding the agent roster.
+     */
+    val readiness: JsonElement? = null,
 )
 
 @Serializable
@@ -465,6 +484,9 @@ private data class WireActivityEntry(
     val subagent: WireSubagentLineage? = null,
 )
 
+private val WireActivityEntry.resolvedActivity: String?
+    get() = activityKind?.takeIf { it.isNotBlank() } ?: activity
+
 /** slock `SubagentLineage.subagent` (packages/shared/src/index.ts); `reportChars` is not read. */
 @Serializable
 private data class WireSubagentLineage(
@@ -610,8 +632,9 @@ private fun WireActivityLogEntry.toDomain(rowKey: String): AgentActivityEntry? =
         // Web RawActivityLog renders nothing for a finished turn's summary: the Overview reads those.
         "turn_summary" -> null
         "status", "agent_status" -> {
+            val resolvedActivity = entry.resolvedActivity
             val display = resolveTrajectoryStatusDisplay(
-                activity = entry.activityKind ?: entry.activity,
+                activity = resolvedActivity,
                 detail = entry.detail.orEmpty(),
                 detailKind = entry.detailKind,
             )
@@ -620,7 +643,7 @@ private fun WireActivityLogEntry.toDomain(rowKey: String): AgentActivityEntry? =
                 type = "status",
                 title = display.first,
                 body = display.second.takeIf { it.isNotBlank() },
-                statusActivity = entry.activityKind ?: entry.activity,
+                statusActivity = resolvedActivity,
                 statusDetail = entry.detail,
                 statusDetailKind = entry.detailKind,
                 isSubagent = entry.subagent != null,
@@ -633,7 +656,7 @@ private fun WireActivityLogEntry.toDomain(rowKey: String): AgentActivityEntry? =
                 rowKey = rowKey,
                 type = entry.kind,
                 title = (entry.summary as? JsonPrimitive)?.takeIf { it.isString }?.content
-                    ?: entry.activity?.toAgentActivityTitle() ?: entry.kind.toAgentActivityTitle(),
+                    ?: entry.resolvedActivity?.toAgentActivityTitle() ?: entry.kind.toAgentActivityTitle(),
                 body = entry.detail ?: entry.message ?: entry.text ?: entry.toolName ?: entry.name,
                 details = listOfNotNull(
                     (entry.detail ?: entry.message ?: entry.text)?.let { "Detail" to it },
@@ -688,10 +711,13 @@ fun parseSharedCurrentAgentActivityEntries(
         .mapNotNull { it.toCurrentActivityEntry() }
 }.getOrNull()
 
+private val WireAgent.resolvedActivity: String?
+    get() = activityKind?.takeIf { it.isNotBlank() } ?: activity
+
 private fun WireAgent.toCurrentActivityEntry(): AgentActivityEntry? {
     return currentAgentActivityEntry(
         agentId = MemberId(id),
-        activity = activity,
+        activity = resolvedActivity,
         status = status,
         activityDetail = activityDetail
     )
@@ -767,7 +793,52 @@ private fun JsonElement?.toWorkspaceSnapshot(): SettingsComputerWorkspaceSnapsho
     }
 
 private fun JsonObject.stringValue(key: String): String? =
-    (this[key] as? JsonPrimitive)?.contentOrNull?.takeIf { it.isNotBlank() }
+    (this[key] as? JsonPrimitive)?.contentOrNull?.trim()?.takeIf { it.isNotEmpty() }
+
+private fun JsonObject.longValue(key: String): Long? {
+    val raw = (this[key] as? JsonPrimitive)?.takeIf { it !is JsonNull }?.contentOrNull?.trim() ?: return null
+    return raw.toLongOrNull() ?: raw.toDoubleOrNull()?.takeIf { it.isFinite() }?.toLong()
+}
+
+private fun parseWireAgentReadiness(element: JsonElement?): AgentReadiness? {
+    val obj = element as? JsonObject ?: return null
+    val state = obj.stringValue("state")?.lowercase() ?: return null
+    val primaryObj = obj["primary"] as? JsonObject
+    val primary =
+        primaryObj?.let { fact ->
+            val code = fact.stringValue("code") ?: return@let null
+            val resourceObj = fact["resource"] as? JsonObject
+            val resource =
+                resourceObj?.stringValue("kind")?.let { kind ->
+                    AgentReadinessResource(
+                        kind = kind,
+                        runtime = resourceObj.stringValue("runtime"),
+                        key = resourceObj.stringValue("key"),
+                        window = resourceObj.stringValue("window"),
+                        model = resourceObj.stringValue("model"),
+                        agentId = resourceObj.stringValue("agentId"),
+                    )
+                }
+            val paramsObj = fact["params"] as? JsonObject
+            val managedByDesktop = (paramsObj?.get("managedByDesktop") as? JsonPrimitive)?.booleanOrNull
+            AgentReadinessFact(
+                resource = resource,
+                code = code,
+                behaviour = fact.stringValue("behaviour")?.lowercase(),
+                since = fact.longValue("since"),
+                until = fact.longValue("until"),
+                managedByDesktop = managedByDesktop,
+            )
+        }
+    return AgentReadiness(
+        state = state,
+        primary = primary,
+        scope = obj.stringValue("scope")?.lowercase(),
+        actor = obj.stringValue("actor")?.lowercase(),
+        actorName = obj.stringValue("actorName"),
+        action = obj.stringValue("action")?.lowercase(),
+    )
+}
 
 @Serializable
 private data class WireAgentSkillsResponse(
@@ -839,7 +910,7 @@ fun parseSharedChannelMemberSnapshot(
             decoded.agents
                 // Only activity that resolves to a runtime status: the lifecycle word
                 // `active` (or an unknown value) writes no fact, so it must not count.
-                .filter { normalizedAgentRuntimeStatus(activity = it.activity, lifecycleStatus = null) != null }
+                .filter { normalizedAgentRuntimeStatus(activity = it.resolvedActivity, lifecycleStatus = null) != null }
                 .mapNotNull { it.id.trim().takeIf(String::isNotBlank) }
                 .toSet(),
     )
@@ -1007,7 +1078,7 @@ private fun WireChannelHuman.toMemberProfile(): MemberProfile {
 
 private fun WireAgent.toMemberProfile(): MemberProfile {
     val label = displayName?.takeIf { it.isNotBlank() } ?: name
-    val agentStatus = normalizedAgentRuntimeStatus(activity = activity, lifecycleStatus = status)
+    val agentStatus = normalizedAgentRuntimeStatus(activity = resolvedActivity, lifecycleStatus = status)
     return MemberProfile(
         id = MemberId(id),
         displayName = label,
@@ -1038,6 +1109,7 @@ private fun WireAgent.toMemberProfile(): MemberProfile {
         agentLifecycleStatus = status.trim().lowercase().takeIf { it.isNotBlank() },
         agentBlockedReason = blockedReason?.trim()?.takeIf { it.isNotBlank() },
         lastRuntimeErrorSpawnFailureReason = lastRuntimeError?.spawnFailureReason?.trim()?.takeIf { it.isNotBlank() },
+        agentReadiness = parseWireAgentReadiness(readiness),
         membershipStatus = if (deletedAt.isNullOrBlank()) null else "deleted",
         agentDeletedAt = deletedAt?.takeIf { it.isNotBlank() },
         lastSeenAt = lastSeenAt?.takeIf { it.isNotBlank() },
@@ -1054,6 +1126,7 @@ private fun WireAgent.toMemberProfile(): MemberProfile {
         profileProjection = profileProjection?.trim()?.takeIf { it.isNotBlank() },
         inMemberLists = inMemberLists,
         model = firstNonBlank(model, runtimeProfile?.current?.model),
+        agentReasoning = toAgentReasoningSetting(),
         permissionBadges = listOfNotNull(
             runtime?.takeIf { it.isNotBlank() },
             firstNonBlank(computerName, computerHostname, runtimeProfile?.current?.machineName)
@@ -1062,6 +1135,22 @@ private fun WireAgent.toMemberProfile(): MemberProfile {
                 ?.let { "computer-id:$it" },
         ),
     )
+}
+
+/**
+ * The agent's runtime and reasoning effort as its profile reads them ([hydrateAgentReasoningSetting]).
+ * A `runtimeConfig` that is not an object of readable fields counts as one of another version.
+ */
+private fun WireAgent.toAgentReasoningSetting(): AgentReasoningSetting {
+    val config =
+        when (val raw = runtimeConfig) {
+            null, JsonNull -> null
+            is JsonObject ->
+                runCatching { memberAgentJson.decodeFromJsonElement(AgentRuntimeConfigReasoningFields.serializer(), raw) }
+                    .getOrDefault(AgentRuntimeConfigReasoningFields())
+            else -> AgentRuntimeConfigReasoningFields()
+        }
+    return hydrateAgentReasoningSetting(config, runtime, reasoningEffort)
 }
 
 private fun WireMemberServer.toMemberServerRef(): MemberServerRef =
@@ -1096,7 +1185,7 @@ private fun MemberProfile.withSourceServer(
 
 private fun WireAgent.toAgentProfile(): AgentProfile {
     val label = displayName?.takeIf { it.isNotBlank() } ?: name
-    val agentStatus = normalizedAgentRuntimeStatus(activity = activity, lifecycleStatus = status)
+    val agentStatus = normalizedAgentRuntimeStatus(activity = resolvedActivity, lifecycleStatus = status)
     return AgentProfile(
         id = MemberId(id),
         userId = userId ?: id,

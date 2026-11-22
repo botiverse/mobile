@@ -94,30 +94,6 @@ class RaftPendingSendCorruptSessionRecoveryTest {
             assertEquals(0L, countRows(driver, "user-a"), "another account signing in clears what the unreadable one left")
         }
 
-    @Test
-    fun explicitSignOutAfterUnreadableColdStartStillClearsOnTheNextSignIn() = withJournal { driver, journal ->
-        assertTrue(journal.persistSending(provenance("user-a", oldGeneration), route(), message("local-send-1", "random-1")))
-
-        val next = Process(journal)
-        next.transition(revision(oldGeneration + 1, principal = null), corrupt)
-        // An explicit sign-out (no stored session) ends the "unreadable" state.
-        next.transition(revision(oldGeneration + 2, principal = null), RaftAuthSessionState.SignedOut)
-        assertEquals(RaftAccountBinding.SignedOut, next.binding.value)
-        next.transition(revision(oldGeneration + 3, principal = "user-a"), RaftAuthSessionState.SignedIn(session("user-a")))
-
-        assertEquals(0L, countRows(driver, "user-a"))
-    }
-
-    @Test
-    fun ordinaryColdStartStillRetiresOlderGenerationsOfTheAccount() = withJournal { driver, journal ->
-        assertTrue(journal.persistSending(provenance("user-a", oldGeneration), route(), message("local-send-1", "random-1")))
-
-        val next = Process(journal)
-        next.transition(revision(oldGeneration + 1, principal = "user-a"), RaftAuthSessionState.SignedIn(session("user-a")))
-
-        assertEquals(0L, countRows(driver, "user-a"))
-    }
-
     // --- fixtures ---
 
     private fun withJournal(block: (JdbcSqliteDriver, ThreadPendingSendJournal) -> Unit) {

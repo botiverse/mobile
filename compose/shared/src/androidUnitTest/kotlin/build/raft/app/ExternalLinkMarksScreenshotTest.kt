@@ -37,12 +37,7 @@ class ExternalLinkMarksScreenshotTest {
 
     @Test fun aboutDark() = capture("settings.about.dark", RaftAppAppearance.Dark) { AboutFixture() }
 
-    /** On a self-hosted server: Application also shows Connected server (its host) with Change. */
-    @Test fun aboutSelfHosted() = capture("settings.about.self-hosted", RaftAppAppearance.Light) { AboutFixture(selfHosted = true) }
-
     @Test fun browserErrorLight() = capture("browser.error", RaftAppAppearance.Light) { BrowserErrorFixture() }
-
-    @Test fun browserErrorDark() = capture("browser.error.dark", RaftAppAppearance.Dark) { BrowserErrorFixture() }
 
     private fun capture(name: String, appearance: RaftAppAppearance, content: @Composable () -> Unit) =
         RaftRobolectricScreenshot.capture(name, appearance, reportDir = "build/reports/home-screenshots", activities = activities) {

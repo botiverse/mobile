@@ -210,6 +210,19 @@ internal sealed interface SharedAgentDetailIntent {
         constructor(agentId: MemberId, code: String) : this(agentId, ScreenError(code))
     }
     data class SetDetailEmpty(val agentId: MemberId) : SharedAgentDetailIntent
+
+    /**
+     * The Apps tab's revoke took these grants, or the server no longer had them (web
+     * AgentAppAccessTab `confirmRevoke`): they leave the list at once, before the re-read.
+     */
+    data class RemoveAgentAppGrants(val agentId: MemberId, val grantIds: Set<String>) : SharedAgentDetailIntent
+
+    /** The Apps tab's own re-read after a revoke (`GET /integrations/agents/:agentId`): it replaces the list, only the list. */
+    data class SetAgentAppLogins(val agentId: MemberId, val appLogins: AgentAppLoginSnapshot) : SharedAgentDetailIntent
+
+    /** That re-read failed: the list keeps what it shows, with [error] over it. */
+    data class SetAgentAppLoginsRefreshFailed(val agentId: MemberId, val error: ScreenError) : SharedAgentDetailIntent
+
     data class ApplyAgentActivityUpdate(
         val event: MemberPresenceUpdated,
         val observedAtMillis: Long = defaultNowMillis()
@@ -432,6 +445,23 @@ internal class SharedAgentDetailStore(
                 } else {
                     current
                 }
+            is SharedAgentDetailIntent.RemoveAgentAppGrants ->
+                current.withAgentAppLogins(intent.agentId) { appLogins ->
+                    val left = appLogins.items.filterNot { it.id in intent.grantIds }
+                    appLogins.copy(
+                        items = left,
+                        loadState =
+                            if (left.isEmpty() && appLogins.loadState == AgentAppLoginLoadState.Content) {
+                                AgentAppLoginLoadState.Empty
+                            } else {
+                                appLogins.loadState
+                            }
+                    )
+                }
+            is SharedAgentDetailIntent.SetAgentAppLogins ->
+                current.withAgentAppLogins(intent.agentId) { intent.appLogins }
+            is SharedAgentDetailIntent.SetAgentAppLoginsRefreshFailed ->
+                current.withAgentAppLogins(intent.agentId) { it.copy(refreshError = intent.error) }
             is SharedAgentDetailIntent.ApplyAgentActivityUpdate ->
                 current.applyAgentActivityUpdate(intent.event, intent.observedAtMillis)
             SharedAgentDetailIntent.ResetAgentActivitySeq -> current.copy(
@@ -668,6 +698,19 @@ private fun SharedAgentDetailIntent.forwardsToRouteStores(): Boolean =
     this is SharedAgentDetailIntent.ApplyAgentActivityUpdate ||
         this == SharedAgentDetailIntent.ResetAgentActivitySeq
 
+/**
+ * [agentId]'s Apps list changed by [change], the rest of the detail as it is; nothing for another
+ * agent's (or no) detail, so a revoke that finishes after the page moved on writes nothing.
+ */
+private fun SharedAgentDetailState.withAgentAppLogins(
+    agentId: MemberId,
+    change: (AgentAppLoginSnapshot) -> AgentAppLoginSnapshot
+): SharedAgentDetailState {
+    val shown = detail?.takeIf { this.agentId == agentId && it.agentId == agentId } ?: return this
+    val next = change(shown.appLogins)
+    return if (next == shown.appLogins) this else copy(detail = shown.copy(appLogins = next))
+}
+
 private fun SharedAgentDetailState.acceptsDetailResult(
     owner: SharedAgentDetailOwner?,
     profileGeneration: Long
@@ -848,7 +891,9 @@ internal fun AgentDetailSnapshot.withRuntimeConfigProjection(config: RuntimeConf
                     is RuntimeModelConfig.Custom -> "custom"
                 },
             reasoning = config.reasoningEffort,
-            executionMode = if (config.mode is RuntimeModeConfig.Fast) "fast" else "default",
+            // The saved mode. `executionMode` (where the agent runs: byoc / cloud) is not part of the
+            // config and stays as read.
+            runtimeMode = if (config.mode is RuntimeModeConfig.Fast) "fast" else "default",
             envVars = config.envVars.orEmpty(),
             envVarNames = config.envVars.orEmpty().keys.sorted()
         )

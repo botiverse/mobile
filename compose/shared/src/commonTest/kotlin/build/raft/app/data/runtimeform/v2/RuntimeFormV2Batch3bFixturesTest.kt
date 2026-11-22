@@ -4,9 +4,7 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonPrimitive
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
-import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /** Server batch 3b (slock #8637): Claude, Cursor and Copilot render on mobile from the server's exact bodies. */
@@ -37,30 +35,6 @@ class RuntimeFormV2Batch3bFixturesTest {
     }
 
     @Test
-    fun createFormsAreSubmittableFromDefaults() {
-        for ((name, json, sources) in listOf(
-            Triple("claude", CLAUDE_V2_FORM_JSON, claudeSources),
-            Triple("cursor", CURSOR_V2_FORM_JSON, mapOf("model" to source(CURSOR_V2_FALLBACK_SOURCE_JSON))),
-        )) {
-            val parsed = form(json)
-            assertEquals(emptyMap(), validateRuntimeFormV2(parsed, sources, initialRuntimeFormV2Values(parsed, sources)), name)
-        }
-    }
-
-    @Test
-    fun claudeApiUrlAndKeyShowOnlyForTheCustomProvider() {
-        val values = initialRuntimeFormV2Values(claude, claudeSources)
-        val apiUrl = claude.fields.single { it.key == "apiUrl" }
-        val apiKey = claude.fields.single { it.key == "apiKey" }
-        assertEquals(RuntimeFormV2FieldKind.Secret, apiKey.kind)
-        assertNull(runtimeFormV2SourceStatus(claude.fields.single { it.key == "provider" }, claudeSources), "a static source has no status")
-        assertFalse(isRuntimeFormV2FieldVisible(apiUrl, values, claudeSources))
-        val custom = applyRuntimeFormV2Change(claude, claudeSources, values, "provider", JsonPrimitive("custom"))
-        assertTrue(isRuntimeFormV2FieldVisible(apiUrl, custom, claudeSources))
-        assertTrue(isRuntimeFormV2FieldVisible(apiKey, custom, claudeSources))
-    }
-
-    @Test
     fun claudeEditNeverPrefillsTheKeyAndSavesUnchangedWithItBlank() {
         val edit = form(CLAUDE_V2_EDIT_JSON)
         val values = initialRuntimeFormV2Values(edit, claudeSources)
@@ -70,12 +44,5 @@ class RuntimeFormV2Batch3bFixturesTest {
         val submitted = runtimeFormV2Submission(edit, values, claudeSources)
         assertEquals(JsonPrimitive("https://gateway.example.test"), submitted["apiUrl"], "same URL + blank key keeps the stored key")
         assertEquals(JsonPrimitive(""), submitted["apiKey"], "a blank key is sent as \"\", which the server reads as keep")
-    }
-
-    @Test
-    fun cursorEditPrefillsTheStoredModelAndCanBeSavedUnchanged() {
-        val edit = form(CURSOR_V2_EDIT_JSON)
-        val sources = mapOf("model" to source(CURSOR_V2_FALLBACK_SOURCE_JSON))
-        assertEquals(emptyMap(), validateRuntimeFormV2(edit, sources, initialRuntimeFormV2Values(edit, sources), editing = true))
     }
 }

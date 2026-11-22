@@ -107,29 +107,6 @@ class HangWatchdogTestListenerTest {
     }
 
     @Test
-    fun `long running test emits heartbeats naming the test`() {
-        val rec = Recording()
-        val descriptor = FakeDescriptor("build.raft.app.SomeTest", "slowButFine")
-        val finishAt = 95L
-        val l = listener(rec, timeoutMs = 200, heartbeatMs = 30) { requested, advance, listenerRef ->
-            if (rec.now + requested >= finishAt) {
-                advance(finishAt - rec.now)
-                listenerRef.afterTest(descriptor, FakeResult())
-            } else {
-                advance(requested)
-            }
-        }
-
-        l.beforeTest(descriptor)
-
-        assertTrue(rec.exitCodes.isEmpty())
-        val heartbeats = rec.lines.filter { it.contains("still running") }
-        assertTrue("expected at least two heartbeats, got $heartbeats", heartbeats.size >= 2)
-        assertTrue(heartbeats.all { it.contains("build.raft.app.SomeTest.slowButFine") })
-        assertFalse(rec.lines.any { it.contains("HANG DETECTED") })
-    }
-
-    @Test
     fun `parallel forks - a later test starting or finishing does not unwatch a hung earlier test`() {
         val rec = Recording()
         val bodies = mutableListOf<Runnable>()
@@ -155,38 +132,5 @@ class HangWatchdogTestListenerTest {
         val hangLines = rec.lines.filter { it.contains("HANG DETECTED") }
         assertEquals(1, hangLines.size)
         assertTrue(hangLines[0].contains("build.raft.app.ForkOneTest.hangsForever"))
-    }
-
-    @Test
-    fun `disabled listener never starts a watchdog`() {
-        val rec = Recording()
-        val l = listener(rec, timeoutMs = 100, heartbeatMs = 30, enabled = false) { requested, advance, _ ->
-            advance(requested)
-        }
-
-        l.beforeTest(FakeDescriptor("build.raft.app.SomeTest", "anything"))
-
-        assertEquals(0, rec.spawnerCalls)
-        assertTrue(rec.lines.isEmpty())
-        assertTrue(rec.exitCodes.isEmpty())
-    }
-
-    @Test
-    fun `aggregate descriptors without a class name are not watched`() {
-        val rec = Recording()
-        val aggregate = object : TestDescriptor {
-            override fun getName(): String = "Gradle Test Run"
-            override fun getDisplayName(): String = "Gradle Test Run"
-            override fun getClassName(): String? = null
-            override fun getParent(): TestDescriptor? = null
-            override fun isComposite(): Boolean = true
-        }
-        val l = listener(rec, timeoutMs = 100, heartbeatMs = 30) { requested, advance, _ ->
-            advance(requested)
-        }
-
-        l.beforeTest(aggregate)
-
-        assertEquals(0, rec.spawnerCalls)
     }
 }

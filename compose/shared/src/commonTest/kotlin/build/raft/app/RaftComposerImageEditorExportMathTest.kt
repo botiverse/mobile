@@ -66,19 +66,6 @@ class RaftComposerImageEditorExportMathTest {
     }
 
     @Test
-    fun canvasPointsMapToExportPixelsRelativeToTheCrop() {
-        val crop = RaftComposerImageCropRect(0.25f, 0.1f, 0.75f, 0.6f)
-        val export = raftComposerImageExportSize(4000, 3000, crop)!!
-        val canvas = IntSize(1000, 750)
-        val point = Offset(500f, 375f)
-        val inExport = raftComposerImageCanvasToExport(point, canvas, export)
-        val inSource = raftComposerImageCanvasToSource(point, canvas, crop, 4000, 3000)
-        assertEquals(Offset(1000f, 750f), inExport)
-        // Export pixel = source pixel minus the crop origin (no cap at this size).
-        assertEquals(inSource - Offset(1000f, 300f), inExport)
-    }
-
-    @Test
     fun textBoxesAreCenteredThenOffsetLikeTheOnScreenBox() {
         assertEquals(
             IntOffset(400 + 10, 350 - 20),

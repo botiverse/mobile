@@ -137,20 +137,12 @@ class ThreadHeaderParentLinkUiTest {
             runOnIdle { assertEquals(1, opens) }
         }
 
-    @Test
-    fun aThreadWithNoRepliesSaysSoOnceKnown() =
-        runRobolectricComposeUiTest {
-            showHeader(replyCount = 0, onOpenInChannel = {})
-            onNodeWithText(" · 0 replies").assertExists()
-        }
-
     /**
-     * #proj-mobile:#162 (artin): a channel's Members button on the iOS bar showed its member count
-     * as the system's red badge, which reads as 28 unread. It carries the count as the web header
-     * does, a plain number beside the glyph ("count"), and no badge.
+     * #proj-mobile:#281: the conversation head on the iOS native bar follows web Task v2 order
+     * (Search, Tasks, Files, Settings — no Members button), folding from the last into ⋯.
      */
     @Test
-    fun theNativeBarMembersButtonCarriesThePlainMemberCountNotARedBadge() =
+    fun theNativeBarChannelActionsFollowWebTaskV2OrderWithoutMembers() =
         runRobolectricComposeUiTest {
             val bridge = RaftNativeNavBarBridge()
             var actions: String? = null
@@ -196,47 +188,8 @@ class ThreadHeaderParentLinkUiTest {
                     ),
             )
             runOnIdle {
-                val members =
-                    Json.parseToJsonElement(actions!!).jsonArray.map { it.jsonObject }.single { it["id"] == JsonPrimitive("members") }
-                assertEquals(JsonPrimitive("28"), members["count"], members.toString())
-                assertEquals(null, members["badge"], "the member count is not an unread badge: $members")
-            }
-        }
-
-    @Test
-    fun theNativeBarSubtitleCarriesTheCountAndOpensTheParentMessage() =
-        runRobolectricComposeUiTest {
-            val bridge = RaftNativeNavBarBridge()
-            var publishedSubtitle: String? = null
-            var extras: String? = null
-            bridge.attachListener(
-                object : RaftNativeNavBarListener {
-                    override fun onNativeNavBarChanged(
-                        title: String,
-                        subtitle: String?,
-                        actionsJson: String,
-                        extrasJson: String,
-                        titleMenuJson: String,
-                        hasBack: Boolean,
-                        nested: Boolean,
-                        titleImage: RaftNativeTabBarAvatar?,
-                    ) {
-                        publishedSubtitle = subtitle
-                        extras = extrasJson
-                    }
-
-                    override fun onNativeNavBarCleared() = Unit
-
-                    override fun onNativeNavBarScroll(offset: Double, contentHeight: Double, dragging: Boolean) = Unit
-                }
-            )
-            var opens = 0
-            showHeader(replyCount = 12, onOpenInChannel = { opens++ }, nativeBar = bridge)
-            runOnIdle {
-                assertEquals("@Lagoon · 12 replies", publishedSubtitle)
-                assertEquals(JsonPrimitive(true), Json.parseToJsonElement(extras!!).jsonObject["subtitleTap"])
-                assertEquals(true, bridge.actionTapped(RaftNativeNavBarSubtitleId))
-                assertEquals(1, opens)
+                val ids = Json.parseToJsonElement(actions!!).jsonArray.map { it.jsonObject["id"] }
+                assertEquals(listOf(JsonPrimitive("thread-search"), JsonPrimitive("thread-settings")), ids, actions!!)
             }
         }
 }

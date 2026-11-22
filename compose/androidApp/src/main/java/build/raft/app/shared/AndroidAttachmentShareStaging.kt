@@ -150,3 +150,66 @@ internal fun androidAttachmentShareSource(
 
 internal fun androidAttachmentShareRoot(context: Context): File =
     File(context.cacheDir, ANDROID_ATTACHMENT_SHARE_DIR_NAME)
+
+/**
+ * Preserves the originating source's durability ([AndroidAttachmentOpenSourceKind.PublicDownload] /
+ * `durableCache = true`) when an already-downloaded file is staged into a transient share directory
+ * so sharing a downloaded file never downgrades the UI back to `NotDownloaded`.
+ */
+internal fun preserveAndroidAttachmentOriginResult(
+    result: AndroidAttachmentOpenResult,
+    originSource: AndroidAttachmentContentUriSource
+): AndroidAttachmentOpenResult =
+    when (result.status) {
+        AndroidAttachmentOpenStatus.Opened ->
+            AndroidAttachmentOpenResult.opened(
+                source = originSource,
+                action = checkNotNull(result.action)
+            )
+        AndroidAttachmentOpenStatus.NoApp ->
+            AndroidAttachmentOpenResult.noApp(originSource.durableCache)
+        AndroidAttachmentOpenStatus.Failed ->
+            AndroidAttachmentOpenResult.failed(originSource.durableCache)
+        else -> result
+    }
+
+/**
+ * Tracks per-operation cancellation of `openAttachment` calls (preview dismissed or gallery swiped
+ * while download/staging is in flight) so a stale chooser is never launched over a newer screen.
+ */
+internal class AndroidAttachmentOpenCancellationTracker(
+    private val maxCancelledIds: Int = 64
+) {
+    private val lock = Any()
+    private val cancelledIds = LinkedHashSet<String>()
+
+    fun markCancelled(downloadId: String) {
+        val trimmed = downloadId.trim()
+        if (trimmed.isEmpty()) return
+        synchronized(lock) {
+            cancelledIds.add(trimmed)
+            while (cancelledIds.size > maxCancelledIds) {
+                val oldest = cancelledIds.iterator().next()
+                cancelledIds.remove(oldest)
+            }
+        }
+    }
+
+    fun isCancelled(downloadId: String?): Boolean {
+        val trimmed = downloadId?.trim().orEmpty()
+        if (trimmed.isEmpty()) return false
+        synchronized(lock) {
+            return trimmed in cancelledIds
+        }
+    }
+
+    fun clear(downloadId: String?) {
+        val trimmed = downloadId?.trim().orEmpty()
+        if (trimmed.isEmpty()) return
+        synchronized(lock) {
+            cancelledIds.remove(trimmed)
+        }
+    }
+}
+
+internal val ProcessAndroidAttachmentOpenCancellation = AndroidAttachmentOpenCancellationTracker()

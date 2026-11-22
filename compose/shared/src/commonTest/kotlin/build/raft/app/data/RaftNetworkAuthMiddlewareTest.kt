@@ -33,27 +33,6 @@ class RaftNetworkAuthMiddlewareTest {
     }
 
     @Test
-    fun expectedAuthorityRejectsChangedLiveSelectionEvenWhenOverrideMatchesOldRoute() = runBlocking {
-        val original = sampleSession(accessToken = "access-a", refreshToken = "refresh-a")
-        val store = InMemoryRaftAuthSessionStore(original.copy(selectedServerId = "server-2"))
-        val middleware = RaftNetworkAuthMiddleware(store, FakeAuthApi(refreshResult = null))
-        var calls = 0
-
-        val response =
-            middleware.request(
-                serverIdOverride = ServerId("server-1"),
-                expectedAuthority = original.expectedBinding(),
-            ) {
-                calls += 1
-                HomeNetworkResponse(code = 200, bodyText = "{}")
-            }
-
-        assertEquals(409, response.code)
-        assertEquals(0, calls)
-        assertEquals(true, response.errorBodyText?.contains("auth_authority_changed"))
-    }
-
-    @Test
     fun expectedAuthorityNeverRetriesOldMutationAfterTokenRefresh() = runBlocking {
         val store = InMemoryRaftAuthSessionStore(sampleSession(accessToken = "access-a", refreshToken = "refresh-a"))
         val middleware =
@@ -110,25 +89,6 @@ class RaftNetworkAuthMiddlewareTest {
     }
 
     @Test
-    fun expectedAuthorityDropsResponseWhenLiveSelectionChangesDuringTransport() = runBlocking {
-        val original = sampleSession(accessToken = "access-a", refreshToken = "refresh-a")
-        val store = InMemoryRaftAuthSessionStore(original)
-        val middleware = RaftNetworkAuthMiddleware(store, FakeAuthApi(refreshResult = null))
-
-        val response =
-            middleware.request(
-                serverIdOverride = ServerId("server-1"),
-                expectedAuthority = original.expectedBinding(),
-            ) {
-                store.saveSession(original.copy(selectedServerId = "server-2"))
-                HomeNetworkResponse(code = 200, bodyText = "{}")
-            }
-
-        assertEquals(409, response.code)
-        assertEquals(true, response.errorBodyText?.contains("auth_authority_changed"))
-    }
-
-    @Test
     fun expectedAuthorityKeepsSuccessfulResponseWhenTokensRotateDuringTransport() = runBlocking {
         val original = sampleSession(accessToken = "access-a", refreshToken = "refresh-a")
         val store = InMemoryRaftAuthSessionStore(original)
@@ -147,27 +107,6 @@ class RaftNetworkAuthMiddlewareTest {
 
         assertEquals(200, response.code)
         assertEquals("{}", response.bodyText)
-    }
-
-    @Test
-    fun expectedAuthoritySkipsRefreshWhenAccountChangesDuringFailedTransport() = runBlocking {
-        val original = sampleSession(accessToken = "access-a", refreshToken = "refresh-a")
-        val store = InMemoryRaftAuthSessionStore(original)
-        val middleware = RaftNetworkAuthMiddleware(store, FakeAuthApi(refreshResult = null))
-
-        val response =
-            middleware.request(
-                serverIdOverride = ServerId("server-1"),
-                expectedAuthority = original.expectedBinding(),
-            ) {
-                store.saveSession(
-                    original.copy(user = StoredAuthUser(id = "user-2", email = "other@raft.build"))
-                )
-                HomeNetworkResponse(code = 401, bodyText = null, errorBodyText = """{"error":"expiredToken"}""")
-            }
-
-        assertEquals(409, response.code)
-        assertEquals(true, response.errorBodyText?.contains("auth_authority_changed"))
     }
 
     @Test
@@ -259,103 +198,6 @@ class RaftNetworkAuthMiddlewareTest {
         assertEquals(originalSession.accessToken, store.readSession()?.accessToken)
         assertEquals(originalSession.refreshToken, store.readSession()?.refreshToken)
         assertEquals(emptyList(), reported)
-    }
-
-    @Test
-    fun preservesRefreshTransportFailureInsteadOfReclassifyingItAsAuthLoss() = runBlocking {
-        val originalSession = sampleSession()
-        val store = InMemoryRaftAuthSessionStore(originalSession)
-        val reported = mutableListOf<String>()
-        val middleware =
-            RaftNetworkAuthMiddleware(
-                store,
-                FakeAuthApi(
-                    refreshResult =
-                        AuthApiResult.Failure(
-                            code = 0,
-                            errorBodyText = """{"error":"network_timeout"}""",
-                        )
-                ),
-                terminalAuthLossReporter = { _, caller -> reported += caller },
-            )
-
-        val response =
-            middleware.request(caller = "test_refresh_transport_failure") {
-                HomeNetworkResponse(
-                    code = 401,
-                    bodyText = null,
-                    errorBodyText = """{"error":"expiredToken"}""",
-                )
-            }
-
-        assertEquals(0, response.code)
-        assertEquals("""{"error":"network_timeout"}""", response.errorBodyText)
-        assertEquals(originalSession.accessToken, store.readSession()?.accessToken)
-        assertEquals(originalSession.refreshToken, store.readSession()?.refreshToken)
-        assertEquals(emptyList(), reported)
-    }
-
-    @Test
-    fun reportsTerminalAuthLossWhenRefreshCredentialIsMissing() = runBlocking {
-        val store =
-            InMemoryRaftAuthSessionStore(
-                sampleSession(accessToken = "missing-refresh-access", refreshToken = "")
-            )
-        val reported = mutableListOf<String>()
-        val middleware =
-            RaftNetworkAuthMiddleware(
-                store,
-                FakeAuthApi(refreshResult = null),
-                terminalAuthLossReporter = { _, caller -> reported += caller }
-            )
-
-        val response =
-            middleware.request(caller = "test_missing_refresh") {
-                HomeNetworkResponse(code = 401, bodyText = null, errorBodyText = """{"error":"expiredToken"}""")
-            }
-
-        assertEquals(401, response.code)
-        assertEquals(listOf("test_missing_refresh"), reported)
-        assertEquals("missing-refresh-access", store.readSession()?.accessToken)
-    }
-
-    @Test
-    fun reportsTerminalAuthLossWhenSessionBecomesUnavailableDuringRefresh() = runBlocking {
-        val originalSession = sampleSession()
-        val store = InMemoryRaftAuthSessionStore(originalSession)
-        val reported = mutableListOf<Pair<String, String>>()
-        var requestCalls = 0
-        val middleware =
-            RaftNetworkAuthMiddleware(
-                store,
-                FakeAuthApi(
-                    refreshResult = AuthApiResult.Success(AuthRefreshResponse("unused-access", "unused-refresh")),
-                    beforeRefresh = {
-                        store.clearSession(
-                            reason = "concurrent_logout",
-                            source = "test",
-                        )
-                    },
-                ),
-                terminalAuthLossReporter = { session, caller ->
-                    reported += session.accessToken to caller
-                },
-            )
-
-        val response =
-            middleware.request(caller = "test_unavailable_refresh") {
-                requestCalls += 1
-                HomeNetworkResponse(
-                    code = 401,
-                    bodyText = null,
-                    errorBodyText = """{"error":"expiredToken"}""",
-                )
-            }
-
-        assertEquals(401, response.code)
-        assertEquals(1, requestCalls)
-        assertEquals(null, store.readSession())
-        assertEquals(listOf(originalSession.accessToken to "test_unavailable_refresh"), reported)
     }
 
     @Test

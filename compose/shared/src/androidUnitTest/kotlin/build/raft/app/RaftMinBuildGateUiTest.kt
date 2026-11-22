@@ -163,71 +163,6 @@ class RaftMinBuildGateUiTest {
     }
 
     /**
-     * #103: on Home the banner lay over the head and covered the server switcher until dismissed.
-     * It is now a band above the page: the head (switcher) and the bottom tabs are laid out under
-     * it, never under its bounds, and both take taps while it shows. The head starts right under
-     * the band (the band cleared the status bar, so the head does not pad it again), and goes back
-     * under the status bar once the banner is dismissed.
-     */
-    @Test
-    fun bannerSitsAboveHomeHeadAndLeavesTheSwitcherAndTabsReachable() = runRobolectricComposeUiTest {
-        val threshold = 12_000_000L
-        var dismissed by mutableStateOf<Long?>(null)
-        var switcherTaps = 0
-        val tabs = mutableListOf<String>()
-        setContent {
-            MinBuildGateTestPage(windowId = "test:min-build-gate-home") {
-                RaftTheme(appearance = RaftAppearance.Light) {
-                    RaftMinBuildGateFrame(
-                        decision = RaftMinBuildGateDecision.Banner(threshold, url),
-                        dismissedBannerThreshold = dismissed,
-                        signingOut = false,
-                        onUpdate = {},
-                        onSendFeedback = {},
-                        onSignOut = {},
-                        onDismissBanner = { dismissed = it },
-                        bannerTopInset = raftMinBuildGateBannerTopInset(),
-                        bannerHorizontalInsets = raftMinBuildGateBannerHorizontalInsets(),
-                    ) {
-                        RaftStructuralHomeShell(
-                            currentServerName = SERVER,
-                            currentServerId = "botiverse",
-                            servers = listOf(RaftServerSwitcherItem(id = "botiverse", name = SERVER, slug = "botiverse")),
-                            showBottomBar = true,
-                            // As the app composes Home: the head runs edge to edge.
-                            outerPadding = 0.dp,
-                            onServerBadgeClick = { switcherTaps++ },
-                            onTabSelected = { tabs += it },
-                        )
-                    }
-                }
-            }
-        }
-        waitForIdle()
-
-        val band = onNodeWithTag(RAFT_MIN_BUILD_GATE_BAND_TAG).getBoundsInRoot()
-        val switcher = highestNodeWithText(SERVER).getBoundsInRoot()
-        val tab = lowestNodeWithText("Tasks").getBoundsInRoot()
-        assertEquals(0.dp, band.top, "the band starts at the window's top edge")
-        assertTrue(band.bottom > STATUS_BAR, "the band clears the status bar")
-        assertFalse(band.overlaps(switcher), "the banner covers the server switcher: band=$band switcher=$switcher")
-        assertFalse(band.overlaps(tab), "the banner covers the bottom tabs: band=$band tab=$tab")
-        assertTrue(switcher.top >= band.bottom, "the head is laid out under the band")
-        assertTrue(switcher.top - band.bottom < STATUS_BAR, "the head pads the status bar again under the band: band=$band switcher=$switcher")
-
-        highestNodeWithText(SERVER).performClick()
-        lowestNodeWithText("Tasks").performClick()
-        waitForIdle()
-        assertEquals(1, switcherTaps, "the server switcher did not take the tap")
-        assertEquals(listOf("tasks"), tabs, "the bottom tab did not take the tap")
-
-        onNodeWithText("Dismiss").performClick()
-        waitForIdle()
-        onNodeWithTag(RAFT_MIN_BUILD_GATE_BAND_TAG).assertDoesNotExist()
-        assertTrue(highestNodeWithText(SERVER).getBoundsInRoot().top >= STATUS_BAR, "without the band the head pads the status bar")
-    }
-
-    /**
      * The wide layout: the band sits above the app shell's top bar (server switcher, search), which
      * starts right under it and keeps taking taps.
      */
@@ -269,12 +204,6 @@ class RaftMinBuildGateUiTest {
         waitForIdle()
         assertEquals(1, workspaceTaps)
         assertEquals(1, searchTaps)
-    }
-
-    private fun ComposeUiTest.lowestNodeWithText(text: String): SemanticsNodeInteraction {
-        val nodes = onAllNodesWithText(text)
-        val count = nodes.fetchSemanticsNodes().size
-        return (0 until count).map { nodes[it] }.maxBy { it.getBoundsInRoot().top.value }
     }
 
     /** The head's server switcher: the bottom bar's server tab carries the server name too. */

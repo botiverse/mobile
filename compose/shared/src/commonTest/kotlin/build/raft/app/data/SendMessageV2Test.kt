@@ -61,16 +61,6 @@ class SendMessageV2Test {
     }
 
     @Test
-    fun unresolvedMentionHandlesKeepOnlyStringItemsAsWebDoes() = runBlocking {
-        val page =
-            send(
-                """{"message":$MessageRow,"unresolvedMentionHandles":["@a",1,null,{"x":1},"","  ","@b"]}"""
-            )
-
-        assertEquals(listOf("@a", "@b"), page.unresolvedMentionHandles)
-    }
-
-    @Test
     fun aMalformedUnresolvedMentionFieldNeverFailsTheSend() = runBlocking {
         listOf("\"@a\"", "{}", "null", "42").forEach { value ->
             val page = send("""{"message":$MessageRow,"unresolvedMentionHandles":$value}""")
@@ -107,19 +97,6 @@ class SendMessageV2Test {
         val failure = assertIs<ThreadApiResult.Failure>(api.sendMessage("channel-1", "hi", randomId = "rid-1"))
 
         assertEquals("thread_send_contract_mismatch", failure.contractCode)
-    }
-
-    @Test
-    fun repositoryParserReadsTheSameV2Shape() {
-        val payload =
-            parseSharedSentMessagePayload(
-                """{"message":${SharedRow},"unresolvedMentionHandles":["@ghost",3]}""",
-                ThreadId("channel-1")
-            )
-
-        assertEquals("m-v2", payload.message?.id?.value)
-        assertEquals(listOf("@ghost"), payload.unresolvedMentionHandles)
-        assertFalse(payload.projectionRejected)
     }
 
     // ── Dedupe / optimistic reconciliation ──

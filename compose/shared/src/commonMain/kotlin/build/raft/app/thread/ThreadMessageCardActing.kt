@@ -187,6 +187,7 @@ internal fun rememberThreadMessageCardActingHost(messageId: String?, card: RaftM
                 reread = { _ -> host.store.readMessageCard(host.viewerKey, host.serverId, messageId, view, locale, force = true) },
                 toast = host.toast,
                 toastWithIntent = host.toastWithIntent,
+                errorToast = host.errorToast,
                 status = { operationId -> host.store.operationStatus(host.serverId, operationId) },
                 operationHints = RaftLinkCardOperationHints.forServer(host.serverId),
                 held = { _ -> host.store.heldMessageCard(host.viewerKey, messageId)?.let { messageCardPressCard(currentCard, it) } },
@@ -219,6 +220,8 @@ internal fun RaftMessageCardActingButton(
                 // No way to press it here (no conversation): drawn disabled, never a button that does nothing.
                 enabled = pressable?.enabled ?: false,
                 loading = pressable?.loading ?: false,
+                // "Working…" while it runs (web MessageCardActingButtons `loadingLabel`).
+                loadingLabel = pressable?.loadingLabel ?: RaftTheme.strings.loading,
             )
         }
         is RaftMessageCardActingState.AskConsent ->

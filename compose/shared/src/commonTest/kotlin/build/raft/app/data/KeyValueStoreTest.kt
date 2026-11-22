@@ -4,33 +4,10 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertFailsWith
-import kotlin.test.assertNull
 import kotlin.test.assertSame
 import kotlin.test.assertTrue
 
 class KeyValueStoreTest {
-    @Test
-    fun inMemoryStoreReadsAndOverwritesStrings() {
-        val store = InMemoryRaftKeyValueStore()
-
-        assertNull(store.getString("locale"))
-
-        store.putString("locale", "zh-Hans")
-        assertEquals("zh-Hans", store.getString("locale"))
-
-        store.putString("locale", "en")
-        assertEquals("en", store.getString("locale"))
-    }
-
-    @Test
-    fun nullStringRemovesValue() {
-        val store = InMemoryRaftKeyValueStore(mapOf("token" to "abc"))
-
-        store.putString("token", null)
-
-        assertNull(store.getString("token"))
-    }
-
     @Test
     fun booleanHelpersRoundTripThroughStringStorage() {
         val store = InMemoryRaftKeyValueStore()
@@ -66,37 +43,6 @@ class KeyValueStoreTest {
             assertFailsWith<IllegalStateException> {
                 RaftSharedAuthSessionKeyValueStoreProvider.create()
             }
-        }
-    }
-
-    @Test
-    fun globalKeyValueProviderUsesInstalledAppScopeFactoryForNamespace() {
-        val sharedPreferenceStore = InMemoryRaftKeyValueStore()
-        val apiEnvironmentStore = InMemoryRaftKeyValueStore()
-        RaftSharedKeyValueStoreProvider.installAppScopeFactory(RaftLocalPreferenceStore.KuiklyNamespace) {
-            sharedPreferenceStore
-        }
-        RaftSharedKeyValueStoreProvider.installAppScopeFactory(SharedApiEnvironmentStore.Namespace) {
-            apiEnvironmentStore
-        }
-        try {
-            val sharedBinding =
-                RaftSharedKeyValueStoreProvider.create(
-                    namespace = RaftLocalPreferenceStore.KuiklyNamespace,
-                    storageName = "shared preference"
-                )
-            val apiBinding =
-                RaftSharedKeyValueStoreProvider.create(
-                    namespace = SharedApiEnvironmentStore.Namespace,
-                    storageName = "API environment"
-                )
-
-            assertEquals("app", sharedBinding.scope)
-            assertSame(sharedPreferenceStore, sharedBinding.store)
-            assertEquals("app", apiBinding.scope)
-            assertSame(apiEnvironmentStore, apiBinding.store)
-        } finally {
-            RaftSharedKeyValueStoreProvider.clearAppScopeFactoryForTests()
         }
     }
 

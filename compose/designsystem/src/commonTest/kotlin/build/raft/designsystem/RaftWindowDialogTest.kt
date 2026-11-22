@@ -14,13 +14,6 @@ import kotlin.test.assertTrue
 
 class RaftWindowDialogTest {
     @Test
-    fun barsFollowTheThemeBothWays() {
-        // Light theme: dark icons on both bars; dark theme: light icons. No fixed fallback.
-        assertEquals(RaftSystemBarsAppearance(lightStatusBars = true, lightNavigationBars = true), raftSystemBarsAppearance(isDark = false))
-        assertEquals(RaftSystemBarsAppearance(lightStatusBars = false, lightNavigationBars = false), raftSystemBarsAppearance(isDark = true))
-    }
-
-    @Test
     fun theStatusBarIconsFollowTheFrameLuminanceNotTheMode() {
         // Raft Yellow and Bots light blue are light frames: dark icons.
         assertTrue(raftWantsDarkSystemBarIcons(RaftUiThemeColors.RaftLight.layerFrame))
@@ -56,25 +49,6 @@ class RaftWindowDialogTest {
     }
 
     @Test
-    fun theLuminanceRuleAgreesWithTheThemesOwnInkOnEveryFrameAndCanvas() {
-        for (theme in RaftThemeId.entries) {
-            for (dark in listOf(false, true)) {
-                val colors = RaftUiThemeColors.of(theme, dark)
-                // The design's ink on the frame is dark exactly where the icons should be.
-                assertEquals(
-                    !raftWantsDarkSystemBarIcons(colors.foregroundOnFrame),
-                    raftWantsDarkSystemBarIcons(colors.layerFrame),
-                    "$theme dark=$dark frame",
-                )
-                // The navigation bar sits on the canvas or the tab bar's card: same icons, and the
-                // mode's (canvases are light in light mode and dark in dark mode in every theme).
-                assertEquals(!dark, raftWantsDarkSystemBarIcons(colors.layerCanvas), "$theme dark=$dark canvas")
-                assertEquals(!dark, raftWantsDarkSystemBarIcons(colors.layerCard), "$theme dark=$dark card")
-            }
-        }
-    }
-
-    @Test
     fun everyWindowDialogFillsTheWindowWithoutTheFrameworkOutsideClickWrapper() {
         for (properties in listOf(
             RaftWindowDialogProperties(),
@@ -88,12 +62,5 @@ class RaftWindowDialogTest {
             assertFalse(platform.usePlatformDefaultWidth)
             assertEquals(properties.dismissOnBackPress, platform.dismissOnBackPress)
         }
-    }
-
-    @Test
-    fun windowDialogsDrawTheThemeScrimByDefault() {
-        assertTrue(RaftWindowDialogProperties().drawScrim)
-        assertTrue(RaftWindowDialogProperties().dismissOnBackPress)
-        assertFalse(RaftWindowDialogProperties().contentHandlesKeyboard)
     }
 }

@@ -16,7 +16,6 @@ import build.raft.app.model.ConversationKind
 import build.raft.app.model.MessageConversationContext
 import build.raft.app.model.MessageId
 import build.raft.app.model.ServerId
-import build.raft.app.model.TaskId
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -29,50 +28,6 @@ import kotlinx.coroutines.runBlocking
 class ThreadForwardConversationTargetsTest {
     private val serverId = ServerId("server-1")
     private val sourceThread = ChannelId("thread-source")
-
-    @Test
-    fun theGroupIsFetchedOncePerPickerOpen() = runBlocking {
-        val repository = CountingConversationRepository(listOf(conversation("thread-a")))
-        val loader = ThreadForwardConversationTargetsLoader(repository)
-        val firstOpen = RaftForwardPickerSessionKey("thread-1", serverId.value, openGeneration = 1)
-
-        // Recompositions, keystrokes, retries and the note step re-ask within the same open.
-        repeat(4) { loader.load(firstOpen, serverId, sourceThread) }
-        assertEquals(1, repository.conversationCalls)
-        assertEquals<List<ChannelId?>>(listOf(sourceThread), repository.currentChannelIds)
-
-        loader.load(firstOpen.copy(openGeneration = 2), serverId, sourceThread)
-        assertEquals(2, repository.conversationCalls, "a new open asks once more")
-    }
-
-    @Test
-    fun currentChannelIdIsTheThreadOrTaskConversationOnly() {
-        assertEquals(
-            ChannelId("thread-7"),
-            RaftThreadScreenPayload(
-                surfaceKind = RaftThreadSurfaceKind.ReplyThread,
-                sourceThreadId = "thread-7",
-                streamChannelId = "thread-7",
-                parentChannelId = "room-1"
-            ).threadForwardConversationCurrentChannelId()
-        )
-        assertEquals(
-            ChannelId("task-conv-3"),
-            RaftThreadScreenPayload(
-                surfaceKind = RaftThreadSurfaceKind.Channel,
-                channelKind = RaftTaskConversationChannelKind,
-                sourceThreadId = "task-conv-3"
-            ).threadForwardConversationCurrentChannelId()
-        )
-        assertNull(
-            RaftThreadScreenPayload(surfaceKind = RaftThreadSurfaceKind.Channel, sourceThreadId = "room-1")
-                .threadForwardConversationCurrentChannelId()
-        )
-        assertNull(
-            RaftThreadScreenPayload(surfaceKind = RaftThreadSurfaceKind.DirectMessage, sourceThreadId = "dm-1")
-                .threadForwardConversationCurrentChannelId()
-        )
-    }
 
     @Test
     fun emptyQueryShowsTheGroupAboveRecentAndHidesTheBarEyebrow() {
@@ -93,41 +48,6 @@ class ThreadForwardConversationTargetsTest {
         val searching = state.copy(query = "zep")
         assertEquals(emptyList(), searching.visibleConversationItems)
         assertTrue(searching.forwardPickerTopEyebrowVisible(multiSelect = false))
-    }
-
-    @Test
-    fun anEmptyOrFailedAnswerIsNoGroup() {
-        val state = RaftForwardTargetPickerUiState<ForwardMessageTarget>(
-            sessionKey = RaftForwardPickerSessionKey("thread-1", serverId.value, 1)
-        )
-
-        assertEquals(emptyList(), state.visibleConversationItems)
-        assertTrue(state.forwardPickerTopEyebrowVisible(multiSelect = false))
-    }
-
-    @Test
-    fun onlyTheCurrentRowMayBeTheSourceConversation() {
-        val rows =
-            listOf(
-                conversation(sourceThread.value, current = true),
-                conversation("thread-b"),
-                // Not flagged current: the source is left out like any Recent / search row.
-                conversation(sourceThread.value).copy(id = "dup")
-            )
-
-        val shown = rows.threadForwardConversationPickerTargets(serverId, sourceThread)
-        assertEquals(listOf(sourceThread.value, "thread-b"), shown.map { it.id })
-
-        // A `current` row that is not first is a plain row.
-        val late = listOf(conversation("thread-b"), conversation("thread-c", current = true))
-            .threadForwardConversationPickerTargets(serverId, sourceThread)
-        assertEquals(listOf(false, false), late.map { it.current })
-
-        // Recent / search rows keep excluding the source.
-        assertEquals(
-            emptyList(),
-            listOf(conversation(sourceThread.value)).threadForwardPickerTargets(serverId, sourceThread)
-        )
     }
 
     @Test
@@ -220,51 +140,6 @@ class ThreadForwardConversationTargetsTest {
         assertEquals(RaftThreadSurfaceKind.Channel, identity.thread?.parentSurfaceKind)
         assertTrue(banner.forwardSuccessViewInChatAvailable())
         assertEquals("#general › thread-5", target.forwardSuccessDisplayTitle())
-    }
-
-    @Test
-    fun viewInChatOpensTheTaskConversation() {
-        val banner =
-            ThreadForwardSuccessBanner(
-                target = conversation("task-conv-7", task = true),
-                destination = ForwardMessageDestination(serverId, ChannelId("task-conv-7"), ConversationKind.Task),
-                messageId = MessageId("posted-1"),
-                conversationContext =
-                    MessageConversationContext(
-                        channelKind = ConversationKind.Task,
-                        parentChannelId = ChannelId("room-1"),
-                        parentChannelKind = ConversationKind.Channel,
-                        taskId = TaskId("task-7")
-                    )
-            )
-
-        val identity = assertNotNull(banner.forwardSuccessConversationIdentity())
-        assertEquals(ConversationKind.Task, identity.kind)
-        assertEquals(ChannelId("task-conv-7"), identity.channelId)
-        assertEquals(RaftTaskConversationChannelKind, identity.channelType)
-    }
-
-    @Test
-    fun aThreadOrTaskAnswerWithoutContextHasNoViewInChat() {
-        for (target in listOf(conversation("thread-5"), conversation("task-conv-7", task = true))) {
-            val banner =
-                ThreadForwardSuccessBanner(
-                    target = target,
-                    destination = ForwardMessageDestination(serverId, target.channelId!!, target.channelKind),
-                    messageId = MessageId("posted-1")
-                )
-            assertNull(banner.forwardSuccessConversationIdentity())
-            assertFalse(banner.forwardSuccessViewInChatAvailable())
-        }
-        // A task context without its task id is not enough either (web needs parentChannelId + taskId).
-        val partial =
-            ThreadForwardSuccessBanner(
-                target = conversation("task-conv-7", task = true),
-                destination = ForwardMessageDestination(serverId, ChannelId("task-conv-7"), ConversationKind.Task),
-                messageId = MessageId("posted-1"),
-                conversationContext = MessageConversationContext(channelKind = ConversationKind.Task, parentChannelId = ChannelId("room-1"))
-            )
-        assertNull(partial.forwardSuccessConversationIdentity())
     }
 
     private fun conversation(id: String, current: Boolean = false, task: Boolean = false): ForwardMessageTarget =

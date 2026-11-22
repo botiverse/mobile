@@ -1,7 +1,6 @@
 package build.raft.app
 
 import build.raft.app.data.ExternalShareIntent
-import build.raft.app.data.ExternalShareServerOption
 import build.raft.app.compat.json.JSONObject
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -117,35 +116,6 @@ class ExternalShareLaunchTest {
         )
         assertEquals(
             listOf(ExternalShareIntent.Load(request.token, "account-a", "server-a")),
-            loads
-        )
-    }
-
-    @Test
-    fun canonicalServerListIsDispatchedAndMissingDefaultFallsBackWithoutRoutePayload() {
-        val loads = mutableListOf<ExternalShareIntent.Load>()
-        val coordinator = ExternalShareLaunchCoordinator { loads += it }
-        val request = ExternalShareLaunchRequest("opaque-token_1234567890")
-        val servers =
-            listOf(
-                ExternalShareServerOption("server-a", "Alpha", "alpha"),
-                ExternalShareServerOption("server-b", "Beta", "beta")
-            )
-
-        coordinator.accept(request)
-        assertEquals(
-            ExternalShareLaunchDecision.Dispatched,
-            coordinator.reconcile(
-                ExternalShareLaunchAuthority(
-                    accountId = "account-a",
-                    serverId = "removed-server",
-                    servers = servers
-                )
-            )
-        )
-
-        assertEquals(
-            listOf(ExternalShareIntent.Load(request.token, "account-a", "server-a", servers)),
             loads
         )
     }

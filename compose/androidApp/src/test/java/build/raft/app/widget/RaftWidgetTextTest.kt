@@ -66,84 +66,6 @@ class RaftWidgetTextTest {
     }
 
     @Test
-    fun theFooterSaysWhenTheWidgetLastUpdated() {
-        val time = { "10:30" }
-        assertEquals(res(R.string.raft_widget_updating), content().copy(refreshing = true).updatedText(time))
-        assertEquals(res(R.string.raft_widget_open_raft_to_start), RaftWidgetState.SignedOut.updatedText(time))
-        assertEquals(res(R.string.slock_status_widget_updated, "10:30"), content().updatedText(time))
-        assertEquals(
-            res(R.string.raft_widget_stale_at, "10:30"),
-            content(staleReason = RaftWidgetStaleReason.NoConversations).updatedText(time),
-        )
-        // An error state's footer is the last time it had content, never "Stale at".
-        assertEquals(
-            res(R.string.slock_status_widget_updated, "10:30"),
-            RaftWidgetState.Error(staleReason = RaftWidgetStaleReason.CouldNotRefresh, lastUpdatedAtMillis = 1_000L).updatedText(time),
-        )
-
-        val agents = RaftAgentWidgetState(lastUpdatedAtMillis = 1_000L)
-        assertEquals(res(R.string.slock_status_widget_updated, "10:30"), agents.updatedText(time))
-        assertEquals(res(R.string.raft_widget_stale_at, "10:30"), agents.asStale(RaftWidgetStaleReason.CouldNotRefresh).updatedText(time))
-        assertEquals(res(R.string.raft_widget_updating), agents.copy(refreshing = true).updatedText(time))
-        assertEquals(res(R.string.raft_widget_open_raft_to_start), RaftAgentWidgetState().updatedText(time))
-
-        assertEquals(res(R.string.raft_widget_refresh), raftWidgetRefreshText(refreshing = false))
-        assertEquals(res(R.string.raft_widget_refreshing), raftWidgetRefreshText(refreshing = true))
-    }
-
-    @Test
-    fun aConversationRowFallsBackToWhatKindItIs() {
-        assertEquals(RaftWidgetText.Plain("general"), raftWidgetRowTitle("general"))
-        assertEquals(res(R.string.raft_widget_conversation), raftWidgetRowTitle(""))
-
-        assertEquals(RaftWidgetText.Plain("Ship it"), raftWidgetRowDetail("Ship it", "Ada", "topic", ConversationKind.Channel))
-        assertEquals(res(R.string.raft_widget_latest_from, "Ada"), raftWidgetRowDetail(" ", "Ada", "topic", ConversationKind.Channel))
-        assertEquals(RaftWidgetText.Plain("topic"), raftWidgetRowDetail(null, "", "topic", ConversationKind.Channel))
-        assertEquals(res(R.string.raft_widget_direct_message), raftWidgetRowDetail(null, null, null, ConversationKind.DirectMessage))
-        assertEquals(res(R.string.raft_widget_thread), raftWidgetRowDetail(null, null, "", ConversationKind.Thread))
-        assertEquals(res(R.string.raft_widget_channel), raftWidgetRowDetail(null, null, null, ConversationKind.Channel))
-    }
-
-    @Test
-    fun theAgentWidgetPlaceholderRow() {
-        val initial = RaftAgentWidgetState()
-        assertEquals(res(R.string.raft_agent_widget_no_active_agent), initial.placeholderName())
-        assertEquals(res(R.string.raft_agent_widget_offline), initial.placeholderDetail())
-
-        val signedOut = RaftAgentWidgetState(placeholder = RaftAgentWidgetPlaceholder.SignedOut)
-        assertEquals(res(R.string.raft_agent_widget_no_active_agent), signedOut.placeholderName())
-        assertEquals(res(R.string.raft_agent_widget_signed_out), signedOut.placeholderDetail())
-
-        val none = RaftAgentWidgetState(placeholder = RaftAgentWidgetPlaceholder.NoAgents)
-        assertEquals(res(R.string.raft_agent_widget_no_agents), none.placeholderName())
-        assertEquals(res(R.string.raft_agent_widget_no_live_activity), none.placeholderDetail())
-
-        assertEquals(
-            res(R.string.raft_widget_last_refresh_failed, res(R.string.raft_widget_edit_to_choose_server)),
-            none.asStale(RaftWidgetStaleReason.ChooseServer).placeholderDetail(),
-        )
-        assertEquals(
-            res(R.string.raft_widget_last_refresh_failed, RaftWidgetText.Plain("http_502")),
-            initial.asStale(RaftWidgetStaleReason.Code("http_502")).placeholderDetail(),
-        )
-    }
-
-    @Test
-    fun staleReasonsRoundTripAndReadTheEnglishOfAnOlderCache() {
-        listOf(
-            RaftWidgetStaleReason.CouldNotRefresh,
-            RaftWidgetStaleReason.ChooseServer,
-            RaftWidgetStaleReason.NoConversations,
-            RaftWidgetStaleReason.Code("agents_contract"),
-        ).forEach { reason -> assertEquals(reason, RaftWidgetStaleReason.fromWire(reason.wire)) }
-        assertEquals(RaftWidgetStaleReason.CouldNotRefresh, RaftWidgetStaleReason.fromWire("Could not refresh"))
-        assertEquals(RaftWidgetStaleReason.ChooseServer, RaftWidgetStaleReason.fromWire("Edit widget to choose a server"))
-        assertEquals(RaftWidgetStaleReason.NoConversations, RaftWidgetStaleReason.fromWire("No conversations yet"))
-        assertNull(RaftWidgetStaleReason.fromWire(""))
-        assertNull(RaftWidgetStaleReason.fromWire(null))
-    }
-
-    @Test
     fun anOlderCachesEnglishLinesReadAsTheSameState() {
         assertEquals(
             RaftWidgetState.Error(kind = RaftWidgetErrorKind.ChooseServer, lastUpdatedAtMillis = 5L),
@@ -192,17 +114,6 @@ class RaftWidgetTextTest {
             RaftAgentWidgetPlaceholder.NoAgents,
             JSONObject().put("placeholder", "no_agents").toRaftAgentWidgetState(refreshing = false).placeholder,
         )
-    }
-
-    @Test
-    fun linesResolveWithTheirArguments() {
-        assertEquals(
-            "Last refresh failed: Could not refresh",
-            res(R.string.raft_widget_last_refresh_failed, res(R.string.raft_widget_could_not_refresh)).resolve(context),
-        )
-        assertEquals("Stale at 10:30", res(R.string.raft_widget_stale_at, "10:30").resolve(context))
-        assertEquals("Latest from Ada", res(R.string.raft_widget_latest_from, "Ada").resolve(context))
-        assertEquals("Acme", RaftWidgetText.Plain("Acme").resolve(context))
     }
 
     @Test

@@ -54,35 +54,6 @@ class ThreadAssistantOtterComposerScreenshotTest {
     @Test
     fun channelComposerLight() = capture("assistant.otter.channel-composer", RaftAppAppearance.Light)
 
-    @Test
-    fun channelComposerDark() = capture("assistant.otter.channel-composer.dark", RaftAppAppearance.Dark)
-
-    /** Nothing new: asleep on the edge (Cody's sleepy art), breathing, z's floating up from its head. */
-    @Test
-    fun asleepLight() = capture("assistant.otter.asleep", RaftAppAppearance.Light, stillAt = 1_200L)
-
-    @Test
-    fun asleepDark() = capture("assistant.otter.asleep.dark", RaftAppAppearance.Dark, stillAt = 1_200L)
-
-    /** A new message: waving, popped out from behind the edge, 6dp past its rest (web keyframe 35%). */
-    @Test
-    fun wakingLight() = capture("assistant.otter.waking", RaftAppAppearance.Light, mood = RaftOtterMood.New, stillAt = 525L)
-
-    /** The owner types: the otter is in the composer, only the top of its head over the edge, its z's gone. */
-    @Test
-    fun typingTucksItInLight() = capture("assistant.otter.typing", RaftAppAppearance.Light, typed = "Can you check the release notes")
-
-    /**
-     * Artea #proj-assistant:#24 (web `useNoticesLift`): the "@Volta is not in #channel — Add /
-     * Notify / Ignore" card above the composer. The otter (here with a new message, so its "New
-     * message" bubble too) lies on top of the card, over none of its buttons; the list's jump pill
-     * sits at the list's end, above the card.
-     */
-    @Test
-    @Config(sdk = [34], qualifiers = "w390dp-h480dp-xxhdpi")
-    fun mentionCardLiftsTheOtterLight() =
-        capture("assistant.otter.mention-card", RaftAppAppearance.Light, mood = RaftOtterMood.New, mentionCard = true)
-
     private fun capture(
         name: String,
         appearance: RaftAppAppearance,

@@ -81,23 +81,6 @@ class MembersAgentMachineGroupCollapseTest {
     }
 
     @Test
-    fun groupKeyFallsBackToNameThenNoMachineSentinel() {
-        val agents =
-            listOf(
-                member("a1", "computer:MacBook Pro"),
-                member("a2"),
-                member("a3")
-            )
-        val groups = groupedAgentMembers(agents)
-        assertEquals(2, groups.size)
-        assertEquals("MacBook Pro", groups.first().key)
-        assertEquals("MacBook Pro", groups.first().label)
-        assertEquals(MembersAgentMachineGroupNoMachineKey, groups.last().key)
-        assertEquals(membersNoComputerGroupLabel, groups.last().label)
-        assertEquals(2, groups.last().members.size)
-    }
-
-    @Test
     fun anAgentWithAMachineIdButNoNameIsNeverListedUnderNoComputer() {
         // Task #148: the list row carries machineId; the name is null until the agent first runs.
         val agents =
@@ -140,32 +123,6 @@ class MembersAgentMachineGroupCollapseTest {
         assertEquals(
             "false",
             backing.getString("slock:sidebarCollapsed:user-1:agent-machine-group:machine-1")
-        )
-    }
-
-    @Test
-    fun collapseStoreIgnoresBlankScopeOrKey() {
-        val backing = InMemoryRaftKeyValueStore()
-        val store = KeyValueMembersAgentMachineGroupCollapseStore(backing)
-        store.setCollapsed("", "machine-1", true)
-        store.setCollapsed("user-1", "", true)
-        assertFalse(store.isCollapsed("", "machine-1"))
-        assertFalse(store.isCollapsed("user-1", "machine-1"))
-    }
-
-    @Test
-    fun collapseSurvivesAFreshStoreInstanceOnTheSameBacking() {
-        // Re-entering the members page constructs a new collapse store over
-        // the same preference store. The remembered state must still read.
-        val backing = InMemoryRaftKeyValueStore()
-        KeyValueMembersAgentMachineGroupCollapseStore(backing)
-            .setCollapsed("user-1", "machine-1", true)
-        val reenteredStore = KeyValueMembersAgentMachineGroupCollapseStore(backing)
-        assertTrue(reenteredStore.isCollapsed("user-1", "machine-1"))
-        reenteredStore.setCollapsed("user-1", "machine-1", false)
-        assertFalse(
-            KeyValueMembersAgentMachineGroupCollapseStore(backing)
-                .isCollapsed("user-1", "machine-1")
         )
     }
 

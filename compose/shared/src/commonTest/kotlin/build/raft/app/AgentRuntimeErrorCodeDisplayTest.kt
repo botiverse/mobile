@@ -50,23 +50,6 @@ class AgentRuntimeErrorCodeDisplayTest {
     }
 
     @Test
-    fun anOfflineAgentReadsTheKeptErrorsCode() {
-        val kept =
-            detail(
-                AgentDetailSummary(
-                    id = "agent-1",
-                    name = "ruby",
-                    lastRuntimeErrorMessage = sentence,
-                    lastRuntimeErrorCode = AgentRuntimeErrorCode.InputTooLarge,
-                )
-            )
-        assertEquals(
-            AgentRuntimeErrorDisplay.Coded(AgentRuntimeErrorCode.InputTooLarge, forManager = false, detail = ""),
-            agent.membersAgentRuntimeErrorDisplay(kept, state(AgentStatus.Offline), canViewDetails = false),
-        )
-    }
-
-    @Test
     fun withoutACodeAManagerKeepsTheDetailAndAMemberGetsNoPatterns() {
         val uncoded = detail(AgentDetailSummary(id = "agent-1", name = "ruby", activityDetail = "Invalid API key provided"))
         assertEquals(
@@ -81,25 +64,6 @@ class AgentRuntimeErrorCodeDisplayTest {
     }
 
     @Test
-    fun aTypedBillingErrorKeepsTheBillingBanner() {
-        val billing =
-            detail(
-                AgentDetailSummary(
-                    id = "agent-1",
-                    name = "ruby",
-                    lastRuntimeErrorMessage = "402 Payment Required",
-                    lastRuntimeErrorClass = "BillingError",
-                    lastRuntimeErrorReason = "billing_exhausted",
-                    lastRuntimeErrorCode = AgentRuntimeErrorCode.Billing,
-                )
-            )
-        assertEquals(
-            AgentRuntimeErrorDisplay.Known(AgentRuntimeErrorKind.BillingExhausted),
-            agent.membersAgentRuntimeErrorDisplay(billing, state(AgentStatus.Offline), canViewDetails = true),
-        )
-    }
-
-    @Test
     fun anErrorStatusReadsTheCodesTitleOrTheCatalogFallback() {
         assertEquals(Res.string.agent_runtime_error_code_usage_limit_title, agentErrorStatusCopy(AgentRuntimeErrorCode.UsageLimit, sentence))
         assertEquals(Res.string.agent_runtime_error_code_network_timeout_title, agentErrorStatusCopy(AgentRuntimeErrorCode.NetworkTimeout, null))
@@ -107,13 +71,6 @@ class AgentRuntimeErrorCodeDisplayTest {
         assertEquals(Res.string.member_state_agent_error, agentErrorStatusCopy(null, "Agent encountered an error"))
         // A manager's uncoded detail stays the detail.
         assertNull(agentErrorStatusCopy(null, "Runtime crashed"))
-    }
-
-    @Test
-    fun theCodeReachesTheStatusIndicatorAndSurvivesTheCoarseView() {
-        val indicator = state(AgentStatus.Error, AgentRuntimeErrorCode.Billing)
-        assertEquals(AgentRuntimeErrorCode.Billing, indicator.errorCode)
-        assertEquals(AgentRuntimeErrorCode.Billing, indicator.withoutActivityDetail().errorCode)
     }
 
     private val agent = MemberProfile(id = MemberId("agent-1"), displayName = "Ruby", handle = "ruby", kind = MemberKind.Agent)

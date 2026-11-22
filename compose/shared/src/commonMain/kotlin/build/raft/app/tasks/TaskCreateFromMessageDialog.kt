@@ -70,7 +70,7 @@ internal fun TaskCreateFromMessageDialog(
     errorText: String?,
     onDismiss: () -> Unit,
     onSubmit: (titles: List<String>, status: TaskStatus?) -> Unit,
-    statusField: Boolean = false,
+    statusField: Boolean = true,
 ) {
     val colors = RaftTheme.colors
     val typography = RaftTheme.typography

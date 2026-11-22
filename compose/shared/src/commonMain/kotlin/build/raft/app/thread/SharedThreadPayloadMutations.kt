@@ -55,6 +55,8 @@ internal fun RaftThreadScreenPayload.withContentSliceFrom(patch: RaftThreadScree
             if (acceptsPatchHeader && patch.isLoadedContentFrame()) patch.channelCanUnarchive else channelCanUnarchive,
         // The content slice carries its own provenance: a network patch is never last-known.
         durableLastKnown = patch.durableLastKnown,
+        durableReachedOldest = patch.durableReachedOldest,
+        timelineGaps = patch.timelineGaps,
         mainLoadFailed = patch.mainLoadFailed,
         messages = patch.messages,
         originMessage = patch.originMessage,
@@ -72,6 +74,7 @@ internal fun RaftThreadScreenPayload.withContentSliceFrom(patch: RaftThreadScree
         newerMessagesStatus = patch.newerMessagesStatus,
         errorCode = patch.errorCode,
         errorServerMessage = patch.errorServerMessage,
+        errorTraceId = patch.errorTraceId,
         emptyTitle = patch.emptyTitle,
         emptyDetail = patch.emptyDetail,
         replySummariesAuthority = patch.replySummariesAuthority,
@@ -722,6 +725,9 @@ internal fun RaftThreadMessageItem.mergeRealtimeUpdate(
         // have been deleted), a sparse patch without it keeps the label.
         delegatedBy = keepKnownDelegatedBy(update.delegatedBy, delegatedBy),
         deletedAt = update.deletedAt ?: deletedAt,
+        // A read's quote replies win; a live copy carries none (room broadcasts never do), so the
+        // loaded ones stay while the words they were resolved for stay.
+        resolvedQuotes = update.resolvedQuotes ?: resolvedQuotes.takeIf { update.body.isBlank() || update.body == body },
     ).let { merged ->
         // RFC 077 PR 2b: a retraction is authoritative. The sparse-patch fallbacks above
         // (`ifBlank`/`ifEmpty` keep the loaded body, attachments, reactions) must not keep

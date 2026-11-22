@@ -7,6 +7,7 @@ import build.raft.app.model.AgentToolStuck
 import build.raft.app.model.AgentSpawnFailure
 import build.raft.app.model.AgentWakeCrashLoop
 import build.raft.app.model.MemberId
+import build.raft.app.model.RUNTIME_CONFIG_VERSION
 import build.raft.app.model.ServerId
 import build.raft.app.data.realtime.CredentialHoldDto
 import build.raft.app.data.realtime.ToolStuckDto
@@ -808,6 +809,11 @@ internal data class AgentSummary(
     val runtimeProvider: RuntimeProviderConfig?,
     val runtime: String?,
     val reasoning: String?,
+    /**
+     * The saved fast mode, shared `RuntimeConfig.mode.kind` (`fast` / `default`); null when the read
+     * carries no runtime config (or no mode). Never [executionMode]: that is where the agent runs.
+     */
+    val runtimeMode: String? = null,
     val executionMode: String?,
     val machineId: String?,
     val machineName: String?,
@@ -889,6 +895,7 @@ internal fun AgentSummary.toAgentDetailSummary(): AgentDetailSummary =
         runtimeModelKind = runtimeModelKind,
         runtimeProvider = runtimeProvider,
         reasoning = reasoning,
+        runtimeMode = runtimeMode,
         executionMode = executionMode,
         machineId = machineId,
         machineName = machineName,
@@ -1147,6 +1154,7 @@ private data class AgentWireDto(
     val envVars: Map<String, JsonElement> = emptyMap(),
     val createdAgents: List<AgentCreatedWireDto> = emptyList(),
     val activity: String? = null,
+    val activityKind: String? = null,
     val activityDetail: String? = null,
     val deletedAt: String? = null,
     /** Personal assistant (botiverse/slock packages/shared agent `assistantOwnerUserId`): its owner, else null. */
@@ -1238,6 +1246,7 @@ private fun AgentWireDto.toSummary(): AgentSummary? {
     if (id.isBlank() || name.isBlank()) return null
     val currentProfile = runtimeProfile?.current
     val configuredModel = runtimeConfig?.model?.valueOrNull()
+    val resolvedActivity = activityKind?.takeIf { it.isNotBlank() } ?: activity
     return AgentSummary(
         hostedRuntime = hostedRuntime?.toSnapshot(),
         id = id,
@@ -1255,10 +1264,18 @@ private fun AgentWireDto.toSummary(): AgentSummary? {
                 external = external,
                 runtime = runtimeConfig?.runtime?.takeIf { it.isNotBlank() } ?: runtime ?: currentProfile?.runtime
             ),
-        // Web profile shows the saved effort only (`hydrateRuntimeConfigForm` over the agent's
-        // columns), never `runtimeProfile.current`: a saved Default (null) must not read back as
-        // the last run's effort.
-        reasoning = reasoningEffort,
+        // Web profile shows the saved effort only (`hydrateRuntimeConfigForm`: the saved config's
+        // level, else the agent's column), never `runtimeProfile.current`: a saved Default (null)
+        // must not read back as the last run's effort. The Members list reads it the same way.
+        reasoning =
+            hydrateAgentReasoningSetting(
+                config = runtimeConfig?.let { AgentRuntimeConfigReasoningFields(it.version, it.runtime, it.reasoningEffort) },
+                runtime = runtime,
+                reasoningEffort = reasoningEffort,
+            ).reasoningEffort,
+        // Web profile Mode row (`hydrateRuntimeConfigForm`): the saved config's mode, at the current
+        // version only; the edit form's Fast mode / Speed start from the same value.
+        runtimeMode = runtimeConfig?.takeIf { it.version == RUNTIME_CONFIG_VERSION }?.mode?.toReadKind(),
         executionMode = executionMode ?: currentProfile?.executionMode,
         machineId = machineId ?: currentProfile?.machineId,
         machineName = currentProfile?.machineName,
@@ -1272,7 +1289,7 @@ private fun AgentWireDto.toSummary(): AgentSummary? {
         envVarNames = envVars.keys.filter { it.isNotBlank() }.sorted(),
         envVars = envVars.toAgentEnvVars(),
         createdAgents = createdAgents.mapNotNull { it.toDomain() },
-        activity = activity,
+        activity = resolvedActivity,
         activityDetail = activityDetail,
         deletedAt = deletedAt,
         assistantOwnerUserId = assistantOwnerUserId?.takeIf { it.isNotBlank() },
@@ -1293,7 +1310,7 @@ private fun AgentWireDto.toSummary(): AgentSummary? {
         lastRuntimeErrorCode = AgentRuntimeErrorCode.fromWire(lastRuntimeError?.code),
         lastRuntimeErrorSpawnFailureReason = lastRuntimeError?.spawnFailureReason?.trim()?.takeIf { it.isNotEmpty() },
         // Web activityTypedCarriers: the code rides only an error.
-        activityErrorCode = AgentRuntimeErrorCode.fromWire(activityErrorCode).takeIf { activity?.trim() == "error" },
+        activityErrorCode = AgentRuntimeErrorCode.fromWire(activityErrorCode).takeIf { resolvedActivity?.trim() == "error" },
         toolStuck = toolStuck.toAgentToolStuck(),
         credentialHold = credentialHold.toAgentCredentialHold(activityDetailKind),
         modelLimitsDefaultsReported = modelLimits?.defaultsReported == true,
@@ -1359,10 +1376,38 @@ private data class AgentHostedRuntimeErrorWireDto(val code: String? = null, val 
 
 @Serializable
 private data class AgentRuntimeConfigWireDto(
+    val version: Int? = null,
     val runtime: String? = null,
     val provider: AgentRuntimeProviderWireDto? = null,
-    val model: AgentRuntimeModelWireDto? = null
+    val model: AgentRuntimeModelWireDto? = null,
+    /** The saved level (shared `RuntimeConfig.reasoningEffort`); Pi's `off` / `minimal` and Kimi Code's live only here. */
+    val reasoningEffort: String? = null,
+    /** The saved fast mode (shared `RuntimeConfig.mode`). */
+    val mode: AgentRuntimeModeWireDto? = null
 )
+
+/**
+ * Shared `RuntimeModeConfig`: `{kind:"default"}` or `{kind:"fast", serviceTier?}`. Only the kind is
+ * read: a Codex speed tier (`serviceTier`) is fast mode too, as the web profile shows it.
+ */
+@Serializable
+private data class AgentRuntimeModeWireDto(
+    val kind: String? = null
+) {
+    /**
+     * `fast` or `default`, as the server's hydration reads a saved mode (shared `parseModeConfig`):
+     * any other kind is Default there, so it is here, and it is reported, never dropped silently.
+     */
+    fun toReadKind(): String =
+        when (kind) {
+            "fast" -> "fast"
+            "default" -> "default"
+            else -> {
+                reportUnknownTypeDropped("agent_runtime_config", "mode_kind", kind, fallback = "default")
+                "default"
+            }
+        }
+}
 
 @Serializable
 private data class AgentRuntimeProviderWireDto(

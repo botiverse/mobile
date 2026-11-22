@@ -58,45 +58,4 @@ class RaftFilePreviewUnplayableVideoNoteTest {
             raftFilePreviewUnplayableVideoOffersOpenInOtherApp(attachment("clip.mp4", "video/mp4"), RaftFilePreviewDownloadUiState.NotDownloaded, ios)
         )
     }
-
-    @Test
-    fun everyContainerAvPlayerCannotDemuxGetsTheNoteByProfile() {
-        listOf(
-            attachment("clip.webm"),
-            attachment("clip.mkv"),
-            attachment("clip.flv", "video/x-flv"),
-            attachment("clip.m2ts"),
-            attachment("clip.mpg", "video/mpeg"),
-        ).forEach { payload ->
-            assertEquals(
-                Res.string.file_preview_video_format_unplayable_ios.desc(),
-                raftFilePreviewUnplayableVideoNote(payload, RaftVideoPlayerFormatProfile.IosAvPlayer),
-                payload.name
-            )
-            assertEquals(
-                Res.string.file_preview_video_format_unplayable_mac.desc(),
-                raftFilePreviewUnplayableVideoNote(payload, RaftVideoPlayerFormatProfile.DesktopMacAvFoundation),
-                payload.name
-            )
-            assertNull(raftFilePreviewUnplayableVideoNote(payload, RaftVideoPlayerFormatProfile.AndroidMedia3), payload.name)
-        }
-    }
-
-    @Test
-    fun playableVideosOtherFilesAndPlatformsWithoutAPlayerKeepTheirMessage() {
-        // AVPlayer plays MP4/MOV, a PDF is no video, and desktop without its player has no profile.
-        listOf(
-            attachment("clip.mp4", "video/mp4") to RaftVideoPlayerFormatProfile.IosAvPlayer,
-            attachment("clip.mov") to RaftVideoPlayerFormatProfile.DesktopMacAvFoundation,
-            attachment("report.pdf", "application/pdf") to RaftVideoPlayerFormatProfile.IosAvPlayer,
-            attachment("clip.webm", "video/webm") to null,
-        ).forEach { (payload, profile) ->
-            assertNull(raftFilePreviewUnplayableVideoNote(payload, profile), "${payload.name} $profile")
-            assertEquals(
-                Res.string.file_preview_download_to_open.desc(),
-                raftFilePreviewUnsupportedFileMessage(payload, downloadable = true, videoProfile = profile),
-                "${payload.name} $profile"
-            )
-        }
-    }
 }

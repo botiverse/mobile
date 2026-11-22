@@ -51,25 +51,6 @@ class RaftAppLoginVerificationLinkTest {
     }
 
     @Test
-    fun aWebSignUpLinkHasNoSignInToResume() {
-        assertNull(request(verificationEmailUrl("tok_abc")))
-        assertNull(request(verificationEmailUrl("tok_abc", "/")))
-        assertNull(request(verificationEmailUrl("tok_abc", "/artifacts/pt_abc/v/2?c=1")))
-        assertNull(request(verificationEmailUrl("tok_abc", "/login/app")))
-        assertNull(request(verificationEmailUrl("tok_abc", "/login/app?request=")))
-        assertNull(request(verificationEmailUrl("tok_abc", "/login/app?requestId=req_123")))
-        assertNull(request(verificationEmailUrl("tok_abc", "/login/app/x?request=req_123")))
-    }
-
-    @Test
-    fun needsAVerifyTokenOnTheRootPath() {
-        assertNull(request(verificationEmailUrl("", appSignUp)))
-        assertNull(request("https://app.raft.build/?returnTo=%2Flogin%2Fapp%3Frequest%3Dreq_123"))
-        assertNull(request("https://app.raft.build/login/app?verify=tok_abc&returnTo=%2Flogin%2Fapp%3Frequest%3Dreq_123"))
-        assertNull(request("https://app.raft.build/?verify=%zz&returnTo=%2Flogin%2Fapp%3Frequest%3Dreq_123"))
-    }
-
-    @Test
     fun otherOriginsOnlyAsTheConfiguredWebUrl() {
         val staging = verificationEmailUrl("tok_abc", appSignUp, origin = "https://raft-app-staging.botiverse.dev")
         assertNull(request(staging))

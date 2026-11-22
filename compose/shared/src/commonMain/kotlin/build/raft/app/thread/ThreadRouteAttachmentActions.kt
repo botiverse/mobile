@@ -4,6 +4,7 @@ import build.raft.app.base.reduceAttachmentDownloadProgress
 import build.raft.app.data.PlatformFile
 import build.raft.app.data.DataRequestPriority
 import build.raft.app.data.DataResult
+import build.raft.app.data.failureTraceIdOrNull
 import build.raft.app.data.ThreadApiResult
 import build.raft.app.data.ThreadAttachmentCommentItem
 import build.raft.app.data.ThreadAttachmentCommentsPage
@@ -14,10 +15,41 @@ import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.State
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
+
+/**
+ * Retires page-local attachment operation tokens when the active owner changes or when a reused
+ * wide-pane thread route switches to another [threadInstanceKey], so an in-flight download started
+ * in Channel A cannot mutate Channel A's stale state or fire a toast over Channel B.
+ * Kept out of `SharedThreadRouteContentContent` to stay below its JVM method-size ceiling.
+ */
+@Composable
+internal fun ThreadAttachmentOperationLifecycleEffects(
+    threadInstanceKey: String,
+    attachmentOwner: AttachmentOwnerLease?,
+    attachmentOpenStatesHolder: MutableState<Map<String, ThreadAttachmentOpenUiState>>,
+    attachmentOperationTokensState: MutableState<Map<String, AttachmentOperationToken>>,
+) {
+    LaunchedEffect(attachmentOwner?.scopeId, attachmentOwner?.generation, threadInstanceKey) {
+        val currentOwner = attachmentOwner
+        val hasForeign = attachmentOperationTokensState.value.values.any { it.owner != currentOwner }
+        if (hasForeign) {
+            attachmentOperationTokensState.value = emptyMap()
+            attachmentOpenStatesHolder.value = emptyMap()
+        }
+    }
+    DisposableEffect(threadInstanceKey, attachmentOperationTokensState) {
+        onDispose {
+            attachmentOperationTokensState.value = emptyMap()
+        }
+    }
+}
 
 /**
  * The route's attachment open and comment actions: what used to be local functions of
@@ -190,7 +222,8 @@ internal class ThreadRouteAttachmentActions(
                             resolvingCommentIds = emptySet()
                         ).withAttachmentCommentsError(
                             errorCode = result.error.code,
-                            serverMessage = result.error.serverMessage
+                            serverMessage = result.error.serverMessage,
+                            traceId = result.error.traceId
                         )
                     is DataResult.NoPermission -> {
                         if (routeAuthRequired(result)) return@launch
@@ -200,7 +233,8 @@ internal class ThreadRouteAttachmentActions(
                             resolvingCommentIds = emptySet()
                         ).withAttachmentCommentsError(
                             errorCode = result.blocker.code,
-                            serverMessage = null
+                            serverMessage = null,
+                            traceId = result.blocker.traceId
                         )
                     }
                 }
@@ -279,9 +313,10 @@ internal class ThreadRouteAttachmentActions(
                             ?.copy(sending = false)
                             ?.withAttachmentCommentsError(
                                 errorCode = code,
-                                serverMessage = (result as? DataResult.Error)?.error?.serverMessage
+                                serverMessage = (result as? DataResult.Error)?.error?.serverMessage,
+                                traceId = result.failureTraceIdOrNull()
                             )
-                    bridge.toast(unableToSendCommentLabel)
+                    bridge.errorToast(unableToSendCommentLabel, result)
                 }
                 is DataResult.NoPermission -> {
                     if (routeAuthRequired(result)) return@launch
@@ -291,9 +326,10 @@ internal class ThreadRouteAttachmentActions(
                             ?.copy(sending = false)
                             ?.withAttachmentCommentsError(
                                 errorCode = result.blocker.code,
-                                serverMessage = null
+                                serverMessage = null,
+                                traceId = result.blocker.traceId
                             )
-                    bridge.toast(unableToSendCommentLabel)
+                    bridge.errorToast(unableToSendCommentLabel, result.blocker)
                 }
             }
         }
@@ -345,10 +381,11 @@ internal class ThreadRouteAttachmentActions(
                                     resolvingCommentIds = state.resolvingCommentIds - comment.id
                                 ).withAttachmentCommentsError(
                                     errorCode = code,
-                                    serverMessage = (result as? DataResult.Error)?.error?.serverMessage
+                                    serverMessage = (result as? DataResult.Error)?.error?.serverMessage,
+                                    traceId = result.failureTraceIdOrNull()
                                 )
                             }
-                    bridge.toast(unableToResolveCommentLabel)
+                    bridge.errorToast(unableToResolveCommentLabel, result)
                 }
                 is DataResult.NoPermission -> {
                     if (routeAuthRequired(result)) return@launch
@@ -360,10 +397,11 @@ internal class ThreadRouteAttachmentActions(
                                     resolvingCommentIds = state.resolvingCommentIds - comment.id
                                 ).withAttachmentCommentsError(
                                     errorCode = result.blocker.code,
-                                    serverMessage = null
+                                    serverMessage = null,
+                                    traceId = result.blocker.traceId
                                 )
                             }
-                    bridge.toast(unableToResolveCommentLabel)
+                    bridge.errorToast(unableToResolveCommentLabel, result.blocker)
                 }
             }
         }
@@ -423,7 +461,7 @@ internal class ThreadRouteAttachmentActions(
             )
         )
     }
-    fun openAttachmentExternally(attachment: RaftThreadAttachmentItem) {
+    fun openAttachmentExternally(attachment: RaftThreadAttachmentItem, share: Boolean = false) {
         if (attachment.id.isBlank() || attachmentOpenStates[attachment.id].threadAttachmentIsOpening()) return
         val owner = attachmentOwner ?: return
         nextAttachmentDownloadGeneration += 1L
@@ -445,6 +483,7 @@ internal class ThreadRouteAttachmentActions(
                     attachment = attachment,
                     owner = owner,
                     downloadId = downloadId,
+                    share = share,
                     onProgress = { progress ->
                         val token = attachmentOperationTokens[attachment.id]
                         if (token != operation || !attachmentOperationCommitAllowed(operation, token.operationId)) {
@@ -480,9 +519,10 @@ internal class ThreadRouteAttachmentActions(
                             downloadId = downloadId
                         ))
                 if (result.status != "cancelled") {
-                    bridge.toast(
+                    bridge.errorToast(
                         raftAttachmentOpenResultMessage(result.status, attachmentOpenResultTerms)
-                            ?: unableToOpenAttachmentLabel
+                            ?: unableToOpenAttachmentLabel,
+                        result.traceId
                     )
                 }
                 attachmentOperationTokens = attachmentOperationTokens - attachment.id
@@ -519,10 +559,11 @@ internal class ThreadRouteAttachmentActions(
                         val current = attachmentOpenStates[attachment.id]
                         if (current?.downloadId != downloadId) return@saveSharedThreadAttachment
                         val reduced =
-                            reduceAttachmentDownloadProgress(
+                            raftFilePreviewReducePageProgress(
                                 current = current.progress,
                                 incoming = progress,
-                                expectedDownloadId = downloadId
+                                owner = owner,
+                                activeDownloadId = downloadId,
                             )
                         if (reduced === current.progress) return@saveSharedThreadAttachment
                         attachmentOpenStates =
@@ -535,16 +576,23 @@ internal class ThreadRouteAttachmentActions(
                 )
             val token = attachmentOperationTokens[attachment.id]
             if (token != operation || !attachmentOperationCommitAllowed(operation, token.operationId)) return@launch
+            val toast =
+                raftThreadAttachmentSaveToast(
+                    result = result,
+                    hasDesktopDownloadBar = raftPlatformSavedFileHost() != null,
+                    savedMessage = attachmentSavedLabel,
+                    fallbackSavedMessage = attachmentDownloadedLabel,
+                    downloadFailedMessage = attachmentOpenResultTerms.downloadFailed,
+                    storageUnavailableMessage = attachmentOpenResultTerms.storageUnavailable,
+                    unableToDownloadMessage = unableToDownloadAttachmentLabel,
+                )
             when (result.status) {
                 "saved" -> {
                     attachmentOpenStates = attachmentOpenStates - attachment.id
                     attachmentOperationTokens = attachmentOperationTokens - attachment.id
-                    bridge.toast(
-                        raftThreadAttachmentSavedMessage(
-                            nativeMessage = attachmentSavedLabel,
-                            fallbackMessage = attachmentDownloadedLabel
-                        )
-                    )
+                    if (toast is ThreadAttachmentSaveToast.Info) {
+                        bridge.toast(toast.message)
+                    }
                 }
                 "cancelled" -> {
                     attachmentOpenStates = attachmentOpenStates - attachment.id
@@ -566,13 +614,11 @@ internal class ThreadRouteAttachmentActions(
                             "errorKind=${raftAttachmentOpenDiagnosticErrorKind(result.errorKind)} " +
                             "failure=${failure.name} message=${raftAttachmentHostMessageForLog(result.message)}"
                     )
-                    bridge.toast(
-                        when (failure) {
-                            RaftAttachmentSaveFailure.DownloadFailed -> attachmentOpenResultTerms.downloadFailed
-                            RaftAttachmentSaveFailure.StorageUnavailable -> attachmentOpenResultTerms.storageUnavailable
-                            else -> unableToDownloadAttachmentLabel
-                        }
-                    )
+                    when (toast) {
+                        is ThreadAttachmentSaveToast.Info -> bridge.toast(toast.message)
+                        is ThreadAttachmentSaveToast.Error -> bridge.errorToast(toast.message, toast.traceId)
+                        null -> Unit
+                    }
                     attachmentOperationTokens = attachmentOperationTokens - attachment.id
                 }
             }

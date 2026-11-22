@@ -541,3 +541,10 @@ fun DataResult<*>.failureCodeOrNull(): String? =
         is DataResult.Error -> error.code
         is DataResult.NoPermission -> blocker.code
     }
+
+fun DataResult<*>.failureTraceIdOrNull(): String? =
+    when (this) {
+        is DataResult.Error -> error.traceId
+        is DataResult.NoPermission -> blocker.traceId
+        else -> null
+    }

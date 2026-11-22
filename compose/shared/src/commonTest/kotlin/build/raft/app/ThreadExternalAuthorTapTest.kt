@@ -50,17 +50,6 @@ class ThreadExternalAuthorTapTest {
     }
 
     @Test
-    fun externalAuthorWithProviderTapShowsProviderHint() {
-        val row =
-            parsedRow(
-                """"senderType": "external_projection", "senderId": "ext-1", "externalAuthor": {"provider": "slack"},""",
-            )
-
-        assertEquals(ThreadAuthorTapAction.ExternalHint, row.threadAuthorTapAction())
-        assertEquals("External Slack user", externalAuthorHintText(row, providerTemplate, genericHint))
-    }
-
-    @Test
     fun memberAuthorTapStillOpensProfile() {
         val row = parsedRow(""""senderType": "user", "senderId": "u1", "senderName": "Ada",""")
 

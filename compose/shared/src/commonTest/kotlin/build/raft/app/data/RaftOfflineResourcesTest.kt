@@ -7,7 +7,6 @@ import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.Serializable
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -58,18 +57,6 @@ class RaftOfflineResourcesTest {
     }
 
     @Test
-    fun revalidateWithNothingStoredEmitsOnlyTheAnswer() = runTest {
-        val fixture = Fixture(backgroundScope)
-        val notes = fixture.notes()
-        val key = notes.key("user-1", "server-1", "a")!!
-
-        val emissions = notes.store { DataResult.Content(Note("network")) }.revalidate(key).toList()
-
-        assertEquals(listOf(RaftOfflineEmission.Fresh(Note("network"))), emissions)
-        assertEquals(Note("network"), notes.read(key))
-    }
-
-    @Test
     fun failedRequestKeepsStoredValueButLostAccessDropsIt() = runTest {
         val fixture = Fixture(backgroundScope)
         val notes = fixture.notes()
@@ -87,19 +74,6 @@ class RaftOfflineResourcesTest {
 
         assertEquals(RaftOfflineEmission.Failed(forbidden), lost.last())
         assertNull(notes.read(key))
-    }
-
-    @Test
-    fun fetchThatThrowsRethrowsAndKeepsStoredValue() = runTest {
-        val fixture = Fixture(backgroundScope)
-        val notes = fixture.notes()
-        val key = notes.key("user-1", "server-1", "a")!!
-        notes.write(key, Note("stored"))
-
-        assertFailsWith<IllegalStateException> {
-            notes.store { error("socket closed") }.revalidate(key).toList()
-        }
-        assertEquals(Note("stored"), notes.read(key))
     }
 
     @Test

@@ -38,9 +38,18 @@ class SettingsAdministrationWebViewTest {
     @Test
     fun administrationBootstrapClearsRefreshOwnerAndProvidesAccessAndServer() {
         val session = administrationSession()
-        val script = standaloneSettingsWebViewInjectedJavaScript(session, null, SettingsWebViewSurface.Administration)
+        val script =
+            standaloneSettingsWebViewInjectedJavaScript(
+                session,
+                null,
+                SettingsWebViewSurface.Administration,
+                webOrigin = "https://app.raft.build/s/workspace/settings/administration?embed=raft-settings-v1&shell=host",
+            )
 
+        val guard = "if (window.top !== window || window.location.origin !== \"https://app.raft.build\") return;"
+        assertContains(script, guard)
         assertContains(script, "slock_access_token")
+        assertEquals(true, script.indexOf(guard) < script.indexOf("slock_access_token"))
         assertContains(script, "slock_refresh_token")
         assertContains(script, "removeItem(\"slock_refresh_token\")")
         assertFalse(script.contains(session.refreshToken))

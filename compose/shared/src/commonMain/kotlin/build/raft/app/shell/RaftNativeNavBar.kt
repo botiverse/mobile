@@ -141,7 +141,8 @@ internal fun raftNativeNavBarSplit(actions: List<RaftNativeNavBarAction>): List<
 sealed interface RaftNativeNavBarTitleLeading {
     /**
      * The conversation's channel glyph tile, from the one chooser ([raftChannelKindGlyph]): `#`, lock,
-     * joint branch, the public page's hash-globe or the External glyph.
+     * joint branch, the public page's globe, two people or the Slack mark (with the corner lock
+     * when private).
      */
     data class Channel(val glyph: RaftChannelKindGlyph) : RaftNativeNavBarTitleLeading {
         constructor(channelKind: String?, onPublicPage: Boolean) : this(raftChannelKindGlyph(channelKind, onPublicPage))
@@ -409,7 +410,7 @@ private fun RaftNativeNavBarTitleExtras.toJson(): JsonObject =
                         put("publicPage", lead.glyph == RaftChannelKindGlyph.PublicPage)
                         put("tileArgb", raftArgbHex(RaftColor.Brand))
                         put("inkArgb", raftArgbHex(RaftColor.StickerInk))
-                        // The Compose tile's glyph (the public page's hash-globe has no asset: globe).
+                        // The Compose tile's glyph, the same icon in the asset catalog.
                         put(
                             "imageAsset",
                             raftNativeNavBarImageAssetName(
@@ -597,7 +598,10 @@ internal fun raftLucideIconNameForWire(wireName: String): RaftLucideIconName? = 
 internal fun raftNativeNavBarSymbolFor(id: String): String? =
     when (id) {
         "home-bell" -> "bell"
+        "lounge" -> "person.2"
         "thread-search", SEARCH_IN_TASK_MENU_ITEM_ID -> "magnifyingglass"
+        "thread-side-card-tasks" -> "checklist"
+        "thread-side-card-files" -> "paperclip"
         "thread-settings" -> "gearshape"
         "thread-open-in-channel", VIEW_TASK_IN_CHANNEL_MENU_ITEM_ID -> "mappin.and.ellipse"
         FOCUS_MODE_MENU_ITEM_ID -> "arrow.up.left.and.arrow.down.right"

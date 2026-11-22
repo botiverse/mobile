@@ -79,8 +79,11 @@ internal fun RaftThreadMessageItem.threadSystemMessageCategory(): ThreadSystemMe
     return ThreadSystemMessageCategory.System
 }
 
-/** Web `buildSystemMessageRenderStates`: one entry per message (oldest first), runs of 2+ fold. */
-internal fun threadSystemMessageFolds(messages: List<RaftThreadMessageItem>): List<ThreadSystemMessageFold?> {
+/** Web `buildSystemMessageRenderStates`: one entry per message (oldest first), runs of 2+ fold (never across timeline gaps). */
+internal fun threadSystemMessageFolds(
+    messages: List<RaftThreadMessageItem>,
+    timelineGaps: List<ThreadTimelineGap> = emptyList(),
+): List<ThreadSystemMessageFold?> {
     val categories = messages.map { it.threadSystemMessageCategory() }
     val folds = arrayOfNulls<ThreadSystemMessageFold>(messages.size)
     var i = 0
@@ -90,7 +93,13 @@ internal fun threadSystemMessageFolds(messages: List<RaftThreadMessageItem>): Li
             continue
         }
         var end = i + 1
-        while (end < messages.size && categories[end] != null) end += 1
+        while (
+            end < messages.size &&
+            categories[end] != null &&
+            threadTimelineGapAboveMessage(messages, end, timelineGaps) == null
+        ) {
+            end += 1
+        }
         if (end - i > 1) {
             val groupId = "system-group:${messages[i].id}:${messages[end - 1].id}"
             folds[i] =

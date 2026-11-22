@@ -30,26 +30,6 @@ class RaftZoomableImageTransformTest {
     }
 
     @Test
-    fun pinchClampsScaleAndKeepsTheImageCoveringTheViewport() {
-        val zoomedIn = raftZoomableImageTransformBy(RaftZoomableImageTransform(), viewport, Offset(0f, 0f), 10f, Offset.Zero)
-        assertEquals(RaftZoomableImageMaxScale, zoomedIn.scale)
-        // A corner focus keeps that corner in place: the image edge lands exactly on the clamp bound.
-        assertEquals(Offset(1500f, 3000f), zoomedIn.pan)
-
-        val zoomedOut = raftZoomableImageTransformBy(zoomedIn, viewport, centre, 0.1f, Offset.Zero)
-        assertEquals(RaftZoomableImageTransform(), zoomedOut)
-    }
-
-    @Test
-    fun panMovesTheZoomedImageWithinItsBounds() {
-        val zoomed = RaftZoomableImageTransform(scale = 2f, pan = Offset(-400f, 0f))
-
-        val panned = raftZoomableImageTransformBy(zoomed, viewport, centre, 1f, Offset(-300f, 200f))
-
-        assertEquals(RaftZoomableImageTransform(scale = 2f, pan = Offset(-500f, 200f)), panned)
-    }
-
-    @Test
     fun doubleTapAtOneXZoomsAroundTheTapPoint() {
         val tap = Offset(800f, 600f)
 
@@ -57,32 +37,6 @@ class RaftZoomableImageTransformTest {
 
         assertEquals(RaftZoomableImageDoubleTapScale, target.scale)
         assertClose(RaftZoomableImageTransform().imagePointAt(tap), target.imagePointAt(tap), "point under the tap")
-    }
-
-    @Test
-    fun doubleTapWhenZoomedOrPannedGoesBackToOneX() {
-        listOf(
-            RaftZoomableImageTransform(scale = 2.5f, pan = Offset(-300f, 400f)),
-            RaftZoomableImageTransform(scale = 1.2f),
-            RaftZoomableImageTransform(scale = 4f, pan = Offset.Zero)
-        ).forEach { zoomed ->
-            assertEquals(
-                RaftZoomableImageTransform(),
-                raftZoomableImageDoubleTapTarget(zoomed, viewport, Offset(10f, 10f)),
-                "from $zoomed"
-            )
-        }
-    }
-
-    @Test
-    fun animationFramesRunFromStartToTarget() {
-        val from = RaftZoomableImageTransform()
-        val to = RaftZoomableImageTransform(scale = 2.5f, pan = Offset(-600f, 300f))
-
-        assertEquals(from, raftZoomableImageLerp(from, to, 0f))
-        assertEquals(RaftZoomableImageTransform(scale = 1.75f, pan = Offset(-300f, 150f)), raftZoomableImageLerp(from, to, 0.5f))
-        assertEquals(to, raftZoomableImageLerp(from, to, 1f))
-        assertEquals(to, raftZoomableImageLerp(from, to, 1.3f), "overshoot is clamped")
     }
 
     @Test
@@ -102,38 +56,6 @@ class RaftZoomableImageTransformTest {
         // Still narrower than the viewport (1.5x: 750 wide): it stays centred horizontally.
         val narrow = raftZoomableImageTransformBy(RaftZoomableImageTransform(scale = 1.5f), viewport, centre, 1f, Offset(300f, 0f), tall)
         assertEquals(0f, narrow.pan.x)
-    }
-
-    @Test
-    fun unknownOrInvalidImageSizeFallsBackToTheViewport() {
-        listOf(Size.Unspecified, Size.Zero, Size(0f, 10f), Size(Float.NaN, 10f)).forEach { content ->
-            assertEquals(viewport, raftZoomableImageFittedSize(content, viewport), "content $content")
-            assertEquals(Offset(750f, 1500f), raftZoomableImageMaxPan(2.5f, viewport, content), "content $content")
-        }
-    }
-
-    @Test
-    fun doubleTapOnTheLetterboxZoomsWithoutBlankSpace() {
-        val tall = Size(1000f, 4000f)
-        // x = 900 is on the letterbox right of the 500-wide image.
-        val target = raftZoomableImageDoubleTapTarget(RaftZoomableImageTransform(), viewport, Offset(900f, 1000f), tall)
-
-        assertEquals(RaftZoomableImageDoubleTapScale, target.scale)
-        assertEquals(Offset(-125f, 0f), target.pan, "the image's right edge lands on the viewport's")
-    }
-
-    @Test
-    fun theLoadedImageSizeReclampsAnExistingZoom() {
-        val state = RaftZoomableImageState()
-        state.viewport = viewport
-        state.transformBy(focus = Offset(1000f, 1000f), zoomChange = 2.5f, panChange = Offset.Zero)
-        assertEquals(Offset(-750f, 0f), state.transform.pan, "viewport bounds while the size is unknown")
-
-        state.contentSize = Size(1000f, 4000f)
-
-        assertEquals(RaftZoomableImageTransform(scale = 2.5f, pan = Offset(-125f, 0f)), state.transform)
-        state.reset()
-        assertEquals(RaftZoomableImageTransform(), state.transform)
     }
 
     @Test

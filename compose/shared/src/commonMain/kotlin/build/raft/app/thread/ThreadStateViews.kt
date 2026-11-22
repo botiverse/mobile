@@ -54,8 +54,10 @@ internal fun localizedThreadStateDetail(value: String?): String? =
 
 /**
  * The thread page while its first load is in flight and nothing is known to stand in (artin 10-23):
- * raft-ui's spinner over a muted "Loading…", shown at once. Never a bare page, and never the empty
- * state, which only a finished load may claim.
+ * raft-ui's spinner over a muted "Loading…". Callers gate initial reveal behind
+ * [ThreadInitialLoadingRevealDelayMs] (`ThreadTimelineSlice.loadingIndicatorRevealed`) so fast
+ * SQLite cache hits never flash a spinner, while slow or uncached loads never feel bare and never
+ * show the empty state (which only a finished load may claim).
  */
 @Composable
 internal fun ThreadLoadingState(spinnerStillStep: Int? = null) {
@@ -79,6 +81,14 @@ internal fun ThreadLoadingState(spinnerStillStep: Int? = null) {
 }
 
 /**
+ * #proj-mobile:#265: short grace window before revealing [ThreadLoadingState] on an initial
+ * thread/channel open. Covers typical SQLite durable-cache reads (15–50 ms) and brief authority
+ * waits without flashing a spinner, while still surfacing the loading indicator promptly on
+ * genuinely uncached or slow network loads.
+ */
+internal const val ThreadInitialLoadingRevealDelayMs = 120L
+
+/**
  * Task #80: how long a stand-in frame's "loading older" spinner waits before it shows, so a load that
  * answers quickly swaps the frame without a flash. The value the thread page's loading placeholder
  * used before #3596 (`ThreadLoadingRevealDelayMs`) and the file preview's minimum-visible time.
@@ -98,7 +108,7 @@ internal fun threadEmptyStandInAwaitsFirstLoad(
 ): Boolean = status == "empty" && durableLastKnown && !mainLoadFailed
 
 @Composable
-internal fun ThreadStateMessage(title: String, detail: String?) {
+internal fun ThreadStateMessage(title: String, detail: String?, traceId: String? = null) {
     Box(
         modifier = Modifier.fillMaxSize().padding(horizontal = 24.dp, vertical = 32.dp),
         contentAlignment = Alignment.Center
@@ -119,6 +129,7 @@ internal fun ThreadStateMessage(title: String, detail: String?) {
                     color = RaftColor.TextMutedGray
                 )
             }
+            RaftTraceIdNote(traceId)
         }
     }
 }
@@ -163,7 +174,8 @@ internal fun ThreadStateActionMessage(
     title: String,
     detail: String?,
     actionLabel: String,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    traceId: String? = null,
 ) {
     Box(
         modifier = Modifier.fillMaxSize().padding(horizontal = 24.dp, vertical = 32.dp),
@@ -185,6 +197,7 @@ internal fun ThreadStateActionMessage(
                     color = RaftColor.TextMutedGray
                 )
             }
+            RaftTraceIdNote(traceId)
             ThreadHeaderAction(label = actionLabel, onClick = onClick)
         }
     }

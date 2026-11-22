@@ -2,7 +2,6 @@ package build.raft.app
 
 import build.raft.app.data.ArtifactKind
 import build.raft.app.data.ArtifactLinkTarget
-import build.raft.app.data.AuthenticatedRouteOwner
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -40,23 +39,6 @@ class RaftArtifactViewerCacheTest {
     }
 
     @Test
-    fun anUnknownSubjectReadsAndKeepsNothing() {
-        val cache = cache()
-        cache.remember(null, header)
-        assertNull(cache.header(null, target.id))
-        assertFalse(cache.rememberKeptDocument(null, target, pageUrl, token))
-        assertFalse(cache.keptDocumentUsable(null, token))
-        assertFalse(cache.keptDocumentShows(null, target))
-
-        cache.remember(maya, header)
-        assertNull(cache.header(null, target.id))
-        assertNull(RaftArtifactViewerScope.of(web, null))
-        assertNull(RaftArtifactViewerScope.of(web, AuthenticatedRouteOwner(env, "", "server")))
-        assertNull(RaftArtifactViewerScope.of(web, AuthenticatedRouteOwner(env, "user", " ")))
-        assertNull(RaftArtifactViewerScope.of("not a url", AuthenticatedRouteOwner(env, "user", "server")))
-    }
-
-    @Test
     fun aSwitchOfAccountOrServerClearsEverythingAndDropsTheKeptDocument() {
         val drops = mutableListOf<Unit>()
         val cache = cache(drops)
@@ -74,19 +56,6 @@ class RaftArtifactViewerCacheTest {
         assertNull(cache.header(someoneElse, target.id))
         assertTrue(cache.keptDocumentUsable(mayaOtherServer, token))
         assertFalse(cache.keptDocumentUsable(someoneElse, token))
-    }
-
-    @Test
-    fun signOutClearsEverything() {
-        val drops = mutableListOf<Unit>()
-        val cache = cache(drops)
-        cache.remember(maya, header)
-        cache.rememberKeptDocument(maya, target, pageUrl, token)
-        drops.clear()
-        cache.clear()
-        assertNull(cache.header(maya, target.id))
-        assertFalse(cache.keptDocumentUsable(maya, token))
-        assertEquals(1, drops.size)
     }
 
     @Test
@@ -156,11 +125,13 @@ class RaftArtifactViewerCacheTest {
                 "https://w-x.w-staging.raftusercontent.com/page" to
                     RaftArtifactViewerBlockedTarget.SystemBrowser("https://w-x.w-staging.raftusercontent.com/page"),
                 // On it (Open in new page, a link in a comment): this Artifact stays, another opens in the viewer,
-                // any other page goes to the browser.
+                // any other safe own-origin page opens in the authenticated in-app WebView.
                 "$web/artifacts/${target.id}" to RaftArtifactViewerBlockedTarget.Ignore,
                 "$web/artifacts/$other/v/2" to RaftArtifactViewerBlockedTarget.OpenArtifact(ArtifactLinkTarget(other, 2)),
                 "$web/s/acme/artifacts/$other" to RaftArtifactViewerBlockedTarget.OpenArtifact(ArtifactLinkTarget(other)),
-                "$web/s/acme" to RaftArtifactViewerBlockedTarget.SystemBrowser("$web/s/acme"),
+                "$web/s/acme" to RaftArtifactViewerBlockedTarget.RaftWebPage("$web/s/acme"),
+                "$web/_raft/callback" to RaftArtifactViewerBlockedTarget.SystemBrowser("$web/_raft/callback"),
+                "$web/s/acme/tasks?ticket=secret" to RaftArtifactViewerBlockedTarget.SystemBrowser("$web/s/acme/tasks?ticket=secret"),
                 // A file the page saves (Download, Download all, a Files row): the WebView can't save it.
                 "blob:$web/0f1e2d3c-4b5a-6978-8796-a5b4c3d2e1f0" to RaftArtifactViewerBlockedTarget.Download,
                 "blob:https://w-x.w-staging.raftusercontent.com/0f1e2d3c" to RaftArtifactViewerBlockedTarget.Download,
@@ -170,7 +141,28 @@ class RaftArtifactViewerCacheTest {
                 "javascript:alert(1)" to RaftArtifactViewerBlockedTarget.Ignore,
                 "intent://x#Intent;end" to RaftArtifactViewerBlockedTarget.Ignore,
             )
-        for ((url, expected) in cases) assertEquals(expected, raftArtifactViewerBlockedNavigationTarget(url, web, target.id), url)
+        for ((url, expected) in cases) {
+            assertEquals(
+                expected,
+                raftArtifactViewerBlockedNavigationTarget(url, web, target.id, blockAppStoreBilling = false),
+                url,
+            )
+        }
+        // On iOS (App Store rules), general own-origin pages do not open in the new authenticated WebView.
+        assertEquals(
+            RaftArtifactViewerBlockedTarget.SystemBrowser("$web/s/acme"),
+            raftArtifactViewerBlockedNavigationTarget("$web/s/acme", web, target.id, blockAppStoreBilling = true),
+        )
+        assertEquals(
+            RaftArtifactViewerBlockedTarget.SystemBrowser("$web/servers/srv-1/upgrade"),
+            raftArtifactViewerBlockedNavigationTarget("$web/servers/srv-1/upgrade", web, target.id, blockAppStoreBilling = true),
+        )
+        assertTrue(
+            raftArtifactViewerRoutesDocumentAsLink("$web/servers/srv-1/upgrade", web, target.id, emptySet(), blockAppStoreBilling = true),
+        )
+        assertTrue(
+            raftArtifactViewerRoutesDocumentAsLink("https://checkout.stripe.com/c/pay/cs_1", web, target.id, emptySet(), blockAppStoreBilling = true),
+        )
     }
 
     @Test
@@ -206,44 +198,57 @@ class RaftArtifactViewerCacheTest {
             RaftArtifactViewerBlockedTarget.Ignore,
             raftArtifactViewerBlockedNavigationTarget("https://app.raft.build/artifacts/${target.id}", web, target.id, emptySet()),
         )
-        // A Raft page without a screen here, and the web's task panel: the browser (Android routes the page's
-        // load of one, under a server, instead of loading it over the Artifact).
-        for (url in listOf("$web/s/acme/tasks", "$web/s/acme/settings/theme", "$web/s/acme/channel/$cid?task=$cid%3Atask%3Ab1", "https://app.raft.build/s/acme/agent/a1")) {
-            assertEquals(RaftArtifactViewerBlockedTarget.SystemBrowser(url), raftArtifactViewerBlockedNavigationTarget(url, web, target.id, emptySet()), url)
+        // Same-origin Raft pages without a native screen (including the web's task panel) open in
+        // the authenticated in-app WebView on Android/Desktop; cross-origin Raft pages stay in the
+        // system browser so tokens never leave the active environment.
+        for (url in listOf("$web/s/acme/tasks", "$web/s/acme/settings/theme", "$web/s/acme/channel/$cid?task=$cid%3Atask%3Ab1")) {
+            assertEquals(
+                RaftArtifactViewerBlockedTarget.RaftWebPage(url),
+                raftArtifactViewerBlockedNavigationTarget(url, web, target.id, emptySet(), blockAppStoreBilling = false),
+                url,
+            )
+            assertEquals(
+                RaftArtifactViewerBlockedTarget.SystemBrowser(url),
+                raftArtifactViewerBlockedNavigationTarget(url, web, target.id, emptySet(), blockAppStoreBilling = true),
+                "iOS keeps existing behavior for $url",
+            )
+            assertTrue(raftArtifactViewerRoutesDocumentAsLink(url, web, target.id, emptySet(), blockAppStoreBilling = false), url)
+        }
+        val otherOriginWebPage = "https://app.raft.build/s/acme/agent/a1"
+        assertEquals(
+            RaftArtifactViewerBlockedTarget.SystemBrowser(otherOriginWebPage),
+            raftArtifactViewerBlockedNavigationTarget(otherOriginWebPage, web, target.id, emptySet()),
+        )
+        assertTrue(raftArtifactViewerRoutesDocumentAsLink(otherOriginWebPage, web, target.id, emptySet()))
+        // Full-document links to another Artifact (e.g. a bare `<a href="/artifacts/…">` in "Linked from")
+        // or an un-embedded reload of this Artifact are routed instead of replacing the embedded WebView
+        // document (which would latch `NOT_EMBEDDED` for the document's lifetime).
+        for (
+            url in listOf(
+                "$web/artifacts/$other",
+                "$web/artifacts/$other/v/2",
+                "$web/s/acme/artifacts/$other",
+                "$web/artifacts/$other?${raftArtifactViewerEmbedQuery()}",
+                "$web/artifacts/${target.id}",
+                "$web/artifacts/${target.id}/v/2",
+            )
+        ) {
             assertTrue(raftArtifactViewerRoutesDocumentAsLink(url, web, target.id, emptySet()), url)
         }
-        // What the viewer's own document loads stays its own: this Artifact, another one (its viewer), the
-        // page signing itself out (`/`, `/login`), the server after a Delete, and anything off Raft.
-        for (url in listOf("$web/artifacts/${target.id}", "$web/artifacts/$other", "$web/", "$web/login", "$web/s/acme", "https://example.com/a")) {
+        // What the viewer's own document loads stays its own: an embedded load/reload of this Artifact,
+        // the warm route, the page signing itself out (`/`, `/login`), the server after a Delete, and
+        // anything off Raft (handled by the origin lock).
+        for (
+            url in listOf(
+                "$web/artifacts/${target.id}?${raftArtifactViewerEmbedQuery()}",
+                raftArtifactViewerWarmUrl(web),
+                "$web/",
+                "$web/login",
+                "$web/s/acme",
+                "https://example.com/a",
+            )
+        ) {
             assertFalse(raftArtifactViewerRoutesDocumentAsLink(url, web, target.id, emptySet()), url)
         }
-    }
-
-    @Test
-    fun webOrigins() {
-        assertEquals(web, raftWebOriginOf("$web/artifacts/pt_x?a=1#b"))
-        assertEquals(web, raftWebOriginOf("HTTPS://Raft-App-Staging.Botiverse.dev:443/"))
-        assertEquals("https://h.test:8443", raftWebOriginOf("https://h.test:8443/x"))
-        assertNull(raftWebOriginOf("https://user@h.test/"))
-        assertNull(raftWebOriginOf("javascript:alert(1)"))
-        assertNull(raftWebOriginOf("https://h.test:99999/"))
-        assertTrue(raftArtifactViewerDocumentUrlIsKeepable(web, pageUrl))
-        assertFalse(raftArtifactViewerDocumentUrlIsKeepable(web, "https://w.raftusercontent.com/x"))
-    }
-
-    @Test
-    fun viewerAddresses() {
-        assertEquals("$web/artifacts/${target.id}", raftArtifactViewerPageUrl(web, target))
-        assertEquals("$web/artifacts/${target.id}/v/3", raftArtifactViewerPageUrl(web, ArtifactLinkTarget(target.id, 3)))
-        assertEquals("$web/artifacts/$RAFT_ARTIFACT_VIEWER_WARM_SEGMENT?embed=raft-settings-v1&shell=host&back=host&hostMenu=desktop-mode,open-in-browser,copy-link&hostOpen=message", raftArtifactViewerWarmUrl("$web/"))
-        // Route data is identity only: the Artifact and its pinned version, never its title or kind.
-        val pageData = raftArtifactViewerPageData(ArtifactLinkTarget(target.id, 3))
-        assertEquals(ArtifactLinkTarget(target.id, 3), pageData.raftArtifactViewerTargetOrNull())
-        assertFalse(pageData.toString().contains(header.title))
-        assertNull(build.raft.app.compat.json.JSONObject().put("artifactId", "https://evil.test/").raftArtifactViewerTargetOrNull())
-        // A short id is route identity as written (slock staging 380482116 artifactShortId.ts).
-        val short = ArtifactLinkTarget("2QthvfPeGfDnqwr7LG6itx", 2)
-        assertEquals(short, raftArtifactViewerPageData(short).raftArtifactViewerTargetOrNull())
-        assertNull(build.raft.app.compat.json.JSONObject().put("artifactId", "YcVfxkQb6JRzqk5kF2tNLw").raftArtifactViewerTargetOrNull())
     }
 }

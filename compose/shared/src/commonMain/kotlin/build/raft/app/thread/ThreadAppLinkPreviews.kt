@@ -87,6 +87,8 @@ internal data class ThreadAppLinkPreviewHost(
     val toast: (String) -> Unit,
     /** [toast] with an intent (an operation state's tone); plain where none is wired (fixtures). */
     val toastWithIntent: (String, RaftToastIntent?) -> Unit = { text, _ -> toast(text) },
+    /** Failed prepare/execute toast carrying the failed response's `X-Trace-Id` when present. */
+    val errorToast: (String, String?) -> Unit = { text, _ -> toast(text) },
     /** Workspace Artifacts links; null where they aren't read (fixtures, no provider). */
     val artifacts: ThreadArtifactLinkHost? = null,
     /** The batched link-card read (App link cards v2); false: always the GET (fixtures). */
@@ -106,6 +108,8 @@ internal data class ThreadArtifactLinkHost(
     val webBaseUrl: String,
     /** The cards' screenshots (in memory for this viewer); null where none are read (fixtures). */
     val screenshots: SharedArtifactScreenshotStore? = null,
+    /** The signed-in person (a user id): their own settle reads "You" (web `useArtifactReaderId`). */
+    val readerId: String? = null,
 )
 
 /** One message's Artifact links answered `ok`, and the hosts they were split on. */
@@ -277,6 +281,7 @@ internal fun ThreadAppLinkPreviewScope(
                     nowMillis = host.store.nowMillis,
                     toast = host.toast,
                     toastWithIntent = host.toastWithIntent,
+                    errorToast = host.errorToast,
                     status = { operationId -> host.store.operationStatus(host.serverId, operationId) },
                     operationHints = RaftLinkCardOperationHints.forServer(host.serverId),
                 )

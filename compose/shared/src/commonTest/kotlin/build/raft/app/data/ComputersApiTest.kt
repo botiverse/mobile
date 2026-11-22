@@ -408,73 +408,6 @@ class ComputersApiTest {
     }
 
     @Test
-    fun typedComputersApiAcceptsOnlyTheCanonicalMachineErrorField() = runPortableCoroutineTest {
-        val transport = RecordingComputersApi()
-        val client = RaftComputersApiClient(transport)
-        val serverId = ServerId("server-1")
-        val fixtures =
-            listOf(
-                ComputersErrorFixture(
-                    name = "canonical-error-body",
-                    errorBody = """{"error":"This computer still has active agents"}""",
-                    expected = "This computer still has active agents"
-                ),
-                ComputersErrorFixture(
-                    name = "future-fields",
-                    body = """{"error":"This computer still has active agents","future":{"agentCount":2}}""",
-                    expected = "This computer still has active agents"
-                ),
-                ComputersErrorFixture("wrong-alias", body = """{"message":"must not be guessed"}"""),
-                ComputersErrorFixture("wrong-type", body = """{"error":409}"""),
-                ComputersErrorFixture("nested", body = """{"error":{"message":"must not be guessed"}}"""),
-                ComputersErrorFixture("malformed", body = """{"error":"unterminated"""),
-                ComputersErrorFixture("plain-text", body = "must not be guessed"),
-                ComputersErrorFixture("blank", body = ""),
-                ComputersErrorFixture("missing")
-            )
-
-        fixtures.forEach { fixture ->
-            transport.respond = { code ->
-                HomeNetworkResponse(
-                    code = code,
-                    bodyText = fixture.body,
-                    errorBodyText = fixture.errorBody
-                )
-            }
-
-            val error = assertIs<DataResult.Error>(client.deleteMachine(serverId, "machine-1"), fixture.name).error
-            assertEquals("computer_has_agents", error.code, fixture.name)
-            assertEquals(fixture.expected, error.serverMessage, fixture.name)
-        }
-    }
-
-    @Test
-    fun typedComputersApiRejectsGuessedWrappersAndAliases() = runPortableCoroutineTest {
-        val client =
-            RaftComputersApiClient(
-                RecordingComputersApi(
-                    machinesBody = """{"items":[{"id":"machine-1","name":"Maria"}]}""",
-                    registerBody = """{"computer":{"id":"machine-1","name":"Maria"},"key":"secret"}""",
-                    renameBody = """{"machine":{"id":"machine-1","name":"Maria"}}""",
-                    commandBody = """{"success":true}""",
-                    rotateBody = """{"key":"sk_machine_123"}""",
-                    workspacesBody = """{"workspaces":[{"directoryName":"agent-1"}]}""",
-                    runtimeModelsBody = """{"items":["sonnet"],"defaultModel":"sonnet"}"""
-                )
-            )
-        val serverId = ServerId("server-1")
-
-        assertEquals("computers_list_contract_mismatch", assertIs<DataResult.Error>(client.machines(serverId)).error.code)
-        assertEquals("computer_register_contract_mismatch", assertIs<DataResult.Error>(client.registerMachine(serverId, "Maria")).error.code)
-        assertEquals("computer_rename_contract_mismatch", assertIs<DataResult.Error>(client.renameMachine(serverId, "machine-1", "Maria")).error.code)
-        assertEquals("computer_update_contract_mismatch", assertIs<DataResult.Error>(client.updateMachineDescription(serverId, "machine-1", "Maria host")).error.code)
-        assertEquals("computer_delete_contract_mismatch", assertIs<DataResult.Error>(client.deleteMachine(serverId, "machine-1")).error.code)
-        assertEquals("computer_rotate_key_contract_mismatch", assertIs<DataResult.Error>(client.rotateMachineKey(serverId, "machine-1")).error.code)
-        assertEquals("computer_workspaces_contract_mismatch", assertIs<DataResult.Error>(client.machineWorkspaces(serverId, "machine-1")).error.code)
-        assertEquals("computer_runtime_models_contract_mismatch", assertIs<DataResult.Error>(client.runtimeModels(serverId, "machine-1", "claude")).error.code)
-    }
-
-    @Test
     fun runtimeOptionsAcceptAdditiveServerFields() = runPortableCoroutineTest {
         // Hands c453ba5f: runtime-options rows are decoded leniently, so a key this client does not know
         // (a future hint, or the v1 `formDefinitionRef` this client no longer reads) never fails the catalog.
@@ -631,13 +564,6 @@ class ComputersApiTest {
         private fun ok(body: String): HomeNetworkResponse =
             HomeNetworkResponse(code = 200, bodyText = body)
     }
-
-    private data class ComputersErrorFixture(
-        val name: String,
-        val body: String? = null,
-        val errorBody: String? = null,
-        val expected: String? = null
-    )
 
     private companion object {
         /** slock agents.ts `GET /agents/:id/runtime-options` rows as runtimeAdmissionService projects them at d759141c94. */

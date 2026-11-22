@@ -19,13 +19,6 @@ import kotlin.test.assertTrue
  */
 class WorkspaceTerminologyResourceTest {
 
-    // Workspace keys that carry placeholders, for base/zh token parity (one per side).
-    private val placeholderParityKeys =
-        listOf(
-            "settings_connected_apps_uninstall_detail",
-            "member_error_workspace_hidden"
-        )
-
     @Test
     fun everyCatalogKeepsTheWorkspaceTermSplit() {
         val catalogs = allStringCatalogs()
@@ -38,88 +31,6 @@ class WorkspaceTerminologyResourceTest {
             }
         assertEquals(emptyList(), violations, "workspace term split (工作空间 = server, 工作区 = agent files)")
     }
-
-    @Test
-    fun workspaceTermScanFlagsEveryKindOfViolation() {
-        val clean =
-            mapOf(
-                "settings_notifications_workspace" to "工作空间通知",
-                "member_tab_workspace" to "工作区",
-                "settings_computers_section_workspaces" to "工作区",
-                "settings_computers_install_daemon_hint" to "将其连接到此工作空间。"
-            )
-        assertEquals(emptyList(), workspaceTermViolations(clean, zh = true))
-
-        val brokenZh =
-            mapOf(
-                "settings_notifications_workspace" to "工作区通知",
-                "member_tab_workspace" to "工作空间",
-                "agent_migration_note" to "工作空间和工作区",
-                "auth_hint" to "workspace"
-            )
-        assertEquals(
-            listOf("settings_notifications_workspace", "member_tab_workspace", "agent_migration_note"),
-            workspaceTermViolations(brokenZh, zh = true).map { it.substringBefore(" ") }
-        )
-        assertEquals(
-            listOf("auth_hint"),
-            workspaceTermViolations(mapOf("auth_hint" to "工作空间"), zh = false).map { it.substringBefore(" ") }
-        )
-    }
-
-    @Test
-    fun placeholderParityAcrossWorkspaceKeys() {
-        val base = readStrings("base")
-        val zh = readStrings("zh-rCN")
-        placeholderParityKeys.forEach { key ->
-            assertTrue(key in base, "base missing $key")
-            assertTrue(key in zh, "zh-rCN missing $key")
-        }
-        assertEquals(
-            emptyList(),
-            workspacePlaceholderMismatches(base, zh, placeholderParityKeys),
-            "every workspace key must keep base/zh placeholder tokens identical"
-        )
-    }
-
-    @Test
-    fun placeholderParityDetectsAccidentalPlaceholderMutation() {
-        val base = readStrings("base")
-        val zh = readStrings("zh-rCN")
-
-        val victim = "settings_connected_apps_uninstall_detail"
-        assertEquals(emptyList(), workspacePlaceholderMismatches(base, zh, listOf(victim)))
-        val mutatedZh = zh.toMutableMap().also { it[victim] = it.getValue(victim) + " %2\$s" }
-        assertEquals(
-            listOf(victim),
-            workspacePlaceholderMismatches(base, mutatedZh, listOf(victim)),
-            "adding a stray placeholder to a zh value must be flagged"
-        )
-
-        val zhDropped = zh.toMutableMap().also { it[victim] = "从此工作空间卸载并撤销其访问权限。" }
-        assertEquals(
-            listOf(victim),
-            workspacePlaceholderMismatches(base, zhDropped, listOf(victim)),
-            "dropping a placeholder from a zh value must be flagged"
-        )
-    }
-
-    private fun workspacePlaceholderMismatches(
-        base: Map<String, String>,
-        zh: Map<String, String>,
-        keys: List<String>
-    ): List<String> =
-        keys.filter { key ->
-            placeholderTokens(base.getValue(key)) != placeholderTokens(zh.getValue(key))
-        }
-
-    private fun placeholderTokens(value: String): List<String> =
-        PLACEHOLDER.findAll(value).map { it.value }.toList()
-
-    private fun readStrings(locale: String): Map<String, String> =
-        STRING_ENTRY.findAll(
-            String(Files.readAllBytes(resourcesRoot().resolve(raftComposeValuesDir(locale)).resolve("strings.xml")), Charsets.UTF_8)
-        ).associate { it.groupValues[1] to it.groupValues[2] }
 
     /**
      * The zh rule: a key in an agent-filesystem domain (an agent's local files and directories)

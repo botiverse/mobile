@@ -47,6 +47,9 @@ import androidx.compose.ui.window.PopupProperties
 import build.raft.app.compat.ui.LocalRaftPageActive
 import build.raft.app.components.RaftDesignSystemTheme
 import build.raft.app.components.RaftSlotIcon
+import build.raft.app.data.ChatLayoutPreferenceStore
+import build.raft.app.data.RaftChatLayoutPreferenceEvents
+import build.raft.app.data.RaftEventBus
 import build.raft.app.markdown.LocalRaftMarkdownLinkDragSelection
 import build.raft.app.markdown.RaftMarkdownLinkDragSelection
 import build.raft.app.markdown.RaftCleanCopyClipboardScope
@@ -547,11 +550,12 @@ internal class ThreadInPlaceSelectionController(
         selectionState.selectAll()
     }
 
-    /** Row-local [offset] (the row long-press detector's space) lies on the selectable body. */
+    /** Row-local [offset] (the row long-press detector's space) lies on the visible selectable body. */
     fun bodyContainsRowOffset(offset: Offset): Boolean {
         val row = rowCoordinates?.takeIf { it.isAttached } ?: return false
         val body = bodyCoordinates?.takeIf { it.isAttached } ?: return false
-        return row.localBoundingBoxOf(body, clipBounds = false).contains(offset)
+        val bounds = row.localBoundingBoxOf(body, clipBounds = true)
+        return !bounds.isEmpty && bounds.contains(offset)
     }
 
     /** Legacy TextToolbar path: [rootRect] is in root coordinates; store it body-relative. */
@@ -618,6 +622,49 @@ private class ThreadInPlaceTextContextMenuProvider(
             controller.hideMenu()
         }
     }
+}
+
+/**
+ * Observes the "New message menu (Beta)" preference live while a conversation page stays mounted
+ * (e.g. wide-screen split pane or kept-alive stack) so toggling it in Settings immediately enables
+ * or disables in-place message text selection without reopening the conversation.
+ */
+@Composable
+internal fun rememberNewMessageMenuEnabled(
+    preferenceStore: ChatLayoutPreferenceStore,
+    eventBus: RaftEventBus,
+): Boolean {
+    var enabled by remember(preferenceStore) { mutableStateOf(preferenceStore.readNewMessageMenuEnabledSync()) }
+    DisposableEffect(preferenceStore, eventBus) {
+        val subscription =
+            RaftChatLayoutPreferenceEvents(eventBus).addPreferenceListener { snapshot ->
+                enabled = snapshot.newMessageMenuEnabled
+            }
+        enabled = preferenceStore.readNewMessageMenuEnabledSync()
+        onDispose { subscription.close() }
+    }
+    return enabled
+}
+
+/**
+ * Observes the "Enter sends message" preference live without running a synchronous MMKV read on
+ * every recomposition of [SharedThreadRouteContentContent].
+ */
+@Composable
+internal fun rememberComposerSendKeyEnabled(
+    preferenceStore: ChatLayoutPreferenceStore,
+    eventBus: RaftEventBus,
+): Boolean {
+    var enabled by remember(preferenceStore) { mutableStateOf(preferenceStore.readComposerSendKeyEnabledSync()) }
+    DisposableEffect(preferenceStore, eventBus) {
+        val subscription =
+            RaftChatLayoutPreferenceEvents(eventBus).addPreferenceListener { snapshot ->
+                enabled = snapshot.composerSendKeyEnabled
+            }
+        enabled = preferenceStore.readComposerSendKeyEnabledSync()
+        onDispose { subscription.close() }
+    }
+    return enabled
 }
 
 @Composable
@@ -786,8 +833,9 @@ internal fun ThreadInPlaceSelectableBody(
                     quoteSelection =
                         quoteIntoComposer?.let { quote ->
                             {
-                                // Select Text > Quote's formatter and composer append.
-                                val text = formatThreadMessageQuote(selectionText())
+                                // Select Text > Quote's formatter and composer append: a quote reply
+                                // of a sent message (web selection quote with its source message).
+                                val text = threadSelectionQuote(selectionText(), controller.messageId)
                                 diagnosticsLogger(
                                     "thread_in_place_selection_quote messageId=${controller.messageId} chars=${text.length}"
                                 )

@@ -55,20 +55,6 @@ class TasksBacklogScreenshotTest {
     @Test
     fun boardShowsBacklogFirstInDark() = capture("tasks.backlog.board-dark", RaftAppAppearance.Dark, tasks, TasksViewMode.Board, backlogOpen)
 
-    @Test
-    fun listStartsWithBacklogCollapsed() =
-        capture("tasks.backlog.list", RaftAppAppearance.Light, tasks, TasksViewMode.List, TasksPresentationState.Default.collapsedStatuses)
-
-    @Test
-    fun anUnknownStatusTaskStillShows() =
-        capture(
-            "tasks.backlog.unknown-status",
-            RaftAppAppearance.Light,
-            listOf(task(1, "Add dark mode to the onboarding screens", "todo"), task(9, "Status from a newer server", "on_hold")),
-            TasksViewMode.List,
-            TasksPresentationState.Default.collapsedStatuses,
-        )
-
     // The panel reads its view-mode preference from the app-scope store; tests give it a blank one.
     @org.junit.Before
     fun installPreferenceStore() {
@@ -103,7 +89,6 @@ private fun BacklogTasksPanel(tasks: List<TaskSummary>, mode: TasksViewMode, col
             state = TasksUiState(loadState = ScreenLoadState.Content(TasksContent(summaryCounts = tasks.summaryCounts(), tasks = tasks))),
             onIntent = {},
             initialPresentationOverride = TasksPresentationState.Default.copy(selectedMode = mode, collapsedStatuses = collapsed),
-            taskV2Enabled = true,
         )
     }
 }

@@ -15,8 +15,11 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalDensity
+import build.raft.app.compat.ui.LocalRaftHostImeInsets
+import build.raft.app.compat.ui.raftImeBottomPx
 import androidx.lifecycle.viewmodel.compose.viewModel
 import build.raft.app.data.RaftAuthSessionStore
 import build.raft.app.data.SharedAuthGateState
@@ -36,9 +39,11 @@ import build.raft.designsystem.components.RaftBackButtonDefaults
 import build.raft.designsystem.components.RaftWindowDialog
 import build.raft.designsystem.components.RaftWindowDialogProperties
 import build.raft.designsystem.components.rememberRaftStableWindowInsets
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -91,8 +96,8 @@ import build.raft.designsystem.theme.RaftTheme
 
 /**
  * Where opening a task lands when it is not a page of its own yet (slock web `useOpenTask`):
- * - [Pending]: a task that opens as its conversation but has none yet (a pre-v2 task with the
- *   flag on, or a v2 task created to have one). Web opens the task dialog empty — "opening does
+ * - [Pending]: a task that opens as its conversation but has none yet (a pre-v2 task, or a v2
+ *   task created to have one). Web opens the task dialog empty — "opening does
  *   not create" (`TaskConversationDialog`) — and the first send creates the conversation
  *   (`threadStore.ensureTaskModalThreadChannel`: POST /tasks/:id/conversation, then the message).
  * - [Legacy]: a legacy orphan (`isLegacy`), shown read-only (web `LegacyTaskPanel`).
@@ -105,9 +110,9 @@ internal sealed interface TaskOpenSurface {
     data class Legacy(override val task: TaskSummary) : TaskOpenSurface
 }
 
-/** The surface [task] opens on, or null when it opens a page ([TaskOpenTarget] Conversation / ResolveConversation / HostThread). */
-internal fun TaskSummary.taskOpenSurface(taskV2Enabled: Boolean): TaskOpenSurface? =
-    when (taskOpenTarget(taskV2Enabled)) {
+/** The surface [task] opens on, or null when it opens a page ([TaskOpenTarget] Conversation / ResolveConversation). */
+internal fun TaskSummary.taskOpenSurface(): TaskOpenSurface? =
+    when (taskOpenTarget()) {
         TaskOpenTarget.PendingConversation -> TaskOpenSurface.Pending(this)
         TaskOpenTarget.LegacyPanel -> TaskOpenSurface.Legacy(this)
         else -> null
@@ -118,7 +123,7 @@ internal sealed interface TaskConversationStart {
     data class Started(val conversationChannelId: ChannelId) : TaskConversationStart
 
     /** [serverMessage]: the server's `error` text when it gave one (web shows it), else null. */
-    data class Failed(val serverMessage: String?) : TaskConversationStart
+    data class Failed(val serverMessage: String?, val traceId: String? = null) : TaskConversationStart
 }
 
 /**
@@ -140,15 +145,29 @@ internal suspend fun startTaskConversation(
     val conversation =
         when (val opened = tasksDataSource.openTaskConversation(serverId, task.id)) {
             is DataResult.Content -> opened.data.conversationChannelId
-            is DataResult.Error -> return TaskConversationStart.Failed(opened.error.serverMessage)
-            is DataResult.NoPermission -> return TaskConversationStart.Failed(opened.blocker.serverMessage)
+            is DataResult.Error -> return TaskConversationStart.Failed(opened.error.serverMessage, opened.error.traceId)
+            is DataResult.NoPermission -> return TaskConversationStart.Failed(opened.blocker.serverMessage, opened.blocker.traceId)
             is DataResult.Empty -> return TaskConversationStart.Failed(null)
         }
     return when (val sent = send(conversation.value, text, randomId)) {
         is ThreadApiResult.Success -> TaskConversationStart.Started(conversation)
-        is ThreadApiResult.Failure -> TaskConversationStart.Failed(sent.toThreadAttachmentCommentsFailureProjection().serverMessage)
+        is ThreadApiResult.Failure -> {
+            val projection = sent.toThreadAttachmentCommentsFailureProjection()
+            TaskConversationStart.Failed(projection.serverMessage, projection.traceId)
+        }
     }
 }
+
+/**
+ * In-memory first-frame seed for a pushed [TASK_PENDING_CONVERSATION_PAGE] route (identity-only
+ * `pageData` never carries product objects). Holds the [task] tapped on the opener and optional
+ * channel access hints until the live store / conversation directory hydrates.
+ */
+internal data class TaskPendingSeed(
+    val task: TaskSummary,
+    val channelJoined: Boolean? = null,
+    val canWriteChannel: Boolean? = null,
+)
 
 /**
  * The first message typed into a task that has no conversation yet ([TaskOpenSurface.Pending]),
@@ -167,6 +186,7 @@ internal class TaskPendingDraftStore {
 
     private val drafts = mutableStateMapOf<Key, String>()
     private val randomIds = mutableMapOf<Key, String>()
+    private val seeds = mutableMapOf<Key, TaskPendingSeed>()
     private var accountId: String? = null
 
     private fun key(serverId: String?, taskId: String) = Key(serverId.orEmpty(), taskId)
@@ -181,16 +201,41 @@ internal class TaskPendingDraftStore {
     fun randomId(serverId: String?, taskId: String, newRandomId: () -> String): String =
         randomIds.getOrPut(key(serverId, taskId), newRandomId)
 
+    /** Stores the tapped task and optional channel access hints for instant Frame-1 rendering. */
+    fun seed(
+        serverId: String?,
+        task: TaskSummary,
+        channelJoined: Boolean? = null,
+        canWriteChannel: Boolean? = null,
+    ) {
+        seeds[key(serverId, task.id.value)] =
+            TaskPendingSeed(
+                task = task,
+                channelJoined = channelJoined,
+                canWriteChannel = canWriteChannel,
+            )
+    }
+
+    fun seeded(serverId: String?, taskId: String): TaskPendingSeed? = seeds[key(serverId, taskId)]
+
+    fun seededTask(serverId: String?, taskId: String): TaskSummary? = seeded(serverId, taskId)?.task
+
+    fun clearSeed(serverId: String?, taskId: String) {
+        seeds.remove(key(serverId, taskId))
+    }
+
     /** The first send created the task's conversation: its text is a message now, not a draft. */
     fun clear(serverId: String?, taskId: String) {
         val key = key(serverId, taskId)
         drafts.remove(key)
         randomIds.remove(key)
+        seeds.remove(key)
     }
 
     fun clearAll() {
         drafts.clear()
         randomIds.clear()
+        seeds.clear()
     }
 
     /**
@@ -210,6 +255,7 @@ internal class TaskPendingDraftStore {
         if (serverIds.isNullOrEmpty()) return
         drafts.keys.filter { it.serverId !in serverIds }.forEach { drafts.remove(it) }
         randomIds.keys.filter { it.serverId !in serverIds }.forEach { randomIds.remove(it) }
+        seeds.keys.filter { it.serverId !in serverIds }.forEach { seeds.remove(it) }
     }
 }
 
@@ -256,6 +302,8 @@ internal class TaskOpenSurfaceFlow(
         private set
     var errorText by mutableStateOf<String?>(null)
         private set
+    var errorTraceId by mutableStateOf<String?>(null)
+        private set
 
     /**
      * The first send created the conversation and its page is opening over this one: the pending
@@ -270,6 +318,7 @@ internal class TaskOpenSurfaceFlow(
         this.surface = surface
         handingOff = false
         errorText = null
+        errorTraceId = null
     }
 
     /** Closes the page unless a send runs; the draft stays for the next open. */
@@ -278,6 +327,7 @@ internal class TaskOpenSurfaceFlow(
         surface = null
         handingOff = false
         errorText = null
+        errorTraceId = null
         return true
     }
 
@@ -302,6 +352,7 @@ internal class TaskOpenSurfaceFlow(
         handingOff = false
         surface = null
         errorText = null
+        errorTraceId = null
     }
 
     fun draft(serverId: String?, taskId: String): String = drafts.draft(serverId, taskId)
@@ -316,16 +367,17 @@ internal class TaskOpenSurfaceFlow(
      * older revision than the one shown is ignored (several stores feed it); while the first send
      * hands off, the page it opens is already on its way.
      */
-    fun onTaskChanged(fresh: TaskSummary?, taskV2Enabled: Boolean): TaskSummary? {
+    fun onTaskChanged(fresh: TaskSummary?): TaskSummary? {
         val current = surface ?: return null
         if (fresh == null || fresh.id != current.task.id || fresh == current.task || handingOff) return null
         val shownRevision = current.task.revision
         if (fresh.revision != null && shownRevision != null && fresh.revision < shownRevision) return null
-        return when (val next = fresh.taskOpenSurface(taskV2Enabled)) {
+        return when (val next = fresh.taskOpenSurface()) {
             null -> {
                 if (sending) return null
                 surface = null
                 errorText = null
+                errorTraceId = null
                 fresh
             }
             else -> {
@@ -356,6 +408,7 @@ internal class TaskOpenSurfaceFlow(
         sending = true
         sendRunning.value = true
         errorText = null
+        errorTraceId = null
         try {
             val started = startTaskConversation(task, ServerId(serverId), text, tasksDataSource, randomId, sendMessage)
             if (currentServerId() != serverId) {
@@ -370,6 +423,7 @@ internal class TaskOpenSurfaceFlow(
                 }
                 is TaskConversationStart.Failed -> {
                     errorText = started.serverMessage ?: fallbackError
+                    errorTraceId = started.traceId
                     null
                 }
             }
@@ -408,6 +462,7 @@ internal class TaskPageEditing(
     val tasksDataStore: SharedTasksDataStore?,
     /** A refused write's [SharedTasksEvent.OperationFailed] code, for the host's toast. */
     val onFailed: (String) -> Unit = {},
+    val onFailedWithTrace: ((code: String, traceId: String?) -> Unit)? = null,
     val log: (String) -> Unit = {},
 )
 
@@ -431,7 +486,6 @@ internal fun TaskOpenSurfaceHost(
     hostVisible: Boolean = true,
     /** The task's conversation appeared (someone wrote first, `task:updated`): the caller opens it. */
     onConversationArrived: (TaskSummary) -> Unit = {},
-    taskV2Enabled: Boolean = true,
     /** Whether the reader may write the task's channel (web canWriteTasksInChannel); unknown: yes. */
     canWriteTaskChannel: (ChannelId?) -> Boolean = { true },
     /** True when the page hosting this pending task is itself a DM (enforces the share DM rule). */
@@ -449,12 +503,15 @@ internal fun TaskOpenSurfaceHost(
             // The page follows the task channel's copy (an edit's optimistic value, its rollback, a
             // `task:updated`), and gives way to the conversation once it exists.
             LaunchedEffect(listed) {
-                flow.onTaskChanged(listed, taskV2Enabled)?.let(onConversationArrived)
+                flow.onTaskChanged(listed)?.let(onConversationArrived)
             }
             val onFailed by rememberUpdatedState(editing?.onFailed)
+            val onFailedWithTrace by rememberUpdatedState(editing?.onFailedWithTrace)
             LaunchedEffect(channelTasks) {
                 channelTasks?.uiEvents?.collect { event ->
-                    if (event is SharedTasksEvent.OperationFailed) onFailed?.invoke(event.code)
+                    if (event is SharedTasksEvent.OperationFailed) {
+                        onFailedWithTrace?.invoke(event.code, event.traceId) ?: onFailed?.invoke(event.code)
+                    }
                 }
             }
             LaunchedEffect(flow.handingOff, hostVisible) {
@@ -465,6 +522,56 @@ internal fun TaskOpenSurfaceHost(
                 flow.finishHandOff()
             }
             val task = surface.task
+            val resolvedServer = serverId?.takeIf { it.isNotBlank() }
+            val taskChannelId = task.channelId
+            val taskNumber = task.taskNumber
+            val hydrationDataSource = editing?.tasksDataSource
+            val currentEditing by rememberUpdatedState(editing)
+            val currentOnConversationArrived by rememberUpdatedState(onConversationArrived)
+            var summaryDetailHydrationSettled by remember(task.id, resolvedServer, taskChannelId, taskNumber) {
+                mutableStateOf(false)
+            }
+            val needsSummaryHydration =
+                hydrationDataSource != null &&
+                    !task.conversationDetailsLoaded &&
+                    task.conversationChannelId == null &&
+                    !summaryDetailHydrationSettled &&
+                    resolvedServer != null &&
+                    taskChannelId != null &&
+                    taskNumber != null
+            LaunchedEffect(
+                task.id,
+                task.conversationDetailsLoaded,
+                resolvedServer,
+                taskChannelId,
+                taskNumber,
+                hydrationDataSource,
+            ) {
+                if (
+                    hydrationDataSource == null ||
+                    summaryDetailHydrationSettled ||
+                    task.conversationDetailsLoaded ||
+                    task.conversationChannelId != null
+                ) {
+                    return@LaunchedEffect
+                }
+                val activeServer = resolvedServer ?: return@LaunchedEffect
+                val channelId = taskChannelId ?: return@LaunchedEffect
+                val number = taskNumber ?: return@LaunchedEffect
+                val detail =
+                    hydrationDataSource.loadChannelTaskByNumber(
+                        serverId = ServerId(activeServer),
+                        channelId = channelId,
+                        taskNumber = number,
+                        priority = build.raft.app.data.DataRequestPriority.Visible,
+                    )
+                if (detail is DataResult.Content && detail.data.task.id == task.id) {
+                    val fullTask = detail.data.task
+                    currentEditing?.tasksDataStore?.upsertTaskForCurrentOwner(activeServer, fullTask)
+                    flow.onTaskChanged(fullTask)?.let(currentOnConversationArrived)
+                }
+                summaryDetailHydrationSettled = true
+            }
             val edits = channelTasks?.let { TaskHeadEdits(it::dispatch) }
             val shareEntry = rememberTaskHeaderShareEntry(task = task, serverId = serverId, directMessage = hostDirectMessage, scope = shareScope)
             TaskPendingConversationWindow(onDismissRequest = { flow.requestClose() }) {
@@ -479,6 +586,7 @@ internal fun TaskOpenSurfaceHost(
                     statusUpdating = channelTasksState?.statusUpdatingTaskId == task.id.value,
                     sending = flow.sending || flow.handingOff,
                     errorText = flow.errorText,
+                    errorTraceId = flow.errorTraceId,
                     joined = joined(task),
                     draft = flow.draft(serverId, task.id.value),
                     onDraftChange = { flow.onDraftChange(serverId, task.id.value, it) },
@@ -490,6 +598,7 @@ internal fun TaskOpenSurfaceHost(
                     serverId = serverId,
                     onMoveToBacklog = { reason -> edits?.moveToBacklog(task, reason) },
                     onAmend = channelTasks.taskHeadAmend(task),
+                    loadingDiscussion = needsSummaryHydration,
                     shareEntry = shareEntry,
                 )
             }
@@ -643,6 +752,19 @@ internal fun TaskPendingConversationPage(
     onAmend: (suspend (TaskAmendPatch, Long?) -> TaskAmendResult)? = null,
     /** False: the reader may not write the task's channel; status, assignee and text are plain ([TaskConversationHeadRoute]). */
     canWriteChannel: Boolean = true,
+    /**
+     * True when mounted as a full pushed stack page ([ComposeTaskPendingPage]) rather than inside
+     * [TaskPendingConversationWindow]: lets the top header, join footer and composer dock use the
+     * host's safe-area and live keyboard insets directly, matching [ThreadPage] so nothing shifts
+     * when the first send swaps in the conversation page.
+     */
+    useHostSafeArea: Boolean = false,
+    errorTraceId: String? = null,
+    /**
+     * True while resolving whether a `detail=summary` task row already has a conversation on the
+     * server: shows a spinner instead of falsely claiming "No discussion in this task yet".
+     */
+    loadingDiscussion: Boolean = false,
     /** Share loop: ⋯ with Share task / Copy link (null when the flag is off, unsupported host, or DM task). */
     shareEntry: ThreadHeaderShareEntry? = null,
 ) {
@@ -659,7 +781,15 @@ internal fun TaskPendingConversationPage(
             onToggleFollow = {},
             serverId = serverId,
         )
-    val keyboardUp = WindowInsets.ime.getBottom(LocalDensity.current) > 0
+    val density = LocalDensity.current
+    val keyboardUp =
+        if (useHostSafeArea) {
+            raftImeBottomPx(WindowInsets.ime, LocalRaftHostImeInsets.current, density) > 0
+        } else {
+            WindowInsets.ime.getBottom(density) > 0
+        }
+    val bottomSafeArea = if (useHostSafeArea) raftBottomSafeAreaPadding() else 0.dp
+    val keyboardInsetExcludesBottomSafeArea = if (useHostSafeArea) raftKeyboardInsetExcludesBottomSafeArea() else false
     val jointSurface =
         parseConversationKindOrNull(task.channelType) == ConversationKind.Joint || LocalRaftJointActorSurface.current
     // Back puts the pulled-down head back up before it leaves the page.
@@ -672,7 +802,7 @@ internal fun TaskPendingConversationPage(
         RaftTopPageHeader(
             title = task.taskRefTitle(),
             backgroundColor = RaftColor.Canvas,
-            topSafeAreaOverride = WindowInsets.safeDrawing.asPaddingValues().calculateTopPadding(),
+            topSafeAreaOverride = if (useHostSafeArea) null else WindowInsets.safeDrawing.asPaddingValues().calculateTopPadding(),
             contentStartPadding = RaftBackButtonDefaults.EdgeInset,
             contentEndPadding = if (shareEntry != null) RaftBackButtonDefaults.EdgeInset else RaftTopPageHeaderContentEndPadding,
             contentSpacing = ThreadHeaderContentSpacing,
@@ -733,21 +863,30 @@ internal fun TaskPendingConversationPage(
                             horizontalAlignment = Alignment.CenterHorizontally,
                             verticalArrangement = Arrangement.spacedBy(4.dp),
                         ) {
-                            RaftText(
-                                text = stringResource(Res.string.task_conversation_empty_title),
-                                style = typography.subhead.copy(fontWeight = FontWeight.SemiBold),
-                                color = colors.foreground,
-                            )
-                            if (task.hostMessageId != null) {
+                            if (loadingDiscussion) {
+                                build.raft.designsystem.components.RaftSpinner()
+                            } else {
                                 RaftText(
-                                    text = stringResource(Res.string.task_conversation_empty_body),
-                                    style = typography.callout,
-                                    color = colors.foregroundMuted,
-                                    textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                                    text = stringResource(Res.string.task_conversation_empty_title),
+                                    style = typography.subhead.copy(fontWeight = FontWeight.SemiBold),
+                                    color = colors.foreground,
                                 )
+                                if (task.hostMessageId != null) {
+                                    RaftText(
+                                        text = stringResource(Res.string.task_conversation_empty_body),
+                                        style = typography.callout,
+                                        color = colors.foregroundMuted,
+                                        textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                                    )
+                                }
                             }
                         }
-                        errorText?.let { RaftBanner(description = it, status = RaftBannerStatus.Warning) }
+                        errorText?.let {
+                            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                RaftBanner(description = it, status = RaftBannerStatus.Warning)
+                                RaftTraceIdNote(errorTraceId)
+                            }
+                        }
                     }
                 }
             }
@@ -758,20 +897,38 @@ internal fun TaskPendingConversationPage(
             ThreadJoinFooter(
                 label = stringResource(Res.string.task_conversation_join_to_reply),
                 onJoin = onJoin,
-                joining = ThreadChannelJoinsInFlight.isJoining(task.channelId),
-                // TaskPendingConversationWindow already applies WindowInsets.safeDrawing bottom padding.
-                bottomSafeArea = 0.dp,
+                joining = ThreadChannelJoinsInFlight.observeIsJoining(task.channelId),
+                // Inside TaskPendingConversationWindow safeDrawing bottom padding is already applied by the window.
+                bottomSafeArea = bottomSafeArea,
             )
         } else {
+            val composerKeyboardLiftPx =
+                rememberThreadComposerKeyboardLiftPx(
+                    bottomSafeArea = bottomSafeArea,
+                    keyboardInsetExcludesBottomSafeArea = keyboardInsetExcludesBottomSafeArea,
+                )
             // The conversation page's own composer in its dock: multi-line, paste, its send button.
-            ThreadComposerDock {
+            ThreadComposerDock(
+                composerModifier =
+                    if (useHostSafeArea) {
+                        Modifier
+                            .raftThreadComposerLiveKeyboardPadding(
+                                bottomSafeArea = bottomSafeArea,
+                                keyboardInsetExcludesBottomSafeArea = keyboardInsetExcludesBottomSafeArea,
+                            )
+                            .onFocusChanged { if (it.hasFocus) headScrollState.closeFloat() }
+                    } else {
+                        Modifier
+                    },
+                keyboardLiftPx = if (useHostSafeArea) composerKeyboardLiftPx else ({ 0f }),
+            ) {
                 ThreadComposerContent(
                     payload =
                         RaftThreadComposerPayload(
                             instanceId = "task-pending:${task.id.value}",
                             seedText = draft,
                             placeholder = stringResource(Res.string.task_conversation_composer_placeholder),
-                            enabled = !sending,
+                            enabled = !sending && !loadingDiscussion,
                             attachmentActionsEnabled = false,
                             originalImageOptionEnabled = false,
                             showAsTaskToggle = false,
@@ -780,7 +937,7 @@ internal fun TaskPendingConversationPage(
                     attachmentReorderEnabled = false,
                     onSendRequest = { request ->
                         val text = request.value.text
-                        if (sending || text.isBlank()) {
+                        if (sending || loadingDiscussion || text.isBlank()) {
                             ThreadComposerSendAdmission.Rejected
                         } else {
                             onSend(text)
@@ -971,5 +1128,185 @@ internal fun TaskOpenSurfaceIncomingNavigationEffect(flow: TaskOpenSurfaceFlow, 
     DisposableEffect(flow, signal) {
         val unregister = signal.register { flow.closeForIncomingNavigation() }
         onDispose { unregister() }
+    }
+}
+
+/**
+ * Resolves and opens a task tapped from the Tasks tab:
+ * 1. Picks the freshest copy from [tasksDataStore] (channel scope, server scope, tapped row).
+ * 2. If the row came from `GET /tasks/server?detail=summary` (`!conversationDetailsLoaded &&
+ *    conversationChannelId == null`), hydrates the full row via `GET /tasks/channel/:channelId/number/:n`
+ *    (task v2 is always on: every non-legacy task opens as its task conversation).
+ * 3. Acquires [gate] once and always releases it in a single `try / finally`, verifies `full.id == stored.id`,
+ *    checks [isStillActive], resolves joint conversation IDs inline, and opens the resulting surface or page.
+ */
+internal fun launchTasksTabTaskOpen(
+    task: TaskSummary,
+    serverId: String?,
+    tasksDataStore: SharedTasksDataStore,
+    tasksDataSource: SharedTasksDataSource,
+    gate: TaskOpenGate,
+    scope: CoroutineScope,
+    isStillActive: () -> Boolean,
+    openSurface: (TaskOpenSurface) -> Unit,
+    openPage: (task: TaskSummary, resolvedConversationChannelId: ChannelId?) -> Unit,
+    onLoadError: (build.raft.app.data.ScreenError) -> Unit,
+    onNoPermission: (traceId: String?) -> Unit,
+    onNotFound: () -> Unit,
+    log: (String) -> Unit,
+) {
+    val activeServerId = serverId?.takeIf { it.isNotBlank() }
+    val storedTask =
+        activeServerId?.let { id ->
+            val channelMatch =
+                task.channelId?.let { channelId ->
+                    tasksDataStore
+                        .projection(id, SharedTasksScope.Channel(channelId))
+                        .tasks
+                        .firstOrNull { it.id == task.id }
+                }
+            val serverMatch =
+                tasksDataStore
+                    .projection(id, SharedTasksScope.Server)
+                    .tasks
+                    .firstOrNull { it.id == task.id }
+            resolvePendingTaskSummary(task.id.value, channelMatch, serverMatch, task)
+        } ?: task
+
+    val taskChannelId = storedTask.channelId
+    val taskNumber = storedTask.taskNumber
+    val needsHydration =
+        !storedTask.conversationDetailsLoaded &&
+            storedTask.conversationChannelId == null &&
+            activeServerId != null &&
+            taskChannelId != null &&
+            taskNumber != null
+
+    if (!needsHydration) {
+        when (val surface = storedTask.taskOpenSurface()) {
+            is TaskOpenSurface.Pending, is TaskOpenSurface.Legacy -> {
+                openSurface(surface)
+                return
+            }
+            null -> Unit
+        }
+    }
+
+    val gateTaskId = storedTask.id.value
+    if (!gate.tryBegin(gateTaskId)) {
+        log("tasks_open_ignored reason=in_flight task=$gateTaskId")
+        return
+    }
+
+    if (!needsHydration && storedTask.taskOpenTarget() != TaskOpenTarget.ResolveConversation) {
+        try {
+            openPage(storedTask, null)
+        } finally {
+            gate.finish(gateTaskId)
+        }
+        return
+    }
+
+    scope.launch {
+        try {
+            val resolvedTask =
+                if (needsHydration) {
+                    when (
+                        val detail =
+                            tasksDataSource.loadChannelTaskByNumber(
+                                serverId = ServerId(activeServerId!!),
+                                channelId = taskChannelId!!,
+                                taskNumber = taskNumber!!,
+                                priority = build.raft.app.data.DataRequestPriority.Foreground,
+                            )
+                    ) {
+                        is DataResult.Content -> {
+                            val fullTask = detail.data.task
+                            if (fullTask.id == storedTask.id) {
+                                tasksDataStore.upsertTaskForCurrentOwner(activeServerId, fullTask)
+                                fullTask
+                            } else {
+                                log("tasks_open_hydrate_id_mismatch expected=$gateTaskId actual=${fullTask.id.value}")
+                                if (isStillActive()) onNotFound()
+                                return@launch
+                            }
+                        }
+                        is DataResult.Error -> {
+                            if (!isStillActive()) return@launch
+                            if (
+                                detail.error.code == build.raft.app.data.TaskByNumberNotFoundErrorCode ||
+                                storedTask.conversationReplyCount > 0
+                            ) {
+                                onLoadError(detail.error)
+                                return@launch
+                            }
+                            storedTask
+                        }
+                        is DataResult.NoPermission -> {
+                            if (isStillActive()) onNoPermission(detail.blocker.traceId)
+                            return@launch
+                        }
+                        is DataResult.Empty -> {
+                            if (isStillActive()) onNotFound()
+                            return@launch
+                        }
+                    }
+                } else {
+                    storedTask
+                }
+
+            if (!isStillActive()) return@launch
+            when (val surface = resolvedTask.taskOpenSurface()) {
+                is TaskOpenSurface.Pending, is TaskOpenSurface.Legacy -> {
+                    openSurface(surface)
+                    return@launch
+                }
+                null -> Unit
+            }
+            val conversationId =
+                if (resolvedTask.taskOpenTarget() == TaskOpenTarget.ResolveConversation) {
+                    resolveTaskOpenConversationChannelId(
+                        task = resolvedTask,
+                        serverId = activeServerId.orEmpty(),
+                        tasksDataSource = tasksDataSource,
+                        log = log,
+                    )
+                } else {
+                    null
+                }
+            if (!isStillActive()) return@launch
+            openPage(resolvedTask, conversationId)
+        } finally {
+            gate.finish(gateTaskId)
+        }
+    }
+}
+
+/** Opens an arrived task conversation (from a pending surface), resolving joint channel IDs first when needed. */
+internal fun launchArrivedTaskConversationOpen(
+    arrived: TaskSummary,
+    serverId: String?,
+    tasksDataSource: SharedTasksDataSource,
+    scope: CoroutineScope,
+    isStillActive: () -> Boolean,
+    openPage: (task: TaskSummary, resolvedConversationChannelId: ChannelId?) -> Unit,
+    log: (String) -> Unit,
+) {
+    if (arrived.taskOpenTarget() != TaskOpenTarget.ResolveConversation) {
+        openPage(arrived, null)
+        return
+    }
+    val activeServerId = serverId?.takeIf { it.isNotBlank() } ?: return
+    scope.launch {
+        val conversationId =
+            resolveTaskOpenConversationChannelId(
+                task = arrived,
+                serverId = activeServerId,
+                tasksDataSource = tasksDataSource,
+                log = log,
+            )
+        if (isStillActive() && conversationId != null) {
+            openPage(arrived, conversationId)
+        }
     }
 }

@@ -46,13 +46,12 @@ import build.raft.designsystem.theme.RaftTheme
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.snapshots.Snapshot
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
+import build.raft.app.data.defaultNowMillis
 import kotlinx.coroutines.flow.flowOf
-import kotlinx.datetime.TimeZone
-import kotlinx.datetime.toLocalDateTime
-import kotlin.time.Clock
 
 /**
  * The preview message's time. Null: the current time, like the Web's preview (`new Date()`); the
@@ -210,11 +209,12 @@ internal fun SettingsAppearanceContent(
         item {
             SettingsFormSection(iconName = RaftLucideIconName.House, title = stringResource(Res.string.settings_appearance_section_home)) {
                 SettingsAppearanceGroup {
+                    val hideEmptySidebarSections = RaftDisplayPreferenceRuntime.observeHideEmptySidebarSections()
                     SettingsAppearanceSwitchRow(
                         anchorId = "hide-empty-sidebar-sections",
                         title = stringResource(Res.string.settings_appearance_hide_empty_sidebar_sections_title),
                         description = stringResource(Res.string.settings_appearance_hide_empty_sidebar_sections_description),
-                        checked = visual?.hideEmptySidebarSections ?: RaftDisplayPreferenceRuntime.hideEmptySidebarSections,
+                        checked = visual?.hideEmptySidebarSections ?: hideEmptySidebarSections,
                         onCheckedChange = RaftDisplayPreferenceRuntime::setHideEmptySidebarSections,
                         divider = false
                     )
@@ -297,12 +297,15 @@ private fun SettingsAppearanceSavedOnDevice() {
 @Composable
 private fun SettingsAppearanceDisplaySwitches() {
     val visual = LocalSettingsAppearanceVisualSwitches.current
+    val showLiveAgentActivity = RaftDisplayPreferenceRuntime.observeShowLiveAgentActivity()
+    val showAgentModelName = RaftDisplayPreferenceRuntime.observeShowAgentModelName()
+    val showSenderDescription = RaftDisplayPreferenceRuntime.observeShowSenderDescription()
     SettingsAppearanceGroup {
         SettingsAppearanceSwitchRow(
             anchorId = "live-agent-activity",
             title = stringResource(Res.string.settings_appearance_live_agent_activity_title),
             description = stringResource(Res.string.settings_appearance_live_agent_activity_description),
-            checked = visual?.showLiveAgentActivity ?: RaftDisplayPreferenceRuntime.showLiveAgentActivity,
+            checked = visual?.showLiveAgentActivity ?: showLiveAgentActivity,
             onCheckedChange = RaftDisplayPreferenceRuntime::setShowLiveAgentActivity,
             divider = false
         )
@@ -310,7 +313,7 @@ private fun SettingsAppearanceDisplaySwitches() {
             anchorId = "show-agent-model",
             title = stringResource(Res.string.settings_appearance_show_agent_model_title),
             description = stringResource(Res.string.settings_appearance_show_agent_model_description),
-            checked = visual?.showAgentModelName ?: RaftDisplayPreferenceRuntime.showAgentModelName,
+            checked = visual?.showAgentModelName ?: showAgentModelName,
             onCheckedChange = RaftDisplayPreferenceRuntime::setShowAgentModelName,
             divider = true
         )
@@ -318,7 +321,7 @@ private fun SettingsAppearanceDisplaySwitches() {
             anchorId = "show-sender-description",
             title = stringResource(Res.string.settings_appearance_show_sender_description_title),
             description = stringResource(Res.string.settings_appearance_show_sender_description_description),
-            checked = visual?.showSenderDescription ?: RaftDisplayPreferenceRuntime.showSenderDescription,
+            checked = visual?.showSenderDescription ?: showSenderDescription,
             onCheckedChange = RaftDisplayPreferenceRuntime::setShowSenderDescription,
             divider = true
         )
@@ -452,7 +455,13 @@ private fun SettingsAppearancePreview(fontSizeKey: String) {
     val bodyStyle = raftMessageBodyTextStyle(fontSizeKey)
     val body = stringResource(Res.string.settings_appearance_preview_message)
     val pinnedTime = LocalSettingsAppearancePreviewTimeLabel.current
-    val timeLabel = pinnedTime ?: remember { settingsAppearancePreviewClock() }
+    val previewDateContext = currentRaftEffectiveDateTimeContext()
+    val timeProvider = currentRaftTimeContextProvider
+    val previewNowMillis =
+        remember(timeProvider) {
+            Snapshot.withoutReadObservation { timeProvider?.current?.nowEpochMillis } ?: defaultNowMillis()
+        }
+    val timeLabel = pinnedTime ?: previewDateContext.formatClock(previewNowMillis)
     val message =
         remember(body, timeLabel) {
             RaftThreadMessageItem(
@@ -494,12 +503,6 @@ private fun SettingsAppearancePreview(fontSizeKey: String) {
             outerPadding = 0.dp
         )
     }
-}
-
-/** `HH:mm` now, in this device's time zone. */
-private fun settingsAppearancePreviewClock(): String {
-    val local = Clock.System.now().toLocalDateTime(TimeZone.currentSystemDefault())
-    return "${local.hour.toString().padStart(2, '0')}:${local.minute.toString().padStart(2, '0')}"
 }
 
 /**

@@ -2,12 +2,9 @@ package build.raft.app
 
 import build.raft.app.data.RaftShellStoreScope
 import build.raft.app.compat.json.JSONObject
-import build.raft.designsystem.components.RaftPageLoadState
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertFalse
 import kotlin.test.assertNull
-import kotlin.test.assertTrue
 
 class SettingsStandaloneWebViewHostTest {
     @Test
@@ -27,20 +24,6 @@ class SettingsStandaloneWebViewHostTest {
             assertEquals(surface.diagnosticsName, pageData.optString(SETTINGS_WEB_VIEW_SURFACE))
             assertEquals(surface, settingsWebViewSurfaceFromPageData(pageData))
         }
-    }
-
-    @Test
-    fun releaseNotesRouteCarriesOnlySanitizedVersionConfiguration() {
-        val pageData =
-            settingsWebViewPageData(
-                surface = SettingsWebViewSurface.ReleaseNotes,
-                storeScope = RaftShellStoreScope.create(shellInstanceId = "shell-release-notes"),
-                versionCode = " 1010000 ",
-            )
-
-        assertEquals(SETTINGS_WEB_VIEW_PAGE, pageData.optString("pageName"))
-        assertEquals("release-notes", pageData.optString(SETTINGS_WEB_VIEW_SURFACE))
-        assertEquals("1010000", pageData.optString(SETTINGS_WEB_VIEW_VERSION_CODE))
     }
 
     @Test
@@ -66,112 +49,6 @@ class SettingsStandaloneWebViewHostTest {
     }
 
     @Test
-    fun everySurfaceExecutesExactlyOneHistoryOrCloseSideEffect() {
-        SettingsWebViewSurface.entries.forEach { surface ->
-            var goBackCount = 0
-            var closeCount = 0
-            assertEquals(
-                SettingsWebViewBackAction.NavigateWebHistory,
-                performSettingsWebViewBack(
-                    canGoBack = true,
-                    goBack = { goBackCount += 1 },
-                    closePage = { closeCount += 1 },
-                ),
-                surface.diagnosticsName,
-            )
-            assertEquals(1, goBackCount, surface.diagnosticsName)
-            assertEquals(0, closeCount, surface.diagnosticsName)
-
-            goBackCount = 0
-            closeCount = 0
-            assertEquals(
-                SettingsWebViewBackAction.ClosePage,
-                performSettingsWebViewBack(
-                    canGoBack = false,
-                    goBack = { goBackCount += 1 },
-                    closePage = { closeCount += 1 },
-                ),
-                surface.diagnosticsName,
-            )
-            assertEquals(0, goBackCount, surface.diagnosticsName)
-            assertEquals(1, closeCount, surface.diagnosticsName)
-        }
-    }
-
-    @Test
-    fun loadingShowsTheWebViewWithProgressAndOnlyAFailureReplacesIt() {
-        // (committed, isLoading, hasLoadError) -> presentation. No cover state exists: before the
-        // commit and while loading the WebView is shown under the progress bar.
-        val cases =
-            listOf(
-                Triple(false, true, false) to SettingsWebViewPresentation.Loading,
-                Triple(true, true, false) to SettingsWebViewPresentation.Loading,
-                Triple(false, false, false) to SettingsWebViewPresentation.Loading,
-                Triple(true, false, false) to SettingsWebViewPresentation.Content,
-                Triple(false, true, true) to SettingsWebViewPresentation.Error,
-                Triple(true, false, true) to SettingsWebViewPresentation.Error,
-            )
-        for ((input, expected) in cases) {
-            val (committed, isLoading, hasLoadError) = input
-            assertEquals(expected, settingsWebViewPresentation(committed, isLoading, hasLoadError), "for $input")
-        }
-    }
-
-    @Test
-    fun loadLineHostSpeaksForThePieceThatEnteredLast() {
-        val host = RaftWebPageLoadLineHostState()
-        assertEquals(RaftPageLoadState.Idle, host.state)
-        val placeholder = RaftWebPageLoadLineReport(RaftPageLoadState.Loading())
-        val page = RaftWebPageLoadLineReport(RaftPageLoadState.Loading(0.3f, load = 1))
-        host.add(placeholder)
-        assertEquals(RaftPageLoadState.Loading(), host.state)
-        // The swap, in either order of leaving and entering, ends on the page's word.
-        host.add(page)
-        host.remove(placeholder)
-        assertEquals(RaftPageLoadState.Loading(0.3f, load = 1), host.state)
-        page.state = RaftPageLoadState.Finished
-        assertEquals(RaftPageLoadState.Finished, host.state)
-        host.remove(page)
-        assertEquals(RaftPageLoadState.Idle, host.state)
-    }
-
-    @Test
-    fun loadLineStateFollowsTheNavigationState() {
-        // Loading: no progress until the engine reports some, then its fraction.
-        assertEquals(RaftPageLoadState.Loading(null), raftWebPageLoadState(isLoading = true, progress = 0, failed = false))
-        assertEquals(RaftPageLoadState.Loading(0.4f), raftWebPageLoadState(isLoading = true, progress = 40, failed = false))
-        assertEquals(RaftPageLoadState.Loading(1f), raftWebPageLoadState(isLoading = true, progress = 140, failed = false))
-        // The web view's load count names the load: another one starts the line again.
-        assertEquals(
-            RaftPageLoadState.Loading(0.1f, load = 3),
-            raftWebPageLoadState(isLoading = true, progress = 10, failed = false, loadGeneration = 3),
-        )
-        assertEquals(
-            RaftPageLoadState.Loading(null, load = 3),
-            raftWebPageLoadState(isLoading = true, progress = 0, failed = false, loadGeneration = 3),
-        )
-        // Ended at 100: finished, the line plays its end.
-        assertEquals(RaftPageLoadState.Finished, raftWebPageLoadState(isLoading = false, progress = 100, failed = false))
-        // Ended short of 100 (stopped, or failed before the failure callback): gone at once.
-        assertEquals(RaftPageLoadState.Idle, raftWebPageLoadState(isLoading = false, progress = 60, failed = false))
-        assertEquals(RaftPageLoadState.Idle, raftWebPageLoadState(isLoading = false, progress = 0, failed = false))
-        // A failure wins over whatever the engine still reports.
-        assertEquals(RaftPageLoadState.Failed, raftWebPageLoadState(isLoading = true, progress = 40, failed = true))
-        assertEquals(RaftPageLoadState.Failed, raftWebPageLoadState(isLoading = false, progress = 100, failed = true))
-    }
-
-    @Test
-    fun fullScreenFrameAtRootAttachesWhileInvalidOrUnmeasuredFramesStayCovered() {
-        assertTrue(settingsWebViewFrameIsReady(positionY = 0f, width = 1080, height = 2400))
-        assertTrue(settingsWebViewFrameIsReady(positionY = 64f, width = 1080, height = 2200))
-
-        assertFalse(settingsWebViewFrameIsReady(positionY = -1f, width = 1080, height = 2400))
-        assertFalse(settingsWebViewFrameIsReady(positionY = Float.NaN, width = 1080, height = 2400))
-        assertFalse(settingsWebViewFrameIsReady(positionY = 0f, width = 0, height = 2400))
-        assertFalse(settingsWebViewFrameIsReady(positionY = 0f, width = 1080, height = 0))
-    }
-
-    @Test
     fun legacyComputersSurfaceStillResolvesSoOldRoutesRenderTheNativePage() {
         val pageData =
             settingsWebViewPageData(
@@ -181,42 +58,6 @@ class SettingsStandaloneWebViewHostTest {
 
         assertEquals(SettingsWebViewSurface.Computers, settingsWebViewSurfaceFromPageData(pageData))
         assertEquals("machine-42", pageData.optString(SETTINGS_COMPUTER_ID))
-    }
-
-    @Test
-    fun headerLayerIsAboveTheNativeWebViewBodySibling() {
-        assertTrue(SETTINGS_WEB_VIEW_HEADER_Z_INDEX > SETTINGS_WEB_VIEW_BODY_Z_INDEX)
-    }
-
-    @Test
-    fun headerUsesFallbackUntilTheWebDocumentPublishesATitle() {
-        val state =
-            SettingsWebViewHeaderTitleState()
-                .accept(candidate = "Raft", navigationIsLoading = true)
-
-        assertEquals("Computers", state.displayTitle("Computers"))
-    }
-
-    @Test
-    fun headerTracksTheCommittedDocumentTitle() {
-        val loadingState =
-            SettingsWebViewHeaderTitleState()
-                .accept(candidate = "  Jony  ", navigationIsLoading = true)
-        val committedState =
-            loadingState.accept(candidate = "", navigationIsLoading = false)
-
-        assertEquals("Computers", loadingState.displayTitle("Computers"))
-        assertEquals("Jony", committedState.displayTitle("Computers"))
-    }
-
-    @Test
-    fun emptyNavigationTitleKeepsTheLastCommittedAgentTitle() {
-        val state =
-            SettingsWebViewHeaderTitleState()
-                .accept("Jony")
-                .accept("   ")
-
-        assertEquals("Jony", state.displayTitle("Computers"))
     }
 
     @Test

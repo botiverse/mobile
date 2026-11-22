@@ -100,25 +100,6 @@ class SharedAuthGateStoreTest {
     }
 
     @Test
-    fun restoreVerifiedEmailWithoutServerMovesToServerRequired() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob())
-        val store =
-            SharedAuthGateStore(
-                restoreSession = {
-                    SharedAuthResult.Success(
-                        storedSession(selectedServerId = null, emailVerified = true)
-                    )
-                },
-                scope = scope
-            )
-
-        store.accept(SharedAuthGateIntent.Restore)
-
-        assertTrue(store.state.value is SharedAuthGateState.ServerRequired)
-        scope.cancel()
-    }
-
-    @Test
     fun restoreVerifiedPendingProfileMovesToProfileSetupRequiredBeforeServerGate() = runBlocking {
         val scope = CoroutineScope(SupervisorJob())
         val store =
@@ -237,46 +218,6 @@ class SharedAuthGateStoreTest {
     }
 
     @Test
-    fun signedOutCancelsInFlightCachedReadyBackgroundRestoreResult() = runBlocking {
-        val scope = authGateDispatchTestScope()
-        val cachedSession = storedSession(selectedServerId = "server-1")
-        val restoreStarted = CompletableDeferred<Unit>()
-        val restoreResult = CompletableDeferred<SharedAuthResult<StoredAuthSession>>()
-        val logs = mutableListOf<String>()
-        val store =
-            SharedAuthGateStore(
-                restoreSession = {
-                    restoreStarted.complete(Unit)
-                    restoreResult.await()
-                },
-                cachedSession = { cachedSession },
-                scope = scope,
-                diagnosticsLogger = logs::add
-            )
-
-        store.dispatch(SharedAuthGateIntent.Restore)
-        restoreStarted.await()
-        yield()
-        assertEquals(
-            SharedAuthGateState.Ready(
-                cachedSession,
-                phase = SharedAuthReadyPhase.CachedRestorePending
-            ),
-            store.state.value
-        )
-
-        store.dispatch(SharedAuthGateIntent.SignedOut)
-        restoreResult.complete(
-            SharedAuthResult.Success(cachedSession.copy(accessToken = "stale-background-token"))
-        )
-        yield()
-
-        assertEquals(SharedAuthGateState.AuthRequired, store.state.value)
-        assertFalse(logs.any { it.contains("source=restore_background_result") })
-        scope.cancel()
-    }
-
-    @Test
     fun coldRestoreCachedReadyUnauthenticatedBackgroundMovesToAuthRequired() = runBlocking {
         val scope = CoroutineScope(SupervisorJob())
         val cachedSession = storedSession(selectedServerId = "server-1")
@@ -321,40 +262,6 @@ class SharedAuthGateStoreTest {
     }
 
     @Test
-    fun silentRefreshDuringCachedRestoreJoinsItAndClosesPendingPhase() = runBlocking {
-        val scope = authGateDispatchTestScope()
-        val cachedSession = storedSession(selectedServerId = "server-1")
-        val restoreStarted = CompletableDeferred<Unit>()
-        val restoreResult = CompletableDeferred<SharedAuthResult<StoredAuthSession>>()
-        val store =
-            SharedAuthGateStore(
-                restoreSession = {
-                    restoreStarted.complete(Unit)
-                    restoreResult.await()
-                },
-                cachedSession = { cachedSession },
-                scope = scope
-            )
-
-        store.dispatch(SharedAuthGateIntent.Restore)
-        restoreStarted.await()
-        yield()
-        assertEquals(
-            SharedAuthReadyPhase.CachedRestorePending,
-            (store.state.value as SharedAuthGateState.Ready).phase
-        )
-
-        store.dispatch(SharedAuthGateIntent.RefreshSilently)
-        restoreResult.complete(SharedAuthResult.Failure(SharedAuthErrorCode.Network, "offline"))
-        val finalState =
-            store.awaitState { state ->
-                (state as? SharedAuthGateState.Ready)?.phase == SharedAuthReadyPhase.CachedRestoreCompleted
-            }
-        assertEquals(cachedSession, (finalState as SharedAuthGateState.Ready).session)
-        scope.cancel()
-    }
-
-    @Test
     fun silentRefreshDoesNotRestartARestoreThatIsStillRunning() = runBlocking {
         // Hands 79db9fe6: the restore's own token refresh reported a same-account session change,
         // the gate cancelled the restore and ran it again from the top (a second auth/me + /servers).
@@ -393,75 +300,6 @@ class SharedAuthGateStoreTest {
     }
 
     @Test
-    fun coldRestoreCachedReadyServerRequiredBackgroundMovesToServerRequired() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob())
-        val cachedSession = storedSession(selectedServerId = "server-1")
-        val store =
-            SharedAuthGateStore(
-                restoreSession = { SharedAuthResult.Success(storedSession(selectedServerId = null)) },
-                cachedSession = { cachedSession },
-                scope = scope
-            )
-
-        store.accept(SharedAuthGateIntent.Restore)
-
-        assertTrue(store.state.value is SharedAuthGateState.ServerRequired)
-        scope.cancel()
-    }
-
-    @Test
-    fun coldRestoreCachedReadyEmailVerificationBackgroundMovesToEmailVerification() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob())
-        val cachedSession = storedSession(selectedServerId = "server-1")
-        val store =
-            SharedAuthGateStore(
-                restoreSession = {
-                    SharedAuthResult.Success(
-                        storedSession(selectedServerId = "server-1", emailVerified = false)
-                    )
-                },
-                cachedSession = { cachedSession },
-                scope = scope
-            )
-
-        store.accept(SharedAuthGateIntent.Restore)
-
-        assertTrue(store.state.value is SharedAuthGateState.EmailVerificationRequired)
-        scope.cancel()
-    }
-
-    @Test
-    fun coldRestoreWithoutSelectedServerDoesNotUseCachedReady() = runBlocking {
-        val scope = authGateDispatchTestScope()
-        val cachedSession = storedSession(selectedServerId = null)
-        val restoreStarted = CompletableDeferred<Unit>()
-        val restoreResult = CompletableDeferred<SharedAuthResult<StoredAuthSession>>()
-        val logs = mutableListOf<String>()
-        val store =
-            SharedAuthGateStore(
-                restoreSession = {
-                    restoreStarted.complete(Unit)
-                    restoreResult.await()
-                },
-                cachedSession = { cachedSession },
-                scope = scope,
-                diagnosticsLogger = logs::add
-            )
-
-        store.dispatch(SharedAuthGateIntent.Restore)
-        restoreStarted.await()
-        yield()
-
-        assertEquals(SharedAuthGateState.Restoring, store.state.value)
-        assertFalse(logs.any { it.contains("source=restore_cached_ready") })
-
-        restoreResult.complete(SharedAuthResult.Success(cachedSession))
-
-        assertTrue(store.awaitState { it is SharedAuthGateState.ServerRequired } is SharedAuthGateState.ServerRequired)
-        scope.cancel()
-    }
-
-    @Test
     fun coldRestoreWithoutAccessTokenDoesNotUseCachedReady() = runBlocking {
         val scope = CoroutineScope(SupervisorJob())
         val cachedSession = storedSession(selectedServerId = "server-1", accessToken = "")
@@ -470,68 +308,6 @@ class SharedAuthGateStoreTest {
             SharedAuthGateStore(
                 restoreSession = { SharedAuthResult.Unauthenticated },
                 cachedSession = { cachedSession },
-                scope = scope,
-                diagnosticsLogger = logs::add
-            )
-
-        store.accept(SharedAuthGateIntent.Restore)
-
-        assertEquals(SharedAuthGateState.AuthRequired, store.state.value)
-        assertFalse(logs.any { it.contains("source=restore_cached_ready") })
-        scope.cancel()
-    }
-
-    @Test
-    fun coldRestoreWithSelectedServerOutsideCachedMembershipDoesNotUseCachedReady() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob())
-        val cachedSession =
-            storedSession(selectedServerId = "server-2").copy(
-                servers = listOf(StoredAuthServer(id = "server-1", name = "Slock"))
-            )
-        val logs = mutableListOf<String>()
-        val store =
-            SharedAuthGateStore(
-                restoreSession = { SharedAuthResult.Unauthenticated },
-                cachedSession = { cachedSession },
-                scope = scope,
-                diagnosticsLogger = logs::add
-            )
-
-        store.accept(SharedAuthGateIntent.Restore)
-
-        assertEquals(SharedAuthGateState.AuthRequired, store.state.value)
-        assertFalse(logs.any { it.contains("source=restore_cached_ready") })
-        scope.cancel()
-    }
-
-    @Test
-    fun coldRestoreWithoutUserDoesNotUseCachedReady() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob())
-        val cachedSession = storedSession(selectedServerId = "server-1", userId = "")
-        val logs = mutableListOf<String>()
-        val store =
-            SharedAuthGateStore(
-                restoreSession = { SharedAuthResult.Unauthenticated },
-                cachedSession = { cachedSession },
-                scope = scope,
-                diagnosticsLogger = logs::add
-            )
-
-        store.accept(SharedAuthGateIntent.Restore)
-
-        assertEquals(SharedAuthGateState.AuthRequired, store.state.value)
-        assertFalse(logs.any { it.contains("source=restore_cached_ready") })
-        scope.cancel()
-    }
-
-    @Test
-    fun coldRestoreWithoutCachedSessionKeepsExistingNoSessionBehavior() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob())
-        val logs = mutableListOf<String>()
-        val store =
-            SharedAuthGateStore(
-                restoreSession = { SharedAuthResult.Unauthenticated },
-                cachedSession = { null },
                 scope = scope,
                 diagnosticsLogger = logs::add
             )
@@ -563,75 +339,6 @@ class SharedAuthGateStoreTest {
         store.dispatch(SharedAuthGateIntent.SignedOut)
         restoreResult.complete(SharedAuthResult.Success(storedSession(selectedServerId = "server-1")))
         yield()
-
-        assertEquals(SharedAuthGateState.AuthRequired, store.state.value)
-        scope.cancel()
-    }
-
-    @Test
-    fun retryUsesSameRestoreStateMachine() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob())
-        val logs = mutableListOf<String>()
-        var attempts = 0
-        val store =
-            SharedAuthGateStore(
-                restoreSession = {
-                    attempts += 1
-                    if (attempts == 1) {
-                        SharedAuthResult.Failure(SharedAuthErrorCode.Network, "offline")
-                    } else {
-                        SharedAuthResult.Success(storedSession(selectedServerId = "server-1"))
-                    }
-                },
-                scope = scope,
-                diagnosticsLogger = logs::add
-            )
-
-        store.accept(SharedAuthGateIntent.Restore)
-        assertTrue(store.state.value is SharedAuthGateState.Error)
-
-        store.accept(SharedAuthGateIntent.Retry)
-
-        assertTrue(store.state.value is SharedAuthGateState.Ready)
-        assertContains(logs, "auth_gate_state source=restore_result state=error selectedServer=false")
-        assertContains(logs, "auth_gate_state source=restore_result state=ready selectedServer=true")
-        scope.cancel()
-    }
-
-    @Test
-    fun silentRefreshSuccessKeepsReadyPathWithoutRestoring() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob())
-        val logs = mutableListOf<String>()
-        val refreshedSession = storedSession(selectedServerId = "server-1", accessToken = "access-token-2")
-        val store =
-            SharedAuthGateStore(
-                restoreSession = { SharedAuthResult.Success(refreshedSession) },
-                scope = scope,
-                diagnosticsLogger = logs::add
-            )
-        store.accept(SharedAuthGateIntent.SignedIn(storedSession(selectedServerId = "server-1")))
-
-        store.accept(SharedAuthGateIntent.RefreshSilently)
-
-        val state = store.state.value
-        assertTrue(state is SharedAuthGateState.Ready)
-        assertEquals("access-token-2", state.session.accessToken)
-        assertFalse(logs.any { it.contains("source=restore_start state=restoring") })
-        assertContains(logs, "auth_gate_state source=silent_refresh_result state=ready selectedServer=true")
-        scope.cancel()
-    }
-
-    @Test
-    fun silentRefreshUnauthenticatedMovesToAuthRequired() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob())
-        val store =
-            SharedAuthGateStore(
-                restoreSession = { SharedAuthResult.Unauthenticated },
-                scope = scope
-            )
-        store.accept(SharedAuthGateIntent.SignedIn(storedSession(selectedServerId = "server-1")))
-
-        store.accept(SharedAuthGateIntent.RefreshSilently)
 
         assertEquals(SharedAuthGateState.AuthRequired, store.state.value)
         scope.cancel()

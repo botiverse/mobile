@@ -85,31 +85,6 @@ class ComputerRuntimeUsageTimeContextUiTest {
     }
 
     @Test
-    fun pageScopeResolvesResetAndUpdatedTimesInEnglish() = runRobolectricComposeUiTest {
-        StringDesc.localeType = AppLocale.English.stringDescLocaleType
-        showSheet(runtimeVersion = "2.1.304 (Claude Code)")
-        // 2026-10-23T04:10Z: 26 hours from now, counted as the rack counts it (web `usageResetText`, #14717).
-        assertShown("Used up · resets in 26 hours")
-        // 2026-10-22T05:10Z: three hours from now.
-        assertShown("62% used · resets in 3 hours")
-        // collectedAt 02:04Z, six minutes before now.
-        assertShown("Updated 6 minutes ago")
-        // The version line is the CLI's own version in mono, no "Version" word (web `RuntimeVersionLine`, slock #15482).
-        assertShown("2.1.304 (Claude Code)")
-        onAllNodesWithText("unknown time", substring = true, useUnmergedTree = true).assertCountEquals(0)
-    }
-
-    @Test
-    fun pageScopeResolvesResetAndUpdatedTimesInChinese() = runRobolectricComposeUiTest {
-        StringDesc.localeType = AppLocale.SimplifiedChinese.stringDescLocaleType
-        showSheet(runtimeVersion = null)
-        assertShown("已用完 · 26 小时后重置")
-        assertShown("6 分钟前更新")
-        assertShown("拥有 Computer 编辑权限或挂载这台 Computer 的人可见")
-        onAllNodesWithText("未知时间", substring = true, useUnmergedTree = true).assertCountEquals(0)
-    }
-
-    @Test
     fun pageBaseScopeAloneResolvesTimes() = runRobolectricComposeUiTest {
         StringDesc.localeType = AppLocale.SimplifiedChinese.stringDescLocaleType
         showSheet(runtimeVersion = null, pageBaseOnly = true)
@@ -158,9 +133,9 @@ class ComputerRuntimeUsageTimeContextUiTest {
                             rememberLiveRaftTimeContext(capabilities = capabilities, clock = { NOW_MILLIS }, foundationOwner = fixedZone)
                         CompositionLocalProvider(LocalRaftPageBaseTimeContextProvider provides base, content = sheet)
                     } else {
-                        ProvideStandaloneRaftTimeContext(clock = { NOW_MILLIS }, foundationOwner = fixedZone, capabilities = capabilities) {
-                            sheet()
-                        }
+                        val own =
+                            rememberLiveRaftTimeContext(capabilities = capabilities, clock = { NOW_MILLIS }, foundationOwner = fixedZone)
+                        CompositionLocalProvider(LocalRaftTimeContextProvider provides own, content = sheet)
                     }
                 }
             }

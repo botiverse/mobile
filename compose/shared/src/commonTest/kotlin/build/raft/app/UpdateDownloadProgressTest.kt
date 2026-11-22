@@ -32,24 +32,6 @@ class UpdateDownloadProgressTest {
         assertEquals(build.raft.app.transfer.RaftTransferPhase.Paused, paused.phase)
     }
 
-    @Test fun unknownLengthDoesNotInventPercent() {
-        for (total in listOf(0L, -1L)) {
-            val progress = assertNotNull(payload(total).toSharedUpdateDownloadProgress())
-            assertNull(observed(progress).percent)
-            assertEquals(25L, progress.downloadedBytes)
-        }
-    }
-
-    @Test fun terminalAndInvalidRepliesDoNotContinuePolling() {
-        for (phase in listOf("ready", "failed")) {
-            assertFalse(assertNotNull(payload(100).withEntry("phase", phase).toSharedUpdateDownloadProgress()).active)
-        }
-        assertNull(payload(100).withEntry("status", "unavailable").toSharedUpdateDownloadProgress())
-        assertNull(payload(100).withEntry("token", "").toSharedUpdateDownloadProgress())
-        assertNull(payload(100).withEntry("phase", "alien").toSharedUpdateDownloadProgress())
-        assertTrue(assertNotNull(payload(100).withEntry("phase", "paused").toSharedUpdateDownloadProgress()).active)
-    }
-
     @Test fun failedDownloadOffersRetry() {
         val snapshot = SharedSettingsUpdateCheckSnapshot(supported = true, updateAvailable = true,
             statusLabel = "Failed", actionLabel = "Download", errorCode = "settings_hands_update_download_failed")

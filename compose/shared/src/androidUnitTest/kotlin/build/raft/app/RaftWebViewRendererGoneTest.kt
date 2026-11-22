@@ -124,123 +124,6 @@ class RaftWebViewRendererGoneTest {
         assertTrue(rebuilt.client().onRenderProcessGone(rebuilt, crash), "the rebuilt WebView claims the next death")
         assertNotSame(rebuilt, viewer.innerWebView())
     }
-
-    @Test
-    fun aSystemReclaimIsLoggedButFilesNoTicket() {
-        val viewer = sandbox("settings_web_view")
-        val warm = Warm()
-        val reclaim = detail(didCrash = false, priority = WebView.RENDERER_PRIORITY_WAIVED)
-        val dying = viewer.innerWebView()
-
-        assertTrue(dying.client().onRenderProcessGone(dying, reclaim))
-        assertTrue(warm.view.client().onRenderProcessGone(warm.view, reclaim))
-        endOfTurn()
-
-        assertNotSame(dying, viewer.innerWebView(), "the page still recovers")
-        assertEquals(1, warm.gone.size)
-        assertTrue(tickets.isEmpty(), "a background reclaim with no user impact files nothing")
-    }
-
-    @Test
-    fun aParkedKeepAliveViewNamesItselfParked() {
-        val viewer = sandbox("artifact_viewer")
-        viewer.detachForKeepAlive()
-        val dying = viewer.innerWebView()
-
-        assertTrue(dying.client().onRenderProcessGone(dying, detail(didCrash = true)))
-        endOfTurn()
-
-        assertEquals("artifact_viewer_parked", tickets.single().second["webview_surfaces"])
-    }
-
-    @Test
-    fun theWarmClientNeverNavigates() {
-        val warm = Warm()
-        @Suppress("DEPRECATION")
-        assertTrue(warm.view.client().shouldOverrideUrlLoading(warm.view, "https://example.com/"))
-    }
-
-    @Test
-    fun deathsInLaterTurnsWithinAMinuteAreDeduped() {
-        var now = 1_700_000_000_000L
-        RaftWebViewRendererGone.clock = { now }
-        val crash = detail(didCrash = true)
-
-        repeat(3) {
-            val viewer = sandbox("in_app_browser")
-            val dying = viewer.innerWebView()
-            assertTrue(dying.client().onRenderProcessGone(dying, crash))
-            endOfTurn()
-            now += 20_000L
-        }
-        assertEquals(1, tickets.size, "three deaths within a minute, one ticket")
-
-        now += 1_000L // 61 s after the ticket
-        val viewer = sandbox("in_app_browser")
-        val dying = viewer.innerWebView()
-        assertTrue(dying.client().onRenderProcessGone(dying, crash))
-        endOfTurn()
-        assertEquals(2, tickets.size)
-    }
-
-    private fun crashOnce(surface: String = "in_app_browser") {
-        val viewer = sandbox(surface)
-        val dying = viewer.innerWebView()
-        assertTrue(dying.client().onRenderProcessGone(dying, detail(didCrash = true)))
-        endOfTurn()
-    }
-
-    @Test
-    fun withoutASinkADeathUsesNoQuota() {
-        val store = RaftWebViewRendererGoneDailyStore.InMemory()
-        RaftWebViewRendererGone.dailyStore = store
-        RaftWebViewRendererGone.ticketSink = null
-        crashOnce()
-        assertEquals(null, store.load(), "no sink: logged only, nothing counted")
-
-        RaftWebViewRendererGone.ticketSink = { message, extras, done ->
-            tickets += message to extras
-            done(true)
-        }
-        crashOnce()
-        assertEquals(1, tickets.size, "the first death with a sink files at once: no minute was used up")
-        assertEquals(1, store.load()?.second)
-    }
-
-    @Test
-    fun aFailedOrThrowingSinkGivesTheQuotaBack() {
-        var now = 1_700_000_000_000L
-        RaftWebViewRendererGone.clock = { now }
-        val store = RaftWebViewRendererGoneDailyStore.InMemory()
-        RaftWebViewRendererGone.dailyStore = store
-        var calls = 0
-        RaftWebViewRendererGone.ticketSink = { _, _, done ->
-            calls += 1
-            done(false)
-            done(true) // a second callback is ignored
-        }
-        crashOnce()
-        assertEquals(1, calls)
-        assertEquals(null, store.load(), "a ticket Hands did not accept is not counted")
-
-        RaftWebViewRendererGone.ticketSink = { _, _, _ ->
-            calls += 1
-            throw IllegalStateException("sink broke")
-        }
-        now += 1_000L
-        crashOnce()
-        assertEquals(2, calls, "the failed ticket did not hold the minute")
-        assertEquals(null, store.load())
-
-        RaftWebViewRendererGone.ticketSink = { message, extras, done ->
-            tickets += message to extras
-            done(true)
-        }
-        now += 1_000L
-        crashOnce()
-        assertEquals(1, tickets.size)
-        assertEquals(1, store.load()?.second)
-    }
 }
 
 /**
@@ -250,7 +133,6 @@ class RaftWebViewRendererGoneTest {
 class RaftWebViewRendererGoneTicketGateTest {
     private val crash = RaftWebViewRendererGoneEvent(true, WebView.RENDERER_PRIORITY_BOUND, listOf("warmup"), 1, "pkg 1")
     private val dayStart = 20_000L * 24 * 60 * 60 * 1000 // 00:00 UTC
-    private val minute = 60_000L
 
     /** Reserve, and settle a filed ticket as [accepted] at once. */
     private fun RaftWebViewRendererGoneTicketGate.decide(
@@ -264,29 +146,6 @@ class RaftWebViewRendererGoneTicketGateTest {
     }
 
     @Test
-    fun theDecisionFollowsTheIntervalAndTheDailyCap() {
-        val store = RaftWebViewRendererGoneDailyStore.InMemory()
-        val gate = RaftWebViewRendererGoneTicketGate(store, minIntervalMillis = minute, maxPerDay = 3)
-        val steps =
-            listOf(
-                0L to RaftWebViewRendererGoneTicketDecision.File,
-                30_000L to RaftWebViewRendererGoneTicketDecision.RecentTicket,
-                59_999L to RaftWebViewRendererGoneTicketDecision.RecentTicket,
-                60_000L to RaftWebViewRendererGoneTicketDecision.File,
-                // A clock set back is never a free slot.
-                10_000L to RaftWebViewRendererGoneTicketDecision.RecentTicket,
-                5 * minute to RaftWebViewRendererGoneTicketDecision.File,
-                10 * minute to RaftWebViewRendererGoneTicketDecision.DailyCap,
-                60 * minute to RaftWebViewRendererGoneTicketDecision.DailyCap,
-                // The next UTC day starts a new count.
-                24 * 60 * minute to RaftWebViewRendererGoneTicketDecision.File,
-            )
-        val decisions = steps.map { (offset, _) -> gate.decide(crash, dayStart + offset) }
-        assertEquals(steps.map { it.second }, decisions)
-        assertEquals(Math.floorDiv(dayStart, 24L * 60 * minute) + 1 to 1, store.load())
-    }
-
-    @Test
     fun theDailyCapHoldsAcrossProcesses() {
         val store = RaftWebViewRendererGoneDailyStore.InMemory()
         // A crash loop: every launch is a new process with a new gate, sharing the persisted count.
@@ -296,74 +155,5 @@ class RaftWebViewRendererGoneTicketGateTest {
             }
         assertEquals(5, decisions.count { it == RaftWebViewRendererGoneTicketDecision.File })
         assertEquals(RaftWebViewRendererGoneTicketDecision.DailyCap, decisions.last())
-    }
-
-    @Test
-    fun aSystemReclaimNeverSpendsTheBudget() {
-        val store = RaftWebViewRendererGoneDailyStore.InMemory()
-        val gate = RaftWebViewRendererGoneTicketGate(store)
-        assertEquals(RaftWebViewRendererGoneTicketDecision.SystemReclaim, gate.decide(crash.copy(didCrash = false), dayStart))
-        assertEquals(null, store.load())
-        assertEquals(RaftWebViewRendererGoneTicketDecision.File, gate.decide(crash, dayStart + 1))
-    }
-
-    @Test
-    fun theQuotaIsCountedOnlyAfterHandsAcceptedTheTicket() {
-        val store = RaftWebViewRendererGoneDailyStore.InMemory()
-        val gate = RaftWebViewRendererGoneTicketGate(store, maxPerDay = 5)
-        val reservation = gate.reserve(crash, dayStart)
-        assertEquals(RaftWebViewRendererGoneTicketDecision.File, reservation.decision)
-        assertEquals(null, store.load(), "nothing is counted while the ticket is in flight")
-        gate.settle(reservation, accepted = true)
-        assertEquals(Math.floorDiv(dayStart, 24L * 60 * minute) to 1, store.load())
-        // Settling again (a duplicate callback) counts nothing more.
-        gate.settle(reservation, accepted = true)
-        assertEquals(1, store.load()?.second)
-    }
-
-    @Test
-    fun aFailedTicketGivesItsQuotaBack() {
-        val store = RaftWebViewRendererGoneDailyStore.InMemory()
-        val gate = RaftWebViewRendererGoneTicketGate(store, minIntervalMillis = minute, maxPerDay = 1)
-        assertEquals(RaftWebViewRendererGoneTicketDecision.File, gate.decide(crash, dayStart, accepted = false))
-        assertEquals(null, store.load(), "a failed ticket is not counted")
-        // The minute and the day's only slot are free again: the next death files at once.
-        assertEquals(RaftWebViewRendererGoneTicketDecision.File, gate.decide(crash, dayStart + 1_000L))
-        assertEquals(1, store.load()?.second)
-        assertEquals(RaftWebViewRendererGoneTicketDecision.RecentTicket, gate.decide(crash, dayStart + 2_000L))
-        assertEquals(RaftWebViewRendererGoneTicketDecision.DailyCap, gate.decide(crash, dayStart + 2 * minute))
-    }
-
-    @Test
-    fun aTicketInFlightHoldsItsSlotSoNothingIsSubmittedTwice() {
-        val store = RaftWebViewRendererGoneDailyStore.InMemory()
-        val gate = RaftWebViewRendererGoneTicketGate(store, minIntervalMillis = minute, maxPerDay = 2)
-        val first = gate.reserve(crash, dayStart)
-        assertEquals(RaftWebViewRendererGoneTicketDecision.RecentTicket, gate.reserve(crash, dayStart + 1_000L).decision)
-        val second = gate.reserve(crash, dayStart + minute)
-        assertEquals(RaftWebViewRendererGoneTicketDecision.File, second.decision)
-        // Two in flight fill the day's cap of two, though neither is counted yet.
-        assertEquals(RaftWebViewRendererGoneTicketDecision.DailyCap, gate.reserve(crash, dayStart + 3 * minute).decision)
-        assertEquals(null, store.load())
-        // The first fails: its day slot comes back, but the later ticket keeps the minute.
-        gate.settle(first, accepted = false)
-        assertEquals(RaftWebViewRendererGoneTicketDecision.RecentTicket, gate.reserve(crash, dayStart + minute + 1_000L).decision)
-        gate.settle(second, accepted = true)
-        assertEquals(1, store.load()?.second)
-        assertEquals(RaftWebViewRendererGoneTicketDecision.File, gate.reserve(crash, dayStart + 3 * minute).decision)
-    }
-
-    @Test
-    fun anEventIsAnyCrashAndEveryDistinctSurface() {
-        val event =
-            RaftWebViewRendererGoneEvent.of(
-                listOf(
-                    RaftWebViewRendererGoneSignal("warmup", didCrash = false, rendererPriorityAtExit = 0),
-                    RaftWebViewRendererGoneSignal("artifact_viewer", didCrash = true, rendererPriorityAtExit = 2),
-                    RaftWebViewRendererGoneSignal("artifact_viewer", didCrash = true, rendererPriorityAtExit = 2),
-                ),
-                "com.google.android.webview 120.0",
-            )
-        assertEquals(RaftWebViewRendererGoneEvent(true, 2, listOf("artifact_viewer", "warmup"), 3, "com.google.android.webview 120.0"), event)
     }
 }

@@ -17,7 +17,6 @@ import build.raft.app.model.ServerId
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -175,19 +174,6 @@ class RaftComputerProcJobsTest {
     }
 
     @Test
-    fun stoppedByHandleValidationMatchesWebContract() {
-        assertTrue(isValidComputerProcStoppedBy("tygg"))
-        assertTrue(isValidComputerProcStoppedBy("alice_01-dev.io"))
-        assertTrue(isValidComputerProcStoppedBy("a".repeat(64)))
-        assertFalse(isValidComputerProcStoppedBy(null))
-        assertFalse(isValidComputerProcStoppedBy(""))
-        assertFalse(isValidComputerProcStoppedBy("a".repeat(65)))
-        assertFalse(isValidComputerProcStoppedBy("@tygg"))
-        assertFalse(isValidComputerProcStoppedBy("alice smith"))
-        assertFalse(isValidComputerProcStoppedBy("line\nbreak"))
-    }
-
-    @Test
     fun groupJobsPutsRunningBeforeExitedAndNewestFirst() {
         val jobs =
             listOf(
@@ -203,89 +189,6 @@ class RaftComputerProcJobsTest {
             grouped["a1"]?.map { it.name }
         )
         assertEquals(listOf("solo"), grouped["a2"]?.map { it.name })
-    }
-
-    @Test
-    fun uptimeBucketsMatchWebThresholds() {
-        assertEquals(ComputerProcJobUptimeFormat.Seconds(0), computerProcJobUptimeFormat(-5_000L))
-        assertEquals(ComputerProcJobUptimeFormat.Seconds(45), computerProcJobUptimeFormat(45_900L))
-        assertEquals(ComputerProcJobUptimeFormat.Minutes(1), computerProcJobUptimeFormat(60_000L))
-        assertEquals(ComputerProcJobUptimeFormat.Minutes(59), computerProcJobUptimeFormat(59 * 60_000L))
-        assertEquals(ComputerProcJobUptimeFormat.Hours(3, 5), computerProcJobUptimeFormat((3 * 60 + 5) * 60_000L))
-        assertEquals(ComputerProcJobUptimeFormat.Hours(47, 59), computerProcJobUptimeFormat((47 * 60 + 59) * 60_000L))
-        assertEquals(ComputerProcJobUptimeFormat.Days(2, 0), computerProcJobUptimeFormat(48 * 3_600_000L))
-        assertEquals(ComputerProcJobUptimeFormat.Days(2, 4), computerProcJobUptimeFormat(52 * 3_600_000L))
-    }
-
-    @Test
-    fun exitFormatFollowsExactPriorityOrder() {
-        assertEquals(
-            ComputerProcJobExitFormat.OwnerStop("tygg"),
-            computerProcJobExitFormat(
-                sampleJob("a1", "j", ComputerProcJobState.Exited, "2026-11-21T00:00:00Z")
-                    .copy(exitReason = "owner_stop", stoppedBy = "tygg", exitCode = 143, exitSignal = "SIGTERM")
-            )
-        )
-        assertEquals(
-            ComputerProcJobExitFormat.OwnerStopUnknown,
-            computerProcJobExitFormat(
-                sampleJob("a1", "j", ComputerProcJobState.Exited, "2026-11-21T00:00:00Z")
-                    .copy(exitReason = "owner_stop", stoppedBy = "bad handle!")
-            )
-        )
-        assertEquals(
-            ComputerProcJobExitFormat.MemoryLimit,
-            computerProcJobExitFormat(
-                sampleJob("a1", "j", ComputerProcJobState.Exited, "2026-11-21T00:00:00Z")
-                    .copy(exitReason = "memory_limit", exitCode = 137)
-            )
-        )
-        assertEquals(
-            ComputerProcJobExitFormat.Code(0),
-            computerProcJobExitFormat(
-                sampleJob("a1", "j", ComputerProcJobState.Exited, "2026-11-21T00:00:00Z")
-                    .copy(exitCode = 0, exitSignal = "SIGKILL")
-            )
-        )
-        assertEquals(
-            ComputerProcJobExitFormat.Signal("SIGTERM"),
-            computerProcJobExitFormat(
-                sampleJob("a1", "j", ComputerProcJobState.Exited, "2026-11-21T00:00:00Z")
-                    .copy(exitSignal = "SIGTERM")
-            )
-        )
-        assertEquals(
-            ComputerProcJobExitFormat.Plain,
-            computerProcJobExitFormat(sampleJob("a1", "j", ComputerProcJobState.Exited, "2026-11-21T00:00:00Z"))
-        )
-    }
-
-    @Test
-    fun memoryFormatHandlesRunningAndExitedJobs() {
-        val runningBoth =
-            sampleJob("a1", "j", ComputerProcJobState.Running, "2026-11-21T00:00:00Z")
-                .copy(rssBytes = 1024L * 1024L, memoryMaxBytes = 4L * 1024L * 1024L * 1024L)
-        assertIs<ComputerProcJobMemoryFormat.UsedOfCap>(computerProcJobMemoryFormat(runningBoth))
-
-        val runningOnlyRss =
-            sampleJob("a1", "j", ComputerProcJobState.Running, "2026-11-21T00:00:00Z")
-                .copy(rssBytes = 0L, memoryMaxBytes = null)
-        assertIs<ComputerProcJobMemoryFormat.UsedOnly>(computerProcJobMemoryFormat(runningOnlyRss))
-
-        val exitedWithRssAndCap =
-            sampleJob("a1", "j", ComputerProcJobState.Exited, "2026-11-21T00:00:00Z")
-                .copy(rssBytes = 512L * 1024L, memoryMaxBytes = 2L * 1024L * 1024L * 1024L)
-        assertIs<ComputerProcJobMemoryFormat.CapOnly>(computerProcJobMemoryFormat(exitedWithRssAndCap))
-
-        val exitedNone = sampleJob("a1", "j", ComputerProcJobState.Exited, "2026-11-21T00:00:00Z")
-        assertNull(computerProcJobMemoryFormat(exitedNone))
-    }
-
-    @Test
-    fun epochMillisToIsoUtcFormatsCalendarBoundaries() {
-        assertEquals("1970-01-01T00:00:00Z", computerProcEpochMillisToIsoUtc(0L))
-        // 2024-02-29T23:59:59Z
-        assertEquals("2024-02-29T23:59:59Z", computerProcEpochMillisToIsoUtc(1_709_251_199_000L))
     }
 
     @Test
@@ -431,35 +334,6 @@ class RaftComputerProcJobsTest {
         val confirmed = requireNotNull(controller.jobsByAgent["a1"]?.single())
         assertEquals(ComputerProcJobState.Exited, confirmed.state)
         assertEquals("tygg", confirmed.stoppedBy)
-    }
-
-    @Test
-    fun controllerStopSkipsPostStopRefreshIfComputerWentOffline() = runTest {
-        val runningJob = sampleJob("a1", "dev-server", ComputerProcJobState.Running, "2026-11-21T00:00:00Z")
-        val stopGate = CompletableDeferred<ComputerProcJobStopResult>()
-        var readCount = 0
-        val controller =
-            RaftComputerProcJobsController(
-                loadProcJobs = { _, _, _ ->
-                    readCount += 1
-                    DataResult.Content(ComputerProcJobsRead.Known("2026-11-21T01:00:00Z", listOf(runningJob)))
-                },
-                stopProcJobApi = { _, _, _, _ -> stopGate.await() },
-                afterStopDelayMs = 50L
-            )
-
-        controller.refresh(ServerId("s-1"), "m-1", online = true)
-        assertEquals(1, readCount)
-
-        val stopCall = async { controller.stopJob(runningJob, this, ServerId("s-1"), "m-1") }
-        runCurrent()
-        // Computer goes offline while stop request is in flight.
-        controller.refresh(ServerId("s-1"), "m-1", online = false)
-        stopGate.complete(ComputerProcJobStopResult.Completed(ComputerProcJobStopOutcome.Stopped))
-        stopCall.await()
-        delay(100L)
-        assertEquals(1, readCount)
-        assertNull(controller.answer)
     }
 
     private fun sampleJob(

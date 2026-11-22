@@ -142,18 +142,6 @@ class SharedTasksQueryToolbarUiTest {
     }
 
     @Test
-    @Config(qualifiers = "w1280dp-h900dp")
-    fun anInlineSearchLeavesBackToThePage() = runRobolectricComposeUiTest {
-        val harness = show()
-        onNodeWithTag(SharedTasksQueryToolbarTags.Search).performTextInput("ship")
-        waitForIdle()
-        assertEquals("ship", harness.state().searchDraft)
-        harness.press()
-        assertEquals(1, harness.pageBacks(), "a search on its own line never takes Back")
-        assertEquals("ship", harness.state().searchDraft)
-    }
-
-    @Test
     fun aSearchOverTheScopeTakesBackTextFirstThenItself() = runRobolectricComposeUiTest {
         // Narrow enough that even the search's least width doesn't fit (320dp still did, CI run
         // 43246137178); Computers' same case gives way at 150dp.

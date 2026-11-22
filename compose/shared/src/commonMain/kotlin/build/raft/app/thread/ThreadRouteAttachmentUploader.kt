@@ -83,14 +83,15 @@ internal class ThreadRouteAttachmentUploader(
      * nothing opens on a paid plan) or the external channel is frozen (`external_limit_frozen`),
      * and the failure toast.
      */
-    fun showAttachmentUploadFailure(errorCode: String) {
+    fun showAttachmentUploadFailure(errorCode: String, traceId: String? = null) {
         threadAttachmentUploadFailureUpgradeGate(errorCode)?.let { gate ->
             pager.openRaftUpgradeDialog(gate, storeScope)
         }
-        bridge.toast(
+        bridge.errorToast(
             localizedAttachmentUploadFailedDetail(
                 userFacingErrorLabels.forErrorCode(errorCode) ?: genericThreadErrorLabel
-            )
+            ),
+            traceId
         )
     }
     suspend fun admittedComposerAttachmentFiles(
@@ -104,12 +105,12 @@ internal class ThreadRouteAttachmentUploader(
                 is DataResult.Content -> capability.data
                 is DataResult.NoPermission -> {
                     routeAuthRequired(capability)
-                    bridge.toast(attachmentLimitUnavailableLabel)
+                    bridge.errorToast(attachmentLimitUnavailableLabel, capability.blocker)
                     return emptyList()
                 }
                 is DataResult.Empty,
                 is DataResult.Error -> {
-                    bridge.toast(attachmentLimitUnavailableLabel)
+                    bridge.errorToast(attachmentLimitUnavailableLabel, capability)
                     return emptyList()
                 }
             }
@@ -164,6 +165,7 @@ internal class ThreadRouteAttachmentUploader(
         // takes seconds and would hold the composer chip back.  Use the cached value if fresh;
         // otherwise the background upload task resolves it after the chip is admitted.  The
         // all-files (Gallery) path must have an explicit receipt before admission, so it awaits.
+        var probeErrorTraceId: String? = null
         val directCapabilities: AttachmentUploadCapabilities? =
             if (directUploadOperation == null) {
                 null
@@ -171,12 +173,13 @@ internal class ThreadRouteAttachmentUploader(
                 val probe = dataSource.attachmentUploadCapabilities(directUploadOperation)
                 if (probe is DataResult.NoPermission) {
                     routeAuthRequired(probe)
-                    bridge.toast(attachmentLimitUnavailableLabel)
+                    bridge.errorToast(attachmentLimitUnavailableLabel, probe.blocker)
                     return false
                 }
                 if ((probe as? DataResult.Error)?.error?.code.equals("cancelled", ignoreCase = true)) {
                     return false
                 }
+                probeErrorTraceId = (probe as? DataResult.Error)?.error?.traceId
                 (probe as? DataResult.Content)?.data
             } else {
                 dataSource.peekAttachmentUploadCapabilities(directUploadOperation)
@@ -184,7 +187,7 @@ internal class ThreadRouteAttachmentUploader(
         // Per-file Thread path fail-opens to multipart when capabilities cannot be read.
         // Gallery N/N remains fail-closed: it cannot compensate without an explicit capability.
         if (requireAllFiles && directCapabilities == null) {
-            bridge.toast(attachmentLimitUnavailableLabel)
+            bridge.errorToast(attachmentLimitUnavailableLabel, probeErrorTraceId)
             return false
         }
         val admittedFiles = admittedComposerAttachmentFiles(
@@ -380,7 +383,7 @@ internal class ThreadRouteAttachmentUploader(
             // and returns ready attachments only after the whole batch is complete.
             // Gallery on this train calls with requireAllFiles=false, so this branch stays dormant.
             val acceptedLocalIds = acceptedFiles.map(PlatformFile::id).toSet()
-            suspend fun markGalleryBatchFailed(errorCode: String): Boolean {
+            suspend fun markGalleryBatchFailed(errorCode: String, traceId: String? = null): Boolean {
                 val currentFailureState = composerDraftViewModel.state.value
                 val markableIds =
                     acceptedLocalIds
@@ -437,7 +440,7 @@ internal class ThreadRouteAttachmentUploader(
                             "draftKey=$draftKey"
                     )
                 }
-                showAttachmentUploadFailure(errorCode)
+                showAttachmentUploadFailure(errorCode, traceId)
                 return accepted
             }
 
@@ -505,7 +508,8 @@ internal class ThreadRouteAttachmentUploader(
                             resolveThreadAttachmentUploadFailureCode(
                                 batchResult,
                                 emptyCode = "attachment_upload_batch_empty",
-                            )
+                            ),
+                            traceId = batchResult.blocker.traceId
                         )
                         return false
                     }
@@ -514,7 +518,8 @@ internal class ThreadRouteAttachmentUploader(
                             resolveThreadAttachmentUploadFailureCode(
                                 batchResult,
                                 emptyCode = "attachment_upload_batch_empty",
-                            )
+                            ),
+                            traceId = batchResult.error.traceId
                         )
                         return false
                     }
@@ -705,8 +710,8 @@ internal class ThreadRouteAttachmentUploader(
                     file = file,
                     launchAdmission = admission
                 ) { uploadAttemptToken ->
-                    fun publishTerminalFailure(errorCode: String) {
-                        draftUploads.fail(draftKey, localAttachmentId, uploadAttemptToken, errorCode)
+                    fun publishTerminalFailure(errorCode: String, traceId: String? = null) {
+                        draftUploads.fail(draftKey, localAttachmentId, uploadAttemptToken, errorCode, traceId)
                     }
                     // Where this attempt's time goes (RaftAttachmentUploadTelemetry.kt); the network
                     // layer fills its recorder in through the coroutine context. Reported once.
@@ -726,7 +731,12 @@ internal class ThreadRouteAttachmentUploader(
                         // (cache hit, or one shared request) and fail open to multipart on error.
                         var taskCapabilities = directCapabilities
                         if (taskCapabilities == null && directUploadOperation != null) {
-                            when (val fetched = dataSource.attachmentUploadCapabilities(directUploadOperation)) {
+                            // In the attempt's context: a fetch it makes is its capability probe (`control_ms`).
+                            val fetched =
+                                withContext(uploadAttempt.recorder) {
+                                    dataSource.attachmentUploadCapabilities(directUploadOperation)
+                                }
+                            when (fetched) {
                                 is DataResult.Content -> taskCapabilities = fetched.data
                                 is DataResult.NoPermission -> routeAuthRequired(fetched)
                                 is DataResult.Error,
@@ -891,10 +901,16 @@ internal class ThreadRouteAttachmentUploader(
                                         }
                                     }
                                     is DataResult.Error ->
-                                        publishTerminalFailure(resolveThreadAttachmentUploadFailureCode(uploadResult))
+                                        publishTerminalFailure(
+                                            resolveThreadAttachmentUploadFailureCode(uploadResult),
+                                            traceId = uploadResult.error.traceId
+                                        )
                                     is DataResult.NoPermission -> {
                                         routeAuthRequired(uploadResult)
-                                        publishTerminalFailure(resolveThreadAttachmentUploadFailureCode(uploadResult))
+                                        publishTerminalFailure(
+                                            resolveThreadAttachmentUploadFailureCode(uploadResult),
+                                            traceId = uploadResult.blocker.traceId
+                                        )
                                     }
                                     is DataResult.Empty ->
                                         publishTerminalFailure("empty_upload_result")

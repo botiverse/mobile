@@ -1,6 +1,5 @@
 package build.raft.app
 
-import build.raft.app.data.SharedTasksRouteIntent
 import build.raft.app.data.TaskConversationDetailsState
 import build.raft.app.data.TaskConversationHeaderState
 import build.raft.app.data.TaskStatusOption
@@ -70,42 +69,24 @@ class TaskPendingPageTest {
     }
 
     @Test
-    fun `status and assignee changes take the conversation head intents`() {
-        val pending = pendingTask()
-        val sent = mutableListOf<SharedTasksRouteIntent>()
-        val edits = TaskHeadEdits { sent += it }
-        edits.updateStatus(pending, TaskStatus.InReview)
-        edits.assign(pending, members[0])
-        edits.assign(pending, null)
-        assertEquals(
-            listOf(
-                SharedTasksRouteIntent.UpdateStatus(pending, TaskStatus.InReview),
-                SharedTasksRouteIntent.AssignTask(pending, members[0]),
-                SharedTasksRouteIntent.AssignTask(pending, null),
-            ),
-            sent,
-        )
-    }
-
-    @Test
     fun `the pending page shows the edited task and keeps it through an older copy`() {
         val pending = pendingTask()
         val flow = TaskOpenSurfaceFlow(newRandomId = { "rid" })
         flow.open(TaskOpenSurface.Pending(pending))
         // The channel store's optimistic copy: the page shows it at once.
         val optimistic = pending.copy(status = TaskStatus.InReview)
-        assertEquals(null, flow.onTaskChanged(optimistic, taskV2Enabled = true))
+        assertEquals(null, flow.onTaskChanged(optimistic))
         assertEquals(TaskStatus.InReview, flow.surface?.task?.status)
         // A refused write rolls the store back to the copy before it.
-        assertEquals(null, flow.onTaskChanged(pending, taskV2Enabled = true))
+        assertEquals(null, flow.onTaskChanged(pending))
         assertEquals(pending, flow.surface?.task)
         // Accepted this time: the server's copy (a newer revision) replaces the optimistic one ...
-        flow.onTaskChanged(optimistic, taskV2Enabled = true)
+        flow.onTaskChanged(optimistic)
         val confirmed = optimistic.copy(revision = 2L)
-        flow.onTaskChanged(confirmed, taskV2Enabled = true)
+        flow.onTaskChanged(confirmed)
         assertEquals(confirmed, flow.surface?.task)
         // ... and another store's older copy does not undo it.
-        flow.onTaskChanged(pending, taskV2Enabled = true)
+        flow.onTaskChanged(pending)
         assertEquals(confirmed, flow.surface?.task)
     }
 

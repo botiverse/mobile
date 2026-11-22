@@ -4,6 +4,7 @@ package build.raft.app
 
 import build.raft.designsystem.focus.LocalRaftAutofocusTargetField
 import build.raft.designsystem.focus.LocalRaftAutofocusGuard
+import build.raft.designsystem.focus.LocalRaftFocusRegion
 import build.raft.app.resources.*
 import build.raft.designsystem.gesture.raftKeepsBackSwipe
 import build.raft.designsystem.gesture.raftBackSwipeRegion
@@ -1453,6 +1454,8 @@ fun Modal(
     onWillDismiss: ((Any?) -> Unit)? = null,
     /** A menu with no text field over a focused composer: the keyboard stays up (RaftWindowDialogProperties). */
     keepsHostKeyboard: Boolean = false,
+    /** False when the modal content slides itself (phone sheet / side drawer) so iOS doesn't stack its zoom transition. */
+    platformTransition: Boolean = true,
     content: (@Composable () -> Unit)
 ) {
     // The page window's horizontal safe area (what the page shells around this call know), read
@@ -1467,12 +1470,7 @@ fun Modal(
     // RaftModalDismissBarrier and pad for keyboardHeightChange themselves.
     RaftWindowDialog(
         onDismissRequest = { onWillDismiss?.invoke("") },
-        properties =
-            if (keepsHostKeyboard) {
-                RaftModalWindowDialogProperties.copy(keepsHostKeyboard = true)
-            } else {
-                RaftModalWindowDialogProperties
-            }
+        properties = raftModalWindowDialogProperties(keepsHostKeyboard = keepsHostKeyboard, platformTransition = platformTransition)
     ) {
         // The dialog is its own window with its own keyboard animation; the host's IME report
         // describes the activity window underneath (RaftHostImeInsets).
@@ -1500,6 +1498,15 @@ fun Modal(
  */
 internal val RaftModalWindowDialogProperties =
     RaftWindowDialogProperties(drawScrim = false, contentHandlesKeyboard = true)
+
+internal fun raftModalWindowDialogProperties(
+    keepsHostKeyboard: Boolean = false,
+    platformTransition: Boolean = true,
+): RaftWindowDialogProperties =
+    RaftModalWindowDialogProperties.copy(
+        keepsHostKeyboard = keepsHostKeyboard,
+        platformTransition = platformTransition,
+    )
 
 /** Kuikly native drag toggle; nothing to configure on CMP. */
 @Composable
@@ -1799,8 +1806,16 @@ internal fun Modifier.raftAppEditorBehavior(
     val blocksComposerAutofocus = !LocalRaftEditorIsConversationComposer.current
     // This window's guard: a field focused in another app window never blocks this one's composer.
     val autofocusGuard = LocalRaftAutofocusGuard.current
+    val focusRegion = LocalRaftFocusRegion.current
+    androidx.compose.runtime.SideEffect {
+        if (!blocksComposerAutofocus) {
+            if (lastFocus) autofocusGuard.setFieldFocused(focusOwner, false, focusRegion)
+        } else if (lastFocus) {
+            autofocusGuard.setFieldFocused(focusOwner, true, focusRegion)
+        }
+    }
     DisposableEffect(focusOwner, autofocusGuard) {
-        onDispose { autofocusGuard.setFieldFocused(focusOwner, false) }
+        onDispose { autofocusGuard.setFieldFocused(focusOwner, false, focusRegion) }
     }
     return this
         .raftImeEnterAction(
@@ -1815,7 +1830,7 @@ internal fun Modifier.raftAppEditorBehavior(
         .focusRequester(focusRequester)
         .onGloballyPositioned(focusOwnerAnchor::update)
         .onFocusChanged {
-            if (blocksComposerAutofocus) autofocusGuard.setFieldFocused(focusOwner, it.isFocused)
+            if (blocksComposerAutofocus) autofocusGuard.setFieldFocused(focusOwner, it.isFocused, focusRegion)
             if (it.isFocused) {
                 if (!lastFocus) {
                     if (participatesInGlobalFocusDismiss) {

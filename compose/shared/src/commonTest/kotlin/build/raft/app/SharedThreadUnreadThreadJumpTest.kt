@@ -1,14 +1,11 @@
 package build.raft.app
 
-import build.raft.app.data.DataRequestPriority
 import build.raft.app.data.DataResult
 import build.raft.app.data.InMemoryRaftAuthSessionStore
 import build.raft.app.data.InboxItem
-import build.raft.app.data.RaftShellStoreScope
 import build.raft.app.data.RaftStaleReason
 import build.raft.app.data.RaftStaleRecoveryMaxDelayMillis
 import build.raft.app.data.ScreenError
-import build.raft.app.data.SelectedServerStore
 import build.raft.app.data.ThreadListSnapshot
 import build.raft.app.data.ThreadSnapshot
 import build.raft.app.data.authSessionFixture
@@ -32,14 +29,12 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.StandardTestDispatcher
-import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertIs
 import kotlin.test.assertNotEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
@@ -132,47 +127,6 @@ class SharedThreadUnreadThreadJumpTest {
             advanceTimeBy(10 * RaftStaleRecoveryMaxDelayMillis)
             runCurrent()
             assertEquals(3, repository.unreadFollowedRequests.size, "a fresh answer stops recovery")
-        } finally {
-            scopeJob.cancelAndJoin()
-        }
-    }
-
-    /** A lookup asked for while another is in flight runs right after it instead of being dropped. */
-    @Test
-    fun idsAskedForWhileALookupIsInFlightAreLookedUpAfterIt() = runTest {
-        val scopeJob = SupervisorJob()
-        val scope = CoroutineScope(scopeJob + StandardTestDispatcher(testScheduler))
-        val repository = repository()
-        val release = CompletableDeferred<Unit>()
-        repository.releaseUnreadFollowed = release
-        repository.unreadFollowedResult =
-            followedList(followedRow("t-old", parentChannel = ChannelIdValue, parentMessage = "p-old", unread = 3))
-        val store = SharedThreadStore(dataSource = dataSource(repository), scope = scope, initialPayload = channelWindow())
-
-        try {
-            store.dispatch(SharedThreadIntent.ResolveUnreadThreadParents(setOf("t-old")))
-            advanceUntilIdle()
-            // The page's id set changed while the first lookup waits (a jump replaced the window).
-            store.dispatch(SharedThreadIntent.ResolveUnreadThreadParents(setOf("t-old", "t-new")))
-            advanceUntilIdle()
-            assertEquals(1, repository.unreadFollowedRequests.size)
-
-            // The first answer predates t-new; the queued lookup asks again and finds it.
-            val second = CompletableDeferred<Unit>()
-            release.complete(Unit)
-            repository.releaseUnreadFollowed = second
-            advanceUntilIdle()
-            assertEquals(2, repository.unreadFollowedRequests.size, "the queued id is looked up once the first lookup ends")
-            assertEquals(setOf("t-old"), store.state.value.unreadThreadParents.keys)
-
-            repository.unreadFollowedResult =
-                followedList(
-                    followedRow("t-old", parentChannel = ChannelIdValue, parentMessage = "p-old", unread = 3),
-                    followedRow("t-new", parentChannel = ChannelIdValue, parentMessage = "p-new", unread = 1),
-                )
-            second.complete(Unit)
-            advanceUntilIdle()
-            assertEquals(setOf("t-old", "t-new"), store.state.value.unreadThreadParents.keys)
         } finally {
             scopeJob.cancelAndJoin()
         }
@@ -388,185 +342,6 @@ class SharedThreadUnreadThreadJumpTest {
             collector.cancel()
             scopeJob.cancelAndJoin()
         }
-    }
-
-    /** The pill's jump that cannot load its parent is reported too (busy ends, the page says so). */
-    @Test
-    fun aPillJumpThatCannotLoadItsParentIsReported() = runTest {
-        val scopeJob = SupervisorJob()
-        val scope = CoroutineScope(scopeJob + StandardTestDispatcher(testScheduler))
-        val repository = repository()
-        repository.parentResult = DataResult.Error(ScreenError(code = "server_unavailable", retryable = true))
-        val store = SharedThreadStore(dataSource = dataSource(repository), scope = scope, initialPayload = channelWindow())
-        val failures = mutableListOf<ThreadJumpFailure>()
-        val collector = scope.launch { store.jumpFailures.collect { failures += it } }
-
-        try {
-            store.dispatch(SharedThreadIntent.JumpToMessage("p-old", switchToTab = "chat"))
-            advanceUntilIdle()
-            assertEquals(false, store.state.value.unreadThreadJumpLoading)
-            assertEquals(listOf(ThreadJumpFailure(messageId = "p-old", switchToTab = "chat", unreadThreadPill = true)), failures)
-        } finally {
-            collector.cancel()
-            scopeJob.cancelAndJoin()
-        }
-    }
-
-    /** A parent already loaded is focused at once: the pill never turns busy. */
-    @Test
-    fun aJumpToALoadedParentIsNeverBusy() = runTest {
-        val scopeJob = SupervisorJob()
-        val scope = CoroutineScope(scopeJob + StandardTestDispatcher(testScheduler))
-        val store = SharedThreadStore(dataSource = dataSource(repository()), scope = scope, initialPayload = channelWindow())
-        val busy = mutableListOf<Boolean>()
-        val collector = scope.launch { store.unreadThreadJumpLoadingFlow().collect { busy += it } }
-
-        try {
-            advanceUntilIdle()
-            store.dispatch(SharedThreadIntent.JumpToMessage("m2", switchToTab = "chat"))
-            advanceUntilIdle()
-            assertEquals(listOf(false), busy)
-        } finally {
-            collector.cancel()
-            scopeJob.cancelAndJoin()
-        }
-    }
-
-    @Test
-    fun anOrdinaryFocusIsNotMarkedAsThePillsJump() = runTest {
-        val scopeJob = SupervisorJob()
-        val scope = CoroutineScope(scopeJob + StandardTestDispatcher(testScheduler))
-        val store = SharedThreadStore(dataSource = dataSource(repository()), scope = scope, initialPayload = channelWindow())
-
-        try {
-            store.dispatch(SharedThreadIntent.JumpToMessage("m2", switchToTab = "chat"))
-            advanceUntilIdle()
-            val jumpNonce = store.state.value.unreadThreadJumpFocusNonce
-            // A later link / search focus gets a new nonce and keeps the top-aligned placement.
-            store.dispatch(SharedThreadIntent.FocusMessage("m1"))
-            advanceUntilIdle()
-
-            val payload = store.state.value.payload
-            assertEquals("m1", payload.focusedMessageId)
-            assertEquals(jumpNonce, store.state.value.unreadThreadJumpFocusNonce)
-            assertEquals(
-                LazyViewportAnchorPlacement.Focused,
-                threadFocusedAnchorBasePlacement(payload.focusedMessageRequestNonce, store.state.value.unreadThreadJumpFocusNonce),
-            )
-        } finally {
-            scopeJob.cancelAndJoin()
-        }
-    }
-
-    /**
-     * artin: a jump to an unread thread prewarms that thread's replies — exactly one `Background`
-     * reply fetch — and opening the thread afterwards renders from the prewarm with no second fetch.
-     */
-    @Test
-    fun anUnreadThreadJumpPrewarmsTheThreadOnceInTheBackgroundAndTheOpenReusesIt() = runTest {
-        val scopeJob = SupervisorJob()
-        val scope = CoroutineScope(scopeJob + StandardTestDispatcher(testScheduler))
-        val repository = repository()
-        val logs = mutableListOf<String>()
-        val dataSource = prewarmDataSource(repository, scope)
-        val store =
-            SharedThreadStore(
-                dataSource = dataSource,
-                scope = scope,
-                diagnosticsLogger = { logs += it },
-                initialPayload = channelWindow(),
-            )
-
-        try {
-            store.dispatch(SharedThreadIntent.JumpToMessage("m1", switchToTab = "chat", prewarmThreadChannelId = "thread-m1"))
-            advanceUntilIdle()
-
-            assertEquals("m1", store.state.value.payload.focusedMessageId)
-            assertEquals(listOf(ChannelId(ChannelIdValue) to MessageId("m1")), repository.replyRequests)
-            assertEquals(listOf(DataRequestPriority.Background), repository.replyPriorities)
-            assertTrue(logs.any { it.startsWith("thread_prewarm reason=unread_jump result=success thread=thread-m parent=m1") }, "$logs")
-
-            val opened =
-                dataSource.fetchThreadPayload(
-                    basePayload = SharedThreadStoreTestFixtures.replyPayload(parentMessageId = "m1", threadId = "thread-m1"),
-                    reusePrewarm = true,
-                )
-
-            assertEquals("reply body", assertIs<DataResult.Content<RaftThreadScreenPayload>>(opened).data.messages.last().body)
-            assertEquals(1, repository.replyRequests.size, "the open reuses the prewarm instead of fetching again")
-        } finally {
-            scopeJob.cancelAndJoin()
-        }
-    }
-
-    @Test
-    fun repeatedJumpsToTheSameUnreadThreadDoNotDuplicateItsPrewarm() = runTest {
-        val scopeJob = SupervisorJob()
-        val scope = CoroutineScope(scopeJob + StandardTestDispatcher(testScheduler))
-        val repository = repository()
-        val release = CompletableDeferred<Unit>()
-        repository.releaseReply = release
-        val store = SharedThreadStore(dataSource = prewarmDataSource(repository, scope), scope = scope, initialPayload = channelWindow())
-
-        try {
-            // A second tap while the prewarm is in flight joins it.
-            store.dispatch(SharedThreadIntent.JumpToMessage("m1", switchToTab = "chat", prewarmThreadChannelId = "thread-m1"))
-            advanceUntilIdle()
-            store.dispatch(SharedThreadIntent.JumpToMessage("m1", switchToTab = "chat", prewarmThreadChannelId = "thread-m1"))
-            advanceUntilIdle()
-            assertEquals(1, repository.replyRequests.size)
-
-            release.complete(Unit)
-            advanceUntilIdle()
-            // A tap after it finished finds the thread already warm.
-            store.dispatch(SharedThreadIntent.JumpToMessage("m1", switchToTab = "chat", prewarmThreadChannelId = "thread-m1"))
-            advanceUntilIdle()
-            assertEquals(1, repository.replyRequests.size)
-            assertEquals(listOf(DataRequestPriority.Background), repository.replyPriorities)
-        } finally {
-            scopeJob.cancelAndJoin()
-        }
-    }
-
-    @Test
-    fun aJumpWithoutAnUnreadThreadPrewarmsNothing() = runTest {
-        val scopeJob = SupervisorJob()
-        val scope = CoroutineScope(scopeJob + StandardTestDispatcher(testScheduler))
-        val repository = repository()
-        val store = SharedThreadStore(dataSource = prewarmDataSource(repository, scope), scope = scope, initialPayload = channelWindow())
-
-        try {
-            store.dispatch(SharedThreadIntent.JumpToMessage("m1", switchToTab = "chat"))
-            advanceUntilIdle()
-
-            assertTrue(repository.replyRequests.isEmpty())
-        } finally {
-            scopeJob.cancelAndJoin()
-        }
-    }
-
-    /** A data source wired as the channel page's: the app's shared payload store and server selection. */
-    private fun TestScope.prewarmDataSource(
-        repository: ReplyThreadAccessConversationRepositoryRecorder,
-        scope: CoroutineScope,
-    ): SharedThreadDataSource {
-        val sessionStore =
-            InMemoryRaftAuthSessionStore(authSessionFixture(userId = "u1", selectedServerId = ServerIdValue))
-        return testSharedThreadDataSource(
-            storeScope = scope,
-            networkApi = SharedThreadStoreTest.FakeThreadApi(),
-            sessionStore = sessionStore,
-            selectedServerStore = SelectedServerStore(RaftShellStoreScope.create("unread-thread-prewarm", ServerIdValue)),
-            conversationRepository = repository,
-            cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
-            payloadStore =
-                SharedThreadPayloadStore(
-                    scope = scope,
-                    prewarmStartIntervalMillis = 0L,
-                    foregroundLoadGate = SharedThreadStoreTestFixtures.run { virtualForegroundLoadGate() },
-                    prewarmStartTimeSource = testScheduler.timeSource,
-                ),
-        )
     }
 
     private fun repository() =

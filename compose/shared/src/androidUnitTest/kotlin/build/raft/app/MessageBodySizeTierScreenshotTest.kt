@@ -34,10 +34,6 @@ class MessageBodySizeTierScreenshotTest {
     val activities = RobolectricComposeActivityRule()
 
     @Test
-    @Config(sdk = [34], qualifiers = "w840dp-h360dp-xhdpi")
-    fun wide() = capture("thread.message-body-size.wide")
-
-    @Test
     @Config(sdk = [34], qualifiers = "w360dp-h420dp-xxhdpi")
     fun phone() = capture("thread.message-body-size.phone")
 

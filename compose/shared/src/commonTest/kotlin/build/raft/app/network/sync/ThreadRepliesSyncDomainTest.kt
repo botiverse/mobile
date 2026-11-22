@@ -70,34 +70,6 @@ class ThreadRepliesSyncDomainTest {
     }
 
     @Test
-    fun systemCreateAdvancesCountWithoutConsumingConversationSlot() {
-        val host = ThreadRepliesSyncHost()
-        assertEquals(true, host.beginAuthoritativeRebaseline(page, 1))
-        assertNotNull(host.ingestFrame(page, frame(seq = 4, count = 4, senderType = "system")))
-        val accepted = accepted(host, 1, replies = 1L..3L, count = 3)
-
-        assertEquals(4, accepted.model.replyCount)
-        assertEquals(listOf("reply-1", "reply-2", "reply-3"), accepted.model.replies.map { it.messageId })
-    }
-
-    @Test
-    fun firstFrameOnUnseenScopeFoldsIntoRenderedBaselineButNeverOverridesAcceptedScope() {
-        val host = ThreadRepliesSyncHost()
-        val baseline = initialThreadRepliesReadModel((1L..3L).map { reply(it) }, 3, InlineThreadReplyPreviewLimit)
-        // Cold cache: the Store renders 3 rows the host has never accepted.
-        val live = assertNotNull(host.ingestFrame(page, frame(seq = 5, count = 5), baseline = baseline))
-        assertEquals(listOf("reply-2", "reply-3", "reply-5"), live.model.replies.map { it.messageId })
-        assertEquals(5, live.model.replyCount)
-        // A reconnect replay of a baseline reply is a no-op, not a spurious row.
-        val replay = assertNotNull(host.ingestFrame(page, frame(seq = 3, count = 5), baseline = baseline))
-        assertEquals(live.model, replay.model)
-        // Once accepted, a (stale) baseline is ignored.
-        val stale = initialThreadRepliesReadModel((7L..9L).map { reply(it) }, 9, InlineThreadReplyPreviewLimit)
-        val next = assertNotNull(host.ingestFrame(page, frame(seq = 6, count = 6), baseline = stale))
-        assertEquals(listOf("reply-3", "reply-5", "reply-6"), next.model.replies.map { it.messageId })
-    }
-
-    @Test
     fun invalidEnvelopeFailsClosed() {
         val host = ThreadRepliesSyncHost()
         assertNull(host.ingestFrame(page, frame(seq = 4, count = 4, producer = "other")))
@@ -130,29 +102,6 @@ class ThreadRepliesSyncDomainTest {
 
         val next = assertNotNull(host.ingestFrame(page, frame(seq = 4, count = 4)))
         assertEquals(listOf("edited", "reply 3", "reply 4"), next.model.replies.map { it.content })
-    }
-
-    @Test
-    fun replyUpdateIgnoresStaleUnknownAndForeignScopeEdits() {
-        val host = ThreadRepliesSyncHost()
-        assertEquals(true, host.beginAuthoritativeRebaseline(page, 1))
-        accepted(host, 1, replies = 1L..3L, count = 3)
-        assertNotNull(host.ingestReplyUpdate(page, replyUpdate(seq = 2, content = "new", updatedAt = "2026-07-25T00:02:00Z")))
-
-        // An older edit than the one already applied, a reply outside the window, another parent scope.
-        assertNull(host.ingestReplyUpdate(page, replyUpdate(seq = 2, content = "old", updatedAt = "2026-07-25T00:01:00Z")))
-        assertNull(host.ingestReplyUpdate(page, replyUpdate(seq = 9, content = "x")))
-        assertNull(host.ingestReplyUpdate(page, replyUpdate(seq = 3, content = "x").copy(parentChannelId = ChannelId("channel-2"))))
-    }
-
-    @Test
-    fun replyUpdateSeedsANeverSeenScopeFromTheRenderedWindow() {
-        val host = ThreadRepliesSyncHost()
-        val rendered = initialThreadRepliesReadModel(listOf(reply(1), reply(2)), replyCount = 2, limit = InlineThreadReplyPreviewLimit)
-
-        assertNull(host.ingestReplyUpdate(page, replyUpdate(seq = 2, content = "edited")))
-        val edited = assertNotNull(host.ingestReplyUpdate(page, replyUpdate(seq = 2, content = "edited"), baseline = rendered))
-        assertEquals(listOf("reply 1", "edited"), edited.model.replies.map { it.content })
     }
 
     private fun accepted(

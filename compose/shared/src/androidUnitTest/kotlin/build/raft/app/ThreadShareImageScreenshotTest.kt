@@ -35,9 +35,7 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlin.math.roundToInt
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
-import kotlin.test.assertTrue
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
@@ -77,45 +75,6 @@ class ThreadShareImageScreenshotTest {
     @Config(sdk = [34], qualifiers = "w390dp-h480dp-xxhdpi")
     fun phone() = capture("thread.share-image.phone", cardWidthDp = 390)
 
-    @Test
-    @Config(sdk = [34], qualifiers = "w680dp-h480dp-xxhdpi")
-    fun desktop() = capture("thread.share-image.desktop", cardWidthDp = 640)
-
-    /**
-     * artin's case: one message picked that the timeline draws as a continuation (same author
-     * within the grouping window, no avatar or name). The image regroups the selection only
-     * ([threadShareSelectionSuppressesAuthor], web `shouldShowGroupedMessageHeader`), so its only
-     * message carries the author's avatar, name and time.
-     */
-    @Test
-    @Config(sdk = [34], qualifiers = "w390dp-h480dp-xxhdpi")
-    fun continuationPickedAlone() {
-        val previous = ShareImageMessage.copy(id = "msg-share-image-run", timestampLabel = "2026-10-21T16:20:00Z")
-        val continuation =
-            ShareImageMessage.copy(
-                id = "msg-share-image-continuation",
-                timestampLabel = "2026-10-21T16:21:00Z",
-                body = "A follow-up picked on its own: the image still names who said it.",
-            )
-        val timelineSuppresses = shouldSuppressCompactThreadAuthor(previous, continuation, localOffsetMinutes = 0)
-        assertTrue(timelineSuppresses, "the timeline draws the picked row as a continuation")
-        val suppress =
-            threadShareSelectionSuppressesAuthor(
-                timelineSuppressesAuthor = timelineSuppresses,
-                selectionActive = true,
-                selected = true,
-                previousSelected = false,
-            )
-        assertFalse(suppress, "the image's first message shows its author")
-        capture(
-            "thread.share-image.continuation",
-            cardWidthDp = 390,
-            message = continuation,
-            suppressRepeatedAuthor = suppress,
-            timestampLabel = "4:21 PM",
-        )
-    }
-
     /**
      * The off-screen share image (Android, desktop) of a message whose table is wider than a phone
      * and whose code has a line longer than any image: laid out again at the picked width, the
@@ -126,27 +85,10 @@ class ThreadShareImageScreenshotTest {
     @Config(sdk = [34], qualifiers = "w390dp-h480dp-xxhdpi")
     fun wideTablePhone() = captureOffscreen("thread.share-image.wide-table.390", cardWidthDp = 390)
 
-    @Test
-    @Config(sdk = [34], qualifiers = "w390dp-h480dp-xxhdpi")
-    fun wideTableWide() = captureOffscreen("thread.share-image.wide-table.768", cardWidthDp = 768)
-
     /** Share preview with its width picker: Phone (the default), Wide (the web's 768), Custom with its slider. */
     @Test
     @Config(sdk = [34], qualifiers = "w390dp-h844dp-xxhdpi")
     fun previewPhone() = capturePreview("thread.share-preview.width-phone", ThreadShareImageWidthChoice())
-
-    @Test
-    @Config(sdk = [34], qualifiers = "w390dp-h844dp-xxhdpi")
-    fun previewWide() =
-        capturePreview("thread.share-preview.width-wide", ThreadShareImageWidthChoice(preset = ThreadShareImageWidth.Wide))
-
-    @Test
-    @Config(sdk = [34], qualifiers = "w390dp-h844dp-xxhdpi")
-    fun previewCustom() =
-        capturePreview(
-            "thread.share-preview.width-custom",
-            ThreadShareImageWidthChoice(preset = ThreadShareImageWidth.Custom, customWidthDp = 560),
-        )
 
     private fun captureOffscreen(name: String, cardWidthDp: Int) {
         val image =

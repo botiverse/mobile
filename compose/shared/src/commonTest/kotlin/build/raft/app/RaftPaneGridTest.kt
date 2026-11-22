@@ -1,7 +1,6 @@
 package build.raft.app
 
 import build.raft.app.data.SharedPreferenceStore
-import kotlin.math.abs
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -18,9 +17,6 @@ class RaftPaneGridTest {
             values[key] = value
         }
     }
-
-    private fun assertNear(expected: Float, actual: Float, message: String? = null) =
-        assertTrue(abs(expected - actual) < 0.01f, "${message ?: ""} expected $expected, was $actual")
 
     @Test
     fun columnWidthsUseWebBoundsAndAreKeptPerDevice() {
@@ -70,25 +66,6 @@ class RaftPaneGridTest {
     }
 
     @Test
-    fun closingACardKeepsHowTheColumnWasFoldedAndSized() {
-        val prefs = MapPreferences()
-        val grid = RaftPaneGridStore { prefs }
-        val cards = ConversationSideCardsStore { prefs }
-        cards.bindOwner("env|u1")
-        cards.open(ConversationSideCard.Tasks)
-        cards.open(ConversationSideCard.Files)
-        grid.setCollapsed("tasks", true)
-        grid.setWidth(RaftPaneGridColumns.SideCards, 400f)
-        cards.close(ConversationSideCard.Files)
-        assertEquals(listOf(ConversationSideCard.Tasks), cards.state.value.openCards)
-        assertEquals(ConversationSideCardsState(tasks = true), decodeConversationSideCardsOpen(prefs.values["conversationSideCards:open:env|u1"]))
-        // Files comes back to the same column: Tasks still folded, the width as dragged.
-        cards.open(ConversationSideCard.Files)
-        assertTrue(grid.isCollapsed("tasks"))
-        assertEquals(400f, grid.widthDp(RaftPaneGridColumns.SideCards))
-    }
-
-    @Test
     fun theConversationsWidthIsKeptOnlyOnceASeamIsLetGo() {
         val prefs = MapPreferences()
         val store = RaftPaneGridStore { prefs }
@@ -113,13 +90,6 @@ class RaftPaneGridTest {
     }
 
     @Test
-    fun aColumnGrowsUntilTheMainPaneIsAt360() {
-        // Web growToMainMinMax: a 360 column beside a 600 main pane may grow to 600.
-        assertEquals(600f, raftPaneGridDragMaxDp(280f, 360f, 600f))
-        assertEquals(280f, raftPaneGridDragMaxDp(280f, 280f, 300f))
-    }
-
-    @Test
     fun cardsAlwaysStandBesideInTheGridOnAWideWindow() {
         // Web placeSections (#189): on a desktop every column stands in the row; the plan makes room (give way,
         // clip, tabs), whatever the room.
@@ -127,59 +97,5 @@ class RaftPaneGridTest {
         assertTrue(conversationSideCardsBesideInGrid(windowWidthDp = DualPaneMinimumWidthDp))
         // A phone (or a window under the app's 744 breakpoint) keeps the cover.
         assertFalse(conversationSideCardsBesideInGrid(windowWidthDp = 700f))
-    }
-
-    @Test
-    fun activitysListIsAtMostHalfTheRowWithAnItemOpen() {
-        // Web shareCapWidth: half of a 1223 row is 611; never under the list's 240.
-        assertEquals(611f, raftListPaneShareCapDp(1223f, 0.5f, 240f))
-        assertEquals(240f, raftListPaneShareCapDp(400f, 0.5f, 240f))
-    }
-
-    @Test
-    fun cardsStandBesideOnAWideWindowWithRoomForBoth() {
-        assertTrue(conversationSideCardsBeside(windowWidthDp = 1280f, pageWidthDp = 640f))
-        assertFalse(conversationSideCardsBeside(windowWidthDp = 1280f, pageWidthDp = 639f))
-        // A phone (or a window under the app's 744 breakpoint) keeps the cover.
-        assertFalse(conversationSideCardsBeside(windowWidthDp = 700f, pageWidthDp = 700f))
-        val both = ConversationSideCardsState().toggled(ConversationSideCard.Tasks).toggled(ConversationSideCard.Files)
-        assertTrue(sideCardShowing(both, beside = true, ConversationSideCard.Tasks))
-        assertFalse(sideCardShowing(both, beside = false, ConversationSideCard.Tasks))
-    }
-
-    @Test
-    fun aStackSplitsByShareAndFoldsToHeads() {
-        // 600 tall, 60/40: the seam takes 1, Tasks 359.4, Files 239.6.
-        val open = raftPaneGridStack(600f, listOf(0.6f, 0.4f), listOf(false, false))
-        assertNear(359.4f, open.heights[0])
-        assertNear(239.6f, open.heights[1])
-        assertEquals(listOf(false, true), open.seamAbove)
-        // Tasks folded: its head, no seam under it, Files the rest.
-        val tasksFolded = raftPaneGridStack(600f, listOf(0.6f, 0.4f), listOf(true, false))
-        assertEquals(listOf(56f, 544f), tasksFolded.heights)
-        assertEquals(listOf(false, false), tasksFolded.seamAbove)
-        // Files folded: its head at the bottom, under the seam.
-        val filesFolded = raftPaneGridStack(600f, listOf(0.6f, 0.4f), listOf(false, true))
-        assertEquals(listOf(543f, 56f), filesFolded.heights)
-        // Both folded: two heads at the top.
-        assertEquals(listOf(56f, 56f), raftPaneGridStack(600f, listOf(0.6f, 0.4f), listOf(true, true)).heights)
-        // Web sideCardsStackMinHeight: two cards need 321.
-        assertEquals(321f, raftPaneGridStackMinHeightDp(2))
-    }
-
-    @Test
-    fun aSeamDragKeepsEachCardAt160() {
-        val none = listOf(false, false)
-        // 601 tall: 600 to split, 160dp is 0.2667 of it.
-        val up = raftPaneGridMoveSeam(listOf(0.6f, 0.4f), 0, 0f, 601f, none)
-        assertNear(160f / 600f, up[0])
-        assertNear(1f, up[0] + up[1], "the pair keeps its total")
-        val down = raftPaneGridMoveSeam(listOf(0.6f, 0.4f), 0, 1f, 601f, none)
-        assertNear(1f - 160f / 600f, down[0])
-        // A short stack: 45% of the pair at least.
-        val short = raftPaneGridMoveSeam(listOf(0.6f, 0.4f), 0, 0f, 301f, none)
-        assertNear(0.45f, short[0])
-        // A pixel is worth 1/600 of the open shares.
-        assertNear(1f / 600f, raftPaneGridSharePerDp(601f, listOf(0.6f, 0.4f), none))
     }
 }

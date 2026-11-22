@@ -204,7 +204,7 @@ internal fun raftSearchableSettings(
 /** The index's locale for the app language (the in-app choice, else the system's). */
 @Composable
 private fun rememberSettingsSearchAliasLocale(): String {
-    val localeType = StringDesc.localeType
+    val localeType = StringDesc.observeLocaleType()
     val system = Locale.current
     return remember(localeType, system) {
         val tag = (localeType as? StringDesc.LocaleType.Custom)?.localeTag ?: system.toLanguageTag()
@@ -270,7 +270,7 @@ internal fun rememberSettingsSearchResults(host: SettingsSearchHost, payload: Ra
     val query = host.state.query
     val searching = host.state.searching
     val aliasLocale = rememberSettingsSearchAliasLocale()
-    val localeType = StringDesc.localeType
+    val localeType = StringDesc.observeLocaleType()
     val context = host.context.copy(rowKeys = payload.items.map { it.key })
     val pageTitles = payload.items.associate { it.key to it.title }
     // Built on the first search, then kept while nothing it reads changes.

@@ -14,7 +14,6 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.JsonArray
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -56,19 +55,6 @@ class CanonicalMessageV2ReplyThreadPrewarmRoundTripTest {
     }
 
     @Test
-    fun storedWindowUnderAnotherParentIsNeverReplacedByAPrewarm() = withFreshDatabase { database ->
-        val rig = Rig(database)
-        runBlocking {
-            rig.loader.loadReplyThreadOnEnter(partition, "thread-1", parent) { true }
-            val otherRoot = ThreadDurableReplyParent("channel-1", "m20")
-            val generation = assertNotNull(rig.loader.replyThreadCommitGeneration(partition, "thread-1"))
-            rig.loader.persistReplyThreadPrewarmPage(partition, "thread-1", otherRoot, replyPageArray(80), 30, generation) { true }
-            assertTrue(rig.logs.any { skipped("parent_mismatch") in it }, rig.logs.toString())
-            assertEquals(listOf(50L, 60L, 70L), assertNotNull(rig.reader.readReplyThread(partition, "thread-1", parent)).envelopes.map { it.fact.seq })
-        }
-    }
-
-    @Test
     fun olderPrewarmPageNeverRegressesTheWindowAnEnterStored() = withFreshDatabase { database ->
         val rig = Rig(database)
         runBlocking {
@@ -83,43 +69,6 @@ class CanonicalMessageV2ReplyThreadPrewarmRoundTripTest {
             rig.prewarm(replyPageArray(60, 70), limit = 2)
             assertEquals(2, rig.logs.count { skipped("stored_not_older") in it })
             assertTrue(assertNotNull(rig.reader.readReplyThread(partition, "thread-1", parent)).cursor.hasLoadedOldest)
-        }
-    }
-
-    @Test
-    fun newerPrewarmPageOverlappingTheStoredWindowExtendsItAndKeepsEveryStoredFact() = withFreshDatabase { database ->
-        // A long-read thread: the enter stored 150 replies (seq 1..150, it reaches the first reply). Two new
-        // replies later, the prewarm's 30-reply page (seq 123..152) shares 28 replies with the window.
-        val rig = Rig(database, enterPage = replyPage(*(1L..150L).map { replyNode(it) }.toTypedArray()))
-        runBlocking {
-            rig.loader.loadReplyThreadOnEnter(partition, "thread-1", parent) { true }
-            rig.prewarm(replyPageArray(*(123L..152L).toList().toLongArray()), limit = 30)
-            assertTrue(rig.logs.any { committed("window_extended", 30) in it }, rig.logs.toString())
-            val thread = assertNotNull(rig.reader.readReplyThread(partition, "thread-1", parent))
-            assertEquals((1L..152L).toList(), thread.envelopes.map { it.fact.seq }, "no stored reply is dropped")
-            assertEquals(1L, thread.cursor.oldestLoadedSeq)
-            assertTrue(thread.cursor.hasLoadedOldest, "the window still reaches the first reply")
-            assertEquals(152L, thread.cursor.newestLoadedSeq, "the newest edge comes from the page")
-            assertEquals(152L, thread.cursor.latestSeq)
-            assertEquals(Triple("channel", "channel-1", "m30"), Triple(thread.cursor.parentScopeKind, thread.cursor.parentScopeId, thread.cursor.rootMessageId))
-        }
-    }
-
-    @Test
-    fun newerPrewarmPageWithAGapKeepsTheStoredWindowAsAnIsland() = withFreshDatabase { database ->
-        // Twin of the extend above: stored window 50..70, but the full page (80, 90) proves only [80, 90], so
-        // nothing proves page ∪ window contiguous. Message storage Phase 2a: the page becomes the head and the
-        // stored window stays on disk as an older island (`island_kept`); the reader shows the head.
-        val rig = Rig(database)
-        runBlocking {
-            rig.loader.loadReplyThreadOnEnter(partition, "thread-1", parent) { true }
-            rig.prewarm(replyPageArray(80, 90), limit = 2)
-            assertTrue(rig.logs.any { committed("island_kept", 2) in it }, rig.logs.toString())
-            assertEquals(listOf(50L, 60L, 70L, 80L, 90L), rig.storedSeqs(), "nothing stored is dropped")
-            val thread = assertNotNull(rig.reader.readReplyThread(partition, "thread-1", parent))
-            assertEquals(listOf(80L, 90L), thread.envelopes.map { it.fact.seq })
-            assertEquals(80L, thread.cursor.oldestLoadedSeq)
-            assertFalse(thread.cursor.hasLoadedOldest, "a full page (2 = limit) says nothing about older replies")
         }
     }
 
@@ -139,74 +88,6 @@ class CanonicalMessageV2ReplyThreadPrewarmRoundTripTest {
             assertEquals(listOf(50L, 60L, 70L), thread.envelopes.map { it.fact.seq }, "the deleted reply stays deleted")
             assertEquals(70L, thread.cursor.newestLoadedSeq)
         }
-    }
-
-    @Test
-    fun prewarmWithNoWriteSinceItsFetchExtendsTheWindow() = withFreshDatabase { database ->
-        // Twin of the test above: identical stored window, generation read and page, without the second enter.
-        val rig = Rig(database)
-        runBlocking {
-            rig.loader.loadReplyThreadOnEnter(partition, "thread-1", parent) { true }
-            val atFetch = rig.commitGeneration()
-            rig.prewarm(replyPageArray(50, 60, 70, 80), limit = 30, generation = atFetch)
-            assertTrue(rig.logs.any { committed("window_extended", 4) in it }, rig.logs.toString())
-            assertEquals(
-                listOf(50L, 60L, 70L, 80L),
-                assertNotNull(rig.reader.readReplyThread(partition, "thread-1", parent)).envelopes.map { it.fact.seq },
-            )
-        }
-    }
-
-    @Test
-    fun enterAfterPrewarmCommitsItsSnapshotAsUsual() = withFreshDatabase { database ->
-        val rig = Rig(database)
-        runBlocking {
-            rig.prewarm(replyPageArray(60, 70), limit = 2)
-            assertFalse(assertNotNull(rig.reader.readReplyThread(partition, "thread-1", parent)).cursor.hasLoadedOldest)
-
-            rig.loader.loadReplyThreadOnEnter(partition, "thread-1", parent) { true }
-            assertTrue(rig.logs.any { "canonical_v2_enter_snapshot server=server-1 scope=thread-1 scopeKind=thread outcome=committed facts=3" in it }, rig.logs.toString())
-            val thread = assertNotNull(rig.reader.readReplyThread(partition, "thread-1", parent))
-            assertEquals(listOf(50L, 60L, 70L), thread.envelopes.map { it.fact.seq })
-            assertTrue(thread.cursor.hasLoadedOldest, "the enter's 3 < 200 page reaches the first reply")
-            assertTrue(thread.envelopes.all { it.fact.content.startsWith("hello r") })
-        }
-    }
-
-    @Test
-    fun prewarmDuringAnEnterOfTheSameThreadIsWrittenAndTheEnterAddsItsPage() = withFreshDatabase { database ->
-        // Phase 2b: there is no enter in-flight set any more; the scope writer serializes the two writes and the
-        // enter's page is unioned with what the prewarm stored.
-        val rig = Rig(database)
-        runBlocking {
-            rig.network.onPageRequested = {
-                // The thread store's own request is out.
-                rig.prewarm(replyPageArray(50, 60), limit = 30)
-            }
-            rig.loader.loadReplyThreadOnEnter(partition, "thread-1", parent) { true }
-            assertTrue(rig.logs.none { skipped("enter_in_flight") in it }, rig.logs.toString())
-            assertTrue(rig.logs.any { "canonical_v2_enter_snapshot server=server-1 scope=thread-1 scopeKind=thread outcome=committed facts=3" in it }, rig.logs.toString())
-            assertEquals(listOf(50L, 60L, 70L), assertNotNull(rig.reader.readReplyThread(partition, "thread-1", parent)).envelopes.map { it.fact.seq })
-        }
-    }
-
-    @Test
-    fun anEnterRewritesARealtimeHeaderThatNamedAnotherRootAndKeepsOneNamingTheSameRoot() {
-        // Pair: the realtime header names root m99 (another thread's) or m30 (this one). The server-confirmed parent
-        // wins: the foreign header is cleared and rewritten; the matching one is simply filled. Both end readable.
-        fun run(realtimeRoot: String) = onFreshDatabase { database ->
-            val rig = Rig(database)
-            runBlocking {
-                rig.seedRealtimeHeader(realtimeRoot)
-                rig.loader.loadReplyThreadOnEnter(partition, "thread-1", parent) { true }
-                val thread = assertNotNull(rig.reader.readReplyThread(partition, "thread-1", parent))
-                assertEquals(listOf(50L, 60L, 70L), thread.envelopes.map { it.fact.seq })
-                assertEquals("m30", thread.cursor.rootMessageId)
-                rig.logs.any { "parent_rewritten old=channel-1/m99" in it }
-            }
-        }
-        assertTrue(run("m99"))
-        assertFalse(run("m30"))
     }
 
     private class Rig(

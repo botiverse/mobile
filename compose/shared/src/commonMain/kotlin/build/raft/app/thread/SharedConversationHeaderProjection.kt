@@ -4,6 +4,7 @@ import build.raft.app.data.SharedConversationDirectoryProjection
 import build.raft.app.model.ConversationKind
 import build.raft.app.model.ConversationPermissions
 import build.raft.app.model.MemberKind
+import build.raft.app.model.RaftSlackSyncProblem
 
 internal data class ConversationAccessCandidate(
     val ids: Set<String>,
@@ -27,8 +28,10 @@ internal data class ThreadHeaderDisplayModel(
      * A thread in the DM with a removed App Bot is read-only like the DM (botiverse/slock #11321).
      */
     val replyParentDmPeerIdentity: MemberDetailIdentity? = null,
-    // task #396: Channel-surface only; reply threads / DMs never show the bridge badge.
+    // task #396: Channel-surface only; a Slack channel's header draws the Slack glyph (botiverse/slock #16042).
     val bridgeProvider: String? = null,
+    /** Channel-surface only: a Slack channel's stopped sync, the warning Badge after its name. */
+    val slackSyncProblem: RaftSlackSyncProblem? = null,
     /** Channel-surface only: the directory row's `guestVisible` / archived state. */
     val channelGuestVisible: Boolean = false,
     val channelArchived: Boolean = false,
@@ -55,7 +58,7 @@ internal data class ThreadHeaderDisplayModel(
     val channelKindGlyph: RaftChannelKindGlyph
         get() =
             if (surfaceKind == RaftThreadSurfaceKind.Channel) {
-                raftChannelRecordKindGlyph(channelKind, channelOnPublicPage, channelHasExternalRelation)
+                raftChannelRecordKindGlyph(channelKind, channelOnPublicPage, channelHasExternalRelation, bridgeProvider)
             } else {
                 // A reply thread's header is not the channel's: its type alone.
                 raftChannelKindGlyph(channelKind, channelOnPublicPage)
@@ -358,6 +361,7 @@ internal fun RaftThreadScreenPayload.threadHeaderDisplayModelFromDirectory(
                 surfaceKind = surfaceKind,
                 channelKind = directory.channelKind,
                 bridgeProvider = directory.bridgeProvider,
+                slackSyncProblem = directory.slackSyncProblem,
                 channelGuestVisible = directory.guestVisible,
                 channelHasExternalRelation = directory.hasExternalRelation,
                 channelArchived = directory.archived

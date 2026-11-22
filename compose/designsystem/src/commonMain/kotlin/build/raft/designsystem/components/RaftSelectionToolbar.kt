@@ -7,7 +7,6 @@ import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -81,7 +80,7 @@ object RaftSelectionToolbarDefaults {
         @Composable @ReadOnlyComposable
         get() = RaftTheme.controls.barButtonSize
 
-    /** Their corners (`rounded-(--bar-button-radius)`): 8dp. */
+    /** Their corners (`rounded-(--bar-button-radius)`): 10dp, 6 under a fine pointer. */
     val ButtonRadius: Dp
         @Composable @ReadOnlyComposable
         get() = RaftTheme.controls.barButtonRadius
@@ -95,6 +94,11 @@ object RaftSelectionToolbarDefaults {
     val CloseIconSize: Dp
         @Composable @ReadOnlyComposable
         get() = RaftTheme.controls.iconSize
+
+    /** Before a leading checkbox (`ml-[calc((var(--control-height)-var(--control-icon-size))/2)]`): 11dp. */
+    val LeadingInset: Dp
+        @Composable @ReadOnlyComposable
+        get() = RaftTheme.controls.let { (it.height - it.iconSize) / 2 }
 
     /** Before the count (`pl-2`); none after it (`pr-0`), and none between the actions (`gap-0`). */
     val CountPaddingStart: Dp = RaftSpacing.Sm
@@ -187,7 +191,9 @@ internal fun raftSelectionToolbarFit(
  * each end, nothing above or below, and nothing between its parts (`gap-0`):
  *
  * - [leading], optional: a thread's select-all [RaftCheckbox] (raft-ui `SelectionToolbarItem`),
- *   centred in a bar button's square so it lines up with the buttons and keeps a 44dp target.
+ *   as far from the frame as ×'s icon is at the other end: the air plus half of what a button
+ *   holds around its icon ([RaftSelectionToolbarDefaults.LeadingInset], raft-ui 0.102.12), 17dp
+ *   by touch and 13 under a fine pointer. Its touch target reaches 44dp around it.
  * - [count] ("3 selected", `SelectionToolbarCount`): `text-callout` bold `foreground` with
  *   tabular figures, 8dp after what precedes it, nothing after it, one line, announced politely
  *   when it changes. [countValue] is the number inside it (`SelectionToolbarCountValue`), drawn
@@ -228,6 +234,7 @@ fun RaftSelectionToolbar(
     val ring = colors.lineSeam
     val toolbarHeight = d.Height
     val paddingX = d.PaddingX
+    val leadingInset = d.LeadingInset
     val buttonSize = d.ButtonSize
     val countStyle = typography.callout.copy(fontWeight = FontWeight.Bold, fontFeatureSettings = "tnum")
     val value = countValue.orEmpty()
@@ -276,7 +283,7 @@ fun RaftSelectionToolbar(
                     emptyList()
                 } else {
                     subcompose(SelectionToolbarSlot.Leading) {
-                        Box(Modifier.size(buttonSize), contentAlignment = Alignment.Center) { leading() }
+                        Box(Modifier.padding(start = leadingInset)) { leading() }
                     }.map { it.measure(loose) }
                 }
             val countPlaceables =

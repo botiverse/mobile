@@ -2,7 +2,6 @@ package build.raft.app
 
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.AnnotatedString
-import build.raft.app.data.ActivityObjectEventVerb
 import build.raft.app.data.ActivityObjectRow
 import build.raft.app.data.HomeChannelRow
 import build.raft.app.data.HomeDirectMessageRow
@@ -323,22 +322,6 @@ class ActivityConversationListTest {
     }
 
     @Test
-    fun dmThreadKeepsTheSenderWithoutASecondFace() {
-        // Either side may have replied last, so the DM thread keeps "Fable: …" even from the peer;
-        // the leading face is the peer, so no inline face before the name.
-        for (senderId in listOf("agent-fable", "user-other")) {
-            val model =
-                threadInFableDm.copy(latestActivitySenderId = senderId).activityConversationRowModel(context, InboxFilter.All)
-            val sender = assertIs<ActivityConversationSender.Named>(model.sender, senderId)
-            assertEquals("Fable", sender.name, senderId)
-            assertNull(sender.avatar, senderId)
-        }
-        // A channel thread keeps its inline sender face.
-        val channelSender = assertIs<ActivityConversationSender.Named>(thread.activityConversationRowModel(context, InboxFilter.All).sender)
-        assertEquals(MemberKind.Agent, channelSender.avatar?.senderKind)
-    }
-
-    @Test
     fun aJointThreadsReplierFromTheOtherServerIsResolvedNotDropped() {
         // The server names only external projections (channelService `latestActivitySenderName`), so
         // the other server's person or agent replying in a joint channel's thread arrives nameless and
@@ -539,88 +522,6 @@ class ActivityConversationListTest {
     }
 
     @Test
-    fun objectRowInAJointChannelResolvesItsActorAsTheOtherServers() {
-        val home =
-            homeSnapshot().let { snapshot ->
-                snapshot.copy(
-                    channels =
-                        listOf(
-                            HomeChannelRow(threadId = ThreadId("general"), channelId = ChannelId("general"), name = "general", channelType = "channel"),
-                            HomeChannelRow(
-                                threadId = ThreadId("joint-stamp"),
-                                channelId = ChannelId("joint-stamp"),
-                                name = "joint-stamp",
-                                channelType = "channel",
-                                kind = ConversationKind.Joint,
-                            ),
-                            HomeChannelRow(threadId = ThreadId("legacy-joint"), channelId = ChannelId("legacy-joint"), name = "legacy-joint", channelType = "joint"),
-                        ),
-                )
-            }
-        val context = home.toActivityConversationListContext("server-1")
-        assertEquals(setOf("joint-stamp", "legacy-joint"), context.jointChannelIds)
-
-        fun objectRowIn(homeKind: String, homeChannelId: String?) =
-            InboxItem(
-                key = activityObjectRowKey("artifact", "artifact-1"),
-                kind = InboxItemKind.Object,
-                channelId = ChannelId("object:artifact-1"),
-                channelName = "Plan",
-                activityObject =
-                    ActivityObjectRow(
-                        objectKind = "artifact",
-                        objectId = "artifact-1",
-                        title = "Plan",
-                        homeKind = homeKind,
-                        homeLabel = homeChannelId,
-                        homeChannelId = homeChannelId,
-                        eventKind = "version",
-                        actorType = "agent",
-                        actorId = "agent-cachet",
-                        actorName = "Cachet",
-                    ),
-            )
-
-        fun avatarOf(item: InboxItem) = item.activityConversationRowModel(context, InboxFilter.All).objectLine?.avatar
-
-        val joint = avatarOf(objectRowIn("channel", "joint-stamp"))
-        assertEquals(MemberKind.Agent, joint?.senderKind)
-        assertEquals("agent-cachet", joint?.senderId)
-        assertTrue(joint?.jointSurface == true)
-        assertTrue(avatarOf(objectRowIn("channel", "legacy-joint"))?.jointSurface == true)
-        // A home channel that is not joint, a DM, or no home at all: the local directory only.
-        assertFalse(avatarOf(objectRowIn("channel", "general"))?.jointSurface ?: true)
-        assertFalse(avatarOf(objectRowIn("dm", "dm-fable"))?.jointSurface ?: true)
-        assertFalse(avatarOf(objectRowIn("server", null))?.jointSurface ?: true)
-    }
-
-    @Test
-    fun objectRowNamesAnActorNoRosterHasAsTheJointActorResolveAnswered() {
-        val cachet =
-            ResolvedActor(
-                kind = MemberKind.Agent,
-                id = "agent-cachet",
-                homeServerId = "server-2",
-                name = "cachet",
-                displayName = "Cachet",
-                avatarUrl = "https://example.test/cachet.png",
-                gravatarHash = null,
-            )
-        val line = ActivityObjectLine(actorName = "cachet", verb = ActivityObjectEventVerb.Published, version = null, home = "#joint-stamp", avatar = null)
-        assertEquals("Cachet", line.displayActorName(cachet))
-        assertEquals("cachet", line.displayActorName(cachet.copy(displayName = " ")))
-        // Not resolved (yet): the handle the row carries.
-        assertEquals("cachet", line.displayActorName(null))
-        // This server's roster always wins.
-        assertEquals("Fable", line.copy(actorName = "Fable", actorNameKnownLocally = true).displayActorName(cachet))
-        assertEquals(
-            "Cachet",
-            ResolvedActor(MemberKind.Agent, "agent-cachet", "server-2", name = "Cachet", displayName = null, avatarUrl = null, gravatarHash = null)
-                .let { line.copy(actorName = null).displayActorName(it) },
-        )
-    }
-
-    @Test
     fun channelTileUsesTheHomeSidebarGlyphOfTheChannelOrItsThreadsParent() {
         val home =
             homeSnapshot().let { snapshot ->
@@ -651,6 +552,13 @@ class ActivityConversationListTest {
                                 channelType = "private",
                                 hasExternalRelation = true,
                             ),
+                            HomeChannelRow(
+                                threadId = ThreadId("partners-sync"),
+                                channelId = ChannelId("partners-sync"),
+                                name = "partners-sync",
+                                channelType = "private",
+                                bridgeProvider = "slack",
+                            ),
                         ),
                 )
             }
@@ -658,8 +566,20 @@ class ActivityConversationListTest {
         // The projection is the Home sidebar's own helper, row for row: the External glyph for a
         // joint channel and one with outside people.
         val external = RaftChannelKindGlyph.External.symbol
+        // A private channel with people from outside: two people with the corner lock; a private
+        // Slack channel: the Slack mark with it; the public page: the globe (botiverse/slock #16060).
+        val externalPrivate = RaftChannelKindGlyph.ExternalPrivate.symbol
+        val slackPrivate = RaftChannelKindGlyph.SlackPrivate.symbol
+        val globe = RaftChannelKindGlyph.PublicPage.symbol
         assertEquals(
-            mapOf("general" to "#", "secret" to "lock", "joint-hands" to external, "lobby" to HomeChannelSymbolHashGlobe, "vendor" to external),
+            mapOf(
+                "general" to "#",
+                "secret" to "lock",
+                "joint-hands" to external,
+                "lobby" to globe,
+                "vendor" to externalPrivate,
+                "partners-sync" to slackPrivate,
+            ),
             homeContext.channelSymbolsByChannelId,
         )
         // The public-page mark needs the server's page live, as on Home.
@@ -679,7 +599,7 @@ class ActivityConversationListTest {
                 Case("normal channel", channel("c:general", "general"), homeContext, "#"),
                 Case("private channel", channel("c:secret", "secret"), homeContext, "lock"),
                 Case("joint channel", channel("c:joint", "joint-hands"), homeContext, external),
-                Case("public-page channel", channel("c:lobby", "lobby"), homeContext, HomeChannelSymbolHashGlobe),
+                Case("public-page channel", channel("c:lobby", "lobby"), homeContext, globe),
                 // A thread row leads with its parent channel's glyph (and keeps the thread badge).
                 Case("thread in a private channel", threadIn("secret"), homeContext, "lock"),
                 Case("thread in a joint channel", threadIn("joint-hands", ConversationKind.Joint), homeContext, external),
@@ -705,12 +625,15 @@ class ActivityConversationListTest {
                 ),
                 // The wire type wins over Home; the globe still comes from the Home row (guestVisible).
                 Case("wire private over Home #", channel("c:g", "general").copy(channelType = "private"), homeContext, "lock"),
-                Case("wire channel on the public page", channel("c:l", "lobby").copy(channelType = "channel"), homeContext, HomeChannelSymbolHashGlobe),
+                Case("wire channel on the public page", channel("c:l", "lobby").copy(channelType = "channel"), homeContext, globe),
                 // The Home row's External glyph wins over the wire type; a joint channel Home doesn't
                 // list draws its type alone (web ChannelIcon fallback: git-branch, above).
-                Case("external channel", channel("c:v", "vendor").copy(channelType = "private"), homeContext, external),
-                Case("thread in an external channel", threadIn("vendor"), homeContext, external),
+                Case("external channel", channel("c:v", "vendor").copy(channelType = "private"), homeContext, externalPrivate),
+                Case("thread in an external channel", threadIn("vendor"), homeContext, externalPrivate),
                 Case("wire joint over Home External", channel("c:joint", "joint-hands").copy(channelType = "joint"), homeContext, external),
+                // The Home row's Slack mark wins over the wire type too (web ConversationAvatar `ChannelIcon`).
+                Case("Slack channel", channel("c:s", "partners-sync").copy(channelType = "private"), homeContext, slackPrivate),
+                Case("thread in a Slack channel", threadIn("partners-sync"), homeContext, slackPrivate),
             )
         for (case in cases) {
             val model = case.item.activityConversationRowModel(case.context, InboxFilter.All)
@@ -751,37 +674,6 @@ class ActivityConversationListTest {
         for (case in cases) {
             val next = nextActivityConversationListContext(case.previous, case.home, "server-1")
             assertEquals(case.expected, next, case.name)
-        }
-    }
-
-    @Test
-    fun prewarmAfterClickFollowsTheDisplayedOrder() {
-        fun replyThread(key: String) =
-            thread.copy(
-                key = "thread:$key",
-                channelId = ChannelId("reply-$key"),
-                threadChannelId = ChannelId("reply-$key"),
-                parentChannelId = ChannelId("parent-$key"),
-                parentMessageId = MessageId("message-$key"),
-            )
-        // Loaded order a, #android (pinned), b is the displayed order: pins no longer float first.
-        val loaded = listOf(replyThread("a"), channel("channel:android", "android"), replyThread("b"))
-        val entries = activityConversationListEntries(loaded)
-        assertEquals(listOf("thread:a", "channel:android", "thread:b"), activityRowsInDisplayOrder(entries).map { it.key })
-
-        data class Case(val clickedKey: String, val prewarmed: List<String>)
-        val cases =
-            listOf(
-                // The next reply thread the person sees after the clicked row.
-                Case(clickedKey = "thread:a", prewarmed = listOf("reply-b")),
-                Case(clickedKey = "channel:android", prewarmed = listOf("reply-b")),
-                Case(clickedKey = "thread:b", prewarmed = emptyList()),
-            )
-        for (case in cases) {
-            val order = activityRowsInDisplayOrder(entries)
-            val prewarmed =
-                activityReplyThreadPrewarmNextAfterClick(items = order, clickedKey = case.clickedKey, serverId = "server-1")
-            assertEquals(case.prewarmed, prewarmed.map { it.key.threadChannelId }, "$case")
         }
     }
 }

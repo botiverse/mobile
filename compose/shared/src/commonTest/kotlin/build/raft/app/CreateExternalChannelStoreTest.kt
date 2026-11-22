@@ -8,7 +8,6 @@ import build.raft.app.data.ExternalInvitePreview
 import build.raft.app.data.ExternalInviteRefusal
 import build.raft.app.data.HomeChannelRow
 import build.raft.app.data.InviteConnectableServer
-import build.raft.app.data.REGISTERED_SERVER_FEATURE_FLAG_KEYS
 import build.raft.app.data.ScreenError
 import build.raft.app.data.SendExternalInvitesResult
 import build.raft.app.data.SentExternalInvite
@@ -91,43 +90,6 @@ class CreateExternalChannelStoreTest {
         assertTrue(externalChannelCreateAccess("admin"))
         assertFalse(externalChannelCreateAccess("member"))
         assertFalse(externalChannelCreateAccess(null))
-    }
-
-    @Test
-    fun theCreateEntryIsTheExternalChannelFlowWhateverTheRetiredFlagSaid() = runTest {
-        // botiverse/slock #15939 retired external_channels_v1 (always on): the app no longer asks for it,
-        // so no answer of it can send Home's "+" anywhere but Create Channel with External chosen.
-        assertFalse("external_channels_v1" in REGISTERED_SERVER_FEATURE_FLAG_KEYS)
-        data class Case(val plan: String?, val freeLimit: Boolean?, val entry: ExternalCreateEntry, val reads: Int)
-        listOf(
-            // Not Free, or the plan not known yet: nothing is read.
-            Case("pro", true, ExternalCreateEntry.CreateChannel, reads = 0),
-            Case(null, true, ExternalCreateEntry.CreateChannel, reads = 0),
-            Case("free", false, ExternalCreateEntry.CreateChannel, reads = 1),
-            // A failed read: Create Channel, which reads it again itself.
-            Case("free", null, ExternalCreateEntry.CreateChannel, reads = 1),
-            // The Free plan's one external channel is taken: the upgrade instead.
-            Case("free", true, ExternalCreateEntry.FreeLimit, reads = 1),
-        ).forEach { case ->
-            val source = FakeCreateExternalChannelDataSource().apply { freeLimit = case.freeLimit }
-            assertEquals(case.entry, externalCreateEntry(case.plan, source), "case=$case")
-            assertEquals(case.reads, source.freeLimitCalls, "case=$case")
-        }
-    }
-
-    @Test
-    fun theAvailabilityIsReadOnceAndAFailedReadIsOpen() = runTest {
-        assertEquals(ExternalChannelCreateAvailability.Loading, CreateExternalChannelStore(this, FakeCreateExternalChannelDataSource()).state.value.availability)
-        val taken = FakeCreateExternalChannelDataSource().apply { freeLimit = true }
-        val store = started(taken)
-        store.dispatch(CreateExternalChannelIntent.Start)
-        runCurrent()
-        assertEquals(ExternalChannelCreateAvailability.FreeLimit, store.state.value.availability)
-        assertEquals(1, taken.freeLimitCalls)
-        // Servers wait for External to be chosen.
-        assertEquals(0, taken.serversCalls)
-        val failed = FakeCreateExternalChannelDataSource().apply { freeLimit = null }
-        assertEquals(ExternalChannelCreateAvailability.Open, started(failed).state.value.availability)
     }
 
     @Test

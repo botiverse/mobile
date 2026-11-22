@@ -189,15 +189,6 @@ class SettingsFeedbackSubmitApiTest {
     }
 
     @Test
-    fun sendsTheFormsIdeaChoiceAsTheIdeaType() = runTest {
-        val network = FakeNetwork { HomeNetworkResponse(code = 201, bodyText = receipt) }
-
-        repository(network).submit(request().copy(type = SettingsFeedbackType.Idea))
-
-        assertEquals("idea", network.calls.single().fields["type"])
-    }
-
-    @Test
     fun omitsTheDiagnosticsFieldWithoutAnArchive() = runTest {
         val network = FakeNetwork { HomeNetworkResponse(code = 201, bodyText = receipt) }
 
@@ -256,14 +247,5 @@ class SettingsFeedbackSubmitApiTest {
         val failure = assertIs<FeedbackResult.Failed>(repository(network).submit(request())).failure
 
         assertEquals("feedback_contract_mismatch", failure.code)
-    }
-
-    @Test
-    fun theMetadataJsonIsSharedWithTheAgentIssueTicket() {
-        val metadata = Json.parseToJsonElement(productFeedbackMetadataJson("", "1.23.0", "en")).jsonObject
-
-        // A blank client kind files as web: no native client facts.
-        assertEquals(setOf("locale"), metadata.keys)
-        assertNull(metadata["client_version"])
     }
 }

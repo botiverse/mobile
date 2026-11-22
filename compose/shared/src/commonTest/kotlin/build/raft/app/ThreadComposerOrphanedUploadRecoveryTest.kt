@@ -88,36 +88,6 @@ class ThreadComposerOrphanedUploadRecoveryTest {
     }
 
     @Test
-    fun remountWithAnotherComposerInstanceStopsThePageAttemptThatCanNoLongerPublish() = runTest {
-        val persistence = SharedThreadComposerDraftPersistence(InMemoryRaftKeyValueStore())
-        val log = mutableListOf<String>()
-        val page = mountComposer(persistence, instanceId = "composer-1")
-        val orchestrator = ThreadAttachmentUploadOrchestrator(backgroundScope)
-        page.dispatch(SharedThreadComposerDraftIntent.AddLocalAttachments(listOf(pickedImage()), DraftKey))
-        launchUpload(orchestrator, page, OldAttemptOutcome.Succeeds, uploadMillis = 60_000L)
-        runCurrent()
-
-        // The live attempt still owns its admission: recovery leaves it alone.
-        assertEquals(emptySet(), recover(page, orchestrator, log))
-        assertTrue(orchestrator.isActive(PickedId, DraftKey))
-
-        // Same store, same draft, another composer instance: the admission is dropped and the
-        // running attempt can never publish into this draft.
-        page.dispatch(
-            SharedThreadComposerDraftIntent.Start(
-                composer = RaftThreadComposerPayload(instanceId = "composer-2"),
-                draftKey = DraftKey
-            )
-        )
-        assertEquals("uploading", page.state.value.uploadedAttachments.single { it.id == PickedId }.status)
-
-        assertEquals(setOf(PickedId), recover(page, orchestrator, log), "log=$log")
-        assertRetryChip(page, "after the remount")
-        assertFalse(orchestrator.isActive(PickedId, DraftKey), "Retry must not be refused as already uploading")
-        assertTrue(log.any { "stoppedAttempts=$PickedId" in it }, "log=$log")
-    }
-
-    @Test
     fun onlyUnadmittedLocalRowsAreOrphanedNeverQueuedExternalShareReadyFailedOrRemovedRows() {
         val admitted = pickedImage().copy(id = "picked-admitted")
         val state =

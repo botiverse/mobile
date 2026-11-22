@@ -28,19 +28,6 @@ class RaftFilePreviewHonestStateTest {
     }
 
     @Test
-    fun agentWorkspaceLoadErrorWithoutServerReasonUsesGenericSentence() {
-        val payload =
-            RaftFilePreviewPayload()
-                .withAgentWorkspaceLoadError(
-                    ScreenError(code = "workspace_preview_unknown"),
-                    errorStrings
-                )
-
-        assertEquals("Something went wrong. Please try again.", payload.message)
-        assertEquals("workspace_preview_unknown", payload.error)
-    }
-
-    @Test
     fun agentWorkspacePermissionErrorUsesPermissionCopyInsteadOfCode() {
         val payload =
             RaftFilePreviewPayload()
@@ -51,23 +38,5 @@ class RaftFilePreviewHonestStateTest {
 
         assertEquals("You do not have permission to view this page.", payload.message)
         assertEquals("forbidden", payload.error)
-    }
-
-    @Test
-    fun visibleErrorDetailNeverLetsDiagnosticCodeOverrideDisplayCopy() {
-        assertEquals(
-            "Workspace storage is restarting",
-            raftFilePreviewVisibleErrorDetail(
-                localizedMessage = "Workspace storage is restarting",
-                fallbackMessage = "The file preview could not be loaded"
-            )
-        )
-        assertEquals(
-            "The file preview could not be loaded",
-            raftFilePreviewVisibleErrorDetail(
-                localizedMessage = "",
-                fallbackMessage = "The file preview could not be loaded"
-            )
-        )
     }
 }

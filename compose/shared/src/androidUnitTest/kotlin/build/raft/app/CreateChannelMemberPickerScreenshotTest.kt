@@ -34,13 +34,7 @@ class CreateChannelMemberPickerScreenshotTest {
     fun selectedLight() = capture("create-channel.members", RaftAppAppearance.Light, "")
 
     @Test
-    fun selectedDark() = capture("create-channel.members.dark", RaftAppAppearance.Dark, "")
-
-    @Test
     fun noMatchesLight() = capture("create-channel.members.no-matches", RaftAppAppearance.Light, "zzz")
-
-    @Test
-    fun noMatchesDark() = capture("create-channel.members.no-matches.dark", RaftAppAppearance.Dark, "zzz")
 
     private fun capture(name: String, appearance: RaftAppAppearance, query: String) {
         RaftRobolectricScreenshot.capture(name, appearance, reportDir = "build/reports/home-screenshots", activities = activities) {

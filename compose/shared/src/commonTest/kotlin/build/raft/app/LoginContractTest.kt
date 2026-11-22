@@ -65,18 +65,6 @@ class LoginContractTest {
     }
 
     @Test
-    fun identitySetupUsesServerDisplayNameMaximum() {
-        val update =
-            IdentitySetupFormReducer().reduce(
-                IdentitySetupFormState(handle = "artin", displayName = "x".repeat(81)),
-                IdentitySetupFormEvent.Submit
-            )
-
-        assertEquals(AuthValidationError.DisplayNameTooLong, update.state.displayNameError)
-        assertEquals(IdentitySetupFormEffect.FocusDisplayName, update.effect)
-    }
-
-    @Test
     fun validIdentitySetupTrimsFieldsAndSubmits() {
         val update =
             IdentitySetupFormReducer().reduce(

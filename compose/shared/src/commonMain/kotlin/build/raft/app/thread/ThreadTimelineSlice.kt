@@ -48,6 +48,8 @@ internal data class ThreadTimelineSlice(
     val mainLoadFailed: Boolean = false,
     /** Task #168: the stand-in reaches the conversation's start (see [RaftThreadScreenPayload.durableReachedOldest]). */
     val durableReachedOldest: Boolean = false,
+    /** Phase 2d: derived inline timeline gaps between stored message islands. */
+    val timelineGaps: List<ThreadTimelineGap> = emptyList(),
     /**
      * Web `showForwardAction` (ChatPanel / ThreadPanel): the viewer is not a guest and the
      * conversation resolves to a forward source channel. Set by the route from the session.
@@ -86,6 +88,13 @@ internal data class ThreadTimelineSlice(
      * not of agent activity.
      */
     val agentTypingLineSlot: Boolean = true,
+    /**
+     * #proj-mobile:#265: whether an initial loading state has passed [ThreadInitialLoadingRevealDelayMs]
+     * and should render [ThreadLoadingState]. Stays false while brief local-cache reads are in flight
+     * so cached opens do not flash a spinner; defaults to true so standalone previews/tests without a
+     * store keep rendering loading states immediately.
+     */
+    val loadingIndicatorRevealed: Boolean = true,
 ) {
     /** Derived from [surfaceKind] and [channelKind]; the menu's `reply` capability reads this single source. */
     val showReplyActions: Boolean get() = RaftThreadSurfaceKind.allowsReplyInThread(surfaceKind, channelKind)
@@ -128,6 +137,7 @@ internal fun RaftThreadScreenPayload.toThreadTimelineSlice(): ThreadTimelineSlic
         durableLastKnown = durableLastKnown,
         mainLoadFailed = mainLoadFailed,
         durableReachedOldest = durableReachedOldest,
+        timelineGaps = timelineGaps,
         alignOwnMessagesRight = alignOwnMessagesRight,
         compactConsecutiveMessages = compactConsecutiveMessages,
         surfaceKind = surfaceKind,
@@ -201,6 +211,7 @@ internal fun RaftThreadScreenPayload.withoutThreadTimelineContent(): RaftThreadS
         canLoadMoreAfter = false,
         olderMessagesStatus = "idle",
         newerMessagesStatus = "idle",
+        timelineGaps = emptyList(),
         emptyTitle = "",
         emptyDetail = ""
     )

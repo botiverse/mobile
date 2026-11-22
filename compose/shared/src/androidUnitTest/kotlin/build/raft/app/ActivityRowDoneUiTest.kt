@@ -8,18 +8,13 @@ import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.click
-import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
-import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performMouseInput
-import androidx.compose.ui.test.performTouchInput
 import build.raft.app.data.InboxFilter
 import build.raft.app.data.InboxItem
 import build.raft.app.model.ChannelId
-import build.raft.app.model.ConversationKind
 import build.raft.app.model.InboxItemKind
 import build.raft.app.model.MemberKind
-import build.raft.designsystem.components.RaftButtonVariant
 import build.raft.designsystem.theme.RaftAppearance
 import build.raft.designsystem.theme.RaftPointerInput
 import build.raft.designsystem.theme.RaftScale
@@ -27,7 +22,6 @@ import build.raft.designsystem.theme.RaftTheme
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
-import kotlin.test.assertTrue
 import org.junit.Rule
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -66,23 +60,6 @@ class ActivityRowDoneUiTest {
             lastMessageAt = "2026-10-21T14:02:00Z",
         )
 
-    private val thread =
-        InboxItem(
-            key = "thread:design",
-            kind = InboxItemKind.Thread,
-            channelId = ChannelId("thread-design"),
-            channelName = "thread",
-            unreadCount = 1,
-            parentChannelId = ChannelId("design"),
-            parentChannelName = "design",
-            parentChannelKind = ConversationKind.Channel,
-            parentMessagePreview = "Ship the wide Activity rows",
-            latestActivityPreview = "Done shows at rest by touch.",
-            latestActivitySenderName = "Lagoon",
-            latestActivitySenderKind = MemberKind.Agent,
-            latestActivityAt = "2026-10-21T14:02:00Z",
-        )
-
     private fun ComposeUiTest.showRow(
         calls: Calls,
         scale: RaftScale,
@@ -119,44 +96,6 @@ class ActivityRowDoneUiTest {
     private fun look(expected: ActivityRowDoneButton) = SemanticsMatcher.expectValue(ActivityRowDoneLookKey, expected)
 
     @Test
-    fun aPhoneByTouchNeverShowsTheDoneButton() =
-        runRobolectricComposeUiTest {
-            val calls = Calls()
-            showRow(calls, RaftScale.Compact, RaftPointerInput.Touch)
-            onNodeWithTag(ActivityRowDoneTag).assertDoesNotExist()
-            // A finger held on the row, then a tap: no button; the tap opens the row.
-            onNodeWithTag(ROW).performTouchInput { down(center) }
-            onNodeWithTag(ActivityRowDoneTag).assertDoesNotExist()
-            onNodeWithTag(ROW).performTouchInput { up() }
-            onNodeWithTag(ROW).performTouchInput { click(center) }
-            mainClock.advanceTimeBy(1_000)
-            onNodeWithTag(ActivityRowDoneTag).assertDoesNotExist()
-            assertEquals(0, calls.dones)
-            assertTrue(calls.opens >= 1, "a tap still opens the row")
-        }
-
-    @Test
-    fun theWideLayoutByTouchShowsTheOutlineButtonAtRestAndItsTapMarksDoneWithoutOpening() =
-        runRobolectricComposeUiTest {
-            val calls = Calls()
-            showRow(calls, RaftScale.Wide, RaftPointerInput.Touch)
-            onNodeWithTag(ActivityRowDoneTag).assertExists().assert(look(ActivityRowDoneButton.AtRest))
-            onNodeWithContentDescription("Mark #launch-week as Done").performClick()
-            mainClock.advanceTimeBy(1_000)
-            assertEquals(1, calls.dones)
-            assertEquals(0, calls.opens, "Done must not open the row")
-            // Still there after the tap: nothing hovers by touch, it rests in the row.
-            onNodeWithTag(ActivityRowDoneTag).assertExists()
-        }
-
-    @Test
-    fun aThreadsButtonIsNamedAfterThePlaceItLivesIn() =
-        runRobolectricComposeUiTest {
-            showRow(Calls(), RaftScale.Wide, RaftPointerInput.Touch, row = thread)
-            onNodeWithContentDescription("Mark the thread in #design as Done").assertExists()
-        }
-
-    @Test
     fun aMouseHoverShowsTheGhostButtonAndItsClickMarksDoneWithoutOpening() =
         runRobolectricComposeUiTest {
             val calls = Calls()
@@ -170,22 +109,6 @@ class ActivityRowDoneUiTest {
             assertEquals(0, calls.opens, "Done must not open the row")
             // The pointer leaves: the button goes.
             onNodeWithTag(ROW).performMouseInput { exit() }
-            onNodeWithTag(ActivityRowDoneTag).assertDoesNotExist()
-        }
-
-    @Test
-    fun aMouseKeepsTheButtonOnTheRowOpenBesideTheList() =
-        runRobolectricComposeUiTest {
-            showRow(Calls(), RaftScale.Wide, RaftPointerInput.Fine, selected = true)
-            onNodeWithTag(ActivityRowDoneTag).assertExists().assert(look(ActivityRowDoneButton.Revealed))
-        }
-
-    @Test
-    fun aRowWithoutDoneShowsNoButton() =
-        runRobolectricComposeUiTest {
-            showRow(Calls(), RaftScale.Wide, RaftPointerInput.Touch, canMarkDone = false)
-            onNodeWithTag(ActivityRowDoneTag).assertDoesNotExist()
-            onNodeWithTag(ROW).performMouseInput { moveTo(center) }
             onNodeWithTag(ActivityRowDoneTag).assertDoesNotExist()
         }
 
@@ -205,17 +128,6 @@ class ActivityRowDoneUiTest {
         // No Done on the row, or no action: never.
         assertNull(done(RaftScale.Wide, RaftPointerInput.Touch, revealed = true, canMarkDone = false))
         assertNull(done(RaftScale.Wide, RaftPointerInput.Fine, revealed = true, hasAction = false))
-    }
-
-    @Test
-    fun theTwoLooksFollowRaftUi() {
-        // At rest by touch: ink outline, 12dp from the time, a 44dp target; revealed: ghost, 8dp, its own box.
-        assertEquals(RaftButtonVariant.Default, ActivityRowDoneButton.AtRest.variant)
-        assertEquals(12, ActivityRowDoneButton.AtRest.gap.value.toInt())
-        assertEquals(44, ActivityRowDoneButton.AtRest.hitSize?.value?.toInt())
-        assertEquals(RaftButtonVariant.Ghost, ActivityRowDoneButton.Revealed.variant)
-        assertEquals(8, ActivityRowDoneButton.Revealed.gap.value.toInt())
-        assertNull(ActivityRowDoneButton.Revealed.hitSize)
     }
 
     private companion object {

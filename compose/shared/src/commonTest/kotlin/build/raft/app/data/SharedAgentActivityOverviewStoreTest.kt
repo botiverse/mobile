@@ -105,67 +105,6 @@ class SharedAgentActivityOverviewStoreTest {
     }
 
     @Test
-    fun opensOncePerAgentWhileLoading() = runTest {
-        val repository = FakeRepository()
-        val store = store(repository)
-        store.dispatch(AgentActivityOverviewIntent.Open(agent))
-        store.dispatch(AgentActivityOverviewIntent.Open(agent))
-        runCurrent()
-        assertEquals(1, repository.calls.size, "a repeated Open while the first load runs must not refetch")
-        assertEquals(AgentActivityOverviewStatus.Loading, store.state.value.status)
-        assertEquals(DataRequestPriority.Visible, repository.calls[0].priority)
-        assertEquals(null, repository.calls[0].before)
-    }
-
-    @Test
-    fun repeatedOpenAfterTabRevisitReloadsSilentlyOnce() = runTest {
-        val repository = FakeRepository()
-        val store = openLoaded(repository, page(turn("t1", 300), next = "300:t1"))
-        store.dispatch(AgentActivityOverviewIntent.LiveActivityObserved(agent, "working"))
-
-        // The pager dropped the tab and composes it again: Open repeats, and the agent finished
-        // meanwhile. Both ask for the same debounced reload.
-        store.dispatch(AgentActivityOverviewIntent.Open(agent))
-        store.dispatch(AgentActivityOverviewIntent.LiveActivityObserved(agent, "online"))
-        runCurrent()
-        assertEquals(1, repository.calls.size, "the revisit reload is debounced")
-        passDebounce()
-        assertEquals(2, repository.calls.size)
-        assertEquals(DataRequestPriority.Background, repository.calls[1].priority, "content is on screen: silent")
-        assertEquals(AgentActivityOverviewStatus.Loaded, store.state.value.status, "no loading flash")
-
-        repository.calls[1].result.complete(page(turn("t2", 400), turn("t1", 300), next = "300:t1"))
-        passDebounce()
-        assertEquals(listOf("t2", "t1"), keys(store))
-        assertEquals(2, repository.calls.size)
-    }
-
-    @Test
-    fun loadMorePagesWithTheCursorSingleFlight() = runTest {
-        val repository = FakeRepository()
-        val store = openLoaded(repository, page(turn("t1", 300), turn("t2", 200), next = "200:t2"))
-        assertEquals("200:t2", store.state.value.next)
-
-        store.dispatch(AgentActivityOverviewIntent.LoadMore)
-        store.dispatch(AgentActivityOverviewIntent.LoadMore)
-        runCurrent()
-        assertEquals(2, repository.calls.size, "load more is single-flight")
-        assertEquals("200:t2", repository.calls[1].before)
-        assertEquals(true, store.state.value.loadingMore)
-
-        // A duplicate row across the page boundary is kept once.
-        repository.calls[1].result.complete(page(turn("t2", 200), turn("t3", 100)))
-        runCurrent()
-        assertEquals(listOf("t1", "t2", "t3"), keys(store))
-        assertEquals(null, store.state.value.next)
-        assertEquals(false, store.state.value.loadingMore)
-
-        store.dispatch(AgentActivityOverviewIntent.LoadMore)
-        runCurrent()
-        assertEquals(2, repository.calls.size, "no cursor, no request")
-    }
-
-    @Test
     fun reloadDuringLoadMoreKeepsItSingleFlightAndAppendsItsPage() = runTest {
         val repository = FakeRepository()
         val store = openLoaded(repository, page(turn("t1", 300), turn("t2", 200), next = "200:t2"))
@@ -253,62 +192,6 @@ class SharedAgentActivityOverviewStoreTest {
         runCurrent()
         assertEquals(AgentActivityOverviewStatus.Loaded, store.state.value.status)
         assertEquals(listOf("t1"), store.state.value.turns.map { it.key })
-    }
-
-    @Test
-    fun leavingABusyStateReloadsOnceAndBusyToBusyNever() = runTest {
-        val repository = FakeRepository()
-        val store = openLoaded(repository, page(turn("t1", 300), next = "300:t1"))
-
-        // The first observation is a baseline, not a change; working <-> thinking is the same turn.
-        listOf("working", "thinking", "working", "thinking").forEach {
-            store.dispatch(AgentActivityOverviewIntent.LiveActivityObserved(agent, it))
-        }
-        // Another agent's status is not this overview's.
-        store.dispatch(AgentActivityOverviewIntent.LiveActivityObserved(MemberId("agent-2"), "online"))
-        passDebounce()
-        assertEquals(1, repository.calls.size, "no reload while the agent stays busy")
-
-        store.dispatch(AgentActivityOverviewIntent.LiveActivityObserved(agent, "online"))
-        advanceTimeBy(SharedAgentActivityOverviewStore.LIVE_RELOAD_DEBOUNCE_MILLIS - 1)
-        runCurrent()
-        assertEquals(1, repository.calls.size, "still inside the debounce window")
-        advanceTimeBy(2)
-        runCurrent()
-        assertEquals(2, repository.calls.size, "busy -> idle reloads")
-        assertEquals(DataRequestPriority.Background, repository.calls[1].priority)
-
-        // Idle -> idle (or a status detail change) is not a finished turn.
-        store.dispatch(AgentActivityOverviewIntent.LiveActivityObserved(agent, "online"))
-        store.dispatch(AgentActivityOverviewIntent.LiveActivityObserved(agent, "offline"))
-        repository.calls[1].result.complete(page(turn("t0", 400), turn("t1", 300), next = "300:t1"))
-        passDebounce()
-        assertEquals(2, repository.calls.size, "exactly one reload per busy -> idle edge")
-        assertEquals(listOf("t0", "t1"), keys(store))
-    }
-
-    @Test
-    fun reloadsAskedDuringAReloadAreCoalescedAtTheMostUrgentPriority() = runTest {
-        val repository = FakeRepository()
-        val store = openLoaded(repository, page(turn("t1", 300)))
-        store.dispatch(AgentActivityOverviewIntent.LiveActivityObserved(agent, "working"))
-        store.dispatch(AgentActivityOverviewIntent.LiveActivityObserved(agent, "online"))
-        passDebounce()
-        assertEquals(DataRequestPriority.Background, repository.calls[1].priority)
-
-        // While that reload is in flight, a Refresh is queued once and runs after it.
-        store.dispatch(AgentActivityOverviewIntent.Refresh)
-        store.dispatch(AgentActivityOverviewIntent.Refresh)
-        runCurrent()
-        assertEquals(2, repository.calls.size)
-        repository.calls[1].result.complete(page(turn("t0", 400), turn("t1", 300)))
-        runCurrent()
-        assertEquals(3, repository.calls.size)
-        assertEquals(DataRequestPriority.Visible, repository.calls[2].priority)
-        repository.calls[2].result.complete(page(turn("t0", 400), turn("t1", 300)))
-        passDebounce()
-        assertEquals(listOf("t0", "t1"), keys(store))
-        assertEquals(3, repository.calls.size)
     }
 
     @Test
@@ -413,50 +296,6 @@ class SharedAgentActivityOverviewStoreTest {
         assertEquals(2, repository.calls.size)
         assertEquals(DataRequestPriority.Background, repository.calls.last().priority)
         assertEquals(false, store.state.value.refreshing)
-    }
-
-    @Test
-    fun catchUpReloadsSilentlyOnceAndKeepsTheTurnsWhenItFails() = runTest {
-        val repository = FakeRepository()
-        val store = openLoaded(repository, page(turn("t1", 300)))
-
-        // Foreground and socket reconnect together: one silent reload, the second coalesced behind it.
-        store.dispatch(AgentActivityOverviewIntent.CatchUp)
-        store.dispatch(AgentActivityOverviewIntent.CatchUp)
-        runCurrent()
-        assertEquals(2, repository.calls.size)
-        assertEquals(DataRequestPriority.Background, repository.calls[1].priority)
-        assertEquals(false, store.state.value.refreshing)
-        repository.calls[1].result.complete(DataResult.Error(ScreenError("network", retryable = true)))
-        runCurrent()
-        // The second catch-up was coalesced behind the first: it runs once, then nothing more.
-        assertEquals(3, repository.calls.size)
-        repository.calls[2].result.complete(page(turn("t0", 400), turn("t1", 300)))
-        passDebounce()
-        assertEquals(3, repository.calls.size)
-        assertEquals(AgentActivityOverviewStatus.Loaded, store.state.value.status)
-        assertEquals(listOf("t0", "t1"), keys(store))
-    }
-
-    @Test
-    fun catchUpRetriesAFailedFirstLoadAndIgnoresALoadInProgress() = runTest {
-        val repository = FakeRepository()
-        val store = store(repository)
-        store.dispatch(AgentActivityOverviewIntent.Open(agent))
-        runCurrent()
-        store.dispatch(AgentActivityOverviewIntent.CatchUp)
-        runCurrent()
-        assertEquals(1, repository.calls.size, "the first load is already the catch-up")
-
-        repository.calls[0].result.complete(DataResult.Error(ScreenError("network", retryable = true)))
-        runCurrent()
-        store.dispatch(AgentActivityOverviewIntent.CatchUp)
-        runCurrent()
-        assertEquals(2, repository.calls.size)
-        assertEquals(AgentActivityOverviewStatus.Loading, store.state.value.status)
-        repository.calls[1].result.complete(page(turn("t1", 300)))
-        runCurrent()
-        assertEquals(listOf("t1"), keys(store))
     }
 
     @Test

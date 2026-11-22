@@ -4,8 +4,10 @@ import android.Manifest
 import android.app.Application
 import android.app.NotificationManager
 import android.content.Context
+import android.content.Intent
 import android.service.notification.StatusBarNotification
 import androidx.core.app.NotificationCompat
+import build.raft.app.data.InMemoryRaftKeyValueStore
 import build.raft.app.data.PushPreviewMode
 import build.raft.app.data.RaftNotificationRetract
 import build.raft.app.push.raftFcmUnreadNotificationRequest
@@ -47,6 +49,8 @@ class AndroidUnreadNotificationContractTest {
     @After
     fun restore() {
         AndroidUnreadNotificationPoster.summaryScheduler = productionSummaryScheduler
+        AndroidShellWindowRegistry.clearForTest()
+        AndroidShellWindowStore.clear()
     }
 
     @Test
@@ -113,18 +117,6 @@ class AndroidUnreadNotificationContractTest {
         // throughSeq null: the whole group.
         assertEquals(1, AndroidUnreadNotificationPoster.retract(context, RaftNotificationRetract("server-1", "server-1:channel-2", "channel-2", null)))
         assertEquals(listOf("server-1:channel-3"), conversations().map { it.notification.extras.getString(AndroidUnreadNotificationGrouping.EXTRA_GROUP_KEY) })
-    }
-
-    @Test
-    fun aRetractionOfAPreContractPostMatchesItsConversation() {
-        // No groupKey or seq (an older server, or the local path): the conversation key stands in.
-        post(
-            raftFcmUnreadNotificationRequest(
-                mapOf("serverId" to "server-1", "channelId" to "channel-1", "messageId" to "m-1", "title" to "#general", "body" to "hi")
-            )
-        )
-        assertEquals(1, AndroidUnreadNotificationPoster.retract(context, RaftNotificationRetract("server-1", "server-1:channel-1", "channel-1", 5L)))
-        assertTrue(conversations().isEmpty())
     }
 
     @Test

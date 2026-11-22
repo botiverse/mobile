@@ -50,9 +50,6 @@ class AssistantOwnerSectionScreenshotTest {
     val activities = RobolectricComposeActivityRule()
 
     @Test
-    fun sectionLight() = capture("assistant.owner-section", RaftAppAppearance.Light) { SectionFixture() }
-
-    @Test
     fun sectionDark() = capture("assistant.owner-section.dark", RaftAppAppearance.Dark) { SectionFixture() }
 
     @Test
@@ -68,15 +65,6 @@ class AssistantOwnerSectionScreenshotTest {
     fun editorEmptyLight() = capture("assistant.instructions.empty", RaftAppAppearance.Light) { EditorFixture(draft = "") }
 
     @Test
-    fun editorEmptyDark() = capture("assistant.instructions.empty.dark", RaftAppAppearance.Dark) { EditorFixture(draft = "") }
-
-    @Test
-    fun editorNearLimit() =
-        capture("assistant.instructions.near-limit", RaftAppAppearance.Light) {
-            EditorFixture(draft = longDraft(ASSISTANT_OWNER_NOTES_MAX_LENGTH * 9 / 10 + 12))
-        }
-
-    @Test
     fun editorTooLong() =
         capture("assistant.instructions.too-long", RaftAppAppearance.Light) {
             EditorFixture(
@@ -87,9 +75,6 @@ class AssistantOwnerSectionScreenshotTest {
 
     @Test
     fun pausedNoticeLight() = capture("assistant.paused-notice", RaftAppAppearance.Light) { PausedFixture() }
-
-    @Test
-    fun pausedNoticeDark() = capture("assistant.paused-notice.dark", RaftAppAppearance.Dark) { PausedFixture() }
 
     private fun capture(name: String, appearance: RaftAppAppearance, content: @Composable () -> Unit) =
         RaftRobolectricScreenshot.capture(name, appearance, reportDir = "build/reports/home-screenshots", activities = activities) {

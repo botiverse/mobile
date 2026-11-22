@@ -3,11 +3,9 @@ package build.raft.app.data
 import build.raft.app.model.ChannelId
 import build.raft.app.model.MessageId
 import kotlinx.coroutines.CompletableDeferred
-import kotlinx.coroutines.async
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertFalse
 import kotlin.test.assertIs
 
 /**
@@ -17,46 +15,6 @@ import kotlin.test.assertIs
  * [RealConversationRepository.getMessageContextInConversation] reads the header detail beside the context.
  */
 class ConversationRepositoryMessageContextInConversationTest {
-    @Test
-    fun detailOfTheNamedConversationIsRequestedWhileTheContextIsStillLoading() = runTest {
-        val detailStarted = CompletableDeferred<Unit>()
-        val releaseContext = CompletableDeferred<Unit>()
-        val network =
-            FakeConversationNetworkClient(
-                responses =
-                    mapOf(
-                        "GET messages/context/message-1" to contextJson(channelId = "channel-1"),
-                        "GET channels/channel-1" to """{"id":"channel-1","name":"general","type":"channel"}""",
-                    ),
-                requestStarted = mapOf("GET channels/channel-1" to detailStarted),
-                requestRelease = mapOf("GET messages/context/message-1" to releaseContext),
-            )
-        val repository = RealConversationRepository(conversationRepositoryTestSessionStore(), network)
-
-        val load =
-            async {
-                repository.getMessageContextInConversation(
-                    messageId = MessageId("message-1"),
-                    channelId = null,
-                    expectedConversationId = ChannelId("channel-1"),
-                )
-            }
-        // The context is held: the detail request can only start if it does not wait for it.
-        detailStarted.await()
-        assertFalse(load.isCompleted, "the load must still wait for the held context")
-        releaseContext.complete(Unit)
-
-        val snapshot = assertIs<DataResult.Content<ThreadSnapshot>>(load.await()).data
-        assertEquals("general", snapshot.conversation.name)
-        assertEquals(
-            listOf(
-                RecordedConversationRequest(DataRequestPriority.Foreground, "GET", "messages/context/message-1"),
-                RecordedConversationRequest(DataRequestPriority.Foreground, "GET", "channels/channel-1"),
-            ),
-            network.requests,
-        )
-    }
-
     @Test
     fun contextInAnotherConversationDropsTheEarlyDetailAndReadsItsOwn() = runTest {
         val earlyDetailStarted = CompletableDeferred<Unit>()

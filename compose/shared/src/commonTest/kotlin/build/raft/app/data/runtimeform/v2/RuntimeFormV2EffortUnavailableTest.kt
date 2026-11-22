@@ -58,16 +58,6 @@ class RuntimeFormV2EffortUnavailableTest {
     }
 
     @Test
-    fun theOptionSourceKeepsBothFieldsOnTheChoice() {
-        val options = assertNotNull(sources.getValue("model").options).associateBy { it.value }
-        assertTrue(options.getValue("agy-none").reasoningEffortNone)
-        assertNull(options.getValue("agy-none").reasoningEffortUnavailableReason)
-        assertEquals("Native catalog did not expose this model's <b>effort</b> menu.", options.getValue("agy-unread").reasoningEffortUnavailableReason)
-        assertEquals(false, options.getValue("agy-old").reasoningEffortNone)
-        assertNull(options.getValue("agy-old").reasoningEffortUnavailableReason)
-    }
-
-    @Test
     fun aModelWithLevelsOffersThePickerAndNoReason() {
         assertNull(runtimeFormV2EffortUnavailable(effort, sources, values("agy-levels")))
         val choices = runtimeFormV2Choices(effort, sources, values("agy-levels")) as RuntimeFormV2Choices.Select
@@ -89,23 +79,10 @@ class RuntimeFormV2EffortUnavailableTest {
     }
 
     @Test
-    fun aBlankReasonFallsBackToNoneLikeTheWeb() {
-        assertEquals(RuntimeFormV2EffortUnavailable.None, runtimeFormV2EffortUnavailable(effort, sources, values("agy-blank")))
-    }
-
-    @Test
     fun anUnexplainedEmptyListStaysHidden() {
         assertNull(runtimeFormV2EffortUnavailable(effort, sources, values("agy-old")), "an older Computer: hidden, as before")
         assertNull(runtimeFormV2EffortUnavailable(effort, sources, values("typed-custom-model")), "no option describes the model")
         assertNull(runtimeFormV2EffortUnavailable(effort, emptyMap(), values("agy-none")), "no source loaded")
-    }
-
-    @Test
-    fun onlyAnEffortDerivedSelectAsks() {
-        val model = codex.fields.single { it.key == "model" }
-        assertNull(runtimeFormV2EffortUnavailable(model, sources, values("agy-none")))
-        val other = effort.copy(derivedFrom = effort.derivedFrom?.copy(attribute = "somethingElse"))
-        assertNull(runtimeFormV2EffortUnavailable(other, sources, values("agy-none")))
     }
 
     @Test

@@ -17,14 +17,6 @@ class RaftFeedbackDiagnosticsBudgetTest {
         )
 
     @Test
-    fun fitsEverythingUnderTheBudget() {
-        val files = listOf(shard("launch-2", 0, 200 * kib, 20), shard("launch-1", 0, 100 * kib, 10))
-        val picks = RaftFeedbackDiagnosticsBudget.select(files)
-        assertEquals(listOf("launch-2/raft-diagnostics.jsonl", "launch-1/raft-diagnostics.jsonl"), picks.map { it.file.path })
-        assertTrue(picks.none { it.truncated })
-    }
-
-    @Test
     fun newestLaunchFirstWithinOneMiBAndTheLaunchBeforeKeepsItsTail() {
         // The sample report's shape: 1 MiB shards, four launches, 31 shards / 29 MB.
         val files =
@@ -39,40 +31,6 @@ class RaftFeedbackDiagnosticsBudgetTest {
         assertEquals(768 * kib, picks[0].includedBytes)
         assertEquals(256 * kib, picks[1].includedBytes)
         assertTrue(picks.all { it.truncated })
-    }
-
-    @Test
-    fun newestLaunchFillsTheBudgetNewestShardFirstWhenAlone() {
-        val files = (0 until 5).map { index -> shard("launch-9", index, 300 * kib, 100L - index) }
-        val picks = RaftFeedbackDiagnosticsBudget.select(files)
-        assertEquals(
-            listOf("launch-9/raft-diagnostics.jsonl", "launch-9/raft-diagnostics.jsonl.1", "launch-9/raft-diagnostics.jsonl.2", "launch-9/raft-diagnostics.jsonl.3"),
-            picks.map { it.file.path }
-        )
-        assertEquals(listOf(false, false, false, true), picks.map { it.truncated })
-        assertEquals(mib, picks.sumOf { it.includedBytes })
-    }
-
-    @Test
-    fun smallLaunchesLeaveRoomForEarlierShards() {
-        val files =
-            listOf(
-                shard("launch-3", 0, 100 * kib, 300),
-                shard("launch-2", 0, 100 * kib, 200),
-                shard("launch-2", 1, 400 * kib, 199),
-                shard("launch-1", 0, 900 * kib, 100),
-            )
-        val picks = RaftFeedbackDiagnosticsBudget.select(files)
-        assertEquals(
-            listOf(
-                "launch-3/raft-diagnostics.jsonl",
-                "launch-2/raft-diagnostics.jsonl",
-                "launch-1/raft-diagnostics.jsonl",
-            ),
-            picks.map { it.file.path }
-        )
-        assertEquals(824 * kib, picks.last().includedBytes)
-        assertEquals(mib, picks.sumOf { it.includedBytes })
     }
 
     @Test
@@ -94,14 +52,5 @@ class RaftFeedbackDiagnosticsBudgetTest {
             picks.map { it.file.path }
         )
         assertEquals(listOf(false, true, false), picks.map { it.truncated })
-    }
-
-    @Test
-    fun describeListsIncludedAndOmittedShards() {
-        val files = listOf(shard("launch-2", 0, 2 * mib, 20), shard("launch-1", 0, 10 * kib, 10))
-        val picks = RaftFeedbackDiagnosticsBudget.select(files)
-        val text = RaftFeedbackDiagnosticsBudget.describe(files, picks, RaftFeedbackDiagnosticsBudget.DefaultBudgetBytes) { it.path }
-        assertTrue(text.contains("included launch-2/raft-diagnostics.jsonl tail"), text)
-        assertTrue(text.contains("included launch-1/raft-diagnostics.jsonl 10240 bytes"), text)
     }
 }

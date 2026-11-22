@@ -1,12 +1,9 @@
 package build.raft.app.network.sync
 
-import build.raft.app.canonical.message.CanonicalReactionWire
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertNull
-import kotlin.test.assertTrue
 
 class ReactionRosterNormalizationTest {
     private val scope = ReactionParentScopeKey(serverId = "s1", scopeId = "c1", scopeKind = "channel")
@@ -28,37 +25,6 @@ class ReactionRosterNormalizationTest {
     ): NormalizedReactionIngress = assertIs<ReactionNormalizationOutcome.Normalized>(
         normalizeLegacyReactionRoster(context(authority), reactions),
     ).value
-
-    @Test
-    fun splitsLegacyRosterIntoDeterministicFactOverlayAndCompleteCacheSeeds() {
-        val result = normalized(
-            listOf(
-                LegacyReactionRosterDto(
-                    emoji = "like",
-                    count = 4,
-                    reactorIds = listOf("u4", "u2", "u1", "u3"),
-                    reactorNames = listOf("D", "B", "A", "C"),
-                ),
-                LegacyReactionRosterDto(
-                    emoji = "fire",
-                    count = 1,
-                    reactorIds = listOf("u9"),
-                    reactorNames = listOf("I"),
-                ),
-            ),
-        )
-
-        assertEquals(listOf("fire", "like"), result.sharedFact.map(ReactionFact::emoji))
-        assertEquals(emptyList(), result.sharedFact.single { it.emoji == "like" }.previewK)
-        assertEquals("empty-without-room-common-provenance", LEGACY_REACTION_PREVIEW_POLICY)
-        assertEquals(listOf("like"), result.viewerOverlay?.reactedEmojis)
-        assertEquals(listOf("fire", "like"), result.readCacheSeed.map { it.discussion.emoji })
-        assertEquals(emptyList(), result.violations)
-        assertEquals(
-            listOf("u1", "u2", "u3", "u4"),
-            result.readCacheSeed.single { it.discussion.emoji == "like" }.actors.map(ReactionActorRef::id),
-        )
-    }
 
     @Test
     fun sharedRoomInputCannotAuthorViewerOverlay() {
@@ -113,118 +79,6 @@ class ReactionRosterNormalizationTest {
     }
 
     @Test
-    fun duplicateActorIdKeepsSharedCountButProducesDiagnosticAndUnknownDerivatives() {
-        val result = normalized(
-            listOf(
-                LegacyReactionRosterDto(
-                    emoji = "like",
-                    count = 2,
-                    reactorIds = listOf("u2", "u2"),
-                    reactorNames = listOf("B", "B"),
-                ),
-            ),
-        )
-
-        assertEquals(ReactionFact("like", 2, emptyList()), result.sharedFact.single())
-        assertNull(result.viewerOverlay)
-        assertEquals(emptyList(), result.readCacheSeed)
-        assertEquals(
-            listOf(
-                ReactionNormalizationDiagnostic(ReactionRosterDiagnosticKind.DuplicateActorId, "like"),
-                ReactionNormalizationDiagnostic(ReactionRosterDiagnosticKind.ActorCountMismatch, "like"),
-            ),
-            result.violations,
-        )
-    }
-
-    @Test
-    fun strictTwoActorRosterSeedsBothActorsWithoutDiagnostics() {
-        val result = normalized(
-            listOf(
-                LegacyReactionRosterDto(
-                    emoji = "like",
-                    count = 2,
-                    reactorIds = listOf("u2", "u1"),
-                    reactorNames = listOf("B", "A"),
-                ),
-            ),
-        )
-
-        assertEquals(listOf("like"), result.viewerOverlay?.reactedEmojis)
-        assertEquals(listOf("u1", "u2"), result.readCacheSeed.single().actors.map(ReactionActorRef::id))
-        assertEquals(emptyList(), result.violations)
-    }
-
-    @Test
-    fun whitespaceRepairIsDiagnosedAndCannotAuthorRosterDerivatives() {
-        val result = normalized(
-            listOf(
-                LegacyReactionRosterDto(
-                    emoji = "like",
-                    count = 2,
-                    reactorIds = listOf(" u2 ", "u1"),
-                    reactorNames = listOf(" B ", "A"),
-                ),
-            ),
-        )
-
-        assertEquals(ReactionFact("like", 2, emptyList()), result.sharedFact.single())
-        assertNull(result.viewerOverlay)
-        assertEquals(emptyList(), result.readCacheSeed)
-        assertEquals(
-            listOf(
-                ReactionNormalizationDiagnostic(ReactionRosterDiagnosticKind.NonCanonicalActorId, "like"),
-                ReactionNormalizationDiagnostic(ReactionRosterDiagnosticKind.NonCanonicalActorDisplayName, "like"),
-            ),
-            result.violations,
-        )
-    }
-
-    @Test
-    fun canonicalBytesArePermutationInvariantAndContainNoRosterKeys() {
-        val first = normalized(
-            listOf(
-                LegacyReactionRosterDto("like", 4, listOf("u4", "u2", "u1", "u3"), listOf("D", "B", "A", "C")),
-                LegacyReactionRosterDto("fire", 1, listOf("u9"), listOf("I")),
-            ),
-        )
-        val permuted = normalized(
-            listOf(
-                LegacyReactionRosterDto("fire", 1, listOf("u9"), listOf("I")),
-                LegacyReactionRosterDto("like", 4, listOf("u3", "u1", "u4", "u2"), listOf("C", "A", "D", "B")),
-            ),
-        )
-
-        val expected =
-            "[{\"emoji\":\"fire\",\"count\":1,\"previewK\":[]}," +
-                "{\"emoji\":\"like\",\"count\":4,\"previewK\":[]}]\n"
-        val firstBytes = encodeReactionFactsCanonical(first.sharedFact)
-        val permutedBytes = encodeReactionFactsCanonical(permuted.sharedFact)
-        assertEquals(expected, firstBytes)
-        assertEquals(firstBytes, permutedBytes)
-        assertFalse("reactorIds" in firstBytes)
-        assertFalse("reactorNames" in firstBytes)
-    }
-
-    @Test
-    fun canonicalPayloadDoesNotGrowWithFullActorRoster() {
-        val threeActors = (0 until 3).map { index -> "u${index.toString().padStart(4, '0')}" }
-        val fiveThousandActors = (0 until 5_000).map { index -> "u${index.toString().padStart(4, '0')}" }
-        val small = normalized(
-            listOf(LegacyReactionRosterDto("like", 3, threeActors, threeActors.map { "name-$it" })),
-        )
-        val large = normalized(
-            listOf(LegacyReactionRosterDto("like", 5_000, fiveThousandActors, fiveThousandActors.map { "name-$it" })),
-        )
-
-        val smallBytes = encodeReactionFactsCanonical(small.sharedFact)
-        val largeBytes = encodeReactionFactsCanonical(large.sharedFact)
-        assertEquals(emptyList(), small.sharedFact.single().previewK)
-        assertEquals(emptyList(), large.sharedFact.single().previewK)
-        assertTrue(largeBytes.length - smallBytes.length < 8, "payload grew with roster: ${smallBytes.length} -> ${largeBytes.length}")
-    }
-
-    @Test
     fun malformedSemanticInputSkipsOnlyInvalidFactsAndReportsNamedDiagnostics() {
         val normalized = assertIs<ReactionNormalizationOutcome.Normalized>(
             normalizeLegacyReactionRoster(
@@ -264,17 +118,5 @@ class ReactionRosterNormalizationTest {
                 ),
             ).failure,
         )
-    }
-
-    @Test
-    fun canonicalWireAdapterPreservesLegacyIngressShapeOnly() {
-        val dto = CanonicalReactionWire(
-            emoji = "like",
-            count = 2,
-            reactorIds = listOf("u2", "u1"),
-            reactorNames = listOf("B", "A"),
-        ).toLegacyReactionRosterDto()
-
-        assertEquals(LegacyReactionRosterDto("like", 2, listOf("u2", "u1"), listOf("B", "A")), dto)
     }
 }

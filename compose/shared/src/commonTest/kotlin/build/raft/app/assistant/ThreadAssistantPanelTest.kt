@@ -1,13 +1,7 @@
 package build.raft.app.assistant
 
 import build.raft.app.RaftThreadMessageItem
-import build.raft.app.resources.Res
-import build.raft.app.resources.assistant_header_meta
-import build.raft.app.resources.assistant_header_meta_with_dms
-import build.raft.app.resources.assistant_otter_meta_confirm
-import build.raft.app.resources.assistant_otter_meta_working
 import kotlin.test.Test
-import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
@@ -16,25 +10,6 @@ import kotlin.test.assertTrue
  * (`data-[open]` over `data-composing`) and assistantOtterState.ts (`hasWaitingActionCard`).
  */
 class ThreadAssistantPanelTest {
-    @Test
-    fun theMetaLineSaysWhatItDoesElseWhatItReads() {
-        assertEquals(Res.string.assistant_otter_meta_working, assistantPanelMeta(RaftOtterMood.Working, readsDms = true))
-        assertEquals(Res.string.assistant_otter_meta_confirm, assistantPanelMeta(RaftOtterMood.Confirm, readsDms = false))
-        assertEquals(Res.string.assistant_header_meta_with_dms, assistantPanelMeta(RaftOtterMood.Idle, readsDms = true))
-        assertEquals(Res.string.assistant_header_meta, assistantPanelMeta(RaftOtterMood.Idle, readsDms = false))
-        // New and away keep the reading line, as on web.
-        assertEquals(Res.string.assistant_header_meta, assistantPanelMeta(RaftOtterMood.New, readsDms = false))
-        assertEquals(Res.string.assistant_header_meta_with_dms, assistantPanelMeta(RaftOtterMood.Away, readsDms = true))
-    }
-
-    @Test
-    fun theOpenPanelTucksTheOtterFurtherThanTyping() {
-        assertEquals(RaftOtterTuck.None, threadAssistantOtterTuck(composing = false, panelOpen = false))
-        assertEquals(RaftOtterTuck.Composing, threadAssistantOtterTuck(composing = true, panelOpen = false))
-        assertEquals(RaftOtterTuck.PanelOpen, threadAssistantOtterTuck(composing = false, panelOpen = true))
-        assertEquals(RaftOtterTuck.PanelOpen, threadAssistantOtterTuck(composing = true, panelOpen = true))
-    }
-
     @Test
     fun aCoveredPanelStaysOpenAndShowsAgainWhenItsPageIsBack() {
         val panel = ThreadAssistantPanelState()

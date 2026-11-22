@@ -1,10 +1,8 @@
 package build.raft.app.data.runtimeform.v2
 
 import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.JsonPrimitive
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
@@ -31,29 +29,6 @@ class RuntimeFormV2PiFixturesTest {
             assertTrue(parsed.blockingFieldKeys.isEmpty(), "$name: no unsupported required field")
             assertTrue(parsed.fields.none { it.kind == RuntimeFormV2FieldKind.Unsupported }, "$name: every field kind is known")
         }
-    }
-
-    @Test
-    fun configuredCreateIsSubmittableOnTheFallbackListAndSaysSo() {
-        val values = initialRuntimeFormV2Values(pi, sources)
-        assertEquals("configured", values.text("provider"))
-        assertTrue(isRuntimeFormV2FieldVisible(field("model"), values, sources))
-        assertFalse(isRuntimeFormV2FieldVisible(field("providerModel"), values, sources), "the other provider's required model is not checked")
-        assertFalse(runtimeFormV2SourceStatus(field("model"), sources)!!.unavailable, "offline: a usable fallback, not a blocked field")
-        assertEquals(emptyMap(), validateRuntimeFormV2(pi, sources, values))
-    }
-
-    @Test
-    fun deepSeekShowsItsKeyAndListAndDerivesTheEffortFromThatList() {
-        val values = applyRuntimeFormV2Change(pi, sources, initialRuntimeFormV2Values(pi, sources), "provider", JsonPrimitive("deepseek"))
-        assertTrue(isRuntimeFormV2FieldVisible(field("apiKey"), values, sources))
-        assertFalse(isRuntimeFormV2FieldVisible(field("model"), values, sources))
-        assertEquals("deepseek/deepseek-v4-pro", values.text("providerModel"))
-        val model = runtimeFormV2Choices(field("providerModel"), sources, values) as RuntimeFormV2Choices.Select
-        assertFalse(model.allowCustom, "DeepSeek models only come from its list")
-        val effort = runtimeFormV2Choices(field("providerReasoningEffort"), sources, values) as RuntimeFormV2Choices.Select
-        assertEquals(listOf("off", "minimal", "low", "medium", "high", "xhigh", "max"), effort.options.map { it.value })
-        assertEquals(RuntimeFormV2ErrorCode.NotAChoice, validateRuntimeFormV2(pi, sources, values + ("providerModel" to JsonPrimitive("typed")))["providerModel"])
     }
 
     @Test

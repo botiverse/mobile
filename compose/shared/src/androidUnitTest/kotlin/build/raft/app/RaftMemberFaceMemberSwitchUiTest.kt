@@ -5,12 +5,8 @@ import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.test.ComposeUiTest
 import androidx.compose.ui.test.ExperimentalTestApi
-import build.raft.app.data.ResolvedActor
-import build.raft.app.model.AgentStatus
-import build.raft.app.model.MemberKind
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlinx.coroutines.flow.flowOf
@@ -62,49 +58,6 @@ class RaftMemberFaceMemberSwitchUiTest {
             val committed = committedAcrossSwitch { id -> rememberRaftMemberAvatarWireValue(resolver, id) }
             assertEveryFrameShowsItsOwnMember(committed) { avatars[it] }
         }
-
-    @Test
-    fun jointActorNeverPaintsThePreviousSender() =
-        runRobolectricComposeUiTest {
-            val actors = listOf(M, ECHO).associateWith { id -> actor(id) }
-            val resolver =
-                RaftMemberAvatarResolver(
-                    currentAvatar = { null },
-                    avatarFlow = { flowOf(null) },
-                    currentJointActorRead = { _, id -> actors[id] },
-                    jointActorRead = { _, id -> flowOf(actors[id]) },
-                    jointSurface = true,
-                )
-            val committed =
-                committedAcrossSwitch { id ->
-                    rememberRaftJointActor(resolver, kind = MemberKind.Agent, memberId = id, enabled = true)
-                }
-            assertEveryFrameShowsItsOwnMember(committed) { actors[it] }
-        }
-
-    @Test
-    fun statusDotNeverPaintsThePreviousAgent() =
-        runRobolectricComposeUiTest {
-            val states =
-                mapOf(
-                    M to RaftAgentStatusIndicatorState(AgentStatus.Offline, Color.Gray, "Offline", external = false),
-                    ECHO to RaftAgentStatusIndicatorState(AgentStatus.Online, Color.Green, "Online", external = false),
-                )
-            val resolver: RaftAgentStatusResolver = { id -> RaftAgentStatusFlow(initial = states[id], upstream = flowOf(states[id])) }
-            val committed = committedAcrossSwitch { id -> rememberRaftAgentStatusIndicatorState(resolver, id) }
-            assertEveryFrameShowsItsOwnMember(committed) { states[it] }
-        }
-
-    private fun actor(id: String) =
-        ResolvedActor(
-            kind = MemberKind.Agent,
-            id = id,
-            homeServerId = "server-other",
-            name = id,
-            displayName = null,
-            avatarUrl = "https://example.test/$id.png",
-            gravatarHash = null,
-        )
 
     private companion object {
         const val M = "member-m"

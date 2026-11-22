@@ -1,5 +1,6 @@
 package build.raft.app.data
 
+import androidx.compose.runtime.snapshots.Snapshot
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -45,44 +46,21 @@ class RaftDisplayPreferenceRuntimeTest {
     }
 
     @Test
-    fun memberDescriptionsAreOnByDefaultAndSavedUnderTheWebKey() {
-        val store = MemoryStore()
-        RaftDisplayPreferenceRuntime.resetForTest(store)
-        assertTrue(RaftDisplayPreferenceRuntime.showSenderDescription)
-
-        RaftDisplayPreferenceRuntime.setShowSenderDescription(false)
-        assertEquals("false", store.values["slock_show_sender_description"])
-        RaftDisplayPreferenceRuntime.resetForTest(store)
-        assertFalse(RaftDisplayPreferenceRuntime.showSenderDescription)
-
-        // Nothing saved: on, the web default (`readStoredShowSenderDescription`).
-        store.values["slock_show_sender_description"] = null
-        RaftDisplayPreferenceRuntime.resetForTest(store)
-        assertTrue(RaftDisplayPreferenceRuntime.showSenderDescription)
-    }
-
-    @Test
-    fun theHomeMenuChoiceIsTheSameValue() {
-        val store = MemoryStore()
-        KeyValueRaftSidebarHideEmptySectionsStore(store).write(false)
-        RaftDisplayPreferenceRuntime.resetForTest(store)
-        assertFalse(RaftDisplayPreferenceRuntime.hideEmptySidebarSections)
-    }
-
-    @Test
-    fun liveAgentActivityIsOnByDefaultAndSavedUnderTheWebKey() {
-        val store = MemoryStore()
-        RaftDisplayPreferenceRuntime.resetForTest(store)
-        assertTrue(RaftDisplayPreferenceRuntime.showLiveAgentActivity)
-
-        RaftDisplayPreferenceRuntime.setShowLiveAgentActivity(false)
-        assertEquals("false", store.values["slock_show_live_agent_activity_bar"])
-        RaftDisplayPreferenceRuntime.resetForTest(store)
-        assertFalse(RaftDisplayPreferenceRuntime.showLiveAgentActivity)
-
-        // Web `readStoredShowLiveAgentActivityBar`: anything but "false" is on.
-        store.values["slock_show_live_agent_activity_bar"] = "garbage"
-        RaftDisplayPreferenceRuntime.resetForTest(store)
-        assertTrue(RaftDisplayPreferenceRuntime.showLiveAgentActivity)
+    fun readingDisplayPreferenceStoreCreatedAfterMutableSnapshotWasTakenNeverThrows() {
+        val snapshot = Snapshot.takeMutableSnapshot()
+        try {
+            // Simulates cold-start off-main-thread first initialization while Recomposer holds an
+            // open MutableSnapshot: backed by MutableStateFlow, reads never hit SnapshotKt.readError.
+            val prefStore = RaftDisplayPreferenceStore(defaultStoreProvider = { MemoryStore() })
+            prefStore.setShowAgentModelName(false)
+            snapshot.enter {
+                assertTrue(prefStore.showLiveAgentActivity)
+                assertFalse(prefStore.showAgentModelName)
+                assertTrue(prefStore.showSenderDescription)
+                assertEquals(RaftSidebarHideEmptySectionsDefault, prefStore.hideEmptySidebarSections)
+            }
+        } finally {
+            snapshot.dispose()
+        }
     }
 }

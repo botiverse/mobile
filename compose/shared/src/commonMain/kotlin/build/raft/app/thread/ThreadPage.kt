@@ -3,8 +3,6 @@ package build.raft.app
 import build.raft.app.links.ParsedRaftPermalink
 import build.raft.app.assistant.LocalThreadAssistantOtter
 import build.raft.app.assistant.LocalThreadAssistantPanelEmbed
-import build.raft.app.assistant.assistantContextTokenForSend
-import build.raft.app.assistant.withAssistantContextReference
 import build.raft.app.assistant.newAssistantOtterHostId
 import build.raft.app.assistant.rememberThreadAssistantOtter
 import build.raft.app.assistant.threadForegroundBannerOnPage
@@ -17,6 +15,13 @@ import build.raft.app.data.RaftReadToggleNotice
 import build.raft.app.data.openWithinWideDetail
 import build.raft.app.data.visibleSideThread
 import build.raft.designsystem.components.raftPaneGridCellExpand
+import build.raft.designsystem.focus.LocalRaftFocusModalToken
+import build.raft.designsystem.focus.LocalRaftFocusRegion
+import build.raft.designsystem.focus.RaftFocusRegion
+import build.raft.designsystem.focus.RaftFocusRegionHost
+import build.raft.designsystem.focus.RaftFocusRequestSource
+import build.raft.designsystem.focus.RaftFocusTicket
+import build.raft.designsystem.focus.currentRaftFocusCoordinator
 import build.raft.app.data.RAFT_ADAPTIVE_DETAIL_FOCUS_MESSAGE_EVENT
 import build.raft.app.data.AdaptiveParentFocusOutcome
 import build.raft.app.data.AdaptiveParentFocusRequest
@@ -28,9 +33,7 @@ import build.raft.app.data.routeThreadOpen
 import build.raft.app.base.Utils
 import build.raft.app.data.RaftHostNetworkEvents
 import build.raft.app.data.PlatformFile
-import build.raft.app.data.RaftAttachmentUploadCancelReason
 import build.raft.app.data.ThreadPendingSendInFlightRegistry
-import build.raft.app.data.parseSharedThreadPickedPlatformFiles
 import build.raft.app.data.realtime.RealtimeEventMapper
 import build.raft.app.data.AgentDetailSnapshot
 import build.raft.app.data.AgentDetailSummary
@@ -41,7 +44,10 @@ import build.raft.app.data.NetworkRaftConversationArtifactsApi
 import build.raft.app.data.RaftAgentLounges
 import build.raft.app.data.NetworkRaftTasksApi
 import build.raft.app.data.NetworkRaftThreadApi
+import build.raft.app.data.RaftQuotedPermalinkContextRead
+import build.raft.app.data.RaftQuotedPermalinkHistoryLimitedMemo
 import build.raft.app.data.RaftThreadApiClient
+import build.raft.app.data.quotedPermalinkViewer
 import build.raft.app.data.RealChannelRepository
 import build.raft.app.data.RealConversationRepository
 import build.raft.app.data.RealSettingsRepository
@@ -55,12 +61,10 @@ import build.raft.app.data.StoredAuthSession
 import build.raft.app.data.DataRequestPriority
 import build.raft.app.data.DataResult
 import build.raft.app.data.map
-import build.raft.app.data.BridgeSettingsPlatformCapabilities
 import build.raft.app.data.raftAppActionCardCapabilities
 import build.raft.app.data.featureFlagClientOs
 import build.raft.app.data.ThreadComposerDirectUploadClientRequestIds
 import build.raft.app.data.KeyValueChatLayoutPreferenceStore
-import build.raft.app.data.TASK_V2_CONVERSATIONS_FEATURE_FLAG_KEY
 import build.raft.app.data.ThreadApiResult
 import build.raft.app.data.ownSentConversationIds
 import build.raft.app.data.RaftAgentsApiClient
@@ -114,6 +118,7 @@ import build.raft.app.data.SharedTasksScope
 import build.raft.app.data.SharedTasksViewModel
 import build.raft.app.data.RaftAuthSessionStore
 import build.raft.app.data.SharedAdaptiveScrollAnchor
+import build.raft.app.data.RaftTimeFormatRuntime
 import build.raft.app.data.defaultNowMillis
 import build.raft.app.data.RaftShellStoreScope
 import build.raft.app.data.RaftSharedStoreRegistry
@@ -170,6 +175,7 @@ import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.collectAsState
+import build.raft.app.compat.ui.collectAsStateWhileStarted
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
@@ -180,6 +186,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
@@ -192,7 +199,6 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.semantics.onClick
 import androidx.compose.ui.semantics.role
-import androidx.compose.ui.text.input.TextFieldValue
 import build.raft.app.compat.pager.Page
 import build.raft.app.compat.pager.PagerManager
 import build.raft.app.compat.module.PerformanceModule
@@ -208,7 +214,6 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.CoroutineStart
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.delay
@@ -222,7 +227,6 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.cancelAndJoin
-import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -236,8 +240,8 @@ import kotlin.time.TimeSource
 
 private const val THREAD_PAGE_DATA_EVENT = "slockPageData"
 internal const val THREAD_MEMBERS_PAGE = "compose_thread_members"
-private const val ThreadComposerMentionActionFadeDelayMs = 450L
-private const val ThreadComposerMentionActionRemoveDelayMs = 750L
+internal const val ThreadComposerMentionActionFadeDelayMs = 450L
+internal const val ThreadComposerMentionActionRemoveDelayMs = 750L
 private const val ThreadMarkdownAttachmentPreviewMaxChars = 80_000
 private const val ThreadSendSilentRetryDelayMs = 900L
 private const val ThreadSendMaxSilentRetries = 2
@@ -276,7 +280,7 @@ internal fun threadMessageHeaderTimestampLayoutSpec(): ThreadSystemMessageTimest
         maxWidthDp = ThreadRelativeTimestampSlotWidthDp
     )
 
-private val ThreadLocalSendNextId = ThreadLocalSendIdGenerator()
+internal val ThreadLocalSendNextId = ThreadLocalSendIdGenerator()
 
 /** task #36: longest wait for the keyboard to close before the main detail focuses a parent. */
 private const val ADAPTIVE_PARENT_FOCUS_IME_WAIT_MS = 1_500L
@@ -295,13 +299,24 @@ internal class ComposeThreadPage : AuthenticatedProductPager(AuthenticatedProduc
         super.willInit()
         setAuthenticatedContent {
             RaftInputFocusDismissHost { focusDismissModifier ->
-                Box(modifier = focusDismissModifier.fillMaxSize()) {
-                    ThreadPageScreen(
-                        pageVisibleTick = raftPageVisibleResumeTick,
-                        pageVisible = raftPageVisible,
-                        adaptivePaneState = adaptivePaneState,
-                        adaptivePaneEvent = adaptivePaneEvent,
+                val content: @Composable () -> Unit = {
+                    Box(modifier = focusDismissModifier.fillMaxSize()) {
+                        ThreadPageScreen(
+                            pageVisibleTick = raftPageVisibleResumeTick,
+                            pageVisible = raftPageVisible,
+                            adaptivePaneState = adaptivePaneState,
+                            adaptivePaneEvent = adaptivePaneEvent,
+                        )
+                    }
+                }
+                if (LocalRaftFocusRegion.current == null) {
+                    RaftFocusRegionHost(
+                        region = RaftFocusRegion.Conversation,
+                        modifier = Modifier.fillMaxSize(),
+                        content = content,
                     )
+                } else {
+                    content()
                 }
             }
         }
@@ -347,7 +362,7 @@ private fun MemberProfile.toThreadCandidateAgentDetailSnapshot(): AgentDetailSna
     )
 }
 
-private fun buildThreadPendingSendMessage(
+internal fun buildThreadPendingSendMessage(
     localMessageId: String,
     context: RaftThreadPendingSendContext,
     session: StoredAuthSession?,
@@ -613,9 +628,18 @@ private fun ThreadPageScreen(
         )
     }
     val parsedPayload = payloadTrace.payload
+    val baseTimeCapabilities =
+        remember(parsedPayload.localOffsetMinutes, parsedPayload.timeFormat) {
+            parsedPayload.toRaftTimeCapabilities()
+        }
+    val runtimeTimeFormat = RaftTimeFormatRuntime.observe(fallback = baseTimeCapabilities.timeFormat)
+    val timeCapabilities =
+        remember(baseTimeCapabilities, runtimeTimeFormat) {
+            baseTimeCapabilities.copy(timeFormat = runtimeTimeFormat)
+        }
     val liveTimeContextProvider =
         rememberLiveRaftTimeContext(
-            capabilities = parsedPayload.toRaftTimeCapabilities(),
+            capabilities = timeCapabilities,
             pageVisibleTick = pageVisibleTick,
             active = pageVisible
         )
@@ -797,19 +821,32 @@ private fun ThreadPageScreen(
             )
         }
     val quotedPermalinkLoader: ThreadQuotedPermalinkLoader? =
-        remember(networkClient) {
+        remember(networkClient, authStore) {
             val client = RaftThreadApiClient(NetworkRaftThreadApi(networkClient))
             val loader: ThreadQuotedPermalinkLoader = { target ->
-                when (val result = client.messageContext(target.messageId.value, target.channelId.value)) {
-                    is ThreadApiResult.Success -> {
-                        val payload = result.data
-                        val targetId = payload.targetMessageId?.value ?: target.messageId.value
+                val messageId = target.messageId.value
+                val channelId = target.channelId.value
+                // #proj-mobile:#274: a quote behind the Free plan's history window is answered from
+                // the memo, not asked again each time its row comes on screen.
+                val read =
+                    RaftQuotedPermalinkHistoryLimitedMemo.App.read(
+                        viewer = authStore.readSession()?.quotedPermalinkViewer(),
+                        channelId = channelId,
+                        messageId = messageId,
+                    ) { client.messageContext(messageId, channelId) }
+                when (read) {
+                    is RaftQuotedPermalinkContextRead.Page -> {
+                        val payload = read.payload
+                        val targetId = payload.targetMessageId?.value ?: messageId
                         payload.messages
                             .firstOrNull { it.id.value == targetId }
                             ?.toRaftThreadMessageItem(null)
                             ?.let { item -> ThreadQuotedPermalinkMessage(item, channelArchived = payload.channelArchived) }
                     }
-                    is ThreadApiResult.Failure -> null
+                    // Behind the history window, as any other miss: no quote card, the link says
+                    // it is unavailable (the app has no older-quote card yet).
+                    is RaftQuotedPermalinkContextRead.HistoryLimited,
+                    RaftQuotedPermalinkContextRead.Unavailable -> null
                 }
             }
             loader
@@ -1023,6 +1060,8 @@ private fun ThreadPageScreen(
         LocalThreadAdaptiveInitiationCapture provides adaptiveInitiationCaptureHolder,
         LocalThreadAdaptiveNativeEditingReader provides adaptiveNativeEditingStateReader,
         LocalThreadQuotedPermalinkLoader provides quotedPermalinkLoader,
+        // Live quote replies read their resolved quotes here (ThreadQuoteReply.kt).
+        LocalThreadResolvedQuotesStore provides sharedStores.resolvedQuotesStore,
     ) {
     SharedThreadRouteContent(
         initialPayload = payload,
@@ -1047,6 +1086,39 @@ private fun ThreadPageScreen(
         onOpenThreadPayload = { nextPayload -> openStandaloneThreadPayload(nextPayload) },
         onReplaceThreadPayload = {},
         onOpenThreadPayloadWithoutAnimation = { nextPayload -> openStandaloneThreadPayload(nextPayload, animated = false) },
+        onOpenPendingTask =
+            if (adaptivePaneState.layout == RaftAdaptivePaneLayout.DualPane) {
+                null
+            } else {
+                { pendingTask, serverId, channelJoined, canWriteChannel ->
+                    val resolvedServerId = serverId?.takeIf { it.isNotBlank() } ?: storeScope.initialServerId
+                    val targetStoreScope =
+                        RaftShellStoreScope.create(
+                            shellInstanceId = storeScope.shellInstanceId,
+                            initialServerId = resolvedServerId,
+                        )
+                    val workspaceStore = sharedStores.adaptiveWorkspaceStore(storeScope)
+                    val desktopModeEnabled =
+                        KeyValueChatLayoutPreferenceStore(raftSharedPreferenceStore()).readDesktopModeOnLargeScreenSync()
+                    if (workspaceStore.snapshot().routeThreadOpen(adaptiveCloseRequest, desktopModeEnabled, targetStoreScope.initialServerId) ==
+                        AdaptiveThreadOpenRoute.Ignored
+                    ) {
+                        bridge.logWarn("task_pending_open_skip reason=stale_adaptive_source")
+                    } else {
+                        pager.openTaskPendingPage(
+                            task = pendingTask,
+                            serverId = resolvedServerId,
+                            storeScope = targetStoreScope,
+                            foregroundBannerStore = sharedStores.foregroundBannerStore(storeScope),
+                            timeContext = liveTimeContextProvider.dateContext ?: timeCapabilities.staticContext(),
+                            alignOwnMessagesRight = payload.alignOwnMessagesRight,
+                            compactConsecutiveMessages = payload.compactConsecutiveMessages,
+                            channelJoined = channelJoined,
+                            canWriteChannel = canWriteChannel,
+                        )
+                    }
+                }
+            },
         onOpenParentThread = { currentPayload, currentSessionServerId ->
             val parentServerId = threadParentNavigationServerId(currentSessionServerId)
                 ?: return@SharedThreadRouteContent false
@@ -1296,6 +1368,8 @@ private class SharedThreadRouteContentCallbacks(
     val onOpenMembersPager: (RaftThreadScreenPayload, ServerId, ChannelId, RaftShellStoreScope, Boolean) -> Unit,
     /** The last argument is the opening conversation's [ThreadSettingsPageLinks] key. */
     val onOpenChannelSettings: (ServerId, ChannelId, RaftShellStoreScope, String) -> Unit,
+    /** Opens a task without a conversation as its own pushed stack page (#proj-mobile:#161). */
+    val onOpenPendingTask: ((TaskSummary, String?, Boolean?, Boolean?) -> Unit)? = null,
 )
 
 @Composable
@@ -1328,7 +1402,8 @@ internal fun SharedThreadRouteContent(
     onResolvedAuxiliaryThreadIdChanged: (String?) -> Unit = {},
     onOpenMemberProfile: (RaftThreadScreenPayload, ThreadTimelineSlice, MemberDetailIdentity) -> Unit = { _, _, _ -> },
     onOpenMembersPager: (RaftThreadScreenPayload, ServerId, ChannelId, RaftShellStoreScope, Boolean) -> Unit = { _, _, _, _, _ -> },
-    onOpenChannelSettings: (ServerId, ChannelId, RaftShellStoreScope, String) -> Unit = { _, _, _, _ -> }
+    onOpenChannelSettings: (ServerId, ChannelId, RaftShellStoreScope, String) -> Unit = { _, _, _, _ -> },
+    onOpenPendingTask: ((TaskSummary, String?, Boolean?, Boolean?) -> Unit)? = null,
 ) {
     SharedThreadRouteContentContent(
         data =
@@ -1364,6 +1439,7 @@ internal fun SharedThreadRouteContent(
                 onOpenMemberProfile = onOpenMemberProfile,
                 onOpenMembersPager = onOpenMembersPager,
                 onOpenChannelSettings = onOpenChannelSettings,
+                onOpenPendingTask = onOpenPendingTask,
             ),
     )
 }
@@ -1645,7 +1721,7 @@ private fun rememberThreadTaskConversationState(
     LaunchedEffect(taskConversationHeaderViewModel) {
         taskConversationHeaderViewModel?.events?.collect { event ->
             when (event) {
-                is TaskConversationHeaderEvent.FollowFailed -> bridge.toast(latestFollowFailedLabel)
+                is TaskConversationHeaderEvent.FollowFailed -> bridge.errorToast(latestFollowFailedLabel, event.traceId)
             }
         }
     }
@@ -1658,7 +1734,7 @@ private fun rememberThreadTaskConversationState(
         taskConversationId?.let { conversationId ->
             viewModel(key = "task-conversation-details-${conversationId.value}") {
                 fun server(): ServerId? = taskConversationDetailsServerId?.let(::ServerId)
-                val noServer = DataResult.Error(ScreenError(code = "task_head_no_server", retryable = true))
+                val noServer = DataResult.Error(ScreenError(code = "task_head_no_server", retryable = true, traceId = null))
                 TaskConversationDetailsViewModel(
                     loadHistory = { taskId ->
                         server()?.let { taskConversationDetailsRepository.loadHistory(it, taskId) } ?: noServer
@@ -1792,7 +1868,7 @@ private fun SharedThreadRouteContentContent(
     val sharedHomeStore = remember(sharedStores, storeScope) { sharedStores.sharedHomeStore(storeScope) }
     // Data-layer plan: frame 1 sees the Home store's current value (pin state, rows), not an empty state.
     val sharedHomeStateFlow = remember(sharedHomeStore) { sharedHomeStore.homeStateForPage() }
-    val sharedHomeState by sharedHomeStateFlow.collectAsState()
+    val sharedHomeState by sharedHomeStateFlow.collectAsStateWhileStarted()
     val realtimeEvents = remember(eventBus) { RaftRealtimeEvents(eventBus) }
     val realtimeEventMapper =
         remember(sharedStores) {
@@ -1845,7 +1921,8 @@ private fun SharedThreadRouteContentContent(
     val adaptiveFocusManager = LocalFocusManager.current
     val adaptiveKeyboardController = LocalSoftwareKeyboardController.current
     val adaptiveFocusWorkspaceStore = remember(sharedStores, storeScope) { sharedStores.adaptiveWorkspaceStore(storeScope) }
-    var adaptivePageKeyboardInsetDp by remember { mutableStateOf(0f) }
+    val adaptivePageKeyboardInsetDpState = remember { mutableStateOf(0f) }
+    var adaptivePageKeyboardInsetDp by adaptivePageKeyboardInsetDpState
     val threadKeyboardTapDismissal =
         remember(adaptiveFocusManager, adaptiveKeyboardController) {
             ThreadKeyboardTapDismissal(
@@ -2187,7 +2264,7 @@ private fun SharedThreadRouteContentContent(
             }
         }
     }
-    val directoryConversationProjections by headerProjectionStateOwner.state.collectAsState()
+    val directoryConversationProjections by headerProjectionStateOwner.state.collectAsStateWhileStarted()
     val directoryConversationProjection =
         remember(headerProjectionInput, conversationDirectoryLookupIds, directoryConversationProjections) {
             conversationDirectoryLookupIds
@@ -2199,7 +2276,7 @@ private fun SharedThreadRouteContentContent(
         }
     // Unfiltered directory projections (header owner drops non-display rows, but a
     // reply thread's joint billing state lives on its parent channel projection).
-    val billingDirectoryProjections by directoryConversationProjectionFlow.collectAsState(
+    val billingDirectoryProjections by directoryConversationProjectionFlow.collectAsStateWhileStarted(
         initialDirectoryConversationProjections
     )
     // Joint channel (or a reply thread in one): message rows may resolve senders from the other
@@ -2325,29 +2402,18 @@ private fun SharedThreadRouteContentContent(
             accessResolution = renderSlice.accessResolution
         )
     // #171 diagnostics: the first content frame lands while the page is still sliding in (it used to
-    // wait for the slide behind the loading shell). Compare with nav_transition_frames on device.
-    val threadPageInMotion = LocalRaftStackPageInMotion.current
-    var threadFirstContentLogged by remember(threadInstanceKey) { mutableStateOf(false) }
-    if (!threadFirstContentLogged && routeMountPlan == ThreadRouteMountPlan.FeatureSurfaces) {
-        val revealedInMotion = threadPageInMotion
-        val revealAccess = renderSlice.accessResolution
-        val revealLookupComplete = renderSlice.initialHomeAccessLookupComplete
-        val revealMessages = timelineSlice.messages.size
-        SideEffect {
-            threadFirstContentLogged = true
-            bridge.log(
-                "thread_first_reveal threadId=${(threadTimelineKey ?: threadInstanceKey).orEmpty()} " +
-                    "inMotion=$revealedInMotion access=$revealAccess homeLookupComplete=$revealLookupComplete " +
-                    "messages=$revealMessages"
-            )
-            if (revealedInMotion) {
-                bridge.log(
-                    "thread_first_reveal_in_motion threadId=${(threadTimelineKey ?: threadInstanceKey).orEmpty()} " +
-                        "messages=$revealMessages"
-                )
-            }
-        }
-    }
+    // wait for the slide behind the loading shell). Isolate LocalRaftStackPageInMotion inside a leaf
+    // composable kept across routeMountPlan changes so it logs at most once per threadInstanceKey
+    // and never subscribes SharedThreadRouteContentContent to motion state.
+    ThreadFirstRevealMotionLogger(
+        threadInstanceKey = threadInstanceKey,
+        ready = routeMountPlan == ThreadRouteMountPlan.FeatureSurfaces,
+        threadId = (threadTimelineKey ?: threadInstanceKey).orEmpty(),
+        accessResolutionName = renderSlice.accessResolution.toString(),
+        homeLookupComplete = renderSlice.initialHomeAccessLookupComplete,
+        revealMessages = timelineSlice.messages.size,
+        log = bridge::log,
+    )
     val realtimeRoomLeaseRegistry =
         remember(sharedStores, storeScope) { sharedStores.realtimeRoomLeaseRegistry(storeScope) }
     val roomLeaseActive = shouldHoldThreadRoomLease(adaptiveCloseRequest, active)
@@ -2393,9 +2459,9 @@ private fun SharedThreadRouteContentContent(
         }
     }
     val coroutineScope = rememberCoroutineScope()
-    LaunchedEffect(sharedStores.activityUnreadSummaryStore, currentSession?.currentServerId) {
+    ThreadAfterMotionEffect(sharedStores.activityUnreadSummaryStore, currentSession?.currentServerId) {
         val serverId = currentSession?.currentServerId?.trim()?.takeIf { it.isNotBlank() }
-            ?: return@LaunchedEffect
+            ?: return@ThreadAfterMotionEffect
         sharedStores.activityUnreadSummaryStore.ensure(ServerId(serverId), reason = "thread_route_attach")
     }
     val latestCurrentSessionState = rememberUpdatedState(currentSession)
@@ -2690,7 +2756,8 @@ private fun SharedThreadRouteContentContent(
             payload = payload,
             displayModel = headerDisplayModel,
             memberAvatarResolver = memberAvatarResolver,
-            onBack = onBack
+            onBack = onBack,
+            showLoadingIndicator = timelineSlice.loadingIndicatorRevealed,
         )
         return
     }
@@ -2784,11 +2851,16 @@ private fun SharedThreadRouteContentContent(
         remember(sharedStores, storeScope) {
             sharedStores.foregroundBannerStore(storeScope)
         }
-    val foregroundMessageBanner by foregroundBannerStore.banner.collectAsState()
-    val foregroundBannerRouteOwnerId = "thread:$initialThreadInstanceKey"
-    DisposableEffect(active, payloadRouteIdentity, foregroundBannerStore) {
+    val foregroundMessageBanner by foregroundBannerStore.banner.collectAsStateWhileStarted()
+    val foregroundBannerRouteOwnerId = remember { nextForegroundBannerRouteOwnerId("thread") }
+    val inAssistantPanelEmbed = LocalThreadAssistantPanelEmbed.current != null
+    DisposableEffect(active, payloadRouteIdentity, foregroundBannerStore, inAssistantPanelEmbed, foregroundBannerRouteOwnerId) {
         if (active) {
-            foregroundBannerStore.setVisibleRoute(foregroundBannerRouteOwnerId, payloadRouteIdentity)
+            foregroundBannerStore.setVisibleRoute(
+                ownerId = foregroundBannerRouteOwnerId,
+                route = payloadRouteIdentity,
+                isOverlay = inAssistantPanelEmbed,
+            )
         }
         onDispose { foregroundBannerStore.clearVisibleRoute(foregroundBannerRouteOwnerId) }
     }
@@ -2801,8 +2873,6 @@ private fun SharedThreadRouteContentContent(
     val pendingReactionVisuals by pendingReactionVisualsState
     val pendingActionCardIdsState = remember(threadInstanceKey) { mutableStateOf<Set<String>>(emptySet()) }
     val pendingActionCardIds by pendingActionCardIdsState
-    val pendingTaskConvertMessageIdsState = remember(threadInstanceKey) { mutableStateOf<Set<String>>(emptySet()) }
-    val pendingTaskConvertMessageIds by pendingTaskConvertMessageIdsState
     // Task v2: "Create Task from Message" (the message it is open for, its create in flight, its failure).
     val createTaskFromMessage = remember(threadInstanceKey) { TaskCreateFromMessageFlow() }
     // Task v2: a task opened without a page of its own (its empty conversation, or a legacy panel).
@@ -2829,19 +2899,16 @@ private fun SharedThreadRouteContentContent(
     val attachmentOpenStatesHolder = remember(threadInstanceKey) {
         mutableStateOf<Map<String, ThreadAttachmentOpenUiState>>(emptyMap())
     }
-    var attachmentOpenStates by attachmentOpenStatesHolder
+    val attachmentOpenStates by attachmentOpenStatesHolder
     val attachmentOperationTokensState = remember(threadInstanceKey) {
         mutableStateOf<Map<String, AttachmentOperationToken>>(emptyMap())
     }
-    var attachmentOperationTokens by attachmentOperationTokensState
-    LaunchedEffect(attachmentOwner?.scopeId, attachmentOwner?.generation, threadInstanceKey) {
-        val currentOwner = attachmentOwner
-        val hasForeign = attachmentOperationTokens.values.any { it.owner != currentOwner }
-        if (hasForeign) {
-            attachmentOperationTokens = emptyMap()
-            attachmentOpenStates = emptyMap()
-        }
-    }
+    ThreadAttachmentOperationLifecycleEffects(
+        threadInstanceKey = threadInstanceKey,
+        attachmentOwner = attachmentOwner,
+        attachmentOpenStatesHolder = attachmentOpenStatesHolder,
+        attachmentOperationTokensState = attachmentOperationTokensState,
+    )
     val nextAttachmentDownloadGenerationState = remember(threadInstanceKey) { mutableStateOf(0L) }
     val inlineVideoPreviewStatesHolder = remember(threadInstanceKey) {
         mutableStateOf<Map<String, ThreadInlineVideoPreviewUiState>>(emptyMap())
@@ -2882,14 +2949,15 @@ private fun SharedThreadRouteContentContent(
     var restoredAttachmentUploadFileIds by remember(threadInstanceKey) {
         mutableStateOf<Set<ThreadAttachmentUploadAttemptIdentity>>(emptySet())
     }
-    var externalShareSendRequested by remember(threadInstanceKey) { mutableStateOf(false) }
+    val externalShareSendRequestedState = remember(threadInstanceKey) { mutableStateOf(false) }
+    var externalShareSendRequested by externalShareSendRequestedState
     val pendingMentionActionBatchRequestGate =
         remember(threadInstanceKey) { PendingMentionActionBatchRequestGate() }
-    var externalShareExpectedAuthority by remember(threadInstanceKey) {
+    val externalShareExpectedAuthorityState = remember(threadInstanceKey) {
         mutableStateOf<build.raft.app.data.RaftExpectedAuthBinding?>(null)
     }
+    var externalShareExpectedAuthority by externalShareExpectedAuthorityState
     val composerImageActionCounterState = remember(threadInstanceKey) { mutableStateOf(0) }
-    var composerImageActionCounter by composerImageActionCounterState
     // Cross-process editor callbacks may arrive out of order and on separate event-bus turns.
     // Keep one process-local accumulator per mounted Thread and serialize offers/claims so a
     // duplicate cannot race the complete N/N handoff.
@@ -2907,19 +2975,11 @@ private fun SharedThreadRouteContentContent(
         }
     val labels = threadRouteLabels()
     val genericActionCardSuccessLabel = labels.genericActionCardSuccessLabel
-    val composerSendKeyEnabled = chatLayoutPreferenceStore.readComposerSendKeyEnabledSync()
-    // Effective "Collapse long messages": this conversation's device-local override ?: the global switch.
-    val longMessageCollapseConversationSetting =
-        rememberRaftLongMessageCollapseConversationSetting(
-            serverId = currentSession?.currentServerId,
-            conversationId = payload.longMessageCollapseConversationId()
-        )
-    val longMessageCollapseEnabled = longMessageCollapseConversationSetting.effective
-    val newMessageMenuEnabled = chatLayoutPreferenceStore.readNewMessageMenuEnabledSync()
+    val composerSendKeyEnabled = rememberComposerSendKeyEnabled(chatLayoutPreferenceStore, eventBus)
+    val newMessageMenuEnabled = rememberNewMessageMenuEnabled(chatLayoutPreferenceStore, eventBus)
     val attachmentUploadFailedDetailTemplate = labels.attachmentUploadFailedDetailTemplate
     val unableToOpenTaskLabel = labels.unableToOpenTaskLabel
     val genericThreadErrorLabel = labels.genericThreadErrorLabel
-    val pendingMentionActionBatchStrings = labels.pendingMentionActionBatchStrings
     val userFacingErrorLabels = threadUserFacingErrorLabels()
     val attachmentPickerUnavailableLabel = labels.attachmentPickerUnavailableLabel
     val copiedLabel = labels.copiedLabel
@@ -2929,8 +2989,6 @@ private fun SharedThreadRouteContentContent(
     val unableToUpdateAssigneeLabel = labels.unableToUpdateAssigneeLabel
     val unableToJoinChannelLabel = labels.unableToJoinChannelLabel
     val joinedChannelLabel = labels.joinedChannelLabel
-    val attachmentRetryUnavailableLabel = labels.attachmentRetryUnavailableLabel
-    val attachmentSkippedOneLabel = labels.attachmentSkippedOneLabel
     val dropFoldersCantUploadLabel = labels.dropFoldersCantUploadLabel
     val dropFoldersSkippedLabel = labels.dropFoldersSkippedLabel
     val attachmentSkippedManyTemplate = labels.attachmentSkippedManyTemplate
@@ -3055,6 +3113,17 @@ private fun SharedThreadRouteContentContent(
             onBack = onBack,
         )
     val taskParentChannelId = taskConversation.parentChannelId?.value
+    // Effective "Collapse long messages": this conversation's device-local override ?: the global switch.
+    val longMessageCollapseConversationSetting =
+        rememberRaftLongMessageCollapseConversationSetting(
+            serverId = currentSession?.currentServerId,
+            conversationId =
+                payload.longMessageCollapseConversationId(
+                    homeContent = sharedHomeState.content,
+                    taskParentChannelId = taskConversation.parentChannelId,
+                )
+        )
+    val longMessageCollapseEnabled = longMessageCollapseConversationSetting.effective
     var jointBillingDeadlineTick by remember(payload.instanceId) { mutableStateOf(0) }
     val billingNowEpochMillis =
         payload.nowEpochMillis ?: kotlin.time.Clock.System.now().toEpochMilliseconds()
@@ -3143,31 +3212,15 @@ private fun SharedThreadRouteContentContent(
     }
     val memberSuggestionScopeChannelId = memberSuggestionScopePayload.threadComposerMentionScopeChannelId()
     val memberSuggestionScopedMentions = memberSuggestionScopePayload.threadComposerMemberScopedMentions()
-    val featureFlagSnapshotRevision by sharedStores.serverFeatureFlags.snapshotRevision.collectAsState()
     // `feedback:submit` cards open the native feedback form on their draft once the viewing server is
     // known (every platform, 1.24; no server flag). A done card's "View in Settings" opens the native
     // ticket page.
     val feedbackCardEntryEnabled = raftFeedbackCardEntryEnabled(currentServerId)
-    // Task v2 (`task_v2_conversations_v0`, as web reads it per server): every task lists under its
-    // source message and the composer drops "As Task".
-    // The session is captured a few frames after the page composes; until then the shell's server
-    // decides, or the first frame laid out the old Chat / Tasks / Files tab row and the list jumped
-    // when it went away (Compose 版 open jitter).
-    val taskV2FlagServerId = threadPageServerId(currentServerId, storeScope.initialServerId)
-    val taskV2Enabled =
-        remember(featureFlagSnapshotRevision, taskV2FlagServerId) {
-            taskV2FlagServerId != null &&
-                sharedStores.serverFeatureFlags.isEnabled(
-                    ServerId(taskV2FlagServerId),
-                    TASK_V2_CONVERSATIONS_FEATURE_FLAG_KEY
-                )
-        }
     // Task v2: Tasks and Files are cards opened from the header, not tabs (ConversationSideCards.kt).
     val sideCardsEnabled =
         conversationSideCardsEnabled(
-            taskV2Enabled = taskV2Enabled,
             showModeTabs = payload.showModeTabs,
-            assistantPanelEmbed = LocalThreadAssistantPanelEmbed.current != null
+            assistantPanelEmbed = inAssistantPanelEmbed
         )
     val sideCardsStore = LocalConversationSideCards.current
     val sideCardsState by sideCardsStore.state.collectAsState()
@@ -3323,26 +3376,18 @@ private fun SharedThreadRouteContentContent(
             store.refreshMembers(serverId, DataRequestPriority.Visible)
         }
     }
+    // Keep channelMemberSliceFlow keyed independently of `active` so covering this thread during
+    // a push never tears down and recreates its member flow on Frame 1; gate only the refresh.
     val threadChannelMembersSlice by remember(
         serverMembersStore,
         threadMembersServerId,
         threadMembersChannelId,
-        active
     ) {
         if (serverMembersStore != null && threadMembersServerId != null && threadMembersChannelId != null) {
             serverMembersStore.channelMemberSliceFlow(
                 serverId = threadMembersServerId,
                 channelId = threadMembersChannelId
             )
-                .onStart {
-                    if (active) {
-                        serverMembersStore.loadChannelMembers(
-                            serverId = threadMembersServerId,
-                            channelId = threadMembersChannelId,
-                            priority = DataRequestPriority.Visible
-                        )
-                    }
-                }
         } else {
             MutableStateFlow(
                 SharedServerChannelMembersSlice(
@@ -3351,7 +3396,7 @@ private fun SharedThreadRouteContentContent(
                 )
             )
         }
-    }.collectAsState(
+    }.collectAsStateWhileStarted(
         if (serverMembersStore != null && threadMembersServerId != null && threadMembersChannelId != null) {
             serverMembersStore.currentChannelMemberSlice(threadMembersServerId, threadMembersChannelId)
         } else {
@@ -3361,6 +3406,15 @@ private fun SharedThreadRouteContentContent(
             )
         }
     )
+    LaunchedEffect(serverMembersStore, threadMembersServerId, threadMembersChannelId, active) {
+        if (active && serverMembersStore != null && threadMembersServerId != null && threadMembersChannelId != null) {
+            serverMembersStore.loadChannelMembers(
+                serverId = threadMembersServerId,
+                channelId = threadMembersChannelId,
+                priority = DataRequestPriority.Visible
+            )
+        }
+    }
     val threadMembersProjection =
         remember(baseRenderedPayload, threadChannelMembersSlice, threadServerMembersEntry, threadMembersServerId) {
             threadMembersProjection(
@@ -3401,7 +3455,7 @@ private fun SharedThreadRouteContentContent(
             )
             ?.distinctUntilChanged()
             ?: MutableStateFlow(SharedTasksProjectionSlice())
-    }.collectAsState(initialTaskProjectionSlice)
+    }.collectAsStateWhileStarted(initialTaskProjectionSlice)
     val initialServerTaskProjectionSlice =
         remember(tasksDataStore, taskProjectionOwnerIdentity, currentServerId) {
             tasksDataStore?.projectionForOwner(
@@ -3418,20 +3472,20 @@ private fun SharedThreadRouteContentContent(
             )
             ?.distinctUntilChanged()
             ?: MutableStateFlow(SharedTasksProjectionSlice())
-    }.collectAsState(initialServerTaskProjectionSlice)
+    }.collectAsStateWhileStarted(initialServerTaskProjectionSlice)
     var refreshedTaskProjectionChannelId by remember(threadInstanceKey, currentServerId) {
         mutableStateOf<String?>(null)
     }
-    LaunchedEffect(
+    ThreadAfterMotionEffect(
         currentServerId,
         taskChannelId?.value,
         selectedThreadTab,
         payload.status,
         refreshedTaskProjectionChannelId
     ) {
-        val serverId = currentServerId ?: return@LaunchedEffect
-        val resolvedTaskChannelId = taskChannelId ?: return@LaunchedEffect
-        val sharedStore = tasksDataStore ?: return@LaunchedEffect
+        val serverId = currentServerId ?: return@ThreadAfterMotionEffect
+        val resolvedTaskChannelId = taskChannelId ?: return@ThreadAfterMotionEffect
+        val sharedStore = tasksDataStore ?: return@ThreadAfterMotionEffect
         val currentPayload = payload.copy(selectedTab = selectedThreadTab.wireValue)
         if (
             !shouldRefreshThreadTasksProjection(
@@ -3440,7 +3494,7 @@ private fun SharedThreadRouteContentContent(
                 refreshStarted = refreshedTaskProjectionChannelId == resolvedTaskChannelId.value
             )
         ) {
-            return@LaunchedEffect
+            return@ThreadAfterMotionEffect
         }
         refreshedTaskProjectionChannelId = resolvedTaskChannelId.value
         bridge.log(
@@ -3505,7 +3559,7 @@ private fun SharedThreadRouteContentContent(
                 )
                 ?.distinctUntilChanged()
         } ?: MutableStateFlow(SharedTasksProjectionSlice())
-    }.collectAsState(SharedTasksProjectionSlice())
+    }.collectAsStateWhileStarted(SharedTasksProjectionSlice())
     // A reader without write access (or whose access is still resolving) has no [taskChannelId], so
     // nothing above loads the context channel's tasks; load them for its task refs.
     LaunchedEffect(currentServerId, markdownTaskContextChannelId?.value, taskChannelId?.value, payload.status) {
@@ -3564,7 +3618,6 @@ private fun SharedThreadRouteContentContent(
             taskProjectionSlice,
             serverTaskProjectionSlice,
             taskProjectionReferences,
-            taskV2Enabled,
             sourceTaskListsEnabled,
             currentSession?.user?.id
         ) {
@@ -3575,21 +3628,22 @@ private fun SharedThreadRouteContentContent(
             ).copy(
                 sourceTaskLists =
                     if (sourceTaskListsEnabled) {
-                        taskProjectionSlice.tasks.threadSourceTaskLists(taskV2Enabled)
+                        taskProjectionSlice.tasks.threadSourceTaskLists()
                     } else {
                         emptyMap()
                     },
-                viewerUserId = currentSession?.user?.id,
-                taskV2Enabled = taskV2Enabled
+                viewerUserId = currentSession?.user?.id
             )
         }
     val taskAssigneeOptions =
-        taskAssigneeIdentityOptions(
-            channelMembers = threadChannelMembersSlice.members,
-            channelMembersLoaded =
-                threadChannelMembersSlice.status == SharedServerMembersLoadStatus.Loaded,
-            payloadMembers = threadMembersProjection.members.mapNotNull { it.toMemberProfile() }
-        )
+        remember(threadChannelMembersSlice, threadMembersProjection) {
+            taskAssigneeIdentityOptions(
+                channelMembers = threadChannelMembersSlice.members,
+                channelMembersLoaded =
+                    threadChannelMembersSlice.status == SharedServerMembersLoadStatus.Loaded,
+                payloadMembers = threadMembersProjection.members.mapNotNull { it.toMemberProfile() }
+            )
+        }
     // Channel refs (`#name`) are chips only for channels the reader knows. The store adds those names
     // once its Home lookup answers; the Home snapshot already in memory gives them to the first frame.
     val firstFrameHomeSnapshot =
@@ -3874,7 +3928,6 @@ private fun SharedThreadRouteContentContent(
         }
     val installAppDialogStateHolder = installAppDialogStore.state.collectAsState()
 
-    val actionCardSpecCopiedLabel = stringResource(Res.string.common_copied)
     // A4: spec card Buttons that run the card (execute, its confirm, a form) go through this store
     // to SharedThreadDataSource.executeActionCardSpec; links and the typed path don't
     // (threadActionCardSpecPress).
@@ -3886,15 +3939,15 @@ private fun SharedThreadRouteContentContent(
                 stepUp = actionCardStepUp,
                 applyCard = { messageId, card -> threadViewModel.dispatch(SharedThreadIntent.ApplyActionCard(messageId, card)) },
                 onNoPermission = { result -> routeAuthRequired(result) },
-                loadWebUrl = {
-                    (
-                        BridgeSettingsPlatformCapabilities(bridge = bridge, copiedMessage = actionCardSpecCopiedLabel)
-                            .loadDeveloper() as? DataResult.Content
-                    )?.data?.webUrl
-                },
+                loadWebUrl = { sharedStores.apiEnvironmentStore.current().webUrl },
                 openInBrowser = { url ->
-                    bridge.log("thread_action_card_open_in_web")
-                    bridge.hostCapabilities.openUrlInBrowser(url)
+                    openThreadActionCardWebUrl(
+                        url = url,
+                        activeWebUrl = sharedStores.apiEnvironmentStore.current().webUrl,
+                        pager = pager,
+                        storeScope = storeScope,
+                        bridge = bridge,
+                    )
                 },
                 onApproved = RaftRatingPrompt::onActionCardApproved,
             )
@@ -3970,9 +4023,9 @@ private fun SharedThreadRouteContentContent(
                 is SharedTasksEvent.OperationFailed -> {
                     when {
                         event.code.startsWith("tasks_status") && !routeAuthRequired(event.code) ->
-                            bridge.toast(unableToUpdateTaskLabel)
+                            bridge.errorToast(unableToUpdateTaskLabel, event.traceId)
                         event.code.startsWith("tasks_assign") && !routeAuthRequired(event.code) ->
-                            bridge.toast(unableToUpdateAssigneeLabel)
+                            bridge.errorToast(unableToUpdateAssigneeLabel, event.traceId)
                     }
                 }
             }
@@ -3985,9 +4038,9 @@ private fun SharedThreadRouteContentContent(
                 is SharedTasksEvent.OperationFailed -> {
                     when {
                         event.code.startsWith("tasks_status") && !routeAuthRequired(event.code) ->
-                            bridge.toast(unableToUpdateTaskLabel)
+                            bridge.errorToast(unableToUpdateTaskLabel, event.traceId)
                         event.code.startsWith("tasks_assign") && !routeAuthRequired(event.code) ->
-                            bridge.toast(unableToUpdateAssigneeLabel)
+                            bridge.errorToast(unableToUpdateAssigneeLabel, event.traceId)
                     }
                 }
             }
@@ -4124,7 +4177,6 @@ private fun SharedThreadRouteContentContent(
             headerDisplayModel.subtitle,
             renderedPayload.surfaceKind,
             renderedPayload.parentSurfaceKind,
-            taskV2Enabled,
             assistantPanelContext
         ) {
             scopedBaseComposerState.toThreadComposerSurface(
@@ -4132,7 +4184,7 @@ private fun SharedThreadRouteContentContent(
                 parentChannelId = renderedPayload.parentChannelId,
                 mentionChannelLabel = headerDisplayModel.threadComposerMentionScopeChannelLabel(),
                 memberSuggestionHeadersVisible = renderedPayload.threadComposerMemberSuggestionHeadersVisible()
-            ).withTaskV2(taskV2Enabled).copy(assistantContext = assistantPanelContext)
+            ).withTaskV2().copy(assistantContext = assistantPanelContext)
         }
     fun currentComposerPayload(): RaftThreadComposerPayload =
         scopedBaseComposerState.withThreadComposerDraftState(
@@ -4250,28 +4302,36 @@ private fun SharedThreadRouteContentContent(
         threadRouteAttachmentActions.requestInlineAudioPreview(attachmentId, force)
     fun requestInlineVideoPreview(attachmentId: String, force: Boolean = false): Unit =
         threadRouteAttachmentActions.requestInlineVideoPreview(attachmentId, force)
-    fun openComposerAttachmentPreview(attachmentId: String): Boolean =
-        threadRouteAttachmentActions.openComposerAttachmentPreview(attachmentId)
-    fun openTrackedComposerImagePreview(payload: RaftFilePreviewPayload): Boolean =
-        threadRouteAttachmentActions.openTrackedComposerImagePreview(payload)
-    imageLightboxRequest?.let { request ->
-        RaftImageLightbox(
-            request = request,
-            resolveFullUrl = { attachmentId ->
-                when (val response = dataSource.attachmentUrl(DataRequestPriority.Visible, attachmentId, disposition = "inline")) {
-                    is ThreadApiResult.Success -> response.data.url
-                    is ThreadApiResult.Failure -> {
-                        bridge.log("thread_image_lightbox status=url_failed attachmentId=${attachmentId.take(8)} code=${response.code}")
-                        null
+    // Dialogs and pages over the thread are local composables only to keep this method small: each is a
+    // JVM method of its own. Local composables are not restartable, so they run whenever this one does.
+    @Composable
+    fun ThreadImageLightboxSection() {
+        imageLightboxRequest?.let { request ->
+            RaftImageLightbox(
+                request = request,
+                resolveFullUrl = { attachmentId ->
+                    when (val response = dataSource.attachmentUrl(DataRequestPriority.Visible, attachmentId, disposition = "inline")) {
+                        is ThreadApiResult.Success -> response.data.url
+                        is ThreadApiResult.Failure -> {
+                            bridge.log("thread_image_lightbox status=url_failed attachmentId=${attachmentId.take(8)} code=${response.code}")
+                            null
+                        }
                     }
-                }
-            },
-            onDismiss = { imageLightboxRequest = null },
-            onDownload = { attachment -> saveAttachmentExternally(attachment) },
-            onOpenWith = { attachment -> openAttachmentExternally(attachment) },
-            onEdit = { attachment -> viewerImageEditAttachment = attachment }
-        )
+                },
+                onDismiss = { imageLightboxRequest = null },
+                onDownload = { attachment -> saveAttachmentExternally(attachment) },
+                onShare =
+                    if (raftPlatformSupportsPublicAttachmentDownloadReadback()) {
+                        { attachment -> threadRouteAttachmentActions.openAttachmentExternally(attachment, share = true) }
+                    } else {
+                        null
+                    },
+                onOpenWith = { attachment -> openAttachmentExternally(attachment) },
+                onEdit = { attachment -> viewerImageEditAttachment = attachment }
+            )
+        }
     }
+    ThreadImageLightboxSection()
     // Render-axis signature: only the fields the render log actually reads.
     // Members / settings / actions / realtime metadata / files payload
     // are intentionally excluded so they do not retrigger the render log.
@@ -4693,8 +4753,8 @@ private fun SharedThreadRouteContentContent(
             localizedAttachmentUploadFailedDetailFn = { detail -> localizedAttachmentUploadFailedDetail(detail) },
         )
     val threadRouteAttachmentUploader = buildThreadRouteAttachmentUploader()
-    fun showAttachmentUploadFailure(errorCode: String): Unit =
-        threadRouteAttachmentUploader.showAttachmentUploadFailure(errorCode)
+    fun showAttachmentUploadFailure(errorCode: String, traceId: String? = null): Unit =
+        threadRouteAttachmentUploader.showAttachmentUploadFailure(errorCode, traceId)
     suspend fun uploadComposerAttachmentFiles(
         files: List<PlatformFile>,
         replaceAttachmentId: String? = null,
@@ -4715,11 +4775,12 @@ private fun SharedThreadRouteContentContent(
     // A lambda, not `::uploadComposerAttachmentFiles`: a local function reference compares equal
     // across compositions (it ignores what it captured), so rememberUpdatedState would keep the
     // first frame's copy (found by Reef in the alpha's dex).
-    val latestUploadComposerAttachmentFiles by rememberUpdatedState<
+    val latestUploadComposerAttachmentFilesState = rememberUpdatedState<
         suspend (List<PlatformFile>, String?, Boolean, Map<String, String>) -> Boolean
     > { files, replaceAttachmentId, requireAllFiles, replaceAttachmentIdsByLocalId ->
         uploadComposerAttachmentFiles(files, replaceAttachmentId, requireAllFiles, replaceAttachmentIdsByLocalId)
     }
+    val latestUploadComposerAttachmentFiles by latestUploadComposerAttachmentFilesState
     // The draft's uploads, wherever they were started: progress, the ready attachment, or Retry.
     val composerDraftUploadApplier =
         remember(composerDraftViewModel) { RaftComposerDraftUploadApplier(log = { message -> bridge.logWarn(message) }) }
@@ -4746,7 +4807,12 @@ private fun SharedThreadRouteContentContent(
                     attachmentUploadFilesByLocalId =
                         attachmentUploadFilesByLocalId.withoutThreadAttachmentUploadFile(upload.localAttachmentId, draftKey)
                 },
-                onFailed = { _, errorCode -> showAttachmentUploadFailure(errorCode) },
+                onFailed = { upload, errorCode ->
+                    showAttachmentUploadFailure(
+                        errorCode,
+                        (upload.outcome as? RaftComposerDraftUploadOutcome.Failed)?.traceId
+                    )
+                },
                 onDelivered = { upload ->
                     attachmentUploads.markDelivered(draftKey, upload.localAttachmentId, upload.attemptToken)
                 }
@@ -4778,287 +4844,93 @@ private fun SharedThreadRouteContentContent(
             }
         onDispose { subscription.close() }
     }
-    viewerImageEditAttachment?.let { attachment ->
-        RaftViewerImageEditor(
-            attachment = attachment,
-            desktop = imageLightboxEnabled,
-            resolveFullUrl = { attachmentId ->
-                when (val response = dataSource.attachmentUrl(DataRequestPriority.Visible, attachmentId, disposition = "inline")) {
-                    is ThreadApiResult.Success -> response.data.url
-                    is ThreadApiResult.Failure -> {
-                        bridge.log("thread_viewer_image_edit status=url_failed attachmentId=${attachmentId.take(8)} code=${response.code}")
-                        null
-                    }
-                }
-            },
-            onCancel = { viewerImageEditAttachment = null },
-            onSaveFailed = { bridge.toast(genericThreadErrorLabel) },
-            onEdited = { fileRef ->
-                viewerImageEditSequence += 1
-                val edited = raftViewerEditedImageFile(fileRef, attachment.name, viewerImageEditSequence)
-                viewerImageEditAttachment = null
-                imageLightboxRequest = null
-                bridge.log("thread_viewer_image_edit status=done attachmentId=${attachment.id.take(8)}")
-                coroutineScope.launch {
-                    val prepared =
-                        threadComposerCompressPastedImages(
-                            files = listOf(edited),
-                            originalImage = composerDraftViewModel.state.value.originalImage,
-                            compress = { file ->
-                                val response =
-                                    bridge.compressThreadImage(
-                                        fileRef = file.fileRef.orEmpty(),
-                                        fileName = file.fileName,
-                                        mimeType = file.mimeType?.ifBlank { null } ?: "image/png",
-                                    )
-                                (parseRaftFilePreviewCompressedImageResult(response)
-                                    as? RaftFilePreviewCompressedImageResult.Success)?.file
-                            },
-                            retire = { refs ->
-                                bridge.retireFilePreviewTemporaryFiles(
-                                    sessionId = "thread-viewer-edit-$threadInstanceKey",
-                                    fileRefs = refs
-                                )
-                            },
-                            log = bridge::log,
-                        )
-                    latestUploadComposerAttachmentFiles(prepared, null, false, emptyMap())
-                    composerDraftViewModel.dispatch(SharedThreadComposerDraftIntent.RequestFocus)
-                }
-            },
-        )
-    }
-    fun performComposerSend(): Boolean {
-        val currentComposer = currentComposerPayload()
-        val currentDraftState = composerDraftViewModel.state.value
-        val composerInstanceId = currentComposer.instanceId.ifBlank { payload.instanceId }
-        val threadId = composerSurface.sendChannelId
-        val externalShareAttachments =
-            currentComposer.pendingAttachments.filter { attachment -> attachment.source == "external_share" }
-        val externalShareSources = currentDraftState.externalShareSources
-        val session = currentSession
-        if (
-            externalShareSources.any { source ->
-                session == null || source.accountId != session.user.id || source.serverId != session.currentServerId
-            } || externalShareAttachments.any { attachment ->
-                session == null ||
-                    attachment.externalShareAccountId != session.user.id ||
-                    attachment.externalShareServerId != session.currentServerId
-            }
-        ) {
-            bridge.logWarn("external_share_send_rejected reason=authority_changed_before_message_send")
-            return false
-        }
-        val draftText = currentDraftState.seedText.trim()
-        val attachmentIds = currentComposer.pendingAttachments.readyThreadAttachmentIdsForSend()
-        val hasBlockingAttachmentUpload = currentComposer.pendingAttachments.hasBlockingThreadAttachmentUpload()
-        val hasFailedAttachmentUpload = currentComposer.pendingAttachments.hasFailedThreadAttachmentUpload()
-        val gateBlockReason =
-            when {
-                !payload.canSend -> "payload_can_send_false"
-                threadId == null -> "missing_send_channel"
-                hasFailedAttachmentUpload -> "attachment_upload_failed"
-                hasBlockingAttachmentUpload -> "attachment_upload_in_progress"
-                draftText.isBlank() && attachmentIds.isEmpty() -> "empty_draft"
-                else -> null
-            }
-        if (gateBlockReason != null) {
-            bridge.log(
-                "thread_composer_send_gate result=blocked reason=$gateBlockReason " +
-                    "surface=${payload.surfaceKind} status=${payload.status} canSend=${payload.canSend} " +
-                    "sendChannelId=${threadId.orEmpty()} hasText=${draftText.isNotBlank()} " +
-                    "attachments=${attachmentIds.size} blockingAttachments=$hasBlockingAttachmentUpload " +
-                    "failedAttachments=$hasFailedAttachmentUpload " +
-                    "attachmentStates=${currentComposer.pendingAttachments.threadComposerSendGateAttachmentStates()}"
-            )
-            return false
-        }
-        val sendAuthority =
-            dataSource.captureThreadLocalSendAuthority(
-                state = threadViewModel.state.value,
-                mountedOwnerProvenance = replyCacheProvenance
-            )
-                ?: run {
-                    bridge.logWarn("thread_composer_send_rejected reason=missing_owner_provenance")
-                    return false
-                }
-        val pendingAttachments = currentComposer.pendingAttachments
-        val ownedTemporaryFileRefs =
-            threadPendingSendOwnedTemporaryFileRefs(
-                attachments = currentDraftState.uploadedAttachments,
-                attachmentIds = attachmentIds
-            )
-        // The assistant's DM in its panel: a message with text carries the conversation the panel
-        // was opened from, its token on a line of its own (web MessageInput withComposerReference).
-        val assistantContextAttachment = composerSurface.assistantContext
-        val assistantContextToken = assistantContextTokenForSend(draftText, assistantContextAttachment?.context)
-        val composedBody =
-            threadComposerMessageBodyForSend(
-                draftText = draftText,
-                attachmentCount = pendingAttachments.size
-            )
-        val pendingContext =
-            RaftThreadPendingSendContext(
-                channelId = threadId ?: return false,
-                body = withAssistantContextReference(composedBody, assistantContextToken),
-                asTask = currentDraftState.seedAsTask && composerSurface.sendsAsTask,
-                attachmentIds = attachmentIds,
-                attachments = pendingAttachments,
-                ownedTemporaryFileRefs = ownedTemporaryFileRefs,
-                externalShareSources = externalShareSources,
-                mentionChannelId = composerSurface.mentionScopeChannelId,
-                parentMessageId = composerSurface.parentMessageId,
-                streamChannelId = composerSurface.streamChannelId,
-                memberScopedMentions = payload.memberScopedMentions,
-                randomId = newThreadSendRandomId(),
-                // Only picks whose `@handle` is still in the text go out; the list is journaled as is.
-                mentions = currentDraftState.structuredMentions.visibleStructuredMentionsIn(draftText),
-            )
-        val localMessageId = ThreadLocalSendNextId.next(composerInstanceId)
-        val localTimestampLabel = buildThreadPendingSendTimestampLabel(bridge, payload.nowEpochMillis)
-        val localMessage =
-            buildThreadPendingSendMessage(
-                localMessageId = localMessageId,
-                context = pendingContext,
-                session = currentSession,
-                timestampLabel = localTimestampLabel
-            )
-        if (
-            !threadViewModel.admitLocalSend(
-                message = localMessage,
-                expectedProvenance = sendAuthority.provenance,
-                expectedRoute = sendAuthority.route,
-                composerSeed =
-                    ThreadLocalSendComposerSeed(
-                        // What the composer held: the reference token was never in it.
-                        sentBody = composedBody,
-                        sentAttachmentIds = pendingContext.attachmentIds.toSet()
+    @Composable
+    fun ThreadViewerImageEditSection() {
+        viewerImageEditAttachment?.let { attachment ->
+            ThreadViewerImageEditHost(
+                attachment = attachment,
+                desktop = imageLightboxEnabled,
+                threadInstanceKey = threadInstanceKey,
+                composerInstanceId = currentComposerPayload().instanceId.ifBlank { payload.instanceId },
+                bridge = bridge,
+                dataSource = dataSource,
+                composerDraftViewModel = composerDraftViewModel,
+                coroutineScope = coroutineScope,
+                genericThreadErrorLabel = genericThreadErrorLabel,
+                nextEditSequence = {
+                    viewerImageEditSequence += 1
+                    viewerImageEditSequence
+                },
+                onCancel = { viewerImageEditAttachment = null },
+                onDismissModals = {
+                    viewerImageEditAttachment = null
+                    imageLightboxRequest = null
+                },
+                uploadComposerAttachmentFiles = { files, replaceAttachmentId, requireAllFiles, replaceAttachmentIdsByLocalId ->
+                    latestUploadComposerAttachmentFiles(
+                        files,
+                        replaceAttachmentId,
+                        requireAllFiles,
+                        replaceAttachmentIdsByLocalId,
                     )
+                },
             )
-        ) {
-            bridge.logWarn("thread_composer_send_rejected reason=owner_changed_before_admission")
-            return false
         }
-        composerDraftViewModel.dispatch(SharedThreadComposerDraftIntent.BeginSend)
-        // The message took the reference (it is in the journaled body, retries included): the chip clears.
-        if (assistantContextToken != null) assistantContextAttachment?.detach()
-        // The journal row now owns crash protection for this send (restart adoption,
-        // failed row with retry), so the persisted composer draft must be cleared at
-        // admission — otherwise a mid-send process kill leaves a second copy of the same
-        // text that reloads into the composer and invites a duplicate send (#1134 cell 3,
-        // Argus ruling). Journal-write failure keeps the draft because admission already
-        // returned false above. CompleteSend only clears the durable record; the send
-        // completion below still dispatches its own CompleteSend for mention actions.
-        composerDraftViewModel.dispatch(SharedThreadComposerDraftIntent.CompleteSend())
-        // The draft went out with its ready attachments: forget its uploads (the send gate let it
-        // through only with none in flight).
-        attachmentUploads.retireDraft(currentDraftState.draftKey, RaftAttachmentUploadCancelReason.DraftSent)
-        // Before the request: the canonical echo may beat the HTTP response, and it must already
-        // resolve these attachment ids to the local image instead of downloading it again.
-        build.raft.app.image.RaftSentAttachmentLocalImages.registry.register(
-            threadSentAttachmentLocalImageSources(
-                attachments = currentDraftState.uploadedAttachments,
-                attachmentIds = attachmentIds
-            )
-        )
-        sendPendingLocalMessage(
-            localMessageId = localMessageId,
-            context = pendingContext,
-            startedFromComposer = true,
-            authority = sendAuthority
-        )
-        return true
     }
+    ThreadViewerImageEditSection()
+    // The composer's send, annotation, picked files and events (ThreadRouteComposerActions.kt), built every
+    // composition by a local function (a method of its own, so this one only loads what it captures for
+    // the call). The states they read and write stay here.
+    fun buildThreadRouteComposerActions(): ThreadRouteComposerActions =
+        ThreadRouteComposerActions(
+            bridge = data.bridge,
+            dataSource = data.dataSource,
+            membersStore = data.membersStore,
+            serverMembersStore = data.serverMembersStore,
+            composerDraftPersistSlice = data.composerDraftPersistSlice,
+            coroutineScope = coroutineScope,
+            threadViewModel = threadViewModel,
+            renderSliceState = renderSliceState,
+            payload = payload,
+            threadInstanceKey = threadInstanceKey,
+            currentSession = currentSession,
+            currentServerId = currentServerId,
+            replyCacheProvenance = replyCacheProvenance,
+            threadMembersServerId = threadMembersServerId,
+            threadLimitLocked = threadLimitLocked,
+            memberSuggestionScopeChannelId = memberSuggestionScopeChannelId,
+            memberSuggestionScopedMentions = memberSuggestionScopedMentions,
+            labels = labels,
+            userFacingErrorLabels = userFacingErrorLabels,
+            composerDraftViewModel = composerDraftViewModel,
+            composerKeyboardHandoff = composerKeyboardHandoff,
+            composerSurface = composerSurface,
+            attachmentUploads = attachmentUploads,
+            attachmentUploadOrchestrator = attachmentUploadOrchestrator,
+            pendingMentionActionBatchRequestGate = pendingMentionActionBatchRequestGate,
+            threadRouteAttachmentActions = threadRouteAttachmentActions,
+            threadRouteAttachmentUploader = threadRouteAttachmentUploader,
+            adaptivePageKeyboardInsetDpState = adaptivePageKeyboardInsetDpState,
+            attachmentUploadFilesByLocalIdState = attachmentUploadFilesByLocalIdState,
+            externalShareSendRequestedState = externalShareSendRequestedState,
+            externalShareExpectedAuthorityState = externalShareExpectedAuthorityState,
+            composerImageActionCounterState = composerImageActionCounterState,
+            latestUploadComposerAttachmentFilesState = latestUploadComposerAttachmentFilesState,
+            currentComposerPayloadFn = { currentComposerPayload() },
+            sendPendingLocalMessageFn = { localMessageId, context, startedFromComposer, authority ->
+                sendPendingLocalMessage(localMessageId, context, startedFromComposer, authority)
+            },
+            localizedAttachmentUploadFailedDetailFn = { detail -> localizedAttachmentUploadFailedDetail(detail) },
+            localizedAttachmentSkippedManyFn = { count -> localizedAttachmentSkippedMany(count) },
+        )
+    val threadRouteComposerActions = buildThreadRouteComposerActions()
+    fun performComposerSend(): Boolean = threadRouteComposerActions.performComposerSend()
     // The external-share auto-send below runs in an effect keyed only on the thread: it must
     // send with the latest session, provenance and upload store, not the first frame's (null
     // before the session loads, so the queued share was silently never sent).
     val latestPerformComposerSend by rememberUpdatedState<() -> Boolean> { performComposerSend() }
-    fun handleComposerSendRequest(request: ThreadComposerSendRequest): ThreadComposerSendAdmission {
-        if (externalShareSendRequested) {
-            bridge.log("external_share_send_duplicate_drop reason=upload_chain_active")
-            return ThreadComposerSendAdmission.Deferred
-        }
-        // Reconcile the explicit native tap-time snapshot before any host gate reads the draft.
-        // This closes the window where UIKit already displays a final character while its normal
-        // text-change callback is still queued for Compose.
-        composerDraftViewModel.dispatch(
-            SharedThreadComposerDraftIntent.Change(
-                seedText = request.value.text,
-                seedAsTask = request.asTask,
-            )
-        )
-        val currentDraftState = composerDraftViewModel.state.value
-        bridge.log(
-            "thread_composer_send_snapshot session=${request.editorSessionId} " +
-                "textLen=${request.value.text.length} textBlank=${request.value.text.isBlank()} " +
-                "asTask=${request.asTask}"
-        )
-        val queuedExternalAttachments =
-            currentDraftState.uploadedAttachments.filter { attachment ->
-                attachment.source == "external_share" &&
-                    attachment.status == "queued" &&
-                    attachment.id !in currentDraftState.removedAttachmentIds
-            }
-        val externalShareSources = currentDraftState.externalShareSources
-        if (externalShareSources.isNotEmpty()) {
-            externalShareSendRequested = true
-            coroutineScope.launch {
-                val expected = dataSource.captureExternalShareSendAuthority()
-                val authorityMatches =
-                    expected != null &&
-                        externalShareSources.all { source ->
-                            source.accountId == expected.accountId &&
-                                source.serverId == expected.serverId
-                        }
-                if (!authorityMatches) {
-                    externalShareSendRequested = false
-                    externalShareExpectedAuthority = null
-                    bridge.logWarn("external_share_send_rejected reason=authority_changed")
-                    bridge.toast(genericThreadErrorLabel)
-                    return@launch
-                }
-                externalShareExpectedAuthority = expected
-                if (queuedExternalAttachments.isNotEmpty()) {
-                    val files =
-                        queuedExternalAttachments.mapNotNull { attachment ->
-                            attachmentUploadFilesByLocalId.threadAttachmentUploadFile(
-                                attachment.id,
-                                normalizeThreadAttachmentUploadDraftKey(currentDraftState.draftKey)
-                            )
-                        }
-                    if (files.size != queuedExternalAttachments.size) {
-                        externalShareSendRequested = false
-                        externalShareExpectedAuthority = null
-                        bridge.logWarn("external_share_send_rejected reason=missing_file_ref")
-                        bridge.toast(attachmentRetryUnavailableLabel)
-                        return@launch
-                    }
-                    val uploadStarted = latestUploadComposerAttachmentFiles(files, null, false, emptyMap())
-                    if (!uploadStarted) {
-                        externalShareSendRequested = false
-                        externalShareExpectedAuthority = null
-                    }
-                } else {
-                    val stillCurrent = dataSource.matchesExternalShareSendAuthority(expected)
-                    externalShareSendRequested = false
-                    externalShareExpectedAuthority = null
-                    if (stillCurrent) {
-                        performComposerSend()
-                    } else {
-                        bridge.logWarn(
-                            "external_share_send_rejected reason=auth_generation_changed_before_send"
-                        )
-                    }
-                }
-            }
-            return ThreadComposerSendAdmission.Deferred
-        }
-        return if (performComposerSend()) {
-            ThreadComposerSendAdmission.Started
-        } else {
-            ThreadComposerSendAdmission.Rejected
-        }
-    }
+    fun handleComposerSendRequest(request: ThreadComposerSendRequest): ThreadComposerSendAdmission =
+        threadRouteComposerActions.handleComposerSendRequest(request)
     LaunchedEffect(composerDraftViewModel, threadInstanceKey) {
         composerDraftViewModel.state.collect { draftState ->
             if (!externalShareSendRequested) return@collect
@@ -5091,101 +4963,8 @@ private fun SharedThreadRouteContentContent(
             }
         }
     }
-    fun openComposerImageAnnotation(files: List<PlatformFile>) {
-        val firstFile = files.firstOrNull() ?: return
-        val currentDraftState = composerDraftViewModel.state.value
-        composerImageActionCounter += 1
-        val actionId = "composer-image-${threadInstanceKey}-${composerImageActionCounter}-${firstFile.id.take(12)}"
-        val opened =
-            openTrackedComposerImagePreview(
-                threadComposerImageAnnotationPayload(
-                    threadInstanceKey = threadInstanceKey,
-                    actionId = actionId,
-                    files = files,
-                    originalImage = currentDraftState.originalImage,
-                ) ?: return
-            )
-        if (opened) composerKeyboardHandoff.pageOpened()
-    }
-    /**
-     * A host files envelope from the attach buttons' picker or a drop on the composer
-     * (`threadAttachmentDrop`): one admission path for both, so a dropped file is admitted, sized
-     * and reported exactly like a picked one.
-     */
-    suspend fun admitComposerPickedAttachments(action: String, response: JSONObject?) {
-        val files = parseSharedThreadPickedPlatformFiles(response)
-        bridge.log(
-            "thread_attachment_picker_result action=$action code=${response?.optInt("code", -1) ?: -1} " +
-                "files=${files.size} errorCode=${response?.optString("errorCode").orEmpty()} " +
-                "bodyBytes=${response?.optString("bodyText").orEmpty().encodeToByteArray().size}"
-        )
-        // Native generic pickers may finish a mixed selection with a readable
-        // subset and a compression error (code 206).  Never upload that subset:
-        // doing so would silently drop the failed image while the user believes
-        // the whole selection was admitted.  Retire every ref exposed by the
-        // envelope before returning, including refs from successful files and
-        // any future error/fileRefs compatibility fields.
-        if (threadAttachmentPickerHasCompressionFailure(response)) {
-            val cleanupRefs = threadAttachmentPickerCompressionFailureFileRefs(response)
-            if (cleanupRefs.isNotEmpty()) {
-                bridge.retireFilePreviewTemporaryFiles(
-                    sessionId = "thread-picker-compression-$threadInstanceKey",
-                    fileRefs = cleanupRefs.toList()
-                )
-            }
-            bridge.logWarn(
-                "thread_attachment_picker_rejected reason=image_compression_failed " +
-                    "cleanupRefs=${cleanupRefs.size}"
-            )
-            bridge.toast(
-                localizedAttachmentUploadFailedDetail(
-                    userFacingErrorLabels.forErrorCode(
-                        RAFT_FILE_PREVIEW_IMAGE_COMPRESSION_ERROR_CODE
-                    ) ?: genericThreadErrorLabel
-                )
-            )
-            return
-        }
-        if (files.isEmpty()) {
-            val errorCode = response?.optString("errorCode")?.takeIf { it.isNotBlank() }
-            when {
-                errorCode != null ->
-                    bridge.toast(
-                        localizedAttachmentUploadFailedDetail(
-                            userFacingErrorLabels.forErrorCode(errorCode) ?: genericThreadErrorLabel
-                        )
-                    )
-                response == null ->
-                    bridge.toast(attachmentPickerUnavailableLabel)
-            }
-            return
-        }
-        val skippedCount = response?.optInt("skippedCount", 0) ?: 0
-        if (skippedCount > 0) {
-            bridge.toast(
-                if (skippedCount == 1) {
-                    attachmentSkippedOneLabel
-                } else {
-                    localizedAttachmentSkippedMany(skippedCount)
-                }
-            )
-        }
-        when (
-            resolveThreadPickedAttachmentComposerAction(
-                action = action,
-                fileCount = files.size,
-                allFilesAreImages = raftComposerImagePickerFilesAreStrictImages(files),
-            )
-        ) {
-            ThreadPickedAttachmentComposerAction.OpenImageAnnotation ->
-                // The picker-reported bytes are the source image, not the final
-                // editor output.  Defer the server-size gate until the confirmed
-                // PNG/original or compressor-produced JPEG reaches upload.
-                openComposerImageAnnotation(files)
-            ThreadPickedAttachmentComposerAction.UploadToComposer -> latestUploadComposerAttachmentFiles(files, null, false, emptyMap())
-            ThreadPickedAttachmentComposerAction.None -> Unit
-        }
-    }
+    suspend fun admitComposerPickedAttachments(action: String, response: JSONObject?): Unit =
+        threadRouteComposerActions.admitComposerPickedAttachments(action, response)
     DisposableEffect(eventBus, threadInstanceKey) {
         // Event-bus callbacks can be re-entrant and may be dispatched from different host turns.
         // Keep the callback side-effect-free: one sequential consumer owns parsing, accumulation,
@@ -5548,25 +5327,6 @@ private fun SharedThreadRouteContentContent(
             }
         }
     }
-    suspend fun refreshComposerMemberSuggestions(reason: String) {
-        val store = serverMembersStore ?: return
-        val serverId = threadMembersServerId ?: currentServerId?.let(::ServerId) ?: return
-        bridge.log(
-            "thread_composer_member_suggestions_refresh reason=$reason " +
-                "serverId=${serverId.value} mentionChannelId=${memberSuggestionScopeChannelId.orEmpty()} " +
-                "memberScoped=$memberSuggestionScopedMentions"
-        )
-        store.ensureMemberSuggestionsForServer(
-            serverId = serverId,
-            mentionChannelId = memberSuggestionScopeChannelId,
-            memberScopedMentions = memberSuggestionScopedMentions,
-            force = true
-        )
-    }
-
-    suspend fun refreshComposerMemberSuggestionsAfterMembershipMutation() {
-        refreshComposerMemberSuggestions(reason = "membership_mutation")
-    }
 
     fun openCanonicalTaskWith(
         task: TaskSummary,
@@ -5608,8 +5368,21 @@ private fun SharedThreadRouteContentContent(
     val latestTaskOpenServerId by rememberUpdatedState(currentServerId)
     val openCanonicalTask: (TaskSummary, String) -> Unit = open@{ task, source ->
         // Web useOpenTask: the legacy panel, or the empty conversation of a task without one
-        // (opening never creates it), or a page.
-        task.taskOpenSurface(taskV2Enabled)?.let { surface ->
+        // (opening never creates it — pushed as its own page when the host supports it), or a page.
+        task.taskOpenSurface()?.let { surface ->
+            val openPending = callbacks.onOpenPendingTask
+            if (surface is TaskOpenSurface.Pending && openPending != null) {
+                bridge.log("thread_task_open result=pending_page source=$source taskId=${task.id.value}")
+                val channelJoined =
+                    task.channelId?.takeIf { it == renderedThread.joinChannelTargetId() }?.let { renderedThread.joined }
+                val canWriteChannel =
+                    renderedThread.surfaceKind != RaftThreadSurfaceKind.Channel ||
+                        task.channelId == null ||
+                        task.channelId != renderedThread.joinChannelTargetId() ||
+                        renderedThread.channelTaskWritesShown()
+                openPending(surface.task, currentServerId, channelJoined, canWriteChannel)
+                return@open
+            }
             bridge.log("thread_task_open result=surface kind=${surface::class.simpleName} source=$source taskId=${task.id.value}")
             taskOpenSurfaceFlow.open(surface)
             return@open
@@ -5618,7 +5391,7 @@ private fun SharedThreadRouteContentContent(
             bridge.log("thread_task_open result=ignored reason=in_flight source=$source taskId=${task.id.value}")
             return@open
         }
-        if (task.taskOpenTarget(taskV2Enabled) == TaskOpenTarget.ResolveConversation) {
+        if (task.taskOpenTarget() == TaskOpenTarget.ResolveConversation) {
             // Task v2: a joint surface's local conversation id comes from the server first.
             coroutineScope.launch {
                 try {
@@ -5630,7 +5403,6 @@ private fun SharedThreadRouteContentContent(
                                 task = task,
                                 serverId = currentServerId.orEmpty(),
                                 tasksDataSource = tasksDataSource,
-                                taskV2Enabled = taskV2Enabled,
                                 log = bridge::log,
                             ),
                     )
@@ -5644,140 +5416,144 @@ private fun SharedThreadRouteContentContent(
         }
     }
 
-    TaskOpenSurfaceHost(
-        flow = taskOpenSurfaceFlow,
-        detailsRepository = taskConversation.detailsRepository,
-        membersStore = serverMembersStore,
-        serverId = currentServerId,
-        hostDirectMessage = renderedThread.threadShareIsDirectMessage(),
-        // The conversation page's head writes: the same task channel store, gates and failure toasts.
-        editing =
-            TaskPageEditing(
-                authStore = authStore,
-                tasksDataSource = tasksDataSource,
-                tasksDataStore = tasksDataStore,
-                onFailed = { code ->
-                    when {
-                        code.startsWith("tasks_status") && !routeAuthRequired(code) -> bridge.toast(unableToUpdateTaskLabel)
-                        code.startsWith("tasks_assign") && !routeAuthRequired(code) -> bridge.toast(unableToUpdateAssigneeLabel)
-                    }
-                },
-                log = { bridge.log(it) },
-            ),
-        hostVisible = active,
-        taskV2Enabled = taskV2Enabled,
-        onConversationArrived = { arrived ->
-            bridge.log("thread_task_pending_conversation_arrived taskId=${arrived.id.value}")
-            openCanonicalTask(arrived, "task_conversation_arrived")
-        },
-        timeContext = timeContextProvider.current ?: renderedThread.toRaftTimeCapabilities().staticContext(),
-        // Web canWriteTasksInChannel: known for the channel this page shows (its task actions' gate);
-        // another channel is not known here and stays writable.
-        canWriteTaskChannel = { channelId ->
-            renderedThread.surfaceKind != RaftThreadSurfaceKind.Channel ||
-                channelId == null ||
-                channelId != renderedThread.joinChannelTargetId() ||
-                renderedThread.channelTaskWritesShown()
-        },
-        // Known for the channel this page shows (web ThreadPanel `parentJoined`); else not known here.
-        joined = { task ->
-            task.channelId?.takeIf { it == renderedThread.joinChannelTargetId() }?.let { renderedThread.joined }
-        },
-        onJoin = { task ->
-            val channelId = task.channelId
-            // slock #12426: a join already in flight sends no second request.
-            if (channelId != null && ThreadChannelJoinsInFlight.begin(channelId)) {
-                coroutineScope.launch {
-                    try {
-                        when (val result = dataSource.joinChannel(channelId)) {
-                            is DataResult.Content -> {
-                                threadViewModel.dispatch(SharedThreadIntent.ApplyChannelJoined(result.data.channelId.value))
-                                currentSession?.currentServerId?.takeIf(String::isNotBlank)?.let { serverId ->
-                                    realtimeRoomLeaseRegistry.markJoinedByUser(serverId, result.data.channelId.value)
-                                    sharedHomeStore?.dispatch(channelJoinedHomeIntent(renderedThread, serverId, result.data.channelId))
-                                    sharedHomeStore?.dispatch(SharedHomeIntent.Refresh)
-                                }
-                                realtimeEvents.joinChannel(result.data.channelId.value, currentSession?.currentServerId)
-                                bridge.toast(joinedChannelLabel)
-                            }
-                            is DataResult.NoPermission ->
-                                if (!routeAuthRequired(result)) bridge.errorToast(unableToJoinChannelLabel, result.blocker.traceId)
-                            is DataResult.Error -> bridge.errorToast(unableToJoinChannelLabel, result.error)
-                            else -> bridge.toast(unableToJoinChannelLabel)
+    @Composable
+    fun ThreadTaskOpenSurfaceSection() {
+        TaskOpenSurfaceHost(
+            flow = taskOpenSurfaceFlow,
+            detailsRepository = taskConversation.detailsRepository,
+            membersStore = serverMembersStore,
+            serverId = currentServerId,
+            hostDirectMessage = renderedThread.threadShareIsDirectMessage(),
+            // The conversation page's head writes: the same task channel store, gates and failure toasts.
+            editing =
+                TaskPageEditing(
+                    authStore = authStore,
+                    tasksDataSource = tasksDataSource,
+                    tasksDataStore = tasksDataStore,
+                    onFailedWithTrace = { code, traceId ->
+                        when {
+                            code.startsWith("tasks_status") && !routeAuthRequired(code) -> bridge.errorToast(unableToUpdateTaskLabel, traceId)
+                            code.startsWith("tasks_assign") && !routeAuthRequired(code) -> bridge.errorToast(unableToUpdateAssigneeLabel, traceId)
                         }
-                    } finally {
-                        ThreadChannelJoinsInFlight.end(channelId)
-                    }
-                }
-            }
-        },
-        onSend = { task, text ->
-            val serverId = currentServerId?.takeIf { it.isNotBlank() }
-            if (serverId != null) {
-                coroutineScope.launch {
-                    val opened =
-                        taskOpenSurfaceFlow.send(
-                            text = text,
-                            serverId = serverId,
-                            tasksDataSource = tasksDataSource,
-                            sendMessage = { channelId, body, randomId ->
-                                dataSource.sendMessage(channelId = channelId, body = body, asTask = false, randomId = randomId)
-                            },
-                            currentServerId = { latestTaskOpenServerId },
-                            fallbackError = unableToSendTaskMessageLabel,
-                        )
-                    bridge.log("thread_task_first_send taskId=${task.id.value} opened=${opened != null}")
-                    // The conversation takes the pending page's place: no push; the pending page goes once it is covered.
-                    opened?.let { (sentTask, conversationId) ->
-                        openCanonicalTaskWith(sentTask, "task_first_send", conversationId, animated = false)
-                    }
-                }
-            }
-        },
-    )
-    // web TaskConversationDialog binds to a conversation created elsewhere (`task:updated`): the open
-    // sheet follows the store's copy of its task and gives way to the conversation page.
-    val taskOpenSurfaceTaskId = taskOpenSurfaceFlow.surface?.task?.id
-    LaunchedEffect(taskOpenSurfaceTaskId, taskProjectionSlice, serverTaskProjectionSlice, taskV2Enabled) {
-        val taskId = taskOpenSurfaceTaskId ?: return@LaunchedEffect
-        val fresh =
-            taskProjectionSlice.tasks.firstOrNull { it.id == taskId }
-                ?: serverTaskProjectionSlice.tasks.firstOrNull { it.id == taskId }
-        taskOpenSurfaceFlow.onTaskChanged(fresh, taskV2Enabled)?.let { arrived ->
-            bridge.log("thread_task_pending_conversation_arrived taskId=${arrived.id.value}")
-            openCanonicalTask(arrived, "task_conversation_arrived")
-        }
-    }
-
-    createTaskFromMessage.source?.let { source ->
-        TaskCreateFromMessageDialog(
-            source = source,
-            submitting = createTaskFromMessage.submitting,
-            errorText = createTaskFromMessage.errorText,
-            onDismiss = { createTaskFromMessage.dismiss() },
-            // Task v2 Create Task's Status field (web: shown with the task v2 flag on).
-            statusField = taskV2Enabled,
-            onSubmit = { titles, status ->
-                val serverId = currentServerId?.takeIf { it.isNotBlank() }
-                if (serverId != null && !createTaskFromMessage.submitting) {
+                    },
+                    log = { bridge.log(it) },
+                ),
+            hostVisible = active,
+            onConversationArrived = { arrived ->
+                bridge.log("thread_task_pending_conversation_arrived taskId=${arrived.id.value}")
+                openCanonicalTask(arrived, "task_conversation_arrived")
+            },
+            timeContext = timeContextProvider.dateContext ?: renderedThread.toRaftTimeCapabilities().staticContext(),
+            // Web canWriteTasksInChannel: known for the channel this page shows (its task actions' gate);
+            // another channel is not known here and stays writable.
+            canWriteTaskChannel = { channelId ->
+                renderedThread.surfaceKind != RaftThreadSurfaceKind.Channel ||
+                    channelId == null ||
+                    channelId != renderedThread.joinChannelTargetId() ||
+                    renderedThread.channelTaskWritesShown()
+            },
+            // Known for the channel this page shows (web ThreadPanel `parentJoined`); else not known here.
+            joined = { task ->
+                task.channelId?.takeIf { it == renderedThread.joinChannelTargetId() }?.let { renderedThread.joined }
+            },
+            onJoin = { task ->
+                val channelId = task.channelId
+                // slock #12426: a join already in flight sends no second request.
+                if (channelId != null && ThreadChannelJoinsInFlight.begin(channelId)) {
                     coroutineScope.launch {
-                        val outcome =
-                            createTaskFromMessage.submit(titles, serverId, tasksDataSource, tasksDataStore, unableToCreateTaskLabel, status)
-                        bridge.log(
-                            "thread_task_create_from_message result=${outcome?.let { it::class.simpleName }} " +
-                                "messageId=${source.messageId.value}"
-                        )
-                        val blocker = (outcome as? TaskCreateFromMessageOutcome.Failed)?.blocker
-                        if (blocker != null) routeAuthRequired(DataResult.NoPermission(blocker))
+                        try {
+                            when (val result = dataSource.joinChannel(channelId)) {
+                                is DataResult.Content -> {
+                                    threadViewModel.dispatch(SharedThreadIntent.ApplyChannelJoined(result.data.channelId.value))
+                                    currentSession?.currentServerId?.takeIf(String::isNotBlank)?.let { serverId ->
+                                        realtimeRoomLeaseRegistry.markJoinedByUser(serverId, result.data.channelId.value)
+                                        sharedHomeStore?.dispatch(channelJoinedHomeIntent(renderedThread, serverId, result.data.channelId))
+                                        sharedHomeStore?.dispatch(SharedHomeIntent.Refresh)
+                                    }
+                                    realtimeEvents.joinChannel(result.data.channelId.value, currentSession?.currentServerId)
+                                    bridge.toast(joinedChannelLabel)
+                                }
+                                is DataResult.NoPermission ->
+                                    if (!routeAuthRequired(result)) bridge.errorToast(unableToJoinChannelLabel, result.blocker.traceId)
+                                is DataResult.Error -> bridge.errorToast(unableToJoinChannelLabel, result.error)
+                                else -> bridge.toast(unableToJoinChannelLabel)
+                            }
+                        } finally {
+                            ThreadChannelJoinsInFlight.end(channelId)
+                        }
+                    }
+                }
+            },
+            onSend = { task, text ->
+                val serverId = currentServerId?.takeIf { it.isNotBlank() }
+                if (serverId != null) {
+                    coroutineScope.launch {
+                        val opened =
+                            taskOpenSurfaceFlow.send(
+                                text = text,
+                                serverId = serverId,
+                                tasksDataSource = tasksDataSource,
+                                sendMessage = { channelId, body, randomId ->
+                                    dataSource.sendMessage(channelId = channelId, body = body, asTask = false, randomId = randomId)
+                                },
+                                currentServerId = { latestTaskOpenServerId },
+                                fallbackError = unableToSendTaskMessageLabel,
+                            )
+                        bridge.log("thread_task_first_send taskId=${task.id.value} opened=${opened != null}")
+                        // The conversation takes the pending page's place: no push; the pending page goes once it is covered.
+                        opened?.let { (sentTask, conversationId) ->
+                            openCanonicalTaskWith(sentTask, "task_first_send", conversationId, animated = false)
+                        }
                     }
                 }
             },
         )
     }
+    ThreadTaskOpenSurfaceSection()
+    // web TaskConversationDialog binds to a conversation created elsewhere (`task:updated`): the open
+    // sheet follows the store's copy of its task and gives way to the conversation page.
+    val taskOpenSurfaceTaskId = taskOpenSurfaceFlow.surface?.task?.id
+    LaunchedEffect(taskOpenSurfaceTaskId, taskProjectionSlice, serverTaskProjectionSlice) {
+        val taskId = taskOpenSurfaceTaskId ?: return@LaunchedEffect
+        val fresh =
+            taskProjectionSlice.tasks.firstOrNull { it.id == taskId }
+                ?: serverTaskProjectionSlice.tasks.firstOrNull { it.id == taskId }
+        taskOpenSurfaceFlow.onTaskChanged(fresh)?.let { arrived ->
+            bridge.log("thread_task_pending_conversation_arrived taskId=${arrived.id.value}")
+            openCanonicalTask(arrived, "task_conversation_arrived")
+        }
+    }
 
-    // Whether this page's assistant panel is open (set from the content, where the otter lives):
-    // the page's own banner then gives way to the panel window's (threadForegroundBannerOnPage).
-    val assistantPanelOpenOnPage = remember { mutableStateOf(false) }
+    @Composable
+    fun ThreadCreateTaskFromMessageSection() {
+        createTaskFromMessage.source?.let { source ->
+            TaskCreateFromMessageDialog(
+                source = source,
+                submitting = createTaskFromMessage.submitting,
+                errorText = createTaskFromMessage.errorText,
+                onDismiss = { createTaskFromMessage.dismiss() },
+                // Task v2 Create Task's Status field (web: shown with the task v2 flag on).
+                statusField = true,
+                onSubmit = { titles, status ->
+                    val serverId = currentServerId?.takeIf { it.isNotBlank() }
+                    if (serverId != null && !createTaskFromMessage.submitting) {
+                        coroutineScope.launch {
+                            val outcome =
+                                createTaskFromMessage.submit(titles, serverId, tasksDataSource, tasksDataStore, unableToCreateTaskLabel, status)
+                            bridge.log(
+                                "thread_task_create_from_message result=${outcome?.let { it::class.simpleName }} " +
+                                    "messageId=${source.messageId.value}"
+                            )
+                            val blocker = (outcome as? TaskCreateFromMessageOutcome.Failed)?.blocker
+                            if (blocker != null) routeAuthRequired(DataResult.NoPermission(blocker))
+                        }
+                    }
+                },
+            )
+        }
+    }
+    ThreadCreateTaskFromMessageSection()
+
     val foregroundBannerServerId = currentSession?.currentServerId?.let(::ServerId)
     val foregroundBannerTopSafeArea = raftTopSafeAreaPadding()
     val onForegroundBannerClick: (RaftForegroundMessageBanner) -> Unit = { target ->
@@ -5858,7 +5634,6 @@ private fun SharedThreadRouteContentContent(
             pendingReactionKeysState = pendingReactionKeysState,
             pendingReactionVisualsState = pendingReactionVisualsState,
             pendingActionCardIdsState = pendingActionCardIdsState,
-            pendingTaskConvertMessageIdsState = pendingTaskConvertMessageIdsState,
             createTaskFromMessage = createTaskFromMessage,
             pendingThreadFollowMessageIdsState = pendingThreadFollowMessageIdsState,
             markdownRefOpenStore = markdownRefOpenStore,
@@ -5870,7 +5645,6 @@ private fun SharedThreadRouteContentContent(
             tasksViewModel = tasksViewModel,
             currentServerId = currentServerId,
             markdownTaskContextChannelId = markdownTaskContextChannelId,
-            taskV2Enabled = taskV2Enabled,
             threadMembersServerId = threadMembersServerId,
             threadMembersChannelId = threadMembersChannelId,
             linkedTasksProjection = linkedTasksProjection,
@@ -5904,8 +5678,8 @@ private fun SharedThreadRouteContentContent(
         banner =
             foregroundMessageBanner?.takeIf {
                 threadForegroundBannerOnPage(
-                    inAssistantPanel = LocalThreadAssistantPanelEmbed.current != null,
-                    assistantPanelOpen = assistantPanelOpenOnPage.value,
+                    inAssistantPanel = inAssistantPanelEmbed,
+                    assistantPanelOpen = false,
                 )
             },
         topSafeArea = foregroundBannerTopSafeArea,
@@ -5914,16 +5688,6 @@ private fun SharedThreadRouteContentContent(
         currentServerIdOverride = foregroundBannerServerId,
         onBannerClick = onForegroundBannerClick,
         onBannerDismiss = onForegroundBannerDismiss,
-        handoff =
-            RaftForegroundBannerHandoff(
-                banner = foregroundMessageBanner,
-                topSafeArea = foregroundBannerTopSafeArea,
-                serverMembersStore = serverMembersStore,
-                currentServerId = foregroundBannerServerId,
-                onClick = onForegroundBannerClick,
-                onDismiss = onForegroundBannerDismiss,
-                coveredByWindow = assistantPanelOpenOnPage,
-            ),
     ) {
         // OFF-zero-work provider set (task #20 P1, reviewed round 4): with
         // diagnostics OFF the census session Local is NOT part of the vararg
@@ -5931,10 +5695,11 @@ private fun SharedThreadRouteContentContent(
         // provider scope is unchanged by P1.
         // New Message Menu toggle: message bodies become selectable in place (ThreadInPlaceTextSelection.kt).
         // Always on where the pointer selects text (desktop: drag, double-click, Cmd+C, like the web).
+        val inPlaceSelectionEnabled = newMessageMenuEnabled || raftPlatformMessageTextPointerSelectable()
         val inPlaceTextSelectionHost =
-            remember(newMessageMenuEnabled, bridge, copiedLabel) {
+            remember(inPlaceSelectionEnabled, bridge, copiedLabel) {
                 ThreadInPlaceTextSelectionHost(
-                    enabled = newMessageMenuEnabled || raftPlatformMessageTextPointerSelectable(),
+                    enabled = inPlaceSelectionEnabled,
                     // Web: copying a selection shows nothing (artin 2026-11-02).
                     copyText = { text -> bridge.copyToPasteboard(text) }
                 )
@@ -6030,6 +5795,7 @@ private fun SharedThreadRouteContentContent(
                         conversationId = appLinkPreviewConversationId,
                         toast = { message -> bridge.toast(message) },
                         toastWithIntent = { message, intent -> bridge.toastWithIntent(message, intent) },
+                        errorToast = { message, traceId -> bridge.errorToast(message, traceId) },
                         // Workspace Artifacts links (behind workspace_artifacts_v0, read per message).
                         artifacts =
                             ThreadArtifactLinkHost(
@@ -6038,6 +5804,7 @@ private fun SharedThreadRouteContentContent(
                                 featureFlags = sharedStores.serverFeatureFlags,
                                 webBaseUrl = sharedStores.apiEnvironmentStore.current().webUrl,
                                 screenshots = sharedStores.artifactScreenshotStore,
+                                readerId = viewerId,
                             ),
                         // The batched link-card read (App link cards v2).
                         batchedRead = true,
@@ -6313,7 +6080,7 @@ private fun SharedThreadRouteContentContent(
         // The page's live clock supplies "today": the static context has none, and without it the
         // head's Source and History times fell back to the raw wire timestamp (1.17.0 build 3 smoke).
         val taskConversationTimeContext =
-            timeContextProvider.current ?: renderedThread.toRaftTimeCapabilities().staticContext()
+            timeContextProvider.dateContext ?: renderedThread.toRaftTimeCapabilities().staticContext()
         // The head as the conversation's first row at every width, and pulled down from the bar
         // ([TaskHeadPlacement]); the page's placement holds its effects.
         val taskConversationHeadRoute: (@Composable (placement: TaskHeadPlacement) -> Unit)? =
@@ -6478,7 +6245,11 @@ private fun SharedThreadRouteContentContent(
                 initialMembers = threadChannelMembersSlice,
                 agentStatusResolver = agentStatusResolver,
                 collapseServerId = currentSession?.currentServerId,
-                collapseConversationId = payload.longMessageCollapseConversationId(),
+                collapseConversationId =
+                    payload.longMessageCollapseConversationId(
+                        homeContent = sharedHomeState.content,
+                        taskParentChannelId = taskConversationParentChannelId,
+                    ),
                 completePanel = { panel, homeContent, onLeave -> completeChannelSettingsPanel(panel, homeContent, onLeave) },
                 onOpenMembers = { add ->
                     val serverId = threadMembersServerId
@@ -6572,6 +6343,19 @@ private fun SharedThreadRouteContentContent(
                 onToggleFocusMode = threadFocusModeToggle,
                 focusModeActive = threadFocusModeActive,
             taskConversationBar = taskConversationBar,
+            // A conversion to an external channel under way: one slot, worked out in
+            // ChannelConversionStrip.kt from values this lambda already captures (JVM size and capture limits).
+            channelConversionStrip =
+                rememberThreadChannelConversionStripSlot(
+                    sharedStores = sharedStores,
+                    storeScope = storeScope,
+                    bridge = bridge,
+                    serverId = threadMembersServerId,
+                    channelId = threadMembersChannelId,
+                    payload = renderedThread,
+                    session = currentSession,
+                    active = active && threadHostForeground,
+                ),
             // Channel announcements (channel_announcement_v0): the strip on a channel's own page (not a
             // thread, DM or task conversation). Built here from values this lambda already captures:
             // it is at the JVM's 255-capture limit, and one more local breaks it (BootstrapMethodError).
@@ -6735,7 +6519,6 @@ private fun SharedThreadRouteContentContent(
                 bridge.probeThreadViewportPixels(x, y, width, height, generation)
             },
             pendingActionCardIds = pendingActionCardIds,
-            pendingTaskConvertMessageIds = pendingTaskConvertMessageIds,
             markdownReferencePendingActionId = markdownReferencePending.busyActionId,
             attachmentOpenStates = attachmentOpenStates,
             composerSendKeyEnabled = composerSendKeyEnabled,
@@ -6870,427 +6653,7 @@ private fun SharedThreadRouteContentContent(
                 }
             },
             onComposerEvent = { action, value, asTask, attachmentId ->
-                if (!threadComposerEventAllowed(renderSlice.writeActionsEnabled && !threadLimitLocked, action)) {
-                    bridge.log("thread_composer_action_blocked action=$action reason=${if (threadLimitLocked) "channel_limit_locked" else "read_only_access_fallback"}")
-                    return@ThreadPageContent
-                }
-                val currentComposer = currentComposerPayload()
-                val currentDraftState = composerDraftViewModel.state.value
-                val composerInstanceId = currentComposer.instanceId.ifBlank { payload.instanceId }
-                when (action) {
-                "refreshMemberSuggestions" -> {
-                    coroutineScope.launch {
-                        refreshComposerMemberSuggestions(reason = "panel_open")
-                    }
-                }
-                "refreshChannelSuggestions" -> {
-                    bridge.log("thread_composer_channel_suggestions_refresh reason=panel_open")
-                    membersStore?.dispatch(SharedMembersIntent.RefreshChannelSuggestions)
-                }
-                "staleChangeIgnored" -> {
-                    bridge.log(
-                        "thread_composer_stale_change_ignored instanceId=$composerInstanceId " +
-                            "valueLen=${value?.length ?: -1} valueBlank=${value?.isBlank()} asTask=$asTask " +
-                            "stateTextLen=${currentDraftState.seedText.length} stateTextBlank=${currentDraftState.seedText.isBlank()} " +
-                            "stateAsTask=${currentDraftState.seedAsTask} draftKey=${currentDraftState.draftKey.orEmpty()}"
-                    )
-                }
-                "sendSnapshotUnavailable" -> {
-                    bridge.logWarn(
-                        "thread_composer_send_snapshot_unavailable " +
-                            "instanceId=$composerInstanceId reason=${value.orEmpty()}"
-                    )
-                    bridge.toast(genericThreadErrorLabel)
-                }
-                "staleEditorCommandIgnored" -> {
-                    bridge.log(
-                        "thread_composer_editor_command_ignored instanceId=$composerInstanceId " +
-                            "reason=local_editor_advanced localTextLen=${value?.length ?: -1} localAsTask=$asTask"
-                    )
-                    composerDraftViewModel.dispatch(
-                        SharedThreadComposerDraftIntent.Change(
-                            seedText = value,
-                            seedAsTask = asTask,
-                        )
-                    )
-                }
-                "change" -> {
-                    bridge.log(
-                        "thread_composer_change instanceId=$composerInstanceId " +
-                            "valueLen=${value?.length ?: -1} valueBlank=${value?.isBlank()} asTask=$asTask " +
-                            "stateTextLen=${currentDraftState.seedText.length} stateTextBlank=${currentDraftState.seedText.isBlank()} " +
-                            "stateAsTask=${currentDraftState.seedAsTask} draftKey=${currentDraftState.draftKey.orEmpty()} " +
-                            "surfaceSendChannelId=${composerSurface.sendChannelId.orEmpty()} " +
-                            "surfaceParentMessageId=${composerSurface.parentMessageId.orEmpty()}"
-                    )
-                    composerDraftViewModel.dispatch(
-                        SharedThreadComposerDraftIntent.Change(
-                            seedText = value,
-                            seedAsTask = asTask
-                        )
-                    )
-                    val nextDraftState = composerDraftViewModel.state.value
-                    bridge.log(
-                        "thread_composer_change_result instanceId=$composerInstanceId " +
-                            "textLen=${nextDraftState.seedText.length} textBlank=${nextDraftState.seedText.isBlank()} " +
-                            "asTask=${nextDraftState.seedAsTask} draftKey=${nextDraftState.draftKey.orEmpty()} " +
-                            "activeRecords=${composerDraftPersistSlice.activeDraftRecordsState.value.toThreadComposerDraftDiagnosticsSummary()}"
-                    )
-                }
-                ThreadComposerSelectMentionEvent -> {
-                    val mention = decodeThreadComposerMentionEvent(value)
-                    bridge.log(
-                        "thread_composer_select_mention instanceId=$composerInstanceId " +
-                            "type=${mention?.type.orEmpty()} draftKey=${currentDraftState.draftKey.orEmpty()}"
-                    )
-                    mention?.let { composerDraftViewModel.dispatch(SharedThreadComposerDraftIntent.SelectMention(it)) }
-                }
-                "toggleAsTask" -> {
-                    bridge.log(
-                        "thread_composer_toggle_as_task instanceId=$composerInstanceId asTask=$asTask " +
-                            "stateTextLen=${currentDraftState.seedText.length} stateTextBlank=${currentDraftState.seedText.isBlank()} " +
-                            "draftKey=${currentDraftState.draftKey.orEmpty()}"
-                    )
-                    composerDraftViewModel.dispatch(
-                        SharedThreadComposerDraftIntent.Change(seedAsTask = asTask)
-                    )
-                }
-                "toggleOriginalImage" -> {
-                    val enabled = asTask ?: !currentDraftState.originalImage
-                    bridge.log(
-                        "thread_composer_toggle_original_image instanceId=$composerInstanceId " +
-                            "originalImage=$enabled draftKey=${currentDraftState.draftKey.orEmpty()}"
-                    )
-                    composerDraftViewModel.dispatch(
-                        SharedThreadComposerDraftIntent.SetOriginalImage(enabled)
-                    )
-                }
-                "send" -> {
-                    handleComposerSendRequest(
-                        ThreadComposerSendRequest(
-                            editorSessionId = 0L,
-                            value = TextFieldValue(value ?: currentDraftState.seedText),
-                            asTask = asTask ?: currentDraftState.seedAsTask,
-                        )
-                    )
-                }
-                "dismissMention" -> {
-                    value?.takeIf { it.isNotBlank() }?.let { resolutionId ->
-                        composerDraftViewModel.dispatch(SharedThreadComposerDraftIntent.DismissMentionAction(resolutionId))
-                    }
-                }
-                "dismissMentionNotice" -> {
-                    composerDraftViewModel.dispatch(SharedThreadComposerDraftIntent.ClearMentionActionNotice)
-                }
-                ThreadComposerDismissUnresolvedMentionsEvent -> {
-                    composerDraftViewModel.dispatch(SharedThreadComposerDraftIntent.DismissUnresolvedMentions)
-                }
-                "addAllMentions" -> {
-                    if (!pendingMentionActionBatchRequestGate.tryBegin()) return@ThreadPageContent
-                    val eligibleActions =
-                        eligiblePendingMentionActionBatch(
-                            actions = currentDraftState.pendingMentionActions,
-                            actionStates = currentDraftState.mentionActionStates,
-                            removingIds = currentDraftState.removingMentionActionIds,
-                            executingIds = currentDraftState.executingMentionActionIds
-                        )
-                    if (eligibleActions.size < 2) {
-                        pendingMentionActionBatchRequestGate.finish()
-                        return@ThreadPageContent
-                    }
-                    val resolutionIds = eligibleActions.map { it.resolutionId.trim() }
-                    composerDraftViewModel.dispatch(
-                        SharedThreadComposerDraftIntent.BeginMentionActionBatch(resolutionIds)
-                    )
-                    coroutineScope.launch {
-                        try {
-                            val requestAttempt =
-                                runCatchingPreservingCancellation {
-                                    dataSource.executePendingMentionActions(
-                                        action = "add",
-                                        resolutionIds = resolutionIds
-                                    )
-                                }
-                            val requestResult = requestAttempt.getOrNull()
-                            val requestFailureNotice =
-                                localizedPendingMentionActionRequestFailure(
-                                    result = requestResult,
-                                    requestThrew = requestAttempt.isFailure,
-                                    strings = pendingMentionActionBatchStrings
-                                )
-                            val results =
-                                (requestResult as? ThreadApiResult.Success)?.data.orEmpty()
-                            val outcome = pendingMentionActionBatchOutcome(resolutionIds, results)
-                            composerDraftViewModel.dispatch(
-                                SharedThreadComposerDraftIntent.FinishMentionActionBatch(
-                                    requestedIds = outcome.requestedIds,
-                                    deliveredIds = outcome.deliveredIds,
-                                    noticeTitle = outcome.localizedNoticeTitle(pendingMentionActionBatchStrings),
-                                    notice =
-                                        requestFailureNotice
-                                            ?: outcome.localizedFailureNotice(pendingMentionActionBatchStrings)
-                                )
-                            )
-                            if (outcome.deliveredIds.isNotEmpty()) {
-                                refreshComposerMemberSuggestionsAfterMembershipMutation()
-                            }
-                        } finally {
-                            pendingMentionActionBatchRequestGate.finish()
-                        }
-                    }
-                }
-                "inviteMention", "notifyMention" -> {
-                    val resolutionId = value?.takeIf { it.isNotBlank() } ?: return@ThreadPageContent
-                    if (resolutionId in currentDraftState.executingMentionActionIds) {
-                        return@ThreadPageContent
-                    }
-                    val pendingAction =
-                        currentDraftState.pendingMentionActions.firstOrNull { it.resolutionId == resolutionId }
-                            ?: return@ThreadPageContent
-                    val verb = if (action == "inviteMention") "add" else "notify"
-                    val localState = if (verb == "add") "added" else "notified"
-                    composerDraftViewModel.dispatch(
-                        SharedThreadComposerDraftIntent.BeginMentionAction(
-                            resolutionId = resolutionId,
-                            state = localState
-                        )
-                    )
-                    coroutineScope.launch {
-                        val requestAttempt =
-                            runCatchingPreservingCancellation {
-                                dataSource.executePendingMentionActions(
-                                    action = verb,
-                                    resolutionIds = listOf(resolutionId)
-                                )
-                            }
-                        val result = requestAttempt.getOrNull()
-                        val rowResult =
-                            (result as? ThreadApiResult.Success)
-                                ?.data
-                                ?.firstOrNull { it.resolutionId == resolutionId }
-                        val succeeded = mentionActionSucceeded(verb, rowResult)
-                        val notice =
-                            if (succeeded) {
-                                pendingAction.mentionActionDeliveredNotice(verb, composerSurface.mentionScopeChannelLabel())
-                            } else {
-                                localizedPendingMentionActionRequestFailure(
-                                    result = result,
-                                    requestThrew = requestAttempt.isFailure,
-                                    strings = pendingMentionActionBatchStrings
-                                ) ?: formatMentionActionStatusNotice(verb, rowResult, pendingMentionActionBatchStrings)
-                            }
-                        composerDraftViewModel.dispatch(
-                            SharedThreadComposerDraftIntent.FinishMentionAction(
-                                resolutionId = resolutionId,
-                                notice = notice,
-                                delivered = succeeded,
-                                state = localState
-                            )
-                        )
-                        if (succeeded && verb == "add") {
-                            refreshComposerMemberSuggestionsAfterMembershipMutation()
-                        }
-                        if (succeeded) {
-                            delay(ThreadComposerMentionActionFadeDelayMs)
-                            composerDraftViewModel.dispatch(
-                                SharedThreadComposerDraftIntent.MarkMentionActionRemoving(resolutionId)
-                            )
-                            delay(ThreadComposerMentionActionRemoveDelayMs - ThreadComposerMentionActionFadeDelayMs)
-                            composerDraftViewModel.dispatch(
-                                SharedThreadComposerDraftIntent.RemoveMentionAction(resolutionId)
-                            )
-                        }
-                    }
-                }
-                ThreadComposerPasteAttachmentsAction -> {
-                    // Desktop paste of files / an image: straight into the tray, as the web
-                    // composer's paste does (no annotation editor). A copied image is compressed
-                    // by the host (2048 px / JPEG 82, as editor output on mobile) unless the
-                    // draft asks for the original; Finder files stay their own bytes, as a File
-                    // pick does on mobile.
-                    // iOS: pasted images open in the image editor, as picked photos do.
-                    val pasteOriginalImage = currentDraftState.originalImage
-                    // Images the host already read inside its paste action (no clipboard read here).
-                    val hostPasted = ThreadComposerImagePasteRequests.takePending()
-                    coroutineScope.launch {
-                        if (composerSurface.sendChannelId == null) {
-                            bridge.toast(attachmentPickerUnavailableLabel)
-                            return@launch
-                        }
-                        val files =
-                            (hostPasted ?: withContext(Dispatchers.Default) { raftPlatformReadClipboardAttachments() })
-                                .take(ThreadComposerImagePasteMaxImages.takeIf { raftPlatformPastedImagesOpenEditor() } ?: Int.MAX_VALUE)
-                        bridge.log("thread_attachment_paste files=${files.size} host=${hostPasted != null}")
-                        if (files.isEmpty()) return@launch
-                        if (raftPlatformPastedImagesOpenEditor() && raftComposerImagePickerFilesAreStrictImages(files)) {
-                            // The picked-photo path: the editor first, compressed after Done
-                            // unless the draft asks for the original. The keyboard the paste
-                            // came from goes down over the editor and comes back after it (dm #119).
-                            composerKeyboardHandoff.leave(keyboardOpen = adaptivePageKeyboardInsetDp > 0f)
-                            openComposerImageAnnotation(files)
-                            composerKeyboardHandoff.settle()
-                            return@launch
-                        }
-                        val prepared =
-                            threadComposerCompressPastedImages(
-                                files = files,
-                                originalImage = pasteOriginalImage,
-                                compress = { file ->
-                                    val response =
-                                        bridge.compressThreadImage(
-                                            fileRef = file.fileRef.orEmpty(),
-                                            fileName = file.fileName.ifBlank { "image.png" },
-                                            mimeType = file.mimeType?.ifBlank { null } ?: "image/png",
-                                        )
-                                    (parseRaftFilePreviewCompressedImageResult(response)
-                                        as? RaftFilePreviewCompressedImageResult.Success)?.file
-                                },
-                                retire = { refs ->
-                                    bridge.retireFilePreviewTemporaryFiles(
-                                        sessionId = "thread-paste-compression-$threadInstanceKey",
-                                        fileRefs = refs
-                                    )
-                                },
-                                log = bridge::log,
-                            )
-                        uploadComposerAttachmentFiles(prepared)
-                    }
-                }
-                ThreadComposerAttachImageAction, ThreadComposerCaptureImageAction, "attachFile" -> {
-                    // Freeze the session's image policy at picker admission.  The picker may
-                    // complete after a recomposition (or a new toggle event), but its result must
-                    // retain the policy that was visible when the user opened it.
-                    val compressPickerImages =
-                        shouldCompressThreadAttachmentPickerImages(
-                            action = action,
-                            originalImage = currentDraftState.originalImage
-                        )
-                    // A picked photo opens the image editor: the keyboard goes down before the
-                    // picker, or coming back to the window raises it over the editor (dm #119).
-                    // A file pick goes straight into the tray and keeps the keyboard as it is.
-                    val opensImageEditor = action != "attachFile"
-                    if (opensImageEditor) composerKeyboardHandoff.leave(keyboardOpen = adaptivePageKeyboardInsetDp > 0f)
-                    coroutineScope.launch {
-                        try {
-                            val channelId = composerSurface.sendChannelId
-                            if (channelId == null) {
-                                bridge.toast(attachmentPickerUnavailableLabel)
-                                return@launch
-                            }
-                            val response =
-                                bridge.threadAttachmentUpload(
-                                    channelId = channelId,
-                                    imageOnly = opensImageEditor,
-                                    capture = action == ThreadComposerCaptureImageAction,
-                                    // Image picker/camera results enter the annotation editor first.
-                                    // Do not encode before the editor decision: picker JPEG -> editor
-                                    // PNG -> JPEG would incur two lossy generations. Generic file
-                                    // picks also stay uncompressed so a JPEG remains source bytes
-                                    // and the shared size gate sees the real file.
-                                    compressImages = compressPickerImages,
-                                )
-                            admitComposerPickedAttachments(action, response)
-                        } finally {
-                            // Cancelled, rejected or straight into the tray: back at the composer.
-                            if (opensImageEditor) composerKeyboardHandoff.settle()
-                        }
-                    }
-                }
-                "removeAttachment" -> {
-                    attachmentId?.takeIf { it.isNotBlank() }?.let { id ->
-                        val draftKey = normalizeThreadAttachmentUploadDraftKey(composerDraftViewModel.state.value.draftKey)
-                        val removal =
-                            resolveThreadComposerAttachmentRemoval(
-                                attachments = composerDraftViewModel.state.value.uploadedAttachments,
-                                removedAttachmentIds = composerDraftViewModel.state.value.removedAttachmentIds,
-                                attachmentId = id,
-                                draftKey = draftKey
-                            )
-                        if (!removal.accepted) {
-                            bridge.logWarn(
-                                "thread_composer_attachment_remove_rejected attachmentId=$id reason=${removal.reason}"
-                            )
-                            return@ThreadPageContent
-                        }
-                        // Removing the tile is what cancels its upload (leaving the conversation does not).
-                        attachmentUploads.remove(draftKey, id)
-                        attachmentUploadFilesByLocalId =
-                            attachmentUploadFilesByLocalId.withoutThreadAttachmentUploadFile(id, draftKey)
-                        composerDraftViewModel.dispatch(SharedThreadComposerDraftIntent.RemoveAttachment(id))
-                        if (removal.fileRefToRetire != null) {
-                            bridge.retireFilePreviewTemporaryFiles(
-                                sessionId = "thread-composer-${draftKey.orEmpty()}",
-                                fileRefs = listOf(removal.fileRefToRetire)
-                            )
-                        }
-                    }
-                }
-                ThreadComposerReorderAttachmentsAction ->
-                    composerDraftViewModel.reorderThreadComposerAttachments(value, bridge::log)
-                "retryAttachments" -> {
-                    attachmentId?.takeIf { it.isNotBlank() }?.let { id ->
-                        val draftKey = normalizeThreadAttachmentUploadDraftKey(composerDraftViewModel.state.value.draftKey)
-                        if (draftKey == null) {
-                            bridge.log("thread_composer_attachment_retry result=missing_draft_key attachmentId=$id")
-                            bridge.toast(attachmentRetryUnavailableLabel)
-                            return@ThreadPageContent
-                        }
-                        val file = attachmentUploadFilesByLocalId.threadAttachmentUploadFile(id, draftKey)
-                        if (file == null) {
-                            bridge.log(
-                                "thread_composer_attachment_retry result=missing_file_ref attachmentId=$id"
-                            )
-                            bridge.toast(attachmentRetryUnavailableLabel)
-                            return@ThreadPageContent
-                        }
-                        if (attachmentUploadOrchestrator.isActive(id, draftKey)) {
-                            bridge.log(
-                                "thread_composer_attachment_retry result=already_uploading attachmentId=$id"
-                            )
-                            return@ThreadPageContent
-                        }
-                        bridge.log(
-                            "thread_composer_attachment_retry result=start attachmentId=$id fileName=${file.fileName}"
-                        )
-                        // Preserve an editor's remote replacement slot across a failed attempt.
-                        // RetryAttachment clears the old admission so the next AddLocal mint gets
-                        // a fresh generation; capture the slot before that clear, otherwise a
-                        // successful retry would append beside the original remote row.
-                        val replacementSlot =
-                            composerDraftViewModel.state.value.attachmentAdmissionsByLocalId[id]
-                                ?.replacementAttachmentId
-                                ?.trim()
-                                ?.takeIf { it.isNotBlank() && it != id }
-                        composerDraftViewModel.dispatch(SharedThreadComposerDraftIntent.RetryAttachment(id))
-                        coroutineScope.launch {
-                            uploadComposerAttachmentFiles(
-                                files = listOf(file),
-                                replaceAttachmentId = replacementSlot
-                            )
-                        }
-                    }
-                }
-                "previewAttachment" -> {
-                    attachmentId?.takeIf { it.isNotBlank() }?.let { id ->
-                        // The tile opens its preview or the image editor: the keyboard goes down
-                        // first and comes back when that page closes (dm #119).
-                        composerKeyboardHandoff.leave(keyboardOpen = adaptivePageKeyboardInsetDp > 0f)
-                        if (openComposerAttachmentPreview(id)) composerKeyboardHandoff.pageOpened()
-                        composerKeyboardHandoff.settle()
-                    }
-                }
-                "blur" -> {
-                    composerDraftViewModel.dispatch(SharedThreadComposerDraftIntent.Flush)
-                    bridge.log(
-                        "thread_composer_blur instanceId=$composerInstanceId"
-                    )
-                }
-                else -> {
-                    bridge.log(
-                        "thread_composer_event_unsupported instanceId=$composerInstanceId action=$action attachmentId=${attachmentId.orEmpty()}"
-                    )
-                }
-                }
+                threadRouteComposerActions.onComposerEvent(action, value, asTask, attachmentId)
             }
             )
         }
@@ -7402,6 +6765,31 @@ private fun threadActionCardStepUpCoordinator(networkClient: RaftNetworkClient):
 }
 
 /**
+ * Opens an action card's "Open in web" link with the App Store 3.1.1 guard and own-origin
+ * authenticated WebView (out of SharedThreadRouteContentContent to stay below its JVM method-size cap).
+ */
+private fun openThreadActionCardWebUrl(
+    url: String,
+    activeWebUrl: String,
+    pager: Pager,
+    storeScope: RaftShellStoreScope,
+    bridge: build.raft.app.base.BridgeModule,
+) {
+    bridge.log("thread_action_card_open_in_web")
+    if (
+        raftPlatformFollowsAppStoreBillingRules() &&
+        raftUrlIsAppStoreRestrictedPurchaseUrl(url, activeWebUrl)
+    ) {
+        bridge.logWarn("thread_action_card_appstore_purchase_blocked url=${raftOwnWebUrlForLog(url)}")
+        if (raftUrlIsOwnBillingPath(url, activeWebUrl)) {
+            pager.openSettingsBillingPage(storeScope)
+        }
+    } else if (!pager.openRaftOwnWebPage(url, storeScope, activeWebBaseUrl = activeWebUrl)) {
+        bridge.hostCapabilities.openUrlInBrowser(url)
+    }
+}
+
+/**
  * Connected servers of the active external channel (or parent channel for reply threads and task
  * conversations), out of SharedThreadRouteContentContent to stay below its JVM method-size cap.
  */
@@ -7450,3 +6838,166 @@ private fun rememberThreadChannelJointServers(
             conversationIdentityProvider = conversationIdentityProvider,
         )
     }
+
+/**
+ * Hosts [RaftViewerImageEditor] outside `SharedThreadRouteContentContent` (keeping that route
+ * below its JVM method-size cap) and routes the post-edit deferred refocus through
+ * [build.raft.designsystem.focus.RaftFocusCoordinator] after the editor/lightbox modals dispose.
+ */
+@Composable
+private fun ThreadViewerImageEditHost(
+    attachment: RaftThreadAttachmentItem,
+    desktop: Boolean,
+    threadInstanceKey: String,
+    composerInstanceId: String,
+    bridge: build.raft.app.base.BridgeModule,
+    dataSource: SharedThreadDataSource,
+    composerDraftViewModel: SharedThreadComposerDraftViewModel,
+    coroutineScope: CoroutineScope,
+    genericThreadErrorLabel: String,
+    nextEditSequence: () -> Long,
+    onCancel: () -> Unit,
+    onDismissModals: () -> Unit,
+    uploadComposerAttachmentFiles: suspend (List<PlatformFile>, String?, Boolean, Map<String, String>) -> Boolean,
+) {
+    val focusCoordinator = currentRaftFocusCoordinator()
+    val focusRegion = LocalRaftFocusRegion.current
+    val focusModalToken = LocalRaftFocusModalToken.current
+    RaftViewerImageEditor(
+        attachment = attachment,
+        desktop = desktop,
+        resolveFullUrl = { attachmentId ->
+            when (val response = dataSource.attachmentUrl(DataRequestPriority.Visible, attachmentId, disposition = "inline")) {
+                is ThreadApiResult.Success -> response.data.url
+                is ThreadApiResult.Failure -> {
+                    bridge.log("thread_viewer_image_edit status=url_failed attachmentId=${attachmentId.take(8)} code=${response.code}")
+                    null
+                }
+            }
+        },
+        onCancel = onCancel,
+        onSaveFailed = { bridge.toast(genericThreadErrorLabel) },
+        onEdited = { fileRef ->
+            val edited = raftViewerEditedImageFile(fileRef, attachment.name, nextEditSequence())
+            val startInteractionEpoch = focusCoordinator.interactionEpoch
+            val targetKey = ThreadComposerFocusTargetKey(composerInstanceId)
+            onDismissModals()
+            bridge.log("thread_viewer_image_edit status=done attachmentId=${attachment.id.take(8)}")
+            coroutineScope.launch {
+                // Wait up to two frames for the dismissed editor/lightbox modals to dispose and
+                // release their modal tokens (and let any OS window refocus settle) before
+                // capturing the deferred focus ticket's focusEpoch (audit S3 / rule 3).
+                var settleFrames = 0
+                while (settleFrames < 2 && focusCoordinator.interactionEpoch == startInteractionEpoch) {
+                    withFrameNanos { }
+                    settleFrames += 1
+                }
+                val deferredFocusTicket: RaftFocusTicket? =
+                    if (
+                        focusCoordinator.interactionEpoch == startInteractionEpoch &&
+                        focusCoordinator.topModalToken == focusModalToken
+                    ) {
+                        focusCoordinator.request(
+                            targetKey = targetKey,
+                            region = focusRegion,
+                            source = RaftFocusRequestSource.System("image_edit_complete"),
+                            isText = true,
+                            modalToken = focusModalToken,
+                        )
+                    } else {
+                        null
+                    }
+                var dispatchedFocus = false
+                try {
+                    val prepared =
+                        threadComposerCompressPastedImages(
+                            files = listOf(edited),
+                            originalImage = composerDraftViewModel.state.value.originalImage,
+                            compress = { file ->
+                                val response =
+                                    bridge.compressThreadImage(
+                                        fileRef = file.fileRef.orEmpty(),
+                                        fileName = file.fileName,
+                                        mimeType = file.mimeType?.ifBlank { null } ?: "image/png",
+                                    )
+                                (parseRaftFilePreviewCompressedImageResult(response)
+                                    as? RaftFilePreviewCompressedImageResult.Success)?.file
+                            },
+                            retire = { refs ->
+                                bridge.retireFilePreviewTemporaryFiles(
+                                    sessionId = "thread-viewer-edit-$threadInstanceKey",
+                                    fileRefs = refs
+                                )
+                            },
+                            log = bridge::log,
+                        )
+                    val admitted = uploadComposerAttachmentFiles(prepared, null, false, emptyMap())
+                    if (admitted && deferredFocusTicket != null) {
+                        composerDraftViewModel.dispatch(
+                            SharedThreadComposerDraftIntent.RequestDeferredFocus(deferredFocusTicket)
+                        )
+                        dispatchedFocus = true
+                    }
+                } finally {
+                    if (!dispatchedFocus && deferredFocusTicket != null && focusCoordinator.isLatest(deferredFocusTicket)) {
+                        focusCoordinator.cancelPending(deferredFocusTicket.targetKey)
+                    }
+                }
+            }
+        },
+    )
+}
+
+/**
+ * Logs `thread_first_reveal` once without subscribing [SharedThreadRouteContentContent] to
+ * [LocalRaftStackPageInMotion], so settling the push slide never triggers a full-page recomposition.
+ */
+@Composable
+private fun ThreadFirstRevealMotionLogger(
+    threadInstanceKey: String,
+    ready: Boolean,
+    threadId: String,
+    accessResolutionName: String,
+    homeLookupComplete: Boolean,
+    revealMessages: Int,
+    log: (String) -> Unit,
+) {
+    var logged by remember(threadInstanceKey) { mutableStateOf(false) }
+    if (logged || !ready) return
+    val revealedInMotion = LocalRaftStackPageInMotion.current
+    SideEffect {
+        logged = true
+        log(
+            "thread_first_reveal threadId=$threadId " +
+                "inMotion=$revealedInMotion access=$accessResolutionName homeLookupComplete=$homeLookupComplete " +
+                "messages=$revealMessages"
+        )
+        if (revealedInMotion) {
+            log("thread_first_reveal_in_motion threadId=$threadId messages=$revealMessages")
+        }
+    }
+}
+
+/**
+ * Runs a non-visual [LaunchedEffect] once the initial push slide settles (`LocalRaftStackPageInMotion`
+ * turns false). Latches one-way so pop-back animations never cancel or replay already-started work,
+ * and reading the CompositionLocal in this leaf keeps the enclosing thread route out of motion
+ * invalidations.
+ */
+@Composable
+private fun ThreadAfterMotionEffect(
+    vararg keys: Any?,
+    block: suspend CoroutineScope.() -> Unit,
+) {
+    val settledLatch = remember { booleanArrayOf(false) }
+    val settledOnce = settledLatch[0] || !LocalRaftStackPageInMotion.current
+    if (settledOnce && !settledLatch[0]) {
+        SideEffect { settledLatch[0] = true }
+    }
+    val currentBlock by rememberUpdatedState(block)
+    if (settledOnce) {
+        LaunchedEffect(*keys) {
+            currentBlock()
+        }
+    }
+}

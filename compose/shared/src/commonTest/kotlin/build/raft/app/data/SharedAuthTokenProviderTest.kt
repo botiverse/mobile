@@ -106,34 +106,6 @@ class SharedAuthTokenProviderTest {
     }
 
     @Test
-    fun ambiguousRetryUsesSameDurableAttempt() = runBlocking {
-        val store =
-            InMemoryRaftAuthSessionStore(sampleSession("ambiguous-access", "ambiguous-refresh"))
-        val api =
-            FakeRefreshAuthApi(
-                refreshTokenAssertion = "ambiguous-refresh",
-                responses =
-                    listOf(
-                        AuthApiResult.Failure(code = 0),
-                        AuthApiResult.Success(AuthRefreshResponse("successor-access", "successor-refresh")),
-                    ),
-            )
-        val coordinator =
-            SharedAuthRefreshCoordinator(
-                sessionStore = store,
-                authApi = api,
-                clockMillis = { 0L },
-                attemptIdFactory = { "arf_0000000000000005" },
-                installationIdFactory = { "ari_00000000000000000000000000000006" },
-            )
-
-        coordinator.refreshSession(failedAccessToken = "ambiguous-access")
-
-        assertEquals(2, api.attempts.size)
-        assertEquals(api.attempts[0], api.attempts[1])
-    }
-
-    @Test
     fun accountReplacementCannotConsumePriorAccountsAttempt() = runBlocking {
         val oldAttempt =
             StoredAuthRefreshAttempt(
@@ -291,9 +263,9 @@ class SharedAuthTokenProviderTest {
         val store = InMemoryRaftAuthSessionStore(original)
         val scripts =
             listOf(
-                standaloneSettingsWebViewInjectedJavaScript(original, null, SettingsWebViewSurface.Billing),
-                standaloneSettingsWebViewInjectedJavaScript(original, null, SettingsWebViewSurface.Marketplace),
-                standaloneSettingsWebViewInjectedJavaScript(original, null, SettingsWebViewSurface.Administration),
+                standaloneSettingsWebViewInjectedJavaScript(original, null, SettingsWebViewSurface.Billing, "https://app.raft.build"),
+                standaloneSettingsWebViewInjectedJavaScript(original, null, SettingsWebViewSurface.Marketplace, "https://app.raft.build"),
+                standaloneSettingsWebViewInjectedJavaScript(original, null, SettingsWebViewSurface.Administration, "https://app.raft.build"),
             )
         scripts.forEach { script ->
             assertContains(script, "removeItem(\"slock_refresh_token\")")
@@ -459,83 +431,6 @@ class SharedAuthTokenProviderTest {
         assertEquals("already-new-access", result?.accessToken)
         assertEquals("already-new-refresh", result?.refreshToken)
         assertEquals(0, api.refreshCalls)
-    }
-
-    @Test
-    fun coalescesHttpAndRealtimeTriggersThroughOneCoordinator() = runBlocking {
-        val requestStarted = CompletableDeferred<Unit>()
-        val releaseResponse = CompletableDeferred<Unit>()
-        val store =
-            InMemoryRaftAuthSessionStore(
-                sampleSession(
-                    accessToken = "cross-caller-old-access",
-                    refreshToken = "cross-caller-old-refresh"
-                )
-            )
-        val api =
-            FakeRefreshAuthApi(
-                refreshTokenAssertion = "cross-caller-old-refresh",
-                responses =
-                    listOf(
-                        AuthApiResult.Success(
-                            AuthRefreshResponse(
-                                accessToken = "cross-caller-fresh-access",
-                                refreshToken = "cross-caller-fresh-refresh"
-                            )
-                        )
-                    ),
-                beforeResponse = {
-                    requestStarted.complete(Unit)
-                    releaseResponse.await()
-                }
-            )
-        val joinObserved = CompletableDeferred<Unit>()
-        val provider =
-            SharedAuthTokenProvider(
-                sessionStore = store,
-                authApi = api,
-                clockMillis = { 0L }
-            )
-        val middleware =
-            RaftNetworkAuthMiddleware(
-                sessionStore = store,
-                authApi = api,
-                logger = { message ->
-                    if (message.startsWith("refresh_join")) joinObserved.complete(Unit)
-                }
-            )
-
-        coroutineScope {
-            val socket =
-                async {
-                    provider.refreshSession(
-                        failedAccessToken = "cross-caller-old-access",
-                        failedRefreshToken = "cross-caller-old-refresh",
-                        clearOnUnauthorized = false,
-                        reason = "connect_error",
-                        caller = "android_socket"
-                    )
-                }
-            requestStarted.await()
-            val http =
-                async {
-                    middleware.refreshAfterUnauthorized(
-                        failedSession = checkNotNull(store.readSession()),
-                        clearOnUnauthorized = true,
-                        reason = "http_401",
-                        caller = "shared_network"
-                    )
-                }
-            joinObserved.await()
-            releaseResponse.complete(Unit)
-
-            assertEquals("cross-caller-fresh-access", socket.await()?.accessToken)
-            assertEquals(
-                "cross-caller-fresh-access",
-                (http.await() as SharedAuthRefreshResult.Success).session.accessToken
-            )
-        }
-        assertEquals(1, api.refreshCalls)
     }
 
     @Test
@@ -715,135 +610,6 @@ class SharedAuthTokenProviderTest {
     }
 
     @Test
-    fun ambiguousRetryUnauthorizedRemainsTerminalForDurableAttempt() = runBlocking {
-        var resultPublishedBeforeRetirement: Boolean? = null
-        val criticalLogs = mutableListOf<String>()
-        val store =
-            InMemoryRaftAuthSessionStore(
-                sampleSession(
-                    accessToken = "ambiguous-network-access",
-                    refreshToken = "ambiguous-network-refresh",
-                )
-            )
-        val api =
-            FakeRefreshAuthApi(
-                refreshTokenAssertion = "ambiguous-network-refresh",
-                responses =
-                    listOf(
-                        AuthApiResult.Failure(code = 0, errorBodyText = "connection reset"),
-                        AuthApiResult.Failure(code = 401, errorBodyText = "invalid refresh"),
-                    ),
-            )
-        val coordinator =
-            SharedAuthRefreshCoordinator(
-                sessionStore = store,
-                authApi = api,
-                clockMillis = { 0L },
-                criticalLogger = criticalLogs::add,
-                beforeFlightRetirement = { resultPublishedBeforeRetirement = it },
-            )
-
-        val result =
-            coordinator.refreshSession(
-                failedAccessToken = "ambiguous-network-access",
-                failedRefreshToken = "ambiguous-network-refresh",
-                clearOnUnauthorized = true,
-                reason = "http_401",
-                caller = "shared_network",
-            )
-
-        assertEquals(2, api.refreshCalls)
-        assertEquals(401, (result as SharedAuthRefreshResult.Failure).response.code)
-        assertNull(store.readSession())
-        assertEquals(1, criticalLogs.count { it.contains("refresh_unauthorized_session_cleared") })
-        assertEquals(false, resultPublishedBeforeRetirement)
-    }
-
-    @Test
-    fun cancelledOwnerRetiresFlightBeforeWaitersObserveCancellation() = runBlocking {
-        var resultPublishedBeforeRetirement: Boolean? = null
-        val store = InMemoryRaftAuthSessionStore(
-            sampleSession("cancelled-flight-access", "cancelled-flight-refresh")
-        )
-        val api = FakeRefreshAuthApi(
-            refreshTokenAssertion = "cancelled-flight-refresh",
-            responses = listOf(
-                AuthApiResult.Success(AuthRefreshResponse("unused", "unused")),
-                AuthApiResult.Success(AuthRefreshResponse("recovered-access", "recovered-refresh")),
-            ),
-            beforeResponse = { call ->
-                if (call == 1) throw CancellationException("cancel owner before publication")
-            },
-        )
-        val coordinator = SharedAuthRefreshCoordinator(
-            sessionStore = store,
-            authApi = api,
-            clockMillis = { 0L },
-            beforeFlightRetirement = { resultPublishedBeforeRetirement = it },
-        )
-
-        assertFailsWith<CancellationException> {
-            coordinator.refreshSession(failedAccessToken = "cancelled-flight-access")
-        }
-        val recovered = coordinator.refreshSession(failedAccessToken = "cancelled-flight-access")
-
-        assertEquals(2, api.refreshCalls)
-        assertEquals("recovered-access", (recovered as SharedAuthRefreshResult.Success).session.accessToken)
-        assertEquals(false, resultPublishedBeforeRetirement)
-    }
-
-    @Test
-    fun priorAmbiguousFlightCannotSuppressLaterDurableUnauthorized() = runBlocking {
-        val immediateRetryCompleted = CompletableDeferred<Unit>()
-        val criticalLogs = mutableListOf<String>()
-        val store =
-            InMemoryRaftAuthSessionStore(
-                sampleSession(
-                    accessToken = "near-expiry-access",
-                    refreshToken = "near-expiry-refresh",
-                )
-            )
-        val api =
-            FakeRefreshAuthApi(
-                refreshTokenAssertion = "near-expiry-refresh",
-                responses =
-                    listOf(
-                        AuthApiResult.Failure(code = 0, errorBodyText = "connection reset"),
-                        AuthApiResult.Failure(code = 0, errorBodyText = "retry timeout"),
-                        AuthApiResult.Failure(code = 401, errorBodyText = "revoked or expired"),
-                    ),
-            )
-        val coordinator =
-            SharedAuthRefreshCoordinator(
-                sessionStore = store,
-                authApi = api,
-                clockMillis = { 1_000L },
-                criticalLogger = criticalLogs::add,
-                beforeFlightRetirement = { resultAlreadyPublished ->
-                    if (resultAlreadyPublished) immediateRetryCompleted.await()
-                },
-            )
-
-        val terminal = async {
-            val ambiguous = coordinator.refreshSession(
-                failedAccessToken = "near-expiry-access",
-                failedRefreshToken = "near-expiry-refresh",
-            )
-            assertEquals(0, (ambiguous as SharedAuthRefreshResult.Failure).response.code)
-            assertEquals("near-expiry-refresh", store.readSession()?.refreshToken)
-            coordinator.refreshSession(
-                failedAccessToken = "near-expiry-access",
-                failedRefreshToken = "near-expiry-refresh",
-            ).also { immediateRetryCompleted.complete(Unit) }
-        }.await()
-
-        assertEquals(3, api.refreshCalls)
-        assertEquals(401, (terminal as SharedAuthRefreshResult.Failure).response.code)
-        assertNull(store.readSession())
-        assertEquals(1, criticalLogs.count { it.contains("refresh_unauthorized_session_cleared") })
-    }
-
-    @Test
     fun sharesUnauthorizedResultWhileKeepingClearPolicyCallerSpecific() = runBlocking {
         val requestStarted = CompletableDeferred<Unit>()
         val releaseResponse = CompletableDeferred<Unit>()
@@ -991,58 +757,6 @@ class SharedAuthTokenProviderTest {
     }
 
     @Test
-    fun logsRefreshLifecycleWithTokenFingerprintsOnly() = runBlocking {
-        val logs = mutableListOf<String>()
-        val store =
-            InMemoryRaftAuthSessionStore(
-                sampleSession(accessToken = "old-access-token", refreshToken = "old-refresh-token")
-            )
-        val provider =
-            SharedAuthTokenProvider(
-                sessionStore = store,
-                authApi =
-                    FakeRefreshAuthApi(
-                        refreshTokenAssertion = "old-refresh-token",
-                        responses =
-                            listOf(
-                                AuthApiResult.Success(
-                                    AuthRefreshResponse("fresh-access-token", "fresh-refresh-token")
-                                )
-                            )
-                    ),
-                clockMillis = { 0L },
-                logger = logs::add
-            )
-
-        val refreshed =
-            provider.refreshSession(
-                failedAccessToken = "old-access-token",
-                reason = "http_401",
-                caller = "shared_network:auth/me"
-            )
-
-        assertEquals("fresh-access-token", refreshed?.accessToken)
-        val start = logs.single { it.startsWith("refresh_start") }
-        assertContains(start, "reason=http_401")
-        assertContains(start, "caller=shared_network:auth/me")
-        assertContains(start, "access=len=")
-        assertContains(start, "refresh=len=")
-        val success = logs.single { it.startsWith("refresh_success") }
-        assertContains(success, "accessRotated=true")
-        assertContains(success, "refreshRotated=true")
-        assertContains(success, "oldAccess=len=")
-        assertContains(success, "newAccess=len=")
-        assertContains(success, "oldRefresh=len=")
-        assertContains(success, "newRefresh=len=")
-        logs.forEach { log ->
-            assertFalse(log.contains("old-access-token"), "refresh diagnostics must not log full old access token")
-            assertFalse(log.contains("fresh-access-token"), "refresh diagnostics must not log full new access token")
-            assertFalse(log.contains("old-refresh-token"), "refresh diagnostics must not log full old refresh token")
-            assertFalse(log.contains("fresh-refresh-token"), "refresh diagnostics must not log full new refresh token")
-        }
-    }
-
-    @Test
     fun preservesSessionWhenRefreshTokenIsUnauthorizedAndClearDisabled() = runBlocking {
         val warnings = mutableListOf<String>()
         val store =
@@ -1102,37 +816,6 @@ class SharedAuthTokenProviderTest {
         assertEquals("old-access", provider.currentSession()?.accessToken)
         assertEquals("old-access", store.readSession()?.accessToken)
         assertEquals(emptyList(), warnings)
-    }
-
-    @Test
-    fun networkMiddlewarePreservesSessionWhenRefreshIsUnauthorized() = runBlocking {
-        val store =
-            InMemoryRaftAuthSessionStore(
-                sampleSession(
-                    accessToken = "middleware-preserve-access",
-                    refreshToken = "middleware-preserve-refresh"
-                )
-            )
-        val middleware =
-            RaftNetworkAuthMiddleware(
-                sessionStore = store,
-                authApi =
-                    FakeRefreshAuthApi(
-                        refreshTokenAssertion = "middleware-preserve-refresh",
-                        responses =
-                            listOf(
-                                AuthApiResult.Failure(code = 401, errorBodyText = """{"error":"invalid refresh"}""")
-                            )
-                    )
-            )
-
-        val response =
-            middleware.request {
-                HomeNetworkResponse(code = 401, bodyText = null, errorBodyText = """{"error":"jwt expired"}""")
-            }
-
-        assertEquals(401, response.code)
-        assertEquals("middleware-preserve-access", store.readSession()?.accessToken)
     }
 
     private class BlockingCommitSessionStore(

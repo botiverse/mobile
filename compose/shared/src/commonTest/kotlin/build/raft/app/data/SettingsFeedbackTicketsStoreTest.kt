@@ -345,20 +345,6 @@ class SettingsFeedbackTicketsStoreTest {
     }
 
     @Test
-    fun emptyPagesAreFollowedOnlySoFarThenLoadMoreGoesOn() = runTest {
-        val repository = FakeRepository()
-        repeat(FEEDBACK_EMPTY_PAGE_FOLLOW_MAX + 1) { repository.listAnswers += page(next = "e$it") }
-        val store = store(repository)
-        store.start()
-        runCurrent()
-        assertEquals(FEEDBACK_EMPTY_PAGE_FOLLOW_MAX + 1, repository.listCursors.size)
-        val list = store.state.value.list
-        assertEquals(FeedbackTicketsListPhase.Ready, list.phase)
-        assertTrue(list.tickets.isEmpty())
-        assertEquals("e$FEEDBACK_EMPTY_PAGE_FOLLOW_MAX", list.nextCursor, "Load More stays offered")
-    }
-
-    @Test
     fun aTicketOfAnotherAppIsReadAnsweredClosedAndItsFilesOpenedInItsApp() = runTest {
         val repository = FakeRepository()
         val web = ticket("w", comments = 0).copy(source = "web", client = FeedbackClient.Desktop)

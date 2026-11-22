@@ -35,7 +35,11 @@ class RaftSandboxWebViewFenceTest {
     @Test
     fun documentStartScriptsAreScopedToTheTargetOrigin() {
         assertEquals("https://example.test", raftDocumentStartScriptOriginRule("https://Example.TEST/feedback/?a=1#x"))
+        assertEquals("https://example.test", raftDocumentStartScriptOriginRule("https://Example.TEST:443/feedback/?a=1#x"))
+        assertEquals("http://example.test", raftDocumentStartScriptOriginRule("http://example.test:80/path"))
         assertEquals("http://example.test:8080", raftDocumentStartScriptOriginRule("http://example.test:8080/path"))
+        assertNull(raftDocumentStartScriptOriginRule("about:blank"))
+        assertNull(raftDocumentStartScriptOriginRule("data:text/html,hi"))
         assertNull(raftDocumentStartScriptOriginRule("file:///android_asset/index.html"))
         assertNull(raftDocumentStartScriptOriginRule("javascript:alert(1)"))
         assertNull(raftDocumentStartScriptOriginRule("https:///no-host"))

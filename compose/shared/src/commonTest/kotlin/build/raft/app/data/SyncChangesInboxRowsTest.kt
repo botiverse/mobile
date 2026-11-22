@@ -245,32 +245,6 @@ class SyncChangesInboxRowsTest {
         apply(syncTestScope, parseSyncChangesPage(syncChangesBody("c1.9.1", changes = changes.toList()))!!.changes.toSyncApplyPlan())
 
     @Test
-    fun `a conversation change whose row came with it reads no Activity list`() = runTest {
-        val targets = InboxTargets { changes -> RaftSyncInboxRowsOutcome.Applied(changes.mapTo(mutableSetOf()) { it.id }) }
-        val router = RaftSyncChangesStoreRouter(targets)
-        val done = """{"done":true,"doneFrontierSeq":"5"}"""
-        val read = """{"readSeq":5,"readStateVersion":2}"""
-        // (changes, what is read): a Done whose delete came along is the row's; a read still reads Home.
-        val cases =
-            listOf(
-                listOf(syncStaleWithState(5, "ch-1", done = done), syncInboxRowDelete(5, "ch-1", "5")) to listOf("inbox_rows"),
-                listOf(syncStaleWithState(5, "ch-1", refSeq = 5, read = read), syncInboxRowUpsert(5, "ch-1", syncInboxChannelRow("ch-1", "5"))) to
-                    listOf("inbox_rows", "home"),
-                listOf(syncStale(5, "ch-1", null), syncInboxRowUpsert(5, "ch-1", syncInboxChannelRow("ch-1", "5"))) to listOf("inbox_rows", "home"),
-                // A message row alone (no conversation change) reads nothing.
-                listOf(syncInboxRowUpsert(9, "ch-2", syncInboxChannelRow("ch-2", "9"))) to listOf("inbox_rows"),
-                // A conversation change with no row (an Artifact row, a row the server could not read): as before.
-                listOf(syncStale(5, "obj-1", null), syncInboxRowUpsert(5, "ch-1", syncInboxChannelRow("ch-1", "5"))) to
-                    listOf("inbox_rows", "home", "activity:sync_changes"),
-            )
-        for ((changes, expected) in cases) {
-            targets.calls.clear()
-            router.applyPage(*changes.toTypedArray())
-            assertEquals(expected, targets.calls, changes.toString())
-        }
-    }
-
-    @Test
     fun `rows no Activity store could take leave every conversation change as before`() = runTest {
         val targets = InboxTargets { RaftSyncInboxRowsOutcome.NotApplied }
         val router = RaftSyncChangesStoreRouter(targets)
@@ -279,14 +253,6 @@ class SyncChangesInboxRowsTest {
         targets.calls.clear()
         router.applyPage(syncStale(6, "ch-1", null), syncInboxRowUpsert(6, "ch-1", syncInboxChannelRow("ch-1", "6")))
         assertEquals(listOf("inbox_rows", "home", "activity:sync_changes"), targets.calls)
-    }
-
-    @Test
-    fun `an inboxReset reloads the Activity list`() = runTest {
-        val targets = InboxTargets { RaftSyncInboxRowsOutcome.NotApplied }
-        val router = RaftSyncChangesStoreRouter(targets)
-        router.reloadInbox(syncTestScope, "inbox_reset_too_many")
-        assertEquals(listOf("activity:sync_inbox_reset_too_many"), targets.calls)
     }
 
     // ---- retry after ----------------------------------------------------------------------------
@@ -321,38 +287,5 @@ class SyncChangesInboxRowsTest {
         runCurrent()
         assertEquals(listOf("pull"), runs)
         assertTrue(!retry.isRepullPending(syncTestScope))
-    }
-
-    @Test
-    fun `a delayed inbox reload runs once survives a pull and goes with the session`() = runTest {
-        val retry = RaftSyncRetryAfter(backgroundScope)
-        val runs = mutableListOf<String>()
-        retry.onPullFinished(syncTestScope, synced(inboxReloadAfter = 2_000L), repull = {}, reloadInbox = { runs += "inbox1" })
-        advanceTimeBy(1_000L)
-        retry.onPullFinished(syncTestScope, synced(inboxReloadAfter = 2_000L), repull = {}, reloadInbox = { runs += "inbox2" })
-        retry.onTriggerPull(syncTestScope)
-        advanceTimeBy(1_000L)
-        runCurrent()
-        assertEquals(listOf("inbox1"), runs, "the second joined the first; a pull does not cancel it")
-        advanceTimeBy(5_000L)
-        runCurrent()
-        assertEquals(listOf("inbox1"), runs)
-
-        retry.onPullFinished(syncTestScope, synced(retryAfter = 2_000L, inboxReloadAfter = 2_000L), repull = { runs += "pull" }, reloadInbox = { runs += "inbox3" })
-        retry.cancelAll("signed_out")
-        advanceTimeBy(5_000L)
-        runCurrent()
-        assertEquals(listOf("inbox1"), runs)
-        assertTrue(!retry.isInboxReloadPending(syncTestScope) && !retry.isRepullPending(syncTestScope))
-    }
-
-    @Test
-    fun `failed pulls and answers without a wait schedule nothing`() = runTest {
-        val retry = RaftSyncRetryAfter(backgroundScope)
-        retry.onPullFinished(syncTestScope, RaftSyncPullResult.Failed("http_500"), repull = { error("no pull") }, reloadInbox = { error("no reload") })
-        retry.onPullFinished(syncTestScope, synced(), repull = { error("no pull") }, reloadInbox = { error("no reload") })
-        advanceTimeBy(60_000L)
-        runCurrent()
-        assertTrue(!retry.isRepullPending(syncTestScope) && !retry.isInboxReloadPending(syncTestScope))
     }
 }

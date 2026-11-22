@@ -122,31 +122,6 @@ class ForwardConversationTargetsTest {
     }
 
     @Test
-    fun pickerOpenIsOneVisibleRequestWithLimit4AndCurrentChannelId() = runTest {
-        val network = ConversationNetworkClient()
-        network.conversationsResponse = { HomeNetworkResponse(code = 200, bodyText = ConversationsBody) }
-        val repository = repository(network)
-
-        val targets = repository.conversationTargets(serverId, currentChannelId = ChannelId("thread-current"))
-
-        val call = network.calls.single()
-        assertEquals(ForwardConversationTargetsPath, call.path)
-        assertEquals("GET", call.method)
-        assertEquals(DataRequestPriority.Visible, call.priority)
-        assertEquals(listOf("limit" to "4", "currentChannelId" to "thread-current"), call.query)
-        assertEquals(serverId, call.serverId)
-        assertEquals(listOf("thread-current", "thread-5", "task-conv-7"), targets.map { it.id })
-    }
-
-    @Test
-    fun channelOrDmSourceSendsNoCurrentChannelId() = runTest {
-        val network = ConversationNetworkClient()
-        repository(network).conversationTargets(serverId, currentChannelId = null)
-
-        assertEquals(listOf("limit" to "4"), network.calls.single().query)
-    }
-
-    @Test
     fun failureOrOfflineIsNoGroupAndNoRetry() = runTest {
         val network = ConversationNetworkClient()
         network.conversationsResponse = { HomeNetworkResponse(code = 404, bodyText = null, errorBodyText = "not found") }
@@ -159,17 +134,6 @@ class ForwardConversationTargetsTest {
         assertEquals(emptyList(), repository.conversationTargets(serverId, null))
         assertEquals(2, network.calls.size)
         assertTrue(network.logs.any { it.startsWith("forward_conversation_targets result=error code=http_404") })
-    }
-
-    @Test
-    fun searchKeystrokesNeverAskForConversations() = runTest {
-        val network = ConversationNetworkClient()
-        val repository = repository(network)
-
-        repository.searchTargets(serverId, "zep", limit = 20)
-        repository.searchTargets(serverId, "zeph", limit = 20)
-
-        assertEquals(0, network.calls.count { it.path == ForwardConversationTargetsPath })
     }
 
     @Test

@@ -38,7 +38,6 @@ import build.raft.app.data.RuntimePlanHeading
 import build.raft.app.data.RuntimeQuotaWindowKind
 import build.raft.app.data.cardWindowKind
 import build.raft.app.data.isDefaultAccount
-import build.raft.app.data.runtimeCatalogDisplayName
 import build.raft.app.data.runtimePlanHeading
 import build.raft.app.data.unsupportedReasonLine
 import build.raft.app.data.usageBadge
@@ -227,9 +226,26 @@ internal fun rememberComputerRuntimeAuthController(
 }
 
 /**
+ * Applies one auth-session event to shell runtime-usage access. Sign-out and account switch clear
+ * immediately before re-reading; metadata refreshes (`BindingMetadataChanged`) refresh in place so
+ * returning from an external OAuth browser never flashes `(owner, serverId)` to null and cancels a
+ * running sign-in when the active identity and server did not change.
+ */
+internal suspend fun applyShellRuntimeAccountUsageAuthEvent(
+    event: build.raft.app.data.AuthSessionEvent,
+    clearImmediateAndRead: suspend () -> Unit,
+    refreshInPlace: suspend () -> Unit,
+) {
+    when {
+        event.clearsRuntimeAccountUsageOwnerImmediately() -> clearImmediateAndRead()
+        event.changesRuntimeAccountUsageOwner() -> refreshInPlace()
+    }
+}
+
+/**
  * The shell's usage store, the signed-in owner and the current server, for a page that does
- * not provide [LocalMembersRuntimeAccountUsageAccess] itself. The owner and server are read
- * again on every auth event (sign-out, account or server switch), and cleared at once first.
+ * not provide [LocalMembersRuntimeAccountUsageAccess] itself. Sign-out and account switch clear
+ * immediately before re-reading; metadata refreshes re-read in place without flashing null.
  */
 @Composable
 internal fun rememberShellRuntimeAccountUsageAccess(): MembersRuntimeAccountUsageAccess {
@@ -249,18 +265,24 @@ internal fun rememberShellRuntimeAccountUsageAccess(): MembersRuntimeAccountUsag
     LaunchedEffect(tracker, authStore) {
         suspend fun read() {
             val session = authStore.readSession()
+            tracker.refresh()
             serverId = session?.currentServerId?.trim()?.takeIf { it.isNotEmpty() }
             viewer = build.raft.app.data.runtimeAccountUsageViewerFor(session)
-            tracker.refresh()
         }
         read()
         (authStore as? RaftAuthSessionEventSource)?.authSessionEvents?.collect { event ->
-            if (event.changesRuntimeAccountUsageOwner()) {
-                serverId = null
-                viewer = null
-                tracker.invalidate()
-            }
-            read()
+            applyShellRuntimeAccountUsageAuthEvent(
+                event = event,
+                clearImmediateAndRead = {
+                    serverId = null
+                    viewer = null
+                    tracker.invalidate()
+                    val session = authStore.readSession()
+                    serverId = session?.currentServerId?.trim()?.takeIf { it.isNotEmpty() }
+                    viewer = build.raft.app.data.runtimeAccountUsageViewerFor(session)
+                },
+                refreshInPlace = ::read,
+            )
         }
     }
     val owner by tracker.owner.collectAsState()
@@ -1025,20 +1047,29 @@ internal fun ComputerRuntimeUsageSheetHost(
     BindSignedInUsageRead(controller, auth)
     val timeContext = currentRaftTimeContextProvider?.current
     val authState = auth?.cardState
-    ComputerRuntimeUsageSheet(
-        runtimeLabel = runtimeLabel,
-        state = controller.sheetState(runtimeVersion),
-        timeContext = timeContext,
-        onRefresh = controller::refreshNow,
-        onUseLimitReset = controller::openLimitReset,
-        onDismiss = onDismiss,
-        auth = authState,
-        onClaudeLimitReset = controller::openClaudeLimitReset,
-        authRuntimeName = runtimeName,
-        onSignIn = { auth?.openSignIn() },
-        onSignOut = { auth?.openSignOut() },
-        onSignOutProvider = { provider -> auth?.openSignOut(provider) },
-    )
+    // A child dialog (sign-in, sign-out, limit reset) takes over from the sheet so two modal
+    // windows never stack over the host Activity across an external browser return.
+    val childDialogOpen =
+        auth?.dialog != null ||
+            controller.limitResetDialog != null ||
+            controller.claudeLimitResetsDialog != null ||
+            controller.claudeLimitResetConfirm != null
+    if (!childDialogOpen) {
+        ComputerRuntimeUsageSheet(
+            runtimeLabel = runtimeLabel,
+            state = controller.sheetState(runtimeVersion),
+            timeContext = timeContext,
+            onRefresh = controller::refreshNow,
+            onUseLimitReset = controller::openLimitReset,
+            onDismiss = onDismiss,
+            auth = authState,
+            onClaudeLimitReset = controller::openClaudeLimitReset,
+            authRuntimeName = runtimeName,
+            onSignIn = { auth?.openSignIn() },
+            onSignOut = { auth?.openSignOut() },
+            onSignOutProvider = { provider -> auth?.openSignOut(provider) },
+        )
+    }
     ComputerRuntimeLimitResetDialogHost(runtimeLabel, controller)
     if (auth != null) ComputerRuntimeAuthDialogHost(auth, runtimeName, computerName, agents, access.auth?.openUrl ?: {})
 }
@@ -1781,14 +1812,29 @@ internal fun ComputerRuntimeUsagePreviewCard(
                 state = controller.sheetState(runtimeVersion),
                 timeContext = timeContext,
                 onRefresh = controller::refreshNow,
-                onUseLimitReset = controller::openLimitReset,
+                onUseLimitReset = {
+                    closeSheet()
+                    controller.openLimitReset()
+                },
                 onDismiss = closeSheet,
                 auth = auth?.cardState,
                 authRuntimeName = auth?.runtimeName ?: runtimeLabel,
-                onSignIn = { authController?.openSignIn() },
-                onSignOut = { authController?.openSignOut() },
-                onSignOutProvider = { provider -> authController?.openSignOut(provider) },
-                onClaudeLimitReset = controller::openClaudeLimitReset,
+                onSignIn = {
+                    closeSheet()
+                    authController?.openSignIn()
+                },
+                onSignOut = {
+                    closeSheet()
+                    authController?.openSignOut()
+                },
+                onSignOutProvider = { provider ->
+                    closeSheet()
+                    authController?.openSignOut(provider)
+                },
+                onClaudeLimitReset = {
+                    closeSheet()
+                    controller.openClaudeLimitReset()
+                },
             )
         } else if (auth != null) {
             ComputerRuntimeAuthOnlySheet(
@@ -1796,9 +1842,18 @@ internal fun ComputerRuntimeUsagePreviewCard(
                 runtimeVersion = runtimeVersion,
                 auth = auth.cardState,
                 onDismiss = closeSheet,
-                onSignIn = { authController?.openSignIn() },
-                onSignOut = { authController?.openSignOut() },
-                onSignOutProvider = { provider -> authController?.openSignOut(provider) },
+                onSignIn = {
+                    closeSheet()
+                    authController?.openSignIn()
+                },
+                onSignOut = {
+                    closeSheet()
+                    authController?.openSignOut()
+                },
+                onSignOutProvider = { provider ->
+                    closeSheet()
+                    authController?.openSignOut(provider)
+                },
             )
         }
     }
@@ -1972,7 +2027,7 @@ private fun ComputerRuntimeVersionLine(runtimeVersion: String?, auth: ComputerRu
     ) {
         if (outcome != null) {
             RaftText(
-                stringResource(outcome.message, auth?.let { runtimeCatalogDisplayName(it.raftRuntimeId) }.orEmpty(), *outcome.args.toTypedArray()),
+                stringResource(outcome.message, auth?.let { build.raft.app.data.observeRuntimeCatalogDisplayName(it.raftRuntimeId) }.orEmpty(), *outcome.args.toTypedArray()),
                 modifier = Modifier.testTag(COMPUTER_RUNTIME_OPERATION_OUTCOME_TAG),
                 style = typography.caption,
                 color = if (outcome.success) colors.foreground else colors.warningStrong,

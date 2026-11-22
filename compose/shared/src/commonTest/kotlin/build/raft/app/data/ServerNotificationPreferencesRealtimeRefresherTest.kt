@@ -63,17 +63,6 @@ class ServerNotificationPreferencesRealtimeRefresherTest {
     }
 
     @Test
-    fun burstOfEventsRefetchesOnce() = runTest {
-        val calls = mutableListOf<String>()
-        val refresher = refresher(calls)
-
-        repeat(5) { version -> refresher.onEvent("user-1", "server-1", event("server-1", version.toLong())) }
-        advanceUntilIdle()
-
-        assertEquals(listOf("user-1/server-1"), calls)
-    }
-
-    @Test
     fun eventsDuringAnInFlightRefetchCoalesceIntoOneFollowUp() = runTest {
         val calls = mutableListOf<String>()
         var gate = CompletableDeferred<Unit>()

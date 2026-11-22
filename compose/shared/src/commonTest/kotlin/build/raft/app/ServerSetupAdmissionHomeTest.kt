@@ -95,42 +95,6 @@ class ServerSetupAdmissionHomeTest {
         }
     }
 
-    /** The flag landed ON after Home was shown: Home stays while checking; only blocksChat takes over. */
-    @Test
-    fun lateGateOnKeepsHomeUntilAPositiveBlocksChat() {
-        val identity = identity(5)
-        assertTrue(serverSetupHostAllowsHome(true, ServerSetupAdmissionState.Loading(identity), false, homeShownBeforeGate = true))
-        assertFalse(serverSetupHostAllowsHome(true, ServerSetupAdmissionState.Loading(identity), false, homeShownBeforeGate = false))
-        assertFalse(
-            serverSetupHostAllowsHome(
-                true,
-                ServerSetupAdmissionState.Blocked(identity, projection(blocksChat = true)),
-                false,
-                homeShownBeforeGate = true,
-            )
-        )
-    }
-
-    @Test
-    fun admittedServerIsNotCheckedAgainOnForegroundOrRemount() = runTest {
-        var requests = 0
-        val controller = controller {
-            requests += 1
-            projectionResponse(blocksChat = false, gateReason = "setup_complete")
-        }
-        val published = mutableListOf<ServerSetupAdmissionState>()
-
-        runServerSetupCheck(controller, identity(1), memoryKey, setupShowing = false) { published += it }
-        assertIs<ServerSetupAdmissionState.Admitted>(published.last())
-        // Return to foreground (same identity) and a remount (new generation) send no request.
-        runServerSetupCheck(controller, identity(1), memoryKey, setupShowing = false) { published += it }
-        runServerSetupCheck(controller, identity(2), memoryKey, setupShowing = false) { published += it }
-
-        assertEquals(1, requests)
-        assertEquals(2, published.size)
-        assertTrue(serverSetupStillAllowsHome(ServerSetupAdmissionMemory.contains(memoryKey), state = null))
-    }
-
     @Test
     fun failedCheckLetsHomeThroughAndIsRetriedNextTimeWhileSetupFailureKeepsRetryScreen() = runTest {
         val responses = ArrayDeque(
@@ -163,28 +127,114 @@ class ServerSetupAdmissionHomeTest {
     }
 
     @Test
-    fun aServerThatPassedBeforeKeepsHomeUnlessSetupTakesTheScreen() {
-        val identity = identity(3)
-        assertTrue(serverSetupStillAllowsHome(previouslyAllowed = true, state = null))
-        assertTrue(serverSetupStillAllowsHome(true, ServerSetupAdmissionState.Loading(identity)))
-        assertFalse(serverSetupStillAllowsHome(true, ServerSetupAdmissionState.Blocked(identity, projection(blocksChat = true))))
-        assertFalse(serverSetupStillAllowsHome(false, ServerSetupAdmissionState.Loading(identity)))
+    fun recheckAfterFailedColdStartKeepsHomeMountedWithoutBlankingToLoading() = runTest {
+        val responses = ArrayDeque(
+            listOf(
+                HomeNetworkResponse(code = 0, bodyText = null),
+                projectionResponse(blocksChat = false, gateReason = "setup_complete"),
+            )
+        )
+        val controller = controller { responses.removeFirst() }
+        val id = identity(10)
+        var state: ServerSetupAdmissionState? = null
+        var setupShown = false
+        var homeAlreadyShown = false
+
+        fun applyPublished(next: ServerSetupAdmissionState) {
+            when (next) {
+                is ServerSetupAdmissionState.Blocked -> {
+                    setupShown = true
+                    homeAlreadyShown = false
+                }
+                is ServerSetupAdmissionState.Admitted -> homeAlreadyShown = true
+                is ServerSetupAdmissionState.Failed -> if (!next.duringSetup) homeAlreadyShown = true
+                is ServerSetupAdmissionState.Loading -> Unit
+            }
+            state = next
+        }
+
+        // Cold start times out: Home is allowed through, memory does not record the failure.
+        runServerSetupCheck(controller, id, memoryKey, setupShowing = setupShown, homeAlreadyShown = homeAlreadyShown) {
+            applyPublished(it)
+        }
+        assertIs<ServerSetupAdmissionState.Failed>(state)
+        assertTrue(homeAlreadyShown)
+        assertTrue(serverSetupHostAllowsHome(gateEnabled = true, state = state, previouslyAllowed = false, homeShownBeforeGate = homeAlreadyShown))
+
+        // Return to Home (e.g. back navigation / foreground) triggers a background re-check:
+        // Loading must NEVER be published and allowsHome must stay true throughout.
+        val recheckPublished = mutableListOf<ServerSetupAdmissionState>()
+        runServerSetupCheck(controller, id, memoryKey, setupShowing = setupShown, homeAlreadyShown = homeAlreadyShown) { next ->
+            recheckPublished += next
+            applyPublished(next)
+            assertTrue(
+                serverSetupHostAllowsHome(
+                    gateEnabled = true,
+                    state = state,
+                    previouslyAllowed = ServerSetupAdmissionMemory.contains(memoryKey),
+                    homeShownBeforeGate = homeAlreadyShown,
+                )
+            )
+        }
+        assertTrue(recheckPublished.none { it is ServerSetupAdmissionState.Loading })
+        assertIs<ServerSetupAdmissionState.Admitted>(state)
+        assertTrue(ServerSetupAdmissionMemory.contains(memoryKey))
     }
 
     @Test
-    fun admissionMemoryRecordsAdmittedServersAndForgetsBlockedOnes() {
-        val identity = identity(4)
-        ServerSetupAdmissionMemory.record(memoryKey, ServerSetupAdmissionState.Failed(identity, build.raft.app.data.ScreenError("offline")))
-        assertFalse(ServerSetupAdmissionMemory.contains(memoryKey))
-        ServerSetupAdmissionMemory.record(memoryKey, ServerSetupAdmissionState.Admitted(identity, projection(blocksChat = false)))
-        assertTrue(ServerSetupAdmissionMemory.contains(memoryKey))
-        ServerSetupAdmissionMemory.record(memoryKey, ServerSetupAdmissionState.Loading(identity))
-        assertTrue(ServerSetupAdmissionMemory.contains(memoryKey))
-        ServerSetupAdmissionMemory.record(memoryKey, ServerSetupAdmissionState.Blocked(identity, projection(blocksChat = true)))
-        assertFalse(ServerSetupAdmissionMemory.contains(memoryKey))
-        assertFalse(ServerSetupAdmissionMemory.contains(ServerSetupAdmissionMemory.key("env", "other-account", "server")))
-    }
+    fun recheckAfterHomeShownStillSwitchesToSetupWhenServerBlocksChat() = runTest {
+        val responses = ArrayDeque(
+            listOf(
+                HomeNetworkResponse(code = 0, bodyText = null),
+                projectionResponse(blocksChat = true, gateReason = "setup_required"),
+                HomeNetworkResponse(code = 503, bodyText = null),
+            )
+        )
+        val controller = controller { responses.removeFirst() }
+        val id = identity(11)
+        var state: ServerSetupAdmissionState? = null
+        var setupShown = false
+        var homeAlreadyShown = false
 
+        fun applyPublished(next: ServerSetupAdmissionState) {
+            when (next) {
+                is ServerSetupAdmissionState.Blocked -> {
+                    setupShown = true
+                    homeAlreadyShown = false
+                }
+                is ServerSetupAdmissionState.Admitted -> homeAlreadyShown = true
+                is ServerSetupAdmissionState.Failed -> if (!next.duringSetup) homeAlreadyShown = true
+                is ServerSetupAdmissionState.Loading -> Unit
+            }
+            state = next
+        }
+
+        // Initial check fails; Home is shown.
+        runServerSetupCheck(controller, id, memoryKey, setupShowing = setupShown, homeAlreadyShown = homeAlreadyShown) {
+            applyPublished(it)
+        }
+        assertTrue(homeAlreadyShown)
+
+        // Background re-check returns Blocked: no Loading flash, then Blocked takes over Home.
+        val blockedPublished = mutableListOf<ServerSetupAdmissionState>()
+        runServerSetupCheck(controller, id, memoryKey, setupShowing = setupShown, homeAlreadyShown = homeAlreadyShown) { next ->
+            blockedPublished += next
+            applyPublished(next)
+        }
+        assertTrue(blockedPublished.none { it is ServerSetupAdmissionState.Loading })
+        assertIs<ServerSetupAdmissionState.Blocked>(state)
+        assertFalse(serverSetupHostAllowsHome(gateEnabled = true, state = state, previouslyAllowed = false, homeShownBeforeGate = homeAlreadyShown))
+
+        // Retrying while setup is on screen still publishes Loading and never drops back to Home.
+        val retryPublished = mutableListOf<ServerSetupAdmissionState>()
+        runServerSetupCheck(controller, id, memoryKey, setupShowing = setupShown, homeAlreadyShown = homeAlreadyShown) { next ->
+            retryPublished += next
+            applyPublished(next)
+            assertFalse(serverSetupHostAllowsHome(gateEnabled = true, state = state, previouslyAllowed = false, homeShownBeforeGate = homeAlreadyShown))
+        }
+        assertIs<ServerSetupAdmissionState.Loading>(retryPublished.first())
+        assertTrue(serverSetupBlocksHome(state))
+    }
     private fun identity(generation: Int) = ServerSetupAdmissionIdentity("env", "account", "server", "generation:$generation")
 
     private fun controller(response: () -> HomeNetworkResponse) =

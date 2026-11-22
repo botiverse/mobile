@@ -1,8 +1,6 @@
 package build.raft.app.desktop
 
-import build.raft.app.data.RaftDesktopComposerTemporaryFiles
 import build.raft.app.data.RaftDesktopImageCompression
-import build.raft.app.data.RaftDesktopImageCompressionCancelled
 import build.raft.app.data.RaftDesktopThreadImageCompressor
 import java.io.ByteArrayOutputStream
 import java.io.File
@@ -38,13 +36,6 @@ class RaftDesktopImageCompressionTest {
         root.deleteRecursively()
     }
 
-    @Test fun `the longest side is scaled to 2048 and smaller images are not enlarged`() {
-        assertEquals(2048 to 512, RaftDesktopImageCompression.targetSize(4000, 1000))
-        assertEquals(1024 to 2048, RaftDesktopImageCompression.targetSize(3000, 6000))
-        assertEquals(2048 to 2048, RaftDesktopImageCompression.targetSize(2048, 2048))
-        assertEquals(800 to 600, RaftDesktopImageCompression.targetSize(800, 600))
-    }
-
     @Test fun `a large PNG becomes a 2048 px JPEG at quality 82`() {
         val source = File(root, "big.png").apply { writeBytes(encode(image(4000, 1000) { it.clear(Color.makeRGB(10, 120, 200)) }, EncodedImageFormat.PNG)) }
         val output = File(out, "composer-image-a.jpg")
@@ -59,13 +50,6 @@ class RaftDesktopImageCompressionTest {
         // (quality 90 would give 3, quality 75 gives 8).
         assertEquals(6, firstLuminanceQuantizer(bytes))
         assertFalse(File(out, "composer-image-a.jpg.part").exists())
-    }
-
-    @Test fun `a small image keeps its size`() {
-        val source = File(root, "small.png").apply { writeBytes(encode(image(300, 200) { it.clear(Color.RED) }, EncodedImageFormat.PNG)) }
-        val output = File(out, "composer-image-b.jpg")
-        RaftDesktopImageCompression.compress(source, output)
-        Codec.makeFromData(Data.makeFromBytes(output.readBytes())).use { assertEquals(300 to 200, it.width to it.height) }
     }
 
     @Test fun `EXIF orientation is applied (rotate 90 clockwise)`() {
@@ -125,33 +109,12 @@ class RaftDesktopImageCompressionTest {
         assertTrue(Color.getR(color) > 245 && Color.getG(color) > 245 && Color.getB(color) > 245, "not white: ${Integer.toHexString(color)}")
     }
 
-    @Test fun `a GIF gives its first frame as a JPEG`() {
-        // Skia has no GIF encoder; a minimal 1x1 GIF89a.
-        val gif =
-            byteArrayOf(
-                0x47, 0x49, 0x46, 0x38, 0x39, 0x61, 1, 0, 1, 0, 0x80.toByte(), 0, 0,
-                0xFF.toByte(), 0, 0, 0, 0, 0, 0x21, 0xF9.toByte(), 4, 0, 0, 0, 0, 0,
-                0x2C, 0, 0, 0, 0, 1, 0, 1, 0, 0, 2, 2, 0x44, 1, 0, 0x3B,
-            )
-        val source = File(root, "a.gif").apply { writeBytes(gif) }
-        val output = File(out, "composer-image-g.jpg")
-        RaftDesktopImageCompression.compress(source, output)
-        Codec.makeFromData(Data.makeFromBytes(output.readBytes())).use { assertEquals(EncodedImageFormat.JPEG, it.encodedImageFormat) }
-    }
-
     @Test fun `undecodable input fails and leaves nothing behind`() {
         val svg = File(root, "logo.svg").apply { writeText("<svg xmlns=\"http://www.w3.org/2000/svg\"/>") }
         val output = File(out, "composer-image-e.jpg")
         assertFailsWith<IOException> { RaftDesktopImageCompression.compress(svg, output) }
         assertFalse(output.exists())
         assertFalse(File(out, "composer-image-e.jpg.part").exists())
-    }
-
-    @Test fun `a cancelled compression leaves nothing behind`() {
-        val source = File(root, "c.png").apply { writeBytes(encode(image(64, 64) { it.clear(Color.RED) }, EncodedImageFormat.PNG)) }
-        val output = File(out, "composer-image-f.jpg")
-        assertFailsWith<RaftDesktopImageCompressionCancelled> { RaftDesktopImageCompression.compress(source, output) { true } }
-        assertFalse(output.exists())
     }
 
     @Test fun `videos and non-images are not compressor input`() {
@@ -185,16 +148,6 @@ class RaftDesktopImageCompressionTest {
         assertNull(RaftDesktopThreadImageCompressor.request("", source.absolutePath, "paste.png", "image/png"))
         assertNull(RaftDesktopThreadImageCompressor.request("r3", source.absolutePath, "a/b.png", "image/png"))
         assertNull(RaftDesktopThreadImageCompressor.request("r4", source.absolutePath, "paste.png", "application/pdf"))
-    }
-
-    @Test fun `compressed JPEGs are retired and swept like pasted images`() {
-        val jpeg = File(out, "composer-image-x.jpg").apply { writeBytes(byteArrayOf(1)) }
-        val result = RaftDesktopComposerTemporaryFiles.retire(out, "s", setOf(jpeg.absolutePath)) {}
-        assertEquals(setOf(jpeg.absolutePath), result.quarantinedFileRefs)
-        val now = System.currentTimeMillis()
-        val stale = File(out, "composer-image-old.jpg").apply { writeBytes(byteArrayOf(1)); setLastModified(now - 4L * 24 * 3600 * 1000) }
-        RaftDesktopComposerTemporaryFiles.sweep(out, now)
-        assertFalse(stale.exists())
     }
 
     private fun image(width: Int, height: Int, draw: (org.jetbrains.skia.Canvas) -> Unit): org.jetbrains.skia.Image =

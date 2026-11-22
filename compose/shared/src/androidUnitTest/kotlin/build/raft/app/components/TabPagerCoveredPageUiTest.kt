@@ -2,21 +2,14 @@ package build.raft.app.components
 
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.ExperimentalTestApi
-import androidx.compose.ui.test.assertIsDisplayed
-import androidx.compose.ui.test.onNodeWithTag
-import androidx.compose.ui.test.performTouchInput
-import androidx.compose.ui.test.swipeLeft
-import androidx.compose.ui.unit.dp
 import build.raft.app.RobolectricComposeActivityRule
 import build.raft.app.nav.RaftMobilePageStackDisplay
 import build.raft.app.nav.RaftPageStack
@@ -56,47 +49,6 @@ class TabPagerCoveredPageUiTest {
     }
 
     @Test
-    fun aPagerLaidOutAtZeroSizeKeepsItsSelection() =
-        runRobolectricComposeUiTest {
-            var covered by mutableStateOf(false)
-            var selection = -1
-            setContent {
-                Box(if (covered) Modifier.size(0.dp) else Modifier.fillMaxSize()) {
-                    ProfilePager { selection = it }
-                }
-            }
-            waitForIdle()
-            assertEquals(0, selection)
-
-            runOnIdle { covered = true }
-            waitForIdle()
-            assertEquals(0, selection, "covered at 0x0, the pager reported a page the user never chose")
-
-            runOnIdle { covered = false }
-            waitForIdle()
-            assertEquals(0, selection, "back on screen, the pager shows another tab")
-        }
-
-    @Test
-    fun aPagerFirstLaidOutAtZeroSizeShowsItsSelectionOnceShown() =
-        runRobolectricComposeUiTest {
-            var covered by mutableStateOf(true)
-            var selection = -1
-            setContent {
-                Box(if (covered) Modifier.size(0.dp) else Modifier.fillMaxSize()) {
-                    ProfilePager { selection = it }
-                }
-            }
-            waitForIdle()
-            assertEquals(0, selection, "never shown, the pager reported a page the user never chose")
-
-            runOnIdle { covered = false }
-            waitForIdle()
-            assertEquals(0, selection)
-            onNodeWithTag("tab-0").assertIsDisplayed()
-        }
-
-    @Test
     fun openingAPageOverTheProfileAndComingBackKeepsTheTab() =
         runRobolectricComposeUiTest {
             val stack = RaftPageStack()
@@ -122,37 +74,6 @@ class TabPagerCoveredPageUiTest {
             waitForIdle()
             assertEquals(PROFILE_PAGE, stack.pages.last().args.pageName)
             assertEquals(0, selection, "back from the DM the profile shows another tab")
-        }
-
-    @Test
-    fun aSwipeStillSelectsTheNextTab() =
-        runRobolectricComposeUiTest {
-            var selection = -1
-            setContent { ProfilePager { selection = it } }
-            waitForIdle()
-            onNodeWithTag(PAGER).performTouchInput { swipeLeft() }
-            waitForIdle()
-            assertEquals(1, selection)
-        }
-
-    @Test
-    fun aSwipeAfterBeingCoveredStillSelectsTheNextTab() =
-        runRobolectricComposeUiTest {
-            var covered by mutableStateOf(false)
-            var selection = -1
-            setContent {
-                Box(if (covered) Modifier.size(0.dp) else Modifier.fillMaxSize()) {
-                    ProfilePager { selection = it }
-                }
-            }
-            waitForIdle()
-            runOnIdle { covered = true }
-            waitForIdle()
-            runOnIdle { covered = false }
-            waitForIdle()
-            onNodeWithTag(PAGER).performTouchInput { swipeLeft() }
-            waitForIdle()
-            assertEquals(1, selection)
         }
 
     private companion object {

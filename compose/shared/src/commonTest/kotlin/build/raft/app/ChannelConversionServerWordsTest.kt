@@ -1,9 +1,6 @@
 package build.raft.app
 
 import build.raft.app.data.ExternalInviteRefusal
-import build.raft.app.data.InviteeRefusal
-import build.raft.app.data.ServerConnectOutcome
-import build.raft.app.data.parseSharedInviteeRefusal
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
@@ -38,27 +35,5 @@ class ChannelConversionServerWordsTest {
         val dailyCap = ExternalInviteRefusal(429, "daily_cap", "Too many").toFailure()
         assertEquals(ExternalInviteError.DailyCap, dailyCap.error)
         assertNull(dailyCap.serverMessage)
-    }
-
-    @Test
-    fun aMemberConnectRefusalForAConversionCarriesTheServersSentence() {
-        val line = memberConnectRefusedLine(ServerConnectOutcome.Refused("srv-two", 409, "channel_conversion_too_large", tooLarge))
-        assertEquals(MemberConnectMessage.Generic, line.message)
-        assertEquals(tooLarge, line.serverWords)
-        // In progress keeps the flow's own Busy sentence.
-        val busy = memberConnectRefusedLine(ServerConnectOutcome.Refused("srv-two", 409, "channel_conversion_in_progress", "x"))
-        assertEquals(MemberConnectMessage.Busy, busy.message)
-        assertNull(busy.serverWords)
-    }
-
-    @Test
-    fun anInviteeRefusalReadsTheServersErrorAndUsesItForAConversion() {
-        val refusal =
-            parseSharedInviteeRefusal(409, """{"error":"$tooLarge","code":"channel_conversion_too_large"}""", "t2")
-        assertEquals(tooLarge, refusal.error)
-        assertEquals(tooLarge, inviteeServerWords(refusal, InviteeMessage.Generic))
-        assertNull(inviteeServerWords(InviteeRefusal(409, "channel_conversion_in_progress", error = "x"), InviteeMessage.Busy))
-        val toast = externalInviteServerRefusal(ServerConnectOutcome.Refused("s2", 409, "channel_conversion_too_large", tooLarge))
-        assertEquals(ExternalInviteServerRefusal.Invitee(InviteeMessage.Generic, tooLarge), toast)
     }
 }

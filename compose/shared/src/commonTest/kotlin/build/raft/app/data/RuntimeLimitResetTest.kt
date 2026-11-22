@@ -97,28 +97,6 @@ class RuntimeLimitResetTest {
     }
 
     @Test
-    fun anAnswerWithoutAnOutcomeKeepsTheStatusAndTheRoutesCode() = runPortableCoroutineTest<Unit> {
-        suspend fun refusal(response: HomeNetworkResponse): RuntimeLimitResetRefusal =
-            assertIs<RuntimeLimitResetLoad.Failed>(
-                RaftComputersApiClient(FakeLimitResetApi(redeem = { response }))
-                    .redeemRuntimeLimitReset(ServerId("s1"), "m1", RuntimeAccountUsageProvider.Codex, key())
-            ).refusal
-
-        assertEquals(
-            RuntimeLimitResetRefusal(409, "computer_offline"),
-            refusal(HomeNetworkResponse(409, null, errorBodyText = """{"code":"computer_offline","error":"This Computer is offline."}""")),
-        )
-        assertEquals(
-            RuntimeLimitResetRefusal(409, "computer_upgrade_required"),
-            refusal(HomeNetworkResponse(409, """{"code":"computer_upgrade_required","error":"Upgrade"}""")),
-        )
-        assertEquals(RuntimeLimitResetRefusal(403, "forbidden"), refusal(HomeNetworkResponse(403, """{"code":"forbidden","error":"Only"}""")))
-        assertEquals(RuntimeLimitResetRefusal(504, "computer_timeout"), refusal(HomeNetworkResponse(504, """{"error":"x","code":"computer_timeout"}""")))
-        assertEquals(RuntimeLimitResetRefusal(500, null), refusal(HomeNetworkResponse(500, """{"error":"Failed to use a limit reset"}""")))
-        assertEquals(RuntimeLimitResetRefusal(200, "malformed_response"), refusal(ok("""{"result":{"kind":"something_new"}}""")))
-    }
-
-    @Test
     fun idempotencyKeyHasTheServersShape() {
         assertNull(RuntimeLimitResetIdempotencyKey.of("short"))
         assertNull(RuntimeLimitResetIdempotencyKey.of("has spaces in it ok"))

@@ -53,12 +53,6 @@ class CreateAgentComputerPickerScreenshotTest {
     val activities = RobolectricComposeActivityRule()
 
     @Test
-    fun selectLight() = capture("agent.create.computer_picker.select", RaftAppAppearance.Light) { SelectContent() }
-
-    @Test
-    fun selectDark() = capture("agent.create.computer_picker.select.dark", RaftAppAppearance.Dark) { SelectContent() }
-
-    @Test
     fun sheetLight() = capture("agent.create.computer_picker.sheet", RaftAppAppearance.Light) { SheetContent() }
 
     @Test

@@ -73,15 +73,26 @@ static BOOL RaftRouterBool(id value) {
     }
     if (navigationController) {
         if (replaceCurrent && navigationController.viewControllers.count > 0) {
-            UIViewController *renderViewController = [RaftPageControllerFactory controllerForPageName:pageName pageData:sanitizedPageData];
             NSMutableArray<UIViewController *> *viewControllers = [navigationController.viewControllers mutableCopy];
-            if ([pageName isEqualToString:@"compose_login"]) {
+            BOOL openWithoutAnimation = RaftRouterBool(sanitizedPageData[RaftRouterOpenWithoutAnimationKey]);
+            BOOL isLogin = [pageName isEqualToString:@"compose_login"];
+            NSUInteger targetIndex = viewControllers.count - 1;
+            if (isLogin) {
                 objc_setAssociatedObject(viewControllers.lastObject, &RaftRouterRetiredByLoginKey,
                                          @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+            } else if (openWithoutAnimation) {
+                // Seamless in-place replacement (e.g., pending task -> conversation) replaces only
+                // the requesting stack entry so a covering page is never clobbered; if the source
+                // was already popped, leave the stack untouched.
+                targetIndex = [viewControllers indexOfObjectIdenticalTo:controller];
+                if (targetIndex == NSNotFound) {
+                    return;
+                }
             }
-            [viewControllers removeLastObject];
-            [viewControllers addObject:renderViewController];
-            [navigationController setViewControllers:viewControllers animated:YES];
+            UIViewController *renderViewController = [RaftPageControllerFactory controllerForPageName:pageName pageData:sanitizedPageData];
+            [viewControllers replaceObjectAtIndex:targetIndex withObject:renderViewController];
+            BOOL animated = !openWithoutAnimation;
+            [navigationController setViewControllers:viewControllers animated:animated];
         } else {
             // task #151: not the page on top again, and not over a transition still running (a
             // different page waits for it, latest wins): RaftIosPageOpenGate.

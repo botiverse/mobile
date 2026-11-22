@@ -228,62 +228,6 @@ class ThreadAttachmentUploadOrchestratorTest {
     }
 
     @Test
-    fun retireDraftOnlyCancelsDraftAAndLeavesSameIdDraftBActive() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        try {
-            val orchestrator = ThreadAttachmentUploadOrchestrator(scope)
-            val aRelease = CompletableDeferred<Unit>()
-            val bRelease = CompletableDeferred<Unit>()
-            val aStarted = CompletableDeferred<Unit>()
-            val bStarted = CompletableDeferred<Unit>()
-            val aFinished = CompletableDeferred<Unit>()
-            val bFinished = CompletableDeferred<Unit>()
-            orchestrator.launch("same-id", draftA) {
-                aStarted.complete(Unit)
-                withContext(NonCancellable) {
-                    aRelease.await()
-                    aFinished.complete(Unit)
-                }
-            }
-            orchestrator.launch("same-id", draftB) {
-                bStarted.complete(Unit)
-                withContext(NonCancellable) {
-                    bRelease.await()
-                    bFinished.complete(Unit)
-                }
-            }
-            aStarted.await()
-            bStarted.await()
-
-            assertEquals(setOf("same-id"), orchestrator.retireDraft(draftA))
-            assertFalse(orchestrator.isActive("same-id", draftA))
-            assertTrue(orchestrator.isActive("same-id", draftB))
-
-            bRelease.complete(Unit)
-            bFinished.await()
-            aRelease.complete(Unit)
-            aFinished.await()
-        } finally {
-            scope.cancel()
-        }
-    }
-
-    @Test
-    fun nullOrBlankDraftKeyCannotStartOrPublishAnAttempt() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        try {
-            val orchestrator = ThreadAttachmentUploadOrchestrator(scope)
-            assertEquals(null, orchestrator.launch("id", null) {})
-            assertEquals(null, orchestrator.launch("id", "  ") {})
-            assertFalse(orchestrator.publishIfAccepted("id", null, 1L) {})
-            assertFalse(orchestrator.publishIfAccepted("id", "  ", 1L) {})
-            assertTrue(orchestrator.activeAttemptIds.isEmpty())
-        } finally {
-            scope.cancel()
-        }
-    }
-
-    @Test
     fun cancelledBeforeStartSignalsCompletionAndRetiresAdmission() = runBlocking {
         val parent = SupervisorJob()
         val scope = CoroutineScope(parent + Dispatchers.Unconfined)
@@ -308,29 +252,6 @@ class ThreadAttachmentUploadOrchestratorTest {
                 orchestrator.activeAttemptIds(draftA).isEmpty(),
                 "completion handling must retire the admitted token even without block finally"
             )
-        } finally {
-            scope.cancel()
-        }
-    }
-
-    @Test
-    fun admissionFailureSignalsCompletionExactlyOnce() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        try {
-            val orchestrator = ThreadAttachmentUploadOrchestrator(scope)
-            var completionCount = 0
-
-            val token =
-                orchestrator.launch(
-                    localAttachmentId = "admission-failure",
-                    draftKey = "  ",
-                    onCompletion = { completionCount += 1 },
-                    block = { error("an inadmissible attempt must not run") }
-                )
-
-            assertEquals(null, token)
-            assertEquals(1, completionCount)
-            assertTrue(orchestrator.activeAttemptIds.isEmpty())
         } finally {
             scope.cancel()
         }

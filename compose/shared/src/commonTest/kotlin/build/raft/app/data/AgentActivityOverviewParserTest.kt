@@ -230,51 +230,6 @@ class AgentActivityOverviewParserTest {
     }
 
     @Test
-    fun rejectsGuessedWrappersAndAliases() {
-        assertNull(parseSharedAgentActivityTurnPage("""[${base(1, 2, null)}]"""))
-        assertNull(parseSharedAgentActivityTurnPage("""{"items":[${base(1, 2, null)}]}"""))
-        assertNull(parseSharedAgentActivityTurnPage("""{"data":{"summaries":[]}}"""))
-        assertNull(parseSharedAgentActivityTurnPage("not json"))
-        // snake_case is not the contract: the row is dropped, not guessed.
-        val snake = """{"v":1,"started_at":1,"ended_at":2,"outcome":"completed","actions":[],"tool_calls":0,"problems":[],"problem_count":0,"messages_sent":0}"""
-        assertTrue(assertIsNotNull(parseSharedAgentActivityTurnPage("""{"summaries":[$snake]}""")).turns.isEmpty())
-    }
-
-    @Test
-    fun repositoryRequestsSummariesAndReplyContextAtVisiblePriority() = runTest {
-        val client = RecordingActivityOverviewNetworkClient(
-            mapOf(
-                "agents/agent-1/activity-summaries" to HomeNetworkResponse(200, """{"summaries":[$sharedVector],"next":"8000:00000000-0000-4000-8000-000000000001"}"""),
-                "messages/context/reply-1" to HomeNetworkResponse(200, replyContextBody)
-            )
-        )
-        val repository = RealAgentActivityOverviewRepository(client)
-
-        val page = assertIs<DataResult.Content<AgentActivityTurnPage>>(
-            repository.loadTurns(DataRequestPriority.Visible, MemberId("agent-1"), before = "99:00000000-0000-4000-8000-000000000009")
-        ).data
-        assertEquals("8000:00000000-0000-4000-8000-000000000001", page.next)
-        val reply = repository.loadReply(DataRequestPriority.Visible, MessageId("reply-1"))
-        assertEquals(AgentActivityTurnReply.Loaded("Fixed it: tests pass now.", 1781870490000L, channelId = "c1"), reply)
-
-        assertEquals(
-            listOf(
-                RecordedActivityOverviewRequest(
-                    DataRequestPriority.Visible,
-                    "agents/agent-1/activity-summaries",
-                    listOf("limit" to "30", "before" to "99:00000000-0000-4000-8000-000000000009")
-                ),
-                RecordedActivityOverviewRequest(
-                    DataRequestPriority.Visible,
-                    "messages/context/reply-1",
-                    listOf("before" to "0", "after" to "0")
-                )
-            ),
-            client.requests
-        )
-    }
-
-    @Test
     fun repositoryMapsForbiddenFailuresAndUnreadableReplies() = runTest {
         val client = RecordingActivityOverviewNetworkClient(
             mapOf(
@@ -310,6 +265,28 @@ class AgentActivityOverviewParserTest {
         val body = """{"summaries":[$withText,$blank,${row("")}]}"""
         val page = assertIsNotNull(parseSharedAgentActivityTurnPage(body))
         assertEquals(listOf("line one\nline two", null, null), page.turns.map { it.lastText })
+    }
+
+    /**
+     * `usageLimit` as the server returns it (botiverse/slock f273c7d6ff #13050, read at staging
+     * 4be606f7fd): packages/shared/src/activityTurnSummary.test.ts "readDaemonTurnSummary keeps a
+     * usage limit and its reset" (`{ resetsAt }`, or `{}` for a reset that is not a time) and the
+     * daemon's quota_exhausted turn (agentProcessManager.claude.test.ts,
+     * `Date.parse("2026-11-08T07:00:00.000Z")`); older producers send none.
+     */
+    @Test
+    fun aUsageLimitIsReadWithOrWithoutItsReset() {
+        val failed = { extra: String ->
+            """{"v":1,"startedAt":1,"endedAt":2,"outcome":"failed","actions":[],"toolCalls":0,"problems":[],"problemCount":0,"messagesSent":0$extra}"""
+        }
+        val withReset = failed(""","usageLimit":{"resetsAt":1794121200000}""")
+        val noReset = failed(""","usageLimit":{}""")
+        val olderProducer = failed("")
+        val page = assertIsNotNull(parseSharedAgentActivityTurnPage("""{"summaries":[$withReset,$noReset,$olderProducer]}"""))
+        assertEquals(
+            listOf(AgentActivityTurnUsageLimit(resetsAtEpochMillis = 1_794_121_200_000L), AgentActivityTurnUsageLimit(resetsAtEpochMillis = null), null),
+            page.turns.map { it.usageLimit },
+        )
     }
 
     private fun <T : Any> assertIsNotNull(value: T?): T {

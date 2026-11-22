@@ -8,10 +8,14 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.rememberUpdatedState
+import kotlinx.coroutines.flow.MutableStateFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -30,6 +34,7 @@ import build.raft.app.data.SharedAuthResult
 import build.raft.app.data.StoredAuthSession
 import build.raft.app.data.percentEncode
 import build.raft.app.data.runCatchingPreservingCancellation
+import build.raft.app.model.RaftTimeContext
 import build.raft.app.model.parseRaftTimestampEpochMillisOrNull
 import build.raft.app.resources.*
 import build.raft.designsystem.components.RaftBanner
@@ -41,13 +46,10 @@ import build.raft.designsystem.components.RaftButtonVariant
 import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.RaftTheme
 import build.raft.designsystem.tokens.RaftRadius
-import kotlin.time.Instant
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
-import kotlinx.datetime.TimeZone
-import kotlinx.datetime.toLocalDateTime
 import org.jetbrains.compose.resources.StringResource
 
 /*
@@ -261,16 +263,12 @@ internal fun externalContextForGate(
 }
 
 /**
- * The external channel freeze's start in the viewer's local time zone (web `formatFreezeDeadline`,
+ * The external channel freeze's start in the viewer's [RaftTimeContext] (web `formatFreezeDeadline`,
  * medium date + short time); falls back to the raw ISO string when unparseable.
  */
 @Composable
-internal fun raftFormatFreezeDeadline(iso: String): String {
-    val local =
-        runCatching { Instant.parse(iso).toLocalDateTime(TimeZone.currentSystemDefault()) }.getOrNull()
-            ?: return iso
-    return TaskHeadDateTime(local.year, local.month.ordinal + 1, local.day, local.hour, local.minute).localized()
-}
+internal fun raftFormatFreezeDeadline(iso: String, timeContext: RaftTimeContext? = null): String =
+    raftLocalizedMediumDateTime(iso, timeContext)
 
 /**
  * The web page the dialog opens. [RaftUpgradeMode.Upgrade]: Plan & Billing with the web upgrade
@@ -321,17 +319,27 @@ internal data class RaftUpgradeRequest(
     val waitingForWeb: Boolean = false,
     /** Gate-paired external channel context (e.g. `FreezeUpcoming` from `ExternalFreezeNotice`). */
     val externalContext: RaftUpgradeExternalContext? = null,
+    /** Owning shell store scope for pushing the authenticated in-app billing WebView (#proj-mobile:#204). */
+    val storeScope: RaftShellStoreScope = RaftShellStoreScope.Legacy,
 )
 
 /** The open upgrade dialog, if any (one per process, like web `useUpgradeDialogStore`). */
 internal object RaftUpgradeDialogState {
-    var request by mutableStateOf<RaftUpgradeRequest?>(null)
-        internal set
+    private val requestFlow = MutableStateFlow<RaftUpgradeRequest?>(null)
+
+    var request: RaftUpgradeRequest?
+        get() = requestFlow.value
+        internal set(value) {
+            requestFlow.value = value
+        }
+
+    @Composable
+    fun observeRequest(): RaftUpgradeRequest? = requestFlow.collectAsState().value
 
     internal var refresher: (suspend (RaftUpgradeRequest) -> String?)? = null
 
     fun close() {
-        request = null
+        requestFlow.value = null
         refresher = null
     }
 }
@@ -387,6 +395,7 @@ internal fun Pager.openRaftUpgradeDialog(
                         pairedContext,
                     ),
                 externalContext = pairedContext,
+                storeScope = storeScope,
             )
     }
 }
@@ -415,7 +424,7 @@ internal fun raftUpgradeDoneOnReturn(mode: RaftUpgradeMode, plan: String?): Bool
  */
 @Composable
 internal fun RaftUpgradeDialogHost(pager: Pager) {
-    val request = RaftUpgradeDialogState.request?.takeIf { it.pagerId == pager.pagerId } ?: return
+    val request = RaftUpgradeDialogState.observeRequest()?.takeIf { it.pagerId == pager.pagerId } ?: return
     val bridge = Utils.bridgeModule(pager.pagerId)
     val paidToast =
         stringResource(
@@ -428,35 +437,75 @@ internal fun RaftUpgradeDialogHost(pager: Pager) {
         )
     val currentRequest by rememberUpdatedState(request)
     val currentPaidToast by rememberUpdatedState(paidToast)
+    fun checkUpgradeReturn() {
+        val waiting = currentRequest.takeIf { it.waitingForWeb } ?: return
+        val refresh = RaftUpgradeDialogState.refresher ?: return
+        raftUpgradeScope.launch {
+            val plan = refresh(waiting)
+            bridge.log("upgrade_dialog_return gate=${waiting.gate.wire} plan=${plan ?: "unknown"}")
+            if (RaftUpgradeDialogState.request != waiting) return@launch
+            if (raftUpgradeDoneOnReturn(waiting.mode, plan)) {
+                RaftUpgradeDialogState.close()
+                bridge.toast(currentPaidToast)
+            }
+        }
+    }
     val lifecycleOwner = LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner) {
         val observer =
             LifecycleEventObserver { _, event ->
-                if (event != Lifecycle.Event.ON_RESUME) return@LifecycleEventObserver
-                val waiting = currentRequest.takeIf { it.waitingForWeb } ?: return@LifecycleEventObserver
-                val refresh = RaftUpgradeDialogState.refresher ?: return@LifecycleEventObserver
-                raftUpgradeScope.launch {
-                    val plan = refresh(waiting)
-                    bridge.log("upgrade_dialog_return gate=${waiting.gate.wire} plan=${plan ?: "unknown"}")
-                    if (RaftUpgradeDialogState.request != waiting) return@launch
-                    if (raftUpgradeDoneOnReturn(waiting.mode, plan)) {
-                        RaftUpgradeDialogState.close()
-                        bridge.toast(currentPaidToast)
-                    }
-                }
+                if (event == Lifecycle.Event.ON_RESUME) checkUpgradeReturn()
             }
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
+    val pagerAppeared = rememberRaftPagerAppeared(pager)
+    var wasPagerAppeared by remember(pager) { mutableStateOf(pagerAppeared) }
+    LaunchedEffect(pagerAppeared) {
+        if (pagerAppeared && !wasPagerAppeared) {
+            checkUpgradeReturn()
+        }
+        wasPagerAppeared = pagerAppeared
+    }
+    // Opening the authenticated billing WebView synchronously fires the page-cover dismiss signal
+    // before the new page covers this pager. Suppress closing RaftUpgradeDialogState during that
+    // push so `waitingForWeb` and `refresher` survive until the user returns, and hide the modal
+    // while covered (`pagerAppeared == false`) so it never floats over the pushed WebView.
+    val suppressCoverDismiss = remember(pager) { booleanArrayOf(false) }
+    if (!pagerAppeared) return
     RaftUpgradeDialog(
         request = request,
         onOpenWeb = {
             bridge.log("upgrade_dialog_open_web gate=${request.gate.wire} mode=${request.mode}")
-            // A web browser even though it is a Raft link (the app would otherwise open it itself).
-            bridge.hostCapabilities.openUrlInBrowser(request.webUrl)
+            // #proj-mobile:#204: open the upgrade page in the authenticated in-app WebView on Android/Desktop;
+            // iOS keeps the external browser path (App Store Guideline 3.1.1).
+            val webBaseUrl = standaloneSettingsWebBaseUrl(RaftSharedStoreRegistry.get(bridge).apiEnvironmentStore)
+            val openedInApp =
+                if (!raftPlatformFollowsAppStoreBillingRules()) {
+                    suppressCoverDismiss[0] = true
+                    try {
+                        pager.openRaftOwnWebPage(
+                            rawUrl = request.webUrl,
+                            storeScopeOverride = request.storeScope,
+                            activeWebBaseUrl = webBaseUrl,
+                        )
+                    } finally {
+                        suppressCoverDismiss[0] = false
+                    }
+                } else {
+                    false
+                }
+            if (!openedInApp) {
+                // A web browser even though it is a Raft link (the app would otherwise open it itself).
+                bridge.hostCapabilities.openUrlInBrowser(request.webUrl)
+            }
             RaftUpgradeDialogState.request = request.copy(waitingForWeb = true)
         },
-        onDismiss = RaftUpgradeDialogState::close,
+        onDismiss = {
+            if (!suppressCoverDismiss[0]) {
+                RaftUpgradeDialogState.close()
+            }
+        },
     )
 }
 

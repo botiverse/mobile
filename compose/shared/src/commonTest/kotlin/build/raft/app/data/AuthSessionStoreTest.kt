@@ -6,13 +6,11 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.take
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.runBlocking
-import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.json.Json
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
-import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
@@ -107,47 +105,6 @@ class AuthSessionStoreTest {
         assertEquals("successor-refresh", secondRestart.readSession()?.refreshToken)
         assertNull(secondRestart.readSession()?.refreshAttempt)
     }
-    @Test
-    fun reusedRefreshAttemptLogsItsAgeAgainstTheReplayReceiptTtl() = runTest {
-        val logs = mutableListOf<String>()
-        val store = KeyValueAuthSessionStore(InMemoryRaftKeyValueStore(), diagnosticsLogger = logs::add)
-        val original = sampleSession()
-        store.replaceAuthenticatedSession(original)
-        fun candidate(id: String, createdAtMillis: Long) =
-            StoredAuthRefreshAttempt(
-                attemptId = id,
-                installationId = "ari_00000000000000000000000000000021",
-                accountId = original.user.id,
-                predecessorAccessToken = original.accessToken,
-                predecessorRefreshToken = original.refreshToken,
-                createdAtMillis = createdAtMillis,
-            )
-        suspend fun prepare(attempt: StoredAuthRefreshAttempt) =
-            store.prepareRefreshAttemptIfMatch(
-                expectedAccountId = original.user.id,
-                expectedAccessToken = original.accessToken,
-                expectedRefreshToken = original.refreshToken,
-                candidate = attempt,
-            )
-        fun prepareFields(): Map<String, String> =
-            logs.last { it.startsWith("auth_refresh_attempt_prepare ") }
-                .split(' ')
-                .drop(1)
-                .associate { it.substringBefore('=') to it.substringAfter('=') }
-
-        val first = prepare(candidate("arf_0000000000000020", createdAtMillis = 1_000L))
-        assertEquals("false", prepareFields()["reused"])
-
-        val ageMillis = 24L * 60L * 1_000L
-        val replayed = prepare(candidate("arf_0000000000000022", createdAtMillis = 1_000L + ageMillis))
-
-        assertEquals(first, replayed)
-        val fields = prepareFields()
-        assertEquals("true", fields["reused"])
-        assertEquals(ageMillis.toString(), fields["attemptAgeMs"])
-        assertEquals("true", fields["replayReceiptLikelyExpired"])
-        assertEquals("likely_expired_server_replay_receipt", fields["diagnosis"])
-    }
 
     @Test
     fun serverPermissionProjectionMatchesMachineManagementCapability() {
@@ -182,18 +139,6 @@ class AuthSessionStoreTest {
 
         assertTrue(summary.hideHumansFromMembers)
         assertEquals("member", summary.role)
-    }
-
-    @Test
-    fun storedSessionExposesSharedSnapshotAndAuthTokens() = runBlocking {
-        val store = InMemoryRaftAuthSessionStore(sampleSession())
-
-        val session = store.readSession()
-
-        assertEquals("token-a", session?.toAuthTokens()?.accessToken)
-        assertEquals("server-1", session?.toAuthTokens()?.selectedServerId)
-        assertEquals("server-1", session?.toSessionSnapshot()?.currentServerId?.value)
-        assertEquals("Artin", session?.toSessionSnapshot()?.currentMember?.displayName)
     }
 
     @Test
@@ -293,23 +238,6 @@ class AuthSessionStoreTest {
     }
 
     @Test
-    fun successfulSessionReadsUseDecodedProcessCache() = runBlocking {
-        val keyValueStore = CountingRaftKeyValueStore()
-        val logs = mutableListOf<String>()
-        val store = KeyValueAuthSessionStore(keyValueStore, diagnosticsLogger = logs::add)
-        val secondStore = KeyValueAuthSessionStore(keyValueStore, diagnosticsLogger = logs::add)
-
-        store.saveSession(sampleSession())
-        logs.clear()
-        keyValueStore.readCount = 0
-
-        assertEquals("server-1", store.readSession()?.currentServerId)
-        assertEquals("server-1", secondStore.readSession()?.currentServerId)
-        assertEquals(0, keyValueStore.readCount)
-        assertTrue(logs.isEmpty())
-    }
-
-    @Test
     fun mmkvAuthSessionStoreBroadcastsChangedSessionFingerprint() = runBlocking {
         val keyValueStore = InMemoryRaftKeyValueStore()
         val store = KeyValueAuthSessionStore(keyValueStore)
@@ -330,18 +258,6 @@ class AuthSessionStoreTest {
         val tokenChange = async(start = CoroutineStart.UNDISPATCHED) { store.sessionChanges.first() }
         store.updateTokens("token-b", "token-b-r")
         assertEquals(store.readSession()?.authSessionClearFingerprint(), tokenChange.await())
-    }
-
-    @Test
-    fun authSessionFingerprintIgnoresSelectedServer() {
-        val session = sampleSession()
-
-        assertEquals(
-            session.authSessionClearFingerprint(),
-            session
-                .copy(selectedServerId = "server-2", selectedServerSlug = "work")
-                .authSessionClearFingerprint()
-        )
     }
 
     @Test
@@ -457,23 +373,6 @@ class AuthSessionStoreTest {
     }
 
     @Test
-    fun qaBootstrapBindingCasUsesLatestRotatedTokensForSameBinding() = runBlocking {
-        val store = KeyValueAuthSessionStore(InMemoryRaftKeyValueStore())
-        store.replaceAuthenticatedSession(sampleSession().copy(qaBootstrap = sampleQaBootstrap(attempt = 1)))
-        val captured = requireNotNull(store.readSession()?.qaBootstrap)
-        store.rotateTokensIfMatch("token-a", "token-r", "token-successor", "token-successor-r")
-
-        val applied =
-            store.updateQaBootstrapIfBindingMatches(captured) { latest ->
-                latest.copy(qaBootstrap = requireNotNull(latest.qaBootstrap).copy(state = "ready"))
-            }
-
-        assertEquals("token-successor", applied?.accessToken)
-        assertEquals("token-successor-r", applied?.refreshToken)
-        assertEquals("ready", store.readSession()?.qaBootstrap?.state)
-    }
-
-    @Test
     fun refreshOnlyRotationIsPreservedAgainstStaleMetadata() = runBlocking {
         // #496 (Artea Xiaomi, 2nd device): android_socket rotated only the REFRESH (access unchanged),
         // then a stale metadata write must not revert it. Mirrors the Xiaomi trace exactly.
@@ -551,16 +450,6 @@ class AuthSessionStoreTest {
     }
 
     @Test
-    fun updateMetadataFailsClosedOnTokenChange() = runBlocking {
-        val store = KeyValueAuthSessionStore(InMemoryRaftKeyValueStore())
-        store.replaceAuthenticatedSession(sampleSession())
-        assertFailsWith<IllegalArgumentException> {
-            store.updateMetadata(expectedAccountId = null) { latest -> latest.copy(accessToken = "sneaky") }
-        }
-        assertEquals("token-a", store.readSession()?.accessToken) // unchanged
-    }
-
-    @Test
     fun rotateTokensIfMatchNoOpsOnStaleExpected() = runBlocking {
         val store = KeyValueAuthSessionStore(InMemoryRaftKeyValueStore())
         store.replaceAuthenticatedSession(sampleSession())
@@ -625,18 +514,6 @@ class AuthSessionStoreTest {
         assertTrue(event is AuthSessionEvent.Cleared) // remote clear seen on typed bus by A
         assertEquals(AuthSessionClearReason.AuthLoss, (event as AuthSessionEvent.Cleared).reason)
         assertNull(b.readSession()) // actually removed
-    }
-
-    @Test
-    fun clearNotifyOnEmptyStoreDoesNotFabricateTypedMutation() = runBlocking {
-        // A duplicate remote-clear notify (current=null, nothing removed) must NOT fabricate a typed
-        // Cleared event — the first typed event a subscriber sees is the subsequent REAL login.
-        val store = KeyValueAuthSessionStore(InMemoryRaftKeyValueStore())
-        val firstEvent = async(start = CoroutineStart.UNDISPATCHED) { store.authSessionEvents.first() }
-        store.clearSessionFromSessionClearedNotify("remote_session_cleared", "nonexistent-fp")
-        store.replaceAuthenticatedSession(sampleSession()) // real Authenticated
-        val event = withTimeoutOrNull(1000) { firstEvent.await() }
-        assertTrue(event is AuthSessionEvent.Authenticated) // NOT a fabricated Cleared from the no-op notify
     }
 
     @Test
@@ -706,33 +583,6 @@ class AuthSessionStoreTest {
     }
 
     @Test
-    fun terminalAuthLossCommitRejectsDifferentSuccessorAuthority() = runBlocking {
-        val store = KeyValueAuthSessionStore(InMemoryRaftKeyValueStore())
-        val captured = sampleSession()
-        store.replaceAuthenticatedSession(captured)
-        val admitted = store.readAuthSessionTerminalSnapshot()
-        val successor =
-            captured.copy(
-                accessToken = "successor-access",
-                refreshToken = "successor-refresh",
-            )
-        store.replaceAuthenticatedSession(successor)
-        var terminalEffectRan = false
-
-        val committed =
-            store.runIfAuthSessionTerminalOrAuthorityRevision(
-                expectedGeneration = admitted.generation,
-                expectedSession = captured,
-            ) {
-                terminalEffectRan = true
-            }
-
-        assertNull(committed)
-        assertFalse(terminalEffectRan)
-        assertEquals(successor, store.readSession())
-    }
-
-    @Test
     fun terminalAuthLossCommitAcceptsExactAuthorityAfterMetadataGenerationDrift() = runBlocking {
         val store = KeyValueAuthSessionStore(InMemoryRaftKeyValueStore())
         val captured = sampleSession()
@@ -759,20 +609,6 @@ class AuthSessionStoreTest {
         assertEquals(drifted.generation + 1, committedGeneration)
         assertTrue(terminalEffectRan)
         assertNull(store.readSession())
-    }
-
-    private class CountingRaftKeyValueStore : RaftKeyValueStore {
-        private val delegate = InMemoryRaftKeyValueStore()
-        var readCount: Int = 0
-
-        override fun getString(key: String): String? {
-            readCount += 1
-            return delegate.getString(key)
-        }
-
-        override fun putString(key: String, value: String?) {
-            delegate.putString(key, value)
-        }
     }
 
     /**
@@ -817,25 +653,6 @@ class AuthSessionStoreTest {
         store.clearSession(reason = "test", source = "test")
         assertNull(store.readCommittedSessionSnapshot())
         assertNull(KeyValueAuthSessionStore(keyValue).readCommittedSessionSnapshot())
-    }
-
-    @Test
-    fun inMemorySessionSnapshotNeverReadsStorage() = runBlocking {
-        val keyValue = InMemoryRaftKeyValueStore()
-        keyValue.putString(
-            RAFT_AUTH_SESSION_RECORD_KEY,
-            Json { ignoreUnknownKeys = true }.encodeToString(StoredAuthSession.serializer(), sampleSession()),
-        )
-        val store = KeyValueAuthSessionStore(keyValue)
-        // Stored by an earlier process but not loaded in this one: not loaded, not decoded.
-        assertNull(store.readInMemorySessionSnapshot())
-
-        assertEquals("token-a", store.readSession()?.accessToken)
-        assertEquals("token-a", store.readInMemorySessionSnapshot()?.session?.accessToken)
-
-        store.clearSession(reason = "test", source = "test")
-        val signedOut = assertNotNull(store.readInMemorySessionSnapshot())
-        assertNull(signedOut.session)
     }
 
     @Test

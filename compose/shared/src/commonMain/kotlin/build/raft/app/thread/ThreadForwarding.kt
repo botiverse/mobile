@@ -26,9 +26,11 @@ import build.raft.app.data.ForwardMessageTargetRequiredAction
 import build.raft.app.data.isForwardConversationTarget
 import build.raft.app.data.RealSettingsRepository
 import build.raft.app.data.DataResult
+import build.raft.app.data.failureTraceIdOrNull
 import build.raft.app.data.map
 import build.raft.app.data.RaftShellStoreScope
 import build.raft.app.data.RaftSharedStoreRegistry
+import build.raft.app.data.RaftTimeFormatRuntime
 import build.raft.app.data.messageBodyFontSizeOwnerKey
 import build.raft.app.model.ConversationKind
 import build.raft.app.model.ForwardMessageAttachment
@@ -43,6 +45,7 @@ import build.raft.app.model.MessageId
 import build.raft.app.model.RaftTimeFormat24Hour
 import build.raft.app.model.ServerId
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -241,7 +244,6 @@ internal fun ThreadForwardBundleCard(
         } else {
             null
         }
-    val liveTimeContext = currentRaftTimeContextProvider?.current
     build.raft.designsystem.components.RaftMessageForwardedBundle(
         label = stringResource(Res.string.thread_forward_badge),
         countLabel =
@@ -278,7 +280,6 @@ internal fun ThreadForwardBundleCard(
                         {
                             RaftRelativeTimestampText(
                                 value = item.timestampLabel,
-                                timeContext = liveTimeContext,
                                 displayGroup = RaftTimestampDisplayGroup.Conversation,
                                 style = build.raft.designsystem.components.RaftMessageForwardedBundleDefaults.TimeStyle,
                                 color = build.raft.designsystem.components.RaftMessageForwardedBundleDefaults.TimeInk,
@@ -460,7 +461,8 @@ internal fun ThreadForwardSuccessBanner.forwardSuccessViewInChatAvailable(): Boo
 internal data class ThreadForwardBatchOutcome(
     val failureCode: String? = null,
     val result: ForwardMessageBatchResult? = null,
-    val failedReceipts: List<ThreadForwardDestinationReceipt> = emptyList()
+    val failedReceipts: List<ThreadForwardDestinationReceipt> = emptyList(),
+    val traceId: String? = null
 )
 
 internal fun forwardRequestIdAfterSelectionChange(
@@ -514,7 +516,8 @@ internal suspend fun executeThreadForwardBatch(
     resolved.forEach { (receipt, result) ->
         val destination = (result as? DataResult.Content)?.data
             ?: return ThreadForwardBatchOutcome(
-                failureCode = result.threadForwardFailureCode("forward_target_unavailable")
+                failureCode = result.threadForwardFailureCode("forward_target_unavailable"),
+                traceId = result.failureTraceIdOrNull()
             )
         receipt.postResolveFailureCode(destination)?.let {
             return ThreadForwardBatchOutcome(failureCode = it)
@@ -554,7 +557,10 @@ internal suspend fun executeThreadForwardBatch(
                 }
             )
         }
-        else -> ThreadForwardBatchOutcome(failureCode = result.threadForwardFailureCode("forward_failed"))
+        else -> ThreadForwardBatchOutcome(
+            failureCode = result.threadForwardFailureCode("forward_failed"),
+            traceId = result.failureTraceIdOrNull()
+        )
     }
 }
 
@@ -698,8 +704,25 @@ private fun ThreadForwardBundleScreen() {
     val params = pager.pageData.params
     val visualFixture = remember(params.toString()) { params.optString("visualFixture") == "forward_bundle" }
     val route = remember(params.toString()) { params.toThreadForwardBundleRouteOrNull() }
-    val timeCapabilities = remember(params.toString()) { params.threadForwardBundleTimeCapabilitiesOrNull() }
-    val timeContextProvider = rememberLiveRaftTimeContext(capabilities = timeCapabilities)
+    val baseTimeCapabilities = remember(params.toString()) { params.threadForwardBundleTimeCapabilitiesOrNull() }
+    val runtimeTimeFormat =
+        RaftTimeFormatRuntime.observe(fallback = baseTimeCapabilities?.timeFormat ?: RaftTimeFormat24Hour)
+    val timeCapabilities =
+        remember(baseTimeCapabilities, runtimeTimeFormat) {
+            baseTimeCapabilities?.copy(timeFormat = runtimeTimeFormat)
+        }
+    val inheritedTimeContextProvider = LocalRaftTimeContextProvider.current
+    val fallbackTimeContextProvider = currentRaftTimeContextProvider
+    val ownTimeContextProvider =
+        rememberLiveRaftTimeContext(
+            capabilities = timeCapabilities,
+            active = inheritedTimeContextProvider == null && timeCapabilities != null,
+        )
+    val timeContextProvider =
+        inheritedTimeContextProvider
+            ?: ownTimeContextProvider.takeIf { timeCapabilities != null }
+            ?: fallbackTimeContextProvider
+            ?: ownTimeContextProvider
     val storeScope = remember(params.toString(), pager.pagerId) {
         params.raftShellStoreScope(RaftShellStoreScope.Legacy.shellInstanceId)
     }
@@ -784,6 +807,7 @@ private fun ThreadForwardBundleScreen() {
         }
     }
     val bundle = if (visualFixture) threadForwardBundleVisualFixtureBundle() else detailState.bundle
+    CompositionLocalProvider(LocalRaftTimeContextProvider provides timeContextProvider) {
     Column(modifier = Modifier.fillMaxSize().background(RaftColor.SurfaceWhite)) {
         RaftTopPageHeader(
             title = bundle?.localizedForwardTitle() ?: stringResource(Res.string.thread_forward_bundle_fallback_title),
@@ -818,7 +842,7 @@ private fun ThreadForwardBundleScreen() {
                     items(messages.size, key = { messages[it].id }) { index ->
                         val item = messages[index]
                         val timestampLabel =
-                            item.formatThreadForwardedTimestampLabel(timeContextProvider.current)
+                            item.formatThreadForwardedTimestampLabel(timeContextProvider.dateContext)
                         Column(modifier = Modifier.fillMaxWidth()) {
                             ThreadMessageCard(
                                 message = item.toThreadMessageItemForBundlePage(),
@@ -860,6 +884,7 @@ private fun ThreadForwardBundleScreen() {
                     onRetry = { detailViewModel?.dispatch(ThreadForwardBundleDetailIntent.Retry) }
                 )
         }
+    }
     }
 }
 

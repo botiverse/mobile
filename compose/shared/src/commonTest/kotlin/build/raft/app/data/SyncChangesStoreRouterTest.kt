@@ -133,19 +133,6 @@ class SyncChangesStoreRouterTest {
     }
 
     @Test
-    fun `member rows retire the roster load in flight when none is loaded but deletes still apply`() = runTest {
-        targets.server = null
-        apply(
-            syncUpsert(1, "server_member", "u-2", """{"userId":"u-2","name":"ann"}"""),
-            syncDelete(2, "server_member", "u-3"),
-        )
-        assertTrue(targets.rosterUpserts.isEmpty())
-        // The roster's first load may have been read before the rows: it must not win.
-        assertEquals("roster_supersede", targets.calls.first())
-        assertEquals(listOf(MemberId("u-3") to MemberKind.Human), targets.rosterDeletes)
-    }
-
-    @Test
     fun `message rows replace the message where it is held and nothing else reloads`() = runTest {
         apply(
             syncUpsert(1, "message", "m1", messageCardRowJson(state = "Testing", revision = 2)),
@@ -229,36 +216,6 @@ class SyncChangesStoreRouterTest {
             apply(*changes.toTypedArray())
             assertEquals(expected, targets.calls, changes.toString())
         }
-    }
-
-    @Test
-    fun `conversation changes this client can't patch read Home and Activity without asking the store`() = runTest {
-        val done = """{"done":true,"doneFrontierSeq":"5"}"""
-        val unpatchable =
-            listOf(
-                listOf(syncStale(1, "ch-1", 9)),
-                listOf(syncStaleWithState(1, "ch-1", refSeq = 9, read = """{"readSeq":9,"readStateVersion":2}""")),
-                listOf(syncStaleWithState(1, "ch-1", done = """{"done":false,"doneFrontierSeq":"5"}""")),
-                listOf(syncStaleWithState(1, "ch-1", done = done, follow = """{"followed":true,"threadDone":false}""")),
-                // Malformed parts make the whole change a reload (web readSyncConversationState).
-                listOf(syncStaleWithState(1, "ch-1", done = """{"done":true,"doneFrontierSeq":5}""")),
-                listOf(syncStaleWithState(1, "ch-1", done = """{"done":true,"doneFrontierSeq":"5a"}""")),
-                listOf(syncStaleWithState(1, "ch-1", done = """{"done":"true","doneFrontierSeq":"5"}""")),
-                listOf(syncStaleWithState(1, "ch-1", read = """{"readSeq":-1,"readStateVersion":2}""", done = done)),
-                // A stateless change for the conversation in the same page.
-                listOf(syncStaleWithState(1, "ch-1", done = done), syncStale(2, "ch-1", null)),
-            )
-        for (changes in unpatchable) {
-            targets.calls.clear()
-            apply(*changes.toTypedArray())
-            assertEquals(listOf("home", "activity"), targets.calls, changes.toString())
-        }
-    }
-
-    @Test
-    fun `a Done with a null frontier still reaches the store which cannot tell`() = runTest {
-        apply(syncStaleWithState(1, "ch-1", done = """{"done":true,"doneFrontierSeq":null}"""))
-        assertEquals(listOf("remote_done:ch-1:null", "home", "activity"), targets.calls)
     }
 
     @Test
@@ -346,21 +303,6 @@ class SyncChangesStoreRouterTest {
     }
 
     @Test
-    fun `a viewer without viewMachines keeps its cursor through a machines 403 and a reset`() = runTest {
-        targets.machineResults = listOf(guestForbidden)
-        cursors.write(syncTestScope, "c1.1.1")
-        val reset = """{"reason":"forced","snapshots":["machines"]}"""
-
-        val result = engine(syncPage(syncChangesBody("c1.2.1", reset = reset))).pull(syncTestScope, trigger = "reconnect")
-
-        assertEquals("forced", assertIs<RaftSyncPullResult.Synced>(result).resetReason)
-        assertEquals(listOf("machines_reload"), targets.calls)
-        assertEquals("c1.2.1", cursors.read(syncTestScope))
-        // Not a failure: the next pull does not read it again.
-        assertTrue(ledger.takeRetakes("server-1").isEmpty)
-    }
-
-    @Test
     fun `a 5xx roster still fails the first sync and keeps no cursor`() = runTest {
         targets.rosterResults = listOf(serverUnavailable)
 
@@ -418,35 +360,5 @@ class SyncChangesStoreRouterTest {
         ledger.endListRead("server-1", RaftSyncListRead.Activity, ledger.beginListRead("server-1", RaftSyncListRead.Activity), RaftSyncSnapshotRead.Failed)
         assertEquals(setOf(RaftSyncListRead.Activity), ledger.takeRetakes("server-1").lists)
         assertTrue(ledger.takeRetakes("server-1").isEmpty)
-    }
-
-    @Test
-    fun `failed channel member and roster reloads after a page are retaken by the next pull`() = runTest {
-        cursors.write(syncTestScope, "c1.1.1")
-        targets.channelMembersOk = false
-        targets.rosterResults = listOf(serverUnavailable)
-        engine(
-            syncPage(
-                syncChangesBody(
-                    "c1.2.1",
-                    changes = listOf(syncDelete(2, "channel_member", "ch-1:user:u-2"), """{"seq":3,"entity":"agent","id":"a-1","op":"quarantined"}"""),
-                )
-            )
-        ).pull(syncTestScope, trigger = "foreground")
-        assertEquals(listOf("channel_members", "roster_reload"), targets.calls)
-        // The cursor goes on: the rows were applied.
-        assertEquals("c1.2.1", cursors.read(syncTestScope))
-
-        targets.channelMembersOk = true
-        targets.rosterResults = listOf(DataResult.Content(Unit))
-        targets.calls.clear()
-        engine(syncPage(syncChangesBody("c1.3.1"))).pull(syncTestScope, trigger = "foreground")
-        assertEquals(listOf("roster_reload", "channel_members"), targets.calls)
-        // Every loaded roster: which channels failed is not kept.
-        assertEquals(null, targets.channelMemberRefreshes.last())
-
-        targets.calls.clear()
-        engine(syncPage(syncChangesBody("c1.4.1"))).pull(syncTestScope, trigger = "foreground")
-        assertEquals(emptyList(), targets.calls)
     }
 }

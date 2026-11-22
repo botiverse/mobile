@@ -112,7 +112,7 @@ internal fun raftArtifactViewerWebViewConfig(
         domStorageEnabled = true,
         useWideViewPort = desktopMode,
         cacheEnabled = true,
-        ephemeral = false,
+        ephemeral = raftPlatformUsesEphemeralAuthWebView(),
         injectedJavaScript = injectedJavaScript,
         allowedNavigationSchemes = setOf("http", "https"),
         // Rule 3: no bridge into the app, for the page or the content frame.
@@ -689,11 +689,27 @@ private fun RaftArtifactViewerScreen() {
                 RaftArtifactViewerSplashCover(splashKinds, splashOpenedAt, desktopMode)
             RaftArtifactViewerBodyState.Viewing ->
                 if (scope == null) {
-                    // An unknown subject reuses nothing and keeps nothing: the page in the browser, as before.
+                    // An unknown viewer scope reuses nothing and keeps nothing: replace in place when
+                    // standalone (or push over the shell and dismiss the column when inColumn) if a
+                    // session and shell scope exist, else fall back to the browser and close this page.
                     LaunchedEffect(Unit) {
                         raftLogWarn(RAFT_ARTIFACT_VIEWER_DIAGNOSTICS_TAG, "artifact_viewer_browser_fallback reason=no_scope")
-                        host.bridge.openUrl(pageUrl, inBrowser = true)
-                        closePage()
+                        val hasSession = runCatchingPreservingCancellation { authStore.readSession() }.getOrNull() != null
+                        val configuredWebBaseUrl = standaloneSettingsWebBaseUrl(host.sharedStores.apiEnvironmentStore)
+                        val openedInApp =
+                            hasSession &&
+                                pager.openRaftOwnWebPage(
+                                    rawUrl = pageUrl,
+                                    storeScopeOverride = host.openStoreScope,
+                                    activeWebBaseUrl = configuredWebBaseUrl,
+                                    replaceCurrentPage = !inColumn,
+                                )
+                        if (!openedInApp) {
+                            host.bridge.openUrl(pageUrl, inBrowser = true)
+                        }
+                        if (!openedInApp || inColumn) {
+                            closePage()
+                        }
                     }
                 } else {
                     key(webRetry) {
@@ -842,7 +858,12 @@ private fun RaftArtifactViewerWebBody(
     val kept =
         remember(scope) {
             val candidate = raftWebViewKeptDocument(scope.keepAliveKey) ?: return@remember null
-            if (RaftArtifactViewerMemory.cache.keptDocumentUsable(scope, session.accessToken, conversationId)) {
+            if (!raftArtifactViewerKeptDocumentHasEmbedContract(candidate)) {
+                raftLogWarn(RAFT_ARTIFACT_VIEWER_DIAGNOSTICS_TAG, "artifact_viewer_kept_dropped reason=embed_contract_missing")
+                RaftArtifactViewerMemory.cache.forgetKeptDocument(scope)
+                raftWebViewKeepAliveClear()
+                null
+            } else if (RaftArtifactViewerMemory.cache.keptDocumentUsable(scope, session.accessToken, conversationId)) {
                 candidate
             } else {
                 // Another session, or booted for another conversation (the page latched that one).
@@ -1037,7 +1058,8 @@ private fun RaftArtifactViewerWebBody(
     // it); a handled `#host=<name>` is taken off.
     LaunchedEffect(pendingHostAction) {
         val (action, url) = pendingHostAction ?: return@LaunchedEffect
-        if (controller.evaluateJavaScript(raftArtifactViewerHostDesktopScript(scope.webOrigin, hostDesktop, clearHostAction = true))) {
+        val nextHostDesktop = raftArtifactViewerHostDesktopAfterAction(action, hostDesktop)
+        if (controller.evaluateJavaScript(raftArtifactViewerHostDesktopScript(scope.webOrigin, nextHostDesktop, clearHostAction = true))) {
             handledHostActionCleared = true
         }
         host.bridge.log("artifact_viewer_host_action action=${action.wireName}")
@@ -1117,8 +1139,36 @@ private fun RaftArtifactViewerWebBody(
             raftLogWarn(RAFT_ARTIFACT_VIEWER_DIAGNOSTICS_TAG, "artifact_viewer_load_slow elapsedMs=$RAFT_ARTIFACT_VIEWER_SLOW_LOAD_MS $latestState")
         }
     }
+    val currentShownTarget by rememberUpdatedState(shownTarget)
+    val currentLeft by rememberUpdatedState(left)
+    val currentLoadError by rememberUpdatedState(loadError)
+    val currentVisible by rememberUpdatedState(visible)
+    val currentNavigated by rememberUpdatedState(navigated)
     DisposableEffect(Unit) {
-        onDispose { raftLogInfo(RAFT_ARTIFACT_VIEWER_DIAGNOSTICS_TAG, "artifact_viewer_closed $latestState") }
+        onDispose {
+            raftLogInfo(RAFT_ARTIFACT_VIEWER_DIAGNOSTICS_TAG, "artifact_viewer_closed $latestState")
+            // Keep-alive parks this page's WebView right as it leaves composition: align cache metadata with
+            // the document actually parked (including when a stacked Artifact viewer closed before this one),
+            // and never leave an un-embedded or stale-scope document parked in keep-alive.
+            val parked = raftWebViewKeptDocument(scope.keepAliveKey) ?: return@onDispose
+            if (host.scope() != scope) {
+                raftWebViewKeepAliveClear()
+                return@onDispose
+            }
+            if (!raftArtifactViewerKeptDocumentHasEmbedContract(parked)) {
+                raftLogWarn(RAFT_ARTIFACT_VIEWER_DIAGNOSTICS_TAG, "artifact_viewer_kept_dropped reason=dispose_embed_contract_missing")
+                RaftArtifactViewerMemory.cache.forgetKeptDocument(scope)
+                raftWebViewKeepAliveClear()
+            } else if (!currentLeft && !currentLoadError && currentVisible && currentNavigated) {
+                RaftArtifactViewerMemory.cache.rememberKeptDocument(
+                    scope,
+                    currentShownTarget,
+                    raftArtifactViewerEmbeddedPageUrl(host.webBaseUrl, currentShownTarget, conversationId),
+                    currentAppToken,
+                )
+                RaftArtifactViewerMemory.cache.noteKeptBoot(scope, conversationId)
+            }
+        }
     }
     val density = LocalDensity.current
     val bottomInsetPx =
@@ -1146,7 +1196,7 @@ private fun RaftArtifactViewerWebBody(
             // viewport (the version shown stays); iOS re-zooms the page in place.
             useWideViewPort = desktopMode,
             cacheEnabled = true,
-            ephemeral = false,
+            ephemeral = raftPlatformUsesEphemeralAuthWebView(),
             injectedJavaScript = injected,
             hostEventsEnabled = false,
             controller = controller,
@@ -1177,8 +1227,26 @@ private fun RaftArtifactViewerWebBody(
             onNavigationBlocked = { blocked ->
                 // Rule 2: off the web origin never loads here; a new window the page asked for is
                 // routed as a link ([raftArtifactViewerBlockedNavigationTarget]).
+                val configuredWebBaseUrl = standaloneSettingsWebBaseUrl(host.sharedStores.apiEnvironmentStore)
+                fun openExternallyRespectingAppStore(targetUrl: String) {
+                    if (
+                        raftPlatformFollowsAppStoreBillingRules() &&
+                        raftUrlIsAppStoreRestrictedPurchaseUrl(targetUrl, configuredWebBaseUrl)
+                    ) {
+                        host.bridge.logWarn("artifact_viewer_appstore_purchase_blocked url=${raftOwnWebUrlForLog(targetUrl)}")
+                        if (raftUrlIsOwnBillingPath(targetUrl, configuredWebBaseUrl)) {
+                            host.pager.openSettingsBillingPage(host.storeScope)
+                        }
+                        return
+                    }
+                    host.bridge.openUrl(targetUrl, inBrowser = true)
+                }
                 when (val routed = raftArtifactViewerBlockedNavigationTarget(blocked, scope.webOrigin, shownTarget.id)) {
-                    is RaftArtifactViewerBlockedTarget.SystemBrowser -> host.bridge.openUrl(routed.url, inBrowser = true)
+                    is RaftArtifactViewerBlockedTarget.RaftWebPage ->
+                        if (!host.pager.openRaftOwnWebPage(routed.url, host.openStoreScope, activeWebBaseUrl = configuredWebBaseUrl)) {
+                            openExternallyRespectingAppStore(routed.url)
+                        }
+                    is RaftArtifactViewerBlockedTarget.SystemBrowser -> openExternallyRespectingAppStore(routed.url)
                     // A save the page asked for as a new window: an http(s) address on the page's origin is
                     // downloaded with the app's session; a `blob:` one cannot be read from here.
                     RaftArtifactViewerBlockedTarget.Download ->
@@ -1190,8 +1258,27 @@ private fun RaftArtifactViewerWebBody(
                             }
                         )
                     is RaftArtifactViewerBlockedTarget.OpenMessage -> RaftMessageLinkIngress.accept(routed.url, "artifact_viewer", scope.webOrigin)
-                    is RaftArtifactViewerBlockedTarget.OpenArtifact -> RaftArtifactLinkInbox.Process.submit(routed.target, "artifact_viewer")
-                    RaftArtifactViewerBlockedTarget.Ignore -> Unit
+                    is RaftArtifactViewerBlockedTarget.OpenArtifact ->
+                        if (!inColumn || !host.pager.openRaftArtifactViewerPage(routed.target, host.openStoreScope)) {
+                            RaftArtifactLinkInbox.Process.submit(routed.target, "artifact_viewer")
+                        }
+                    RaftArtifactViewerBlockedTarget.Ignore -> {
+                        val sameArtifact = raftArtifactViewerNavigation(blocked, scope.webOrigin, shownTarget.id) as? RaftArtifactViewerNavigation.Stay
+                        if (sameArtifact != null && !raftArtifactViewerHasEmbedContract(blocked)) {
+                            val currentStay = raftArtifactViewerNavigation(address, scope.webOrigin, shownTarget.id) as? RaftArtifactViewerNavigation.Stay
+                            val currentVersion = if (currentStay != null) currentStay.version else shownTarget.version
+                            if (sameArtifact.version != currentVersion) {
+                                controller.evaluateJavaScript(
+                                    raftArtifactViewerNavigateScript(
+                                        scope.webOrigin,
+                                        settingsWebViewAuthStorageJavaScript(session, binding),
+                                        ArtifactLinkTarget(shownTarget.id, sameArtifact.version),
+                                        conversationId,
+                                    )
+                                )
+                            }
+                        }
+                    }
                 }
             },
             // A file the page saves (Android DownloadListener, an iOS attachment response): the browser can.
@@ -1210,6 +1297,7 @@ private fun RaftArtifactViewerWebBody(
             refresher = accessTokenRefresher,
             visible = rememberRaftPagerAppeared(host.pager),
             onAccessTokenDispatched = { token -> pageTokens.onPushed(token, build.raft.app.data.defaultNowMillis()) },
+            webOrigin = scope.webOrigin,
         )
         if (loadError) {
             SettingsWebViewErrorContent(

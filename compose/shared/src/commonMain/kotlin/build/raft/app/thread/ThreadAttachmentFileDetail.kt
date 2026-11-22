@@ -76,6 +76,31 @@ internal fun raftThreadAttachmentCardDownloadLabel(
     return if (percent != null) "$verb $percent%" else "$verb..."
 }
 
+/**
+ * The page-local [openState] filtered against the download centre's live [centerEntry].
+ *
+ * When a save fails on the thread page, [openState] retains the failure (`download_failed`,
+ * `storage_failed`, `failed`) while the centre row can still be retried from `RaftDesktopDownloadBar`
+ * or Settings › Storage. Once the centre row is active again or has [RaftDownloadStatus.Completed],
+ * stale page-local download failures are ignored so the card and Files row clear `"Download failed"`.
+ */
+internal fun effectiveThreadAttachmentOpenState(
+    openState: ThreadAttachmentOpenUiState?,
+    centerEntry: RaftDownloadEntry?,
+): ThreadAttachmentOpenUiState? {
+    if (openState == null) return null
+    val centerStatus = centerEntry?.status ?: return openState
+    if (centerStatus.isActive || centerStatus == RaftDownloadStatus.Completed) {
+        if (openState.status in ThreadAttachmentDownloadFailureStatuses) {
+            return null
+        }
+    }
+    return openState
+}
+
+private val ThreadAttachmentDownloadFailureStatuses =
+    setOf("storage_failed", "download_failed", "failed", "missing", "cancelled")
+
 /** Share is offered next to Open / Install once the file is on the device. */
 internal fun raftFilePreviewShowsShareAction(
     canOpenWith: Boolean,

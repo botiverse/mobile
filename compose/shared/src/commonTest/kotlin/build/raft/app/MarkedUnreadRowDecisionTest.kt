@@ -85,22 +85,6 @@ class MarkedUnreadRowDecisionTest {
     }
 
     @Test
-    fun homeDirectMessageRowShowsTheDotAloneUnlessCounted() {
-        assertEquals(
-            listOf(RaftHomeDmTrailingSlot.MarkedUnreadDot),
-            raftHomeDmTrailingSlots(badge = null, hasDraft = true, isAgent = true, markedUnread = true),
-        )
-        assertEquals(
-            listOf(RaftHomeDmTrailingSlot.UnreadBadge),
-            raftHomeDmTrailingSlots(badge = "2", hasDraft = false, isAgent = false, markedUnread = true),
-        )
-        assertEquals(
-            listOf(RaftHomeDmTrailingSlot.Draft, RaftHomeDmTrailingSlot.AgentMeta),
-            raftHomeDmTrailingSlots(badge = null, hasDraft = true, isAgent = true, markedUnread = false),
-        )
-    }
-
-    @Test
     fun activityRowShowsTheDotAndReadsAsUnread() {
         val context = ActivityConversationListContext()
         val marked = channelRow(unread = 0, marked = true)

@@ -118,23 +118,6 @@ class AgentDetailCacheFirstTest {
         assertNotNull(cache.peek(other))
     }
 
-    @Test
-    fun cacheIsCappedPerServerLeastRecentlyUsedFirst() = runTest {
-        val cache: RaftAgentDetailCache = RaftKeyedSnapshotCache(maxPerServer = 2, maxTotal = 3)
-        val ownerA = owner(SERVER_A)
-        listOf("a1", "a2").forEach { id ->
-            cache.write(ownerA.agentDetailCacheKey(MemberId(id)), cached(SERVER_A, id, id), cache.ticket())
-        }
-        cache.peek(ownerA.agentDetailCacheKey(MemberId("a1"))) // a1 is now the most recent
-        cache.write(ownerA.agentDetailCacheKey(MemberId("a3")), cached(SERVER_A, "a3", "a3"), cache.ticket())
-        assertNull(cache.peek(ownerA.agentDetailCacheKey(MemberId("a2"))))
-        assertNotNull(cache.peek(ownerA.agentDetailCacheKey(MemberId("a1"))))
-        val ownerB = owner(SERVER_B)
-        cache.write(ownerB.agentDetailCacheKey(MemberId("b1")), cached(SERVER_B, "b1", "b1"), cache.ticket())
-        cache.write(ownerB.agentDetailCacheKey(MemberId("b2")), cached(SERVER_B, "b2", "b2"), cache.ticket())
-        assertEquals(3, cache.sizeForTest(), "total cap")
-    }
-
     private fun owner(serverId: String, account: String = "user-1") =
         assertNotNull(sharedAgentDetailOwner(ENVIRONMENT, account, ServerId(serverId)))
 

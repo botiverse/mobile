@@ -6,12 +6,17 @@ import build.raft.app.core.data.auth.AndroidMobileOAuth
 import build.raft.app.core.data.auth.AndroidMobileOAuthPendingStore
 import build.raft.app.core.data.auth.androidMMKVAuthKeyValueStore
 import build.raft.app.core.data.diagnostics.RaftAppLog
+import build.raft.app.shared.AndroidPendingLauncherTaskLaunchStore
 import build.raft.app.shared.AndroidShellRouteOwner
 import build.raft.app.shared.AndroidShellWindowRegistry
+import build.raft.app.shared.AndroidShellWindowStore
+import build.raft.app.shared.ANDROID_SHELL_SERVER_ID_KEY
 import build.raft.app.shared.AndroidLoginTransitionRouting
 import build.raft.app.shared.RaftCmpActivity
 import build.raft.app.shared.RaftRouteKeys
 import build.raft.app.shared.currentAndroidShellRouteOwner
+import build.raft.app.shared.hasExplicitAndroidShellServer
+import build.raft.app.shared.isAndroidIntentLaunchedFromHistory
 import build.raft.app.shared.withAndroidShellRouteOwner
 import build.raft.app.data.RaftAppLoginBridge
 import build.raft.app.RaftMessageLinkIngress
@@ -35,12 +40,14 @@ import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.lifecycle.lifecycleScope
 import java.util.Locale
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
 
 class MainActivity : ComponentActivity() {
     private lateinit var externalShareAdmissionOwner: AndroidExternalShareAdmissionOwner<Intent>
+    private var pendingExternalShareLookupJob: Job? = null
     private val externalShareResultListener: (Long, AndroidExternalShareIntakeResult) -> Unit =
         { generation, result -> handleExternalShareAdmissionResult(generation, result) }
 
@@ -57,11 +64,22 @@ class MainActivity : ComponentActivity() {
             setRaftEnvironmentIndicatorHiddenForCapture(true)
         }
         externalShareAdmissionOwner = AndroidExternalShareProcessOwner.admissionOwner(applicationContext)
-        val rawShare = intent.takeIf(Intent::isAndroidExternalShareIntent)
-        if (rawShare != null) {
-            setIntent(Intent(this, MainActivity::class.java))
-            externalShareAdmissionOwner.submit(rawShare)
-        }
+        val launchedFromHistory = isAndroidIntentLaunchedFromHistory(intent?.flags ?: 0)
+        val rawShare =
+            when (resolveMainActivityOnCreateShareAction(intent)) {
+                MainActivityOnCreateShareAction.Submit -> {
+                    val shareIntent = checkNotNull(intent)
+                    setIntent(Intent(this, MainActivity::class.java))
+                    externalShareAdmissionOwner.submit(shareIntent)
+                    shareIntent
+                }
+                MainActivityOnCreateShareAction.ClearHistoryShare -> {
+                    // Reviving a dead launcher task whose baseIntent was an external share must not re-import it.
+                    setIntent(Intent(this, MainActivity::class.java))
+                    null
+                }
+                MainActivityOnCreateShareAction.None -> null
+            }
         val resumedExternalShare = externalShareAdmissionOwner.attach(externalShareResultListener)
         RaftAppLog.d(
             "SlockBoot",
@@ -71,17 +89,33 @@ class MainActivity : ComponentActivity() {
                 "data=${intent.safeDataString()}"
         )
         if (rawShare == null && !resumedExternalShare) {
-            val durablePending = AndroidExternalShareProcessOwner.inbox(applicationContext).pendingLaunchOrNull()
-            if (durablePending == null) {
+            val readyInbox = AndroidExternalShareProcessOwner.peekInboxOrNull()
+            if (readyInbox != null && readyInbox.isKnownNoPendingLaunch()) {
                 handleLaunchIntent(intent)
             } else {
-                openSharedShellPageData(androidExternalSharePageData(durablePending))
+                val launchIntent = intent
+                pendingExternalShareLookupJob =
+                    lifecycleScope.launch {
+                        val durablePending =
+                            AndroidExternalShareProcessOwner.awaitPendingLaunchOrNull(applicationContext)
+                        if (isFinishing || isDestroyed) return@launch
+                        if (durablePending == null) {
+                            handleLaunchIntent(launchIntent)
+                        } else {
+                            val clearLaunch =
+                                if (launchedFromHistory) Intent(this@MainActivity, MainActivity::class.java).also(::setIntent)
+                                else launchIntent
+                            openSharedShellPageData(androidExternalSharePageData(durablePending), clearLaunch)
+                        }
+                    }
             }
         }
     }
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
+        pendingExternalShareLookupJob?.cancel()
+        pendingExternalShareLookupJob = null
         setIntent(intent)
         AndroidLoginTransitionRouting.observeNewIntent(this)
         RaftAppLog.d(
@@ -102,17 +136,22 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun handleLaunchIntent(intent: Intent?) {
-        if (
-            !handleExternalShareIntent(intent) &&
-            !handleAppLoginCallback(intent) &&
-            !handleMobileOAuthCallback(intent) &&
-            !handleEmailVerificationLink(intent) &&
-            !handleRaftMessageLink(intent) &&
-            !handleUnclaimedAppSchemeLink(intent) &&
-            !handleUnsupportedRaftWebLink(intent)
-        ) {
-            openSharedShell(intent)
-        }
+        dispatchMainActivityLaunchIntent(
+            intent = intent,
+            onHistoryRevival = { historyIntent ->
+                val cleanLaunch = Intent(this, MainActivity::class.java).also(::setIntent)
+                val pageDataIntent = if (historyIntent.isAppShellPageDataIntent()) historyIntent else cleanLaunch
+                openSharedShell(launchIntent = pageDataIntent, taskPolicyIntent = cleanLaunch)
+            },
+            onExternalShare = ::handleExternalShareIntent,
+            onAppLoginCallback = ::handleAppLoginCallback,
+            onMobileOAuthCallback = ::handleMobileOAuthCallback,
+            onEmailVerificationLink = ::handleEmailVerificationLink,
+            onRaftMessageLink = ::handleRaftMessageLink,
+            onUnclaimedAppSchemeLink = ::handleUnclaimedAppSchemeLink,
+            onUnsupportedRaftWebLink = ::handleUnsupportedRaftWebLink,
+            onOpenSharedShell = ::openSharedShell,
+        )
     }
 
     private fun handleExternalShareIntent(intent: Intent?): Boolean {
@@ -128,6 +167,8 @@ class MainActivity : ComponentActivity() {
         generation: Long,
         result: AndroidExternalShareIntakeResult
     ) {
+        pendingExternalShareLookupJob?.cancel()
+        pendingExternalShareLookupJob = null
         when (result) {
             is AndroidExternalShareIntakeResult.Admitted ->
                 openSharedShellPageData(androidExternalSharePageData(result.launch))
@@ -220,9 +261,23 @@ class MainActivity : ComponentActivity() {
 
     private fun externalBrowserIntent(uri: Uri): Intent? = androidExternalBrowserIntent(this, uri)
 
-    private fun openSharedShell(launchIntent: Intent? = intent) {
-        val pageData = RaftCmpActivity.appShellPageDataFromIntent(launchIntent)
-        openSharedShellPageData(pageData, launchIntent)
+    private fun openSharedShell(
+        launchIntent: Intent? = intent,
+        taskPolicyIntent: Intent? = launchIntent,
+    ) {
+        val multiShellHostEnabled =
+            runCatching {
+                build.raft.app.data.KeyValueChatLayoutPreferenceStore(build.raft.app.data.raftSharedPreferenceStore())
+                    .readMultiShellHostEnabledSync()
+            }.getOrDefault(false)
+        val pageData =
+            resolveMainActivityShellPageData(
+                launchIntent = launchIntent,
+                taskId = taskId,
+                multiShellHostEnabled = multiShellHostEnabled,
+                currentOwner = { currentAndroidShellRouteOwner(this) },
+            )
+        openSharedShellPageData(pageData, taskPolicyIntent)
     }
 
     private fun openSharedShellPageData(
@@ -263,7 +318,11 @@ class MainActivity : ComponentActivity() {
                     }
                 }
                 is SharedEmailVerificationResult.Failure -> {
-                    Toast.makeText(this@MainActivity, result.userMessage.resolve(), Toast.LENGTH_LONG).show()
+                    Toast.makeText(
+                        this@MainActivity,
+                        RaftHostStrings.errorWithTraceId(result.userMessage.resolve(), result.traceId),
+                        Toast.LENGTH_LONG
+                    ).show()
                     when (emailVerificationNavigation(hasLiveShellInTask, EmailVerificationOutcome.Failure)) {
                         EmailVerificationNavigation.FinishTrampoline -> finish()
                         EmailVerificationNavigation.OpenAuthShell ->
@@ -307,12 +366,10 @@ class MainActivity : ComponentActivity() {
      * its login page keeps its state; otherwise the shell starts and picks the result up.
      */
     private fun handleAppLoginCallback(intent: Intent?): Boolean {
-        val uri = intent?.data ?: return false
-        if (!uri.scheme.equals(BuildConfig.OAUTH_CALLBACK_SCHEME, ignoreCase = true) ||
-            !uri.host.equals("login", ignoreCase = true)
-        ) {
+        if (!intent.isAppLoginCallbackIntent()) {
             return false
         }
+        val uri = checkNotNull(intent?.data)
         val hasLiveShellInTask = AndroidShellWindowRegistry.hasShellInTask(taskId)
         // The login page is not a registered app shell, so a login page waiting for this callback shows up
         // only as "this trampoline is not the task root". Restarting the shell there would destroy the
@@ -381,7 +438,11 @@ class MainActivity : ComponentActivity() {
                     openSettingsAccountAfterMobileOAuthLink()
                 }
                 is SharedAuthResult.Failure -> {
-                    Toast.makeText(this@MainActivity, result.userMessage.resolve(), Toast.LENGTH_SHORT).show()
+                    Toast.makeText(
+                        this@MainActivity,
+                        RaftHostStrings.errorWithTraceId(result.userMessage.resolve(), result.traceId),
+                        Toast.LENGTH_LONG
+                    ).show()
                     openSettingsAccountAfterMobileOAuthLink()
                 }
                 SharedAuthResult.Unauthenticated -> {
@@ -445,6 +506,89 @@ class MainActivity : ComponentActivity() {
         )
         finish()
     }
+}
+
+internal fun shouldSkipMainActivityOneShotIntake(flags: Int): Boolean =
+    isAndroidIntentLaunchedFromHistory(flags)
+
+internal enum class MainActivityOnCreateShareAction {
+    Submit,
+    ClearHistoryShare,
+    None,
+}
+
+internal fun resolveMainActivityOnCreateShareAction(intent: Intent?): MainActivityOnCreateShareAction {
+    if (intent?.isAndroidExternalShareIntent() != true) return MainActivityOnCreateShareAction.None
+    return if (isAndroidIntentLaunchedFromHistory(intent.flags)) {
+        MainActivityOnCreateShareAction.ClearHistoryShare
+    } else {
+        MainActivityOnCreateShareAction.Submit
+    }
+}
+
+internal fun dispatchMainActivityLaunchIntent(
+    intent: Intent?,
+    onHistoryRevival: (Intent?) -> Unit,
+    onExternalShare: (Intent?) -> Boolean,
+    onAppLoginCallback: (Intent?) -> Boolean,
+    onMobileOAuthCallback: (Intent?) -> Boolean,
+    onEmailVerificationLink: (Intent?) -> Boolean,
+    onRaftMessageLink: (Intent?) -> Boolean,
+    onUnclaimedAppSchemeLink: (Intent?) -> Boolean,
+    onUnsupportedRaftWebLink: (Intent?) -> Boolean,
+    onOpenSharedShell: (Intent?) -> Unit,
+) {
+    if (shouldSkipMainActivityOneShotIntake(intent?.flags ?: 0)) {
+        onHistoryRevival(intent)
+        return
+    }
+    if (
+        !onExternalShare(intent) &&
+        !onAppLoginCallback(intent) &&
+        !onMobileOAuthCallback(intent) &&
+        !onEmailVerificationLink(intent) &&
+        !onRaftMessageLink(intent) &&
+        !onUnclaimedAppSchemeLink(intent) &&
+        !onUnsupportedRaftWebLink(intent)
+    ) {
+        onOpenSharedShell(intent)
+    }
+}
+
+internal fun Intent?.isAppLoginCallbackIntent(): Boolean {
+    val uri = this?.data ?: return false
+    return uri.scheme.equals(BuildConfig.OAUTH_CALLBACK_SCHEME, ignoreCase = true) &&
+        uri.host.equals("login", ignoreCase = true)
+}
+
+internal fun resolveMainActivityShellPageData(
+    launchIntent: Intent?,
+    taskId: Int,
+    multiShellHostEnabled: Boolean,
+    currentOwner: () -> AndroidShellRouteOwner?,
+): JSONObject {
+    val pageData = RaftCmpActivity.appShellPageDataFromIntent(launchIntent)
+    val pendingLauncherLaunch = AndroidPendingLauncherTaskLaunchStore.consume(taskId)
+    if (pendingLauncherLaunch != null) {
+        pendingLauncherLaunch.serverId?.let {
+            pageData.put(ANDROID_SHELL_SERVER_ID_KEY, it)
+            pageData.put(RAFT_SHELL_SERVER_ID, it)
+        }
+        pendingLauncherLaunch.initialTab?.let {
+            pageData.put(RaftCmpActivity.KEY_APP_SHELL_INITIAL_TAB, it)
+        }
+        if (pendingLauncherLaunch.tapEpochMillis > 0L) {
+            pageData.put(RAFT_SERVER_SWITCH_TAP_EPOCH_MILLIS, pendingLauncherLaunch.tapEpochMillis)
+        }
+    } else if (multiShellHostEnabled && !hasExplicitAndroidShellServer(pageData)) {
+        currentOwner()?.let { owner ->
+            AndroidShellWindowStore.persistedLauncherServerId(owner.environmentId, owner.accountId)?.let { serverId ->
+                pageData.put(ANDROID_SHELL_SERVER_ID_KEY, serverId)
+                pageData.put(RAFT_SHELL_SERVER_ID, serverId)
+            }
+        }
+    }
+    return pageData
 }
 
 internal enum class PostLoginDestination {
@@ -680,6 +824,94 @@ internal fun androidExternalBrowserIntent(context: Context, uri: Uri): Intent? {
         selected.activityInfo.packageName,
         selected.activityInfo.name
     )
+}
+
+private const val CustomTabsServiceAction = "android.support.customtabs.action.CustomTabsService"
+private const val CustomTabsExtraSession = "android.support.customtabs.extra.SESSION"
+private const val CustomTabsExtraTitleVisibility = "android.support.customtabs.extra.TITLE_VISIBILITY"
+private const val CustomTabsExtraShareState = "android.support.customtabs.extra.SHARE_STATE"
+private const val CustomTabsExtraInstantAppsEnabled = "android.support.customtabs.extra.INSTANT_APPS_ENABLED"
+private const val AndroidResolverPackage = "android"
+
+internal fun shouldPreferDefaultCustomTabs(
+    inBrowser: Boolean,
+    mimeType: String?,
+    scheme: String?,
+): Boolean = !inBrowser && mimeType == null && scheme?.lowercase(Locale.US) in setOf("http", "https")
+
+/**
+ * Picks the device's default browser for Custom Tabs only when that same default browser
+ * advertises [CustomTabsServiceAction] (#241 Option B). Leaving the Custom Tabs intent unbound
+ * launches the barebones system browser on HarmonyOS / Huawei devices, and switching to a
+ * non-default browser would ignore the user's chosen default browser.
+ */
+internal fun selectDefaultCustomTabsBrowserPackage(
+    ownPackage: String,
+    defaultBrowserPackage: String?,
+    customTabsPackages: List<String>,
+): String? {
+    val preferred =
+        defaultBrowserPackage
+            ?.takeIf {
+                it.isNotBlank() &&
+                    it != ownPackage &&
+                    it != AndroidResolverPackage &&
+                    !it.isRaftAppPackage()
+            }
+            ?: return null
+    val supported =
+        customTabsPackages
+            .filter { it.isNotBlank() && it != ownPackage && !it.isRaftAppPackage() }
+    return preferred.takeIf { it in supported }
+}
+
+/**
+ * Custom Tabs intent explicitly bound to the device's default browser when it supports Custom Tabs;
+ * returns null otherwise so the caller falls back to [androidExternalBrowserIntent].
+ */
+internal fun androidDefaultCustomTabsIntent(
+    context: Context,
+    uri: Uri,
+    addNewTaskFlag: Boolean,
+): Intent? {
+    val packageManager = context.packageManager
+    val defaultBrowserPackage =
+        runCatching {
+            packageManager
+                .resolveActivity(
+                    Intent(Intent.ACTION_VIEW, Uri.parse(BrowserProbeUrl)).addCategory(Intent.CATEGORY_BROWSABLE),
+                    PackageManager.MATCH_DEFAULT_ONLY,
+                )
+                ?.activityInfo
+                ?.packageName
+        }.getOrNull()
+    val customTabsPackages =
+        runCatching {
+            packageManager
+                .queryIntentServices(Intent(CustomTabsServiceAction), 0)
+                .mapNotNull { it.serviceInfo?.packageName }
+                .distinct()
+        }.getOrDefault(emptyList())
+    val selectedPackage =
+        selectDefaultCustomTabsBrowserPackage(
+            ownPackage = context.packageName,
+            defaultBrowserPackage = defaultBrowserPackage,
+            customTabsPackages = customTabsPackages,
+        ) ?: return null
+    return Intent(Intent.ACTION_VIEW, uri).apply {
+        setPackage(selectedPackage)
+        putExtras(
+            Bundle().apply {
+                putBinder(CustomTabsExtraSession, null)
+            }
+        )
+        putExtra(CustomTabsExtraTitleVisibility, 1)
+        putExtra(CustomTabsExtraShareState, 1)
+        putExtra(CustomTabsExtraInstantAppsEnabled, true)
+        if (addNewTaskFlag) {
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+    }
 }
 
 private fun Intent?.isAppShellPageDataIntent(): Boolean =

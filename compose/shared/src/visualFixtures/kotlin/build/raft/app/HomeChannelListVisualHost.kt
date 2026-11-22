@@ -8,7 +8,7 @@ import build.raft.app.compat.pager.Page
 /**
  * The whole phone Home root (`screens.home.channel-list` / `.dark`): the production
  * [RaftStructuralHomeShell] with its top bar (workspace pill + notification bell), the Saved
- * entry row, the Pinned, Joint Channels, Channels and Direct Messages sections and the phone
+ * entry row, the Pinned, External, Channels and Direct Messages sections and the phone
  * tab bar, from typed fixture state (no session, no auth).
  *
  * The content is [HomeChannelListVisualContent] (src/visualFixtureData), shared with the JVM

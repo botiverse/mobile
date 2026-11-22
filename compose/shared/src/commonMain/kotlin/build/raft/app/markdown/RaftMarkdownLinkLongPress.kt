@@ -11,6 +11,7 @@ import androidx.compose.ui.input.pointer.PointerType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.LinkAnnotation
 import androidx.compose.ui.text.TextLayoutResult
 
@@ -63,7 +64,8 @@ internal fun raftMarkdownLinkLongPressPointer(type: PointerType): Boolean =
  * carries a link annotation, as the framework link box (clipped to the link's path) would be hit.
  * A web link gives its address; a chip whose tap opens something else gives the address it carries
  * ([RaftMarkdownLinkUrlTag], an App link card chip's [RaftAppLinkHoverTag]) or none (an @mention,
- * #channel or task chip). A body-wide tap target is not a link: null.
+ * #channel or task chip), including on painted chip padding flanks added by
+ * [withRaftInlineChipGapLinks]. A body-wide tap target is not a link: null.
  */
 internal fun raftMarkdownPressedLinkAt(layout: TextLayoutResult, position: Offset): RaftMarkdownPressedLink? {
     val text = layout.layoutInput.text
@@ -72,20 +74,70 @@ internal fun raftMarkdownPressedLinkAt(layout: TextLayoutResult, position: Offse
     // The caret is the nearest gap: the character under the pointer is the one after or before it.
     for (offset in intArrayOf(caret, caret - 1)) {
         if (offset !in 0 until text.length) continue
-        val link = text.getLinkAnnotations(offset, offset + 1).firstOrNull()?.item ?: continue
+        val range = text.getLinkAnnotations(offset, offset + 1).firstOrNull() ?: continue
         if (!layout.getBoundingBox(offset).contains(position)) continue
-        return when (link) {
-            is LinkAnnotation.Url -> RaftMarkdownPressedLink(url = link.url)
-            is LinkAnnotation.Clickable -> {
-                if (link.tag == RaftMarkdownBodyClickTag) return null
+        return text.raftMarkdownPressedLinkFor(range)
+    }
+    return null
+}
+
+/**
+ * The link at character [offset] of this rendered text (the link-resolution half of
+ * [raftMarkdownPressedLinkAt] without layout hit-testing).
+ */
+internal fun AnnotatedString.raftMarkdownPressedLinkAt(offset: Int): RaftMarkdownPressedLink? {
+    if (offset !in 0 until length) return null
+    val range = getLinkAnnotations(offset, offset + 1).firstOrNull() ?: return null
+    return raftMarkdownPressedLinkFor(range)
+}
+
+private fun AnnotatedString.raftMarkdownPressedLinkFor(
+    range: AnnotatedString.Range<LinkAnnotation>,
+): RaftMarkdownPressedLink? =
+    when (val link = range.item) {
+        is LinkAnnotation.Url -> RaftMarkdownPressedLink(url = link.url)
+        is LinkAnnotation.Clickable -> {
+            if (link.tag == RaftMarkdownBodyClickTag) {
+                null
+            } else {
                 val url =
-                    text.getStringAnnotations(RaftMarkdownLinkUrlTag, offset, offset + 1).firstOrNull()?.item
-                        ?: text.getStringAnnotations(RaftAppLinkHoverTag, offset, offset + 1).firstOrNull()?.item
+                    raftPressedLinkTagUrl(RaftMarkdownLinkUrlTag, range, link.tag)
+                        ?: raftPressedLinkTagUrl(RaftAppLinkHoverTag, range, link.tag)
                 RaftMarkdownPressedLink(url = url?.takeIf { it.isNotBlank() })
             }
-            // LinkAnnotation is not sealed: any other kind is still a link, with no address we know.
-            else -> RaftMarkdownPressedLink(url = null)
         }
+        // LinkAnnotation is not sealed: any other kind is still a link, with no address we know.
+        else -> RaftMarkdownPressedLink(url = null)
+    }
+
+private fun AnnotatedString.raftPressedLinkTagUrl(
+    annotationTag: String,
+    range: AnnotatedString.Range<LinkAnnotation>,
+    linkTag: String,
+): String? {
+    val start = range.start
+    val end = range.end
+    if (end <= start) return null
+    getStringAnnotations(annotationTag, start, end)
+        .firstOrNull { it.end > it.start && it.start < end && start < it.end }
+        ?.let { return it.item }
+    // Painted chip padding flanks added by withRaftInlineChipGapLinks() carry the chip's
+    // Clickable tag, glued to the chip body by a word joiner ('\u2060'). Match only when the
+    // adjacent body carries the same Clickable tag so an unrelated neighbouring chip (e.g. a
+    // Skia-spaced task chip) never borrows another link's URL.
+    if (end < length && text[end - 1] == '\u2060' &&
+        getLinkAnnotations(end, end + 1).any { (it.item as? LinkAnnotation.Clickable)?.tag == linkTag && it.start == end }
+    ) {
+        getStringAnnotations(annotationTag, end, end + 1)
+            .firstOrNull { it.end > it.start && it.start == end }
+            ?.let { return it.item }
+    }
+    if (start > 0 && text[start] == '\u2060' &&
+        getLinkAnnotations(start - 1, start).any { (it.item as? LinkAnnotation.Clickable)?.tag == linkTag && it.end == start }
+    ) {
+        getStringAnnotations(annotationTag, start - 1, start)
+            .firstOrNull { it.end > it.start && it.end == start }
+            ?.let { return it.item }
     }
     return null
 }

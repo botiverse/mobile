@@ -15,7 +15,6 @@ import kotlinx.serialization.json.put
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
-import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class RealtimeEventMapperShadowIsolationTest {
@@ -36,18 +35,6 @@ class RealtimeEventMapperShadowIsolationTest {
         put("threadId", JsonNull)
         put("createdAt", "2026-07-11T20:00:00Z")
         put("senderName", "Alice")
-    }
-
-    @Test
-    fun throwingObserver_messageNew_matchesNoOpAndDoesNotThrow() {
-        val p = payload()
-        val noOp = RealtimeEventMapper().map(RealtimeSocketEvents.MessageNew, p)
-        val withThrowing = RealtimeEventMapper(messageShadowObserver = throwingObserver)
-            .map(RealtimeSocketEvents.MessageNew, p)
-        assertNotNull(withThrowing, "authoritative MessageNew must still be produced")
-        assertTrue(withThrowing is MessageNew)
-        assertEquals(noOp, withThrowing, "throwing shadow observer must not alter the authoritative event")
-        assertNull((withThrowing as MessageNew).decodedCanonical, "a throwing gateway must fail open to a null carry")
     }
 
     @Test

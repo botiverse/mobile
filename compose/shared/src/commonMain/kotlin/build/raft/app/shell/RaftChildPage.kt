@@ -102,6 +102,17 @@ internal fun RaftChildPage(
         if (factory != null) onLoadSuccess() else onLoadFailure()
         childPageLoads?.onChildPageLoadComplete(pageName, pageDataText, succeeded = factory != null)
     }
+    val placedState = remember { mutableStateOf(placed) }
+    placedState.value = placed
+    val placedModifier =
+        remember(placedState) {
+            Modifier.layout { measurable, constraints ->
+                val placeable = measurable.measure(constraints)
+                layout(placeable.width, placeable.height) {
+                    if (placedState.value) placeable.place(0, 0)
+                }
+            }
+        }
     Box(
         modifier.onGloballyPositioned { coordinates ->
             val measured = coordinates.positionInRoot()
@@ -113,28 +124,13 @@ internal fun RaftChildPage(
                 "host_measure originKey=$originKey origin=$measured windowOrigin=" +
                     "${childPageOriginState.windowOrigin}"
             )
-        }.raftPlacedOnlyWhenActive(placed)
+        }.then(placedModifier)
     ) {
         if (factory != null) {
             RaftPagerHost(factory = factory, args = childArgs, active = active)
         }
     }
 }
-
-/**
- * Kuikly hid an inactive child page natively (visibility=INVISIBLE): still measured and kept alive,
- * but neither drawn nor hit-tested. CMP composes the child inline, so mirror that by measuring the
- * content and skipping placement while inactive -- unplaced content is not drawn and receives no
- * pointer input, while its composition and state survive. Without this every retained keep-alive
- * tab stacks on top of the active one (e.g. Settings swallowing the Home tab's touches).
- */
-private fun Modifier.raftPlacedOnlyWhenActive(active: Boolean): Modifier =
-    layout { measurable, constraints ->
-        val placeable = measurable.measure(constraints)
-        layout(placeable.width, placeable.height) {
-            if (active) placeable.place(0, 0)
-        }
-    }
 
 /**
  * Stable key linking a child page's host measurement to the state read inside that page.

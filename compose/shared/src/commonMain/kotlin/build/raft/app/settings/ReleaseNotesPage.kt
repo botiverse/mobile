@@ -28,6 +28,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalUriHandler
 import build.raft.app.compat.pager.LocalActivity
 import build.raft.app.compat.pager.Page
 import build.raft.app.compat.json.JSONObject
@@ -179,16 +180,40 @@ internal fun sharedSettingsReleaseNotesUrl(versionCode: String): String {
     val localeTag =
         try {
             val locale = KeyValueLocalePreferenceStore(raftSharedPreferenceStore()).readLocaleSync()
-            when (locale) {
-                AppLocale.System -> null
-                else -> locale.kmmResourceLocaleTag
-            }
+            releaseNotesLocaleTag(locale, androidx.compose.ui.text.intl.Locale.current.toLanguageTag())
         } catch (cancellation: CancellationException) {
             throw cancellation
         } catch (_: Throwable) {
             AppLocale.Default.kmmResourceLocaleTag
         }
     return sharedSettingsReleaseNotesUrlForLocale(versionCode, localeTag)
+}
+
+/**
+ * The `lang` the notes page is asked for: the app's own language, or with "follow system" the
+ * system's, mapped onto the app's languages. The URL has to say it: Android reads the page through
+ * the app's document cache, whose request carries no Accept-Language, so a system-language page
+ * fell back to English (artin 11-22, Volta found the cause).
+ */
+internal fun releaseNotesLocaleTag(appLocale: AppLocale, systemLanguageTag: String?): String? =
+    if (appLocale == AppLocale.System) {
+        releaseNotesSystemAppLocale(systemLanguageTag).kmmResourceLocaleTag
+    } else {
+        appLocale.kmmResourceLocaleTag
+    }
+
+/** The app language a system language tag (`zh-Hans-CN`, `es-ES`, `fr-FR`) maps to; English otherwise. */
+internal fun releaseNotesSystemAppLocale(systemLanguageTag: String?): AppLocale {
+    val tag = systemLanguageTag?.trim()?.lowercase()?.replace('_', '-').orEmpty()
+    if (tag.isEmpty()) return AppLocale.Default
+    val parts = tag.split('-')
+    if (parts.first() == "zh") {
+        val traditional = parts.any { it == "hant" || it == "tw" || it == "hk" || it == "mo" }
+        return if (traditional) AppLocale.TraditionalChinese else AppLocale.SimplifiedChinese
+    }
+    val exact = AppLocale.fromStorageKey(tag)
+    if (exact != AppLocale.Default && exact != AppLocale.System) return exact
+    return AppLocale.fromStorageKey(parts.first()).takeUnless { it == AppLocale.System } ?: AppLocale.Default
 }
 
 internal fun sharedSettingsReleaseNotesUrlForLocale(
@@ -280,6 +305,8 @@ internal fun ReleaseNotesWebViewBody(
     }
     val pager = LocalActivity.current.getPager() as Pager
     val bridge = remember(pager.pagerId) { Utils.bridgeModule(pager.pagerId) }
+    val linkNavigator = LocalRaftLinkNavigator.current
+    val uriHandler = LocalUriHandler.current
     // Match the pre-native WebView contract: an explicit app language is sent
     // as `lang`; system language is left to the browser's Accept-Language.
     val url = remember(versionCode) { sharedSettingsReleaseNotesUrl(versionCode) }
@@ -317,6 +344,7 @@ internal fun ReleaseNotesWebViewBody(
         modifier = Modifier.fillMaxSize(),
         diagnosticsName = "release_notes",
         allowedNavigationSchemes = setOf("http", "https"),
+        mainFrameOrigin = raftWebOriginOf(url),
         controller = controller,
         onLoadCommit = {
             bridge.log("release_notes_load_commit renderer=webview versionCode=$versionCode")
@@ -325,6 +353,17 @@ internal fun ReleaseNotesWebViewBody(
             bridge.logWarn(
                 "release_notes_load_failure renderer=webview versionCode=$versionCode reason=${reason.take(120)}"
             )
+        },
+        onNavigationBlocked = { blockedUrl ->
+            val target = settingsWebViewBlockedNavigationUrlOrNull(blockedUrl)
+            if (target != null) {
+                bridge.log("release_notes_navigation_blocked action=open url=${raftWebViewUrlForLog(target)}")
+                if (linkNavigator != null) linkNavigator.open(target) else uriHandler.openUri(target)
+            } else {
+                bridge.log(
+                    "release_notes_navigation_blocked action=ignored scheme=${settingsWebViewSchemeForLog(blockedUrl)}"
+                )
+            }
         },
         onNavigationStateChange = { update ->
             navigationState = update.state

@@ -17,6 +17,7 @@ import build.raft.app.data.rememberServerFeatureLatched
 import build.raft.app.data.AgentMigrationIntent
 import build.raft.app.data.AgentMigrationStore
 import build.raft.app.data.isRaftHostVisible
+import build.raft.app.data.AgentAppGrantsRevokeStore
 import build.raft.app.data.AgentSubagentStopStore
 import build.raft.app.data.AgentTurnStopStore
 import build.raft.app.data.RaftAgentControlsApi
@@ -41,7 +42,10 @@ import build.raft.app.data.SharedAgentDetailOwner
 import build.raft.app.data.SharedAgentDetailState
 import build.raft.app.data.SharedAgentDetailStore
 import build.raft.app.data.SharedAgentIssueReportRequest
+import build.raft.app.data.ProcessRaftDatetimeFoundationOwner
 import build.raft.app.data.RaftShellStoreScope
+import build.raft.app.data.RaftTimeFormatRuntime
+import build.raft.app.data.defaultNowMillis
 import build.raft.app.data.toSharedConversationDirectoryState
 import build.raft.app.data.SharedConversationDirectoryState
 import build.raft.app.data.mergedSharedConversationDirectoryState
@@ -414,6 +418,17 @@ internal fun MemberDetailPageContent(
         agentMigrationStore?.dispatch(AgentMigrationIntent.SetPageVisible(pageVisible))
     }
     val memberIdentity = payload.identity
+    // The Apps tab's Revoke (web AgentAppAccessTab): one store per shown agent, so a confirmation
+    // never carries over to another agent's page; what it changes goes to this route's detail.
+    val agentAppGrantsRevokeStore =
+        remember(provider, routeScope, memberIdentity?.memberId) {
+            AgentAppGrantsRevokeStore(
+                revokeGrant = { grantId -> provider.memberRepository.revokeAgentAppGrant(DataRequestPriority.Foreground, grantId) },
+                loadAppLogins = { agentId -> provider.memberRepository.getAgentAppLogins(DataRequestPriority.Visible, agentId) },
+                applyToDetail = provider::updateAgentAppLogins,
+                scope = routeScope,
+            )
+        }
     val activeServerId by provider.selectedServerStore.currentServerId.collectAsState()
     var routeState by remember(memberIdentity) {
         mutableStateOf(
@@ -421,7 +436,8 @@ internal fun MemberDetailPageContent(
                 identity = memberIdentity,
                 activeServerId = provider.selectedServerStore.currentServerId.value,
                 agentDetailState = provider.agentDetailStore.state.value,
-                serverMembersState = provider.serverMembersStore.state.value
+                serverMembersState = provider.serverMembersStore.state.value,
+                currentUserId = provider.accountBinding()?.second
             ) ?: provider.seedCachedAgentDetailRoute(memberIdentity, provider.selectedServerStore.currentServerId.value)
                 ?: MemberDetailRouteState.Loading
         )
@@ -467,7 +483,11 @@ internal fun MemberDetailPageContent(
         } else {
             MembersAgentDetailLoadState.Loading
         }
-    val timeContext = payload.toRaftTimeContext()
+    val timeContextProvider = rememberMemberDetailTimeContextProvider(payload, pageVisibleTick, pageVisible)
+    val fallbackDateContext = currentRaftEffectiveDateTimeContext(payload.toRaftTimeContextOrNull())
+    val timeContext =
+        (if (payload.nowEpochMillis != null) timeContextProvider.current else timeContextProvider.dateContext)
+            ?: fallbackDateContext
     val initialAgentTab = remember(payload.initialAgentTab) { payload.initialAgentTab.toMembersAgentDetailTabOrNull() }
     val expectedKind = memberIdentity?.kind
     val statusLookupServerId =
@@ -707,9 +727,18 @@ internal fun MemberDetailPageContent(
         }, hasCachedAgentDetail = hasCachedAgentDetail, remoteAgentSeed = remoteAgentSeed,
             sourceServerName = payload.sourceServerName,
             profileChannelId = payload.profileChannelId?.let(::ChannelId))
-        if (requestFence != null &&
-            !requestFence.matches(memberIdentity, activeServerId, agentProfileRequestGeneration)
+        if (
+            !memberDetailAppliesLoadedRoute(
+                identity = memberIdentity,
+                shown = routeState,
+                loaded = loaded,
+                agentRequestCurrent =
+                    requestFence?.matches(memberIdentity, activeServerId, agentProfileRequestGeneration) != false
+            )
         ) {
+            if (loaded is MemberDetailRouteState.Error && memberIdentity.kind != MemberKind.Agent) {
+                bridge.log("member_detail_human_refresh_kept_roster code=${loaded.error.code}")
+            }
             return@LaunchedEffect
         }
         val reconciled =
@@ -911,7 +940,8 @@ internal fun MemberDetailPageContent(
     val assistantOwnerScope = rememberMemberDetailAssistantOwnerScope(provider, routeState as? MemberDetailRouteState.Agent, routeScope, closeDetail)
     CompositionLocalProvider(
         LocalMembersRuntimeAccountUsageAccess provides runtimeAccountUsageAccess,
-        LocalAssistantOwnerScope provides assistantOwnerScope
+        LocalAssistantOwnerScope provides assistantOwnerScope,
+        LocalRaftTimeContextProvider provides timeContextProvider,
     ) {
         when (val current = routeState) {
             MemberDetailRouteState.Loading ->
@@ -1203,7 +1233,12 @@ internal fun MemberDetailPageContent(
                                                 }
                                             )
                                     )
-                                }
+                                },
+                            appAccess =
+                                MembersAgentAppAccessBinding(
+                                    store = agentAppGrantsRevokeStore,
+                                    canManage = { detail -> current.viewerManagesAgentAppAccess(detail) }
+                                )
                         ),
                         agentProfileEditAuthority = agentProfileEditAuthority,
                         canViewPrivateAgentSurfaces = { _, detail -> current.viewerSeesPrivateAgentSurfaces(detail) },
@@ -1228,7 +1263,7 @@ internal fun MemberDetailPageContent(
                                                 val launchPayload =
                                                     buildStandaloneConversationThreadLaunchPayload(
                                                         conversation = identity,
-                                                        timeContext = timeContext,
+                                                        timeContext = timeContextProvider.current ?: timeContext,
                                                         instanceIdOverride = "members-lounge-${member.id.value}-${identity.threadId.value}"
                                                     )
                                                 if (launchPayload == null) {
@@ -1255,7 +1290,7 @@ internal fun MemberDetailPageContent(
                                         storeScope = provider.storeScope,
                                         openInShell = openDirectMessageInShell,
                                         member = member,
-                                        timeContext = timeContext,
+                                        timeContext = timeContextProvider.current ?: timeContext,
                                         unavailableMessage = directMessageOpenError,
                                         errorTemplate = directMessageOpenErrorTemplate,
                                         permissionMessage = directMessagePermissionError,
@@ -1280,7 +1315,7 @@ internal fun MemberDetailPageContent(
                                     server = current.server,
                                     conversationIdentityProvider = provider.conversationIdentityProvider,
                                     storeScope = provider.storeScope,
-                                    timeContext = timeContext,
+                                    timeContext = timeContextProvider.current ?: timeContext,
                                     onOpenExternal = {
                                         linkNavigator.openMembersReminderForceExternalFallback(it)
                                     },
@@ -1295,7 +1330,7 @@ internal fun MemberDetailPageContent(
                                     server = current.server,
                                     conversationIdentityProvider = provider.conversationIdentityProvider,
                                     storeScope = provider.storeScope,
-                                    timeContext = timeContext,
+                                    timeContext = timeContextProvider.current ?: timeContext,
                                     unavailableMessage = reminderOpenError,
                                     onUnavailableAction = { provider.bridge.toast(it) }
                                 )
@@ -1396,9 +1431,10 @@ internal fun MemberDetailPageContent(
                                                     source = "member_detail_user_reorder_save_error_rollback",
                                                     logger = { message -> bridge.log(message) }
                                                 )
-                                                bridge.toast(
+                                                bridge.errorToast(
                                                     tabOrderSaveErrorTemplate
-                                                        .membersFormat(result.error.userFacingMessage(errorStrings))
+                                                        .membersFormat(result.error.userFacingMessage(errorStrings)),
+                                                    result.error,
                                                 )
                                             }
                                             is DataResult.NoPermission -> {
@@ -1408,7 +1444,7 @@ internal fun MemberDetailPageContent(
                                                     source = "member_detail_user_reorder_save_blocked_rollback",
                                                     logger = { message -> bridge.log(message) }
                                                 )
-                                                bridge.toast(tabOrderPermissionError)
+                                                bridge.errorToast(tabOrderPermissionError, result.blocker)
                                             }
                                         }
                                     }
@@ -1554,7 +1590,7 @@ internal fun MemberDetailPageContent(
                                     storeScope = provider.storeScope,
                                     openInShell = openDirectMessageInShell,
                                     member = current.member,
-                                    timeContext = timeContext,
+                                    timeContext = timeContextProvider.current ?: timeContext,
                                     unavailableMessage = directMessageOpenError,
                                     errorTemplate = directMessageOpenErrorTemplate,
                                     permissionMessage = directMessagePermissionError,
@@ -1583,7 +1619,7 @@ internal fun MemberDetailPageContent(
                                 server = current.server,
                                 conversationIdentityProvider = provider.conversationIdentityProvider,
                                 storeScope = provider.storeScope,
-                                timeContext = timeContext,
+                                timeContext = timeContextProvider.current ?: timeContext,
                                 onOpenExternal = {
                                     linkNavigator.openMembersReminderForceExternalFallback(it)
                                 },
@@ -1893,10 +1929,10 @@ internal fun String.toRaftMembersPayload(): RaftMembersPayload {
     return RaftMembersPayload(
         instanceId = payload.optString("instanceId"),
         title = payload.optString("title").ifBlank { "Members" },
-        localOffsetMinutes = payload.optString("localOffsetMinutes").toIntOrNull() ?: 0,
+        localOffsetMinutes = payload.optString("localOffsetMinutes").toIntOrNull(),
         todayEpochDay = payload.optString("todayEpochDay").toLongOrNull(),
         nowEpochMillis = payload.optString("nowEpochMillis").toLongOrNull(),
-        timeFormat = payload.optString("timeFormat").ifBlank { RaftTimeFormat24Hour },
+        timeFormat = payload.optNullableString("timeFormat"),
         initialAgentTab = payload.optNullableString("initialAgentTab"),
         agentPanelTabOrder = payload.optStringArray("agentPanelTabOrder"),
         canCreateAgents = (payload.opt("canCreateAgents") as? Boolean) ?: true,
@@ -1936,10 +1972,10 @@ internal fun RaftMembersPayload.toMemberDetailPageData(
         } else {
             launchInitialAgentTab?.let { put("initialAgentTab", it.serverOrderKey) }
         }
-        put("localOffsetMinutes", localOffsetMinutes)
+        localOffsetMinutes?.let { put("localOffsetMinutes", it) }
         todayEpochDay?.let { put("todayEpochDay", it) }
         nowEpochMillis?.let { put("nowEpochMillis", it) }
-        put("timeFormat", timeFormat)
+        timeFormat?.takeIf { it.isNotBlank() }?.let { put("timeFormat", it) }
         if (agentPanelTabOrder.isNotEmpty()) {
             put("agentPanelTabOrder", JSONArray().apply {
                 agentPanelTabOrder.forEach(::put)
@@ -1965,10 +2001,10 @@ internal fun JSONObject.toRaftMemberDetailPayload(): RaftMemberDetailPayload {
             ),
         initialAgentTab = payload.optNullableString("initialAgentTab"),
         visualMode = payload.optNullableString("visualMode") ?: optNullableString("visualMode"),
-        localOffsetMinutes = payload.optString("localOffsetMinutes").toIntOrNull() ?: 0,
+        localOffsetMinutes = payload.optString("localOffsetMinutes").toIntOrNull(),
         todayEpochDay = payload.optString("todayEpochDay").toLongOrNull(),
         nowEpochMillis = payload.optString("nowEpochMillis").toLongOrNull(),
-        timeFormat = payload.optString("timeFormat").ifBlank { RaftTimeFormat24Hour },
+        timeFormat = payload.optNullableString("timeFormat"),
         agentPanelTabOrder = payload.optStringArray("agentPanelTabOrder"),
         sourceServerName = payload.optNullableString("sourceServerName"),
         profileChannelId = payload.optNullableString(MemberDetailProfileChannelIdKey),
@@ -2099,10 +2135,79 @@ private fun rememberMemberDetailAssistantOwnerScope(
     }
 }
 
-internal fun RaftMemberDetailPayload.toRaftTimeContext(): RaftTimeContext =
-    RaftTimeContext(
-        localOffsetMinutes = localOffsetMinutes,
+/**
+ * Resolves a [RaftTimeContextProvider] for [MemberDetailPageContent] without fabricating silent UTC
+ * or freezing relative reminder clocks when opened from routes without explicit timezone params
+ * (AssistantPage, SettingsServerArchive, RaftSettingsComputersPage, ThreadMembersPage).
+ *
+ * - Pinned payloads (`nowEpochMillis != null`, e.g., visual fixtures) get a deterministic static
+ *   provider with no timer. Payloads carrying only `todayEpochDay` (live route hand-off) stay live
+ *   so relative reminder labels and chat timestamps keep ticking.
+ * - Live pages inherit [currentRaftTimeContextProvider] (`LocalRaftTimeContextProvider` in wide split
+ *   or `BasePager`'s `LocalRaftPageBaseTimeContextProvider`) whenever the payload does not specify a
+ *   conflicting offset or 12h/24h format, avoiding duplicate timers; isolated callers or explicit
+ *   overrides get a fallback live provider.
+ */
+@Composable
+internal fun rememberMemberDetailTimeContextProvider(
+    payload: RaftMemberDetailPayload,
+    pageVisibleTick: Int,
+    pageVisible: Boolean,
+): RaftTimeContextProvider {
+    val hasPinnedClock = payload.nowEpochMillis != null
+    val inherited = currentRaftTimeContextProvider
+    val runtimeTimeFormat = RaftTimeFormatRuntime.observe(fallback = payload.timeFormat ?: RaftTimeFormat24Hour)
+    val pinnedContext =
+        remember(hasPinnedClock, payload) {
+            if (hasPinnedClock) payload.toRaftTimeContext() else null
+        }
+    val pinnedProvider =
+        remember(pinnedContext) {
+            pinnedContext?.let(::RaftTimeContextProvider)
+        }
+    val inheritedDateContext = inherited?.dateContext
+    val inheritedMatchesRuntime =
+        inherited != null && inheritedDateContext?.timeFormat == runtimeTimeFormat
+    val needsFallback = !hasPinnedClock && !inheritedMatchesRuntime
+    val fallbackCapabilities =
+        remember(needsFallback, payload.localOffsetMinutes, runtimeTimeFormat) {
+            if (needsFallback) {
+                RaftTimeCapabilities(
+                    localOffsetMinutes =
+                        payload.localOffsetMinutes
+                            ?: ProcessRaftDatetimeFoundationOwner.localOffsetMinutesAt(defaultNowMillis(), 0),
+                    timeFormat = runtimeTimeFormat,
+                )
+            } else {
+                null
+            }
+        }
+    return when {
+        pinnedProvider != null -> pinnedProvider
+        inheritedMatchesRuntime -> inherited!!
+        else ->
+            rememberLiveRaftTimeContext(
+                capabilities = fallbackCapabilities,
+                pageVisibleTick = pageVisibleTick,
+                active = pageVisible,
+            )
+    }
+}
+
+internal fun RaftMemberDetailPayload.toRaftTimeContextOrNull(): RaftTimeContext? {
+    val offset = localOffsetMinutes ?: if (todayEpochDay != null || nowEpochMillis != null) 0 else return null
+    return RaftTimeContext(
+        localOffsetMinutes = offset,
         todayEpochDay = todayEpochDay,
         nowEpochMillis = nowEpochMillis,
-        timeFormat = timeFormat
+        timeFormat = timeFormat ?: RaftTimeFormat24Hour,
+    )
+}
+
+internal fun RaftMemberDetailPayload.toRaftTimeContext(): RaftTimeContext =
+    RaftTimeContext(
+        localOffsetMinutes = localOffsetMinutes ?: 0,
+        todayEpochDay = todayEpochDay,
+        nowEpochMillis = nowEpochMillis,
+        timeFormat = timeFormat ?: RaftTimeFormat24Hour,
     )

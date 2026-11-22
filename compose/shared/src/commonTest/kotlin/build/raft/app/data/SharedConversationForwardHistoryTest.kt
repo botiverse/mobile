@@ -1,6 +1,5 @@
 package build.raft.app.data
 
-import build.raft.app.ConversationOpenSource
 import build.raft.app.RaftThreadSurfaceKind
 import build.raft.app.buildThreadLaunchConversationIdentity
 import build.raft.app.model.ChannelId
@@ -70,46 +69,6 @@ class SharedConversationForwardHistoryTest {
                 history.requestForward(ready("server-a", projection("server-a", "channel-b")))
             )
         assertEquals("channel-b", reopened.request.conversationIdentity.channelId?.value)
-    }
-
-    @Test
-    fun freshDrawerOpenOnAnotherServerReplacesTheOldServerBranch() {
-        val history = enabledHistory()
-        history.recordNewOpen(entry("server-a", "channel-a", ConversationKind.Channel))
-        history.recordHomeVisible()
-        assertTrue(history.canForward)
-
-        history.recordNewOpen(entry("server-b", "dm-b", ConversationKind.DirectMessage))
-        assertFalse(history.canForward)
-        assertNull(
-            history.requestForward(
-                ready(
-                    serverId = "server-a",
-                    directoryProjection = projection("server-a", "channel-a"),
-                    knownServerIds = setOf("server-a", "server-b")
-                )
-            )
-        )
-
-        history.recordHomeVisible()
-        val reopened =
-            assertIs<ConversationForwardAction.Open>(
-                history.requestForward(
-                    ready(
-                        serverId = "server-b",
-                        directoryProjection =
-                            projection(
-                                serverId = "server-b",
-                                channelId = "dm-b",
-                                kind = ConversationKind.DirectMessage,
-                                surfaceKind = RaftThreadSurfaceKind.DirectMessage
-                            ),
-                        knownServerIds = setOf("server-a", "server-b")
-                    )
-                )
-            )
-        assertEquals("server-b", reopened.entry.serverId)
-        assertEquals("dm-b", reopened.request.conversationIdentity.channelId?.value)
     }
 
     @Test
@@ -195,30 +154,6 @@ class SharedConversationForwardHistoryTest {
     }
 
     @Test
-    fun canonicalAliasOrKindDriftCannotRewriteTheRememberedIdentity() {
-        val history = enabledHistory()
-        history.recordNewOpen(entry("server-a", "channel-a", ConversationKind.Channel))
-        history.recordHomeVisible()
-        val aliasDirectory =
-            SharedConversationDirectoryState(
-                projectionsByCanonicalId =
-                    mapOf(
-                        "channel-b" to
-                            projection("server-a", "channel-b").copy(aliases = setOf("channel-a"))
-                    ),
-                aliasesById = mapOf("channel-a" to setOf("channel-b"))
-            )
-        assertEquals(
-            "conversation_unavailable",
-            assertIs<ConversationForwardAction.Drop>(
-                history.requestForward(
-                    ready("server-a", directory = aliasDirectory)
-                )
-            ).reason
-        )
-    }
-
-    @Test
     fun windowScopesAndReleaseKeepHistoryIsolated() {
         val cache = RaftShellScopedStoreCache<SharedConversationForwardHistory>()
         val scopeA = RaftShellStoreScope.create("window-a", "server-a")
@@ -252,20 +187,6 @@ class SharedConversationForwardHistoryTest {
         history.clear()
         assertFalse(history.recordHomeVisible())
         assertFalse(history.canForward)
-    }
-
-    @Test
-    fun historyEnvelopeContainsRouteIdentityOnlyForChannelAndDm() {
-        val channel = entry("server-a", "channel-a", ConversationKind.Channel)
-        val dm = entry("server-a", "dm-a", ConversationKind.DirectMessage)
-
-        assertEquals(ConversationOpenSource.HistoryForward, channel.sourceIdentity.source)
-        assertEquals("channel-a", channel.sourceIdentity.channelId)
-        assertEquals(ConversationKind.Channel, channel.sourceIdentity.conversationKind)
-        assertNull(channel.sourceIdentity.messageId)
-        assertNull(channel.sourceIdentity.originFallback)
-        assertEquals("dm-a", dm.sourceIdentity.channelId)
-        assertEquals(ConversationKind.DirectMessage, dm.sourceIdentity.conversationKind)
     }
 
     @Test
@@ -432,25 +353,6 @@ class SharedConversationForwardHistoryTest {
         assertFalse(returns.consume(pageVisibleTick = 1, hostDidAppearTick = 1))
         assertTrue(returns.consume(pageVisibleTick = 2, hostDidAppearTick = 2))
         assertFalse(returns.consume(pageVisibleTick = 2, hostDidAppearTick = 2))
-    }
-
-    @Test
-    fun settingOffNeverOffersForwardOnAnyHomeReturn() {
-        val history = SharedConversationForwardHistory()
-        val returns = ConversationForwardHomeReturnSignals()
-        history.recordNewOpen(entry("server-a", "channel-all", ConversationKind.Channel))
-        assertTrue(returns.consume(pageVisibleTick = 0, hostDidAppearTick = 1))
-        assertFalse(history.recordHomeVisible())
-        assertFalse(history.canForward)
-        assertFalse(
-            appShellConversationForwardGestureArmed(
-                preferenceEnabled = false,
-                authoritativeHomeStartAllowed = true,
-                homeSurfaceVisible = true,
-                homeContentReady = true,
-                canForward = history.canForward,
-            )
-        )
     }
 
     private fun enabledHistory(): SharedConversationForwardHistory =

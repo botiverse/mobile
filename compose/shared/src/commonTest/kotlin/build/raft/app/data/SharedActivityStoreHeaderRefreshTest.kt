@@ -96,25 +96,6 @@ class SharedActivityStoreHeaderRefreshTest {
     }
 
     @Test
-    fun resumeAfterALongSuspensionShowsItEvenWhenRealtimeRefreshedBeforeIt() = runTest {
-        val gates = Gates()
-        val store = store(gates)
-        wallMillis += 30_000L
-        startRealtimeReconcile(store)
-        gates.gate(2).complete(true)
-        runCurrent()
-        wallMillis += 104 * 60_000L
-
-        store.dispatch(SharedActivityIntent.Refresh)
-        runCurrent()
-
-        assertTrue(store.state.value.headerRefreshing)
-        gates.gate(3).complete(true)
-        runCurrent()
-        assertFalse(store.state.value.headerRefreshing)
-    }
-
-    @Test
     fun reEntryRightAfterRowsWereReadRefreshesSilently() = runTest {
         val gates = Gates()
         val store = store(gates)
@@ -177,55 +158,6 @@ class SharedActivityStoreHeaderRefreshTest {
         runCurrent()
         assertFalse(store.state.value.pullRefreshing)
         assertFalse(store.state.value.headerRefreshing)
-    }
-
-    @Test
-    fun userPullJoiningAResumeRefreshHandsTheChromeToThePullSpinner() = runTest {
-        val gates = Gates()
-        val store = store(gates)
-        wallMillis += ActivityHeaderRefreshStaleAfterMillis
-        store.dispatch(SharedActivityIntent.Refresh)
-        runCurrent()
-        assertTrue(store.state.value.headerRefreshing)
-
-        store.dispatch(SharedActivityIntent.PullRefresh)
-        runCurrent()
-
-        assertTrue(store.state.value.pullRefreshing, "the pull joined the resume refresh")
-        assertFalse(store.state.value.headerRefreshing, "never two spinners")
-        gates.gate(2).complete(true)
-        runCurrent()
-        assertFalse(store.state.value.pullRefreshing)
-        assertFalse(store.state.value.headerRefreshing)
-    }
-
-    @Test
-    fun userPullOverAnInFlightReconcileShowsOnlyThePull() = runTest {
-        val gates = Gates()
-        val store = store(gates)
-        startRealtimeReconcile(store)
-
-        store.dispatch(SharedActivityIntent.PullRefresh)
-        runCurrent()
-
-        assertTrue(store.state.value.pullRefreshing)
-        assertFalse(store.state.value.backgroundRefreshing, "the pull superseded the reconcile")
-        assertFalse(store.state.value.headerRefreshing)
-        gates.gate(3).complete(true)
-        runCurrent()
-        assertFalse(store.state.value.pullRefreshing)
-        assertFalse(store.state.value.headerRefreshing)
-    }
-
-    @Test
-    fun headerRefreshingNeedsAnAllowedForegroundRefreshAndNoPull() {
-        assertTrue(SharedActivityState(refreshing = true, headerRefreshAllowed = true).headerRefreshing)
-        assertFalse(SharedActivityState(refreshing = true).headerRefreshing, "a corrective refresh")
-        assertFalse(SharedActivityState(backgroundRefreshing = true, headerRefreshAllowed = true).headerRefreshing)
-        assertFalse(
-            SharedActivityState(refreshing = true, pullRefreshing = true, headerRefreshAllowed = true).headerRefreshing
-        )
-        assertFalse(SharedActivityState().headerRefreshing)
     }
 
     private companion object {

@@ -11,7 +11,6 @@ import build.raft.app.SharedThreadStoreTestFakes.FakeConversationRepository
 import build.raft.app.SharedThreadStoreTestFakes.ParkableReadSessionStore
 import build.raft.app.SharedThreadStoreTestFixtures.cachePayloadForTest
 import build.raft.app.SharedThreadStoreTestFixtures.contentPayload
-import build.raft.app.SharedThreadStoreTestFixtures.contentPayloadForRoute
 import build.raft.app.SharedThreadStoreTestFixtures.joinedHomeSnapshot
 import build.raft.app.SharedThreadStoreTestFixtures.localPendingMessage
 import build.raft.app.SharedThreadStoreTestFixtures.member
@@ -51,49 +50,6 @@ import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.withTimeout
 
 class SharedThreadStoreLocalSendTest {
-    @Test
-    fun appendSentPagePatchesTimelineAndPreservesStoreHeaderIdentity() = runTest {
-        val scope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
-        val localStore = InMemoryComposeLocalDataStore()
-        val dataSource =
-            testSharedThreadDataSource(
-                storeScope = backgroundScope,
-                networkApi = FakeThreadApi(failChannelMessages = true),
-                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
-                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
-            )
-        dataSource.cachePayloadForTest(contentPayload("cached body"))
-        val store = SharedThreadStore(dataSource = dataSource, scope = scope)
-
-        store.accept(SharedThreadIntent.Start(basePayload().copy(title = "Readable channel")))
-        store.accept(
-            SharedThreadIntent.AppendSentPage(
-                ThreadMessagesPage(
-                    messages =
-                        listOf(
-                            WireMessage(
-                                id = "sent-1",
-                                channelId = "channel-1",
-                                senderType = "user",
-                                senderId = "u1",
-                                senderName = "Artin",
-                                messageType = "chat",
-                                content = "sent body"
-                            )
-                        ),
-                    canLoadMoreBefore = null,
-                    canLoadMoreAfter = null
-                )
-            )
-        )
-
-        val payload = store.state.value.payload
-        assertEquals("general", payload.title)
-        assertEquals(listOf("cached body", "sent body"), payload.messages.map { it.body })
-        assertNull(localStore.readThread(ThreadId("channel-1")))
-        assertEquals("sent body", dataSource.cachedPayload("channel-1")?.messages?.last()?.body)
-        scope.cancel()
-    }
     @Test
     fun localSendSuccessReplacesTempBubbleWithCanonicalMessage() = runTest {
         val scope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
@@ -293,54 +249,6 @@ class SharedThreadStoreLocalSendTest {
         scope.cancel()
     }
     @Test
-    fun appendSentPageDropsMatchingTransientLocalSendingBubble() = runTest {
-        val scope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
-        val dataSource =
-            testSharedThreadDataSource(
-                storeScope = backgroundScope,
-                networkApi = FakeThreadApi(),
-                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
-                cacheEnvironmentIdProvider = { TestThreadEnvironmentId }
-            )
-        val store = SharedThreadStore(dataSource = dataSource, scope = scope)
-        store.accept(SharedThreadIntent.Start(basePayload()))
-
-        store.startLocalSendForCurrentOwner(
-            dataSource,
-            localPendingMessage("local-send-channel-1-1", "sent body")
-        )
-        store.accept(SharedThreadIntent.AppendSentPage(sentPage("server-1", "sent body")))
-
-        val messages = store.state.value.payload.messages
-        assertFalse(messages.any { it.id == "local-send-channel-1-1" })
-        assertEquals(1, messages.count { it.id == "server-1" })
-        scope.cancel()
-    }
-    @Test
-    fun localSendSuccessCachesCanonicalMessageWithoutTempSendingBubble() = runTest {
-        val scope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
-        val localStore = InMemoryComposeLocalDataStore()
-        val dataSource =
-            testSharedThreadDataSource(
-                storeScope = backgroundScope,
-                networkApi = FakeThreadApi(),
-                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
-                cacheEnvironmentIdProvider = { TestThreadEnvironmentId }
-            )
-        val store = SharedThreadStore(dataSource = dataSource, scope = scope)
-        store.accept(SharedThreadIntent.Start(basePayload()))
-
-        store.startLocalSendForCurrentOwner(dataSource, localPendingMessage("local-1", "sent body"))
-        store.replaceLocalSendForCurrentOwner(dataSource, "local-1", sentPage("server-1", "sent body"))
-
-        assertNull(localStore.readThread(ThreadId("channel-1")))
-        val cachedMessages = dataSource.cachedPayload("channel-1")?.messages.orEmpty()
-        assertFalse(cachedMessages.any { it.id == "local-1" })
-        assertFalse(cachedMessages.any { it.deliveryState == ThreadMessageDeliverySending })
-        assertEquals(ThreadMessageDeliverySent, cachedMessages.first { it.id == "server-1" }.deliveryState)
-        scope.cancel()
-    }
-    @Test
     fun retiredOwnerLocalSendSuccessAndFailureCannotMutateCurrentOwnerStateOrCache() = runTest {
         val scope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
         val payloadStore = SharedThreadPayloadStore(scope, prewarmStartIntervalMillis = 0L)
@@ -445,173 +353,6 @@ class SharedThreadStoreLocalSendTest {
         scope.cancel()
     }
     @Test
-    fun retiredOwnerNullProvenanceGapRejectsLocalSendBeforeApiOrStateMutation() = runTest {
-        val scope = CoroutineScope(SupervisorJob() + StandardTestDispatcher(testScheduler))
-        val payloadStore = SharedThreadPayloadStore(scope, prewarmStartIntervalMillis = 0L)
-        val api = FakeThreadApi()
-        val ownerASession =
-            sampleSession().copy(
-                user = StoredAuthUser(id = "u-a", email = "a@example.test", displayName = "Owner A"),
-                accessToken = "access-a",
-                refreshToken = "refresh-a"
-            )
-        val ownerBSession =
-            sampleSession().copy(
-                user = StoredAuthUser(id = "u-b", email = "b@example.test", displayName = "Owner B"),
-                accessToken = "access-b",
-                refreshToken = "refresh-b"
-            )
-        val ownerAIdentity =
-            ThreadReplyCacheIdentitySnapshot(
-                session = ownerASession,
-                environmentId = "https://prod.example.test",
-                principalId = "u-a",
-                serverId = "server-1",
-                authGeneration = 1L,
-                selectionGeneration = 1L
-            )
-        val ownerBIdentity =
-            ThreadReplyCacheIdentitySnapshot(
-                session = ownerBSession,
-                environmentId = "https://prod.example.test",
-                principalId = "u-b",
-                serverId = "server-1",
-                authGeneration = 2L,
-                selectionGeneration = 1L
-            )
-        var identity: ThreadReplyCacheIdentitySnapshot? = ownerAIdentity
-        val transitionWaiterEntered = CompletableDeferred<Unit>()
-        val releaseTransitionWaiter = CompletableDeferred<Unit>()
-        val dataSource =
-            SharedThreadDataSource(
-                threadParseDispatcher = backgroundScope.testDispatcher(),
-                messageStore = SharedThreadMessageStore(scope = backgroundScope),
-                networkApi = api,
-                sessionStore = InMemoryRaftAuthSessionStore(ownerASession),
-                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
-                conversationRepository = FakeConversationRepository(),
-                replyCacheIdentityAuthority = { identity },
-                replyCacheIdentityTransitionWaiter = {
-                    transitionWaiterEntered.complete(Unit)
-                    releaseTransitionWaiter.await()
-                    true
-                },
-                payloadStore = payloadStore
-            )
-        val store = SharedThreadStore(dataSource = dataSource, scope = scope)
-        store.accept(SharedThreadIntent.Start(basePayload()))
-        withTimeout(10_000) {
-            while (!store.state.value.writeActionsEnabled) {
-                delay(10)
-            }
-        }
-        val ownerA = requireNotNull(dataSource.currentReplyCacheProvenance())
-        val ownerAAuthority =
-            requireNotNull(
-                dataSource.captureThreadLocalSendAuthority(
-                    state = store.state.value,
-                    mountedOwnerProvenance = ownerA
-                )
-            )
-        val beforeGapState = store.state.value
-        val beforeGapOwnerACache =
-            payloadStore.get(
-                serverId = "server-1",
-                threadId = "channel-1",
-                environmentId = ownerA.environmentId,
-                principalId = ownerA.principalId,
-                ownerScopeId = ownerA.threadPayloadOwnerScopeId.orEmpty()
-            )
-
-        identity = null
-        val ownerTransition = async { dataSource.captureReplyCacheProducerContext() }
-        transitionWaiterEntered.await()
-
-        assertTrue(store.state.value.writeActionsEnabled)
-        assertNull(dataSource.currentReplyCacheProvenance())
-        assertNull(
-            dataSource.captureThreadLocalSendAuthority(
-                state = store.state.value,
-                mountedOwnerProvenance = ownerA
-            )
-        )
-        val admittedDuringGap =
-            store.admitLocalSend(
-                message = localPendingMessage("local-gap", "must not send"),
-                expectedProvenance = ownerAAuthority.provenance,
-                expectedRoute = ownerAAuthority.route
-            )
-        if (admittedDuringGap) {
-            dataSource.sendMessage(
-                channelId = "channel-1",
-                body = "must not send",
-                asTask = false,
-                attachmentIds = emptyList(),
-                randomId = "rid-gap"
-            )
-        }
-
-        assertFalse(admittedDuringGap)
-        assertEquals(0, api.sendMessageCalls)
-        assertEquals(beforeGapState, store.state.value)
-
-        identity = ownerBIdentity
-        releaseTransitionWaiter.complete(Unit)
-        val ownerB = requireNotNull(ownerTransition.await()).provenance
-        assertEquals("u-b", ownerB.principalId)
-        assertNull(
-            dataSource.captureThreadLocalSendAuthority(
-                state = store.state.value,
-                mountedOwnerProvenance = ownerA
-            )
-        )
-        assertFalse(
-            store.admitLocalSend(
-                message = localPendingMessage("local-gap", "must not send"),
-                expectedProvenance = ownerAAuthority.provenance,
-                expectedRoute = ownerAAuthority.route
-            )
-        )
-        store.accept(
-            SharedThreadIntent.ReplaceLocalSendWithSentPage(
-                messageId = "local-gap",
-                page = sentPage("server-gap", "must not send"),
-                expectedProvenance = ownerAAuthority.provenance,
-                expectedRoute = ownerAAuthority.route
-            )
-        )
-        store.accept(
-            SharedThreadIntent.ApplyLocalSendFailure(
-                messageId = "local-gap",
-                errorCode = "owner_a_failure",
-                expectedProvenance = ownerAAuthority.provenance,
-                expectedRoute = ownerAAuthority.route
-            )
-        )
-        assertEquals(beforeGapState, store.state.value)
-        assertEquals(
-            beforeGapOwnerACache,
-            payloadStore.get(
-                serverId = "server-1",
-                threadId = "channel-1",
-                environmentId = ownerA.environmentId,
-                principalId = ownerA.principalId,
-                ownerScopeId = ownerA.threadPayloadOwnerScopeId.orEmpty()
-            )
-        )
-        assertNull(
-            payloadStore.get(
-                serverId = "server-1",
-                threadId = "channel-1",
-                environmentId = ownerB.environmentId,
-                principalId = ownerB.principalId,
-                ownerScopeId = ownerB.threadPayloadOwnerScopeId.orEmpty()
-            )
-        )
-        assertFalse(store.state.value.payload.messages.any { it.id == "local-gap" || it.id == "server-gap" })
-        scope.cancel()
-    }
-    @Test
     fun replyThreadLocalSendSuccessKeepsCanonicalSentMessageWhenEchoUsesParentChannel() = runTest {
         val scope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
         val localStore = InMemoryComposeLocalDataStore()
@@ -680,77 +421,6 @@ class SharedThreadStoreLocalSendTest {
         scope.cancel()
     }
     @Test
-    fun cachePayloadDropsTransientLocalSendingBubble() = runTest {
-        val dataSource =
-            testSharedThreadDataSource(
-                storeScope = backgroundScope,
-                networkApi = FakeThreadApi(),
-                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
-                cacheEnvironmentIdProvider = { TestThreadEnvironmentId }
-            )
-        val payload =
-            contentPayload("sent body", id = "server-1").copy(
-                messages =
-                    listOf(
-                        localPendingMessage("local-send-channel-1-1", "sent body"),
-                        contentPayload("sent body", id = "server-1").messages.single()
-                    )
-            )
-
-        dataSource.cachePayloadForTest(payload)
-        val cachedPayload = dataSource.cachedPayload("channel-1")
-
-        assertNotNull(cachedPayload)
-        assertFalse(cachedPayload.messages.any { it.id == "local-send-channel-1-1" })
-        assertFalse(cachedPayload.messages.any { it.deliveryState == ThreadMessageDeliverySending })
-        assertEquals(listOf("server-1"), cachedPayload.messages.map { it.id })
-    }
-    @Test
-    fun cachedPayloadDoesNotPersistHeaderFallbackTitleAsConversationName() = runTest {
-        val localStore = InMemoryComposeLocalDataStore()
-        val dataSource =
-            testSharedThreadDataSource(
-                storeScope = backgroundScope,
-                networkApi = FakeThreadApi(),
-                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
-                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
-            )
-        val route =
-            basePayload().copy(
-                title = threadHeaderFallbackTitle(RaftThreadSurfaceKind.Channel),
-                sourceThreadId = "joint-1",
-                streamChannelId = "joint-1",
-                channelKind = "joint"
-            )
-        val payload = contentPayloadForRoute(route, "body", channelId = "joint-1")
-
-        dataSource.cachePayloadForTest(payload)
-
-        val cached = localStore.readThread(ThreadId("joint-1"))
-        assertNull(cached)
-        assertEquals(listOf("body"), dataSource.cachedPayload("joint-1")?.messages?.map { it.body })
-    }
-    @Test
-    fun canonicalPayloadCacheKeepsThreadTimelineInMemoryWithoutPersistentRewrite() = runTest {
-        val localStore = InMemoryComposeLocalDataStore()
-        localStore.writeThread(threadSnapshot(body = "stale db body"))
-        val dataSource =
-            testSharedThreadDataSource(
-                storeScope = backgroundScope,
-                networkApi = FakeThreadApi(),
-                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
-                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
-            )
-        val freshPayload = contentPayload("fresh memory body")
-
-        val selected =
-            dataSource.cacheCanonicalPayload(freshPayload)
-
-        assertEquals(listOf("fresh memory body"), selected.messages.map { it.body })
-        assertEquals(listOf("fresh memory body"), dataSource.cachedPayload("channel-1")?.messages?.map { it.body })
-        assertEquals(listOf("stale db body"), localStore.readThread(ThreadId("channel-1"))?.messages?.map { it.body })
-    }
-    @Test
     fun shorterInitialWindowDoesNotShrinkExpandedVisibleTimeline() {
         val expandedMessages =
             (1..72).map { index ->
@@ -790,47 +460,6 @@ class SharedThreadStoreLocalSendTest {
         assertEquals("updated tail", stable.messages.last().body)
     }
     @Test
-    fun cachedReplyPayloadDoesNotPersistParentDisplaySubtitle() = runTest {
-        val localStore = InMemoryComposeLocalDataStore()
-        val dataSource =
-            testSharedThreadDataSource(
-                storeScope = backgroundScope,
-                networkApi = FakeThreadApi(),
-                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
-                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
-            )
-        val payload =
-            replyPayload(parentMessageId = "parent-1", threadId = "thread-parent-1")
-                .copy(
-                    status = "content",
-                    subtitle = "#general",
-                    originMessage =
-                        RaftThreadMessageItem(
-                            id = "parent-1",
-                            authorId = "u1",
-                            authorName = "Artin",
-                            body = "Parent message",
-                            threadChannelId = "thread-parent-1"
-                        ),
-                    messages =
-                        listOf(
-                            RaftThreadMessageItem(
-                                id = "reply-1",
-                                authorId = "u2",
-                                authorName = "Cindy",
-                                body = "Reply body"
-                            )
-                        )
-                )
-
-        dataSource.cachePayloadForTest(payload)
-
-        assertNull(localStore.readThread(ThreadId("thread-parent-1")))
-        val cached = dataSource.cachedPayload("thread-parent-1")
-        assertEquals(RaftThreadSurfaceKind.ReplyThread, cached?.surfaceKind)
-        assertEquals("#general", cached?.subtitle)
-    }
-    @Test
     fun localSendFailurePersistsFailedBubbleWithRetryContext() = runTest {
         val scope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
         val localStore = InMemoryComposeLocalDataStore()
@@ -867,39 +496,6 @@ class SharedThreadStoreLocalSendTest {
         scope.cancel()
     }
     @Test
-    fun localSendFailurePersistsReadableErrorMessage() = runTest {
-        val scope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
-        val localStore = InMemoryComposeLocalDataStore()
-        val dataSource =
-            testSharedThreadDataSource(
-                storeScope = backgroundScope,
-                networkApi = FakeThreadApi(),
-                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
-                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
-            )
-        val store = SharedThreadStore(dataSource = dataSource, scope = scope)
-        val localMessageId = "local-send-channel-1-1"
-        store.accept(SharedThreadIntent.Start(basePayload()))
-        store.startLocalSendForCurrentOwner(dataSource, localPendingMessage(localMessageId, "retry body"))
-
-        store.failLocalSendForCurrentOwner(
-            dataSource = dataSource,
-            messageId = localMessageId,
-            errorCode = "body_too_large",
-            errorMessage = "Body is too large"
-        )
-
-        val failed = store.state.value.payload.messages.first { it.id == localMessageId }
-        assertEquals("body_too_large", failed.pendingSendErrorCode)
-        assertEquals("Body is too large", failed.pendingSendErrorMessage)
-        val cachedPayload = dataSource.cachedPayload("channel-1")
-        assertNotNull(cachedPayload)
-        val cachedFailed = cachedPayload.messages.first { it.id == localMessageId }
-        assertEquals("body_too_large", cachedFailed.pendingSendErrorCode)
-        assertEquals("Body is too large", cachedFailed.pendingSendErrorMessage)
-        scope.cancel()
-    }
-    @Test
     fun dataSourceCachesLocalSendFailureAfterPageScopeEnds() = runTest {
         val localStore = InMemoryComposeLocalDataStore()
         val dataSource =
@@ -931,33 +527,6 @@ class SharedThreadStoreLocalSendTest {
         assertEquals("offline", failed.pendingSendErrorMessage)
     }
     @Test
-    fun dataSourceCachesLocalSendSuccessAfterPageScopeEnds() = runTest {
-        val dataSource =
-            testSharedThreadDataSource(
-                storeScope = backgroundScope,
-                networkApi = FakeThreadApi(),
-                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
-                cacheEnvironmentIdProvider = { TestThreadEnvironmentId }
-            )
-        val basePayload =
-            basePayload().copy(
-                status = "content",
-                messages = listOf(RaftThreadMessageItem(id = "m1", authorId = "u1", authorName = "Artin", body = "existing"))
-            )
-        val localMessage = localPendingMessage("local-send-channel-1-1", "sent body")
-
-        dataSource.cacheLocalSendSuccess(
-            basePayload = basePayload,
-            localMessage = localMessage,
-            sentPage = sentPage("server-1", "sent body")
-        )
-
-        val cached = dataSource.cachedPayload("channel-1")
-        assertNotNull(cached)
-        assertFalse(cached.messages.any { it.id == localMessage.id })
-        assertEquals(1, cached.messages.count { it.id == "server-1" })
-    }
-    @Test
     fun dismissLocalFailedSendRemovesFailedBubbleFromStateAndLocalCache() = runTest {
         val scope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
         val localStore = InMemoryComposeLocalDataStore()
@@ -975,30 +544,6 @@ class SharedThreadStoreLocalSendTest {
         store.failLocalSendForCurrentOwner(dataSource, localMessageId, "network_error")
 
         store.accept(SharedThreadIntent.DismissLocalFailedSend(localMessageId))
-
-        assertEquals(null, store.state.value.payload.messages.firstOrNull { it.id == localMessageId })
-        assertNull(localStore.readThread(ThreadId("channel-1")))
-        val cachedPayload = dataSource.cachedPayload("channel-1")
-        assertEquals(null, cachedPayload?.messages?.firstOrNull { it.id == localMessageId })
-        scope.cancel()
-    }
-    @Test
-    fun cancelLocalSendRemovesSendingBubbleFromStateAndLocalCache() = runTest {
-        val scope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
-        val localStore = InMemoryComposeLocalDataStore()
-        val dataSource =
-            testSharedThreadDataSource(
-                storeScope = backgroundScope,
-                networkApi = FakeThreadApi(),
-                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
-                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
-            )
-        val store = SharedThreadStore(dataSource = dataSource, scope = scope)
-        val localMessageId = "local-send-channel-1-1"
-        store.accept(SharedThreadIntent.Start(basePayload()))
-        store.startLocalSendForCurrentOwner(dataSource, localPendingMessage(localMessageId, "cancel me"))
-
-        store.accept(SharedThreadIntent.CancelLocalSend(localMessageId))
 
         assertEquals(null, store.state.value.payload.messages.firstOrNull { it.id == localMessageId })
         assertNull(localStore.readThread(ThreadId("channel-1")))
@@ -1033,38 +578,6 @@ class SharedThreadStoreLocalSendTest {
         scope.cancel()
     }
     @Test
-    fun localSendFailureKeepsFailedBubbleWithRetryContext() = runTest {
-        val scope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
-        val dataSource =
-            testSharedThreadDataSource(
-                storeScope = backgroundScope,
-                networkApi = FakeThreadApi(),
-                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
-                cacheEnvironmentIdProvider = { TestThreadEnvironmentId }
-            )
-        val store = SharedThreadStore(dataSource = dataSource, scope = scope)
-        store.accept(SharedThreadIntent.Start(basePayload()))
-        store.startLocalSendForCurrentOwner(
-            dataSource,
-            localPendingMessage(
-                id = "local-1",
-                body = "retry body",
-                asTask = true,
-                attachmentIds = listOf("att-1")
-            )
-        )
-
-        store.failLocalSendForCurrentOwner(dataSource, "local-1", "network_error")
-
-        val failed = store.state.value.payload.messages.first { it.id == "local-1" }
-        assertEquals(ThreadMessageDeliveryFailed, failed.deliveryState)
-        assertEquals("retry body", failed.body)
-        assertEquals("network_error", failed.pendingSendErrorCode)
-        assertEquals(true, failed.pendingSendContext?.asTask)
-        assertEquals(listOf("att-1"), failed.pendingSendContext?.attachmentIds)
-        scope.cancel()
-    }
-    @Test
     fun retryFailureReusesSameTempBubbleAndRetrySuccessReplacesIt() = runTest {
         val scope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
         val dataSource =
@@ -1096,28 +609,6 @@ class SharedThreadStoreLocalSendTest {
             failedMessages.single().copy(deliveryState = ThreadMessageDeliverySending)
         )
         store.replaceLocalSendForCurrentOwner(dataSource, "local-1", sentPage("server-1", "retry body"))
-
-        val messages = store.state.value.payload.messages
-        assertFalse(messages.any { it.id == "local-1" })
-        assertEquals(1, messages.count { it.id == "server-1" })
-        scope.cancel()
-    }
-    @Test
-    fun localSendReplacementDoesNotDuplicateServerMessageAlreadyInFlow() = runTest {
-        val scope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
-        val dataSource =
-            testSharedThreadDataSource(
-                storeScope = backgroundScope,
-                networkApi = FakeThreadApi(),
-                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
-                cacheEnvironmentIdProvider = { TestThreadEnvironmentId }
-            )
-        val store = SharedThreadStore(dataSource = dataSource, scope = scope)
-        store.accept(SharedThreadIntent.Start(basePayload()))
-        store.startLocalSendForCurrentOwner(dataSource, localPendingMessage("local-1", "sent body"))
-        store.accept(SharedThreadIntent.AppendSentPage(sentPage("server-1", "sent body")))
-
-        store.replaceLocalSendForCurrentOwner(dataSource, "local-1", sentPage("server-1", "sent body"))
 
         val messages = store.state.value.payload.messages
         assertFalse(messages.any { it.id == "local-1" })

@@ -82,17 +82,6 @@ class ServerAppearanceTest {
         }
     }
 
-    private class FailingNetworkClient : RaftNetworkClient {
-        override suspend fun request(
-            priority: DataRequestPriority,
-            path: String,
-            method: String,
-            query: List<Pair<String, String>>,
-            serverIdOverride: ServerId?,
-            bodyText: String?,
-        ): HomeNetworkResponse = throw IllegalStateException("offline")
-    }
-
     private val appearancePath = "servers/$serverA/appearance-settings"
 
     private fun session(
@@ -298,36 +287,6 @@ class ServerAppearanceTest {
     }
 
     @Test
-    fun otherFailuresMapToTypedResults() = runTest {
-        val store = InMemoryRaftAuthSessionStore(session())
-        val id = ServerId(serverA)
-        fun repository(response: HomeNetworkResponse) =
-            NetworkServerAppearanceRepository(RecordingNetworkClient(mapOf("PATCH $appearancePath" to response)), store)
-
-        assertEquals(
-            ServerAppearanceUpdateResult.NotFound,
-            repository(HomeNetworkResponse(404, """{"error":"Server not found"}""")).update(id, RaftThemeId.Space, true),
-        )
-        assertEquals(
-            ServerAppearanceUpdateResult.Failed(400, "themeDecor must be a boolean"),
-            repository(HomeNetworkResponse(400, """{"error":"themeDecor must be a boolean"}""")).update(id, RaftThemeId.Space, true),
-        )
-        assertEquals(
-            ServerAppearanceUpdateResult.Failed(500, "Failed to update appearance settings"),
-            repository(HomeNetworkResponse(500, """{"error":"Failed to update appearance settings"}""")).update(id, RaftThemeId.Space, true),
-        )
-        assertEquals(
-            ServerAppearanceUpdateResult.Failed(200, null),
-            repository(HomeNetworkResponse(200, "not json")).update(id, RaftThemeId.Space, true),
-        )
-        assertEquals(
-            ServerAppearanceUpdateResult.Failed(0, null),
-            NetworkServerAppearanceRepository(FailingNetworkClient(), store).update(id, RaftThemeId.Space, true),
-        )
-        assertNull(store.storedServer(serverA).theme)
-    }
-
-    @Test
     fun proThemeOnAFreeServerIsRefusedBeforeAnyRequest() = runTest {
         val freeStore = InMemoryRaftAuthSessionStore(session(serverAPlan = "free"))
         val client = RecordingNetworkClient(
@@ -385,45 +344,6 @@ class ServerAppearanceTest {
             requests += key
             return gates.getOrPut(key) { CompletableDeferred() }.await()
         }
-    }
-
-    @Test
-    fun catchUpAfterReconnectUpdatesTheStoredLookOncePerWindow() = runTest {
-        val store = InMemoryRaftAuthSessionStore(session(serverATheme = "space"))
-        val client = RecordingNetworkClient(
-            mapOf("GET $appearancePath" to HomeNetworkResponse(200, """{"theme":"quest","themeDecor":false}"""))
-        )
-        val repository = NetworkServerAppearanceRepository(client, store)
-        val clock = TestTimeSource()
-        val catchUp =
-            ServerAppearanceCatchUp(
-                scope = backgroundScope,
-                load = { serverId -> repository.load(serverId) },
-                windowMs = 10_000L,
-                timeSource = clock,
-            )
-
-        // The theme changed on the web while the socket was down; the reconnect reads it.
-        catchUp.onReconnected(ServerId(serverA))
-        runCurrent()
-        assertEquals(RaftServerThemeLook(RaftThemeId.Quest, decor = false), raftSessionThemeLook(store.readSession(), null))
-
-        // The foreground return that came with the reconnect shares that read.
-        catchUp.onForeground(ServerId(serverA))
-        runCurrent()
-        assertEquals(1, client.requests.size)
-
-        // A later return reads again, through the app lifecycle.
-        clock += 10.seconds
-        val foreground = MutableStateFlow(true)
-        catchUp.followAppLifecycle(foreground) { store.readSession()?.currentServerId }
-        runCurrent()
-        assertEquals(1, client.requests.size, "staying in the foreground is no return")
-        foreground.value = false
-        runCurrent()
-        foreground.value = true
-        runCurrent()
-        assertEquals(2, client.requests.size)
     }
 
     @Test

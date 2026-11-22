@@ -313,17 +313,18 @@ private fun ThreadAttachmentChip(
         )
         return
     }
-    val isOpening = openState.threadAttachmentIsOpening()
+    // A download started on the file page keeps running in the download centre; the card mirrors
+    // it (task #75) and drops stale page-local download failures once the centre retries or finishes.
+    val downloadHost = LocalThreadAttachmentDownloadHost.current
+    val centerEntryFlow = remember(downloadHost, attachment.id) { downloadHost?.entry(attachment.id) }
+    val centerEntry = centerEntryFlow?.collectAsState(initial = null)?.value
+    val effectiveOpenState = effectiveThreadAttachmentOpenState(openState, centerEntry)
+    val isOpening = effectiveOpenState.threadAttachmentIsOpening()
     val metaLabel =
         attachment.threadAttachmentCardMetaLabel(
             htmlPreviewLabel = stringResource(Res.string.file_preview_html),
             fileLabel = stringResource(Res.string.thread_attachment_meta_file)
         )
-    // A download started on the file page keeps running in the download centre; the card only
-    // mirrors it (task #75). The card itself never downloads.
-    val downloadHost = LocalThreadAttachmentDownloadHost.current
-    val centerEntryFlow = remember(downloadHost, attachment.id) { downloadHost?.entry(attachment.id) }
-    val centerEntry = centerEntryFlow?.collectAsState(initial = null)?.value
     val centerLabel =
         raftThreadAttachmentCardDownloadLabel(
             entry = centerEntry,
@@ -336,7 +337,7 @@ private fun ThreadAttachmentChip(
         )
     // Download progress and open failures take the size's place on the meta line, as the web's
     // "Uploading · 64%" does.
-    val statusLabel = centerLabel ?: openState.localizedThreadAttachmentStatusLabel()
+    val statusLabel = centerLabel ?: effectiveOpenState.localizedThreadAttachmentStatusLabel()
     // raft-ui MessageAttachmentCard: one affordance icon, Eye for a file with an in-app preview,
     // Download for one that opens its file page. Both only open the page (web AttachmentChip).
     val route = attachment.threadAttachmentOpenRoute()
@@ -354,7 +355,7 @@ private fun ThreadAttachmentChip(
         metaSize = attachment.displaySizeLabel().takeIf { statusLabel == null },
         commentCount = if (statusLabel == null) attachment.threadAttachmentCardCommentCount() else 0,
         loading = isOpening || centerEntry?.status == RaftDownloadStatus.Downloading,
-        failed = centerLabel == null && openState.threadAttachmentOpenFailed(),
+        failed = centerLabel == null && effectiveOpenState.threadAttachmentOpenFailed(),
         onClick = if (isOpening) ({}) else onOpen
     ) {
         RaftMessageAttachmentAction(onClick = onOpen, contentDescription = affordanceLabel) {
@@ -498,7 +499,8 @@ internal fun ThreadAttachmentCommentsContent(
                             genericMessage = stringResource(Res.string.common_error)
                         ),
                     actionLabel = stringResource(Res.string.common_retry),
-                    onClick = onRetry
+                    onClick = onRetry,
+                    traceId = state.errorTraceId
                 )
             else ->
                 RaftModalListShell(height = commentsListHeight) {
@@ -528,19 +530,22 @@ internal fun ThreadAttachmentCommentsContent(
                 }
         }
         state.errorCode?.takeIf { state.status != "error" && it.isNotBlank() }?.let { code ->
-            Text(
-                text =
-                    attachmentCommentsVisibleErrorMessage(
-                        errorCode = code,
-                        serverMessage = state.errorServerMessage,
-                        labels = userFacingErrorLabels,
-                        genericMessage = stringResource(Res.string.common_error)
-                    ),
-                style = RaftType.Caption.withRaftFontWeight(FontWeight.Bold).copy(color = RaftColor.AccentRed),
-                color = RaftColor.AccentRed,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
+            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(
+                    text =
+                        attachmentCommentsVisibleErrorMessage(
+                            errorCode = code,
+                            serverMessage = state.errorServerMessage,
+                            labels = userFacingErrorLabels,
+                            genericMessage = stringResource(Res.string.common_error)
+                        ),
+                    style = RaftType.Caption.withRaftFontWeight(FontWeight.Bold).copy(color = RaftColor.AccentRed),
+                    color = RaftColor.AccentRed,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                RaftTraceIdNote(traceId = state.errorTraceId)
+            }
         }
         ThreadAttachmentCommentComposer(
             state = state,

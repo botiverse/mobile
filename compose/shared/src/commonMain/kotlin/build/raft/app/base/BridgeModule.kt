@@ -9,7 +9,10 @@ import build.raft.app.ThreadComposerTemporaryFileRetirement
 import build.raft.app.data.RAFT_SOCKET_BASE_URL
 import build.raft.app.cmp.RaftCmpToasts
 import build.raft.designsystem.components.RaftToastIntent
+import build.raft.app.data.DataResult
+import build.raft.app.data.PermissionBlocker
 import build.raft.app.data.ScreenError
+import build.raft.app.data.failureTraceIdOrNull
 import build.raft.app.network.RaftFailedRequestTraceIds
 import build.raft.app.network.raftValidTraceIdOrNull
 import build.raft.app.RaftTraceIdToastStrings
@@ -420,6 +423,12 @@ internal class BridgeModule : Module() {
 
     /** [errorToast] with [error]'s own trace id. */
     fun errorToast(content: String, error: ScreenError) = errorToast(content, error.traceId)
+
+    /** [errorToast] with [blocker]'s own trace id. */
+    fun errorToast(content: String, blocker: PermissionBlocker) = errorToast(content, blocker.traceId)
+
+    /** [errorToast] with [result]'s own trace id (plain toast when [result] carries none). */
+    fun errorToast(content: String, result: DataResult<*>) = errorToast(content, result.failureTraceIdOrNull())
 
     /** [toast] for a confirmation that needs no reading ("Copied"): 1.5s, not a notification's 5s. */
     fun briefToast(content: String) {

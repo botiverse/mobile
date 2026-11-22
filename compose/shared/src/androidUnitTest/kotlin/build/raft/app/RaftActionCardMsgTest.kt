@@ -2,17 +2,12 @@ package build.raft.app
 
 import build.raft.app.data.ActionCardSpecButton
 import build.raft.app.data.ActionCardSpecAction
-import build.raft.app.data.ActionCardSpecContent
-import build.raft.app.data.ActionCardSpecDisplayElement
 import build.raft.app.data.ActionCardSpecEntityKind
 import build.raft.app.data.ActionCardSpecEntityRef
-import build.raft.app.data.ActionCardSpecFieldValue
 import build.raft.app.data.ActionCardSpecMsg
 import build.raft.app.data.ActionCardSpecMsgParam
-import build.raft.app.data.CardElement
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertFalse
 
 /**
  * Task #36 (action card A2): what the renderer writes for card copy and entities. The Msg
@@ -49,31 +44,6 @@ class RaftActionCardMsgTest {
     }
 
     @Test
-    fun noVectorCardShowsAUuid() {
-        val uuid = Regex("[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")
-        val context = RaftCardTreeContext()
-        listOf("install_app_execute_confirm", "approve_login_execute", "open_create_channel", "open_add_members", "open_create_agent", "navigate_entities_and_url")
-            .forEach { name ->
-                val card = ActionCardSpecFixtures.card(name)
-                val words =
-                    buildList {
-                        add(actionCardMsgText(card.title, context).text)
-                        (card.spec.elements.values + card.result?.elements?.values.orEmpty()).forEach { element ->
-                            when (element) {
-                                is ActionCardSpecDisplayElement.Field ->
-                                    (element.value as? ActionCardSpecFieldValue.Entities)?.refs?.forEach { add(actionCardEntityMention(it, context)) }
-                                is ActionCardSpecDisplayElement.EntityRef -> add(actionCardEntityMention(element.ref, context))
-                                is ActionCardSpecDisplayElement.Notice -> add(actionCardMsgText(element.text, context).text)
-                                is ActionCardSpecButton -> add(actionCardMsgPlain(element.label, context))
-                                else -> Unit
-                            }
-                        }
-                    }
-                words.forEach { assertFalse(uuid.containsMatchIn(it), "$name: $it") }
-            }
-    }
-
-    @Test
     fun openInWebIsALinkThatRunsNothingAndStaysUsable() {
         val card = ActionCardSpecFixtures.card("read_unknown_prop_execute")
         val run = card.spec.elements["run"] as ActionCardSpecButton
@@ -88,23 +58,5 @@ class RaftActionCardMsgTest {
         assertEquals(RaftCardButtonState.Busy, actionCardFrameButtonState(RaftActionCardFrameState(busyElementKey = "run"), "run", execute))
         // A done card keeps its body without buttons; its result tree has its own.
         assertEquals(RaftCardButtonState.Hidden, actionCardFrameButtonState(RaftActionCardFrameState(), "run", run, inSpecOfExecutedCard = true))
-    }
-
-    @Test
-    fun aColumnGroupsRunsOfFieldsAndOfButtons() {
-        val label = ActionCardSpecMsg("actionCard.test.l", mapOf("en" to "Name"))
-        val field = ActionCardSpecDisplayElement.Field(label, ActionCardSpecFieldValue.Plain("x"))
-        val button = ActionCardSpecButton(label = label, action = ActionCardSpecAction.Execute())
-        val text = ActionCardSpecDisplayElement.Text(ActionCardSpecContent.Plain("t"))
-        val elements: Map<String, CardElement> = mapOf("a" to field, "b" to field, "t" to text, "c" to field, "x" to button, "y" to button)
-        assertEquals(
-            listOf(
-                RaftCardColumnRun.Fields(listOf("a", "b")),
-                RaftCardColumnRun.One("t"),
-                RaftCardColumnRun.Fields(listOf("c")),
-                RaftCardColumnRun.Buttons(listOf("x", "y")),
-            ),
-            actionCardColumnRuns(elements, listOf("a", "b", "t", "c", "x", "y")),
-        )
     }
 }

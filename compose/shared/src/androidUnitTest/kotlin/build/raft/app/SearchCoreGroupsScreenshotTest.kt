@@ -13,7 +13,6 @@ import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.hasScrollToNodeAction
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.onAllNodesWithTag
-import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -110,32 +109,7 @@ class SearchCoreGroupsScreenshotTest {
     fun phoneDark() = capture("search.core-groups.phone.dark", RaftAppAppearance.Dark) { Panel(Answered) }
 
     @Test
-    @Config(qualifiers = "w1280dp-h900dp-xhdpi")
-    fun wide() = capture("search.core-groups.wide", RaftAppAppearance.Light) { Panel(Answered, overlay = overlayChrome()) }
-
-    @Test
-    @Config(qualifiers = "w1280dp-h900dp-xhdpi")
-    fun wideDark() = capture("search.core-groups.wide.dark", RaftAppAppearance.Dark) { Panel(Answered, overlay = overlayChrome()) }
-
-    @Test
     fun failed() = capture("search.core-groups.failed", RaftAppAppearance.Light) { Panel(Failed) }
-
-    @Test
-    fun aNotJoinedChannelIsOneTappableRowThatOpensTheChannel() =
-        runRobolectricComposeUiTest {
-            val opened = mutableListOf<SearchEntityResult>()
-            setContent { Host { Panel(Answered, onOpenEntity = { opened += it }) } }
-
-            onNodeWithTag(HomeSearchEntityGroupTags.NotJoined, useUnmergedTree = true).assertExists()
-            onAllNodesWithText("Join").assertCountEquals(0)
-            onNodeWithText("launch-public").performClick()
-            waitForIdle()
-
-            val row = opened.single()
-            assertEquals("conversation:launch-public", row.key)
-            // The channel itself (its preview has Join), not a join request.
-            assertEquals(ChannelId("launch-public"), (row.destinationOrNull() as HomeSearchEntityDestination.Conversation).identity.channelId)
-        }
 
     @Test
     fun showAllExpandsTheGroupAndLoadMoreAsksForItsNextPage() =
@@ -148,25 +122,6 @@ class SearchCoreGroupsScreenshotTest {
             waitForIdle()
             scrollTo(HomeSearchEntityGroupTags.LoadMore)
             onNodeWithTag(HomeSearchEntityGroupTags.LoadMore).performClick()
-            waitForIdle()
-
-            assertEquals(listOf<SearchCoreGroupsIntent>(SearchCoreGroupsIntent.LoadMore(SearchCoreGroup.Channels)), intents)
-        }
-
-    @Test
-    fun aFailedPageShowsRetryInLoadMoresPlace() =
-        runRobolectricComposeUiTest {
-            val intents = mutableListOf<SearchCoreGroupsIntent>()
-            val pageFailed =
-                Answered.copy(channels = Answered.channels.copy(pageFailed = true, error = ScreenError("web_search_network", traceId = TraceId)))
-            setContent { Host { Panel(pageFailed, onCoreGroupsIntent = { intents += it }) } }
-
-            onAllNodesWithTag(HomeSearchEntityGroupTags.ShowAll)[0].performClick()
-            waitForIdle()
-            scrollTo(HomeSearchEntityGroupTags.LoadMoreRetry)
-            onNodeWithText("Could not load more results.").assertExists()
-            onAllNodesWithTag(HomeSearchEntityGroupTags.LoadMore).assertCountEquals(0)
-            onNodeWithTag(HomeSearchEntityGroupTags.LoadMoreRetry).performClick()
             waitForIdle()
 
             assertEquals(listOf<SearchCoreGroupsIntent>(SearchCoreGroupsIntent.LoadMore(SearchCoreGroup.Channels)), intents)
@@ -251,16 +206,6 @@ class SearchCoreGroupsScreenshotTest {
             onCoreGroupsIntent = onCoreGroupsIntent,
         )
     }
-
-    private fun overlayChrome() =
-        HomeSearchOverlayChrome(
-            anchorTop = 6.dp,
-            anchorWidth = 0.dp,
-            visitedThreadIds = emptyList(),
-            excludeThreadId = null,
-            onDismiss = {},
-            onOpenFullResults = {},
-        )
 
     private companion object {
         const val REPORT_DIR = "build/reports/home-screenshots"

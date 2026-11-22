@@ -10,6 +10,7 @@ import build.raft.app.core.data.installAndroidAppScopePlatformFileResolver
 import build.raft.app.core.data.auth.androidMMKVAuthKeyValueStore
 import build.raft.app.core.data.auth.installAndroidAppScopeSharedKeyValueStores
 import build.raft.app.core.data.diagnostics.AndroidSystemKillReporter
+import build.raft.app.core.data.diagnostics.RaftAndroidBackgroundKillNoticeHost
 import build.raft.app.core.data.diagnostics.RaftAndroidLocalDiagnostics
 import build.raft.app.core.data.diagnostics.RaftHandsLaunchUploads
 import build.raft.app.core.data.diagnostics.RaftStartupPhaseMarker
@@ -67,8 +68,8 @@ class RaftApplication : Application() {
         build.raft.app.shared.RaftAndroidInstallChannels.install(this)
         // Alpha builds default the Navigation 3 page stack on; set before any window reads it.
         build.raft.app.nav.RaftNav3StackFlag.buildDefaultOn = BuildConfig.NAV3_STACK_DEFAULT_ON
-        // All notification channels up front, independent of permission (see RaftNotificationChannels).
-        build.raft.app.shared.RaftNotificationChannels.ensureAll(this)
+        // All notification channels up front on IO, independent of permission (see RaftNotificationChannels).
+        build.raft.app.shared.RaftNotificationChannels.ensureAllAsync(this)
         // Download centre notifications attach when the centre is first used, not at startup.
         val application = this
         build.raft.app.downloads.RaftDownloadCenterProcess.onCreated = { center ->
@@ -79,6 +80,8 @@ class RaftApplication : Application() {
         ProcessAndroidAttachmentMediaStoreCleanup.start(this)
         // Finished in-app update APKs for installed versions: drop them and their system notification.
         build.raft.app.shared.HandsUpdateDownloadCleanup.start(this)
+        // Local Android background-kill whitelist guidance host (registered before diagnostics evaluates).
+        RaftAndroidBackgroundKillNoticeHost.install(this)
         // task #6 WebView warm-up is scheduled from the first CMP frame (RaftCmpActivity), not
         // here: from onCreate it ran before the launch activity existed and lengthened cold start.
         RaftAndroidLocalDiagnostics.init(this)
@@ -214,6 +217,15 @@ class RaftApplication : Application() {
                 override fun onActivityDestroyed(activity: Activity) = Unit
             },
         )
+        // Debug-only StrictMode guardrail (log-only): installed after intentional cold-start
+        // setup so accidental main-thread disk I/O or slow calls surface in logcat without
+        // crashing debug builds or ever running in release/Play builds.
+        if (BuildConfig.DEBUG) {
+            RaftStrictMode.installIfDebug(
+                buildConfigDebug = BuildConfig.DEBUG,
+                appDebuggable = applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE != 0,
+            )
+        }
     }
 }
 

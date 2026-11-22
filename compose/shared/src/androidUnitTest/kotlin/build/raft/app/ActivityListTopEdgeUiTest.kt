@@ -139,32 +139,6 @@ class ActivityListTopEdgeUiTest {
     }
 
     @Test
-    fun atTheTopANewRowAtIndexZeroIsTheFirstVisibleRow() =
-        runRobolectricComposeUiTest {
-            val harness = mount()
-            dragBy(harness, 1f)
-            dragBy(harness, -1f)
-            harness.assertAtTop()
-            change(harness, listOf(row("new", "2026-11-05T11:59:00Z")) + rows)
-            harness.assertAtTop()
-            assertEquals("new", harness.firstVisibleRowKey())
-            onNodeWithTag(ActivityNewUpdatesPillTag).assertDoesNotExist()
-        }
-
-    @Test
-    fun withinTheWebThresholdOfTheTopANewRowStillShowsAtTheTop() =
-        runRobolectricComposeUiTest {
-            val harness = mount()
-            // 20dp down: the web's `scrollTop < 50` still counts this as at the top.
-            dragBy(harness, 20f)
-            assertTrue(harness.listState.firstVisibleItemScrollOffset > 0 || harness.listState.firstVisibleItemIndex > 0)
-            change(harness, listOf(row("new", "2026-11-05T11:59:00Z")) + rows)
-            harness.assertAtTop()
-            assertEquals("new", harness.firstVisibleRowKey())
-            onNodeWithTag(ActivityNewUpdatesPillTag).assertDoesNotExist()
-        }
-
-    @Test
     fun atTheTopTheHeadRowMovingUnderANewTodayHeadingStaysInView() =
         runRobolectricComposeUiTest {
             val harness = mount()

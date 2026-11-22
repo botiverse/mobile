@@ -5,15 +5,21 @@ Per the test-discipline announcement (#all 2026-07-25, artin-directed): static
 constraints live here as an explicit gate with a self-test, instead of being
 dressed up as source-grep "contract tests" inside test directories.
 
-Five constraints remain: check_no_conditional_interaction_state, born from the
+Seven constraints remain: check_no_conditional_interaction_state, born from the
 1.15.0 release crash on launch, check_native_apple_authentication_services
 (task #82: Swift-side Sign in with Apple, which no Android or JVM test covers),
 check_no_production_run_blocking (#3823: a main-thread runBlocking on the
 auth-session lock deadlocked the app; a hang no unit test can catch reliably),
 check_native_safe_test_names (#3845: a comma in a backtick test name broke
-the iOS test compile on main, which PR CI does not build), and
+the iOS test compile on main, which PR CI does not build),
 check_no_strong_invocation_object_return (1.17.1: an NSInvocation object return
-read into a strong variable crashed iOS 27.2 at launch; simulators don't crash).
+read into a strong variable crashed iOS 27.2 at launch; simulators don't crash),
+check_no_top_level_or_object_snapshot_state (Hands 25b91174 / #264: a
+Compose snapshot state initialized in `<clinit>` off the main thread crashed
+Android cold start with `SnapshotKt.readError`), and check_date_time_di_invariants
+(dm:@artin:#2 Phase 2A: prevents UI files from bypassing RaftTimeContext DI via
+TimeZone.currentSystemDefault/toLocalDateTime, reading LocalRaftPageBaseTimeContextProvider
+directly, slicing raw UTC ISO dates, or introducing new `.staticContext()` call sites).
 The other "forbid a future pattern" guards were deleted as redundant; behavior
 is proven by behavior tests.
 
@@ -557,6 +563,435 @@ LABEL_FACING_STATUS_BINDINGS = (
 )
 
 
+TOP_LEVEL_SNAPSHOT_STATE_ROOTS = (
+    "compose/core/src/commonMain/kotlin",
+    "compose/designsystem/src/commonMain/kotlin",
+    "compose/shared/src/commonMain/kotlin",
+    "compose/ui-cmp/src/commonMain/kotlin",
+)
+SNAPSHOT_STATE_CALL = re.compile(
+    r"\b(?:mutable(?:State|StateMap|StateList|StateSet|IntState|LongState|FloatState|DoubleState)Of|"
+    r"derivedStateOf|SnapshotState(?:List|Map|Set))\b"
+)
+# Only strictly verified Main-thread-only UI token / theme objects may keep process-wide snapshot
+# state (for non-@Composable style getters like RaftType.*). Every entry must pin one exact line
+# and state why off-main-thread first initialization cannot occur.
+ALLOWED_TOP_LEVEL_OR_OBJECT_SNAPSHOT_STATES: tuple[tuple[str, str, str], ...] = (
+    (
+        "compose/shared/src/commonMain/kotlin/build/raft/app/RaftDesignTokens.kt",
+        "var scale by mutableStateOf(DesignSystemScale.Compact)",
+        "Main-only UI typography scale read by non-@Composable RaftType getters; RaftAppTypeScale is a dedicated object touched only from composition",
+    ),
+    (
+        "compose/shared/src/commonMain/kotlin/build/raft/app/RaftTextRendering.kt",
+        "var localeList: LocaleList by mutableStateOf(raftUiTextLocaleList(lastAppLocale) { lastSystemTags })",
+        "Main-only UI text-rendering locale read by non-@Composable TextStyle.withRaftTextRendering; RaftUiTextLocaleState is a dedicated object touched only from composition/lifecycle",
+    ),
+    (
+        "compose/designsystem/src/commonMain/kotlin/build/raft/designsystem/components/RaftTextFieldState.kt",
+        "var trace: RaftTextInputTrace? by mutableStateOf(null)",
+        "Main-only design-system text input diagnostics hook touched only from BasicTextField composition and Settings diagnostics toggle",
+    ),
+    (
+        "compose/designsystem/src/commonMain/kotlin/build/raft/designsystem/theme/RaftScale.kt",
+        "var current: RaftPointerInput by mutableStateOf(raftPlatformInitialPointerInput())",
+        "Main-only design-system pointer input tracker touched only from RaftTheme composition, pointer input, and iOS main-thread launch hook",
+    ),
+)
+_DECL_START_RE = re.compile(
+    r"^(?:@[A-Za-z0-9_.]+(?:\([^)]*\))?\s+)*"
+    r"(?:(?:public|internal|private|protected|actual|expect|data|open|abstract|final|sealed|value|inline|noinline|crossinline|reified|annotation|enum|const|override|suspend|operator|infix|tailrec|external)\s+)*"
+    r"(companion\s+object|(?!object\s*:)object|class|interface|fun)\b(?:\s+([A-Za-z0-9_]+))?"
+)
+_NEW_MEMBER_START_RE = re.compile(
+    r"^(?:@[A-Za-z0-9_.]+(?:\([^)]*\))?\s+)*"
+    r"(?:(?:public|internal|private|protected|actual|expect|data|open|abstract|final|sealed|value|inline|annotation|enum|const|override|suspend|operator|infix|tailrec|external|lateinit)\s+)*"
+    r"(?:val|var|fun|class|interface|companion\s+object|(?!object\s*:)object|init|constructor)\b"
+)
+_REMEMBER_CALL_RE = re.compile(r"\bremember(?:Saveable)?\s*(?:\(|\{)")
+_GETTER_RE = re.compile(r"\bget\s*\(\s*\)\s*(?:=|\{)")
+_LAZY_PROP_RE = re.compile(r"\bby\s+lazy\b.*\{")
+_INIT_BLOCK_RE = re.compile(r"^init\b.*\{")
+_ANON_OBJECT_RE = re.compile(r"^object\s*:")
+
+
+def _top_level_or_object_snapshot_state_matches(text: str) -> list[tuple[int, str, str]]:
+    """Return `(line_no, scope_label, raw_line)` for snapshot-state factories initialized at top
+    level or directly inside an `object` / `companion object` body (including `by lazy { ... }`
+    and `object` `init { ... }`, but not inside a `class`, `fun`, custom `get()`, or `remember`).
+    """
+    code_lines = _kotlin_code_only(text).splitlines()
+    raw_lines = text.splitlines()
+    stack: list[tuple[str, str, int]] = []
+    depth = 0
+    pending_decl: tuple[str, str] | None = None
+    expr_fun_depth: int | None = None
+    getter_depth: int | None = None
+    hits: list[tuple[int, str, str]] = []
+
+    for idx, (code_line, raw_line) in enumerate(zip(code_lines, raw_lines), 1):
+        stripped = code_line.strip()
+        is_fun_decl_line = False
+        is_getter_line = False
+        same_line_object_scope: str | None = None
+
+        if stripped and not stripped.startswith("import ") and not stripped.startswith("package "):
+            if expr_fun_depth is not None and (
+                depth < expr_fun_depth
+                or (
+                    depth == expr_fun_depth
+                    and _NEW_MEMBER_START_RE.match(stripped)
+                    and not _ANON_OBJECT_RE.match(stripped)
+                )
+            ):
+                expr_fun_depth = None
+            if getter_depth is not None and (
+                depth < getter_depth
+                or (
+                    depth == getter_depth
+                    and _NEW_MEMBER_START_RE.match(stripped)
+                    and not _GETTER_RE.match(stripped)
+                )
+            ):
+                getter_depth = None
+
+            pre_in_top_level = depth == 0
+            pre_in_object_body = (
+                bool(stack)
+                and stack[-1][0] in ("object", "companion object", "lazy", "init")
+                and stack[-1][2] == depth
+            )
+            if pre_in_top_level:
+                pre_scope_label = "top-level"
+            elif pre_in_object_body:
+                pre_scope_label = (
+                    stack[-1][1]
+                    if stack[-1][0] in ("lazy", "init")
+                    else f"{stack[-1][0]} {stack[-1][1]}".strip()
+                )
+            else:
+                pre_scope_label = ""
+
+            decl = _DECL_START_RE.match(stripped)
+            if decl:
+                kind = re.sub(r"\s+", " ", decl.group(1))
+                name = decl.group(2) or ""
+                is_fun_decl_line = kind == "fun"
+                if "{" in stripped:
+                    if kind in ("object", "companion object"):
+                        same_line_object_scope = f"{kind} {name}".strip()
+                    stack.append((kind, name, depth + 1))
+                    pending_decl = None
+                elif kind == "fun" and "=" in stripped:
+                    pending_decl = None
+                    expr_fun_depth = depth
+                elif kind in ("object", "companion object", "class", "interface", "fun"):
+                    pending_decl = (kind, name)
+            else:
+                if pending_decl is not None:
+                    if pending_decl[0] == "fun" and "=" in stripped:
+                        is_fun_decl_line = True
+                        if "{" in stripped:
+                            stack.append(("fun", pending_decl[1], depth + 1))
+                        else:
+                            expr_fun_depth = depth
+                        pending_decl = None
+                    elif re.match(
+                        r"^(?:(?:public|internal|private|protected|override|const|lateinit)\s+)*(?:val|var|init|constructor)\b",
+                        stripped,
+                    ):
+                        pending_decl = None
+                    elif "{" in stripped:
+                        if pending_decl[0] in ("object", "companion object"):
+                            same_line_object_scope = f"{pending_decl[0]} {pending_decl[1]}".strip()
+                        stack.append((pending_decl[0], pending_decl[1], depth + 1))
+                        pending_decl = None
+
+                if _GETTER_RE.search(stripped):
+                    is_getter_line = True
+                    if "{" in stripped:
+                        stack.append(("getter", "", depth + 1))
+                    elif "=" in stripped:
+                        getter_depth = depth
+                elif (pre_in_top_level or pre_in_object_body) and _LAZY_PROP_RE.search(stripped):
+                    owner = "top-level lazy" if pre_in_top_level else f"{pre_scope_label} lazy".strip()
+                    same_line_object_scope = owner
+                    stack.append(("lazy", owner, depth + 1))
+                elif pre_in_object_body and _INIT_BLOCK_RE.match(stripped):
+                    owner = f"{pre_scope_label} init".strip()
+                    same_line_object_scope = owner
+                    stack.append(("init", owner, depth + 1))
+
+            if (
+                not is_fun_decl_line
+                and not is_getter_line
+                and expr_fun_depth is None
+                and getter_depth is None
+                and SNAPSHOT_STATE_CALL.search(stripped)
+                and not _REMEMBER_CALL_RE.search(stripped)
+                and not _GETTER_RE.search(stripped)
+            ):
+                if same_line_object_scope is not None and not re.search(r"\bfun\b", stripped):
+                    hits.append((idx, same_line_object_scope, raw_line.strip()))
+                elif pre_in_top_level or pre_in_object_body:
+                    hits.append((idx, pre_scope_label, raw_line.strip()))
+
+        depth += code_line.count("{") - code_line.count("}")
+        if depth < 0:
+            depth = 0
+        while stack and stack[-1][2] > depth:
+            stack.pop()
+        if expr_fun_depth is not None and depth < expr_fun_depth:
+            expr_fun_depth = None
+        if getter_depth is not None and depth < getter_depth:
+            getter_depth = None
+
+    return hits
+
+
+def check_no_top_level_or_object_snapshot_state(
+    sources: dict[str, str],
+    allowlist: tuple[tuple[str, str, str], ...] = ALLOWED_TOP_LEVEL_OR_OBJECT_SNAPSHOT_STATES,
+) -> None:
+    """Incident: Hands 25b91174 / PR #5293 / #proj-mobile:#264 cold-start `SnapshotKt.readError`.
+
+    A Compose snapshot state (`mutableStateOf` / `mutableStateMapOf` / `mutable*StateOf`) created at
+    top level or inside an `object` / `companion object` is initialized lazily in `<clinit>`. If a
+    background thread triggers `<clinit>` while the main thread Recomposer holds an open
+    `MutableSnapshot`, reading that state on the main thread crashes with `SnapshotKt.readError`.
+    Use `MutableStateFlow` + `@Composable collectAsState()` (or a non-snapshot `State` for
+    constants) instead.
+    """
+    allowed_by_file: dict[str, list[tuple[str, str]]] = {}
+    matched_entries: set[tuple[str, str]] = set()
+    for path, snippet, reason in allowlist:
+        if not reason.strip():
+            raise Violation(f"top-level snapshot-state allowlist entry for {path} is missing a reason")
+        allowed_by_file.setdefault(path, []).append((snippet, reason))
+
+    for name in sorted(sources):
+        hits = _top_level_or_object_snapshot_state_matches(sources[name])
+        entries = allowed_by_file.get(name, [])
+        for line_no, scope, raw_line in hits:
+            matching = [snippet for snippet, _ in entries if snippet in raw_line]
+            if len(matching) == 1:
+                key = (name, matching[0])
+                if key in matched_entries:
+                    raise Violation(
+                        f"top-level/object snapshot state allowlist matched more than once in "
+                        f"{name}:{line_no} ({scope}): {raw_line}"
+                    )
+                matched_entries.add(key)
+            else:
+                raise Violation(
+                    f"top-level/object Compose snapshot state: {name}:{line_no} ({scope}) "
+                    f"initializes `{raw_line}`. Back process-wide state with MutableStateFlow + "
+                    "`@Composable collectAsState()` (or a non-snapshot State for constants) to "
+                    "prevent cold-start SnapshotKt.readError crashes (Hands 25b91174 / #264)."
+                )
+
+    for path, snippet, _ in allowlist:
+        if (path, snippet) not in matched_entries:
+            raise Violation(
+                f"stale top-level/object snapshot-state allowlist entry: {path} ({snippet!r}) "
+                "no longer matches any violation; remove it from ALLOWED_TOP_LEVEL_OR_OBJECT_SNAPSHOT_STATES"
+            )
+
+
+def _top_level_snapshot_state_sources(root: Path) -> dict[str, str]:
+    sources: dict[str, str] = {}
+    for rel in TOP_LEVEL_SNAPSHOT_STATE_ROOTS:
+        base = root / rel
+        if not base.is_dir():
+            raise Violation(f"top-level/object snapshot state: missing source root {rel}")
+        for path in sorted(base.rglob("*.kt")):
+            sources[str(path.relative_to(root))] = path.read_text(encoding="utf-8")
+    if not any("RaftDisplayPreferenceRuntime" in text for text in sources.values()):
+        raise Violation("top-level/object snapshot state: scan never reached RaftDisplayPreferenceRuntime")
+    return sources
+
+
+DATE_TIME_DI_SCAN_ROOT = "compose/shared/src/commonMain/kotlin"
+DATE_TIME_DI_UI_PREFIX = "compose/shared/src/commonMain/kotlin/build/raft/app/"
+DATE_TIME_DI_NON_UI_PREFIXES = (
+    "compose/shared/src/commonMain/kotlin/build/raft/app/data/",
+)
+DATE_TIME_DI_LIVE_CONTEXT_FILE = (
+    "compose/shared/src/commonMain/kotlin/build/raft/app/RaftLiveTimeContext.kt"
+)
+SYSTEM_ZONE_OR_LOCAL_DATETIME_RE = re.compile(
+    r"\bTimeZone\.currentSystemDefault\s*\(|\.\s*toLocalDateTime\s*\("
+)
+DIRECT_PAGE_BASE_PROVIDER_READ_RE = re.compile(
+    r"\bLocalRaftPageBaseTimeContextProvider\s*\.\s*current\b"
+)
+RAW_ISO_DATE_SLICE_RE = re.compile(
+    r"\.\s*(?:substringBefore\s*\(\s*(?:'T'|\"T\")\s*\)|"
+    r"take\s*\(\s*10\s*\)\s*\??\.\s*split\s*\(\s*(?:'-'|\"-\")\s*\))"
+)
+STATIC_TIME_CONTEXT_CALL_RE = re.compile(r"\.\s*staticContext\s*\(")
+
+# Exact remaining `.staticContext()` call counts pending Phase 2C retirement (dm:@artin:#2).
+# Adding a new caller fails CI; removing callers in Phase 2C must shrink/remove entries here.
+ALLOWED_STATIC_TIME_CONTEXT_SITES: tuple[tuple[str, int, str], ...] = (
+    (
+        "compose/shared/src/commonMain/kotlin/build/raft/app/assistant/AssistantPage.kt",
+        1,
+        "Phase 2C: AssistantPage fallback timeContext pending live provider migration",
+    ),
+    (
+        "compose/shared/src/commonMain/kotlin/build/raft/app/settings/SettingsHomePage.kt",
+        1,
+        "Phase 2C: SettingsHomePage threadTimeContext fallback pending staticContext retirement",
+    ),
+    (
+        "compose/shared/src/commonMain/kotlin/build/raft/app/thread/ThreadPage.kt",
+        9,
+        "Phase 2C: ThreadPage staticContext fallbacks pending Phase 2C retirement",
+    ),
+    (
+        "compose/shared/src/commonMain/kotlin/build/raft/app/thread/ThreadRouteBannerSubtrees.kt",
+        1,
+        "Phase 2C: ThreadRouteBannerSubtrees staticContext pending Phase 2C retirement",
+    ),
+    (
+        "compose/shared/src/commonMain/kotlin/build/raft/app/thread/ThreadRouteDialogs.kt",
+        1,
+        "Phase 2C: ThreadRouteDialogs staticContext fallback pending Phase 2C retirement",
+    ),
+    (
+        "compose/shared/src/commonMain/kotlin/build/raft/app/thread/ThreadRouteEventHandler.kt",
+        1,
+        "Phase 2C: ThreadRouteEventHandler staticContext pending Phase 2C retirement",
+    ),
+    (
+        "compose/shared/src/commonMain/kotlin/build/raft/app/thread/ThreadRouteEventHandlerActions.kt",
+        1,
+        "Phase 2C: ThreadRouteEventHandlerActions staticContext pending Phase 2C retirement",
+    ),
+    (
+        "compose/shared/src/commonMain/kotlin/build/raft/app/thread/ThreadTabContent.kt",
+        1,
+        "Phase 2C: ThreadTabContent staticContext pending Phase 2C retirement",
+    ),
+)
+
+
+def _is_date_time_di_ui_file(rel: str) -> bool:
+    return rel.startswith(DATE_TIME_DI_UI_PREFIX) and not any(
+        rel.startswith(prefix) for prefix in DATE_TIME_DI_NON_UI_PREFIXES
+    )
+
+
+def check_date_time_di_invariants(
+    sources: dict[str, str],
+    static_context_allowlist: tuple[tuple[str, int, str], ...] = ALLOWED_STATIC_TIME_CONTEXT_SITES,
+) -> None:
+    """Incident: dm:@artin:#2 Date/Time DI & formatting regressions (raw ISO leaks, UTC date
+    slicing, ignored 12h/24h preference, and bypassed RaftTimeContext DI).
+
+    Enforces four invariants across `compose/shared/src/commonMain`:
+    1. UI files must not call `TimeZone.currentSystemDefault()` or `.toLocalDateTime(` directly
+       (format through `RaftTimeContext` / `currentRaftEffectiveDateTimeContext()` instead).
+    2. Only `RaftLiveTimeContext.kt` (`currentRaftTimeContextProvider`) may read
+       `LocalRaftPageBaseTimeContextProvider.current`.
+    3. UI files must not slice raw UTC ISO dates via `.substringBefore('T')` or `.take(10).split('-')`.
+    4. `.staticContext()` calls are pinned to the exact remaining Phase 2C allowlist so no new
+       dayless contexts can be introduced.
+    """
+    expected_static_counts: dict[str, int] = {}
+    for path, count, reason in static_context_allowlist:
+        if count <= 0:
+            raise Violation(f"date/time DI staticContext allowlist entry for {path} must have count > 0")
+        if not reason.strip():
+            raise Violation(f"date/time DI staticContext allowlist entry for {path} is missing a reason")
+        if path in expected_static_counts:
+            raise Violation(f"duplicate date/time DI staticContext allowlist entry for {path}")
+        expected_static_counts[path] = count
+
+    observed_static_counts: dict[str, int] = {}
+    live_base_reads_in_owner = 0
+
+    for name in sorted(sources):
+        text = sources[name]
+        code = _kotlin_code_only(text)
+        is_ui = _is_date_time_di_ui_file(name)
+
+        if is_ui:
+            for match in SYSTEM_ZONE_OR_LOCAL_DATETIME_RE.finditer(code):
+                line = code.count("\n", 0, match.start()) + 1
+                raise Violation(
+                    f"date/time DI violation: {name}:{line} calls `{match.group(0).strip()}` in UI code; "
+                    "format dates/times through RaftTimeContext (currentRaftDateTimeContext / "
+                    "currentRaftEffectiveDateTimeContext) so local timezone and 12h/24h preferences apply."
+                )
+
+            for match in RAW_ISO_DATE_SLICE_RE.finditer(text):
+                # _kotlin_code_only preserves 1:1 indices and blanks comments and string/char interiors.
+                # Require the leading '.' and method name to remain live code (not inside a comment/string).
+                if code[match.start()] != ".":
+                    continue
+                line = text.count("\n", 0, match.start()) + 1
+                raise Violation(
+                    f"date/time DI violation: {name}:{line} slices raw UTC ISO date with "
+                    f"`{match.group(0).strip()}`; format local dates through RaftTimeContext instead."
+                )
+
+        for match in DIRECT_PAGE_BASE_PROVIDER_READ_RE.finditer(code):
+            line = code.count("\n", 0, match.start()) + 1
+            if name == DATE_TIME_DI_LIVE_CONTEXT_FILE:
+                live_base_reads_in_owner += 1
+            else:
+                raise Violation(
+                    f"date/time DI violation: {name}:{line} reads LocalRaftPageBaseTimeContextProvider.current "
+                    "directly; use currentRaftTimeContextProvider / currentRaftDateTimeContext / "
+                    "currentRaftTimeContext instead."
+                )
+
+        static_matches = list(STATIC_TIME_CONTEXT_CALL_RE.finditer(code))
+        if static_matches:
+            observed_static_counts[name] = len(static_matches)
+            if name not in expected_static_counts:
+                first_line = code.count("\n", 0, static_matches[0].start()) + 1
+                raise Violation(
+                    f"date/time DI violation: {name}:{first_line} introduces a new `.staticContext()` call; "
+                    "use `timeContextProvider.dateContext` or `currentRaftDateTimeContext` instead."
+                )
+            if len(static_matches) > expected_static_counts[name]:
+                last_line = code.count("\n", 0, static_matches[-1].start()) + 1
+                raise Violation(
+                    f"date/time DI violation: {name}:{last_line} has {len(static_matches)} `.staticContext()` "
+                    f"calls (allowlist pins {expected_static_counts[name]} pending Phase 2C)."
+                )
+
+    if DATE_TIME_DI_LIVE_CONTEXT_FILE in sources and live_base_reads_in_owner != 1:
+        raise Violation(
+            f"date/time DI violation: expected exactly 1 LocalRaftPageBaseTimeContextProvider.current "
+            f"read in {DATE_TIME_DI_LIVE_CONTEXT_FILE}, found {live_base_reads_in_owner}"
+        )
+
+    for path, expected in expected_static_counts.items():
+        actual = observed_static_counts.get(path, 0)
+        if actual != expected:
+            raise Violation(
+                f"stale date/time DI staticContext allowlist entry: {path} expected {expected} "
+                f"call site(s), found {actual}; update ALLOWED_STATIC_TIME_CONTEXT_SITES"
+            )
+
+
+def _date_time_di_sources(root: Path) -> dict[str, str]:
+    base = root / DATE_TIME_DI_SCAN_ROOT
+    if not base.is_dir():
+        raise Violation(f"date/time DI scan: missing source root {DATE_TIME_DI_SCAN_ROOT}")
+    sources = {
+        str(path.relative_to(root)): path.read_text(encoding="utf-8").replace("\r\n", "\n")
+        for path in sorted(base.rglob("*.kt"))
+    }
+    if DATE_TIME_DI_LIVE_CONTEXT_FILE not in sources:
+        raise Violation(f"date/time DI scan never reached {DATE_TIME_DI_LIVE_CONTEXT_FILE}")
+    return sources
+
+
 def run(root: Path) -> None:
     def read(rel: str) -> str:
         path = root / rel
@@ -575,6 +1010,8 @@ def run(root: Path) -> None:
     )
     check_no_production_run_blocking(_production_kotlin_sources(root))
     check_native_safe_test_names(_native_test_sources(root))
+    check_no_top_level_or_object_snapshot_state(_top_level_snapshot_state_sources(root))
+    check_date_time_di_invariants(_date_time_di_sources(root))
 
 
 def self_test() -> None:
@@ -807,6 +1244,110 @@ com.apple.SignInWithApple = {
         else:
             raise SystemExit(f"self-test: 1.17.1 NSInvocation checker accepted {bad!r}")
 
+    snap_allow = (("a.kt", "var allowed by mutableStateOf(0)", "Main-only test"),)
+    good_snap = {
+        "a.kt": "object A {\n    var allowed by mutableStateOf(0)\n}\n",
+        "b.kt": (
+            "@Stable class ViewHolder {\n    var x by mutableStateOf(1)\n    val m = mutableStateMapOf<String, Int>()\n}\n"
+            "data class PlainDto(val id: String)\n"
+            "fun makeState() = mutableStateOf(0)\n"
+            "suspend fun makeAsyncState() = mutableStateOf(0)\n"
+            "fun makeMultilineState() =\n    mutableStateOf(0)\n"
+            "fun makeParamState(\n    x: Int,\n) = mutableStateOf(x)\n"
+            "fun makeHolder() =\n    object : Any() { var x by mutableStateOf(0) }\n"
+            "fun makeInline() { val s = mutableStateOf(0) }\n"
+            "object Outer : Base {\n    class Inner {\n        var y by mutableIntStateOf(0)\n    }\n"
+            "    fun helper() {\n        val local = mutableStateOf(true)\n    }\n"
+            "    override fun factory() = mutableStateOf(0)\n"
+            "    val fresh get() = mutableStateOf(0)\n}\n"
+            "@Composable fun C() { val s = remember { mutableStateOf(0) } }\n"
+            "// var commented by mutableStateOf(0)\n"
+            'val text = "var str by mutableStateOf(0)"\n'
+        ),
+    }
+    check_no_top_level_or_object_snapshot_state(good_snap, snap_allow)
+    for bad_sources, bad_allow in (
+        ({**good_snap, "c.kt": "private val Empty = mutableStateOf(0)\n"}, snap_allow),
+        ({**good_snap, "c.kt": "internal object Bad {\n    var x by mutableStateOf(false)\n}\n"}, snap_allow),
+        ({**good_snap, "c.kt": "class Host {\n    companion object {\n        private val m = mutableStateMapOf<String, Int>()\n    }\n}\n"}, snap_allow),
+        ({**good_snap, "c.kt": "class Host {\n    companion object { var x by mutableStateOf(0) }\n}\n"}, snap_allow),
+        ({**good_snap, "c.kt": "object Bad { val x by lazy { mutableStateOf(0) } }\n"}, snap_allow),
+        ({**good_snap, "c.kt": "object Bad {\n    var rememberedCount by mutableStateOf(0)\n}\n"}, snap_allow),
+        ({**good_snap, "c.kt": "object Bad {\n    lateinit var s: Any\n    init {\n        s = mutableStateOf(0)\n    }\n}\n"}, snap_allow),
+        ({**good_snap, "c.kt": "object Bad {\n    var n by\n        mutableIntStateOf(0)\n}\n"}, snap_allow),
+        ({**good_snap, "c.kt": "object Bad\n{\n    val items = mutableStateListOf<String>()\n}\n"}, snap_allow),
+        ({**good_snap, "c.kt": "data class Dto(val a: Int)\nval lazyBad by lazy {\n    mutableStateOf(0)\n}\n"}, snap_allow),
+        ({**good_snap, "c.kt": "object Bad {\n    val set = mutableStateSetOf<String>()\n}\n"}, snap_allow),
+        ({**good_snap, "c.kt": "object Bad {\n    val list = SnapshotStateList<String>()\n}\n"}, snap_allow),
+        ({**good_snap, "c.kt": "object Bad {\n    val derived = derivedStateOf { 1 }\n}\n"}, snap_allow),
+        ({"a.kt": good_snap["a.kt"] + "object A2 {\n    var allowed by mutableStateOf(0)\n}\n"}, snap_allow),
+        ({"a.kt": "object A { val x = 1 }\n"}, snap_allow),
+        (good_snap, (("a.kt", "var allowed by mutableStateOf(0)", " "),)),
+    ):
+        try:
+            check_no_top_level_or_object_snapshot_state(bad_sources, bad_allow)
+        except Violation:
+            pass
+        else:
+            raise SystemExit(f"self-test: top-level snapshot-state checker accepted {bad_sources!r}")
+
+    dt_ui = "compose/shared/src/commonMain/kotlin/build/raft/app/settings/SamplePage.kt"
+    dt_data = "compose/shared/src/commonMain/kotlin/build/raft/app/data/SampleProtocol.kt"
+    dt_allow = ((dt_ui, 1, "Phase 2C: test allowlist"),)
+    good_dt = {
+        DATE_TIME_DI_LIVE_CONTEXT_FILE: (
+            "val p = LocalRaftTimeContextProvider.current ?: LocalRaftPageBaseTimeContextProvider.current\n"
+        ),
+        dt_ui: (
+            "// TimeZone.currentSystemDefault() and x.toLocalDateTime(z) in comments are fine\n"
+            'val note = "iso.substringBefore(\'T\') and iso.take(10).split(\'-\')"\n'
+            "val ctx = caps.staticContext()\n"
+        ),
+        dt_data: (
+            "val z = TimeZone.currentSystemDefault()\n"
+            "val local = instant.toLocalDateTime(z)\n"
+        ),
+    }
+    check_date_time_di_invariants(good_dt, dt_allow)
+    for bad_sources, bad_allow in (
+        ({**good_dt, dt_ui: good_dt[dt_ui] + "val z = TimeZone.currentSystemDefault()\n"}, dt_allow),
+        ({**good_dt, dt_ui: good_dt[dt_ui] + "val d = instant.toLocalDateTime(z)\n"}, dt_allow),
+        ({**good_dt, dt_ui: good_dt[dt_ui] + "val p = LocalRaftPageBaseTimeContextProvider.current\n"}, dt_allow),
+        ({**good_dt, dt_data: good_dt[dt_data] + "val p = LocalRaftPageBaseTimeContextProvider.current\n"}, dt_allow),
+        ({**good_dt, dt_ui: good_dt[dt_ui] + "val d = iso.substringBefore('T')\n"}, dt_allow),
+        ({**good_dt, dt_ui: good_dt[dt_ui] + 'val d = iso.substringBefore("T")\n'}, dt_allow),
+        ({**good_dt, dt_ui: good_dt[dt_ui] + "val d = iso?.substringBefore('T')\n"}, dt_allow),
+        ({**good_dt, dt_ui: good_dt[dt_ui] + "val p = iso.take(10).split('-')\n"}, dt_allow),
+        ({**good_dt, dt_ui: good_dt[dt_ui] + 'val p = iso.take(10).split("-")\n'}, dt_allow),
+        ({**good_dt, dt_ui: good_dt[dt_ui] + "val p = iso?.take(10)?.split('-')\n"}, dt_allow),
+        ({**good_dt, dt_ui: good_dt[dt_ui] + 'val p = iso?.take(10)?.split("-")\n'}, dt_allow),
+        ({**good_dt, dt_ui: good_dt[dt_ui] + "val extra = caps.staticContext()\n"}, dt_allow),
+        ({**good_dt, dt_data: good_dt[dt_data] + "val c = caps.staticContext()\n"}, dt_allow),
+        ({**good_dt, "compose/shared/src/commonMain/kotlin/build/raft/app/Other.kt": "val c = x.staticContext()\n"}, dt_allow),
+        ({**good_dt, DATE_TIME_DI_LIVE_CONTEXT_FILE: "val p = LocalRaftTimeContextProvider.current\n"}, dt_allow),
+        (
+            {
+                **good_dt,
+                DATE_TIME_DI_LIVE_CONTEXT_FILE: (
+                    good_dt[DATE_TIME_DI_LIVE_CONTEXT_FILE]
+                    + "val p2 = LocalRaftPageBaseTimeContextProvider.current\n"
+                ),
+            },
+            dt_allow,
+        ),
+        ({**good_dt, dt_ui: "val ok = 1\n"}, dt_allow),
+        (good_dt, ((dt_ui, 1, " "),)),
+        (good_dt, ((dt_ui, 0, "zero count"),)),
+        (good_dt, ((dt_ui, -1, "negative count"),)),
+        (good_dt, ((dt_ui, 1, "first"), (dt_ui, 1, "duplicate path"))),
+    ):
+        try:
+            check_date_time_di_invariants(bad_sources, bad_allow)
+        except Violation:
+            pass
+        else:
+            raise SystemExit(f"self-test: date/time DI checker accepted {bad_sources!r}")
+
     print("check_source_constraints self-test passed")
 
 
@@ -825,7 +1366,8 @@ def main(argv: list[str]) -> int:
     print(
         "source constraints hold (1.15.0 conditional interaction state, task #82 native Apple, "
         "#3823 no production runBlocking, #3845 Native-safe test names, "
-        "1.17.1 NSInvocation object return)"
+        "1.17.1 NSInvocation object return, #264 no top-level/object snapshot state, "
+        "dm:@artin:#2 date/time DI invariants)"
     )
     return 0
 

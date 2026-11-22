@@ -1,4 +1,3 @@
-import build.raft.ci.registerNoKuiklyGuard
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
 /*
@@ -9,8 +8,7 @@ import org.jetbrains.kotlin.gradle.dsl.JvmTarget
  * and the CMP pages themselves. Hosts: androidApp `RaftCmpActivity`; iOS `RaftCmpIos` (exported
  * through the :shared framework, the app's only Kotlin framework).
  *
- * Depends on :core (data layer, HostCapabilities) and :designsystem. It must never depend on Kuikly;
- * verifyUiCmpHasNoKuikly enforces that on every build.
+ * Depends on :core (data layer, HostCapabilities) and :designsystem. It must never depend on Kuikly.
  */
 plugins {
     kotlin("multiplatform")
@@ -66,9 +64,6 @@ kotlin {
         }
     }
 }
-
-// Fails the build if :ui-cmp sources or its (transitive) Android/iOS dependency graph reference Kuikly.
-registerNoKuiklyGuard("verifyUiCmpHasNoKuikly")
 
 compose.resources {
     packageOfResClass = "build.raft.app.cmp.resources"

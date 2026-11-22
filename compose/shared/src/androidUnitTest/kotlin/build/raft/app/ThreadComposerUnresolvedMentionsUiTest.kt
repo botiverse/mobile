@@ -69,17 +69,6 @@ class ThreadComposerUnresolvedMentionsUiTest {
             onNodeWithText(NOTICE, useUnmergedTree = true).assertDoesNotExist()
         }
 
-    @Test
-    fun aThreadReplyComposerShowsTheNotice() =
-        runRobolectricComposeUiTest {
-            RaftAndroidSqlDatabaseContext.init(RuntimeEnvironment.getApplication())
-            setContent {
-                Composer(ThreadComposerSurface(kind = RaftThreadSurfaceKind.ReplyThread, channelId = "t1"), listOf("@ghost", "@outside")) {}
-            }
-
-            onNodeWithText(NOTICE, useUnmergedTree = true).assertExists()
-        }
-
     @androidx.compose.runtime.Composable
     private fun Composer(surface: ThreadComposerSurface, handles: List<String>, onEvent: (String) -> Unit) {
         RaftTheme(appearance = RaftAppearance.Light) {

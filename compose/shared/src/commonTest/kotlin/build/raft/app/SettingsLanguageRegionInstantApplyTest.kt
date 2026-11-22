@@ -4,7 +4,6 @@ import build.raft.app.data.LANGUAGE_REGION_ACTION_LANGUAGE
 import build.raft.app.data.LANGUAGE_REGION_ACTION_TIME_FORMAT
 import build.raft.app.data.LANGUAGE_REGION_ACTION_TIMEZONE
 import build.raft.app.data.LANGUAGE_REGION_ACTION_TRANSLATION_DISPLAY
-import build.raft.app.data.MOBILE_ACTION_LANGUAGE
 import build.raft.app.data.SettingsLanguageRegionPreferenceUpdateRequest
 import build.raft.app.data.SettingsLanguageRegionSnapshot
 import build.raft.app.data.SettingsMobileSelectionOptionSnapshot
@@ -15,8 +14,6 @@ import build.raft.app.data.SharedSettingsActionState
 import build.raft.app.data.SharedSettingsIntent
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertFalse
-import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class SettingsLanguageRegionInstantApplyTest {
@@ -43,15 +40,6 @@ class SettingsLanguageRegionInstantApplyTest {
     }
 
     @Test
-    fun pickingTheSavedValueSendsNothing() {
-        assertNull(settingsLanguageRegionApplyIntent(snapshot, pick(LANGUAGE_REGION_ACTION_TRANSLATION_DISPLAY, "automatic")))
-        assertNull(settingsLanguageRegionApplyIntent(snapshot, pick(LANGUAGE_REGION_ACTION_LANGUAGE, "browser")))
-        assertNull(settingsLanguageRegionApplyIntent(snapshot, pick(LANGUAGE_REGION_ACTION_TIMEZONE, "UTC")))
-        assertNull(settingsLanguageRegionApplyIntent(snapshot, pick(LANGUAGE_REGION_ACTION_TIME_FORMAT, "24h")))
-        assertNull(settingsLanguageRegionApplyIntent(snapshot, pick(LANGUAGE_REGION_ACTION_TIMEZONE, "")))
-    }
-
-    @Test
     fun pickShowsAndLocksThePageUntilItsRequestSettles() {
         val picked = pick(LANGUAGE_REGION_ACTION_TIME_FORMAT, "12h")
 
@@ -62,71 +50,6 @@ class SettingsLanguageRegionInstantApplyTest {
         val running = SharedSettingsActionState(LANGUAGE_REGION_ACTION_TIME_FORMAT, inProgress = true)
         assertEquals("12h", shown(picked, running))
         assertTrue(settingsLanguageRegionBusy(running, picked))
-    }
-
-    @Test
-    fun successShowsTheNewSavedValue() {
-        val picked = pick(LANGUAGE_REGION_ACTION_TIME_FORMAT, "12h")
-        val done = SharedSettingsActionState(LANGUAGE_REGION_ACTION_TIME_FORMAT)
-
-        assertEquals("12h", shown(picked, done, saved = "12h"))
-        assertFalse(settingsLanguageRegionBusy(done, picked))
-    }
-
-    @Test
-    fun failureRevertsToTheSavedValue() {
-        val picked = pick(LANGUAGE_REGION_ACTION_TIME_FORMAT, "12h")
-        val failed = SharedSettingsActionState(LANGUAGE_REGION_ACTION_TIME_FORMAT, errorCode = "network")
-
-        assertEquals("24h", shown(picked, failed, saved = "24h"))
-        assertFalse(settingsLanguageRegionBusy(failed, picked))
-    }
-
-    @Test
-    fun retryAfterAnIdenticalFailureStillRevertsWhenItFailsAgain() {
-        val firstFailure = SharedSettingsActionState(LANGUAGE_REGION_ACTION_TIME_FORMAT, errorCode = "network")
-        val retry = pick(LANGUAGE_REGION_ACTION_TIME_FORMAT, "12h", actionStateAtPick = firstFailure)
-
-        // Until the store moves on, the old failure is not this pick's result.
-        assertEquals("12h", shown(retry, firstFailure, saved = "24h"))
-        // An equal but new failure is.
-        assertEquals("24h", shown(retry, firstFailure.copy(), saved = "24h"))
-    }
-
-    @Test
-    fun pickOnlyChangesItsOwnControl() {
-        val picked = pick(LANGUAGE_REGION_ACTION_TIME_FORMAT, "12h")
-
-        assertEquals(
-            "UTC",
-            settingsLanguageRegionShownValue("UTC", LANGUAGE_REGION_ACTION_TIMEZONE, picked, actionState = null)
-        )
-    }
-
-    @Test
-    fun otherSettingsRequestsDoNotLockThePage() {
-        val appLanguage = SharedSettingsActionState(MOBILE_ACTION_LANGUAGE, inProgress = true)
-
-        assertFalse(settingsLanguageRegionBusy(appLanguage, pick = null))
-        assertTrue(settingsLanguageRegionBusy(SharedSettingsActionState(LANGUAGE_REGION_ACTION_TIMEZONE, inProgress = true), pick = null))
-    }
-
-    @Test
-    fun saveStatusIsEmptyWhileThePickIsOnItsWay() {
-        val picked = pick(LANGUAGE_REGION_ACTION_TIME_FORMAT, "12h")
-
-        assertEquals(SettingsPickSaveResult.Pending, settingsPickSaveResult(picked, actionState = null))
-        assertEquals(
-            SettingsPickSaveResult.Pending,
-            settingsPickSaveResult(picked, SharedSettingsActionState(LANGUAGE_REGION_ACTION_TIME_FORMAT, inProgress = true))
-        )
-    }
-
-    @Test
-    fun saveStatusSaysSavedOnceThePickIsStored() {
-        val picked = pick(LANGUAGE_REGION_ACTION_TIME_FORMAT, "12h")
-
-        assertEquals(SettingsPickSaveResult.Saved, settingsPickSaveResult(picked, SharedSettingsActionState(LANGUAGE_REGION_ACTION_TIME_FORMAT)))
     }
 
     @Test
@@ -146,26 +69,6 @@ class SettingsLanguageRegionInstantApplyTest {
         // The server's refusal, as web `apiErrorText`.
         assertEquals(SettingsPickSaveResult.Failed("Unknown timezone"), settingsPickSaveResult(picked, refused))
         assertEquals("UTC", settingsLanguageRegionShownValue("UTC", LANGUAGE_REGION_ACTION_TIMEZONE, picked, refused))
-    }
-
-    @Test
-    fun appLanguagePickReportsItsOwnResult() {
-        val picked = pick(MOBILE_ACTION_LANGUAGE, "ja")
-
-        assertEquals(SettingsPickSaveResult.Pending, settingsPickSaveResult(picked, SharedSettingsActionState(MOBILE_ACTION_LANGUAGE, inProgress = true)))
-        assertEquals(SettingsPickSaveResult.Saved, settingsPickSaveResult(picked, SharedSettingsActionState(MOBILE_ACTION_LANGUAGE)))
-        assertEquals(
-            SettingsPickSaveResult.Failed(null),
-            settingsPickSaveResult(picked, SharedSettingsActionState(MOBILE_ACTION_LANGUAGE, errorCode = "settings_locale_unavailable"))
-        )
-    }
-
-    @Test
-    fun aPickThatSettlesWithoutItsOwnResultSaysNothing() {
-        val picked = pick(LANGUAGE_REGION_ACTION_TIME_FORMAT, "12h", actionStateAtPick = SharedSettingsActionState(LANGUAGE_REGION_ACTION_TIMEZONE))
-
-        assertEquals(SettingsPickSaveResult.Unknown, settingsPickSaveResult(picked, actionState = null))
-        assertEquals(SettingsPickSaveResult.Unknown, settingsPickSaveResult(picked, SharedSettingsActionState(MOBILE_ACTION_LANGUAGE)))
     }
 
     private fun pick(

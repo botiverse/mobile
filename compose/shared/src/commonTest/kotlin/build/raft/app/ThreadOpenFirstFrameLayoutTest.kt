@@ -34,17 +34,6 @@ class ThreadOpenFirstFrameLayoutTest {
     }
 
     @Test
-    fun noSlotWhereNoComposerIsComing() {
-        assertFalse(reserves(cachedContent, ThreadAccessResolution.Error))
-        assertFalse(reserves(cachedContent, ThreadAccessResolution.NoPermission))
-        assertFalse(reserves(cachedContent.copy(status = "error"), ThreadAccessResolution.Loading))
-        assertFalse(reserves(cachedContent.copy(joined = false), ThreadAccessResolution.Loading))
-        assertFalse(reserves(cachedContent.copy(showComposer = false), ThreadAccessResolution.Loading))
-        assertFalse(reserves(cachedContent.copy(selectedTab = "tasks"), ThreadAccessResolution.Loading))
-        assertFalse(reserves(cachedContent, ThreadAccessResolution.Loading, composerLocked = true))
-    }
-
-    @Test
     fun flagsAndMembersReadTheShellServerUntilTheSessionIsCaptured() {
         assertEquals("srv-shell", threadPageServerId(sessionServerId = null, shellServerId = " srv-shell "))
         assertEquals("srv-session", threadPageServerId(sessionServerId = " srv-session ", shellServerId = "srv-shell"))

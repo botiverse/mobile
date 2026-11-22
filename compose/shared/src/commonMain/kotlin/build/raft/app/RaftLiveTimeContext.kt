@@ -12,9 +12,9 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import build.raft.app.data.ProcessRaftDatetimeFoundationOwner
 import build.raft.app.data.RaftDatetimeFoundationOwner
+import build.raft.app.data.RaftTimeFormatRuntime
 import build.raft.app.data.defaultNowMillis
 import build.raft.app.model.RaftTimeContext
-import build.raft.app.model.RaftTimeFormat24Hour
 import build.raft.app.model.raftTimeContextRefreshDelayMillis
 import build.raft.app.compat.pager.LocalActivity
 import build.raft.app.compat.pager.Pager
@@ -30,7 +30,7 @@ import kotlinx.coroutines.launch
 internal val LocalRaftTimeContextProvider = compositionLocalOf<RaftTimeContextProvider?> { null }
 
 /**
- * Every page's base live time context (device zone, 24 h), provided once by
+ * Every page's base live time context (device zone, reactive 12h/24h preference), provided once by
  * [build.raft.app.base.BasePager], so a relative time ("resets tomorrow", "updated 1 minute ago")
  * on a page that provides no [LocalRaftTimeContextProvider] of its own, in a sheet or a card too,
  * resolves instead of reading "unknown time" (artin 11-05: fix it once, not page by page). Kept
@@ -46,11 +46,12 @@ internal val currentRaftTimeContextProvider: RaftTimeContextProvider?
 /** [LocalRaftPageBaseTimeContextProvider] for one page; called by BasePager only. */
 @Composable
 internal fun ProvideRaftPageBaseTimeContext(pageVisibleTick: Int, content: @Composable () -> Unit) {
+    val timeFormat = RaftTimeFormatRuntime.observe()
     val capabilities =
-        remember {
+        remember(timeFormat) {
             RaftTimeCapabilities(
                 localOffsetMinutes = ProcessRaftDatetimeFoundationOwner.localOffsetMinutesAt(RaftSystemTimeClock.nowEpochMillis(), 0),
-                timeFormat = RaftTimeFormat24Hour,
+                timeFormat = timeFormat,
             )
         }
     val provider = rememberLiveRaftTimeContext(capabilities = capabilities, pageVisibleTick = pageVisibleTick, active = true)
@@ -64,9 +65,20 @@ internal class RaftTimeContextProvider(initial: RaftTimeContext?) {
     var todayEpochDay by mutableStateOf(initial?.todayEpochDay)
         private set
 
+    /**
+     * Low-frequency date/clock context (`nowEpochMillis = null`): changes only on local midnight,
+     * timezone/DST offset shift, or 12h/24h format change — never on 1-minute relative-time ticks.
+     */
+    var dateContext by mutableStateOf(initial?.copy(nowEpochMillis = null))
+        private set
+
     fun update(value: RaftTimeContext?) {
         current = value
         todayEpochDay = value?.todayEpochDay
+        val nextDate = value?.copy(nowEpochMillis = null)
+        if (dateContext != nextDate) {
+            dateContext = nextDate
+        }
     }
 }
 
@@ -180,37 +192,6 @@ internal fun rememberLiveRaftTimeContext(
         }
     }
     return provider
-}
-
-/**
- * A standalone page outside the app shell (no inherited [LocalRaftTimeContextProvider]) keeps its
- * own live time context in the device zone, so its relative times ("resets tomorrow", "updated
- * 1 minute ago") resolve instead of reading "unknown time". Inside the shell the shell's wins.
- */
-@Composable
-internal fun ProvideStandaloneRaftTimeContext(
-    pageVisibleTick: Int = 0,
-    clock: RaftTimeClock = RaftSystemTimeClock,
-    foundationOwner: RaftDatetimeFoundationOwner = ProcessRaftDatetimeFoundationOwner,
-    capabilities: RaftTimeCapabilities =
-        remember(clock, foundationOwner) {
-            RaftTimeCapabilities(
-                localOffsetMinutes = foundationOwner.localOffsetMinutesAt(clock.nowEpochMillis(), 0),
-                timeFormat = RaftTimeFormat24Hour,
-            )
-        },
-    content: @Composable () -> Unit,
-) {
-    val inherited = LocalRaftTimeContextProvider.current
-    val own =
-        rememberLiveRaftTimeContext(
-            capabilities = capabilities,
-            pageVisibleTick = pageVisibleTick,
-            active = inherited == null,
-            clock = clock,
-            foundationOwner = foundationOwner,
-        )
-    CompositionLocalProvider(LocalRaftTimeContextProvider provides (inherited ?: own), content = content)
 }
 
 internal fun interface RaftTimeoutHandle {

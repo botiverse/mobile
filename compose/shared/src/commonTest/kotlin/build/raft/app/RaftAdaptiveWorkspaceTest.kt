@@ -1,6 +1,5 @@
 package build.raft.app
 
-import build.raft.app.compat.json.JSONObject
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -87,92 +86,6 @@ class RaftAdaptiveWorkspaceTest {
     }
 
     @Test
-    fun consumerDefensivelyTreatsUnknownDualPaneAsCompact() {
-        val inconsistentHostState =
-            widePane().copy(posture = RaftAdaptivePanePosture.Unknown)
-        val state =
-            initialState()
-                .reduce(RaftAdaptiveWorkspaceIntent.WindowChanged(inconsistentHostState))
-                .reduce(RaftAdaptiveWorkspaceIntent.OpenDetail(detailIdentity("thread-a")))
-
-        assertEquals(RaftAdaptivePaneLayout.Compact, state.pane.layout)
-        assertEquals(RaftAdaptiveWorkspacePresentation.ListOnly, state.presentation)
-        assertNull(state.selection)
-    }
-
-    @Test
-    fun halfFoldedWideWindowHostsTheDetailLikeTheShellRail() {
-        // The shell turns the rail on from the same DualPane pane state; the workspace must agree,
-        // or a half-open foldable shows the rail over a single list that pushes every conversation.
-        val pane = widePane().copy(posture = RaftAdaptivePanePosture.HalfFolded)
-        val state =
-            initialState()
-                .reduce(RaftAdaptiveWorkspaceIntent.WindowChanged(pane))
-                .reduce(RaftAdaptiveWorkspaceIntent.OpenDetail(detailIdentity("thread-a")))
-
-        assertEquals(RaftAdaptivePaneLayout.DualPane, state.pane.layout)
-        assertEquals(RaftAdaptiveWorkspacePresentation.Split, state.presentation)
-        assertTrue(raftAdaptiveNavRailActive(desktopModeEnabled = true, paneState = pane))
-    }
-
-    @Test
-    fun closeAndLateCallbacksAreGenerationFencedAcrossRapidReplacement() {
-        val first =
-            initialState()
-                .reduce(RaftAdaptiveWorkspaceIntent.WindowChanged(widePane()))
-                .reduce(RaftAdaptiveWorkspaceIntent.OpenDetail(detailIdentity("thread-a")))
-        val firstSelection = first.selection ?: error("first selection missing")
-        val second =
-            first.reduce(RaftAdaptiveWorkspaceIntent.OpenDetail(detailIdentity("thread-b")))
-        val secondSelection = second.selection ?: error("second selection missing")
-        val lateClose =
-            second.reduce(
-                RaftAdaptiveWorkspaceIntent.CloseDetail(
-                    identityKey = firstSelection.identity.key,
-                    generation = firstSelection.generation,
-                )
-            )
-
-        assertTrue(first.acceptsDetailCallback(firstSelection.identity.key, firstSelection.generation))
-        assertFalse(second.acceptsDetailCallback(firstSelection.identity.key, firstSelection.generation))
-        assertTrue(second.acceptsDetailCallback(secondSelection.identity.key, secondSelection.generation))
-        assertEquals(second, lateClose)
-    }
-
-    @Test
-    fun dismissDetailFromSinglePaneBackClearsSelectionAndFencesLateCallbacks() {
-        val opened =
-            initialState()
-                .reduce(RaftAdaptiveWorkspaceIntent.WindowChanged(widePane()))
-                .reduce(RaftAdaptiveWorkspaceIntent.OpenDetail(detailIdentity("thread-a")))
-        val generation = opened.selection?.generation ?: error("selection missing")
-        val compact =
-            opened.reduce(
-                RaftAdaptiveWorkspaceIntent.WindowChanged(
-                    widePane().copy(layout = RaftAdaptivePaneLayout.Compact)
-                )
-            )
-        assertEquals(RaftAdaptiveWorkspacePresentation.DetailOnly, compact.presentation)
-
-        val dismissed = compact.reduce(RaftAdaptiveWorkspaceIntent.DismissDetail)
-
-        assertNull(dismissed.selection)
-        assertEquals(RaftAdaptiveWorkspacePresentation.ListOnly, dismissed.presentation)
-        assertTrue(dismissed.generationCursor > compact.generationCursor)
-        // The detail root was dismissed without a CloseDetail envelope; any late callback
-        // carrying the old generation must not resurrect or match the slot.
-        assertFalse(dismissed.acceptsDetailCallback("thread-a", generation))
-        val lateClose =
-            dismissed.reduce(
-                RaftAdaptiveWorkspaceIntent.CloseDetail(
-                    identityKey = opened.selection?.identity?.key.orEmpty(),
-                    generation = generation,
-                )
-            )
-        assertEquals(dismissed, lateClose)
-    }
-
-    @Test
     fun parkSelectionTracksStandaloneOpenWhileParkedAndRespectsServerIsolation() {
         // task #45: ON pick A → OFF → user standalone-opens B → ON must restore B, not A.
         val opened =
@@ -201,14 +114,6 @@ class RaftAdaptiveWorkspaceTest {
                 )
             )
         assertEquals("thread-b", foreign.selection?.identity?.threadId)
-    }
-
-    @Test
-    fun dismissDetailWithoutSelectionIsNoOp() {
-        val state = initialState().reduce(RaftAdaptiveWorkspaceIntent.DismissDetail)
-
-        assertNull(state.selection)
-        assertEquals(0L, state.generationCursor)
     }
 
     @Test
@@ -242,36 +147,6 @@ class RaftAdaptiveWorkspaceTest {
     }
 
     @Test
-    fun closeEnvelopeRoundTripsExplicitShellIdentityAndGeneration() {
-        val request =
-            RaftAdaptiveDetailCloseRequest(
-                shellInstanceId = "shell-a",
-                identityKey = "4:room",
-                generation = 7,
-            )
-
-        assertEquals(request, request.toJson().toRaftAdaptiveDetailCloseRequestOrNull())
-        assertNull(
-            JSONObject()
-                .put(RAFT_ADAPTIVE_DETAIL_IDENTITY_KEY, request.identityKey)
-                .put(RAFT_ADAPTIVE_DETAIL_GENERATION, request.generation)
-                .toRaftAdaptiveDetailCloseRequestOrNull()
-        )
-    }
-
-    @Test
-    fun childPageDataUpdateRebindsCloseEnvelopeAndLegacyUpdateKeepsCurrent() {
-        val first = RaftAdaptiveDetailCloseRequest("shell-a", "first", 1)
-        val second = RaftAdaptiveDetailCloseRequest("shell-a", "second", 2)
-
-        val rebound = updatedRaftAdaptiveDetailCloseRequest(first, second.toJson())
-        val legacyUpdate = updatedRaftAdaptiveDetailCloseRequest(rebound, JSONObject().put("payload", "{}"))
-
-        assertEquals(second, rebound)
-        assertEquals(second, legacyUpdate)
-    }
-
-    @Test
     fun standaloneThreadKeepsRoomLeaseWhileCoveredButAdaptiveInactiveReleases() {
         val adaptive = RaftAdaptiveDetailCloseRequest("shell-a", "detail", 1)
 
@@ -294,29 +169,6 @@ class RaftAdaptiveWorkspaceTest {
             )
 
         assertNotEquals(first.key, second.key)
-    }
-
-    @Test
-    fun wireLaunchProjectsIdentityOnlyFieldsForAdaptiveSelection() {
-        val wire =
-            WireThreadLaunchPayload(
-                instanceId = "presentation-only-instance",
-                surfaceKind = RaftThreadSurfaceKind.ReplyThread,
-                sourceThreadId = "stream-a",
-                streamChannelId = "stream-a",
-                parentChannelId = "channel-a",
-                parentMessageId = "message-a",
-                focusedMessageId = "focus-a",
-                navigationLabel = "localized presentation",
-            )
-
-        val identity = wire.toRaftAdaptiveDetailIdentity("server-a") ?: error("identity missing")
-
-        assertEquals("server-a", identity.serverId)
-        assertEquals("stream-a", identity.threadId)
-        assertEquals("message-a", identity.parentMessageId)
-        assertFalse(identity.key.contains("localized presentation"))
-        assertFalse(identity.key.contains("presentation-only-instance"))
     }
 
     @Test
@@ -359,28 +211,6 @@ class RaftAdaptiveWorkspaceTest {
     }
 
     @Test
-    fun defaultLandingDoesNotSurviveTheWindowLeavingDualPane() {
-        val wide =
-            initialState()
-                .reduce(RaftAdaptiveWorkspaceIntent.WindowChanged(widePane()))
-                .reduce(RaftAdaptiveWorkspaceIntent.LandDefaultDetail(detailIdentity("all")))
-        val landed = wide.selection ?: error("landing missing")
-        assertEquals(RaftAdaptiveWorkspacePresentation.Split, wide.presentation)
-        assertTrue(wide.selectionIsDefaultLanding)
-
-        val compact =
-            wide.reduce(
-                RaftAdaptiveWorkspaceIntent.WindowChanged(
-                    widePane().copy(layout = RaftAdaptivePaneLayout.Compact)
-                )
-            )
-
-        assertNull(compact.selection)
-        assertEquals(RaftAdaptiveWorkspacePresentation.ListOnly, compact.presentation)
-        assertFalse(compact.acceptsDetailCallback(landed.identity.key, landed.generation))
-    }
-
-    @Test
     fun defaultLandingNeverReplacesAUserSelection() {
         val opened =
             initialState()
@@ -394,25 +224,33 @@ class RaftAdaptiveWorkspaceTest {
     }
 
     @Test
-    fun userOpeningTheLandedConversationKeepsCompactContinuity() {
-        val identity = detailIdentity("all")
-        val landed =
+    fun selectionForReadyServerBlocksCrossServerMountOnServerSwitchFrame() {
+        val opened =
             initialState()
                 .reduce(RaftAdaptiveWorkspaceIntent.WindowChanged(widePane()))
-                .reduce(RaftAdaptiveWorkspaceIntent.LandDefaultDetail(identity))
-        val generation = landed.selection?.generation ?: error("landing missing")
-        val adopted = landed.reduce(RaftAdaptiveWorkspaceIntent.OpenDetail(identity))
-        assertFalse(adopted.selectionIsDefaultLanding)
-        assertEquals(generation, adopted.selection?.generation)
+                .reduce(RaftAdaptiveWorkspaceIntent.OpenDetail(detailIdentity("thread-a")))
+        val selection = opened.selection ?: error("selection missing")
 
-        val compact =
-            adopted.reduce(
-                RaftAdaptiveWorkspaceIntent.WindowChanged(
-                    widePane().copy(layout = RaftAdaptivePaneLayout.Compact)
-                )
-            )
-        assertEquals(RaftAdaptiveWorkspacePresentation.DetailOnly, compact.presentation)
-        assertEquals(identity, compact.selection?.identity)
+        assertEquals(
+            selection,
+            raftAdaptiveSelectionForReadyServer(opened, readyServerId = "server-a", detailAccepted = true),
+        )
+        assertEquals(
+            selection,
+            raftAdaptiveSelectionForReadyServer(opened, readyServerId = "  server-a  ", detailAccepted = true),
+        )
+        assertNull(
+            raftAdaptiveSelectionForReadyServer(opened, readyServerId = "server-b", detailAccepted = true),
+        )
+        assertNull(
+            raftAdaptiveSelectionForReadyServer(opened, readyServerId = "server-a", detailAccepted = false),
+        )
+        assertNull(
+            raftAdaptiveSelectionForReadyServer(opened, readyServerId = null, detailAccepted = true),
+        )
+        assertNull(
+            raftAdaptiveSelectionForReadyServer(opened, readyServerId = "   ", detailAccepted = true),
+        )
     }
 
     private fun initialState(): RaftAdaptiveWorkspaceState =

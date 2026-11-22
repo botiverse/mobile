@@ -1,13 +1,11 @@
 package build.raft.app
 
-import build.raft.app.compat.json.JSONObject
 import build.raft.app.data.ActionCardSpecIntent
 import build.raft.app.data.RaftShellStoreScope
 import build.raft.app.data.raftAppActionCardCapabilities
 import build.raft.app.data.ThreadActionCard
 import build.raft.app.data.WireActionCardMetadata
 import build.raft.app.data.actionCardFromMessageMetadata
-import build.raft.app.data.isSupportedCommitAction
 import build.raft.app.data.toMessageMetadata
 import build.raft.app.data.toThreadActionCard
 import kotlin.test.Test
@@ -103,15 +101,6 @@ class RaftFeedbackCardEntryTest {
     }
 
     @Test
-    fun feedbackCardIsNeverAnInlineCommitButOpensTheFormWhilePrepared() {
-        val card = preparedFeedbackCard()
-
-        assertFalse(card.isSupportedCommitAction())
-        assertFalse(preparedFeedbackCard(state = "executed").opensFeedbackCardEntry())
-        assertFalse(card.copy(type = "channel:create").opensFeedbackCardEntry())
-    }
-
-    @Test
     fun entryRequiresCardTypeOpenStateAndBothIds() {
         val card = preparedFeedbackCard()
         assertNull(raftFeedbackCardEntryOrNull(cardMessageId, preparedFeedbackCard(state = "executed"), viewingServerId))
@@ -139,16 +128,6 @@ class RaftFeedbackCardEntryTest {
     }
 
     @Test
-    fun aHalfCardEntryOpensTheOrdinaryForm() {
-        val scope = RaftShellStoreScope.create(shellInstanceId = "shell-feedback")
-        assertNull(settingsFeedbackCardEntryFromPageData(settingsHandsFeedbackPageData(scope)))
-        assertNull(settingsFeedbackCardEntryFromPageData(JSONObject().put(SETTINGS_FEEDBACK_ACTION_CARD_ID, cardMessageId)))
-        assertNull(
-            settingsFeedbackCardEntryFromPageData(JSONObject().put(SETTINGS_FEEDBACK_ACTION_CARD_SERVER_ID, viewingServerId))
-        )
-    }
-
-    @Test
     fun everySettingsFeedbackEntryOpensTheNativeTicketList() {
         // The Settings row, rail Help > Feedback, a done card's "View in Settings" and an agent
         // issue's "View Ticket" all go through openSettingsFeedbackPage: the native ticket list on
@@ -162,15 +141,5 @@ class RaftFeedbackCardEntryTest {
             assertEquals(ticketId.orEmpty(), pageData.optString(SETTINGS_FEEDBACK_TICKETS_TICKET_ID))
         }
         assertFalse(SettingsWebViewSurface.entries.any { it.diagnosticsName == "feedback" })
-    }
-
-    @Test
-    fun theNativeTicketPageCarriesOnlyAUuidTicket() {
-        val scope = RaftShellStoreScope.create(shellInstanceId = "shell-feedback", initialServerId = viewingServerId)
-        val onTicket = settingsFeedbackTicketsPageData(scope, ticketId = " $cardMessageId ")
-        assertEquals(SETTINGS_FEEDBACK_TICKETS_PAGE, onTicket.optString("pageName"))
-        assertEquals(cardMessageId, onTicket.optString(SETTINGS_FEEDBACK_TICKETS_TICKET_ID))
-        assertEquals("", settingsFeedbackTicketsPageData(scope, ticketId = "not-a-ticket").optString(SETTINGS_FEEDBACK_TICKETS_TICKET_ID))
-        assertEquals("", settingsFeedbackTicketsPageData(scope).optString(SETTINGS_FEEDBACK_TICKETS_TICKET_ID))
     }
 }

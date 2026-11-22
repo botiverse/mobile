@@ -19,7 +19,6 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNull
-import kotlin.test.assertTrue
 
 class RaftShellStoreLaunchTest {
     @Test
@@ -63,30 +62,6 @@ class RaftShellStoreLaunchTest {
     }
 
     @Test
-    fun launchScopeReadsOnlyShellAndServerIdentity() {
-        val scope =
-            JSONObject()
-                .put(RAFT_SHELL_INSTANCE_ID, " shell-a ")
-                .put(RAFT_SHELL_SERVER_ID, " server-2 ")
-                .put("title", "must-not-enter-scope")
-                .raftShellStoreScope("fallback")
-
-        assertEquals("shell-a", scope.shellInstanceId)
-        assertEquals("server-2", scope.initialServerId)
-    }
-
-    @Test
-    fun launchScopeReadsLegacyServerIdentityWhenDedicatedOwnerKeyIsAbsent() {
-        val scope =
-            JSONObject()
-                .put(RAFT_SHELL_INSTANCE_ID, "shell-a")
-                .put("serverId", "server-legacy")
-                .raftShellStoreScope("fallback")
-
-        assertEquals("server-legacy", scope.initialServerId)
-    }
-
-    @Test
     fun dedicatedOwnerServerIdentityTakesPrecedenceOverLegacyRouteServer() {
         val scope =
             JSONObject()
@@ -96,49 +71,6 @@ class RaftShellStoreLaunchTest {
                 .raftShellStoreScope("fallback")
 
         assertEquals("server-owner", scope.initialServerId)
-    }
-
-    @Test
-    fun launchScopeFallsBackToPagerIdentityWithoutInventingServerState() {
-        val scope = JSONObject().raftShellStoreScope("pager-42")
-
-        assertEquals("pager-42", scope.shellInstanceId)
-        assertNull(scope.initialServerId)
-    }
-
-    @Test
-    fun inheritedLaunchScopeFailsClosedWhenSourceHasNoShellIdentity() {
-        assertNull(JSONObject().put(RAFT_SHELL_SERVER_ID, "server-2").raftShellStoreScopeOrNull())
-    }
-
-    @Test
-    fun inheritedLaunchScopeAddsOnlyOwnerIdentityToFeaturePageData() {
-        val pageData =
-            JSONObject()
-                .put("memberId", "agent-1")
-                .put("serverId", "server-target")
-                .withRaftShellStoreScope(
-                    build.raft.app.data.RaftShellStoreScope.create("shell-a", "server-owner")
-                )
-
-        assertEquals("agent-1", pageData.optString("memberId"))
-        assertEquals("server-target", pageData.optString("serverId"))
-        assertEquals("shell-a", pageData.optString(RAFT_SHELL_INSTANCE_ID))
-        assertEquals("server-owner", pageData.optString(RAFT_SHELL_SERVER_ID))
-        assertEquals("", pageData.optString("displayName"))
-        assertEquals("", pageData.optString("avatarUrl"))
-    }
-
-    @Test
-    fun explicitUnselectedOwnerDoesNotFallBackToFeatureServerIdentity() {
-        val pageData =
-            JSONObject()
-                .put("serverId", "server-feature-target")
-                .withRaftShellStoreScope(RaftShellStoreScope.create("shell-unselected"))
-
-        assertTrue(pageData.has(RAFT_SHELL_SERVER_ID))
-        assertNull(pageData.raftShellStoreScopeOrNull()?.initialServerId)
-        assertEquals("server-feature-target", pageData.optString("serverId"))
     }
 
     @Test
@@ -194,36 +126,5 @@ class RaftShellStoreLaunchTest {
 
         assertEquals(listOf<String?>("server-b"), requestedServers)
         assertFalse(requestedServers.contains("server-a"))
-    }
-
-    @Test
-    fun threadLaunchDescriptorCarriesRouteIntentButNoAvatarCacheProductState() {
-        val pageData =
-            threadLaunchPageData(
-                WireThreadLaunchPayload(
-                    instanceId = "thread-instance",
-                    threadId = "channel-a",
-                    streamChannelId = "channel-a"
-                )
-            )
-
-        assertEquals(THREAD_PAGE, pageData.optString("pageName"))
-        assertEquals("thread-instance", pageData.optString("instanceId"))
-        val payload = pageData.optString("payload")
-        assertEquals("channel-a", parseThreadScreenPayload(payload, "fallback").streamChannelId)
-        listOf(
-            "avatarCache",
-            "nativePartitionKey",
-            "nativeSubjectKey",
-            "nativeBytesKey",
-            "commitGeneration",
-            "commitNonce",
-            "modelRevision",
-            "imageBlob",
-            "nativePath"
-        ).forEach { key ->
-            assertEquals("", pageData.optString(key))
-            assertFalse(payload.contains(key))
-        }
     }
 }

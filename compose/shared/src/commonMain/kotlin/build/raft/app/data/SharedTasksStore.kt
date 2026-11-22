@@ -120,9 +120,10 @@ enum class TasksViewMode {
 
 /**
  * UI-only state for the Tasks screen. Lives next to [TasksUiState] but holds purely
- * presentational concerns that don't survive process death and don't round-trip to the
- * API: which chip popover is open, what's typed into a popover search box, what columns
- * the user collapsed, which assignee chips are checked.
+ * presentational concerns that don't round-trip to the API: which chip popover is open, what's
+ * typed into a popover search box, what columns the user collapsed, which assignee chips are
+ * checked. None of it survives process death except the Tasks page's folds, which it keeps per
+ * server ([TasksPageFolds]).
  *
  * The collapsed-by-default for `backlog` / `done` / `closed` (raft-design tasks.md: Backlog is work
  * not planned now, Done and Closed only grow) mirrors the React panel — visual focus
@@ -143,6 +144,34 @@ data class TasksPresentationState(
 ) {
     companion object {
         val Default = TasksPresentationState()
+    }
+}
+
+/**
+ * The Tasks page's folds on one server (web tasksPageStore `collapsed` / `setCollapsed`,
+ * botiverse/slock eb63aec86e, #15507): what is folded or opened by hand is kept for [serverId] in
+ * [preferences] and comes back when the page opens on that server again, after a server switch or
+ * a restart. Each Tasks route has one for its server ([SharedTasksRouteSession.folds]). Without a
+ * server or a store the folds hold for the page only, as a channel's Tasks panel's always do (web
+ * ChannelTasksPanel).
+ */
+internal class TasksPageFolds(
+    serverId: String?,
+    private val preferences: TasksPageFoldPreferenceRepository?,
+) {
+    private val serverId: String? = serverId?.trim()?.takeIf { it.isNotEmpty() }
+
+    /** The folded statuses: as folded or opened by hand, else as by default (web tasksPageModel `boardColumnFolded`). */
+    fun collapsedStatuses(defaults: Set<TaskStatus> = TasksPresentationState.Default.collapsedStatuses): Set<TaskStatus> {
+        val byHand = serverId?.let { preferences?.folds(it) }.orEmpty()
+        return TaskStatus.entries.filterTo(mutableSetOf()) { status -> byHand[status] ?: (status in defaults) }
+    }
+
+    /** [status] folded ([collapsed]) or opened by hand, kept for this server. */
+    fun setCollapsed(status: TaskStatus, collapsed: Boolean) {
+        val server = serverId ?: return
+        val store = preferences ?: return
+        store.saveFolds(server, store.folds(server) + (status to collapsed))
     }
 }
 
@@ -297,7 +326,7 @@ sealed interface SharedTasksRouteIntent {
 }
 
 sealed interface SharedTasksEvent {
-    data class OperationFailed(val code: String) : SharedTasksEvent
+    data class OperationFailed(val code: String, val traceId: String? = null) : SharedTasksEvent
 }
 
 sealed interface TasksPresentationIntent {
@@ -1017,7 +1046,7 @@ internal class SharedTasksViewModel(
                 }
             } else {
                 dropStoredList(result, selectedFilter)
-                result.failureCodeOrNull()?.let { events.emit(SharedTasksEvent.OperationFailed(it)) }
+                result.failureCodeOrNull()?.let { events.emit(SharedTasksEvent.OperationFailed(it, result.failureTraceIdOrNull())) }
                 store.accept(
                     if (mergeResult || state.value.loadState is ScreenLoadState.Content) {
                         SharedTasksIntent.MergeRefreshResult(result, selectedFilter)
@@ -1213,7 +1242,7 @@ internal class SharedTasksViewModel(
                                 mutationPermit?.let { permit -> sharedStore.rollbackStatusMutation(permit) }
                             }
                         if (restoredTask != null) {
-                            events.emit(SharedTasksEvent.OperationFailed(errorCode))
+                            events.emit(SharedTasksEvent.OperationFailed(errorCode, result.failureTraceIdOrNull()))
                             store.accept(
                                 SharedTasksIntent.TaskStatusUpdateFailed(
                                     previousTask = restoredTask,
@@ -1322,7 +1351,7 @@ internal class SharedTasksViewModel(
                             mutationPermit?.let { permit -> sharedStore.rollbackStatusMutation(permit) }
                         }
                     if (restoredTask != null) {
-                        events.emit(SharedTasksEvent.OperationFailed(errorCode))
+                        events.emit(SharedTasksEvent.OperationFailed(errorCode, result.failureTraceIdOrNull()))
                         store.accept(SharedTasksIntent.TaskAssignFailed(restoredTask, errorCode))
                     } else {
                         diagnosticsLogger(
@@ -1485,7 +1514,7 @@ internal class SharedTasksViewModel(
                 else -> {
                     val errorCode = result.failureCodeOrNull() ?: "tasks_create_unknown"
                     if (store.accept(SharedTasksIntent.CreateTasksFailed(operation, errorCode))) {
-                        events.emit(SharedTasksEvent.OperationFailed(errorCode))
+                        events.emit(SharedTasksEvent.OperationFailed(errorCode, result.failureTraceIdOrNull()))
                     }
                 }
             }
@@ -2131,18 +2160,16 @@ internal fun tasksBoardSeedStatuses(availableFilters: List<TaskStatus>, backlogS
 
 /**
  * One column per status, in board order (raft-design tasks.md: Backlog, Todo, In Progress, Done,
- * Closed). [taskV2Enabled]: In Review is retired for task v2 (#wg-task-v2:f7043517,
- * raft-design decision 0043; web slock #12884 TasksPanel): no empty In Review column, while a
- * pre-v2 task still in it keeps the column so it stays reachable. Backlog is task v2 only: without
- * it, the column shows only while a task is in it. An [TaskStatus.Unknown] column (a status this
- * build does not know) shows last, only while it holds a task, so such a task never disappears.
+ * Closed). In Review is retired for task v2 (#wg-task-v2:f7043517, raft-design decision 0043; web
+ * slock #12884 TasksPanel): no empty In Review column, while a pre-v2 task still in it keeps the
+ * column so it stays reachable. An [TaskStatus.Unknown] column (a status this build does not know)
+ * shows last, only while it holds a task, so such a task never disappears.
  */
-fun TasksContent.boardColumns(renderLimit: Int, taskV2Enabled: Boolean = false): List<TasksBoardColumn> {
+fun TasksContent.boardColumns(renderLimit: Int): List<TasksBoardColumn> {
     val tasksByStatus = tasks.groupBy { it.status }
     return TaskStatus.entries.mapNotNull { status ->
         val statusTasks = tasksByStatus[status].orEmpty()
-        if (taskV2Enabled && status == TaskStatus.InReview && statusTasks.isEmpty()) return@mapNotNull null
-        if (!taskV2Enabled && status == TaskStatus.Backlog && statusTasks.isEmpty()) return@mapNotNull null
+        if (status == TaskStatus.InReview && statusTasks.isEmpty()) return@mapNotNull null
         if (status == TaskStatus.Unknown && statusTasks.isEmpty()) return@mapNotNull null
         TasksBoardColumn(
             status = status,

@@ -18,7 +18,6 @@ import build.raft.app.data.InviteConnectableServer
 import build.raft.app.model.ChannelId
 import build.raft.app.model.ThreadId
 import build.raft.app.resources.Res
-import build.raft.app.resources.channel_create_external_hint
 import build.raft.app.resources.channel_external_invite_title
 import build.raft.app.resources.common_close
 import build.raft.app.resources.stringResource
@@ -44,18 +43,6 @@ import org.robolectric.annotation.GraphicsMode
 class CreateExternalChannelScreenshotTest {
     @get:Rule
     val activities = RobolectricComposeActivityRule()
-
-    @Test
-    fun visibilityExternalLight() =
-        capture("channel.create.external.visibility", RaftAppAppearance.Light) {
-            SharedCreateChannelVisibilityControl(
-                selected = SharedCreateChannelVisibility.External,
-                enabled = true,
-                onSelected = {},
-                externalOffered = true,
-                hint = stringResource(Res.string.channel_create_external_hint),
-            )
-        }
 
     @Test
     fun visibilityFreeLimitDark() =

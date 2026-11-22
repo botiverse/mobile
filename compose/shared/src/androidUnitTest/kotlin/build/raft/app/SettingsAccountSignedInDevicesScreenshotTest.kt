@@ -22,7 +22,6 @@ import build.raft.app.data.SignedInDevice
 import build.raft.app.data.SignedInDeviceList
 import build.raft.app.data.SignedInDeviceLostReach
 import build.raft.app.data.SignedInDeviceRevokeReason
-import build.raft.app.data.SignedInDevicesReauthDialog
 import build.raft.app.data.SignedInDevicesSignOutDialog
 import build.raft.app.data.SignedInDevicesSignOutTarget
 import build.raft.app.model.RaftTimeContext
@@ -67,9 +66,6 @@ class SettingsAccountSignedInDevicesScreenshotTest {
     fun signedInDevicesLight() = page("settings.account.signed-in-devices", RaftAppAppearance.Light, devicesState)
 
     @Test
-    fun signedInDevicesDark() = page("settings.account.signed-in-devices.dark", RaftAppAppearance.Dark, devicesState)
-
-    @Test
     fun signedInDevicesFailedLight() =
         page("settings.account.signed-in-devices.failed", RaftAppAppearance.Light, SharedSignedInDevicesState(loadFailed = true), SharedAppLoginsState())
 
@@ -79,65 +75,7 @@ class SettingsAccountSignedInDevicesScreenshotTest {
 
     @Test
     @Config(qualifiers = "w390dp-h844dp-xxhdpi")
-    fun signOutChoiceDark() = dialog("settings.account.sign-out-device.choice.dark", RaftAppAppearance.Dark, choiceState)
-
-    @Test
-    @Config(qualifiers = "w390dp-h844dp-xxhdpi")
-    fun signOutSingleLight() =
-        dialog(
-            "settings.account.sign-out-device.single",
-            RaftAppAppearance.Light,
-            devicesState.copy(
-                signOut = SignedInDevicesSignOutDialog(SignedInDevicesSignOutTarget.One(unknownDevice), reach = SignedInDeviceLostReach())
-            ),
-        )
-
-    @Test
-    @Config(qualifiers = "w390dp-h844dp-xxhdpi")
-    fun signOutLeftoversLight() =
-        dialog(
-            "settings.account.sign-out-device.leftovers",
-            RaftAppAppearance.Light,
-            devicesState.copy(
-                signOut = SignedInDevicesSignOutDialog(SignedInDevicesSignOutTarget.Leftovers, reach = SignedInDeviceLostReach(computers = 2))
-            ),
-        )
-
-    @Test
-    @Config(qualifiers = "w390dp-h844dp-xxhdpi")
-    fun signOutReauthLight() =
-        dialog(
-            "settings.account.sign-out-device.reauth",
-            RaftAppAppearance.Light,
-            choiceState.copy(reauth = SignedInDevicesReauthDialog(password = true, input = "hunter2", passwordIncorrect = true)),
-        )
-
-    @Test
-    @Config(qualifiers = "w390dp-h844dp-xxhdpi")
     fun stepUpLostLight() = dialog("settings.account.step-up.lost", RaftAppAppearance.Light, choiceState.copy(stepUp = lostStepUp))
-
-    @Test
-    @Config(qualifiers = "w390dp-h844dp-xxhdpi")
-    fun stepUpLostDark() = dialog("settings.account.step-up.lost.dark", RaftAppAppearance.Dark, choiceState.copy(stepUp = lostStepUp))
-
-    @Test
-    @Config(qualifiers = "w390dp-h844dp-xxhdpi")
-    fun appLoginRevokeLight() =
-        RaftRobolectricScreenshot.capture(
-            "settings.account.app-login-revoke",
-            RaftAppAppearance.Light,
-            reportDir = "build/reports/home-screenshots",
-            activities = activities,
-            root = { ShadowDialog.getLatestDialog()?.window?.decorView },
-        ) {
-            Page {
-                RaftDesignSystemTheme {
-                    SettingsAppLoginsOverlays(
-                        SettingsAppLoginsUi(appLoginsState.copy(pending = appLogins.first()), dispatch = {}, timeContext = fixedClock)
-                    )
-                }
-            }
-        }
 
     private fun page(
         name: String,

@@ -1,5 +1,10 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { judgeVisibleServers, PRODUCTION_SERVER_NAME, REQUIRED_QA_SERVER } from "./visible_servers_probe.mjs";
 
 // The judgement is pure, so every branch is testable without a network. That split is the
@@ -117,4 +122,80 @@ test("the clean verdict names the account it measured", () => {
   assert.equal(v.ok, true);
   // By its user id: the email never goes into a receipt ("the receipt names the account by id ..." above).
   assert.match(v.detail, /b8b3f81d/, "the reading must carry the identity that produced it");
+});
+
+test("the claimed Android login checks the assigned API identity before the emulator and prints fixed codes", () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "qa-account-preflight-"));
+  const file = path.join(directory, "input.json");
+  const calls = path.join(directory, "calls.txt");
+  const runCase = "00000000-0000-4000-8000-000000000001";
+  const target = { user_id: "assigned-user", server_id: "assigned-server", server_slug: "assigned-slug" };
+  const input = { case_id: "login-email-password", run_case_id: runCase, attempt: 1,
+    attempt_id: "pla_" + "a".repeat(32), nonce: "b".repeat(64), expected_target: target };
+  const member = { id: target.server_id, slug: target.server_slug, name: REQUIRED_QA_SERVER };
+  const fixture = { user: { id: target.user_id }, servers: [member] };
+  // The upstream auth route returns {user,accessToken,refreshToken}; GET /api/servers returns
+  // the membership array with server.id/name/slug (botiverse/slock staging 22c31d25).
+  const mock = String.raw`
+    import assert from "node:assert/strict";
+    import fs from "node:fs";
+    const f=JSON.parse(process.env.FIXTURE);
+    globalThis.fetch = async (url, init) => {
+      const u = new URL(url);
+      assert.equal(u.origin, "https://api.raft.build");
+      if (process.env.DEDICATED) assert.equal(init.redirect, "error");
+      fs.appendFileSync(process.env.CALLS, u.pathname + "\n");
+      if (u.pathname === "/api/auth/login") {
+        assert.deepEqual(JSON.parse(init.body), {email:process.env.QA_TEST_EMAIL, password:process.env.QA_TEST_PASSWORD});
+        return Response.json({user:f.user, accessToken:"test-access", refreshToken:"test-refresh"});
+      }
+      if (u.pathname === "/api/servers") {
+        assert.equal(init.headers.Authorization, "Bearer test-access");
+        return Response.json(f.servers, {status:f.serverStatus || 200});
+      }
+      assert.equal(u.pathname, "/api/auth/logout");
+      assert.deepEqual(JSON.parse(init.body), {refreshToken:"test-refresh"});
+      return Response.json({}, {status:f.logoutStatus || 200});
+    };
+  `;
+  function run(name, data, expectedCode, expectedLine, options = {}) {
+    fs.rmSync(file, { force: true });
+    fs.writeFileSync(calls, "");
+    if (!options.missing) fs.writeFileSync(file, JSON.stringify(input), { mode: 0o600 });
+    const script = fileURLToPath(new URL("./visible_servers_probe.mjs", import.meta.url));
+    const args = options.ordinary ? [] : ["--testbed-input", file];
+    const result = spawnSync(process.execPath, ["--import", "data:text/javascript," + encodeURIComponent(mock), script, ...args], {
+      encoding: "utf8", env: {
+        STAMP_RUN_CASE_ID: runCase, QA_TEST_EMAIL: "fixture@example.invalid", QA_TEST_PASSWORD: "test-config-password",
+        CALLS: calls, DEDICATED: options.ordinary ? "" : "1", FIXTURE: JSON.stringify(data),
+      },
+    });
+    assert.equal(result.status, expectedCode, name + " " + result.stderr);
+    const output = (result.stdout + result.stderr).trim();
+    assert.equal(output, expectedLine, name);
+    if (!options.ordinary) {
+      for (const privateValue of [...Object.values(target), input.nonce, input.attempt_id, "test-config-password", "test-refresh", "test-access"]) {
+        assert.ok(!output.includes(privateValue), name);
+      }
+    }
+    const paths = fs.readFileSync(calls, "utf8").trim().split("\n").filter(Boolean);
+    assert.deepEqual(paths, options.missing ? [] : options.ordinary ? ["/api/auth/login", "/api/servers"] :
+      ["/api/auth/login", "/api/servers", "/api/auth/logout"], name);
+    if (!options.missing) assert.deepEqual(JSON.parse(fs.readFileSync(file)), input, "the device login can consume the same input");
+  }
+  try {
+    run("assigned", fixture, 0, "QA account preflight: account_and_server_confirmed");
+    run("another user", { ...fixture, user: {id:"another-user"} }, 1, "QA account preflight: configured_user_mismatch");
+    for (const servers of [[{...member, id:"another-id"}], [{...member, slug:"another-slug"}], [member, member]]) {
+      run("different or ambiguous membership", { ...fixture, servers }, 1, "QA account preflight: configured_membership_mismatch");
+    }
+    run("production visibility still blocks", { ...fixture, servers:[member,{id:"different",name:PRODUCTION_SERVER_NAME,slug:"wrong"}] },
+      1, "QA account preflight: production_visible");
+    run("unavailable input", fixture, 2, "QA account preflight: unavailable (contract)", { missing:true });
+    run("rate limit", { ...fixture, serverStatus:429 }, 2, "QA account preflight: unavailable (ratelimit)");
+    run("unconfirmed logout", { ...fixture, logoutStatus:503 }, 2, "QA account preflight: unavailable (infra)");
+    run("ordinary receipt", fixture, 0, `visible-servers probe: PASS [clean] QA account ${target.user_id} sees 1: ${REQUIRED_QA_SERVER}`, { ordinary:true });
+  } finally {
+    fs.rmSync(directory, { recursive:true, force:true });
+  }
 });

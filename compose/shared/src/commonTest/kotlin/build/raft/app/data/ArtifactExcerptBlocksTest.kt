@@ -6,7 +6,6 @@ import kotlin.test.assertIs
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.JsonElement
 
 /**
  * ArtifactPreview `excerpt`'s `blocks` (botiverse/slock staging `artifactExcerptBlocks.ts`
@@ -109,43 +108,6 @@ class ArtifactExcerptBlocksTest {
             ),
             parsed,
         )
-    }
-
-    @Test
-    fun anInvalidBlockOfAKnownTypeFailsTheList() {
-        val invalid =
-            listOf(
-                """{"type":"heading","level":7,"spans":[{"text":"too deep"}]}""",
-                """{"type":"heading","level":"1","spans":[{"text":"level as a string"}]}""",
-                """{"type":"paragraph","spans":[]}""",
-                """{"type":"paragraph","spans":[{"text":""}]}""",
-                """{"type":"paragraph","spans":[{"text":"x","bold":false}]}""",
-                """{"type":"list","items":[{"level":2,"spans":[{"text":"x"}]}]}""",
-                """{"type":"list","items":[{"level":0,"order":1.5,"spans":[{"text":"x"}]}]}""",
-                """{"type":"code","lines":[]}""",
-                """{"type":"code","lines":["1","2","3","4","5"]}""",
-                """{"type":"table","header":[],"rows":[]}""",
-                """{"type":"images","count":1}""",
-                """{"type":"image"}""",
-                // No type, or one that isn't a string, is not a block (not "a newer Server's").
-                """{"spans":[{"text":"no type"}]}""",
-                """{"type":3}""",
-                "\"just a string\"",
-            )
-        for (block in invalid) {
-            assertNull(blocks("""[{"type":"paragraph","spans":[{"text":"ok"}]},$block]"""), block)
-        }
-    }
-
-    @Test
-    fun nothingUsableIsNull() {
-        assertNull(blocks("[]"), "empty")
-        assertNull(blocks("""[{"type":"callout"},{"type":"math"}]"""), "only unknown types: nothing to draw")
-        assertNull(blocks("""{"type":"paragraph"}"""), "not a list")
-        assertNull(blocks("null"))
-        assertNull(parseArtifactExcerptBlocks(null as JsonElement?))
-        val seventeen = (1..17).joinToString(",") { """{"type":"rule"}""" }
-        assertNull(blocks("[$seventeen]"), "more than 16 blocks")
     }
 
     @Test

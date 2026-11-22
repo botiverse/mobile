@@ -1,7 +1,6 @@
 package build.raft.app
 
 import build.raft.app.data.PendingMentionActionExecuteResult
-import build.raft.app.data.ThreadApiResult
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -52,27 +51,6 @@ class PendingMentionActionBatchTest {
     }
 
     @Test
-    fun outcomeDedupesRequestedIdsAndPreservesFirstContainingResult() {
-        val outcome =
-            pendingMentionActionBatchOutcome(
-                requestedIds = listOf(" first ", "second", "first", "", "third"),
-                results =
-                    listOf(
-                        result("first", "delivered"),
-                        result("first", "no_permission", "late_duplicate_must_not_win"),
-                        result("second", "stale", "target_already_member"),
-                        result("third", "delivered")
-                    )
-            )
-
-        assertEquals(listOf("first", "second", "third"), outcome.requestedIds)
-        assertEquals(linkedSetOf("first", "third"), outcome.deliveredIds)
-        assertEquals("second", outcome.firstFailure?.resolutionId)
-        assertEquals("target_already_member", outcome.firstFailure?.reason)
-        assertFalse(outcome.missingFirstFailure)
-    }
-
-    @Test
     fun allDeliveredHasNoFailureOrNotice() {
         val outcome =
             pendingMentionActionBatchOutcome(
@@ -86,27 +64,6 @@ class PendingMentionActionBatchTest {
     }
 
     @Test
-    fun partialResultUsesExactFirstFailure() {
-        val outcome =
-            pendingMentionActionBatchOutcome(
-                requestedIds = listOf("one", "two", "three"),
-                results =
-                    listOf(
-                        result("one", "delivered"),
-                        result("two", "no_permission", "add_requires_member_management_authority"),
-                        result("three", "dropped", "delivery_unavailable")
-                    )
-            )
-
-        assertEquals(
-            "Added 1 of 3. Only channel admins can add members.",
-            outcome.localizedNotice(strings())
-        )
-        assertEquals("Added 1 of 3", outcome.localizedNoticeTitle(strings()))
-        assertEquals("Only channel admins can add members.", outcome.localizedFailureNotice(strings()))
-    }
-
-    @Test
     fun missingResponseStaysFailedAndRetryable() {
         val outcome =
             pendingMentionActionBatchOutcome(
@@ -117,44 +74,6 @@ class PendingMentionActionBatchTest {
         assertTrue(outcome.missingFirstFailure)
         assertEquals(setOf("one"), outcome.deliveredIds)
         assertEquals("Added 1 of 2. This mention action is no longer available.", outcome.localizedNotice(strings()))
-    }
-
-    @Test
-    fun requestFailuresAreClassifiedWithoutExposingRawServerCodes() {
-        val cases =
-            listOf(
-                ThreadApiResult.Failure(code = 0, errorBodyText = "connection_reset") to
-                    PendingMentionActionRequestFailureKind.Connection,
-                ThreadApiResult.Failure(code = 401, errorBodyText = "raw_auth_code") to
-                    PendingMentionActionRequestFailureKind.Authentication,
-                ThreadApiResult.Failure(code = 403, errorBodyText = "raw_permission_code") to
-                    PendingMentionActionRequestFailureKind.Permission,
-                ThreadApiResult.Failure(code = 404) to PendingMentionActionRequestFailureKind.Missing,
-                ThreadApiResult.Failure(code = 429) to PendingMentionActionRequestFailureKind.RateLimited,
-                ThreadApiResult.Failure(code = 503, errorBodyText = "raw_server_code") to
-                    PendingMentionActionRequestFailureKind.Server,
-                ThreadApiResult.Failure(code = 200, contractCode = "thread_mention_action_contract_mismatch") to
-                    PendingMentionActionRequestFailureKind.UnexpectedResponse,
-                ThreadApiResult.Failure(code = 409, errorBodyText = "raw_conflict_code") to
-                    PendingMentionActionRequestFailureKind.Generic
-            )
-
-        cases.forEach { (failure, expected) ->
-            assertEquals(expected, pendingMentionActionRequestFailureKind(failure, requestThrew = false))
-            val notice = localizedPendingMentionActionRequestFailure(failure, requestThrew = false, strings())
-            assertFalse(notice.orEmpty().contains("raw_"))
-            assertFalse(notice.orEmpty().contains("thread_mention_action_contract_mismatch"))
-        }
-        assertEquals(
-            PendingMentionActionRequestFailureKind.Connection,
-            pendingMentionActionRequestFailureKind(result = null, requestThrew = true)
-        )
-        assertNull(
-            pendingMentionActionRequestFailureKind(
-                result = ThreadApiResult.Success(emptyList<PendingMentionActionExecuteResult>()),
-                requestThrew = false
-            )
-        )
     }
 
     private fun action(

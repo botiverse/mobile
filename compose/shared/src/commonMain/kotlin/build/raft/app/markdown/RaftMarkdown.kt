@@ -1473,7 +1473,12 @@ private object RaftMarkdownTextProvider : TextProvider {
         val bodyClick = LocalRaftMarkdownBodyClick.current
         val permalinkLabelResolver = LocalRaftMessagePermalinkLabelResolver.current
         val unavailableQuotedPermalink = LocalRaftUnavailableQuotedPermalink.current
-        val unavailableLinkLabel = stringResource(Res.string.thread_quoted_permalink_unavailable_link)
+        val unavailableLinkLabel =
+            if (unavailableQuotedPermalink != null) {
+                stringResource(Res.string.thread_quoted_permalink_unavailable_link)
+            } else {
+                ""
+            }
         val renderMessagePermalinksAsTag =
             LocalRaftMarkdownRenderConfig.current.renderMessagePermalinksAsTag
         val permalinkUriHandler = LocalUriHandler.current
@@ -3277,8 +3282,11 @@ private fun Modifier.raftMarkdownObserveCodeTap(): Modifier {
     val currentObserver by rememberUpdatedState(observer)
     return pointerInput(Unit) {
         awaitEachGesture {
-            awaitFirstDown(requireUnconsumed = false)
-            if (waitForUpOrCancellation() != null) currentObserver()
+            val down = awaitFirstDown(requireUnconsumed = false)
+            val up = waitForUpOrCancellation()
+            if (up != null && up.uptimeMillis - down.uptimeMillis < viewConfiguration.longPressTimeoutMillis) {
+                currentObserver()
+            }
         }
     }
 }
@@ -3309,14 +3317,14 @@ private fun RaftMarkdownCodeSurface(code: String, language: String?, style: Text
                 text = highlighted,
                 color = RaftMarkdownCodeBlockForeground,
                 style = style,
-                modifier = Modifier.padding(RaftMarkdownCodeBlockPadding),
+                modifier = Modifier.fillMaxWidth().padding(RaftMarkdownCodeBlockPadding),
             )
         } else {
             MarkdownBasicText(
                 text = code,
                 color = RaftMarkdownCodeBlockForeground,
                 style = style,
-                modifier = Modifier.padding(RaftMarkdownCodeBlockPadding),
+                modifier = Modifier.fillMaxWidth().padding(RaftMarkdownCodeBlockPadding),
             )
         }
     }

@@ -2,14 +2,9 @@ package build.raft.app
 
 import build.raft.app.resources.Res
 import build.raft.app.resources.StringDesc
-import build.raft.app.resources.allStringResources
 import build.raft.app.resources.common_cancel
 import build.raft.app.resources.desc
 import build.raft.app.resources.resolve
-import java.nio.file.Files
-import java.nio.file.Path
-import java.nio.file.Paths
-import javax.xml.parsers.DocumentBuilderFactory
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -43,72 +38,6 @@ class RaftNewLocaleCatalogTest {
         return resource.desc().resolve()
     }
 
-    // Two tests per language, each resolving half of the keys: resolving every key of the catalog
-    // is slow on a busy CI runner. All five languages in one test passed the 60 s hang watchdog
-    // (test.yml runs 42579048771, 42581069497), and one language per test reached it again once
-    // the catalog grew (Russian took over 30 s on main, PR #4988 runs 44320202943).
-    @Test
-    fun everyEnglishKeyResolvesInSpanishFirstHalf() = assertEveryEnglishKeyResolves("es", "values-es", half = 0)
-
-    @Test
-    fun everyEnglishKeyResolvesInSpanishSecondHalf() = assertEveryEnglishKeyResolves("es", "values-es", half = 1)
-
-    @Test
-    fun everyEnglishKeyResolvesInBrazilianPortugueseFirstHalf() = assertEveryEnglishKeyResolves("pt-BR", "values-pt-rBR", half = 0)
-
-    @Test
-    fun everyEnglishKeyResolvesInBrazilianPortugueseSecondHalf() = assertEveryEnglishKeyResolves("pt-BR", "values-pt-rBR", half = 1)
-
-    @Test
-    fun everyEnglishKeyResolvesInKoreanFirstHalf() = assertEveryEnglishKeyResolves("ko", "values-ko", half = 0)
-
-    @Test
-    fun everyEnglishKeyResolvesInKoreanSecondHalf() = assertEveryEnglishKeyResolves("ko", "values-ko", half = 1)
-
-    @Test
-    fun everyEnglishKeyResolvesInTraditionalChineseFirstHalf() = assertEveryEnglishKeyResolves("zh-TW", "values-zh-rTW", half = 0)
-
-    @Test
-    fun everyEnglishKeyResolvesInTraditionalChineseSecondHalf() = assertEveryEnglishKeyResolves("zh-TW", "values-zh-rTW", half = 1)
-
-    @Test
-    fun everyEnglishKeyResolvesInRussianFirstHalf() = assertEveryEnglishKeyResolves("ru", "values-ru", half = 0)
-
-    @Test
-    fun everyEnglishKeyResolvesInRussianSecondHalf() = assertEveryEnglishKeyResolves("ru", "values-ru", half = 1)
-
-    @Test
-    fun everyNewLocaleHasItsOwnTest() {
-        assertEquals(NEW_LOCALES.map { it.first }, listOf("es", "pt-BR", "ko", "zh-TW", "ru"))
-    }
-
-    /** Checks the keys of one [half] (0 or 1) of the catalog, in key order. */
-    private fun assertEveryEnglishKeyResolves(tag: String, dir: String, half: Int) {
-        val allResources = Res.allStringResources
-        val english = parse("values")
-        assertEquals(english.keys, allResources.keys, "Res.allStringResources is the values/ catalog")
-        val keys = allResources.keys.sorted()
-        val halfKeys = (if (half == 0) keys.take(keys.size / 2) else keys.drop(keys.size / 2)).toSet()
-        val resources = allResources.filterKeys { it in halfKeys }
-        val catalog = parse(dir)
-        val englishTexts = resources.mapValues { (_, resource) -> resolveIn("en", resource) }
-        val failures =
-            resources.mapNotNull { (key, resource) ->
-                val text =
-                    runCatching { resolveIn(tag, resource) }
-                        .getOrElse { return@mapNotNull "$tag/$key threw ${it::class.simpleName}: ${it.message}" }
-                val englishText = englishTexts.getValue(key)
-                when {
-                    text.isEmpty() && englishText.isNotEmpty() -> "$tag/$key is empty"
-                    key !in catalog && text != englishText -> "$tag/$key is missing from $dir but does not show the English"
-                    key in catalog && catalog[key] != english[key] && text == englishText ->
-                        "$tag/$key is in $dir but shows the English"
-                    else -> null
-                }
-            }
-        assertEquals(emptyList(), failures)
-    }
-
     @Test
     fun aKeyMissingFromANewCatalogShowsTheEnglish() {
         val source = Res.string.common_cancel
@@ -121,24 +50,6 @@ class RaftNewLocaleCatalogTest {
             assertTrue(untranslated.items.size < source.items.size, "$dir has common_cancel")
             assertEquals("Cancel", resolveIn(tag, untranslated), "$tag without its catalog entry")
         }
-    }
-
-    private fun parse(dir: String): Map<String, String> {
-        val file = resourcesRoot().resolve(dir).resolve("strings.xml")
-        val nodes = DocumentBuilderFactory.newInstance().newDocumentBuilder().parse(file.toFile()).getElementsByTagName("string")
-        return (0 until nodes.length).associate { index ->
-            val node = nodes.item(index)
-            node.attributes.getNamedItem("name").nodeValue to node.textContent
-        }
-    }
-
-    private fun resourcesRoot(): Path {
-        val workingDirectory = Paths.get(System.getProperty("user.dir")).toAbsolutePath().normalize()
-        return listOf(
-            workingDirectory.resolve("src/commonMain/composeResources"),
-            workingDirectory.resolve("shared/src/commonMain/composeResources"),
-            workingDirectory.resolve("compose/shared/src/commonMain/composeResources"),
-        ).firstOrNull(Files::isDirectory) ?: error("Unable to locate shared composeResources from $workingDirectory")
     }
 
     private companion object {

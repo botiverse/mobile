@@ -2292,6 +2292,39 @@ static NSDictionary *RaftDiagnosticsPrepareAttachmentFiles(NSDictionary *about, 
     return result;
 }
 
+static NSDictionary *RaftDiagnosticsLoadResult(void) {
+    NSString *recentText = RaftDiagnosticsExportRecentText(RaftDiagnosticsRecentMaxChars);
+    return @{
+        @"status" : @"ok",
+        @"entries" : @[
+            @{
+                @"timestampLabel" : @"",
+                @"tag" : @"iOS",
+                @"message" : recentText.length > 0 ? recentText : @"No local diagnostics log files are currently available."
+            }
+        ]
+    };
+}
+
+static NSDictionary *RaftDiagnosticsPrepareFeedbackDraftResult(NSDictionary *about) {
+    NSDictionary *attachments = RaftDiagnosticsPrepareAttachmentFiles(about, @"settings_feedback", YES);
+    if (![RaftBridgeString(attachments[@"status"]) isEqualToString:@"ok"]) {
+        return attachments;
+    }
+    NSString *fileName = RaftBridgeString(attachments[@"fileName"]);
+    NSString *message = [NSString stringWithFormat:@"## Raft feedback\n\nDiagnostics attachment: %@\n\n<!-- Describe what happened here. -->", fileName];
+    return @{
+        @"status" : @"ok",
+        @"message" : message,
+        @"fileName" : fileName,
+        @"mimeType" : RaftBridgeString(attachments[@"mimeType"]),
+        @"sizeBytes" : attachments[@"sizeBytes"] ?: @0,
+        @"bodyBase64" : RaftBridgeString(attachments[@"bodyBase64"]),
+        @"filePath" : RaftBridgeString(attachments[@"filePath"]),
+        @"attachmentPaths" : attachments[@"attachmentPaths"] ?: @[]
+    };
+}
+
 
 static NSDictionary *RaftDiagnosticsCrashAbout(long long crashAtMillis) {
     NSMutableDictionary *about = [RaftDiagnosticsCurrentEnvironmentAbout() mutableCopy];
@@ -3629,6 +3662,8 @@ static NSString *const RaftShareOutActivityTypePrefix = @"build.raft.app.share."
 @property(nonatomic, copy, nullable) NSString *raft_attachmentExportMimeType;
 @property(nonatomic, copy, nullable) NSString *raft_attachmentExportPermissionStatus;
 @property(nonatomic, weak, nullable) UIViewController *raft_sharePresenterController;
+@property(nonatomic) BOOL raft_attachmentExportPresenterCaptured;
+@property(nonatomic) BOOL raft_attachmentExportCancelled;
 @property(nonatomic, copy, nullable) RaftBridgeCallback raft_attachmentPickerCallback;
 @property(nonatomic, copy, nullable) NSString *raft_attachmentPickerChannelId;
 @property(nonatomic) BOOL raft_attachmentPickerCompressImages;
@@ -4237,6 +4272,59 @@ NSString *const RaftBridgeCallbackKey = @"callback";
             } else {
                 RaftStorageClearTarget(target, deliver);
             }
+        });
+        return;
+    }
+    if ([action isEqualToString:@"loadDiagnostics"] ||
+        [action isEqualToString:@"copyDiagnostics"] ||
+        [action isEqualToString:@"shareDiagnostics"] ||
+        [action isEqualToString:@"clearDiagnostics"] ||
+        [action isEqualToString:@"prepareDiagnosticsFeedback"]) {
+        // Diagnostics reads, clears, and snapshot prep synchronize with RaftDiagnosticsOwnerQueue
+        // via dispatch_semaphore_wait and walk app log files; run them off the main thread and
+        // deliver UI/pasteboard/share side effects and callbacks back on main.
+        NSString *actionCopy = [action copy];
+        BOOL needsAbout =
+            [actionCopy isEqualToString:@"copyDiagnostics"] ||
+            [actionCopy isEqualToString:@"shareDiagnostics"] ||
+            [actionCopy isEqualToString:@"prepareDiagnosticsFeedback"];
+        NSDictionary *aboutSnapshot = needsAbout ? [self raft_settingsCapabilityResultForAction:@"loadAbout" params:@{}] : nil;
+        __weak typeof(self) weakSelf = self;
+        dispatch_async(dispatch_get_global_queue(QOS_CLASS_UTILITY, 0), ^{
+            if ([actionCopy isEqualToString:@"loadDiagnostics"]) {
+                NSDictionary *result = RaftDiagnosticsLoadResult();
+                RaftBridgeRunOnMain(^{ callback(result); });
+                return;
+            }
+            if ([actionCopy isEqualToString:@"clearDiagnostics"]) {
+                RaftDiagnosticsClear();
+                RaftDiagnosticsRecord(@"info", @"SlockDiagnostics", @"shared_logs_cleared");
+                RaftBridgeRunOnMain(^{ callback(@{ @"status" : @"ok" }); });
+                return;
+            }
+            if ([actionCopy isEqualToString:@"copyDiagnostics"]) {
+                NSString *exportText = RaftDiagnosticsBuildSummaryText(aboutSnapshot) ?: @"";
+                RaftDiagnosticsRecord(@"info", @"SlockDiagnostics", @"shared_copy_diagnostics");
+                RaftBridgeRunOnMain(^{
+                    UIPasteboard.generalPasteboard.string = exportText;
+                    callback(@{ @"status" : @"ok" });
+                });
+                return;
+            }
+            if ([actionCopy isEqualToString:@"shareDiagnostics"]) {
+                NSString *exportText = RaftDiagnosticsBuildSummaryText(aboutSnapshot) ?: @"";
+                RaftDiagnosticsRecord(@"info", @"SlockDiagnostics", @"shared_share_diagnostics");
+                RaftBridgeRunOnMain(^{
+                    __strong typeof(weakSelf) strongSelf = weakSelf;
+                    if (strongSelf) {
+                        [strongSelf raft_shareItems:@[ exportText ]];
+                    }
+                    callback(@{ @"status" : @"ok" });
+                });
+                return;
+            }
+            NSDictionary *result = RaftDiagnosticsPrepareFeedbackDraftResult(aboutSnapshot);
+            RaftBridgeRunOnMain(^{ callback(result); });
         });
         return;
     }
@@ -5148,11 +5236,15 @@ NSString *RaftAttachmentReusableExportFileName(
 static NSDictionary *RaftAttachmentCacheStatusDict(NSString *directoryPath) {
     NSFileManager *fm = NSFileManager.defaultManager;
     NSArray<NSString *> *files = [fm contentsOfDirectoryAtPath:directoryPath error:nil];
-    if (files.count == 0) {
+    NSString *usableName = RaftAttachmentReusableExportFileName(files, nil);
+    if (usableName.length == 0) {
         return @{ @"status" : @"missing" };
     }
-    NSString *filePath = [directoryPath stringByAppendingFormat:@"/%@", files.firstObject];
+    NSString *filePath = [directoryPath stringByAppendingFormat:@"/%@", usableName];
     NSDictionary<NSString *, id> *attrs = [fm attributesOfItemAtPath:filePath error:nil];
+    if (![attrs[NSFileType] isEqualToString:NSFileTypeRegular]) {
+        return @{ @"status" : @"missing" };
+    }
     NSNumber *size = attrs[NSFileSize];
     if (!size || size.longLongValue <= 0) {
         return @{ @"status" : @"missing" };
@@ -5163,6 +5255,8 @@ static NSDictionary *RaftAttachmentCacheStatusDict(NSString *directoryPath) {
     return @{
         @"status" : @"ok",
         @"cached" : @YES,
+        @"privateCached" : @YES,
+        @"privatePath" : filePath,
         @"recordVersion" : mtimeMs,
         @"sizeBytes" : size,
         @"uri" : [NSURL fileURLWithPath:filePath].absoluteString ?: @"",
@@ -5193,9 +5287,15 @@ static NSDictionary *RaftAttachmentCacheStatusDict(NSString *directoryPath) {
 
     if (!prepareOnly) {
         // Capture the presenter at tap time while the page is certainly alive (weak),
-        // then prefer it with a frontmost fallback — Signal AttachmentSharing L117.
-        self.raft_sharePresenterController = [self raft_currentViewController];
+        // so async completion can detect if the preview controller was dismissed.
+        UIViewController *presenter = [self raft_currentViewController];
+        self.raft_sharePresenterController = presenter;
+        self.raft_attachmentExportPresenterCaptured = (presenter != nil);
+    } else {
+        self.raft_sharePresenterController = nil;
+        self.raft_attachmentExportPresenterCaptured = NO;
     }
+    self.raft_attachmentExportCancelled = NO;
 
     NSString *cachedDir = RaftAttachmentCacheDirectory(ownerKey, attachmentId);
     NSString *cachedPath = RaftAttachmentCachedFilePath(ownerKey, attachmentId, fileName);
@@ -5219,11 +5319,15 @@ static NSDictionary *RaftAttachmentCacheStatusDict(NSString *directoryPath) {
         [self raft_presentShareItems:@[ RaftAttachmentHandoffURL(
                                             cachedURL, fileName, RaftBridgeString(params[@"mimeType"])) ]
                              attempt:1];
+        self.raft_sharePresenterController = nil;
+        self.raft_attachmentExportPresenterCaptured = NO;
         callback(@{ @"status" : @"opened", @"cached" : @YES, @"uri" : status[@"uri"] ?: @"" });
         return;
     }
 
     if (requirePublicDownload) {
+        self.raft_sharePresenterController = nil;
+        self.raft_attachmentExportPresenterCaptured = NO;
         callback(@{ @"status" : @"missing" });
         return;
     }
@@ -5231,12 +5335,24 @@ static NSDictionary *RaftAttachmentCacheStatusDict(NSString *directoryPath) {
     // Download directly to the persistent cache path (not the throwaway temp dir the
     // export path uses). On success we have a durable local copy and present the share.
     if (!cachedPath || !downloadId) {
+        self.raft_sharePresenterController = nil;
+        self.raft_attachmentExportPresenterCaptured = NO;
         callback(@{ @"status" : @"failed", @"reason" : @"no_cache_path" });
         return;
     }
     NSString *urlText = RaftBridgeString(params[@"url"]);
     if (urlText.length == 0) {
+        self.raft_sharePresenterController = nil;
+        self.raft_attachmentExportPresenterCaptured = NO;
         callback(@{ @"status" : @"failed", @"reason" : @"missing_url" });
+        return;
+    }
+    if ([urlText.lowercaseString hasPrefix:@"file://"]) {
+        // Local-cache probe missed between cache-status check and openAttachment; let caller
+        // fall back to resolving a fresh remote URL instead of passing file:// to the downloader.
+        self.raft_sharePresenterController = nil;
+        self.raft_attachmentExportPresenterCaptured = NO;
+        callback(@{ @"status" : @"missing" });
         return;
     }
     // The download sink creates `<cachedPath>.part-<token>` with posix creat, which does not
@@ -5247,6 +5363,8 @@ static NSDictionary *RaftAttachmentCacheStatusDict(NSString *directoryPath) {
                                  withIntermediateDirectories:YES
                                                   attributes:nil
                                                        error:&directoryError]) {
+        self.raft_sharePresenterController = nil;
+        self.raft_attachmentExportPresenterCaptured = NO;
         callback(@{ @"status" : @"storage_failed", @"reason" : @"cache_dir_create_failed",
                     @"errorKind" : @"storage_prepare",
                     @"message" : @"Unable to prepare attachment for opening" });
@@ -5256,8 +5374,7 @@ static NSDictionary *RaftAttachmentCacheStatusDict(NSString *directoryPath) {
     self.raft_attachmentExportURL = [NSURL fileURLWithPath:cachedPath];
     self.raft_attachmentExportDestination =
         prepareOnly ? RaftAttachmentExportDestinationPreview : RaftAttachmentExportDestinationOpen;
-    // Only the preview download reports progress; Open keeps its previous behaviour.
-    self.raft_attachmentExportTrackProgress = prepareOnly && RaftBridgeBool(params[@"trackProgress"]);
+    self.raft_attachmentExportTrackProgress = RaftBridgeBool(params[@"trackProgress"]);
     self.raft_attachmentExportFileName = fileName;
     self.raft_attachmentExportMimeType = RaftBridgeString(params[@"mimeType"]);
     self.raft_attachmentExportCallback = callback;
@@ -5273,6 +5390,12 @@ static NSDictionary *RaftAttachmentCacheStatusDict(NSString *directoryPath) {
                     @"message" : @"Unable to start attachment download" });
         self.raft_attachmentExportCallback = nil;
         self.raft_attachmentExportURL = nil;
+        self.raft_attachmentExportDownloadId = nil;
+        self.raft_attachmentExportDestination = nil;
+        self.raft_attachmentExportTrackProgress = NO;
+        self.raft_sharePresenterController = nil;
+        self.raft_attachmentExportPresenterCaptured = NO;
+        self.raft_attachmentExportCancelled = NO;
         return;
     }
     self.raft_attachmentExportRequestId = attemptToken;
@@ -5688,15 +5811,24 @@ static NSDictionary *RaftAttachmentCacheStatusDict(NSString *directoryPath) {
             return;
         }
         if ([strongSelf.raft_attachmentExportDestination isEqualToString:RaftAttachmentExportDestinationOpen]) {
-            // Open-with: the file is a persistent local copy — present the share sheet on it,
+            // Open-with / Share: the file is a persistent local copy — present the share sheet on it,
             // do NOT call raft_finishAttachmentExport (it deletes the parent dir) or the
             // save-to-files picker. Clear state and report success, keeping the file.
             RaftBridgeCallback openCallback = strongSelf.raft_attachmentExportCallback;
-            [strongSelf raft_presentShareItems:@[ RaftAttachmentHandoffURL(
-                                                    targetURL,
-                                                    strongSelf.raft_attachmentExportFileName,
-                                                    strongSelf.raft_attachmentExportMimeType) ]
-                                       attempt:1];
+            NSString *exportFileName = strongSelf.raft_attachmentExportFileName;
+            NSString *exportMimeType = strongSelf.raft_attachmentExportMimeType;
+            UIViewController *capturedPresenter = strongSelf.raft_sharePresenterController;
+            BOOL presenterDismissed = strongSelf.raft_attachmentExportPresenterCaptured &&
+                (capturedPresenter == nil || capturedPresenter.viewIfLoaded.window == nil ||
+                 capturedPresenter.isBeingDismissed || capturedPresenter.isMovingFromParentViewController);
+            BOOL shouldPresent = !strongSelf.raft_attachmentExportCancelled && !presenterDismissed;
+            if (shouldPresent) {
+                [strongSelf raft_presentShareItems:@[ RaftAttachmentHandoffURL(
+                                                        targetURL,
+                                                        exportFileName,
+                                                        exportMimeType) ]
+                                           attempt:1];
+            }
             strongSelf.raft_attachmentExportCallback = nil;
             strongSelf.raft_attachmentExportRequestId = nil;
             strongSelf.raft_attachmentExportDownloadId = nil;
@@ -5705,12 +5837,20 @@ static NSDictionary *RaftAttachmentCacheStatusDict(NSString *directoryPath) {
             strongSelf.raft_attachmentExportSizeBytes = nil;
             strongSelf.raft_attachmentExportDestination = nil;
             strongSelf.raft_attachmentExportMimeType = nil;
+            strongSelf.raft_attachmentExportTrackProgress = NO;
+            strongSelf.raft_sharePresenterController = nil;
+            strongSelf.raft_attachmentExportPresenterCaptured = NO;
+            strongSelf.raft_attachmentExportCancelled = NO;
             if (openCallback) {
-                openCallback(@{
-                    @"status" : @"opened",
-                    @"cached" : @YES,
-                    @"uri" : targetURL.absoluteString ?: @"",
-                });
+                if (shouldPresent) {
+                    openCallback(@{
+                        @"status" : @"opened",
+                        @"cached" : @YES,
+                        @"uri" : targetURL.absoluteString ?: @"",
+                    });
+                } else {
+                    openCallback(@{ @"status" : @"cancelled" });
+                }
             }
             return;
         }
@@ -6329,6 +6469,9 @@ didFinishPickingMediaWithInfo:(NSDictionary<UIImagePickerControllerInfoKey, id> 
     self.raft_attachmentExportDestination = nil;
     self.raft_attachmentExportMimeType = nil;
     self.raft_attachmentExportPermissionStatus = nil;
+    self.raft_sharePresenterController = nil;
+    self.raft_attachmentExportPresenterCaptured = NO;
+    self.raft_attachmentExportCancelled = NO;
     if (exportURL) {
         [NSFileManager.defaultManager removeItemAtURL:[exportURL URLByDeletingLastPathComponent] error:nil];
     }
@@ -6376,19 +6519,32 @@ didFinishPickingMediaWithInfo:(NSDictionary<UIImagePickerControllerInfoKey, id> 
 
 - (void)attachmentDownloadControl:(NSDictionary *)args {
     RaftBridgeCallback callback = args[RaftBridgeCallbackKey];
-    if (!callback) return;
     NSDictionary *params = RaftBridgeParams(args);
     NSString *downloadId = RaftBridgeString(params[@"downloadId"]);
     NSString *attemptToken = RaftBridgeString(params[@"attemptToken"]);
     NSString *action = RaftBridgeString(params[@"action"]);
     if (downloadId.length == 0 || action.length == 0) {
-        callback(@{ @"status" : @"failed", @"message" : @"Missing download control field" });
+        if (callback) {
+            callback(@{ @"status" : @"failed", @"message" : @"Missing download control field" });
+        }
         return;
+    }
+    NSString *normalizedAction = action.lowercaseString;
+    if ([normalizedAction isEqualToString:@"cancel"] || [normalizedAction isEqualToString:@"stop"]) {
+        __weak typeof(self) weakSelf = self;
+        RaftBridgeRunOnMain(^{
+            __strong typeof(weakSelf) strongSelf = weakSelf;
+            if (strongSelf && [strongSelf.raft_attachmentExportDownloadId isEqualToString:downloadId]) {
+                strongSelf.raft_attachmentExportCancelled = YES;
+            }
+        });
     }
     NSString *status = [SharedAttachmentDownloadCoordinator.shared controlDownloadId:downloadId
                                                               expectedAttemptToken:attemptToken
                                                                             action:action];
-    callback(@{ @"status" : status ?: @"failed" });
+    if (callback) {
+        callback(@{ @"status" : status ?: @"failed" });
+    }
 }
 
 - (void)attachmentDownloadOwnerChanged:(NSDictionary *)args {
@@ -6583,33 +6739,6 @@ didFinishPickingMediaWithInfo:(NSDictionary<UIImagePickerControllerInfoKey, id> 
     if ([action isEqualToString:@"loadDeveloper"]) {
         return [self raft_developerCapabilityResultWithFeedback:nil];
     }
-    if ([action isEqualToString:@"loadDiagnostics"]) {
-        NSString *recentText = RaftDiagnosticsExportRecentText(RaftDiagnosticsRecentMaxChars);
-        return @{
-            @"status" : @"ok",
-            @"entries" : @[
-                @{
-                    @"timestampLabel" : @"",
-                    @"tag" : @"iOS",
-                    @"message" : recentText.length > 0 ? recentText : @"No local diagnostics log files are currently available."
-                }
-            ]
-        };
-    }
-    if ([action isEqualToString:@"copyDiagnostics"]) {
-        NSString *exportText = RaftDiagnosticsBuildSummaryText([self raft_settingsCapabilityResultForAction:@"loadAbout" params:@{}]);
-        RaftBridgeRunOnMain(^{
-            UIPasteboard.generalPasteboard.string = exportText;
-        });
-        RaftDiagnosticsRecord(@"info", @"SlockDiagnostics", @"shared_copy_diagnostics");
-        return @{ @"status" : @"ok" };
-    }
-    if ([action isEqualToString:@"shareDiagnostics"]) {
-        NSString *exportText = RaftDiagnosticsBuildSummaryText([self raft_settingsCapabilityResultForAction:@"loadAbout" params:@{}]);
-        [self raft_shareItems:@[ exportText ]];
-        RaftDiagnosticsRecord(@"info", @"SlockDiagnostics", @"shared_share_diagnostics");
-        return @{ @"status" : @"ok" };
-    }
     if ([action isEqualToString:@"shareText"]) {
         // A message link's Share (the thread's link menu): the share sheet with the address, as a
         // URL when it parses as one (so targets offer it as a link), else as text.
@@ -6619,11 +6748,6 @@ didFinishPickingMediaWithInfo:(NSDictionary<UIImagePickerControllerInfoKey, id> 
         }
         NSURL *url = [NSURL URLWithString:text];
         [self raft_shareItems:@[ (url.scheme.length > 0 ? (id)url : (id)text) ]];
-        return @{ @"status" : @"ok" };
-    }
-    if ([action isEqualToString:@"clearDiagnostics"]) {
-        RaftDiagnosticsClear();
-        RaftDiagnosticsRecord(@"info", @"SlockDiagnostics", @"shared_logs_cleared");
         return @{ @"status" : @"ok" };
     }
     if ([action isEqualToString:@"apiEnvironmentChanged"]) {
@@ -6648,9 +6772,6 @@ didFinishPickingMediaWithInfo:(NSDictionary<UIImagePickerControllerInfoKey, id> 
             @"code" : @"notification_unsupported",
             @"message" : @"Notifications are out of scope for iOS P0 host bridge"
         };
-    }
-    if ([action isEqualToString:@"prepareDiagnosticsFeedback"]) {
-        return [self raft_prepareDiagnosticsFeedbackDraft];
     }
     if ([action isEqualToString:@"sendFeedback"]) {
         [self raft_promptAndSubmitHandsFeedback];
@@ -6817,22 +6938,7 @@ didFinishPickingMediaWithInfo:(NSDictionary<UIImagePickerControllerInfoKey, id> 
 
 - (NSDictionary *)raft_prepareDiagnosticsFeedbackDraft {
     NSDictionary *about = [self raft_settingsCapabilityResultForAction:@"loadAbout" params:@{}];
-    NSDictionary *attachments = RaftDiagnosticsPrepareAttachmentFiles(about, @"settings_feedback", YES);
-    if (![RaftBridgeString(attachments[@"status"]) isEqualToString:@"ok"]) {
-        return attachments;
-    }
-    NSString *fileName = RaftBridgeString(attachments[@"fileName"]);
-    NSString *message = [NSString stringWithFormat:@"## Raft feedback\n\nDiagnostics attachment: %@\n\n<!-- Describe what happened here. -->", fileName];
-    return @{
-        @"status" : @"ok",
-        @"message" : message,
-        @"fileName" : fileName,
-        @"mimeType" : RaftBridgeString(attachments[@"mimeType"]),
-        @"sizeBytes" : attachments[@"sizeBytes"] ?: @0,
-        @"bodyBase64" : RaftBridgeString(attachments[@"bodyBase64"]),
-        @"filePath" : RaftBridgeString(attachments[@"filePath"]),
-        @"attachmentPaths" : attachments[@"attachmentPaths"] ?: @[]
-    };
+    return RaftDiagnosticsPrepareFeedbackDraftResult(about);
 }
 
 /// Share out (share loop, first batch): the system share sheet for one `shareOut` command of the

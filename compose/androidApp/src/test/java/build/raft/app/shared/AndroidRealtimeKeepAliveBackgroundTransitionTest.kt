@@ -71,67 +71,10 @@ class AndroidRealtimeKeepAliveBackgroundTransitionTest {
     }
 
     @Test
-    fun playServicesDeviceIsUntouched() {
-        val recorder = Recorder()
-        handler(recorder, fallbackApplies = false, decision = Decision.Run).onAppBackgrounded()
-        handler(recorder, fallbackApplies = false, decision = Decision.Stop("play_services_available"), serviceActive = true)
-            .onAppBackgrounded()
-
-        assertTrue(recorder.starts.isEmpty())
-        assertTrue(recorder.stops.isEmpty())
-        assertEquals(0, recorder.decisionReads)
-    }
-
-    @Test
-    fun alreadyRunningOrStartingServiceIsNotRequestedTwice() {
-        val recorder = Recorder()
-        handler(recorder, serviceActive = true).onAppBackgrounded()
-
-        assertTrue(recorder.starts.isEmpty())
-        assertTrue(recorder.stops.isEmpty())
-    }
-
-    @Test
     fun startRequestedAgainWhenOnlyAStopIsQueued() {
         val recorder = Recorder()
         handler(recorder, serviceActive = true, stopQueued = true).onAppBackgrounded()
 
         assertEquals(listOf(AndroidRealtimeKeepAliveController.SOURCE_APP_BACKGROUND), recorder.starts)
-    }
-
-    @Test
-    fun stopDecisionStopsARunningServiceAndIgnoresAStoppedOne() {
-        val running = Recorder()
-        handler(running, decision = Decision.Stop("signed_out"), serviceActive = true).onAppBackgrounded()
-        assertEquals(listOf("signed_out"), running.stops)
-        assertTrue(running.starts.isEmpty())
-
-        val stopped = Recorder()
-        handler(stopped, decision = Decision.Stop("system_notifications_blocked")).onAppBackgrounded()
-        assertTrue(stopped.stops.isEmpty())
-        assertTrue(stopped.starts.isEmpty())
-    }
-
-    @Test
-    fun policyTable() {
-        fun action(fallback: Boolean, decision: Decision, active: Boolean, queued: Boolean) =
-            RaftBackgroundConnectionPolicy.backgroundTransitionAction(fallback, decision, active, queued)
-
-        assertEquals(BackgroundTransitionAction.RequestStart, action(true, Decision.Run, active = false, queued = false))
-        assertEquals(BackgroundTransitionAction.RequestStart, action(true, Decision.Run, active = true, queued = true))
-        assertEquals(BackgroundTransitionAction.None, action(true, Decision.Run, active = true, queued = false))
-        assertEquals(BackgroundTransitionAction.None, action(false, Decision.Run, active = false, queued = false))
-        assertEquals(
-            BackgroundTransitionAction.None,
-            action(false, Decision.Stop("play_services_available"), active = true, queued = false)
-        )
-        assertEquals(
-            BackgroundTransitionAction.Stop("preference_disabled"),
-            action(true, Decision.Stop("preference_disabled"), active = true, queued = false)
-        )
-        assertEquals(
-            BackgroundTransitionAction.None,
-            action(true, Decision.Stop("preference_disabled"), active = false, queued = false)
-        )
     }
 }

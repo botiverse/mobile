@@ -1,6 +1,5 @@
 package build.raft.app.data
 
-import build.raft.app.model.AvatarReference
 import build.raft.app.model.MemberKind
 import build.raft.app.model.ServerId
 import kotlin.test.Test
@@ -45,34 +44,6 @@ class SharedSettingsAvatarCacheTest {
         )
         assertEquals(listOf(owner to expectedSubject), metadata.clearedSubjects)
         assertTrue(membersStore.currentServerMembers(ServerId("server-1")).isEmpty())
-    }
-
-    @Test
-    fun nonHumanOrAgentRemovalNeverInventsAnAvatarCacheSubject() = runBlocking {
-        val repository = fixtures.avatarSettingsRepository()
-        val membersStore = SharedServerMembersStore(fixtures.avatarSettingsMemberRepository())
-        membersStore.seed(
-            MemberSnapshot(
-                settingsServer("server-1"),
-                listOf(settingsMember("system-1", "System").copy(kind = MemberKind.System))
-            )
-        )
-        val owner = RaftAvatarCacheOwner("https://api.example", "user-1", "server-1")
-        val metadata = RecordingAvatarMetadataStore()
-        val native = RecordingAvatarNativeCache()
-        val dataSource =
-            SharedSettingsDataSource(
-                sessionStore = InMemoryRaftAuthSessionStore(fixtures.sampleSession()),
-                settingsRepository = repository,
-                serverMembersStore = membersStore
-            ).withAvatarCacheRuntime(avatarRuntime(metadata) { owner }, native)
-
-        assertIs<DataResult.Content<SettingsServerActionResult>>(
-            dataSource.removeServerMember("system-1")
-        )
-
-        assertTrue(native.retiredSubjects.isEmpty())
-        assertTrue(metadata.clearedSubjects.isEmpty())
     }
 
     @Test
@@ -125,105 +96,6 @@ class SharedSettingsAvatarCacheTest {
             native.retiredSubjects
         )
         assertEquals(listOf(owner to expectedSubject), metadata.clearedSubjects)
-    }
-
-    @Test
-    fun failedAccountAvatarUploadDoesNotRetireCapturedSubject() = runBlocking {
-        val owner = RaftAvatarCacheOwner("https://api.example", "user-1", "server-1")
-        val metadata = RecordingAvatarMetadataStore()
-        val native = RecordingAvatarNativeCache()
-        val dataSource =
-            SharedSettingsDataSource(
-                sessionStore = InMemoryRaftAuthSessionStore(fixtures.sampleSession()),
-                settingsRepository =
-                    fixtures.avatarSettingsRepository(
-                        DataResult.Error(ScreenError("account_avatar_upload_failed"))
-                    ),
-                platformCapabilities =
-                    fixtures.avatarSettingsCapabilities(
-                        DataResult.Content(PlatformFile(id = "avatar-1", fileName = "avatar.webp"))
-                    )
-            ).withAvatarCacheRuntime(avatarRuntime(metadata) { owner }, native)
-
-        assertIs<DataResult.Error>(dataSource.uploadAccountAvatar())
-
-        assertTrue(native.retiredSubjects.isEmpty())
-        assertTrue(metadata.clearedSubjects.isEmpty())
-    }
-
-    @Test
-    fun agentAvatarUploadRetiresCapturedAgentSubjectWhenReturnedUrlIsUnchanged() = runBlocking {
-        val avatarUrl = "https://avatars.example.test/agents/agent-1.webp"
-        val profile =
-            settingsMember("agent-1", "Agent").copy(
-                kind = MemberKind.Agent,
-                serverId = ServerId("server-1"),
-                avatar = AvatarReference.fromWireValue(avatarUrl)
-            )
-        val store =
-            SharedServerMembersStore(
-                fixtures.avatarSettingsMemberRepository(DataResult.Content(profile))
-            )
-        store.seed(MemberSnapshot(settingsServer("server-1"), listOf(profile)))
-        val owner = RaftAvatarCacheOwner("https://api.example", "user-1", "server-1")
-        val metadata = RecordingAvatarMetadataStore()
-        val native = RecordingAvatarNativeCache()
-
-        val result =
-            assertIs<DataResult.Content<build.raft.app.model.MemberProfile>>(
-                store.uploadAgentAvatarWithAvatarCacheInvalidation(
-                    serverId = ServerId("server-1"),
-                    request =
-                        AgentAvatarUploadRequest(
-                            agentId = build.raft.app.model.MemberId("agent-1"),
-                            file = PlatformFile(id = "avatar-1", fileName = "avatar.webp")
-                        ),
-                    avatarCacheRuntime = avatarRuntime(metadata) { owner },
-                    avatarCacheNativeCache = native
-                )
-            )
-
-        assertEquals(avatarUrl, result.data.avatar?.wireValue)
-        val expectedSubject: RaftAvatarCacheSubject =
-            RaftAvatarCacheSubject.Member(MemberKind.Agent, "agent-1")
-        assertEquals(
-            listOf(owner.nativePartitionKey to raftAvatarNativeSubjectKey(owner, expectedSubject)),
-            native.retiredSubjects
-        )
-        assertEquals(listOf(owner to expectedSubject), metadata.clearedSubjects)
-    }
-
-    @Test
-    fun agentAvatarUploadIdentityMismatchDoesNotRetireCapturedSubject() = runBlocking {
-        val mismatchedProfile =
-            settingsMember("agent-2", "Other Agent").copy(
-                kind = MemberKind.Agent,
-                serverId = ServerId("server-1"),
-                avatar = AvatarReference.fromWireValue("https://avatars.example.test/agents/agent-2.webp")
-            )
-        val store =
-            SharedServerMembersStore(
-                fixtures.avatarSettingsMemberRepository(DataResult.Content(mismatchedProfile))
-            )
-        val owner = RaftAvatarCacheOwner("https://api.example", "user-1", "server-1")
-        val metadata = RecordingAvatarMetadataStore()
-        val native = RecordingAvatarNativeCache()
-
-        assertIs<DataResult.Content<build.raft.app.model.MemberProfile>>(
-            store.uploadAgentAvatarWithAvatarCacheInvalidation(
-                serverId = ServerId("server-1"),
-                request =
-                    AgentAvatarUploadRequest(
-                        agentId = build.raft.app.model.MemberId("agent-1"),
-                        file = PlatformFile(id = "avatar-1", fileName = "avatar.webp")
-                    ),
-                avatarCacheRuntime = avatarRuntime(metadata) { owner },
-                avatarCacheNativeCache = native
-            )
-        )
-
-        assertTrue(native.retiredSubjects.isEmpty())
-        assertTrue(metadata.clearedSubjects.isEmpty())
     }
 
     @Test

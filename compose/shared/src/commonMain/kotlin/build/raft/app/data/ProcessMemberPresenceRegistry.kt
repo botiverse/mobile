@@ -336,12 +336,19 @@ internal enum class ProcessPresenceProjectionSource(
 ) {
     Historical(authorityRank = 0, isCurrent = false, replacesSequencedFact = false),
     /**
+     * Incremental sync (`/api/sync/changes`) agent row projection: arrives without a fetch-start
+     * mutation fence, so it writes only for absent or carried-over slots and ranks below a
+     * request-fenced [RosterCurrent] or [DetailCurrent] REST read captured from the same base
+     * while still blocking [Historical] trajectory snapshots from rolling it backwards.
+     */
+    SyncedCurrent(authorityRank = 1, isCurrent = true, replacesSequencedFact = false),
+    /**
      * Replaces a seq-carrying fact only when [ProcessPresenceProjectionRequest.freshRoster]: a
      * `/agents` (or roster) read this caller started on the network after capturing the request
      * (web `loadAgents` parity, slock `agentStore.ts`). A cached or joined read keeps filling gaps only.
      */
-    RosterCurrent(authorityRank = 1, isCurrent = true, replacesSequencedFact = false),
-    DetailCurrent(authorityRank = 2, isCurrent = true, replacesSequencedFact = true)
+    RosterCurrent(authorityRank = 2, isCurrent = true, replacesSequencedFact = false),
+    DetailCurrent(authorityRank = 3, isCurrent = true, replacesSequencedFact = true)
 }
 
 private data class ProcessPresenceCurrentProjectionStamp(
@@ -1006,6 +1013,70 @@ internal class ProcessMemberPresenceRegistry(
         }
     }
 
+    /**
+     * Projects an agent's server-resolved `activity` from an incremental sync upsert
+     * (`GET /api/sync/changes`, slock `routes/sync.ts` `buildAgentRows`). Because incremental sync
+     * rows arrive without a fetch-start mutation fence, this writes ONLY when the member has no
+     * live fact yet — either absent or holding only a lowest-precedence carried-over fact from
+     * before the last transport advance — so it can never clobber a newer live socket push or
+     * current REST projection. Recording a [ProcessPresenceProjectionSource.SyncedCurrent] stamp
+     * (rank 1, below [ProcessPresenceProjectionSource.RosterCurrent] rank 2 and
+     * [ProcessPresenceProjectionSource.DetailCurrent] rank 3) prevents historical trajectory
+     * snapshots from rolling the synced presence backwards while still letting a concurrent or
+     * in-flight `machine:status` / reconnect `/agents` read, concurrent detail reads, later
+     * refreshes, and realtime pushes supersede it.
+     */
+    fun applySyncedAgentProjection(
+        owner: ProcessServerMembersOwner,
+        event: MemberPresenceUpdated,
+        writeGeneration: Long
+    ): Boolean {
+        val memberId = event.memberId.value.trim()
+        if (memberId.isBlank()) return false
+        while (true) {
+            val current = snapshot.value
+            if (writeGeneration != current.writeGeneration) return false
+            val ownerFacts = current.partitions[owner].orEmpty()
+            val carriedIds = current.carriedOverMembers[owner].orEmpty()
+            val existing = ownerFacts[memberId]
+            if (existing != null && memberId !in carriedIds) return false
+            val requestVersion = current.nextProjectionRequestVersion + 1L
+            val nextOwnerFacts = ownerFacts + (memberId to event.copy(serverSeq = null))
+            val nextPartitions = current.partitions + (owner to nextOwnerFacts)
+            val nextCarriedOverMembers =
+                current.carriedOverMembers.withCarriedOver(owner, carriedIds - memberId)
+            val nextCurrentProjectionStamps =
+                current.currentProjectionStamps +
+                    (
+                        owner to
+                            (
+                                current.currentProjectionStamps[owner].orEmpty() +
+                                    (
+                                        memberId to
+                                            ProcessPresenceCurrentProjectionStamp(
+                                                source = ProcessPresenceProjectionSource.SyncedCurrent,
+                                                requestVersion = requestVersion,
+                                                baseRequestVersion = null
+                                            )
+                                    )
+                            )
+                    )
+            if (
+                snapshot.compareAndSet(
+                    current,
+                    current.copy(
+                        partitions = nextPartitions,
+                        currentProjectionStamps = nextCurrentProjectionStamps,
+                        nextProjectionRequestVersion = requestVersion,
+                        carriedOverMembers = nextCarriedOverMembers
+                    )
+                )
+            ) {
+                return true
+            }
+        }
+    }
+
     /** Deleted members must not keep a live fact — in THIS owner only. */
     fun evict(
         owner: ProcessServerMembersOwner,
@@ -1103,9 +1174,11 @@ private fun ProcessPresenceProjectionRequest.canSupersede(
     current: ProcessPresenceCurrentProjectionStamp
 ): Boolean =
     when {
-        // This request started after the currently accepted projection, so it
-        // is a causal refresh even when its source has lower authority.
-        baseRequestVersion == current.requestVersion -> true
+        // This request started at or after an accepted projection that is at least as new as the
+        // currently stored stamp (including when a pre-sync request superseded a newer SyncedCurrent
+        // stamp and rolled current.requestVersion backwards), so it is a causal refresh even when
+        // its source has lower authority.
+        baseRequestVersion != null && baseRequestVersion >= current.requestVersion -> true
         // Same-source requests have an unambiguous process-monotonic order.
         source == current.source -> requestVersion >= current.requestVersion
         // Different sources compete by authority only when they were captured

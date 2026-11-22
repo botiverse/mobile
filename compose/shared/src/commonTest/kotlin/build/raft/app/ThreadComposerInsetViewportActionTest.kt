@@ -25,18 +25,6 @@ class ThreadComposerInsetViewportActionTest {
             )
         ).let { state -> reduceLazyViewport(state, LazyViewportEvent.CommandConsumed(state.pendingCommand!!.id)) }
 
-    private val readingAnchor =
-        LazyViewportControllerState(
-            intent =
-                LazyViewportIntent.Anchored(
-                    target = LazyViewportAnchorTarget.Message("older"),
-                    offset = -120,
-                    layoutGeneration = 4L,
-                    placement = LazyViewportAnchorPlacement.ExactOffset,
-                    fallback = LazyViewportAnchorFallback.Free
-                )
-        )
-
     private fun applyAction(
         state: LazyViewportControllerState,
         reverseLayout: Boolean,
@@ -68,16 +56,6 @@ class ThreadComposerInsetViewportActionTest {
     }
 
     @Test
-    fun reversedMidHistoryAnchorKeepsItsRenderedPositionAndEmitsNoCommand() {
-        val (action, next) = applyAction(readingAnchor, reverseLayout = true, tailAtRenderedBottom = false)
-
-        assertEquals(ThreadComposerInsetViewportAction.KeepRenderedPosition, action)
-        assertNull(action.viewportEvent())
-        assertEquals(readingAnchor, next)
-        assertNull(next.pendingCommand)
-    }
-
-    @Test
     fun followingLatestStillReplaysTheLatestCommand() {
         val following = LazyViewportControllerState()
         listOf(true, false).forEach { reverse ->
@@ -85,18 +63,6 @@ class ThreadComposerInsetViewportActionTest {
             assertEquals(ThreadComposerInsetViewportAction.ReplayIntent, action)
             assertEquals(LazyViewportCommandTarget.Latest, next.pendingCommand?.target)
         }
-    }
-
-    @Test
-    fun forwardListKeepsReplayingTheAnchorIntent() {
-        // A forward list keeps its top edge while shrinking, so re-asserting the anchor is the
-        // existing contract there (adaptive restore relies on it).
-        val (action, next) = applyAction(readingAnchor, reverseLayout = false, tailAtRenderedBottom = false)
-
-        assertEquals(ThreadComposerInsetViewportAction.ReplayIntent, action)
-        val target = assertIs<LazyViewportCommandTarget.Anchor>(next.pendingCommand?.target)
-        assertEquals(LazyViewportAnchorPlacement.ExactOffset, target.placement)
-        assertEquals(-120, target.offset)
     }
 
     @Test

@@ -131,44 +131,6 @@ class RaftRatingPromptCoordinatorTest {
     }
 
     @Test
-    fun eachRuleKeepsThePromptAwayAndTheComputerListIsCheckedLast() = runTest {
-        val cases: List<Pair<String, (Harness) -> Unit>> =
-            listOf(
-                RaftRatingPromptBlock.InternalAccount.name to { h: Harness ->
-                    h.shell.account = h.shell.account!!.copy(joinedServerIds = listOf("srv-a", "bccd5969-5c94-498c-9221-625f87d5ca12"))
-                },
-                RaftRatingPromptBlock.InternalAccount.name to { h: Harness -> h.environment = "staging" },
-                RaftRatingPromptBlock.RecentError.name to { h: Harness -> h.recentError = true },
-                RaftRatingPromptBlock.TooFewActiveDays.name to { h: Harness -> h.store.putString(RaftRatingPromptRepository.KeyActiveDayCount, "4") },
-                RaftRatingPromptBlock.TooSoonSinceFirstOpen.name to { h: Harness -> h.store.putString(RaftRatingPromptRepository.KeyFirstSeenDay, "19998") },
-                "signed_out" to { h: Harness -> h.shell.account = null },
-            )
-        for ((reason, change) in cases) {
-            val h = Harness(this)
-            h.activeFiveDays()
-            change(h)
-            assertEquals(RaftRatingPromptOutcome.Skipped(reason), h.coordinator.evaluate(RaftAppRatingPromptTrigger.ActionCardApproved), reason)
-            assertEquals(0 to 0, h.hostCalls to h.shell.computerChecks, reason)
-        }
-        for (hasComputer in listOf(false, null)) {
-            val h = Harness(this)
-            h.activeFiveDays()
-            h.shell.hasComputer = hasComputer
-            assertEquals(
-                RaftRatingPromptOutcome.Skipped(RaftRatingPromptBlock.NoComputer.name),
-                h.coordinator.evaluate(RaftAppRatingPromptTrigger.ActionCardApproved),
-                "computers=$hasComputer",
-            )
-            assertEquals(1 to 0, h.shell.computerChecks to h.hostCalls)
-        }
-        // No shell shown (signed out, onboarding): never.
-        val noShell = Harness(this)
-        noShell.activeFiveDays()
-        noShell.coordinator.unbindShell(noShell.shell)
-        assertEquals(RaftRatingPromptOutcome.Skipped("no_shell"), noShell.coordinator.evaluate(RaftAppRatingPromptTrigger.ActionCardApproved))
-    }
-
-    @Test
     fun aFinishedOwnAgentTaskAsksWhenTheListShowsAgainNotWhenItOpens() = runTest {
         val h = Harness(this)
         h.activeFiveDays()

@@ -45,14 +45,4 @@ class RaftMessageLinkAppHostsTest {
             assertNotNull("$staging$path".toParsedRaftPermalink(configuredWebUrl = staging, appHosts = hosts))
         }
     }
-
-    @Test
-    fun theProcessListIsWhatTheClientConfigPublished() {
-        assertNull(parseRaftMessageLink("https://raft.build$path"))
-        RaftClientConfigAppHosts.publish(listOf("Raft.Build."))
-        assertEquals(setOf("raft.build"), RaftClientConfigAppHosts.current)
-        assertNotNull(parseRaftMessageLink("https://raft.build$path"))
-        // The canonical host stays accepted whatever the list says.
-        assertNotNull(parseRaftMessageLink("https://app.raft.build$path"))
-    }
 }

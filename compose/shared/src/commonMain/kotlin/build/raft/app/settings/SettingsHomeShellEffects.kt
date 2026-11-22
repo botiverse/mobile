@@ -59,7 +59,6 @@ import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.NonRestartableComposable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
@@ -70,6 +69,10 @@ import build.raft.app.compat.ui.withKuiklyIdleContext
 import androidx.compose.foundation.layout.size
 import build.raft.app.compat.pager.Pager
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import kotlin.time.TimeSource
 
@@ -80,14 +83,14 @@ private const val AppUpdateNotificationRefreshIntervalMs = 30L * 60L * 1000L
 internal fun AppShellNotificationBadgeEffects(
     readySession: StoredAuthSession?,
     readyServerId: String?,
+    homeShellStore: SharedHomeShellStore,
     homeState: SharedHomeState,
-    activityUnreadSummary: build.raft.app.data.ActivityUnreadSummaryProjection,
+    activityUnreadSummaryFlow: Flow<build.raft.app.data.ActivityUnreadSummaryProjection>,
     authoritativeHomeStartAllowed: Boolean,
     serverActivityExpectedOwner: ReadReceiptOwner?,
     bridge: build.raft.app.base.BridgeModule,
     sharedStores: RaftSharedStoreProvider,
 ) {
-    val notificationLevelsByServer by build.raft.app.data.RaftNotificationLevelStore.state.collectAsState()
     // Every server's level (the badge leaves out `none` servers) and the account settings, once per
     // signed-in account; realtime `notification_prefs:updated` keeps them current afterwards.
     val notificationAccountUserId = readySession?.user?.id?.takeIf { it.isNotBlank() }
@@ -109,50 +112,63 @@ internal fun AppShellNotificationBadgeEffects(
         if (notificationAccountUserId == null) return@LaunchedEffect
         build.raft.app.data.RaftNotificationLevelStore.refresh(serverId, build.raft.app.data.DataRequestPriority.Background)
     }
-    // Forward the badge to the host: the selected server's live Activity projection plus every other
-    // server's Activity unread, without servers set to `none` (slock docs/contracts/notifications.md
-    // §1.4), the same number the push badge carries. Source is diagnostics-only; hosts display count
-    // and must not branch on provenance.
+    // Forward the badge to the host directly from store flows so app / macOS Dock badges stay live
+    // even while the shell is covered (Android) or hidden/minimized (macOS) with zero shell recompositions.
+    // The selected server's live Activity projection plus every other server's Activity unread,
+    // without servers set to `none` (slock docs/contracts/notifications.md §1.4).
     LaunchedEffect(
-        homeState.appBadgeCount,
-        activityUnreadSummary,
+        homeShellStore,
+        activityUnreadSummaryFlow,
         authoritativeHomeStartAllowed,
-        homeState.serverActivityUnread,
-        notificationLevelsByServer
+        readySession?.user?.id,
+        readyServerId,
+        serverActivityExpectedOwner,
     ) {
-        val fallback = homeState.appBadgeCount
-        val useActivityProjection = authoritativeHomeStartAllowed && readySession != null
-        val currentServerCount =
-            if (useActivityProjection && activityUnreadSummary.hasValue) {
-                activityUnreadSummary.totalUnreadCount
-            } else {
-                fallback.count
-            }
-        bridge.appBadge(
-            count =
-                build.raft.app.data.raftAppBadgeAcrossServers(
-                    currentServerId = readyServerId,
-                    currentServerCount = currentServerCount,
-                    otherServerCounts = homeState.serverActivityUnread.countsForAccountOf(serverActivityExpectedOwner),
-                    serverPushMuted = homeState.serverActivityUnread.serverPushMutedForAccountOf(serverActivityExpectedOwner),
-                    levels =
-                        notificationLevelsByServer
-                            .filterValues { it.serverLevelKnown }
-                            .mapValues { it.value.server }
-                ),
-            source =
+        val homeBadgeFlow =
+            homeShellStore.state
+                .map { it.home.appBadgeCount to it.home.serverActivityUnread }
+                .distinctUntilChanged()
+        combine(
+            homeBadgeFlow,
+            activityUnreadSummaryFlow,
+            build.raft.app.data.RaftNotificationLevelStore.state,
+        ) { (fallback, serverActivityUnread), activityUnreadSummary, notificationLevelsByServer ->
+            Triple(fallback to serverActivityUnread, activityUnreadSummary, notificationLevelsByServer)
+        }.collect { (homeBadge, activityUnreadSummary, notificationLevelsByServer) ->
+            val (fallback, serverActivityUnread) = homeBadge
+            val useActivityProjection = authoritativeHomeStartAllowed && readySession != null
+            val currentServerCount =
                 if (useActivityProjection && activityUnreadSummary.hasValue) {
-                    build.raft.app.data.AppBadgeSource.ACTIVITY_UNREAD_SUMMARY.wire
+                    activityUnreadSummary.totalUnreadCount
                 } else {
-                    fallback.source.wire
-                },
-            isStale =
-                if (useActivityProjection && activityUnreadSummary.hasValue) {
-                    activityUnreadSummary.freshness != build.raft.app.data.ActivityUnreadSummaryFreshness.Fresh
-                } else {
-                    fallback.isStale
+                    fallback.count
                 }
-        )
+            bridge.appBadge(
+                count =
+                    build.raft.app.data.raftAppBadgeAcrossServers(
+                        currentServerId = readyServerId,
+                        currentServerCount = currentServerCount,
+                        otherServerCounts = serverActivityUnread.countsForAccountOf(serverActivityExpectedOwner),
+                        serverPushMuted = serverActivityUnread.serverPushMutedForAccountOf(serverActivityExpectedOwner),
+                        levels =
+                            notificationLevelsByServer
+                                .filterValues { it.serverLevelKnown }
+                                .mapValues { it.value.server }
+                    ),
+                source =
+                    if (useActivityProjection && activityUnreadSummary.hasValue) {
+                        build.raft.app.data.AppBadgeSource.ACTIVITY_UNREAD_SUMMARY.wire
+                    } else {
+                        fallback.source.wire
+                    },
+                isStale =
+                    if (useActivityProjection && activityUnreadSummary.hasValue) {
+                        activityUnreadSummary.freshness != build.raft.app.data.ActivityUnreadSummaryFreshness.Fresh
+                    } else {
+                        fallback.isStale
+                    }
+            )
+        }
     }
     // Sync top pinned channels / DMs to the host launcher icon dynamic shortcut menu. The label of a
     // DM without a name is resolved here, in composition, so a language change syncs the menu again.
@@ -958,7 +974,7 @@ internal fun AppShellRailTabOrderEffects(
     val railTabOrderSaveFailed = stringResource(Res.string.rail_tab_order_save_failed)
     LaunchedEffect(railTabOrderState.effect) {
         if (railTabOrderState.effect == build.raft.app.data.SharedRailTabOrderEffect.SaveFailed) {
-            bridge.toast(railTabOrderSaveFailed)
+            bridge.errorToast(railTabOrderSaveFailed, railTabOrderState.effectTraceId)
             railTabOrderStore.dispatch(build.raft.app.data.SharedRailTabOrderIntent.ConsumeEffect)
         }
     }
@@ -993,6 +1009,9 @@ internal fun AppShellRealtimeSinkAndNetworkEffects(
             )
         }
     }
+    DisposableEffect(agentProfileRefreshCoalescer) {
+        onDispose { agentProfileRefreshCoalescer.cancelAll() }
+    }
     DisposableEffect(
         appShellRealtimeDomainEventOwner,
         homeShellStore,
@@ -1020,9 +1039,11 @@ internal fun AppShellRealtimeSinkAndNetworkEffects(
                     // Server-membership/profile mutations must invalidate the in-session
                     // roster cache; otherwise updated fields (e.g. avatarUrl) stay stale
                     // until process restart. Agents/Machines scopes already refresh through
-                    // their own projections, so only ServerMembers pays for a roster refetch —
-                    // except agent:updated (a profile edit, e.g. a new avatar), which re-reads
-                    // only the agents, as web re-reads /api/agents.
+                    // their own projections (and `machine:status` triggers a coalesced
+                    // `/agents` recovery at the process realtime owner level), so only
+                    // ServerMembers pays for a full roster refetch — except agent:updated
+                    // (a profile edit, e.g. a new avatar), which re-reads only the agents,
+                    // as web re-reads /api/agents.
                     if (event.isAgentProfileUpdate()) {
                         agentProfileRefreshCoalescer.request(serverId)
                         // An open agent Profile shows `GET /agents/:id`, not the roster: it re-reads too.

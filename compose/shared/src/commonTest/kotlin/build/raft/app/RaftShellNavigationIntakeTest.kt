@@ -121,44 +121,6 @@ class RaftShellNavigationIntakeTest {
     }
 
     @Test
-    fun anArtifactLinkWaitsForAReadySessionThenOpensInTheViewerOnce() = intakeTest {
-        host.sessionReady = false
-        val target = ArtifactLinkTarget("pt_0b6e0f7e-1c1a-4c4e-9a65-0f5e2b1d7a11", 3)
-        artifactInbox.submit(target, "android_view")
-        advanceUntilIdle()
-        assertTrue(host.openedArtifacts.isEmpty(), "no viewer before the session is ready")
-
-        host.sessionReady = true
-        intake.wake()
-        advanceUntilIdle()
-        assertEquals(listOf(target), host.openedArtifacts.map { it.target })
-        assertNull(artifactInbox.pending.value)
-        assertTrue(host.performed.isEmpty(), "an Artifact link opens no conversation")
-
-        intake.wake()
-        advanceUntilIdle()
-        assertEquals(1, host.openedArtifacts.size, "taken once")
-    }
-
-    /** [body] with the intake running (a foreground child, so advanceUntilIdle runs it), stopped after. */
-    @Test
-    fun anExternalInviteLinkWaitsForAReadySessionThenOpensItsPageOnce() = intakeTest {
-        host.sessionReady = false
-        externalInviteInbox.submit("tok-123", "android_view")
-        advanceUntilIdle()
-        assertTrue(host.openedInvites.isEmpty(), "no invite page before the session is ready")
-        host.sessionReady = true
-        intake.wake()
-        advanceUntilIdle()
-        assertEquals(listOf("tok-123"), host.openedInvites.map { it.token })
-        assertNull(externalInviteInbox.pending.value)
-        assertTrue(host.performed.isEmpty(), "an invite link opens no conversation")
-        intake.wake()
-        advanceUntilIdle()
-        assertEquals(1, host.openedInvites.size, "taken once")
-    }
-
-    @Test
     fun aSwitchAccountLinkWaitsUntilAnotherAccountIsSignedIn() = intakeTest {
         // Switch account: the shell still has the account being signed out of.
         externalInviteInbox.submit("tok-9", "external_invite_switch_account", notForAccountId = "account-a")
@@ -251,6 +213,7 @@ class RaftShellNavigationIntakeTest {
         assertEquals("On it", flow.draft(SERVER, task.id.value), "the unsent text stays as the draft")
     }
 
+    /** [body] with the intake running (a foreground child, so advanceUntilIdle runs it), stopped after. */
     private fun intakeTest(body: suspend TestScope.() -> Unit) = runTest {
         val running = launch { intake.run(host) }
         advanceUntilIdle()

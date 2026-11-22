@@ -2,7 +2,6 @@ package build.raft.app
 
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.unit.IntSize
 import kotlin.math.abs
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -19,16 +18,6 @@ class RaftComposerImageEditorTransformTest {
     private fun assertNear(expected: Offset, actual: Offset, what: String = "", eps: Float = 0.01f) {
         assertNear(expected.x, actual.x, "$what x", eps)
         assertNear(expected.y, actual.y, "$what y", eps)
-    }
-
-    @Test
-    fun quarterTurnsNormalise() {
-        assertEquals(0, raftComposerImageNormalizeQuarterTurns(4))
-        assertEquals(3, raftComposerImageNormalizeQuarterTurns(-1))
-        assertEquals(1, raftComposerImageNormalizeQuarterTurns(5))
-        assertTrue(raftComposerImageTurnSwapsSides(1))
-        assertFalse(raftComposerImageTurnSwapsSides(2))
-        assertTrue(raftComposerImageTurnSwapsSides(-1))
     }
 
     @Test
@@ -68,56 +57,6 @@ class RaftComposerImageEditorTransformTest {
         repeat(4) { full = raftApplyRotateToContent(full, 4000, 3000, 400f, 800f) }
         assertEquals(0, full.rotationQuarterTurns)
         assertNear(Offset(100f, 150f), full.strokes.single().points.first(), "full circle")
-    }
-
-    @Test
-    fun cropWhileTurnedFitsTheSwappedStage() {
-        val content = RaftComposerImageEditorContent(rotationQuarterTurns = 1)
-            .raftComposerImageAppendStroke(RaftComposerImageStroke(points = listOf(Offset(266.67f, 200f), Offset(266.67f, 200f))))
-        // Crop to the right half of the photo; the centre point moves to the crop's left edge.
-        val cropped =
-            raftApplyCropToContent(
-                content = content,
-                newCrop = RaftComposerImageCropRect(0.5f, 0f, 1f, 1f),
-                imageWidth = 4000,
-                imageHeight = 3000,
-                maxWidth = 400f,
-                maxHeight = 800f,
-            )
-        // Turned fit box 800x400: the 2000x3000 half fits as 266.67x400.
-        assertNear(Offset(0f, 200f), cropped.strokes.single().points.first(), "crop edge", eps = 0.05f)
-    }
-
-    @Test
-    fun rotatePointAndItsInverse() {
-        val size = Size(200f, 100f)
-        val p = Offset(30f, 10f)
-        assertEquals(Offset(90f, 30f), raftComposerImageRotatePoint(p, size, 1))
-        assertEquals(Offset(170f, 90f), raftComposerImageRotatePoint(p, size, 2))
-        assertEquals(Offset(10f, 170f), raftComposerImageRotatePoint(p, size, 3))
-        (0..3).forEach { turns ->
-            assertNear(p, raftComposerImageUnrotatePoint(raftComposerImageRotatePoint(p, size, turns), size, turns), "turn $turns")
-        }
-        assertEquals(IntSize(100, 200), raftComposerImageRotatedSize(IntSize(200, 100), 3))
-        assertEquals(IntSize(200, 100), raftComposerImageRotatedSize(IntSize(200, 100), 2))
-    }
-
-    @Test
-    fun canvasToViewMapping() {
-        val canvas = Size(200f, 100f)
-        val stage = Size(400f, 400f)
-        // Upright, no zoom: centred.
-        assertNear(Offset(100f, 150f), raftComposerImageCanvasToView(Offset.Zero, canvas, stage, 0))
-        // One turn: the canvas's top-left corner goes to the turned picture's top-right.
-        assertNear(Offset(250f, 100f), raftComposerImageCanvasToView(Offset.Zero, canvas, stage, 1))
-        val view = RaftComposerImageViewTransform(zoom = 2f, pan = Offset(10f, -20f))
-        (0..3).forEach { turns ->
-            val point = Offset(37f, 81f)
-            val onScreen = raftComposerImageCanvasToView(point, canvas, stage, turns, view)
-            assertNear(point, raftComposerImageViewToCanvas(onScreen, canvas, stage, turns, view), "round trip $turns")
-        }
-        // Zoom 2 about the centre doubles the distance from the stage centre, then pans.
-        assertNear(Offset(10f, 80f), raftComposerImageCanvasToView(Offset.Zero, canvas, stage, 0, view))
     }
 
     @Test

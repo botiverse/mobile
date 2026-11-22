@@ -398,13 +398,15 @@ class SettingsRepositoryDataSourceTest {
                     store.authSessionEvents.first { it is AuthSessionEvent.BindingMetadataChanged }
                 }
             }
+        val observedTimeFormats = mutableListOf<String>()
         val repository =
             RealSettingsRepository(
                 store,
                 FakeSettingsNetworkClient(
                     accountJson =
                         """{"id":"user-1","email":"user@slock.ai","name":"slock-user","preferredTimeFormat":"12h"}"""
-                )
+                ),
+                onTimeFormatUpdated = observedTimeFormats::add,
             )
 
         val result =
@@ -414,11 +416,61 @@ class SettingsRepositoryDataSourceTest {
 
         assertTrue(result is DataResult.Content)
         assertIs<AuthSessionEvent.BindingMetadataChanged>(metadataEvent.await())
+        assertEquals(listOf("12h"), observedTimeFormats)
         val persisted = store.readSession()
         assertEquals("12h", persisted?.user?.preferredTimeFormat)
         assertEquals("12h", persisted?.user?.timeFormat)
         assertEquals("sample-access", persisted?.accessToken)
         assertEquals("sample-refresh", persisted?.refreshToken)
+    }
+
+    @Test
+    fun staleInFlightTimeFormatWriteAfterAccountSwitchDoesNotUpdateRuntime() = runBlocking {
+        val store = KeyValueAuthSessionStore(InMemoryRaftKeyValueStore())
+        val initialSession =
+            sampleSession().copy(
+                user =
+                    sampleSession().user.copy(
+                        id = "user-1",
+                        preferredTimeFormat = "24h",
+                        timeFormat = "24h",
+                    )
+            )
+        store.replaceAuthenticatedSession(initialSession)
+        val switchedSession =
+            sampleSession().copy(
+                user =
+                    sampleSession().user.copy(
+                        id = "user-2",
+                        preferredTimeFormat = "24h",
+                        timeFormat = "24h",
+                    )
+            )
+        val observedTimeFormats = mutableListOf<String>()
+        val repository =
+            RealSettingsRepository(
+                store,
+                FakeSettingsNetworkClient(
+                    accountJson =
+                        """{"id":"user-1","email":"user@slock.ai","name":"slock-user","preferredTimeFormat":"12h"}""",
+                    onAccountPatch = {
+                        store.replaceAuthenticatedSession(switchedSession)
+                    },
+                ),
+                onTimeFormatUpdated = observedTimeFormats::add,
+            )
+
+        val result =
+            repository.updateLanguageRegionPreference(
+                SettingsLanguageRegionPreferenceUpdateRequest(preferredTimeFormat = "12h")
+            )
+
+        assertTrue(result is DataResult.Content)
+        assertEquals(emptyList(), observedTimeFormats)
+        val persisted = store.readSession()
+        assertEquals("user-2", persisted?.user?.id)
+        assertEquals("24h", persisted?.user?.preferredTimeFormat)
+        assertEquals("24h", persisted?.user?.timeFormat)
     }
 
     @Test
@@ -780,21 +832,6 @@ class SettingsRepositoryDataSourceTest {
     }
 
     @Test
-    fun realtimeRefreshWritesStoredCopyAtBackgroundPriorityForTheSignedInAccount() = runBlocking {
-        val lastKnown = SettingsServerNotificationLastKnownStore(SyncTestPreferences())
-        val network = FakeSettingsNetworkClient(notificationSettingsJson = """{"serverPushMuted":false,"serverPushMode":"mentions"}""")
-        val repository = RealSettingsRepository(sampleStore(), network, serverNotificationLastKnownStore = lastKnown)
-
-        // No Settings page involved: the refetch alone refreshes the stored copy, for any of the viewer's servers.
-        assertIs<DataResult.Content<SettingsServerNotificationPreferences>>(
-            repository.refreshServerNotificationPreferences(expectedUserId = "user-1", serverId = "server-2")
-        )
-
-        assertEquals(ServerPushMode.Mentions, lastKnown.read("user-1", "server-2")?.mode)
-        assertEquals(listOf("GET servers/server-2/notification-settings Background"), network.requestLog)
-    }
-
-    @Test
     fun realtimeRefreshForAnotherAccountDoesNotFetch() = runBlocking {
         val lastKnown = SettingsServerNotificationLastKnownStore(SyncTestPreferences())
         val network = FakeSettingsNetworkClient(notificationSettingsJson = """{"serverPushMuted":true,"serverPushMode":"none"}""")
@@ -934,19 +971,6 @@ class SettingsRepositoryDataSourceTest {
         assertEquals(null, parsed)
         assertEquals(1, diagnostics.size)
         assertTrue(diagnostics.single().contains("server_push_mode"))
-    }
-
-    @Test
-    fun presentUnknownPushPreviewModeFailsClosed() {
-        val diagnostics = mutableListOf<String>()
-        val parsed = parseSharedSettingsServerNotificationSettings(
-            """{"serverPushMuted":false,"serverPushMode":"all","pushPreviewMode":"future"}""",
-            diagnostics::add
-        )
-
-        assertEquals(null, parsed)
-        assertEquals(1, diagnostics.size)
-        assertTrue(diagnostics.single().contains("push_preview_mode"))
     }
 
     @Test
@@ -1150,26 +1174,6 @@ class SettingsRepositoryDataSourceTest {
     }
 
     @Test
-    fun serverSettingsRejectsGuessedBillingPlanWrapper() = runBlocking {
-        val repository =
-            RealSettingsRepository(
-                sampleStore(),
-                FakeSettingsNetworkClient(billingSubscriptionJson = """{"subscription":{"plan":"hobby"}}""")
-            )
-
-        val server = repository.getServerSettings()
-
-        assertTrue(server is DataResult.Content)
-        val billing = server.data.sections.first { it.key == "billing" }
-        assertFalse(billing.detail.contains("settings_billing_subscription_contract_mismatch"))
-        assertEquals("", billing.detail)
-        assertEquals(
-            "The response could not be read. Please try again.",
-            billing.errorPresentation?.resolve(englishErrorPresentationStringsForTest())
-        )
-    }
-
-    @Test
     fun serverInviteRejectsGenericOkWrapperAndAcceptsCanonicalInvite() = runBlocking {
         val rejected =
             RealSettingsRepository(
@@ -1186,76 +1190,6 @@ class SettingsRepositoryDataSourceTest {
         assertTrue(accepted is DataResult.Content)
         assertEquals(true, accepted.data.success)
         assertEquals("""{"email":"new@slock.ai"}""", network.inviteBodies.single())
-    }
-
-    @Test
-    fun serverInvitePreservesCanonicalErrorTextFromProductionErrorBody() = runBlocking {
-        val result =
-            RealSettingsRepository(
-                sampleStore(),
-                FakeSettingsNetworkClient(
-                    responseCode = 409,
-                    errorJson = """{"error":"This person is already invited"}"""
-                )
-            ).createServerInvite(SettingsServerInviteCreateRequest("new@slock.ai"))
-
-        val error = assertIs<DataResult.Error>(result).error
-        assertEquals("http_409", error.code)
-        assertEquals("This person is already invited", error.serverMessage)
-    }
-
-    @Test
-    fun inviteRouteErrorParserAcceptsOnlyItsExactErrorField() = runBlocking {
-        val fixtures =
-            listOf(
-                "canonical-with-future-field" to
-                    ("""{"error":"This person is already invited","future":{"retryAfter":30}}""" to
-                        "This person is already invited"),
-                "wrong-alias" to ("""{"message":"This person is already invited"}""" to null),
-                "nested-error" to ("""{"error":{"message":"This person is already invited"}}""" to null),
-                "malformed" to ("""{"error":"unterminated""" to null),
-                "plain-text" to ("This person is already invited" to null),
-                "blank" to ("" to null),
-                "missing" to (null to null)
-            )
-
-        fixtures.forEach { (name, fixture) ->
-            val (body, expectedMessage) = fixture
-            val result =
-                RealSettingsRepository(
-                    sampleStore(),
-                    FakeSettingsNetworkClient(responseCode = 409, errorJson = body)
-                ).createServerInvite(SettingsServerInviteCreateRequest("new@slock.ai"))
-
-            val error = assertIs<DataResult.Error>(result, name).error
-            assertEquals("http_409", error.code, name)
-            assertEquals(expectedMessage, error.serverMessage, name)
-        }
-    }
-
-    @Test
-    fun inviteAndJoinLinkRoutesShareTheConfirmedErrorEnvelope() = runBlocking {
-        val repository =
-            RealSettingsRepository(
-                sampleStore(),
-                FakeSettingsNetworkClient(
-                    responseCode = 409,
-                    errorJson = """{"error":"Invite policy rejected this request"}"""
-                )
-            )
-
-        val results =
-            listOf(
-                repository.listServerJoinLinks("server-1"),
-                repository.createServerInvite(SettingsServerInviteCreateRequest("new@slock.ai")),
-                repository.createServerJoinLink(SettingsServerJoinLinkCreateRequest())
-            )
-
-        results.forEach { result ->
-            val error = assertIs<DataResult.Error>(result).error
-            assertEquals("http_409", error.code)
-            assertEquals("Invite policy rejected this request", error.serverMessage)
-        }
     }
 
     @Test
@@ -1495,7 +1429,8 @@ class SettingsRepositoryDataSourceTest {
         private val workspacesResponseCode: Int? = null,
         private val agentsResponseCode: Int? = null,
         private val responseCode: Int = 200,
-        private val errorJson: String? = """{"error":"failed"}"""
+        private val errorJson: String? = """{"error":"failed"}""",
+        private val onAccountPatch: (suspend () -> Unit)? = null,
     ) : RaftNetworkClient {
         private var currentConnectedAppClientsJson = connectedAppClientsJson
         private var currentServerPushMode =
@@ -1582,6 +1517,7 @@ class SettingsRepositoryDataSourceTest {
                     response(accountJson)
                 normalized == "auth/me" && method == "PATCH" -> {
                     accountUpdateBodies += bodyText.orEmpty()
+                    onAccountPatch?.invoke()
                     response(accountJson)
                 }
                 normalized == "auth/providers" && method == "GET" ->

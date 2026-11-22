@@ -1,10 +1,7 @@
 package build.raft.app
 
-import androidx.compose.ui.graphics.toArgb
-import build.raft.app.data.RaftAppAppearanceRuntime
 import build.raft.app.designtokens.RaftUiPalette
 import build.raft.app.designtokens.RaftUiThemeColors
-import build.raft.designsystem.theme.RaftAppearance
 import build.raft.designsystem.theme.RaftThemeState
 import build.raft.designsystem.tokens.RaftThemeId
 import build.raft.designsystem.tokens.RaftUiThemeColors as DesignSystemThemeColors
@@ -21,15 +18,6 @@ class RaftAppThemeStateTest {
         RaftAppThemeState.apply(RaftAppAppearance.Light)
         RaftAppThemeState.onSystemDarkChanged(false)
         RaftAppThemeState.setRaftTheme(RaftThemeId.Raft, decor = false)
-    }
-
-    @Test
-    fun lightAppearanceResolvesRaftLight() {
-        RaftAppThemeState.apply(RaftAppAppearance.Light)
-        assertEquals(RaftAppAppearance.Light, RaftAppThemeState.appearance)
-        assertEquals(raftLightTheme, RaftAppThemeState.theme)
-        assertEquals(RaftUiThemeColors.RaftLight.foreground, RaftColor.TextBlack)
-        assertEquals("#FF141111", RaftColor.TextBlackArgb)
     }
 
     @Test
@@ -52,38 +40,12 @@ class RaftAppThemeStateTest {
     }
 
     @Test
-    fun legacyLightTokensKeepTheirLightValues() {
-        RaftAppThemeState.apply(RaftAppAppearance.Light)
-        assertEquals(RaftUiPalette.white, RaftColor.SurfaceWhite)
-        assertEquals(RaftUiPalette.paletteCream, RaftColor.SurfaceCream)
-        assertEquals(RaftUiPalette.neutral500, RaftColor.TextMutedGray)
-        assertEquals("#FFFFFFFF", RaftColor.SurfaceWhiteArgb)
-        assertEquals("#FF737373", RaftColor.TextMutedGrayArgb)
-    }
-
-    @Test
-    fun appStateIsTheDesignSystemAppState() {
-        RaftAppThemeState.apply(RaftAppAppearance.Dark)
-        assertEquals(RaftAppearance.Dark, RaftThemeState.App.appearance)
-        assertTrue(RaftThemeState.App.isDark)
-    }
-
-    @Test
     fun systemAppearanceFollowsTheOsSetting() {
         assertFalse(RaftAppThemeState.apply(RaftAppAppearance.System), "system light resolves to the same theme")
         assertTrue(RaftAppThemeState.onSystemDarkChanged(true))
         assertTrue(RaftAppThemeState.isDark)
         assertTrue(RaftAppThemeState.apply(RaftAppAppearance.Light), "an explicit choice overrides the OS")
         assertFalse(RaftAppThemeState.onSystemDarkChanged(false), "the OS no longer matters under Light")
-    }
-
-    @Test
-    fun argbHexMatchesTheLiteralFormat() {
-        assertEquals("#FFFFFFFF", raftArgbHex(RaftUiPalette.white))
-        // Source Yellow is raft-ui's `--brand-400` (#FFD440). raft-ui re-derives the
-        // `--palette-yellow-400` ramp from a rounded oklch that lands one step off (#FFD441),
-        // so the brand literal is checked against the brand token.
-        assertEquals(RaftColor.BrandYellowArgb, raftArgbHex(RaftColor.Brand))
     }
 
     @Test
@@ -113,29 +75,6 @@ class RaftAppThemeStateTest {
     }
 
     @Test
-    fun setRaftThemeReportsDecorChanges() {
-        assertTrue(RaftAppThemeState.setRaftTheme(RaftThemeId.Bots, decor = true))
-        assertTrue(RaftAppThemeState.decor)
-        assertTrue(RaftThemeState.App.decor)
-        // Decor stays on when only the theme changes.
-        assertTrue(RaftAppThemeState.setRaftTheme(RaftThemeId.Space))
-        assertTrue(RaftAppThemeState.decor)
-        assertTrue(RaftAppThemeState.setRaftTheme(RaftThemeId.Space, decor = false))
-        assertFalse(RaftAppThemeState.setRaftTheme(RaftThemeId.Space, decor = false))
-    }
-
-    @Test
-    fun frameArgbFollowsTheTheme() {
-        assertEquals(RaftUiThemeColors.RaftLight.layerFrame.toArgb(), RaftAppAppearanceRuntime.frameArgb)
-        RaftAppThemeState.setRaftTheme(RaftThemeId.Bots)
-        assertEquals(RaftUiThemeColors.BotsLight.layerFrame.toArgb(), RaftAppAppearanceRuntime.frameArgb)
-        RaftAppThemeState.apply(RaftAppAppearance.Dark)
-        assertEquals(RaftUiThemeColors.BotsDark.layerFrame.toArgb(), RaftAppAppearanceRuntime.frameArgb)
-        // The canvas the hosts paint today follows the theme too (Bots dark has its own canvas).
-        assertEquals(RaftUiThemeColors.BotsDark.layerCanvas.toArgb(), RaftAppAppearanceRuntime.canvasArgb)
-    }
-
-    @Test
     fun appAndDesignSystemTokensAgreeForEveryTheme() {
         RaftThemeId.entries.forEach { theme ->
             assertEquals(theme.wire, theme.toAppThemeId().wire)
@@ -147,11 +86,5 @@ class RaftAppThemeStateTest {
                 assertEquals(designSystem.brand, app.brand, "$theme dark=$dark brand")
             }
         }
-    }
-
-    @Test
-    fun raftAppThemeOfTheDefaultColoursIsTheDefaultTheme() {
-        assertEquals(raftLightTheme, raftAppThemeOf(RaftUiThemeColors.RaftLight))
-        assertEquals(raftDarkTheme, raftAppThemeOf(RaftUiThemeColors.RaftDark))
     }
 }

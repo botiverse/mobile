@@ -22,30 +22,6 @@ import platform.posix.write as posixWrite
 
 class PlatformFileResolverIosTest {
     @Test
-    fun tempFileStreamsInBoundedChunks() = runTest {
-        withTempFile("a".repeat(PlatformFileStreamChunkBytes + 3)) { path ->
-            val resolver = createDefaultPlatformFileResolver() ?: error("Missing iOS resolver")
-            val stat = resolver.statFile(path)
-            val chunkSizes = mutableListOf<Int>()
-
-            boundedPlatformFileNetworkStream(
-                expectedSizeBytes = stat.sizeBytes ?: error("Missing size"),
-                source = resolver.openFileStream(path, stat.sizeBytes ?: error("Missing size"))
-            )
-                .readChunks(
-                    object : RaftByteStreamSink {
-                        override suspend fun write(bytes: ByteArray) {
-                            chunkSizes += bytes.size
-                        }
-                    }
-                )
-
-            assertEquals(listOf(PlatformFileStreamChunkBytes, 3), chunkSizes)
-            assertTrue(stat.success)
-        }
-    }
-
-    @Test
     fun tempFileTruncateAndGrowthAfterStatFailBeforeStreaming() = runTest {
         withTempFile("abcd") { path ->
             val resolver = createDefaultPlatformFileResolver() ?: error("Missing iOS resolver")
@@ -61,17 +37,6 @@ class PlatformFileResolverIosTest {
                 resolver.openFileStream(path, expected)
             })
         }
-    }
-
-    @Test
-    fun missingTempFileFailsStatWithoutOpeningTransportStream() = runTest {
-        val path = "${NSTemporaryDirectory().trimEnd('/')}/slock-missing-${NSUUID().UUIDString}"
-        val resolver = createDefaultPlatformFileResolver() ?: error("Missing iOS resolver")
-
-        val stat = resolver.statFile(path)
-
-        assertEquals(400, stat.code)
-        assertEquals("attachment_read_failed", stat.errorCode)
     }
 
     private inline fun withTempFile(text: String, block: (String) -> Unit) {

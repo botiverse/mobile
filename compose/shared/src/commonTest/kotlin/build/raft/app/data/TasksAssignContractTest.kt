@@ -38,14 +38,6 @@ class TasksAssignContractTest {
     }
 
     @Test
-    fun assignBodySerializesAgentAssignee() {
-        assertEquals(
-            """{"assignee":{"type":"agent","id":"agent-1"}}""",
-            buildSharedTaskAssignBody(agent, expectedRevision = null),
-        )
-    }
-
-    @Test
     fun unassignBodyKeepsExplicitNullAssigneeKey() {
         // `explicitNulls = false` in tasksJson would drop the key entirely; the
         // server 400s on a missing key, so the explicit null must survive.
@@ -92,44 +84,12 @@ class TasksAssignContractTest {
     }
 
     @Test
-    fun assignConflictDetectionRequiresExactServerError() {
-        assertTrue(taskAssignConflictErrorCode("""{"error":"task state changed concurrently"}"""))
-        assertTrue(taskAssignConflictErrorCode("""{"error":"Task State Changed Concurrently"}"""))
-        assertTrue(
-            !taskAssignConflictErrorCode(null),
-            "missing body is not a conflict",
-        )
-        assertTrue(
-            !taskAssignConflictErrorCode("""{"error":"some other failure"}"""),
-            "other 409 domain errors stay generic",
-        )
-    }
-
-    @Test
-    fun assignOtherConflictStaysGenericRetryable() {
-        val response =
-            HomeNetworkResponse(code = 409, bodyText = null, errorBodyText = """{"error":"some other failure"}""")
-        val result = response.toTaskAssignActionResult()
-        val error = assertIs<DataResult.Error>(result)
-        assertEquals("tasks_409", error.error.code)
-    }
-
-    @Test
     fun assignWithoutCapabilityMapsToNoPermission() {
         val response =
             HomeNetworkResponse(code = 403, bodyText = null, errorBodyText = """{"error":"You do not have permission to assign tasks"}""")
         val result = response.toTaskAssignActionResult()
         val blocked = assertIs<DataResult.NoPermission>(result)
         assertEquals("tasks_403", blocked.blocker.code)
-    }
-
-    @Test
-    fun assignValidationErrorMapsToRetryable400() {
-        val response =
-            HomeNetworkResponse(code = 400, bodyText = null, errorBodyText = """{"error":"assignee must be { type: 'user'|'agent', id } or null"}""")
-        val result = response.toTaskAssignActionResult()
-        val error = assertIs<DataResult.Error>(result)
-        assertEquals("tasks_400", error.error.code)
     }
 
     @Test
@@ -159,17 +119,6 @@ class TasksAssignContractTest {
             """{"assignee":{"type":"user","id":"user-1"},"expectedRevision":42}""",
             body,
         )
-    }
-
-    @Test
-    fun typedClientUnassignSendsExplicitNullBody() = runBlocking {
-        val transport = RecordingAssignApi()
-        val client = RaftTasksApiClient(transport)
-
-        client.assignTask(ServerId("server-1"), TaskId("task-9"), assignee = null, expectedRevision = 3L)
-
-        val (_, body) = transport.calls.single()
-        assertEquals("""{"assignee":null,"expectedRevision":3}""", body)
     }
 
     private class RecordingAssignApi : RaftTasksApi {

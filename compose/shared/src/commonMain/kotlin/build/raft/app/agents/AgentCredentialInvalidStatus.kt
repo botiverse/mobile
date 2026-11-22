@@ -88,7 +88,7 @@ internal fun membersAgentCredentialInvalidReason(
 internal fun agentCredentialInvalidText(reason: AgentCredentialHoldReason, runtime: String?, model: String?): String =
     when (reason) {
         AgentCredentialHoldReason.UserReauth ->
-            stringResource(Res.string.agent_status_credential_sign_in, raftAgentRuntimeDisplayName(runtime?.trim().orEmpty()))
+            stringResource(Res.string.agent_status_credential_sign_in, observeAgentRuntimeDisplayName(runtime?.trim().orEmpty()))
         AgentCredentialHoldReason.UserModelAccess ->
             model?.trim()?.takeIf { it.isNotEmpty() }
                 ?.let { stringResource(Res.string.agent_status_credential_plan_model, getModelLabel(runtime?.trim().orEmpty(), it)) }
@@ -160,7 +160,7 @@ internal fun membersAgentRuntimeSignInNeeded(
 /** Web `agent.status.runtimeSignIn.full` / `.short`: the status words, naming the runtime when [full]. */
 @Composable
 internal fun agentRuntimeSignInText(runtime: String?, full: Boolean): String {
-    val name = runtime?.trim()?.takeIf { it.isNotEmpty() }?.let(::raftAgentRuntimeDisplayName)
+    val name = runtime?.trim()?.takeIf { it.isNotEmpty() }?.let { observeAgentRuntimeDisplayName(it) }
     return if (full && name != null) {
         stringResource(Res.string.agent_status_runtime_sign_in_full, name)
     } else {

@@ -79,12 +79,10 @@ import build.raft.app.data.feedbackForeignClient
 import build.raft.app.data.feedbackOwnClient
 import build.raft.app.data.feedbackPreviewLine
 import build.raft.app.markdown.RaftMarkdownBody
+import build.raft.app.model.MillisPerDay
 import build.raft.app.model.RaftTimeContext
-import build.raft.app.model.RaftTimeFormat24Hour
 import build.raft.app.model.civilDateFromEpochDay
 import build.raft.app.model.floorDiv
-import build.raft.app.model.floorMod
-import build.raft.app.model.formatRaftClock
 import build.raft.app.resources.*
 import build.raft.designsystem.components.RaftBadge
 import build.raft.designsystem.components.RaftBadgeAppearance
@@ -212,7 +210,7 @@ private fun SettingsFeedbackTicketsRoute(resumeTick: Int) {
     // New Feedback only once the current server answered privacy mode off (its archive goes to Hands).
     val privacyMode by RaftTelemetryPrivacy.state.collectAsState()
     val router = remember(pager) { pager.acquireModule<RouterModule>(RouterModule.MODULE_NAME) }
-    val timeContext = LocalRaftPageBaseTimeContextProvider.current?.current
+    val timeContext = currentRaftDateTimeContext(null)
     // Copy Link (#119): the ticket's web address for an agent, on the Developer environment's web
     // URL (AGENTS.md "Environment Web Link URL Rule") and this session's server. Only where a Hands
     // app reads the ticket (Android, iOS): desktop has none, so no action there.
@@ -455,9 +453,14 @@ internal fun SettingsFeedbackTicketsScreen(
     }
 }
 
+/**
+ * The ticket's title and meta take the head's free width, so its status, Copy Link and Close Ticket
+ * sit together at the trailing edge whatever the title's length (artin 11-22: they followed a short
+ * title, leaving the head's end empty).
+ */
 @Composable
 private fun RowScope.FeedbackTicketHeadTitle(ticket: FeedbackTicket) {
-    Column(Modifier.weight(1f, fill = false), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
         RaftText(
             ticket.title,
             style = RaftTheme.typography.headline.copy(fontWeight = FontWeight.SemiBold),
@@ -857,15 +860,10 @@ internal sealed interface FeedbackListTime {
 
 internal fun feedbackListTime(epochMillis: Long, timeContext: RaftTimeContext?): FeedbackListTime? {
     val context = timeContext ?: return null
-    val offset = context.localOffsetMinutes
-    val today = context.todayEpochDay ?: context.nowEpochMillis?.let { floorDiv(it + offset * 60_000L, 86_400_000L) } ?: return null
-    val local = epochMillis + offset * 60_000L
-    val day = floorDiv(local, 86_400_000L)
+    val today = context.resolvedTodayEpochDay() ?: return null
+    val day = context.localEpochDay(epochMillis)
     return when (day) {
-        today -> {
-            val ofDay = floorMod(local, 86_400_000L)
-            FeedbackListTime.Clock(formatRaftClock((ofDay / 3_600_000L).toInt(), ((ofDay % 3_600_000L) / 60_000L).toInt(), null, context.timeFormat.ifBlank { RaftTimeFormat24Hour }))
-        }
+        today -> FeedbackListTime.Clock(context.formatClock(epochMillis))
         today - 1 -> FeedbackListTime.Yesterday
         else -> {
             val date = civilDateFromEpochDay(day)
@@ -882,7 +880,7 @@ private fun feedbackListTimeLabel(epochMillis: Long, timeContext: RaftTimeContex
         is FeedbackListTime.Clock -> time.text
         FeedbackListTime.Yesterday -> stringResource(Res.string.activity_list_day_yesterday)
         is FeedbackListTime.Date -> {
-            val month = stringResource(FeedbackMonthResources[time.month - 1])
+            val month = stringResource(ActivityMonthResources[time.month - 1])
             if (time.year != null) {
                 stringResource(Res.string.settings_feedback_tickets_list_date_year, month, time.day, time.year)
             } else {
@@ -890,22 +888,6 @@ private fun feedbackListTimeLabel(epochMillis: Long, timeContext: RaftTimeContex
             }
         }
     }
-
-private val FeedbackMonthResources =
-    listOf(
-        Res.string.activity_list_day_month_january,
-        Res.string.activity_list_day_month_february,
-        Res.string.activity_list_day_month_march,
-        Res.string.activity_list_day_month_april,
-        Res.string.activity_list_day_month_may,
-        Res.string.activity_list_day_month_june,
-        Res.string.activity_list_day_month_july,
-        Res.string.activity_list_day_month_august,
-        Res.string.activity_list_day_month_september,
-        Res.string.activity_list_day_month_october,
-        Res.string.activity_list_day_month_november,
-        Res.string.activity_list_day_month_december,
-    )
 
 @Composable
 private fun FeedbackTicketDetail(
@@ -1068,11 +1050,11 @@ private fun FeedbackTicketThread(
 }
 
 private fun feedbackLocalDay(epochMillis: Long, timeContext: RaftTimeContext?): Long =
-    floorDiv(epochMillis + (timeContext?.localOffsetMinutes ?: 0) * 60_000L, 86_400_000L)
+    timeContext?.localEpochDay(epochMillis) ?: floorDiv(epochMillis, MillisPerDay)
 
 @Composable
 private fun FeedbackDateDivider(epochMillis: Long, timeContext: RaftTimeContext?) {
-    val today = timeContext?.todayEpochDay ?: timeContext?.nowEpochMillis?.let { feedbackLocalDay(it, timeContext) } ?: return
+    val today = timeContext?.resolvedTodayEpochDay() ?: return
     val label = activityDayLabel(feedbackLocalDay(epochMillis, timeContext), today).localized()
     Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
         Box(Modifier.weight(1f).size(height = 1.dp, width = 0.dp).background(RaftTheme.colors.lineSeam))
@@ -1082,11 +1064,8 @@ private fun FeedbackDateDivider(epochMillis: Long, timeContext: RaftTimeContext?
 }
 
 @Composable
-private fun feedbackClock(epochMillis: Long, timeContext: RaftTimeContext?): String {
-    val local = epochMillis + (timeContext?.localOffsetMinutes ?: 0) * 60_000L
-    val ofDay = floorMod(local, 86_400_000L)
-    return formatRaftClock((ofDay / 3_600_000L).toInt(), ((ofDay % 3_600_000L) / 60_000L).toInt(), null, timeContext?.timeFormat ?: RaftTimeFormat24Hour)
-}
+private fun feedbackClock(epochMillis: Long, timeContext: RaftTimeContext?): String =
+    currentRaftEffectiveDateTimeContext(timeContext).formatClock(epochMillis)
 
 /** Web FeedbackConversationMessage: sender and time, the text, the ticket's attachments. */
 @Composable

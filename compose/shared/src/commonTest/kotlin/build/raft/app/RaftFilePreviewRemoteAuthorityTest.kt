@@ -66,20 +66,6 @@ class RaftFilePreviewRemoteAuthorityTest {
         assertEquals(1, gateway.currentChecks)
         assertEquals(1, blockCalls)
     }
-
-    @Test
-    fun currentReceiptCommitsExactOperationResult() = runBlocking {
-        val receipt = receipt(owner)
-        val gateway = RecordingFilePreviewAuthorityGateway(receipt = receipt)
-        val scope = RaftFilePreviewRemoteOperationScope(owner, gateway)
-
-        val result = scope.run { DataResult.Content("canonical-payload") }
-
-        assertEquals("canonical-payload", assertIs<DataResult.Content<String>>(result).data)
-        assertEquals(1, gateway.captureCalls)
-        assertEquals(1, gateway.networkClientCalls)
-        assertEquals(1, gateway.currentChecks)
-    }
 }
 
 private fun receipt(owner: AuthenticatedRouteOwner): AuthenticatedRouteAuthorityReceipt =

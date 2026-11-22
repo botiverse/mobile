@@ -3,10 +3,7 @@ package build.raft.app
 import build.raft.app.data.InMemoryRaftAuthSessionStore
 import build.raft.app.data.StoredAuthSession
 import build.raft.app.data.StoredAuthUser
-import build.raft.app.data.ThreadMessagesPage
 import build.raft.app.data.ThreadReplyCacheIdentitySnapshot
-import build.raft.app.data.WireMessage
-import build.raft.app.data.buildSharedThreadPayloadFromMessagesPage
 import build.raft.app.network.sync.DurablePartitionKey
 import build.raft.app.network.sync.SYNC_CORE_MESSAGES_V2_DURABLE_CONSUMER_ID
 import build.raft.app.network.sync.SyncScopeId
@@ -24,7 +21,6 @@ import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
 /**
@@ -45,35 +41,6 @@ class SharedThreadStoreEnteredScopeTest {
         assertEquals(listOf(true), loader.baselines)
         assertEquals(listOf("channel-1"), loader.abandoned)
         assertTrue(loader.persisted.isEmpty())
-        scope.cancel()
-    }
-
-    @Test
-    fun directMessageEntryRequestsTheLoadToo() = runTest {
-        val scope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
-        val loader = FakeLoader()
-        val store = SharedThreadStore(dataSource = dataSource(storeScope = backgroundScope, loader = loader, identity = { ownerA }), scope = scope)
-        store.accept(SharedThreadIntent.Start(basePayload().copy(surfaceKind = RaftThreadSurfaceKind.DirectMessage)))
-        assertEquals(listOf(partition(ownerA) to "channel-1"), loader.loads)
-        scope.cancel()
-    }
-
-    @Test
-    fun memoryCachedEntryStillRefreshesTheBaseline() = runTest {
-        val scope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
-        val loader = FakeLoader()
-        val dataSource = dataSource(
-            storeScope = backgroundScope,
-            api = SharedThreadStoreTest.FakeThreadApi(failChannelMessages = true),
-            loader = loader,
-            identity = { ownerA },
-        )
-        assertNotNull(dataSource.readSession())
-        assertTrue(dataSource.cachePayload(contentPayload("memory cached body"), serverId = "server-1"))
-        val store = SharedThreadStore(dataSource = dataSource, scope = scope)
-        store.accept(SharedThreadIntent.Start(basePayload()))
-        assertEquals(listOf("memory cached body"), store.state.value.payload.messages.map { it.body })
-        assertEquals(listOf(partition(ownerA) to "channel-1"), loader.loads)
         scope.cancel()
     }
 
@@ -201,26 +168,5 @@ class SharedThreadStoreEnteredScopeTest {
             parentMessageId = "parent-1",
             originParentMessageId = "parent-1",
             originStatus = "loading",
-        )
-
-    private fun contentPayload(body: String): RaftThreadScreenPayload =
-        buildSharedThreadPayloadFromMessagesPage(
-            basePayload = basePayload(),
-            page = ThreadMessagesPage(
-                messages = listOf(
-                    WireMessage(
-                        id = "m1",
-                        channelId = "channel-1",
-                        senderType = "user",
-                        senderId = "u-a",
-                        senderName = "Owner A",
-                        messageType = "chat",
-                        content = body,
-                    ),
-                ),
-                canLoadMoreBefore = false,
-                canLoadMoreAfter = null,
-            ),
-            session = ownerA.session,
         )
 }

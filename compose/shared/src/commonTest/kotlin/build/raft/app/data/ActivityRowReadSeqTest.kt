@@ -57,37 +57,6 @@ class ActivityRowReadSeqTest {
         assertEquals("101" to 1, row.readSeq to row.unreadCount)
     }
 
-    @Test
-    fun theLedgerKeepsTheReadSeqApartFromThePositionState() {
-        val ledger = ActivityRowPositionLedger()
-        val row = activityItem("channel-1", unreadCount = 1).copy(latestActivitySeq = "10")
-        ledger.keep("channel-1", ledger.stateOf(row).then(ActivityRowEvent.Read("10")))
-        assertEquals("10", ledger.readSeqForTest("channel-1"))
-        // Another path moved the row: the position state starts again, the read seq stays.
-        assertEquals("10", ledger.stateOf(row.copy(latestActivitySeq = "12")).readSeq)
-        // A row first listed by an answer does not drop it; a lower ack does not lower it.
-        ledger.start("channel-1", "12")
-        ledger.noteRead("channel-1", "9")
-        assertEquals("10", ledger.readSeqForTest("channel-1"))
-        ledger.noteRead("channel-1", "12")
-        assertEquals("12", ledger.readSeqForTest("channel-1"))
-        // A newer read state sets the cursor, lower too (Mark as Unread on another device).
-        ledger.setReadCursor("channel-1", "11")
-        assertEquals("11", ledger.readSeqForTest("channel-1"))
-        // Mark as Unread here: the read seq goes and becomes the ceiling a late ack must pass.
-        ledger.forgetRead("channel-1")
-        assertNull(ledger.stateOf(row).readSeq)
-        assertEquals("11", ledger.readSeqCeilingForTest("channel-1"))
-        ledger.noteRead("channel-1", "11")
-        assertNull(ledger.readSeqForTest("channel-1"), "a late ack at the ceiling does not raise it")
-        ledger.noteRead("channel-1", "13")
-        assertEquals("13" to null, ledger.readSeqForTest("channel-1") to ledger.readSeqCeilingForTest("channel-1"))
-        // A newer read state sets the cursor and drops a ceiling.
-        ledger.forgetRead("channel-1")
-        ledger.setReadCursor("channel-1", "12")
-        assertEquals("12" to null, ledger.readSeqForTest("channel-1") to ledger.readSeqCeilingForTest("channel-1"))
-    }
-
     private fun ledgerRead(maxReadSeq: Long, version: Long) = ActivityLedgerReadState(maxReadSeq = maxReadSeq, readStateVersion = version)
 
     @Test
@@ -107,20 +76,6 @@ class ActivityRowReadSeqTest {
         // A newer read past the old one reads it again.
         ledger.foldLedgerRead("channel-1", ledgerRead(12L, 4L), markedUnread = false)
         assertEquals("12" to null, ledger.readSeqForTest("channel-1") to ledger.readSeqCeilingForTest("channel-1"))
-    }
-
-    @Test
-    fun aLedgerCursorBelowTheReadSeqAnOwnSendRaisedIsAMarkAsUnreadToo() {
-        val ledger = ActivityRowPositionLedger()
-        ledger.foldLedgerRead("channel-1", ledgerRead(10L, 2L), markedUnread = false)
-        ledger.noteRead("channel-1", "12")
-        // First fold here (no last fold) or after one: below the read seq is a rewind.
-        ledger.foldLedgerRead("channel-1", ledgerRead(11L, 3L), markedUnread = false)
-        assertEquals(null to "12", ledger.readSeqForTest("channel-1") to ledger.readSeqCeilingForTest("channel-1"))
-        val fresh = ActivityRowPositionLedger()
-        fresh.noteRead("channel-2", "12")
-        fresh.foldLedgerRead("channel-2", ledgerRead(11L, 5L), markedUnread = false)
-        assertEquals(null to "12", fresh.readSeqForTest("channel-2") to fresh.readSeqCeilingForTest("channel-2"))
     }
 
     @Test

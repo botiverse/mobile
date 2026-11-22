@@ -208,15 +208,20 @@ internal fun appShellPageDataForServerSelection(
     routeOwner: AuthenticatedRouteOwner? = null,
     // The chooser page replaces itself with the shell; a shell that opens another server's window
     // stays where it is (replacing it would close the source window).
-    replaceCurrent: Boolean = true
+    replaceCurrent: Boolean = true,
+    // Post-login workspace selection (`fromShell = false`) opens the default launcher shell rather
+    // than spawning a document task and finishing the launcher task.
+    fromShell: Boolean = true,
+    windowShowingPickedServer: String? = null,
 ): JSONObject {
     val normalizedServerId = selectedServerId?.trim()?.takeIf { it.isNotBlank() }
     val opensDocumentShell =
-        isMultiShellCrossServerSelection(
-            sourceStoreScope = sourceStoreScope,
-            selectedServerId = normalizedServerId,
-            multiShellHostEnabled = multiShellHostEnabled
-        )
+        fromShell &&
+            isMultiShellCrossServerSelection(
+                sourceStoreScope = sourceStoreScope,
+                selectedServerId = normalizedServerId,
+                multiShellHostEnabled = multiShellHostEnabled
+            )
     return appShellPageData(
         replaceCurrent = replaceCurrent,
         suppressRestoreLanding = suppressRestoreLanding
@@ -227,7 +232,17 @@ internal fun appShellPageDataForServerSelection(
             withAuthenticatedRouteOwner(routeOwner)
         } else {
             put(RAFT_SHELL_INSTANCE_ID, sourceStoreScope.shellInstanceId)
-            put(RAFT_DOCUMENT_SHELL, sourceDocumentShell && multiShellHostEnabled)
+            put(RAFT_DOCUMENT_SHELL, fromShell && sourceDocumentShell && multiShellHostEnabled)
+        }
+        val window =
+            if (fromShell && multiShellHostEnabled) {
+                windowShowingPickedServer?.trim()?.takeIf { it.isNotEmpty() && it != sourceStoreScope.shellInstanceId }
+            } else {
+                null
+            }
+        if (window != null) {
+            put(RAFT_SERVER_SWITCH_WINDOW_ID, window)
+            if (!has(AppShellInitialTabKey)) put(RAFT_SERVER_SWITCH_KEEP_WINDOW, true)
         }
     }
 }
@@ -368,6 +383,7 @@ internal fun AppShellServerGateContent(
     session: StoredAuthSession,
     authDataSource: SharedAuthDataSource,
     skipInitialLoad: Boolean = false,
+    selectServerInCurrentShell: Boolean = true,
     onReady: (StoredAuthSession) -> Unit,
     onSignOut: () -> Unit,
     onSessionCleared: (StoredAuthSession) -> Unit = {},
@@ -466,7 +482,7 @@ internal fun AppShellServerGateContent(
             textAlign = TextAlign.Center
         )
         AuthFormColumn {
-            AuthError(errorMessage)
+            AuthError(errorMessage, traceId = errorPresentation?.traceId)
             if (showPinnedSignOut) {
                 AuthActionButton(
                     text = stringResource(Res.string.auth_action_sign_out),
@@ -626,7 +642,14 @@ internal fun AppShellServerGateContent(
         }
         val result =
             if (target == "__create__") {
-                authDataSource.createServer(createName.text, slug = createSlug.text)
+                authDataSource.createServer(
+                    createName.text,
+                    slug = createSlug.text,
+                    selectCreatedServer = selectServerInCurrentShell,
+                )
+            } else if (!selectServerInCurrentShell) {
+                latestSession.withAppShellSelectedServer(target)?.let { SharedAuthResult.Success(it) }
+                    ?: authDataSource.selectServer(target)
             } else {
                 authDataSource.selectServer(target)
             }
@@ -704,7 +727,7 @@ internal fun serverGateActionFailureMessage(target: String, failure: SharedAuthR
 
 /** The client's localized copy when it has one ([SharedAuthResult.Failure.display]), else the server's words. */
 internal fun SharedAuthResult.Failure.authGateMessage(): AuthGateMessage =
-    display?.let { AuthGateMessage.Static(it) } ?: AuthGateMessage.Dynamic(message)
+    display?.let { AuthGateMessage.Static(it, traceId = traceId) } ?: AuthGateMessage.Dynamic(message, traceId = traceId)
 
 // Web parity: ServerSelector.tsx `toSlug` — lowercase, then every character
 // outside [a-z0-9-] becomes "-" (no collapsing, no trimming). The create form
@@ -927,7 +950,7 @@ internal fun AppShellEmailVerificationGateContent(
                     detail = it
                 )
             }
-            AuthError(errorMessage)
+            AuthError(errorMessage, traceId = errorPresentation?.traceId)
             AuthActionButton(
                 text = stringResource(Res.string.auth_action_resend_verification),
                 onClick = {
@@ -998,6 +1021,7 @@ internal fun PageErrorContent(
     headerTitleStyle: TextStyle = RaftType.Headline,
     message: String,
     code: String,
+    traceId: String? = null,
     retryLabel: String? = stringResource(Res.string.common_retry),
     onRetry: (() -> Unit)? = null
 ) {
@@ -1018,6 +1042,7 @@ internal fun PageErrorContent(
         PageErrorBody(
             message = message,
             code = code,
+            traceId = traceId,
             retryLabel = retryLabel,
             onRetry = onRetry
         )
@@ -1029,7 +1054,8 @@ internal fun MembersPageErrorContent(
     message: String,
     code: String,
     onRetry: (() -> Unit)?,
-    onBack: (() -> Unit)? = null
+    onBack: (() -> Unit)? = null,
+    traceId: String? = null
 ) {
     Column(
         modifier = Modifier.fillMaxSize().background(RaftColor.Canvas),
@@ -1039,6 +1065,7 @@ internal fun MembersPageErrorContent(
         PageErrorBody(
             message = message,
             code = code,
+            traceId = traceId,
             retryLabel = stringResource(Res.string.common_retry),
             onRetry = onRetry
         )
@@ -1049,6 +1076,7 @@ internal fun MembersPageErrorContent(
 private fun PageErrorBody(
     message: String,
     code: String,
+    traceId: String? = null,
     retryLabel: String?,
     onRetry: (() -> Unit)?
 ) {
@@ -1071,6 +1099,7 @@ private fun PageErrorBody(
                     color = RaftColor.AccentRed
                 )
             }
+            RaftTraceIdNote(traceId = traceId)
             if (retryLabel != null && onRetry != null) {
                 RaftButton(
                     text = retryLabel,

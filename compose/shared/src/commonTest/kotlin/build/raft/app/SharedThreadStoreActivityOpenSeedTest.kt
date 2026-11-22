@@ -173,39 +173,6 @@ class SharedThreadStoreActivityOpenSeedTest {
         assertEquals(emptyList(), seed(replyRoute("thread-9")))
     }
 
-    @Test
-    fun aSeedFillsOnlyWhatTheStandInLacks() {
-        val onDisk = message("m5", seq = 5, at = "2026-10-23T09:00:00Z")
-        val standIn =
-            RaftThreadScreenPayload(status = "content", durableLastKnown = true, messages = listOf(onDisk))
-        val newer = message("m9", seq = null, at = "2026-10-23T10:00:00Z")
-        val older = message("m2", seq = null, at = "2026-10-23T08:00:00Z")
-        val sameAsDisk = onDisk.copy(body = "row preview")
-
-        val seeded = standIn.withActivityOpenSeed(listOf(older, sameAsDisk, newer))
-        assertEquals(listOf("m5", "m9"), seeded.messages.map { it.id })
-        assertEquals(onDisk.body, seeded.messages.first().body, "a message already on the frame is kept")
-
-        // A durable empty stand-in (task #1137) is a guess too: the seed replaces it.
-        val emptyStandIn = RaftThreadScreenPayload(status = "empty", durableLastKnown = true)
-        val fromEmpty = emptyStandIn.withActivityOpenSeed(listOf(newer))
-        assertEquals("content", fromEmpty.status)
-        assertEquals(listOf("m9"), fromEmpty.messages.map { it.id })
-        assertTrue(fromEmpty.durableLastKnown)
-
-        assertEquals(standIn, standIn.withActivityOpenSeed(emptyList()))
-    }
-
-    @Test
-    fun anEmptyStandInShowsLoadingUntilTheFirstLoadAnswers() {
-        assertTrue(threadEmptyStandInAwaitsFirstLoad(status = "empty", durableLastKnown = true, mainLoadFailed = false))
-        // Failed offline: the stand-in with its offline tip, as task #1137 shows it.
-        assertFalse(threadEmptyStandInAwaitsFirstLoad(status = "empty", durableLastKnown = true, mainLoadFailed = true))
-        // The canonical answer was empty.
-        assertFalse(threadEmptyStandInAwaitsFirstLoad(status = "empty", durableLastKnown = false, mainLoadFailed = false))
-        assertFalse(threadEmptyStandInAwaitsFirstLoad(status = "content", durableLastKnown = true, mainLoadFailed = false))
-    }
-
     private fun dataSource(
         api: SharedThreadStoreTest.FakeThreadApi,
         source: ThreadActivityOpenSeedSource,

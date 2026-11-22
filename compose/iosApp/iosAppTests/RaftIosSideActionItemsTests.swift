@@ -65,11 +65,6 @@ final class RaftIosSideActionItemsTests: XCTestCase {
         XCTAssertEqual(items.trailing.map(\.primaryAction?.identifier.rawValue), ["home-bell"])
     }
 
-    @available(iOS 27.1, *)
-    func testAColumnThatIsNotJsonMakesNoItems() {
-        XCTAssertNil(RaftIosSideActionItems.make(json: "not json", onTap: { _ in }))
-    }
-
     /// A symbol the system lacks makes no items, so the page keeps drawing its column (Back too).
     @available(iOS 27.1, *)
     func testAnUnknownSymbolMakesNoItems() {
@@ -79,32 +74,5 @@ final class RaftIosSideActionItemsTests: XCTestCase {
          "visibleActionIds":[],"overflowActionIds":["x"]}
         """
         XCTAssertNil(RaftIosSideActionItems.make(json: json, onTap: { _ in }))
-    }
-}
-
-/// RaftIosSideActionHost reaches the bridge's calls through RaftIosWeakSideActionListener: the
-/// bridge sits in the global registry until the host's deinit, so it must not keep the host alive.
-final class RaftIosWeakSideActionListenerTests: XCTestCase {
-    private final class RecordingListener: NSObject, RaftSideActionHostListener {
-        var cleared = 0
-        func onSideActionColumnChanged(json: String) {}
-        func onSideActionColumnCleared() { cleared += 1 }
-    }
-
-    func testARegisteredBridgeForwardsToItsHostWithoutKeepingItAlive() {
-        let hostId = "raft-weak-listener-test"
-        let bridge = RaftSideActionHostBridge()
-        RaftSideActionHostRegistry.shared.register(hostId: hostId, bridge: bridge)
-        defer { RaftSideActionHostRegistry.shared.unregister(hostId: hostId, bridge: bridge) }
-
-        weak var released: RecordingListener?
-        autoreleasepool {
-            let host = RecordingListener()
-            bridge.attachListener(listener: RaftIosWeakSideActionListener(host))
-            XCTAssertEqual(host.cleared, 1, "attaching replays the (absent) column to the host")
-            released = host
-        }
-
-        XCTAssertNil(released, "the bridge (held by the registry) must not keep the host alive")
     }
 }

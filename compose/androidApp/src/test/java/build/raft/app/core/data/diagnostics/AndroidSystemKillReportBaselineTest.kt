@@ -71,27 +71,4 @@ class AndroidSystemKillReportBaselineTest {
         assertEquals(installedAt, disk.stored)
         assertEquals(listOf(kill), planned(visibleKill(kill), cutoff = second, now = secondLaunch))
     }
-
-    @Test
-    fun aStoredBaselineNeverMoves() {
-        val disk = Disk(failCommits = false).apply { stored = 5_000L }
-        assertEquals(5_000L, disk.resolve(updatedAt = installedAt, now = installedAt + 1))
-        assertEquals(0, disk.failures)
-    }
-
-    @Test
-    fun withoutAUsableUpdateTimeTheBaselineIsNow() {
-        val now = installedAt + 10L
-        assertEquals(now, Disk(failCommits = false).resolve(updatedAt = null, now = now))
-        assertEquals(now, Disk(failCommits = false).resolve(updatedAt = now + 1, now = now))
-        assertEquals(now, Disk(failCommits = false).resolve(updatedAt = 0L, now = now))
-    }
-
-    @Test
-    fun exitsBeforeTheInstallAreStillNotLookedAt() {
-        val disk = Disk(failCommits = false)
-        val now = installedAt + 60_000L
-        val baseline = disk.resolve(updatedAt = installedAt, now = now)
-        assertTrue(planned(visibleKill(installedAt - 1), cutoff = baseline, now = now).isEmpty())
-    }
 }

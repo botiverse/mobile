@@ -203,8 +203,9 @@ internal fun rememberRaftProfilePreviewCardModel(
     val current = profile
     val catalogServerId = current?.serverId?.value ?: cleanServerId?.value ?: viewerServerId
     if (kind == MemberKind.Agent) build.raft.app.data.EnsureServerModelLabelCatalog(catalogServerId)
-    val modelLabelCatalog = if (kind == MemberKind.Agent) build.raft.app.data.RaftModelLabelCatalogs.catalog(catalogServerId) else null
-    return remember(current, status, avatar, readReceipt, memberId, kind, fallbackHandle, viewerServerId, knownServers, modelLabelCatalog) {
+    val modelLabelCatalog = if (kind == MemberKind.Agent) build.raft.app.data.RaftModelLabelCatalogs.observeCatalog(catalogServerId) else null
+    val runtimeCatalogs = if (kind == MemberKind.Agent) build.raft.app.data.RaftRuntimeCatalogNames.observeCatalogs() else null
+    return remember(current, status, avatar, readReceipt, memberId, kind, fallbackHandle, viewerServerId, knownServers, modelLabelCatalog, runtimeCatalogs) {
         if (current == null) {
             RaftProfilePreviewCardModel.unavailable(memberId, kind, fallbackHandle)
         } else {

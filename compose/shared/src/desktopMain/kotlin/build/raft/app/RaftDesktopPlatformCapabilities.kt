@@ -43,6 +43,11 @@ internal actual fun raftPlatformShortcutsUseCommand(): Boolean =
 
 internal actual fun raftPlatformSupportsInAppBrowser(): Boolean = false
 
+internal actual fun raftPlatformSupportsEmbeddedOwnWebView(): Boolean =
+    !System.getProperty("os.name").orEmpty().lowercase().startsWith("windows")
+
+internal actual fun raftPlatformUsesEphemeralAuthWebView(): Boolean = true
+
 internal actual fun raftPlatformClipboardHasAttachments(): Boolean = RaftDesktopClipboardAttachments.available()
 
 internal actual fun raftPlatformReadClipboardAttachments(): List<PlatformFile> = RaftDesktopClipboardAttachments.read()

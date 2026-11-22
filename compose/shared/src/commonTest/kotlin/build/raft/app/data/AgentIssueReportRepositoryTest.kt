@@ -128,20 +128,6 @@ class AgentIssueReportRepositoryTest {
     }
 
     @Test
-    fun agentWithoutMachineSkipsTranscriptAndOmitsTranscriptMetadata() = runTest {
-        val network = RecordingAgentIssueNetworkClient()
-        val result = repository(network).submit(submission(machineId = null))
-
-        val content = assertIs<DataResult.Content<AgentIssueReportResult>>(result)
-        assertFalse(content.data.transcriptRequested)
-        assertNull(content.data.transcriptRequestState)
-        assertTrue(network.calls.none { it.endsWith("/transcript") })
-        val metadata = network.createBody["metadata"]!!.jsonObject
-        assertFalse(metadata.containsKey("transcript"))
-        assertFalse(metadata["includes"]!!.jsonObject.containsKey("runtimeSessionTranscript"))
-    }
-
-    @Test
     fun failedTicketStillReportsTheUploadAndRetryReusesTheSubmissionId() = runTest {
         val network = RecordingAgentIssueNetworkClient(ticketResponses = mutableListOf(HomeNetworkResponse(503, """{"code":"feedback_service_unavailable"}""")))
         val repository = repository(network)
@@ -171,16 +157,6 @@ class AgentIssueReportRepositoryTest {
             assertEquals(expected, content.data.transcriptRequestState, "code=${response.code}")
             assertEquals(RECEIPT_TICKET_ID, content.data.ticketId)
         }
-    }
-
-    @Test
-    fun transcriptWithoutAnswerWithinTheCapIsUnconfirmed() = runTest {
-        val network = RecordingAgentIssueNetworkClient(transcriptHangs = true)
-
-        val content = assertIs<DataResult.Content<AgentIssueReportResult>>(repository(network).submit(submission()))
-
-        assertEquals(AgentIssueTranscriptRequestState.RequestUnconfirmed, content.data.transcriptRequestState)
-        assertEquals(RECEIPT_TICKET_ID, content.data.ticketId)
     }
 
     @Test

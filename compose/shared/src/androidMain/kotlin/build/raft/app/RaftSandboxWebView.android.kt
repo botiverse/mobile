@@ -276,7 +276,7 @@ internal class RaftAndroidSandboxWebView(
         removeDownloadSupport()
         pendingRuntimeJavaScript = ""
         removeDocumentStartScript()
-        diagnosticsInfo("destroy_webview loadedSrc=${loadedSrc.raftRedactedUrlForLog()}")
+        diagnosticsInfo("destroy_webview loadedSrc=${loadedSrc.formatUrlForLog()}")
         webView.stopLoading()
         webView.loadUrl(ABOUT_BLANK_URL)
         webView.webChromeClient = null
@@ -287,7 +287,7 @@ internal class RaftAndroidSandboxWebView(
 
     /** [restoreUrl]: the page to load in the new WebView (the one shown, [raftWebViewRendererGoneRestoreUrl]); [src] when blank. */
     private fun recreateWebView(restoreCurrentDocument: Boolean, restoreUrl: String = "") {
-        diagnosticsInfo("recreate_webview previousSrc=${src.raftRedactedUrlForLog()}")
+        diagnosticsInfo("recreate_webview previousSrc=${src.formatUrlForLog()}")
         loadedSrc = ""
         lastSuccessfulUrl = ""
         allowedUri = src.takeIf { it.isNotBlank() }?.let { runCatching { Uri.parse(it) }.getOrNull() }
@@ -426,7 +426,7 @@ internal class RaftAndroidSandboxWebView(
                     diagnosticsWarn(
                         "render_process_gone didCrash=${detail?.didCrash()} " +
                             "priority=${detail?.rendererPriorityAtExit()} " +
-                            "loadedSrc=${loadedSrc.raftRedactedUrlForLog()}",
+                            "loadedSrc=${loadedSrc.formatUrlForLog()}",
                         always = true,
                     )
                     val restoreDocument = loadedSrc.isNotBlank()
@@ -439,7 +439,7 @@ internal class RaftAndroidSandboxWebView(
                             bootstrapNavigationFence.pendingTargetUrl ?: currentUrl,
                             ::rendererGoneRestoreAllows,
                         )
-                    diagnosticsInfo("render_process_gone_restore url=${restoreUrl.raftRedactedUrlForLog()} shown=${restoreUrl != src}")
+                    diagnosticsInfo("render_process_gone_restore url=${restoreUrl.formatUrlForLog()} shown=${restoreUrl != src}")
                     // The host's load watchdog: an error state when the page was not up yet.
                     events.onContentProcessGone(if (detail?.didCrash() == true) "render_process_crashed" else "render_process_killed")
                     removeHostMessageListener()
@@ -464,7 +464,7 @@ internal class RaftAndroidSandboxWebView(
                     loadStartedAtMs = System.currentTimeMillis()
                     loggedProgressMilestone = 0
                     persistedConsoleErrors = 0
-                    diagnosticsInfo("page_started url=${target.raftRedactedUrlForLog()}")
+                    diagnosticsInfo("page_started url=${target.formatUrlForLog()}")
                     bootstrapNavigationFence.onMainFrameStarted(target)
                     val sourceOrigin = raftDocumentStartScriptOriginRule(src)
                     val targetOrigin = raftDocumentStartScriptOriginRule(target)
@@ -489,13 +489,13 @@ internal class RaftAndroidSandboxWebView(
                     if (destroyed) return
                     super.onPageFinished(view, url)
                     val target = url.orEmpty()
-                    diagnosticsInfo("page_finished url=${target.raftRedactedUrlForLog()} ${loadElapsedField()}")
+                    diagnosticsInfo("page_finished url=${target.formatUrlForLog()} ${loadElapsedField()}")
                     if (url != null && !shouldBlockMainFrameNavigation(url)) {
                         currentUrl = target
                         currentTitle = view?.title.orEmpty().ifBlank { currentTitle }
                         currentProgress = 100
                         currentIsLoading = false
-                        evaluateInjectedJavaScript()
+                        evaluateInjectedJavaScript(url)
                         if (bootstrapNavigationFence.mayUncover(url)) {
                             onPagePainted()
                             notifyLoadSuccess(url, "finished", beforeCallback = ::flushPendingRuntimeJavaScript)
@@ -509,7 +509,7 @@ internal class RaftAndroidSandboxWebView(
                     if (destroyed) return
                     super.onPageCommitVisible(view, url)
                     val target = url.orEmpty()
-                    diagnosticsInfo("page_commit_visible url=${target.raftRedactedUrlForLog()} ${loadElapsedField()}")
+                    diagnosticsInfo("page_commit_visible url=${target.formatUrlForLog()} ${loadElapsedField()}")
                     if (url != null && !shouldBlockMainFrameNavigation(url)) {
                         currentUrl = target
                         currentTitle = view?.title.orEmpty().ifBlank { currentTitle }
@@ -578,7 +578,7 @@ internal class RaftAndroidSandboxWebView(
                         val errorCode = if (modern) error?.errorCode ?: 0 else 0
                         currentUrl = request.url?.toString().orEmpty().ifBlank { currentUrl }
                         currentIsLoading = false
-                        diagnosticsWarn("page_error code=$errorCode url=${currentUrl.raftRedactedUrlForLog()} ${loadElapsedField()}")
+                        diagnosticsWarn("page_error code=$errorCode url=${currentUrl.formatUrlForLog()} ${loadElapsedField()}")
                         notifyNavigationState()
                         notifyLoadFailure(reason)
                     }
@@ -590,7 +590,7 @@ internal class RaftAndroidSandboxWebView(
                     currentUrl = error?.url.orEmpty().ifBlank { currentUrl }
                     currentIsLoading = false
                     val reason = "ssl_error_${error?.primaryError ?: -1}"
-                    diagnosticsWarn("page_error reason=$reason url=${currentUrl.raftRedactedUrlForLog()} ${loadElapsedField()}")
+                    diagnosticsWarn("page_error reason=$reason url=${currentUrl.formatUrlForLog()} ${loadElapsedField()}")
                     notifyNavigationState()
                     notifyLoadFailure(reason)
                 }
@@ -605,7 +605,7 @@ internal class RaftAndroidSandboxWebView(
                     if (destroyed || request?.isForMainFrame != true) return
                     diagnosticsWarn(
                         "page_http_error status=${errorResponse?.statusCode ?: -1} " +
-                            "url=${request.url?.toString().orEmpty().raftRedactedUrlForLog()} ${loadElapsedField()}"
+                            "url=${request.url?.toString().orEmpty().formatUrlForLog()} ${loadElapsedField()}"
                     )
                 }
             }
@@ -855,7 +855,7 @@ internal class RaftAndroidSandboxWebView(
         if (shouldBootstrapInjectedJavaScript(documentStartInstalled)) {
             val bootstrapDocumentUrl = raftInjectedJavaScriptBootstrapBaseUrl(documentUrl) ?: documentUrl
             bootstrapNavigationFence.begin(targetUrl = documentUrl)
-            diagnosticsInfo("load_src bootstrap=true url=${documentUrl.raftRedactedUrlForLog()}")
+            diagnosticsInfo("load_src bootstrap=true url=${documentUrl.formatUrlForLog()}")
             webView.loadDataWithBaseURL(
                 bootstrapDocumentUrl,
                 injectedJavaScriptBootstrapHtml(documentUrl),
@@ -865,7 +865,7 @@ internal class RaftAndroidSandboxWebView(
             )
         } else {
             bootstrapNavigationFence.reset()
-            diagnosticsInfo("load_src bootstrap=false url=${documentUrl.raftRedactedUrlForLog()}")
+            diagnosticsInfo("load_src bootstrap=false url=${documentUrl.formatUrlForLog()}")
             webView.loadUrl(documentUrl)
         }
     }
@@ -879,7 +879,7 @@ internal class RaftAndroidSandboxWebView(
         val target = url ?: return false
         if (wouldBlockMainFrameNavigation(target)) return false
         if (events.routesMainFrameNavigation?.invoke(target) != true) return false
-        diagnosticsInfo("navigation_routed_as_link url=${target.raftRedactedUrlForLog()}")
+        diagnosticsInfo("navigation_routed_as_link url=${target.formatUrlForLog()}")
         handleBlockedMainFrameNavigation(target)
         return true
     }
@@ -949,9 +949,16 @@ internal class RaftAndroidSandboxWebView(
         lastSuccessfulUrl = url
         lastLoadFailureReason = ""
         beforeCallback?.invoke()
-        diagnosticsInfo("page_success phase=$phase url=${url.raftRedactedUrlForLog()} ${loadElapsedField()}")
+        diagnosticsInfo("page_success phase=$phase url=${url.formatUrlForLog()} ${loadElapsedField()}")
         events.onLoadSuccess()
     }
+
+    private fun String.formatUrlForLog(): String =
+        if (diagnosticsSurface == SETTINGS_WEB_PAGE_DIAGNOSTICS_NAME) {
+            raftOwnWebUrlForLog(this)
+        } else {
+            raftRedactedUrlForLog()
+        }
 
     /**
      * Load-path lines. For a keep-alive WebView (the Artifact viewer) they also go to the persistent
@@ -1003,15 +1010,22 @@ internal class RaftAndroidSandboxWebView(
         events.onNavigationStateChange(state)
     }
 
-    private fun evaluateInjectedJavaScript() {
-        if (destroyed) return
-        if (!isTopDocumentOnLockedOrigin()) return
-        val script = injectedJavaScript.takeIf { allowScripts && it.isNotBlank() } ?: return
+    private fun evaluateInjectedJavaScript(pageUrl: String? = null) {
+        if (destroyed || !allowScripts) return
+        val script = injectedJavaScript.takeIf { it.isNotBlank() } ?: return
+        val activeUrl = pageUrl?.takeIf { it.isNotBlank() } ?: webView.url.orEmpty()
+        val sourceOrigin = raftDocumentStartScriptOriginRule(src)
+        val activeOrigin = raftDocumentStartScriptOriginRule(activeUrl)
+        if (sourceOrigin == null || activeOrigin != sourceOrigin) return
+        val viewUrl = webView.url?.takeIf { it.isNotBlank() }
+        if (viewUrl != null && raftDocumentStartScriptOriginRule(viewUrl) != sourceOrigin) return
+        if (mainFrameOrigin != null && activeOrigin != mainFrameOrigin) return
+        if (!allowNavigation && !isAllowedMainDocumentUrl(activeUrl)) return
         webView.evaluateJavascript(script, null)
     }
 
     private fun logConsoleMessage(consoleMessage: ConsoleMessage) {
-        val source = consoleMessage.sourceId().orEmpty().raftRedactedUrlForLog()
+        val source = consoleMessage.sourceId().orEmpty().formatUrlForLog()
         val message = consoleMessage.message().orEmpty().raftSanitizedLogValue(LOG_MESSAGE_LIMIT)
         val line = consoleMessage.lineNumber()
         when (consoleMessage.messageLevel()) {
@@ -1419,12 +1433,6 @@ internal class RaftAndroidSandboxWebView(
         mainFrameOrigin != null ||
             allowedNavigationSchemes.isNotEmpty() && (!allowNavigation || injectedJavaScript.isBlank())
 
-    /** True unless an origin lock is set and the top-level document is elsewhere. */
-    private fun isTopDocumentOnLockedOrigin(): Boolean {
-        val locked = mainFrameOrigin ?: return true
-        return raftDocumentStartScriptOriginRule(webView.url.orEmpty()) == locked
-    }
-
     private fun injectedJavaScriptBootstrapHtml(targetUrl: String): String {
         val safeScript = injectedJavaScript.replace("</script", "<\\/script", ignoreCase = true)
         val safeTargetUrl = AndroidJSONObject.quote(targetUrl)
@@ -1457,7 +1465,7 @@ internal class RaftAndroidSandboxWebView(
         Log.i(
             LOG_TAG,
             "host_main_document source=${document.source} bytes=${document.bytes.size} " +
-                "durationMs=${System.currentTimeMillis() - startedAt} url=${target.raftRedactedUrlForLog()}"
+                "durationMs=${System.currentTimeMillis() - startedAt} url=${target.formatUrlForLog()}"
         )
         return WebResourceResponse(document.mimeType, "utf-8", ByteArrayInputStream(document.bytes))
     }
@@ -1506,7 +1514,8 @@ internal fun raftDocumentStartScriptOriginRule(targetUrl: String): String? =
         val uri = URI(targetUrl)
         val scheme = uri.scheme?.lowercase()?.takeIf { it == "http" || it == "https" } ?: return null
         val host = uri.host?.lowercase()?.takeIf { it.isNotBlank() } ?: return null
-        val port = uri.port.takeIf { it >= 0 }?.let { ":$it" }.orEmpty()
+        val defaultPort = if (scheme == "https") 443 else 80
+        val port = uri.port.takeIf { it >= 0 && it != defaultPort }?.let { ":$it" }.orEmpty()
         "$scheme://$host$port"
     }.getOrNull()
 

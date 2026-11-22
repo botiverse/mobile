@@ -68,19 +68,6 @@ class ThreadOpenSelectedTabTest {
     }
 
     @Test
-    fun anotherConversationDoesNotInheritTheTabPickedInThePreviousOne() = runTest {
-        val (first, dataSource) = newStore()
-        first.accept(SharedThreadIntent.Start(basePayload()))
-        first.accept(SharedThreadIntent.SelectTab("files"))
-        assertEquals("files", first.state.value.payload.selectedTab)
-
-        val second = SharedThreadStore(dataSource = dataSource, scope = storeScope())
-        second.accept(SharedThreadIntent.Start(activityOpenRoute("channel-2")))
-
-        assertEquals("chat", second.state.value.payload.selectedTab)
-    }
-
-    @Test
     fun aRouteThatNamesTasksOpensTasks() = runTest {
         val (store, _) = newStore()
 

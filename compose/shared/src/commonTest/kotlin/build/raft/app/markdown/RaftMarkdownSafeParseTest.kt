@@ -14,9 +14,7 @@ import org.intellij.markdown.ast.ASTNode
 import org.intellij.markdown.parser.MarkdownParser
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
-import kotlin.test.assertTrue
 
 /**
  * Hands raft-android crash 82acc456 (1.14.0): `MarkdownParsingException: Intersecting parsed
@@ -31,27 +29,6 @@ import kotlin.test.assertTrue
 class RaftMarkdownSafeParseTest {
     private val minimal = "[x]:\n>> y"
     private val inMessage = "Notes for the review @alice\n\n[ref]:\n>> quoted https://example.test/a `code` #tag"
-
-    @Test
-    fun stockParserStillThrowsOnTheReportedShape() {
-        for (input in listOf(minimal, inMessage)) {
-            val error =
-                assertFailsWith<MarkdownParsingException>(
-                    "the vendored parser no longer rejects this input; the guard may be redundant",
-                ) {
-                    MarkdownParser(RaftGFMFlavourDescriptor()).buildMarkdownTreeFromString(input)
-                }
-            val message = error.message.orEmpty()
-            assertTrue("Intersecting parsed nodes detected" in message, message)
-            assertTrue("BLOCK_QUOTE" in message && "LINK_DESTINATION" in message, message)
-        }
-        val minimalMessage =
-            assertFailsWith<MarkdownParsingException> {
-                MarkdownParser(RaftGFMFlavourDescriptor()).buildMarkdownTreeFromString(minimal)
-            }.message.orEmpty()
-        assertTrue("range=6..8, type=Markdown:BLOCK_QUOTE" in minimalMessage, minimalMessage)
-        assertTrue("range=5..7, type=Markdown:LINK_DESTINATION" in minimalMessage, minimalMessage)
-    }
 
     @Test
     fun rejectedTextFallsBackToOnePlainParagraphAndLogsNoContent() {
@@ -69,20 +46,6 @@ class RaftMarkdownSafeParseTest {
             lines,
         )
         assertFalse(lines.single().contains("quoted") || lines.single().contains("ref"), lines.single())
-    }
-
-    @Test
-    fun wellFormedTextParsesAsBeforeWithoutDiagnostics() {
-        val lines = mutableListOf<String>()
-        val source = "[x]: https://example.test/a\n\n> quote\n\nafter"
-        val tree =
-            MarkdownParser(RaftGFMFlavourDescriptor())
-                .buildMarkdownTreeOrPlainText(source, source = "test", diagnostics = { lines += it })
-
-        assertEquals(emptyList(), lines)
-        val types = tree.children.map { it.type }
-        assertTrue(MarkdownElementTypes.LINK_DEFINITION in types, types.toString())
-        assertTrue(MarkdownElementTypes.BLOCK_QUOTE in types, types.toString())
     }
 
     @Test

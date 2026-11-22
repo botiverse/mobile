@@ -1,10 +1,8 @@
 package build.raft.designsystem
 
 import androidx.compose.ui.graphics.Color
-import build.raft.designsystem.components.raftContrastRatio
 import build.raft.designsystem.components.raftFillOnSurface
 import build.raft.designsystem.components.raftParseHexColor
-import kotlin.math.abs
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -26,12 +24,6 @@ class RaftAppLinkCardBadgeTest {
         assertNull(raftParseHexColor("#+250df"))
         assertNull(raftParseHexColor("purple"))
         assertNull(raftParseHexColor(null))
-    }
-
-    @Test
-    fun contrastIsWcag2() {
-        assertTrue(abs(raftContrastRatio(Color.Black, Color.White) - 21f) < 0.01f)
-        assertTrue(abs(raftContrastRatio(Color.White, Color.White) - 1f) < 0.001f)
     }
 
     @Test

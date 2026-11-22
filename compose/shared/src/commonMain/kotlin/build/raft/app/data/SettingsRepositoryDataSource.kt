@@ -305,9 +305,20 @@ class RealSettingsRepository(
      * that never serve the notification settings screen (sidebar order, members, thread pages).
      */
     private val serverNotificationLastKnownStore: SettingsServerNotificationLastKnownStore? = null,
+    private val onTimeFormatUpdated: (String) -> Unit = {},
 ) : SettingsRepository, SettingsServerActionRepository, SettingsServerManagementRepository {
     private val computersApiClient = RaftComputersApiClient(RaftComputersNetworkApi(networkClient))
     private val secondFactorStepUpRepository = SecondFactorStepUpRepository(networkClient)
+    private val deviceLoginApprovalRepository = DeviceLoginApprovalRepository(networkClient)
+
+    override suspend fun describeDeviceLogin(userCode: String): DataResult<DeviceLoginRequest> =
+        deviceLoginApprovalRepository.describe(userCode)
+
+    override suspend fun approveDeviceLogin(request: DeviceLoginRequest, serverId: String): DataResult<Unit> =
+        deviceLoginApprovalRepository.approve(request, serverId)
+
+    override suspend fun denyDeviceLogin(request: DeviceLoginRequest): DataResult<Unit> =
+        deviceLoginApprovalRepository.deny(request)
 
     override suspend fun stepUpSecondFactor(answer: SecondFactorStepUpAnswer): SecondFactorStepUpResult =
         secondFactorStepUpRepository.stepUp(answer)
@@ -461,7 +472,9 @@ class RealSettingsRepository(
     /**
      * Web SettingsPanel `handleDisconnectProvider`: `DELETE /api/auth/identities/:provider`, then the
      * account is read again so the row shows "Not connected". A 409 `PASSWORD_CREDENTIAL_REQUIRED`
-     * (the last sign-in and no password) comes back as an error carrying the server's sentence.
+     * (the last sign-in and no password) comes back as an error carrying the server's sentence and
+     * that code ([ScreenError.serverCode]): the page then reads the sign-in methods again, as the
+     * web does, so its confirm turns into "Set a password first".
      */
     override suspend fun disconnectAccountProvider(providerId: String): DataResult<AccountSettingsSnapshot> {
         sessionStore.readSession() ?: return authRequired()
@@ -472,6 +485,7 @@ class RealSettingsRepository(
                 emptyReason = EmptyReason.NoSettingsAvailable,
                 block = { networkClient.disconnectSettingsAccountProvider(DataRequestPriority.Foreground, id) },
                 errorTextDecoder = HomeNetworkResponse::settingsAccountRouteErrorTextOrNull,
+                errorCodeDecoder = HomeNetworkResponse::settingsAccountRouteErrorCodeOrNull,
                 mapper = { bodyText ->
                     parseSharedAccountProviderUnlinkResult(bodyText)
                         ?: throw IllegalStateException("Account provider unlink response missing identities")
@@ -1530,7 +1544,9 @@ class RealSettingsRepository(
         val effectiveTimeFormat =
             snapshot.timeFormat.selectedKey.takeIf { it == "12h" || it == "24h" }
                 ?: return
+        var applied = false
         sessionStore.updateMetadata(expectedAccountId) { latest ->
+            applied = true
             latest.copy(
                 user =
                     latest.user.copy(
@@ -1539,6 +1555,9 @@ class RealSettingsRepository(
                         timeFormat = effectiveTimeFormat,
                     )
             )
+        }
+        if (applied) {
+            onTimeFormatUpdated(effectiveTimeFormat)
         }
     }
 

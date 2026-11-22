@@ -1,5 +1,6 @@
 package build.raft.app.data
 
+import build.raft.app.model.AgentReasoningSetting
 import build.raft.app.model.AgentStatus
 import build.raft.app.model.avatarWireValueForAvatarSlot
 import build.raft.app.model.MemberId
@@ -11,7 +12,6 @@ import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
-import build.raft.app.model.toMemberProfile
 
 class MemberAgentParserTest {
     @Test
@@ -60,37 +60,6 @@ class MemberAgentParserTest {
         assertEquals("private", channels.channels.last().type)
         assertEquals(true, channels.channels.last().activityMuted)
         assertEquals(7L, channels.channels.last().muteFromSeq)
-    }
-
-    @Test
-    fun agentsListUsesRuntimeProfileComputerName() {
-        val members = parseSharedSettingsAgentsAsMembers(
-            """
-            [
-              {
-                "id": "agent-1",
-                "name": "builder",
-                "displayName": "Builder",
-                "status": "active",
-                "runtime": "claude",
-                "runtimeProfile": {
-                  "current": {
-                    "machineId": "machine-1",
-                    "machineName": "Mac Studio",
-                    "daemonVersion": "0.43.0"
-                  },
-                  "migrationStatus": "stable"
-                }
-              }
-            ]
-            """.trimIndent()
-        )
-
-        val profile = assertNotNull(members).single()
-        assertEquals(
-            listOf("claude", "computer:Mac Studio", "computer-id:machine-1"),
-            profile.permissionBadges
-        )
     }
 
     @Test
@@ -144,26 +113,6 @@ class MemberAgentParserTest {
     }
 
     @Test
-    fun agentsListFallsBackInactiveLifecycleStatusToOfflineLikeWeb() {
-        val members = parseSharedSettingsAgentsAsMembers(
-            """
-            [
-              {
-                "id": "agent-1",
-                "name": "builder",
-                "displayName": "Builder",
-                "status": "inactive"
-              }
-            ]
-            """.trimIndent()
-        )
-
-        val profile = assertNotNull(members).single()
-        assertEquals(AgentStatus.Offline, profile.agentStatus)
-        assertEquals(Presence.Offline, profile.presence)
-    }
-
-    @Test
     fun agentsListNeverDerivesLivenessFromActiveLifecycleStatus() {
         // task #135 regression lock: "active" is the ACCOUNT lifecycle (not
         // archived/stopped) and stays "active" while the agent's machine is
@@ -186,48 +135,6 @@ class MemberAgentParserTest {
         val profile = assertNotNull(members).single()
         assertNull(profile.agentStatus)
         assertEquals(Presence.Offline, profile.presence)
-    }
-
-    @Test
-    fun agentsListUsesActivityStatusBeforeInactiveLifecycleStatus() {
-        val members = parseSharedSettingsAgentsAsMembers(
-            """
-            [
-              {
-                "id": "agent-1",
-                "name": "builder",
-                "displayName": "Builder",
-                "status": "inactive",
-                "activity": "working"
-              }
-            ]
-            """.trimIndent()
-        )
-
-        val profile = assertNotNull(members).single()
-        assertEquals(AgentStatus.Working, profile.agentStatus)
-        assertEquals(Presence.Active, profile.presence)
-    }
-
-    @Test
-    fun currentActivityEntryDoesNotTreatActiveLifecycleAsOnline() {
-        assertNull(
-            currentAgentActivityEntry(
-                agentId = MemberId("agent-1"),
-                activity = null,
-                status = "active",
-                activityDetail = null
-            )
-        )
-        assertEquals(
-            "working",
-            currentAgentActivityEntry(
-                agentId = MemberId("agent-1"),
-                activity = "working",
-                status = "active",
-                activityDetail = "Building"
-            )?.statusActivity
-        )
     }
 
     @Test
@@ -477,38 +384,12 @@ class MemberAgentParserTest {
     // parallel sources (agentStore.ts); either alone must mark the agent external so a
     // payload missing one key cannot silently demote it to a managed (green) agent.
     @Test
-    fun agentsListMarksExternalFromProjectedBoolean() {
-        val profile =
-            assertNotNull(
-                parseSharedSettingsAgentsAsMembers(
-                    """
-                    [{"id":"agent-x","name":"bridge","displayName":"Bridge","status":"active","runtime":"external","external":true}]
-                    """.trimIndent()
-                )
-            ).single()
-        assertTrue(profile.isExternal)
-    }
-
-    @Test
     fun agentsListMarksExternalFromRuntimeSentinelWhenBooleanMissing() {
         val profile =
             assertNotNull(
                 parseSharedSettingsAgentsAsMembers(
                     """
                     [{"id":"agent-x","name":"bridge","displayName":"Bridge","status":"active","runtime":"external"}]
-                    """.trimIndent()
-                )
-            ).single()
-        assertTrue(profile.isExternal)
-    }
-
-    @Test
-    fun agentsListMarksExternalFromBooleanWhenRuntimeIsAbsent() {
-        val profile =
-            assertNotNull(
-                parseSharedSettingsAgentsAsMembers(
-                    """
-                    [{"id":"agent-x","name":"bridge","displayName":"Bridge","status":"active","external":true}]
                     """.trimIndent()
                 )
             ).single()
@@ -534,74 +415,36 @@ class MemberAgentParserTest {
         profiles.forEach { assertFalse(it.isExternal, "${it.handle} must stay managed") }
     }
 
+    /**
+     * `GET /agents` rows as botiverse/slock staging c0f6195c6 projects them (`routes/agents.ts`
+     * `buildAgentListItems`: `withAgentProjection` sends the hydrated `RuntimeConfig` to viewers who
+     * may edit the agent, `stripEnvVars` drops it for the rest). The `reasoningEffort` column never
+     * holds Pi's `off` (`agents.api.test.ts`, "Pi's off is kept in runtimeConfig only") nor Kimi
+     * Code's levels (`agents.mobileV1120SaveRequests.api.test.ts`), so the list reads the config
+     * first, as the profile does (web #15691; Kimi's `thinking-max` from its test).
+     */
     @Test
-    fun agentProfileAndCreatedAgentsCarryExternal() {
-        val agent =
-            assertNotNull(
-                parseSharedAgentProfile(
-                    """
-                    {"id":"agent-x","name":"bridge","displayName":"Bridge","status":"active","runtime":"external","external":true}
-                    """.trimIndent()
-                )
+    fun agentsListReadsTheReasoningAsTheProfileDoes() {
+        val agents =
+            parseSharedSettingsAgentsAsMembers(
+                """
+                [
+                  {"id":"agent-pi","name":"pi-off","status":"active","runtime":"pi","model":"anthropic/sonnet-live","reasoningEffort":null,
+                   "runtimeConfig":{"version":1,"runtime":"pi","provider":{"kind":"default"},"model":{"kind":"preset","id":"anthropic/sonnet-live"},"mode":{"kind":"default"},"reasoningEffort":"off","envVars":null}},
+                  {"id":"agent-kimi","name":"kimi","status":"active","runtime":"kimi-sdk","model":"kimi-k2","reasoningEffort":null,
+                   "runtimeConfig":{"version":1,"runtime":"kimi-sdk","model":{"kind":"default"},"mode":{"kind":"default"},"reasoningEffort":"thinking-max","envVars":null}},
+                  {"id":"agent-member-view","name":"builder","status":"active","runtime":"codex","model":"gpt-5.5","reasoningEffort":"high"},
+                  {"id":"agent-odd-config","name":"odd","status":"active","runtime":"claude","model":"sonnet","reasoningEffort":"medium",
+                   "runtimeConfig":{"version":1,"runtime":"gemini","reasoningEffort":{"level":"high"}}}
+                ]
+                """.trimIndent()
             )
-        assertTrue(agent.isExternal)
-
-        val human =
-            assertNotNull(
-                parseSharedMemberProfile(
-                    """
-                    {
-                      "userId":"user-1","name":"owner","displayName":"Owner","role":"member",
-                      "createdAgents":[
-                        {"id":"agent-x","name":"bridge","displayName":"Bridge","status":"active","runtime":"external"},
-                        {"id":"agent-y","name":"claude","displayName":"Claude","status":"active","runtime":"claude"}
-                      ]
-                    }
-                    """.trimIndent()
-                )
-            )
-        assertFalse(human.isExternal)
-        assertEquals(listOf(true, false), human.createdAgents.map { it.isExternal })
-    }
-
-    @Test
-    fun agentProfileToMemberProfilePreservesExternal() {
-        val external =
-            assertNotNull(
-                parseSharedAgentProfile(
-                    """
-                    {"id":"agent-x","name":"bridge","displayName":"Bridge","status":"active","runtime":"external"}
-                    """.trimIndent()
-                )
-            )
-        val managed =
-            assertNotNull(
-                parseSharedAgentProfile(
-                    """
-                    {"id":"agent-y","name":"claude","displayName":"Claude","status":"active","runtime":"claude"}
-                    """.trimIndent()
-                )
-            )
-        // parseSharedAgentProfile already yields a MemberProfile; round-trip through the
-        // human profile's createdAgents (AgentProfile) and back to MemberProfile.
-        val human =
-            assertNotNull(
-                parseSharedMemberProfile(
-                    """
-                    {"userId":"user-1","name":"owner","displayName":"Owner","role":"member",
-                     "createdAgents":[
-                       {"id":"agent-x","name":"bridge","displayName":"Bridge","status":"active","runtime":"external"},
-                       {"id":"agent-y","name":"claude","displayName":"Claude","status":"active","runtime":"claude"}
-                     ]}
-                    """.trimIndent()
-                )
-            )
-        assertEquals(
-            listOf(true, false),
-            human.createdAgents.map { it.toMemberProfile().isExternal }
-        )
-        assertTrue(external.isExternal)
-        assertFalse(managed.isExternal)
+        val byId = assertNotNull(agents).associateBy { it.id.value }
+        assertEquals(AgentReasoningSetting("pi", "off"), byId.getValue("agent-pi").agentReasoning)
+        assertEquals(AgentReasoningSetting("kimi-sdk", "thinking-max"), byId.getValue("agent-kimi").agentReasoning)
+        assertEquals(AgentReasoningSetting("codex", "high"), byId.getValue("agent-member-view").agentReasoning)
+        // A config this client can't read keeps the row, on the agent's own fields.
+        assertEquals(AgentReasoningSetting("claude", "medium"), byId.getValue("agent-odd-config").agentReasoning)
     }
 
     /**

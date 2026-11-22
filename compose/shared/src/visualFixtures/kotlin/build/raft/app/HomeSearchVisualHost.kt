@@ -17,6 +17,7 @@ import build.raft.app.data.SearchSenderFilterItem
 import build.raft.app.data.SearchSort
 import build.raft.app.data.SearchTimeRange
 import build.raft.app.data.SettingsServerSidebarOrderSnapshot
+import build.raft.app.data.parseSharedSearchItems
 import build.raft.app.data.SettingsServerSidebarPinnedItem
 import build.raft.app.data.SharedHomeContentState
 import build.raft.app.data.SharedHomeSearchPanelState
@@ -310,6 +311,10 @@ private val homeSearchResultsVisualHomeState =
             }
     )
 
+// `GET /messages/search` as the web side of the case loads it, read by the app's own parser.
+private val homeSearchResultsVisualHits =
+    checkNotNull(parseSharedSearchItems(VisualFixtureWire.SEARCH_RESULTS)) { "searchResultsFixture.json does not parse" }
+
 private val homeSearchResultsVisualSearchState =
     SharedHomeSearchPanelState(
         query = "android",
@@ -341,61 +346,9 @@ private val homeSearchResultsVisualSearchState =
                     avatarWireValue = "pixel:robot"
                 )
             ),
-        items =
-            listOf(
-                // The rows as the search mapping (InboxParser) reads searchResultsFixture.json:
-                // createdAt as the time (relative to the fixture's now, as the web formats it),
-                // the sender's id and kind (Cindy's avatar is the fixture agent's).
-                InboxItem(
-                    key = "msg-visual-search-1",
-                    kind = InboxItemKind.Channel,
-                    channelId = ChannelId("ch_design"),
-                    channelName = "design",
-                    lastMessageId = MessageId("msg-visual-search-1"),
-                    lastMessagePreview = "Captured the Android visual artifact for #product:f8e569cb and queued React parity.",
-                    lastMessageAt = VisualFixtureData.Times.THREAD_MESSAGE_AT_ISO,
-                    lastMessageSenderName = VisualFixtureData.Agents.Cindy.NAME,
-                    lastMessageSenderId = VisualFixtureData.Agents.Cindy.ID,
-                    lastMessageSenderKind = MemberKind.Agent,
-                    lastMessageSenderAvatarWireValue = VisualFixtureData.Agents.Cindy.AVATAR,
-                    latestActivityMessageId = MessageId("msg-visual-search-1"),
-                    latestActivityPreview = "Captured the Android visual artifact for #product:f8e569cb and queued React parity.",
-                    latestActivityAt = VisualFixtureData.Times.THREAD_MESSAGE_AT_ISO,
-                    latestActivitySenderName = VisualFixtureData.Agents.Cindy.NAME,
-                    latestActivitySenderId = VisualFixtureData.Agents.Cindy.ID,
-                    latestActivitySenderKind = MemberKind.Agent,
-                    latestActivitySenderAvatarWireValue = VisualFixtureData.Agents.Cindy.AVATAR
-                ),
-                InboxItem(
-                    key = "msg-visual-search-2",
-                    kind = InboxItemKind.Thread,
-                    channelId = ChannelId("thread-msg-agent-reply"),
-                    channelName = "design",
-                    lastMessageId = MessageId("msg-visual-search-2"),
-                    lastMessagePreview = "Review the Android composer crop before release.",
-                    lastMessageAt = VisualFixtureData.Times.THREAD_REPLY_AT_ISO,
-                    lastMessageSenderName = VisualFixtureData.Humans.Owner.NAME,
-                    lastMessageSenderId = VisualFixtureData.Humans.Owner.ID,
-                    lastMessageSenderKind = MemberKind.Human,
-                    // The fixture row has `"threadId": null`, so the web lists it as a plain hit
-                    // (it groups a hit under its thread only with a threadId); no thread key here
-                    // keeps the app's grouping on the same data.
-                    threadChannelId = null,
-                    parentChannelId = ChannelId("ch_design"),
-                    parentChannelName = "design",
-                    parentChannelKind = ConversationKind.Channel,
-                    parentMessageId = MessageId("msg-agent-reply"),
-                    parentMessagePreview = "Captured the Android visual artifact for #product:f8e569cb and queued React parity.",
-                    latestActivityMessageId = MessageId("msg-visual-search-2"),
-                    latestActivityPreview = "Review the Android composer crop before release.",
-                    latestActivityAt = VisualFixtureData.Times.THREAD_REPLY_AT_ISO,
-                    latestActivitySenderName = VisualFixtureData.Humans.Owner.NAME,
-                    latestActivitySenderId = VisualFixtureData.Humans.Owner.ID,
-                    latestActivitySenderKind = MemberKind.Human
-                )
-            ),
-        totalCount = 2,
-        hasMore = false
+        items = homeSearchResultsVisualHits.items,
+        totalCount = homeSearchResultsVisualHits.items.size,
+        hasMore = homeSearchResultsVisualHits.hasMore
     )
 
 private val homeSearchHomeVisualSearchState =
@@ -453,6 +406,7 @@ internal fun HomeSearchVisualContent(initialOpenFilterId: String? = null) {
         SharedHomeSearchPanel(
             state = state,
             homeState = homeSearchResultsVisualHomeState,
+            memberAvatarResolver = visualFixtureAvatarResolver,
             onIntent = {},
             onClose = {},
             interactiveSearchField = false,

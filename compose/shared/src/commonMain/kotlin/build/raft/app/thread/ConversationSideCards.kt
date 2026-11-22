@@ -24,6 +24,8 @@ import androidx.compose.ui.unit.dp
 import build.raft.app.resources.*
 import build.raft.designsystem.components.RaftTab
 import build.raft.designsystem.components.RaftTabs
+import build.raft.designsystem.focus.RaftFocusRegion
+import build.raft.designsystem.focus.RaftFocusRegionHost
 import build.raft.designsystem.gesture.rememberRaftBackSwipeDismiss
 import build.raft.app.data.SharedPreferenceStore
 import build.raft.app.data.raftSharedPreferenceStore
@@ -37,7 +39,7 @@ import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.jsonObject
 
 /**
- * Task v2 (`task_v2_conversations_v0`; web ChatPanel / ChannelSideArea, raft-design
+ * Task v2 (web ChatPanel / ChannelSideArea, raft-design
  * channel.md "Tasks and files"): a channel's or DM's Tasks and Files are cards opened from
  * header toggles instead of tabs. On a phone an open card covers the conversation under the
  * header; with both open one shows at a time under a Tasks / Files switch (Tasks first), the one
@@ -210,14 +212,13 @@ internal fun ConversationSideCardsIncomingNavigationEffect(
     }
 }
 
-/** Cards replace the tab row only with the flag on, on a page that has the tab row. */
+/** Cards replace the tab row on a page that has the tab row (not in the assistant's panel). */
 internal fun conversationSideCardsEnabled(
-    taskV2Enabled: Boolean,
     showModeTabs: Boolean,
     assistantPanelEmbed: Boolean,
-): Boolean = taskV2Enabled && showModeTabs && !assistantPanelEmbed
+): Boolean = showModeTabs && !assistantPanelEmbed
 
-/** The card an old Tasks / Files tab link (route `selectedTab`, `?chatTab=`) opens with the flag on. */
+/** The card an old Tasks / Files tab link (route `selectedTab`, `?chatTab=`) opens. */
 internal fun RaftThreadTab.conversationSideCard(): ConversationSideCard? =
     when (this) {
         RaftThreadTab.Chat -> null
@@ -385,12 +386,14 @@ internal fun conversationSideCardsColumn(
                     // Web `defaultShares(["tasks", "files"])`: 60/40.
                     defaultShare = if (card == ConversationSideCard.Tasks) 0.6f else 0.4f,
                 ) {
-                    RaftPaneGridCard(
-                        title = titles.getValue(card),
-                        closeLabel = closeLabels.getValue(card),
-                        onClose = { currentOnClose(card) },
-                    ) {
-                        if (card == ConversationSideCard.Tasks) currentTasks() else currentFiles()
+                    RaftFocusRegionHost(region = RaftFocusRegion.SupportingPane, modifier = Modifier.fillMaxSize()) {
+                        RaftPaneGridCard(
+                            title = titles.getValue(card),
+                            closeLabel = closeLabels.getValue(card),
+                            onClose = { currentOnClose(card) },
+                        ) {
+                            if (card == ConversationSideCard.Tasks) currentTasks() else currentFiles()
+                        }
                     }
                 }
             },

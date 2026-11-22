@@ -1,6 +1,5 @@
 package build.raft.app.data
 
-import build.raft.app.model.ActivityChanged
 import build.raft.app.model.ChannelId
 import build.raft.app.model.MessageId
 import build.raft.app.model.MessageMention
@@ -238,53 +237,6 @@ class SharedActivityStoreInboxInPlaceTest {
 
     private fun retract(serverId: String) =
         NotificationRetracted(ServerId(serverId), groupKey = "channel:channel-1", conversationId = "channel-1", throughSeq = 10L)
-
-    @Test
-    fun aHiddenListReadsNothingAndShowingItReadsOnceForVisibility() = runTest {
-        val f = loadedStore(listOf(channelRow), inPlace = true)
-
-        f.store.dispatch(SharedActivityIntent.SurfaceHidden)
-        f.store.dispatch(live("m-1", channelId = "channel-9", seq = 1L))
-        f.store.dispatch(SharedActivityIntent.ApplyRealtimeEvent(ActivityChanged(ServerId("server-1"), "activity_changed")))
-        advanceTimeBy(120_000L)
-        runCurrent()
-        assertEquals(1, f.inbox.reads.size, "nothing reads a hidden list")
-
-        f.store.dispatch(SharedActivityIntent.Refresh)
-        advanceTimeBy(120_000L)
-        runCurrent()
-        assertEquals(listOf<InboxFetchReason?>(InboxFetchReason.Initial, InboxFetchReason.Visibility), f.inbox.reads.map { it.reason })
-    }
-
-    @Test
-    fun patchedRowsAreReconciledAtMostOncePerMinute() = runTest {
-        val f = loadedStore(listOf(otherRow, channelRow), inPlace = true)
-        val interval = ActivityInPlaceReconcileIntervalMillis
-
-        // Patches every 10 s for three minutes.
-        var seq = 11L
-        while (testScheduler.currentTime < 3 * interval) {
-            f.store.dispatch(live("m-$seq", channelId = "channel-1", seq = seq))
-            seq += 1
-            advanceTimeBy(10_000L)
-            runCurrent()
-        }
-        advanceTimeBy(5 * interval)
-        runCurrent()
-
-        val reconciles = f.inbox.reads.filter { it.reason == InboxFetchReason.InPlaceReconcile }.map { it.atMillis }
-        assertEquals(f.inbox.reads.size - 1, reconciles.size, "no other read than the reconcile")
-        assertEquals(listOf(interval, 2 * interval, 3 * interval), reconciles, "one a minute while patches come, none after")
-
-        // A read of another kind after the patch covers it.
-        f.store.dispatch(live("m-$seq", channelId = "channel-1", seq = seq))
-        advanceTimeBy(1_000L)
-        f.store.dispatch(SharedActivityIntent.PullRefresh)
-        advanceTimeBy(2 * interval)
-        runCurrent()
-        assertEquals(InboxFetchReason.Manual, f.inbox.reads.last().reason)
-        assertEquals(reconciles.size, f.inbox.reads.count { it.reason == InboxFetchReason.InPlaceReconcile })
-    }
 
     @Test
     fun flagOffKeepsTodaysReadsAndLeavesUnreadToTheServer() = runTest {

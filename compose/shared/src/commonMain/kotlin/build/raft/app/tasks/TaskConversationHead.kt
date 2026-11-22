@@ -80,6 +80,7 @@ import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -105,10 +106,17 @@ import build.raft.app.data.valueOrNull
 import build.raft.app.model.ConversationKind
 import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberProfile
+import build.raft.app.model.MillisPerDay
+import build.raft.app.model.MillisPerHour
+import build.raft.app.model.MillisPerMinute
 import build.raft.app.model.RaftTimeContext
 import build.raft.app.model.TaskStatus
 import build.raft.app.model.TaskSummary
 import build.raft.app.model.avatarWireValueForRenderedAvatar
+import build.raft.app.model.civilDateFromEpochDay
+import build.raft.app.model.floorDiv
+import build.raft.app.model.floorMod
+import build.raft.app.model.formatRaftClock
 import build.raft.app.model.formatRaftTimestampLabel
 import build.raft.app.components.RaftDesignSystemTheme
 import build.raft.app.resources.*
@@ -131,6 +139,7 @@ import build.raft.designsystem.components.RaftTaskStatusPixel
 import build.raft.designsystem.components.RaftTextLink
 import build.raft.designsystem.components.RaftTimeline
 import build.raft.designsystem.components.RaftTimelineDetail
+import build.raft.designsystem.components.RaftTooltip
 import build.raft.designsystem.components.raftSafeAreaHorizontalPadding
 import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.RaftTheme
@@ -169,15 +178,15 @@ internal data class TaskHeadHistoryRow(
 internal sealed interface TaskHeadHistory {
     data object Loading : TaskHeadHistory
 
-    data object Failed : TaskHeadHistory
+    data class Failed(val traceId: String? = null) : TaskHeadHistory
 
     data class Rows(val rows: List<TaskHeadHistoryRow>) : TaskHeadHistory
 }
 
 /**
  * Task v2: what the task conversation's head shows (web `TaskModalHead` + `TaskProperties` in the
- * task dialog): the title, the description, the facts (Status, Assignee, Source, Created by,
- * Created at, Earlier discussion) and the History. Derived purely by [taskConversationHeadModel].
+ * task dialog): the title, the description, the facts (Status, Assignee, Source, Created by with
+ * when it was created, Earlier discussion) and the History. Derived purely by [taskConversationHeadModel].
  */
 @Immutable
 internal data class TaskConversationHeadModel(
@@ -192,7 +201,10 @@ internal data class TaskConversationHeadModel(
     val creator: TaskHeadPerson? = null,
     /** The server the people in the head belong to: their faces read its member directory. */
     val avatarServerId: String? = null,
-    /** Web `formatMediumDateTime24`: shown as "Oct 28, 2026, 09:14" (localized). */
+    /**
+     * Web `formatMediumDateTime24` ("Oct 28, 2026, 09:14", localized): no row of its own, it rides
+     * on Created by as "Created at …" (web slock #15639; [TaskHeadCreatedByValue]).
+     */
     val createdAt: TaskHeadDateTime?,
     /** Null: no Earlier discussion row; [Int] the reply count, null inside = not known yet ("View"). */
     val earlierDiscussion: TaskHeadEarlierDiscussion?,
@@ -231,7 +243,7 @@ internal fun TaskSummary.taskConversationHeadModel(
         when (val load = details.history) {
             is TaskDetailLoad.Loaded ->
                 TaskHeadHistory.Rows(load.value.toTaskHistoryRows().map { it.toHeadRow(members, timeContext) })
-            TaskDetailLoad.Failed -> TaskHeadHistory.Failed
+            is TaskDetailLoad.Failed -> TaskHeadHistory.Failed(load.traceId)
             TaskDetailLoad.Idle,
             TaskDetailLoad.Loading -> TaskHeadHistory.Loading
         }
@@ -513,25 +525,29 @@ internal fun TaskHeadContent(
     editing: TaskHeadEditing? = null,
 ) {
     val editingField = editing?.state?.field
+    val buttons =
+        taskHeadEditButtons(
+            canEdit = editing != null,
+            descriptionLoaded = editing?.descriptionEditable == true,
+            hasDescription = model.description != null,
+            editingField = editingField,
+        )
     Column {
         if (editing != null && editingField == TaskHeadEditField.Title) {
             TaskHeadFieldEditor(editing)
         } else {
-            TaskHeadTitleRow(model, editing?.takeIf { editingField == null })
+            TaskHeadTitleRow(model, editing, buttons)
         }
         Column {
+            // No description: nothing here (Add a description is beside the title's pencil).
             when {
                 editing != null && editingField == TaskHeadEditField.Description -> TaskHeadFieldEditor(editing)
                 model.description != null ->
                     TaskHeadDescription(
                         model.description,
                         initiallyDescriptionExpanded,
-                        editing?.takeIf { editingField == null && it.descriptionEditable },
+                        editing?.takeIf { buttons.editDescription },
                     )
-                editing != null && editingField == null && editing.descriptionEditable ->
-                    Box(Modifier.offset(x = TaskHeadAddDescriptionHang).padding(bottom = 8.dp)) {
-                        TaskHeadAddDescriptionButton { editing.state.open(editing.task, TaskHeadEditField.Description) }
-                    }
             }
             TaskHeadFacts(model, onSelectStatus, onOpenAssignee, onOpenSource, onOpenEarlierDiscussion, onOpenCreator)
             TaskHeadHistorySection(model.history, initiallyHistoryOpen, onRetryHistory)
@@ -539,11 +555,8 @@ internal fun TaskHeadContent(
     }
 }
 
-/** "Add a description" hangs its padding outward, so its words line up with the title's (web `-ml-3`). */
-private val TaskHeadAddDescriptionHang = (-12).dp
-
 @Composable
-private fun TaskHeadTitleRow(model: TaskConversationHeadModel, editing: TaskHeadEditing? = null) {
+private fun TaskHeadTitleRow(model: TaskConversationHeadModel, editing: TaskHeadEditing?, buttons: TaskHeadEditButtons) {
     // Follow / Unfollow Task is the header More menu's, as on web (ThreadOverflowMenu).
     Row(Modifier.fillMaxWidth().padding(top = 10.dp, bottom = 8.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
         RaftText(
@@ -554,10 +567,16 @@ private fun TaskHeadTitleRow(model: TaskConversationHeadModel, editing: TaskHead
             maxLines = 3,
             overflow = TextOverflow.Ellipsis,
         )
-        // The pencil beside the title (web: shown on hover or focus, always by touch).
         if (editing != null) {
-            TaskHeadEditButton(stringResource(Res.string.task_amend_edit_title), TaskHeadTitleEditTestTag) {
-                editing.state.open(editing.task, TaskHeadEditField.Title)
+            // The pencil beside the title (web: shown on hover or focus, always by touch).
+            if (buttons.editTitle) {
+                TaskHeadEditButton(stringResource(Res.string.task_amend_edit_title), TaskHeadTitleEditTestTag) {
+                    editing.state.open(editing.task, TaskHeadEditField.Title)
+                }
+            }
+            // No description: Add a description beside it, shown as it is (web slock #15639).
+            if (buttons.addDescription) {
+                TaskHeadAddDescriptionButton { editing.state.open(editing.task, TaskHeadEditField.Description) }
             }
         }
     }
@@ -669,13 +688,11 @@ private fun TaskHeadFacts(
                 TaskHeadFactValue { TaskHeadSourceValue(source, model.avatarServerId, onOpenSource) }
             }
         }
+        // When it was created rides on Created by, not a row of its own (web slock #15639).
+        val timeFormat = currentRaftEffectiveDateTimeContext().timeFormat
+        val createdAt = model.createdAt?.let { stringResource(Res.string.task_head_created_at_value, it.localized(timeFormat)) }
         Item(stringResource(Res.string.task_head_created_by)) {
-            TaskHeadFactValue { TaskHeadCreatedByValue(model.createdBy ?: unknown, model.creator, model.avatarServerId, onOpenCreator) }
-        }
-        model.createdAt?.let { createdAt ->
-            Item(stringResource(Res.string.task_head_created_at)) {
-                TaskHeadFactValue { RaftDescriptionValue(createdAt.localized(), mono = true, copyable = false, maxLines = 1) }
-            }
+            TaskHeadFactValue { TaskHeadCreatedByValue(model.createdBy ?: unknown, model.creator, model.avatarServerId, createdAt, onOpenCreator) }
         }
         // Where it cannot open (the pending task page) it is a plain count, and hidden while unknown.
         model.earlierDiscussion?.takeIf { onOpenEarlierDiscussion != null || it.replyCount != null }?.let { earlier ->
@@ -823,11 +840,27 @@ private val TaskHeadFactAvatarSize = 18.dp
 internal const val TaskHeadSourceFaceTestTag = "task-head-source-face"
 internal const val TaskHeadCreatorFaceTestTag = "task-head-creator-face"
 
-/** Created by: the creator's face (as on the Source row) and name; just the name without a creator. */
+/**
+ * Created by: the creator's face (as on the Source row) and name; just the name without a creator.
+ *
+ * [createdAt] ("Created at Oct 28, 2026, 09:14"; null: not known) rides on it, as on the web (slock
+ * #15639): its tooltip under a mouse or trackpad pointer, and read after the name by screen readers
+ * (web: an sr-only time in the name; here its state description, on the one node they stop at). A
+ * touch has no hover, and this value has no long press of its own (a tap opens the creator's
+ * profile), so there the time is History's first entry, Created, as on the web.
+ */
 @Composable
-private fun TaskHeadCreatedByValue(name: String, creator: TaskHeadPerson?, serverId: String?, onOpenCreator: ((TaskHeadPerson) -> Unit)?) {
+private fun TaskHeadCreatedByValue(
+    name: String,
+    creator: TaskHeadPerson?,
+    serverId: String?,
+    createdAt: String?,
+    onOpenCreator: ((TaskHeadPerson) -> Unit)?,
+) {
+    // Screen readers: the time after the name, on the node they stop at.
+    val time = if (createdAt != null) Modifier.semantics(mergeDescendants = true) { stateDescription = createdAt } else Modifier
     if (creator == null) {
-        RaftDescriptionValue(name, copyable = false)
+        TaskHeadCreatedAtTooltip(createdAt) { RaftDescriptionValue(name, time, copyable = false) }
         return
     }
     // The face and name open the creator's profile, as a message author's avatar does (artin,
@@ -835,25 +868,40 @@ private fun TaskHeadCreatedByValue(name: String, creator: TaskHeadPerson?, serve
     // Nothing clips the row: the face sits on its edge, and a rounded clip there (as the row had
     // before #4814) cut the face's left corners, so it looked cropped beside Source's.
     val open = onOpenCreator?.let { { it(creator) } }
-    Row(
-        if (open != null) {
-            Modifier
-                .raftClickable(onClick = open, shape = RoundedCornerShape(RaftRadius.Control))
-                .semantics(mergeDescendants = true) {}
-        } else {
-            Modifier
-        },
-        horizontalArrangement = Arrangement.spacedBy(6.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        RaftMemberAvatar(
-            identity = RaftMemberAvatarIdentity(creator.kind, creator.id, serverId),
-            label = name.removePrefix("@"),
-            avatarSize = TaskHeadFactAvatarSize,
-            modifier = Modifier.testTag(TaskHeadCreatorFaceTestTag),
-            carriedAvatarWireValue = creator.avatarWireValue,
-        )
-        RaftDescriptionValue(name, Modifier.weight(1f, fill = false), copyable = false, maxLines = 1)
+    TaskHeadCreatedAtTooltip(createdAt) {
+        Row(
+            if (open != null) {
+                Modifier
+                    .raftClickable(onClick = open, shape = RoundedCornerShape(RaftRadius.Control))
+                    .semantics(mergeDescendants = true) { if (createdAt != null) stateDescription = createdAt }
+            } else {
+                time
+            },
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            RaftMemberAvatar(
+                identity = RaftMemberAvatarIdentity(creator.kind, creator.id, serverId),
+                label = name.removePrefix("@"),
+                avatarSize = TaskHeadFactAvatarSize,
+                modifier = Modifier.testTag(TaskHeadCreatorFaceTestTag),
+                carriedAvatarWireValue = creator.avatarWireValue,
+            )
+            RaftDescriptionValue(name, Modifier.weight(1f, fill = false), copyable = false, maxLines = 1)
+        }
+    }
+}
+
+/**
+ * [content] with [createdAt] as its tooltip, under a mouse or trackpad pointer only: a long press
+ * stays the platform's, as it is on the rest of the facts. Null [createdAt]: [content] alone.
+ */
+@Composable
+private fun TaskHeadCreatedAtTooltip(createdAt: String?, content: @Composable () -> Unit) {
+    if (createdAt != null) {
+        RaftTooltip(text = createdAt, openOnLongPress = false, content = content)
+    } else {
+        content()
     }
 }
 
@@ -874,22 +922,25 @@ private fun TaskHeadHistorySection(history: TaskHeadHistory, initiallyOpen: Bool
             Box(Modifier.padding(top = 4.dp).fillMaxWidth()) {
                 when (history) {
                     TaskHeadHistory.Loading -> RaftSkeleton(Modifier.fillMaxWidth().height(16.dp))
-                    TaskHeadHistory.Failed ->
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                            RaftText(
-                                stringResource(Res.string.task_history_error),
-                                Modifier.weight(1f, fill = false),
-                                style = RaftTheme.typography.caption,
-                                color = colors.warningStrong,
-                            )
-                            onRetry?.let { retry ->
-                                RaftButton(
-                                    text = stringResource(Res.string.common_retry),
-                                    onClick = retry,
-                                    variant = RaftButtonVariant.Ghost,
-                                    size = RaftButtonSize.Md,
+                    is TaskHeadHistory.Failed ->
+                        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                                RaftText(
+                                    stringResource(Res.string.task_history_error),
+                                    Modifier.weight(1f, fill = false),
+                                    style = RaftTheme.typography.caption,
+                                    color = colors.warningStrong,
                                 )
+                                onRetry?.let { retry ->
+                                    RaftButton(
+                                        text = stringResource(Res.string.common_retry),
+                                        onClick = retry,
+                                        variant = RaftButtonVariant.Ghost,
+                                        size = RaftButtonSize.Md,
+                                    )
+                                }
                             }
+                            RaftTraceIdNote(history.traceId)
                         }
                     is TaskHeadHistory.Rows ->
                         if (history.rows.isEmpty()) {
@@ -1059,7 +1110,8 @@ internal fun TaskConversationHeadRoute(
         }
     }
     var assigneeQuery by remember(task.id) { mutableStateOf("") }
-    val model = task.taskConversationHeadModel(state, details, statusUpdating, assigneeCandidates, timeContext, editable, serverId, canWriteChannel)
+    val effectiveTimeContext = currentRaftDateTimeContext(timeContext)
+    val model = task.taskConversationHeadModel(state, details, statusUpdating, assigneeCandidates, effectiveTimeContext, editable, serverId, canWriteChannel)
     // The pulled-down head closes when the keyboard comes up, so the text is edited in the head's
     // row, not there.
     val editing =
@@ -1190,34 +1242,23 @@ internal data class TaskHeadDateTime(val year: Int, val month: Int, val day: Int
 internal fun taskHeadDateTime(iso: String?, timeContext: RaftTimeContext?): TaskHeadDateTime? {
     val offsetMinutes = timeContext?.localOffsetMinutes ?: 0
     val epochMillis = parseRaftTimestampEpochMillisOrNull(iso, offsetMinutes) ?: return null
-    val local = epochMillis + offsetMinutes * 60_000L
-    val dayMillis = 86_400_000L
-    val days = local.floorDiv(dayMillis)
-    val millisOfDay = local.mod(dayMillis)
-    // Days since 1970-01-01 to a civil date (H. Hinnant, `civil_from_days`).
-    val z = days + 719_468
-    val era = z.floorDiv(146_097L)
-    val doe = z - era * 146_097
-    val yoe = (doe - doe / 1_460 + doe / 36_524 - doe / 146_096) / 365
-    val doy = doe - (365 * yoe + yoe / 4 - yoe / 100)
-    val mp = (5 * doy + 2) / 153
-    val day = (doy - (153 * mp + 2) / 5 + 1).toInt()
-    val month = (if (mp < 10) mp + 3 else mp - 9).toInt()
-    val year = (yoe + era * 400 + if (month <= 2) 1 else 0).toInt()
-    return TaskHeadDateTime(year, month, day, (millisOfDay / 3_600_000L).toInt(), ((millisOfDay / 60_000L) % 60).toInt())
+    val local = epochMillis + offsetMinutes.toLong() * MillisPerMinute
+    val days = floorDiv(local, MillisPerDay)
+    val millisOfDay = floorMod(local, MillisPerDay)
+    val date = civilDateFromEpochDay(days)
+    return TaskHeadDateTime(
+        year = date.year,
+        month = date.month,
+        day = date.day,
+        hour = (millisOfDay / MillisPerHour).toInt(),
+        minute = ((millisOfDay % MillisPerHour) / MillisPerMinute).toInt(),
+    )
 }
 
 @Composable
-internal fun TaskHeadDateTime.localized(): String {
-    val months =
-        listOf(
-            Res.string.task_head_month_1, Res.string.task_head_month_2, Res.string.task_head_month_3,
-            Res.string.task_head_month_4, Res.string.task_head_month_5, Res.string.task_head_month_6,
-            Res.string.task_head_month_7, Res.string.task_head_month_8, Res.string.task_head_month_9,
-            Res.string.task_head_month_10, Res.string.task_head_month_11, Res.string.task_head_month_12,
-        )
-    val time = "${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}"
-    return stringResource(Res.string.task_head_medium_date_time, stringResource(months[month - 1]), day, year, time)
+internal fun TaskHeadDateTime.localized(timeFormat: String): String {
+    val time = formatRaftClock(hour, minute, null, timeFormat)
+    return stringResource(Res.string.task_head_medium_date_time, raftLocalizedShortMonth(month), day, year, time)
 }
 
 /**

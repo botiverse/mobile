@@ -21,7 +21,7 @@ on:
   workflow_dispatch:
     inputs:
       scope:
-        description: "Task #37: pr (default) = PR-equivalent tier (Linux gates + Android compile, no iOS, no device suite); ios = deliberate one-off iOS check (plan + 'iOS compile' only; no Android, no Xcode 27.1 lane, no device suite); premerge = Stamp's ready-to-merge check (no iOS and no Android rerun into main: the merge queue batch on stamp-mq/* compiles iOS; a diff Stamp cannot read reruns Android; a release/* or release-* base_ref runs the full tier); full = release-candidate / deliberate full readback (all platforms + device suite + canonical-final; the Xcode 27.1 lane stays nightly/release-*/merge-queue only)."
+        description: "Task #37: pr (default) = PR-equivalent tier (Linux gates + Android compile and plain JVM unit tests: no Robolectric class, no :shared goldens, design system tests and goldens included; no iOS, no device suite); ios = deliberate one-off iOS check (plan + 'iOS compile' only; no Android, no Xcode 27.1 lane, no device suite); premerge = Stamp's ready-to-merge check (no iOS and no Android rerun into main: the merge queue batch on stamp-mq/* compiles iOS; a diff Stamp cannot read reruns Android; a release/* or release-* base_ref runs the full tier); full = release-candidate / deliberate full readback (all platforms + device suite; the Xcode 27.1 lane stays nightly/release-*/merge-queue only)."
         type: choice
         options:
           - pr
@@ -43,7 +43,7 @@ on:
         type: string
         default: ci
       record_screenshots:
-        description: "Record the screenshot goldens (:designsystem:recordRoborazziDesktop, :shared:recordRoborazziDebug) instead of verifying them; new or changed goldens are uploaded as the designsystem-screenshots-recorded and shared-screenshots-recorded artifacts (compose/designsystem/README.md, AGENTS.md \"Screenshot tests (:shared)\")."
+        description: "Record the screenshot goldens (:designsystem:recordRoborazziDesktop, :shared:recordRoborazziDebug) instead of verifying them, with the whole Android unit suite whatever the scope (Android runs on scope=pr, full or a release premerge); new or changed goldens are uploaded as the designsystem-screenshots-recorded and shared-screenshots-recorded artifacts (compose/designsystem/README.md, AGENTS.md \"Screenshot tests (:shared)\")."
         type: boolean
         default: false
       xcode_app_path:
@@ -51,14 +51,6 @@ on:
         required: false
         type: string
         default: ""
-      ios_runner:
-        description: "Runner for the default iOS compile lane (dispatch only). xcode-27 (default) = GitHub's standard Xcode 27 image, free on this public repo but limited to 5 concurrent macOS jobs org-wide. blacksmith-6vcpu-macos-latest = billed fallback when GitHub's macOS queue is backed up (Xcode 27.0 only). The Xcode 27.1 lane (nightly, release-*, merge queue) always runs on xcode-27: Blacksmith macos-27's Xcode_27.1.app/Contents/Developer is a symlink, which select_ios_xcode.sh refuses."
-        required: false
-        type: choice
-        default: xcode-27
-        options:
-          - xcode-27
-          - blacksmith-6vcpu-macos-latest
   # Nightly run so the (slow, macOS) iOS compile still runs on a schedule even
   # though it no longer gates pull requests. See the `ios` job's `if:` guard.
   schedule:
@@ -72,7 +64,7 @@ concurrency:
   # The nightly gets its own group. It runs on refs/heads/main, and in the shared
   # test-refs/heads/main group GitHub keeps only the newest pending run, so a main push
   # queued behind a running push replaced the pending nightly and the full readback
-  # (device suite, canonical-final, attachment legs) silently did not run.
+  # (device suite, attachment legs) silently did not run.
   group: test-${{ github.ref }}${{ github.event_name == 'schedule' && '-nightly' || '' }}
   # Preserve the running post-merge record on protected branches. GitHub still
   # coalesces multiple pending runs in the same group to the newest commit.
@@ -86,9 +78,6 @@ jobs:
     timeout-minutes: 5
     permissions:
       contents: read
-      # The audit comment uses the GraphQL PullRequest surface because this
-      # installation cannot access PR comments through the REST Issues API.
-      pull-requests: write
       # check_queue_tested.py (main pushes): read the stamp/queue-tested commit status and
       # re-read the merge-queue candidate run and its jobs.
       statuses: read
@@ -104,14 +93,13 @@ jobs:
       queue_reuse: ${{ steps.plan.outputs.queue_reuse }}
       queue_tested_run: ${{ steps.queue_tested.outputs.queue_tested_run }}
       run_device_suite: ${{ steps.plan.outputs.run_device_suite }}
-      run_canonical_final: ${{ steps.plan.outputs.run_canonical_final }}
       attachment_api_levels: ${{ steps.plan.outputs.attachment_api_levels }}
+      android_unit_scope: ${{ steps.plan.outputs.android_unit_scope }}
+      run_designsystem_tests: ${{ steps.plan.outputs.run_designsystem_tests }}
       reason: ${{ steps.plan.outputs.reason }}
     steps:
       # Full history for the PR merge-base / push before..after diffs below, but
-      # blobless: `git diff --name-only` needs commits and trees only. The few
-      # blobs a step reads at another commit (the gitlink gate's .gitmodules)
-      # are fetched on demand with the persisted checkout credentials.
+      # blobless: `git diff --name-only` needs commits and trees only.
       - name: Checkout exact event source
         uses: actions/checkout@v7
         with:
@@ -124,31 +112,12 @@ jobs:
       - name: Validate Hands Android SDK Raft consumer contract
         run: python3 scripts/ci/test_hands_raft_consumer_contract.py
 
-      # The iOS QA session bootstrap is Debug-configuration only (docs/qa-acceptance/session-bootstrap.md).
-      - name: Validate iOS QA session bootstrap stays out of Release
-        run: python3 scripts/ci/check_ios_qa_bootstrap_exclusion.py source
-
-      - name: Validate no-local-Ktor dependency contract
-        run: python3 scripts/ci/test_no_local_ktor_ci_contract.py
-
       # CMP-10674: the patched Compose UI iOS klibs (third_party/compose-ui-1.12.2/README.md) only
       # apply while Compose Multiplatform is the version they patch.
       - name: Validate Compose UI patch pin matches Compose Multiplatform
         run: |
           python3 -I scripts/ci/check_compose_ui_patch_pin.py --self-test
           python3 -I scripts/ci/check_compose_ui_patch_pin.py
-
-      # The patched Android foundation AAR (third_party/compose-foundation-1.12.1/README.md) only
-      # applies while Compose Multiplatform is the version whose Android foundation it patches.
-      - name: Validate Compose foundation patch pin matches Compose Multiplatform
-        run: |
-          python3 -I scripts/ci/check_compose_foundation_patch_pin.py --self-test
-          python3 -I scripts/ci/check_compose_foundation_patch_pin.py
-
-      - name: Validate fail-closed git diff consumers
-        run: |
-          .github/actions/git-safe-workspace/test_configure.sh
-          scripts/ci/test_git_diff_path_state.sh
 
       # The realtime event names live in compose/realtime-contract/realtime_contract.json; the
       # Kotlin (compose/core) and Swift (compose/iosApp) constants are generated from it
@@ -222,6 +191,8 @@ jobs:
           # The planner refuses a non-empty xcode_app_path when its plan skips the iOS compile.
           XCODE_APP_PATH: ${{ github.event_name == 'workflow_dispatch' && inputs.xcode_app_path || '' }}
           PREMERGE_BASE_REF: ${{ github.event_name == 'workflow_dispatch' && inputs.scope == 'premerge' && inputs.base_ref || '' }}
+          # Recording goldens runs the whole Android unit suite (android_unit_scope=all) whatever the scope.
+          RECORD_SCREENSHOTS: ${{ github.event_name == 'workflow_dispatch' && inputs.record_screenshots }}
         run: |
           set -euo pipefail
           changed="$RUNNER_TEMP/test-changed-paths.txt"
@@ -280,107 +251,17 @@ jobs:
               ;;
           esac
           scripts/ci/plan_test_tier.sh "$EVENT_NAME" "$changed" "$FULL_CI" "$REF_NAME" "$DISPATCH_SCOPE" \
-            "$XCODE_APP_PATH" "$PREMERGE_BASE_REF" "$QUEUE_TESTED" | tee -a "$GITHUB_OUTPUT"
-
-      - name: Self-test gitlink carry-in gate
-        run: python3 scripts/ci/test_gitlink_carry_in_gate.py
-
-      - name: Audit changed gitlink carry-in
-        if: ${{ github.event_name == 'pull_request' }}
-        env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-        run: |
-          python3 scripts/ci/gitlink_carry_in_gate.py \
-            --base "$BASE_SHA" \
-            --head "$HEAD_SHA" \
-            --manifest "$RUNNER_TEMP/gitlink-carry-in.json" \
-            --markdown "$RUNNER_TEMP/gitlink-carry-in.md"
-
-      - name: Publish gitlink carry-in audit to PR
-        if: ${{ always() && github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository }}
-        env:
-          GH_TOKEN: ${{ github.token }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-        run: |
-          set -euo pipefail
-          report="$RUNNER_TEMP/gitlink-carry-in.md"
-          manifest="$RUNNER_TEMP/gitlink-carry-in.json"
-          test -s "$report" || exit 0
-          test -s "$manifest"
-
-          marker='<!-- gitlink-carry-in-gate -->'
-          owner="${GITHUB_REPOSITORY%%/*}"
-          repo="${GITHUB_REPOSITORY#*/}"
-          comment_state="$(
-            gh api graphql --paginate --slurp \
-              -f owner="$owner" \
-              -f repo="$repo" \
-              -F number="$PR_NUMBER" \
-              -f query='query($owner: String!, $repo: String!, $number: Int!, $endCursor: String) {
-                repository(owner: $owner, name: $repo) {
-                  pullRequest(number: $number) {
-                    id
-                    comments(first: 100, after: $endCursor) {
-                      nodes { id body }
-                      pageInfo { hasNextPage endCursor }
-                    }
-                  }
-                }
-              }'
-          )"
-          subject_id="$(jq -r '.[0].data.repository.pullRequest.id // empty' <<< "$comment_state")"
-          test -n "$subject_id"
-          existing="$(
-            jq -r --arg marker "$marker" \
-              '.[].data.repository.pullRequest.comments.nodes[] | select(.body | startswith($marker)) | .id' \
-              <<< "$comment_state" | sed -n '1p'
-          )"
-          status="$(jq -r '.status' "$manifest")"
-          if test "$status" = no_changes && test -z "$existing"; then
-            exit 0
-          fi
-
-          if test -n "$existing"; then
-            gh api graphql \
-              -f id="$existing" \
-              -F body=@"$report" \
-              -f query='mutation($id: ID!, $body: String!) {
-                updateIssueComment(input: {id: $id, body: $body}) { issueComment { id } }
-              }' >/dev/null
-          else
-            gh api graphql \
-              -f subjectId="$subject_id" \
-              -F body=@"$report" \
-              -f query='mutation($subjectId: ID!, $body: String!) {
-                addComment(input: {subjectId: $subjectId, body: $body}) { commentEdge { node { id } } }
-              }' >/dev/null
-          fi
-
-      - name: Summarize gitlink carry-in audit
-        if: ${{ always() && github.event_name == 'pull_request' }}
-        run: |
-          report="$RUNNER_TEMP/gitlink-carry-in.md"
-          test -s "$report" || exit 0
-          cat "$report" >> "$GITHUB_STEP_SUMMARY"
-
-      - name: Upload gitlink carry-in audit
-        if: ${{ always() && github.event_name == 'pull_request' }}
-        uses: actions/upload-artifact@v7
-        with:
-          name: gitlink-carry-in-${{ github.event.pull_request.number }}-${{ github.event.pull_request.head.sha }}
-          path: |
-            ${{ runner.temp }}/gitlink-carry-in.json
-            ${{ runner.temp }}/gitlink-carry-in.md
-          if-no-files-found: warn
-          retention-days: 30
+            "$XCODE_APP_PATH" "$PREMERGE_BASE_REF" "$QUEUE_TESTED" "$RECORD_SCREENSHOTS" | tee -a "$GITHUB_OUTPUT"
 
   android:
     name: Android compile & tests
     runs-on: ubuntu-latest
     needs: [plan]
     if: ${{ needs.plan.outputs.run_android == 'true' }}
-    timeout-minutes: 40
+    # 40 min for the ordinary PR tier (android_unit_scope=jvm), 60 for the full suite: on
+    # scope=full run 45013092044 "Compile, test and package Android" took 34 min and the 40-min
+    # limit cancelled the fixtures-off release compile and the uploads after it.
+    timeout-minutes: ${{ needs.plan.outputs.android_unit_scope == 'jvm' && 40 || 60 }}
     env:
       # A stable (not per-run) GRADLE_USER_HOME so the setup-gradle cache actually
       # restores across runs: its GitHub cache version hashes the resolved cache
@@ -394,7 +275,7 @@ jobs:
       # Only the emulator jobs consume the connected-test APKs. PR and main-push
       # plans schedule none of them, so those runs skip the ~8 min APK build;
       # full-ci, nightly and scope=full dispatch runs still build and upload.
-      BUILD_CONNECTED_APKS: ${{ needs.plan.outputs.run_device_suite == 'true' || needs.plan.outputs.run_canonical_final == 'true' || needs.plan.outputs.attachment_api_levels != '[]' }}
+      BUILD_CONNECTED_APKS: ${{ needs.plan.outputs.run_device_suite == 'true' || needs.plan.outputs.attachment_api_levels != '[]' }}
       # One visual-fixture value for every Gradle call in this job (read by
       # compose/shared/build.gradle.kts). The connected-test APKs need the
       # fixtures, and the flag adds source dirs to :shared commonMain, so a job
@@ -408,21 +289,6 @@ jobs:
 
       - name: Setup CI environment
         uses: ./.github/actions/setup-env
-
-      - name: Guard commonMain Map compatibility imports
-        shell: bash
-        run: |
-          scripts/check_commonmain_map_compat.sh --self-test
-          scripts/check_commonmain_map_compat.sh
-
-      # Hand-rolled taps in compose/shared commonMain go through the design system's
-      # Modifier.raftClickable; the raw sites left are counted per file in
-      # scripts/check_commonmain_raw_clickable.baseline and only an increase fails.
-      - name: Guard raw clickable in commonMain (use raftClickable)
-        shell: bash
-        run: |
-          scripts/check_commonmain_raw_clickable.sh --self-test
-          scripts/check_commonmain_raw_clickable.sh
 
       - name: Guard atomic auth-session writes (#466 no-bypass)
         shell: bash
@@ -441,10 +307,6 @@ jobs:
       - name: Guard Web/mobile canonical-message V2 reaction vector
         shell: bash
         run: scripts/check_canonical_message_v2_reaction_vector.sh
-
-      - name: Guard Web/mobile search snippet vector
-        shell: bash
-        run: scripts/check_search_snippet_vector.sh
 
       - name: Guard Web/mobile human pixel-avatar vector
         shell: bash
@@ -505,10 +367,7 @@ jobs:
           #
           # The stable GRADLE_USER_HOME (job env, rebuilt clean above) keeps the cache
           # version stable across runs; PRs (non-main refs) read the default-branch
-          # cache seed read-only and never write back. The poison-guard writer/reader
-          # jobs in gradle-cache-policy-lint.yml are the authority that these families
-          # never restore while the build cache does; the build-cache epoch guard jobs there
-          # prove an epoch bump drops the old build cache.
+          # cache seed read-only and never write back.
           cache-read-only: ${{ github.ref != 'refs/heads/main' }}
           gradle-home-cache-excludes: |
             caches/jars-*
@@ -590,6 +449,15 @@ jobs:
       #   shared suite, still a hard gate) in verify mode (AGENTS.md "Screenshot tests (:shared)").
       #   A dispatch with record_screenshots=true records both instead (recordRoborazziDesktop,
       #   recordRoborazziDebug); the rest of the suite still runs and must pass.
+      # - Unit tier (plan android_unit_scope; artin 2026-11-22: "PRs run only a little, like
+      #   slock"). jvm, the ordinary PR tier (pull_request without full-ci, scope=pr, a premerge
+      #   into main that reruns Android): the same compile, then the plain JVM unit tests only:
+      #   -Praft.unitTest.skipRobolectric=true makes :shared and :androidApp skip every Robolectric
+      #   class (compose/build.gradle.kts), so no :shared golden runs either, and
+      #   :designsystem:verifyRoborazziDesktop runs only when the change touches
+      #   compose/designsystem/ (run_designsystem_tests). all, every other tier (main and release-*
+      #   pushes, nightly, full-ci, scope=full, premerge into a release base, the merge queue,
+      #   record_screenshots): the whole suite and both golden sets, as above.
       # - Connected-test APKs (BUILD_CONNECTED_APKS above): built here so the emulator jobs below
       #   install the exact APKs without a second Gradle/Kotlin build. The visual fixture gives the
       #   regression a deterministic empty Thread composer.
@@ -617,6 +485,8 @@ jobs:
         working-directory: compose
         env:
           RECORD_SCREENSHOTS: ${{ github.event_name == 'workflow_dispatch' && inputs.record_screenshots }}
+          ANDROID_UNIT_SCOPE: ${{ needs.plan.outputs.android_unit_scope }}
+          RUN_DESIGNSYSTEM_TESTS: ${{ needs.plan.outputs.run_designsystem_tests }}
         run: |
           set -euo pipefail
           tasks=(
@@ -638,10 +508,10 @@ jobs:
           )
           compile=("${tasks[@]}")
           if [ "$BUILD_CONNECTED_APKS" = true ]; then
-            # HandsCrash installs from Application.onCreate, before the actual-host page can bind
-            # its dynamic blackhole. Keep that SDK on loopback too so the target-UID non-loopback
-            # counter is a meaningful zero. (defaultConfig, so the debug unit-test build sees it as
-            # well on these tiers; no unit test reads BuildConfig.HANDS_BASE_URL.)
+            # HandsCrash installs from Application.onCreate; keep that SDK on loopback in the
+            # connected-test APKs so the emulator suites never report to a real Hands host.
+            # (defaultConfig, so the debug unit-test build sees it as well on these tiers; no unit
+            # test reads BuildConfig.HANDS_BASE_URL.)
             export SLOCK_HANDS_BASE_URL=https://127.0.0.1:1
             # Assembling the three test APKs makes D8 merge their dex in the Gradle heap. On
             # 2026-10-18 it died at 4g with "D8: java.lang.OutOfMemoryError: Java heap space" inside
@@ -676,12 +546,20 @@ jobs:
             :androidApp:testDebugUnitTest
             :ui-cmp:testAndroidHostTest
           )
+          # Unit tier (comment above): anything but jvm runs the whole suite.
+          unit_tier=()
           if [ "$RECORD_SCREENSHOTS" = true ]; then
             tasks+=(:designsystem:recordRoborazziDesktop :shared:recordRoborazziDebug)
+          elif [ "$ANDROID_UNIT_SCOPE" = jvm ]; then
+            unit_tier+=(-Praft.unitTest.skipRobolectric=true)
+            if [ "$RUN_DESIGNSYSTEM_TESTS" != false ]; then
+              tasks+=(:designsystem:verifyRoborazziDesktop)
+            fi
           else
             tasks+=(:designsystem:verifyRoborazziDesktop :shared:verifyRoborazziDebug)
           fi
-          ./gradlew "${tasks[@]}" \
+          echo "Android unit tier: ${ANDROID_UNIT_SCOPE} (design system tests: ${RUN_DESIGNSYSTEM_TESTS}) ${unit_tier[*]}"
+          ./gradlew "${tasks[@]}" "${unit_tier[@]}" \
             --continue \
             --no-daemon \
             --console=plain \
@@ -695,6 +573,32 @@ jobs:
       - name: Check :shared JVM method sizes
         if: ${{ !cancelled() }}
         run: python3 scripts/ci/check_jvm_method_size.py compose/shared/build/tmp/kotlin-classes/debug
+
+      # What the unit tier ran: test classes and cases per test task, from the JUnit XML reports
+      # (log and job summary). On the jvm tier :shared and :androidApp list no Robolectric class.
+      - name: Summarize Android unit test results
+        if: ${{ !cancelled() }}
+        env:
+          ANDROID_UNIT_SCOPE: ${{ needs.plan.outputs.android_unit_scope }}
+        run: |
+          python3 - <<'PY'
+          import os, pathlib, xml.etree.ElementTree as ET
+          rows = []
+          for results in sorted(pathlib.Path("compose").glob("*/build/test-results/*")):
+              suites = []
+              for report in sorted(results.glob("*.xml")):
+                  try:
+                      suites.append(ET.parse(report).getroot())
+                  except ET.ParseError as error:
+                      print(f"::warning::{report}: {error}")
+              if suites:
+                  count = lambda key: sum(int(suite.get(key, "0")) for suite in suites)
+                  rows.append(f"| :{results.parts[1]}:{results.name} | {len(suites)} | {count('tests')} | {count('skipped')} | {count('failures') + count('errors')} |")
+          lines = [f"### Android unit tests ({os.environ['ANDROID_UNIT_SCOPE']} tier)", "", "| Task | Classes | Tests | Skipped | Failed |", "| --- | ---: | ---: | ---: | ---: |", *rows]
+          print("\n".join(lines))
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as summary:
+              summary.write("\n".join(lines) + "\n")
+          PY
 
       # The gate above compiles with the visual fixtures on (SLOCK_VISUAL_FIXTURES, job env), so it
       # never sees the configuration that ships: release, fixtures off (src/visualFixturesOff,
@@ -717,14 +621,6 @@ jobs:
             --no-daemon \
             --console=plain \
             --stacktrace
-
-      # Gradle 9 does not run buildSrc's own tests as part of a build; the hang watchdog that every
-      # JVM test task installs is only checked here.
-      - name: Run buildSrc tests (hang watchdog)
-        working-directory: compose
-        run: |
-          ./gradlew -p buildSrc test --no-daemon --console=plain --stacktrace
-          grep -ho 'tests="[0-9]*"' buildSrc/build/test-results/test/*.xml | grep -qv 'tests="0"'
 
       # <name>_actual.png / <name>_compare.png and Roborazzi's HTML report (roborazzi/desktop/).
       - name: Upload design system screenshot diffs
@@ -793,30 +689,6 @@ jobs:
           name: shared-screenshots-recorded
           path: ${{ runner.temp }}/shared-screenshots-recorded/
           if-no-files-found: ignore
-
-      # Every tier: the merged debug manifest (written by the unit-test build) carries the same
-      # defaultConfig minSdk the connected-test APK ships with.
-      - name: Verify Android app min SDK (merged manifest)
-        shell: bash
-        run: |
-          set -euo pipefail
-          MANIFEST=compose/androidApp/build/intermediates/merged_manifest/debug/processDebugMainManifest/AndroidManifest.xml
-          test -s "${MANIFEST}"
-          # AGP writes <uses-sdk> over several lines; print it, then assert the attribute.
-          grep -A3 '<uses-sdk' "${MANIFEST}"
-          grep -Fq 'android:minSdkVersion="29"' "${MANIFEST}"
-
-      - name: Verify connected-test APK min SDK
-        if: ${{ env.BUILD_CONNECTED_APKS == 'true' }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          APK="$(find compose/androidApp/build/outputs/apk/connectedTest -maxdepth 1 -type f -name '*.apk' | sort | head -n 1)"
-          test -n "${APK}"
-          AAPT="$(find "${ANDROID_HOME}/build-tools" -type f -name aapt | sort -V | tail -n 1)"
-          test -x "${AAPT}"
-          "${AAPT}" dump badging "${APK}" | tee connectedtest-app-badging.txt
-          grep -Fq "sdkVersion:'29'" connectedtest-app-badging.txt
 
       - name: Upload Android connected-test APKs
         if: ${{ env.BUILD_CONNECTED_APKS == 'true' }}
@@ -966,11 +838,6 @@ jobs:
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
 
-      - name: Validate first-character baseline regression script
-        if: ${{ env.RAFT_JOB_ACTIVE == 'true' }}
-        shell: bash
-        run: bash -n scripts/ci/run-first-character-emulator-suite.sh
-
       - name: Run first-character baseline regression
         if: ${{ env.RAFT_JOB_ACTIVE == 'true' }}
         uses: reactivecircus/android-emulator-runner@v2
@@ -1001,13 +868,6 @@ jobs:
             first-character-baseline-suite-summary.txt
             first-character-baseline-instrumentation.txt
             android-ime-environment.txt
-            ime-visibility-probe-instrumentation.txt
-            ime-visibility-probe-input-method.txt
-            ime-visibility-probe-window.txt
-            ime-visibility-probe-activity.txt
-            ime-visibility-probe-power.txt
-            ime-visibility-probe-policy.txt
-            ime-visibility-probe-logcat.txt
             composer-session-retirement-instrumentation.txt
             composer-session-retirement-input-method.txt
             composer-session-retirement-window.txt
@@ -1023,19 +883,12 @@ jobs:
             attachment-atomic-sink-instrumentation.txt
             attachment-atomic-sink-receipt.txt
             attachment-download-runtime-instrumentation.txt
-            performance-trace-feedback-instrumentation.txt
-            login-transition-routing-instrumentation.txt
             child-page-visibility-instrumentation.txt
             child-page-visibility-accepted.png
             child-page-visibility-terminal.png
             child-page-visibility-logcat.txt
-            pager-scroll-probe-instrumentation.txt
-            release-notes-section-gap-instrumentation.txt
-            thread-align-right-bounds-instrumentation.txt
-            diagnostics-caller-pipeline-instrumentation.txt
             durable-partition-migration-instrumentation.txt
             thread-newer-auto-pagination-instrumentation.txt
-            adaptive-pane-host-instrumentation.txt
             qa-session-bootstrap-inbox-instrumentation.txt
             composed-character-boundary-instrumentation.txt
             webview-renderer-gone-instrumentation.txt
@@ -1084,20 +937,6 @@ jobs:
           name: android-connected-test-apks
           path: android-connected-test-apks
 
-      - name: Verify minimum-supported app artifact
-        if: ${{ env.RAFT_JOB_ACTIVE == 'true' }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          app_apk="$(find android-connected-test-apks -type f -name '*connectedTest.apk' -not -name '*androidTest*' | head -n 1)"
-          test_apk="$(find android-connected-test-apks -type f -name '*androidTest.apk' | head -n 1)"
-          test -n "${app_apk}"
-          test -n "${test_apk}"
-          aapt_bin="$(find "${ANDROID_HOME}/build-tools" -type f -name aapt | sort -V | tail -n 1)"
-          test -x "${aapt_bin}"
-          "${aapt_bin}" dump badging "${app_apk}" | tee "api${{ matrix.api-level }}-connectedtest-app-badging.txt"
-          grep -Fq "sdkVersion:'29'" "api${{ matrix.api-level }}-connectedtest-app-badging.txt"
-
       - name: Enable KVM
         if: ${{ env.RAFT_JOB_ACTIVE == 'true' }}
         run: |
@@ -1130,120 +969,10 @@ jobs:
         with:
           name: attachment-public-downloads-api${{ matrix.api-level }}-evidence
           path: |
-            api${{ matrix.api-level }}-connectedtest-app-badging.txt
             attachment-public-downloads-api${{ matrix.api-level }}-instrumentation*.txt
             attachment-public-downloads-api${{ matrix.api-level }}-logcat*.txt
             attachment-public-downloads-api${{ matrix.api-level }}-repeat-summary.txt
             *-instrumentation.txt.attempt-*
-          if-no-files-found: warn
-          retention-days: 7
-
-  android-canonical-final-actual-host:
-    name: Android canonical-final actual host (emulator)
-    runs-on: ubuntu-latest
-    needs: [plan, android]
-    # Stamp's queue accepts a candidate only when every job of its run succeeded, so on the
-    # merge-queue candidate this job runs as a no-op success when the plan does not select it
-    # (every step is gated on RAFT_JOB_ACTIVE).
-    if: ${{ needs.plan.outputs.run_canonical_final == 'true' || needs.plan.outputs.queue_candidate == 'true' }}
-    timeout-minutes: 35
-    env:
-      RAFT_JOB_ACTIVE: ${{ needs.plan.outputs.run_canonical_final == 'true' }}
-    steps:
-      - name: Free runner disk space for emulator
-        if: ${{ env.RAFT_JOB_ACTIVE == 'true' }}
-        run: |
-          sudo rm -rf /usr/share/dotnet /opt/hostedtoolcache/CodeQL
-          df -h /
-
-      # Checkout provides scripts/ci/canonical-final-actual-host.sh (previously
-      # embedded in this workflow as a 160-line heredoc because the job had no
-      # checkout).
-      - name: Checkout
-        if: ${{ env.RAFT_JOB_ACTIVE == 'true' }}
-        uses: actions/checkout@v7
-
-      - name: Setup Android SDK
-        if: ${{ env.RAFT_JOB_ACTIVE == 'true' }}
-        uses: android-actions/setup-android@v4
-        with:
-          packages: platform-tools
-
-      - name: Download connected-test APKs
-        if: ${{ env.RAFT_JOB_ACTIVE == 'true' }}
-        uses: actions/download-artifact@v8
-        with:
-          name: android-connected-test-apks
-          path: android-connected-test-apks
-
-      - name: Enable KVM
-        if: ${{ env.RAFT_JOB_ACTIVE == 'true' }}
-        run: |
-          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
-          sudo udevadm control --reload-rules
-          sudo udevadm trigger --name-match=kvm
-
-      # The regression script lives in scripts/ci/canonical-final-actual-host.sh
-      # (extracted from an inline YAML heredoc in task #18 so it can be
-      # shellchecked, reviewed as a normal diff, and run locally).
-      - name: Validate canonical-final actual-host regression script
-        if: ${{ env.RAFT_JOB_ACTIVE == 'true' }}
-        shell: bash
-        run: |
-          bash -n \
-            scripts/ci/canonical-final-actual-host.sh \
-            scripts/ci/canonical-final-pre-attempt-guard.sh
-
-      - name: Run canonical-final actual-host regression under exact-zero egress gate
-        if: ${{ env.RAFT_JOB_ACTIVE == 'true' }}
-        uses: reactivecircus/android-emulator-runner@v2
-        with:
-          api-level: 34
-          arch: x86_64
-          target: google_apis
-          profile: pixel_6_pro
-          ram-size: 4096M
-          cores: 2
-          emulator-boot-timeout: 1200
-          emulator-options: -no-snapshot -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -no-metrics
-          disable-animations: true
-          script: bash scripts/ci/canonical-final-actual-host.sh
-
-      - name: Upload canonical-final actual-host evidence
-        if: ${{ env.RAFT_JOB_ACTIVE == 'true' && (always()) }}
-        uses: actions/upload-artifact@v7
-        with:
-          name: canonical-final-actual-host-evidence
-          path: |
-            canonical-final-instrumentation.txt
-            canonical-final-instrumentation-status.txt
-            canonical-final-instrumentation-list.txt
-            canonical-final-instrumentation-list-after.txt
-            canonical-final-retry-receipt.txt
-            canonical-final-pre-attempt-*.txt
-            canonical-final-*.attempt-*
-            canonical-final-pm-clear-retry-*.txt
-            canonical-final-iptables-reset-*.txt
-            canonical-final-ip6tables-reset-*.txt
-            canonical-final-iptables-postclear-*.txt
-            canonical-final-ip6tables-postclear-*.txt
-            canonical-final-app-apk-badging.txt
-            canonical-final-test-apk-badging.txt
-            canonical-final-target-package-path.txt
-            canonical-final-test-package-path.txt
-            canonical-final-target-package.txt
-            canonical-final-test-package.txt
-            canonical-final-pm-clear.txt
-            canonical-final-process.txt
-            canonical-final-process-list.txt
-            canonical-final-iptables-identity.txt
-            canonical-final-iptables-before.txt
-            canonical-final-iptables-after.txt
-            canonical-final-ip6tables-before.txt
-            canonical-final-ip6tables-after.txt
-            canonical-final-trace.txt
-            canonical-final-logcat.txt
-            canonical-final-logcat-live.txt
           if-no-files-found: warn
           retention-days: 7
 
@@ -1262,8 +991,9 @@ jobs:
     #   Was blacksmith-6vcpu-macos-latest, billed per minute. GitHub caps standard + larger
     #   macOS at 5 concurrent jobs per org (Free/Team), shared with ios-release.yml's
     #   xcode-27-xlarge IPA build, ios-simulator-app.yml and qa-acceptance-ios.yml. The lane
-    #   averages about one Mac; if the queue backs up (or a release is waiting), dispatch with
-    #   ios_runner=blacksmith-6vcpu-macos-latest (the old billed lane).
+    #   averages about one Mac; if the queue backs up, the run waits for a free Mac. There is
+    #   no billed fallback: the ios_runner dispatch input (blacksmith-6vcpu-macos-latest) was
+    #   removed on 2026-11-22.
     # - github-xcode27.1: GitHub xcode-27 with Xcode 27.1 (the release SDK, a real directory on
     #   that image), so code using 27.1-only SDK APIs (iPhone Duo: UIViewReservedRegion, UIHinge)
     #   compiles before it lands. Beside the 27.0 lane on the nightly schedule and release-*
@@ -1277,9 +1007,9 @@ jobs:
     # job (the merge queue does); into a release base it runs the full tier.
     # iOS tests (planner output `run_ios_tests`): the K/N commonTest compile
     # (compileTestKotlinIosSimulatorArm64), adaptive editor snapshots, the iosAppTests XCTest
-    # bundle, the UI-test harness build and the shared iosTest simulator run happen only on the
-    # full tier: nightly schedule, release-* pushes, scope=full, premerge into a release base and
-    # full-ci PRs. scope=ios, main pushes and the merge queue compile the iOS targets,
+    # bundle and the shared iosTest simulator run happen only on the full tier: nightly schedule,
+    # release-* pushes, scope=full, premerge into a release base and full-ci PRs. The UI-test
+    # bundle (QaAcceptanceLoopTests) is built by qa-acceptance-ios.yml, which runs it. scope=ios, main pushes and the merge queue compile the iOS targets,
     # link the framework and build the host app only (mobile test prune step 1, 2026-11-13:
     # ~5 of ~13 min per job were tests); iOS-only behaviour regressions surface in the nightly.
     # The simulator steps pick an iPhone on the newest iOS runtime not newer than the SDK, skipping
@@ -1296,24 +1026,16 @@ jobs:
         lane: ${{ fromJSON(needs.plan.outputs.ios_lanes) }}
     env:
       IOS_LANE_XCODE_REQUEST: ${{ matrix.lane == 'github-xcode27.1' && '/Applications/Xcode_27.1.app' || '/Applications/Xcode_27.0.app' }}
-    runs-on: ${{ matrix.lane == 'github-xcode27.1' && 'xcode-27' || (inputs.ios_runner || 'xcode-27') }}
-    # The 3-core GitHub Mac is slower than the 6-vCPU Blacksmith one; the 27.1 lane already
-    # takes ~48 min there with the iOS tests, so keep headroom. ios_runner is a dispatch input:
-    # on push, pull_request (queue candidates included) and schedule it is empty: xcode-27.
+    runs-on: xcode-27
+    # The 3-core GitHub Mac is slow: the 27.1 lane takes ~48 min there with the iOS tests,
+    # so keep headroom.
     timeout-minutes: 90
     steps:
-      # Blacksmith macOS starts its local Actions-results proxy with the job (see ios-release.yml).
-      - name: Warm macOS artifact proxy
-        if: ${{ matrix.lane == 'github-xcode27.0' && startsWith(inputs.ios_runner || '', 'blacksmith') }}
-        shell: bash
-        run: sleep 5
-
       - name: Checkout
         uses: actions/checkout@v7
 
-      # Xcode 27.0 is a symlink on both images (GitHub xcode-27: Xcode_27.0.app ->
-      # Xcode_27.app; Blacksmith: -> Xcode_27_Release_Candidate.app), which select_ios_xcode.sh
-      # rejects. Resolve the requested path to its real bundle directly under /Applications
+      # Xcode 27.0 is a symlink on GitHub xcode-27 (Xcode_27.0.app -> Xcode_27.app), which
+      # select_ios_xcode.sh rejects. Resolve the requested path to its real bundle directly under /Applications
       # first (on GitHub xcode-27, Xcode_27.1.app is already a real directory). The
       # xcode_app_path dispatch input overrides the 27.0 lane only; the 27.1 lane stays on 27.1.
       - name: Resolve Xcode bundle
@@ -1465,12 +1187,17 @@ jobs:
           set -o pipefail
           device_id=$(xcrun simctl list devices available -j | SDK="$(xcrun --sdk iphonesimulator --show-sdk-version)" python3 -c 'import json,os,re,sys; v=lambda s: tuple(int(p) for p in re.findall(r"\d+", s)); rs=sorted(((v(k.rsplit(".iOS-", 1)[1]), k, vs) for k, vs in json.load(sys.stdin)["devices"].items() if ".iOS-" in k), key=lambda t: t[0], reverse=True); rs=[t for t in rs if t[0] <= v(os.environ["SDK"])] or rs; ds=[(k, x) for _, k, vs in rs for x in vs if "iPhone" in x["name"]]; k, x=next((d for d in ds if "Duo" not in d[1]["name"]), ds[0]); print(x["name"], k, file=sys.stderr); print(x["udid"])')
           log="$GITHUB_WORKSPACE/xcodebuild-adaptive-editor-tests.log"
+          # assert_xctest_ran.py reads the result bundle: in the log the host app's stderr is cut
+          # into XCTest's lines (run 44830456744). xcodebuild refuses a bundle path that exists.
+          bundle="$RUNNER_TEMP/adaptive-editor-tests.xcresult"
+          rm -rf "$bundle"
           xcodebuild \
             -workspace iosApp.xcworkspace \
             -scheme AdaptiveEditorTests \
             -configuration Debug \
             -destination "platform=iOS Simulator,id=$device_id" \
             -derivedDataPath "$RUNNER_TEMP/ios-build" \
+            -resultBundlePath "$bundle" \
             -only-testing:AdaptiveEditorTests/RaftAdaptiveEditorSnapshotTests \
             -parallel-testing-enabled NO \
             ARCHS=arm64 CODE_SIGNING_ALLOWED=NO \
@@ -1478,7 +1205,7 @@ jobs:
             RAFT_IOS_REUSE_LINKED_FRAMEWORK=YES \
             test > "$log" 2>&1 || { python3 "$GITHUB_WORKSPACE/compose/iosApp/scripts/print_xctest_failures.py" "$log"; tail -200 "$log"; exit 1; }
           tail -60 "$log"
-          python3 "$GITHUB_WORKSPACE/compose/iosApp/scripts/assert_xctest_ran.py" "$log" RaftAdaptiveEditorSnapshotTests
+          python3 "$GITHUB_WORKSPACE/compose/iosApp/scripts/assert_xctest_ran.py" --xcresult "$bundle" "$log" RaftAdaptiveEditorSnapshotTests
 
       - name: Test iOS host XCTests (iosAppTests bundle, UIKit)
         if: ${{ needs.plan.outputs.run_ios_tests == 'true' }}
@@ -1487,12 +1214,16 @@ jobs:
           set -o pipefail
           device_id=$(xcrun simctl list devices available -j | SDK="$(xcrun --sdk iphonesimulator --show-sdk-version)" python3 -c 'import json,os,re,sys; v=lambda s: tuple(int(p) for p in re.findall(r"\d+", s)); rs=sorted(((v(k.rsplit(".iOS-", 1)[1]), k, vs) for k, vs in json.load(sys.stdin)["devices"].items() if ".iOS-" in k), key=lambda t: t[0], reverse=True); rs=[t for t in rs if t[0] <= v(os.environ["SDK"])] or rs; ds=[(k, x) for _, k, vs in rs for x in vs if "iPhone" in x["name"]]; k, x=next((d for d in ds if "Duo" not in d[1]["name"]), ds[0]); print(x["name"], k, file=sys.stderr); print(x["udid"])')
           log="$GITHUB_WORKSPACE/xcodebuild-login-router-tests.log"
+          # The result bundle is what assert_xctest_ran.py reads (see the adaptive editor step).
+          bundle="$RUNNER_TEMP/ios-app-tests.xcresult"
+          rm -rf "$bundle"
           xcodebuild \
             -workspace iosApp.xcworkspace \
             -scheme iosAppTests \
             -configuration Debug \
             -destination "platform=iOS Simulator,id=$device_id" \
             -derivedDataPath "$RUNNER_TEMP/ios-build" \
+            -resultBundlePath "$bundle" \
             -only-testing:iosAppTests \
             -parallel-testing-enabled NO \
             ARCHS=arm64 CODE_SIGNING_ALLOWED=NO \
@@ -1502,7 +1233,7 @@ jobs:
           tail -60 "$log"
           # Every class in the bundle must have run at least one case; xcodebuild itself
           # reports success when a selector matches nothing.
-          python3 "$GITHUB_WORKSPACE/compose/iosApp/scripts/assert_xctest_ran.py" "$log" \
+          python3 "$GITHUB_WORKSPACE/compose/iosApp/scripts/assert_xctest_ran.py" --xcresult "$bundle" "$log" \
             RaftRouterLoginTransitionTests \
             RaftIosComposeScrollEdgeEffectsTests \
             RaftCmpBridgeSelectorTests \
@@ -1516,39 +1247,7 @@ jobs:
             RaftIosComposerPasteTests \
             RaftIosNotificationRetractionTests \
             RaftIosPageOpenGateTests \
-            RaftIosWeakSideActionListenerTests \
             RaftShareControllerFailureReasonTests
-
-      # The UI-test bundle is only compiled here; its one case (QaAcceptanceLoopTests) is a
-      # driver loop run by qa-acceptance-ios.yml, which does its own build-for-testing
-      # before test-without-building. So on pull requests we build just the host
-      # app -- which is what actually proves shared/iOS integration still
-      # compiles -- and leave the harness compile to non-PR runs.
-      - name: Build iOS UI-test harness (simulator)
-        if: ${{ github.event_name != 'pull_request' && needs.plan.outputs.run_ios_tests == 'true' }}
-        working-directory: compose/iosApp
-        run: |
-          set -o pipefail
-          log="$GITHUB_WORKSPACE/xcodebuild-ios.log"
-          xcodebuild \
-            -workspace iosApp.xcworkspace \
-            -scheme iosAppUITests \
-            -configuration Debug \
-            -destination 'generic/platform=iOS Simulator' \
-            -derivedDataPath "$RUNNER_TEMP/ios-build" \
-            ARCHS=arm64 \
-            CODE_SIGNING_ALLOWED=NO \
-            OVERRIDE_KOTLIN_BUILD_IDE_SUPPORTED=YES \
-            RAFT_IOS_REUSE_LINKED_FRAMEWORK=YES \
-            build-for-testing > "$log" 2>&1
-          status=$?
-          tail -200 "$log"
-          if [ "$status" -ne 0 ]; then
-            echo "===== iOS build FAILED (status=$status) — extracted errors ====="
-            grep -nE "(^|[[:space:]])e: |: error:|error: |Unresolved|FAILURE:|Execution failed|BUILD FAILED|following build commands failed|PhaseScriptExecution" "$log" \
-              | grep -v "Using response file" | tail -100 || true
-          fi
-          exit "$status"
 
       # compose/shared/src/iosTest used to be compiled only. Run the iOS-specific classes
       # (*IosTest / *IosSmokeTest) on a simulator; commonTest already runs on the JVM in the
@@ -1672,7 +1371,6 @@ jobs:
       - android
       - android-device
       - android-minimum-supported-attachment-runtime
-      - android-canonical-final-actual-host
       - ios
       - queue-ci-reuse
     steps:

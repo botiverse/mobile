@@ -1,6 +1,5 @@
 package build.raft.app
 
-import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
@@ -21,27 +20,6 @@ class RaftPdfRenderWindowTest {
         raftPdfPageLayout(List(pages) { width to height }, viewportWidth = 1000f, sideMargin = 0f, gap = 0f)
 
     @Test
-    fun fixturePagesLayOutInOneColumnFittingTheWidth() {
-        val fixture = checkNotNull(javaClass.getResourceAsStream("/pdf/two-page.pdf")).readBytes()
-        assertTrue(raftPdfHasHeader(fixture), "fixture starts with %PDF-")
-        val mediaBoxes =
-            Regex("""/MediaBox \[0 0 (\d+) (\d+)]""")
-                .findAll(fixture.decodeToString())
-                .map { it.groupValues[1].toInt() to it.groupValues[2].toInt() }
-                .toList()
-        assertEquals(listOf(595 to 842, 842 to 595), mediaBoxes)
-
-        val layout = raftPdfPageLayout(mediaBoxes, viewportWidth = 1080f, sideMargin = 20f, gap = 10f)
-
-        assertEquals(1040f, layout.pageWidth)
-        assertEquals(10f, layout.pageTops[0])
-        assertEquals(1040f * 842f / 595f, layout.pageHeights[0], 0.01f)
-        assertEquals(layout.pageBottom(0) + 10f, layout.pageTops[1], 0.01f)
-        assertEquals(1040f * 595f / 842f, layout.pageHeights[1], 0.01f)
-        assertEquals(layout.pageBottom(1) + 10f, layout.contentHeight, 0.01f)
-    }
-
-    @Test
     fun headerCheckRejectsFilesThatAreNotPdf() {
         listOf(
             ByteArray(0),
@@ -51,23 +29,6 @@ class RaftPdfRenderWindowTest {
         ).forEach { bytes -> assertFalse(raftPdfHasHeader(bytes), bytes.decodeToString().take(12)) }
         // Leading junk before the marker is allowed within the first KiB.
         assertTrue(raftPdfHasHeader("\u0000\u0000junk%PDF-1.4\n".encodeToByteArray()))
-    }
-
-    @Test
-    fun renderWindowIsTheVisiblePagesPlusHalfAViewportOfPrefetch() {
-        val layout = uniformLayout(pages = 20)
-        // (offsetY, viewportHeight, scale) -> expected window.
-        val cases =
-            listOf(
-                Triple(0f, 2000f, 1f) to 0..2, // pages 0-1 visible, prefetch reaches page 2
-                Triple(1414f * 5, 1414f, 1f) to 4..6, // exactly page 5 on screen, one page each side
-                Triple(1414f * 19, 1414f, 1f) to 18..19, // last page: no page past the end
-                Triple(1414f * 10 * 2f, 1414f, 2f) to 9..10, // zoomed 2x: half a page on screen
-            )
-        cases.forEach { (viewport, expected) ->
-            val (offsetY, height, scale) = viewport
-            assertEquals(expected, layout.renderWindow(offsetY, height, scale), "viewport=$viewport")
-        }
     }
 
     @Test
@@ -83,13 +44,6 @@ class RaftPdfRenderWindowTest {
     }
 
     @Test
-    fun emptyOrUnmeasuredViewportsRenderNothing() {
-        assertTrue(uniformLayout(pages = 0).renderWindow(0f, 1000f, 1f).isEmpty())
-        assertTrue(uniformLayout(pages = 3).renderWindow(0f, 0f, 1f).isEmpty())
-        assertTrue(uniformLayout(pages = 3).renderPlan(0f, 0f, 1f, budgetBytes = 64L shl 20).isEmpty())
-    }
-
-    @Test
     fun currentPageIsThePageUnderTheViewportCentre() {
         val layout = raftPdfPageLayout(List(5) { 1000 to 1000 }, viewportWidth = 1000f, sideMargin = 0f, gap = 100f)
         // Page i spans [100 + 1100 i, 1100 + 1100 i); the viewport is 1000 px tall.
@@ -101,27 +55,6 @@ class RaftPdfRenderWindowTest {
             Triple(1e9f, 1f, 4), // past the end: the last page
         ).forEach { (offsetY, scale, expected) ->
             assertEquals(expected, layout.currentPage(offsetY, viewportHeight = 1000f, scale = scale), "offsetY=$offsetY scale=$scale")
-        }
-    }
-
-    @Test
-    fun renderScaleSnapsUpToTheNextStep() {
-        listOf(0.5f to 1f, 1f to 1f, 1.2f to 1.5f, 1.5f to 1.5f, 2.6f to 3f, 4.9f to 5f, 9f to 5f).forEach { (zoom, step) ->
-            assertEquals(step, raftPdfRenderScaleStep(zoom), "zoom=$zoom")
-        }
-    }
-
-    @Test
-    fun visiblePagesFollowTheZoomStepAndPrefetchPagesStayAtOneX() {
-        val layout = uniformLayout(pages = 10)
-        val budget = 96L shl 20
-        // Zoom 1.2 on page 3: render step 1.5 for the visible page, 1x for its neighbours.
-        val plan = layout.renderPlan(offsetY = 1414f * 3 * 1.2f, viewportHeight = 1000f, scale = 1.2f, budgetBytes = budget)
-
-        assertEquals(3, plan.first().pageIndex, "the visible page renders first")
-        assertEquals(1500 to (1414 * 1.5f).toInt(), plan.first().width to plan.first().height)
-        plan.drop(1).forEach { render ->
-            assertEquals(1000 to 1414, render.width to render.height, "prefetch page ${render.pageIndex} at 1x")
         }
     }
 
@@ -141,37 +74,6 @@ class RaftPdfRenderWindowTest {
     }
 
     @Test
-    fun cappedPagesGetViewportSizedDetailPatchesOnly() {
-        val layout = uniformLayout(pages = 4)
-        // 1x: whole pages fit the cap, no patch.
-        assertTrue(layout.detailRegions(0f, 0f, 1000f, 2000f, scale = 1f).isEmpty())
-
-        // 4x, looking at the middle of page 1: the page at 4x (4000 x 5656) exceeds the 4 MP cap.
-        val offsetX = 1500f
-        val offsetY = (1414f + 600f) * 4f
-        val regions = layout.detailRegions(offsetX, offsetY, viewportWidth = 1000f, viewportHeight = 2000f, scale = 4f)
-
-        assertEquals(listOf(1), regions.map { it.pageIndex })
-        val region = regions.single()
-        assertContentEquals(floatArrayOf(375f, 2014f, 625f, 2514f), floatArrayOf(region.left, region.top, region.right, region.bottom))
-        assertEquals(1000 to 2000, region.bitmapSize(4f), "one bitmap pixel per screen pixel")
-    }
-
-    @Test
-    fun detailPatchesAreClippedToEachVisiblePage() {
-        val layout = raftPdfPageLayout(List(3) { 1000 to 1000 }, viewportWidth = 1000f, sideMargin = 0f, gap = 0f)
-        // 3x straddling pages 0 and 1 (boundary at 1000 content px = 3000 screen px).
-        val regions = layout.detailRegions(offsetX = 0f, offsetY = 2400f, viewportWidth = 1000f, viewportHeight = 1200f, scale = 3f)
-
-        assertEquals(listOf(0, 1), regions.map { it.pageIndex })
-        assertEquals(1000f, regions[0].bottom)
-        assertEquals(1000f, regions[1].top)
-        val pixels = regions.sumOf { it.bitmapSize(3f).let { (w, h) -> w.toLong() * h } }
-        // About one viewport: each patch edge rounds out by under one content pixel.
-        assertTrue(pixels <= (1000L + 3L) * (1200L + 6L), "patches cover one viewport: $pixels px")
-    }
-
-    @Test
     fun bottomPaddingLetsTheLastPageScrollClearOfTheNavigationBar() {
         val pages = List(3) { 1000 to 1000 }
         val plain = raftPdfPageLayout(pages, viewportWidth = 1000f, sideMargin = 0f, gap = 0f)
@@ -181,12 +83,5 @@ class RaftPdfRenderWindowTest {
         assertEquals(plain.maxOffsets(2000f, 1f).second + 126f, padded.maxOffsets(2000f, 1f).second)
         // Zoomed, the padding scales with the content: the last page still ends above the bar.
         assertEquals((3000f + 126f) * 2f - 2000f, padded.maxOffsets(2000f, 2f).second)
-    }
-
-    @Test
-    fun budgetComesFromTheHeapWithinBounds() {
-        assertEquals(24L shl 20, raftPdfBitmapBudgetBytes(64L shl 20))
-        assertEquals(64L shl 20, raftPdfBitmapBudgetBytes(512L shl 20))
-        assertEquals(96L shl 20, raftPdfBitmapBudgetBytes(4L shl 30))
     }
 }

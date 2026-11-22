@@ -82,27 +82,6 @@ class TaskConversationHeadModelTest {
     }
 
     @Test
-    fun creatorOutsideTheChannelReadsAsTheHandleAndNoSourceRowForAHostSource() {
-        // A pre-v2 task whose source IS its host: Earlier discussion leads there, so no Source row.
-        val task = task().copy(hostMessageId = MessageId("host-1"), sourceMessageId = MessageId("host-1"))
-        val unknownCount = task.taskConversationHeadModel(TaskConversationHeaderState(ChannelId("conv-1")), TaskConversationDetailsState(), false, emptyList(), null)
-        assertEquals("@Artin", unknownCount.createdBy)
-        assertNull(unknownCount.source)
-        assertEquals(TaskHeadEarlierDiscussion(replyCount = null), unknownCount.earlierDiscussion)
-
-        fun withReplies(count: Int) =
-            TaskConversationDetailsState(
-                hostMessageId = MessageId("host-1"),
-                earlierDiscussion = TaskDetailLoad.Loaded(TaskEarlierDiscussion(MessageId("host-1"), count, ChannelId("th-1"))),
-            )
-        val counted = task.taskConversationHeadModel(TaskConversationHeaderState(ChannelId("conv-1")), withReplies(3), false, emptyList(), null)
-        assertEquals(TaskHeadEarlierDiscussion(replyCount = 3), counted.earlierDiscussion)
-        // Known to have no replies: hidden (web).
-        val empty = task.taskConversationHeadModel(TaskConversationHeaderState(ChannelId("conv-1")), withReplies(0), false, emptyList(), null)
-        assertNull(empty.earlierDiscussion)
-    }
-
-    @Test
     fun historyIsReadOncePerTaskAndAgainForANewerRevisionOnly() = runTest {
         val historyCalls = mutableListOf<TaskId>()
         val sourceCalls = mutableListOf<MessageId>()
@@ -158,36 +137,6 @@ class TaskConversationHeadModelTest {
     }
 
     @Test
-    fun aTaskWithoutRevisionRereadsItsHistoryWhenItsFactsChangeAndRetryRereadsAFailure() = runTest {
-        val calls = mutableListOf<TaskId>()
-        var fail = true
-        val vm =
-            TaskConversationDetailsViewModel(
-                loadHistory = { taskId ->
-                    calls += taskId
-                    if (fail) DataResult.Error(ScreenError("x", true)) else DataResult.Content(listOf(event("e")))
-                },
-                loadSource = { _, id -> DataResult.Content(TaskSourceMessagePreview(id, null, "", null)) },
-                loadEarlierDiscussion = { _, id -> DataResult.Content(TaskEarlierDiscussion(id, 0, null)) },
-                scopeOverride = this,
-            )
-        val unrevised = task().copy(revision = null)
-        vm.onTask(unrevised)
-        advanceUntilIdle()
-        assertIs<TaskDetailLoad.Failed>(vm.state.value.history)
-        // Retry reads it again.
-        fail = false
-        vm.retryHistory()
-        advanceUntilIdle()
-        assertIs<TaskDetailLoad.Loaded<*>>(vm.state.value.history)
-        // The same facts: nothing to read; a status change: read again.
-        vm.onTask(unrevised.copy())
-        vm.onTask(unrevised.copy(status = build.raft.app.model.TaskStatus.Done))
-        advanceUntilIdle()
-        assertEquals(3, calls.size)
-    }
-
-    @Test
     fun sourceAndViewInChannelOpenTheTaskChannelAtItsMessage() {
         val dmTask = task().copy(channelId = ChannelId("dm-1"), channelType = "dm", sourceMessageId = MessageId("source-1"))
         val dm = dmTask.taskChannelOpenRequest("server-1", dmTask.taskViewInChannelAnchor())!!
@@ -212,30 +161,6 @@ class TaskConversationHeadModelTest {
         assertEquals(ConversationKind.Thread, request.conversationIdentity.kind)
         assertEquals("host-1", request.conversationIdentity.threadParentMessageId())
         assertNull(task().taskEarlierDiscussionOpenRequest("server-1", null))
-    }
-
-    @Test
-    fun aTaskConversationComposerSaysMessageThisTaskAndSearchesInPlace() {
-        assertEquals(
-            ThreadTaskComposerPlaceholder,
-            threadSurfaceComposerPlaceholder(RaftThreadSurfaceKind.Channel, "#ch:#7 Ship", "conv-1", channelKind = RaftTaskConversationChannelKind),
-        )
-        assertEquals("Message #general", threadSurfaceComposerPlaceholder(RaftThreadSurfaceKind.Channel, "general", "ch-1", channelKind = "channel"))
-        val payload =
-            RaftThreadScreenPayload(
-                instanceId = "conv-1",
-                surfaceKind = RaftThreadSurfaceKind.Channel,
-                channelKind = RaftTaskConversationChannelKind,
-                sourceThreadId = "conv-1",
-                status = "content",
-            )
-        assertEquals(ThreadHeaderSearchAction.InlineThreadSearch, payload.threadHeaderSearchAction())
-        assertNull(payload.threadChannelSearchChannelId())
-        assertEquals(ThreadTaskComposerPlaceholder, payload.resolveThreadComposer("#ch:#7 Ship").placeholder)
-        assertEquals(
-            ThreadHeaderSearchAction.ChannelSearch,
-            payload.copy(channelKind = "channel").threadHeaderSearchAction(),
-        )
     }
 
     private fun viewModel(

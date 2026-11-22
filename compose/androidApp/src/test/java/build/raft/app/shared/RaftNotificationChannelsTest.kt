@@ -4,7 +4,12 @@ import android.Manifest
 import android.app.Application
 import android.app.NotificationManager
 import android.content.Context
+import java.util.concurrent.atomic.AtomicReference
+import kotlinx.coroutines.runBlocking
+import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotEquals
+import org.junit.Assert.assertNotNull
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -17,6 +22,11 @@ import org.robolectric.annotation.Config
 @Config(sdk = [34], application = Application::class)
 class RaftNotificationChannelsTest {
     private val context: Context = RuntimeEnvironment.getApplication()
+
+    @After
+    fun tearDown() {
+        RaftNotificationChannels.resetForTests()
+    }
 
     @Test
     fun ensureAllCreatesEveryChannelWithoutNotificationPermission() {

@@ -7,6 +7,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.graphics.Color
 import build.raft.app.LocalRaftStackShellTabs
+import build.raft.app.RaftReactionAtlasProvider
 import build.raft.app.RaftStackShellTabs
 import build.raft.app.cmp.host.HostBridgeTransport
 import build.raft.app.cmp.host.RaftCmpPageArgs
@@ -164,8 +165,10 @@ internal fun RaftAndroidNav3StackContent(
     transitions: RaftStackTransitionListener? = null,
 ) {
     val shellTabs = remember { RaftStackShellTabs() }
-    CompositionLocalProvider(LocalRaftStackShellTabs provides shellTabs) {
-        RaftAndroidNav3StackPages(stack, onSystemBars, onCanvas, shell, page, transitions)
+    RaftReactionAtlasProvider {
+        CompositionLocalProvider(LocalRaftStackShellTabs provides shellTabs) {
+            RaftAndroidNav3StackPages(stack, onSystemBars, onCanvas, shell, page, transitions)
+        }
     }
 }
 

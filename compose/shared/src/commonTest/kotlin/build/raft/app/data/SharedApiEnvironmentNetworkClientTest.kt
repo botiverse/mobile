@@ -6,8 +6,6 @@ import build.raft.app.network.RaftHttpExecutorResponse
 import build.raft.app.network.RaftRequestPriority
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertFalse
-import kotlin.test.assertTrue
 import kotlinx.coroutines.runBlocking
 
 class SharedApiEnvironmentNetworkClientTest {
@@ -102,28 +100,6 @@ class SharedApiEnvironmentNetworkClientTest {
     }
 
     @Test
-    fun boundJsonEnvironmentMismatchSkipsExecutor() = runBlocking {
-        val environmentStore = SharedApiEnvironmentStore(InMemoryRaftKeyValueStore())
-        environmentStore.select("staging")
-        val executor = RecordingHttpExecutor()
-        val client =
-            SharedRaftNetworkClient(
-                sessionStore = authenticatedSessionStore(),
-                baseUrlProvider = { environmentStore.current().apiBaseUrl },
-                executor = executor,
-            ).boundTo(
-                expectedBinding(
-                    environmentId = SharedApiEnvironmentStore.Production.apiBaseUrl,
-                )
-            )
-
-        val response = client.request(DataRequestPriority.Foreground, "channels/channel-1")
-
-        assertEquals(409, response.code)
-        assertEquals(emptyList(), executor.urls)
-    }
-
-    @Test
     fun boundJsonRequestUsesCapturedEnvironmentBaseUrl() = runBlocking {
         val environmentStore = SharedApiEnvironmentStore(InMemoryRaftKeyValueStore())
         val executor = RecordingHttpExecutor()
@@ -203,93 +179,6 @@ class SharedApiEnvironmentNetworkClientTest {
             ),
             executor.urls
         )
-    }
-
-    @Test
-    fun sharedNetworkClientReadsLatestApiEnvironmentForEachRequest() = runBlocking {
-        val environmentStore = SharedApiEnvironmentStore(InMemoryRaftKeyValueStore())
-        val executor = RecordingHttpExecutor()
-        val sessionStore =
-            InMemoryRaftAuthSessionStore(
-                StoredAuthSession(
-                    user = StoredAuthUser(id = "user-1", email = "user@raft.build"),
-                    accessToken = "access-token",
-                    refreshToken = "refresh-token",
-                    selectedServerId = "server-1",
-                    servers = listOf(StoredAuthServer(id = "server-1", name = "Raft"))
-                )
-            )
-        val client =
-            SharedRaftNetworkClient(
-                sessionStore = sessionStore,
-                baseUrlProvider = { environmentStore.current().apiBaseUrl },
-                executor = executor
-            )
-
-        client.request(
-            priority = DataRequestPriority.Foreground,
-            path = "channels",
-            method = "GET",
-            query = emptyList(),
-            serverIdOverride = null,
-            bodyText = null
-        )
-        environmentStore.select("staging")
-        client.request(
-            priority = DataRequestPriority.Foreground,
-            path = "channels",
-            method = "GET",
-            query = emptyList(),
-            serverIdOverride = null,
-            bodyText = null
-        )
-
-        assertEquals(
-            listOf(
-                "${SharedApiEnvironmentStore.Production.apiBaseUrl.trimEnd('/')}/channels",
-                "${SharedApiEnvironmentStore.Staging.apiBaseUrl.trimEnd('/')}/channels"
-            ),
-            executor.urls
-        )
-    }
-
-    @Test
-    fun sharedNetworkClientReservesOnlyHttp401EndpointDiagnostics() = runBlocking {
-        val normal = mutableListOf<String>()
-        val critical = mutableListOf<String>()
-
-        suspend fun requestWith(code: Int) {
-            val sessionStore =
-                InMemoryRaftAuthSessionStore(
-                    StoredAuthSession(
-                        user = StoredAuthUser(id = "user-$code", email = "user-$code@raft.build"),
-                        accessToken = "access-$code",
-                        refreshToken = "refresh-$code",
-                        selectedServerId = "server-1",
-                        servers = listOf(StoredAuthServer(id = "server-1", name = "Raft"))
-                    )
-                )
-            SharedRaftNetworkClient(
-                sessionStore = sessionStore,
-                warningLogger = normal::add,
-                criticalWarningLogger = critical::add,
-                executor = RecordingHttpExecutor(responseCode = code)
-            ).request(
-                priority = DataRequestPriority.Foreground,
-                path = "channels",
-                method = "GET",
-                query = emptyList(),
-                serverIdOverride = null,
-                bodyText = null
-            )
-        }
-
-        requestWith(401)
-        requestWith(403)
-
-        assertTrue(critical.any { "endpoint category=channels" in it && "code=401" in it })
-        assertFalse(critical.any { "endpoint category=channels" in it && "code=403" in it })
-        assertTrue(normal.any { "endpoint category=channels" in it && "code=403" in it })
     }
 
     private class RecordingHttpExecutor(

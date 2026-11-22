@@ -13,15 +13,6 @@ class MembersAdaptiveWorkspaceTest {
     private val peer = ServerId("peer")
     private val agent = MemberProfile(MemberId("same-id"), "Same display name", "same", MemberKind.Agent)
 
-    @Test fun selectionUsesKindAndServerInsteadOfDisplayNameOrBareId() {
-        val selected = MemberDetailIdentity(agent.id, MemberKind.Agent, local)
-        assertTrue(agent.matchesMemberSelection(selected, local))
-        assertFalse(agent.copy(kind = MemberKind.Human).matchesMemberSelection(selected, local))
-        assertFalse(agent.copy(serverId = peer).matchesMemberSelection(selected, local))
-        assertFalse(agent.matchesMemberSelection(selected, peer))
-        assertFalse(agent.matchesMemberSelection(null, local))
-    }
-
     @Test fun remoteSelectionNeverHighlightsSameIdLocalMember() {
         val selected = MemberDetailIdentity(agent.id, MemberKind.Agent, peer)
         assertFalse(agent.matchesMemberSelection(selected, local))

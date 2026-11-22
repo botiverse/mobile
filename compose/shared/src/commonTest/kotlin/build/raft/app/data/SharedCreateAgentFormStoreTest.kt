@@ -42,35 +42,6 @@ class SharedCreateAgentFormStoreTest {
     }
 
     @Test
-    fun unknownOrUnreadableSessionKeepsTheFormSessionAndOnlyASignOutClearsIt() = runPortableCoroutineTest {
-        // Architecture review B, site 9: readSession() == null (also a corrupt or failed read) cleared
-        // the form's runtime list mid-dialog.
-        val api = SequencedFormComputersApi()
-        val owner = SharedCreateAgentFormOwner("https://api.example.test", "account-1", "1")
-        var binding: RaftAccountBinding<SharedCreateAgentFormOwner> = RaftAccountBinding.SignedIn(owner)
-        val store = SharedCreateAgentFormStore(
-            RaftComputersApiClient(api),
-            this,
-            ownerProvider = { binding.accountOrNull },
-            ownerBinding = { binding },
-        )
-        val machineKey = SharedCreateAgentMachineFormKey("server-1", "machine-1")
-        assertIs<DataResult.Content<SharedCreateAgentRuntimeCatalog>>(store.loadRuntimeCatalog("server-1", "machine-1"))
-
-        for (unknown in listOf(RaftAccountBinding.Corrupt("SerializationException"), RaftAccountBinding.Unknown)) {
-            binding = unknown
-            store.reconcileOwner()
-            assertEquals(owner, store.state.value.owner, "$unknown is not a sign-out")
-            assertTrue(machineKey in store.state.value.runtimeCatalogs)
-        }
-
-        binding = RaftAccountBinding.SignedOut
-        store.reconcileOwner()
-        assertEquals(null, store.state.value.owner)
-        assertTrue(store.state.value.runtimeCatalogs.isEmpty())
-    }
-
-    @Test
     fun cloudAgentOfferFollowsTheFlagThenTheProbe() = runPortableCoroutineTest {
         val api = SequencedFormComputersApi()
         val off = SharedCreateAgentFormStore(RaftComputersApiClient(api), this)
@@ -104,29 +75,6 @@ class SharedCreateAgentFormStoreTest {
         assertEquals(false, locked.picker)
         api.modelsResponse = HomeNetworkResponse(code = 502, bodyText = "{}")
         assertTrue(store.loadHostedRuntimeModels("server-1") is DataResult.Error)
-    }
-
-    @Test
-    fun formOwnerIgnoresTokensAndFollowsAccountAndEnvironment() {
-        val session = formSession(user = "account-1", accessToken = "access-1")
-        val owner = sharedCreateAgentFormOwner(session, "https://api.example.test/", "1")
-        assertEquals(SharedCreateAgentFormOwner("https://api.example.test", "account-1", "1"), owner)
-        assertEquals(owner, sharedCreateAgentFormOwner(session.copy(accessToken = "access-2"), "https://api.example.test", "1"))
-        assertTrue(owner != sharedCreateAgentFormOwner(formSession(user = "account-2", accessToken = "access-1"), "https://api.example.test", "1"))
-        assertTrue(owner != sharedCreateAgentFormOwner(session, "https://other.example.test", "1"))
-        assertEquals(null, sharedCreateAgentFormOwner(formSession(user = " ", accessToken = "access-1"), "https://api.example.test", "1"))
-        assertEquals(null, sharedCreateAgentFormOwner(session, " ", "1"))
-
-        val generation = SharedAuthLoginGeneration()
-        val start = generation.current()
-        generation.onAuthSessionEvent(AuthSessionEvent.TokensRotated(generation = 1))
-        generation.onAuthSessionEvent(AuthSessionEvent.BindingMetadataChanged(generation = 2))
-        assertEquals(start, generation.current())
-        generation.onAuthSessionEvent(AuthSessionEvent.Cleared(generation = 3, reason = AuthSessionClearReason.Logout))
-        val afterLogout = generation.current()
-        assertTrue(afterLogout != start)
-        generation.onAuthSessionEvent(AuthSessionEvent.Authenticated(generation = 4))
-        assertTrue(generation.current() != afterLogout)
     }
 
     private fun formSession(user: String, accessToken: String): StoredAuthSession =

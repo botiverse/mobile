@@ -1,13 +1,9 @@
 package build.raft.app.data.realtime
 
 import build.raft.realtime.socket.RaftWebSocketConnector
-import build.raft.realtime.socket.RaftWebSocketFrame
-import build.raft.realtime.socket.RaftWebSocketSession
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
-import kotlinx.coroutines.channels.Channel
-import kotlinx.coroutines.channels.ReceiveChannel
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.runCurrent
@@ -20,32 +16,6 @@ import kotlinx.serialization.json.jsonPrimitive
 
 /** The host facade over the common Socket.IO client, as the iOS host drives it. */
 class RaftKmpRealtimeSocketTest {
-    private class Session : RaftWebSocketSession {
-        private val toClient = Channel<RaftWebSocketFrame>(Channel.UNLIMITED)
-        private val fromClient = Channel<String>(Channel.UNLIMITED)
-        override val incoming: ReceiveChannel<RaftWebSocketFrame> = toClient
-
-        override suspend fun send(text: String) {
-            fromClient.send(text)
-        }
-
-        override suspend fun sendBinary(bytes: ByteArray) = Unit
-
-        override suspend fun close(code: Int, reason: String) {
-            toClient.close()
-        }
-
-        fun push(text: String) {
-            toClient.trySend(RaftWebSocketFrame.Text(text))
-        }
-
-        fun sent(): List<String> {
-            val frames = mutableListOf<String>()
-            while (true) frames += fromClient.tryReceive().getOrNull() ?: break
-            return frames
-        }
-    }
-
     private class Recorder : RaftKmpRealtimeSocketListener {
         val calls = mutableListOf<String>()
         val logs = mutableListOf<String>()
@@ -76,7 +46,7 @@ class RaftKmpRealtimeSocketTest {
     }
 
     private class Harness(test: TestScope) {
-        val sessions = mutableListOf<Session>()
+        val sessions = mutableListOf<RaftScriptedWebSocketSession>()
         val recorder = Recorder()
         val socket =
             RaftKmpRealtimeSocket(
@@ -87,7 +57,7 @@ class RaftKmpRealtimeSocketTest {
                 capabilities = listOf("agent_activity_subscriptions_v1"),
                 allowedEvents = listOf("rooms:joined", "message:new", "notification:desktop"),
                 listener = recorder,
-                connector = RaftWebSocketConnector { _, _ -> Session().also { sessions += it } },
+                connector = RaftWebSocketConnector { _, _ -> RaftScriptedWebSocketSession().also { sessions += it } },
                 parentScope = test.backgroundScope,
                 dispatcher = StandardTestDispatcher(test.testScheduler),
                 refreshWaitMillis = 10_000,
@@ -97,7 +67,7 @@ class RaftKmpRealtimeSocketTest {
             Json.parseToJsonElement(frames.last { it.startsWith("40") }.removePrefix("40")).jsonObject
     }
 
-    private fun TestScope.connected(): Pair<Harness, Session> {
+    private fun TestScope.connected(): Pair<Harness, RaftScriptedWebSocketSession> {
         val harness = Harness(this)
         harness.socket.connect()
         runCurrent()

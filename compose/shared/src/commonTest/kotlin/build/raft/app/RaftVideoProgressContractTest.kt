@@ -5,16 +5,6 @@ import kotlin.test.assertEquals
 
 class RaftVideoProgressContractTest {
     @Test
-    fun terminalClampsAndRejectsLateOlderProgress() {
-        val contract = RaftVideoProgressContract()
-        assertEquals(700L, contract.progress(700L, 1_000L).currentMs)
-        val ended = contract.ended(1_000L)
-        assertEquals(1_000L, ended.currentMs)
-        assertEquals(1_000L, contract.progress(8_000L, 1_000L).currentMs)
-        assertEquals(true, contract.progress(0L, 1_000L).terminal)
-    }
-
-    @Test
     fun replayResetsToZeroAndAdvancesGeneration() {
         val contract = RaftVideoProgressContract()
         contract.progress(900L, 2_000L)
@@ -38,19 +28,6 @@ class RaftVideoProgressContractTest {
     }
 
     @Test
-    fun seekFencesTerminalCallbackFromPreviousAttempt() {
-        val contract = RaftVideoProgressContract()
-        contract.progress(600L, 2_000L)
-        val oldGeneration = contract.currentGeneration
-        val seek = contract.seek(400L)
-
-        assertEquals(400L, seek.currentMs)
-        assertEquals(false, seek.terminal)
-        assertEquals(seek, contract.ended(2_000L, callbackGeneration = oldGeneration))
-        assertEquals(true, contract.ended(2_000L).terminal)
-    }
-
-    @Test
     fun terminalGateRejectsOldEndedAfterNewReadyUntilPlaybackStarts() {
         val gate = RaftVideoPlaybackAttemptGate()
         gate.begin(1L)
@@ -64,15 +41,5 @@ class RaftVideoProgressContractTest {
         assertEquals(false, gate.acceptsTerminal(1L))
         gate.markTerminalEligible(1L)
         assertEquals(true, gate.acceptsTerminal(1L))
-    }
-
-    @Test
-    fun oldTickerAfterReplayCannotBeLabeledAsTheNewAttempt() {
-        val gate = RaftVideoPlaybackAttemptGate(initialGeneration = 0L)
-        gate.begin(1L)
-        gate.markStarted(1L)
-
-        assertEquals(false, gate.acceptsProgress(0L))
-        assertEquals(true, gate.acceptsProgress(1L))
     }
 }

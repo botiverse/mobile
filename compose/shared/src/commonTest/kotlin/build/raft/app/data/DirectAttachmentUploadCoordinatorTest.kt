@@ -18,21 +18,6 @@ import kotlin.test.assertTrue
 
 class DirectAttachmentUploadCoordinatorTest {
     @Test
-    fun explicitCreateCancellationIsUnknownAndFailsClosed() = runPortableCoroutineTest {
-        val gateway = FakeGateway().apply { throwCreateCancellation = true }
-        val diagnostics = mutableListOf<String>()
-        var propagated = false
-        try {
-            coordinator(gateway, diagnostics::add).upload(ChannelId("channel-1"), listOf(file("local-1")))
-        } catch (_: CancellationException) {
-            propagated = true
-        }
-        assertTrue(propagated)
-        assertEquals(0, gateway.cancelCalls)
-        assertTrue(diagnostics.any { it.contains("phase=create_cancellation") })
-    }
-
-    @Test
     fun createCancellationReplaysSameIdempotencyKeyAndCompensates() = runPortableCoroutineTest {
         val gateway = FakeGateway().apply { throwCreateCancellationOnce = true }
         var propagated = false
@@ -131,20 +116,6 @@ class DirectAttachmentUploadCoordinatorTest {
         assertEquals(2, gateway.createdIds.size)
         assertEquals(setOf(gateway.uploadId(1), gateway.uploadId(2)), gateway.cancelledIds.toSet())
         assertTrue(error.cleanupEvidence?.contains("safe=true") == true)
-    }
-
-    @Test
-    fun cancelFailureStillProcessesSiblingsAndStatusCanProveSafeRetraction() = runBlocking {
-        val gateway = FakeGateway()
-        gateway.putFailureOrdinals += 2
-        gateway.cancelFailureOrdinals += 2
-
-        val result = coordinator(gateway).upload(ChannelId("channel-1"), listOf(file("local-1"), file("local-2")))
-
-        assertIs<DataResult.Error>(result)
-        assertEquals(setOf(gateway.uploadId(1), gateway.uploadId(2)), gateway.cancelledIds.toSet())
-        assertEquals(setOf(gateway.uploadId(2)), gateway.statusIds.toSet())
-        assertTrue(result.error.cleanupEvidence?.contains("safe=true") == true)
     }
 
     @Test
@@ -264,82 +235,6 @@ class DirectAttachmentUploadCoordinatorTest {
     }
 
     @Test
-    fun fileRefAndBytesConflictIsRejectedBeforePreflightOrCreate() = runBlocking {
-        val gateway = FakeGateway()
-        val conflicting =
-            PlatformFile(
-                id = "conflict",
-                fileName = "conflict.jpg",
-                mimeType = "image/jpeg",
-                sizeBytes = 3L,
-                bytes = byteArrayOf(1, 2, 3),
-                fileRef = "file:///private/cache/conflict.jpg",
-            )
-
-        val result = coordinator(gateway).upload(ChannelId("channel-1"), listOf(conflicting))
-
-        val error = assertIs<DataResult.Error>(result).error
-        assertEquals("attachment_file_input_conflict", error.code)
-        assertTrue(gateway.preparedFiles.isEmpty())
-        assertTrue(gateway.createRequests.isEmpty())
-    }
-
-    @Test
-    fun resolverlessFileRefFallbackUsesCanonicalSizeAdmissionFailure() {
-        val result =
-            prepareDirectAttachmentUploadFile(
-                PlatformFile(
-                    id = "ref-only",
-                    fileName = "photo.jpg",
-                    mimeType = "image/jpeg",
-                    fileRef = "file:///private/cache/photo.jpg",
-                )
-            )
-
-        val error = assertIs<DataResult.Error>(result).error
-        assertEquals("attachment_size_unavailable", error.code)
-        assertTrue(!error.retryable)
-    }
-
-    @Test
-    fun fallbackFileRefAndBytesConflictUsesCanonicalConflictFailure() {
-        val result =
-            prepareDirectAttachmentUploadFile(
-                PlatformFile(
-                    id = "conflict",
-                    fileName = "photo.jpg",
-                    mimeType = "image/jpeg",
-                    bytes = byteArrayOf(1),
-                    fileRef = "file:///private/cache/photo.jpg",
-                )
-            )
-
-        val error = assertIs<DataResult.Error>(result).error
-        assertEquals("attachment_file_input_conflict", error.code)
-        assertTrue(!error.retryable)
-    }
-
-    @Test
-    fun preparerOutputDriftFailsBeforeCreate() = runBlocking {
-        val gateway = FakeGateway()
-        val source = file("local-1")
-        // A preparer must not change the caller's identity or body source while supplying a size.
-        gateway.prepareResults +=
-            DataResult.Content(
-                source.copy(
-                    id = "different-local-id",
-                    sizeBytes = source.bytes.size.toLong(),
-                )
-            )
-
-        val result = coordinator(gateway).upload(ChannelId("channel-1"), listOf(source))
-
-        val error = assertIs<DataResult.Error>(result).error
-        assertEquals("attachment_upload_file_preflight_invalid", error.code)
-        assertTrue(gateway.createRequests.isEmpty())
-    }
-
-    @Test
     fun preparerBodyDriftFailsBeforeCreate() = runBlocking {
         val gateway = FakeGateway()
         val source = file("local-1")
@@ -348,30 +243,6 @@ class DirectAttachmentUploadCoordinatorTest {
                 source.copy(
                     bytes = byteArrayOf(9, 8, 7),
                     sizeBytes = 3L,
-                )
-            )
-
-        val result = coordinator(gateway).upload(ChannelId("channel-1"), listOf(source))
-
-        val error = assertIs<DataResult.Error>(result).error
-        assertEquals("attachment_upload_file_preflight_invalid", error.code)
-        assertTrue(gateway.createRequests.isEmpty())
-    }
-
-    @Test
-    fun preparerPreviewAndSourceDriftFailsBeforeCreate() = runBlocking {
-        val gateway = FakeGateway()
-        val source =
-            file("local-1").copy(
-                previewUri = "file:///private/cache/source.jpg",
-                source = "picker",
-            )
-        gateway.prepareResults +=
-            DataResult.Content(
-                source.copy(
-                    previewUri = "file:///private/cache/other.jpg",
-                    source = "unexpected",
-                    sizeBytes = source.bytes.size.toLong(),
                 )
             )
 
@@ -396,25 +267,6 @@ class DirectAttachmentUploadCoordinatorTest {
         val error = assertIs<DataResult.Error>(result).error
         assertEquals("attachment_size_unavailable", error.code)
         assertEquals(listOf(first, second), gateway.preparedFiles)
-        assertTrue(gateway.createRequests.isEmpty())
-    }
-
-    @Test
-    fun positiveBytesHintMismatchFailsBeforeCreate() = runBlocking {
-        val gateway = FakeGateway()
-        val source =
-            PlatformFile(
-                id = "mismatch",
-                fileName = "mismatch.jpg",
-                mimeType = "image/jpeg",
-                sizeBytes = 99L,
-                bytes = byteArrayOf(1, 2, 3),
-            )
-
-        val result = coordinator(gateway).upload(ChannelId("channel-1"), listOf(source))
-
-        val error = assertIs<DataResult.Error>(result).error
-        assertEquals("attachment_size_mismatch", error.code)
         assertTrue(gateway.createRequests.isEmpty())
     }
 

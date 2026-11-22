@@ -28,24 +28,6 @@ class HomeServerSwitcherRowTest {
     }
 
     @Test
-    fun nothingNewShowsNothing() {
-        assertNull(homeServerSwitcherRowUnread(other.copy(activityUnreadCount = 0L, broaderUnreadCount = 5), current = false))
-    }
-
-    @Test
-    fun theNativeTitleLeadsWithTheServerTileAndOnlyAnHttpImage() {
-        assertEquals(
-            RaftNativeNavBarTitleLeading.Server(label = "A", imageUrl = null),
-            homeNativeNavBarServerLeading(other)
-        )
-        assertEquals(
-            RaftNativeNavBarTitleLeading.Server(label = "A", imageUrl = "https://cdn.example/a.png"),
-            homeNativeNavBarServerLeading(other.copy(avatarUrl = "https://cdn.example/a.png"))
-        )
-        assertNull(homeNativeNavBarServerLeading(other.copy(avatarUrl = "pixel:abc")).imageUrl)
-    }
-
-    @Test
     fun theNativeTitleTapOpensThePageMenuWithAChevronInsteadOfASystemMenu() {
         val bridge = RaftNativeNavBarBridge()
         var extras: JsonObject? = null

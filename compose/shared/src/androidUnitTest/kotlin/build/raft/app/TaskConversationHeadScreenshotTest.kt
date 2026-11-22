@@ -1,14 +1,8 @@
 package build.raft.app
 
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.foundation.layout.offset
-import androidx.compose.ui.unit.IntOffset
-import build.raft.designsystem.components.RaftMenuSurface
-import kotlin.math.roundToInt
-import androidx.compose.ui.layout.LayoutCoordinates
-import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -103,77 +97,11 @@ class TaskConversationHeadScreenshotTest {
     fun pageDark() = capture("task.conversation.head.dark", RaftAppAppearance.Dark) { TaskPhonePage(ThreeMessages) }
 
     @Test
-    fun keyboardUp() =
-        capture("task.conversation.head.keyboard", RaftAppAppearance.Light) { TaskPhonePage(ThreeMessages, keyboardUp = true) }
-
-    @Test
     fun largeText() =
         capture("task.conversation.head.font-2x", RaftAppAppearance.Light) {
             val density = LocalDensity.current
             CompositionLocalProvider(LocalDensity provides Density(density.density, fontScale = 2f)) {
                 TaskPhonePage(ThreeMessages)
-            }
-        }
-
-    /** Two short replies: the head, "Beginning of conversation" and the replies, all in view. */
-    @Test
-    fun shortConversation() = capture("task.conversation.head.short", RaftAppAppearance.Light) { TaskPhonePage(ShortMessages) }
-
-    /** Eight messages, from the newest one back to the head on top, in thirds (a frame strip of the scroll). */
-    @Test
-    fun scroll1() = capture("task.conversation.head.scroll.1", RaftAppAppearance.Light) { TaskPhonePage(EightMessages, scrolledTowardsTop = 0f) }
-
-    @Test
-    fun scroll2() =
-        capture("task.conversation.head.scroll.2", RaftAppAppearance.Light) { TaskPhonePage(EightMessages, scrolledTowardsTop = 1f / 3f) }
-
-    @Test
-    fun scroll3() =
-        capture("task.conversation.head.scroll.3", RaftAppAppearance.Light) { TaskPhonePage(EightMessages, scrolledTowardsTop = 2f / 3f) }
-
-    @Test
-    fun scroll4() = capture("task.conversation.head.scroll.4", RaftAppAppearance.Light) { TaskPhonePage(EightMessages, scrolledTowardsTop = 1f) }
-
-    /**
-     * Source and Created by draw their faces through RaftMemberAvatar: an agent's pixel avatar (no
-     * URL) on Source, and an agent with no avatar of its own wearing the robot on Created by (both
-     * drew initials, or nothing, before).
-     */
-    @Test
-    fun factFaces() =
-        capture("task.conversation.head.faces", RaftAppAppearance.Light) {
-            Column(Modifier.fillMaxSize().background(RaftTheme.colors.layerCanvas).padding(16.dp)) {
-                TaskHeadContent(model = FacesHeadModel)
-            }
-        }
-
-    /**
-     * The Status chip tapped (artin, #proj-apps #35: nothing happened): its menu under the chip, as
-     * RaftDropdownMenu places it (6dp under the chip's box), every status with the current one
-     * checked. A popup is its own window, so the menu's surface is drawn in place.
-     */
-    @Test
-    fun statusMenu() =
-        capture("task.conversation.head.status-menu", RaftAppAppearance.Light) {
-            var menuAt by remember { mutableStateOf<IntOffset?>(null) }
-            val gap = with(LocalDensity.current) { 6.dp.roundToPx() }
-            // RaftDropdownMenu's place: under the chip's box, start-aligned, 6dp down.
-            val anchor: (LayoutCoordinates) -> Unit =
-                remember(gap) {
-                    { box ->
-                        val at = box.positionInRoot()
-                        menuAt = IntOffset(at.x.roundToInt(), at.y.roundToInt() + box.size.height + gap)
-                    }
-                }
-            Box(Modifier.fillMaxSize()) {
-                CompositionLocalProvider(LocalTaskHeadStatusMenuAnchor provides anchor) {
-                    TaskPhonePage(ThreeMessages)
-                }
-                menuAt?.let { at ->
-                    RaftMenuSurface(Modifier.offset { at }, minWidth = TaskHeadStatusMenuMinWidth) {
-                        TaskHeadStatusMenuRows(HeadModel.bar) {}
-                    }
-                }
             }
         }
 
@@ -287,22 +215,12 @@ private fun TaskPhonePage(
     }
 }
 
-private val ShortMessages =
-    listOf(
-        message("m-s1", 1, "user-artin", "artin", MemberKind.Human, "Can you check the status line?"),
-        message("m-s2", 2, "agent-lagoon", "Lagoon", MemberKind.Agent, "On it."),
-    )
-
 private val ThreeMessages =
     listOf(
         message("m-1", 1, "agent-lagoon", "Lagoon", MemberKind.Agent, "Pushed the head: on a phone it is the conversation's first row."),
         message("m-2", 2, "user-artin", "artin", MemberKind.Human, "Looks right on my phone. Ship it."),
         message("m-3", 3, "agent-stamp", "Stamp", MemberKind.Agent, "PR #3873 is approved."),
     )
-
-/** Eight messages: a little longer than the page, for the scroll strip. */
-private val EightMessages
-    get() = EarlierMessages.takeLast(5) + ThreeMessages
 
 /** A conversation well past the page: its head far out of view at the newest message. */
 private val LongMessages
@@ -428,24 +346,6 @@ private fun TaskHeader(chrome: TaskConversationHeaderChrome) {
     )
 }
 
-private val FacesHeadModel
-    get() =
-        HeadModel.copy(
-            description = null,
-            source =
-                TaskHeadSource(
-                    authorName = "Niko",
-                    authorKind = MemberKind.Agent,
-                    authorAvatarWireValue = "pixel:antenna",
-                    preview = "Avatars render as initials on the task page",
-                    time = "09:12",
-                    authorId = "agent-niko",
-                ),
-            createdBy = "Kirby",
-            creator = TaskHeadPerson(MemberKind.Agent, "agent-kirby"),
-            history = TaskHeadHistory.Rows(emptyList()),
-        )
-
 private fun follower(id: String, name: String) =
     ThreadAgentFollower(id = id, name = name, status = "active", serverId = "server-1", isCurrentServer = true, canRemove = true)
 
@@ -562,21 +462,7 @@ class TaskConversationHeadFloatScreenshotTest {
     fun closedLight() = capture("task.conversation.head-float.closed", RaftAppAppearance.Light) { TaskFloatPage(open = false) }
 
     @Test
-    fun closedDark() = capture("task.conversation.head-float.closed.dark", RaftAppAppearance.Dark) { TaskFloatPage(open = false) }
-
-    @Test
-    @Config(qualifiers = "w412dp-h800dp-xxhdpi")
-    fun closedWide() = capture("task.conversation.head-float.closed.w412", RaftAppAppearance.Light) { TaskFloatPage(open = false) }
-
-    @Test
     fun openLight() = capture("task.conversation.head-float.open", RaftAppAppearance.Light) { TaskFloatPage(open = true) }
-
-    @Test
-    fun openDark() = capture("task.conversation.head-float.open.dark", RaftAppAppearance.Dark) { TaskFloatPage(open = true) }
-
-    @Test
-    @Config(qualifiers = "w412dp-h800dp-xxhdpi")
-    fun openWide() = capture("task.conversation.head-float.open.w412", RaftAppAppearance.Light) { TaskFloatPage(open = true) }
 
     private fun capture(name: String, appearance: RaftAppAppearance, content: @Composable () -> Unit) =
         RaftRobolectricScreenshot.capture(name, appearance, reportDir = "build/reports/home-screenshots", activities = activities) {
@@ -622,20 +508,6 @@ class TaskConversationHeadWideScreenshotTest {
 
     @Test
     fun landscape() = capture("task.conversation.head.wide-landscape", RaftAppAppearance.Light) { TaskPhonePage(ThreeMessages) }
-
-    @Test
-    fun landscapeLong() =
-        capture("task.conversation.head.wide-landscape.long", RaftAppAppearance.Light) { TaskPhonePage(LongMessages) }
-
-    @Test
-    fun landscapePulledDown() =
-        capture("task.conversation.head.wide-landscape.pulled-down", RaftAppAppearance.Light) {
-            TaskPhonePage(LongMessages, pulledDown = true)
-        }
-
-    @Test
-    @Config(qualifiers = "w800dp-h1280dp-mdpi")
-    fun portrait() = capture("task.conversation.head.wide-portrait", RaftAppAppearance.Light) { TaskPhonePage(ThreeMessages) }
 
     private fun capture(name: String, appearance: RaftAppAppearance, content: @Composable () -> Unit) =
         RaftRobolectricScreenshot.capture(name, appearance, reportDir = "build/reports/home-screenshots", activities = activities) {

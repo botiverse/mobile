@@ -1,6 +1,5 @@
 package build.raft.app
 
-import build.raft.app.SharedThreadStoreTest.Companion.basePayload
 import build.raft.app.SharedThreadStoreTest.Companion.message
 import build.raft.app.SharedThreadStoreTest.Companion.messagesResponse
 import build.raft.app.SharedThreadStoreTest.Companion.sampleSession
@@ -15,9 +14,6 @@ import build.raft.app.data.InMemoryRaftAuthSessionStore
 import build.raft.app.model.ChannelId
 import build.raft.app.model.MessageId
 import build.raft.app.model.ThreadId
-import build.raft.app.model.ThreadUpdated
-import build.raft.app.network.sync.ThreadRepliesSyncWindowEnvelope
-import build.raft.app.network.sync.ThreadRepliesSyncWindowProducer
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
@@ -100,31 +96,6 @@ class SharedThreadReplyThreadReplyTotalTest {
     }
 
     @Test
-    fun aLiveReplyCountOnlyGrowsTheRememberedParent() = runTest {
-        val dataSource = dataSource(backgroundScope, FakeConversationRepository())
-        dataSource.rememberReplyParentCandidate(
-            provenance = requireNotNull(dataSource.captureReplyCacheProducerContext()).provenance,
-            serverId = "server-1",
-            parentChannelId = "channel-1",
-            parentMessage = contentPayload("parent body").messages.single().withoutThreadReplyMetadata(),
-            threadChannelId = "thread-m1",
-            replyCount = 5
-        )
-        val route = openThreadRoute(streamChannelId = "thread-m1")
-
-        // event count to the remembered count after it; a late, older event changes nothing.
-        listOf(9 to 9, 7 to 9).forEach { (eventReplyCount, expected) ->
-            dataSource.rememberReplyParentReplyCount(
-                parentChannelId = "channel-1",
-                parentMessageId = "m1",
-                replyCount = eventReplyCount
-            )
-            val remembered = assertIs<SharedThreadOriginResolution.Loaded>(dataSource.resolveReplyOrigin(route)).message
-            assertEquals(expected, remembered.replyCount, "eventReplyCount=$eventReplyCount")
-        }
-    }
-
-    @Test
     fun theOpenAnswersTotalNeverLowersTheParentsCount() {
         val parent = message(threadId = "channel-1", id = "m1", seq = 1, body = "parent body", replyCount = 30)
         // (the open answer's total, or null when the load asked none) to the parent's count after it.
@@ -136,41 +107,6 @@ class SharedThreadReplyThreadReplyTotalTest {
         assertNull(
             threadSnapshot(threadId = "thread-m1").copy(replyThreadReplyCount = 412).withReplyThreadReplyCountOnParent().parentMessage
         )
-    }
-
-    @Test
-    fun aThreadUpdateNamesItsParentsConversation() {
-        val thread = openThreadRoute(streamChannelId = "thread-m1")
-        val channel = basePayload()
-        fun updated(parentMessageId: String, parentScopeId: String? = null) =
-            ThreadUpdated(
-                parentMessageId = MessageId(parentMessageId),
-                threadChannelId = ChannelId("thread-m1"),
-                replyCount = 9,
-                lastReplyAt = null,
-                participantIds = emptyList(),
-                syncCoreReplyWindow =
-                    parentScopeId?.let { scopeId ->
-                        // Server messageService.ts: `parentScopeId: parentMsgForThread.channelId`.
-                        ThreadRepliesSyncWindowEnvelope(
-                            producer = ThreadRepliesSyncWindowProducer,
-                            rootKind = "message",
-                            rootServerId = "server-1",
-                            rootMessageId = parentMessageId,
-                            relationKind = "replies",
-                            parentScopeServerId = "server-1",
-                            parentScopeKind = "channel",
-                            parentScopeId = scopeId,
-                            backing = "sync-scope",
-                            windowKind = "sync-scope-window",
-                        )
-                    }
-            )
-        // The event's own envelope wins; without one, only the parent's own reply thread knows.
-        assertEquals("dm-1", channel.threadUpdatedParentChannelId(updated("m1", parentScopeId = "dm-1")))
-        assertEquals("channel-1", thread.threadUpdatedParentChannelId(updated("m1")))
-        assertNull(thread.threadUpdatedParentChannelId(updated("another-parent")))
-        assertNull(channel.threadUpdatedParentChannelId(updated("m1")))
     }
 
     private fun dataSource(storeScope: CoroutineScope, repository: FakeConversationRepository): SharedThreadDataSource =

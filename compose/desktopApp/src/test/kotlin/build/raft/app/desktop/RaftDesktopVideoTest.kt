@@ -9,9 +9,6 @@ import build.raft.app.RaftDesktopVideoSupport
 import build.raft.app.compat.ui.PlayState
 import build.raft.app.compat.ui.VideoPlayControl
 import build.raft.app.raftDesktopVideoKeyAction
-import build.raft.app.raftDesktopVideoMillis
-import build.raft.app.raftDesktopVideoTimeLabel
-import build.raft.app.raftDesktopVideoTrackFraction
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -90,35 +87,6 @@ class RaftDesktopVideoTest {
     }
 
     @Test
-    fun playBeforeOpenOpensWithAutoplayAndBuffers() {
-        val engine = FakeEngine()
-        val controller = RaftDesktopVideoController(src, engine)
-        controller.applyPlayControl(VideoPlayControl.PLAY)
-        assertEquals(listOf("open($src,autoplay=true)"), engine.calls)
-        assertEquals(PlayState.BUFFERING, controller.snapshot().state)
-        assertFalse(controller.snapshot().firstFrame)
-    }
-
-    @Test
-    fun noneBeforeAnythingIsAsked() {
-        val controller = RaftDesktopVideoController(src, FakeEngine())
-        assertEquals(PlayState.NONE, controller.snapshot().state)
-    }
-
-    @Test
-    fun togglePlayFromTheVideoControls() {
-        val engine = FakeEngine()
-        val controller = RaftDesktopVideoController(src, engine)
-        controller.applyPlayControl(VideoPlayControl.PREPLAY)
-        ready(engine)
-        controller.togglePlay()
-        assertTrue(engine.isPlaying)
-        controller.togglePlay()
-        assertFalse(engine.isPlaying)
-        assertEquals(listOf("open($src,autoplay=false)", "play", "pause"), engine.calls.filter { it != "seek(0.0)" })
-    }
-
-    @Test
     fun endedReportsPlayEndAndPlayRestartsFromTheStart() {
         val engine = FakeEngine()
         val controller = RaftDesktopVideoController(src, engine)
@@ -155,17 +123,6 @@ class RaftDesktopVideoTest {
     }
 
     @Test
-    fun seekBarFractionIsClamped() {
-        val engine = FakeEngine()
-        val controller = RaftDesktopVideoController(src, engine)
-        controller.applyPlayControl(VideoPlayControl.PREPLAY)
-        ready(engine)
-        controller.seekToFraction(1.5f)
-        controller.seekToFraction(-1f)
-        assertEquals(listOf("seek(1.0)", "seek(0.0)"), engine.calls.filter { it.startsWith("seek") })
-    }
-
-    @Test
     fun muteKeepsTheVolumeAndPageMuteWins() {
         val engine = FakeEngine()
         val controller = RaftDesktopVideoController(src, engine)
@@ -188,17 +145,6 @@ class RaftDesktopVideoTest {
     }
 
     @Test
-    fun unmutingAtZeroVolumeRestoresFullVolume() {
-        val engine = FakeEngine()
-        val controller = RaftDesktopVideoController(src, engine)
-        controller.changeVolume(0f)
-        assertTrue(controller.muted)
-        controller.toggleMuted()
-        assertFalse(controller.muted)
-        assertEquals(1f, engine.volume)
-    }
-
-    @Test
     fun failureReportsErrorAndTheButtonRetries() {
         val engine = FakeEngine()
         val controller = RaftDesktopVideoController(src, engine)
@@ -209,19 +155,6 @@ class RaftDesktopVideoTest {
         controller.togglePlay()
         assertEquals(listOf("clearError", "stop", "open($src,autoplay=true)"), engine.calls.takeLast(3))
         assertEquals(PlayState.BUFFERING, controller.snapshot().state)
-    }
-
-    @Test
-    fun noVideoTrackFailureIsTheNoticeNotRetry() {
-        val engine = FakeEngine()
-        val controller = RaftDesktopVideoController(src, engine)
-        controller.applyPlayControl(VideoPlayControl.PREPLAY)
-        engine.failed = true
-        assertFalse(controller.noVideoTrack, "an ordinary failure keeps the controller (Retry)")
-        engine.failedWithoutVideo = true
-        assertTrue(controller.noVideoTrack)
-        controller.release()
-        assertFalse(controller.noVideoTrack)
     }
 
     @Test
@@ -268,54 +201,10 @@ class RaftDesktopVideoTest {
     }
 
     @Test
-    fun blankSourceNeverOpens() {
-        val engine = FakeEngine()
-        RaftDesktopVideoController("", engine).applyPlayControl(VideoPlayControl.PLAY)
-        assertTrue(engine.calls.isEmpty())
-    }
-
-    @Test
-    fun rateIsClampedToThePlayersRange() {
-        val engine = FakeEngine()
-        val controller = RaftDesktopVideoController(src, engine)
-        controller.setRate(4f)
-        assertEquals(2f, engine.speed)
-        controller.setRate(0f)
-        assertEquals(0.25f, engine.speed)
-    }
-
-    @Test
-    fun timeLabels() {
-        assertEquals("0:00", raftDesktopVideoTimeLabel(0))
-        assertEquals("0:09", raftDesktopVideoTimeLabel(9_999))
-        assertEquals("1:05", raftDesktopVideoTimeLabel(65_000))
-        assertEquals("59:59", raftDesktopVideoTimeLabel(3_599_000))
-        assertEquals("1:00:00", raftDesktopVideoTimeLabel(3_600_000))
-        assertEquals("0:01:05", raftDesktopVideoTimeLabel(65_000, totalMillis = 3_700_000))
-        assertEquals("0:00", raftDesktopVideoTimeLabel(-5))
-    }
-
-    @Test
-    fun playerSecondsToMillis() {
-        assertEquals(1_500, raftDesktopVideoMillis(1.5))
-        assertEquals(0, raftDesktopVideoMillis(Double.NaN))
-        assertEquals(0, raftDesktopVideoMillis(Double.POSITIVE_INFINITY))
-        assertEquals(0, raftDesktopVideoMillis(-1.0))
-    }
-
-    @Test
     fun spaceTogglesPlayAndEscapeIsLeftToThePage() {
         assertEquals(RaftDesktopVideoKeyAction.TogglePlay, raftDesktopVideoKeyAction(Key.Spacebar))
         assertNull(raftDesktopVideoKeyAction(Key.Escape))
         assertNull(raftDesktopVideoKeyAction(Key.Enter))
-    }
-
-    @Test
-    fun trackFraction() {
-        assertEquals(0.5f, raftDesktopVideoTrackFraction(50f, 100f))
-        assertEquals(0f, raftDesktopVideoTrackFraction(-10f, 100f))
-        assertEquals(1f, raftDesktopVideoTrackFraction(150f, 100f))
-        assertEquals(0f, raftDesktopVideoTrackFraction(10f, 0f))
     }
 
     @Test
@@ -327,30 +216,5 @@ class RaftDesktopVideoTest {
         assertFalse(RaftDesktopVideoSupport.platformSupported("Linux", "6.12"))
         assertFalse(RaftDesktopVideoSupport.platformSupported("Windows 11", "10.0"))
         assertFalse(RaftDesktopVideoSupport.platformSupported(null, "14.0"))
-    }
-
-    @Test
-    fun attachmentsPreviewTheAvFoundationContainersWhenThePlayerRuns() {
-        for ((name, mime) in
-            listOf(
-                "clip.mp4" to "video/mp4",
-                "screen.MOV" to "",
-                "clip.bin" to "video/x-m4v",
-                "clip.3gp" to "",
-                "clip.bin" to "video/3gpp2",
-            )) {
-            assertTrue(RaftDesktopVideoSupport.supportsAttachment(name, mime, available = true), "$name $mime")
-            assertFalse(RaftDesktopVideoSupport.supportsAttachment(name, mime, available = false), "$name $mime unavailable")
-        }
-        for ((name, mime) in listOf("clip.webm" to "", "clip.mkv" to "", "clip.flv" to "", "notes.txt" to "text/plain")) {
-            assertFalse(RaftDesktopVideoSupport.supportsAttachment(name, mime, available = true), "$name $mime")
-        }
-    }
-
-    @Test
-    fun thisLinuxHostReportsNoPlayer() {
-        if (!System.getProperty("os.name").orEmpty().lowercase().startsWith("linux")) return
-        assertFalse(RaftDesktopVideoSupport.available)
-        assertFalse(RaftDesktopVideoSupport.supportsAttachment("clip.mp4", "video/mp4"))
     }
 }

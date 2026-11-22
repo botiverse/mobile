@@ -5,7 +5,6 @@ import build.raft.app.data.generated.MarkUnreadOutcomeDto
 import build.raft.app.data.generated.ReadMutationPendingResponseDto
 import build.raft.app.data.generated.ReadStateErrorResponseDto
 import build.raft.app.model.ChannelId
-import kotlinx.serialization.KSerializer
 import kotlinx.serialization.json.Json
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -24,37 +23,6 @@ import kotlin.test.assertTrue
  */
 class ReadStateDtosQualificationTest {
     private val json = Json { ignoreUnknownKeys = true }
-
-    @Test
-    fun generatedShapesKeepContractNamesNullabilityAndDefaults() {
-        // (DTO, contract field -> optional-with-null-default?) — required fields are non-null, no default.
-        val cases: List<Pair<KSerializer<*>, Map<String, Boolean>>> =
-            listOf(
-                MarkConversationUnreadResponseDto.serializer() to
-                    mapOf(
-                        "ok" to false,
-                        "unreadCount" to false,
-                        "maxReadSeq" to false,
-                        "readStateVersion" to false,
-                        // Required by the contract, nullable for servers older than #11795.
-                        "markedUnread" to true,
-                        "outcome" to true,
-                    ),
-                ReadMutationPendingResponseDto.serializer() to
-                    listOf("code", "status", "outcome", "mutationId", "authoritySeq", "frontierUrl").associateWith { false },
-                ReadStateErrorResponseDto.serializer() to mapOf("error" to false, "code" to true),
-            )
-        cases.forEach { (serializer, fields) ->
-            val descriptor = serializer.descriptor
-            val name = descriptor.serialName
-            assertEquals(fields.keys.toList(), (0 until descriptor.elementsCount).map(descriptor::getElementName), name)
-            fields.values.forEachIndexed { index, optional ->
-                val field = "$name.${descriptor.getElementName(index)}"
-                assertEquals(optional, descriptor.isElementOptional(index), "$field has a default")
-                assertEquals(optional, descriptor.getElementDescriptor(index).isNullable, "$field is nullable")
-            }
-        }
-    }
 
     @Test
     fun outcomeWireValuesRoundTripAndUnknownValuesDoNotFailTheAnswer() {

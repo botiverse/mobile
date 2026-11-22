@@ -75,27 +75,6 @@ class RaftSandboxWebViewContractTest {
     }
 
     @Test
-    fun navigationStateDecodesNativePayloadAndClampsProgress() {
-        val state =
-            RaftWebViewNavigationState.decode(
-                JSONObject()
-                    .put("url", "https://example.test/path?secret=1")
-                    .put("title", "Example")
-                    .put("canGoBack", true)
-                    .put("canGoForward", true)
-                    .put("isLoading", true)
-                    .put("progress", 145)
-            )
-
-        assertEquals("https://example.test/path?secret=1", state.url)
-        assertEquals("Example", state.title)
-        assertEquals(true, state.canGoBack)
-        assertEquals(true, state.canGoForward)
-        assertEquals(true, state.isLoading)
-        assertEquals(100, state.progress)
-    }
-
-    @Test
     fun navigationStateUsesSafeDefaultsForMissingOrInvalidPayload() {
         val missing = RaftWebViewNavigationState.decode(JSONObject().put("progress", -4))
         val invalid = RaftWebViewNavigationState.decode("not-json")

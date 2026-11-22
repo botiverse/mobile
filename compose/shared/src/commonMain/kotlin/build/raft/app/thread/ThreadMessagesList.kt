@@ -113,7 +113,6 @@ private data class ThreadMessagesListData(
     val highlightedMentions: Set<String>,
     val inlineReplyParticipantsById: Map<String, RaftThreadMemberItem>,
     val pendingActionCardIds: Set<String>,
-    val pendingTaskConvertMessageIds: Set<String>,
     val attachmentOpenStates: Map<String, ThreadAttachmentOpenUiState>,
     val writeActionsEnabled: Boolean,
     val currentServerSlug: String?,
@@ -193,7 +192,6 @@ internal fun ThreadMessagesList(
     memberModelLabelResolver: RaftMemberModelLabelResolver = EmptyRaftMemberModelLabelResolver,
     inlineReplyParticipantsById: Map<String, RaftThreadMemberItem> = emptyMap(),
     pendingActionCardIds: Set<String> = emptySet(),
-    pendingTaskConvertMessageIds: Set<String> = emptySet(),
     attachmentOpenStates: Map<String, ThreadAttachmentOpenUiState> = emptyMap(),
     writeActionsEnabled: Boolean = true,
     currentServerSlug: String? = null,
@@ -261,7 +259,6 @@ internal fun ThreadMessagesList(
                 highlightedMentions = highlightedMentions,
                 inlineReplyParticipantsById = inlineReplyParticipantsById,
                 pendingActionCardIds = pendingActionCardIds,
-                pendingTaskConvertMessageIds = pendingTaskConvertMessageIds,
                 attachmentOpenStates = attachmentOpenStates,
                 writeActionsEnabled = writeActionsEnabled,
                 currentServerSlug = currentServerSlug,
@@ -355,7 +352,6 @@ private fun ThreadMessagesListContent(
     val memberModelLabelResolver = callbacks.memberModelLabelResolver
     val inlineReplyParticipantsById = data.inlineReplyParticipantsById
     val pendingActionCardIds = data.pendingActionCardIds
-    val pendingTaskConvertMessageIds = data.pendingTaskConvertMessageIds
     val attachmentOpenStates = data.attachmentOpenStates
     val writeActionsEnabled = data.writeActionsEnabled
     val currentServerSlug = data.currentServerSlug
@@ -496,7 +492,9 @@ private fun ThreadMessagesListContent(
                 mainLoadFailed = timelineSlice.mainLoadFailed
             )
         ) {
-            ThreadLoadingState()
+            if (timelineSlice.loadingIndicatorRevealed) {
+                ThreadLoadingState()
+            }
         } else if (emptyHiddenHistory != null) {
             ThreadHistoryPaywallEmptyState(
                 scope = timelineSlice.historyPaywallScope(),
@@ -625,19 +623,29 @@ private fun ThreadMessagesListContent(
     // Hands 9e3ca082: this state outlives the LazyColumn below (and its node); the LazyColumn's
     // detachSafeLazyListPrefetch drops a detached node's pending prefetch, which a later scroll
     // would otherwise cancel on that node and crash in requireOwner.
+    val initialFocusedItemIndex =
+        renderPayload
+            .focusedMessageListItemIndex()
+            .takeIf { it in 0 until lazyItemCount && !adaptiveAnchorRestoreInFlight }
+            ?: -1
     val threadListPrefetch = rememberDetachSafeLazyListPrefetch()
     val rawListState = rememberDetachSafeLazyListState(
         prefetch = threadListPrefetch,
-        // Kuikly commits a non-top initial Compose viewport to native ScrollView
-        // before its first child placement. Start at the final latest viewport;
-        // the existing anchor owner only performs measured bottom correction.
-        // Reversed, physical item 0 (the bottom padding row) already is that viewport.
+        // Start at the cached focused target when present (#proj-mobile:#258) so Frame 1 never
+        // paints the bottom of the conversation and jumps up (`focused_reanchor @ cache_rows_shown`).
+        // Reversed lists then align the measured row synchronously before Frame 1 draws via
+        // ThreadInitialFocusedPlacementOwner; non-focused opens still start at the latest viewport.
         initialFirstVisibleItemIndex =
-            if (reverseLayout) 0 else threadInitialFirstVisibleItemIndex(latestItemIndex = latestItemIndex)
+            threadInitialFirstVisibleItemIndex(
+                reverseLayout = reverseLayout,
+                latestItemIndex = latestItemIndex,
+                lazyItemCount = lazyItemCount,
+                focusedItemIndex = initialFocusedItemIndex,
+            )
     )
     val listState = remember(rawListState, reverseLayout) { ThreadListViewport(rawListState, reverseLayout) }
     var allowBottomAutoAnchor by remember(threadInstanceKey) {
-        mutableStateOf(true)
+        mutableStateOf(initialFocusedItemIndex < 0)
     }
     var initialBottomAnchorReady by remember(threadInstanceKey) {
         mutableStateOf(false)
@@ -982,7 +990,12 @@ private fun ThreadMessagesListContent(
     val expandRevealOwner = remember(threadInstanceKey) { ThreadExpandRevealOwner() }
     // Long-message collapse: expanded ids, one-way collapsible latch and threshold live for the
     // whole thread open, so a row keeps its state when it scrolls away and back.
-    val longMessageCollapseController = remember(threadInstanceKey) { RaftLongMessageCollapseController() }
+    val longMessageCollapseController =
+        remember(threadInstanceKey) {
+            RaftLongMessageCollapseController().apply {
+                autoExpand(renderPayload.focusedMessageId)
+            }
+        }
     LaunchedEffect(longMessageCollapseController, renderPayload.focusedMessageId, renderPayload.focusedMessageRequestNonce) {
         // A jump to a message shows it in full (its target may sit in the clipped part).
         longMessageCollapseController.autoExpand(renderPayload.focusedMessageId)
@@ -1016,6 +1029,9 @@ private fun ThreadMessagesListContent(
         val rawIndex = if (reverseLayout) reversedThreadListIndex(listItemIndex, rawCount) else listItemIndex
         val rawItem = listState.raw.layoutInfo.visibleItemsInfo.firstOrNull { it.index == rawIndex }
         longMessageCollapseController.setExpanded(messageId, expanding)
+        if (forwardItem != null && !listState.isScrollInProgress) {
+            listState.noteUserNavigation()
+        }
         val ownsViewport =
             forwardItem != null &&
                 rawItem != null &&
@@ -1266,6 +1282,61 @@ private fun ThreadMessagesListContent(
                     )
                 }
         )
+    // Cached focused open pre-first-draw placement (#proj-mobile:#258): align the focused row on
+    // a reversed list before Frame 1 draws so the initial paint lands directly on the target.
+    // Reads live snapshot state directly (and user takeover / focus retirement guards) so a user
+    // drag or host settlement between recompositions permanently retires the owner.
+    val initialFocusedPlacementOwner =
+        remember(threadInstanceKey, listState) {
+            ThreadInitialFocusedPlacementOwner(
+                listState = listState,
+                scope = coroutineScope,
+                armed = reverseLayout && initialFocusedItemIndex >= 0,
+            )
+        }
+    val initialFocusedUserNavigationCount = remember(threadInstanceKey, listState) { listState.userNavigationCount }
+    val initialFocusedJumpNonceState = rememberUpdatedState(jumpInputs.jumpFocusNonce)
+    val initialFocusedShareCaptureState = rememberUpdatedState(shareSelectionCaptureActive)
+    val initialFocusedRepliesMinReservePx =
+        with(threadDensity) { ThreadRepliesFocusMinBottomReserve.roundToPx() }
+    val alignInitialFocusedAfterLayout: () -> Unit =
+        remember(
+            initialFocusedPlacementOwner,
+            initialFocusedUserNavigationCount,
+            initialFocusedRepliesMinReservePx,
+            imeProgrammaticViewportPolicy,
+        ) {
+            {
+                initialFocusedPlacementOwner.afterLayout(
+                    owns = {
+                        !listState.isScrollInProgress &&
+                            !listState.isRetired &&
+                            !readingAnchorPageLeavingState.value &&
+                            !threadImeOpenSuppressesProgrammaticViewport(
+                                keyboardInsetDp = liveComposerKeyboardInsetDp,
+                                policy = imeProgrammaticViewportPolicy,
+                            )
+                    },
+                    retiredByHost = {
+                        initialBottomAnchorReady ||
+                            adaptiveAnchorRestoreInFlight ||
+                            initialFocusedShareCaptureState.value ||
+                            userScrollGeneration.value > 0 ||
+                            listState.userNavigationCount != initialFocusedUserNavigationCount ||
+                            scrollInterruptedFocusedMessageAnchorIdentity != null ||
+                            consumedFocusedMessageAnchorIdentity != null
+                    },
+                    focusedForwardIndex = { readingAnchorPayloadState.value.focusedMessageListItemIndex() },
+                    placement = {
+                        threadFocusedAnchorBasePlacement(
+                            requestNonce = readingAnchorPayloadState.value.focusedMessageRequestNonce,
+                            unreadThreadJumpFocusNonce = initialFocusedJumpNonceState.value,
+                        )
+                    },
+                    minBottomReservePx = initialFocusedRepliesMinReservePx,
+                )
+            }
+        }
     // Open-path jitter tracing (#proj-mobile:#199): only a sampled open installs the recorder;
     // it reads this list's layout once per frame and never scrolls (ThreadOpenTrace.kt).
     ThreadMessagesListOpenTrace(
@@ -1312,6 +1383,7 @@ private fun ThreadMessagesListContent(
         }
         if (threadFindJumpRequested == match.messageId) return@LaunchedEffect
         threadFindJumpRequested = match.messageId
+        listState.noteUserNavigation()
         diagnosticsLogger("thread_find_jump messageId=${match.messageId.take(8)}")
         onThreadEvent(ThreadFindJumpAction, match.messageId, null, null)
     }
@@ -1319,7 +1391,9 @@ private fun ThreadMessagesListContent(
     // systemMessageGrouping). Render-only: every message keeps its own lazy item, key and index.
     // Groups are closed by default; the open ones are kept while this conversation is shown.
     val systemMessageFolds =
-        remember(renderPayload.messages) { threadSystemMessageFolds(renderPayload.messages) }
+        remember(renderPayload.messages, renderPayload.timelineGaps) {
+            threadSystemMessageFolds(renderPayload.messages, renderPayload.timelineGaps)
+        }
     var expandedSystemMessageGroups by remember(threadInstanceKey) { mutableStateOf(emptySet<String>()) }
     // A jump or a search match on a message folded into a closed group opens the group, so the
     // target is a drawn row (web lands on the group's row). Only state: the focus anchor effect
@@ -1382,6 +1456,7 @@ private fun ThreadMessagesListContent(
         val summaryItem = listState.layoutInfo.visibleItemsInfo.firstOrNull { it.index == listItemIndex }
         val ownsViewport = listItemIndex >= 0 && summaryItem != null && !listState.isScrollInProgress
         if (ownsViewport && summaryItem != null) {
+            listState.noteUserNavigation()
             keepTappedRowForToggle(summaryMessageId, summaryItem.offset, expanding)
         }
         if (expanding && ownsViewport && summaryItem != null) {
@@ -1405,6 +1480,7 @@ private fun ThreadMessagesListContent(
         val index = renderPayload.threadMessageListItemIndex(messageId)
         val item = listState.layoutInfo.visibleItemsInfo.firstOrNull { it.index == index }
         if (item != null && !listState.isScrollInProgress) {
+            listState.noteUserNavigation()
             keepTappedRowForToggle(messageId, item.offset, true)
             expandRevealOwner.request(
                 firstMessageId = messageId,
@@ -1883,6 +1959,7 @@ private fun ThreadMessagesListContent(
         ) {
             return@LaunchedEffect
         }
+        listState.noteUserNavigation()
         pendingFocusedMessageAnchorIdentityState.value?.let { pendingIdentity ->
             scrollInterruptedFocusedMessageAnchorIdentity = pendingIdentity
         }
@@ -1921,6 +1998,7 @@ private fun ThreadMessagesListContent(
             ThreadOutlineOriginJumpStep.LoadOlder -> onThreadEvent("loadOlder", null, null, null)
             ThreadOutlineOriginJumpStep.GiveUp -> outlineOriginJumpConsumed = outlineOriginJumpRequest
             ThreadOutlineOriginJumpStep.Pin -> {
+                listState.noteUserNavigation()
                 outlineOriginJumpConsumed = outlineOriginJumpRequest
                 pendingFocusedMessageAnchorIdentityState.value?.let { pendingIdentity ->
                     scrollInterruptedFocusedMessageAnchorIdentity = pendingIdentity
@@ -2478,6 +2556,7 @@ private fun ThreadMessagesListContent(
                 }
             }
     }
+    val initialInFlightLocalSendKey = remember(threadInstanceKey) { latestLocalSendBottomAnchorKey }
     LaunchedEffect(
         threadInstanceKey,
         latestLocalSendBottomAnchorKey,
@@ -2494,6 +2573,9 @@ private fun ThreadMessagesListContent(
             )
         ) {
             return@LaunchedEffect
+        }
+        if (latestLocalSendBottomAnchorKey != initialInFlightLocalSendKey) {
+            listState.noteUserNavigation()
         }
         latestLocalSendBottomAnchorStartUserScrollGeneration = userScrollGeneration.value
         latestLocalSendBottomAnchorActiveKey = latestLocalSendBottomAnchorKey
@@ -2884,6 +2966,7 @@ private fun ThreadMessagesListContent(
         }
         allowBottomAutoAnchor = false
         initialBottomAnchorReady = true
+        listState.noteUserNavigation()
         dispatchViewportEvent(
             LazyViewportEvent.Anchor(
                 target = LazyViewportAnchorTarget.Message(match.messageId),
@@ -3700,8 +3783,11 @@ private fun ThreadMessagesListContent(
                                 (if (offlineLastKnownChrome.insetActive) ThreadOfflineLastKnownTipHeight else 0.dp).roundToPx()
                             }
                     )
-                    // Reading anchor: after every layout pass of the list (ThreadReadingAnchorKeeper.kt).
-                    .onGloballyPositioned { keepReadingAnchorAfterLayout() }
+                    // Initial focused alignment and reading anchor: run after layout, before the frame draws.
+                    .onGloballyPositioned {
+                        alignInitialFocusedAfterLayout()
+                        keepReadingAnchorAfterLayout()
+                    }
                     // The forward layout keeps the newest message on the composer in the same
                     // measure pass as an IME/composer resize or a realtime tail append, instead
                     // of a correction one frame later (see RaftThreadImeLayout.kt).
@@ -4001,7 +4087,9 @@ private fun ThreadMessagesListContent(
             threadListSegments += {
             if (showReplyLoadingSkeleton) {
                 item(key = ThreadReplyLoadingListItemKey) {
-                    ThreadLoadingState()
+                    if (renderPayload.loadingIndicatorRevealed) {
+                        ThreadLoadingState()
+                    }
                 }
             }
             }
@@ -4042,14 +4130,20 @@ private fun ThreadMessagesListContent(
                 val isSystemMessage = remember(message.messageType) { message.isSystemMessage() }
                 val previousCompactAuthorSignature = previousMessage?.threadCompactAuthorSignature()
                 val messageCompactAuthorSignature = message.threadCompactAuthorSignature()
+                val gapAboveMessage =
+                    remember(renderPayload.messages, index, renderPayload.timelineGaps) {
+                        threadTimelineGapAboveMessage(renderPayload.messages, index, renderPayload.timelineGaps)
+                    }
                 val suppressRepeatedAuthor =
                     remember(
                         renderPayload.compactConsecutiveMessages,
                         renderConfig.timeContext.localOffsetMinutes,
                         previousCompactAuthorSignature,
-                        messageCompactAuthorSignature
+                        messageCompactAuthorSignature,
+                        gapAboveMessage != null
                     ) {
-                        renderPayload.compactConsecutiveMessages &&
+                        gapAboveMessage == null &&
+                            renderPayload.compactConsecutiveMessages &&
                             shouldSuppressCompactThreadAuthor(
                                 previous = previousMessage,
                                 next = message,
@@ -4176,6 +4270,16 @@ private fun ThreadMessagesListContent(
                                 drawContent()
                             }
                 ) {
+                    gapAboveMessage?.let { gap ->
+                        ThreadTimelineGapRow(
+                            gap = gap,
+                            durableLastKnown = renderPayload.durableLastKnown,
+                            mainLoadFailed = renderPayload.mainLoadFailed,
+                            onFillGap = { target ->
+                                onThreadEvent(ThreadFillTimelineGapAction, target.key, null, null)
+                            }
+                        )
+                    }
                     dateDividerDay?.let { day ->
                         val dayLabel = day.localizedLabel()
                         // Under the history paywall the first date line says the window: "Last 30 days · …".
@@ -4417,7 +4521,18 @@ private fun ThreadMessagesListContent(
                                         )
                                     },
                                     longPressGestureInstanceKey =
-                                        message.messageListItemKey(duplicateMessageRandomIds)
+                                        message.messageListItemKey(duplicateMessageRandomIds),
+                                    // A quote card's tap (web useJumpToQuotedMessage): the thread's first
+                                    // message scrolls to its row as the timeline's jump does; any other
+                                    // is focused here, loaded around first.
+                                    onJumpToQuotedMessage = { quotedMessageId ->
+                                        listState.noteUserNavigation()
+                                        if (quotedMessageId == (renderPayload.parentMessageId ?: renderPayload.originMessage?.id)) {
+                                            outlineOriginJumpRequestState.value += 1
+                                        } else {
+                                            onThreadEvent(ThreadOutlineJumpAction, quotedMessageId, null, null)
+                                        }
+                                    }
                                 )
                             }
                         }
@@ -4545,6 +4660,9 @@ private fun ThreadMessagesListContent(
             // button follows the same lifetime rule: it clears its
             // visibility state only after the scroll completes.
             backToBottomInteractionGuardActive = true
+            // Explicit user navigation: end any active open trace as UserTookOver before retiring
+            // focus or jumping to latest (#proj-mobile:#258).
+            listState.noteUserNavigation()
             // A focused Activity/message anchor owns the viewport for a
             // short stabilization session. Back-to-bottom is an
             // explicit replacement viewport intent, so retire that
@@ -4666,6 +4784,7 @@ private fun ThreadMessagesListContent(
                 onJump = {
                     // Web: busy from the tap until the parent lands; a second tap does nothing.
                     if (!jumpInputs.jumpLoading) {
+                        listState.noteUserNavigation()
                         diagnosticsLogger(
                             "thread_unread_thread_jump_click direction=${jump.direction} count=${jump.count} " +
                                 "target=${jump.targetMessageId.take(8)}"
@@ -4911,8 +5030,6 @@ private fun ThreadMessagesListContent(
                         translationState = translationState,
                         translationAvailable = translationStore != null
                     ),
-                taskConvertPending = message.id in pendingTaskConvertMessageIds,
-                taskV2Enabled = linkedTasksProjection.taskV2Enabled,
                 originReplyMetadata = renderPayload.originMessage?.let(replyMetadataByParentId::threadReplyMetadataFor)
             ).toThreadNewMessageMenuActionAvailability(message, replyMetadata)
         // New Message Menu toggle: a text selection shows this same Compact menu in place
@@ -4969,8 +5086,6 @@ private fun ThreadMessagesListContent(
                                 translationState = translationState,
                                 translationAvailable = translationStore != null
                             ),
-                        taskConvertPending = message.id in pendingTaskConvertMessageIds,
-                        taskV2Enabled = linkedTasksProjection.taskV2Enabled,
                         originReplyMetadata = renderPayload.originMessage?.let(replyMetadataByParentId::threadReplyMetadataFor)
                     )
                 val closeActionMenu: () -> Unit = {
@@ -5089,7 +5204,15 @@ private fun ThreadMessagesListContent(
                         message = message,
                         replyMetadata = replyMetadata,
                         anchor = resolvedActionAnchor,
-                        showReplyAction = capabilities.reply,
+                        // botiverse/slock #15524: not once the row shows its thread (its replies open it).
+                        showReplyAction =
+                            threadMessageMenuShowsReplyInThread(
+                                capabilities = capabilities,
+                                message = message,
+                                replyMetadata = replyMetadata,
+                                slice = renderPayload,
+                                hasReplyDraft = activeReplyDraftParentMessageIds.hasReplyComposerDraft(message.id)
+                            ),
                         showSaveAction = capabilities.save,
                         showFollowAction = capabilities.follow,
                         showTaskStatusAction = capabilities.taskStatus,
@@ -5258,13 +5381,13 @@ private fun ThreadMessagesListContent(
                 if (linkedTask == null || threadTaskDetailPanelUseLegacy(linkedTask)) {
                     RaftTaskStatusMenuOverlay(
                         anchor = resolvedTaskStatusAnchor,
-                        // A task on a message is never a legacy orphan: with task v2 on it opens as
-                        // its own conversation, so In Review is retired (web `opensAsTaskConversation`).
+                        // A task on a message is never a legacy orphan: it opens as its own
+                        // conversation, so In Review is retired (web `opensAsTaskConversation`).
                         items =
                             threadTaskStatusMenuItems(
                                 taskStatusChoices(
                                     selectedStatus.status,
-                                    v2Task = linkedTasksProjection.taskV2Enabled
+                                    v2Task = true
                                 )
                             ),
                         selectedId = selectedStatus.key,
@@ -5285,7 +5408,6 @@ private fun ThreadMessagesListContent(
                 } else {
                     ThreadTaskDetailDialog(
                         task = linkedTask,
-                        taskV2Enabled = linkedTasksProjection.taskV2Enabled,
                         assigneeOptions = taskAssigneeOptions,
                         agentStatusResolver = agentStatusResolver,
                         onDismiss = { menuState.taskStatusMenuMessageId = null },
@@ -5338,11 +5460,12 @@ private const val ThreadReplyEmptyListItemKey = "thread-page:reply-empty"
 private const val ThreadReplyLoadingListItemKey = "thread-page:reply-loading"
 private const val ThreadBottomScrollPaddingListItemKey = "thread-page:bottom-scroll-padding"
 /**
- * The blank end of the list under the newest message: the list's own 16dp end and, in a
+ * The blank end of the list under the newest message: the list's own 16dp end or, in a
  * conversation that can show the typing / working line ([typingLineSlot],
  * [ThreadTimelineSlice.agentTypingLineSlot]), the slot the line floats over
- * ([ThreadAgentTypingListEndHeight]). The slot is there whether or not the line shows; it follows
- * the conversation, never agent activity.
+ * ([ThreadAgentTypingListEndHeight]) in its place: one line's height, not the slot on top of the
+ * 16dp end (artin 11-22: 46dp left too much blank under the newest message while nobody works). The
+ * slot is there whether or not the line shows; it follows the conversation, never agent activity.
  *
  * The one source for both sides of "the newest message at the bottom": the height of the list's
  * last (spacer) row, and the trailing padding every scroll owner uses for it
@@ -5351,7 +5474,7 @@ private const val ThreadBottomScrollPaddingListItemKey = "thread-page:bottom-scr
  * parks the newest message under the line (Android 1.27.0, #proj-mobile #227).
  */
 internal fun threadBottomSpacerAndAnchorTrailingHeight(typingLineSlot: Boolean): androidx.compose.ui.unit.Dp =
-    if (typingLineSlot) 16.dp + ThreadAgentTypingListEndHeight else 16.dp
+    if (typingLineSlot) ThreadAgentTypingListEndHeight else 16.dp
 private val ThreadShareCaptureBottomScrollPaddingHeight = 1200.dp
 /** The list's top inset for the find bar until the bar is measured (its usual height). */
 private val ThreadInlineSearchBarTopInset = 58.dp
@@ -5401,7 +5524,7 @@ private fun ThreadListViewport.threadViewportGeometryDiagnostics(targetIndex: In
         "target=${target?.index ?: -1}:${target?.offset ?: 0}+${target?.size ?: 0}"
 }
 
-private fun ThreadListViewport.isLatestItemAtRenderedBottom(
+internal fun ThreadListViewport.isLatestItemAtRenderedBottom(
     latestItemIndex: Int,
     trailingPaddingSize: Int = 0
 ): Boolean = threadItemAtRenderedBottom(layoutInfo, latestItemIndex, trailingPaddingSize)

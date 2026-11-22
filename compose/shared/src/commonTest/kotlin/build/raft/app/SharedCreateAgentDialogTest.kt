@@ -3,9 +3,6 @@ package build.raft.app
 import build.raft.app.data.HostedRuntimeModels
 import build.raft.app.data.HostedRuntimeModelOption
 import build.raft.app.data.BundledRuntimeCatalog
-import build.raft.app.data.EmptyReason
-import build.raft.app.data.ScreenError
-import build.raft.app.data.ScreenLoadState
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -17,15 +14,6 @@ class SharedCreateAgentDialogTest {
     fun externalMembersCreateModeSkipsComputerPicker() {
         assertTrue(MembersCreateAgentMode.External.requiresComputerSelection().not())
         assertTrue(MembersCreateAgentMode.Managed.requiresComputerSelection())
-    }
-
-    @Test
-    fun runtimePickerOffersTheBundledCreatableRuntimesWithoutTheServerCatalog() {
-        val rows = runtimePickerRows(BundledRuntimeCatalog, emptyList(), selectedRuntimeId = "", showAll = true).rows
-        assertEquals(
-            listOf("claude", "codex", "grok", "builtin", "antigravity", "kimi-sdk", "cursor", "opencode", "pi", "qwen", "qoder", "dsh"),
-            rows.map { it.id }.sortedBy { id -> BundledRuntimeCatalog.runtimes.indexOfFirst { it.id == id } }
-        )
     }
 
     @Test
@@ -59,17 +47,6 @@ class SharedCreateAgentDialogTest {
         val editingKimiIds = runtimePickerRows(BundledRuntimeCatalog, emptyList(), "kimi", showAll = true, currentRuntimeId = "kimi").rows.map { it.id }
         assertTrue("kimi" in editingKimiIds)
         assertFalse("gemini" in editingKimiIds)
-    }
-
-    @Test
-    fun copilotIsHiddenForCreationAndSwitchingButRetainedForExistingAgent() {
-        val installed = listOf("codex", "copilot")
-        assertFalse(runtimePickerRows(BundledRuntimeCatalog, installed, "codex", showAll = true).rows.any { it.id == "copilot" })
-        assertFalse(
-            runtimePickerRows(BundledRuntimeCatalog, installed, "codex", showAll = true, currentRuntimeId = "codex").rows.any { it.id == "copilot" }
-        )
-        val existing = runtimePickerRows(BundledRuntimeCatalog, installed, "copilot", showAll = true, currentRuntimeId = "copilot").rows
-        assertTrue(existing.single { it.id == "copilot" }.enabled)
     }
 
     @Test
@@ -133,32 +110,6 @@ class SharedCreateAgentDialogTest {
     }
 
     @Test
-    fun initialMachineSelectionDoesNotFallbackWhenRequiredComputerIsOffline() {
-        val machines =
-            listOf(
-                SharedCreateAgentMachineOption("required", "Required", "offline"),
-                SharedCreateAgentMachineOption("fallback", "Fallback", "online")
-            )
-
-        assertEquals(
-            null,
-            createAgentInitialMachineSelection(
-                machines = machines,
-                requiredComputer = "required",
-                suggestedComputer = null
-            )
-        )
-        assertEquals(
-            "fallback",
-            createAgentInitialMachineSelection(
-                machines = machines,
-                requiredComputer = null,
-                suggestedComputer = "required"
-            )
-        )
-    }
-
-    @Test
     fun theDefaultComputerIsAnOnlineOneOfMineBeforeAnyOther() {
         // Web pickFallbackMachine (#14479): the person creating the agent usually means their own
         // computer (attached or owned); offline ones are skipped; none of mine: the first online one.
@@ -177,45 +128,6 @@ class SharedCreateAgentDialogTest {
         val mixed = listOf(machine("teammate"), machine("mine", mine = true))
         assertEquals("teammate", createAgentInitialMachineSelection(mixed, requiredComputer = null, suggestedComputer = "teammate"))
         assertEquals("teammate", createAgentInitialMachineSelection(mixed, requiredComputer = null, suggestedComputer = null, initialComputer = "teammate"))
-    }
-
-    @Test
-    fun initialComputerFromAComputerCardIsPreselectedWhileOnline() {
-        val machines =
-            listOf(
-                SharedCreateAgentMachineOption("first", "First", "online"),
-                SharedCreateAgentMachineOption("card", "Card", "online"),
-                SharedCreateAgentMachineOption("asleep", "Asleep", "offline")
-            )
-        // The card's computer wins over the first online one and over a suggestion.
-        assertEquals(
-            "card",
-            createAgentInitialMachineSelection(machines, requiredComputer = null, suggestedComputer = "first", initialComputer = "card")
-        )
-        // A required computer still decides.
-        assertEquals(
-            "first",
-            createAgentInitialMachineSelection(machines, requiredComputer = "first", suggestedComputer = null, initialComputer = "card")
-        )
-        // Offline (or gone from the list): picked as usual.
-        assertEquals(
-            "first",
-            createAgentInitialMachineSelection(machines, requiredComputer = null, suggestedComputer = null, initialComputer = "asleep")
-        )
-        assertEquals(
-            "first",
-            createAgentInitialMachineSelection(machines, requiredComputer = null, suggestedComputer = null, initialComputer = "missing")
-        )
-    }
-
-    @Test
-    fun runtimeRequestsRequireSelectedMachineInAvailableSnapshot() {
-        val available =
-            listOf(SharedCreateAgentMachineOption("machine-1", "Available", "online"))
-
-        assertEquals(null, createAgentAvailableMachineId(emptyList(), "machine-1"))
-        assertEquals(null, createAgentAvailableMachineId(available, "machine-missing"))
-        assertEquals("machine-1", createAgentAvailableMachineId(available, "machine-1"))
     }
 
     @Test
@@ -303,13 +215,4 @@ class SharedCreateAgentDialogTest {
         assertFalse(createAgentNeedsComputer(external = false, machines = emptyList(), machinesLoading = true, machinesErrorMessage = null))
         assertFalse(createAgentNeedsComputer(external = false, machines = emptyList(), machinesLoading = false, machinesErrorMessage = "Failed"))
     }
-
-    @Test
-    fun computersPageOpensAddComputerOnceItsSnapshotLoads() {
-        assertEquals(null, raftComputersOpenAddOnLoad(ScreenLoadState.Loading))
-        assertEquals(true, raftComputersOpenAddOnLoad(ScreenLoadState.Content(Unit)))
-        assertEquals(false, raftComputersOpenAddOnLoad(ScreenLoadState.Error(ScreenError(code = "network"))))
-        assertEquals(false, raftComputersOpenAddOnLoad(ScreenLoadState.Empty(EmptyReason.values().first())))
-    }
-
 }

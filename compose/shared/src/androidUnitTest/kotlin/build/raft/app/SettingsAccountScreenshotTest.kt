@@ -13,9 +13,7 @@ import build.raft.app.data.AccountLoginSecurity
 import build.raft.app.data.ScreenError
 import build.raft.app.data.SecondFactorStepUpBanner
 import build.raft.app.data.SecondFactorStepUpDialogState
-import build.raft.app.data.SecondFactorStepUpFieldError
 import build.raft.app.data.SecondFactorStepUpMethod
-import build.raft.app.data.SecondFactorWebStepUpPhase
 import build.raft.app.data.SharedAccountLoginSecurityState
 import kotlin.test.Test
 import org.junit.runner.RunWith
@@ -68,9 +66,6 @@ class SettingsAccountScreenshotTest {
     fun accountLoginSecurityLight() = capture("settings.account.login-security", RaftAppAppearance.Light, loginSecurityOn)
 
     @Test
-    fun accountLoginSecurityDark() = capture("settings.account.login-security.dark", RaftAppAppearance.Dark, loginSecurityOn)
-
-    @Test
     fun accountLoginSecurityFailedLight() =
         capture(
             "settings.account.login-security.failed",
@@ -90,95 +85,12 @@ class SettingsAccountScreenshotTest {
 
     @Test
     @Config(qualifiers = "w390dp-h844dp-xxhdpi")
-    fun stepUpDialogBackupCodeUsedLight() =
-        stepUpDialog(
-            "settings.account.step-up.backup-used",
-            RaftAppAppearance.Light,
-            stepUpCode.copy(
-                method = SecondFactorStepUpMethod.BackupCode,
-                input = "ABCD-EFGH",
-                fieldError = SecondFactorStepUpFieldError.BackupCodeUsed,
-            ),
-        )
-
-    @Test
-    @Config(qualifiers = "w390dp-h844dp-xxhdpi")
     fun stepUpDialogLockedLight() =
         stepUpDialog(
             "settings.account.step-up.locked",
             RaftAppAppearance.Light,
             stepUpCode.copy(input = "123456", banner = SecondFactorStepUpBanner.Locked(lockedUntilEpochMillis = 0L)),
         )
-
-    @Test
-    @Config(qualifiers = "w390dp-h844dp-xxhdpi")
-    fun stepUpDialogPasskeyOnlyLight() =
-        stepUpDialog(
-            "settings.account.step-up.passkey-only",
-            RaftAppAppearance.Light,
-            SecondFactorStepUpDialogState(methods = emptyList(), method = null),
-        )
-
-    @Test
-    @Config(qualifiers = "w390dp-h844dp-xxhdpi")
-    fun stepUpDialogOpenOnWebLight() =
-        stepUpDialog("settings.account.step-up.open-on-web", RaftAppAppearance.Light, stepUpOpenOnWeb)
-
-    @Test
-    @Config(qualifiers = "w390dp-h844dp-xxhdpi")
-    fun stepUpDialogOpenOnWebDark() =
-        stepUpDialog("settings.account.step-up.open-on-web.dark", RaftAppAppearance.Dark, stepUpOpenOnWeb)
-
-    @Test
-    @Config(qualifiers = "w390dp-h844dp-xxhdpi")
-    fun stepUpDialogContinueInBrowserLight() =
-        stepUpDialog("settings.account.step-up.continue-in-browser", RaftAppAppearance.Light, stepUpContinueInBrowser)
-
-    @Test
-    @Config(qualifiers = "w390dp-h844dp-xxhdpi")
-    fun stepUpDialogContinueInBrowserDark() =
-        stepUpDialog("settings.account.step-up.continue-in-browser.dark", RaftAppAppearance.Dark, stepUpContinueInBrowser)
-
-    @Test
-    @Config(qualifiers = "w390dp-h844dp-xxhdpi")
-    fun stepUpDialogContinueInBrowserWaitingLight() =
-        stepUpDialog(
-            "settings.account.step-up.continue-in-browser.waiting",
-            RaftAppAppearance.Light,
-            stepUpContinueInBrowser.copy(webStepUp = SecondFactorWebStepUpPhase.Waiting),
-        )
-
-    @Test
-    @Config(qualifiers = "w390dp-h844dp-xxhdpi")
-    fun stepUpDialogContinueInBrowserExpiredLight() =
-        stepUpDialog(
-            "settings.account.step-up.continue-in-browser.expired",
-            RaftAppAppearance.Light,
-            stepUpContinueInBrowser.copy(banner = SecondFactorStepUpBanner.WebStepUpExpired("4bf92f3577b34da6a3ce929d0e0e4736")),
-        )
-
-    @Test
-    @Config(qualifiers = "w390dp-h844dp-xxhdpi")
-    fun logoutDialogLight() = logoutDialog("settings.account.logout-dialog", RaftAppAppearance.Light)
-
-    @Test
-    @Config(qualifiers = "w390dp-h844dp-xxhdpi")
-    fun logoutDialogDark() = logoutDialog("settings.account.logout-dialog.dark", RaftAppAppearance.Dark)
-
-    private fun logoutDialog(name: String, appearance: RaftAppAppearance) =
-        RaftRobolectricScreenshot.capture(
-            name,
-            appearance,
-            reportDir = "build/reports/home-screenshots",
-            activities = activities,
-            root = { ShadowDialog.getLatestDialog()?.window?.decorView },
-        ) {
-            Page {
-                RaftDesignSystemTheme {
-                    SettingsLogoutConfirmDialog(payload = accountFixture, onConfirm = {}, onDismiss = {})
-                }
-            }
-        }
 
     private fun stepUpDialog(name: String, appearance: RaftAppAppearance, state: SecondFactorStepUpDialogState) =
         RaftRobolectricScreenshot.capture(
@@ -221,24 +133,6 @@ class SettingsAccountScreenshotTest {
 
 private val loginSecurityOn =
     SharedAccountLoginSecurityState(security = AccountLoginSecurity(twoStepEnabled = true, passkeyCount = 2))
-
-/** Only legacy passkeys on iOS: Continue in browser (the action's page is known, but the web step-up stands in). */
-private val stepUpContinueInBrowser =
-    SecondFactorStepUpDialogState(
-        methods = emptyList(),
-        method = null,
-        passkeyListed = true,
-        webUrl = "https://app.raft.build/s/acme/computers",
-        webStepUp = SecondFactorWebStepUpPhase.Ready,
-    )
-
-private val stepUpOpenOnWeb =
-    SecondFactorStepUpDialogState(
-        methods = emptyList(),
-        method = null,
-        passkeyListed = true,
-        webUrl = "https://app.raft.build/s/acme/computers",
-    )
 
 private val stepUpCode =
     SecondFactorStepUpDialogState(

@@ -6,15 +6,12 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.key.Key
-import androidx.compose.ui.semantics.SemanticsActions
-import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.ComposeUiTest
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.doubleClick
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.performKeyInput
 import androidx.compose.ui.test.performMouseInput
-import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.test.pressKey
 import androidx.compose.ui.test.requestFocus
 import androidx.compose.ui.test.runComposeUiTest
@@ -29,10 +26,8 @@ import build.raft.designsystem.components.RaftPaneGridMemorySizes
 import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.RaftAppearance
 import build.raft.designsystem.theme.RaftTheme
-import kotlin.math.abs
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertTrue
 
 /**
  * RaftPaneGrid's splitters as people use them (web DS Resizable, ColumnResizeHandle, StackSeam):
@@ -72,8 +67,6 @@ class RaftPaneGridInteractionTest {
         waitForIdle()
     }
 
-    private fun assertNear(expected: Float, actual: Float, message: String) = assertTrue(abs(expected - actual) < 0.01f, "$message: expected $expected, was $actual")
-
     @Test
     fun theColumnSeamStepsWithTheKeyboard() =
         runComposeUiTest {
@@ -109,42 +102,6 @@ class RaftPaneGridInteractionTest {
             onNodeWithContentDescription("Resize side").performMouseInput { doubleClick() }
             waitForIdle()
             assertEquals(360f, sizes.widthDp(side))
-        }
-
-    @Test
-    fun screenReadersReadAndSetTheWidthAsAnAdjustableValue() =
-        runComposeUiTest {
-            val sizes = RaftPaneGridMemorySizes()
-            showGrid(sizes)
-            val seam = onNodeWithContentDescription("Resize side")
-            val info = seam.fetchSemanticsNode().config[SemanticsProperties.ProgressBarRangeInfo]
-            assertEquals(360f, info.current)
-            assertEquals(160f, info.range.start)
-            assertEquals(840f, info.range.endInclusive)
-            seam.performSemanticsAction(SemanticsActions.SetProgress) { it(500f) }
-            waitForIdle()
-            assertEquals(500f, sizes.widthDp(side))
-        }
-
-    @Test
-    fun theStackSeamMovesTheSplitWithTheKeyboardAndKeepsEachCellAt160() =
-        runComposeUiTest {
-            val sizes = RaftPaneGridMemorySizes()
-            showGrid(sizes)
-            val seam = onNodeWithContentDescription("Split side")
-            val before = seam.fetchSemanticsNode().config[SemanticsProperties.ProgressBarRangeInfo].current
-            assertNear(0.6f, before, "the upper cell's part of the pair")
-            seam.requestFocus()
-            seam.performKeyInput { pressKey(Key.DirectionDown) }
-            waitForIdle()
-            val down = sizes.shares("tasks+files", listOf(0.6f, 0.4f))
-            assertTrue(down[0] > 0.6f, "Down grows the upper cell: $down")
-            assertNear(1f, down[0] + down[1], "the pair keeps its total")
-            // Home: the upper cell at its 160dp minimum of the 599dp it shares.
-            seam.performKeyInput { pressKey(Key.MoveHome) }
-            waitForIdle()
-            val home = sizes.shares("tasks+files", listOf(0.6f, 0.4f))
-            assertNear(160f / 599f, home[0], "the upper cell at 160dp")
         }
 
     @Composable

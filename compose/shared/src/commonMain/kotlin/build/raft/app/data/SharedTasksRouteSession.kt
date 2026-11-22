@@ -20,7 +20,9 @@ internal class SharedTasksRouteSession(
     dataSource: SharedTasksDataSource,
     sharedTasksDataStore: SharedTasksDataStore,
     diagnosticsLogger: (String) -> Unit = {},
-    queryPreferences: TasksPageQueryPreferenceRepository? = null
+    queryPreferences: TasksPageQueryPreferenceRepository? = null,
+    /** Where the Tasks page keeps its folds per server; null keeps them for the page only. */
+    foldPreferences: TasksPageFoldPreferenceRepository? = null
 ) {
     private val scope = CoroutineScope(
         parentScope.coroutineContext + SupervisorJob(parentScope.coroutineContext[Job])
@@ -40,6 +42,12 @@ internal class SharedTasksRouteSession(
         runtimeScopeOverride = scope,
         queryPreferences = queryPreferences
     )
+
+    /**
+     * The Tasks page's folds on this route's server. A server switch makes a new route, so the
+     * page opens with that server's own folds (web: read back when the server becomes current).
+     */
+    val folds = TasksPageFolds(serverId = owner.serverId, preferences = foldPreferences)
 
     fun start() {
         // A cached shared snapshot has no cursor/freshness ownership for this new

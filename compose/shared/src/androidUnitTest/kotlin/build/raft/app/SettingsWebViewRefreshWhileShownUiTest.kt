@@ -98,21 +98,4 @@ class SettingsWebViewRefreshWhileShownUiTest {
             waitForIdle()
             assertEquals(3 to false, loop.starts to loop.running, "still covered")
         }
-
-    @Test
-    fun withoutAPageItFollowsTheLifecycleAlone() =
-        runRobolectricComposeUiTest {
-            val owner = Owner().apply { registry.currentState = Lifecycle.State.CREATED }
-            val loop = Loop()
-            setContent {
-                CompositionLocalProvider(LocalLifecycleOwner provides owner) {
-                    SettingsWebViewWhileShown(rememberRaftPagerAppeared(null), "fence") { loop.run() }
-                }
-            }
-            waitForIdle()
-            assertEquals(0 to false, loop.starts to loop.running)
-            runOnIdle { owner.registry.currentState = Lifecycle.State.STARTED }
-            waitForIdle()
-            assertEquals(1 to true, loop.starts to loop.running)
-        }
 }

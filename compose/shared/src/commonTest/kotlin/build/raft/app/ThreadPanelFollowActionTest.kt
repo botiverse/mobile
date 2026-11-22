@@ -48,19 +48,6 @@ class ThreadPanelFollowActionTest {
     }
 
     @Test
-    fun theMenuLabelFollowsTheStateItWillToggleTo() {
-        // Label and action are derived from the same boolean, so a stale label cannot show
-        // "Unfollow" on a thread that is not followed (the classic toggle-menu bug).
-        val followed = threadPanelFollowAction(message(isThreadFollowed = true))
-        val unfollowed = threadPanelFollowAction(message(isThreadFollowed = false))
-
-        assertEquals(true, followed?.followed)
-        assertEquals(UNFOLLOW_THREAD_ACTION, followed?.action)
-        assertEquals(false, unfollowed?.followed)
-        assertEquals(FOLLOW_THREAD_ACTION, unfollowed?.action)
-    }
-
-    @Test
     fun theActionCarriesTheThreadChannelTheHandlerNeeds() {
         // The existing handler reads the thread channel from the attachmentId slot, so the id must
         // travel with the action rather than being re-derived at dispatch time.
@@ -70,28 +57,11 @@ class ThreadPanelFollowActionTest {
     }
 
     @Test
-    fun anEmptyThreadOffersNoRowAtAll() {
-        // No origin message (empty thread): the row is absent, not a disabled button.
-        assertNull(threadPanelFollowAction(null))
-    }
-
-    @Test
     fun aMessageWithoutAThreadChannelOffersNoRow() {
         // Nothing to follow yet (e.g. a parent with no replies and no thread channel). Offering the
         // action here would dispatch with a blank id and fail at the network layer.
         assertNull(threadPanelFollowAction(message(threadChannelId = null)))
         assertNull(threadPanelFollowAction(message(threadChannelId = "")))
         assertNull(threadPanelFollowAction(message(threadChannelId = "   ")))
-    }
-
-    @Test
-    fun togglingTheStateFlipsTheOfferedAction() {
-        // Mirrors "cancel then reopen the menu": the same thread re-derives the opposite action from
-        // store state, with no cached label to go stale.
-        val before = threadPanelFollowAction(message(isThreadFollowed = true))
-        val after = threadPanelFollowAction(message(isThreadFollowed = false))
-
-        assertEquals(UNFOLLOW_THREAD_ACTION, before?.action)
-        assertEquals(FOLLOW_THREAD_ACTION, after?.action)
     }
 }

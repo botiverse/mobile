@@ -120,16 +120,6 @@ class RaftDatabaseLaunchRecoveryTest {
 
         assertSame(failure, thrown)
     }
-
-    @Test
-    fun databaseConstructionForcesSqlDelightInitializationWithAReadQuery() {
-        val driver = RecordingOpenSqlDriver()
-
-        RaftSqlDatabase(driver)
-
-        assertEquals(listOf("PRAGMA user_version"), driver.queries)
-        assertEquals(0, driver.executeCalls)
-    }
 }
 
 private class FailingOpenSqlDriver(

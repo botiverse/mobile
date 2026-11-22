@@ -42,6 +42,8 @@ class ThreadMemberItemOriginTest {
         // "Already joined here" keeps reading the projection the row came from.
         assertEquals(peer.id, row.rosterServerId)
         assertEquals(setOf<String>(), threadAddMemberJoinedKeys(listOf(row), local.value))
+        // The server's answer rides on the row: it groups the members page (web jointMemberGroups).
+        assertEquals(true, row.inViewerServer)
     }
 
     @Test
@@ -56,6 +58,7 @@ class ThreadMemberItemOriginTest {
         assertEquals("member", row.effectiveChannelRole)
         // Member labels (web #14535): the servers for the avatar's tile and the names after the name.
         assertEquals(listOf(peer, acme), row.originServers)
+        assertEquals(false, row.inViewerServer)
 
         // A host admin (joint authority) may remove another server's people.
         assertEquals(true, external.copy(canRemoveFromChannel = true).toRaftThreadMemberItem(local).canRemove)
@@ -68,28 +71,13 @@ class ThreadMemberItemOriginTest {
         assertEquals("Peer Labs", remote.sourceServerLabel)
         assertEquals(false, remote.canRemove)
         assertEquals(listOf(MemberServerRef(peer.id, peer.name, "")), remote.originServers)
+        // No field, no grouping: the members page keeps Humans and Agents.
+        assertNull(remote.inViewerServer)
 
         val own = person.copy(serverId = local, serverName = "Slock", effectiveChannelRole = "guest").toRaftThreadMemberItem(local)
         assertEquals(local.value, own.sourceServerId)
         assertNull(own.sourceServerLabel)
         assertEquals(true, own.canRemove)
         assertEquals("guest", own.effectiveChannelRole)
-    }
-
-    @Test
-    fun externalAgentAndHumanRosterRowsCarryOriginServerLogos() {
-        val peerLogo = "/api/avatars/server-peer/peer.webp"
-        val channelServers = listOf(peer.copy(avatarUrl = peerLogo))
-        val remoteAgent =
-            MemberProfile(
-                id = MemberId("agent-2"),
-                displayName = "Helper",
-                handle = "helper",
-                kind = MemberKind.Agent,
-                serverId = ServerId(peer.id),
-            )
-        val agentRow = remoteAgent.toRaftThreadMemberItem(local, knownServers = channelServers)
-        assertEquals(listOf(peer.copy(avatarUrl = peerLogo)), agentRow.originServers)
-        assertEquals("Peer Labs", agentRow.sourceServerLabel)
     }
 }

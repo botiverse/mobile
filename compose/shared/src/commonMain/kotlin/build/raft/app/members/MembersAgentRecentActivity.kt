@@ -2,6 +2,7 @@ package build.raft.app
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
@@ -123,23 +124,59 @@ internal fun MembersAgentRecentActivityCard(
     modifier: Modifier = Modifier,
     status: @Composable () -> Unit,
 ) {
+    MembersAgentNowCard(
+        finished = finished,
+        running = running,
+        otter = otter,
+        timeContext = timeContext,
+        modifier = modifier,
+        onOpenActivity = onOpenActivity,
+        recentRows = MembersAgentRecentActivityTurns,
+    ) {
+        // The status's parts 6dp apart, as under the hero (web AgentStatusBadge).
+        Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(6.dp)) { status() }
+    }
+}
+
+/**
+ * Web AgentNowCard (components/agent/AgentNowCard.tsx), the one card of the profile and the
+ * Activity overview (botiverse/slock #13108): Ottie ([otter]) beside what the agent is doing now
+ * ([status]: the profile's status, or the overview's own headline, the web's `status` prop and
+ * its absence), then who the running (else the last) turn answers and what it has done. The
+ * profile adds the "Recent activity ›" heading that opens the Activity tab ([onOpenActivity]) and
+ * its last [recentRows] finished turns; the overview shows neither. [finished]: newest first;
+ * [running]: the turn still running, if any.
+ */
+@Composable
+internal fun MembersAgentNowCard(
+    finished: List<AgentActivityTurn>,
+    running: AgentActivityTurn?,
+    otter: RaftStepStatus,
+    timeContext: RaftTimeContext,
+    modifier: Modifier = Modifier,
+    onOpenActivity: (() -> Unit)? = null,
+    recentRows: Int = 0,
+    status: @Composable ColumnScope.() -> Unit,
+) {
     val colors = RaftTheme.colors
     val typography = RaftTheme.typography
     val focus = running ?: finished.firstOrNull()
     // Without a running turn the newest finished one is the focus line's: the rows start after it.
-    val rows = finished.drop(if (running != null) 0 else 1).take(MembersAgentRecentActivityTurns)
+    val rows = if (recentRows > 0) finished.drop(if (running != null) 0 else 1).take(recentRows) else emptyList()
     RaftCard(modifier = modifier.fillMaxWidth().testTag("agent-now-card")) {
         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            // Web SectionEyebrow as a button, with its chevron.
-            Row(
-                modifier = Modifier
-                    .raftClickable(onClick = onOpenActivity, shape = RoundedCornerShape(2.dp))
-                    .testTag("agent-now-open-activity"),
-                horizontalArrangement = Arrangement.spacedBy(2.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                RaftSectionEyebrow(text = stringResource(Res.string.member_recent_activity_title))
-                RaftGlyphIcon(RaftGlyph.ChevronRight, size = 14.dp, color = colors.foregroundHint)
+            if (onOpenActivity != null) {
+                // Web SectionEyebrow as a button, with its chevron.
+                Row(
+                    modifier = Modifier
+                        .raftClickable(onClick = onOpenActivity, shape = RoundedCornerShape(2.dp))
+                        .testTag("agent-now-open-activity"),
+                    horizontalArrangement = Arrangement.spacedBy(2.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    RaftSectionEyebrow(text = stringResource(Res.string.member_recent_activity_title))
+                    RaftGlyphIcon(RaftGlyph.ChevronRight, size = 14.dp, color = colors.foregroundHint)
+                }
             }
             Row(
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -147,8 +184,7 @@ internal fun MembersAgentRecentActivityCard(
             ) {
                 RaftOtterIndicator(otter)
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    // The status's parts 6dp apart, as under the hero (web AgentStatusBadge).
-                    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(6.dp)) { status() }
+                    status()
                     focus?.let { turn ->
                         val trigger = membersActivityOverviewCompactTriggerText(turn.trigger)
                             ?: stringResource(Res.string.member_recent_activity_trigger_unknown)

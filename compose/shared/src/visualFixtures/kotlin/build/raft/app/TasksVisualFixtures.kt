@@ -7,6 +7,7 @@ import build.raft.app.data.TasksContent
 import build.raft.app.data.TasksPresentationState
 import build.raft.app.data.TasksUiState
 import build.raft.app.data.TasksViewMode
+import build.raft.app.data.parseSharedServerTasksPayload
 import build.raft.app.data.stringDescLocaleType
 import build.raft.app.data.summaryCounts
 import build.raft.app.data.toTaskSummary
@@ -35,10 +36,8 @@ import build.raft.app.resources.StringDesc
 
 private const val TasksPanelChineseLocalizationFixture = "zh-cn-localization"
 
-// Canonical /tasks/server rows for components.tasks.panel.states — same rows as
-// packages/visual-testing/shared/tasksFixture.json in the React repo, built through the
-// real wire mapping (TaskWireDto.toTaskSummary) so the fixture renders exactly what the
-// product tasks list renders for this payload (task #330/#353).
+// One row through the real wire mapping (TaskWireDto.toTaskSummary), for the fixtures the web has no
+// counterpart of.
 private fun tasksPanelVisualTask(
     taskNumber: Int,
     title: String,
@@ -78,54 +77,10 @@ private fun tasksPanelVisualTask(
     ).toTaskSummary()
         ?: error("visual fixture task #$taskNumber must map to a valid TaskSummary (check status literal)")
 
+// components.tasks.panel.states: the `GET /tasks/server` body the web side of the case loads
+// (slock packages/visual-testing/shared/tasksFixture.json), read by the app's own parser.
 private val tasksPanelVisualTasks: List<TaskSummary> =
-    listOf(
-        tasksPanelVisualTask(
-            taskNumber = 214,
-            title = "Align the tabbar capture crops between React and Android",
-            status = "todo",
-            description = "Both providers must wrap exactly the tabbar at width 390.",
-            createdAt = VisualFixtureData.Times.RECENT_ACTIVITY_AT_ISO,
-            updatedAt = VisualFixtureData.Times.RECENT_ACTIVITY_AT_ISO
-        ),
-        tasksPanelVisualTask(
-            taskNumber = 212,
-            title = "Fill the React fixture gaps before the Android diff",
-            status = "in_progress",
-            claimedByType = "agent",
-            claimedById = VisualFixtureData.Agents.Cindy.ID,
-            claimedByName = VisualFixtureData.Agents.Cindy.DISPLAY_NAME,
-            claimedAt = VisualFixtureData.Times.THREAD_MESSAGE_AT_ISO,
-            createdAt = VisualFixtureData.Times.ENTITY_CREATED_AT_ISO,
-            updatedAt = VisualFixtureData.Times.THREAD_MESSAGE_AT_ISO
-        ),
-        tasksPanelVisualTask(
-            taskNumber = 210,
-            title = "Review the thread header strip baselines",
-            status = "in_review",
-            claimedByType = "agent",
-            claimedById = VisualFixtureData.Agents.ProductUx.ID,
-            claimedByName = VisualFixtureData.Agents.ProductUx.DISPLAY_NAME,
-            claimedAt = VisualFixtureData.Times.RECENT_ACTIVITY_AT_ISO,
-            createdByType = "agent",
-            createdById = VisualFixtureData.Agents.Cindy.ID,
-            createdByName = VisualFixtureData.Agents.Cindy.DISPLAY_NAME,
-            createdAt = VisualFixtureData.Times.ENTITY_CREATED_AT_ISO,
-            updatedAt = VisualFixtureData.Times.THREAD_REPLY_AT_ISO
-        ),
-        tasksPanelVisualTask(
-            taskNumber = 208,
-            title = "Publish the visual parity report",
-            status = "done",
-            claimedByType = "agent",
-            claimedById = VisualFixtureData.Agents.Cindy.ID,
-            claimedByName = VisualFixtureData.Agents.Cindy.DISPLAY_NAME,
-            claimedAt = VisualFixtureData.Times.RECENT_ACTIVITY_AT_ISO,
-            completedAt = VisualFixtureData.Times.THREAD_REPLY_AT_ISO,
-            createdAt = VisualFixtureData.Times.ENTITY_CREATED_AT_ISO,
-            updatedAt = VisualFixtureData.Times.THREAD_REPLY_AT_ISO
-        )
-    )
+    checkNotNull(parseSharedServerTasksPayload(VisualFixtureWire.TASKS)) { "tasksFixture.json does not parse" }.tasks
 
 private const val TasksPanelStatusMenuRecycleFixture = "status-menu-recycle"
 

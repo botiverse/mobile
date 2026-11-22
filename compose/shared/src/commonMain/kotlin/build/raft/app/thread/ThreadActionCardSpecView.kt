@@ -171,7 +171,7 @@ internal fun ThreadActionCard.actionCardEndedLine(): String? {
     if (!isExpired) return null
     val viewerUserId = LocalThreadActionCardSpecHost.current.viewerUserId
     val names = LocalThreadActionCardNames.current
-    val context = currentRaftTimeContextProvider?.current
+    val context = currentRaftDateTimeContext(null)
     val requesterName = requesterUserId?.let { names.name(ThreadActionCardEntityKind.Human, it) }
     val line =
         actionCardExpiredLine(viewerUserId, requesterName) { at ->
@@ -209,7 +209,7 @@ internal fun threadActionCardSpecErrorDesc(error: ThreadActionCardSpecError?): S
     }
 
 /** An entity's name from the thread's lookup; only for the viewer's own server, else the card's fallback. */
-private fun ThreadActionCardNameLookup.actionCardSpecEntityName(ref: ActionCardSpecEntityRef, serverId: String?, viewerServerId: String?): String? {
+internal fun ThreadActionCardNameLookup.actionCardSpecEntityName(ref: ActionCardSpecEntityRef, serverId: String?, viewerServerId: String?): String? {
     if (serverId != null && viewerServerId != null && serverId != viewerServerId) return null
     val kind =
         when (ref.kind) {
@@ -316,6 +316,7 @@ internal fun ThreadActionCardSpecView(
             onSend = { values -> inline?.let { send(it)(values) } },
             modifier = modifier,
             serverIssuesTraceId = slice.inlineIssuesTraceId,
+            errorTraceId = slice.error.traceIdOrNull(),
         )
         return
     }
@@ -329,6 +330,7 @@ internal fun ThreadActionCardSpecView(
             controlsDisabled = question?.asked == false,
             busyElementKey = slice.busyElement(typedPending),
             error = error,
+            errorTraceId = slice.error.traceIdOrNull(),
             endedLine = endedLine,
         )
     RaftActionCardView(
@@ -503,7 +505,12 @@ internal fun ThreadActionCardSpecConfirmSheet(
                 verticalArrangement = Arrangement.spacedBy(16.dp),
             ) {
                 RaftCardTree(state.confirm.spec.root, state.confirm.spec.elements, context)
-                if (error != null) RaftBanner(description = error, status = RaftBannerStatus.Warning, size = RaftBannerSize.Sm)
+                if (error != null) {
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        RaftBanner(description = error, status = RaftBannerStatus.Warning, size = RaftBannerSize.Sm)
+                        RaftTraceIdNote(state.error.traceIdOrNull())
+                    }
+                }
             }
         }
     }

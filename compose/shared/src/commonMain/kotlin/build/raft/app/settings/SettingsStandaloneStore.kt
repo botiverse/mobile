@@ -29,6 +29,7 @@ import build.raft.app.data.SharedSettingsState
 import build.raft.app.data.RaftAuthSessionStore
 import build.raft.app.data.RaftSharedStoreRegistry
 import build.raft.app.data.RaftShellStoreScope
+import build.raft.app.data.RaftTimeFormatRuntime
 import build.raft.app.data.kuiklyBridgeCallContext
 import build.raft.app.data.RaftChatLayoutPreferenceEvents
 import build.raft.app.data.RaftNotificationPreferenceEvents
@@ -155,6 +156,7 @@ internal fun rememberStandaloneSettingsEnvironment(
                             }
                         },
                         serverNotificationLastKnownStore = sharedStores.settingsServerNotificationLastKnownStore,
+                        onTimeFormatUpdated = RaftTimeFormatRuntime::update,
                     ),
                 serverMembersStore = serverMembersStore,
                 // Data-layer plan step 5: the shell's owner-fenced, durable machine cache.
@@ -241,6 +243,12 @@ internal fun StandaloneSettingsEffectHandler(
             }
             is SharedSettingsEffect.OpenUrl -> {
                 environment.settingsCapabilities.openExternalUrl(effect.url)
+            }
+            is SharedSettingsEffect.OpenDeviceLoginPage -> {
+                // Add Computer's code for something it doesn't approve: the web's device login page,
+                // where the person's web sign-in (and a passkey step-up) work; the code is typed there.
+                environment.settingsCapabilities.log("settings_computers_code_open_device_page")
+                environment.settingsCapabilities.openUrlInBrowser(effect.url)
             }
             is SharedSettingsEffect.CopyText -> {
                 environment.settingsCapabilities.bridgeCopyToClipboard(effect.text)

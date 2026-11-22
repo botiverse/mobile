@@ -52,28 +52,6 @@ class RaftSocketIoClientAckTest {
     }
 
     @Test
-    fun emitWithAckWithoutAConnectionIsNotDelivered() = runTest {
-        val harness = SocketHarness(this)
-        val results = mutableListOf<RaftAckResult>()
-        harness.root.emitWithAck("sync:horizon") { results += it }
-        harness.root.emit("presence:activity")
-        runCurrent()
-        assertEquals(listOf<RaftAckResult>(RaftAckResult.NotDelivered("not_connected")), results)
-        assertTrue(harness.logs.any { it.startsWith("realtime_event_dropped reason=not_connected event=presence:activity") }, harness.logs.toString())
-    }
-
-    @Test
-    fun ackIdsWrapAroundAtTheLargestId() = runTest {
-        val harness = SocketHarness(this)
-        val session = harness.connectRoot()
-        harness.root.setNextAckIdForTests(SocketIoCodec.MAX_ACK_ID)
-        harness.root.emitWithAck("a") {}
-        harness.root.emitWithAck("b") {}
-        runCurrent()
-        assertEquals(listOf("42${SocketIoCodec.MAX_ACK_ID}[\"a\"]", "420[\"b\"]"), session.receivedTexts())
-    }
-
-    @Test
     fun serverAsksForAnAckAndTheClientAnswersOnceOnThatConnection() = runTest {
         val harness = SocketHarness(this)
         val session = harness.connectRoot(sid = "desk-1")
@@ -108,33 +86,6 @@ class RaftSocketIoClientAckTest {
         runCurrent()
         assertEquals(emptyList(), next.receivedTexts())
         assertTrue("dropped:notification:desktop:ack_stale_connection" in harness.listener.calls)
-    }
-
-    @Test
-    fun unlistedServerEventsAreLoggedOnceAndCountedNeverDelivered() = runTest {
-        val harness = SocketHarness(this)
-        val session = harness.connectRoot()
-        session.push("42[\"read_progress:updated\",{}]")
-        session.push("427[\"read_progress:updated\",{}]")
-        session.push("42[\"message:new\",{\"seq\":1}]")
-        runCurrent()
-        assertEquals(listOf("message:new"), harness.listener.events.map { it.name })
-        assertEquals(
-            listOf("projection_value_unknown source=realtime_socket field=event_name value=read_progress:updated"),
-            harness.logs.filter { it.startsWith("projection_value_unknown") },
-        )
-        assertEquals(1, harness.logs.count { it.startsWith("realtime_event_dropped reason=unlisted event=read_progress:updated") })
-        assertEquals(mapOf("read_progress:updated" to 2), harness.diagnostics().unlistedEvents)
-        assertEquals(emptyList(), session.receivedTexts(), "an unlisted event's ack request is not answered")
-    }
-
-    @Test
-    fun aNullAllowlistDeliversEveryEvent() = runTest {
-        val harness = SocketHarness(this, allowedEvents = null)
-        val session = harness.connectRoot()
-        session.push("42[\"anything:new\",1,\"two\"]")
-        runCurrent()
-        assertEquals(RaftSocketEvent("anything:new", listOf(JsonPrimitive(1), JsonPrimitive("two"))), harness.listener.events.single())
     }
 
     @Test

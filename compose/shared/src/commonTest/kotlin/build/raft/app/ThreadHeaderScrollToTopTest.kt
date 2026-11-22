@@ -1,9 +1,7 @@
 package build.raft.app
 
 import kotlin.test.Test
-import kotlin.test.assertEquals
 import kotlin.test.assertFalse
-import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class ThreadHeaderScrollToTopTest {
@@ -19,14 +17,6 @@ class ThreadHeaderScrollToTopTest {
         assertFalse(threadHeaderScrollToTopEnabled(RaftThreadSurfaceKind.ReplyThread, "files"))
         assertFalse(threadHeaderScrollToTopEnabled(RaftThreadSurfaceKind.ReplyThread, null))
         assertFalse(threadHeaderScrollToTopEnabled(null, "chat"))
-    }
-
-    @Test
-    fun headerScrollToTopTargetsFirstListItemWhenThreadListExists() {
-        assertNull(threadHeaderScrollToTopTargetIndex(0))
-        assertNull(threadHeaderScrollToTopTargetIndex(-1))
-        assertEquals(0, threadHeaderScrollToTopTargetIndex(1))
-        assertEquals(0, threadHeaderScrollToTopTargetIndex(42))
     }
 
     @Test

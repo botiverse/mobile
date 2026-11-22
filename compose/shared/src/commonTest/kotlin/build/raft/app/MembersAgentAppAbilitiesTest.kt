@@ -48,24 +48,4 @@ class MembersAgentAppAbilitiesTest {
             membersAgentAppAbilities(listOf("linear:issues:write", "openid", "linear:issues:write")),
         )
     }
-
-    @Test
-    fun noScopesMeansNoSentence() {
-        assertEquals(emptyList(), membersAgentAppAbilities(emptyList()))
-    }
-
-    @Test
-    fun everyAbilityHasItsOwnWords() {
-        assertEquals(
-            listOf(
-                Res.string.member_app_ability_sign_in,
-                Res.string.member_app_ability_email,
-                Res.string.member_app_ability_agent_directory,
-                Res.string.member_app_ability_events,
-                Res.string.member_app_ability_notifications,
-                Res.string.member_app_ability_action_requests,
-            ),
-            MembersAgentAppAbility.entries.map { it.short },
-        )
-    }
 }

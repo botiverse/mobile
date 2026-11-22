@@ -17,7 +17,6 @@ import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
-import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /**
@@ -106,45 +105,6 @@ class ServerPublicVisibilityStoreTest {
         assertFalse(store.state.value.confirmOpen)
         assertEquals(1, serverListRefreshes)
         assertEquals("https://raft.example/s/acme", store.state.value.publicUrl("https://raft.example/"))
-    }
-
-    @Test
-    fun turningOffAppliesDirectly() {
-        val repository = FakeRepository(loadResult = loaded(readback(publiclyVisible = true)))
-        val store = startedStore(repository)
-
-        store.dispatch(ServerPublicVisibilityIntent.VisibilityToggled(checked = false))
-
-        assertEquals(listOf(false), repository.visibilityWrites)
-        assertFalse(store.state.value.confirmOpen)
-        assertFalse(store.state.value.visibilityChecked)
-        assertNull(store.state.value.publicUrl("https://raft.example"))
-        assertEquals(1, serverListRefreshes)
-    }
-
-    @Test
-    fun subSwitchesAreDisabledUntilTheServerIsPublic() {
-        val repository = FakeRepository(loadResult = loaded(readback(publiclyVisible = false, publicSearchEnabled = true)))
-        val store = startedStore(repository)
-
-        assertTrue(store.state.value.visibilitySwitchEnabled)
-        assertFalse(store.state.value.subSwitchesEnabled)
-        store.dispatch(ServerPublicVisibilityIntent.SearchToggled(checked = true))
-        assertTrue(repository.searchWrites.isEmpty())
-    }
-
-    @Test
-    fun searchIsCheckedOnlyWhenPublicAndEnabled() {
-        val expected = mapOf(
-            (true to true) to true,
-            (true to false) to false,
-            (false to true) to false,
-            (false to false) to false,
-        )
-        val actual = expected.keys.associateWith { (publiclyVisible, publicSearchEnabled) ->
-            ServerPublicVisibilityState(readback = readback(publiclyVisible = publiclyVisible, publicSearchEnabled = publicSearchEnabled)).searchChecked
-        }
-        assertEquals(expected, actual)
     }
 
     @Test

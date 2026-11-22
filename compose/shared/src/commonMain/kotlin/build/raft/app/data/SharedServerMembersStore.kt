@@ -12,6 +12,7 @@ import build.raft.app.model.appAvatarWireValueOrNull
 import build.raft.app.composerMentionHandle
 import build.raft.app.model.ChannelExternalMemberProfile
 import build.raft.app.model.ChannelId
+import build.raft.app.model.AgentReadiness
 import build.raft.app.model.AgentStatus
 import build.raft.app.model.AgentToolStuck
 import build.raft.app.model.AgentWakeCrashLoop
@@ -187,9 +188,22 @@ data class SharedServerMembersState(
      * into [entriesByServerId].
      */
     val profileCacheByServerId: Map<String, Map<String, MemberProfile>> = emptyMap(),
+    /**
+     * Member ids in [profileCacheByServerId] confirmed by an authoritative server source
+     * (directory, [SharedServerMembersStore.seedProfiles], or durable roster) rather than only a
+     * message-author candidate ([SharedServerMembersStore.seedProfileCandidates]). Non-authoritative
+     * candidates — notably joint-channel senders from another server whose message payloads omit
+     * avatars — must not shadow channel rosters, block `POST /api/actors/resolve`, or synthesize a
+     * default `pixel:robot` avatar.
+     */
+    val authoritativeProfileCacheIdsByServerId: Map<String, Set<String>> = emptyMap(),
     val memberSuggestionSlices: Map<SharedMembersMentionScope, SharedMembersMemberSuggestionSlice> = emptyMap(),
     val channelMemberSlices: Map<SharedServerChannelMembersScope, SharedServerChannelMembersSlice> = emptyMap()
 ) {
+    internal data class ResolvedMemberProfile(
+        val profile: MemberProfile?,
+        val authoritative: Boolean
+    )
     fun entryFor(serverId: ServerId): SharedServerMembersEntry? =
         entriesByServerId[serverId.value.trim()]
 
@@ -260,33 +274,54 @@ data class SharedServerMembersState(
         // Web resolveAgentDisplayState: a held agent reads why, whatever its last activity.
         member.blockedMemberStatusOrNull()?.let { return it }
         return applySeedOnlyOfflinePolicy(
-            resolved = member.toSharedServerMemberStatus(null),
+            resolved = member.toSharedServerMemberStatus(null, authoritativeReadiness = rosterMember != null),
             seedOnly = rosterMember == null
         )
+    }
+
+    internal fun resolveMemberProfile(
+        serverId: ServerId?,
+        memberId: String?
+    ): ResolvedMemberProfile {
+        val cleanMemberId = memberId.normalizedServerMembersId() ?: return ResolvedMemberProfile(null, authoritative = false)
+        val cleanServerId = serverId?.value.normalizedServerMembersId() ?: return ResolvedMemberProfile(null, authoritative = false)
+        val rosterMember = entriesByServerId[cleanServerId]?.membersById?.get(cleanMemberId)
+        if (rosterMember != null) return ResolvedMemberProfile(rosterMember, authoritative = true)
+        val cached = profileCacheByServerId[cleanServerId]?.get(cleanMemberId)
+        if (cached != null && cleanMemberId in authoritativeProfileCacheIdsByServerId[cleanServerId].orEmpty()) {
+            return ResolvedMemberProfile(cached, authoritative = true)
+        }
+        val matchingSlices =
+            channelMemberSlices
+                .asSequence()
+                .filter { it.key.serverId == cleanServerId }
+                .map { it.value }
+        val liveChannelMember =
+            matchingSlices
+                .filterNot { it.storedStandIn }
+                .flatMap { it.members.asSequence() }
+                .firstOrNull { it.id.value.trim() == cleanMemberId }
+        if (liveChannelMember != null) return ResolvedMemberProfile(liveChannelMember, authoritative = true)
+        val standInChannelMember =
+            matchingSlices
+                .filter { it.storedStandIn }
+                .flatMap { it.members.asSequence() }
+                .firstOrNull { it.id.value.trim() == cleanMemberId }
+        val fallback =
+            when {
+                standInChannelMember == null -> cached
+                cached == null -> standInChannelMember
+                standInChannelMember.avatarSlotResolution().displayAvatarWireValue != null -> standInChannelMember
+                cached.avatarSlotResolution().displayAvatarWireValue != null -> cached
+                else -> standInChannelMember
+            }
+        return ResolvedMemberProfile(fallback, authoritative = false)
     }
 
     fun memberProfile(
         serverId: ServerId?,
         memberId: String?
-    ): MemberProfile? {
-        val cleanMemberId = memberId.normalizedServerMembersId() ?: return null
-        val cleanServerId = serverId?.value.normalizedServerMembersId() ?: return null
-        val entries = listOfNotNull(entriesByServerId[cleanServerId])
-        return entries
-            .asSequence()
-            .mapNotNull { it.membersById[cleanMemberId] }
-            .firstOrNull()
-            ?: profileCacheByServerId
-                .asSequence()
-                .filter { it.key == cleanServerId }
-                .mapNotNull { it.value[cleanMemberId] }
-                .firstOrNull()
-            ?: channelMemberSlices
-                .asSequence()
-                .filter { it.key.serverId == cleanServerId }
-                .flatMap { it.value.members.asSequence() }
-                .firstOrNull { it.id.value.trim() == cleanMemberId }
-    }
+    ): MemberProfile? = resolveMemberProfile(serverId, memberId).profile
 
     internal fun canonicalMentionHandle(
         binding: SharedServerChannelMembersOwnerBinding?,
@@ -398,7 +433,9 @@ data class SharedServerMemberStatus(
     /** The agent's Computer id from the roster (`computer-id:` badge), for runtime sign-in checks. */
     val machineId: String? = null,
     /** The agent's Computer display name from the roster (`computer:` badge), for sign-in detail copy. */
-    val machineName: String? = null
+    val machineName: String? = null,
+    /** Server-composed agent readiness from `GET /api/agents` (already trimmed per viewer). */
+    val readiness: AgentReadiness? = null,
 )
 
 /**
@@ -434,7 +471,9 @@ internal fun MemberProfile?.likelyOnlineMemberStatusOrNull(): SharedServerMember
         statusLabel = LikelyOnlineAgentStatusLabel,
         runtime = member.agentRuntimeOrNull(),
         external = false,
-        likelyOnline = true
+        likelyOnline = true,
+        paused = !member.assistantPausedAt.isNullOrBlank(),
+        readiness = member.agentReadiness,
     )
 }
 
@@ -505,7 +544,8 @@ private fun SharedServerMembersEntry.visibleDirectoryEntry(): SharedServerMember
     if (server.hidesHumanDirectoryFromViewer()) copy(members = visibleDirectoryMembers()) else this
 
 private fun MemberProfile?.toSharedServerMemberStatus(
-    presenceFact: MemberPresenceUpdated?
+    presenceFact: MemberPresenceUpdated?,
+    authoritativeReadiness: Boolean = true,
 ): SharedServerMemberStatus? {
     val resolvedLastSeenAt =
         listOfNotNull(presenceFact?.lastSeenAt, this?.lastSeenAt)
@@ -517,6 +557,7 @@ private fun MemberProfile?.toSharedServerMemberStatus(
     val memberMachineName = this?.agentComputerNameOrNull()
     val memberPaused = !this?.assistantPausedAt.isNullOrBlank()
     val keptSpawnFailureReason = this?.lastRuntimeErrorSpawnFailureReason?.trim()?.takeIf { it.isNotBlank() }
+    val resolvedReadiness = if (authoritativeReadiness) this?.agentReadiness else null
     if (
         presenceFact != null &&
         (
@@ -543,7 +584,8 @@ private fun MemberProfile?.toSharedServerMemberStatus(
             lastRuntimeErrorSpawnFailureReason = keptSpawnFailureReason,
             paused = memberPaused,
             machineId = memberMachineId,
-            machineName = memberMachineName
+            machineName = memberMachineName,
+            readiness = resolvedReadiness,
         )
     }
     if (this?.kind != MemberKind.Agent) return null
@@ -556,7 +598,8 @@ private fun MemberProfile?.toSharedServerMemberStatus(
         lastRuntimeErrorSpawnFailureReason = keptSpawnFailureReason,
         paused = memberPaused,
         machineId = memberMachineId,
-        machineName = memberMachineName
+        machineName = memberMachineName,
+        readiness = resolvedReadiness,
     )
 }
 
@@ -707,7 +750,7 @@ class SharedServerMembersStore internal constructor(
     private fun knowsActorLocally(serverId: ServerId, memberId: String): Boolean {
         val key = serverId.value.normalizedServerMembersId() ?: return false
         val id = memberId.normalizedServerMembersId() ?: return false
-        return _state.value.memberProfile(ServerId(key), id) != null ||
+        return currentAvatarMemberProfileResolution(ServerId(key), id).authoritative ||
             id in deletedAgentIdsByServerId.value[key].orEmpty()
     }
 
@@ -1285,6 +1328,8 @@ class SharedServerMembersStore internal constructor(
     private val memberReadFlowsLock = SynchronizedObject()
     private val memberStatusFlows = mutableMapOf<Pair<String, String>, Flow<SharedServerMemberStatus?>>()
     private val memberProfileFlows = mutableMapOf<Pair<String, String>, Flow<MemberProfile?>>()
+    private val memberAvatarProfileResolutionFlows =
+        mutableMapOf<Pair<String, String>, Flow<SharedServerMembersState.ResolvedMemberProfile>>()
 
     /**
      * Drops memoized per-member read flows. Call on session clear / account
@@ -1297,6 +1342,7 @@ class SharedServerMembersStore internal constructor(
         synchronized(memberReadFlowsLock) {
             memberStatusFlows.clear()
             memberProfileFlows.clear()
+            memberAvatarProfileResolutionFlows.clear()
         }
         // Same lifetime: resolved joint-channel senders belong to the retiring owner.
         jointActors?.clear()
@@ -1391,15 +1437,103 @@ class SharedServerMembersStore internal constructor(
                 // An external agent's presence is its credential's last use, a timestamp rather
                 // than a pre-connect status, so it survives the rebaseline (web never resets it).
                 // A joint channel's peer external agent may have no live-activity fact to wait for.
-                lastSeenAt = member?.lastSeenAt?.takeIf { member.isExternal && it.isNotBlank() }
+                lastSeenAt = member?.lastSeenAt?.takeIf { member.isExternal && it.isNotBlank() },
+                paused = !member?.assistantPausedAt.isNullOrBlank(),
+                readiness = if (resolution.authoritative) member?.agentReadiness else null,
             )
         } else {
             applySeedOnlyOfflinePolicy(
-                resolved = member.toSharedServerMemberStatus(presenceFact),
+                resolved =
+                    member.toSharedServerMemberStatus(
+                        presenceFact,
+                        authoritativeReadiness = resolution.authoritative,
+                    ),
                 seedOnly = !resolution.authoritative && presenceFact == null
             )
         }
     }
+
+    internal fun currentAvatarMemberProfileResolution(
+        serverId: ServerId?,
+        memberId: String?
+    ): SharedServerMembersState.ResolvedMemberProfile {
+        val cleanServerId = serverId?.value.normalizedServerMembersId()
+            ?: return SharedServerMembersState.ResolvedMemberProfile(null, authoritative = false)
+        val cleanMemberId = memberId.normalizedServerMembersId()
+            ?: return SharedServerMembersState.ResolvedMemberProfile(null, authoritative = false)
+        val current = _state.value
+        val rosterMember = current.entriesByServerId[cleanServerId]?.membersById?.get(cleanMemberId)
+        if (rosterMember != null) {
+            return SharedServerMembersState.ResolvedMemberProfile(rosterMember, authoritative = true)
+        }
+        val cached = current.profileCacheByServerId[cleanServerId]?.get(cleanMemberId)
+        if (cached != null && cleanMemberId in current.authoritativeProfileCacheIdsByServerId[cleanServerId].orEmpty()) {
+            return SharedServerMembersState.ResolvedMemberProfile(cached, authoritative = true)
+        }
+        val slices = currentOwnerChannelMemberSlices(ServerId(cleanServerId))
+        val liveChannelMember =
+            slices
+                .asSequence()
+                .filterNot { it.storedStandIn }
+                .flatMap { it.members.asSequence() }
+                .firstOrNull { it.id.value.trim() == cleanMemberId }
+        if (liveChannelMember != null) {
+            return SharedServerMembersState.ResolvedMemberProfile(liveChannelMember, authoritative = true)
+        }
+        val standInChannelMember =
+            slices
+                .asSequence()
+                .filter { it.storedStandIn }
+                .flatMap { it.members.asSequence() }
+                .firstOrNull { it.id.value.trim() == cleanMemberId }
+        val fallback =
+            when {
+                standInChannelMember == null -> cached
+                cached == null -> standInChannelMember
+                standInChannelMember.avatarSlotResolution().displayAvatarWireValue != null -> standInChannelMember
+                cached.avatarSlotResolution().displayAvatarWireValue != null -> cached
+                else -> standInChannelMember
+            }
+        return SharedServerMembersState.ResolvedMemberProfile(fallback, authoritative = false)
+    }
+
+    internal fun memberAvatarProfileResolutionFlow(
+        serverId: ServerId?,
+        memberId: String?
+    ): Flow<SharedServerMembersState.ResolvedMemberProfile> {
+        val cleanServerId = serverId?.value.normalizedServerMembersId()
+        val cleanMemberId = memberId.normalizedServerMembersId()
+        if (cleanServerId == null || cleanMemberId == null) {
+            return flowOf(SharedServerMembersState.ResolvedMemberProfile(null, authoritative = false))
+        }
+        return synchronized(memberReadFlowsLock) {
+            memberAvatarProfileResolutionFlows.getOrPut(cleanServerId to cleanMemberId) {
+                buildMemberAvatarProfileResolutionFlow(ServerId(cleanServerId), cleanMemberId)
+            }
+        }
+    }
+
+    @OptIn(ExperimentalCoroutinesApi::class)
+    private fun buildMemberAvatarProfileResolutionFlow(
+        serverId: ServerId,
+        memberId: String
+    ): Flow<SharedServerMembersState.ResolvedMemberProfile> =
+        flow {
+            emit(currentAvatarMemberProfileResolution(serverId, memberId))
+            emitAll(
+                serverMembersEntryFlow(serverId)
+                    .flatMapLatest { entry ->
+                        val rosterMember = entry.membersById[memberId]
+                        if (rosterMember != null) {
+                            flowOf(SharedServerMembersState.ResolvedMemberProfile(rosterMember, authoritative = true))
+                        } else {
+                            combine(state, channelMembersOwnerFlow(serverId)) { _, _ ->
+                                currentAvatarMemberProfileResolution(serverId, memberId)
+                            }.distinctUntilChanged()
+                        }
+                    }
+            )
+        }.distinctUntilChanged()
 
     fun memberProfileFlow(
         serverId: ServerId?,
@@ -1464,7 +1598,7 @@ class SharedServerMembersStore internal constructor(
                         .filterServerRosterMembers(key)
                         .filterDeletedAgents(key)
             )
-        cacheProfiles(key, directoryMembers)
+        cacheProfiles(key, directoryMembers, replaceReadiness = true)
         val binding = currentDirectoryOwnerBinding(ServerId(key))
         putEntry(
             key,
@@ -1578,19 +1712,27 @@ class SharedServerMembersStore internal constructor(
     private fun cacheProfiles(
         key: String,
         profiles: List<MemberProfile>,
-        authoritativeAvatar: Boolean = true
+        authoritativeAvatar: Boolean = true,
+        replaceReadiness: Boolean = false,
     ) {
         if (key.isBlank() || profiles.isEmpty()) return
         val current = _state.value
         val merged = current.profileCacheByServerId[key].orEmpty().toMutableMap()
+        val authoritativeIds =
+            if (authoritativeAvatar) {
+                current.authoritativeProfileCacheIdsByServerId[key].orEmpty().toMutableSet()
+            } else {
+                null
+            }
         profiles.forEach { profile ->
             val profileKey = profile.id.value.trim()
             if (profileKey.isNotBlank()) {
+                authoritativeIds?.add(profileKey)
                 merged[profileKey] =
                     merged[profileKey]?.let { existing ->
                         val next =
                             if (authoritativeAvatar) {
-                                existing.mergeAuthoritativeProfile(profile)
+                                existing.mergeAuthoritativeProfile(profile, replaceReadiness = replaceReadiness)
                             } else {
                                 existing.mergeSeedProfile(profile)
                             }
@@ -1605,9 +1747,16 @@ class SharedServerMembersStore internal constructor(
                     } ?: profile
             }
         }
+        val nextAuthoritativeByServerId =
+            if (authoritativeIds != null) {
+                current.authoritativeProfileCacheIdsByServerId + (key to authoritativeIds.toSet())
+            } else {
+                current.authoritativeProfileCacheIdsByServerId
+            }
         _state.value =
             current.copy(
-                profileCacheByServerId = current.profileCacheByServerId + (key to merged)
+                profileCacheByServerId = current.profileCacheByServerId + (key to merged),
+                authoritativeProfileCacheIdsByServerId = nextAuthoritativeByServerId
             )
         if (authoritativeAvatar) {
             recordDurableAvatarRefs(
@@ -1712,18 +1861,35 @@ class SharedServerMembersStore internal constructor(
                     }
                 }
             }
+        var removedFromProfileCache = false
         val nextProfileCache =
             current.profileCacheByServerId[serverKey]
                 ?.let { cache ->
                     val cached = cache[memberKey]
                     if (cached != null && (memberKind == null || cached.kind == memberKind)) {
                         changed = true
+                        removedFromProfileCache = true
                         current.profileCacheByServerId + (serverKey to (cache - memberKey))
                     } else {
                         current.profileCacheByServerId
                     }
                 }
                 ?: current.profileCacheByServerId
+        val nextAuthoritativeCacheIds =
+            if (removedFromProfileCache) {
+                current.authoritativeProfileCacheIdsByServerId[serverKey]
+                    ?.let { ids ->
+                        val remaining = ids - memberKey
+                        if (remaining.isEmpty()) {
+                            current.authoritativeProfileCacheIdsByServerId - serverKey
+                        } else {
+                            current.authoritativeProfileCacheIdsByServerId + (serverKey to remaining)
+                        }
+                    }
+                    ?: current.authoritativeProfileCacheIdsByServerId
+            } else {
+                current.authoritativeProfileCacheIdsByServerId
+            }
         // task #136: presence lives only in the registry — evict the deleted
         // member's fact from THIS server's owner partition (never cross-server).
         presenceWrite(serverId)?.let { write ->
@@ -1742,6 +1908,7 @@ class SharedServerMembersStore internal constructor(
             current.copy(
                 entriesByServerId = nextEntries,
                 profileCacheByServerId = nextProfileCache,
+                authoritativeProfileCacheIdsByServerId = nextAuthoritativeCacheIds,
                 memberSuggestionSlices = nextSuggestionSlices,
                 channelMemberSlices = nextChannelSlices
             )
@@ -1768,7 +1935,9 @@ class SharedServerMembersStore internal constructor(
      * [removeMember] does (memory, durable row, presence fact). A roster that is not loaded for the
      * current owner is left alone: its next load reads the server anyway.
      *
-     * Presence is not touched: agent status travels on the presence push, not in the change log.
+     * Synced `agent` rows carry server-resolved `activity` (slock `routes/sync.ts` `buildAgentRows`),
+     * which is projected safely into [presenceRegistry] only for missing or stale carried-over slots
+     * (never clobbering a live socket push or current REST projection).
      * Returns whether the roster changed.
      */
     internal suspend fun applySyncedRosterRows(
@@ -1777,12 +1946,13 @@ class SharedServerMembersStore internal constructor(
         deletes: List<Pair<MemberId, MemberKind>>
     ): Boolean {
         val key = serverId.value.normalizedServerMembersId() ?: return false
+        val owner = processOwner(ServerId(key))
         val binding = currentDirectoryOwnerBinding(ServerId(key)) ?: return false
         if (upserts.isEmpty() && deletes.isEmpty()) return false
         // Before the rows land (Tenny 10-27): a roster or `/agents` read already in flight answers for
         // the list without them and would publish over them later; this retires it (its rejoin
         // reads again) and drops the process cache that still holds the pre-sync list.
-        processOwner(ServerId(key))?.let { owner -> processCore.invalidate(owner, reason = "sync_changes") }
+        owner?.let { processCore.invalidate(it, reason = "sync_changes") }
         var changed = false
         deletes.forEach { (memberId, kind) ->
             if (removeMember(serverId = ServerId(key), memberId = memberId, memberKind = kind)) changed = true
@@ -1794,10 +1964,22 @@ class SharedServerMembersStore internal constructor(
                 null
             } else {
                 mutex.withLock {
+                    if (currentDirectoryOwnerBinding(ServerId(key)) != binding) {
+                        return@withLock null
+                    }
                     val entry =
                         _state.value.entriesByServerId[key]
                             ?.takeIf { it.matches(binding) && it.status == SharedServerMembersLoadStatus.Loaded }
                             ?: return@withLock null
+                    val syncPresenceWrite =
+                        owner?.let { expectedOwner ->
+                            presenceWrite(ServerId(key))?.takeIf {
+                                it.owner == expectedOwner && it.writeGeneration == binding.writeGeneration
+                            }
+                        }
+                    if (syncPresenceWrite != null) {
+                        applySyncedAgentPresence(syncPresenceWrite, accepted)
+                    }
                     val incoming = accepted.associateBy { it.kind to it.id.value.trim() }
                     val replaced = mutableSetOf<Pair<MemberKind, String>>()
                     val nextMembers =
@@ -1820,6 +2002,39 @@ class SharedServerMembersStore internal constructor(
             )
         }
         return changed
+    }
+
+    internal fun hasLoadedNonDurableRoster(serverId: ServerId): Boolean {
+        val key = serverId.value.normalizedServerMembersId() ?: return false
+        val owner = presenceOwner(ServerId(key)) ?: return false
+        val binding = currentDirectoryOwnerBinding(ServerId(key))?.takeIf { it.matches(owner) } ?: return false
+        return _state.value.entriesByServerId[key]?.let {
+            it.matches(binding) && it.status == SharedServerMembersLoadStatus.Loaded && !it.seededFromDurable
+        } == true
+    }
+
+    private fun applySyncedAgentPresence(
+        write: ProcessPresenceWrite,
+        profiles: List<MemberProfile>,
+    ) {
+        profiles.forEach { profile ->
+            if (profile.kind != MemberKind.Agent) return@forEach
+            if (!profile.agentDeletedAt.isNullOrBlank()) return@forEach
+            val status = profile.agentStatus ?: return@forEach
+            presenceRegistry.applySyncedAgentProjection(
+                owner = write.owner,
+                event =
+                    MemberPresenceUpdated(
+                        memberId = profile.id,
+                        presence = status.presence,
+                        kind = MemberKind.Agent,
+                        agentStatus = status,
+                        statusLabel = status.label,
+                        serverSeq = null
+                    ),
+                writeGeneration = write.writeGeneration
+            )
+        }
     }
 
     /**
@@ -1856,7 +2071,10 @@ class SharedServerMembersStore internal constructor(
                 val entryChanged = entry != null && nextMembers != entry.members
                 val cacheChanged = cache != null && nextCache != cache
                 val slicesChanged = nextSlices != current.channelMemberSlices
-                if (!entryChanged && !cacheChanged && !slicesChanged) return@withLock null
+                val cacheMatchedHuman = cache?.get(userKey)?.isPerson() == true
+                val currentAuthoritativeCacheIds = current.authoritativeProfileCacheIdsByServerId[key].orEmpty()
+                val authoritativeCacheChanged = cacheMatchedHuman && userKey !in currentAuthoritativeCacheIds
+                if (!entryChanged && !cacheChanged && !slicesChanged && !authoritativeCacheChanged) return@withLock null
                 changed = true
                 _state.value =
                     current.copy(
@@ -1871,6 +2089,12 @@ class SharedServerMembersStore internal constructor(
                                 current.profileCacheByServerId + (key to nextCache)
                             } else {
                                 current.profileCacheByServerId
+                            },
+                        authoritativeProfileCacheIdsByServerId =
+                            if (authoritativeCacheChanged) {
+                                current.authoritativeProfileCacheIdsByServerId + (key to (currentAuthoritativeCacheIds + userKey))
+                            } else {
+                                current.authoritativeProfileCacheIdsByServerId
                             },
                         channelMemberSlices = nextSlices,
                     )
@@ -2087,7 +2311,7 @@ class SharedServerMembersStore internal constructor(
                         val nextMembers = kept + fetched.filter { it.id.value.trim() !in keptAgentIds }
                         if (nextMembers == entry.members) return@commitAgentsIfCurrent null
                         putEntry(key, entry.copy(members = nextMembers))
-                        cacheProfiles(key, fetched)
+                        cacheProfiles(key, fetched, replaceReadiness = true)
                         outcome = "changed"
                         entry.server?.let { server -> MemberSnapshot(server = server, members = nextMembers) }
                     }
@@ -2874,7 +3098,7 @@ class SharedServerMembersStore internal constructor(
                                 completesRosterRefill = true,
                                 filteredOut = result.data.members.rosterPresenceFilteredOut(snapshot.members)
                             )
-                            cacheProfiles(normalizedKey, snapshot.members)
+                            cacheProfiles(normalizedKey, snapshot.members, replaceReadiness = true)
                             // task #344 evidence lane: if this roster refresh replaced a member's
                             // concrete avatar with nothing, say which wire shape arrived. The
                             // `roster_merge`/`cache_*` lanes catch merge-path drops; this one
@@ -4097,6 +4321,7 @@ class SharedServerMembersStore internal constructor(
                 current.copy(
                     entriesByServerId = current.entriesByServerId - victimSet,
                     profileCacheByServerId = current.profileCacheByServerId - victimSet,
+                    authoritativeProfileCacheIdsByServerId = current.authoritativeProfileCacheIdsByServerId - victimSet,
                     channelMemberSlices = current.channelMemberSlices.filterKeys { it.serverId !in victimSet },
                     memberSuggestionSlices = current.memberSuggestionSlices.filterKeys { it.serverId !in victimSet }
                 )
@@ -4136,8 +4361,11 @@ class SharedServerMembersStore internal constructor(
                 snapshot.members
                     .filterServerRosterMembers(key)
                     .filterDeletedAgents(key)
+                    .map { member ->
+                        if (member.agentReadiness == null) member else member.copy(agentReadiness = null)
+                    }
             if (members.isEmpty()) return@withLock false
-            cacheProfiles(key, members)
+            cacheProfiles(key, members, replaceReadiness = true)
             putEntry(
                 key,
                 SharedServerMembersEntry(
@@ -4180,6 +4408,7 @@ class SharedServerMembersStore internal constructor(
                     current.copy(
                         entriesByServerId = current.entriesByServerId - key,
                         profileCacheByServerId = current.profileCacheByServerId - key,
+                        authoritativeProfileCacheIdsByServerId = current.authoritativeProfileCacheIdsByServerId - key,
                         channelMemberSlices = current.channelMemberSlices.filterKeys { it.serverId != key },
                         memberSuggestionSlices = current.memberSuggestionSlices.filterKeys { it.serverId != key }
                     )
@@ -4284,6 +4513,7 @@ class SharedServerMembersStore internal constructor(
             _state.value.copy(
                 entriesByServerId = _state.value.entriesByServerId - key,
                 profileCacheByServerId = _state.value.profileCacheByServerId - key,
+                authoritativeProfileCacheIdsByServerId = _state.value.authoritativeProfileCacheIdsByServerId - key,
             )
     }
 
@@ -4606,7 +4836,7 @@ private fun List<String>.rosterPresenceSample(): String =
 
 private fun MemberProfile.withoutVolatileStatus(): MemberProfile =
     if (kind == MemberKind.Agent) {
-        copy(presence = Presence.Offline, agentStatus = null)
+        copy(presence = Presence.Offline, agentStatus = null, agentReadiness = null)
     } else {
         this
     }
@@ -4616,7 +4846,10 @@ private fun MemberProfile.withoutVolatileStatus(): MemberProfile =
  * hydration must not erase a previously known value. Message-snapshot candidates never call this
  * merge; they remain fill-only through [MemberProfile.mergeSeedProfile].
  */
-private fun MemberProfile.mergeAuthoritativeProfile(incoming: MemberProfile): MemberProfile {
+private fun MemberProfile.mergeAuthoritativeProfile(
+    incoming: MemberProfile,
+    replaceReadiness: Boolean = false,
+): MemberProfile {
     val merged =
         mergeSeedProfile(incoming).copy(
             // Authoritative hydration may advance/replace origin metadata (`serverId`, `serverName`,
@@ -4627,6 +4860,7 @@ private fun MemberProfile.mergeAuthoritativeProfile(incoming: MemberProfile): Me
             serverSlug = incoming.serverSlug ?: serverSlug,
             servers = incoming.servers ?: servers,
             inViewerServer = incoming.inViewerServer ?: inViewerServer,
+            agentReadiness = if (replaceReadiness) incoming.agentReadiness else incoming.agentReadiness ?: agentReadiness,
         )
     val statusMerged =
         if (incoming.kind == MemberKind.Agent && incoming.agentStatus != null) {

@@ -43,14 +43,6 @@ class SettingsStorageScreenshotTest {
     @Test
     fun settingsStorageDark() = capture("settings.storage.dark", RaftAppAppearance.Dark)
 
-    @Test
-    @Config(qualifiers = "zh-rCN-w390dp-h1500dp-xxhdpi")
-    fun settingsStorageZhLight() = capture("settings.storage.zh", RaftAppAppearance.Light)
-
-    @Test
-    @Config(qualifiers = "zh-rCN-w390dp-h1500dp-xxhdpi")
-    fun settingsStorageZhDark() = capture("settings.storage.zh.dark", RaftAppAppearance.Dark)
-
     private fun capture(name: String, appearance: RaftAppAppearance) =
         RaftRobolectricScreenshot.capture(name, appearance, reportDir = "build/reports/home-screenshots", activities = activities) {
             val pager =

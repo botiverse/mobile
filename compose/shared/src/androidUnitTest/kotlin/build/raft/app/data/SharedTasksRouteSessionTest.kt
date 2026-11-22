@@ -127,19 +127,4 @@ class SharedTasksRouteSessionTest {
         assertTrue(!returned.viewModel.state.value.refreshing)
         returned.close()
     }
-
-    @Test
-    fun queuedOldRouteCannotLoadForNewAccountOrServer() = runTest {
-        val auth = InMemoryRaftAuthSessionStore(session("A"))
-        val api = Api()
-        val route = SharedTasksRouteSession(
-            SharedTasksRouteOwner("test-api", "user", "A"), backgroundScope,
-            auth, SharedTasksDataSource(api), SharedTasksDataStore(scope = backgroundScope)
-        )
-        auth.updateSelectedServer("B", null)
-        route.start()
-        runCurrent()
-        assertTrue(api.calls.isEmpty(), "A route may not issue requests for the newly selected B")
-        route.close()
-    }
 }

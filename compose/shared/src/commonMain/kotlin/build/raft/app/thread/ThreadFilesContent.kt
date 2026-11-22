@@ -6,6 +6,8 @@ import build.raft.app.components.RaftDesignSystemTheme
 import build.raft.app.format.RaftFormat
 import build.raft.app.data.ConversationArtifact
 import build.raft.app.data.isEdgeBlockedMarker
+import build.raft.app.network.raftValidTraceIdOrNull
+import kotlinx.serialization.Transient
 import build.raft.app.markdown.lucideIcon
 import build.raft.designsystem.components.RaftIconTile
 import build.raft.designsystem.components.RaftIconTileSize
@@ -14,6 +16,7 @@ import build.raft.designsystem.components.RaftListRowGroup
 import build.raft.designsystem.theme.RaftTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -93,6 +96,8 @@ internal data class RaftThreadFilesPayload(
     val nextCursor: String? = null,
     val errorCode: String? = null,
     val errorServerMessage: String? = null,
+    @Transient
+    val errorTraceId: String? = null,
     val emptyTitle: String = "No files yet",
     val emptyDetail: String = "Files shared in this thread will show up here."
 )
@@ -209,17 +214,19 @@ internal fun ThreadFilesContent(
     ) {
         when (payload.status) {
             "loading" -> ThreadFilesStateMessage(stringResource(Res.string.thread_files_loading), null)
-            "error" -> ThreadFilesError(payload.errorCode ?: "unknown_error") { onEvent("retry", null) }
+            "error" -> ThreadFilesError(payload.errorCode ?: "unknown_error", payload.errorTraceId) { onEvent("retry", null) }
             "no_permission" ->
                 if (payload.errorServerMessage.isEdgeBlockedMarker()) {
                     ThreadFilesStateMessage(
                         stringResource(Res.string.thread_state_edge_blocked),
-                        stringResource(Res.string.error_edge_blocked)
+                        stringResource(Res.string.error_edge_blocked),
+                        traceId = payload.errorTraceId
                     )
                 } else {
                     ThreadFilesStateMessage(
                         stringResource(Res.string.thread_files_no_permission),
-                        payload.errorCode ?: "missing capability"
+                        payload.errorCode ?: "missing capability",
+                        traceId = payload.errorTraceId
                     )
                 }
             // No files: the Artifacts alone, if any (web: the list waits for them so it doesn't flash empty).
@@ -411,7 +418,22 @@ private fun ThreadFileRow(
     onDownload: () -> Unit,
     onOpenSource: () -> Unit
 ) {
-    val isOpening = openState.threadAttachmentIsOpening()
+    val downloadHost = LocalThreadAttachmentDownloadHost.current
+    val centerEntryFlow = remember(downloadHost, item.attachmentId) { downloadHost?.entry(item.attachmentId) }
+    val centerEntry = centerEntryFlow?.collectAsState(initial = null)?.value
+    val effectiveOpenState = effectiveThreadAttachmentOpenState(openState, centerEntry)
+    val centerLabel =
+        raftThreadAttachmentCardDownloadLabel(
+            entry = centerEntry,
+            terms =
+                RaftFilePreviewDownloadStatusTerms(
+                    downloading = stringResource(Res.string.file_preview_download_downloading),
+                    paused = stringResource(Res.string.file_preview_download_paused),
+                    saving = stringResource(Res.string.file_preview_download_saving)
+                )
+        )
+    val isOpening = effectiveOpenState.threadAttachmentIsOpening() || centerEntry?.status?.isActive == true
+    val statusLabel = centerLabel ?: effectiveOpenState.localizedThreadAttachmentStatusLabel()
     val canOpenSource = item.threadFileHasSourceTarget()
     val openIfIdle = if (isOpening) ({}) else onOpen
     val shape = RoundedCornerShape(RaftAppRadius.Container)
@@ -447,9 +469,9 @@ private fun ThreadFileRow(
                     overflow = TextOverflow.Ellipsis
                 )
                 ThreadFileMetaLine(item)
-                openState.localizedThreadAttachmentStatusLabel()?.let { statusLabel ->
+                statusLabel?.let { label ->
                     Text(
-                        text = statusLabel,
+                        text = label,
                         style = ThreadFileMetaStyle.copy(
                             color = if (isOpening) RaftColor.TextBlack else RaftColor.ForegroundHint
                         ),
@@ -801,7 +823,7 @@ private fun ThreadFilesLoadMore(
 }
 
 @Composable
-private fun ThreadFilesError(errorCode: String, onRetry: () -> Unit) {
+private fun ThreadFilesError(errorCode: String, traceId: String? = null, onRetry: () -> Unit) {
     Column(
         modifier = Modifier.fillMaxSize().padding(24.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
@@ -818,12 +840,13 @@ private fun ThreadFilesError(errorCode: String, onRetry: () -> Unit) {
             style = RaftType.Body.copy(color = RaftColor.TextMutedGray),
             color = RaftColor.TextMutedGray
         )
+        RaftTraceIdNote(traceId = traceId)
         ThreadFilesLoadMore(loading = false, onClick = onRetry, label = stringResource(Res.string.common_retry))
     }
 }
 
 @Composable
-private fun ThreadFilesStateMessage(title: String, detail: String?) {
+private fun ThreadFilesStateMessage(title: String, detail: String?, traceId: String? = null) {
     Column(
         modifier = Modifier.fillMaxSize().padding(24.dp),
         verticalArrangement = Arrangement.Center,
@@ -844,6 +867,10 @@ private fun ThreadFilesStateMessage(title: String, detail: String?) {
                 maxLines = 3,
                 overflow = TextOverflow.Ellipsis
             )
+        }
+        if (raftValidTraceIdOrNull(traceId) != null) {
+            Spacer(Modifier.height(8.dp))
+            RaftTraceIdNote(traceId = traceId)
         }
     }
 }

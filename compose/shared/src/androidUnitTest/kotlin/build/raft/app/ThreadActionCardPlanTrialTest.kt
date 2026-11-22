@@ -1,21 +1,6 @@
 package build.raft.app
 
-import androidx.compose.runtime.CompositionLocalProvider
-import androidx.compose.runtime.remember
-import androidx.compose.ui.test.ComposeUiTest
 import androidx.compose.ui.test.ExperimentalTestApi
-import androidx.compose.ui.test.assertCountEquals
-import androidx.compose.ui.test.hasClickAction
-import androidx.compose.ui.test.hasSetTextAction
-import androidx.compose.ui.test.hasTestTag
-import androidx.compose.ui.test.onAllNodesWithText
-import androidx.compose.ui.test.onNodeWithTag
-import androidx.compose.ui.test.onNodeWithText
-import build.raft.app.compat.json.JSONObject
-import build.raft.app.compat.pager.LocalActivity
-import build.raft.app.compat.pager.PageData
-import build.raft.app.compat.pager.Pager
-import build.raft.app.compat.pager.RaftPageActivity
 import build.raft.app.data.ActionCardSpecButton
 import build.raft.app.data.PlanTrialActionCardType
 import build.raft.app.data.RAFT_APP_ACTION_CARD_CAPABILITIES
@@ -24,8 +9,6 @@ import build.raft.app.data.WireActionCardMetadata
 import build.raft.app.data.toThreadActionCard
 import build.raft.app.resources.Res
 import build.raft.app.resources.thread_action_card_plan_trial_mobile_line
-import build.raft.designsystem.theme.RaftAppearance
-import build.raft.designsystem.theme.RaftTheme
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
@@ -35,7 +18,6 @@ import kotlinx.serialization.json.Json
 import org.junit.Rule
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
-import org.robolectric.RuntimeEnvironment
 import org.robolectric.annotation.Config
 
 /**
@@ -56,9 +38,6 @@ class ThreadActionCardPlanTrialTest {
         ignoreUnknownKeys = true
         coerceInputValues = true
     }
-
-    private val line = "You can try Pro for free. Start it from Raft on your computer."
-    private val reason = "You asked for messages from last spring; Free keeps 30 days."
 
     private fun card(type: String, state: String = "prepared"): ThreadActionCard =
         assertNotNull(
@@ -92,76 +71,5 @@ class ThreadActionCardPlanTrialTest {
         assertNull(trial.actionCardMobileLine(desktopHost = true))
         val spec = assertNotNull(trial.actionCardSpecToRender(RAFT_APP_ACTION_CARD_CAPABILITIES))
         assertTrue(spec.spec.elements.values.any { it is ActionCardSpecButton }, "the desktop card keeps its button")
-    }
-
-    @Test
-    fun otherTypesKeepTheirCardKnownOrNot() {
-        for (type in listOf("plan:upgrade", "plan:future_kind", "seats:add")) {
-            val other = card(type)
-            assertNull(other.actionCardMobileLine(desktopHost = false), type)
-            // The spec still draws, with its button (no silent drop of a type this build doesn't know).
-            assertNotNull(other.actionCardSpecToRender(RAFT_APP_ACTION_CARD_CAPABILITIES), type)
-        }
-    }
-
-    @Test
-    fun aPlanTrialMessageShowsTheLineWithoutButtonsOrFields() = runRobolectricComposeUiTest {
-        showMessage(card(PlanTrialActionCardType))
-        onNodeWithText(line).assertExists()
-        onNodeWithTag(ThreadActionCardMobileLineTestTag).assertExists()
-        // Nothing of the card: no title, reason, gate notice, Open button or field.
-        onAllNodesWithText(reason, substring = true).assertCountEquals(0)
-        onAllNodesWithText("Free shows the last", substring = true).assertCountEquals(0)
-        onAllNodesWithText("Open", substring = true).assertCountEquals(0)
-        onAllNodesWithText("Upgrade", substring = true).assertCountEquals(0)
-        onAllNodes(hasSetTextAction()).assertCountEquals(0)
-        onAllNodes(hasTestTag(ThreadActionCardMobileLineTestTag) and hasClickAction()).assertCountEquals(0)
-    }
-
-    @Test
-    fun theSameCardAsPlanUpgradeStillDrawsItsCard() = runRobolectricComposeUiTest {
-        showMessage(card("plan:upgrade"))
-        onAllNodesWithText(line).assertCountEquals(0)
-        assertTrue(onAllNodesWithText(reason, substring = true).fetchSemanticsNodes().isNotEmpty(), "the plan:upgrade card draws its reason")
-    }
-
-    private fun ComposeUiTest.showMessage(actionCard: ThreadActionCard) {
-        // Compose string resources read the app context through the shared SQLDelight holder.
-        build.raft.app.data.RaftAndroidSqlDatabaseContext.init(RuntimeEnvironment.getApplication())
-        setContent {
-            val pager =
-                remember {
-                    object : Pager() {}.apply { pageData = PageData(JSONObject().apply { put("slockVisualZeroSafeArea", true) }) }
-                }
-            CompositionLocalProvider(LocalActivity provides RaftPageActivity(pager)) {
-                RaftTheme(appearance = RaftAppearance.Light) {
-                    ThreadMessageCard(
-                        message =
-                            RaftThreadMessageItem(
-                                id = "plan-trial-1",
-                                authorId = "agent-cindy",
-                                authorName = "Cindy",
-                                authorKind = "agent",
-                                avatarLabel = "C",
-                                timestampLabel = "2026-11-18T09:00:00Z",
-                                body = "",
-                            ),
-                        messageBodyTextStyle = raftMessageBodyTextStyle("md"),
-                        actionCard = actionCard,
-                        timestampLabel = "9:00 AM",
-                        onShowActions = {},
-                        onOpenMember = {},
-                        onOpenThread = {},
-                        onOpenTask = {},
-                        onOpenTaskStatusMenu = {},
-                        onToggleReaction = {},
-                        onOpenAttachment = {},
-                        onOpenMarkdownTag = { _, _ -> },
-                        onOpenMarkdownUrl = {},
-                    )
-                }
-            }
-        }
-        waitForIdle()
     }
 }

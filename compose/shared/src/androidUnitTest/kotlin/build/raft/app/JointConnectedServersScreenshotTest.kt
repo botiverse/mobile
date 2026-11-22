@@ -50,18 +50,8 @@ class JointConnectedServersScreenshotTest {
     val activities = RobolectricComposeActivityRule()
 
     @Test
-    fun hostLight() = section("joint.connected-servers.host", RaftAppAppearance.Light)
-
-    @Test
-    fun hostDark() = section("joint.connected-servers.host.dark", RaftAppAppearance.Dark)
-
-    @Test
     @Config(qualifiers = "w390dp-h1500dp-xxhdpi")
     fun detailsLight() = details("channel.settings.joint", RaftAppAppearance.Light)
-
-    @Test
-    @Config(qualifiers = "w390dp-h1500dp-xxhdpi")
-    fun detailsDark() = details("channel.settings.joint.dark", RaftAppAppearance.Dark)
 
     private fun section(name: String, appearance: RaftAppAppearance) =
         RaftRobolectricScreenshot.capture(name, appearance, reportDir = "build/reports/home-screenshots", activities = activities) {

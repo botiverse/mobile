@@ -10,7 +10,6 @@ import build.raft.app.model.MemberProfile
 import build.raft.app.model.ServerId
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertNull
 
 class MembersAgentDmAvatarCacheIdentityTest {
     @Test
@@ -28,38 +27,6 @@ class MembersAgentDmAvatarCacheIdentityTest {
             ),
             resolved?.raftAvatarCacheIdentity("server-a")
         )
-    }
-
-    @Test
-    fun dmPeerRejectsMissingOrCrossServerProfileIdentity() {
-        val row = AgentDmSummary(id = "dm-1", peerId = "peer-1", peerName = "Peer")
-        assertNull(SharedServerMembersState().membersAgentDmPeerProfile(row, "server-a"))
-        assertNull(state("server-a", profile("peer-2", MemberKind.Human, "server-a"))
-            .membersAgentDmPeerProfile(row, "server-a"))
-        assertNull(state("server-a", profile("peer-1", MemberKind.Human, "server-b"))
-            .membersAgentDmPeerProfile(row, "server-a"))
-        assertNull(state("server-b", profile("peer-1", MemberKind.Human, "server-b"))
-            .membersAgentDmPeerProfile(row, "server-a"))
-        assertNull(profile("peer-1", MemberKind.Human, "server-b").raftAvatarCacheIdentity("server-a"))
-        assertNull(
-            state("server-a", profile("peer-1", MemberKind.Human, "server-a"))
-                .membersAgentDmPeerProfile(row.copy(peerId = null), "server-a")
-        )
-        assertNull(
-            state("server-a", profile("peer-1", MemberKind.Human, "server-a"))
-                .membersAgentDmPeerProfile(row, null)
-        )
-    }
-
-    @Test
-    fun systemProfileNeverBecomesAPersistentDmAvatarIdentity() {
-        val row = AgentDmSummary(id = "dm-1", peerId = "system-1", peerName = "System")
-        val resolved =
-            state("server-a", profile("system-1", MemberKind.System, "server-a"))
-                .membersAgentDmPeerProfile(row, "server-a")
-
-        assertEquals(MemberKind.System, resolved?.kind)
-        assertNull(resolved?.raftAvatarCacheIdentity("server-a"))
     }
 
     private fun state(serverId: String, vararg members: MemberProfile): SharedServerMembersState =

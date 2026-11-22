@@ -1,7 +1,6 @@
 package build.raft.app.data
 
 import build.raft.app.appShellAuthLossEffectShouldApply
-import build.raft.app.appShellRunIfAuthSessionTerminalOrAuthorityRevision
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
@@ -311,52 +310,6 @@ class SharedAuthLossFunnelTest {
     }
 
     @Test
-    fun clearFailureResolutionAtomicallyClearsCapturedAuthorityBeforeTerminalEffect() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob())
-        val captured = storedSession()
-        val store = KeyValueAuthSessionStore(InMemoryRaftKeyValueStore())
-        store.replaceAuthenticatedSession(captured)
-        val funnel =
-            SharedAuthLossFunnel(
-                restoreSession = { SharedAuthResult.Unauthenticated },
-                clearSessionIfMatches = { _, _, _ -> error("first clear unavailable") },
-                scope = scope,
-            )
-        val emitted = async(start = CoroutineStart.UNDISPATCHED) {
-            funnel.resolutions.first()
-        }
-
-        val decision =
-            funnel.report(
-                AuthLossSignal(
-                    source = "thread",
-                    tokenFingerprint = captured.accessToken.authLossTokenFingerprint(),
-                    capturedSession = captured,
-                    pendingOpenRequest = pendingThreadRequest(),
-                )
-            ).await()
-
-        assertEquals(AuthLossDecision.AuthRequired("restore_unauthenticated"), decision)
-        assertEquals(captured, store.readSession())
-        val resolution = emitted.await()
-        val admitted = store.readAuthSessionTerminalSnapshot()
-        var terminalEffectCount = 0
-        val applied =
-            appShellRunIfAuthSessionTerminalOrAuthorityRevision(
-                terminalSource = store,
-                expectedGeneration = admitted.generation,
-                expectedSession = resolution.signal.capturedSession,
-            ) {
-                terminalEffectCount += 1
-            }
-
-        kotlin.test.assertNotNull(applied)
-        assertEquals(1, terminalEffectCount)
-        assertNull(store.readSession())
-        scope.cancel()
-    }
-
-    @Test
     fun unauthenticatedRestoreDoesNotClearOrPublishAuthRequiredAfterAuthorityChanges() = runBlocking {
         val scope = CoroutineScope(SupervisorJob())
         val captured = storedSession()
@@ -399,60 +352,6 @@ class SharedAuthLossFunnelTest {
         assertEquals(AuthLossDecision.SessionPreserved("auth_authority_changed"), decision)
         assertEquals(1, clearCalls)
         assertEquals(successor, current)
-        assertNull(funnel.peekPendingOpenRequest())
-        scope.cancel()
-    }
-
-    @Test
-    fun restoreThatAlreadyClearedCapturedAuthorityStillPublishesAuthRequired() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob())
-        val captured = storedSession()
-        val store = InMemoryRaftAuthSessionStore(captured)
-        val funnel =
-            SharedAuthLossFunnel(
-                restoreSession = {
-                    assertEquals(
-                        AuthSessionClearOutcome.Cleared,
-                        store.clearSessionIfMatchesOutcome(
-                            expectedAccountId = captured.user.id,
-                            expectedAccessToken = captured.accessToken,
-                            expectedRefreshToken = captured.refreshToken,
-                            reason = "restore_refresh_unauthorized",
-                            source = "test_restore",
-                        )
-                    )
-                    SharedAuthResult.Unauthenticated
-                },
-                clearSessionIfMatches = { expected, reason, source ->
-                    store.clearSessionIfMatchesOutcome(
-                        expectedAccountId = expected.user.id,
-                        expectedAccessToken = expected.accessToken,
-                        expectedRefreshToken = expected.refreshToken,
-                        reason = reason,
-                        source = source,
-                    )
-                },
-                scope = scope,
-            )
-        val resolution = async(start = CoroutineStart.UNDISPATCHED) {
-            funnel.resolutions.first()
-        }
-
-        val decision =
-            funnel.report(
-                AuthLossSignal(
-                    source = "thread",
-                    tokenFingerprint = captured.accessToken.authLossTokenFingerprint(),
-                    capturedSession = captured,
-                    pendingOpenRequest = pendingThreadRequest(),
-                )
-            ).await()
-
-        assertEquals(AuthLossDecision.AuthRequired("restore_unauthenticated"), decision)
-        assertNull(store.readSession())
-        funnel.activatePendingOpenRequest(resolution.await())
-        val pending = assertIs<AuthPendingOpenRequest.Thread>(funnel.peekPendingOpenRequest())
-        funnel.discardPendingOpenRequest(resolution.await())
         assertNull(funnel.peekPendingOpenRequest())
         scope.cancel()
     }

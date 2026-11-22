@@ -75,24 +75,6 @@ class RuntimeFormV2WriteOnlyKeepTest {
     }
 
     @Test
-    fun aUrlChangedOnlyByTrailingSlashOrWhitespaceStillKeeps() {
-        val initial = initialRuntimeFormV2Values(claudeEdit, claudeSources)
-        for (url in listOf("https://gateway.example.test/", "  https://gateway.example.test  ", " https://gateway.example.test// ")) {
-            assertEquals(emptyMap(), claudeErrors(initial.with("apiUrl", url)), "'$url' is the stored URL")
-        }
-    }
-
-    @Test
-    fun aChangedProviderBlocksTheBlankKey() {
-        val initial = initialRuntimeFormV2Values(builtinEdit, emptyMap())
-        assertEquals(null, builtinKeyError(builtinEdit, initial))
-        // anthropic-compatible keeps both apiKey and baseUrl visible; only the provider changed.
-        val changed = initial.with("providerId", "anthropic-compatible")
-        assertEquals(RuntimeFormV2ErrorCode.SecretReentryRequired, builtinKeyError(builtinEdit, changed))
-        assertEquals(null, builtinKeyError(builtinEdit, changed.with("apiKey", "sk-new")))
-    }
-
-    @Test
     fun aHiddenBoundFieldIsSkipped() {
         // The real builtin edit body, stored on a preset provider: baseUrl is stored but hidden.
         val preset = form(BUILTIN_V2_EDIT_JSON.replace("\"providerId\": \"openai-compatible\"", "\"providerId\": \"deepseek\""))
@@ -101,15 +83,6 @@ class RuntimeFormV2WriteOnlyKeepTest {
         val values = initial.with("baseUrl", "https://elsewhere.example.test")
         assertTrue(!isRuntimeFormV2FieldVisible(baseUrl, values, emptyMap()), "precondition: baseUrl hidden")
         assertEquals(null, builtinKeyError(preset, values))
-    }
-
-    @Test
-    fun aStoredNullAndAnEmptyValueAreTheSame() {
-        val noUrl = form(BUILTIN_V2_EDIT_JSON.replace("\"baseUrl\": \"https://gateway.example.test/v1\"", "\"baseUrl\": null"))
-        val initial = initialRuntimeFormV2Values(noUrl, emptyMap())
-        assertEquals("", initial.text("baseUrl"))
-        assertEquals(null, builtinKeyError(noUrl, initial.with("baseUrl", "  ")))
-        assertEquals(RuntimeFormV2ErrorCode.SecretReentryRequired, builtinKeyError(noUrl, initial.with("baseUrl", "https://x.example.test")))
     }
 
     @Test

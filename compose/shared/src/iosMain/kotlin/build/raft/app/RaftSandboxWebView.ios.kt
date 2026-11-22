@@ -180,6 +180,9 @@ internal class RaftIosSandboxWebView(
     private var pageFinished = false
     /** Reveals the page [RevealCapSeconds] after its commit if it has not been yet. */
     private var revealTimer: NSTimer? = null
+    /** Host-initiated [loadCurrentSrc] URL awaiting its own [decideNavigationPolicy] callback (not a page link). */
+    private var pendingHostLoadUrl: String? = null
+    private var diagnosticsSurface: String = RAFT_WEBVIEW_SURFACE_DEFAULT
 
     private val delegate = RaftIosWebViewDelegate(this)
     private val scriptMessageHandler = RaftIosWebViewScriptMessageHandler(this)
@@ -229,8 +232,8 @@ internal class RaftIosSandboxWebView(
                 hostEventsEnabled != config.hostEventsEnabled ||
                 mainFrameOrigin != config.mainFrameOrigin?.let(::raftWebOriginOf)
         allowScripts = config.allowScripts
-        // The auth user-script's main-frame scope is selected from this policy at configuration
-        // time, so a policy change rebuilds (a broad script must not survive into a fenced document).
+        // Injected user scripts always run main-frame-only; navigation policy changes still
+        // rebuild the WebView so fencing takes effect on a clean configuration.
         allowNavigation = config.allowNavigation
         domStorageEnabled = config.domStorageEnabled
         cacheEnabled = config.cacheEnabled
@@ -238,6 +241,7 @@ internal class RaftIosSandboxWebView(
         injectedJavaScript = config.injectedJavaScript
         hostEventsEnabled = config.hostEventsEnabled
         mainFrameOrigin = config.mainFrameOrigin?.let(::raftWebOriginOf)
+        diagnosticsSurface = config.diagnosticsSurface
         showsFormAccessoryBar = config.showsFormAccessoryBar
         (webView as? RaftIosWebView)?.showsFormAccessoryBar = showsFormAccessoryBar
         configured = true
@@ -245,9 +249,18 @@ internal class RaftIosSandboxWebView(
             placeholderBackground = config.backgroundArgb
             applyBackground()
         }
+        val previousWebView = webView
+        val previousUrl = currentURL
+        val schemesUnchanged = allowedNavigationSchemes == config.allowedNavigationSchemes
         val srcChanged = updateSrcState(config.url.trim())
         if (rebuild) {
-            rebuildWebView()
+            val restoreUrl =
+                if (!srcChanged && previousWebView != null && schemesUnchanged) {
+                    raftWebViewRendererGoneRestoreUrl(src, previousUrl, ::rendererGoneRestoreAllows)
+                } else {
+                    null
+                }
+            rebuildWebView(restoreUrl)
         } else if (srcChanged) {
             loadCurrentSrc()
         }
@@ -277,6 +290,7 @@ internal class RaftIosSandboxWebView(
     private fun tearDownWebView() {
         revealTimer?.invalidate()
         revealTimer = null
+        pendingHostLoadUrl = null
         val previous = webView ?: return
         stopObserving(previous)
         previous.navigationDelegate = null
@@ -323,9 +337,9 @@ internal class RaftIosSandboxWebView(
                 WKUserScript(
                     source = injectedJavaScript,
                     injectionTime = WKUserScriptInjectionTime.WKUserScriptInjectionTimeAtDocumentStart,
-                    // Under an origin lock the script (a session) never enters a sub-frame: the content
-                    // frame of another origin must not see it (Tenny's WebView rule 1).
-                    forMainFrameOnly = mainFrameOrigin != null || !allowNavigation
+                    // Document-start scripts (including session auth scripts) target only the
+                    // top-level document and never run inside subframes (Tenny's WebView rule 1).
+                    forMainFrameOnly = true
                 )
             )
         }
@@ -502,6 +516,7 @@ internal class RaftIosSandboxWebView(
     private fun loadCurrentSrc(documentUrl: String? = null) {
         val view = webView ?: return
         if (src.isEmpty()) {
+            pendingHostLoadUrl = null
             currentURL = ""
             currentTitle = ""
             currentProgress = 0
@@ -513,11 +528,13 @@ internal class RaftIosSandboxWebView(
         val target = documentUrl?.takeIf { it.isNotBlank() } ?: src
         val url = NSURL.URLWithString(target)
         if (url == null) {
+            pendingHostLoadUrl = null
             notifyNavigationState(force = false)
             if (allowedNavigationSchemes.isNotEmpty()) notifyNavigationBlocked(src) else notifyLoadFailure("invalid_preview_url")
             return
         }
         if (!isNavigationSchemeAllowed(url) || !isOnLockedOrigin(url)) {
+            pendingHostLoadUrl = null
             notifyNavigationState(force = false)
             notifyNavigationBlocked(src)
             return
@@ -527,8 +544,9 @@ internal class RaftIosSandboxWebView(
         requestedAt = TimeSource.Monotonic.markNow()
         diagnosticsInfo(
             "load_src spare=$usingSpare sinceAttachMs=${attachedAt.elapsedNow().inWholeMilliseconds} " +
-                "url=${raftWebViewUrlForLog(target)}"
+                "url=${formatUrlForLog(target)}"
         )
+        pendingHostLoadUrl = url.absoluteString ?: target
         val cachePolicy = if (cacheEnabled) NSURLRequestUseProtocolCachePolicy else NSURLRequestReloadIgnoringLocalCacheData
         view.loadRequest(NSURLRequest.requestWithURL(url, cachePolicy = cachePolicy, timeoutInterval = 60.0))
     }
@@ -544,11 +562,39 @@ internal class RaftIosSandboxWebView(
         if (events.onDownloadRequested != null && action.shouldPerformDownload && raftIsSameObjCObject(source, webView)) {
             return RaftIosNavigationDecision.Download
         }
-        return if (decideNavigationPolicy(source, action.request.URL, isMainFrame = action.targetFrame?.mainFrame ?: true)) {
+        val targetFrame = action.targetFrame
+        return if (
+            decideNavigationAction(
+                source = source,
+                targetURL = action.request.URL,
+                isNewWindow = targetFrame == null,
+                isMainFrame = targetFrame?.mainFrame ?: false,
+            )
+        ) {
             RaftIosNavigationDecision.Allow
         } else {
             RaftIosNavigationDecision.Cancel
         }
+    }
+
+    /**
+     * Policy gate for [decidePolicy] that distinguishes new-window actions (`targetFrame == null`,
+     * e.g. `target="_blank"`) from in-place main-frame/subframe navigations. New-window actions
+     * are cancelled directly and reported via [notifyNavigationBlocked] without mutating
+     * [currentURL] or emitting [RaftWebViewEvents.onUrlChange].
+     */
+    internal fun decideNavigationAction(
+        source: WKWebView,
+        targetURL: NSURL?,
+        isNewWindow: Boolean,
+        isMainFrame: Boolean,
+    ): Boolean {
+        if (!raftIsSameObjCObject(source, webView)) return false
+        if (isNewWindow) {
+            notifyNavigationBlocked(targetURL?.absoluteString ?: "")
+            return false
+        }
+        return decideNavigationPolicy(source, targetURL, isMainFrame = isMainFrame)
     }
 
     /**
@@ -594,14 +640,22 @@ internal class RaftIosSandboxWebView(
     internal fun decideNavigationPolicy(source: WKWebView, targetURL: NSURL?, isMainFrame: Boolean): Boolean {
         if (!raftIsSameObjCObject(source, webView)) return false
         if (isMainFrame) {
+            val targetString = targetURL?.absoluteString ?: ""
             if (targetURL == null || !isNavigationSchemeAllowed(targetURL) ||
                 !isOnLockedOrigin(targetURL) ||
                 (!allowNavigation && !isAllowedMainDocumentURL(targetURL))
             ) {
-                handleBlockedMainFrameNavigation(targetURL?.absoluteString ?: "")
+                handleBlockedMainFrameNavigation(targetString)
                 return false
             }
-            currentURL = targetURL.absoluteString ?: ""
+            val isPendingHostLoad = pendingHostLoadUrl != null && pendingHostLoadUrl == targetString
+            if (isPendingHostLoad) pendingHostLoadUrl = null
+            if (!isPendingHostLoad && events.routesMainFrameNavigation?.invoke(targetString) == true) {
+                diagnosticsInfo("navigation_routed_as_link url=${formatUrlForLog(targetString)}")
+                handleBlockedMainFrameNavigation(targetString)
+                return false
+            }
+            currentURL = targetString
             events.onUrlChange(currentURL)
             notifyNavigationState(force = false)
         }
@@ -612,7 +666,7 @@ internal class RaftIosSandboxWebView(
         if (!raftIsSameObjCObject(source, webView)) return
         currentURL = source.URL?.absoluteString ?: currentURL
         loadStartedAt = TimeSource.Monotonic.markNow()
-        diagnosticsInfo("page_started url=${raftWebViewUrlForLog(currentURL)} ${loadElapsedField()}")
+        diagnosticsInfo("page_started url=${formatUrlForLog(currentURL)} ${loadElapsedField()}")
         currentTitle = ""
         currentProgress = (source.estimatedProgress * 100.0 + 0.5).toInt().coerceIn(0, 100)
         currentLoading = true
@@ -626,11 +680,12 @@ internal class RaftIosSandboxWebView(
     internal fun didCommit(source: WKWebView) {
         if (!raftIsSameObjCObject(source, webView)) return
         if (raftWebViewIgnoresSpareBlankNavigation(usingSpare, source.URL?.absoluteString, src)) return
+        pendingHostLoadUrl = null
         currentURL = source.URL?.absoluteString ?: currentURL
         currentTitle = source.title ?: currentTitle
         currentLoading = source.loading
         // Android's name for the first paint of the new document; WebKit's nearest is the commit.
-        diagnosticsInfo("page_commit_visible url=${raftWebViewUrlForLog(currentURL)} ${loadElapsedField()}")
+        diagnosticsInfo("page_commit_visible url=${formatUrlForLog(currentURL)} ${loadElapsedField()}")
         if (!pageRevealed && revealTimer == null) {
             // Not shown yet: what the page paints right after its commit may not be its theme yet.
             revealTimer = NSTimer.scheduledTimerWithTimeInterval(RevealCapSeconds, repeats = false) { _ ->
@@ -662,7 +717,7 @@ internal class RaftIosSandboxWebView(
         currentTitle = source.title ?: ""
         currentProgress = 100
         currentLoading = false
-        diagnosticsInfo("page_finished url=${raftWebViewUrlForLog(currentURL)} ${loadElapsedField()}")
+        diagnosticsInfo("page_finished url=${formatUrlForLog(currentURL)} ${loadElapsedField()}")
         events.onUrlChange(currentURL)
         notifyNavigationState(force = false)
         notifyLoadSuccess(currentURL)
@@ -702,6 +757,7 @@ internal class RaftIosSandboxWebView(
 
     internal fun didFail(source: WKWebView, error: NSError) {
         if (!raftIsSameObjCObject(source, webView) || (error.domain == NSURLErrorDomain && error.code == NSURLErrorCancelled)) return
+        pendingHostLoadUrl = null
         // WebKitErrorFrameLoadInterruptedByPolicyChange after a download this host took.
         if (downloadCancelled && error.domain == "WebKitErrorDomain" && error.code == 102L) {
             downloadCancelled = false
@@ -709,7 +765,7 @@ internal class RaftIosSandboxWebView(
         }
         currentURL = source.URL?.absoluteString ?: currentURL
         currentLoading = false
-        diagnosticsWarn("page_error code=${error.code} url=${raftWebViewUrlForLog(currentURL)} ${loadElapsedField()}")
+        diagnosticsWarn("page_error code=${error.code} url=${formatUrlForLog(currentURL)} ${loadElapsedField()}")
         notifyNavigationState(force = false)
         notifyLoadFailure(error.localizedDescription)
     }
@@ -728,7 +784,7 @@ internal class RaftIosSandboxWebView(
         // which the viewer would read as leaving its Artifact), if it may load here.
         val restoreUrl =
             raftWebViewRendererGoneRestoreUrl(src, currentURL, ::rendererGoneRestoreAllows)
-        diagnosticsInfo("content_process_gone_restore url=${raftWebViewUrlForLog(restoreUrl)} shown=${restoreUrl != src}")
+        diagnosticsInfo("content_process_gone_restore url=${formatUrlForLog(restoreUrl)} shown=${restoreUrl != src}")
         rebuildWebView(restoreUrl)
         notifyNavigationState(force = true)
     }
@@ -799,9 +855,16 @@ internal class RaftIosSandboxWebView(
         if (lastSuccessfulURL == url) return
         lastSuccessfulURL = url
         lastLoadFailureKey = ""
-        diagnosticsInfo("page_success phase=finished url=${raftWebViewUrlForLog(url)} ${loadElapsedField()}")
+        diagnosticsInfo("page_success phase=finished url=${formatUrlForLog(url)} ${loadElapsedField()}")
         events.onLoadSuccess()
     }
+
+    private fun formatUrlForLog(url: String): String =
+        if (diagnosticsSurface == SETTINGS_WEB_PAGE_DIAGNOSTICS_NAME) {
+            raftOwnWebUrlForLog(url)
+        } else {
+            raftWebViewUrlForLog(url)
+        }
 
     private fun notifyLoadFailure(reason: String) {
         val failureKey = "$currentURL|$reason"

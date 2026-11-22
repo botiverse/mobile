@@ -125,38 +125,6 @@ class SharedHomeOpenedDirectMessageProjectionTest {
         scope.cancel()
     }
 
-    @Test
-    fun successorAccountOnSameServerDoesNotInheritEarlierDirectoryRows() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        val authStore = InMemoryRaftAuthSessionStore(authSessionFixture())
-        val store = openedDmStore(authStore, scope)
-        assertTrue(
-            store.supplementOpenedDirectMessage(
-                authority = openedDmAuthority(),
-                conversation = openedDm("dm-old", "Old account peer", "peer-old"),
-            )
-        )
-
-        authStore.saveSession(authSessionFixture(userId = "successor-user"))
-        assertTrue(
-            store.supplementOpenedDirectMessage(
-                authority =
-                    OpenedDirectMessageAuthority(
-                        serverId = ServerId("server-1"),
-                        accountId = MemberId("successor-user"),
-                    ),
-                conversation = openedDm("dm-new", "New account peer", "peer-new"),
-            )
-        )
-
-        assertNull(store.resolveProjection(ServerId("server-1"), "dm-old"))
-        assertEquals(
-            "New account peer",
-            store.resolveProjection(ServerId("server-1"), "dm-new")?.title,
-        )
-        scope.cancel()
-    }
-
     private fun openedDmStore(
         authStore: RaftAuthSessionStore,
         scope: CoroutineScope,

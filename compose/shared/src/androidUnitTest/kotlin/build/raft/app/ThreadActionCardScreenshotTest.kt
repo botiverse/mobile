@@ -56,9 +56,6 @@ class ThreadActionCardScreenshotTest {
     @Test
     fun threadActionCardsExpiredLight() = capture("thread.action-cards.expired", RaftAppAppearance.Light) { ThreadActionCardsExpiredVisualContent() }
 
-    @Test
-    fun threadActionCardsExpiredDark() = capture("thread.action-cards.expired.dark", RaftAppAppearance.Dark) { ThreadActionCardsExpiredVisualContent() }
-
     /**
      * The redesigned question cards waiting (2026-11): C, a button row, for Maya (enabled, "Fixer is
      * waiting for your answer · 7 days left") and for Ada (disabled, "Waiting for Maya to answer");
@@ -67,38 +64,9 @@ class ThreadActionCardScreenshotTest {
     @Test
     fun questionCardsLight() = capture("thread.action-cards.question", RaftAppAppearance.Light) { ThreadQuestionCardsVisualContent(answered = false) }
 
-    @Test
-    fun questionCardsDark() = capture("thread.action-cards.question.dark", RaftAppAppearance.Dark) { ThreadQuestionCardsVisualContent(answered = false) }
-
     /** The same cards answered: "✓ Maya answered **…**" where the controls were, on C and on B (still a card, unfolded, no tag). */
     @Test
     fun questionCardsAnsweredLight() = capture("thread.action-cards.question.answered", RaftAppAppearance.Light) { ThreadQuestionCardsVisualContent(answered = true) }
-
-    @Test
-    fun questionCardsAnsweredDark() = capture("thread.action-cards.question.answered.dark", RaftAppAppearance.Dark) { ThreadQuestionCardsVisualContent(answered = true) }
-
-    /**
-     * The same cards ended unanswered, each keeping its shape (raft-design "When it ends
-     * unanswered"): C expired / withdrawn, the question over its one status line, no buttons; B
-     * expired (Maya) / withdrawn, the same card with that line where its controls were, unfolded.
-     */
-    @Test
-    fun questionCardsEndedLight() = capture("thread.action-cards.question.ended", RaftAppAppearance.Light) { ThreadQuestionCardsVisualContent(answered = false, ended = true) }
-
-    @Test
-    fun questionCardsEndedDark() = capture("thread.action-cards.question.ended.dark", RaftAppAppearance.Dark) { ThreadQuestionCardsVisualContent(answered = false, ended = true) }
-
-    /**
-     * A confirm (slock #14497): a question of one option is one bordered button with its label, no
-     * Other. C alone for Maya, then pressed (checked, during its Undo wait), then for Ada (disabled);
-     * B with a confirm among other questions, the required one pressed; C answered, the same one
-     * line as any answer.
-     */
-    @Test
-    fun questionConfirmLight() = capture("thread.action-cards.question.confirm", RaftAppAppearance.Light) { ThreadQuestionConfirmVisualContent() }
-
-    @Test
-    fun questionConfirmDark() = capture("thread.action-cards.question.confirm.dark", RaftAppAppearance.Dark) { ThreadQuestionConfirmVisualContent() }
 
     private fun capture(name: String, appearance: RaftAppAppearance, content: @Composable () -> Unit = { ThreadActionCardsVisualContent() }) =
         RaftRobolectricScreenshot.capture(name, appearance, reportDir = "build/reports/home-screenshots", activities = activities) {

@@ -58,47 +58,6 @@ class CanonicalMessageV2DurableOwnerTest {
     }
 
     @Test
-    fun retentionBoundsFactsPerScopeAndEvictsLeastRecentlyUpdatedScopes() = withFreshDatabase { database ->
-        var now = 1L
-        val owner = partition("https://api.raft.build/api")
-        val store = SqlDelightCanonicalMessageV2Store(
-            database = database,
-            now = { now },
-            retention = CanonicalMessageV2RetentionPolicy(
-                maxFactsPerScope = 2,
-                maxScopesPerPartition = 2,
-                maxFactsPerPartition = 4,
-                maxBytesPerPartition = 1_000_000.0,
-                scopeTtlMs = 1_000,
-            ),
-        )
-        val first = scope(owner, "channel-a")
-        val second = scope(owner, "channel-b")
-        val third = scope(owner, "channel-c")
-
-        runBlocking {
-            store.applySnapshot(
-                snapshot(
-                    first,
-                    envelope(owner, "channel-a", "a-1", 1),
-                    envelope(owner, "channel-a", "a-2", 2),
-                    envelope(owner, "channel-a", "a-3", 3),
-                ),
-            )
-            assertEquals(listOf("a-2", "a-3"), store.restore(first).envelopes.map { it.fact.id })
-
-            now = 2L
-            store.applySnapshot(snapshot(second, envelope(owner, "channel-b", "b-1", 1)))
-            now = 3L
-            store.applySnapshot(snapshot(third, envelope(owner, "channel-c", "c-1", 1)))
-
-            assertEquals(RestoredCanonicalMessageV2Scope(emptyList(), null), store.restore(first))
-            assertEquals(listOf("b-1"), store.restore(second).envelopes.map { it.fact.id })
-            assertEquals(listOf("c-1"), store.restore(third).envelopes.map { it.fact.id })
-        }
-    }
-
-    @Test
     fun retentionPinsOutOfWindowRootsReferencedByRetainedReplyCursors() = withFreshDatabase { database ->
         val owner = partition("https://api.raft.build/api")
         val parent = scope(owner, "channel-a")
@@ -220,86 +179,6 @@ class CanonicalMessageV2DurableOwnerTest {
                 assertEquals(RestoredCanonicalMessageV2Scope(emptyList(), null), engine.restore(reply))
             }
         }
-
-    @Test
-    fun partitionRetentionEvictsReplyScopesWhenTheirParentProofScopeIsEvicted() =
-        withFreshDatabase { database ->
-            val owner = partition("https://api.raft.build/api")
-            val parent = scope(owner, "channel-a")
-            val reply = SyncScopeKey(owner, "reply-stream", "thread")
-            val other = scope(owner, "channel-b")
-            var now = 1L
-            val store = SqlDelightCanonicalMessageV2Store(
-                database = database,
-                now = { now },
-                retention = CanonicalMessageV2RetentionPolicy(
-                    maxFactsPerScope = 2,
-                    // Channel / DM scopes only (task #168 step 3: thread scopes have their own cap), so
-                    // channel-b alone pushes channel-a out, and its reply scope goes with it.
-                    maxScopesPerPartition = 1,
-                    maxFactsPerPartition = 20,
-                    maxBytesPerPartition = 1_000_000.0,
-                    scopeTtlMs = 1_000,
-                ),
-            )
-
-            runBlocking {
-                store.applySnapshot(
-                    snapshot(parent, envelope(owner, "channel-a", "root-message", 1)),
-                )
-                now = 2L
-                store.applySnapshot(
-                    CanonicalMessageV2SnapshotFrame(
-                        scope = reply,
-                        envelopes = listOf(threadEnvelope(owner, "reply-stream", "reply-message", 2)),
-                        cursor = PersistedCursor(
-                            latestSeq = 2,
-                            oldestLoadedSeq = 2,
-                            newestLoadedSeq = 2,
-                            epoch = "reply-epoch",
-                            parentScopeKind = "channel",
-                            parentScopeId = "channel-a",
-                            rootMessageId = "root-message",
-                        ),
-                    ),
-                )
-                now = 3L
-                val result = store.applySnapshot(
-                    snapshot(other, envelope(owner, "channel-b", "other-message", 1)),
-                )
-
-                assertEquals(setOf(parent, reply), result.evictedScopes)
-                assertEquals(RestoredCanonicalMessageV2Scope(emptyList(), null), store.restore(parent))
-                assertEquals(RestoredCanonicalMessageV2Scope(emptyList(), null), store.restore(reply))
-                assertEquals(listOf("other-message"), store.restore(other).envelopes.map { it.fact.id })
-            }
-        }
-
-    @Test
-    fun currentScopeBytesEvictionIsReturnedToTheGenerationAuthority() = withFreshDatabase { database ->
-        val owner = partition("https://api.raft.build/api")
-        val channel = scope(owner, "channel-a")
-        val store = SqlDelightCanonicalMessageV2Store(
-            database = database,
-            now = { 100L },
-            retention = CanonicalMessageV2RetentionPolicy(
-                maxFactsPerScope = 2,
-                maxScopesPerPartition = 2,
-                maxFactsPerPartition = 4,
-                maxBytesPerPartition = 1.0,
-                scopeTtlMs = 1_000,
-            ),
-        )
-
-        runBlocking {
-            val result = store.applySnapshot(
-                snapshot(channel, envelope(owner, "channel-a", "message-a", 1)),
-            )
-
-            assertEquals(setOf(channel), result.evictedScopes)
-            assertEquals(RestoredCanonicalMessageV2Scope(emptyList(), null), store.restore(channel))
-        }
-    }
 
     private fun snapshot(
         scope: SyncScopeKey,

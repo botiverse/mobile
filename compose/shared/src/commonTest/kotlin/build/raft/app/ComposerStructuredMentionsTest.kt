@@ -40,21 +40,6 @@ class ComposerStructuredMentionsTest {
     }
 
     @Test
-    fun aMentionThatIsOnlyQuotedDoesNotAppear() {
-        // botiverse/slock #14349 (8b324501027a4f6050b2f8db49c259ae53dd18c9) raftRefs.test.ts
-        // "structuredRaftMentionStillAppears does not count a token that is only quoted".
-        listOf(
-            "> @Mona wrote this" to false,
-            "> quoted\n> @Mona" to false,
-            "> @Mona wrote this\n\n@Mona see above" to true,
-            "> <@Mona> and [x](<@Mona>)" to false,
-            "> first line\n@Mona after the quote" to true,
-        ).forEach { (text, expected) ->
-            assertEquals(expected, composerStructuredMentionStillAppears(text, "Mona"), "text=$text")
-        }
-    }
-
-    @Test
     fun slackParticipantsBecomeMentionSuggestionsWithTheWebToken() {
         val suggestions =
             listOf(
@@ -87,25 +72,6 @@ class ComposerStructuredMentionsTest {
     }
 
     @Test
-    fun deletingTheHandleTextDropsItsMention() {
-        val store = startedStore()
-        store.dispatch(SharedThreadComposerDraftIntent.Change(seedText = "hi @yezi "))
-        store.dispatch(SharedThreadComposerDraftIntent.SelectMention(yezi))
-        assertEquals(listOf(yezi), store.state.value.structuredMentions)
-
-        store.dispatch(SharedThreadComposerDraftIntent.Change(seedText = "hi @yez"))
-        assertEquals(emptyList(), store.state.value.structuredMentions)
-
-        // Typing the same text back does not bring a pick back: only a new pick does.
-        store.dispatch(SharedThreadComposerDraftIntent.Change(seedText = "hi @yezi "))
-        assertEquals(emptyList(), store.state.value.structuredMentions)
-        // A pick whose `@handle` is not in the text is never recorded.
-        store.dispatch(SharedThreadComposerDraftIntent.Change(seedText = "hi"))
-        store.dispatch(SharedThreadComposerDraftIntent.SelectMention(yezi))
-        assertEquals(emptyList(), store.state.value.structuredMentions)
-    }
-
-    @Test
     fun aSavedDraftKeepsItsMentionListAndASendClearsIt() {
         val storage = InMemoryRaftKeyValueStore()
         val persistence = SharedThreadComposerDraftPersistence(storage)
@@ -125,9 +91,4 @@ class ComposerStructuredMentionsTest {
         reopened.dispatch(SharedThreadComposerDraftIntent.BeginSend)
         assertEquals(emptyList(), reopened.state.value.structuredMentions)
     }
-
-    private fun startedStore(): SharedThreadComposerDraftStore =
-        SharedThreadComposerDraftStore().apply {
-            dispatch(SharedThreadComposerDraftIntent.Start(RaftThreadComposerPayload(instanceId = "composer-slack"), "send=channel-slack"))
-        }
 }

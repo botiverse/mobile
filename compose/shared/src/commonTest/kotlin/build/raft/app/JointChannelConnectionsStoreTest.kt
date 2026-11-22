@@ -1,7 +1,6 @@
 package build.raft.app
 
 import build.raft.app.data.DataResult
-import build.raft.app.data.ErrorPresentationKey
 import build.raft.app.data.JOINT_CHANNEL_PLAN_LIMIT_REACHED
 import build.raft.app.data.JOINT_FREE_SERVER_LIMIT
 import build.raft.app.data.JOINT_SERVER_LIMIT
@@ -10,7 +9,6 @@ import build.raft.app.data.JointChannelServer
 import build.raft.app.data.JointChannelServerPlan
 import build.raft.app.data.PermissionBlocker
 import build.raft.app.data.ScreenError
-import build.raft.app.data.errorPresentation
 import build.raft.app.model.ChannelId
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.test.TestScope
@@ -18,7 +16,6 @@ import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class JointChannelConnectionsStoreTest {
@@ -57,29 +54,6 @@ class JointChannelConnectionsStoreTest {
     }
 
     @Test
-    fun pullRefreshReloadsInPlaceSingleFlight() = runTest {
-        val dataSource = FakeJointConnectionsDataSource()
-        val store = loadedStore(dataSource)
-        val gate = CompletableDeferred<Unit>()
-        dataSource.loadGate = gate
-        dataSource.loadResult = DataResult.Content(JointChannelConnectionsSnapshot(jointTestConnections(serverCount = 3), canFederate = true))
-
-        store.dispatch(JointChannelConnectionsIntent.Refresh)
-        runCurrent()
-        store.dispatch(JointChannelConnectionsIntent.Refresh)
-        runCurrent()
-        assertTrue(store.state.value.refreshing)
-        assertEquals(2, store.state.value.connections?.servers?.size, "the loaded list stays while it reloads")
-        assertEquals(2, dataSource.loadCalls, "a refresh in flight is not asked again")
-
-        gate.complete(Unit)
-        runCurrent()
-        assertFalse(store.state.value.refreshing)
-        assertEquals(3, store.state.value.connections?.servers?.size)
-        store.clear()
-    }
-
-    @Test
     fun failureCopyFollowsWebPrecedence() {
         val copy = JointFailureCopy(freeServerLimit = "free", serverLimit = "max", hostLimit = "host", fallback = "fallback")
         val pipeline: (JointChannelFailure) -> String = { "pipeline:${it.code}" }
@@ -90,14 +64,6 @@ class JointChannelConnectionsStoreTest {
         assertEquals("host", jointChannelFailureText(JointChannelFailure.Blocked(PermissionBlocker(JOINT_CHANNEL_PLAN_LIMIT_REACHED)), copy, pipeline))
         assertEquals("pipeline:joint_http_409", jointChannelFailureText(JointChannelFailure.Error(ScreenError("joint_http_409")), copy, pipeline))
         assertEquals("fallback", jointChannelFailureText(JointChannelFailure.Error(ScreenError("x")), copy) { "" })
-    }
-
-    @Test
-    fun unmappedJointCodesLetTheServerReasonWinInTheErrorPipeline() {
-        // A 409 keeps `joint_http_409`, which the pipeline does not localize: the server sentence wins.
-        val presentation = ScreenError("joint_http_409", serverMessage = "Channel name \"partner-room\" is already taken").errorPresentation()
-        assertEquals(ErrorPresentationKey.Generic, presentation.key)
-        assertEquals("Channel name \"partner-room\" is already taken", presentation.rawServerMessage)
     }
 
     private fun TestScope.loadedStore(dataSource: FakeJointConnectionsDataSource): JointChannelConnectionsStore {

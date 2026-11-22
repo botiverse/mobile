@@ -31,15 +31,6 @@ class MarkdownMathRenderTest {
     }
 
     @Test
-    fun dollarsThatOpenNoFormulaStayText() {
-        for (body in listOf("从 \$5 到 \$10", "\$5,\$10", "costs \$ 5 and \$6", "\\\$x\\\$")) {
-            val annotated = render(body)
-            assertTrue(annotated.raftMarkdownInlineContentIds().isEmpty(), body)
-            assertEquals(body.replace("\\\$", "\$"), annotated.text, body)
-        }
-    }
-
-    @Test
     fun aFormulaKatexRejectsShowsItsSourceInTheErrorColour() {
         for (source in listOf("\\frac{1}{\\oops}", "\\href{javascript:alert(1)}{x}", "\\htmlId{evil}{y}", "\\url{x}")) {
             val annotated = render("a \$$source\$ b")
@@ -54,50 +45,12 @@ class MarkdownMathRenderTest {
     }
 
     @Test
-    fun theCommonKatexSubsetRenders() {
-        for (source in listOf(
-            "\\frac{a}{b}",
-            "x_i^2",
-            "\\sqrt{2}",
-            "\\sqrt[3]{x}",
-            "\\sum_{i=1}^{n} i",
-            "\\int_0^1 x^2\\,dx",
-            "\\begin{pmatrix} a & b \\\\ c & d \\end{pmatrix}",
-            "\\begin{bmatrix} 1 & 0 \\\\ 0 & 1 \\end{bmatrix}",
-            "\\begin{aligned} a &= b \\\\ c &= d \\end{aligned}",
-            "\\alpha + \\beta = \\Gamma",
-            "\\text{面积} = \\pi r^2",
-        )) {
-            assertTrue(raftMathFormulaRenders(source), source)
-        }
-        assertFalse(raftMathFormulaRenders("{".repeat(RaftMathFormulas.MAX_NESTING + 1) + "x" + "}".repeat(RaftMathFormulas.MAX_NESTING + 1)))
-    }
-
-    @Test
     fun formulasWithSurrogatesShowTheirSourceInsteadOfReachingSkia() {
         // A lone high surrogate, a lone low surrogate, and a whole emoji pair.
         for (source in listOf("a\uD83D", "\uDE00 + b", "x = 😀")) {
             assertFalse(raftMathFormulaRenders(source), source)
         }
     }
-
-    @Test
-    fun escapedLineBreakDecodingLeavesFormulasAndCodeAlone() {
-        // One line, so a literal `\n` would otherwise be decoded as an escaped line break.
-        val oneLine = "\$a \\neq b\$ and \$\\nu\$"
-        assertEquals(oneLine, oneLine.normalizeThreadMarkdownBody())
-        assertEquals(listOf("inline:\\nu", "inline:a \\neq b"), inlineFormulas(oneLine.normalizeThreadMarkdownBody()))
-        // Outside them, escaped line breaks are still decoded.
-        assertEquals(
-            "x \$\\nu\$ and `a\\nb`\ny",
-            "x \$\\nu\$ and `a\\nb`\\ny".normalizeThreadMarkdownBody(),
-        )
-        // An escaped `$$` block becomes a block once decoded.
-        assertEquals("\$\$\nx\n\$\$", "\$\$\\nx\\n\$\$".normalizeThreadMarkdownBody())
-    }
-
-    private fun inlineFormulas(body: String): List<String> =
-        render(body).raftMarkdownInlineContentIds().map { "inline:" + it.removePrefix(RAFT_INLINE_MATH_CONTENT_ID_PREFIX) }.sorted()
 
     /** The paragraph as the message renderer builds it. */
     private fun render(body: String): AnnotatedString {

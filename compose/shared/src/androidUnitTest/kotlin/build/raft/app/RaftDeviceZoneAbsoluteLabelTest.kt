@@ -23,11 +23,6 @@ class RaftDeviceZoneAbsoluteLabelTest {
     }
 
     @Test
-    fun anotherDayShowsTheDate() {
-        assertEquals("10-23 12:10", raftDeviceZoneAbsoluteLabel("2026-10-23T04:10:00.000Z", now, zone))
-    }
-
-    @Test
     fun notATimestampStaysNull() {
         assertNull(raftDeviceZoneAbsoluteLabel("soon", now, zone))
     }

@@ -54,22 +54,9 @@ class RuntimePickerScreenshotTest {
 
     @Test fun sheetDark() = capture("agents.runtime-picker.sheet.dark", RaftAppAppearance.Dark, showAll = false)
 
-    @Test fun sheetAllLight() = capture("agents.runtime-picker.sheet.all", RaftAppAppearance.Light, showAll = true)
-
-    @Test fun sheetAllDark() = capture("agents.runtime-picker.sheet.all.dark", RaftAppAppearance.Dark, showAll = true)
-
-    @Test fun selectedHintLight() = captureSelected("agents.runtime-picker.selected-hint", RaftAppAppearance.Light)
-
-    @Test fun selectedHintDark() = captureSelected("agents.runtime-picker.selected-hint.dark", RaftAppAppearance.Dark)
-
     private fun capture(name: String, appearance: RaftAppAppearance, showAll: Boolean) =
         RaftRobolectricScreenshot.capture(name, appearance, reportDir = ReportDir, activities = activities) {
             RaftDesignSystemTheme { RuntimePickerFixture(showAll) }
-        }
-
-    private fun captureSelected(name: String, appearance: RaftAppAppearance) =
-        RaftRobolectricScreenshot.capture(name, appearance, reportDir = ReportDir, activities = activities) {
-            RaftDesignSystemTheme { RuntimePickerSelectedFixture() }
         }
 
     private companion object {

@@ -18,7 +18,12 @@ import build.raft.app.model.TaskId
 import build.raft.app.model.TaskStatus
 import build.raft.app.model.TaskSummary
 import build.raft.app.model.ThreadId
+import kotlinx.atomicfu.locks.SynchronizedObject
+import kotlinx.atomicfu.locks.synchronized
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
@@ -38,7 +43,20 @@ class SharedTasksDataSource(
     private val api: RaftTasksApi,
     private val diagnosticsLogger: (String) -> Unit = projectionRejectingDiagnosticsLogger
 ) : SharedTasksRemoteDataSource {
+    private data class InFlightCountsKey(
+        val serverId: String,
+        val countsKey: String,
+    )
+
     private val typedApi = RaftTasksApiClient(api, diagnosticsLogger)
+    private val inFlightCountsLock = SynchronizedObject()
+    private val inFlightCounts = mutableMapOf<InFlightCountsKey, CompletableDeferred<ServerTaskCountsResult?>>()
+
+    private fun invalidateInFlightCounts() {
+        synchronized(inFlightCountsLock) {
+            inFlightCounts.clear()
+        }
+    }
 
     override suspend fun loadTasks(
         serverId: ServerId,
@@ -89,14 +107,43 @@ class SharedTasksDataSource(
         serverId: ServerId,
         filters: ServerTaskBoardFilters,
         priority: DataRequestPriority
-    ): ServerTaskCountsResult =
-        try {
-            typedApi.serverTaskCounts(serverId, priority, filters)
-        } catch (cancellation: CancellationException) {
-            throw cancellation
-        } catch (_: Throwable) {
-            ServerTaskCountsResult.Error(code = "tasks_counts_network")
+    ): ServerTaskCountsResult {
+        val key = InFlightCountsKey(serverId = serverId.value, countsKey = tasksCountsKey(filters))
+        while (true) {
+            var isLeader = false
+            val entry =
+                synchronized(inFlightCountsLock) {
+                    inFlightCounts[key] ?: CompletableDeferred<ServerTaskCountsResult?>().also {
+                        inFlightCounts[key] = it
+                        isLeader = true
+                    }
+                }
+            if (!isLeader) {
+                val shared = entry.await()
+                if (shared != null) return shared
+                currentCoroutineContext().ensureActive()
+                continue
+            }
+            var completedResult: ServerTaskCountsResult? = null
+            try {
+                val result =
+                    try {
+                        typedApi.serverTaskCounts(serverId, priority, filters)
+                    } catch (cancellation: CancellationException) {
+                        throw cancellation
+                    } catch (_: Throwable) {
+                        ServerTaskCountsResult.Error(code = "tasks_counts_network")
+                    }
+                completedResult = result
+                return result
+            } finally {
+                synchronized(inFlightCountsLock) {
+                    if (inFlightCounts[key] === entry) inFlightCounts.remove(key)
+                }
+                entry.complete(completedResult)
+            }
         }
+    }
 
     override suspend fun loadChannelTasks(
         serverId: ServerId,
@@ -137,51 +184,67 @@ class SharedTasksDataSource(
         taskId: TaskId,
         status: TaskStatus,
         reason: String?
-    ): DataResult<TaskActionResult> =
-        try {
+    ): DataResult<TaskActionResult> {
+        invalidateInFlightCounts()
+        return try {
             typedApi.updateTaskStatus(serverId, taskId, status, reason)
         } catch (cancellation: CancellationException) {
             throw cancellation
         } catch (_: Throwable) {
             DataResult.Error(ScreenError(code = "tasks_status_network", retryable = true))
+        } finally {
+            invalidateInFlightCounts()
         }
+    }
 
     override suspend fun assignTask(
         serverId: ServerId,
         taskId: TaskId,
         assignee: MemberProfile?,
         expectedRevision: Long?
-    ): DataResult<TaskActionResult> =
-        try {
+    ): DataResult<TaskActionResult> {
+        invalidateInFlightCounts()
+        return try {
             typedApi.assignTask(serverId, taskId, assignee, expectedRevision)
         } catch (cancellation: CancellationException) {
             throw cancellation
         } catch (_: Throwable) {
             DataResult.Error(ScreenError(code = "tasks_assign_network", retryable = true))
+        } finally {
+            invalidateInFlightCounts()
         }
+    }
 
     override suspend fun amendTask(
         serverId: ServerId,
         taskId: TaskId,
         patch: TaskAmendPatch,
         expectedRevision: Long?
-    ): TaskAmendResult =
-        try {
+    ): TaskAmendResult {
+        invalidateInFlightCounts()
+        return try {
             typedApi.amendTask(serverId, taskId, patch, expectedRevision)
         } catch (cancellation: CancellationException) {
             throw cancellation
         } catch (_: Throwable) {
             TaskAmendResult.Failed(ScreenError(code = "tasks_amend_network", retryable = true))
+        } finally {
+            invalidateInFlightCounts()
         }
+    }
 
-    override suspend fun deleteTask(serverId: ServerId, taskId: TaskId): DataResult<Unit> =
-        try {
+    override suspend fun deleteTask(serverId: ServerId, taskId: TaskId): DataResult<Unit> {
+        invalidateInFlightCounts()
+        return try {
             typedApi.deleteTask(serverId, taskId)
         } catch (cancellation: CancellationException) {
             throw cancellation
         } catch (_: Throwable) {
             DataResult.Error(ScreenError(code = "tasks_delete_network", retryable = true))
+        } finally {
+            invalidateInFlightCounts()
         }
+    }
 
     /**
      * Batch-create channel tasks. Titles are passed through as-is here — the typed
@@ -202,8 +265,9 @@ class SharedTasksDataSource(
         channelId: ChannelId,
         titles: List<String>,
         status: TaskStatus?
-    ): DataResult<TaskSnapshot> =
-        try {
+    ): DataResult<TaskSnapshot> {
+        invalidateInFlightCounts()
+        return try {
             typedApi.createTasks(
                 serverId = serverId,
                 channelId = channelId,
@@ -215,7 +279,10 @@ class SharedTasksDataSource(
             throw cancellation
         } catch (_: Throwable) {
             DataResult.Error(ScreenError(code = "tasks_create_network", retryable = true))
+        } finally {
+            invalidateInFlightCounts()
         }
+    }
 
     /**
      * Task v2 "Create Task from Message" (slock web `CreateTaskDialog` → taskStore `createTasks`):
@@ -232,6 +299,7 @@ class SharedTasksDataSource(
     ): DataResult<TaskSnapshot> {
         val drafts = titles.map { it.trim() }.filter { it.isNotBlank() }.map { TaskCreateDraft(title = it, sourceMessageId = sourceMessageId) }
         if (drafts.isEmpty()) return DataResult.Empty(EmptyReason.NoTasks)
+        invalidateInFlightCounts()
         return try {
             typedApi.createTasks(
                 serverId = serverId,
@@ -244,6 +312,8 @@ class SharedTasksDataSource(
             throw cancellation
         } catch (_: Throwable) {
             DataResult.Error(ScreenError(code = "tasks_create_network", retryable = true))
+        } finally {
+            invalidateInFlightCounts()
         }
     }
 
@@ -262,14 +332,18 @@ class SharedTasksDataSource(
             DataResult.Error(ScreenError(code = "tasks_conversation_network", retryable = true))
         }
 
-    suspend fun convertMessageToTask(serverId: ServerId, messageId: MessageId): DataResult<TaskConvertResult> =
-        try {
+    suspend fun convertMessageToTask(serverId: ServerId, messageId: MessageId): DataResult<TaskConvertResult> {
+        invalidateInFlightCounts()
+        return try {
             typedApi.convertMessage(serverId, messageId)
         } catch (cancellation: CancellationException) {
             throw cancellation
         } catch (_: Throwable) {
             DataResult.Error(ScreenError(code = "tasks_convert_message_network", retryable = true))
+        } finally {
+            invalidateInFlightCounts()
         }
+    }
 }
 
 /**
@@ -1502,7 +1576,9 @@ internal data class TaskWireDto(
     // The message the task hangs under (`tasks.source_message_id`, falling back to the pre-v2 host
     // server-side). The default marks a DTO without the field; an explicit null decodes as null.
     val sourceMessageId: String? = TaskSourceMessageIdAbsent,
-    val conversationChannelId: String? = null,
+    // Absent on `GET /tasks/server?detail=summary` rows (slock `toServerTaskSummary`), where an
+    // explicit `null` on a full row means "no conversation created yet" (web `isSummaryOnlyTask`).
+    val conversationChannelId: String? = TaskConversationChannelIdAbsent,
     val conversationAnchored: Boolean? = null,
     val conversationReplyCount: Int? = null,
     val isLegacy: Boolean? = null,
@@ -1515,7 +1591,11 @@ internal data class TaskWireDto(
  * than a host message's thread. A DTO without the v2 fields (older server) is pre-v2.
  */
 internal fun TaskWireDto.isTaskV2Conversation(): Boolean =
-    isTaskV2Conversation(isLegacy, conversationAnchored, conversationChannelId)
+    isTaskV2Conversation(
+        isLegacy = isLegacy,
+        conversationAnchored = conversationAnchored,
+        conversationChannelId = conversationChannelId?.takeIf { it != TaskConversationChannelIdAbsent },
+    )
 
 /** Web `isTaskV2Task` over the raw DTO fields (task lists and `task:*` realtime frames share it). */
 internal fun isTaskV2Conversation(isLegacy: Boolean?, conversationAnchored: Boolean?, conversationChannelId: String?): Boolean =
@@ -1535,6 +1615,9 @@ internal fun taskOpenableMessageId(id: String, messageId: String?, hostMessageId
 /** The default of a task DTO's `sourceMessageId` when the field is missing (never a real id). */
 internal const val TaskSourceMessageIdAbsent: String = "\u0000absent"
 
+/** The default of a task DTO's `conversationChannelId` when omitted by `detail=summary`. */
+internal const val TaskConversationChannelIdAbsent: String = "\u0000absent"
+
 internal fun String?.reportedSourceMessageId(): MessageId? =
     this?.takeIf { it.isNotBlank() && it != TaskSourceMessageIdAbsent }?.let(::MessageId)
 
@@ -1542,6 +1625,13 @@ internal fun TaskWireDto.toTaskSummary(
     diagnostics: (String) -> Unit = strictProjectionDiagnosticsLogger,
 ): TaskSummary? {
     val displayTitle = title?.trim().orEmpty().ifBlank { taskNumber?.let { "#$it" }.orEmpty() }
+    val conversationChannelIdAbsent = conversationChannelId == TaskConversationChannelIdAbsent
+    val resolvedConversationChannelId =
+        conversationChannelId?.takeIf { it != TaskConversationChannelIdAbsent && it.isNotBlank() }
+    val conversationDetailsLoaded =
+        isLegacy == true ||
+            !conversationChannelIdAbsent ||
+            (hasDescription == null && sourceSenderType == TaskSourceMessageIdAbsent)
     val taskV2 = isTaskV2Conversation()
     // A v2 task's `messageId` is the task id (compatibility fallback), never a message: only the
     // real host message (pre-v2 discussion) may be opened as a message / thread parent.
@@ -1570,13 +1660,14 @@ internal fun TaskWireDto.toTaskSummary(
         hostMessageId = hostMessageId?.takeIf { it.isNotBlank() }?.let(::MessageId),
         sourceMessageId = sourceMessageId.reportedSourceMessageId(),
         sourceMessageReported = sourceMessageId != TaskSourceMessageIdAbsent,
-        conversationChannelId = conversationChannelId?.takeIf { it.isNotBlank() }?.let(::ChannelId),
+        conversationChannelId = resolvedConversationChannelId?.let(::ChannelId),
         conversationAnchored = taskV2,
         conversationReplyCount = conversationReplyCount?.coerceAtLeast(0) ?: 0,
         isLegacy = isLegacy == true,
         conversationFollowed = conversationFollowed,
         createdAt = createdAt?.trim()?.takeIf { it.isNotBlank() },
         descriptionLoaded = description != null || hasDescription != true,
+        conversationDetailsLoaded = conversationDetailsLoaded,
         activityAt = (activityAt ?: lastActivityAt ?: updatedAt)?.trim()?.takeIf { it.isNotBlank() },
         sourceSenderType = sourceSenderType?.takeIf { it != TaskSourceMessageIdAbsent && it.isNotBlank() },
         sourceSenderId = sourceSenderId?.takeIf { sourceSenderType != TaskSourceMessageIdAbsent && it.isNotBlank() },

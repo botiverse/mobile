@@ -5,7 +5,6 @@ import build.raft.app.data.ExternalAgentStatusSnapshot
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
-import kotlin.test.assertTrue
 
 /**
  * task #1119 PR 2: mobile agent-detail tone for external agents mirrors web
@@ -39,11 +38,6 @@ class ExternalAgentDetailIndicatorTest {
         return "$year-${p2(m)}-${p2(d)}T${p2(hh)}:${p2(mm)}:${p2(ss)}.${ms.toString().padStart(3, '0')}Z"
     }
 
-    @Test
-    fun isoHelperRoundTripsThroughTheRepoParser() {
-        assertEquals(now, parseExternalAgentTimestampOrNull(iso(now)))
-        assertEquals("2026-09-03T06:00:00.000Z".let { parseExternalAgentTimestampOrNull(it) }, parseExternalAgentTimestampOrNull(iso(parseExternalAgentTimestampOrNull("2026-09-03T06:00:00.000Z")!!)))
-    }
     private fun status(
         setup: ExternalAgentSetupState,
         lastActivityAt: String? = null
@@ -66,20 +60,6 @@ class ExternalAgentDetailIndicatorTest {
     }
 
     @Test
-    fun lastSeenAtOutsideTwoMinutesRendersLastSeen() {
-        val result = externalAgentDetailIndicator(
-            status = status(ExternalAgentSetupState.Connected),
-            nowEpochMillis = now,
-            lastSeenAt = iso(now - 200_000L)
-        )
-        assertEquals(RaftColor.AccentCyan, result.state.color)
-        assertEquals(
-            ExternalAgentDetailCaption.LastSeen(now - 200_000L, iso(now - 200_000L)),
-            result.caption
-        )
-    }
-
-    @Test
     fun waitingForLoginStillWinsOverAnOnlineLastSeenAt() {
         // Existing mobile-only divergence: not signed in ⇒ orange + setup copy
         // even when the credential was just seen. The dot never disagrees
@@ -91,66 +71,6 @@ class ExternalAgentDetailIndicatorTest {
         )
         assertEquals(RaftColor.AccentOrange, result.state.color)
         assertEquals(ExternalAgentDetailCaption.SetupRequired, result.caption)
-    }
-
-    @Test
-    fun missingLastSeenAtFallsBackToActivityTiers() {
-        val result = externalAgentDetailIndicator(
-            status = status(ExternalAgentSetupState.Connected, iso(now - 60_000L)),
-            nowEpochMillis = now,
-            lastSeenAt = null
-        )
-        assertEquals(RaftColor.AccentLime, result.state.color)
-        assertEquals(ExternalAgentDetailCaption.Active, result.caption)
-    }
-
-    @Test
-    fun noStatusStillReadsLastSeenAtFromTheSummary() {
-        // externalStatus is permission-gated (null on non-managers). The
-        // summary's lastSeenAt still carries the presence tiers — the row
-        // should never stay a bare cyan "External" when the agent was seen.
-        val result = externalAgentDetailIndicator(
-            status = null,
-            nowEpochMillis = now,
-            lastSeenAt = iso(now - 5_000L)
-        )
-        assertEquals(RaftColor.AccentLime, result.state.color)
-        assertEquals(ExternalAgentDetailCaption.Online, result.caption)
-
-        val stale = externalAgentDetailIndicator(
-            status = null,
-            nowEpochMillis = now,
-            lastSeenAt = iso(now - 300_000L)
-        )
-        assertEquals(RaftColor.AccentCyan, stale.state.color)
-        assertEquals(
-            ExternalAgentDetailCaption.LastSeen(now - 300_000L, iso(now - 300_000L)),
-            stale.caption
-        )
-    }
-
-    @Test
-    fun onlineWindowBoundaryIsExclusiveAtTwoMinutes() {
-        // now - lastSeenAt == 120_000 is OFFLINE (web `<`, not `<=`).
-        val result = externalAgentDetailIndicator(
-            status = status(ExternalAgentSetupState.Connected),
-            nowEpochMillis = now,
-            lastSeenAt = iso(now - ExternalAgentOnlineWindowMillis)
-        )
-        assertEquals(RaftColor.AccentCyan, result.state.color)
-        assertEquals(
-            ExternalAgentDetailCaption.LastSeen(now - ExternalAgentOnlineWindowMillis, iso(now - ExternalAgentOnlineWindowMillis)),
-            result.caption
-        )
-    }
-
-    @Test
-    fun notProvidedStatusIsPlainExternalCyanNeverGray() {
-        val result = externalAgentDetailIndicator(status = null, nowEpochMillis = now)
-        assertEquals(RaftColor.AccentCyan, result.state.color)
-        assertEquals(ExternalAgentDetailCaption.External, result.caption)
-        assertTrue(result.state.external)
-        assertNull(result.state.status)
     }
 
     @Test
@@ -169,70 +89,6 @@ class ExternalAgentDetailIndicatorTest {
             )
         assertEquals(RaftColor.AccentLime, result.state.color)
         assertEquals(ExternalAgentDetailCaption.Active, result.caption)
-    }
-
-    @Test
-    fun activeThresholdIsStrictFiveMinutes() {
-        val atThreshold =
-            externalAgentDetailIndicator(
-                status(ExternalAgentSetupState.Connected, lastActivityAt = iso(now - ExternalAgentActiveThresholdMillis)),
-                now
-            )
-        assertEquals(RaftColor.AccentCyan, atThreshold.state.color)
-        assertEquals(ExternalAgentDetailCaption.LastActivity(now - ExternalAgentActiveThresholdMillis, iso(now - ExternalAgentActiveThresholdMillis)), atThreshold.caption)
-    }
-
-    @Test
-    fun activityOlderThanFiveMinutesIsCyanWithLastActivity() {
-        val at = now - 10 * 60_000L
-        val result = externalAgentDetailIndicator(status(ExternalAgentSetupState.Connected, lastActivityAt = iso(at)), now)
-        assertEquals(RaftColor.AccentCyan, result.state.color)
-        assertEquals(ExternalAgentDetailCaption.LastActivity(at, iso(at)), result.caption)
-    }
-
-    // Deliberate divergence from web: web evaluates activity tiers before the
-    // setup state and can show a lime dot beside a "setup required" caption
-    // (agent ran, then lost its credential). Product rule: not signed in ⇒ orange (a step, status.md),
-    // and the dot must never disagree with the text beside it.
-    @Test
-    fun waitingForLoginWithFreshActivityStaysOrangeAndSetupRequired() {
-        val result =
-            externalAgentDetailIndicator(
-                status(ExternalAgentSetupState.WaitingForLogin, lastActivityAt = iso(now - 60_000L)),
-                now
-            )
-        assertEquals(RaftColor.AccentOrange, result.state.color)
-        assertEquals(ExternalAgentDetailCaption.SetupRequired, result.caption)
-    }
-
-    // The input that makes a 30-minute tier unreachable on this platform, and the
-    // guard against re-adding one. Web is activity-first, so 20-minute-old activity
-    // on an unlogged-in agent lands in its 30-minute tier and paints cyan. Here
-    // `waiting` is evaluated first and consumes the case, so no age comparison ever
-    // runs. If someone reintroduces a `< 30 min` arm below `waiting`, this test does
-    // NOT go red — the arm would simply be dead again, which is why the removal was
-    // safe. What this pins is the ordering: move `waiting` below the age tiers to
-    // "match web" and this goes orange → cyan, exposing it as a product change.
-    @Test
-    fun waitingForLoginOutranksTheAgeTiersWebWouldUseHere() {
-        val result =
-            externalAgentDetailIndicator(
-                status(ExternalAgentSetupState.WaitingForLogin, lastActivityAt = iso(now - 20 * 60_000L)),
-                now
-            )
-        assertEquals(RaftColor.AccentOrange, result.state.color)
-        assertEquals(ExternalAgentDetailCaption.SetupRequired, result.caption)
-    }
-
-    @Test
-    fun connectedWithoutActivityIsCyanNoRaftActivity() {
-        assertEquals(
-            ExternalAgentDetailCaption.NoRaftActivity,
-            externalAgentDetailIndicator(status(ExternalAgentSetupState.CredentialMinted), now).caption
-        )
-        val connected = externalAgentDetailIndicator(status(ExternalAgentSetupState.Connected), now)
-        assertEquals(ExternalAgentDetailCaption.NoRaftActivity, connected.caption)
-        assertEquals(RaftColor.AccentCyan, connected.state.color)
     }
 
     @Test

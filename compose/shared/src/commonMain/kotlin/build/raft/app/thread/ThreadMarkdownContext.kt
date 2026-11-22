@@ -259,8 +259,6 @@ internal suspend fun openMarkdownTaskNumberPayload(
     currentTaskChannelId: ChannelId?,
     tasksDataSource: SharedTasksDataSource,
     tasksDataStore: SharedTasksDataStore?,
-    /** `task_v2_conversations_v0` for the server ([taskOpenTarget]). */
-    taskV2Enabled: Boolean = false,
     conversationIdentityProvider: SharedConversationIdentityProvider? = null,
     /** Its network lookup runs in this resolver's shared fetch phase (the chip spinner). */
     referenceResolver: SharedReferenceResolver? = null,
@@ -279,7 +277,7 @@ internal suspend fun openMarkdownTaskNumberPayload(
             )
     ) {
         is SharedTaskReferenceResolution.Found -> {
-            if (resolution.task.taskOpenSurface(taskV2Enabled) != null) {
+            if (resolution.task.taskOpenSurface() != null) {
                 return MarkdownTaskNumberOpenResult.OpensInPlace(resolution.task)
             }
             val resolveConversation: suspend () -> ChannelId? = {
@@ -287,7 +285,6 @@ internal suspend fun openMarkdownTaskNumberPayload(
                     task = resolution.task,
                     serverId = serverId.value,
                     tasksDataSource = tasksDataSource,
-                    taskV2Enabled = taskV2Enabled,
                 )
             }
             // A joint task's local conversation is a `POST /tasks/:id/conversation`: part of the
@@ -295,7 +292,7 @@ internal suspend fun openMarkdownTaskNumberPayload(
             val resolvedConversationChannelId =
                 if (
                     referenceResolver != null &&
-                    resolution.task.taskOpenTarget(taskV2Enabled) == TaskOpenTarget.ResolveConversation
+                    resolution.task.taskOpenTarget() == TaskOpenTarget.ResolveConversation
                 ) {
                     referenceResolver.fetchPhase(actionId) { resolveConversation() }
                 } else {

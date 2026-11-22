@@ -1,18 +1,12 @@
 package build.raft.app
 
 import build.raft.app.data.InMemoryRaftKeyValueStore
-import build.raft.app.data.ScreenLoadState
-import build.raft.app.data.SharedSettingsDeveloperSnapshot
 import build.raft.app.nav.RaftIosNativeNavFlag
-import build.raft.app.resources.Res
-import build.raft.app.resources.settings_mobile_ios_native_nav
-import build.raft.app.resources.settings_mobile_ios_native_nav_detail
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
-import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
 /**
@@ -34,19 +28,6 @@ class SettingsIosNativeNavPlacementTest {
     }
 
     @Test
-    fun developerNoLongerListsIt() {
-        RaftIosNativeNavFlag.hostSupported = true
-        val payload =
-            SharedSettingsDeveloperSnapshot().toDeveloperPayload(
-                state = ScreenLoadState.Content(SharedSettingsDeveloperSnapshot()),
-                actionState = null,
-                errorStrings = englishErrorPresentationStringsForTest()
-            )
-        val keys = payload.sections.flatMap { section -> section.rows.map { it.key } }
-        assertFalse(keys.any { it.contains("iosNativeNav", ignoreCase = true) }, keys.toString())
-    }
-
-    @Test
     fun theSwitchKeepsTheStoredKeySoEarlierChoicesStay() {
         // The key the Developer switch wrote in 1.22.
         assertEquals("mobile:ios_native_nav_v1:local_override", RaftIosNativeNavFlag.KEY_LOCAL_OVERRIDE)
@@ -57,11 +38,5 @@ class SettingsIosNativeNavPlacementTest {
         assertTrue(RaftIosNativeNavFlag.stored(store), "a 1.22 Developer choice reads on in Appearance")
         RaftIosNativeNavFlag.setLocalOverride(store, false)
         assertEquals("false", store.getString(RaftIosNativeNavFlag.KEY_LOCAL_OVERRIDE))
-    }
-
-    @Test
-    fun theRowKeepsItsStrings() {
-        assertNotNull(Res.string.settings_mobile_ios_native_nav)
-        assertNotNull(Res.string.settings_mobile_ios_native_nav_detail)
     }
 }

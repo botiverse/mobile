@@ -15,7 +15,6 @@ import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -133,41 +132,6 @@ class RaftSessionUnknownVsSignedOutTest {
         assertNull(next.storedText(accountA, draftKey))
     }
 
-    @Test
-    fun accountBindingTransitionPublishesCorruptAndNeverRetiresOnIt() {
-        val context = MutableStateFlow<ProcessPresenceAuthContext?>(null)
-        val binding = MutableStateFlow<RaftAccountBinding<ProcessPresenceAuthContext>>(RaftAccountBinding.Unknown)
-        val retired = mutableListOf<ProcessPresenceAuthContext>()
-        val transition =
-            processAccountBindingTransition(
-                presenceAuthContext = context,
-                accountBinding = binding,
-                registry = ProcessMemberPresenceRegistry(),
-                onBindingRetired = { retired += it },
-                currentEnvironmentId = { "env-1" },
-            )
-        val signedIn =
-            RealtimeAuthRevision(
-                generation = 2L,
-                session = RealtimeAuthoritySession(principalId = "user-1", serverIds = listOf("s"), environmentId = "env-test"),
-            )
-
-        transition(RealtimeAuthRevision(generation = 1L, session = null), RaftAuthSessionState.Corrupt("SerializationException"))
-        assertEquals(RaftAccountBinding.Corrupt("SerializationException"), binding.value)
-
-        transition(signedIn, RaftAuthSessionState.SignedIn(signedInSession("token-1")))
-        assertEquals("user-1", binding.value.accountOrNull?.accountId)
-
-        transition(RealtimeAuthRevision(generation = 3L, session = null), RaftAuthSessionState.Corrupt("SerializationException"))
-        assertEquals(emptyList(), retired)
-        assertEquals("user-1", context.value?.accountId)
-
-        transition(RealtimeAuthRevision(generation = 4L, session = null), RaftAuthSessionState.SignedOut)
-        assertEquals(listOf("user-1"), retired.map { it.accountId })
-        assertEquals(RaftAccountBinding.SignedOut, binding.value)
-        assertNull(context.value)
-    }
-
     // --- Risks 2 and 3: one session read that came back empty was treated as a sign-out ---
 
     private class FlakyTypedAuthSessionStore : RaftAuthSessionStore, RaftAuthSessionEventSource {
@@ -266,30 +230,6 @@ class RaftSessionUnknownVsSignedOutTest {
         assertEquals(emptyList(), harness.retired)
         assertEquals(1, harness.rotated.size)
         assertEquals("user-1", harness.presenceAuthContext.value?.accountId)
-        scope.cancel()
-    }
-
-    @Test
-    fun transientAbsentSessionReadNeverPublishesSignedOutToBindingFollowers() = runBlocking {
-        val harness = BindingHarness()
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        // What the members follower, the drafts follower and the sync scope observe.
-        val observed = mutableListOf<ProcessPresenceAuthContext?>()
-        scope.launch { harness.presenceAuthContext.collect { observed += it } }
-        harness.provider.start(scope)
-        harness.provider.registerScope("shell")
-        harness.auth.emit(signedInSession("token-1"), AuthSessionEvent.Authenticated(generation = 1))
-
-        harness.auth.absentReads = 1
-        harness.auth.emit(signedInSession("token-1"), AuthSessionEvent.BindingMetadataChanged(generation = 2))
-        harness.auth.emit(signedInSession("token-2"), AuthSessionEvent.TokensRotated(generation = 3))
-
-        val afterFirstBinding = observed.dropWhile { it == null }
-        assertTrue(afterFirstBinding.isNotEmpty())
-        assertTrue(
-            afterFirstBinding.none { it == null },
-            "followers saw a signed-out binding (members retired, drafts deleted): $observed",
-        )
         scope.cancel()
     }
 

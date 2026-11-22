@@ -43,6 +43,7 @@ import build.raft.app.model.ServerId
 import build.raft.app.network.updateRaftProcessNetworkVisibility
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
@@ -58,6 +59,10 @@ internal object AndroidAppScopeRealtimeOwner {
     private const val ProcessRealtimeOwnerId = "process-realtime-host-owner"
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+
+    @OptIn(ExperimentalCoroutinesApi::class)
+    private val connectivityIoDispatcher = Dispatchers.IO.limitedParallelism(1)
+    private val connectivityScope = CoroutineScope(SupervisorJob() + connectivityIoDispatcher)
 
     private var realtimeClient: SocketIoRealtimeClient? = null
     private var realtimeRuntime: RaftRealtimeAppScopeRuntime? = null
@@ -78,9 +83,10 @@ internal object AndroidAppScopeRealtimeOwner {
      * In the background with keep-alive only this one may reconnect; the others stay suspended.
      */
     private var multiSessionPrimaryServerId: ServerId? = null
-    private var appVisibility: AppVisibility = AppVisibility.Background
-    private var installedApplicationContext: Context? = null
+    @Volatile private var appVisibility: AppVisibility = AppVisibility.Background
+    @Volatile private var installedApplicationContext: Context? = null
     private var lastHiddenAtMillis: Long? = null
+    @Volatile
     private var backgroundKeepAliveEnabled = false
         set(value) {
             if (field == value) return
@@ -88,10 +94,10 @@ internal object AndroidAppScopeRealtimeOwner {
             // Keep-alive changes whether the hidden process needs the network callback.
             syncDefaultNetworkCallback(source = if (value) "keep_alive_enabled" else "keep_alive_disabled")
         }
-    private var networkCallbackRegistration: AndroidDefaultNetworkCallbackRegistration? = null
+    @Volatile private var networkCallbackCoordinator: AndroidAsyncNetworkCallbackCoordinator? = null
     private val hiddenNetworkCallbackCounter = AndroidHiddenNetworkCallbackCounter()
     private var processLifecycleInstalled = false
-    private var hostNetworkOnline: Boolean? = null
+    @Volatile private var hostNetworkOnline: Boolean? = null
     @Volatile private var productAppOpenPending = false
 
     private fun takePendingProductAppOpen() {
@@ -117,16 +123,24 @@ internal object AndroidAppScopeRealtimeOwner {
                 // Product analytics: app_opened (cold / back after the 30-minute session gap) waits
                 // for the activity's resume, after onNewIntent delivered a notification tap.
                 productAppOpenPending = true
-                // Rating prompt: today is an active day (counted once per local day).
-                RaftRatingPrompt.onAppForeground()
+                // Rating prompt: today is an active day (counted once per local day), off main so
+                // foreground return never blocks Frame 1 on preference I/O.
+                scope.launch(Dispatchers.IO) {
+                    RaftRatingPrompt.onAppForeground()
+                }
                 RaftResumeFrameProbe.onAppShown()
                 flushHiddenNetworkCallbackSummary()
                 installedApplicationContext?.let { context ->
                     onAppShown(context, source = "process_activity_started")
-                    // Back in front: the network callback again, and the current status at once
-                    // (the callback's own first answers follow).
-                    syncDefaultNetworkCallback(source = "app_shown")
-                    publishCurrentNetworkStatus(context, source = "app_shown")
+                    // Back in front: register the default-network callback and read current status
+                    // off the main thread on the serialized connectivity IO lane so foreground resume
+                    // never blocks Frame 1 on ConnectivityManager Binder IPCs.
+                    val coordinator = networkCallbackCoordinator
+                    if (coordinator != null) {
+                        coordinator.onForeground(source = "app_shown")
+                    } else {
+                        publishCurrentNetworkStatus(context, source = "app_shown")
+                    }
                 }
                 // Keeps the FCM delivery-status answer fresh for the background tray decision.
                 RaftAndroidPushRegistrationBridge.refreshDeliveryStatus(reason = "app_foreground")
@@ -145,12 +159,20 @@ internal object AndroidAppScopeRealtimeOwner {
                 RaftRatingPrompt.onAppBackground()
                 RaftResumeFrameProbe.onAppHidden()
                 onAppHidden(source = "process_activity_stopped")
-                // No-Play-services devices: make sure the background connection service is up now that the
-                // app is hidden (no-op on Play services devices).
-                installedApplicationContext?.let(AndroidRealtimeKeepAliveController::onAppBackgrounded)
-                // Hidden without a background connection: no network callbacks into the process,
-                // so it can be frozen while cached (Hands a8cd6426).
-                syncDefaultNetworkCallback(source = "app_hidden")
+                val coordinator = networkCallbackCoordinator
+                if (coordinator != null) {
+                    // Off-main on the serialized connectivity IO lane: evaluate the no-Play-services
+                    // background connection service first (no-op on Play services devices), then
+                    // unregister the network callback if no background connection needs it so the
+                    // cached process can be frozen (Hands a8cd6426).
+                    coordinator.onBackground(source = "app_hidden")
+                } else {
+                    installedApplicationContext?.let { context ->
+                        connectivityScope.launch {
+                            AndroidRealtimeKeepAliveController.onAppBackgrounded(context)
+                        }
+                    }
+                }
             }
         }
 
@@ -178,28 +200,55 @@ internal object AndroidAppScopeRealtimeOwner {
         val appContext = context.applicationContext
         installedApplicationContext = appContext
         installProcessLifecycle(appContext)
-        val connectivityManager =
-            appContext.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
-                ?: return
-        synchronized(this) {
-            if (networkCallbackRegistration != null) return
-            var current: ConnectivityManager.NetworkCallback? = null
-            networkCallbackRegistration =
-                AndroidDefaultNetworkCallbackRegistration(
-                    register = {
-                        val callback = defaultNetworkCallback(appContext)
-                        connectivityManager.registerDefaultNetworkCallback(callback)
-                        current = callback
+        val createdCoordinator =
+            synchronized(this) {
+                if (networkCallbackCoordinator != null) return
+                var current: ConnectivityManager.NetworkCallback? = null
+                val registration =
+                    AndroidDefaultNetworkCallbackRegistration(
+                        register = {
+                            val connectivityManager =
+                                appContext.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
+                                    ?: throw IllegalStateException("connectivity_service_unavailable")
+                            val callback = defaultNetworkCallback(appContext)
+                            connectivityManager.registerDefaultNetworkCallback(callback)
+                            current = callback
+                        },
+                        unregister = {
+                            val callback = current
+                            current = null
+                            if (callback != null) {
+                                val connectivityManager =
+                                    appContext.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
+                                connectivityManager?.unregisterNetworkCallback(callback)
+                            }
+                        },
+                    )
+                AndroidAsyncNetworkCallbackCoordinator(
+                    ioScope = connectivityScope,
+                    registration = registration,
+                    isWanted = {
+                        AndroidDefaultNetworkCallbackPolicy.shouldBeRegistered(
+                            foreground = appVisibility == AppVisibility.Foreground,
+                            backgroundKeepAliveEnabled = backgroundKeepAliveEnabled,
+                            backgroundConnectionServiceActive = RaftBackgroundConnectionService.active,
+                        )
                     },
-                    unregister = {
-                        val callback = current
-                        current = null
-                        if (callback != null) connectivityManager.unregisterNetworkCallback(callback)
+                    queryOnline = { appContext.isHostNetworkOnline() },
+                    onOnlineStatus = { online, source ->
+                        emitHostNetworkStatus(
+                            context = appContext,
+                            online = online,
+                            source = source,
+                            force = true,
+                        )
                     },
-                )
-        }
-        syncDefaultNetworkCallback(source = "install")
-        publishCurrentNetworkStatus(appContext, source = "network_callback_initial")
+                    onAppBackgrounded = { AndroidRealtimeKeepAliveController.onAppBackgrounded(appContext) },
+                    onTransition = ::handleNetworkCallbackTransition,
+                ).also { networkCallbackCoordinator = it }
+            }
+        createdCoordinator.sync(source = "install")
+        createdCoordinator.queryStatus(source = "network_callback_initial")
     }
 
     /** A fresh callback per registration: one the system has seen is never registered twice. */
@@ -231,17 +280,14 @@ internal object AndroidAppScopeRealtimeOwner {
 
     /**
      * Registers the default-network callback while [AndroidDefaultNetworkCallbackPolicy] wants it (in
-     * front, or hidden with a background connection) and unregisters it otherwise.
+     * front, or hidden with a background connection) and unregisters it otherwise, serialized off
+     * the main thread.
      */
     private fun syncDefaultNetworkCallback(source: String) {
-        val registration = networkCallbackRegistration ?: return
-        val wanted =
-            AndroidDefaultNetworkCallbackPolicy.shouldBeRegistered(
-                foreground = appVisibility == AppVisibility.Foreground,
-                backgroundKeepAliveEnabled = backgroundKeepAliveEnabled,
-                backgroundConnectionServiceActive = RaftBackgroundConnectionService.active,
-            )
-        val transition = registration.sync(wanted)
+        networkCallbackCoordinator?.sync(source = source)
+    }
+
+    private fun handleNetworkCallbackTransition(transition: AndroidNetworkCallbackTransition, source: String) {
         if (transition == AndroidNetworkCallbackTransition.Unregistered) flushHiddenNetworkCallbackSummary()
         when (transition) {
             AndroidNetworkCallbackTransition.Unchanged -> Unit
@@ -426,16 +472,20 @@ internal object AndroidAppScopeRealtimeOwner {
         source: String = "unknown"
     ) {
         backgroundKeepAliveEnabled = true
-        syncRealtimeReconnectPolicy()
-        RaftAppLog.d(
-            LOG_TAG,
-            "background_keep_alive_enabled source=$source visibility=$appVisibility joined_rooms=${joinedChannelCount()}"
-        )
-        healthCheckRealtimeConnection(
-            context = context.applicationContext,
-            allowBackground = true,
-            reason = "background_keep_alive"
-        )
+        val appContext = context.applicationContext
+        scope.launch {
+            if (!backgroundKeepAliveEnabled) return@launch
+            syncRealtimeReconnectPolicy()
+            RaftAppLog.d(
+                LOG_TAG,
+                "background_keep_alive_enabled source=$source visibility=$appVisibility joined_rooms=${joinedChannelCount()}"
+            )
+            healthCheckRealtimeConnection(
+                context = appContext,
+                allowBackground = true,
+                reason = "background_keep_alive"
+            )
+        }
     }
 
     fun publishCurrentNetworkStatus(
@@ -443,12 +493,14 @@ internal object AndroidAppScopeRealtimeOwner {
         source: String = "unknown"
     ) {
         val appContext = context.applicationContext
-        emitHostNetworkStatus(
-            context = appContext,
-            online = appContext.isHostNetworkOnline(),
-            source = source,
-            force = true
-        )
+        connectivityScope.launch {
+            emitHostNetworkStatus(
+                context = appContext,
+                online = appContext.isHostNetworkOnline(),
+                source = source,
+                force = true
+            )
+        }
     }
 
     /** Whether this process holds a realtime session to keep alive (read-only; never prunes state). */
@@ -494,11 +546,13 @@ internal object AndroidAppScopeRealtimeOwner {
     fun disableBackgroundKeepAlive(reason: String = "unknown") {
         if (!backgroundKeepAliveEnabled) return
         backgroundKeepAliveEnabled = false
-        syncRealtimeReconnectPolicy()
-        RaftAppLog.d(
-            LOG_TAG,
-            "background_keep_alive_disabled reason=$reason visibility=$appVisibility"
-        )
+        scope.launch {
+            syncRealtimeReconnectPolicy()
+            RaftAppLog.d(
+                LOG_TAG,
+                "background_keep_alive_disabled reason=$reason visibility=$appVisibility"
+            )
+        }
     }
 
     fun connectFromSharedRequest(
@@ -1275,22 +1329,22 @@ internal object AndroidAppScopeRealtimeOwner {
     }
 
     private fun emitHostNetworkStatus(
-        context: Context,
+        @Suppress("UNUSED_PARAMETER") context: Context,
         online: Boolean,
         source: String,
         force: Boolean = false
     ) {
-        if (!force && hostNetworkOnline == online) return
-        hostNetworkOnline = online
-        // Info level, written straight to local diagnostics: RaftAppLog.d/i are dropped in release
-        // builds unless verbose logging is on, and these transitions are what feedback zips need
-        // to explain an offline banner.
-        RaftAndroidLocalDiagnostics.recordLog(
-            "info",
-            LOG_TAG,
-            "app_scope_lifecycle event=host_network_status online=$online source=$source"
-        )
         scope.launch {
+            if (!force && hostNetworkOnline == online) return@launch
+            hostNetworkOnline = online
+            // Info level, written straight to local diagnostics: RaftAppLog.d/i are dropped in release
+            // builds unless verbose logging is on, and these transitions are what feedback zips need
+            // to explain an offline banner.
+            RaftAndroidLocalDiagnostics.recordLog(
+                "info",
+                LOG_TAG,
+                "app_scope_lifecycle event=host_network_status online=$online source=$source"
+            )
             postAndroidAppScopeEvent(
                 eventName = RaftHostNetworkNotifyContract.EventName,
                 eventData =
@@ -1309,13 +1363,15 @@ internal object AndroidAppScopeRealtimeOwner {
         }
     }
 
-    private fun Context.isHostNetworkOnline(): Boolean {
-        val connectivityManager =
-            getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager ?: return false
-        val activeNetwork = connectivityManager.activeNetwork ?: return false
-        val capabilities = connectivityManager.getNetworkCapabilities(activeNetwork) ?: return false
-        return capabilities.isHostNetworkOnline()
-    }
+    private fun Context.isHostNetworkOnline(): Boolean =
+        runCatching {
+            val connectivityManager =
+                getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
+                    ?: return@runCatching false
+            val activeNetwork = connectivityManager.activeNetwork ?: return@runCatching false
+            val capabilities = connectivityManager.getNetworkCapabilities(activeNetwork) ?: return@runCatching false
+            capabilities.isHostNetworkOnline()
+        }.getOrDefault(false)
 
     private fun NetworkCapabilities.isHostNetworkOnline(): Boolean =
         hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) &&

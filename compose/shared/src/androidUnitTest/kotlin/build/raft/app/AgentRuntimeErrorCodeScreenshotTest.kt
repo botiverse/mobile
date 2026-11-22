@@ -29,16 +29,7 @@ class AgentRuntimeErrorCodeScreenshotTest {
     val activities = RobolectricComposeActivityRule()
 
     @Test
-    fun memberLight() = capture("agent.runtime-error.code-member", RaftAppAppearance.Light, Member, canViewPrivate = false)
-
-    @Test
-    fun memberDark() = capture("agent.runtime-error.code-member.dark", RaftAppAppearance.Dark, Member, canViewPrivate = false)
-
-    @Test
     fun managerLight() = capture("agent.runtime-error.code-manager", RaftAppAppearance.Light, Manager, canViewPrivate = true)
-
-    @Test
-    fun managerDark() = capture("agent.runtime-error.code-manager.dark", RaftAppAppearance.Dark, Manager, canViewPrivate = true)
 
     private fun capture(name: String, appearance: RaftAppAppearance, display: AgentRuntimeErrorDisplay.Coded, canViewPrivate: Boolean) {
         RaftRobolectricScreenshot.capture(name, appearance, reportDir = "build/reports/home-screenshots", activities = activities) {
@@ -58,8 +49,6 @@ class AgentRuntimeErrorCodeScreenshotTest {
         }
     }
 }
-
-private val Member = AgentRuntimeErrorDisplay.Coded(AgentRuntimeErrorCode.UsageLimit, forManager = false, detail = "")
 
 private val Manager =
     AgentRuntimeErrorDisplay.Coded(

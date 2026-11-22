@@ -24,21 +24,27 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.geometry.lerp
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.layout.layout
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.onPlaced
 import androidx.compose.ui.layout.SubcomposeLayout
 import androidx.compose.ui.semantics.clearAndSetSemantics
@@ -224,7 +230,7 @@ private val LocalRaftTabStripScroll = staticCompositionLocalOf<RaftTabStripScrol
  * - Default variant: 32dp tall, 12dp padding, hugging its label. [selected] is the active
  *   sticker: `selected`, 1.5dp `sticker-ink` edge, bold `sticker-ink` label, the die-cut edge
  *   in dark. Pressed lays `fill-pressed` (`sticker-pressed` on the sticker) over it; a
- *   mouse or trackpad hover lays `fill-medium` over an unselected tab (faded over 100ms).
+ *   mouse or trackpad hover lays `fill-medium` over an unselected tab.
  * - Underline variant: 44dp tall, no padding or fill. [selected] turns the label
  *   `foreground` and draws a 2dp `foreground` line along the tab's bottom; hover and press
  *   turn an unselected label `foreground`.
@@ -385,10 +391,12 @@ internal fun RaftStickerItem(
     icon: (@Composable () -> Unit)? = null,
     count: String? = null,
     iconsOnly: Boolean = false,
+    /** The track draws the sticker under it ([RaftSegmentedControl]'s `selectionPosition`): only the ink. */
+    trackDrawsSticker: Boolean = false,
 ) {
     val colors = RaftTheme.colors
-    val look = raftStickerItemLook(active, enabled, colors)
-    // Unselected: `hover:bg-fill-medium active:bg-fill-medium`, faded over 100ms. The active
+    val look = raftStickerItemLook(active, enabled, colors).let { if (trackDrawsSticker) it.withoutSticker() else it }
+    // Unselected: `hover:bg-fill-medium active:bg-fill-medium`. The active
     // sticker doesn't hover, and presses with `overlay-sticker-medium`.
     val overlay =
         rememberRaftStateOverlay(
@@ -503,14 +511,23 @@ fun RaftSegmentedControl(
      * rule as [iconsOnlyWhenLabelsDontFit] for which segments may: one without an icon keeps its label.
      */
     iconsOnly: Boolean = false,
+    /**
+     * Where the selection is, in segments (reading order), while content that follows the finger
+     * moves under the control ([RaftSegmentedPagerState.position]: `1.4f` is 40% of the way from
+     * the second segment to the third). Set, the yellow sticker is drawn by the track at that
+     * position, its edges interpolated between the two segments', so it slides with a drag or a
+     * slide instead of jumping; each [RaftSegment] keeps its label, ink and semantics by its own
+     * `selected`. Read in the draw phase only: a drag redraws the track, nothing recomposes.
+     */
+    selectionPosition: (() -> Float)? = null,
     content: @Composable RowScope.() -> Unit,
 ) {
     if (iconsOnly) {
-        RaftSegmentedTrack(modifier, iconsOnly = true, content)
+        RaftSegmentedTrack(modifier, iconsOnly = true, selectionPosition, content)
         return
     }
     if (!iconsOnlyWhenLabelsDontFit) {
-        RaftSegmentedTrack(modifier, iconsOnly = false, content)
+        RaftSegmentedTrack(modifier, iconsOnly = false, selectionPosition, content)
         return
     }
     SubcomposeLayout(modifier) { constraints ->
@@ -518,12 +535,12 @@ fun RaftSegmentedControl(
         // semantics, so nothing reads or finds it twice.
         val labelledWidth =
             subcompose(RaftSegmentedSlot.Labelled) {
-                RaftSegmentedTrack(Modifier.clearAndSetSemantics {}, iconsOnly = false, content)
+                RaftSegmentedTrack(Modifier.clearAndSetSemantics {}, iconsOnly = false, selectionPosition, content)
             }.maxOfOrNull { it.maxIntrinsicWidth(constraints.maxHeight) } ?: 0
         val iconsOnly = raftSegmentIconsOnly(labelledWidth = labelledWidth, availableWidth = constraints.maxWidth, bounded = constraints.hasBoundedWidth)
         val placeables =
             subcompose(if (iconsOnly) RaftSegmentedSlot.IconsOnly else RaftSegmentedSlot.Shown) {
-                RaftSegmentedTrack(Modifier, iconsOnly = iconsOnly, content)
+                RaftSegmentedTrack(Modifier, iconsOnly = iconsOnly, selectionPosition, content)
             }.map { it.measure(constraints) }
         val width = placeables.maxOfOrNull { it.width } ?: constraints.minWidth
         val height = placeables.maxOfOrNull { it.height } ?: constraints.minHeight
@@ -544,14 +561,52 @@ internal fun raftSegmentIconsOnly(labelledWidth: Int, availableWidth: Int, bound
 private val LocalRaftSegmentIconsOnly = staticCompositionLocalOf { false }
 
 @Composable
-private fun RaftSegmentedTrack(modifier: Modifier, iconsOnly: Boolean, content: @Composable RowScope.() -> Unit) {
+private fun RaftSegmentedTrack(
+    modifier: Modifier,
+    iconsOnly: Boolean,
+    selectionPosition: (() -> Float)?,
+    content: @Composable RowScope.() -> Unit,
+) {
     val scroll = rememberScrollState()
     val track = remember(scroll) { RaftTabStripScroll(scroll) }
     SideEffect { track.composed = true }
     val trackShape = RoundedCornerShape(11.dp)
+    val indicator = if (selectionPosition != null) remember { RaftSegmentIndicator() } else null
     // No near-hit for the track itself: while it scrolls (clipped), a finger past its edge
     // reaches no segment through it. Each segment sets its own 44dp-tall reach.
-    RaftExactTouchBounds { RaftSegmentedTrackRow(modifier, trackShape, scroll, track, iconsOnly, content) }
+    RaftExactTouchBounds {
+        RaftSegmentedTrackRow(modifier, trackShape, scroll, track, iconsOnly, indicator, selectionPosition, content)
+    }
+}
+
+/**
+ * The segments' boxes (in the track's scrolled content) for a sticker the track draws at a
+ * [RaftSegmentedControl]'s `selectionPosition`. Each [RaftSegment] keeps its own box here.
+ */
+private class RaftSegmentIndicator {
+    val boxes = mutableStateMapOf<Any, Rect>()
+
+    /** The boxes in reading order: the order the row places its segments in. */
+    fun ordered(isLtr: Boolean): List<Rect> =
+        if (isLtr) boxes.values.sortedBy { it.left } else boxes.values.sortedByDescending { it.left }
+}
+
+/** Set by a [RaftSegmentedControl] with a `selectionPosition`: its segments report their boxes. */
+private val LocalRaftSegmentIndicator = staticCompositionLocalOf<RaftSegmentIndicator?> { null }
+
+/**
+ * The selection sticker's box at [position] (segments, reading order) over the segments' [boxes]:
+ * a segment's own box at a whole position, between two the interpolation of both (its edges move
+ * from one segment's to the next's, so it also grows or shrinks between segments of different
+ * widths). Positions past either end stay on the end segment; null with no segments.
+ */
+internal fun raftSegmentIndicatorBox(position: Float, boxes: List<Rect>): Rect? {
+    if (boxes.isEmpty()) return null
+    val last = boxes.lastIndex
+    val p = if (position.isNaN()) 0f else position.coerceIn(0f, last.toFloat())
+    val from = p.toInt().coerceAtMost(last)
+    val to = (from + 1).coerceAtMost(last)
+    return lerp(boxes[from], boxes[to], p - from)
 }
 
 @Composable
@@ -561,8 +616,12 @@ private fun RaftSegmentedTrackRow(
     scroll: androidx.compose.foundation.ScrollState,
     track: RaftTabStripScroll,
     iconsOnly: Boolean,
+    indicator: RaftSegmentIndicator?,
+    selectionPosition: (() -> Float)?,
     content: @Composable RowScope.() -> Unit,
 ) {
+    val colors = RaftTheme.colors
+    val isLtr = LocalLayoutDirection.current == LayoutDirection.Ltr
     Row(
         modifier
             .raftBoundedTrack()
@@ -579,6 +638,17 @@ private fun RaftSegmentedTrackRow(
             .horizontalScroll(scroll)
             .raftWeightsKeepTheirWidth()
             .onPlaced { track.content = it }
+            .then(
+                if (indicator != null && selectionPosition != null) {
+                    // The sticker under the segments, in the scrolled content (it scrolls with them).
+                    Modifier.drawBehind {
+                        val box = raftSegmentIndicatorBox(selectionPosition(), indicator.ordered(isLtr)) ?: return@drawBehind
+                        drawRaftSticker(box, raftActiveStickerLook(true, colors), RaftRadius.Control)
+                    }
+                } else {
+                    Modifier
+                }
+            )
             .padding(3.dp),
         // raft-ui 0.20: segments 3dp apart, the same as the track's inset.
         horizontalArrangement = Arrangement.spacedBy(3.dp),
@@ -587,6 +657,7 @@ private fun RaftSegmentedTrackRow(
         CompositionLocalProvider(
             LocalRaftSegmentTrackScroll provides track,
             LocalRaftSegmentIconsOnly provides iconsOnly,
+            LocalRaftSegmentIndicator provides indicator,
         ) { content() }
     }
 }
@@ -660,10 +731,12 @@ fun RaftSegment(
     // Compose's near-hit at 0 x 44 ([RaftExactTouchBounds]), which [raftTouchTarget] answers. A
     // track that scrolls clips them at its edge (its layer clip). Touch only: a mouse or
     // trackpad takes no taps past the box.
+    val indicator = LocalRaftSegmentIndicator.current
     val select =
         Modifier
             .raftTouchTarget(enabled, source, onClick, RaftSegmentTouchReach)
             .selectable(selected, source, indication = null, enabled = enabled, role = Role.RadioButton, onClick = onClick)
+            .then(if (indicator != null && track != null) Modifier.raftReportsSegmentBox(indicator, track) else Modifier)
     if (aloneIcon != null && trackIconsOnly) {
         val name = if (count != null) "$text $count" else text
         // The caller's modifier goes on the tooltip's outer box, where parent data (`weight`) holds.
@@ -678,6 +751,7 @@ fun RaftSegment(
                     icon = aloneIcon,
                     count = count,
                     iconsOnly = true,
+                    trackDrawsSticker = indicator != null,
                 )
             }
         }
@@ -692,7 +766,21 @@ fun RaftSegment(
             modifier.then(reveal).then(select),
             icon = icon,
             count = count,
+            trackDrawsSticker = indicator != null,
         )
+    }
+}
+
+/** Keeps this segment's box (in the track's scrolled content) in [indicator] while it is composed. */
+@Composable
+private fun Modifier.raftReportsSegmentBox(indicator: RaftSegmentIndicator, track: RaftTabStripScroll): Modifier {
+    val key = remember { Any() }
+    DisposableEffect(indicator, key) { onDispose { indicator.boxes.remove(key) } }
+    return onGloballyPositioned { coordinates ->
+        val content = track.content?.takeIf { it.isAttached } ?: return@onGloballyPositioned
+        if (!coordinates.isAttached) return@onGloballyPositioned
+        val box = content.localBoundingBoxOf(coordinates, clipBounds = false)
+        if (indicator.boxes[key] != box) indicator.boxes[key] = box
     }
 }
 

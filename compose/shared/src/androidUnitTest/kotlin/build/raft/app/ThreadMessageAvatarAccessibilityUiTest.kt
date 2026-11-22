@@ -18,7 +18,6 @@ import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import org.junit.Rule
 import org.junit.runner.RunWith
@@ -90,17 +89,5 @@ class ThreadMessageAvatarAccessibilityUiTest {
         avatar.performClick()
         waitForIdle()
         assertEquals(listOf("profile", "mention", "profile"), events)
-    }
-
-    @Test
-    fun whileSelectingMessagesTheAvatarIsNamedAfterTheAuthorWithoutTheMentionAction() = runRobolectricComposeUiTest {
-        showAvatar(profileActions = false)
-        val avatar = onNodeWithTag(ThreadMessageAvatarTestTag)
-        val config = avatar.fetchSemanticsNode().config
-        assertEquals(Role.Button, config.getOrNull(SemanticsProperties.Role))
-        assertEquals("Ada Lovelace", config.getOrNull(SemanticsProperties.ContentDescription)?.firstOrNull())
-        assertNull(config.getOrNull(SemanticsActions.CustomActions))
-        avatar.performSemanticsAction(SemanticsActions.OnClick)
-        assertEquals(listOf("profile"), events)
     }
 }

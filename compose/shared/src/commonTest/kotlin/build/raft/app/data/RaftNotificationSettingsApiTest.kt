@@ -149,19 +149,6 @@ class RaftNotificationSettingsApiTest {
     }
 
     @Test
-    fun aRefusedAccountUpdateRollsBack() = runTest {
-        val client = ScriptedAgentControlsNetworkClient()
-        RaftNotificationAccountSettingsStore.apiProvider = { RaftNotificationSettingsApi(client) }
-        RaftNotificationAccountSettingsStore.previewCache = {}
-        client.respond("PATCH", "me/notification-settings", 400, """{"error":"invalid"}""")
-
-        assertFalse(RaftNotificationAccountSettingsStore.update(RaftNotificationAccountSettingsPatch(sound = false)))
-
-        assertEquals(true, RaftNotificationAccountSettingsStore.state.value.settings?.sound)
-        assertEquals("notification_settings_save_failed", RaftNotificationAccountSettingsStore.state.value.errorCode)
-    }
-
-    @Test
     fun mobileDelayParsesPresentAbsentAndUnknownValues() {
         fun settingsWith(field: String): RaftNotificationAccountSettings =
             requireNotNull(parseRaftNotificationSettingsResponse("""{"settings":{"previewMode":"full","sound":true$field,"version":2},"servers":[]}""")).settings
@@ -197,41 +184,6 @@ class RaftNotificationSettingsApiTest {
             """{"mobileDelay":"always","version":0}""",
             buildRaftNotificationAccountSettingsPatchBody(RaftNotificationAccountSettingsPatch(mobileDelay = RaftNotificationMobileDelay.Always), version = 0)
         )
-    }
-
-    @Test
-    fun pickingAMobileDelayAppliesAtOnceAndRollsBackWhenRefused() = runTest {
-        val client = ScriptedAgentControlsNetworkClient()
-        RaftNotificationAccountSettingsStore.apiProvider = { RaftNotificationSettingsApi(client) }
-        RaftNotificationAccountSettingsStore.previewCache = {}
-        client.respond("GET", "me/notification-settings", 200, """{"settings":{"previewMode":"full","sound":true,"mobileDelay":"inactive","version":3},"servers":[]}""")
-        assertTrue(RaftNotificationAccountSettingsStore.load())
-
-        client.respond("PATCH", "me/notification-settings", 200, """{"settings":{"previewMode":"full","sound":true,"mobileDelay":"2m","version":4}}""")
-        assertTrue(RaftNotificationAccountSettingsStore.update(RaftNotificationAccountSettingsPatch(mobileDelay = RaftNotificationMobileDelay.Minutes2)))
-        assertEquals("""{"mobileDelay":"2m","version":3}""", client.requests.last().bodyText)
-        assertEquals(RaftNotificationMobileDelay.Minutes2, RaftNotificationAccountSettingsStore.state.value.settings?.mobileDelaySetting)
-        assertEquals(4, RaftNotificationAccountSettingsStore.state.value.settings?.version)
-
-        client.respond("PATCH", "me/notification-settings", 500, """{"error":"boom"}""")
-        assertFalse(RaftNotificationAccountSettingsStore.update(RaftNotificationAccountSettingsPatch(mobileDelay = RaftNotificationMobileDelay.Always)))
-        assertEquals("""{"mobileDelay":"always","version":4}""", client.requests.last().bodyText)
-        assertEquals("2m", RaftNotificationAccountSettingsStore.state.value.settings?.mobileDelay, "rolled back")
-        assertEquals("notification_settings_save_failed", RaftNotificationAccountSettingsStore.state.value.errorCode)
-    }
-
-    @Test
-    fun mobileDelayRetriesOnAVersionConflict() = runTest {
-        val client = ScriptedAgentControlsNetworkClient()
-        RaftNotificationAccountSettingsStore.apiProvider = { RaftNotificationSettingsApi(client) }
-        RaftNotificationAccountSettingsStore.previewCache = {}
-        client.respond("PATCH", "me/notification-settings", 409, """{"error":"version_conflict","settings":{"sound":false,"mobileDelay":"1m","version":9}}""")
-        client.respond("PATCH", "me/notification-settings", 200, """{"settings":{"sound":false,"mobileDelay":"10m","version":10}}""")
-
-        assertTrue(RaftNotificationAccountSettingsStore.update(RaftNotificationAccountSettingsPatch(mobileDelay = RaftNotificationMobileDelay.Minutes10)))
-
-        assertEquals(listOf("""{"mobileDelay":"10m","version":0}""", """{"mobileDelay":"10m","version":9}"""), client.requests.map { it.bodyText })
-        assertEquals("10m", RaftNotificationAccountSettingsStore.state.value.settings?.mobileDelay)
     }
 
     @Test

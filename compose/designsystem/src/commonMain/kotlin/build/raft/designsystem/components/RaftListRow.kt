@@ -264,7 +264,7 @@ fun RaftListRowGroup(
  *
  * States (States, ListRow): [onClick] = null is a display-only row (no hover, press or
  * focus; its controls are the targets). A mouse or trackpad hover lays `fill-subtle` over the
- * whole row (faded over 100ms), press `fill-medium`; keyboard
+ * whole row, press `fill-medium`; keyboard
  * focus draws a 2dp inset `foreground` outline (rows touch their group's edge).
  * [selected] is the item open beside the list: an `info-soft` wash, no border, no press
  * overlay, and `selected` in semantics; the wash (over the surface under it) becomes

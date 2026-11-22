@@ -51,48 +51,6 @@ class NavigationRailScreenshotTest {
     @Test
     fun navigationRailDark() = capture("shell.navigation-rail.dark", RaftAppAppearance.Dark, 1280)
 
-    @Test
-    fun navigationRailHelpLight() = capture("shell.navigation-rail.help", RaftAppAppearance.Light, 1280, helpOpen = true)
-
-    @Test
-    fun navigationRailHelpDark() = capture("shell.navigation-rail.help.dark", RaftAppAppearance.Dark, 1280, helpOpen = true)
-
-    /** The rail's Assistant (web OttieRailAvatar, slock #14307): Ottie's 28dp face, last of the tabs. */
-    @Test
-    fun navigationRailAssistantLight() = capture("shell.navigation-rail.assistant", RaftAppAppearance.Light, 1280, assistant = true)
-
-    @Test
-    fun navigationRailAssistantDark() = capture("shell.navigation-rail.assistant.dark", RaftAppAppearance.Dark, 1280, assistant = true)
-
-    /** Its page beside the rail: the Assistant is the selected sticker, the face in full colour. */
-    @Test
-    fun navigationRailAssistantSelected() =
-        capture("shell.navigation-rail.assistant-selected", RaftAppAppearance.Light, 1280, assistant = true, inlinePage = AppShellRailAssistantKey)
-
-    @Test
-    @Config(qualifiers = "w768dp-h1024dp-mdpi")
-    fun ipadPortrait768Light() = capture("shell.navigation-rail.ipad-768", RaftAppAppearance.Light, 768)
-
-    @Test
-    @Config(qualifiers = "w768dp-h1024dp-mdpi")
-    fun ipadPortrait768Dark() = capture("shell.navigation-rail.ipad-768.dark", RaftAppAppearance.Dark, 768)
-
-    @Test
-    @Config(qualifiers = "w834dp-h1194dp-mdpi")
-    fun ipadPortrait834Light() = capture("shell.navigation-rail.ipad-834", RaftAppAppearance.Light, 834)
-
-    @Test
-    @Config(qualifiers = "w834dp-h1194dp-mdpi")
-    fun ipadPortrait834Dark() = capture("shell.navigation-rail.ipad-834.dark", RaftAppAppearance.Dark, 834)
-
-    @Test
-    @Config(qualifiers = "w1194dp-h834dp-mdpi")
-    fun ipadLandscapeLight() = capture("shell.navigation-rail.ipad-landscape", RaftAppAppearance.Light, 1194)
-
-    @Test
-    @Config(qualifiers = "w1194dp-h834dp-mdpi")
-    fun ipadLandscapeDark() = capture("shell.navigation-rail.ipad-landscape.dark", RaftAppAppearance.Dark, 1194)
-
     private val servers =
         listOf(
             RaftServerSwitcherItem(id = "s1", name = "Botiverse", slug = "botiverse", activityUnreadCount = 0L),

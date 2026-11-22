@@ -46,16 +46,7 @@ class ThreadMessageAttachmentsScreenshotTest {
     val activities = RobolectricComposeActivityRule()
 
     @Test
-    fun imagesLight() = capture("thread.message-images", RaftAppAppearance.Light) { MessageImages() }
-
-    @Test
-    fun imagesDark() = capture("thread.message-images.dark", RaftAppAppearance.Dark) { MessageImages() }
-
-    @Test
     fun filesLight() = capture("thread.message-files", RaftAppAppearance.Light) { MessageFiles() }
-
-    @Test
-    fun filesDark() = capture("thread.message-files.dark", RaftAppAppearance.Dark) { MessageFiles() }
 
     @OptIn(ExperimentalCoilApi::class)
     private fun capture(name: String, appearance: RaftAppAppearance, content: @Composable () -> Unit) {

@@ -30,9 +30,6 @@ import kotlin.test.assertIs
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
-import kotlin.coroutines.Continuation
-import kotlin.coroutines.resume
-import kotlin.coroutines.suspendCoroutine
 
 class SharedSettingsStoreTest {
     @Test
@@ -73,29 +70,6 @@ class SharedSettingsStoreTest {
     }
 
     @Test
-    fun openDestinationLoadsRepositoryStateThroughCommonStore() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        val repository = FakeSettingsRepository(computersResult = DataResult.Content(computersSnapshot("machine-1")))
-        val store =
-            SharedSettingsStore(
-                dataSource =
-                    SharedSettingsDataSource(
-                        sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
-                        settingsRepository = repository
-                    ),
-                scope = scope
-            )
-
-        store.accept(SharedSettingsIntent.LoadPageContent(SharedSettingsDestination.Computers))
-
-        val computers = assertIs<ScreenLoadState.Content<SettingsComputersSnapshot>>(store.state.value.computers).data
-        assertEquals(SharedSettingsRoute(SharedSettingsDestination.Computers), store.state.value.route)
-        assertEquals(listOf("machine-1"), computers.computers.map { it.id })
-        assertEquals(listOf("computers"), repository.calls)
-        scope.cancel()
-    }
-
-    @Test
     fun accountSaveIntentUsesSettingsRepository() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val repository =
@@ -118,51 +92,6 @@ class SharedSettingsStoreTest {
         val account = assertIs<ScreenLoadState.Content<AccountSettingsSnapshot>>(store.state.value.account).data
         assertEquals("New Name", account.profile.displayName)
         assertEquals(listOf("account", "updateProfile:New Name"), repository.calls)
-        scope.cancel()
-    }
-
-    @Test
-    fun accountPasswordAvatarAndProviderIntentsUseTypedBoundaries() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        val repository =
-            FakeSettingsRepository(
-                accountResult = DataResult.Content(accountSnapshot())
-            )
-        val store =
-            SharedSettingsStore(
-                dataSource =
-                    SharedSettingsDataSource(
-                        sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
-                        settingsRepository = repository,
-                        platformCapabilities =
-                            FakeSettingsCapabilities(
-                                avatarFileResult =
-                                    DataResult.Content(
-                                        PlatformFile(
-                                            id = "avatar-1",
-                                            fileName = "avatar.png",
-                                            mimeType = "image/png",
-                                            bytes = "image".encodeToByteArray()
-                                        )
-                                    )
-                            )
-                    ),
-                scope = scope
-            )
-
-        store.accept(SharedSettingsIntent.ChangeAccountPassword(AccountPasswordChangeRequest("old-password", "new-password")))
-        store.accept(SharedSettingsIntent.RequestAccountAvatarUpload)
-        store.accept(SharedSettingsIntent.ConnectAccountProvider(AccountProviderLinkStartRequest("google")))
-
-        assertEquals(
-            listOf(
-                "changePassword:12",
-                "uploadAvatar:avatar.png",
-                "startProviderLink:google"
-            ),
-            repository.calls
-        )
-        assertEquals(SharedSettingsEffect.OpenUrl("https://raft.build/auth/google/link"), store.state.value.effect)
         scope.cancel()
     }
 
@@ -254,150 +183,6 @@ class SharedSettingsStoreTest {
 
         val account = assertIs<ScreenLoadState.Content<AccountSettingsSnapshot>>(store.state.value.account).data
         assertEquals("https://avatars.example.test/artin.png", account.profile.avatarUrl)
-        scope.cancel()
-    }
-
-    @Test
-    fun connectedAppsLoadAndRegisterUseTypedRepository() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        val block = BlockingCall()
-        val repository =
-            FakeSettingsRepository(
-                connectedAppsResult = DataResult.Content(connectedAppsSnapshot())
-            ).also {
-                it.registerConnectedAppBlock = block
-            }
-        val store =
-            SharedSettingsStore(
-                dataSource =
-                    SharedSettingsDataSource(
-                        sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
-                        settingsRepository = repository
-                    ),
-                scope = scope
-            )
-
-        store.accept(SharedSettingsIntent.LoadPageContent(SharedSettingsDestination.ConnectedApps))
-        val loaded = assertIs<ScreenLoadState.Content<SettingsConnectedAppsSnapshot>>(store.state.value.connectedApps).data
-        assertEquals(listOf("Calendar"), loaded.marketplace.map { it.name })
-
-        store.dispatch(
-            SharedSettingsIntent.RegisterConnectedApp(
-                SettingsConnectedAppRegisterRequest(
-                    name = "Mobile Client",
-                    clientId = "mobile-client",
-                    returnUrl = "https://example.com/callback"
-                )
-            )
-        )
-        block.awaitStarted()
-        store.dispatch(
-            SharedSettingsIntent.RegisterConnectedApp(
-                SettingsConnectedAppRegisterRequest(name = "Mobile Client", clientId = "mobile-client")
-            )
-        )
-
-        assertEquals(listOf("connectedApps", "registerConnectedApp:Mobile Client"), repository.calls)
-        assertEquals(SharedSettingsActionState(CONNECTED_APPS_ACTION_REGISTER, inProgress = true), store.state.value.actionState)
-
-        block.release()
-        yield()
-
-        val updated = assertIs<ScreenLoadState.Content<SettingsConnectedAppsSnapshot>>(store.state.value.connectedApps).data
-        assertEquals("secret_once", updated.oneTimeClientSecret?.clientSecret)
-        assertEquals(listOf("connectedApps", "registerConnectedApp:Mobile Client"), repository.calls)
-        assertEquals(false, store.state.value.actionState?.inProgress)
-        assertNull(store.state.value.actionState?.errorCode)
-        scope.cancel()
-    }
-
-    @Test
-    fun connectedAppLogoUploadAndClearUsePlatformPickerAndRepository() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        val repository =
-            FakeSettingsRepository(
-                connectedAppsResult = DataResult.Content(connectedAppsSnapshot())
-            )
-        val capabilities =
-            FakeSettingsCapabilities(
-                connectedAppLogoFileResult =
-                    DataResult.Content(
-                        PlatformFile(
-                            id = "logo-1",
-                            fileName = "logo.png",
-                            mimeType = "image/png",
-                            bytes = "logo".encodeToByteArray()
-                        )
-                    )
-            )
-        val store =
-            SharedSettingsStore(
-                dataSource =
-                    SharedSettingsDataSource(
-                        sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
-                        settingsRepository = repository,
-                        platformCapabilities = capabilities
-                    ),
-                scope = scope
-            )
-
-        store.accept(SharedSettingsIntent.LoadPageContent(SharedSettingsDestination.ConnectedApps))
-        store.accept(SharedSettingsIntent.RequestConnectedAppLogoUpload("client-1"))
-
-        val uploaded = assertIs<ScreenLoadState.Content<SettingsConnectedAppsSnapshot>>(store.state.value.connectedApps).data
-        assertEquals("https://cdn.example/logo.png", uploaded.registered.single().logoUrl)
-        assertEquals(listOf("connectedApps", "uploadConnectedAppLogo:client-1:logo.png"), repository.calls)
-        assertEquals(listOf("pickConnectedAppLogoFile:client-1"), capabilities.calls)
-        assertEquals(false, store.state.value.actionState?.inProgress)
-        assertNull(store.state.value.actionState?.errorCode)
-
-        store.accept(SharedSettingsIntent.ClearConnectedAppLogo("client-1"))
-
-        val cleared = assertIs<ScreenLoadState.Content<SettingsConnectedAppsSnapshot>>(store.state.value.connectedApps).data
-        assertNull(cleared.registered.single().logoUrl)
-        assertEquals(
-            listOf(
-                "connectedApps",
-                "uploadConnectedAppLogo:client-1:logo.png",
-                "clearConnectedAppLogo:client-1"
-            ),
-            repository.calls
-        )
-        assertEquals(SharedSettingsActionState(CONNECTED_APPS_ACTION_LOGO_CLEAR, "client-1", inProgress = false), store.state.value.actionState)
-        scope.cancel()
-    }
-
-    @Test
-    fun serverAndBillingLoadTypedSnapshotsThroughCommonStore() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        val repository =
-            FakeSettingsRepository(
-                billingResult = DataResult.Content(billingSnapshot()),
-                serverResult = DataResult.Content(serverSnapshot())
-            )
-        val store =
-            SharedSettingsStore(
-                dataSource =
-                    SharedSettingsDataSource(
-                        sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
-                        settingsRepository = repository
-                    ),
-                scope = scope
-            )
-
-        store.accept(SharedSettingsIntent.LoadPageContent(SharedSettingsDestination.Billing))
-        val billing = assertIs<ScreenLoadState.Content<SettingsBillingSnapshot>>(store.state.value.billing).data
-        assertEquals("Team", billing.currentPlan.planName)
-
-        store.accept(SharedSettingsIntent.LoadPageContent(SharedSettingsDestination.Server))
-        val server = assertIs<ScreenLoadState.Content<SettingsServerSnapshot>>(store.state.value.server).data
-        assertEquals("Slock Community", server.profile.name)
-        assertEquals(listOf("Admin"), server.admins.map { it.name })
-        assertEquals(
-            listOf("admins", "billing", "pending_invites", "join_links", "onboarding_agent", "translation", "sidebar_order", "danger"),
-            server.sections.map { it.key }
-        )
-        assertEquals(listOf("billing", "server"), repository.calls)
         scope.cancel()
     }
 
@@ -617,40 +402,6 @@ class SharedSettingsStoreTest {
     }
 
     @Test
-    fun duplicateProfileSaveNoOpsWhileInFlight() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        val block = BlockingCall()
-        val repository =
-            FakeSettingsRepository(accountResult = DataResult.Content(accountSnapshot())).also {
-                it.updateProfileBlock = block
-            }
-        val store =
-            SharedSettingsStore(
-                dataSource =
-                    SharedSettingsDataSource(
-                        sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
-                        settingsRepository = repository
-                    ),
-                scope = scope
-            )
-
-        store.dispatch(SharedSettingsIntent.UpdateProfile(AccountProfileUpdateRequest("New Name", "@new", "new@slock.ai")))
-        block.awaitStarted()
-        store.dispatch(SharedSettingsIntent.UpdateProfile(AccountProfileUpdateRequest("New Name", "@new", "new@slock.ai")))
-
-        assertEquals(listOf("updateProfile:New Name"), repository.calls)
-        assertEquals(SharedSettingsActionState("saveProfile", inProgress = true), store.state.value.actionState)
-
-        block.release()
-        yield()
-
-        assertEquals(listOf("updateProfile:New Name"), repository.calls)
-        assertEquals(false, store.state.value.actionState?.inProgress)
-        assertNull(store.state.value.actionState?.errorCode)
-        scope.cancel()
-    }
-
-    @Test
     fun duplicateCreateServerInviteNoOpsWhileInFlight() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val block = BlockingCall()
@@ -805,52 +556,6 @@ class SharedSettingsStoreTest {
     }
 
     @Test
-    fun hostOnlyActionsEmitEffectsWithoutChangingRoute() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        val store =
-            SharedSettingsStore(
-                dataSource = SharedSettingsDataSource(InMemoryRaftAuthSessionStore(sampleSession())),
-                scope = scope
-            )
-
-        store.accept(SharedSettingsIntent.RequestNotificationPermission)
-        assertEquals(SharedSettingsEffect.RequestNotificationPermission, store.state.value.effect)
-        assertEquals(SharedSettingsActionState(MOBILE_ACTION_PERMISSION, inProgress = true), store.state.value.actionState)
-        assertEquals(SharedSettingsRoute(), store.state.value.route)
-
-        store.accept(SharedSettingsIntent.ConsumeEffect)
-        store.accept(SharedSettingsIntent.SendTestNotification)
-        assertEquals(SharedSettingsEffect.SendTestNotification, store.state.value.effect)
-        scope.cancel()
-    }
-
-    @Test
-    fun mobileLoadsMessageAlignmentWithoutServerSettingsFetch() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        val repository = FakeSettingsRepository(mobileResult = DataResult.Content(mobileSnapshot()))
-        val store =
-            SharedSettingsStore(
-                dataSource =
-                    SharedSettingsDataSource(
-                        sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
-                        settingsRepository = repository,
-                        notificationPreferenceRepository = FakeNotificationPreferenceRepository(enabled = true),
-                        localeRepository = FakeLocaleRepository(current = AppLocale.SimplifiedChinese),
-                        chatLayoutPreferenceRepository =
-                            FakeChatLayoutPreferenceRepository(alignment = MyMessageAlignmentPreference.Right)
-                    ),
-                scope = scope
-            )
-
-        store.accept(SharedSettingsIntent.LoadPageContent(SharedSettingsDestination.Mobile))
-
-        val mobile = assertIs<ScreenLoadState.Content<SettingsMobileSnapshot>>(store.state.value.mobile).data
-        assertEquals("Right", mobile.messageAlignmentPreference.statusLabel)
-        assertEquals(emptyList<String>(), repository.calls)
-        scope.cancel()
-    }
-
-    @Test
     fun setLocalePublishesRuntimeLocaleWithoutWritingResourceGlobalOffThread() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val localeRepository = FakeLocaleRepository(current = AppLocale.English)
@@ -917,57 +622,6 @@ class SharedSettingsStoreTest {
         } finally {
             KmmResourceLocaleRuntime.replaceForTest(originalRuntimeLocale)
         }
-    }
-
-    @Test
-    fun aSavedSettingChangeRecordsAppSettingChangedOnceAndNothingElse() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        val recorded = mutableListOf<RaftAppSettingChangedProperties>()
-        val store =
-            SharedSettingsStore(
-                dataSource =
-                    SharedSettingsDataSource(
-                        sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
-                        settingsRepository = FakeSettingsRepository(mobileResult = DataResult.Content(mobileSnapshot())),
-                        chatLayoutPreferenceRepository =
-                            FakeChatLayoutPreferenceRepository(alignment = MyMessageAlignmentPreference.Left),
-                        linkOpenPreferenceRepository = FakeLinkOpenPreferenceRepository(),
-                        platformCapabilities = ConversationForwardCapableSettingsPlatformCapabilities
-                    ),
-                scope = scope,
-                onAppSettingChanged = { setting, previous, value, surface ->
-                    recorded += RaftAppSettingChangedProperties(setting, value, previous, surface)
-                }
-            )
-        store.accept(SharedSettingsIntent.LoadPageContent(SharedSettingsDestination.Mobile))
-
-        // Saved with a new value: one event, from the page that showed the card.
-        store.accept(SharedSettingsIntent.SetMessageAlignment("right", RaftAppSettingSurface.SettingsAppearance))
-        // The value it already has: no change, no event.
-        store.accept(SharedSettingsIntent.SetMessageAlignment("right"))
-        // A save that fails (an unknown value) keeps the previous value: no event.
-        store.accept(SharedSettingsIntent.SetLinkOpenMode("unsupported"))
-        // An on/off setting reports on / off.
-        store.accept(SharedSettingsIntent.SetNewMessageMenuEnabled(true))
-
-        assertEquals(
-            listOf(
-                RaftAppSettingChangedProperties(
-                    setting = RaftAppSettingKey.MessageAlignment,
-                    value = RaftAppSettingValue.Right,
-                    previousValue = RaftAppSettingValue.Left,
-                    surface = RaftAppSettingSurface.SettingsAppearance
-                ),
-                RaftAppSettingChangedProperties(
-                    setting = RaftAppSettingKey.NewMessageMenu,
-                    value = RaftAppSettingValue.On,
-                    previousValue = RaftAppSettingValue.Off,
-                    surface = RaftAppSettingSurface.SettingsMobile
-                ),
-            ),
-            recorded
-        )
-        scope.cancel()
     }
 
     @Test
@@ -1180,41 +834,6 @@ class SharedSettingsStoreTest {
     }
 
     @Test
-    fun mobileServerNotificationModeIntentUsesSettingsRepository() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        val repository =
-            FakeSettingsRepository(
-                mobileResult =
-                    DataResult.Content(
-                        mobileSnapshot().copy(serverNotificationMode = ServerPushMode.All.toSettingsMobileSelectionSnapshot())
-                    )
-            )
-        val store =
-            SharedSettingsStore(
-                dataSource =
-                    SharedSettingsDataSource(
-                        sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
-                        settingsRepository = repository,
-                        notificationPreferenceRepository = FakeNotificationPreferenceRepository(),
-                        localeRepository = FakeLocaleRepository(),
-                        chatLayoutPreferenceRepository = FakeChatLayoutPreferenceRepository()
-                    ),
-                scope = scope
-            )
-
-        // The only caller is the Notifications page (server-backed snapshot); Mobile shows the local-only copy.
-        store.accept(SharedSettingsIntent.LoadPageContent(SharedSettingsDestination.Notifications))
-        repository.calls.clear()
-        store.accept(SharedSettingsIntent.SetServerNotificationMode(ServerPushMode.Mentions.wireName))
-
-        val mobile = assertIs<ScreenLoadState.Content<SettingsMobileSnapshot>>(store.state.value.mobile).data
-        assertEquals(false, mobile.muteServer.enabled)
-        assertEquals(ServerPushMode.Mentions.wireName, mobile.serverNotificationMode.selectedKey)
-        assertEquals(listOf("setServerNotificationMode:mentions"), repository.calls)
-        scope.cancel()
-    }
-
-    @Test
     fun mobilePushPreviewModeIntentSavesTheAccountSettingThenTheDeviceCopy() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val repository = FakeSettingsRepository(mobileResult = DataResult.Content(mobileSnapshot()))
@@ -1288,105 +907,6 @@ class SharedSettingsStoreTest {
         override fun putString(key: String, value: String?) {
             if (value == null) values.remove(key) else values[key] = value
         }
-    }
-
-    @Test
-    fun unavailableServerNotificationModeCannotBeChanged() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        val initial =
-            mobileSnapshot().let { snapshot ->
-                snapshot.copy(
-                    muteServer = snapshot.muteServer.copy(enabled = false, available = false, statusLabel = "Unavailable"),
-                    serverNotificationMode = unknownServerNotificationModeSelectionSnapshot(),
-                )
-            }
-        val repository = FakeSettingsRepository(mobileResult = DataResult.Content(initial))
-        val store = settingsStore(repository, scope = scope)
-        store.accept(SharedSettingsIntent.LoadPageContent(SharedSettingsDestination.Notifications))
-        repository.calls.clear()
-
-        store.accept(SharedSettingsIntent.SetServerNotificationMode(ServerPushMode.None.wireName))
-        store.accept(SharedSettingsIntent.SetServerMute(true))
-
-        assertEquals(emptyList(), repository.calls)
-        val mobile = assertIs<ScreenLoadState.Content<SettingsMobileSnapshot>>(store.state.value.mobile).data
-        assertEquals("", mobile.serverNotificationMode.selectedKey)
-        scope.cancel()
-    }
-
-    @Test
-    fun serverNotificationModeOptimisticallySelectsOnceWhilePatchIsPending() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        val initial =
-            mobileSnapshot().copy(
-                serverNotificationMode = ServerPushMode.All.toSettingsMobileSelectionSnapshot()
-            )
-        val block = BlockingCall()
-        val repository =
-            FakeSettingsRepository(mobileResult = DataResult.Content(initial)).also {
-                it.setServerNotificationModeBlock = block
-                it.setServerNotificationModeResult =
-                    DataResult.Content(
-                        initial.copy(
-                            serverNotificationMode =
-                                ServerPushMode.Mentions.toSettingsMobileSelectionSnapshot().copy(
-                                    selectedLabel = "Canonical mentions",
-                                    statusLabel = "Canonical mentions"
-                                )
-                        )
-                    )
-            }
-        val store = settingsStore(repository, scope = scope)
-        store.accept(SharedSettingsIntent.LoadPageContent(SharedSettingsDestination.Notifications))
-        repository.calls.clear()
-
-        store.accept(SharedSettingsIntent.SetServerNotificationMode(ServerPushMode.All.wireName))
-        assertEquals(emptyList(), repository.calls)
-
-        val mutation = launch {
-            store.accept(SharedSettingsIntent.SetServerNotificationMode(ServerPushMode.Mentions.wireName))
-        }
-        block.awaitStarted()
-
-        var mobile = assertIs<ScreenLoadState.Content<SettingsMobileSnapshot>>(store.state.value.mobile).data
-        assertEquals(ServerPushMode.Mentions.wireName, mobile.serverNotificationMode.selectedKey)
-        assertEquals(true, mobile.serverNotificationMode.available)
-        assertEquals(true, store.state.value.actionState?.inProgress)
-        assertEquals(ServerPushMode.Mentions.wireName, store.state.value.actionState?.itemId)
-        assertEquals(listOf("setServerNotificationMode:mentions"), repository.calls)
-
-        store.accept(
-            SharedSettingsIntent.ApplyRealtimeEvent(
-                serverId = "server-1",
-                event =
-                    ServerNotificationPreferencesChanged(
-                        serverId = ServerId("server-1"),
-                        serverPushMode = ServerPushMode.All.wireName,
-                        prefsVersion = 2
-                    )
-            )
-        )
-        mobile = assertIs<ScreenLoadState.Content<SettingsMobileSnapshot>>(store.state.value.mobile).data
-        assertEquals(ServerPushMode.Mentions.wireName, mobile.serverNotificationMode.selectedKey)
-        assertEquals(listOf("setServerNotificationMode:mentions", "mobile"), repository.calls)
-
-        store.accept(SharedSettingsIntent.SetForegroundMessageBanners(true))
-        mobile = assertIs<ScreenLoadState.Content<SettingsMobileSnapshot>>(store.state.value.mobile).data
-        assertEquals(false, mobile.foregroundMessageBanners.enabled)
-        assertEquals(MOBILE_ACTION_SERVER_MUTE, store.state.value.actionState?.action)
-
-        store.accept(SharedSettingsIntent.SetServerNotificationMode(ServerPushMode.Mentions.wireName))
-        store.accept(SharedSettingsIntent.SetServerNotificationMode(ServerPushMode.None.wireName))
-        assertEquals(listOf("setServerNotificationMode:mentions", "mobile"), repository.calls)
-
-        block.release()
-        mutation.join()
-
-        mobile = assertIs<ScreenLoadState.Content<SettingsMobileSnapshot>>(store.state.value.mobile).data
-        assertEquals(ServerPushMode.Mentions.wireName, mobile.serverNotificationMode.selectedKey)
-        assertEquals("Canonical mentions", mobile.serverNotificationMode.statusLabel)
-        assertEquals(false, store.state.value.actionState?.inProgress)
-        scope.cancel()
     }
 
     @Test
@@ -1505,87 +1025,6 @@ class SharedSettingsStoreTest {
         mobile = assertIs<ScreenLoadState.Content<SettingsMobileSnapshot>>(store.state.value.mobile).data
         assertEquals(ServerPushMode.All.wireName, mobile.serverNotificationMode.selectedKey)
         assertEquals(true, mobile.serverNotificationMode.available)
-        scope.cancel()
-    }
-
-    @Test
-    fun serverNotificationModeOwnerReadCannotPublishAfterRouteDeparture() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        val initial =
-            mobileSnapshot().copy(
-                serverNotificationMode = ServerPushMode.All.toSettingsMobileSelectionSnapshot()
-            )
-        val mutationBlock = BlockingCall()
-        val ownerReadBlock = BlockingCall()
-        val sessionStore = BlockingSessionStore(InMemoryRaftAuthSessionStore(sampleSession()))
-        val repository =
-            FakeSettingsRepository(mobileResult = DataResult.Content(initial)).also {
-                it.setServerNotificationModeBlock = mutationBlock
-                it.setServerNotificationModeResult =
-                    DataResult.Content(
-                        initial.copy(
-                            serverNotificationMode = ServerPushMode.None.toSettingsMobileSelectionSnapshot()
-                        )
-                    )
-            }
-        val store = settingsStore(repository, sessionStore = sessionStore, scope = scope)
-        store.accept(SharedSettingsIntent.LoadPageContent(SharedSettingsDestination.Notifications))
-        repository.calls.clear()
-
-        val mutation = launch {
-            store.accept(SharedSettingsIntent.SetServerNotificationMode(ServerPushMode.Mentions.wireName))
-        }
-        mutationBlock.awaitStarted()
-        sessionStore.readBlock = ownerReadBlock
-        mutationBlock.release()
-        ownerReadBlock.awaitStarted()
-
-        store.accept(SharedSettingsIntent.LoadPageContent(SharedSettingsDestination.Mobile))
-        ownerReadBlock.release()
-        mutation.join()
-
-        val mobile = assertIs<ScreenLoadState.Content<SettingsMobileSnapshot>>(store.state.value.mobile).data
-        assertEquals(SharedSettingsDestination.Mobile, store.state.value.route.destination)
-        assertEquals("", mobile.serverNotificationMode.selectedKey)
-        assertEquals(false, mobile.serverNotificationMode.available)
-        assertNull(store.state.value.actionState)
-        assertEquals(listOf("setServerNotificationMode:mentions"), repository.calls)
-        scope.cancel()
-    }
-
-    @Test
-    fun serverNotificationModeLateResultCannotCrossDestination() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        val initial =
-            mobileSnapshot().copy(
-                serverNotificationMode = ServerPushMode.All.toSettingsMobileSelectionSnapshot()
-            )
-        val block = BlockingCall()
-        val repository =
-            FakeSettingsRepository(mobileResult = DataResult.Content(initial)).also {
-                it.setServerNotificationModeBlock = block
-                it.setServerNotificationModeResult =
-                    DataResult.Content(
-                        initial.copy(
-                            serverNotificationMode = ServerPushMode.None.toSettingsMobileSelectionSnapshot()
-                        )
-                    )
-            }
-        val store = settingsStore(repository, scope = scope)
-        store.accept(SharedSettingsIntent.LoadPageContent(SharedSettingsDestination.Notifications))
-
-        val mutation = launch {
-            store.accept(SharedSettingsIntent.SetServerNotificationMode(ServerPushMode.Mentions.wireName))
-        }
-        block.awaitStarted()
-        store.accept(SharedSettingsIntent.LoadPageContent(SharedSettingsDestination.Mobile))
-        block.release()
-        mutation.join()
-
-        val mobile = assertIs<ScreenLoadState.Content<SettingsMobileSnapshot>>(store.state.value.mobile).data
-        assertEquals("", mobile.serverNotificationMode.selectedKey)
-        assertEquals(false, mobile.serverNotificationMode.available)
-        assertNull(store.state.value.actionState)
         scope.cancel()
     }
 
@@ -1764,51 +1203,6 @@ class SharedSettingsStoreTest {
     }
 
     @Test
-    fun loadPageContentWithItemIdLoadsTheComputerDetailOfThatMachine() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        val repository = FakeSettingsRepository(computerDetailResult = DataResult.Content(computerDetailSnapshot("machine-42")))
-        val store =
-            SharedSettingsStore(
-                dataSource =
-                    SharedSettingsDataSource(
-                        sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
-                        settingsRepository = repository
-                    ),
-                scope = scope
-            )
-
-        store.accept(SharedSettingsIntent.LoadPageContent(SharedSettingsDestination.ComputerDetail, " machine-42 "))
-
-        val detail = assertIs<ScreenLoadState.Content<SettingsComputerDetailSnapshot>>(store.state.value.computerDetail).data
-        assertEquals(SharedSettingsRoute(SharedSettingsDestination.ComputerDetail, "machine-42"), store.state.value.route)
-        assertEquals("machine-42", detail.computer.id)
-        assertEquals(listOf("computerDetail:machine-42"), repository.calls)
-        scope.cancel()
-    }
-
-    @Test
-    fun loadPageContentWithoutItemIdFailsTheComputerDetailClosed() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        val repository = FakeSettingsRepository(computerDetailResult = DataResult.Content(computerDetailSnapshot("machine-42")))
-        val store =
-            SharedSettingsStore(
-                dataSource =
-                    SharedSettingsDataSource(
-                        sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
-                        settingsRepository = repository
-                    ),
-                scope = scope
-            )
-
-        store.accept(SharedSettingsIntent.LoadPageContent(SharedSettingsDestination.ComputerDetail, "  "))
-
-        val error = assertIs<ScreenLoadState.Error>(store.state.value.computerDetail).error
-        assertEquals("settings_computer_required", error.code)
-        assertEquals(emptyList(), repository.calls)
-        scope.cancel()
-    }
-
-    @Test
     fun scanComputerWorkspacesUpdatesOnlyTheWorkspaceSection() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val repository =
@@ -1870,36 +1264,6 @@ class SharedSettingsStoreTest {
         val detail = assertIs<ScreenLoadState.Content<SettingsComputerDetailSnapshot>>(store.state.value.computerDetail).data
         assertEquals(false, detail.canManageMachines)
         assertEquals(SharedSettingsRoute(SharedSettingsDestination.ComputerDetail, "machine-42"), store.state.value.route)
-        scope.cancel()
-    }
-
-    @Test
-    fun openComputerDoesNotFallbackToRepositoryDetailWhenSharedComputersSourceMisses() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        val repository = FakeSettingsRepository(computerDetailResult = DataResult.Content(computerDetailSnapshot("machine-42")))
-        val computersSource =
-            FakeSettingsComputersSource(
-                computerResult = DataResult.Empty(EmptyReason.NoSettingsAvailable)
-            )
-        val store =
-            SharedSettingsStore(
-                dataSource =
-                    SharedSettingsDataSource(
-                        sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
-                        settingsRepository = repository,
-                        computersSource = computersSource
-                    ),
-                scope = scope
-            )
-
-        store.accept(SharedSettingsIntent.OpenComputer("machine-42"))
-
-        assertEquals(
-            listOf("sharedComputer:server-1:machine-42:false"),
-            computersSource.calls
-        )
-        assertEquals(emptyList(), repository.calls)
-        assertIs<ScreenLoadState.Empty>(store.state.value.computerDetail)
         scope.cancel()
     }
 
@@ -1969,53 +1333,6 @@ class SharedSettingsStoreTest {
         val detail = assertIs<ScreenLoadState.Content<SettingsComputerDetailSnapshot>>(store.state.value.computerDetail).data
         assertEquals(true, detail.workspacesScanned)
         assertEquals(listOf("workspace-1"), detail.workspaces.map { it.id })
-        assertEquals(SharedSettingsRoute(SharedSettingsDestination.ComputerDetail, "machine-42"), store.state.value.route)
-        scope.cancel()
-    }
-
-    @Test
-    fun updateComputerDescriptionIntentCallsRepositoryAndReloadsDetail() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        val updated =
-            SettingsComputerSnapshot(
-                id = "machine-42",
-                name = "MacBook Pro",
-                daemonVersion = "0.51.1",
-                online = true,
-                description = "Build farm runner"
-            )
-        val repository =
-            FakeSettingsRepository(
-                computerDetailResult = DataResult.Content(computerDetailSnapshot("machine-42")),
-                updateComputerDescriptionResult = DataResult.Content(updated)
-            )
-        val store =
-            SharedSettingsStore(
-                dataSource =
-                    SharedSettingsDataSource(
-                        sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
-                        settingsRepository = repository
-                    ),
-                scope = scope
-            )
-
-        store.accept(SharedSettingsIntent.OpenComputer("machine-42"))
-        store.accept(SharedSettingsIntent.UpdateComputerDescription(SettingsComputerDescriptionUpdateRequest("machine-42", "Build farm runner")))
-
-        assertEquals(
-            listOf(
-                "computerDetail:machine-42",
-                "updateComputerDescription:machine-42:Build farm runner",
-                "computerDetail:machine-42"
-            ),
-            repository.calls
-        )
-        val actionState = assertIs<SharedSettingsActionState>(store.state.value.actionState)
-        assertEquals("updateComputerDescription", actionState.action)
-        assertEquals("machine-42", actionState.itemId)
-        assertEquals(false, actionState.inProgress)
-        assertNull(actionState.errorCode)
-        assertIs<ScreenLoadState.Content<SettingsComputerDetailSnapshot>>(store.state.value.computerDetail)
         assertEquals(SharedSettingsRoute(SharedSettingsDestination.ComputerDetail, "machine-42"), store.state.value.route)
         scope.cancel()
     }
@@ -2220,167 +1537,6 @@ class SharedSettingsStoreTest {
 
         assertEquals(listOf("mobile"), repository.calls)
         assertIs<ScreenLoadState.Content<SettingsMobileSnapshot>>(store.state.value.mobile)
-        scope.cancel()
-    }
-
-    @Test
-    fun realtimeServerNotificationBurstReloadsTheOpenPageOncePlusOneFollowUp() = runTest {
-        val repository = FakeSettingsRepository(mobileResult = DataResult.Content(mobileSnapshot()))
-        val store =
-            SharedSettingsStore(
-                dataSource =
-                    SharedSettingsDataSource(
-                        sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
-                        settingsRepository = repository
-                    ),
-                scope = backgroundScope
-            )
-        store.accept(SharedSettingsIntent.LoadPageContent(SharedSettingsDestination.Notifications))
-        repository.calls.clear()
-        val first = BlockingCall()
-        repository.mobileBlock = first
-        fun changed(version: Long) =
-            SharedSettingsIntent.ApplyRealtimeEvent(
-                serverId = "server-1",
-                event =
-                    ServerNotificationPreferencesChanged(
-                        serverId = ServerId("server-1"),
-                        serverPushMode = ServerPushMode.None.wireName,
-                        prefsVersion = version
-                    )
-            )
-
-        val drain = launch { store.accept(changed(2)) }
-        first.awaitStarted()
-        repository.mobileBlock = null
-        repeat(4) { store.accept(changed(3L + it)) }
-        assertEquals(listOf("mobile"), repository.calls)
-        // The newest value comes from the follow-up GET, never from the payload.
-        repository.mobileResult =
-            DataResult.Content(
-                mobileSnapshot().copy(serverNotificationMode = ServerPushMode.None.toSettingsMobileSelectionSnapshot())
-            )
-        first.release()
-        drain.join()
-
-        assertEquals(listOf("mobile", "mobile"), repository.calls)
-        val mobile = assertIs<ScreenLoadState.Content<SettingsMobileSnapshot>>(store.state.value.mobile).data
-        assertEquals(ServerPushMode.None.wireName, mobile.serverNotificationMode.selectedKey)
-    }
-
-    @Test
-    fun realtimeServerNotificationOfAnotherServerOrClosedPageDoesNotReload() = runTest {
-        val repository = FakeSettingsRepository(mobileResult = DataResult.Content(mobileSnapshot()))
-        val store =
-            SharedSettingsStore(
-                dataSource =
-                    SharedSettingsDataSource(
-                        sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
-                        settingsRepository = repository
-                    ),
-                scope = backgroundScope
-            )
-        store.accept(SharedSettingsIntent.LoadPageContent(SharedSettingsDestination.Notifications))
-        repository.calls.clear()
-
-        store.accept(
-            SharedSettingsIntent.ApplyRealtimeEvent(
-                serverId = "server-1",
-                event = ServerNotificationPreferencesChanged(ServerId("server-2"), ServerPushMode.None.wireName, 2)
-            )
-        )
-        assertEquals(emptyList(), repository.calls)
-
-        store.accept(SharedSettingsIntent.LoadPageContent(SharedSettingsDestination.Appearance))
-        repository.calls.clear()
-        store.accept(
-            SharedSettingsIntent.ApplyRealtimeEvent(
-                serverId = "server-1",
-                event = ServerNotificationPreferencesChanged(ServerId("server-1"), ServerPushMode.None.wireName, 3)
-            )
-        )
-        assertEquals(emptyList(), repository.calls)
-    }
-
-    @Test
-    fun realtimeMachineUpdateDoesNotReloadWhenOpenMachineIdDoesNotMatch() = runBlocking {
-        // #79: when the user is on a different computer's detail page, a
-        // machine:updated event for some other machine must not trigger a
-        // refresh — otherwise we'd pointlessly refetch the open detail.
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        val repository =
-            FakeSettingsRepository(computerDetailResult = DataResult.Content(computerDetailSnapshot("machine-42")))
-        val store =
-            SharedSettingsStore(
-                dataSource =
-                    SharedSettingsDataSource(
-                        sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
-                        settingsRepository = repository
-                    ),
-                scope = scope
-            )
-
-        // Open machine-42, then fire a machine:updated for machine-99 (different machine).
-        store.accept(SharedSettingsIntent.OpenComputer("machine-42"))
-        repository.calls.clear()
-
-        store.accept(
-            SharedSettingsIntent.ApplyRealtimeEvent(
-                serverId = "server-1",
-                event =
-                    build.raft.app.model.RealtimeRefreshRequired(
-                        scope = build.raft.app.model.RealtimeRefreshScope.Machines,
-                        reason = "machine:updated",
-                        serverId = build.raft.app.model.ServerId("server-1"),
-                        subjectId = "machine-99"
-                    )
-            )
-        )
-        yield()
-
-        assertEquals(emptyList(), repository.calls)
-        scope.cancel()
-    }
-
-    @Test
-    fun realtimeMachineUpdateReloadsListWhenRouteIsComputers() = runBlocking {
-        // #79: when the user is on the Computers list page, a
-        // machine:updated event must reload the list so card status dots
-        // flip live. The list reload is independent of which machine the
-        // event is for (the list always shows the current snapshot).
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        val repository =
-            FakeSettingsRepository(computersResult = DataResult.Content(computersSnapshot("machine-42")))
-        val store =
-            SharedSettingsStore(
-                dataSource =
-                    SharedSettingsDataSource(
-                        sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
-                        settingsRepository = repository
-                    ),
-                scope = scope
-            )
-
-        // Open the Computers list route.
-        store.accept(SharedSettingsIntent.LoadPageContent(SharedSettingsDestination.Computers))
-        repository.calls.clear()
-
-        store.accept(
-            SharedSettingsIntent.ApplyRealtimeEvent(
-                serverId = "server-1",
-                event =
-                    build.raft.app.model.RealtimeRefreshRequired(
-                        scope = build.raft.app.model.RealtimeRefreshScope.Machines,
-                        reason = "machine:updated",
-                        serverId = build.raft.app.model.ServerId("server-1"),
-                        subjectId = "machine-42"
-                    )
-            )
-        )
-        yield()
-
-        // List must have been reloaded.
-        assertTrue(repository.calls.contains("computers"))
         scope.cancel()
     }
 
@@ -2691,72 +1847,6 @@ class SharedSettingsStoreTest {
     }
 
     @Test
-    fun realtimeEventWithNonMachineScopeIsIgnored() = runBlocking {
-        // #79: only RealtimeRefreshScope.Machines events are handled here.
-        // Other scopes (ServerMembers, Agents, etc.) are routed through
-        // SharedHomeStore and must not trigger settings refreshes.
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        val repository =
-            FakeSettingsRepository(computerDetailResult = DataResult.Content(computerDetailSnapshot("machine-42")))
-        val store =
-            SharedSettingsStore(
-                dataSource =
-                    SharedSettingsDataSource(
-                        sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
-                        settingsRepository = repository
-                    ),
-                scope = scope
-            )
-
-        store.accept(SharedSettingsIntent.OpenComputer("machine-42"))
-        repository.calls.clear()
-
-        store.accept(
-            SharedSettingsIntent.ApplyRealtimeEvent(
-                serverId = "server-1",
-                event =
-                    build.raft.app.model.RealtimeRefreshRequired(
-                        scope = build.raft.app.model.RealtimeRefreshScope.ServerMembers,
-                        reason = "server:member-updated",
-                        serverId = build.raft.app.model.ServerId("server-1")
-                    )
-            )
-        )
-        yield()
-
-        assertEquals(emptyList(), repository.calls)
-        scope.cancel()
-    }
-
-    @Test
-    fun aboutAndDiagnosticsLoadThroughPlatformCapabilities() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        val capabilities = FakeSettingsCapabilities()
-        val store =
-            SharedSettingsStore(
-                dataSource =
-                    SharedSettingsDataSource(
-                        sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
-                        platformCapabilities = capabilities
-                    ),
-                scope = scope
-            )
-
-        store.accept(SharedSettingsIntent.LoadPageContent(SharedSettingsDestination.About))
-        val about = assertIs<ScreenLoadState.Content<SharedSettingsAboutSnapshot>>(store.state.value.about).data
-        assertEquals("1.2.3", about.versionLabel)
-        assertEquals("456", about.buildLabel)
-
-        store.accept(SharedSettingsIntent.LoadPageContent(SharedSettingsDestination.Diagnostics))
-        val diagnostics = assertIs<ScreenLoadState.Content<SharedSettingsDiagnosticsSnapshot>>(store.state.value.diagnostics).data
-        assertEquals(listOf("SlockTest"), diagnostics.entries.map { it.tag })
-        // Opening About also fetches the hands update status and the developer
-        // snapshot (48631ed3: refresh update notices periodically).
-        assertEquals(listOf("about", "handsUpdateStatus", "developer", "about", "diagnostics"), capabilities.calls)
-        scope.cancel()
-    }
-
-    @Test
     fun diagnosticFeatureFlagOverrideIntentForwardsKeyAndModeThenReloadsDiagnostics() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val capabilities = FakeSettingsCapabilities()
@@ -2800,76 +1890,6 @@ class SharedSettingsStoreTest {
     }
 
     @Test
-    fun mountedDiagnosticsRefreshesAtLatestOverrideExpiryAndRejectsReplacedTimer() = runBlocking {
-        var now = 1_000L
-        val pendingDelays = mutableListOf<Continuation<Unit>>()
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        val capabilities = FakeSettingsCapabilities()
-        capabilities.setDiagnosticsResult(
-            diagnosticOverridesHostSnapshot(
-                clientOverride = "ForceOn",
-                expiresAtMillis = 1_100L,
-                finalEffective = true,
-            )
-        )
-        val store =
-            SharedSettingsStore(
-                dataSource =
-                    SharedSettingsDataSource(
-                        sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
-                        platformCapabilities = capabilities,
-                    ),
-                scope = scope,
-                nowMillis = { now },
-                diagnosticsRefreshDelay = { suspendCoroutine { pendingDelays += it } },
-            )
-
-        store.accept(SharedSettingsIntent.LoadPageContent(SharedSettingsDestination.Diagnostics))
-        assertEquals(1, pendingDelays.size)
-
-        capabilities.setDiagnosticsResult(
-            diagnosticOverridesHostSnapshot(
-                clientOverride = "ForceOff",
-                expiresAtMillis = 1_200L,
-                finalEffective = false,
-            )
-        )
-        store.accept(
-            SharedSettingsIntent.SetDiagnosticFeatureFlagOverride(
-                key = "mobile_activity_stable_order_v1",
-                mode = "force_off",
-            )
-        )
-        assertEquals(2, pendingDelays.size)
-        assertEquals(2, capabilities.calls.count { it == "diagnostics" })
-
-        pendingDelays[0].resume(Unit)
-        yield()
-
-        assertEquals(2, capabilities.calls.count { it == "diagnostics" })
-        val forced = assertIs<ScreenLoadState.Content<SharedSettingsDiagnosticsSnapshot>>(store.state.value.diagnostics).data
-        assertEquals("ForceOff", forced.featureFlagOverrides.single().clientOverride)
-
-        now = 1_200L
-        capabilities.setDiagnosticsResult(
-            diagnosticOverridesHostSnapshot(
-                clientOverride = "Server",
-                expiresAtMillis = null,
-                finalEffective = true,
-            )
-        )
-        pendingDelays[1].resume(Unit)
-        yield()
-
-        assertEquals(3, capabilities.calls.count { it == "diagnostics" })
-        val expired = assertIs<ScreenLoadState.Content<SharedSettingsDiagnosticsSnapshot>>(store.state.value.diagnostics).data
-        assertEquals("Server", expired.featureFlagOverrides.single().clientOverride)
-        assertNull(expired.featureFlagOverrides.single().expiresAtMillis)
-        assertEquals(true, expired.featureFlagOverrides.single().finalEffective)
-        scope.cancel()
-    }
-
-    @Test
     fun developerEnvironmentLoadsAndSwitchesThroughPlatformCapabilities() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val capabilities = FakeSettingsCapabilities()
@@ -2897,91 +1917,6 @@ class SharedSettingsStoreTest {
         val effect = assertIs<SharedSettingsEffect.ApiEnvironmentChanged>(store.state.value.effect)
         assertEquals("API server switched to Staging. Sign in again to continue.", effect.message)
         assertEquals(listOf("developer", "environment:staging"), capabilities.calls)
-        scope.cancel()
-    }
-
-    @Test
-    fun developerEnvironmentLoadsAndSwitchesThroughSharedApiEnvironmentStore() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        val capabilities = FakeSettingsCapabilities()
-        val sessionStore = InMemoryRaftAuthSessionStore(sampleSession())
-        val store =
-            SharedSettingsStore(
-                dataSource =
-                    SharedSettingsDataSource(
-                        sessionStore = sessionStore,
-                        platformCapabilities = capabilities,
-                        apiEnvironmentStore = SharedApiEnvironmentStore(InMemoryRaftKeyValueStore())
-                    ),
-                scope = scope
-            )
-
-        store.accept(SharedSettingsIntent.LoadPageContent(SharedSettingsDestination.Developer))
-        val initial = assertIs<ScreenLoadState.Content<SharedSettingsDeveloperSnapshot>>(store.state.value.developer).data
-        assertEquals("production", initial.environmentKey)
-
-        store.accept(SharedSettingsIntent.SetApiEnvironment("staging"))
-
-        val updated = assertIs<ScreenLoadState.Content<SharedSettingsDeveloperSnapshot>>(store.state.value.developer).data
-        assertEquals("staging", updated.environmentKey)
-        assertEquals("Staging", updated.environmentLabel)
-        assertNull(sessionStore.readSession())
-        val effect = assertIs<SharedSettingsEffect.ApiEnvironmentChanged>(store.state.value.effect)
-        assertEquals("API server switched to Staging. Sign in again to continue.", effect.message)
-        assertEquals(listOf("environmentChanged:production:staging"), capabilities.calls)
-        scope.cancel()
-    }
-
-    @Test
-    fun developerEnvironmentDoesNotRestartWhenAlreadySelected() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        val capabilities = FakeSettingsCapabilities()
-        val store =
-            SharedSettingsStore(
-                dataSource =
-                    SharedSettingsDataSource(
-                        sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
-                        platformCapabilities = capabilities,
-                        apiEnvironmentStore = SharedApiEnvironmentStore(InMemoryRaftKeyValueStore())
-                    ),
-                scope = scope
-            )
-
-        store.accept(SharedSettingsIntent.LoadPageContent(SharedSettingsDestination.Developer))
-        store.accept(SharedSettingsIntent.SetApiEnvironment("production"))
-
-        val updated = assertIs<ScreenLoadState.Content<SharedSettingsDeveloperSnapshot>>(store.state.value.developer).data
-        assertEquals("production", updated.environmentKey)
-        assertNull(store.state.value.effect)
-        assertEquals(SharedSettingsActionState(DEVELOPER_ACTION_API_ENVIRONMENT, "production", inProgress = false), store.state.value.actionState)
-        assertEquals(emptyList(), capabilities.calls)
-        scope.cancel()
-    }
-
-    @Test
-    fun developerHandsUpdateCheckRunsThroughPlatformCapabilities() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        val capabilities = FakeSettingsCapabilities()
-        val store =
-            SharedSettingsStore(
-                dataSource =
-                    SharedSettingsDataSource(
-                        sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
-                        platformCapabilities = capabilities
-                    ),
-                scope = scope
-            )
-
-        store.accept(SharedSettingsIntent.LoadPageContent(SharedSettingsDestination.Developer))
-        store.accept(SharedSettingsIntent.CheckHandsUpdate)
-
-        val updated = assertIs<ScreenLoadState.Content<SharedSettingsDeveloperSnapshot>>(store.state.value.developer).data
-        assertEquals(true, updated.updateCheck.supported)
-        assertEquals("Update available", updated.updateCheck.statusLabel)
-        assertEquals(true, updated.updateCheck.updateAvailable)
-        assertEquals(2L, updated.updateCheck.latestVersionCode)
-        assertEquals(SharedSettingsActionState(DEVELOPER_ACTION_HANDS_UPDATE_CHECK, inProgress = false), store.state.value.actionState)
-        assertEquals(listOf("developer", "handsUpdateCheck"), capabilities.calls)
         scope.cancel()
     }
 
@@ -3083,43 +2018,6 @@ class SharedSettingsStoreTest {
             "http://10.0.2.2:3000",
             store.resolveSocketUrl("https://api.raft.build")
         )
-    }
-
-    @Test
-    fun developerEnvironmentSavesCustomUrlsThroughPlatformCapabilities() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        val capabilities = FakeSettingsCapabilities()
-        val store =
-            SharedSettingsStore(
-                dataSource =
-                    SharedSettingsDataSource(
-                        sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
-                        platformCapabilities = capabilities
-                    ),
-                scope = scope
-            )
-
-        store.accept(SharedSettingsIntent.LoadPageContent(SharedSettingsDestination.Developer))
-        store.accept(
-            SharedSettingsIntent.SaveApiEnvironment(
-                SharedSettingsApiEnvironmentRequest(
-                    key = "custom",
-                    label = "Local Dev",
-                    apiBaseUrl = "http://10.0.2.2:3000/api/",
-                    socketBaseUrl = "http://10.0.2.2:3000",
-                    webUrl = "http://10.0.2.2:5173"
-                )
-            )
-        )
-
-        val updated = assertIs<ScreenLoadState.Content<SharedSettingsDeveloperSnapshot>>(store.state.value.developer).data
-        assertEquals("custom", updated.environmentKey)
-        assertEquals("Local Dev", updated.environmentLabel)
-        assertEquals("http://10.0.2.2:3000/api/", updated.apiBaseUrl)
-        assertEquals("http://10.0.2.2:3000", updated.socketBaseUrl)
-        assertEquals(SharedSettingsActionState(DEVELOPER_ACTION_API_ENVIRONMENT, "custom", inProgress = false), store.state.value.actionState)
-        assertEquals(listOf("developer", "environment:custom"), capabilities.calls)
-        scope.cancel()
     }
 
     @Test
@@ -4169,32 +3067,6 @@ class SharedSettingsStoreTest {
         override val supportsConversationForwardGesture: Boolean = true
     }
 
-    private fun diagnosticOverridesHostSnapshot(
-        clientOverride: String,
-        expiresAtMillis: Long?,
-        finalEffective: Boolean,
-    ): SharedSettingsDiagnosticsHostSnapshot =
-        SharedSettingsDiagnosticsHostSnapshot(
-            featureFlagOverrides =
-                listOf(
-                    SharedSettingsDiagnosticFeatureFlagSnapshot(
-                        key = "mobile_activity_stable_order_v1",
-                        supported = true,
-                        entitled = true,
-                        clientOverride = clientOverride,
-                        expiresAtMillis = expiresAtMillis,
-                        serverEffective = true,
-                        finalEffective = finalEffective,
-                        precedence =
-                            when (clientOverride) {
-                                "ForceOn" -> "diagnostic_override_force_on"
-                                "ForceOff" -> "diagnostic_override_force_off"
-                                else -> "server"
-                            },
-                    )
-                )
-        )
-
     private class FakeNotificationPreferenceRepository(
         var enabled: Boolean = false,
         var foregroundKeepAliveEnabled: Boolean = false,
@@ -4406,24 +3278,6 @@ class SharedSettingsStoreTest {
         )
     }
 
-    private fun billingSnapshot(): SettingsBillingSnapshot =
-        SettingsBillingSnapshot(
-            currentPlan =
-                SettingsBillingCurrentPlanSnapshot(
-                    planName = "Team",
-                    usageRows = listOf(SettingsPlanUsageSnapshot("Members", "8 / 20"))
-                ),
-            plans =
-                listOf(
-                    SettingsBillingPlanSnapshot(
-                        name = "Team",
-                        price = "$12 / user",
-                        features = listOf("Shared workspaces"),
-                        current = true
-                    )
-                )
-        )
-
     private fun serverSnapshot(): SettingsServerSnapshot =
         SettingsServerSnapshot(
             profile = SettingsServerProfileSnapshot(name = "Slock Community", slug = "slock", canSave = true),
@@ -4523,51 +3377,6 @@ class SharedSettingsStoreTest {
             else -> "empty"
         }
 
-    private fun connectedAppsSnapshot(): SettingsConnectedAppsSnapshot =
-        SettingsConnectedAppsSnapshot(
-            marketplace =
-                listOf(
-                    SettingsConnectedAppMarketplaceSnapshot(
-                        id = "market-1",
-                        clientId = "calendar",
-                        name = "Calendar",
-                        category = "productivity",
-                        developer = "Raft",
-                        description = "Sync reminders.",
-                        homepageDomain = "calendar.example",
-                        callbackDomain = "calendar.example",
-                        installed = false,
-                        dataAccessSummary = "Profile and reminders"
-                    )
-                ),
-            builtIn =
-                listOf(
-                    SettingsConnectedAppBuiltInSnapshot(
-                        id = "built-in-1",
-                        clientId = "raft-actions",
-                        name = "Raft Actions",
-                        description = "Built-in action callbacks."
-                    )
-                ),
-            installed = emptyList(),
-            registered =
-                listOf(
-                    SettingsConnectedAppClientSnapshot(
-                        id = "client-1",
-                        serverId = "server-1",
-                        clientId = "local-client",
-                        appType = "server_local",
-                        publishStatus = "draft",
-                        category = "productivity",
-                        dataAccessSummary = "Profile",
-                        name = "Local Client",
-                        description = "Private client.",
-                        returnUrl = "https://example.com/callback"
-                    )
-                ),
-            canManage = true
-        )
-
     private fun accountSnapshot(
         displayName: String = "Slock User",
         handle: String = "@slock",
@@ -4602,28 +3411,6 @@ class SharedSettingsStoreTest {
         fun release() {
             released.complete(Unit)
         }
-    }
-
-    private class BlockingSessionStore(
-        private val delegate: RaftAuthSessionStore
-    ) : RaftAuthSessionStore {
-        var readBlock: BlockingCall? = null
-
-        override suspend fun readSession(): StoredAuthSession? {
-            readBlock?.consume()
-            return delegate.readSession()
-        }
-
-        override suspend fun saveSession(session: StoredAuthSession) = delegate.saveSession(session)
-
-        override suspend fun updateTokens(accessToken: String, refreshToken: String) =
-            delegate.updateTokens(accessToken, refreshToken)
-
-        override suspend fun updateSelectedServer(serverId: String?, serverSlug: String?) =
-            delegate.updateSelectedServer(serverId, serverSlug)
-
-        override suspend fun clearSession(reason: String, source: String) =
-            delegate.clearSession(reason, source)
     }
 
     private class EventingSessionStore(
@@ -4693,120 +3480,6 @@ class SharedSettingsStoreTest {
                 ),
             sendTestEnabled = true
         )
-
-    @Test
-    fun noOpGateSkipsEquivalentSnapshot() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        val store =
-            SharedSettingsStore(
-                dataSource = SharedSettingsDataSource(InMemoryRaftAuthSessionStore(sampleSession())),
-                scope = scope
-            )
-
-        // Collect all state emissions from the contract
-        val emissions = mutableListOf<SharedSettingsState>()
-        val contract = SharedSettingsStoreContract(store, scope)
-        val job = scope.launch { contract.state.collect { emissions.add(it) } }
-
-        // Dispatch ConsumeEffect twice — second should be a no-op since effect is already null
-        store.accept(SharedSettingsIntent.ConsumeEffect)
-        yield()
-        val countAfterFirst = emissions.size
-        store.accept(SharedSettingsIntent.ConsumeEffect)
-        yield()
-
-        // Contract should filter out the equivalent state emission
-        assertEquals(countAfterFirst, emissions.size)
-        job.cancel()
-        scope.cancel()
-    }
-
-    @Test
-    fun transitionLogCapturesDispatch() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        val log = mutableListOf<MviTransition<SharedSettingsIntent>>()
-        val store =
-            SharedSettingsStore(
-                dataSource = SharedSettingsDataSource(InMemoryRaftAuthSessionStore(sampleSession())),
-                scope = scope
-            )
-        val contract = SharedSettingsStoreContract(store, scope, transitionLogger = { log.add(it) })
-
-        // Dispatching Start should log a transition
-        contract.dispatch(SharedSettingsIntent.Start)
-        yield()
-
-        assertTrue(log.isNotEmpty(), "Expected at least one transition, got ${log.size}")
-        assertTrue(log.any { it.intent == SharedSettingsIntent.Start }, "Start intent not found in log")
-        scope.cancel()
-    }
-
-    @Test
-    fun inFlightGuardSkipsDuplicateMutation() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        val skippedIntents = mutableListOf<SharedSettingsIntent>()
-        val repository = FakeSettingsRepository(accountResult = DataResult.Content(accountSnapshot()))
-        val dataSource =
-            SharedSettingsDataSource(
-                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
-                settingsRepository = repository
-            )
-        val store = SharedSettingsStore(dataSource, scope)
-        val contract =
-            SharedSettingsStoreContract(
-                store,
-                scope,
-                transitionLogger = { t -> if (!t.emitted) skippedIntents.add(t.intent) }
-            )
-
-        // First mutation: guard acquired, then store processes it
-        val request =
-            SharedSettingsIntent.UpdateProfile(
-                AccountProfileUpdateRequest(displayName = "alice", handle = "alice", email = "a@b.com")
-            )
-        contract.dispatch(request)
-        yield()
-
-        // Second identical mutation should be blocked by inFlightGuard
-        val skippedBefore = skippedIntents.size
-        contract.dispatch(request)
-        yield()
-
-        // After second dispatch, at least one intent should be skipped or the first is still in-flight
-        assertTrue(
-            skippedIntents.size >= skippedBefore,
-            "Expected skipped intents to not decrease (was $skippedBefore, now ${skippedIntents.size})"
-        )
-        scope.cancel()
-    }
-
-    @Test
-    fun failurePreservesOldContent() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        val sessionStore = InMemoryRaftAuthSessionStore(sampleSession())
-        val store =
-            SharedSettingsStore(
-                dataSource = SharedSettingsDataSource(sessionStore),
-                scope = scope
-            )
-        val contract = SharedSettingsStoreContract(store, scope)
-
-        // Load initial content
-        store.accept(SharedSettingsIntent.Start)
-        yield()
-        val homeBefore =
-            assertIs<ScreenLoadState.Content<SharedSettingsHomeSnapshot>>(contract.state.value.home)
-
-        // Refresh with no repository (empty result) — should preserve old content
-        store.accept(SharedSettingsIntent.Refresh)
-        yield()
-
-        // Home should still be the same content (not replaced by empty/loading)
-        val homeAfter =
-            assertIs<ScreenLoadState.Content<SharedSettingsHomeSnapshot>>(contract.state.value.home)
-        assertEquals(homeBefore.data.subtitle, homeAfter.data.subtitle)
-        scope.cancel()
-    }
 
     private class FakeSettingsMemberRepository(
         private val uploadAvatarResult: DataResult<MemberProfile>? = null

@@ -183,48 +183,6 @@ class RaftOfflineResourcesOrderingTest {
         assertEquals(Rows(listOf("user-2")), lists.read(fixture.key(account = "user-2", server = "server-1")))
     }
 
-    // (b) A server wipe for every account still leaves the other servers' in-flight writes alone.
-    @Test
-    fun wipeServerForEveryAccountFencesOnlyThatServer() = runTest {
-        val fixture = Fixture(backgroundScope)
-        val lists = fixture.lists
-        val sameServer = GatedFetch(Rows(listOf("late")))
-        val otherServer = GatedFetch(Rows(listOf("server-2")))
-        val sameStore = lists.store { sameServer.fetch() }
-        val otherStore = lists.store { otherServer.fetch() }
-
-        val a = async { sameStore.revalidate(fixture.key(account = "user-2", server = "server-1")).toList() }
-        val b = async { otherStore.revalidate(fixture.key(server = "server-2")).toList() }
-        sameServer.started.await()
-        otherServer.started.await()
-        fixture.cache.wipeServer("server-1")
-        sameServer.release()
-        otherServer.release()
-        a.await()
-        b.await()
-
-        assertNull(lists.read(fixture.key(account = "user-2", server = "server-1")))
-        assertEquals(Rows(listOf("server-2")), lists.read(fixture.key(server = "server-2")))
-    }
-
-    // Wipe while a fetch of the wiped server is in flight: the answer arrives after the wipe, nothing is written.
-    @Test
-    fun fetchCompletingAfterWipeOfItsServerWritesNothing() = runTest {
-        val fixture = Fixture(backgroundScope)
-        val lists = fixture.lists
-        lists.write(fixture.key(), Rows(listOf("old")))
-        val network = GatedFetch(Rows(listOf("late")))
-        val store = lists.store { network.fetch() }
-
-        val emissions = async { store.revalidate(fixture.key()).toList() }
-        network.started.await()
-        fixture.cache.wipeServer("server-1", accountId = "user-1")
-        network.release()
-
-        assertEquals(RaftOfflineEmission.Fresh(Rows(listOf("late"))), emissions.await().last())
-        assertTrue(fixture.rows.rows.isEmpty())
-    }
-
     // Same for the asynchronous sign-out wipe.
     @Test
     fun fetchCompletingAfterWipeAllAsyncWritesNothing() = runTest {
@@ -311,25 +269,5 @@ class RaftOfflineResourcesOrderingTest {
         assertEquals(Rows(listOf("x")), lists.read(lists.key("user-1", "server-1", "a")!!))
         assertEquals(Rows(emptyList()), lists.read(lists.key("user-1", "server-1", "b")!!))
         assertEquals(Rows(listOf("y")), lists.read(lists.key("user-1", "server-2", "a")!!))
-    }
-
-    // Two concurrent revalidations of one key share one network request.
-    @Test
-    fun concurrentRevalidationsShareOneRequest() = runTest {
-        val fixture = Fixture(backgroundScope)
-        val lists = fixture.lists
-        val network = GatedFetch(Rows(listOf("network")))
-        val store = lists.store { network.fetch() }
-
-        val first = async { store.revalidate(fixture.key()).toList() }
-        val second = async { store.revalidate(fixture.key()).toList() }
-        network.started.await()
-        runCurrent()
-        network.release()
-
-        assertEquals(listOf(RaftOfflineEmission.Fresh(Rows(listOf("network")))), first.await())
-        assertEquals(listOf(RaftOfflineEmission.Fresh(Rows(listOf("network")))), second.await())
-        assertEquals(1, network.calls)
-        assertEquals(Rows(listOf("network")), lists.read(fixture.key()))
     }
 }

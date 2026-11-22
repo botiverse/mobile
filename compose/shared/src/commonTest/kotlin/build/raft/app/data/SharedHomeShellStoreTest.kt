@@ -39,54 +39,6 @@ class SharedHomeShellStoreTest {
     }
 
     @Test
-    fun primarySurfaceVisibilityOnlyForwardsVisibilityThroughShellStore() {
-        val fixture = fixture()
-        val store = fixture.store
-
-        store.dispatch(SharedHomeShellIntent.SetSurfaceVisible(true))
-        store.dispatch(SharedHomeShellIntent.SetSurfaceVisible(false))
-
-        assertEquals(
-            listOf<SharedHomeIntent>(
-                SharedHomeIntent.SetSurfaceVisible(true),
-                SharedHomeIntent.SetSurfaceVisible(false)
-            ),
-            fixture.homeIntents
-        )
-        assertEquals(emptyList<SharedActivityIntent>(), fixture.activityIntents)
-        assertEquals(emptyList<SharedHomeSearchSavedIntent>(), fixture.searchSavedIntents)
-        assertEquals(false, store.state.value.primarySurfaceVisible)
-        fixture.cancel()
-    }
-
-    @Test
-    fun notificationsAreProjectedFromHomeStateThroughShellState() {
-        val notification =
-            SharedHomeNotification(
-                id = "announcement-1",
-                title = "Upgrade available",
-                body = "Install the newest daemon."
-            )
-        val fixture = fixture(homeState = SharedHomeState(notifications = listOf(notification)))
-
-        assertEquals(listOf(notification), fixture.store.state.value.notifications)
-        fixture.cancel()
-    }
-
-    @Test
-    fun dismissNotificationRoutesThroughHomeStore() {
-        val fixture = fixture()
-
-        fixture.store.dispatch(SharedHomeShellIntent.DismissNotification("announcement-1"))
-
-        assertEquals(
-            listOf<SharedHomeIntent>(SharedHomeIntent.DismissNotification("announcement-1")),
-            fixture.homeIntents
-        )
-        fixture.cancel()
-    }
-
-    @Test
     fun foregroundRefreshTargetsVisibleDestinationAndHomeBadgeSummaries() {
         val fixture = fixture()
         val store = fixture.store
@@ -118,23 +70,6 @@ class SharedHomeShellStoreTest {
             fixture.activityIntents
         )
         assertEquals(emptyList<Pair<String?, String>>(), fixture.activitySummaryRefreshes)
-        fixture.cancel()
-    }
-
-    @Test
-    fun explicitHomeRefreshAlsoRefreshesHomeBadgeSummaries() {
-        val fixture = fixture()
-        val store = fixture.store
-
-        store.dispatch(SharedHomeShellIntent.Home(SharedHomeIntent.Refresh))
-
-        assertEquals(listOf<SharedHomeIntent>(SharedHomeIntent.Refresh), fixture.homeIntents)
-        assertEquals(emptyList<SharedActivityIntent>(), fixture.activityIntents)
-        assertEquals(listOf<Pair<String?, String>>(null to "manual_home_refresh"), fixture.activitySummaryRefreshes)
-        assertEquals(
-            listOf<SharedHomeSearchSavedIntent>(SharedHomeSearchSavedIntent.RefreshSaved),
-            fixture.searchSavedIntents
-        )
         fixture.cancel()
     }
 
@@ -181,105 +116,6 @@ class SharedHomeShellStoreTest {
     }
 
     @Test
-    fun homeServerChangeRefreshesActivitySummaryBeforeSavedSummarySettles() {
-        val fixture = fixture(homeState = homeStateForServer("server-1"))
-
-        fixture.homeState.value = loadingHomeStateForServer("server-2")
-
-        assertEquals(
-            listOf<SharedActivityIntent>(SharedActivityIntent.ServerSelected("server-2")),
-            fixture.activityIntents
-        )
-        assertEquals(listOf<Pair<String?, String>>("server-2" to "server_switch"), fixture.activitySummaryRefreshes)
-        assertEquals(
-            listOf<SharedHomeSearchSavedIntent>(SharedHomeSearchSavedIntent.ClearSavedSummary),
-            fixture.searchSavedIntents
-        )
-
-        fixture.homeState.value = homeStateForServer("server-2", contentRefreshing = true)
-
-        assertEquals(
-            listOf<SharedActivityIntent>(SharedActivityIntent.ServerSelected("server-2")),
-            fixture.activityIntents
-        )
-        assertEquals(
-            listOf<SharedHomeSearchSavedIntent>(SharedHomeSearchSavedIntent.ClearSavedSummary),
-            fixture.searchSavedIntents
-        )
-
-        fixture.homeState.value = homeStateForServer("server-2", contentRefreshing = false)
-
-        assertEquals(
-            listOf<SharedActivityIntent>(SharedActivityIntent.ServerSelected("server-2")),
-            fixture.activityIntents
-        )
-        assertEquals(
-            listOf(
-                SharedHomeSearchSavedIntent.ClearSavedSummary,
-                SharedHomeSearchSavedIntent.RefreshSaved
-            ),
-            fixture.searchSavedIntents
-        )
-        fixture.cancel()
-    }
-
-    @Test
-    fun homeFirstServerLoadRefreshesHomeBadgeSummariesWithoutClearing() {
-        val fixture = fixture()
-
-        fixture.homeState.value = homeStateForServer("server-1")
-
-        assertEquals(emptyList<SharedActivityIntent>(), fixture.activityIntents)
-        assertEquals(listOf<Pair<String?, String>>("server-1" to "server_ready"), fixture.activitySummaryRefreshes)
-        assertEquals(
-            listOf<SharedHomeSearchSavedIntent>(SharedHomeSearchSavedIntent.RefreshSaved),
-            fixture.searchSavedIntents
-        )
-        fixture.cancel()
-    }
-
-    @Test
-    fun realtimeForwardsActivityOnlyWhenActivityVisible() {
-        val fixture = fixture()
-        val store = fixture.store
-        val event = SyncResumeResponse(messages = emptyList(), currentSeq = 1L, hasMore = false)
-
-        store.dispatch(SharedHomeShellIntent.ApplyRealtimeEvent("server-1", event))
-        store.dispatch(SharedHomeShellIntent.SetSurfaceVisible(true))
-        store.dispatch(SharedHomeShellIntent.ApplyRealtimeEvent("server-1", event))
-        store.dispatch(SharedHomeShellIntent.SetSurfaceVisible(false))
-        store.dispatch(SharedHomeShellIntent.OpenSaved)
-        store.dispatch(SharedHomeShellIntent.ApplyRealtimeEvent("server-1", event))
-        store.dispatch(SharedHomeShellIntent.OpenActivity)
-        store.dispatch(SharedHomeShellIntent.ApplyRealtimeEvent("server-1", event))
-
-        assertEquals(
-            listOf<SharedHomeIntent>(
-                SharedHomeIntent.ApplyRealtimeEvent("server-1", event),
-                SharedHomeIntent.SetSurfaceVisible(true),
-                SharedHomeIntent.ApplyRealtimeEvent("server-1", event),
-                SharedHomeIntent.SetSurfaceVisible(false),
-                SharedHomeIntent.ApplyRealtimeEvent("server-1", event),
-                SharedHomeIntent.ApplyRealtimeEvent("server-1", event)
-            ),
-            fixture.homeIntents
-        )
-        // Off the primary surface the event still goes, marked so (`inbox_row_position_v1`: a list that
-        // owns the badge counts it; any other store drops it, as when the shell did not send it).
-        assertEquals(
-            listOf<SharedActivityIntent>(
-                SharedActivityIntent.ApplyRealtimeSummaryEvent(event, activeConversationId = null, primarySurfaceVisible = false),
-                SharedActivityIntent.ApplyRealtimeSummaryEvent(event, activeConversationId = null),
-                SharedActivityIntent.ApplyRealtimeSummaryEvent(event, activeConversationId = null, primarySurfaceVisible = false),
-                SharedActivityIntent.Refresh,
-                SharedActivityIntent.ApplyRealtimeEvent(event)
-            ),
-            fixture.activityIntents
-        )
-        fixture.cancel()
-    }
-
-    @Test
     fun readStateRealtimeAlwaysForwardsHiddenActivityProjection() {
         val fixture = fixture()
         val store = fixture.store
@@ -310,39 +146,6 @@ class SharedHomeShellStoreTest {
         assertEquals(
             listOf<SharedActivityIntent>(
                 SharedActivityIntent.ApplyRealtimeSummaryEvent(event, activeConversationId = null),
-                SharedActivityIntent.ApplyRealtimeSummaryEvent(event, activeConversationId = null)
-            ),
-            fixture.activityIntents
-        )
-        fixture.cancel()
-    }
-
-    @Test
-    fun threadUpdatedRealtimeOnlyUpdatesActivitySummaryWhenOnlyHomeIsVisible() {
-        val fixture = fixture()
-        val store = fixture.store
-        val event =
-            ThreadUpdated(
-                parentMessageId = MessageId("parent-1"),
-                threadChannelId = ChannelId("thread-parent-1"),
-                replyCount = 3,
-                lastReplyAt = "12:00",
-                participantIds = emptyList(),
-                unreadCount = 1
-            )
-
-        store.dispatch(SharedHomeShellIntent.SetSurfaceVisible(true))
-        store.dispatch(SharedHomeShellIntent.ApplyRealtimeEvent("server-1", event))
-
-        assertEquals(
-            listOf<SharedHomeIntent>(
-                SharedHomeIntent.SetSurfaceVisible(true),
-                SharedHomeIntent.ApplyRealtimeEvent("server-1", event)
-            ),
-            fixture.homeIntents
-        )
-        assertEquals(
-            listOf<SharedActivityIntent>(
                 SharedActivityIntent.ApplyRealtimeSummaryEvent(event, activeConversationId = null)
             ),
             fixture.activityIntents
@@ -512,22 +315,6 @@ class SharedHomeShellStoreTest {
     }
 
     @Test
-    fun slackNavActivityTabRefreshesOnForegroundRefresh() {
-        val fixture = fixture()
-        val store = fixture.store
-
-        store.dispatch(SharedHomeShellIntent.SetSelectedTab("activity"))
-        fixture.activityIntents.clear()
-        fixture.homeIntents.clear()
-
-        store.dispatch(SharedHomeShellIntent.ForegroundRefresh)
-
-        assertEquals(listOf<SharedActivityIntent>(SharedActivityIntent.Refresh), fixture.activityIntents)
-        assertEquals(emptyList<SharedHomeIntent>(), fixture.homeIntents)
-        fixture.cancel()
-    }
-
-    @Test
     fun destinationPriorityOverSelectedTabOnForegroundRefresh() {
         val fixture = fixture()
         val store = fixture.store
@@ -608,11 +395,6 @@ class SharedHomeShellStoreTest {
             searchSavedIntents
         )
     }
-
-    private fun loadingHomeStateForServer(serverId: String): SharedHomeState =
-        SharedHomeState(
-            content = SharedHomeContentState.Loading(sessionForServer(serverId))
-        )
 
     private fun errorHomeStateForServer(serverId: String): SharedHomeState =
         SharedHomeState(

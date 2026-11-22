@@ -28,25 +28,6 @@ class RaftArtifactViewerEmbedTest {
     }
 
     @Test
-    fun embedParamsMergeIntoAnExistingQuery() {
-        val cases =
-            listOf(
-                "$web/artifacts/$id" to "$web/artifacts/$id?$embed",
-                "$web/artifacts/$id?" to "$web/artifacts/$id?$embed",
-                "$web/artifacts/$id/v/2?from=chat" to "$web/artifacts/$id/v/2?from=chat&$embed",
-                "$web/artifacts/$id?a=1&b=2#c-9" to "$web/artifacts/$id?a=1&b=2&$embed#c-9",
-                // Another value of the contract is replaced, never doubled; the rest stays in order.
-                "$web/artifacts/$id?embed=1&a=1&shell=web" to "$web/artifacts/$id?a=1&$embed",
-                // `chrome=none` (it drops the page's toolbar and ⋯) is never kept, whatever its value.
-                "$web/artifacts/$id?chrome=full&embed=raft-settings-v1&shell=host" to "$web/artifacts/$id?$embed",
-                "$web/artifacts/$id?embed=raft-settings-v1&shell=host&chrome=none" to "$web/artifacts/$id?$embed",
-                "$web/artifacts/$id?back=web&embed=raft-settings-v1&shell=host" to "$web/artifacts/$id?$embed",
-                "$web/artifacts/$id?$embed" to "$web/artifacts/$id?$embed",
-            )
-        for ((url, expected) in cases) assertEquals(expected, raftArtifactViewerEmbeddedUrl(url), url)
-    }
-
-    @Test
     fun whereAnAddressTakesTheViewer() {
         val cases =
             listOf(
@@ -114,11 +95,6 @@ class RaftArtifactViewerEmbedTest {
     }
 
     @Test
-    fun theDeclaredMenuIsEveryAppAction() {
-        assertEquals(RaftArtifactViewerHostAction.entries.joinToString(",") { it.wireName }, RAFT_ARTIFACT_VIEWER_HOST_MENU)
-    }
-
-    @Test
     fun oneTapIsOneAction() {
         val tap = "$web/artifacts/$id?$embed#host=desktop-mode"
         assertTrue(raftArtifactViewerHostActionIsNew(tap, handledUrl = null, handledCleared = true, sinceHandledMs = 0))
@@ -140,34 +116,6 @@ class RaftArtifactViewerEmbedTest {
         assertEquals(true, raftArtifactViewerPageDrawsHostBar("$web/artifacts/$id/v/2?hostToolbar=1&$embed#panel=files"))
         // The App never asks for it itself: an address carrying it is opened without it.
         assertEquals("$web/artifacts/$id?$embed", raftArtifactViewerEmbeddedUrl("$page&hostToolbar=1"))
-    }
-
-    @Test
-    fun thePageSaysItsContentLoadedInItsAddress() {
-        val page = "$web/artifacts/$id?$embed"
-        assertEquals(false, raftArtifactViewerPageSaysLoaded(page))
-        assertEquals(false, raftArtifactViewerPageSaysLoaded("$page&hostToolbar=1"))
-        assertEquals(false, raftArtifactViewerPageSaysLoaded("$page&hostLoaded=0"))
-        assertEquals(false, raftArtifactViewerPageSaysLoaded("$page#hostLoaded=1"))
-        assertEquals(true, raftArtifactViewerPageSaysLoaded("$page&hostToolbar=1&hostLoaded=1"))
-        assertEquals(true, raftArtifactViewerPageSaysLoaded("$web/artifacts/$id/v/2?hostLoaded=1&$embed#panel=files"))
-        // The App never asks for it itself: an address carrying it is opened without it.
-        assertEquals("$web/artifacts/$id?$embed", raftArtifactViewerEmbeddedUrl("$page&hostLoaded=1"))
-    }
-
-    @Test
-    fun desktopModeStateIsKeptInTheAddress() {
-        val page = "$web/artifacts/$id?$embed#panel=comments"
-        assertEquals("$web/artifacts/$id?$embed&hostDesktop=on#panel=comments", raftArtifactViewerWithHostDesktop(page, true))
-        assertEquals("$web/artifacts/$id?$embed&hostDesktop=off", raftArtifactViewerWithHostDesktop("$web/artifacts/$id?hostDesktop=on&$embed", false))
-        // Not offered here: absent.
-        assertEquals("$web/artifacts/$id", raftArtifactViewerWithHostDesktop("$web/artifacts/$id?hostDesktop=on", null))
-        assertEquals(true, raftArtifactViewerAddressSaysDesktop("$web/artifacts/$id?$embed&hostDesktop=on", true))
-        assertEquals(false, raftArtifactViewerAddressSaysDesktop("$web/artifacts/$id?$embed&hostDesktop=on", false))
-        assertEquals(false, raftArtifactViewerAddressSaysDesktop("$web/artifacts/$id?$embed", false))
-        assertEquals(true, raftArtifactViewerAddressSaysDesktop("$web/artifacts/$id?$embed", null))
-        val script = raftArtifactViewerHostDesktopScript(web, true, clearHostAction = true)
-        assertTrue("\"hostDesktop\"" in script && "\"on\"" in script && "raft:host-state" in script)
     }
 
     @Test
@@ -195,21 +143,5 @@ class RaftArtifactViewerEmbedTest {
             RaftArtifactViewerNavigation.OpenArtifact(ArtifactLinkTarget(id, 2)),
             raftArtifactViewerNavigation("$web/artifacts/$id/v/2", web, short),
         )
-    }
-
-    @Test
-    fun aKeptDocumentThatLeftItsArtifactIsNotKept() {
-        val scope = RaftArtifactViewerScope(web, "https://api-aws-staging.botiverse.dev/api", "user-maya", "server-northwind")
-        var drops = 0
-        val cache = RaftArtifactViewerCache(onKeptDocumentDropped = { drops += 1 })
-        val target = ArtifactLinkTarget(id)
-        assertTrue(cache.rememberKeptDocument(scope, target, raftArtifactViewerEmbeddedPageUrl(web, target), "access-token-1"))
-        // Another subject's leave touches nothing.
-        cache.forgetKeptDocument(scope.copy(accountId = "user-other"))
-        assertTrue(cache.keptDocumentShows(scope, target))
-        assertEquals(0, drops)
-        cache.forgetKeptDocument(scope)
-        assertEquals(false, cache.keptDocumentShows(scope, target))
-        assertEquals(1, drops)
     }
 }

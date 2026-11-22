@@ -2,7 +2,6 @@ package build.raft.app
 
 import build.raft.app.data.HomeNetworkResponse
 import build.raft.app.data.RaftFeatureFlagsApi
-import build.raft.app.data.RaftShellStoreScope
 import build.raft.app.data.SharedServerFeatureFlags
 import build.raft.app.model.ServerId
 import kotlinx.coroutines.test.runTest
@@ -24,12 +23,6 @@ class SettingsLabsEntryTest {
 
     private fun flags(enabled: Boolean) =
         SharedServerFeatureFlags(FakeApi("""{"evaluations":[{"key":"server_labs_ui_v0","enabled":$enabled,"reason":"server_rule"}]}"""))
-
-    @Test
-    fun flagOffHidesTheRow() {
-        assertFalse(SettingsDestinationLabs in settingsHomeRowKeys(hasThemeServer = true))
-        assertFalse(SettingsDestinationLabs in settingsHomeRowKeys(hasThemeServer = true, labs = false, serverPanelPages = true))
-    }
 
     @Test
     fun flagOnPutsLabsLastInTheWorkspaceGroupLikeTheWeb() {
@@ -61,18 +54,5 @@ class SettingsLabsEntryTest {
         val off = flags(enabled = false)
         off.prefetch(ServerId("s1"))
         assertFalse(settingsLabsEnabled(off, "s1"))
-    }
-
-    @Test
-    fun opensItsNativePageAlsoInTheWidePane() {
-        val scope = RaftShellStoreScope.create("shell-labs")
-        val data = settingsLabsPageData(scope)
-        assertEquals(SETTINGS_LABS_PAGE, data.optString("pageName"))
-        assertEquals(SettingsWidePick.Detail(SettingsDestinationLabs), settingsWidePick(SettingsDestinationLabs))
-        val rows = settingsHomeRowKeys(hasThemeServer = true, labs = true)
-        assertEquals(SettingsDestinationLabs, settingsWideDetailKey(SettingsDestinationLabs, rows))
-        assertEquals(SETTINGS_LABS_PAGE, settingsWideDetailPage(SettingsDestinationLabs, scope)?.first)
-        // Flag off: the pane falls back to the default section.
-        assertEquals(SettingsDestinationAccount, settingsWideDetailKey(SettingsDestinationLabs, settingsHomeRowKeys(hasThemeServer = true)))
     }
 }

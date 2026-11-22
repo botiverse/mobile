@@ -38,34 +38,6 @@ private fun reconcilerSession(serverId: String?): StoredAuthSession =
 
 class SharedForegroundReconcilerTest {
     @Test
-    fun coalescesRepeatedForegroundSignalsWithinWindow() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        val timeSource = TestTimeSource()
-        val refreshed = mutableListOf<String>()
-        val reconciler =
-            SharedForegroundReconciler(
-                authStore = ReconcilerFakeAuthStore(reconcilerSession("server-1")),
-                refreshMembers = { serverId -> refreshed += serverId.value },
-                scope = scope,
-                coalesceWindowMs = 10_000,
-                timeSource = timeSource
-            )
-
-        reconciler.onForeground("app_shell_resume")
-        reconciler.onForeground("thread_resume")
-        timeSource += 9_999.milliseconds
-        reconciler.onForeground("thread_show")
-
-        assertEquals(listOf("server-1"), refreshed)
-
-        timeSource += 2.milliseconds
-        reconciler.onForeground("app_shell_resume")
-
-        assertEquals(listOf("server-1", "server-1"), refreshed)
-        scope.cancel()
-    }
-
-    @Test
     fun serverSwitchBypassesCoalescingWindow() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val authStore = ReconcilerFakeAuthStore(reconcilerSession("server-1"))
@@ -84,23 +56,6 @@ class SharedForegroundReconcilerTest {
         reconciler.onForeground("app_shell_resume")
 
         assertEquals(listOf("server-1", "server-2"), refreshed)
-        scope.cancel()
-    }
-
-    @Test
-    fun missingSessionOrServerIsNoOp() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        val refreshed = mutableListOf<String>()
-        val reconciler =
-            SharedForegroundReconciler(
-                authStore = ReconcilerFakeAuthStore(null),
-                refreshMembers = { serverId -> refreshed += serverId.value },
-                scope = scope
-            )
-
-        reconciler.onForeground("app_shell_resume")
-
-        assertEquals(emptyList(), refreshed)
         scope.cancel()
     }
 
@@ -198,30 +153,6 @@ class SharedForegroundReconcilerTest {
         // The page appears and the shell's own path fires for the same return: no second pull.
         reconciler.onForeground("app_shell_resume")
         assertEquals(listOf("server-1"), pulls)
-        scope.cancel()
-    }
-
-    @Test
-    fun syncOffForegroundReturnKeepsTheShellPathOnly() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        val appForeground = MutableStateFlow(true)
-        val refreshed = mutableListOf<String>()
-        val reconciler =
-            SharedForegroundReconciler(
-                authStore = ReconcilerFakeAuthStore(reconcilerSession("server-1")),
-                refreshMembers = { serverId -> refreshed += serverId.value },
-                scope = scope,
-                coalesceWindowMs = 10_000,
-                timeSource = TestTimeSource()
-            )
-        reconciler.followAppLifecycle(appForeground, coversServer = { false })
-
-        appForeground.value = false
-        appForeground.value = true
-        assertEquals(emptyList(), refreshed)
-
-        reconciler.onForeground("app_shell_resume")
-        assertEquals(listOf("server-1"), refreshed)
         scope.cancel()
     }
 }

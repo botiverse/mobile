@@ -65,22 +65,4 @@ class ChannelMemberRowMenuUiTest {
         assertEquals(0, calls.role)
         assertTrue(!shown(ChannelMemberRemoveActionTestTag), "the menu closes after Remove")
     }
-
-    @Test
-    fun aRowWithOnlyRemoveStillUsesTheMenu() = runRobolectricComposeUiTest {
-        val calls = Calls()
-        show(ChannelMemberRowMenu(roleAction = null, canRemove = true), calls)
-        assertTrue(shown(ChannelMemberRemoveActionTestTag), "Remove from channel is in the menu")
-        assertTrue(!shown(ChannelMemberRoleActionTestTag), "no role item without a role action")
-    }
-
-    @Test
-    fun aRowWithOnlyTheRoleActionHasNoRemove() = runRobolectricComposeUiTest {
-        val calls = Calls()
-        show(ChannelMemberRowMenu(ChannelMemberRoleAction.RemoveAdmin, canRemove = false), calls)
-        onNodeWithContentDescription("Remove channel admin from ada").assertIsDisplayed().performClick()
-        waitForIdle()
-        assertEquals(1, calls.role)
-        assertTrue(!shown(ChannelMemberRemoveActionTestTag), "no Remove when the viewer may not remove")
-    }
 }

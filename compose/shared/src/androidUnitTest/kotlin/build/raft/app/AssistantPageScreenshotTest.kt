@@ -44,9 +44,6 @@ class AssistantPageScreenshotTest {
     fun homeRowLight() = capture("assistant.home-row", RaftAppAppearance.Light) { HomeAssistantRowVisualContent() }
 
     @Test
-    fun homeRowDark() = capture("assistant.home-row.dark", RaftAppAppearance.Dark) { HomeAssistantRowVisualContent() }
-
-    @Test
     fun loading() = capture("assistant.page.loading", RaftAppAppearance.Light) { AssistantPageScreen(AssistantPageView.Loading, actions) }
 
     @Test

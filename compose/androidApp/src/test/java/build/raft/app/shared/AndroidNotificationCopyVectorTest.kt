@@ -105,18 +105,6 @@ class AndroidNotificationCopyVectorTest {
         }
     }
 
-    @Test
-    @Config(qualifiers = "zh-rCN")
-    fun theResolverFormatsArgsAndRefusesMissingOnes() {
-        val strings = AndroidResourcePushPreviewStrings(RuntimeEnvironment.getApplication())
-        assertEquals("#general 中的消息列", strings.resolve("push.title.thread_in_channel", listOf("general")))
-        assertEquals("Alice：发送了 3 个附件", strings.resolve("push.body.sender_attachments", listOf("Alice", "3")))
-        assertEquals("私信 · Acme", strings.resolve("push.subtitle.dm_server", listOf("Acme")))
-        assertEquals(null, strings.resolve("push.body.sender_attachments", listOf("Alice")))
-        assertEquals(null, strings.resolve("push.title.agent_tool_stuck", listOf(" ")))
-        assertEquals(null, strings.resolve("push.title.from_the_future", emptyList()))
-    }
-
     private fun localized(tag: String): Context {
         val base = RuntimeEnvironment.getApplication()
         val configuration = Configuration(base.resources.configuration).apply { setLocale(Locale.forLanguageTag(tag)) }

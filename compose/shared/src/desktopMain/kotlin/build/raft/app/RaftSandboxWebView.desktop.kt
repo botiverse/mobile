@@ -33,9 +33,21 @@ internal actual fun RaftSandboxWebViewHost(
     modifier: Modifier,
 ) {
     if (!config.allowScripts || RaftDesktopWebViewOnWindows) {
-        // The origin-locked surface (the Artifact viewer) loads an embed URL and has its own Open in
-        // browser in its top bar, so it gets no second button here.
-        RaftDesktopOpenInBrowser(config.url.takeIf { config.mainFrameOrigin == null }, kind = "web_content", modifier = modifier)
+        // The Artifact viewer loads an embed URL and has its own Open in browser in its top bar,
+        // so it gets no second button here.
+        RaftDesktopOpenInBrowser(
+            config.url
+                .takeIf { config.diagnosticsSurface != RAFT_ARTIFACT_VIEWER_WEBVIEW_SURFACE }
+                ?.let { raw ->
+                    if (config.diagnosticsSurface == SETTINGS_WEB_PAGE_DIAGNOSTICS_NAME) {
+                        stripRaftOwnWebPageEmbedParams(raw)
+                    } else {
+                        raw
+                    }
+                },
+            kind = "web_content",
+            modifier = modifier,
+        )
         return
     }
     val policy =
@@ -192,8 +204,9 @@ internal class RaftDesktopWryWebView(
         boundController = null
     }
 
-    private fun onNavigation(url: String): Boolean =
-        when (policy.navigation(url)) {
+    private fun onNavigation(url: String): Boolean {
+        if (disposed) return false
+        return when (policy.navigation(url)) {
             RaftDesktopWebViewNavigation.Allow -> true
             RaftDesktopWebViewNavigation.AllowUnverifiedFrame -> {
                 topLevelCheck.markUnverified(System.currentTimeMillis())
@@ -205,6 +218,7 @@ internal class RaftDesktopWryWebView(
                 false
             }
         }
+    }
 
     fun poll() {
         if (disposed || !panel.isReady()) return
@@ -280,6 +294,11 @@ internal class RaftDesktopWryWebView(
             return
         }
         if (href == null || href.isBlank() || href == "about:blank") return
+        // Enforce top-level-only route checks on the AWT thread (never on sub-frames or Wry's thread).
+        if (href != initialUrl && events.routesMainFrameNavigation?.invoke(href) == true) {
+            takeBack(blockedUrl = href)
+            return
+        }
         lastBlockedUrl = ""
         // A trusted page the user reached (not the one restored to) re-arms the restore budget.
         if (href != lastTrustedUrl) restores = 0

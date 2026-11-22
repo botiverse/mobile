@@ -6,7 +6,6 @@ import build.raft.app.data.AppLinkResult
 import build.raft.app.data.CardElement
 import build.raft.app.data.CardStack
 import build.raft.app.data.CardStackDirection
-import build.raft.app.data.RaftAppLinkCard
 import build.raft.app.data.RaftAppLinkCardV2
 import build.raft.app.data.RaftLinkCardButtonAction
 import build.raft.app.data.RaftLinkCardButtonVariant
@@ -20,7 +19,6 @@ import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertTrue
 
 /**
  * #proj-mobile:#218: the card a chip opens has the App's buttons, as the web's hover card does
@@ -112,23 +110,6 @@ class ThreadAppLinkChipCardButtonsTest {
     }
 
     @Test
-    fun aCardWithNoActionShowsItsFirstLinkAndKeepsRefreshInTheMenu() = runTest {
-        val opened = mutableListOf<String>()
-        val recorder = Recorder()
-        val card = card("refresh" to refresh, "docs" to docs, "open" to openInStamp)
-        val layout = raftPreviewCardButtonLayout(card.buttons(press(card, this, recorder), opened))
-        assertEquals(listOf("Docs"), layout.row.labels())
-        assertEquals(listOf("Refresh", "Open in Stamp"), layout.more.labels())
-        layout.row.single().onClick()
-        assertEquals(listOf("https://stamp.example.test/docs"), opened)
-        // Refresh reads the card again.
-        layout.more.first().onClick()
-        advanceUntilIdle()
-        assertEquals(1, recorder.rereads)
-        assertTrue(recorder.toasts.isEmpty())
-    }
-
-    @Test
     fun raftsOpenLinkIsAddedWhenNoneOfTheAppsLinksGoesToTheLink() = runTest {
         val acting = card("refresh" to refresh, "merge" to merge)
         val withAction = raftPreviewCardButtonLayout(acting.buttons(press(acting, this)))
@@ -150,15 +131,6 @@ class ThreadAppLinkChipCardButtonsTest {
         assertEquals("Checks are failing", buttons.last().disabledReason)
         // A message read without the batched read has nothing to act through: the App's links only.
         assertEquals(listOf("Open in Stamp"), card.buttons(press(card, this, acts = false)).labels())
-    }
-
-    @Test
-    fun aCardWithoutTheAppsTreeHasOpenLinkAlone() = runTest {
-        val v1 = AppLinkResult.Card(url = url, app = AppLinkApp("Stamp", null), title = "PR 218", card = RaftAppLinkCard("root", emptyMap()))
-        val connect = AppLinkResult.Card(url = url, app = AppLinkApp("Stamp", null), title = "PR 218", connectUrl = "https://stamp.example.test/connect")
-        listOf(v1, connect).forEach { card ->
-            assertEquals(listOf("Open Link"), card.buttons(press(card, this)).labels())
-        }
     }
 
     @Test

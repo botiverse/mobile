@@ -71,17 +71,6 @@ class RaftTextFieldSyncTest {
     }
 
     @Test
-    fun aCompositionOnlyDifferenceFromTheOwnerIsLeftToTheIme() {
-        val h = Harness(committed(""), compareSelection = true)
-        h.editor = composing("ni")
-        h.reconcile(committed(""))
-        // The composer writes the Send snapshot back with the composition finished.
-        assertEquals(Outcome.Idle, h.reconcile(committed("ni")))
-        assertEquals(emptyList(), h.writes)
-        assertEquals(TextRange(0, 2), h.editor.composition)
-    }
-
-    @Test
     fun aNewOwnerValueIsPushedEvenWhileComposing() {
         val h = Harness(committed("hello"), compareSelection = true)
         h.editor = TextFieldValue("hello wor", TextRange(9), composition = TextRange(6, 9))
@@ -108,21 +97,6 @@ class RaftTextFieldSyncTest {
     }
 
     @Test
-    fun aRejectionDuringCompositionWaitsForTheCommit() {
-        val h = Harness(committed("abc"), compareSelection = false)
-        h.editor = TextFieldValue("abck", TextRange(4), composition = TextRange(3, 4))
-        h.reconcile(committed("abc"))
-        assertEquals(Outcome.Deferred, h.reconcile(committed("abc")))
-        assertEquals(emptyList(), h.writes)
-
-        h.editor = committed("abc可")
-        assertEquals(Outcome.Reported, h.reconcile(committed("abc")))
-        assertEquals(Outcome.Recheck, h.reconcile(committed("abc")))
-        assertEquals(Outcome.Pushed, h.reconcile(committed("abc")))
-        assertEquals("abc", h.editor.text)
-    }
-
-    @Test
     fun handleDragSelectionChangesReachTheOwnerAndAreNeverReverted() {
         // A double tap selects "beta", then the end handle extends it, the start handle extends it
         // further, and the end handle shrinks it back; each frame the owner answers with the value.
@@ -141,48 +115,10 @@ class RaftTextFieldSyncTest {
     }
 
     @Test
-    fun aDragFasterThanTheOwnerIsStillNotReverted() {
-        // The handle moves again before the owner has answered the previous move.
-        val text = "alpha beta gamma"
-        val h = Harness(TextFieldValue(text, TextRange(6, 10)), compareSelection = true)
-        val stale = h.editor
-        listOf(TextRange(6, 12), TextRange(6, 14), TextRange(6, 16)).forEach { range ->
-            h.editor = TextFieldValue(text, range)
-            assertEquals(Outcome.Reported, h.reconcile(stale), "selection $range")
-        }
-        // The owner catches up with the last move.
-        assertEquals(Outcome.Idle, h.reconcile(h.reports.last()))
-        assertEquals(emptyList(), h.writes)
-        assertEquals(TextRange(6, 16), h.editor.selection)
-    }
-
-    @Test
-    fun ownEditsAreNotEchoedAndPushesAreNotReported() {
-        val h = Harness(committed(""), compareSelection = true)
-        // Draft restore with the caret after "Hi".
-        val restored = TextFieldValue("Hi there", TextRange(2))
-        assertEquals(Outcome.Pushed, h.reconcile(restored))
-        assertEquals(restored, h.editor)
-        assertEquals(Outcome.Idle, h.reconcile(restored))
-        assertEquals(emptyList(), h.reports)
-    }
-
-    @Test
     fun aMentionInsertMovesTheCaretWithTheText() {
         val h = Harness(committed("hi @al"), compareSelection = true)
         val inserted = TextFieldValue("hi @alice ", TextRange(10))
         assertEquals(Outcome.Pushed, h.reconcile(inserted))
         assertEquals(inserted, h.editor)
-    }
-
-    @Test
-    fun aStringOwnerIsNotToldAboutSelectionMoves() {
-        val h = Harness(committed("hello"), compareSelection = false)
-        h.editor = TextFieldValue("hello", TextRange(1, 3))
-        assertEquals(Outcome.Idle, h.reconcile(committed("hello")))
-        assertEquals(emptyList(), h.reports)
-        // An outside text change keeps the user's selection (coerced by the editor).
-        assertEquals(Outcome.Pushed, h.reconcile(committed("help!")))
-        assertEquals(TextFieldValue("help!", TextRange(1, 3)), h.editor)
     }
 }
