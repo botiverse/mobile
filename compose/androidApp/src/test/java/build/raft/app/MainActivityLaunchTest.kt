@@ -485,4 +485,69 @@ class MainActivityLaunchTest {
         assertFalse(shouldSkipMainActivityOneShotIntake(0))
         assertFalse(shouldSkipMainActivityOneShotIntake(android.content.Intent.FLAG_ACTIVITY_NEW_TASK))
     }
+
+    @Test
+    fun defaultCustomTabsSelectionBindsOnlyWhenDefaultBrowserSupportsCustomTabs() {
+        assertEquals(
+            "com.android.chrome",
+            selectDefaultCustomTabsBrowserPackage(
+                ownPackage = "build.raft.app",
+                defaultBrowserPackage = "com.android.chrome",
+                customTabsPackages = listOf("com.huawei.browser", "com.android.chrome"),
+            )
+        )
+        assertEquals(
+            "org.mozilla.firefox",
+            selectDefaultCustomTabsBrowserPackage(
+                ownPackage = "build.raft.app",
+                defaultBrowserPackage = "org.mozilla.firefox",
+                customTabsPackages = listOf("com.android.chrome", "org.mozilla.firefox"),
+            )
+        )
+        // Default browser lacks Custom Tabs: fall back to default browser instead of hijacking another browser.
+        assertEquals(
+            null,
+            selectDefaultCustomTabsBrowserPackage(
+                ownPackage = "build.raft.app",
+                defaultBrowserPackage = "com.example.simplebrowser",
+                customTabsPackages = listOf("com.android.chrome", "com.huawei.browser"),
+            )
+        )
+        // No default set (resolver activity), null, or a Raft package: never bind Custom Tabs.
+        assertEquals(
+            null,
+            selectDefaultCustomTabsBrowserPackage(
+                ownPackage = "build.raft.app",
+                defaultBrowserPackage = "android",
+                customTabsPackages = listOf("com.android.chrome"),
+            )
+        )
+        assertEquals(
+            null,
+            selectDefaultCustomTabsBrowserPackage(
+                ownPackage = "build.raft.app",
+                defaultBrowserPackage = null,
+                customTabsPackages = listOf("com.android.chrome"),
+            )
+        )
+        assertEquals(
+            null,
+            selectDefaultCustomTabsBrowserPackage(
+                ownPackage = "build.raft.app",
+                defaultBrowserPackage = "build.raft.app.alpha",
+                customTabsPackages = listOf("build.raft.app.alpha", "com.android.chrome"),
+            )
+        )
+    }
+
+    @Test
+    fun defaultCustomTabsAppliesOnlyToOrdinaryHttpAndHttpsLinks() {
+        assertTrue(shouldPreferDefaultCustomTabs(inBrowser = false, mimeType = null, scheme = "https"))
+        assertTrue(shouldPreferDefaultCustomTabs(inBrowser = false, mimeType = null, scheme = "HTTP"))
+        assertFalse(shouldPreferDefaultCustomTabs(inBrowser = true, mimeType = null, scheme = "https"))
+        assertFalse(shouldPreferDefaultCustomTabs(inBrowser = false, mimeType = "application/pdf", scheme = "https"))
+        assertFalse(shouldPreferDefaultCustomTabs(inBrowser = false, mimeType = null, scheme = "mailto"))
+        assertFalse(shouldPreferDefaultCustomTabs(inBrowser = false, mimeType = null, scheme = "tel"))
+        assertFalse(shouldPreferDefaultCustomTabs(inBrowser = false, mimeType = null, scheme = null))
+    }
 }

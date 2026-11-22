@@ -128,7 +128,9 @@ import build.raft.designsystem.theme.RaftThemeState
 import kotlinx.serialization.json.JsonObject
 import java.lang.ref.WeakReference
 import build.raft.app.BuildConfig
+import build.raft.app.androidDefaultCustomTabsIntent
 import build.raft.app.androidExternalBrowserIntent
+import build.raft.app.shouldPreferDefaultCustomTabs
 import build.raft.app.data.RaftDesktopShortcutContract
 import build.raft.app.FeedbackDiagnosticsBinding
 import build.raft.app.FeedbackDiagnosticsFailureReason
@@ -7910,6 +7912,35 @@ internal class RaftBridgeModule(
                 showRaftHostToast(appContext, appContext.getString(R.string.open_link_no_app_toast))
             }
             return null
+        }
+        if (shouldPreferDefaultCustomTabs(inBrowser = inBrowser, mimeType = mimeType, scheme = uri.scheme)) {
+            val hostActivity = activity?.takeUnless { it.isFinishing || it.isDestroyed }
+            val customTabsIntent =
+                androidDefaultCustomTabsIntent(
+                    context = appContext,
+                    uri = uri,
+                    addNewTaskFlag = hostActivity == null,
+                )
+            if (customTabsIntent != null) {
+                val launched =
+                    runCatching {
+                        if (hostActivity != null) {
+                            hostActivity.startActivity(customTabsIntent)
+                        } else {
+                            appContext.startActivity(customTabsIntent)
+                        }
+                        RaftAppLog.record("SlockOpenUrl", "customTabs=launch pkg=${customTabsIntent.`package`}")
+                        true
+                    }.onFailure { throwable ->
+                        RaftAppLog.record(
+                            "SlockOpenUrl",
+                            "customTabs=failed pkg=${customTabsIntent.`package`} type=${throwable::class.java.simpleName}"
+                        )
+                    }.getOrDefault(false)
+                if (launched) {
+                    return null
+                }
+            }
         }
         val viewIntent = externalUrlIntent(uri, mimeType)
         runCatching {
