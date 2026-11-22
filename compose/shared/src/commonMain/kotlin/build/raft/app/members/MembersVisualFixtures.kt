@@ -727,8 +727,22 @@ internal fun MemberDetailVisualSeedContent(
         currentServerId = "visual-server",
         agentDetailState = seed.agentDetailState,
         activityOverview =
-            remember(seed.activityOverview) {
-                seed.activityOverview?.let {
+            remember(seed, initialAgentTab) {
+                // The web's profile always has its Recent activity card, with no turns in this fixture.
+                // Only the profile gets it: an overview would also open the Activity tab on its Overview.
+                val profileOverview =
+                    if (
+                        seed.member.kind == MemberKind.Agent &&
+                        (initialAgentTab == null || initialAgentTab == MembersAgentDetailTab.Profile)
+                    ) {
+                        build.raft.app.data.AgentActivityOverviewState(
+                            agentId = seed.member.id,
+                            status = build.raft.app.data.AgentActivityOverviewStatus.Loaded,
+                        )
+                    } else {
+                        null
+                    }
+                (seed.activityOverview ?: profileOverview)?.let {
                     MembersAgentActivityOverviewBinding(state = MutableStateFlow(it), onIntent = {})
                 }
             },
