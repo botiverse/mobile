@@ -1029,6 +1029,11 @@ data class AgentDetailSummary(
     val runtimeModelKind: String? = null,
     val runtimeProvider: build.raft.app.model.RuntimeProviderConfig? = null,
     val reasoning: String? = null,
+    /**
+     * The saved fast mode, `runtimeConfig.mode.kind` (`fast` / `default`); null without one (Default).
+     * Not [executionMode], which says where the agent runs (`byoc` / `cloud`).
+     */
+    val runtimeMode: String? = null,
     val executionMode: String? = null,
     val machineId: String? = null,
     val machineName: String? = null,

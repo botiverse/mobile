@@ -13,6 +13,7 @@ import build.raft.app.model.Presence
 import build.raft.app.model.RealtimeAgentActivityDetail
 import build.raft.app.model.RealtimeAgentActivityEntry
 import build.raft.app.model.RuntimeConfig
+import build.raft.app.model.RuntimeModeConfig
 import build.raft.app.model.RuntimeModelConfig
 import build.raft.app.model.ServerId
 import kotlinx.coroutines.runBlocking
@@ -157,6 +158,30 @@ class SharedAgentDetailStoreTest {
         // A later fresh read (agent:updated) decides again; the saved projection does not pin it.
         s.dispatch(SharedAgentDetailIntent.SetDetail(testMemberId, warned, owner.serverId, owner = owner, profileGeneration = 1L))
         assertEquals(true, s.state.value.detail?.summary?.modelLimitsDefaultsReported)
+    }
+
+    @Test
+    fun runtimeConfigProjectionShowsTheSavedModeAndKeepsWhereTheAgentRuns() {
+        // The saved mode is the config's own field; `executionMode` (byoc / cloud) is not part of the config
+        // and must stay as read (the migration section reads it: membersMigrationPlacesWithoutSource).
+        val s = store()
+        val owner = SharedAgentDetailOwner("https://api.raft.build/api", "account-1", ServerId("server-1"))
+        val read =
+            detailWithSummary().copy(
+                summary = detailWithSummary().summary?.copy(runtime = "codex", model = "gpt-6.2-sol", runtimeMode = "default", executionMode = "byoc")
+            )
+        s.dispatch(SharedAgentDetailIntent.SelectMember(testMemberId, owner, profileGeneration = 1L))
+        s.dispatch(SharedAgentDetailIntent.SetDetail(testMemberId, read, owner.serverId, owner = owner, profileGeneration = 1L))
+        val fast = RuntimeConfig(runtime = "codex", model = RuntimeModelConfig.Preset("gpt-6.2-sol"), mode = RuntimeModeConfig.Fast)
+
+        s.dispatch(SharedAgentDetailIntent.ApplyRuntimeConfigProjection(owner, testMemberId, fast, 1L))
+        assertEquals("fast", s.state.value.detail?.summary?.runtimeMode)
+        assertEquals("byoc", s.state.value.detail?.summary?.executionMode)
+
+        // An older read landing while the save's projection holds still shows the saved mode.
+        s.dispatch(SharedAgentDetailIntent.SetDetail(testMemberId, read, owner.serverId, owner = owner, profileGeneration = 1L))
+        assertEquals("fast", s.state.value.detail?.summary?.runtimeMode)
+        assertEquals("byoc", s.state.value.detail?.summary?.executionMode)
     }
 
     @Test
