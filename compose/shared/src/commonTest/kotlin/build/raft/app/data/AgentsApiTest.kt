@@ -1009,4 +1009,50 @@ class AgentsApiTest {
         assertEquals(false, assertIs<DataResult.Content<AgentSummary>>(managed.agent(MemberId("agent-1"))).data.isExternal)
         assertEquals(true, assertIs<DataResult.Content<AgentSummary>>(byRuntime.agent(MemberId("agent-1"))).data.toAgentDetailSummary().isExternal)
     }
+
+    @Test
+    fun agentSummaryPrefersActivityKindOverActivityAndKeepsErrorCode() = runPortableCoroutineTest {
+        val kindWins =
+            RaftAgentsApiClient(
+                RecordingAgentsApi(
+                    agentBody = """{"id":"agent-1","name":"bot","status":"active","activity":"offline","activityKind":"online"}"""
+                )
+            )
+        val kindError =
+            RaftAgentsApiClient(
+                RecordingAgentsApi(
+                    agentBody = """{"id":"agent-2","name":"bot","status":"active","activityKind":"error","activityErrorCode":"usage_limit"}"""
+                )
+            )
+        val blankKindFallsBack =
+            RaftAgentsApiClient(
+                RecordingAgentsApi(
+                    agentBody = """{"id":"agent-3","name":"bot","status":"active","activity":"working","activityKind":"  "}"""
+                )
+            )
+        val blankKindKeepsErrorCode =
+            RaftAgentsApiClient(
+                RecordingAgentsApi(
+                    agentBody = """{"id":"agent-4","name":"bot","status":"active","activity":"error","activityKind":"   ","activityErrorCode":"usage_limit"}"""
+                )
+            )
+        val kindOverridesErrorDropsCode =
+            RaftAgentsApiClient(
+                RecordingAgentsApi(
+                    agentBody = """{"id":"agent-5","name":"bot","status":"active","activity":"error","activityKind":"online","activityErrorCode":"usage_limit"}"""
+                )
+            )
+
+        assertEquals("online", assertIs<DataResult.Content<AgentSummary>>(kindWins.agent(MemberId("agent-1"))).data.activity)
+        val errorSummary = assertIs<DataResult.Content<AgentSummary>>(kindError.agent(MemberId("agent-2"))).data
+        assertEquals("error", errorSummary.activity)
+        assertEquals(AgentRuntimeErrorCode.UsageLimit, errorSummary.activityErrorCode)
+        assertEquals("working", assertIs<DataResult.Content<AgentSummary>>(blankKindFallsBack.agent(MemberId("agent-3"))).data.activity)
+        val blankKindErrorSummary = assertIs<DataResult.Content<AgentSummary>>(blankKindKeepsErrorCode.agent(MemberId("agent-4"))).data
+        assertEquals("error", blankKindErrorSummary.activity)
+        assertEquals(AgentRuntimeErrorCode.UsageLimit, blankKindErrorSummary.activityErrorCode)
+        val nonErrorOverride = assertIs<DataResult.Content<AgentSummary>>(kindOverridesErrorDropsCode.agent(MemberId("agent-5"))).data
+        assertEquals("online", nonErrorOverride.activity)
+        assertEquals(null, nonErrorOverride.activityErrorCode)
+    }
 }

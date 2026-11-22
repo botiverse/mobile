@@ -1147,6 +1147,7 @@ private data class AgentWireDto(
     val envVars: Map<String, JsonElement> = emptyMap(),
     val createdAgents: List<AgentCreatedWireDto> = emptyList(),
     val activity: String? = null,
+    val activityKind: String? = null,
     val activityDetail: String? = null,
     val deletedAt: String? = null,
     /** Personal assistant (botiverse/slock packages/shared agent `assistantOwnerUserId`): its owner, else null. */
@@ -1238,6 +1239,7 @@ private fun AgentWireDto.toSummary(): AgentSummary? {
     if (id.isBlank() || name.isBlank()) return null
     val currentProfile = runtimeProfile?.current
     val configuredModel = runtimeConfig?.model?.valueOrNull()
+    val resolvedActivity = activityKind?.takeIf { it.isNotBlank() } ?: activity
     return AgentSummary(
         hostedRuntime = hostedRuntime?.toSnapshot(),
         id = id,
@@ -1277,7 +1279,7 @@ private fun AgentWireDto.toSummary(): AgentSummary? {
         envVarNames = envVars.keys.filter { it.isNotBlank() }.sorted(),
         envVars = envVars.toAgentEnvVars(),
         createdAgents = createdAgents.mapNotNull { it.toDomain() },
-        activity = activity,
+        activity = resolvedActivity,
         activityDetail = activityDetail,
         deletedAt = deletedAt,
         assistantOwnerUserId = assistantOwnerUserId?.takeIf { it.isNotBlank() },
@@ -1298,7 +1300,7 @@ private fun AgentWireDto.toSummary(): AgentSummary? {
         lastRuntimeErrorCode = AgentRuntimeErrorCode.fromWire(lastRuntimeError?.code),
         lastRuntimeErrorSpawnFailureReason = lastRuntimeError?.spawnFailureReason?.trim()?.takeIf { it.isNotEmpty() },
         // Web activityTypedCarriers: the code rides only an error.
-        activityErrorCode = AgentRuntimeErrorCode.fromWire(activityErrorCode).takeIf { activity?.trim() == "error" },
+        activityErrorCode = AgentRuntimeErrorCode.fromWire(activityErrorCode).takeIf { resolvedActivity?.trim() == "error" },
         toolStuck = toolStuck.toAgentToolStuck(),
         credentialHold = credentialHold.toAgentCredentialHold(activityDetailKind),
         modelLimitsDefaultsReported = modelLimits?.defaultsReported == true,
