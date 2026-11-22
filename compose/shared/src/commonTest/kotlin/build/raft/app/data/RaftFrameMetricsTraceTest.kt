@@ -1,5 +1,6 @@
 package build.raft.app.data
 
+import build.raft.app.model.ServerId
 import kotlin.random.Random
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -84,6 +85,7 @@ class RaftFrameMetricsTraceTest {
         // Flag override on mobile.frames applies to all three; more specific scroll flag overrides it.
         val flagged =
             ServerFeatureFlagSnapshot(
+                serverId = ServerId("srv-1"),
                 resolved = true,
                 values = mapOf(
                     "trace_sample.mobile.frames" to true,
@@ -110,6 +112,7 @@ class RaftFrameMetricsTraceTest {
         // Explicit kill switch (flag off or rate 0) suppresses even jank records.
         val disabled =
             ServerFeatureFlagSnapshot(
+                serverId = ServerId("srv-1"),
                 resolved = true,
                 values = mapOf("trace_sample.mobile.frames.scroll" to false),
                 reasons = mapOf("trace_sample.mobile.frames.scroll" to "kill_switch"),
@@ -117,6 +120,104 @@ class RaftFrameMetricsTraceTest {
             )
         assertNull(
             decideFrameMetricsTraceSampling(MOBILE_FRAMES_SCROLL_TRACE_NAME, disabled, 0.02, hasJankOrLongFrame = true) { 0.0 },
+        )
+
+        // Enabled flag with rate "0" or "0.0" also suppresses even jank records.
+        val zeroRateFlag =
+            ServerFeatureFlagSnapshot(
+                serverId = ServerId("srv-1"),
+                resolved = true,
+                values = mapOf("trace_sample.mobile.frames.nav_transition" to true),
+                reasons = mapOf("trace_sample.mobile.frames.nav_transition" to "default"),
+                variants = mapOf("trace_sample.mobile.frames.nav_transition" to "0.0"),
+            )
+        assertNull(
+            decideFrameMetricsTraceSampling(MOBILE_FRAMES_NAV_TRANSITION_TRACE_NAME, zeroRateFlag, 0.1, hasJankOrLongFrame = true) { 0.0 },
+        )
+
+        // Parent-level kill switch suppresses child traces whose leaf key is missing_flag.
+        val parentDisabled =
+            ServerFeatureFlagSnapshot(
+                serverId = ServerId("srv-1"),
+                resolved = true,
+                values = mapOf("trace_sample.mobile.frames" to false),
+                reasons = mapOf(
+                    "trace_sample.mobile.frames.scroll" to FEATURE_FLAG_REASON_MISSING_FLAG,
+                    "trace_sample.mobile.frames" to "kill_switch",
+                ),
+                variants = emptyMap(),
+            )
+        assertNull(
+            decideFrameMetricsTraceSampling(MOBILE_FRAMES_SCROLL_TRACE_NAME, parentDisabled, 0.02, hasJankOrLongFrame = true) { 0.0 },
+        )
+
+        // Defensive bounds: NaN suppresses; > 1.0 clamps sample_rate to 1.0.
+        assertNull(
+            decideFrameMetricsTraceSampling(MOBILE_FRAMES_NAV_TRANSITION_TRACE_NAME, unresolved, Double.NaN, hasJankOrLongFrame = true) { 0.0 },
+        )
+        assertEquals(
+            FrameMetricsTraceSampleDecision(1.0, FRAME_METRICS_CONDITION_TRACE_SAMPLE),
+            decideFrameMetricsTraceSampling(MOBILE_FRAMES_NAV_TRANSITION_TRACE_NAME, unresolved, 2.5, hasJankOrLongFrame = false) { 0.99 },
+        )
+    }
+
+    @Test
+    fun jankAndLongFramePredicatesEnforceThresholdAndScrollScopeRules() {
+        // Nav transition: 99ms smooth vs 100ms long frame or jankFrames > 0.
+        assertFalse(isNavTransitionFrameMetricsJankOrLong(jankFrames = 0, longestFrameMs = 99L, firstFrameMs = 99L))
+        assertTrue(isNavTransitionFrameMetricsJankOrLong(jankFrames = 1, longestFrameMs = 16L, firstFrameMs = 16L))
+        assertTrue(isNavTransitionFrameMetricsJankOrLong(jankFrames = 0, longestFrameMs = 100L, firstFrameMs = 16L))
+        assertTrue(isNavTransitionFrameMetricsJankOrLong(jankFrames = 0, longestFrameMs = 16L, firstFrameMs = 100L))
+
+        // Resume: checks jankFrames, longestFrameMs, blockedMs, and firstFrameMs at 100ms.
+        assertFalse(isResumeFrameMetricsJankOrLong(jankFrames = 0, longestFrameMs = 99L, blockedMs = 99L, firstFrameMs = 99L))
+        assertTrue(isResumeFrameMetricsJankOrLong(jankFrames = 0, longestFrameMs = 16L, blockedMs = 100L, firstFrameMs = 16L))
+        assertTrue(isResumeFrameMetricsJankOrLong(jankFrames = 0, longestFrameMs = 16L, blockedMs = 0L, firstFrameMs = 100L))
+
+        // Scroll: ignores skipped fields when skippedSessions == 0, and ignores primary fields on paused_skipped.
+        assertFalse(
+            isScrollFrameMetricsJankOrLong(
+                reason = "stopped",
+                jankFrames = 0,
+                longestFrameMs = 99L,
+                firstFrameMs = 99L,
+                skippedSessions = 0,
+                skippedJankFrames = 5,
+                skippedLongestFrameMs = 250L,
+            ),
+        )
+        assertTrue(
+            isScrollFrameMetricsJankOrLong(
+                reason = "stopped",
+                jankFrames = 0,
+                longestFrameMs = 16L,
+                firstFrameMs = 16L,
+                skippedSessions = 1,
+                skippedJankFrames = 0,
+                skippedLongestFrameMs = 100L,
+            ),
+        )
+        assertFalse(
+            isScrollFrameMetricsJankOrLong(
+                reason = "paused_skipped",
+                jankFrames = 3,
+                longestFrameMs = 200L,
+                firstFrameMs = 150L,
+                skippedSessions = 0,
+                skippedJankFrames = 0,
+                skippedLongestFrameMs = 0L,
+            ),
+        )
+        assertTrue(
+            isScrollFrameMetricsJankOrLong(
+                reason = "paused_skipped",
+                jankFrames = 0,
+                longestFrameMs = 0L,
+                firstFrameMs = -1L,
+                skippedSessions = 2,
+                skippedJankFrames = 1,
+                skippedLongestFrameMs = 45L,
+            ),
         )
     }
 
@@ -223,13 +324,41 @@ class RaftFrameMetricsTraceTest {
         assertEquals(12_500L, span.attrs["background_ms"]?.jsonPrimitive?.longOrNull)
         assertEquals(107L, span.attrs["start_to_resume_ms"]?.jsonPrimitive?.longOrNull)
         assertEquals(3_000L, span.attrs["window_ms"]?.jsonPrimitive?.longOrNull)
-        assertEquals(3_000L, span.attrs["duration_ms"]?.jsonPrimitive?.longOrNull)
+        assertNull(span.attrs["duration_ms"], "resume uses window_ms and span start/end, not duplicate duration_ms")
         assertEquals(0L, span.attrs["blocked_ms"]?.jsonPrimitive?.longOrNull)
         assertNull(span.attrs["first_frame_ms"], "absent (-1) first frame should be omitted")
         assertEquals(60, span.attrs["refresh_rate_hz"]?.jsonPrimitive?.intOrNull)
         assertEquals("15", span.attrs["os_version"]?.jsonPrimitive?.content)
         assertEquals(0.1, span.attrs["sample_rate"]?.jsonPrimitive?.doubleOrNull)
         assertEquals("trace_sample", span.attrs["record_condition"]?.jsonPrimitive?.content)
+
+        // Negative background/startToResume and null device/OS metadata are omitted cleanly.
+        val minimal =
+            buildResumeFrameTraceSpan(
+                page = "compose_thread",
+                reason = "paused",
+                backgroundMs = -1L,
+                startToResumeMs = -1L,
+                firstFrameMs = 12L,
+                windowMs = 200L,
+                frames = 10,
+                jankFrames = 0,
+                blockedMs = 0L,
+                longestFrameMs = 16L,
+                refreshRateHz = null,
+                deviceModel = null,
+                osVersion = null,
+                sampleRate = 0.1,
+                recordCondition = FRAME_METRICS_CONDITION_TRACE_SAMPLE,
+                endEpochMillis = 1_763_784_005_000L,
+                random = Random(5),
+            )
+        assertNull(minimal.attrs["background_ms"])
+        assertNull(minimal.attrs["start_to_resume_ms"])
+        assertNull(minimal.attrs["device_model"])
+        assertNull(minimal.attrs["os_version"])
+        assertNull(minimal.attrs["refresh_rate_hz"])
+        assertEquals(12L, minimal.attrs["first_frame_ms"]?.jsonPrimitive?.longOrNull)
     }
 
     @Test
@@ -294,5 +423,65 @@ class RaftFrameMetricsTraceTest {
         assertEquals(2, skippedOnly.attrs["skipped_jank_frames"]?.jsonPrimitive?.intOrNull)
         assertEquals(68L, skippedOnly.attrs["skipped_longest_frame_ms"]?.jsonPrimitive?.longOrNull)
         assertFalse("min_frame_ms" in skippedOnly.attrs)
+
+        // When skippedSessions == 0, skipped_jank_frames and skipped_longest_frame_ms are omitted.
+        val noSkipped =
+            buildScrollFrameTraceSpan(
+                page = "compose_thread",
+                list = "thread",
+                reason = "stopped",
+                firstFrameMs = -1L,
+                durationMs = 200L,
+                frames = 12,
+                jankFrames = 0,
+                longestFrameMs = 17L,
+                p95FrameMs = 17L,
+                refreshRateHz = 60,
+                refreshRateEndHz = 60,
+                skippedSessions = 0,
+                skippedJankFrames = 9,
+                skippedLongestFrameMs = 120L,
+                deviceModel = null,
+                osVersion = null,
+                sampleRate = 0.02,
+                recordCondition = FRAME_METRICS_CONDITION_TRACE_SAMPLE,
+                endEpochMillis = 1_763_784_002_000L,
+                random = Random(6),
+            )
+        assertEquals(0, noSkipped.attrs["skipped_sessions"]?.jsonPrimitive?.intOrNull)
+        assertNull(noSkipped.attrs["skipped_jank_frames"])
+        assertNull(noSkipped.attrs["skipped_longest_frame_ms"])
+        assertNull(noSkipped.attrs["first_frame_ms"])
+        assertNull(noSkipped.attrs["device_model"])
+        assertNull(noSkipped.attrs["os_version"])
+
+        // Cancelled nav transition with 0 frames and absent first frame omits first_frame_ms and nulls.
+        val cancelledNav =
+            buildNavTransitionFrameTraceSpan(
+                navKind = "predictive_back",
+                outcome = "cancelled",
+                fromPage = "compose_thread",
+                toPage = "compose_slock_app_shell",
+                firstFrameMs = -1L,
+                durationMs = 40L,
+                frames = 0,
+                jankFrames = 0,
+                longestFrameMs = 0L,
+                p95FrameMs = 0L,
+                refreshRateHz = 120,
+                refreshRateEndHz = 120,
+                deviceModel = null,
+                osVersion = null,
+                sampleRate = 0.1,
+                recordCondition = FRAME_METRICS_CONDITION_TRACE_SAMPLE,
+                endEpochMillis = 1_763_784_002_500L,
+                random = Random(7),
+            )
+        assertEquals("predictive_back", cancelledNav.attrs["nav_kind"]?.jsonPrimitive?.content)
+        assertEquals("cancelled", cancelledNav.attrs["outcome"]?.jsonPrimitive?.content)
+        assertEquals(0, cancelledNav.attrs["frames"]?.jsonPrimitive?.intOrNull)
+        assertNull(cancelledNav.attrs["first_frame_ms"])
+        assertNull(cancelledNav.attrs["device_model"])
+        assertNull(cancelledNav.attrs["os_version"])
     }
 }

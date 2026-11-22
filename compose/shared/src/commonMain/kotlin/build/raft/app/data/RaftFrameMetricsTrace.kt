@@ -164,12 +164,56 @@ internal data class FrameMetricsTraceSampleDecision(
     val recordCondition: String,
 )
 
+internal fun isNavTransitionFrameMetricsJankOrLong(
+    jankFrames: Int,
+    longestFrameMs: Long,
+    firstFrameMs: Long,
+): Boolean =
+    jankFrames > 0 ||
+        longestFrameMs >= FRAME_METRICS_LONG_FRAME_THRESHOLD_MS ||
+        firstFrameMs >= FRAME_METRICS_LONG_FRAME_THRESHOLD_MS
+
+internal fun isResumeFrameMetricsJankOrLong(
+    jankFrames: Int,
+    longestFrameMs: Long,
+    blockedMs: Long,
+    firstFrameMs: Long,
+): Boolean =
+    jankFrames > 0 ||
+        longestFrameMs >= FRAME_METRICS_LONG_FRAME_THRESHOLD_MS ||
+        blockedMs >= FRAME_METRICS_LONG_FRAME_THRESHOLD_MS ||
+        firstFrameMs >= FRAME_METRICS_LONG_FRAME_THRESHOLD_MS
+
+internal fun isScrollFrameMetricsJankOrLong(
+    reason: String,
+    jankFrames: Int,
+    longestFrameMs: Long,
+    firstFrameMs: Long,
+    skippedSessions: Int,
+    skippedJankFrames: Int,
+    skippedLongestFrameMs: Long,
+): Boolean {
+    val isSkippedFlush = normalizeFrameTraceScrollReason(reason) == "paused_skipped"
+    val primaryJank =
+        !isSkippedFlush && (
+            jankFrames > 0 ||
+                longestFrameMs >= FRAME_METRICS_LONG_FRAME_THRESHOLD_MS ||
+                firstFrameMs >= FRAME_METRICS_LONG_FRAME_THRESHOLD_MS
+            )
+    val skippedJank =
+        skippedSessions > 0 && (
+            skippedJankFrames > 0 ||
+                skippedLongestFrameMs >= FRAME_METRICS_LONG_FRAME_THRESHOLD_MS
+            )
+    return primaryJank || skippedJank
+}
+
 /**
  * Deterministic-partition sampling decision so weighting each emitted record by `1 / sample_rate`
  * yields unbiased fleet totals:
- * - If the flag hierarchy disables the trace (`baseRate <= 0.0`), nothing is emitted.
+ * - If the flag hierarchy disables the trace (`baseRate <= 0.0` or non-finite), nothing is emitted.
  * - Records with jank or a long frame emit at `sampleRate = 1.0`, `recordCondition = "jank"`.
- * - Smooth records sample at `baseRate` with `recordCondition = "trace_sample"`.
+ * - Smooth records sample at `baseRate` (clamped to `<= 1.0`) with `recordCondition = "trace_sample"`.
  */
 internal fun decideFrameMetricsTraceSampling(
     traceName: String,
@@ -179,16 +223,17 @@ internal fun decideFrameMetricsTraceSampling(
     random: () -> Double = { Random.nextDouble() },
 ): FrameMetricsTraceSampleDecision? {
     val baseRate = resolveTraceSampleRate(traceName, flags.traceSampleEvaluations(traceName), fallbackBaseRate)
-    if (baseRate <= 0.0) return null
+    if (!baseRate.isFinite() || baseRate <= 0.0) return null
+    val clampedBaseRate = baseRate.coerceAtMost(1.0)
     if (hasJankOrLongFrame) {
         return FrameMetricsTraceSampleDecision(
             sampleRate = 1.0,
             recordCondition = FRAME_METRICS_CONDITION_JANK,
         )
     }
-    return if (traceSampled(baseRate, random)) {
+    return if (traceSampled(clampedBaseRate, random)) {
         FrameMetricsTraceSampleDecision(
-            sampleRate = baseRate,
+            sampleRate = clampedBaseRate,
             recordCondition = FRAME_METRICS_CONDITION_TRACE_SAMPLE,
         )
     } else {
@@ -275,7 +320,6 @@ internal fun buildResumeFrameTraceSpan(
             if (backgroundMs >= 0L) put("background_ms", JsonPrimitive(backgroundMs))
             if (startToResumeMs >= 0L) put("start_to_resume_ms", JsonPrimitive(startToResumeMs))
             put("window_ms", JsonPrimitive(clampedWindowMs))
-            put("duration_ms", JsonPrimitive(clampedWindowMs))
             put("frames", JsonPrimitive(frames.coerceAtLeast(0)))
             put("jank_frames", JsonPrimitive(jankFrames.coerceAtLeast(0)))
             put("blocked_ms", JsonPrimitive(blockedMs.coerceAtLeast(0L)))
@@ -360,9 +404,9 @@ internal fun buildScrollFrameTraceSpan(
 }
 
 /**
- * Lock-free, non-throwing entry point called by host frame probes (Android `RaftNavTransitionFrameProbe`,
- * `RaftResumeFrameProbe`, `RaftScrollFrameProbe`; iOS probes later). Reads active server and feature-flag
- * snapshot purely from memory (zero disk I/O or mutex waits on the main thread).
+ * Non-blocking, non-throwing entry point called by host frame probes (Android `RaftNavTransitionFrameProbe`,
+ * `RaftResumeFrameProbe`, `RaftScrollFrameProbe`; iOS probes later). Performs lock-free in-memory
+ * session/flag reads (zero disk I/O or suspend/Mutex waits on the main thread) and in-memory trace enqueue.
  */
 object RaftFrameMetricsTraceReporter {
     private fun currentServerAndFlags(): Pair<String, ServerFeatureFlagSnapshot>? {
@@ -397,9 +441,11 @@ object RaftFrameMetricsTraceReporter {
         runCatching {
             val (serverId, flags) = currentServerAndFlags() ?: return
             val hasJankOrLong =
-                jankFrames > 0 ||
-                    longestFrameMs >= FRAME_METRICS_LONG_FRAME_THRESHOLD_MS ||
-                    firstFrameMs >= FRAME_METRICS_LONG_FRAME_THRESHOLD_MS
+                isNavTransitionFrameMetricsJankOrLong(
+                    jankFrames = jankFrames,
+                    longestFrameMs = longestFrameMs,
+                    firstFrameMs = firstFrameMs,
+                )
             val decision =
                 decideFrameMetricsTraceSampling(
                     traceName = MOBILE_FRAMES_NAV_TRANSITION_TRACE_NAME,
@@ -449,10 +495,12 @@ object RaftFrameMetricsTraceReporter {
         runCatching {
             val (serverId, flags) = currentServerAndFlags() ?: return
             val hasJankOrLong =
-                jankFrames > 0 ||
-                    longestFrameMs >= FRAME_METRICS_LONG_FRAME_THRESHOLD_MS ||
-                    blockedMs >= FRAME_METRICS_LONG_FRAME_THRESHOLD_MS ||
-                    firstFrameMs >= FRAME_METRICS_LONG_FRAME_THRESHOLD_MS
+                isResumeFrameMetricsJankOrLong(
+                    jankFrames = jankFrames,
+                    longestFrameMs = longestFrameMs,
+                    blockedMs = blockedMs,
+                    firstFrameMs = firstFrameMs,
+                )
             val decision =
                 decideFrameMetricsTraceSampling(
                     traceName = MOBILE_FRAMES_RESUME_TRACE_NAME,
@@ -504,11 +552,15 @@ object RaftFrameMetricsTraceReporter {
         runCatching {
             val (serverId, flags) = currentServerAndFlags() ?: return
             val hasJankOrLong =
-                jankFrames > 0 ||
-                    skippedJankFrames > 0 ||
-                    longestFrameMs >= FRAME_METRICS_LONG_FRAME_THRESHOLD_MS ||
-                    skippedLongestFrameMs >= FRAME_METRICS_LONG_FRAME_THRESHOLD_MS ||
-                    firstFrameMs >= FRAME_METRICS_LONG_FRAME_THRESHOLD_MS
+                isScrollFrameMetricsJankOrLong(
+                    reason = reason,
+                    jankFrames = jankFrames,
+                    longestFrameMs = longestFrameMs,
+                    firstFrameMs = firstFrameMs,
+                    skippedSessions = skippedSessions,
+                    skippedJankFrames = skippedJankFrames,
+                    skippedLongestFrameMs = skippedLongestFrameMs,
+                )
             val decision =
                 decideFrameMetricsTraceSampling(
                     traceName = MOBILE_FRAMES_SCROLL_TRACE_NAME,
@@ -551,6 +603,7 @@ object RaftFrameMetricsTraceReporter {
         deviceModel: String?,
         osVersion: String?,
     ) {
+        if (skippedSessions <= 0) return
         reportScroll(
             page = page,
             list = list,
