@@ -1021,6 +1021,9 @@ class SharedThreadCachedOpenNoFlashTest {
                         id = id,
                         seq = seq,
                         body = "body $id",
+                    ).copy(
+                        createdAtEpochMillis =
+                            build.raft.app.model.parseRaftTimestampEpochMillisOrNull("2026-05-19T16:00:00Z"),
                     )
                 },
             conversation = conversationSummary(channelId).copy(joined = true),

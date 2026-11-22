@@ -1239,7 +1239,6 @@ internal class SharedThreadStore(
             )
         if (publishedImmediateSuperseded != null) {
             var staleDropped = false
-            var provenanceInvalidated = false
             initialAccessStateMutex.withLock {
                 if (!staleTokenStillCurrent(staleToken, "thread_start", "post_durable_reconcile", routeContextPayload)) {
                     staleDropped = true
@@ -1311,8 +1310,8 @@ internal class SharedThreadStore(
                         }
                     }
                 if (admitted == null) {
-                    provenanceInvalidated = true
-                    visiblePayloadOwnerScopeId = null
+                    visiblePayloadOwnerScopeId =
+                        dataSource.currentReplyCacheProvenance()?.threadPayloadOwnerScopeId
                     reduceState(
                         SharedThreadState(
                             payload =
@@ -1337,7 +1336,7 @@ internal class SharedThreadStore(
                     )
                 }
             }
-            if (staleDropped || provenanceInvalidated) return
+            if (staleDropped) return
         } else {
             val standInFirstFrame =
                 supersededFirstFrame
@@ -1430,7 +1429,6 @@ internal class SharedThreadStore(
                 diagnosticsLogger?.invoke("thread_start_access_kept threadId=${threadId.orEmpty()}")
             }
             var staleDropped = false
-            var provenanceInvalidated = false
             initialAccessStateMutex.withLock {
                 if (!staleTokenStillCurrent(staleToken, "thread_start", "initial_commit", routeContextPayload)) {
                     staleDropped = true
@@ -1466,13 +1464,8 @@ internal class SharedThreadStore(
                         }
                     }
                 if (admitted == null) {
-                    if (producerContext != null) {
-                        provenanceInvalidated = true
-                        visiblePayloadOwnerScopeId = null
-                    } else {
-                        visiblePayloadOwnerScopeId =
-                            dataSource.currentReplyCacheProvenance()?.threadPayloadOwnerScopeId
-                    }
+                    visiblePayloadOwnerScopeId =
+                        dataSource.currentReplyCacheProvenance()?.threadPayloadOwnerScopeId
                     reduceState(
                         SharedThreadState(
                             payload =
@@ -1497,7 +1490,7 @@ internal class SharedThreadStore(
                     )
                 }
             }
-            if (staleDropped || provenanceInvalidated) return
+            if (staleDropped) return
         }
         if (!staleTokenStillCurrent(staleToken, "thread_start", "before_refresh", routeContextPayload)) {
             return
@@ -1857,6 +1850,9 @@ internal class SharedThreadStore(
         )
         val loadingAdmitted =
             dataSource.withCurrentReplyCacheProvenanceForLocalSend(refreshProvenance) {
+                if (explicitRetry) {
+                    markLoadingRevealElapsedImmediately()
+                }
                 reducePayloadPatch { currentPayload ->
                     if (!routeStillCurrent(basePayload, "thread_refresh", "loading_apply", currentPayload)) {
                         return@reducePayloadPatch currentPayload
