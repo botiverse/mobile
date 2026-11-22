@@ -5,14 +5,12 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.PressInteraction
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.widthIn
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -34,10 +32,11 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.style.ResolvedTextDirection
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import build.raft.designsystem.components.RaftEmptyState
+import build.raft.designsystem.components.RaftEmptyStateDefaults
 import build.raft.designsystem.text.RaftText
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.delay
@@ -225,57 +224,24 @@ internal fun RaftSearchSummary(text: String, typography: RaftTypography, modifie
 }
 
 /**
- * raft-ui EmptyState as the search panel uses it (SearchEmpty / SearchError): `px-6 py-12`
- * centred, a 36dp `foreground-hint` icon, a `text-headline` bold `foreground-muted` title,
- * a `text-callout` `foreground-hint` description at most 300dp wide (all 8dp apart) and the
- * actions 20dp below. [typography] is the designsystem type scale (`RaftTheme.typography`,
- * read by the caller inside RaftDesignSystemTheme).
+ * The search panel's [RaftEmptyState] (raft-ui SearchEmpty / SearchError): an app icon, the title,
+ * an optional description and actions.
  */
 @Composable
 internal fun RaftSearchEmptyState(
     title: String,
     detail: String?,
-    typography: RaftTypography,
     modifier: Modifier = Modifier,
     iconName: RaftLucideIconName? = RaftLucideIconName.Search,
     actions: (@Composable () -> Unit)? = null,
 ) {
-    Box(
-        modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 48.dp),
-        contentAlignment = Alignment.Center,
-    ) {
-        Column(
-            modifier = Modifier.widthIn(max = 384.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            iconName?.let {
-                RaftLucideIcon(it, modifier = Modifier.size(36.dp), color = raftArgbHex(RaftColor.ForegroundHint))
-            }
-            RaftText(
-                text = title,
-                style = typography.headline,
-                color = RaftColor.TextMuted,
-                textAlign = TextAlign.Center,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-            )
-            detail?.takeIf { it.isNotBlank() }?.let {
-                RaftText(
-                    text = it,
-                    style = typography.callout,
-                    color = RaftColor.ForegroundHint,
-                    textAlign = TextAlign.Center,
-                    maxLines = 3,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.widthIn(max = 300.dp),
-                )
-            }
-            if (actions != null) {
-                Box(Modifier.padding(top = 12.dp)) { actions() }
-            }
-        }
-    }
+    RaftEmptyState(
+        title = title,
+        modifier = modifier,
+        description = detail,
+        icon = iconName?.let { name -> { RaftContentLucideIcon(name, size = RaftEmptyStateDefaults.IconSize) } },
+        actions = actions,
+    )
 }
 
 /**

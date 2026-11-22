@@ -54,7 +54,6 @@ import build.raft.designsystem.components.RaftSearchResultRow
 import build.raft.designsystem.components.RaftSearchResultTitle
 import build.raft.designsystem.components.RaftSearchSectionHeader
 import build.raft.designsystem.components.raftSearchRowSelected
-import build.raft.designsystem.theme.RaftTheme
 
 /**
  * The wide layout's search panel mode of [SharedHomeSearchPanel] (web `SearchOverlay` +
@@ -251,7 +250,6 @@ internal fun HomeSearchOverlayBody(
                     RaftSearchEmptyState(
                         title = stringResource(Res.string.search_empty_title),
                         detail = stringResource(Res.string.search_empty_detail),
-                        typography = RaftTheme.typography,
                         modifier = Modifier.fillParentMaxHeight(),
                     )
                 is HomeSearchOverlayEntry.HistoryNotice ->
@@ -340,7 +338,6 @@ internal fun HomeSearchOverlayBody(
                                 Res.string.search_empty_results_query.format(listOf(query.trim())).localized()
                             },
                         detail = stringResource(Res.string.search_empty_query_detail),
-                        typography = RaftTheme.typography,
                     )
             }
         }

@@ -21,7 +21,6 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.TextFieldValue
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -37,6 +36,8 @@ import build.raft.designsystem.components.RaftBannerStatus
 import build.raft.designsystem.components.RaftButton
 import build.raft.designsystem.components.RaftButtonSize
 import build.raft.designsystem.components.RaftButtonVariant
+import build.raft.designsystem.components.RaftEmptyState
+import build.raft.designsystem.components.RaftEmptyStateDefaults
 import build.raft.designsystem.components.RaftListRow
 import build.raft.designsystem.components.RaftListRowText
 import build.raft.designsystem.components.RaftSpinner
@@ -252,45 +253,19 @@ internal fun ChannelMembersLoading() {
     }
 }
 
-/**
- * raft-ui EmptyState (web `EmptyState`): a bare 36dp icon in `foreground-hint` (no frame), the
- * title in `text-headline` bold `foreground-muted`, an optional `text-callout` hint line and
- * an action.
- */
+/** The members page's [RaftEmptyState]: an app icon, the title and, when a retry helps, an action. */
 @Composable
 internal fun ChannelMembersEmptyState(
     icon: RaftLucideIconName,
     title: String,
-    detail: String? = null,
     actionLabel: String? = null,
     onAction: () -> Unit = {},
 ) {
-    Column(
-        Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 48.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        RaftLucideIcon(icon, modifier = Modifier.size(36.dp), color = raftArgbHex(RaftTheme.colors.foregroundHint))
-        RaftText(
-            title,
-            modifier = Modifier.padding(bottom = 8.dp),
-            style = RaftTheme.typography.headline,
-            color = RaftTheme.colors.foregroundMuted,
-            textAlign = TextAlign.Center,
-        )
-        if (detail != null) {
-            RaftText(
-                detail,
-                modifier = Modifier.widthIn(max = 300.dp),
-                style = RaftTheme.typography.callout,
-                color = RaftTheme.colors.foregroundHint,
-                textAlign = TextAlign.Center,
-            )
-        }
-        if (actionLabel != null) {
-            RaftButton(text = actionLabel, onClick = onAction)
-        }
-    }
+    RaftEmptyState(
+        title = title,
+        icon = { RaftContentLucideIcon(icon, size = RaftEmptyStateDefaults.IconSize) },
+        actions = actionLabel?.let { label -> { RaftButton(text = label, onClick = onAction) } },
+    )
 }
 
 /** A page-level warning above the roster (web `Banner intent="warning" className="m-3"`). */

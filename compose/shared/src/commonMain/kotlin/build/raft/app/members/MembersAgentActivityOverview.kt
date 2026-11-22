@@ -12,7 +12,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.runtime.Composable
@@ -25,7 +24,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import build.raft.app.components.RaftStorePullToRefreshBox
@@ -264,7 +262,7 @@ internal fun MembersAgentActivityOverview(
         RaftEmptyState(
             title = stringResource(Res.string.member_activity_overview_load_error),
             modifier = modifier.fillMaxSize(),
-            icon = { RaftContentLucideIcon(RaftLucideIconName.Activity, size = RaftEmptyStateDefaults.IconSize) },
+            icon = { RaftContentLucideIcon(RaftLucideIconName.History, size = RaftEmptyStateDefaults.IconSize) },
             actions = {
                 RaftButton(
                     text = stringResource(Res.string.common_retry),
@@ -1194,41 +1192,27 @@ private fun MembersAgentActivityAppLogo(event: AgentActivityAppEvent) {
     RaftConnectedAppLogo(name = event.appName.ifBlank { event.clientKey }, logoUrl = logoUrl)
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun MembersAgentActivityOverviewEmpty(
+internal fun MembersAgentActivityOverviewEmpty(
     title: String,
     detail: String,
     actions: (@Composable () -> Unit)? = null,
 ) {
-    val colors = RaftTheme.colors
-    Box(Modifier.fillMaxWidth().padding(vertical = RaftAppSpacing.Xl), contentAlignment = Alignment.Center) {
-        Column(
-            modifier = Modifier.widthIn(max = 320.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(RaftAppSpacing.Md),
-        ) {
-            RaftLucideIcon(
-                RaftLucideIconName.Activity,
-                modifier = Modifier.size(36.dp),
-                color = raftArgbHex(colors.foregroundHint),
-            )
-            RaftText(
-                text = title,
-                style = RaftTheme.typography.headline.copy(fontWeight = FontWeight.Bold),
-                color = colors.foreground,
-                textAlign = TextAlign.Center,
-            )
-            RaftText(
-                text = detail,
-                style = RaftTheme.typography.callout,
-                color = colors.foregroundMuted,
-                textAlign = TextAlign.Center,
-            )
-            if (actions != null) {
-                Row(horizontalArrangement = Arrangement.spacedBy(RaftAppSpacing.Sm)) { actions() }
-            }
-        }
-    }
+    RaftEmptyState(
+        title = title,
+        description = detail,
+        icon = { RaftContentLucideIcon(RaftLucideIconName.History, size = RaftEmptyStateDefaults.IconSize) },
+        actions =
+            actions?.let { content ->
+                {
+                    FlowRow(
+                        horizontalArrangement = Arrangement.spacedBy(RaftAppSpacing.Sm, Alignment.CenterHorizontally),
+                        verticalArrangement = Arrangement.spacedBy(RaftAppSpacing.Sm),
+                    ) { content() }
+                }
+            },
+    )
 }
 
 /** Trigger sentences carry `#channel` refs: render them as links, as the raw log does (web RefText). */
