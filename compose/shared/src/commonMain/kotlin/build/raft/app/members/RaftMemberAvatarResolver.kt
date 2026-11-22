@@ -14,6 +14,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.key
 import androidx.compose.runtime.remember
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.Flow
@@ -122,8 +123,19 @@ internal fun raftMemberAvatarResolver(
         },
         currentAvatar = { memberId ->
             serverMembersStore?.let { store ->
-                store.currentAvatarMemberProfileResolution(cleanServerId, memberId).resolvedAvatarWireValue()
-                    ?: store.durableMemberAvatarWireValue(cleanServerId, memberId)
+                val resolution = store.currentAvatarMemberProfileResolution(cleanServerId, memberId)
+                val cachedJoint =
+                    if (!resolution.authoritative && !memberId.isNullOrBlank()) {
+                        jointActors?.current(cleanServerId, memberId, kind = null)
+                    } else {
+                        null
+                    }
+                if (cachedJoint != null) {
+                    cachedJoint.explicitAvatarWireValue()
+                } else {
+                    resolution.resolvedAvatarWireValue()
+                        ?: store.durableMemberAvatarWireValue(cleanServerId, memberId)
+                }
             }
         },
         avatarFlow = { memberId ->
@@ -134,26 +146,48 @@ internal fun raftMemberAvatarResolver(
                 )
                 flowOf(null)
             } else {
-                serverMembersStore
-                    .memberAvatarProfileResolutionFlow(cleanServerId, memberId)
-                    .map { resolution ->
+                val baseResolutionFlow = serverMembersStore.memberAvatarProfileResolutionFlow(cleanServerId, memberId)
+                val resolutionWithJointFlow: Flow<Pair<SharedServerMembersState.ResolvedMemberProfile, ResolvedActor?>> =
+                    if (jointActors == null || memberId.isNullOrBlank()) {
+                        baseResolutionFlow.map { resolution -> resolution to null }
+                    } else {
+                        combine(
+                            baseResolutionFlow,
+                            jointActors.cachedActorFlow(cleanServerId, memberId, kind = null),
+                        ) { resolution, cachedJoint ->
+                            resolution to cachedJoint.takeUnless { resolution.authoritative }
+                        }
+                    }
+                resolutionWithJointFlow
+                    .map { (resolution, cachedJoint) ->
                         val profile = resolution.profile
                         // Cold start: until the directory (or a profile carrying an avatar) lands,
                         // render the last authoritative avatar persisted for this member. A
                         // non-authoritative message-author candidate with no explicit avatar must
                         // stay null so row-carried avatars and POST /api/actors/resolve are not
-                        // overshadowed by a synthesized pixel:robot default.
-                        val liveAvatarWireValue = resolution.resolvedAvatarWireValue()
+                        // overshadowed by a synthesized pixel:robot default. Once actors/resolve or
+                        // actor:updated resolves an actor not authoritatively known locally, its
+                        // avatar also outranks any stale non-authoritative candidate.
+                        val liveAvatarWireValue =
+                            if (cachedJoint != null) {
+                                cachedJoint.explicitAvatarWireValue()
+                            } else {
+                                resolution.resolvedAvatarWireValue()
+                            }
                         val avatarWireValue =
-                            liveAvatarWireValue
-                                ?: serverMembersStore.durableMemberAvatarWireValue(cleanServerId, memberId)
+                            if (cachedJoint != null) {
+                                liveAvatarWireValue
+                            } else {
+                                liveAvatarWireValue
+                                    ?: serverMembersStore.durableMemberAvatarWireValue(cleanServerId, memberId)
+                            }
                         diagnosticsLogger(
                             "result=profile serverHash=${cleanServerId?.value.raftAvatarDiagnosticsHash()} " +
                                 "memberHash=${memberId.raftAvatarDiagnosticsHash()} " +
                                 "profile=${profile != null} " +
                                 "kind=${profile?.kind?.name ?: "none"} " +
                                 "avatarSource=${avatarWireValue.raftAvatarDiagnosticsSource()} " +
-                                "durable=${liveAvatarWireValue == null && avatarWireValue != null}"
+                                "durable=${cachedJoint == null && liveAvatarWireValue == null && avatarWireValue != null}"
                         )
                         avatarWireValue
                     }

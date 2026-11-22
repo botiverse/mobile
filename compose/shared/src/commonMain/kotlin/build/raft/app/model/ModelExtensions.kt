@@ -356,23 +356,40 @@ private fun explicitAvatarWireValue(
             ?: avatarUrl?.appAvatarWireValueOrNull()
     }
 
+private val RelativeAppAvatarPath =
+    Regex("^/(?:api/)?avatars/([A-Za-z0-9_-]+)/([A-Za-z0-9_.-]+)$")
+
 fun String.isRelativeAppAvatarPath(): Boolean {
     val normalized = trim()
-    return normalized.startsWith("/avatars/") || normalized.startsWith("/api/avatars/")
+    if (normalized.isEmpty() || normalized.contains('\\')) return false
+    if (normalized.any { it.isWhitespace() || it.code < 0x20 || it.code == 0x7F }) return false
+    val path = normalized.substringBefore('?').substringBefore('#')
+    val match = RelativeAppAvatarPath.matchEntire(path) ?: return false
+    val filename = match.groupValues[2]
+    return filename != "." && filename != ".." && !filename.contains("..")
 }
 
 fun String.appAvatarRelativeApiUrl(apiBaseUrl: String?): String? {
     val normalized = trim()
     if (!normalized.isRelativeAppAvatarPath()) return null
-    val base = apiBaseUrl?.trim()?.takeIf { it.startsWith("http://") || it.startsWith("https://") }?.trimEnd('/') ?: return null
+    val rawBase =
+        apiBaseUrl
+            ?.trim()
+            ?.substringBefore('?')
+            ?.substringBefore('#')
+            ?.takeIf { it.startsWith("http://") || it.startsWith("https://") }
+            ?: return null
+    val authorityStart = rawBase.indexOf("://") + 3
+    val authorityEnd = rawBase.indexOf('/', startIndex = authorityStart).let { if (it < 0) rawBase.length else it }
+    val authority = rawBase.substring(authorityStart, authorityEnd)
+    if (authority.isBlank() || authority.startsWith(":") || authority.any { it.isWhitespace() || it.code < 0x20 || it.code == 0x7F }) {
+        return null
+    }
+    val cleanBase = rawBase.trimEnd('/')
+    val apiBase = if (cleanBase.endsWith("/api")) cleanBase else "$cleanBase/api"
     return when {
-        normalized.startsWith("/api/avatars/") ->
-            if (base.endsWith("/api")) {
-                "${base.removeSuffix("/api")}$normalized"
-            } else {
-                "$base$normalized"
-            }
-        normalized.startsWith("/avatars/") -> "$base$normalized"
+        normalized.startsWith("/api/avatars/") -> "${apiBase.removeSuffix("/api")}$normalized"
+        normalized.startsWith("/avatars/") -> "$apiBase$normalized"
         else -> null
     }
 }

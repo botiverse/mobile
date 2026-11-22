@@ -426,6 +426,7 @@ sealed class AvatarReference {
                     Pixel(normalized.removePrefix("pixel:").ifBlank { "robot" })
                 normalized.startsWith("http://") || normalized.startsWith("https://") ->
                     normalized.takeUnless { it.isLegacyGravatarAvatarUrl() }?.let(::Url)
+                normalized.isRelativeAppAvatarPath() -> Url(normalized)
                 isRaftHumanPixelAvatarUrl(normalized) -> HumanPixel(normalized)
                 else -> null
             }

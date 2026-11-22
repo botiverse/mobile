@@ -97,6 +97,21 @@ class SharedJointActorDirectory internal constructor(
     fun current(serverId: ServerId, id: String, kind: MemberKind? = null): ResolvedActor? =
         _rows.value.rowFor(scopeOf(serverId), id.trim(), kind)
 
+    /** Observes the cached resolved row for [id] without issuing a resolve request. */
+    @OptIn(ExperimentalCoroutinesApi::class)
+    internal fun cachedActorFlow(serverId: ServerId, id: String, kind: MemberKind? = null): Flow<ResolvedActor?> {
+        val cleanServerId = serverId.value.trim().takeIf { it.isNotEmpty() } ?: return flowOf(null)
+        val cleanId = id.trim()
+        if (cleanId.isEmpty()) return flowOf(null)
+        return ownerFlow(ServerId(cleanServerId))
+            .map { it.toScope(cleanServerId) }
+            .distinctUntilChanged()
+            .flatMapLatest { scope ->
+                if (scope == null) flowOf(null) else _rows.map { rows -> rows.rowFor(scope, cleanId, kind) }
+            }
+            .distinctUntilChanged()
+    }
+
     /**
      * The resolved row for [id] in the owner's current scope, asking the server for it whenever a
      * scope becomes current (first collection, or the owner appearing / changing) and the row is

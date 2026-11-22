@@ -291,14 +291,31 @@ data class SharedServerMembersState(
         if (cached != null && cleanMemberId in authoritativeProfileCacheIdsByServerId[cleanServerId].orEmpty()) {
             return ResolvedMemberProfile(cached, authoritative = true)
         }
-        val channelMember =
+        val matchingSlices =
             channelMemberSlices
                 .asSequence()
                 .filter { it.key.serverId == cleanServerId }
-                .flatMap { it.value.members.asSequence() }
+                .map { it.value }
+        val liveChannelMember =
+            matchingSlices
+                .filterNot { it.storedStandIn }
+                .flatMap { it.members.asSequence() }
                 .firstOrNull { it.id.value.trim() == cleanMemberId }
-        if (channelMember != null) return ResolvedMemberProfile(channelMember, authoritative = true)
-        return ResolvedMemberProfile(cached, authoritative = false)
+        if (liveChannelMember != null) return ResolvedMemberProfile(liveChannelMember, authoritative = true)
+        val standInChannelMember =
+            matchingSlices
+                .filter { it.storedStandIn }
+                .flatMap { it.members.asSequence() }
+                .firstOrNull { it.id.value.trim() == cleanMemberId }
+        val fallback =
+            when {
+                standInChannelMember == null -> cached
+                cached == null -> standInChannelMember
+                standInChannelMember.avatarSlotResolution().displayAvatarWireValue != null -> standInChannelMember
+                cached.avatarSlotResolution().displayAvatarWireValue != null -> cached
+                else -> standInChannelMember
+            }
+        return ResolvedMemberProfile(fallback, authoritative = false)
     }
 
     fun memberProfile(
@@ -1453,15 +1470,31 @@ class SharedServerMembersStore internal constructor(
         if (cached != null && cleanMemberId in current.authoritativeProfileCacheIdsByServerId[cleanServerId].orEmpty()) {
             return SharedServerMembersState.ResolvedMemberProfile(cached, authoritative = true)
         }
-        val channelMember =
-            currentOwnerChannelMemberSlices(ServerId(cleanServerId))
+        val slices = currentOwnerChannelMemberSlices(ServerId(cleanServerId))
+        val liveChannelMember =
+            slices
                 .asSequence()
+                .filterNot { it.storedStandIn }
                 .flatMap { it.members.asSequence() }
                 .firstOrNull { it.id.value.trim() == cleanMemberId }
-        if (channelMember != null) {
-            return SharedServerMembersState.ResolvedMemberProfile(channelMember, authoritative = true)
+        if (liveChannelMember != null) {
+            return SharedServerMembersState.ResolvedMemberProfile(liveChannelMember, authoritative = true)
         }
-        return SharedServerMembersState.ResolvedMemberProfile(cached, authoritative = false)
+        val standInChannelMember =
+            slices
+                .asSequence()
+                .filter { it.storedStandIn }
+                .flatMap { it.members.asSequence() }
+                .firstOrNull { it.id.value.trim() == cleanMemberId }
+        val fallback =
+            when {
+                standInChannelMember == null -> cached
+                cached == null -> standInChannelMember
+                standInChannelMember.avatarSlotResolution().displayAvatarWireValue != null -> standInChannelMember
+                cached.avatarSlotResolution().displayAvatarWireValue != null -> cached
+                else -> standInChannelMember
+            }
+        return SharedServerMembersState.ResolvedMemberProfile(fallback, authoritative = false)
     }
 
     internal fun memberAvatarProfileResolutionFlow(
@@ -2038,7 +2071,10 @@ class SharedServerMembersStore internal constructor(
                 val entryChanged = entry != null && nextMembers != entry.members
                 val cacheChanged = cache != null && nextCache != cache
                 val slicesChanged = nextSlices != current.channelMemberSlices
-                if (!entryChanged && !cacheChanged && !slicesChanged) return@withLock null
+                val cacheMatchedHuman = cache?.get(userKey)?.isPerson() == true
+                val currentAuthoritativeCacheIds = current.authoritativeProfileCacheIdsByServerId[key].orEmpty()
+                val authoritativeCacheChanged = cacheMatchedHuman && userKey !in currentAuthoritativeCacheIds
+                if (!entryChanged && !cacheChanged && !slicesChanged && !authoritativeCacheChanged) return@withLock null
                 changed = true
                 _state.value =
                     current.copy(
@@ -2053,6 +2089,12 @@ class SharedServerMembersStore internal constructor(
                                 current.profileCacheByServerId + (key to nextCache)
                             } else {
                                 current.profileCacheByServerId
+                            },
+                        authoritativeProfileCacheIdsByServerId =
+                            if (authoritativeCacheChanged) {
+                                current.authoritativeProfileCacheIdsByServerId + (key to (currentAuthoritativeCacheIds + userKey))
+                            } else {
+                                current.authoritativeProfileCacheIdsByServerId
                             },
                         channelMemberSlices = nextSlices,
                     )
