@@ -76,7 +76,6 @@ States: building · draft · smoke · approved · distributed · superseded.
 - [ ] 7. Release go (after testing the exact build): TestFlight external, notification receipt + `IN_BETA_TESTING`
 - [ ] 7. iOS audit tag `ios-vX.Y.Z-b<build>`
 - [ ] 7. Release go: App Store submission / release (screenshots via Hands)
-- [ ] 7. Release go: announcements (message ids)
 - [ ] 9. Merge-back PR squash-merged; content verified against `vX.Y.Z`
 - [ ] 9. Version closed; branch locked (ruleset id, revocation condition)
 - [ ] 9. Reminder cancelled; final summary posted; issue closed
