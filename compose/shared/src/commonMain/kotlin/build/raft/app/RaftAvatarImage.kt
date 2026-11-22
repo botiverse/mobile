@@ -14,6 +14,8 @@ import androidx.compose.ui.layout.ContentScale
 import build.raft.app.data.RaftAvatarCacheSubject
 import build.raft.app.data.RaftSharedStoreRegistry
 import build.raft.app.model.appAvatarApiFallbackUrl
+import build.raft.app.model.appAvatarRelativeApiUrl
+import build.raft.app.model.isRelativeAppAvatarPath
 import coil3.compose.AsyncImagePainter
 import coil3.compose.rememberAsyncImagePainter
 import build.raft.app.image.raftNetworkImageCacheKey
@@ -60,6 +62,10 @@ internal fun RaftAvatarHttpImage(
             ?.apiBaseUrl
             ?.trimEnd('/')
     val candidates = remember(source, apiBaseUrl) { raftAvatarImageCandidates(source, apiBaseUrl) }
+    if (candidates.isEmpty()) {
+        fallback()
+        return
+    }
     val cooldownKey = remember(candidates) { raftNetworkImageCacheKey(candidates.first()) }
     // A full round = every candidate tried once. Failed rounds are remembered process-wide (keyed by
     // content), so a failed avatar scrolled back into view shows its fallback without refetching.
@@ -180,9 +186,12 @@ internal val raftAvatarFailureCooldown = RaftAvatarFailureCooldown()
  */
 internal fun raftAvatarImageCandidates(source: String, apiBaseUrl: String?): List<String> {
     val primary = source.trim()
+    if (primary.isRelativeAppAvatarPath()) {
+        return listOfNotNull(primary.appAvatarRelativeApiUrl(apiBaseUrl))
+    }
     val apiFallback =
         primary.appAvatarApiFallbackUrl(apiBaseUrl)?.takeUnless { it == primary }
-    return listOfNotNull(primary, apiFallback)
+    return listOfNotNull(primary.takeIf { it.isNotEmpty() }, apiFallback)
 }
 
 private data class RaftAvatarImageOutcome(val painter: String, val dataSource: String)

@@ -95,4 +95,37 @@ class AvatarPriorityTest {
             AvatarReference.fromWireValue("pixel:tree")
         )
     }
+
+    @Test
+    fun relativeAppAvatarPathsResolveAgainstApiBaseUrl() {
+        val relativeAgentPath = "/api/avatars/agents/0123456789abcdef.webp"
+        val relativeUserPath = "/avatars/users/0123456789abcdef.webp"
+
+        assertEquals(AvatarReference.Url(relativeAgentPath), AvatarReference.fromWireValue(relativeAgentPath))
+        assertEquals(AvatarReference.Url(relativeUserPath), AvatarReference.fromWireValue(relativeUserPath))
+        assertNull(AvatarReference.fromWireValue("/api/avatars/../../auth/me"))
+        assertNull(AvatarReference.fromWireValue("/api/avatars/"))
+        assertNull(AvatarReference.fromWireValue("//evil.example/avatars/agents/0123456789abcdef.webp"))
+
+        assertEquals(
+            "https://api.raft.build/api/avatars/agents/0123456789abcdef.webp",
+            relativeAgentPath.appAvatarRelativeApiUrl("https://api.raft.build/api/"),
+        )
+        assertEquals(
+            "https://api.raft.build/api/avatars/users/0123456789abcdef.webp",
+            relativeUserPath.appAvatarRelativeApiUrl("https://api.raft.build/api/"),
+        )
+        assertEquals(
+            "https://selfhosted.example/api/avatars/agents/0123456789abcdef.webp",
+            relativeAgentPath.appAvatarRelativeApiUrl("https://selfhosted.example"),
+        )
+        assertEquals(
+            "https://selfhosted.example/api/avatars/users/0123456789abcdef.webp",
+            relativeUserPath.appAvatarRelativeApiUrl("https://selfhosted.example"),
+        )
+        assertNull("/api/avatars/../../auth/me".appAvatarRelativeApiUrl("https://api.raft.build/api/"))
+        assertNull("/avatars/a\\b.webp".appAvatarRelativeApiUrl("https://api.raft.build/api/"))
+        assertNull(relativeAgentPath.appAvatarRelativeApiUrl("https://"))
+        assertNull(relativeAgentPath.appAvatarRelativeApiUrl(null))
+    }
 }
