@@ -737,7 +737,7 @@ internal fun SharedHomeScreen(
             var leaveConfirmChannel by remember(snapshot.server.id) { mutableStateOf<HomeChannelRow?>(null) }
             // Web "Hide Empty Sections": a device-local display preference, shared with
             // Settings > Appearance "Hide empty sidebar sections".
-            val hideEmptySections = build.raft.app.data.RaftDisplayPreferenceRuntime.hideEmptySidebarSections
+            val hideEmptySections = build.raft.app.data.RaftDisplayPreferenceRuntime.observeHideEmptySidebarSections()
             RaftStructuralHomeShell(
                 currentServerName = snapshot.server.name,
                 currentServerId = snapshot.server.id.value,

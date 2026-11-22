@@ -95,7 +95,7 @@ internal fun RaftWorkingNowSummary(
     height: Dp = RaftWorkingNowSummaryHeight,
 ) {
     val source = LocalRaftWorkingNow.current ?: return
-    if (!RaftDisplayPreferenceRuntime.showLiveAgentActivity) return
+    if (!RaftDisplayPreferenceRuntime.observeShowLiveAgentActivity()) return
     val items by source.items.collectAsState()
     if (items.isEmpty()) return
     RaftWorkingNowSummaryContent(

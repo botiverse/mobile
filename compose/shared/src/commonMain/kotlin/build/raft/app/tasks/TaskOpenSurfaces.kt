@@ -871,7 +871,7 @@ internal fun TaskPendingConversationPage(
             ThreadJoinFooter(
                 label = stringResource(Res.string.task_conversation_join_to_reply),
                 onJoin = onJoin,
-                joining = ThreadChannelJoinsInFlight.isJoining(task.channelId),
+                joining = ThreadChannelJoinsInFlight.observeIsJoining(task.channelId),
                 // Inside TaskPendingConversationWindow safeDrawing bottom padding is already applied by the window.
                 bottomSafeArea = bottomSafeArea,
             )

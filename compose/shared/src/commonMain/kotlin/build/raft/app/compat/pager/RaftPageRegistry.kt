@@ -262,7 +262,7 @@ fun RaftPagerHost(
                             RaftPageHorizontalSafeAreaShell {
                                 (pager as? ComposeContainer)?.composedContent?.invoke()
                                 // The upgrade dialog this page opened (RaftUpgradeDialog.kt), if any.
-                                if (RaftUpgradeDialogState.request?.pagerId == pager.pagerId) {
+                                if (RaftUpgradeDialogState.observeRequest()?.pagerId == pager.pagerId) {
                                     RaftDesignSystemTheme { RaftUpgradeDialogHost(pager) }
                                 }
                             }

@@ -184,7 +184,8 @@ internal fun rememberRaftMemberModelLabel(
         }
     val label by labelFlowValue.collectAsState(initialLabel)
     // Settings > Appearance "Show agent model" (Web MessageItem `showAgentModelName`).
-    return label.takeIf { RaftDisplayPreferenceRuntime.showAgentModelName }
+    val showAgentModelName = RaftDisplayPreferenceRuntime.observeShowAgentModelName()
+    return label.takeIf { showAgentModelName }
 }
 
 /** [RaftMemberAuthorFacts] of [memberId], live from the directory; null while nothing knows them. */

@@ -210,11 +210,12 @@ internal fun SettingsAppearanceContent(
         item {
             SettingsFormSection(iconName = RaftLucideIconName.House, title = stringResource(Res.string.settings_appearance_section_home)) {
                 SettingsAppearanceGroup {
+                    val hideEmptySidebarSections = RaftDisplayPreferenceRuntime.observeHideEmptySidebarSections()
                     SettingsAppearanceSwitchRow(
                         anchorId = "hide-empty-sidebar-sections",
                         title = stringResource(Res.string.settings_appearance_hide_empty_sidebar_sections_title),
                         description = stringResource(Res.string.settings_appearance_hide_empty_sidebar_sections_description),
-                        checked = visual?.hideEmptySidebarSections ?: RaftDisplayPreferenceRuntime.hideEmptySidebarSections,
+                        checked = visual?.hideEmptySidebarSections ?: hideEmptySidebarSections,
                         onCheckedChange = RaftDisplayPreferenceRuntime::setHideEmptySidebarSections,
                         divider = false
                     )
@@ -297,12 +298,15 @@ private fun SettingsAppearanceSavedOnDevice() {
 @Composable
 private fun SettingsAppearanceDisplaySwitches() {
     val visual = LocalSettingsAppearanceVisualSwitches.current
+    val showLiveAgentActivity = RaftDisplayPreferenceRuntime.observeShowLiveAgentActivity()
+    val showAgentModelName = RaftDisplayPreferenceRuntime.observeShowAgentModelName()
+    val showSenderDescription = RaftDisplayPreferenceRuntime.observeShowSenderDescription()
     SettingsAppearanceGroup {
         SettingsAppearanceSwitchRow(
             anchorId = "live-agent-activity",
             title = stringResource(Res.string.settings_appearance_live_agent_activity_title),
             description = stringResource(Res.string.settings_appearance_live_agent_activity_description),
-            checked = visual?.showLiveAgentActivity ?: RaftDisplayPreferenceRuntime.showLiveAgentActivity,
+            checked = visual?.showLiveAgentActivity ?: showLiveAgentActivity,
             onCheckedChange = RaftDisplayPreferenceRuntime::setShowLiveAgentActivity,
             divider = false
         )
@@ -310,7 +314,7 @@ private fun SettingsAppearanceDisplaySwitches() {
             anchorId = "show-agent-model",
             title = stringResource(Res.string.settings_appearance_show_agent_model_title),
             description = stringResource(Res.string.settings_appearance_show_agent_model_description),
-            checked = visual?.showAgentModelName ?: RaftDisplayPreferenceRuntime.showAgentModelName,
+            checked = visual?.showAgentModelName ?: showAgentModelName,
             onCheckedChange = RaftDisplayPreferenceRuntime::setShowAgentModelName,
             divider = true
         )
@@ -318,7 +322,7 @@ private fun SettingsAppearanceDisplaySwitches() {
             anchorId = "show-sender-description",
             title = stringResource(Res.string.settings_appearance_show_sender_description_title),
             description = stringResource(Res.string.settings_appearance_show_sender_description_description),
-            checked = visual?.showSenderDescription ?: RaftDisplayPreferenceRuntime.showSenderDescription,
+            checked = visual?.showSenderDescription ?: showSenderDescription,
             onCheckedChange = RaftDisplayPreferenceRuntime::setShowSenderDescription,
             divider = true
         )

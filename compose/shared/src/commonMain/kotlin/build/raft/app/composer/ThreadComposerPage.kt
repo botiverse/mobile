@@ -3221,7 +3221,7 @@ internal fun ThreadComposerContentLeaf(
                         DisposableEffect(imagePasteFocusOwner) {
                             onDispose { ThreadComposerImagePasteRequests.editorFocusChanged(imagePasteFocusOwner, false) }
                         }
-                        val imagePasteRequests = ThreadComposerImagePasteRequests.count
+                        val imagePasteRequests = ThreadComposerImagePasteRequests.observeCount()
                         var handledImagePasteRequests by remember { mutableIntStateOf(imagePasteRequests) }
                         LaunchedEffect(imagePasteRequests) {
                             if (imagePasteRequests == handledImagePasteRequests) return@LaunchedEffect

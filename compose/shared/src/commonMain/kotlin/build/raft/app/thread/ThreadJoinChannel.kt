@@ -1,10 +1,17 @@
 package build.raft.app
 
-import androidx.compose.runtime.mutableStateMapOf
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.key
+import androidx.compose.runtime.remember
 import build.raft.app.data.ChannelJoinResult
 import build.raft.app.data.DataResult
 import build.raft.app.data.TaskConversationChannelRef
 import build.raft.app.model.ChannelId
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.update
 
 /**
  * What the composer's Join on a conversation page joins (web ThreadPanel `handleJoinParentChannel`).
@@ -74,18 +81,36 @@ internal fun RaftThreadScreenPayload.withChannelJoined(channelId: String): RaftT
  * request settles, and a repeated tap sends no second request. Main thread only.
  */
 internal object ThreadChannelJoinsInFlight {
-    private val ids = mutableStateMapOf<String, Unit>()
+    private val idsFlow = MutableStateFlow<Set<String>>(emptySet())
 
-    fun isJoining(channelId: ChannelId?): Boolean = channelId != null && channelId.value in ids
+    fun isJoining(channelId: ChannelId?): Boolean = channelId != null && channelId.value in idsFlow.value
+
+    @Composable
+    fun observeIsJoining(channelId: ChannelId?): Boolean {
+        val key = channelId?.value ?: return false
+        return key(key) {
+            val flow = remember(key) { idsFlow.map { key in it }.distinctUntilChanged() }
+            flow.collectAsState(initial = key in idsFlow.value).value
+        }
+    }
 
     /** Marks [channelId] joining; false when a join of it is already in flight (send nothing). */
     fun begin(channelId: ChannelId): Boolean {
-        if (channelId.value in ids) return false
-        ids[channelId.value] = Unit
-        return true
+        val id = channelId.value
+        var started = false
+        idsFlow.update { current ->
+            if (id in current) {
+                started = false
+                current
+            } else {
+                started = true
+                current + id
+            }
+        }
+        return started
     }
 
     fun end(channelId: ChannelId) {
-        ids.remove(channelId.value)
+        idsFlow.update { it - channelId.value }
     }
 }

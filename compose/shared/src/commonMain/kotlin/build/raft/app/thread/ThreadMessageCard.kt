@@ -672,8 +672,9 @@ private fun ThreadMessageCardContent(
             message.authorId.takeIf { message.externalAuthor == null && !message.authorKind.equals("system", ignoreCase = true) },
         )
     // Settings > Appearance "Show member descriptions" (web #14653): off, no description here.
+    val showSenderDescription = RaftDisplayPreferenceRuntime.observeShowSenderDescription()
     val authorDescription =
-        threadAuthorRowDescription(message, authorFacts, showDescription = RaftDisplayPreferenceRuntime.showSenderDescription)
+        threadAuthorRowDescription(message, authorFacts, showDescription = showSenderDescription)
     val authorGuestLabel =
         if (threadAuthorRowShowsGuest(message, authorFacts)) stringResource(Res.string.channel_member_role_guest) else null
     // Member labels (web botiverse/slock #14535): a sender from another server carries that server's

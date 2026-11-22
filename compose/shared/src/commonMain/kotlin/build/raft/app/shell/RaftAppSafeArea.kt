@@ -10,9 +10,17 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.compositionLocalOf
+import androidx.compose.runtime.key
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.staticCompositionLocalOf
-import androidx.compose.runtime.mutableStateMapOf
+import kotlinx.atomicfu.locks.SynchronizedObject
+import kotlinx.atomicfu.locks.synchronized
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.update
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.LocalLayoutDirection
@@ -34,30 +42,6 @@ private const val KEY_STATUS_BAR_HIDDEN = "slockStatusBarHidden"
 private const val KEY_HOST_WINDOW_ID = "slockWindowId"
 private const val WINDOW_INSETS_PAGER_EVENT = "slockWindowInsetsChanged"
 private const val DEFAULT_HOST_WINDOW_ID = "host:default"
-
-/**
- * task #482: live host window-inset snapshots, keyed by the window id the host
- * injects into pageData (`slockWindowId`). Per-window — a second Activity or
- * display never leaks into this window's safe area; each authoritative
- * dispatch replaces the entry (zero included) so a shrinking or hiding taskbar
- * frees the reserved padding.
- *
- * Sources, by precedence:
- *   1. `slockWindowInsetsChanged` pager events — authoritative; they REPLACE
- *      the snapshot and are what child pagers receive via the existing
- *      parent-pager event forwarding in SlockKuiklyChildPageView.
- *   2. `slockPublishHostWindowInsetsSnapshot(params)` — attach-time seed only;
- *      used when no live event has been recorded for the window yet, and only
- *      when the params actually carry inset fields.
- *
- * The map is observable: readers invalidate when an entry is first inserted or
- * its state changes, so a pager composed before the first dispatch re-reads on
- * insert.
- */
-internal class RaftHostWindowInsetSnapshot(values: RaftHostWindowInsetValues) {
-    /** Null payload = no measurement yet (distinct from a real 0px value). */
-    val state = androidx.compose.runtime.mutableStateOf(values)
-}
 
 /**
  * One host window-inset measurement, in pixels. [leftPx] / [rightPx] are PHYSICAL edges (the
@@ -113,10 +97,29 @@ internal fun raftHostWindowInsetsFromEvent(eventData: JSONObject): RaftHostWindo
 private fun JSONObject.insetPx(key: String): Float =
     optString(key).toFloatOrNull()?.takeIf { it.isFinite() }?.coerceAtLeast(0f) ?: 0f
 
+/**
+ * task #482: live host window-inset snapshots, keyed by the window id the host
+ * injects into pageData (`slockWindowId`). Per-window — a second Activity or
+ * display never leaks into this window's safe area; each authoritative
+ * dispatch replaces the entry (zero included) so a shrinking or hiding taskbar
+ * frees the reserved padding.
+ *
+ * Sources, by precedence:
+ *   1. `slockWindowInsetsChanged` pager events — authoritative; they REPLACE
+ *      the snapshot and are what child pagers receive via the existing
+ *      parent-pager event forwarding in SlockKuiklyChildPageView.
+ *   2. `slockPublishHostWindowInsetsSnapshot(params)` — attach-time seed only;
+ *      used when no live event has been recorded for the window yet, and only
+ *      when the params actually carry inset fields.
+ *
+ * Readers subscribe via [observe] (backed by [MutableStateFlow]), so a pager
+ * composed before the first dispatch invalidates on insert without allocating
+ * process-wide Compose snapshot state.
+ */
 internal object RaftHostWindowInsets {
-    // Observable: inserting a missing window entry must invalidate readers that
-    // previously saw null.
-    private val snapshots = mutableStateMapOf<String, RaftHostWindowInsetSnapshot>()
+    private val lock = SynchronizedObject()
+
+    private val snapshotsFlow = MutableStateFlow<Map<String, RaftHostWindowInsetValues>>(emptyMap())
 
     /**
      * Windows whose latest write came from a live pager event. A pageData
@@ -124,6 +127,9 @@ internal object RaftHostWindowInsets {
      * state and would be stale.
      */
     private val liveSeen = mutableSetOf<String>()
+
+    private fun normalizeWindowId(windowId: String): String =
+        windowId.trim().ifEmpty { DEFAULT_HOST_WINDOW_ID }
 
     fun publish(
         windowId: String,
@@ -142,32 +148,45 @@ internal object RaftHostWindowInsets {
     }
 
     fun publish(windowId: String, values: RaftHostWindowInsetValues, fromLiveEvent: Boolean = true) {
-        val key = windowId.trim().ifEmpty { DEFAULT_HOST_WINDOW_ID }
-        if (!fromLiveEvent && key in liveSeen) return
-        if (fromLiveEvent) liveSeen.add(key)
-        val entry = snapshots.getOrPut(key) { RaftHostWindowInsetSnapshot(values) }
-        entry.state.value = values
+        val key = normalizeWindowId(windowId)
+        synchronized(lock) {
+            if (!fromLiveEvent && key in liveSeen) return
+            if (fromLiveEvent) liveSeen.add(key)
+            snapshotsFlow.update { current ->
+                if (current[key] == values) current else current + (key to values)
+            }
+        }
     }
 
     /**
      * Forgets the window: its snapshot and its live-event mark. The iOS host keys snapshots per
      * page controller (`ios:page:<uuid>`) and calls this when the controller goes away, so the
      * map does not grow for the whole session. A page still composed for that id falls back to
-     * its pageData, as before its first publish. Main thread only.
+     * its pageData, as before its first publish.
      */
     fun remove(windowId: String) {
-        val key = windowId.trim().ifEmpty { DEFAULT_HOST_WINDOW_ID }
-        liveSeen.remove(key)
-        snapshots.remove(key)
+        val key = normalizeWindowId(windowId)
+        synchronized(lock) {
+            liveSeen.remove(key)
+            snapshotsFlow.update { current ->
+                if (key in current) current - key else current
+            }
+        }
     }
 
-    /**
-     * Current authoritative snapshot for the window, or null when nothing has
-     * been published. Reading the map (not just a pre-created state) keeps the
-     * lookup observable for readers composed before the first publish.
-     */
+    /** Current authoritative snapshot for [windowId] (non-composable read), or null when none published. */
     fun current(windowId: String): RaftHostWindowInsetValues? =
-        snapshots[windowId]?.state?.value
+        snapshotsFlow.value[normalizeWindowId(windowId)]
+
+    /** Observes the live inset snapshot for [windowId] inside composition. */
+    @Composable
+    fun observe(windowId: String): RaftHostWindowInsetValues? {
+        val normalizedKey = normalizeWindowId(windowId)
+        return key(normalizedKey) {
+            val flow = remember(normalizedKey) { snapshotsFlow.map { it[normalizedKey] }.distinctUntilChanged() }
+            flow.collectAsState(initial = snapshotsFlow.value[normalizedKey]).value
+        }
+    }
 
     internal fun seedFromPageDataIfPresent(params: JSONObject) {
         val hasInsetField =
@@ -210,7 +229,7 @@ private fun raftHostWindowIdEnsuringObserver(): String {
     val pager = LocalActivity.current.getPager() as Pager
     val params = pager.pageData.params
     val windowId =
-        params.optString(KEY_HOST_WINDOW_ID).ifBlank { DEFAULT_HOST_WINDOW_ID }
+        params.optString(KEY_HOST_WINDOW_ID).trim().ifEmpty { DEFAULT_HOST_WINDOW_ID }
     DisposableEffect(pager, windowId) {
         RaftHostWindowInsets.seedFromPageDataIfPresent(params)
         val observer =
@@ -233,7 +252,7 @@ private fun raftHostWindowIdEnsuringObserver(): String {
 @Composable
 internal fun raftNativeNavBarLiveTop(): Dp? {
     val windowId = raftHostWindowIdEnsuringObserver()
-    val live = RaftHostWindowInsets.current(windowId) ?: return null
+    val live = RaftHostWindowInsets.observe(windowId) ?: return null
     return resolveRaftLiveTopSafeArea(live, LocalDensity.current.density)
 }
 
@@ -294,7 +313,7 @@ private fun raftHostTopSafeAreaPadding(): Dp {
     // Visual-testing captures compare against React baselines that have no
     // device status bar; the capture harness opts out of the top inset.
     if (params.optBoolean("slockVisualZeroSafeArea", false)) return 0.dp
-    val live = RaftHostWindowInsets.current(windowId)
+    val live = RaftHostWindowInsets.observe(windowId)
     // When the host hides the status bar (immersive / fullscreen), the reported
     // bar height would reserve a strip of dead space; keep a small fixed
     // padding instead so page headers are not flush against the top edge.
@@ -334,7 +353,7 @@ internal fun raftBottomSafeAreaPadding(): Dp {
     // Host that already consumed the navigation bar reserves nothing here —
     // unchanged original contract.
     if (params.optBoolean("slockHostExcludesNavigationBar", false)) return 0.dp
-    val live = RaftHostWindowInsets.current(windowId)
+    val live = RaftHostWindowInsets.observe(windowId)
     val hostInsetPx =
         live?.bottomPx
             ?: maxOf(
@@ -402,7 +421,7 @@ internal fun raftHorizontalSafeArea(): RaftHorizontalSafeArea {
     val windowId = raftHostWindowIdEnsuringObserver()
     val params = LocalActivity.current.pageData.params
     return resolveRaftHorizontalSafeArea(
-        values = RaftHostWindowInsets.current(windowId),
+        values = RaftHostWindowInsets.observe(windowId),
         density = LocalDensity.current.density,
         visualZeroSafeArea = params.optBoolean("slockVisualZeroSafeArea", false),
     )

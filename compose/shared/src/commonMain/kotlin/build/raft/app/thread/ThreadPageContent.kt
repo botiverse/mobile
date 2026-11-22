@@ -1658,7 +1658,7 @@ private fun ThreadPageContentContent(
                 ThreadJoinFooter(
                     label = localizedThreadJoinLabel(payload.joinLabel),
                     onJoin = { onThreadEvent("joinChannel", null, null, null) },
-                    joining = ThreadChannelJoinsInFlight.isJoining(payload.joinChannelTargetId()),
+                    joining = ThreadChannelJoinsInFlight.observeIsJoining(payload.joinChannelTargetId()),
                     bottomSafeArea = composerBottomSafeArea,
                 )
             } else if (showComposerForSelectedTab) {

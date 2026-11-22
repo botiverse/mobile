@@ -1,5 +1,6 @@
 package build.raft.app.data
 
+import androidx.compose.runtime.snapshots.Snapshot
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -84,5 +85,24 @@ class RaftDisplayPreferenceRuntimeTest {
         store.values["slock_show_live_agent_activity_bar"] = "garbage"
         RaftDisplayPreferenceRuntime.resetForTest(store)
         assertTrue(RaftDisplayPreferenceRuntime.showLiveAgentActivity)
+    }
+
+    @Test
+    fun readingDisplayPreferenceStoreCreatedAfterMutableSnapshotWasTakenNeverThrows() {
+        val snapshot = Snapshot.takeMutableSnapshot()
+        try {
+            // Simulates cold-start off-main-thread first initialization while Recomposer holds an
+            // open MutableSnapshot: backed by MutableStateFlow, reads never hit SnapshotKt.readError.
+            val prefStore = RaftDisplayPreferenceStore(defaultStoreProvider = { MemoryStore() })
+            prefStore.setShowAgentModelName(false)
+            snapshot.enter {
+                assertTrue(prefStore.showLiveAgentActivity)
+                assertFalse(prefStore.showAgentModelName)
+                assertTrue(prefStore.showSenderDescription)
+                assertEquals(RaftSidebarHideEmptySectionsDefault, prefStore.hideEmptySidebarSections)
+            }
+        } finally {
+            snapshot.dispose()
+        }
     }
 }

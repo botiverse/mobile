@@ -8,10 +8,10 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.rememberUpdatedState
-import androidx.compose.runtime.setValue
+import kotlinx.coroutines.flow.MutableStateFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -325,13 +325,21 @@ internal data class RaftUpgradeRequest(
 
 /** The open upgrade dialog, if any (one per process, like web `useUpgradeDialogStore`). */
 internal object RaftUpgradeDialogState {
-    var request by mutableStateOf<RaftUpgradeRequest?>(null)
-        internal set
+    private val requestFlow = MutableStateFlow<RaftUpgradeRequest?>(null)
+
+    var request: RaftUpgradeRequest?
+        get() = requestFlow.value
+        internal set(value) {
+            requestFlow.value = value
+        }
+
+    @Composable
+    fun observeRequest(): RaftUpgradeRequest? = requestFlow.collectAsState().value
 
     internal var refresher: (suspend (RaftUpgradeRequest) -> String?)? = null
 
     fun close() {
-        request = null
+        requestFlow.value = null
         refresher = null
     }
 }
@@ -415,7 +423,7 @@ internal fun raftUpgradeDoneOnReturn(mode: RaftUpgradeMode, plan: String?): Bool
  */
 @Composable
 internal fun RaftUpgradeDialogHost(pager: Pager) {
-    val request = RaftUpgradeDialogState.request?.takeIf { it.pagerId == pager.pagerId } ?: return
+    val request = RaftUpgradeDialogState.observeRequest()?.takeIf { it.pagerId == pager.pagerId } ?: return
     val bridge = Utils.bridgeModule(pager.pagerId)
     val paidToast =
         stringResource(

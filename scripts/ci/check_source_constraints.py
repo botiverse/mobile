@@ -5,15 +5,18 @@ Per the test-discipline announcement (#all 2026-07-25, artin-directed): static
 constraints live here as an explicit gate with a self-test, instead of being
 dressed up as source-grep "contract tests" inside test directories.
 
-Five constraints remain: check_no_conditional_interaction_state, born from the
+Six constraints remain: check_no_conditional_interaction_state, born from the
 1.15.0 release crash on launch, check_native_apple_authentication_services
 (task #82: Swift-side Sign in with Apple, which no Android or JVM test covers),
 check_no_production_run_blocking (#3823: a main-thread runBlocking on the
 auth-session lock deadlocked the app; a hang no unit test can catch reliably),
 check_native_safe_test_names (#3845: a comma in a backtick test name broke
-the iOS test compile on main, which PR CI does not build), and
+the iOS test compile on main, which PR CI does not build),
 check_no_strong_invocation_object_return (1.17.1: an NSInvocation object return
-read into a strong variable crashed iOS 27.2 at launch; simulators don't crash).
+read into a strong variable crashed iOS 27.2 at launch; simulators don't crash),
+and check_no_top_level_or_object_snapshot_state (Hands 25b91174 / #264: a
+Compose snapshot state initialized in `<clinit>` off the main thread crashed
+Android cold start with `SnapshotKt.readError`).
 The other "forbid a future pattern" guards were deleted as redundant; behavior
 is proven by behavior tests.
 
@@ -557,6 +560,254 @@ LABEL_FACING_STATUS_BINDINGS = (
 )
 
 
+TOP_LEVEL_SNAPSHOT_STATE_ROOTS = (
+    "compose/core/src/commonMain/kotlin",
+    "compose/designsystem/src/commonMain/kotlin",
+    "compose/shared/src/commonMain/kotlin",
+    "compose/ui-cmp/src/commonMain/kotlin",
+)
+SNAPSHOT_STATE_CALL = re.compile(
+    r"\b(?:mutable(?:State|StateMap|StateList|StateSet|IntState|LongState|FloatState|DoubleState)Of|"
+    r"derivedStateOf|SnapshotState(?:List|Map|Set))\b"
+)
+# Only strictly verified Main-thread-only UI token / theme objects may keep process-wide snapshot
+# state (for non-@Composable style getters like RaftType.*). Every entry must pin one exact line
+# and state why off-main-thread first initialization cannot occur.
+ALLOWED_TOP_LEVEL_OR_OBJECT_SNAPSHOT_STATES: tuple[tuple[str, str, str], ...] = (
+    (
+        "compose/shared/src/commonMain/kotlin/build/raft/app/RaftDesignTokens.kt",
+        "var scale by mutableStateOf(DesignSystemScale.Compact)",
+        "Main-only UI typography scale read by non-@Composable RaftType getters; RaftAppTypeScale is a dedicated object touched only from composition",
+    ),
+    (
+        "compose/shared/src/commonMain/kotlin/build/raft/app/RaftTextRendering.kt",
+        "var localeList: LocaleList by mutableStateOf(raftUiTextLocaleList(lastAppLocale) { lastSystemTags })",
+        "Main-only UI text-rendering locale read by non-@Composable TextStyle.withRaftTextRendering; RaftUiTextLocaleState is a dedicated object touched only from composition/lifecycle",
+    ),
+    (
+        "compose/designsystem/src/commonMain/kotlin/build/raft/designsystem/components/RaftTextFieldState.kt",
+        "var trace: RaftTextInputTrace? by mutableStateOf(null)",
+        "Main-only design-system text input diagnostics hook touched only from BasicTextField composition and Settings diagnostics toggle",
+    ),
+    (
+        "compose/designsystem/src/commonMain/kotlin/build/raft/designsystem/theme/RaftScale.kt",
+        "var current: RaftPointerInput by mutableStateOf(raftPlatformInitialPointerInput())",
+        "Main-only design-system pointer input tracker touched only from RaftTheme composition, pointer input, and iOS main-thread launch hook",
+    ),
+)
+_DECL_START_RE = re.compile(
+    r"^(?:@[A-Za-z0-9_.]+(?:\([^)]*\))?\s+)*"
+    r"(?:(?:public|internal|private|protected|actual|expect|data|open|abstract|final|sealed|value|inline|noinline|crossinline|reified|annotation|enum|const|override|suspend|operator|infix|tailrec|external)\s+)*"
+    r"(companion\s+object|(?!object\s*:)object|class|interface|fun)\b(?:\s+([A-Za-z0-9_]+))?"
+)
+_NEW_MEMBER_START_RE = re.compile(
+    r"^(?:@[A-Za-z0-9_.]+(?:\([^)]*\))?\s+)*"
+    r"(?:(?:public|internal|private|protected|actual|expect|data|open|abstract|final|sealed|value|inline|annotation|enum|const|override|suspend|operator|infix|tailrec|external|lateinit)\s+)*"
+    r"(?:val|var|fun|class|interface|companion\s+object|(?!object\s*:)object|init|constructor)\b"
+)
+_REMEMBER_CALL_RE = re.compile(r"\bremember(?:Saveable)?\s*(?:\(|\{)")
+_GETTER_RE = re.compile(r"\bget\s*\(\s*\)\s*(?:=|\{)")
+_LAZY_PROP_RE = re.compile(r"\bby\s+lazy\b.*\{")
+_INIT_BLOCK_RE = re.compile(r"^init\b.*\{")
+_ANON_OBJECT_RE = re.compile(r"^object\s*:")
+
+
+def _top_level_or_object_snapshot_state_matches(text: str) -> list[tuple[int, str, str]]:
+    """Return `(line_no, scope_label, raw_line)` for snapshot-state factories initialized at top
+    level or directly inside an `object` / `companion object` body (including `by lazy { ... }`
+    and `object` `init { ... }`, but not inside a `class`, `fun`, custom `get()`, or `remember`).
+    """
+    code_lines = _kotlin_code_only(text).splitlines()
+    raw_lines = text.splitlines()
+    stack: list[tuple[str, str, int]] = []
+    depth = 0
+    pending_decl: tuple[str, str] | None = None
+    expr_fun_depth: int | None = None
+    getter_depth: int | None = None
+    hits: list[tuple[int, str, str]] = []
+
+    for idx, (code_line, raw_line) in enumerate(zip(code_lines, raw_lines), 1):
+        stripped = code_line.strip()
+        is_fun_decl_line = False
+        is_getter_line = False
+        same_line_object_scope: str | None = None
+
+        if stripped and not stripped.startswith("import ") and not stripped.startswith("package "):
+            if expr_fun_depth is not None and (
+                depth < expr_fun_depth
+                or (
+                    depth == expr_fun_depth
+                    and _NEW_MEMBER_START_RE.match(stripped)
+                    and not _ANON_OBJECT_RE.match(stripped)
+                )
+            ):
+                expr_fun_depth = None
+            if getter_depth is not None and (
+                depth < getter_depth
+                or (
+                    depth == getter_depth
+                    and _NEW_MEMBER_START_RE.match(stripped)
+                    and not _GETTER_RE.match(stripped)
+                )
+            ):
+                getter_depth = None
+
+            pre_in_top_level = depth == 0
+            pre_in_object_body = (
+                bool(stack)
+                and stack[-1][0] in ("object", "companion object", "lazy", "init")
+                and stack[-1][2] == depth
+            )
+            if pre_in_top_level:
+                pre_scope_label = "top-level"
+            elif pre_in_object_body:
+                pre_scope_label = (
+                    stack[-1][1]
+                    if stack[-1][0] in ("lazy", "init")
+                    else f"{stack[-1][0]} {stack[-1][1]}".strip()
+                )
+            else:
+                pre_scope_label = ""
+
+            decl = _DECL_START_RE.match(stripped)
+            if decl:
+                kind = re.sub(r"\s+", " ", decl.group(1))
+                name = decl.group(2) or ""
+                is_fun_decl_line = kind == "fun"
+                if "{" in stripped:
+                    if kind in ("object", "companion object"):
+                        same_line_object_scope = f"{kind} {name}".strip()
+                    stack.append((kind, name, depth + 1))
+                    pending_decl = None
+                elif kind == "fun" and "=" in stripped:
+                    pending_decl = None
+                    expr_fun_depth = depth
+                elif kind in ("object", "companion object", "class", "interface", "fun"):
+                    pending_decl = (kind, name)
+            else:
+                if pending_decl is not None:
+                    if pending_decl[0] == "fun" and "=" in stripped:
+                        is_fun_decl_line = True
+                        if "{" in stripped:
+                            stack.append(("fun", pending_decl[1], depth + 1))
+                        else:
+                            expr_fun_depth = depth
+                        pending_decl = None
+                    elif re.match(
+                        r"^(?:(?:public|internal|private|protected|override|const|lateinit)\s+)*(?:val|var|init|constructor)\b",
+                        stripped,
+                    ):
+                        pending_decl = None
+                    elif "{" in stripped:
+                        if pending_decl[0] in ("object", "companion object"):
+                            same_line_object_scope = f"{pending_decl[0]} {pending_decl[1]}".strip()
+                        stack.append((pending_decl[0], pending_decl[1], depth + 1))
+                        pending_decl = None
+
+                if _GETTER_RE.search(stripped):
+                    is_getter_line = True
+                    if "{" in stripped:
+                        stack.append(("getter", "", depth + 1))
+                    elif "=" in stripped:
+                        getter_depth = depth
+                elif (pre_in_top_level or pre_in_object_body) and _LAZY_PROP_RE.search(stripped):
+                    owner = "top-level lazy" if pre_in_top_level else f"{pre_scope_label} lazy".strip()
+                    same_line_object_scope = owner
+                    stack.append(("lazy", owner, depth + 1))
+                elif pre_in_object_body and _INIT_BLOCK_RE.match(stripped):
+                    owner = f"{pre_scope_label} init".strip()
+                    same_line_object_scope = owner
+                    stack.append(("init", owner, depth + 1))
+
+            if (
+                not is_fun_decl_line
+                and not is_getter_line
+                and expr_fun_depth is None
+                and getter_depth is None
+                and SNAPSHOT_STATE_CALL.search(stripped)
+                and not _REMEMBER_CALL_RE.search(stripped)
+                and not _GETTER_RE.search(stripped)
+            ):
+                if same_line_object_scope is not None and not re.search(r"\bfun\b", stripped):
+                    hits.append((idx, same_line_object_scope, raw_line.strip()))
+                elif pre_in_top_level or pre_in_object_body:
+                    hits.append((idx, pre_scope_label, raw_line.strip()))
+
+        depth += code_line.count("{") - code_line.count("}")
+        if depth < 0:
+            depth = 0
+        while stack and stack[-1][2] > depth:
+            stack.pop()
+        if expr_fun_depth is not None and depth < expr_fun_depth:
+            expr_fun_depth = None
+        if getter_depth is not None and depth < getter_depth:
+            getter_depth = None
+
+    return hits
+
+
+def check_no_top_level_or_object_snapshot_state(
+    sources: dict[str, str],
+    allowlist: tuple[tuple[str, str, str], ...] = ALLOWED_TOP_LEVEL_OR_OBJECT_SNAPSHOT_STATES,
+) -> None:
+    """Incident: Hands 25b91174 / PR #5293 / #proj-mobile:#264 cold-start `SnapshotKt.readError`.
+
+    A Compose snapshot state (`mutableStateOf` / `mutableStateMapOf` / `mutable*StateOf`) created at
+    top level or inside an `object` / `companion object` is initialized lazily in `<clinit>`. If a
+    background thread triggers `<clinit>` while the main thread Recomposer holds an open
+    `MutableSnapshot`, reading that state on the main thread crashes with `SnapshotKt.readError`.
+    Use `MutableStateFlow` + `@Composable collectAsState()` (or a non-snapshot `State` for
+    constants) instead.
+    """
+    allowed_by_file: dict[str, list[tuple[str, str]]] = {}
+    matched_entries: set[tuple[str, str]] = set()
+    for path, snippet, reason in allowlist:
+        if not reason.strip():
+            raise Violation(f"top-level snapshot-state allowlist entry for {path} is missing a reason")
+        allowed_by_file.setdefault(path, []).append((snippet, reason))
+
+    for name in sorted(sources):
+        hits = _top_level_or_object_snapshot_state_matches(sources[name])
+        entries = allowed_by_file.get(name, [])
+        for line_no, scope, raw_line in hits:
+            matching = [snippet for snippet, _ in entries if snippet in raw_line]
+            if len(matching) == 1:
+                key = (name, matching[0])
+                if key in matched_entries:
+                    raise Violation(
+                        f"top-level/object snapshot state allowlist matched more than once in "
+                        f"{name}:{line_no} ({scope}): {raw_line}"
+                    )
+                matched_entries.add(key)
+            else:
+                raise Violation(
+                    f"top-level/object Compose snapshot state: {name}:{line_no} ({scope}) "
+                    f"initializes `{raw_line}`. Back process-wide state with MutableStateFlow + "
+                    "`@Composable collectAsState()` (or a non-snapshot State for constants) to "
+                    "prevent cold-start SnapshotKt.readError crashes (Hands 25b91174 / #264)."
+                )
+
+    for path, snippet, _ in allowlist:
+        if (path, snippet) not in matched_entries:
+            raise Violation(
+                f"stale top-level/object snapshot-state allowlist entry: {path} ({snippet!r}) "
+                "no longer matches any violation; remove it from ALLOWED_TOP_LEVEL_OR_OBJECT_SNAPSHOT_STATES"
+            )
+
+
+def _top_level_snapshot_state_sources(root: Path) -> dict[str, str]:
+    sources: dict[str, str] = {}
+    for rel in TOP_LEVEL_SNAPSHOT_STATE_ROOTS:
+        base = root / rel
+        if not base.is_dir():
+            raise Violation(f"top-level/object snapshot state: missing source root {rel}")
+        for path in sorted(base.rglob("*.kt")):
+            sources[str(path.relative_to(root))] = path.read_text(encoding="utf-8")
+    if not any("RaftDisplayPreferenceRuntime" in text for text in sources.values()):
+        raise Violation("top-level/object snapshot state: scan never reached RaftDisplayPreferenceRuntime")
+    return sources
+
+
 def run(root: Path) -> None:
     def read(rel: str) -> str:
         path = root / rel
@@ -575,6 +826,7 @@ def run(root: Path) -> None:
     )
     check_no_production_run_blocking(_production_kotlin_sources(root))
     check_native_safe_test_names(_native_test_sources(root))
+    check_no_top_level_or_object_snapshot_state(_top_level_snapshot_state_sources(root))
 
 
 def self_test() -> None:
@@ -807,6 +1059,53 @@ com.apple.SignInWithApple = {
         else:
             raise SystemExit(f"self-test: 1.17.1 NSInvocation checker accepted {bad!r}")
 
+    snap_allow = (("a.kt", "var allowed by mutableStateOf(0)", "Main-only test"),)
+    good_snap = {
+        "a.kt": "object A {\n    var allowed by mutableStateOf(0)\n}\n",
+        "b.kt": (
+            "@Stable class ViewHolder {\n    var x by mutableStateOf(1)\n    val m = mutableStateMapOf<String, Int>()\n}\n"
+            "data class PlainDto(val id: String)\n"
+            "fun makeState() = mutableStateOf(0)\n"
+            "suspend fun makeAsyncState() = mutableStateOf(0)\n"
+            "fun makeMultilineState() =\n    mutableStateOf(0)\n"
+            "fun makeParamState(\n    x: Int,\n) = mutableStateOf(x)\n"
+            "fun makeHolder() =\n    object : Any() { var x by mutableStateOf(0) }\n"
+            "fun makeInline() { val s = mutableStateOf(0) }\n"
+            "object Outer : Base {\n    class Inner {\n        var y by mutableIntStateOf(0)\n    }\n"
+            "    fun helper() {\n        val local = mutableStateOf(true)\n    }\n"
+            "    override fun factory() = mutableStateOf(0)\n"
+            "    val fresh get() = mutableStateOf(0)\n}\n"
+            "@Composable fun C() { val s = remember { mutableStateOf(0) } }\n"
+            "// var commented by mutableStateOf(0)\n"
+            'val text = "var str by mutableStateOf(0)"\n'
+        ),
+    }
+    check_no_top_level_or_object_snapshot_state(good_snap, snap_allow)
+    for bad_sources, bad_allow in (
+        ({**good_snap, "c.kt": "private val Empty = mutableStateOf(0)\n"}, snap_allow),
+        ({**good_snap, "c.kt": "internal object Bad {\n    var x by mutableStateOf(false)\n}\n"}, snap_allow),
+        ({**good_snap, "c.kt": "class Host {\n    companion object {\n        private val m = mutableStateMapOf<String, Int>()\n    }\n}\n"}, snap_allow),
+        ({**good_snap, "c.kt": "class Host {\n    companion object { var x by mutableStateOf(0) }\n}\n"}, snap_allow),
+        ({**good_snap, "c.kt": "object Bad { val x by lazy { mutableStateOf(0) } }\n"}, snap_allow),
+        ({**good_snap, "c.kt": "object Bad {\n    var rememberedCount by mutableStateOf(0)\n}\n"}, snap_allow),
+        ({**good_snap, "c.kt": "object Bad {\n    lateinit var s: Any\n    init {\n        s = mutableStateOf(0)\n    }\n}\n"}, snap_allow),
+        ({**good_snap, "c.kt": "object Bad {\n    var n by\n        mutableIntStateOf(0)\n}\n"}, snap_allow),
+        ({**good_snap, "c.kt": "object Bad\n{\n    val items = mutableStateListOf<String>()\n}\n"}, snap_allow),
+        ({**good_snap, "c.kt": "data class Dto(val a: Int)\nval lazyBad by lazy {\n    mutableStateOf(0)\n}\n"}, snap_allow),
+        ({**good_snap, "c.kt": "object Bad {\n    val set = mutableStateSetOf<String>()\n}\n"}, snap_allow),
+        ({**good_snap, "c.kt": "object Bad {\n    val list = SnapshotStateList<String>()\n}\n"}, snap_allow),
+        ({**good_snap, "c.kt": "object Bad {\n    val derived = derivedStateOf { 1 }\n}\n"}, snap_allow),
+        ({"a.kt": good_snap["a.kt"] + "object A2 {\n    var allowed by mutableStateOf(0)\n}\n"}, snap_allow),
+        ({"a.kt": "object A { val x = 1 }\n"}, snap_allow),
+        (good_snap, (("a.kt", "var allowed by mutableStateOf(0)", " "),)),
+    ):
+        try:
+            check_no_top_level_or_object_snapshot_state(bad_sources, bad_allow)
+        except Violation:
+            pass
+        else:
+            raise SystemExit(f"self-test: top-level snapshot-state checker accepted {bad_sources!r}")
+
     print("check_source_constraints self-test passed")
 
 
@@ -825,7 +1124,7 @@ def main(argv: list[str]) -> int:
     print(
         "source constraints hold (1.15.0 conditional interaction state, task #82 native Apple, "
         "#3823 no production runBlocking, #3845 Native-safe test names, "
-        "1.17.1 NSInvocation object return)"
+        "1.17.1 NSInvocation object return, #264 no top-level/object snapshot state)"
     )
     return 0
 
