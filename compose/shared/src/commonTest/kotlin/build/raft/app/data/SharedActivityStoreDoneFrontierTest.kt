@@ -5,6 +5,7 @@ import build.raft.app.model.MessageNew
 import build.raft.app.model.ServerId
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.TestScope
+import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.Json
@@ -54,7 +55,7 @@ class SharedActivityStoreDoneFrontierTest {
     fun doneBodiesSendTheStorageFrontierOrOmitEverySeqField() = runTest {
         val network = DoneRecordingNetworkClient()
         val auth = InMemoryRaftAuthSessionStore(sampleSession())
-        val inbox = RealInboxRepository(auth, network)
+        val inbox = RealInboxRepository(auth, network, parseDispatcher = UnconfinedTestDispatcher(testScheduler))
         val conversations = RealConversationRepository(auth, network)
 
         inbox.markDone(ChannelId("channel-exact"), InboxDoneFrontier.Storage("9007199254740993"))

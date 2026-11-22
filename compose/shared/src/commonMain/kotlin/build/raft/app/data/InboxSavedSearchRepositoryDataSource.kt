@@ -5,6 +5,7 @@ import build.raft.app.model.MessageId
 import build.raft.app.model.ServerId
 import build.raft.app.model.ServerSummary
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.delay
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
@@ -214,7 +215,12 @@ class RealInboxRepository(
     private val sessionStore: RaftAuthSessionStore,
     private val networkClient: RaftNetworkClient,
     private val logger: (String) -> Unit = {},
-    private val warningLogger: (String) -> Unit = {}
+    private val warningLogger: (String) -> Unit = {},
+    /**
+     * Where inbox response bodies are decoded. Production keeps them off the store/caller thread on
+     * [RaftJsonParseDispatcher]; virtual-time tests may pass an inline test dispatcher.
+     */
+    private val parseDispatcher: CoroutineDispatcher = RaftJsonParseDispatcher
 ) : InboxRepository {
     override suspend fun loadInitial(
         serverId: ServerId,
@@ -241,6 +247,7 @@ class RealInboxRepository(
             },
             errorTextDecoder = HomeNetworkResponse::inboxRouteErrorTextOrNull,
             source = "inbox_mark_done",
+            parseDispatcher = parseDispatcher,
             warningLogger = warningLogger,
             mapper = { InboxDoneResult(channelId) }
         )
@@ -253,7 +260,7 @@ class RealInboxRepository(
             block = { networkClient.inboxRows(DataRequestPriority.Visible, rowIds, serverId) },
             errorTextDecoder = HomeNetworkResponse::inboxRouteErrorTextOrNull,
             source = "inbox_rows",
-            mapOnDefault = false,
+            parseDispatcher = parseDispatcher,
             annotate = { snapshot, response -> snapshot.copy(inboxBackend = response.raftInboxBackend()) },
             diagnosticsLogger = logger,
             warningLogger = warningLogger,
@@ -283,7 +290,7 @@ class RealInboxRepository(
             emptyWhen = { it.items.isEmpty() && !it.hasMore },
             errorTextDecoder = HomeNetworkResponse::inboxRouteErrorTextOrNull,
             source = "inbox",
-            mapOnDefault = false,
+            parseDispatcher = parseDispatcher,
             diagnosticsLogger = logger,
             warningLogger = warningLogger,
             markStale = { snapshot, reason, retryAfter ->
@@ -326,7 +333,8 @@ internal class ProcessActivityUnreadRepository(
     private val sessionStore: RaftAuthSessionStore,
     private val networkClient: RaftNetworkClient,
     private val logger: (String) -> Unit = {},
-    private val warningLogger: (String) -> Unit = {}
+    private val warningLogger: (String) -> Unit = {},
+    private val parseDispatcher: CoroutineDispatcher = RaftJsonParseDispatcher
 ) {
     suspend fun load(
         owner: ProcessActivityUnreadOwner,
@@ -349,7 +357,7 @@ internal class ProcessActivityUnreadRepository(
             },
             errorTextDecoder = HomeNetworkResponse::inboxRouteErrorTextOrNull,
             source = "process_activity_unread",
-            mapOnDefault = false,
+            parseDispatcher = parseDispatcher,
             diagnosticsLogger = logger,
             warningLogger = warningLogger,
             markStale = { snapshot, reason, _ -> snapshot.copy(staleReason = reason) },
@@ -597,6 +605,7 @@ private suspend fun <T> executeInboxLike(
     source: String,
     errorCodeDecoder: (HomeNetworkResponse) -> String? = { null },
     mapOnDefault: Boolean = true,
+    parseDispatcher: CoroutineDispatcher = RaftJsonParseDispatcher,
     diagnosticsLogger: (String) -> Unit = {},
     warningLogger: (String) -> Unit = {},
     /**
@@ -624,6 +633,7 @@ private suspend fun <T> executeInboxLike(
                 code = response.code,
                 hasBody = response.bodyText != null,
                 parseOnDefault = mapOnDefault,
+                parseDispatcher = parseDispatcher,
                 diagnosticsLogger = diagnosticsLogger,
                 resultLabel = { parsed -> if (emptyWhen(parsed)) "empty" else "content" },
                 parser = { mapper(body) }

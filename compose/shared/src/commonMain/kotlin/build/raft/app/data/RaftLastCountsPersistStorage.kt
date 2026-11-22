@@ -1,5 +1,7 @@
 package build.raft.app.data
 
+import kotlinx.atomicfu.locks.SynchronizedObject
+import kotlinx.atomicfu.locks.synchronized
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.builtins.serializer
@@ -32,29 +34,41 @@ internal open class RaftLastCountsPersistStorage(
     private val maxAgeMillis: Long = RaftLastCountsMaxAgeMillis,
     private val maxServersPerUser: Int = RaftLastCountsMaxServersPerUser,
 ) : MviPersistStorage {
+    private val storageLock = SynchronizedObject()
+
     override fun read(key: String): String? {
-        val value = store.getString(key) ?: return null
-        val entries = indexEntries()
-        val entry = entries.firstOrNull { it.key == key }
-        if (entry == null) {
-            writeIndex(entries + IndexEntry(key, nowMillis()))
-            return value
+        return synchronized(storageLock) {
+            val value = store.getString(key) ?: return@synchronized null
+            val entries = indexEntries()
+            val entry = entries.firstOrNull { it.key == key }
+            if (entry == null) {
+                writeIndex(entries + IndexEntry(key, nowMillis()))
+                return@synchronized value
+            }
+            if (nowMillis() - entry.savedAtMillis > maxAgeMillis) {
+                removeLocked(key)
+                return@synchronized null
+            }
+            value
         }
-        if (nowMillis() - entry.savedAtMillis > maxAgeMillis) {
-            remove(key)
-            return null
-        }
-        return value
     }
 
     override fun write(key: String, value: String) {
-        store.putString(key, value)
-        val now = nowMillis()
-        val entries = indexEntries().filterNot { it.key == key } + IndexEntry(key, now)
-        writeIndex(pruned(entries, now, writtenKey = key))
+        synchronized(storageLock) {
+            store.putString(key, value)
+            val now = nowMillis()
+            val entries = indexEntries().filterNot { it.key == key } + IndexEntry(key, now)
+            writeIndex(pruned(entries, now, writtenKey = key))
+        }
     }
 
     override fun remove(key: String) {
+        synchronized(storageLock) {
+            removeLocked(key)
+        }
+    }
+
+    private fun removeLocked(key: String) {
         store.putString(key, null)
         val entries = indexEntries()
         if (entries.any { it.key == key }) writeIndex(entries.filterNot { it.key == key })
@@ -62,8 +76,10 @@ internal open class RaftLastCountsPersistStorage(
 
     /** Removes every copy written on this device (only one account is signed in at a time). */
     fun clearAll() {
-        indexEntries().forEach { store.putString(it.key, null) }
-        store.putString(indexKey, null)
+        synchronized(storageLock) {
+            indexEntries().forEach { store.putString(it.key, null) }
+            store.putString(indexKey, null)
+        }
     }
 
     /**
@@ -71,14 +87,16 @@ internal open class RaftLastCountsPersistStorage(
      * yet adopted. The other servers' copies stay.
      */
     fun dropServer(serverId: String, userId: String? = null) {
-        val server = serverId.trim().takeIf { it.isNotEmpty() } ?: return
-        val user = userId?.trim()?.takeIf { it.isNotEmpty() }
-        fun matches(key: String): Boolean =
-            scopeOf(key)?.let { (keyUser, keyServer) -> keyServer == server && (user == null || keyUser == user) } == true
-        val entries = indexEntries()
-        val dropped = entries.filter { matches(it.key) }
-        dropped.forEach { store.putString(it.key, null) }
-        if (dropped.isNotEmpty()) writeIndex(entries - dropped.toSet())
+        synchronized(storageLock) {
+            val server = serverId.trim().takeIf { it.isNotEmpty() } ?: return@synchronized
+            val user = userId?.trim()?.takeIf { it.isNotEmpty() }
+            fun matches(key: String): Boolean =
+                scopeOf(key)?.let { (keyUser, keyServer) -> keyServer == server && (user == null || keyUser == user) } == true
+            val entries = indexEntries()
+            val dropped = entries.filter { matches(it.key) }
+            dropped.forEach { store.putString(it.key, null) }
+            if (dropped.isNotEmpty()) writeIndex(entries - dropped.toSet())
+        }
     }
 
     /** Drops expired copies and, for [writtenKey]'s user, the servers past [maxServersPerUser]. */

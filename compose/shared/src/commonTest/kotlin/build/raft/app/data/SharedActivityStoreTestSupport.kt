@@ -121,7 +121,9 @@ internal fun activityStore(
     listRowLoweredSink: (serverId: String, lowered: ActivityListRowLowered) -> Unit = { _, _ -> },
     inboxRowPositionEnabled: (serverId: String) -> Boolean = { false },
     rowRereadDelayMillis: Long = ActivityRowRereadDelayMillis,
-    onSyncPullHint: (serverId: String, reason: String) -> Unit = { _, _ -> }
+    onSyncPullHint: (serverId: String, reason: String) -> Unit = { _, _ -> },
+    isBackgroundProjectionDeferred: () -> Boolean = { false },
+    awaitBackgroundProjectionWindow: suspend (kotlinx.coroutines.flow.StateFlow<Boolean>) -> Unit = {}
 ): SharedActivityStore =
     SharedActivityStore(
         authStore = authStore,
@@ -167,7 +169,9 @@ internal fun activityStore(
         inPlaceReconcileIntervalMillis = inPlaceReconcileIntervalMillis,
         inPlaceCheckSink = inPlaceCheckSink,
         listRowLoweredSink = listRowLoweredSink,
-        onSyncPullHint = onSyncPullHint
+        onSyncPullHint = onSyncPullHint,
+        isBackgroundProjectionDeferred = isBackgroundProjectionDeferred,
+        awaitBackgroundProjectionWindow = awaitBackgroundProjectionWindow
     )
 
 internal class FakeInboxRepository(
