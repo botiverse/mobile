@@ -262,16 +262,29 @@ class RaftNativeNavBarBridge {
     }
 
     private val entries = mutableListOf<Entry>()
+    private var prefill: RaftNativeNavBarHead? = null
+    private var liveHeadSeen: Boolean = false
     private var listener: RaftNativeNavBarListener? = null
     private var lastWire: List<Any?>? = null
     private var handlers: Map<String, () -> Unit> = emptyMap()
 
-    /** Sets the single host listener and replays what the page published so far. */
+    /**
+     * Populates the host bar synchronously before the page's first Compose frame (e.g. from the
+     * route payload before `UINavigationController.pushViewController`). Retired permanently as
+     * soon as any live Compose head activates or publishes.
+     */
+    internal fun prefill(head: RaftNativeNavBarHead) {
+        if (liveHeadSeen || entries.any { it.shown }) return
+        prefill = head
+        if (listener != null) send()
+    }
+
+    /** Sets the single host listener and replays what the page published (or prefilled) so far. */
     fun attachListener(listener: RaftNativeNavBarListener) {
         this.listener = listener
         lastWire = null
-        // Nothing published yet: the host keeps its bar until the page's head arrives.
-        if (entries.any { it.shown }) send()
+        // Nothing published or prefilled yet: the host keeps its bar until the page's head arrives.
+        if (entries.any { it.shown } || prefill != null) send()
         reportScroll()
     }
 
@@ -290,7 +303,11 @@ class RaftNativeNavBarBridge {
         entries.remove(entry)
         entries.add(entry)
         // A head that has not published yet sends from its first publish.
-        if (entry.shown) send()
+        if (entry.shown) {
+            liveHeadSeen = true
+            prefill = null
+            send()
+        }
     }
 
     internal fun deactivate(entry: Entry) {
@@ -300,13 +317,17 @@ class RaftNativeNavBarBridge {
 
     internal fun publish(entry: Entry, head: RaftNativeNavBarHead) {
         entry.head = head
-        if (entry in entries && entries.lastOrNull { it.shown } === entry) send()
+        if (entry in entries) {
+            liveHeadSeen = true
+            prefill = null
+            if (entries.lastOrNull { it.shown } === entry) send()
+        }
     }
 
     private fun send() {
         val entry = entries.lastOrNull { it.shown }
         // A declined head on top: no bar (its Compose head draws instead).
-        val head = entry?.head
+        val head = if (entry != null) entry.head else if (!liveHeadSeen) prefill else null
         if (head == null) {
             handlers = emptyMap()
             if (lastWire != null && lastWire?.isEmpty() == true) return
@@ -316,7 +337,7 @@ class RaftNativeNavBarBridge {
         }
         val actions = raftNativeNavBarSplit(head.actions)
         val hasBack = head.onBack != null
-        val nested = entries.firstOrNull { it.head != null } !== entry
+        val nested = entry != null && entries.firstOrNull { it.head != null } !== entry
         handlers =
             buildMap {
                 fun addAll(list: List<RaftNativeNavBarAction>) {
@@ -598,7 +619,10 @@ internal fun raftLucideIconNameForWire(wireName: String): RaftLucideIconName? = 
 internal fun raftNativeNavBarSymbolFor(id: String): String? =
     when (id) {
         "home-bell" -> "bell"
+        "lounge" -> "person.2"
         "thread-search", SEARCH_IN_TASK_MENU_ITEM_ID -> "magnifyingglass"
+        "thread-side-card-tasks" -> "checklist"
+        "thread-side-card-files" -> "paperclip"
         "thread-settings" -> "gearshape"
         "thread-open-in-channel", VIEW_TASK_IN_CHANNEL_MENU_ITEM_ID -> "mappin.and.ellipse"
         FOCUS_MODE_MENU_ITEM_ID -> "arrow.up.left.and.arrow.down.right"
