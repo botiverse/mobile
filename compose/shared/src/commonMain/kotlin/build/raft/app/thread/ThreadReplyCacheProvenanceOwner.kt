@@ -333,6 +333,9 @@ internal class ThreadReplyCacheProvenanceOwner(
         expectedProvenance: ReplyCacheProvenance?
     ): Boolean =
         synchronized(replyCacheProvenanceLock) {
+            // Offline durable stand-ins are never written to (or allowed to evict) the memory
+            // payload cache: a memory entry outranks SQLite as network-fresh on the next open.
+            if (payload.durableLastKnown) return@synchronized false
             val current = replyCacheProvenance.value ?: return@synchronized false
             if (expectedProvenance != null) {
                 if (!current.isSameTimelineCacheAccount(expectedProvenance)) return@synchronized false

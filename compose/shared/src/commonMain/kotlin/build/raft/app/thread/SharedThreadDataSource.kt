@@ -6,6 +6,7 @@ import build.raft.app.data.DataResult
 import build.raft.app.data.isNonPermissionPlanOrQuota403Code
 import build.raft.app.data.RaftAgentLounges
 import build.raft.app.data.RaftJsonParseDispatcher
+import build.raft.app.data.RaftMessageDbDispatcher
 import build.raft.app.data.defaultNowMillis
 import build.raft.app.data.EmptyReason
 import build.raft.app.data.HomeChannelRow
@@ -95,8 +96,10 @@ import build.raft.app.network.sync.CanonicalMessageV2EnterBaseline
 import build.raft.app.network.sync.CanonicalMessageV2ThreadJoinConfirmed
 import build.raft.app.network.sync.ReplyPreview
 import build.raft.app.network.sync.SYNC_CORE_MESSAGES_V2_DURABLE_CONSUMER_ID
+import build.raft.app.network.sync.SyncScopeKey
 import build.raft.app.network.sync.ThreadDurableLastKnownReader
 import build.raft.app.network.sync.ThreadDurableAccessEvictor
+import build.raft.app.network.sync.ThreadDurableTimelineAnchor
 import build.raft.app.network.sync.windowEnvelopes
 import build.raft.app.network.sync.ThreadEnteredScopeSnapshotLoader
 import build.raft.app.network.sync.ThreadDurablePageDirection
@@ -210,6 +213,11 @@ internal class SharedThreadDataSource(
      * snapshot for the first frame; see [threadActivityOpenSeedMessages]. Absent means no seed.
      */
     private val activityOpenSeedSource: (() -> ThreadActivityOpenSeedSource?)? = null,
+    /**
+     * Off-main dispatcher for durable SQLite writes (such as `touchUserAccess` LRU refreshes) so
+     * [SharedThreadStore] never runs synchronous SQLite transactions on `viewModelScope` / Main.
+     */
+    private val durableDbDispatcher: CoroutineDispatcher = RaftMessageDbDispatcher,
 ) {
     /**
      * Public accessor for the [build.raft.app.data.SharedCreateAgentCoordinator]
@@ -307,6 +315,7 @@ internal class SharedThreadDataSource(
         diagnosticsLogger: (String) -> Unit = projectionRejectingDiagnosticsLogger,
         activityOpenSeedSource: (() -> ThreadActivityOpenSeedSource?)? = null,
         threadParseDispatcher: CoroutineDispatcher = RaftJsonParseDispatcher,
+        durableDbDispatcher: CoroutineDispatcher = RaftMessageDbDispatcher,
     ) : this(
         api = RaftThreadApiClient(networkApi, diagnosticsLogger, threadParseDispatcher),
         sessionStore = sessionStore,
@@ -340,6 +349,7 @@ internal class SharedThreadDataSource(
         diagnosticsLogger = diagnosticsLogger,
         createAgentCoordinator = createAgentCoordinator,
         activityOpenSeedSource = activityOpenSeedSource,
+        durableDbDispatcher = durableDbDispatcher,
     )
 
     /**
@@ -1032,11 +1042,32 @@ internal class SharedThreadDataSource(
         cache.record(current)
     }
 
+    internal suspend fun touchDurableUserAccess(scope: SyncScopeKey) {
+        val reader = durableLastKnownReader ?: return
+        withContext(durableDbDispatcher) {
+            reader.touchUserAccess(scope)
+        }
+    }
+
     internal suspend fun durableLastKnownPayloadIfCurrent(
         routePayload: RaftThreadScreenPayload,
         routeIdentity: ThreadRouteIdentity,
         context: ReplyCacheProducerContext,
-    ): RaftThreadScreenPayload? {
+        allowNewestFallbackForMissingAnchor: Boolean = true,
+    ): RaftThreadScreenPayload? =
+        durableLastKnownResultIfCurrent(
+            routePayload = routePayload,
+            routeIdentity = routeIdentity,
+            context = context,
+            allowNewestFallbackForMissingAnchor = allowNewestFallbackForMissingAnchor,
+        )?.payload
+
+    internal suspend fun durableLastKnownResultIfCurrent(
+        routePayload: RaftThreadScreenPayload,
+        routeIdentity: ThreadRouteIdentity,
+        context: ReplyCacheProducerContext,
+        allowNewestFallbackForMissingAnchor: Boolean = true,
+    ): SharedThreadDurableLastKnownResult? {
         val reader = durableLastKnownReader ?: return null
         if (!routeIdentity.canRenderTimelineCandidates) return null
         val admission = durableScopeAdmission(routeIdentity, routePayload.durableReplyParentOrNull()) ?: return null
@@ -1046,6 +1077,112 @@ internal class SharedThreadDataSource(
             context.provenance.durableMessagePartitionOrNull(SYNC_CORE_MESSAGES_V2_DURABLE_CONSUMER_ID)
                 ?: return null
         if (!isCurrentReplyCacheProvenance(context.provenance)) return null
+        val pageSize = threadPageSize(partition.serverId)
+        val focusedId = routePayload.focusedMessageId?.trim()?.takeIf { it.isNotEmpty() }
+        // Phase 2d: prefer bounded SQLite timeline reads (newest page or anchored island window),
+        // falling back to newest / legacy `read` only when allowed (cold offline opens so
+        // `anchorPendingStandIn` stays available when the target message is not stored yet).
+        suspend fun readTimelineFor(anchor: ThreadDurableTimelineAnchor) =
+            when (admission) {
+                DurableScopeAdmission.TopLevel ->
+                    reader.readTimeline(partition, channelId, anchor, touchUserAccess = false)
+                is DurableScopeAdmission.ReplyThread ->
+                    reader.readReplyThreadTimeline(partition, channelId, admission.parent, anchor, touchUserAccess = false)
+            }
+        val primaryAnchor =
+            if (focusedId != null) {
+                val beforeCount = (pageSize / 2).coerceAtLeast(1)
+                ThreadDurableTimelineAnchor.AroundMessageId(
+                    messageId = focusedId,
+                    beforeCount = beforeCount,
+                    afterCount = (pageSize - beforeCount).coerceAtLeast(1),
+                )
+            } else {
+                ThreadDurableTimelineAnchor.Newest(limit = pageSize)
+            }
+        val anchoredTimelinePage = readTimelineFor(primaryAnchor)
+        val fellBackToNewestForMissingAnchor =
+            focusedId != null && anchoredTimelinePage == null && allowNewestFallbackForMissingAnchor
+        val timelinePage =
+            anchoredTimelinePage
+                ?: if (fellBackToNewestForMissingAnchor) {
+                    readTimelineFor(ThreadDurableTimelineAnchor.Newest(limit = pageSize))
+                } else {
+                    null
+                }
+        if (timelinePage != null) {
+            if (!isCurrentReplyCacheProvenance(context.provenance)) return null
+            if (timelinePage.scope.scopeKind !in allowedScopeKinds) {
+                diagnosticsLogger(
+                    "thread_durable_last_known threadId=$channelId outcome=surface_mismatch " +
+                        "surface=${routeIdentity.surfaceKind} scopeKind=${timelinePage.scope.scopeKind}"
+                )
+                return null
+            }
+            if (timelinePage.envelopes.isEmpty()) {
+                if (focusedId != null && !fellBackToNewestForMissingAnchor) return null
+                diagnosticsLogger(
+                    "thread_durable_last_known threadId=$channelId outcome=empty_frame scopeKind=${timelinePage.scope.scopeKind}"
+                )
+                return SharedThreadDurableLastKnownResult(
+                    payload =
+                        routePayload.asRefreshEmpty(routePayload).copy(
+                            durableLastKnown = true,
+                            durableReachedOldest = timelinePage.reachesOldest,
+                            timelineGaps = emptyList(),
+                        ),
+                    scope = timelinePage.scope,
+                )
+            }
+            val messages =
+                timelinePage.envelopes
+                    .mapNotNull { envelope ->
+                        envelope.toThreadMessageItem(
+                            currentUserId = context.provenance.principalId,
+                            diagnostics = diagnosticsLogger,
+                        )
+                    }
+                    .sortedByThreadTimeline()
+            if (messages.isEmpty()) return null
+            val gaps =
+                reconcileThreadTimelineGaps(
+                    existingGaps = emptyList(),
+                    addedGaps = timelinePage.gaps.map { it.toThreadTimelineGap() },
+                    messages = messages,
+                )
+            val canLoadMoreBefore = timelinePage.hasOlderStored || !timelinePage.reachesOldest
+            val canLoadMoreAfter =
+                if (focusedId != null && !fellBackToNewestForMissingAnchor) {
+                    timelinePage.hasNewerStored || !timelinePage.reachesHead
+                } else {
+                    false
+                }
+            diagnosticsLogger(
+                "thread_durable_last_known threadId=$channelId outcome=${if (focusedId != null && !fellBackToNewestForMissingAnchor) "anchored_frame" else "frame"} " +
+                    "scopeKind=${timelinePage.scope.scopeKind} messages=${messages.size} gaps=${gaps.size} " +
+                    "latestSeq=${timelinePage.cursor.latestSeq} canLoadMoreBefore=$canLoadMoreBefore canLoadMoreAfter=$canLoadMoreAfter"
+            )
+            return SharedThreadDurableLastKnownResult(
+                payload =
+                    routePayload.copy(
+                        status = "content",
+                        backgroundRefreshing = false,
+                        durableLastKnown = true,
+                        messages = messages,
+                        timelineGaps = gaps,
+                        canLoadMoreBefore = canLoadMoreBefore,
+                        durableReachedOldest = !canLoadMoreBefore,
+                        canLoadMoreAfter = canLoadMoreAfter,
+                        olderMessagesStatus = "idle",
+                        newerMessagesStatus = "idle",
+                        errorCode = null,
+                    ),
+                scope = timelinePage.scope,
+            )
+        }
+        if (focusedId != null && !allowNewestFallbackForMissingAnchor) {
+            return null
+        }
         val frame =
             when (admission) {
                 DurableScopeAdmission.TopLevel -> reader.read(partition, channelId)
@@ -1070,12 +1207,14 @@ internal class SharedThreadDataSource(
             diagnosticsLogger(
                 "thread_durable_last_known threadId=$channelId outcome=empty_frame scopeKind=${frame.scope.scopeKind}"
             )
-            return routePayload.asRefreshEmpty(routePayload).copy(durableLastKnown = true)
+            return SharedThreadDurableLastKnownResult(
+                payload = routePayload.asRefreshEmpty(routePayload).copy(durableLastKnown = true),
+                scope = null,
+            )
         }
         // Stand in with the newest page only, the same size the network's first page has: projecting,
         // laying out and drawing the whole stored scope (up to 500 facts) held the first frame behind a
         // loading state for over a second on a cold open (artin, Hands 2d15915b: 147 rows ⇒ ~1.3 s).
-        val pageSize = threadPageSize(partition.serverId)
         val window = frame.windowEnvelopes()
         val shownEnvelopes = window.sortedByDescending { it.fact.seq }.take(pageSize)
         val messages =
@@ -1097,27 +1236,31 @@ internal class SharedThreadDataSource(
                 "messages=${messages.size} stored=${frame.envelopes.size} latestSeq=${frame.cursor.latestSeq} " +
                 "canLoadMoreBefore=$canLoadMoreBefore"
         )
-        return routePayload.copy(
-            status = "content",
-            backgroundRefreshing = false,
-            durableLastKnown = true,
-            messages = messages,
-            canLoadMoreBefore = canLoadMoreBefore,
-            durableReachedOldest = !canLoadMoreBefore,
-            canLoadMoreAfter = false,
-            olderMessagesStatus = "idle",
-            newerMessagesStatus = "idle",
-            errorCode = null,
+        return SharedThreadDurableLastKnownResult(
+            payload =
+                routePayload.copy(
+                    status = "content",
+                    backgroundRefreshing = false,
+                    durableLastKnown = true,
+                    messages = messages,
+                    timelineGaps = emptyList(),
+                    canLoadMoreBefore = canLoadMoreBefore,
+                    durableReachedOldest = !canLoadMoreBefore,
+                    canLoadMoreAfter = false,
+                    olderMessagesStatus = "idle",
+                    newerMessagesStatus = "idle",
+                    errorCode = null,
+                ),
+            scope = null,
         )
     }
 
     /**
-     * Offline older page for a durable stand-in (task #168 step 2b): the newest page of stored facts
-     * older than [beforeSeq], projected like the stand-in itself. Same admission as
-     * [durableLastKnownPayloadIfCurrent] (reader, renderable top-level route, scope kind matching the
-     * surface, owning partition, current provenance before AND after the disk read; the reader applies
-     * the server flag). Reads only, never writes. Returns `null` when nothing can be served from disk
-     * (the caller then asks the network as before); every call logs one `thread_durable_older_page`.
+     * Older page from the durable V2 timeline (Phase 2d):
+     * - When [crossGaps] is `false` (online live timeline), serves strictly from inside a proven
+     *   contiguous SQLite segment (`insideProvenSegment == true`) without touching the network.
+     * - When [crossGaps] is `true` (offline stand-in), crosses into lower stored islands and returns
+     *   derived [SharedThreadDurableOlderPage.gaps].
      */
     internal suspend fun durableOlderPageIfCurrent(
         routeIdentity: ThreadRouteIdentity,
@@ -1125,11 +1268,12 @@ internal class SharedThreadDataSource(
         beforeSeq: Long,
         expectedOwnerScopeId: String?,
         replyParent: ThreadDurableReplyParent? = null,
+        crossGaps: Boolean = true,
     ): SharedThreadDurableOlderPage? {
         val channelId = routeIdentity.timelineChannelId
         fun refuse(reason: String): SharedThreadDurableOlderPage? {
             diagnosticsLogger(
-                "thread_durable_older_page threadId=${channelId.orEmpty()} served=0 reason=$reason beforeSeq=$beforeSeq"
+                "thread_durable_older_page threadId=${channelId.orEmpty()} served=0 reason=$reason beforeSeq=$beforeSeq crossGaps=$crossGaps"
             )
             return null
         }
@@ -1149,6 +1293,66 @@ internal class SharedThreadDataSource(
                 ?: return refuse("no_partition")
         if (!isCurrentReplyCacheProvenance(context.provenance)) return refuse("identity_changed")
         val pageSize = threadPageSize(partition.serverId)
+        val timelineAnchor =
+            ThreadDurableTimelineAnchor.Before(
+                beforeSeq = beforeSeq,
+                limit = pageSize,
+                crossGaps = crossGaps,
+            )
+        val timelinePage =
+            when (admission) {
+                DurableScopeAdmission.TopLevel ->
+                    reader.readTimeline(partition, channelId, timelineAnchor, touchUserAccess = false)
+                is DurableScopeAdmission.ReplyThread ->
+                    reader.readReplyThreadTimeline(partition, channelId, admission.parent, timelineAnchor, touchUserAccess = false)
+            }
+        if (timelinePage != null) {
+            if (!isCurrentReplyCacheProvenance(context.provenance)) return refuse("identity_changed")
+            if (timelinePage.scope.scopeKind !in allowedScopeKinds) return refuse("surface_mismatch")
+            if (!crossGaps && !timelinePage.insideProvenSegment) return refuse("segment_edge")
+            val messages =
+                timelinePage.envelopes.mapNotNull { envelope ->
+                    envelope.toThreadMessageItem(
+                        currentUserId = context.provenance.principalId,
+                        diagnostics = diagnosticsLogger,
+                    )
+                }.sortedByThreadTimeline()
+            if (messages.isEmpty()) {
+                if (timelinePage.envelopes.isEmpty() && !crossGaps && timelinePage.insideProvenSegment && timelinePage.reachesOldest) {
+                    diagnosticsLogger(
+                        "thread_durable_older_page threadId=$channelId served=0 reason=proven_reached_oldest " +
+                            "beforeSeq=$beforeSeq crossGaps=false scopeKind=${timelinePage.scope.scopeKind}"
+                    )
+                    return SharedThreadDurableOlderPage(
+                        messages = emptyList(),
+                        pageSize = pageSize,
+                        canLoadMoreBefore = false,
+                        reachedOldest = true,
+                        gaps = emptyList(),
+                        insideProvenSegment = true,
+                        scope = timelinePage.scope,
+                    )
+                }
+                return refuse(if (timelinePage.reachesOldest) "exhausted_at_oldest" else "exhausted")
+            }
+            val canLoadMoreBefore = timelinePage.hasOlderStored || !timelinePage.reachesOldest
+            val gaps = if (crossGaps) timelinePage.gaps.map { it.toThreadTimelineGap() } else emptyList()
+            diagnosticsLogger(
+                "thread_durable_older_page threadId=$channelId served=${messages.size} reason=" +
+                    (if (timelinePage.hasOlderStored) "more_stored" else if (timelinePage.reachesOldest) "reached_oldest" else "window_end") +
+                    " beforeSeq=$beforeSeq crossGaps=$crossGaps gaps=${gaps.size} canLoadMoreBefore=$canLoadMoreBefore scopeKind=${timelinePage.scope.scopeKind}"
+            )
+            return SharedThreadDurableOlderPage(
+                messages = messages,
+                pageSize = pageSize,
+                canLoadMoreBefore = canLoadMoreBefore,
+                reachedOldest = !canLoadMoreBefore,
+                gaps = gaps,
+                insideProvenSegment = timelinePage.insideProvenSegment,
+                scope = timelinePage.scope,
+            )
+        }
+        if (!crossGaps) return refuse("no_timeline_reader")
         val page =
             when (admission) {
                 DurableScopeAdmission.TopLevel -> reader.readBefore(partition, channelId, beforeSeq, pageSize)
@@ -1180,6 +1384,92 @@ internal class SharedThreadDataSource(
             pageSize = pageSize,
             canLoadMoreBefore = canLoadMoreBefore,
             reachedOldest = !canLoadMoreBefore,
+        )
+    }
+
+    /**
+     * Newer page from the durable V2 timeline (Phase 2d): symmetric mirror of [durableOlderPageIfCurrent].
+     */
+    internal suspend fun durableNewerPageIfCurrent(
+        routeIdentity: ThreadRouteIdentity,
+        context: ReplyCacheProducerContext,
+        afterSeq: Long,
+        expectedOwnerScopeId: String?,
+        replyParent: ThreadDurableReplyParent? = null,
+        crossGaps: Boolean = false,
+    ): SharedThreadDurableNewerPage? {
+        val channelId = routeIdentity.timelineChannelId
+        fun refuse(reason: String): SharedThreadDurableNewerPage? {
+            diagnosticsLogger(
+                "thread_durable_newer_page threadId=${channelId.orEmpty()} served=0 reason=$reason afterSeq=$afterSeq crossGaps=$crossGaps"
+            )
+            return null
+        }
+        val reader = durableLastKnownReader ?: return refuse("no_reader")
+        val ownerScopeId = context.provenance.threadPayloadOwnerScopeId
+        if (ownerScopeId == null || ownerScopeId != expectedOwnerScopeId) return refuse("owner_changed")
+        if (!routeIdentity.canRenderTimelineCandidates) return refuse("not_renderable")
+        val admission =
+            durableScopeAdmission(routeIdentity, replyParent)
+                ?: return refuse(
+                    if (routeIdentity.surfaceKind == RaftThreadSurfaceKind.ReplyThread) "no_reply_parent" else "not_top_level"
+                )
+        val allowedScopeKinds = routeIdentity.durableScopeKinds()
+        if (channelId == null) return refuse("no_channel")
+        val partition =
+            context.provenance.durableMessagePartitionOrNull(SYNC_CORE_MESSAGES_V2_DURABLE_CONSUMER_ID)
+                ?: return refuse("no_partition")
+        if (!isCurrentReplyCacheProvenance(context.provenance)) return refuse("identity_changed")
+        val pageSize = threadPageSize(partition.serverId)
+        val timelineAnchor =
+            ThreadDurableTimelineAnchor.After(
+                afterSeq = afterSeq,
+                limit = pageSize,
+                crossGaps = crossGaps,
+            )
+        val timelinePage =
+            when (admission) {
+                DurableScopeAdmission.TopLevel ->
+                    reader.readTimeline(partition, channelId, timelineAnchor, touchUserAccess = false)
+                is DurableScopeAdmission.ReplyThread ->
+                    reader.readReplyThreadTimeline(partition, channelId, admission.parent, timelineAnchor, touchUserAccess = false)
+            } ?: return refuse("no_timeline_reader")
+        if (!isCurrentReplyCacheProvenance(context.provenance)) return refuse("identity_changed")
+        if (timelinePage.scope.scopeKind !in allowedScopeKinds) return refuse("surface_mismatch")
+        if (!crossGaps && !timelinePage.insideProvenSegment) return refuse("segment_edge")
+        val messages =
+            timelinePage.envelopes.mapNotNull { envelope ->
+                envelope.toThreadMessageItem(
+                    currentUserId = context.provenance.principalId,
+                    diagnostics = diagnosticsLogger,
+                )
+            }.sortedByThreadTimeline()
+        if (messages.isEmpty()) {
+            // Unlike `reachesOldest` (history start is immutable), `reachesHead` only records that
+            // highSeq was head when last verified. Online (`!crossGaps`) always falls through to
+            // the network when no newer messages exist locally so server messages posted since then
+            // are never hidden.
+            return refuse(if (timelinePage.reachesHead) "exhausted_at_head" else "exhausted")
+        }
+        val canLoadMoreAfter =
+            if (crossGaps) {
+                timelinePage.hasNewerStored || !timelinePage.reachesHead
+            } else {
+                true
+            }
+        val gaps = if (crossGaps) timelinePage.gaps.map { it.toThreadTimelineGap() } else emptyList()
+        diagnosticsLogger(
+            "thread_durable_newer_page threadId=$channelId served=${messages.size} afterSeq=$afterSeq " +
+                "crossGaps=$crossGaps gaps=${gaps.size} canLoadMoreAfter=$canLoadMoreAfter scopeKind=${timelinePage.scope.scopeKind}"
+        )
+        return SharedThreadDurableNewerPage(
+            messages = messages,
+            pageSize = pageSize,
+            canLoadMoreAfter = canLoadMoreAfter,
+            reachedHead = if (crossGaps) !canLoadMoreAfter else false,
+            gaps = gaps,
+            insideProvenSegment = timelinePage.insideProvenSegment,
+            scope = timelinePage.scope,
         )
     }
 

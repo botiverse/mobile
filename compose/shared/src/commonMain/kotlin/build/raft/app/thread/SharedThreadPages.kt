@@ -3,15 +3,38 @@ package build.raft.app
 import build.raft.app.data.ServerFeatureFlagSnapshot
 import build.raft.app.data.MOBILE_THREAD_PAGE_SIZE_FEATURE_FLAG_KEY
 import build.raft.app.data.RawMessagePage
+import build.raft.app.network.sync.SyncScopeKey
 import build.raft.app.network.sync.ThreadDurableReplyParent
 
-/** An older page served from the durable V2 window while the stand-in is shown (task #168 step 2b). */
+/** Durable first-frame or anchored-island payload paired with the scope key to touch once adopted. */
+internal data class SharedThreadDurableLastKnownResult(
+    val payload: RaftThreadScreenPayload,
+    val scope: SyncScopeKey? = null,
+)
+
+/** An older page served from the durable V2 window (offline stand-in or online proven segment). */
 internal data class SharedThreadDurableOlderPage(
     val messages: List<RaftThreadMessageItem>,
     val pageSize: Int,
     val canLoadMoreBefore: Boolean,
     /** The page reaches the conversation's first message: nothing older is stored and the window starts there. */
     val reachedOldest: Boolean,
+    /** Phase 2d: derived inline gaps inside this page or between it and the previous oldest visible seq. */
+    val gaps: List<ThreadTimelineGap> = emptyList(),
+    /** Phase 2d: true when `beforeSeq - 1` lies inside a proven contiguous segment (safe for online local paging). */
+    val insideProvenSegment: Boolean = false,
+    val scope: SyncScopeKey? = null,
+)
+
+/** A newer page served from the durable V2 window (offline anchored island or online proven segment). */
+internal data class SharedThreadDurableNewerPage(
+    val messages: List<RaftThreadMessageItem>,
+    val pageSize: Int,
+    val canLoadMoreAfter: Boolean,
+    val reachedHead: Boolean,
+    val gaps: List<ThreadTimelineGap> = emptyList(),
+    val insideProvenSegment: Boolean = false,
+    val scope: SyncScopeKey? = null,
 )
 
 internal data class SharedThreadPageFetchResult(

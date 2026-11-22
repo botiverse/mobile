@@ -1391,7 +1391,9 @@ private fun ThreadMessagesListContent(
     // systemMessageGrouping). Render-only: every message keeps its own lazy item, key and index.
     // Groups are closed by default; the open ones are kept while this conversation is shown.
     val systemMessageFolds =
-        remember(renderPayload.messages) { threadSystemMessageFolds(renderPayload.messages) }
+        remember(renderPayload.messages, renderPayload.timelineGaps) {
+            threadSystemMessageFolds(renderPayload.messages, renderPayload.timelineGaps)
+        }
     var expandedSystemMessageGroups by remember(threadInstanceKey) { mutableStateOf(emptySet<String>()) }
     // A jump or a search match on a message folded into a closed group opens the group, so the
     // target is a drawn row (web lands on the group's row). Only state: the focus anchor effect
@@ -4128,14 +4130,20 @@ private fun ThreadMessagesListContent(
                 val isSystemMessage = remember(message.messageType) { message.isSystemMessage() }
                 val previousCompactAuthorSignature = previousMessage?.threadCompactAuthorSignature()
                 val messageCompactAuthorSignature = message.threadCompactAuthorSignature()
+                val gapAboveMessage =
+                    remember(renderPayload.messages, index, renderPayload.timelineGaps) {
+                        threadTimelineGapAboveMessage(renderPayload.messages, index, renderPayload.timelineGaps)
+                    }
                 val suppressRepeatedAuthor =
                     remember(
                         renderPayload.compactConsecutiveMessages,
                         renderConfig.timeContext.localOffsetMinutes,
                         previousCompactAuthorSignature,
-                        messageCompactAuthorSignature
+                        messageCompactAuthorSignature,
+                        gapAboveMessage != null
                     ) {
-                        renderPayload.compactConsecutiveMessages &&
+                        gapAboveMessage == null &&
+                            renderPayload.compactConsecutiveMessages &&
                             shouldSuppressCompactThreadAuthor(
                                 previous = previousMessage,
                                 next = message,
@@ -4262,6 +4270,16 @@ private fun ThreadMessagesListContent(
                                 drawContent()
                             }
                 ) {
+                    gapAboveMessage?.let { gap ->
+                        ThreadTimelineGapRow(
+                            gap = gap,
+                            durableLastKnown = renderPayload.durableLastKnown,
+                            mainLoadFailed = renderPayload.mainLoadFailed,
+                            onFillGap = { target ->
+                                onThreadEvent(ThreadFillTimelineGapAction, target.key, null, null)
+                            }
+                        )
+                    }
                     dateDividerDay?.let { day ->
                         val dayLabel = day.localizedLabel()
                         // Under the history paywall the first date line says the window: "Last 30 days · …".
