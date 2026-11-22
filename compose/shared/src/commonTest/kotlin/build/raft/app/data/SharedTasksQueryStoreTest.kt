@@ -470,6 +470,7 @@ class SharedTasksQueryStoreTest {
         store.onProjection(listOf(task("x", creator = person("someone-else"))), bulk = false)
         advanceTimeBy(SharedTasksQueryStore.CountsRefreshMinIntervalMs + 1_000L)
         runCurrent()
+        assertEquals(2, store.state.value.scopeCounts()[TasksPageScope.All])
 
         // Return to Tasks: counts re-fetch and show the updated numbers instead of stale ones.
         store.setVisible(true)

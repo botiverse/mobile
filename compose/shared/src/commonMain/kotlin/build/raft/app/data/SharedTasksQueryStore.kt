@@ -125,12 +125,17 @@ class SharedTasksQueryStore(
         }
         if (!state.value.started || state.value.unsupported) return
         if (pendingInitialApply || pendingQueryApplyWhileHidden) {
+            val forceCounts = pendingRefreshWhileHidden
+            val refreshCounts = pendingCountsRefreshWhileHidden
             pendingInitialApply = false
             pendingQueryApplyWhileHidden = false
             pendingRefreshWhileHidden = false
             pendingCountsRefreshWhileHidden = false
             pendingLiveLanes.clear()
-            applyQuery(state.value.query, force = true)
+            applyQuery(state.value.query, force = true, forceCounts = forceCounts)
+            if (!forceCounts && refreshCounts) {
+                scheduleCountsRefresh(immediateIfEligible = true)
+            }
             return
         }
         if (pendingRefreshWhileHidden) {
@@ -218,7 +223,11 @@ class SharedTasksQueryStore(
      * their first page lands, the rows and counts no lane needs any more are let go, and the
      * counts the new query needs are read.
      */
-    private fun applyQuery(next: TasksPageQuery, force: Boolean = false) {
+    private fun applyQuery(
+        next: TasksPageQuery,
+        force: Boolean = false,
+        forceCounts: Boolean = false,
+    ) {
         val current = state.value
         if (!force && next == current.query) return
         if (!current.started) {
@@ -230,6 +239,8 @@ class SharedTasksQueryStore(
             pendingQueryApplyWhileHidden = true
             return
         }
+        pendingInitialApply = false
+        pendingQueryApplyWhileHidden = false
         queryGeneration++
         queuedLiveRereads.clear()
         queuedCountsRereads.clear()
@@ -265,7 +276,7 @@ class SharedTasksQueryStore(
                 "assignees=${next.assignees.size} lanes=${lanes.size}"
         )
         lanes.forEach { lane -> readLane(lane, cursor = null, limit = TasksQueryPageSize, priority = DataRequestPriority.Visible) }
-        loadCounts(DataRequestPriority.Visible)
+        loadCounts(DataRequestPriority.Visible, force = forceCounts)
     }
 
     private fun refresh() {
@@ -282,8 +293,7 @@ class SharedTasksQueryStore(
         val doneSince = doneSinceNow()
         if (doneSince != current.doneSince) {
             mutableState.value = current.copy(doneSince = doneSince, error = null, countsError = null)
-            applyQuery(current.query, force = true)
-            loadCounts(DataRequestPriority.Visible, force = true)
+            applyQuery(current.query, force = true, forceCounts = true)
             return
         }
         // A pulled refresh re-reads every lane's loaded rows and the counts; the rows stay meanwhile.
@@ -412,7 +422,7 @@ class SharedTasksQueryStore(
         }
         val needed = tasksQueryCountFilters(state.value.query, state.value.doneSince)
         val now = nowEpochMillis()
-        var anyStillThrottled = false
+        var minThrottledWaitMs: Long? = null
         needed.forEach { filters ->
             val key = tasksCountsKey(filters)
             if (!force && state.value.counts.containsKey(key)) return@forEach
@@ -425,7 +435,7 @@ class SharedTasksQueryStore(
                         ?.let { (it + minIntervalMs - now).coerceIn(0L, minIntervalMs) }
                         ?: 0L
                 if (wait > 0L) {
-                    anyStillThrottled = true
+                    minThrottledWaitMs = minOf(minThrottledWaitMs ?: wait, wait)
                     return@forEach
                 }
             }
@@ -479,8 +489,9 @@ class SharedTasksQueryStore(
             countJobs[key] = job
             job.invokeOnCompletion { onCountsReadEnded(key) }
         }
-        if (anyStillThrottled && visible && !state.value.unsupported) {
-            scheduleCountsRefresh(immediateIfEligible = true)
+        val rescheduleDelay = minThrottledWaitMs
+        if (rescheduleDelay != null && visible && !state.value.unsupported) {
+            scheduleCountsRefresh(immediateIfEligible = true, minDelayMs = rescheduleDelay)
         }
     }
 
@@ -624,7 +635,10 @@ class SharedTasksQueryStore(
      * after the change and at least [CountsRefreshMinIntervalMs] since the last counts read began
      * (matching web `COUNTS_REFRESH_MIN_INTERVAL_MS`).
      */
-    private fun scheduleCountsRefresh(immediateIfEligible: Boolean = false) {
+    private fun scheduleCountsRefresh(
+        immediateIfEligible: Boolean = false,
+        minDelayMs: Long = 0L,
+    ) {
         if (state.value.unsupported) return
         if (!visible) {
             pendingCountsRefreshWhileHidden = true
@@ -637,8 +651,19 @@ class SharedTasksQueryStore(
                 .map { tasksCountsKey(it) }
                 .filter { key -> countJobRevisions[key] != countsLiveRevision || !state.value.counts.containsKey(key) }
         if (dirtyKeys.isEmpty()) return
+        val idleDirtyKeys = mutableListOf<String>()
+        dirtyKeys.forEach { key ->
+            if (countJobs[key]?.isActive == true) {
+                if (countJobRevisions[key] != countsLiveRevision) {
+                    queuedCountsRereads += key
+                }
+            } else {
+                idleDirtyKeys += key
+            }
+        }
+        if (idleDirtyKeys.isEmpty()) return
         val minIntervalWait =
-            dirtyKeys
+            idleDirtyKeys
                 .map { key ->
                     lastCountsReadAtByKey[key]
                         ?.let { (it + CountsRefreshMinIntervalMs - now).coerceIn(0L, CountsRefreshMinIntervalMs) }
@@ -646,7 +671,11 @@ class SharedTasksQueryStore(
                 }
                 .minOrNull()
                 ?: 0L
-        val delayMs = if (immediateIfEligible) minIntervalWait else maxOf(CountsRefreshDelayMs, minIntervalWait)
+        val delayMs =
+            maxOf(
+                minDelayMs,
+                if (immediateIfEligible) minIntervalWait else maxOf(CountsRefreshDelayMs, minIntervalWait),
+            )
         countsRefreshJob =
             scope.launch {
                 if (delayMs > 0L) delay(delayMs)
