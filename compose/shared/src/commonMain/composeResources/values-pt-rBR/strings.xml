@@ -4148,6 +4148,10 @@
     <string name="agent_migration_error_hosted_review_not_ready">Esta migração não está mais aguardando sua confirmação. Atualize a página para ver o status atual.</string>
     <string name="agent_migration_error_hosted_memory_unimportable">Não é possível levar o MEMORY.md do agente para a nuvem: ele é grande demais, não é texto simples ou foi recusado pela nuvem. Peça ao agente para reduzir o MEMORY.md a texto simples e tente novamente.</string>
     <string name="agent_migration_error_not_cancelable">O agente já foi migrado para a nuvem, então esta migração não pode mais ser cancelada.</string>
+    <string name="agent_migration_error_superseded">Uma migração mais recente foi iniciada depois desta. Atualize o status da migração.</string>
+    <string name="agent_migration_error_not_dismissible">Só é possível dispensar uma migração que falhou. Atualize o status da migração.</string>
+    <string name="agent_migration_error_dismiss_failed">O Raft não conseguiu dispensar esta migração. Atualize o status da migração e tente novamente.</string>
+    <string name="agent_migration_dismiss_failed">Dispensar</string>
     <string name="agent_migration_error_already_in_progress">Este agente já tem uma migração em andamento. Aguarde a conclusão antes de tentar novamente.</string>
     <string name="agent_migration_error_pro_plan_required">A migração de agentes exige o plano Pro. Faça upgrade deste servidor para o Pro antes de tentar novamente.</string>
     <string name="agent_migration_error_pro_plan_required_neutral">A migração de agentes exige o plano Pro.</string>
