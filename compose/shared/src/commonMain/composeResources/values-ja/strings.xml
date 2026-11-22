@@ -212,6 +212,7 @@
     <string name="settings_step_up_open_on_web">Web 版で開く</string>
     <string name="settings_step_up_web_body">パスキーはブラウザで使えます。ブラウザで続けて本人確認してください。</string>
     <string name="settings_step_up_web_continue">ブラウザで続ける</string>
+    <string name="settings_step_up_web_verify_with_passkey">ブラウザでパスキーを使って確認する</string>
     <string name="settings_step_up_web_waiting">ブラウザでの操作を待っています…</string>
     <string name="settings_step_up_web_cancelled">確認の前にブラウザが閉じられました。もう一度お試しください。</string>
     <string name="settings_step_up_web_expired">このリクエストの有効期限が切れました。もう一度お試しください。</string>

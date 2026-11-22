@@ -212,6 +212,7 @@
     <string name="settings_step_up_open_on_web">Открыть в веб-версии</string>
     <string name="settings_step_up_web_body">Ваш ключ доступа работает в браузере. Продолжите там, чтобы подтвердить, что это вы.</string>
     <string name="settings_step_up_web_continue">Продолжить в браузере</string>
+    <string name="settings_step_up_web_verify_with_passkey">Подтвердить ключом доступа в браузере</string>
     <string name="settings_step_up_web_waiting">Ожидаем завершения в браузере…</string>
     <string name="settings_step_up_web_cancelled">Браузер закрыт до подтверждения. Попробуйте ещё раз.</string>
     <string name="settings_step_up_web_expired">Срок действия запроса истёк. Попробуйте ещё раз.</string>

@@ -14,11 +14,19 @@ import kotlin.test.assertTrue
  * Continue in browser (iOS, only legacy passkeys): "Verify it's you" reaches no way to answer
  * after `passkey_rp_unavailable`, starts the web step-up, has the dialog open its page, takes the
  * page's callback for that request only, exchanges the code with the verifier and retries the
- * refused action once. Wire shapes: AppWebStepUpApiTest.
+ * refused action once. With a code as well, the code stays and the same web step-up runs from
+ * under its field (#158; the decision: SecondFactorStepUpOlderPasskeyTest); a passkey under the
+ * current RP ID still opens the platform's sheet. Wire shapes: AppWebStepUpApiTest.
  */
 class AppWebStepUpCoordinatorTest {
     private val passkeyOnly =
         """{"error":"Confirm it's you with your second step before attaching a computer.","code":"second_factor_step_up_required","methods":["passkey"]}"""
+    /** An authenticator app (and its backup codes) as well as passkeys. */
+    private val withCode =
+        """{"error":"Confirm it's you with your second step before attaching a computer.","code":"second_factor_step_up_required","methods":["totp","passkey","backup_code"]}"""
+    /** iOS's `current` group answered: a passkey under the current RP ID, older ones too. */
+    private val currentOptions =
+        """{"options":{"rpId":"app.raft.test","challenge":"Y2hhbGxlbmdlLXRva2Vu","allowCredentials":[{"id":"q83vEjRWeJA","type":"public-key"}],"timeout":300000,"userVerification":"required"},"rp":"current","otherRps":["legacy"]}"""
     private val trace = "4bf92f3577b34da6a3ce929d0e0e4736"
     private val returnUri = "raft://login/callback"
     private val verifier = "v".repeat(43)
@@ -29,6 +37,10 @@ class AppWebStepUpCoordinatorTest {
         val store: InMemoryRaftKeyValueStore = InMemoryRaftKeyValueStore(),
         webUrl: String? = null,
         action: String? = "computer_attach",
+        /** The options call for iOS's `current` group; by default only older passkeys. */
+        options: () -> SecondFactorPasskeyOptionsResult = {
+            SecondFactorPasskeyOptionsResult.Refused(SecondFactorStepUpResult.PasskeyRpUnavailable("current", listOf("legacy")))
+        },
     ) {
         var clock = 1_000L
         val starts = mutableListOf<AppWebStepUpStartBody>()
@@ -39,9 +51,7 @@ class AppWebStepUpCoordinatorTest {
         val coordinator =
             SecondFactorStepUpCoordinator(
                 stepUp = { error("no step-up answer: the web verifies this sign-in") },
-                passkeyOptions = {
-                    SecondFactorPasskeyOptionsResult.Refused(SecondFactorStepUpResult.PasskeyRpUnavailable("current", listOf("legacy")))
-                },
+                passkeyOptions = { options() },
                 nativePasskeys = true,
                 passkeyRpGroup = "current",
                 webUrl = if (webUrl != null) { _ -> webUrl } else null,
@@ -62,12 +72,12 @@ class AppWebStepUpCoordinatorTest {
 
     private fun started(id: String) = AppWebStepUpStartResult.Started(id, "https://app.raft.build/login/app/verify?request=$id", "2026-11-19T10:05:00Z")
 
-    private fun refusal(): DataResult<String> =
+    private fun refusal(body: String = passkeyOnly): DataResult<String> =
         DataResult.Error(
             ScreenError(
                 code = SECOND_FACTOR_STEP_UP_REQUIRED_CODE,
                 retryable = false,
-                secondFactorStepUp = parseSharedSecondFactorStepUpRequired(403, passkeyOnly)
+                secondFactorStepUp = parseSharedSecondFactorStepUpRequired(403, body)
             )
         )
 
@@ -333,5 +343,49 @@ class AppWebStepUpCoordinatorTest {
         assertNull(coordinator.state.value?.webStepUp)
         coordinator.accept(SecondFactorStepUpIntent.Cancel)
         outcome.await()
+    }
+
+    @Test
+    fun withACodeTheBrowserUnderItRunsTheSameWebStepUp() = runTest {
+        // #158: older passkeys and an authenticator app.
+        val harness = Harness(ArrayDeque(listOf(started("r-12"))))
+        val action = ScriptedAction(refusal(withCode), DataResult.Content("attached"))
+        val outcome = async { harness.coordinator.run(action::invoke) }
+        runCurrent()
+        harness.coordinator.accept(SecondFactorStepUpIntent.Submit)
+        val codeEntry = assertNotNull(harness.coordinator.state.value)
+        assertEquals(SecondFactorStepUpMethod.Totp, codeEntry.method)
+        assertTrue(codeEntry.webStepUpBesideCode)
+
+        // Verify with your passkey in the browser: Continue in browser's request and page.
+        val session = harness.continueInBrowser()
+        assertEquals("computer_attach", harness.starts.single().action)
+        // One answer at a time: a code typed meanwhile is not sent.
+        harness.coordinator.accept(SecondFactorStepUpIntent.InputChanged("123456"))
+        assertFalse(assertNotNull(harness.coordinator.state.value).canSubmit)
+        harness.coordinator.accept(SecondFactorStepUpIntent.Submit)
+        assertEquals(SecondFactorWebStepUpPhase.Waiting, harness.coordinator.state.value?.webStepUp)
+
+        harness.finish(session, RaftAppWebStepUpBrowserResult.Callback("$returnUri?requestId=r-12&code=k-12"))
+        runCurrent()
+        assertEquals(listOf("k-12"), harness.completes.map { it.code })
+        assertEquals(SecondFactorStepUpOutcome.Completed(DataResult.Content("attached")), outcome.await())
+        assertEquals(2, action.calls, "the refused action goes exactly once more")
+    }
+
+    @Test
+    fun aPasskeyUnderTheCurrentRpIdStillOpensThePlatformsSheet() = runTest {
+        val harness = Harness(ArrayDeque(), options = { parseSharedSecondFactorPasskeyAssertionOptions(200, currentOptions) })
+        val outcome = async { harness.coordinator.run(ScriptedAction(refusal(withCode))::invoke) }
+        runCurrent()
+        harness.coordinator.accept(SecondFactorStepUpIntent.Submit)
+
+        val dialog = assertNotNull(harness.coordinator.state.value)
+        assertEquals("app.raft.test", dialog.passkeyCeremony?.request?.options?.rpId, "the platform's passkey sheet")
+        assertEquals(SecondFactorStepUpMethod.Passkey, dialog.method)
+        assertNull(dialog.webStepUp, "the browser is only for older passkeys")
+        harness.coordinator.accept(SecondFactorStepUpIntent.Cancel)
+        assertEquals(SecondFactorStepUpOutcome.Cancelled, outcome.await())
+        assertTrue(harness.starts.isEmpty())
     }
 }

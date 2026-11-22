@@ -212,6 +212,7 @@
     <string name="settings_step_up_open_on_web">Abrir en la web</string>
     <string name="settings_step_up_web_body">Tu llave de acceso funciona en el navegador. Continúa allí para confirmar que eres tú.</string>
     <string name="settings_step_up_web_continue">Continuar en el navegador</string>
+    <string name="settings_step_up_web_verify_with_passkey">Verificar con tu llave de acceso en el navegador</string>
     <string name="settings_step_up_web_waiting">Esperando a que termines en el navegador…</string>
     <string name="settings_step_up_web_cancelled">Se cerró el navegador antes de confirmar. Inténtalo de nuevo.</string>
     <string name="settings_step_up_web_expired">Esta solicitud caducó. Inténtalo de nuevo.</string>

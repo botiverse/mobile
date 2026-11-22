@@ -212,6 +212,7 @@
     <string name="settings_step_up_open_on_web">Open on the web</string>
     <string name="settings_step_up_web_body">Your passkey works in the browser. Continue there to confirm it's you.</string>
     <string name="settings_step_up_web_continue">Continue in browser</string>
+    <string name="settings_step_up_web_verify_with_passkey">Verify with your passkey in the browser</string>
     <string name="settings_step_up_web_waiting">Waiting for you to finish in the browser…</string>
     <string name="settings_step_up_web_cancelled">The browser was closed before you confirmed. Try again.</string>
     <string name="settings_step_up_web_expired">This request expired. Try again.</string>
