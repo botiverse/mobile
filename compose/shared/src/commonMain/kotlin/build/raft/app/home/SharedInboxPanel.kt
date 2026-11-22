@@ -770,9 +770,9 @@ internal fun sharedActivityStoreDiagnosticsLogger(): (String) -> Unit {
 
 /**
  * Stamping is separated from delivery so the uniqueness contract can be tested
- * deterministically. Exercised through the logger it cannot be: the queue drops
- * under admission contention, so a duplicated number could be hidden by one of
- * the pair being dropped and the test would pass on a broken counter.
+ * deterministically. Exercised through the logger it cannot be: a full queue
+ * drops lines, so a duplicated number could be hidden by one of the pair being
+ * dropped and the test would pass on a broken counter.
  */
 internal fun stampSharedActivityDiagnosticsSequence(message: String): String =
     "seq=${sharedActivityDiagnosticsSequence.incrementAndGet()} $message"

@@ -4,10 +4,12 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.withTimeout
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertTrue
 
 class RaftPlatformLogTest {
     @Test
@@ -56,5 +58,60 @@ class RaftPlatformLogTest {
             releaseSink.complete(Unit)
             installRaftPlatformLogSink(null)
         }
+    }
+
+    @Test
+    fun aLineLoggedWhileAnotherLineIsBeingAdmittedIsKept() = runTest {
+        val messages = mutableListOf<String>()
+        lateinit var queue: RaftPlatformLogQueue
+        var secondLogged = false
+        queue =
+            RaftPlatformLogQueue(
+                scope = backgroundScope,
+                recordSink = { record -> messages += record.message },
+                // Mid-admission of "first", where another thread's line used to find admission busy
+                // and be dropped (Hands cf580bb9: about 2 lines a minute, request finish lines among
+                // them). A line logged here stands for any thread's line logged at that moment.
+                duringAdmission = {
+                    if (!secondLogged) {
+                        secondLogged = true
+                        assertTrue(queue.enqueue(RaftLogLevel.Info, "RaftTest", "second", RaftPlatformLogHint.None))
+                    }
+                },
+                volumePolicy = null,
+            )
+
+        assertTrue(queue.enqueue(RaftLogLevel.Info, "RaftTest", "first", RaftPlatformLogHint.None))
+        queue.flush()
+
+        // Both lines, and no slock_platform_log_queue_dropped line.
+        assertEquals(listOf("first", "second"), messages.sorted())
+    }
+
+    @Test
+    fun aFullLaneDropsOnlyTheLinesThatDoNotFitSaysSoAndTakesLinesAgainOnceDrained() = runTest {
+        val messages = mutableListOf<String>()
+        val queue =
+            RaftPlatformLogQueue(backgroundScope, recordSink = { record -> messages += record.message }, volumePolicy = null)
+
+        // The consumer has not run yet, so nothing leaves the lane while it fills up.
+        var accepted = 0
+        while (accepted < 10_000 && queue.enqueue(RaftLogLevel.Info, "RaftTest", "line-$accepted", RaftPlatformLogHint.None)) {
+            accepted += 1
+        }
+        assertTrue(accepted in 1 until 10_000, "the lane is bounded: accepted=$accepted")
+        assertFalse(queue.enqueue(RaftLogLevel.Info, "RaftTest", "refused", RaftPlatformLogHint.None))
+        queue.flush()
+
+        assertEquals(accepted, messages.count { it.startsWith("line-") })
+        val dropped = messages.filter { it.startsWith("slock_platform_log_queue_dropped ") }
+        assertEquals(1, dropped.size, "one report for the lines that did not fit: $dropped")
+        // The line that stopped the loop and the one refused after it.
+        assertTrue(dropped.single().startsWith("slock_platform_log_queue_dropped lane=normal count=2 "), dropped.single())
+
+        // Drained: the lane takes lines again.
+        assertTrue(queue.enqueue(RaftLogLevel.Info, "RaftTest", "after", RaftPlatformLogHint.None))
+        queue.flush()
+        assertEquals("after", messages.last())
     }
 }

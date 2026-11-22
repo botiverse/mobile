@@ -160,10 +160,15 @@ last 3–5 minutes. From 1.25:
 - `network_request_unfinished`: the 8 newest open requests per export, plus one
   `network_request_unfinished_more count=… listed=8 total=…` line for the rest.
   `overdue=true`: past its timeout, by at most 30 s. A request still open later
-  than that ended and its finish line was lost (the log queue drops a line now
-  and then): it is reported once, as an info line
+  than that ended and its finish line was lost (a full log queue drops lines):
+  it is reported once, as an info line
   `network_request_finish_unobserved count=… oldestAgeMs=… paths=…` (at most 8
   distinct paths, then `+<n>`), and no longer listed.
+- `slock_platform_log_queue_dropped lane=… count=… overflow=… capacity=…`: lines
+  the shared log queue dropped because that lane was full. Up to 1.28 it also
+  dropped a line whenever two threads logged at the same moment
+  (`admissionBusy=`, about 2 a minute in an active session); from 1.29 it does
+  not.
 - `recent-memory.jsonl` (Android) is the in-memory ring of the last 3 minutes at
   **full detail**: every line, including the ones summarized out of the shards
   (not the Verbose-diagnostics categories), newest kept first up to ~190 KB, whole

@@ -8,12 +8,13 @@ package build.raft.app.core.data.diagnostics
  * drops them on the matching `_finish`/`_failed` (by `clientRequestId`), and lists what is still
  * open when diagnostics are exported (feedback archive, crash context).
  *
- * The end of a request is seen only through its log line, and the shared log queue can drop a
- * line (`slock_platform_log_queue_dropped ... admissionBusy=1`). No request runs much past its
- * configured timeout (Ktor's request timeout ends it, the request scheduler's timeout sits around
- * it, and every exit logs a finish or failed line), so one still open [GraceMillis] after it lost
- * its end line (Hands cf580bb9: four requests listed as overdue for 5-16 min). [unfinished] counts
- * those once in a `network_request_finish_unobserved` line and forgets them.
+ * The end of a request is seen only through its log line, and a full log queue drops lines
+ * (`slock_platform_log_queue_dropped`; up to 1.28 the shared queue also dropped one whenever two
+ * threads logged at once, `admissionBusy=1`). No request runs much past its configured timeout
+ * (Ktor's request timeout ends it, the request scheduler's timeout sits around it, and every exit
+ * logs a finish or failed line), so one still open [GraceMillis] past its timeout lost its end line
+ * (Hands cf580bb9: four requests listed as overdue for 5-16 min). [unfinished] counts those once in
+ * a `network_request_finish_unobserved` line and forgets them.
  */
 internal class RaftInFlightRequests(private val capacity: Int = 64) {
     private data class Started(val startedAtMillis: Long, val timeoutMillis: Long, val path: String, val line: String)
