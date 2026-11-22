@@ -29,7 +29,7 @@ import kotlin.test.assertTrue
 /**
  * Search parity with the web (botiverse/slock staging `packages/web/src/features/search`):
  * destinations up to 50 behind "Show all N", a person or agent opening the DM (else the profile),
- * the Free plan's history notice and where an incomplete search got to.
+ * the Free plan's history notice, where an incomplete search got to and a thread result's title.
  */
 class HomeSearchParityTest {
     // --- 1. Destinations: up to 50, 5 shown, then Show all N (searchConstants.ts) ---
@@ -164,6 +164,20 @@ class HomeSearchParityTest {
             )
         assertEquals(HomeSearchMemberOpenOutcome.AlreadyOpening to false, outcome to didOpen)
         assertEquals(0, opens)
+    }
+
+    // --- 6. A thread result's title (searchGrouping.ts truncateThreadTitle) ---
+
+    @Test
+    fun aThreadResultsTitleIsCutAsTheWebCutsIt() {
+        // Past 80 characters, the first 77 and "...".
+        assertEquals(
+            "Captured the Android visual artifact for #product:f8e569cb and queued React p...",
+            homeSearchThreadTitle("Captured the Android visual artifact for #product:f8e569cb and queued React parity."),
+        )
+        // 80 characters are shown whole.
+        val eighty = "Ship it. ".repeat(9).take(80)
+        assertEquals(eighty, homeSearchThreadTitle(eighty))
     }
 
     private fun memberEntity(kind: MemberKind): SearchEntityResult =
