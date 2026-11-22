@@ -599,7 +599,7 @@ private fun ThreadChatTabContent(
                     adaptiveEventBus = adaptiveEventBus,
                     adaptiveReadyPosted = adaptiveReadyPosted,
                 )
-            } else {
+            } else if (timelineSlice.loadingIndicatorRevealed) {
                 ThreadLoadingState()
             }
         "error" ->
@@ -703,7 +703,9 @@ private fun ThreadChatTabContent(
                     mainLoadFailed = timelineSlice.mainLoadFailed
                 )
             ) {
-                ThreadLoadingState()
+                if (timelineSlice.loadingIndicatorRevealed) {
+                    ThreadLoadingState()
+                }
             } else {
                 LaunchedEffect(threadInstanceKey, timelineSlice.status) {
                     onThreadContentReady()

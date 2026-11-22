@@ -496,13 +496,10 @@ internal class SharedThreadPayloadStore(
     ) {
         val ownedKey = sharedThreadOwnedPayloadCacheKey(ownerScopeId, serverId, threadId)
         val ownedLegacyKey = sharedThreadOwnedPayloadCacheKey(ownerScopeId, "", threadId)
-        freshnessLedger.advanceAndRun(serverId, threadId, ownerScopeId) { previous, _ ->
+        freshnessLedger.advanceAndRun(serverId, threadId, ownerScopeId) { _, _ ->
             payloads.update { current ->
                 current.filterKeys { candidate ->
-                    if (candidate == ownedLegacyKey) return@filterKeys false
-                    if (candidate != ownedKey) return@filterKeys true
-                    val entry = current[candidate]
-                    previous != null && entry?.generation !== previous
+                    candidate != ownedLegacyKey && candidate != ownedKey
                 }
             }
         }
