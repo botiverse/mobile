@@ -2,7 +2,6 @@ package build.raft.app
 
 import build.raft.designsystem.components.raftSafeAreaHorizontalPadding
 import build.raft.app.resources.*
-import build.raft.app.markdown.markdownToPreviewText
 import build.raft.designsystem.components.RaftButton
 import build.raft.designsystem.components.RaftButtonVariant
 import build.raft.designsystem.components.RaftButtonSize
@@ -1542,7 +1541,7 @@ private fun groupHomeSearchResults(
             mutableListOf<InboxItem>().also {
                 groups += HomeSearchResultGroup.Thread(
                     threadKey,
-                    item.parentMessagePreview?.let(::markdownToPreviewText)?.takeIf { it.isNotBlank() } ?: threadDiscussionLabel,
+                    homeSearchThreadTitle(item.parentMessagePreview) ?: threadDiscussionLabel,
                     it
                 )
             }

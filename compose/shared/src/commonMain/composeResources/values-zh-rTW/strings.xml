@@ -2615,7 +2615,8 @@
     <string name="search_entity_computer">電腦</string>
     <string name="search_meta_thread">討論串</string>
     <string name="search_meta_thread_inline">討論串</string>
-    <string name="search_hits_count">%1$d 則相符</string>
+    <string name="search_hits_count_one">%1$d 則相符</string>
+    <string name="search_hits_count_other">%1$d 則相符</string>
     <string name="search_state_no_preview">無法預覽</string>
     <string name="search_thread_discussion">討論串對話</string>
     <string name="search_sender_me">我</string>

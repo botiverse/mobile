@@ -1,6 +1,7 @@
 package build.raft.app
 
 import build.raft.app.resources.*
+import build.raft.app.markdown.markdownToPreviewText
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.type
 import build.raft.app.data.SharedComputersState
@@ -261,6 +262,22 @@ internal sealed interface HomeSearchResultGroup {
         val title: String,
         val items: List<InboxItem>
     ) : HomeSearchResultGroup
+}
+
+/** web searchGrouping `truncateThreadTitle`: a thread result's title longer than this is cut. */
+private const val HomeSearchThreadTitleMaxLength = 80
+
+/**
+ * A thread result's title (web searchGrouping `truncateThreadTitle`): its parent message as one
+ * line, and past 80 characters its first 77 and "...". Null when the parent message has no text
+ * (the result says "Thread discussion").
+ */
+internal fun homeSearchThreadTitle(parentMessagePreview: String?): String? {
+    val line = parentMessagePreview?.let(::markdownToPreviewText)?.takeIf { it.isNotBlank() } ?: return null
+    if (line.length <= HomeSearchThreadTitleMaxLength) return line
+    // The web's `slice(0, 77)`, without splitting a character made of two UTF-16 units.
+    val keep = if (line[76].isHighSurrogate()) 76 else 77
+    return line.take(keep) + "..."
 }
 
 @Composable

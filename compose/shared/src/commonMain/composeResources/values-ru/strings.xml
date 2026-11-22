@@ -2615,7 +2615,8 @@
     <string name="search_entity_computer">Компьютер</string>
     <string name="search_meta_thread">Ветка</string>
     <string name="search_meta_thread_inline">ветка</string>
-    <string name="search_hits_count">Совпадений: %1$d</string>
+    <string name="search_hits_count_one">%1$d совпадение</string>
+    <string name="search_hits_count_other">Совпадений: %1$d</string>
     <string name="search_state_no_preview">Нет предпросмотра</string>
     <string name="search_thread_discussion">Обсуждение в ветке</string>
     <string name="search_sender_me">Я</string>
