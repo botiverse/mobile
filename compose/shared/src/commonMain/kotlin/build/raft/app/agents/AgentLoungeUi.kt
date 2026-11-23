@@ -206,7 +206,13 @@ internal suspend fun openAgentLounge(
 ): DataResult<AgentLoungeOpenResult> {
     val result = AgentLoungeApi(networkClient).openLounge(ServerId(serverId), agentId)
     if (result is DataResult.Content) {
-        RaftAgentLounges.rememberRow(serverId, result.data.channel, canPost = result.data.canPost, agentName = agentName)
+        RaftAgentLounges.rememberRow(
+            serverId,
+            result.data.channel,
+            canPost = result.data.canPost,
+            agentName = agentName,
+            listed = result.data.listed,
+        )
     }
     return result
 }
@@ -223,7 +229,13 @@ internal suspend fun lookupAgentLounge(
 ): DataResult<AgentLoungeOpenResult> {
     val result = AgentLoungeApi(networkClient).lookupLounge(ServerId(serverId), agentId)
     if (result is DataResult.Content) {
-        RaftAgentLounges.rememberRow(serverId, result.data.channel, canPost = result.data.canPost, agentName = agentName)
+        RaftAgentLounges.rememberRow(
+            serverId,
+            result.data.channel,
+            canPost = result.data.canPost,
+            agentName = agentName,
+            listed = result.data.listed,
+        )
     }
     return result
 }

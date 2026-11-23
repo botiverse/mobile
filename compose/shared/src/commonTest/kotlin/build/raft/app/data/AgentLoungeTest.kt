@@ -89,6 +89,56 @@ class AgentLoungeTest {
     }
 
     @Test
+    fun theSidebarRowFollowsExplicitListedAndFallsBackToJoinedWhenAbsent() {
+        val lounge = ChannelId("lounge-bugen")
+        // #proj-chat:#44: non-member human who follows a thread (joined=false, listed=true) stays listed.
+        assertEquals(
+            AgentLoungeSidebarEntry(lounge, unreadCount = 2, mentioned = false),
+            agentLoungeSidebarEntry(AgentLoungeSummary(lounge, joined = false, unreadCount = 2, listed = true), null),
+        )
+        // Explicit listed=false hides the row even if joined is stale, unless mentioned.
+        assertNull(
+            agentLoungeSidebarEntry(
+                AgentLoungeSummary(lounge, joined = false, listed = false),
+                RaftAgentLounge(lounge, "agent-bugen", joined = true, listed = false),
+            ),
+        )
+        assertEquals(
+            AgentLoungeSidebarEntry(lounge, unreadCount = 1, mentioned = true),
+            agentLoungeSidebarEntry(
+                AgentLoungeSummary(lounge, joined = false, unreadCount = 1, mentionCount = 1, listed = false),
+                null,
+            ),
+        )
+        // First post locally sets listed=true without falsely flipping joined=true on a new server.
+        RaftAgentLounges.rememberRow("server-1", loungeRow().copy(joined = false), listed = false)
+        assertNull(agentLoungeSidebarEntry(AgentLoungeSummary(lounge, joined = false, listed = false), RaftAgentLounges.lounge("server-1", "lounge-bugen")))
+        RaftAgentLounges.markJoined("server-1", "lounge-bugen")
+        val afterPost = RaftAgentLounges.lounge("server-1", "lounge-bugen")
+        assertEquals(false, afterPost?.joined)
+        assertEquals(true, afterPost?.listed)
+        assertEquals(
+            lounge,
+            agentLoungeSidebarEntry(AgentLoungeSummary(lounge, joined = false, listed = false), afterPost)?.channelId,
+        )
+        // Subsequent server refresh with listed=false (e.g. unfollowed last thread) unlists cleanly.
+        RaftAgentLounges.rememberDirectMessages(
+            "server-1",
+            listOf(
+                HomeDirectMessageRow(
+                    threadId = ThreadId("dm-bugen"),
+                    channelId = ChannelId("dm-bugen"),
+                    name = "Bugen",
+                    presenceMemberId = MemberId("agent-bugen"),
+                    lounge = AgentLoungeSummary(lounge, joined = false, listed = false),
+                )
+            ),
+        )
+        assertEquals(false, RaftAgentLounges.lounge("server-1", "lounge-bugen")?.listed)
+        assertNull(agentLoungeSidebarEntry(AgentLoungeSummary(lounge, joined = false, listed = false), RaftAgentLounges.lounge("server-1", "lounge-bugen")))
+    }
+
+    @Test
     fun openingParsesTheLoungeRowAndTheAnswersOwnJoinedAndCanPost() {
         // routes/agentLounge.api.test.ts: 201 { channel: {...row, loungeAgentId, joined}, joined, canPost }.
         val created =
@@ -109,12 +159,14 @@ class AgentLoungeTest {
         // A server that left `loungeAgentId` off the row: still the Lounge of the agent asked for.
         val bare =
             parseSharedAgentLoungeOpenResult(
-                """{"channel":{"id":"lounge-bugen","name":"bugen-lounge","type":"channel"},"joined":true,"canPost":false}""",
+                """{"channel":{"id":"lounge-bugen","name":"bugen-lounge","type":"channel"},"joined":true,"canPost":false,"listed":true}""",
                 agentId = "agent-bugen",
             )
         assertEquals("agent-bugen", bare?.channel?.loungeAgentId)
         assertEquals(true, bare?.joined)
         assertEquals(false, bare?.canPost)
+        assertEquals(true, bare?.listed)
+        assertNull(created.data.listed, "older servers omit listed")
         assertNull(parseSharedAgentLoungeOpenResult("""{"lounge":{}}""", "agent-bugen"), "no guessed envelope")
     }
 

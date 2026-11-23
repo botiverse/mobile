@@ -5590,6 +5590,10 @@ private fun HomeSnapshot.withRealtimeAgentLoungeMessages(
     if (index < 0) return this
     val row = directMessages[index]
     val lounge = row.lounge ?: return this
+    // Post-#proj-chat:#44 non-member model (`listed != null && !joined`): humans have no channel-level
+    // Lounge unread (only followed-thread unread counted by server summaries), so skip local top-level
+    // unread increments while still recording mention/last-message state.
+    val nonMemberChannelUnreadOff = lounge.listed != null && !lounge.joined
     val rowSeq = lounge.lastMessageSeq
     val unreadCandidates =
         if (!incrementUnread || activeConversationId == streamChannelId.value) {
@@ -5605,15 +5609,15 @@ private fun HomeSnapshot.withRealtimeAgentLoungeMessages(
         }
     val mentioned = unreadCandidates.any { message -> message.mentions.mentionsUser(currentMember.id.value) }
     val newer = rowSeq == null || latest.seq == null || latest.seq >= rowSeq
+    val increment = if (nonMemberChannelUnreadOff) 0 else unreadCandidates.size
     val nextLounge =
         lounge.copy(
-            unreadCount = lounge.unreadCount + unreadCandidates.size,
+            unreadCount = lounge.unreadCount + increment,
             mentionCount = if (mentioned) maxOf(lounge.mentionCount, 1) else lounge.mentionCount,
             lastMessageId = if (newer) latest.id else lounge.lastMessageId,
             lastMessageSeq = if (newer) latest.seq ?: rowSeq else rowSeq,
         )
     if (nextLounge == lounge) return this
-    val increment = unreadCandidates.size
     val nextServerUnreadCount = (server.unreadCount + increment).coerceAtLeast(0)
     return copy(
         directMessages = directMessages.replaceAt(index, row.copy(lounge = nextLounge)),

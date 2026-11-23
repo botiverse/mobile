@@ -149,6 +149,17 @@ class SharedHomeStoreAgentLoungeTest {
         harness.scope.cancel()
     }
 
+    @Test
+    fun nonMemberListedLoungeSkipsLocalTopLevelChannelUnreadIncrement() = runTest {
+        val harness = harness(loungeSummary = AgentLoungeSummary(ChannelId(LOUNGE), joined = false, listed = true))
+        harness.store.accept(realtime(loungeMessage(author = "member-2", seq = 5, mentionsMe = false)))
+        runCurrent()
+
+        assertEquals(0, harness.lounge().unreadCount, "non-member human has no channel-level Lounge unread")
+        assertEquals(0, harness.lounge().mentionCount)
+        harness.scope.cancel()
+    }
+
     private class Harness(val scope: CoroutineScope, val store: SharedHomeStore) {
         val updates = mutableListOf<SettingsServerSidebarOrderUpdateRequest>()
         val readAll = mutableListOf<ChannelId>()
@@ -165,7 +176,10 @@ class SharedHomeStoreAgentLoungeTest {
                 ?: error("the DM row lost its Lounge, rows=${content().snapshot.directMessages}")
     }
 
-    private suspend fun TestScope.harness(hiddenDmIds: List<String> = emptyList()): Harness {
+    private suspend fun TestScope.harness(
+        hiddenDmIds: List<String> = emptyList(),
+        loungeSummary: AgentLoungeSummary = AgentLoungeSummary(ChannelId(LOUNGE), joined = true),
+    ): Harness {
         val scope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
         val session = authSessionFixture()
         var order = SettingsServerSidebarOrderSnapshot(hiddenDmIds = hiddenDmIds)
@@ -177,7 +191,7 @@ class SharedHomeStoreAgentLoungeTest {
                     SharedHomeDataSource(
                         sessionStore = InMemoryRaftAuthSessionStore(session),
                         api = RootEmptyHomeApi,
-                        parseHome = { _, _ -> DataResult.Content(home(order)) }
+                        parseHome = { _, _ -> DataResult.Content(home(order, loungeSummary)) }
                     ),
                 scope = scope,
                 loadSidebarOrder = { _ -> DataResult.Content(order) },
@@ -233,7 +247,10 @@ class SharedHomeStoreAgentLoungeTest {
             )
         )
 
-    private fun home(order: SettingsServerSidebarOrderSnapshot): HomeSnapshot =
+    private fun home(
+        order: SettingsServerSidebarOrderSnapshot,
+        loungeSummary: AgentLoungeSummary = AgentLoungeSummary(ChannelId(LOUNGE), joined = true),
+    ): HomeSnapshot =
         HomeSnapshot(
             server = ServerSummary(ServerId("server-1"), "One"),
             currentMember = member("user-1", "Me"),
@@ -247,7 +264,7 @@ class SharedHomeStoreAgentLoungeTest {
                         directMessagePeerType = "agent",
                         presenceMemberId = MemberId("agent-bugen"),
                         unreadCountKnown = true,
-                        lounge = AgentLoungeSummary(ChannelId(LOUNGE), joined = true),
+                        lounge = loungeSummary,
                     )
                 ),
             unreadTotal = 0,

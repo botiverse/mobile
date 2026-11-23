@@ -473,7 +473,7 @@ class HomeParserTest {
                                 HomeDirectMessageWireDto(
                                     id = "dm-bugen", name = "bugen", type = "dm", peerType = "agent",
                                     peerId = "agent-bugen", peerName = "bugen", peerDisplayName = "Bugen",
-                                    lounge = HomeAgentLoungeWireDto(channelId = "lounge-bugen", joined = true),
+                                    lounge = HomeAgentLoungeWireDto(channelId = "lounge-bugen", joined = true, listed = true),
                                 ),
                                 HomeDirectMessageWireDto(
                                     id = "dm-alice", name = "alice", type = "dm", peerType = "user",
@@ -489,7 +489,7 @@ class HomeParserTest {
         assertTrue(result is DataResult.Content)
         assertEquals(listOf("general"), result.data.channels.map { it.channelId.value })
         val bugen = result.data.directMessages.first { it.channelId.value == "dm-bugen" }
-        assertEquals(AgentLoungeSummary(ChannelId("lounge-bugen"), joined = true, unreadCount = 3, mentionCount = 1), bugen.lounge)
+        assertEquals(AgentLoungeSummary(ChannelId("lounge-bugen"), joined = true, unreadCount = 3, mentionCount = 1, listed = true), bugen.lounge)
         assertNull(result.data.directMessages.first { it.channelId.value == "dm-alice" }.lounge, "only an agent has a Lounge")
 
         val listed =

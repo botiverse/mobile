@@ -192,6 +192,7 @@ data class HomeChannelWireDto(
 data class HomeAgentLoungeWireDto(
     val channelId: String,
     val joined: Boolean = false,
+    val listed: Boolean? = null,
 )
 
 @Serializable
@@ -650,7 +651,7 @@ private fun HomeDirectMessageWireDto.toDirectMessageRow(warningLogger: (String) 
             ),
         lounge = lounge
             ?.takeIf { peerType.equals("agent", ignoreCase = true) && it.channelId.isNotBlank() }
-            ?.let { AgentLoungeSummary(channelId = ChannelId(it.channelId), joined = it.joined) }
+            ?.let { AgentLoungeSummary(channelId = ChannelId(it.channelId), joined = it.joined, listed = it.listed) }
     )
 }
 

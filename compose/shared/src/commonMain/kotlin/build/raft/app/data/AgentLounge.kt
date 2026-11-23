@@ -46,6 +46,8 @@ data class AgentLoungeSummary(
     val mentionCount: Int = 0,
     val lastMessageId: MessageId? = null,
     val lastMessageSeq: Long? = null,
+    /** Explicit sidebar visibility from server (`#proj-chat:#44`): null on older servers (fall back to [joined]). */
+    val listed: Boolean? = null,
 )
 
 /**
@@ -84,6 +86,8 @@ data class RaftAgentLounge(
     /** The Lounge's own channel name (a reserved slug): its Home row's name, never shown. May be blank. */
     val channelName: String = "",
     val joined: Boolean = false,
+    /** Explicit sidebar visibility (`#proj-chat:#44`); null on older servers (fall back to [joined]). */
+    val listed: Boolean? = null,
     /** From POST /agents/:id/lounge; null when this client never opened it (absent = may post, as on the web). */
     val canPost: Boolean? = null,
     val archived: Boolean = false,
@@ -129,16 +133,23 @@ data class AgentLoungeSidebarEntry(
 )
 
 /**
- * Whether an agent's Lounge has a sidebar row: only once you joined it, or someone mentioned you
- * there (not a row for every agent). [known] is the Lounge the client holds (fresher, e.g. right
- * after your first post); [summary] is what the agent's DM row carried.
+ * Whether an agent's Lounge has a sidebar row: reads the server's explicit `listed` boolean
+ * (`#proj-chat:#44`, true when this reader follows a thread in the Lounge or is still a member),
+ * falling back to `joined` when `listed` is absent on older servers, or shown whenever someone
+ * mentioned you there. [known] is the Lounge the client holds (fresher, e.g. right after your
+ * first post); [summary] is what the agent's DM row carried.
  */
 fun agentLoungeSidebarEntry(summary: AgentLoungeSummary?, known: RaftAgentLounge?): AgentLoungeSidebarEntry? {
     val channelId = known?.channelId ?: summary?.channelId ?: return null
-    val joined = known?.joined == true || summary?.joined == true
+    val listed =
+        when {
+            known?.listed == true || summary?.listed == true -> true
+            known?.listed != null || summary?.listed != null -> false
+            else -> known?.joined == true || summary?.joined == true
+        }
     val sameChannel = summary?.channelId == channelId
     val mentionCount = if (sameChannel) summary?.mentionCount ?: 0 else 0
-    if (!joined && mentionCount <= 0) return null
+    if (!listed && mentionCount <= 0) return null
     return AgentLoungeSidebarEntry(
         channelId = channelId,
         unreadCount = if (sameChannel) summary?.unreadCount ?: 0 else 0,
@@ -151,6 +162,7 @@ data class AgentLoungeOpenResult(
     val channel: HomeChannelRow,
     val joined: Boolean,
     val canPost: Boolean,
+    val listed: Boolean? = null,
 )
 
 @Serializable
@@ -158,6 +170,7 @@ private data class AgentLoungeOpenWireDto(
     val channel: HomeChannelWireDto,
     val joined: Boolean? = null,
     val canPost: Boolean? = null,
+    val listed: Boolean? = null,
 )
 
 /** The server's refusal code for a Guest (`403 {code: "agent_lounge_guest"}`). */
@@ -191,6 +204,7 @@ fun parseSharedAgentLoungeOpenResult(bodyText: String, agentId: String): AgentLo
         channel = row,
         joined = row.joined,
         canPost = wire.canPost ?: !row.archived,
+        listed = wire.listed,
     )
 }
 
@@ -378,8 +392,14 @@ object RaftAgentLounges {
         return byServer.value[serverId]?.values?.firstOrNull { it.agentId == agentId }
     }
 
-    /** Remember a Lounge row (opened, or loaded by id). [canPost] from the open answer; null keeps what was known. */
-    fun rememberRow(serverId: String, row: HomeConversationRow, canPost: Boolean? = null, agentName: String? = null) {
+    /** Remember a Lounge row (opened, or loaded by id). [canPost] / [listed] from the open answer; null keeps what was known. */
+    fun rememberRow(
+        serverId: String,
+        row: HomeConversationRow,
+        canPost: Boolean? = null,
+        agentName: String? = null,
+        listed: Boolean? = null,
+    ) {
         val agentId = row.loungeAgentId?.takeIf { it.isNotBlank() } ?: return
         val channelId = row.channelId ?: return
         remember(serverId, channelId.value) { previous ->
@@ -389,6 +409,7 @@ object RaftAgentLounges {
                 agentName = agentName ?: previous?.agentName,
                 channelName = row.name.ifBlank { previous?.channelName.orEmpty() },
                 joined = row.joined,
+                listed = listed ?: previous?.listed,
                 canPost = canPost ?: previous?.canPost,
                 archived = row.archived,
                 // The Lounge's own row (GET /channels/:id) carries your mute; the open answer
@@ -466,7 +487,8 @@ object RaftAgentLounges {
                         .copy(
                             agentId = agentId,
                             agentName = agentName.takeIf { it.isNotBlank() } ?: previous?.agentName,
-                            joined = summary.joined || previous?.joined == true,
+                            joined = if (summary.listed != null) summary.joined else (summary.joined || previous?.joined == true),
+                            listed = summary.listed ?: previous?.listed,
                         )
             }
             if (next == current) all else all + (serverId to next)
@@ -483,9 +505,14 @@ object RaftAgentLounges {
         }
     }
 
-    /** Your first post joined it. */
+    /** Your first post joined it (older servers) or auto-followed your thread (`listed = true`, `#proj-chat:#44`). */
     fun markJoined(serverId: String, channelId: String) {
-        remember(serverId, channelId) { previous -> previous?.copy(joined = true) }
+        remember(serverId, channelId) { previous ->
+            previous?.copy(
+                joined = if (previous.listed != null) previous.joined else true,
+                listed = true,
+            )
+        }
     }
 
     /** Sign-out (and test hook): forget every Lounge, and the account they were known for. */
