@@ -6025,4 +6025,13 @@
     <string name="mobile_web_panel_return_to_conversation">Return to conversation</string>
     <string name="mobile_web_panel_return_to_page">Return</string>
     <string name="mobile_web_panel_apps_source">Apps</string>
+    <string name="send_prompt_heading">Send to an agent</string>
+    <string name="send_prompt_description">Check the message, change it if you like, and send it. You'll go to your DM with the agent to see what it does.</string>
+    <string name="send_prompt_to">To</string>
+    <string name="send_prompt_preview_label">Recent messages</string>
+    <string name="send_prompt_first_message">This will be your first message to this agent.</string>
+    <string name="send_prompt_message_label">Message</string>
+    <string name="send_prompt_send">Send</string>
+    <string name="send_prompt_failed">Couldn't send. Try again.</string>
+    <string name="send_prompt_no_agents">There are no agents on this server you can message yet.</string>
 </resources>

@@ -833,6 +833,8 @@ internal data class AgentSummary(
     val deletedAt: String?,
     /** A personal assistant's owner (`assistantOwnerUserId`); null for a shared agent. */
     val assistantOwnerUserId: String? = null,
+    /** Raftbench service agent (`raftbenchService`); false for ordinary agents. */
+    val raftbenchService: Boolean = false,
     /** App Bots only (`agents.managedByAppInstallId`); null for ordinary agents and guest projections. */
     val managedByAppInstallId: String? = null,
     /** App Bots only: owning App row id (`managedByApp.clientId` = `oauth_clients.id`, slock #14286). */
@@ -913,6 +915,7 @@ internal fun AgentSummary.toAgentDetailSummary(): AgentDetailSummary =
         activityDetail = activityDetail,
         deletedAt = deletedAt,
         assistantOwnerUserId = assistantOwnerUserId,
+        raftbenchService = raftbenchService,
         managedByAppInstallId = managedByAppInstallId,
         managedByAppClientId = managedByAppClientId,
         managedByAppName = managedByAppName,
@@ -1159,6 +1162,8 @@ private data class AgentWireDto(
     val deletedAt: String? = null,
     /** Personal assistant (botiverse/slock packages/shared agent `assistantOwnerUserId`): its owner, else null. */
     val assistantOwnerUserId: String? = null,
+    /** Raftbench service agent (`routes/agents.ts` `raftbenchService`); false for ordinary agents. */
+    val raftbenchService: Boolean = false,
     /** App Bots only (`routes/agents.ts` `managedByAppInstallId`). */
     val managedByAppInstallId: String? = null,
     /** App Bots only (`routes/agents.ts` `managedByApp`: `{ clientId, name, logoUrl, description, botStatusText }`). */
@@ -1293,6 +1298,7 @@ private fun AgentWireDto.toSummary(): AgentSummary? {
         activityDetail = activityDetail,
         deletedAt = deletedAt,
         assistantOwnerUserId = assistantOwnerUserId?.takeIf { it.isNotBlank() },
+        raftbenchService = raftbenchService,
         managedByAppInstallId = managedByAppInstallId?.trim()?.takeIf { it.isNotBlank() },
         managedByAppClientId = managedByApp?.clientId?.trim()?.takeIf { it.isNotBlank() },
         managedByAppName = managedByApp?.name?.trim()?.takeIf { it.isNotBlank() },

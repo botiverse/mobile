@@ -6023,4 +6023,13 @@
     <string name="mobile_web_panel_return_to_conversation">回到對話</string>
     <string name="mobile_web_panel_return_to_page">返回</string>
     <string name="mobile_web_panel_apps_source">應用程式</string>
+    <string name="send_prompt_heading">傳給 agent</string>
+    <string name="send_prompt_description">看一下這句話，想改就改，然後送出。送出後會跳到你和這個 agent 的私訊，看它怎麼做。</string>
+    <string name="send_prompt_to">傳給</string>
+    <string name="send_prompt_preview_label">最近的訊息</string>
+    <string name="send_prompt_first_message">這是你們的第一則訊息。</string>
+    <string name="send_prompt_message_label">訊息</string>
+    <string name="send_prompt_send">傳送</string>
+    <string name="send_prompt_failed">沒有送出，請再試一次。</string>
+    <string name="send_prompt_no_agents">這個伺服器上還沒有你能傳訊息的 agent。</string>
 </resources>

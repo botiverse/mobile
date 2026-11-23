@@ -50,6 +50,9 @@ internal sealed interface AnnouncementLinkAction {
     /** A link to Raft's own Settings: the in-app Settings page ([RaftSettingsLink]). */
     data class OpenSettings(val link: RaftSettingsLink, val target: RaftSettingsLinkTarget) : AnnouncementLinkAction
 
+    /** A `?dialog=send-prompt&prompt=<text>` link: opens the native Send-to-agent sheet on the current server. */
+    data class SendPrompt(val link: RaftSendPromptLink) : AnnouncementLinkAction
+
     /**
      * Anything else: the link opens as any other web link (the link setting decides where).
      * [raftWebPage]: a page on Raft's own web origin the app has no screen for (a Settings tab of
@@ -74,6 +77,14 @@ internal fun announcementLinkAction(
     servers: List<StoredAuthServer>,
     appHosts: Set<String> = RaftClientConfigAppHosts.current,
 ): AnnouncementLinkAction? {
+    if (isRaftSendPromptIntentUrl(href, configuredWebUrl = webBaseUrl, appHosts = appHosts, allowRelative = true)) {
+        val sendPrompt = parseRaftSendPromptLink(href, configuredWebUrl = webBaseUrl, appHosts = appHosts, allowRelative = true)
+        return if (sendPrompt != null && !currentServerId.isNullOrBlank()) {
+            AnnouncementLinkAction.SendPrompt(sendPrompt)
+        } else {
+            null
+        }
+    }
     val currentSlug = servers.firstOrNull { it.id == currentServerId }?.slug
     val url = resolveAnnouncementLink(href, webBaseUrl, currentSlug) ?: return null
     val settingsLink = parseRaftSettingsLink(url, configuredWebUrl = webBaseUrl, appHosts = appHosts)

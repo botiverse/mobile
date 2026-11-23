@@ -6023,4 +6023,13 @@
     <string name="mobile_web_panel_return_to_conversation">Вернуться к беседе</string>
     <string name="mobile_web_panel_return_to_page">Назад</string>
     <string name="mobile_web_panel_apps_source">Приложения</string>
+    <string name="send_prompt_heading">Отправить агенту</string>
+    <string name="send_prompt_description">Проверьте сообщение, при желании измените и отправьте. Вы перейдёте в личные сообщения с агентом и увидите, что он сделает.</string>
+    <string name="send_prompt_to">Кому</string>
+    <string name="send_prompt_preview_label">Последние сообщения</string>
+    <string name="send_prompt_first_message">Это будет ваше первое сообщение этому агенту.</string>
+    <string name="send_prompt_message_label">Сообщение</string>
+    <string name="send_prompt_send">Отправить</string>
+    <string name="send_prompt_failed">Не удалось отправить. Попробуйте ещё раз.</string>
+    <string name="send_prompt_no_agents">На этом сервере пока нет агентов, которым вы можете написать.</string>
 </resources>

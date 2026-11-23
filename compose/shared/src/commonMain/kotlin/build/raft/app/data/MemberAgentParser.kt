@@ -203,6 +203,8 @@ private data class WireAgent(
     val assistantPausedBy: WireAssistantPausedBy? = null,
     /** Personal assistants only (slock `agents.assistantOwnerUserId` on `GET /agents`): the owner; null otherwise. */
     val assistantOwnerUserId: String? = null,
+    /** Raftbench service agent (`routes/agents.ts` `raftbenchService`); false for ordinary agents. */
+    val raftbenchService: Boolean = false,
     /**
      * `GET /agents` only (botiverse/slock #13575 `agentBlockedReason`): why the server runs the agent
      * nowhere: `computer_access_revoked` (its Computer's key was revoked) or
@@ -1117,6 +1119,7 @@ private fun WireAgent.toMemberProfile(): MemberProfile {
         assistantPausedByName =
             assistantPausedBy?.name?.trim()?.takeIf { it.isNotEmpty() && !assistantPausedAt.isNullOrBlank() },
         assistantOwnerUserId = assistantOwnerUserId?.trim()?.takeIf { it.isNotEmpty() },
+        raftbenchService = raftbenchService,
         managedByAppInstallId = managedByAppInstallId?.takeIf { it.isNotBlank() },
         agentCreatorUserId = creatorId?.trim()?.takeIf { it.isNotEmpty() && creatorType == "user" },
         managedByAppClientId = managedByApp?.clientId?.trim()?.takeIf { it.isNotBlank() },

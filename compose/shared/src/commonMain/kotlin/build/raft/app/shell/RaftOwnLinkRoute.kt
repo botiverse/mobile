@@ -31,6 +31,9 @@ internal sealed interface RaftOwnLinkRoute {
     /** An external channel invite (`/external-invite/<token>`, [parseRaftExternalInviteLink]): the invite page. */
     data class ExternalInvite(val token: String) : RaftOwnLinkRoute
 
+    /** A send-prompt link (`?dialog=send-prompt&prompt=<text>`, [parseRaftSendPromptLink]): the native sheet. */
+    data class SendPrompt(val link: RaftSendPromptLink) : RaftOwnLinkRoute
+
     /** A Raft page the app has no screen to open from a link: its web page ([RaftLinkOpenIntent.RaftWebPage]). */
     data class WebPage(val reason: RaftOwnLinkWebPageReason) : RaftOwnLinkRoute
 }
@@ -63,6 +66,9 @@ internal fun raftOwnLinkRoute(
     appHosts: Set<String> = RaftClientConfigAppHosts.current,
 ): RaftOwnLinkRoute? {
     if (raftOwnWebLinkPath(url, configuredWebUrl, appHosts) == null) return null
+    parseRaftSendPromptLink(url, configuredWebUrl, appHosts, allowRelative = false)?.let {
+        return RaftOwnLinkRoute.SendPrompt(it)
+    }
     parseRaftArtifactDeepLink(url, configuredWebUrl, appHosts)?.let { return RaftOwnLinkRoute.Artifact(it) }
     parseRaftServerJoinLink(url, configuredWebUrl, appHosts)?.let { return RaftOwnLinkRoute.ServerJoin(it) }
     parseRaftExternalInviteLink(url, configuredWebUrl, appHosts)?.let { return RaftOwnLinkRoute.ExternalInvite(it) }
@@ -94,6 +100,7 @@ internal fun raftOwnLinkShellOpener(
     appHosts: () -> Set<String> = { RaftClientConfigAppHosts.current },
     messageInbox: RaftMessageLinkInbox = RaftMessageLinkInbox.Process,
     inviteInbox: RaftExternalInviteLinkInbox = RaftExternalInviteLinkInbox.Process,
+    sendPromptInbox: RaftSendPromptLinkInbox = RaftSendPromptLinkInbox.Process,
     log: (String) -> Unit = {},
 ): (String) -> Boolean = { url ->
     when (val route = raftOwnLinkRoute(url, webUrl(), appHosts())) {
@@ -108,6 +115,11 @@ internal fun raftOwnLinkShellOpener(
         is RaftOwnLinkRoute.ExternalInvite -> {
             val pending = inviteInbox.submit(route.token, "message_link_tap")
             log("raft_link_tap route=external_invite id=${pending.id}")
+            true
+        }
+        is RaftOwnLinkRoute.SendPrompt -> {
+            val pending = sendPromptInbox.submit(route.link, "message_link_tap")
+            log("raft_link_tap route=send_prompt id=${pending.id}")
             true
         }
         else -> false

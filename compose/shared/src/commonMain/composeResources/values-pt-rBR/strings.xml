@@ -6023,4 +6023,13 @@
     <string name="mobile_web_panel_return_to_conversation">Voltar para a conversa</string>
     <string name="mobile_web_panel_return_to_page">Voltar</string>
     <string name="mobile_web_panel_apps_source">Apps</string>
+    <string name="send_prompt_heading">Enviar para um agente</string>
+    <string name="send_prompt_description">Confira a mensagem, mude se quiser e envie. Você vai para sua DM com o agente para ver o que ele faz.</string>
+    <string name="send_prompt_to">Para</string>
+    <string name="send_prompt_preview_label">Mensagens recentes</string>
+    <string name="send_prompt_first_message">Esta será sua primeira mensagem para este agente.</string>
+    <string name="send_prompt_message_label">Mensagem</string>
+    <string name="send_prompt_send">Enviar</string>
+    <string name="send_prompt_failed">Não foi possível enviar. Tente de novo.</string>
+    <string name="send_prompt_no_agents">Ainda não há agentes neste servidor para quem você possa escrever.</string>
 </resources>

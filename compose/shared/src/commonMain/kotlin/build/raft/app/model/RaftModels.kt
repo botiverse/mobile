@@ -26,6 +26,7 @@ data class ServerSummary(
     val role: String? = null,
     val plan: String? = null,
     val onboardingAgentId: String? = null,
+    val officialOnboardingAgentId: String? = null,
     val description: String? = null,
     val avatarUrl: String? = null,
     val unreadCount: Int = 0,
@@ -572,6 +573,8 @@ data class MemberProfile(
      * MessageItem `isPersonalAssistantSender`).
      */
     val assistantOwnerUserId: String? = null,
+    /** Raftbench service agent (`raftbenchService` on `GET /agents`): not a chat/send-prompt recipient. */
+    val raftbenchService: Boolean = false,
     /**
      * App-managed bot (botiverse/slock `agents.managed_by_app_install_id`, sent as
      * `managedByAppInstallId` on `GET /agents` and `GET /agents/:id` for non-guests). Web hides

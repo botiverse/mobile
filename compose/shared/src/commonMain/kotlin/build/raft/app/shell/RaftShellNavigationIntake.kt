@@ -35,6 +35,9 @@ internal interface RaftShellNavigationIntakeHost {
     /** Opens a taken server join link ([RaftServerJoinLinkInbox]) on the join page, over whatever is shown. */
     fun openServerJoinLink(taken: RaftPendingExternalInviteLink) {}
 
+    /** Opens a taken send-prompt link ([RaftSendPromptLinkInbox]) as the Send-to-agent sheet. */
+    fun openSendPromptLink(taken: RaftPendingSendPromptLink) {}
+
     /** The signed-in account's id, for a link that waits for another account; null when unknown. */
     fun currentAccountId(): String? = null
 
@@ -73,6 +76,7 @@ internal class RaftShellNavigationIntake(
     private val artifactInbox: RaftArtifactLinkInbox = RaftArtifactLinkInbox.Process,
     private val externalInviteInbox: RaftExternalInviteLinkInbox = RaftExternalInviteLinkInbox.Process,
     private val serverJoinInbox: RaftServerJoinLinkInbox = RaftServerJoinLinkInbox.Process,
+    private val sendPromptInbox: RaftSendPromptLinkInbox = RaftSendPromptLinkInbox.Process,
 ) {
     private val wakeups = Channel<Unit>(Channel.CONFLATED)
 
@@ -91,6 +95,7 @@ internal class RaftShellNavigationIntake(
             launch { artifactInbox.pending.collect { pending -> if (pending != null) wake() } }
             launch { externalInviteInbox.pending.collect { pending -> if (pending != null) wake() } }
             launch { serverJoinInbox.pending.collect { pending -> if (pending != null) wake() } }
+            launch { sendPromptInbox.pending.collect { pending -> if (pending != null) wake() } }
             for (ignored in wakeups) {
                 takeArtifactLink(host)?.let { taken ->
                     host.closeIncomingNavigationCover()
@@ -103,6 +108,10 @@ internal class RaftShellNavigationIntake(
                 takeServerJoinLink(host)?.let { taken ->
                     host.closeIncomingNavigationCover()
                     host.openServerJoinLink(taken)
+                }
+                takeSendPromptLink(host)?.let { taken ->
+                    host.closeIncomingNavigationCover()
+                    host.openSendPromptLink(taken)
                 }
                 takeMessageLink(host)?.let { taken ->
                     launch {
@@ -167,6 +176,18 @@ internal class RaftShellNavigationIntake(
             return null
         }
         host.log("server_join_link_take id=${taken.id} source=${taken.source}")
+        return taken
+    }
+
+    private fun takeSendPromptLink(host: RaftShellNavigationIntakeHost): RaftPendingSendPromptLink? {
+        val pending = sendPromptInbox.pending.value ?: return null
+        if (!host.messageLinkSessionReady()) return null
+        val taken = sendPromptInbox.take(pending.id)
+        if (taken == null) {
+            host.log("send_prompt_link_take_skipped id=${pending.id} reason=taken_replaced_or_expired")
+            return null
+        }
+        host.log("send_prompt_link_take id=${taken.id} source=${taken.source}")
         return taken
     }
 

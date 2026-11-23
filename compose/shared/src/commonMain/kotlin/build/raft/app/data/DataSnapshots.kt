@@ -1064,6 +1064,8 @@ data class AgentDetailSummary(
     val deletedAt: String? = null,
     /** A personal assistant's owner; null for a shared agent (Agent Lounge v0 hides the Lounge for it). */
     val assistantOwnerUserId: String? = null,
+    /** Raftbench service agent (`raftbenchService`); false for ordinary agents. */
+    val raftbenchService: Boolean = false,
     /** App Bots only (`agents.managedByAppInstallId`); null for ordinary agents and guest projections. */
     val managedByAppInstallId: String? = null,
     /** App Bots only: owning App row id (`managedByApp.clientId` = `oauth_clients.id`, slock #14286). */

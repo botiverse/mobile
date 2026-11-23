@@ -163,6 +163,7 @@ internal fun AppShellAnnouncementModalHost(
     onDismissAnnouncement: (String) -> Unit,
     onOpenUrl: (String) -> Unit,
     onModalShownChanged: (Boolean) -> Unit = {},
+    suppressedBySiblingDialog: Boolean = false,
     freshnessEvents: Flow<RaftFreshnessEvent> = RaftFreshnessSignal.events,
 ) {
     val activeAnnouncement by announcementStore.announcement.collectAsState()
@@ -191,7 +192,7 @@ internal fun AppShellAnnouncementModalHost(
             hasActiveAnnouncement = activeAnnouncement != null,
             pageVisible = pageVisible,
             pageActive = pageActive,
-            suppressedByPageCover = coverState.suppressed,
+            suppressedByPageCover = coverState.suppressed || suppressedBySiblingDialog,
         )
     SideEffect { onModalShownChanged(showModal) }
     val announcement = if (showModal) activeAnnouncement else null

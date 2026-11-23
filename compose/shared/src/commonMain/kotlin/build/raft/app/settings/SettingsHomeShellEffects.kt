@@ -240,6 +240,7 @@ internal fun AppShellExternalLinkNavigationEffects(
     messageLinkSessionReady: Boolean,
     latestMessageLinkSessionReadyState: State<Boolean>,
     latestResolveMessageLinkState: State<suspend (RaftPendingMessageLink) -> WindowNavigationIntent?>,
+    sendPromptHostState: AppShellSendPromptHostState,
 ) {
     var desktopModeOnLargeScreen by desktopModeOnLargeScreenState
     val processRealtimeAuthority by processRealtimeAuthorityState
@@ -284,6 +285,12 @@ internal fun AppShellExternalLinkNavigationEffects(
             )
         }
     }
+    val latestOpenSendPromptLink by rememberUpdatedState<(RaftPendingSendPromptLink) -> Unit> { taken ->
+        val serverId =
+            readySession?.currentServerId?.takeIf(String::isNotBlank)
+                ?: canonicalFinalSelectedServerId?.takeIf(String::isNotBlank)
+        sendPromptHostState.open(serverId = serverId, prompt = taken.link.prompt)
+    }
     // Phone layout: the conversation page on top of the shell, so a notification or link to it is
     // not pushed twice (preferring the host's authoritative navigation stack over Compose visibility,
     // which clears when the app enters the background).
@@ -307,6 +314,8 @@ internal fun AppShellExternalLinkNavigationEffects(
                 override fun openExternalInviteLink(taken: RaftPendingExternalInviteLink) = latestOpenExternalInviteLink(taken)
 
                 override fun openServerJoinLink(taken: RaftPendingExternalInviteLink) = latestOpenServerJoinLink(taken)
+
+                override fun openSendPromptLink(taken: RaftPendingSendPromptLink) = latestOpenSendPromptLink(taken)
 
                 override fun currentAccountId(): String? = latestNavigationAccountId()
 
