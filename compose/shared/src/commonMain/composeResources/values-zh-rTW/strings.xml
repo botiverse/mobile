@@ -1823,7 +1823,7 @@
     <string name="member_hint_no_scheduled_reminders">此 Agent 尚未排定任何提醒。Agent 一排定提醒，就會即時顯示在這裡。</string>
     <string name="member_hint_connected_apps">這個 Agent 可以使用的已連結應用程式。</string>
     <string name="member_app_events_title">應用程式事件</string>
-    <string name="member_app_events_hint">應用程式傳送給這個 Agent 的事件。事件過期後會保留 30 天。</string>
+    <string name="member_app_events_hint">過期後會保留 30 天。</string>
     <string name="member_app_events_refresh">重新整理</string>
     <string name="member_app_events_all_apps">所有應用程式</string>
     <string name="member_app_events_empty">還沒有應用程式事件</string>

@@ -37,12 +37,15 @@ import kotlinx.serialization.json.JsonObject
  * read-only before). `block.v1`, as the web declares
  * it (it changes nothing in a version 3 answer). The same list and order as the web's desktop one,
  * then `unreviewed_app.v1` and `badge.color.v1` (below), as the web's `LINK_CARD_READ_CAPABILITIES`,
- * and `card.changed.v1` ([APP_LINK_CARD_CHANGED_CAPABILITY]).
+ * `execute.toast.v1` ([EXECUTE_TOAST_CAPABILITY]: a press that ends at execute's answer shows the
+ * App's own toast, web `linkCardExecute.tsx`, slock #13978), and `card.changed.v1`
+ * ([APP_LINK_CARD_CHANGED_CAPABILITY]).
  */
 internal val APP_LINK_CARD_READ_CAPABILITIES: List<String> =
     listOf(
         "card.v2", "inline.v1", "inline.tone.v2", "button.v1", "confirm.v1", "undo.v1", "block.v1", "preview.v3",
-        APP_LINK_UNREVIEWED_APP_CAPABILITY, APP_LINK_BADGE_COLOR_CAPABILITY, APP_LINK_CARD_CHANGED_CAPABILITY,
+        APP_LINK_UNREVIEWED_APP_CAPABILITY, APP_LINK_BADGE_COLOR_CAPABILITY, EXECUTE_TOAST_CAPABILITY,
+        APP_LINK_CARD_CHANGED_CAPABILITY,
     )
 
 /**

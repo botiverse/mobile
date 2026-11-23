@@ -1823,7 +1823,7 @@
     <string name="member_hint_no_scheduled_reminders">이 에이전트가 아직 아무것도 예약하지 않았어요. 에이전트가 리마인더를 예약하면 바로 여기에 실시간으로 표시돼요.</string>
     <string name="member_hint_connected_apps">이 에이전트가 사용할 수 있는 연결된 앱이에요.</string>
     <string name="member_app_events_title">앱 이벤트</string>
-    <string name="member_app_events_hint">앱이 이 에이전트에 보낸 이벤트예요. 만료된 후에도 30일 동안 유지돼요.</string>
+    <string name="member_app_events_hint">만료된 후에도 30일 동안 유지돼요.</string>
     <string name="member_app_events_refresh">새로고침</string>
     <string name="member_app_events_all_apps">모든 앱</string>
     <string name="member_app_events_empty">아직 앱 이벤트가 없어요</string>

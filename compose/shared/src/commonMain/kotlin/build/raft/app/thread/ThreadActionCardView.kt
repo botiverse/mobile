@@ -196,15 +196,23 @@ private data class ThreadActionCardProperty(
     val muted: Boolean = false,
 )
 
-/** The action's icon in the card header (web `ActionTypeIcon`); null draws the default one. */
-private fun ThreadActionCard.actionCardIconName(): RaftLucideIconName? =
+/**
+ * The action's icon in the card header of a typed card (one drawn without its spec): the icon the
+ * web's spec builder gives each type (slock `actionCardSpecBuilder.test.ts` "each type's header icon",
+ * the same names [actionCardIconName] maps for a spec card); null draws the default one (zap).
+ */
+internal fun ThreadActionCard.actionCardIconName(): RaftLucideIconName? =
     when (type) {
         "channel:create" -> RaftLucideIconName.Hash
-        "agent:create" -> RaftLucideIconName.Bot
+        "agent:create", "agent:migrate" -> RaftLucideIconName.Bot
         "channel:add_member" -> RaftLucideIconName.UserPlus
         "integration:approve_agent_login" -> RaftLucideIconName.KeyRound
         "integration:register_app", "integration:update_app_registration" -> RaftLucideIconName.AppWindow
         "integration:install_marketplace_app" -> RaftLucideIconName.Package
+        "integration:recover_app_owner" -> RaftLucideIconName.ShieldAlert
+        "integration:connect_mcp" -> RaftLucideIconName.Plug
+        "feedback:submit", "question:ask" -> RaftLucideIconName.MessageSquare
+        "plan:upgrade" -> RaftLucideIconName.CreditCard
         else -> null
     }
 
