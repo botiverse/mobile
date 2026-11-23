@@ -1,5 +1,5 @@
 {
-  "comment": "Pinned Web design sources. Bump with update_sources.sh; versions must match slock packages/web (raft-ui, tailwindcss) at the pinned commit.",
+  "comment": "Pinned Web design sources. Bump per README (Bumping to a newer Web); tailwindcss and index.css match slock packages/web at slockCommit; raft-ui is the web's version or a newer release (it may lead the web by a patch that only adds tokens).",
   "slockCommit": "0f825229237e284034e62fa63569914f7f1f6c67",
   "sources": {
     "tailwind": {
@@ -8,24 +8,29 @@
       "sha256": "443d7af364200f8ec8352dc78e39485a118a1840d498c97967bf0ae402b39167"
     },
     "raftUiStyles": {
-      "path": "source/raft-ui-0.102.22/styles.css",
-      "origin": "npm:@botiverse/raft-ui@0.102.22/dist/styles.css",
+      "path": "source/raft-ui-0.102.23/styles.css",
+      "origin": "npm:@botiverse/raft-ui@0.102.23/dist/styles.css",
       "sha256": "8b12e5f64e50d6f1186f1dc444f7d6d2344429dc07fd8c740522f112110fecb6"
     },
     "raftUiFoundation": {
-      "path": "source/raft-ui-0.102.22/foundation.css",
-      "origin": "npm:@botiverse/raft-ui@0.102.22/dist/foundation.css",
-      "sha256": "716eff94d3baf445ec0d5bebd1e1545854ddcf053ae1f5937aac4e54ea991ce1"
+      "path": "source/raft-ui-0.102.23/foundation.css",
+      "origin": "npm:@botiverse/raft-ui@0.102.23/dist/foundation.css",
+      "sha256": "bc97b4b3d078a400f08bf483ae7253cdfc7002d35064c645395c79dccd23d7a0"
     },
     "raftUiThemes": {
-      "path": "source/raft-ui-0.102.22/themes.css",
-      "origin": "npm:@botiverse/raft-ui@0.102.22/dist/themes.css",
+      "path": "source/raft-ui-0.102.23/themes.css",
+      "origin": "npm:@botiverse/raft-ui@0.102.23/dist/themes.css",
       "sha256": "d676bb4b3ad783cfbe81a1428939d76783f2bee1b9ed1ec5d3913e661b65093d"
     },
     "web": {
       "path": "source/raft-web/index.css",
       "origin": "botiverse/slock@0f825229237e284034e62fa63569914f7f1f6c67:packages/web/src/index.css",
       "sha256": "2233e4280aa2cf1eb16f3d2b49f4decd512e13810ebaff0cab884c67b133ba46"
+    },
+    "raftUiResolvedTokens": {
+      "path": "source/raft-ui-0.102.23/tokens.resolved.json",
+      "origin": "npm:@botiverse/raft-ui@0.102.23/dist/tokens.resolved.json",
+      "sha256": "bdaa696fad0197e1bccd37ddaa04aca7b01193bd34d3a09f101b8370d6354f47"
     }
   }
 }
