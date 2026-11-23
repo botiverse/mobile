@@ -3,6 +3,7 @@ type: fixed
 area: computers
 platforms: [android, ios, desktop]
 rollout: full
+pull_request: 5504
 ---
 
 ## zh-CN
