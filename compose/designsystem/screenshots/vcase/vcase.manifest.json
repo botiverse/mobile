@@ -161,6 +161,15 @@
       "divergences": []
     },
     {
+      "id": "ds.button.loading",
+      "kind": "component",
+      "source": "compose/designsystem/src/desktopVcase/kotlin/build/raft/designsystem/vcase/ButtonLoadingCases.kt:25",
+      "fixture": null,
+      "axes": {},
+      "parity": [],
+      "divergences": []
+    },
+    {
       "id": "ds.card.gallery",
       "kind": "component",
       "source": "compose/designsystem/src/desktopVcase/kotlin/build/raft/designsystem/vcase/DisplayComponentCases.kt:335",
