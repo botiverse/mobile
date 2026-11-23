@@ -5247,6 +5247,7 @@
     <string name="channel_external_invite_servers_connecting_one">Conectando %1$d servidor. Esto tarda unos minutos.</string>
     <string name="channel_external_invite_servers_connecting_other">Conectando %1$d servidores. Esto tarda unos minutos.</string>
     <string name="channel_external_invite_server_refused">No se conectó %1$s</string>
+    <string name="channel_external_invite_servers_refused">No se conectaron %1$s</string>
     <string name="channel_external_invite_servers_not_connected">Las invitaciones se enviaron, pero tus servidores no se conectaron. Vuelve a intentar conectarlos.</string>
     <string name="channel_external_invite_server_refused_party_limit">%1$s tiene demasiados invitados para que se conecte otro servidor. Un canal externo admite hasta %2$d servidores e invitados en total. Quita algunos invitados y vuelve a intentarlo.</string>
     <string name="external_invite_title">Unirse a %1$s</string>

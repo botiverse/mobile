@@ -5247,6 +5247,7 @@
     <string name="channel_external_invite_servers_connecting_one">Подключается %1$d сервер. Это займёт несколько минут.</string>
     <string name="channel_external_invite_servers_connecting_other">Подключаются %1$d сервера. Это займёт несколько минут.</string>
     <string name="channel_external_invite_server_refused">Сервер %1$s не подключён</string>
+    <string name="channel_external_invite_servers_refused">Серверы %1$s не подключены</string>
     <string name="channel_external_invite_servers_not_connected">Приглашения отправлены, но ваши серверы не подключены. Попробуйте подключить их ещё раз.</string>
     <string name="channel_external_invite_server_refused_party_limit">В канале %1$s слишком много гостей, чтобы к нему подключился ещё один сервер. Во внешнем канале серверов и гостей вместе может быть не больше %2$d. Удалите часть гостей и попробуйте ещё раз.</string>
     <string name="external_invite_title">Присоединиться к каналу %1$s</string>

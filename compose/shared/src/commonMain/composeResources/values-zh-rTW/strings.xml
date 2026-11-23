@@ -5247,6 +5247,7 @@
     <string name="channel_external_invite_servers_connecting_one">正在連結 %1$d 個伺服器，需要幾分鐘。</string>
     <string name="channel_external_invite_servers_connecting_other">正在連結 %1$d 個伺服器，需要幾分鐘。</string>
     <string name="channel_external_invite_server_refused">%1$s 未能連結</string>
+    <string name="channel_external_invite_servers_refused">%1$s 未能連結</string>
     <string name="channel_external_invite_servers_not_connected">邀請已傳送，但你的伺服器未能連結，請再試一次。</string>
     <string name="channel_external_invite_server_refused_party_limit">%1$s 的訪客太多，無法再連結其他伺服器。外部頻道的伺服器和訪客合計最多 %2$d 個。請先移除部分訪客，再試一次。</string>
     <string name="external_invite_title">加入 %1$s</string>

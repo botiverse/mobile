@@ -5431,6 +5431,7 @@
     <string name="channel_external_invite_servers_connecting_one">Connecting %1$d server. This takes a few minutes.</string>
     <string name="channel_external_invite_servers_connecting_other">Connecting %1$d servers. This takes a few minutes.</string>
     <string name="channel_external_invite_server_refused">%1$s wasn't connected</string>
+    <string name="channel_external_invite_servers_refused">%1$s weren't connected</string>
     <string name="channel_external_invite_servers_not_connected">The invites were sent, but your servers weren't connected. Try connecting them again.</string>
     <string name="channel_external_invite_server_refused_party_limit">%1$s has too many guests for another server to connect. An external channel holds up to %2$d servers and guests together. Remove some guests, then try again.</string>
     <string name="external_invite_title">Join %1$s</string>

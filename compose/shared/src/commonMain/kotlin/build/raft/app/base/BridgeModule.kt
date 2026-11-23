@@ -457,7 +457,7 @@ internal class BridgeModule : Module() {
             errorToast(content, traceId, strings)
             return
         }
-        if (RaftCmpToasts.post(content, origin = pager?.host?.capabilities, actionLabel = retryLabel, onAction = onRetry)) return
+        if (RaftCmpToasts.post(content, origin = pager?.host?.capabilities, intent = RaftToastIntent.Error, actionLabel = retryLabel, onAction = onRetry)) return
         val methodArgs = JSONObject()
         methodArgs.put("content", content)
         callNativeMethod("toast", methodArgs, null)

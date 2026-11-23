@@ -160,7 +160,7 @@ class ExternalInvitesServersStoreTest {
     }
 
     @Test
-    fun serverOnlyWholeRequestRefusalKeepsDialogOpenWithFailureAndUpgradeFlag() = runTest {
+    fun serverOnlyWholeRequestRefusalClosesDialogAndEmitsServersNotConnected() = runTest {
         val source = source(ownServer("s2", "Beta"))
         source.connectAnswer =
             DataResult.Content(
@@ -175,13 +175,18 @@ class ExternalInvitesServersStoreTest {
         store.dispatch(ExternalInvitesIntent.Send(makePrivate = true))
         runCurrent()
 
-        val dialog = assertNotNull(store.state.value.dialog, "server-only whole-request refusal must keep dialog open")
-        assertFalse(dialog.busy)
-        val failure = assertNotNull(dialog.failure)
-        assertEquals(ExternalInviteError.FreeLimit, failure.error)
-        assertTrue(failure.upgrade)
-        assertEquals(ConnectTraceId, failure.traceId)
-        assertEquals(emptyList(), store.state.value.effects)
+        assertNull(store.state.value.dialog, "server-only whole-request refusal must close the dialog like web")
+        val expectedFailure =
+            ExternalInviteFailure(
+                error = ExternalInviteError.FreeLimit,
+                upgrade = true,
+                traceId = ConnectTraceId,
+                serverMessage = null,
+            )
+        assertEquals(
+            listOf(ExternalInvitesEffect.ServersNotConnected(ConnectTraceId, expectedFailure)),
+            store.state.value.effects,
+        )
     }
 
     @Test

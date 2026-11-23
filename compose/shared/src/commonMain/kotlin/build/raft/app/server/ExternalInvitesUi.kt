@@ -759,10 +759,10 @@ internal fun buildExternalInviteToasts(
     if (refused.isNotEmpty()) {
         val names = refused.map { it.serverName.trim() }.filter { it.isNotEmpty() }.distinct()
         val title =
-            if (names.isEmpty()) {
-                resolveDesc(Res.string.channel_external_invite_error_generic.desc())
-            } else {
-                resolveDesc(Res.string.channel_external_invite_server_refused.format(names.joinToString(", ")))
+            when (names.size) {
+                0 -> resolveDesc(Res.string.channel_external_invite_error_generic.desc())
+                1 -> resolveDesc(Res.string.channel_external_invite_server_refused.format(names.single()))
+                else -> resolveDesc(Res.string.channel_external_invite_servers_refused.format(names.joinToString(", ")))
             }
         val pairs =
             refused.map { item ->
@@ -792,6 +792,34 @@ internal fun buildExternalInviteToasts(
         result += ExternalInviteResolvedToast(title = title, reason = combinedReason, isError = true, traceId = traceId)
     }
     return result
+}
+
+/**
+ * Posts resolved external-invite effects through [build.raft.app.base.BridgeModule], routing error
+ * effects to the structured 3-argument `errorToast(title, reason, traceId)` overload so `RaftToast`
+ * renders title, full wrapping reason, and Trace ID footnote separately.
+ */
+internal fun build.raft.app.base.BridgeModule.postExternalInviteToasts(
+    effects: List<ExternalInvitesEffect>,
+    joint: Boolean,
+    channel: String,
+    host: String,
+    resolveDesc: (StringDesc) -> String = { desc -> desc.resolve() },
+    traceStrings: () -> RaftTraceIdToastStrings = ::localizedRaftTraceIdToastStrings,
+) {
+    buildExternalInviteToasts(
+        effects = effects,
+        joint = joint,
+        channel = channel,
+        host = host,
+        resolveDesc = resolveDesc,
+    ).forEach { toast ->
+        if (toast.isError) {
+            errorToast(title = toast.title, reason = toast.reason, traceId = toast.traceId, strings = traceStrings)
+        } else {
+            toast(toast.title)
+        }
+    }
 }
 
 /**

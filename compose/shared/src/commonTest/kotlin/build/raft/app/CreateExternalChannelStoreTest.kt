@@ -253,7 +253,7 @@ class CreateExternalChannelStoreTest {
     }
 
     @Test
-    fun wholeRequestConnectRefusalStaysInDialogForServerOnlyAndCarriesDetailWhenEmailsSent() = runTest {
+    fun wholeRequestConnectRefusalClosesAndCarriesDetailForServerOnlyAndMixed() = runTest {
         val traceId = "62ac7fa79a3785a6bee414a074f82634"
         val sentence = "This channel has 151 messages, which is more than can be moved to a shared channel right now."
         val serverOnlySource =
@@ -275,11 +275,13 @@ class CreateExternalChannelStoreTest {
         serverOnly.dispatch(CreateExternalChannelIntent.Commit(draft))
         runCurrent()
 
-        assertNotNull(serverOnly.state.value.created)
-        assertFalse(serverOnly.state.value.invite.busy)
-        assertEquals(sentence, serverOnly.state.value.invite.failure?.serverMessage)
-        assertEquals(traceId, serverOnly.state.value.invite.failure?.traceId)
-        assertEquals(emptyList(), serverOnly.state.value.effects)
+        // Web parity: closes onto the created channel with ServersNotConnected toast (not stuck on review saying "invites weren't sent").
+        assertFalse(serverOnly.state.value.showCreatedNotice)
+        val serverOnlyToasts = serverOnly.state.value.effects.filterIsInstance<CreateExternalChannelEffect.Toast>().map { it.effect }
+        val serverOnlyNotConnected = assertIs<ExternalInvitesEffect.ServersNotConnected>(serverOnlyToasts.single())
+        assertEquals(traceId, serverOnlyNotConnected.traceId)
+        assertEquals(sentence, serverOnlyNotConnected.failure?.serverMessage)
+        assertIs<CreateExternalChannelEffect.Finished>(serverOnly.state.value.effects.last())
 
         val mixedSource =
             FakeCreateExternalChannelDataSource().apply {

@@ -46,9 +46,10 @@ internal sealed interface ResolvedServerRefusal<out K> {
 /**
  * Resolves a server refusal through the single four-tier exit.
  *
- * [knownCode] should match only explicit refusal codes (and never collapse unknown codes into a
- * broad status-based fallback like 403/404/409); status fallbacks belong in the caller's Tier 4
- * ([ResolvedServerRefusal.Generic]) handling when the server provided no usable message.
+ * Tier 1 intercepts edge/CDN markers (`edge_blocked`), 401 auth errors, and status-0 transport
+ * failures before [knownCode] runs, so [knownCode] may safely map both explicit known refusal codes
+ * and surface-specific HTTP status fallbacks (such as 403/404/429 where web maps by status) without
+ * swallowing infrastructure failures.
  */
 internal fun <K : Any> resolveServerRefusal(
     input: ServerRefusalInput,

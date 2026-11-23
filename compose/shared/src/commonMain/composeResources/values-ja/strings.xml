@@ -5430,6 +5430,7 @@
     <string name="channel_external_invite_servers_connecting_one">%1$d 個のサーバーを接続しています。数分かかります。</string>
     <string name="channel_external_invite_servers_connecting_other">%1$d 個のサーバーを接続しています。数分かかります。</string>
     <string name="channel_external_invite_server_refused">%1$s を接続できませんでした</string>
+    <string name="channel_external_invite_servers_refused">%1$s を接続できませんでした</string>
     <string name="channel_external_invite_servers_not_connected">招待は送信されましたが、サーバーは接続されませんでした。もう一度接続してください。</string>
     <string name="channel_external_invite_server_refused_party_limit">%1$s はゲストが多すぎるため、他のサーバーを接続できません。外部チャンネルに参加できるのは、サーバーとゲストを合わせて最大 %2$d までです。一部のゲストを削除してから、もう一度お試しください。</string>
     <string name="external_invite_title">%1$s に参加</string>

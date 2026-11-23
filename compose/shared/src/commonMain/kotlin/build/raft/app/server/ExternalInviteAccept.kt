@@ -215,14 +215,6 @@ internal fun resolveInviteeRefusal(
         -> InviteeMessage.Generic to null
     }
 
-/** Web `inviteeErrorMessage` (the text; the app offers no Upgrade on this page: see the PR notes). */
-internal fun inviteeErrorMessage(
-    refusal: InviteeRefusal,
-    action: InviteeAction,
-    target: InviteMyServer?,
-    targetId: String? = target?.id,
-): InviteeMessage = resolveInviteeRefusal(refusal, action, target, targetId).first
-
 internal fun ServerConnectOutcome.Refused.asRefusal(): InviteeRefusal =
     InviteeRefusal(status = status, code = code, limitSide = limitSide, limitServerId = limitServerId, error = error)
 
@@ -235,26 +227,6 @@ internal data class InviteeError(
     /** The server's own sentence for an unknown or dynamic refusal code ([resolveServerRefusal]), shown instead. */
     val serverWords: String? = null,
 )
-
-/**
- * Resolves the server's own refusal sentence through [resolveServerRefusal] whenever
- * [inviteeErrorMessage] fell back to [InviteeMessage.Generic] (unknown or dynamic-parameter
- * refusal codes such as `channel_conversion_too_large`, `#proj-mobile:#319`).
- */
-internal fun inviteeServerWords(refusal: InviteeRefusal, message: InviteeMessage): String? {
-    if (message != InviteeMessage.Generic) return null
-    val resolved =
-        resolveServerRefusal<Unit>(
-            ServerRefusalInput(
-                status = refusal.status.takeIf { it > 0 },
-                code = refusal.code,
-                serverMessage = refusal.error,
-                traceId = refusal.traceId,
-            ),
-            knownCode = { _, _ -> null },
-        )
-    return (resolved as? ResolvedServerRefusal.ServerWords)?.message
-}
 
 /** New server name / slug problems (web `NewServerFieldErrors`). */
 internal enum class NewServerFieldError { NameRequired, SlugRequired, SlugTooShort, SlugPattern, SlugTaken }

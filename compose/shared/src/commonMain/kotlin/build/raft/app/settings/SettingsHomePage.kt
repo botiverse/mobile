@@ -6912,19 +6912,12 @@ private fun RaftAppShellReadyContent(
                                 is CreateExternalChannelEffect.Toast -> toastEffects += effect.effect
                             }
                         }
-                        buildExternalInviteToasts(
+                        bridge.postExternalInviteToasts(
                             effects = toastEffects,
                             joint = false,
                             channel = "#$createChannelNameForToasts",
                             host = createServerName,
-                            resolveDesc = { desc -> desc.resolve() },
-                        ).forEach { toast ->
-                            if (toast.isError) {
-                                bridge.errorToast(title = toast.title, reason = toast.reason, traceId = toast.traceId)
-                            } else {
-                                bridge.toast(toast.title)
-                            }
-                        }
+                        )
                         finishedChannels.forEach { channel -> landInCreatedChannel(channel, toast = false) }
                     }
                     SharedCreateChannelDialog(

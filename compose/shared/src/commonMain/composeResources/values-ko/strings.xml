@@ -5247,6 +5247,7 @@
     <string name="channel_external_invite_servers_connecting_one">서버 %1$d개를 연결하는 중이에요. 몇 분 정도 걸려요.</string>
     <string name="channel_external_invite_servers_connecting_other">서버 %1$d개를 연결하는 중이에요. 몇 분 정도 걸려요.</string>
     <string name="channel_external_invite_server_refused">%1$s을(를) 연결하지 못했어요</string>
+    <string name="channel_external_invite_servers_refused">%1$s을(를) 연결하지 못했어요</string>
     <string name="channel_external_invite_servers_not_connected">초대는 보냈지만 서버는 연결되지 않았어요. 다시 연결해 보세요.</string>
     <string name="channel_external_invite_server_refused_party_limit">%1$s 채널에 게스트가 너무 많아서 다른 서버를 연결할 수 없어요. 외부 채널에는 서버와 게스트를 합쳐 최대 %2$d개까지 참여할 수 있어요. 게스트 일부를 내보낸 후 다시 시도해 주세요.</string>
     <string name="external_invite_title">%1$s에 참여</string>

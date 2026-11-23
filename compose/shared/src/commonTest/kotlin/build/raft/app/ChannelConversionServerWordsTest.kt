@@ -140,11 +140,11 @@ class ChannelConversionServerWordsTest {
         assertEquals(InviteeMessage.DeploymentUserLimitReached, licenseLimit.message)
         assertNull(licenseLimit.serverWords)
 
-        // InviteeRefusal with unknown non-conversion code preserves server words.
+        // InviteeRefusal with unknown non-conversion code preserves server words via single exit.
         val inviteeUnknown = InviteeRefusal(status = 409, code = "membership_changed", error = "Your role changed on that server.")
-        val inviteeMsg = inviteeErrorMessage(inviteeUnknown, InviteeAction.Connect, target = null, targetId = "s1")
+        val (inviteeMsg, inviteeWords) = resolveInviteeRefusal(inviteeUnknown, InviteeAction.Connect, target = null, targetId = "s1")
         assertEquals(InviteeMessage.Generic, inviteeMsg)
-        assertEquals("Your role changed on that server.", inviteeServerWords(inviteeUnknown, inviteeMsg))
+        assertEquals("Your role changed on that server.", inviteeWords)
 
         // JointMemberConnect per-server and whole-request refusals.
         val memberPerServer =
@@ -176,15 +176,29 @@ class ChannelConversionServerWordsTest {
         assertNull(edgeMemberLine.serverWords)
         assertEquals(false, edgeClosed)
 
-        // Codeless 404/403 keeps localized NotAllowed / NotFound instead of raw English.
-        val notFoundInvite = ExternalInviteRefusal(404, null, "Not found", traceId = "t-404").toFailure()
-        assertEquals(ExternalInviteError.NotFound, notFoundInvite.error)
-        assertNull(notFoundInvite.serverMessage)
-        val (channelNotFoundLine, channelNotFoundClosed) =
-            resolveMemberConnectRequestLine(404, null, "Channel not found", "t-404")
-        assertEquals(MemberConnectMessage.NotAllowed, channelNotFoundLine.message)
-        assertNull(channelNotFoundLine.serverWords)
-        assertEquals(true, channelNotFoundClosed)
+        // Real server 404/403 responses carry `code: "channel_not_found"` (slock routes/channels.ts:945)
+        // or other non-null codes; match web externalInvites.ts:420-427 and memberConnect.ts:137-146
+        // (known code first, else status 404/403 -> localized copy, never raw English).
+        for (code in listOf("channel_not_found", null)) {
+            val notFoundInvite = ExternalInviteRefusal(404, code, "Channel not found", traceId = "t-404").toFailure()
+            assertEquals(ExternalInviteError.NotFound, notFoundInvite.error)
+            assertNull(notFoundInvite.serverMessage)
+            val (channelNotFoundLine, channelNotFoundClosed) =
+                resolveMemberConnectRequestLine(404, code, "Channel not found", "t-404")
+            assertEquals(MemberConnectMessage.NotAllowed, channelNotFoundLine.message)
+            assertNull(channelNotFoundLine.serverWords)
+            assertEquals(true, channelNotFoundClosed)
+        }
+        for (code in listOf("server_admin_required", null)) {
+            val forbiddenInvite = ExternalInviteRefusal(403, code, "Forbidden", traceId = "t-403").toFailure()
+            assertEquals(ExternalInviteError.Forbidden, forbiddenInvite.error)
+            assertNull(forbiddenInvite.serverMessage)
+            val (forbiddenMemberLine, forbiddenClosed) =
+                resolveMemberConnectRequestLine(403, code, "Forbidden", "t-403")
+            assertEquals(MemberConnectMessage.NotAllowed, forbiddenMemberLine.message)
+            assertNull(forbiddenMemberLine.serverWords)
+            assertEquals(true, forbiddenClosed)
+        }
 
         // Mixed-case free_external_limit still sets upgrade = true.
         val mixedCaseFreeLimit = ExternalInviteRefusal(403, " FREE_EXTERNAL_LIMIT ", "Limit").toFailure()
@@ -207,7 +221,29 @@ class ChannelConversionServerWordsTest {
             }
         }
 
-        // Two servers refused with the SAME conversion sentence -> single toast, sentence shown once, no \n in title.
+        // Single server refused uses singular resource (`channel_external_invite_server_refused`).
+        val singleRefused =
+            buildExternalInviteToasts(
+                effects =
+                    listOf(
+                        ExternalInvitesEffect.ServerRefused(
+                            "Alpha",
+                            ExternalInviteServerRefusal.Invitee(InviteeMessage.Generic, serverWords = fencedTooLarge),
+                            traceId,
+                        ),
+                    ),
+                joint = false,
+                channel = "#general",
+                host = "Host",
+                resolveDesc = stubResolve,
+            ).single()
+        assertTrue(
+            singleRefused.title.contains("channel_external_invite_server_refused"),
+            "single server should use singular string resource: ${singleRefused.title}",
+        )
+        assertEquals(fencedTooLarge, singleRefused.reason)
+
+        // Two servers refused with the SAME conversion sentence -> single toast with plural resource, sentence shown once, no \n in title.
         val sameReasonToasts =
             buildExternalInviteToasts(
                 effects =
@@ -229,6 +265,10 @@ class ChannelConversionServerWordsTest {
                 resolveDesc = stubResolve,
             )
         val mergedSame = sameReasonToasts.single()
+        assertTrue(
+            mergedSame.title.contains("channel_external_invite_servers_refused"),
+            "multiple servers should use plural string resource: ${mergedSame.title}",
+        )
         assertTrue(!mergedSame.title.contains("\n"), "toast title must never contain newline: ${mergedSame.title}")
         assertEquals(fencedTooLarge, mergedSame.reason)
         assertEquals(traceId, mergedSame.traceId)

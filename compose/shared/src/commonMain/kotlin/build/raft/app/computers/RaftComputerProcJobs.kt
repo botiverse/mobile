@@ -494,7 +494,6 @@ internal fun RaftComputerAgentProcJobs(
             val id = raftValidTraceIdOrNull(rawTraceId)
             toastHost?.show(
                 title = failedToast,
-                description = id?.let { traceIdFormat.replace("%s", raftShortTraceId(it)) },
                 intent = RaftToastIntent.Warning,
                 actionLabel = if (id != null) copyLabel else null,
                 onAction = id?.let { validId ->
@@ -502,7 +501,8 @@ internal fun RaftComputerAgentProcJobs(
                         copy(validId)
                         toastHost.show(copiedToast, durationMillis = 1_500L)
                     }
-                }
+                },
+                footnote = id?.let { traceIdFormat.replace("%s", raftShortTraceId(it)) },
             )
         }
         val showOutcome: (ComputerProcJobStopResult) -> Unit = { result ->

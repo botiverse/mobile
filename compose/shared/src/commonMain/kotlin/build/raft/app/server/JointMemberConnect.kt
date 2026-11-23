@@ -227,10 +227,6 @@ private fun memberConnectKnownCodeMessage(
     }
 }
 
-/** Web `memberConnectRefusalMessageId`: one chosen server's refusal. */
-internal fun memberConnectRefusalMessage(outcome: ServerConnectOutcome.Refused): MemberConnectMessage =
-    memberConnectRefusedLine(outcome).message
-
 /** Web `memberConnectRefusalRowState`: after a refusal, the row is chosen again only where trying again could help. */
 internal fun memberConnectRefusalRowState(outcome: ServerConnectOutcome.Refused): MemberConnectRowState? =
     when (outcome.code) {
@@ -242,22 +238,19 @@ internal fun memberConnectRefusalRowState(outcome: ServerConnectOutcome.Refused)
 /** A whole request refused (web `memberConnectRequestError`); [closed]: the route is gone for this viewer. */
 internal data class MemberConnectRequestRefusal(val message: MemberConnectMessage, val closed: Boolean)
 
-/** By the server's explicit code, else by status (for callers without a server sentence). */
-internal fun memberConnectRequestRefusal(status: Int?, code: String?): MemberConnectRequestRefusal =
-    memberConnectRequestKnownCode(status, code?.trim()?.lowercase())
-        ?: memberConnectRequestFallback(status)
-
+/**
+ * Web `memberConnectRequestError` (`packages/web/src/components/channel/memberConnect.ts`):
+ * explicit known codes first, else HTTP status mapping (404/403 -> NotAllowed + closed,
+ * 429 -> TooManyAttempts). Tier 1 of [resolveServerRefusal] already intercepts `edge_blocked` 403
+ * before this runs.
+ */
 private fun memberConnectRequestKnownCode(status: Int?, code: String?): MemberConnectRequestRefusal? =
     when {
         code == "guest_has_computer" -> MemberConnectRequestRefusal(MemberConnectMessage.GuestHasComputer, closed = true)
         code == "channel_not_invitable" -> MemberConnectRequestRefusal(MemberConnectMessage.NotAllowed, closed = true)
         code == "invalid_input" -> MemberConnectRequestRefusal(MemberConnectMessage.Generic, closed = false)
+        status == 404 || status == 403 -> MemberConnectRequestRefusal(MemberConnectMessage.NotAllowed, closed = true)
         status == 429 -> MemberConnectRequestRefusal(MemberConnectMessage.TooManyAttempts, closed = false)
-        // Documented codeless HTTP 403/404 responses (e.g. `404 {"error":"Channel not found"}`)
-        // keep localized NotAllowed copy; Tier 1 already intercepted edge_blocked 403, and any
-        // non-null unknown refusal code falls through to Tier 3 verbatim server wording.
-        code == null && (status == 404 || status == 403) ->
-            MemberConnectRequestRefusal(MemberConnectMessage.NotAllowed, closed = true)
         else -> null
     }
 

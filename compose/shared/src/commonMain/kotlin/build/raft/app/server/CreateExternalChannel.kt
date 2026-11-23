@@ -312,20 +312,16 @@ internal class CreateExternalChannelStore(
                     when (val answer = (result as? DataResult.Content)?.data) {
                         is ExternalInviteAnswer.Ok -> externalInviteServerEffects(answer.value, chosen, answer.traceId)
                         is ExternalInviteAnswer.Refused -> {
+                            // Web `sendInvitesAndConnectServers` / `ExternalInviteSteps`: a failed
+                            // connect finishes onto the created channel and toasts ServersNotConnected
+                            // (carrying refusal detail in description), rather than keeping the review
+                            // open with a misleading "invites weren't sent" banner.
                             val failure = answer.refusal.toFailure()
-                            if (addresses.isEmpty()) {
-                                updateInvite { it.copy(busy = false, failure = failure) }
-                                return@launch
-                            }
                             val detail = failure.takeIf { it.error != ExternalInviteError.Generic || it.serverMessage != null }
                             listOf(ExternalInvitesEffect.ServersNotConnected(answer.refusal.traceId, detail))
                         }
                         null -> {
                             val failure = result.externalInviteFailureOf()
-                            if (addresses.isEmpty()) {
-                                updateInvite { it.copy(busy = false, failure = failure) }
-                                return@launch
-                            }
                             val detail = failure.takeIf { it.error != ExternalInviteError.Generic || it.serverMessage != null }
                             listOf(ExternalInvitesEffect.ServersNotConnected(result.failureTraceIdOrNull(), detail))
                         }

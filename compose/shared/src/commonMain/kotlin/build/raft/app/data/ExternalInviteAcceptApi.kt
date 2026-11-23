@@ -166,7 +166,7 @@ data class InviteeRefusal(
     /** connect-new-server refused after creating the server: the server the caller keeps. */
     val serverId: String? = null,
     val traceId: String? = null,
-    /** The server's own sentence (`error`), shown for a channel conversion refusal (slock #15771). */
+    /** The server's own sentence (`error`), surfaced through `resolveServerRefusal` for unknown/dynamic refusals. */
     val error: String? = null,
 )
 

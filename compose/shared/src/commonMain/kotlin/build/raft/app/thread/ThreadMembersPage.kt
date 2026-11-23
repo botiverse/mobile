@@ -568,19 +568,12 @@ private fun ThreadMembersPageScreen() {
                 toastEffects += effect
             }
         }
-        buildExternalInviteToasts(
+        bridge.postExternalInviteToasts(
             effects = toastEffects,
             joint = externalInviteJoint,
             channel = "#$channelName",
             host = viewerServerName,
-            resolveDesc = { desc -> desc.resolve() },
-        ).forEach { toast ->
-            if (toast.isError) {
-                bridge.errorToast(title = toast.title, reason = toast.reason, traceId = toast.traceId)
-            } else {
-                bridge.toast(toast.title)
-            }
-        }
+        )
     }
     val membersLoading =
         !authorityRejected &&
