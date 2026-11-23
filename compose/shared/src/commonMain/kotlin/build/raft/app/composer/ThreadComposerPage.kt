@@ -105,6 +105,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
@@ -413,6 +414,30 @@ internal data class ThreadComposerSuggestionPresentation(
     val onChannelClick: (ThreadComposerSuggestionSelectionContext, RaftComposerChannelItem) -> Unit
 )
 
+/** The rows the panel draws, in the order ↑ / ↓ move through; 0 while it shows a status row. */
+internal fun ThreadComposerSuggestionPresentation.suggestionRowCount(): Int =
+    when (panelState) {
+        ThreadComposerSuggestionPanelState.MemberItems ->
+            memberSuggestions.composerMemberSuggestionRowCount(surface.memberSuggestionHeadersVisible)
+        ThreadComposerSuggestionPanelState.ChannelItems -> channelSuggestions.size
+        else -> 0
+    }
+
+/** Inserts the row at [index] (clamped to the rows drawn) the way a click on that row does. */
+internal fun ThreadComposerSuggestionPresentation.pickSuggestionRow(index: Int) {
+    when (panelState) {
+        ThreadComposerSuggestionPanelState.MemberItems ->
+            memberSuggestions
+                .composerMemberSuggestionCandidateAt(index, groupByMentionChannel = surface.memberSuggestionHeadersVisible)
+                ?.let { member -> onMemberClick(selectionContext, member) }
+        ThreadComposerSuggestionPanelState.ChannelItems ->
+            channelSuggestions
+                .getOrNull(threadComposerSuggestionSelectedIndex(index, channelSuggestions.size))
+                ?.let { channel -> onChannelClick(selectionContext, channel) }
+        else -> Unit
+    }
+}
+
 internal val LocalThreadComposerSuggestionPortal =
     compositionLocalOf<ThreadComposerSuggestionPortalState?> { null }
 
@@ -449,7 +474,9 @@ internal fun ThreadComposerSuggestionPortalHost(
                     .height(panelHeight)
                     .retainInputFocusForInteractions()
                     // Raw clickable on purpose: a tap sink, so a tap between suggestions stays in
-                    // the panel instead of reaching the composer under it.
+                    // the panel instead of reaching the composer under it. A press keeps the
+                    // editor's focus, as every clickable of the list does.
+                    .threadComposerSuggestionKeepsEditorFocus()
                     .clickable(onClick = {})
         ) {
             ComposerSuggestionPanelContent(
@@ -1200,7 +1227,9 @@ internal fun threadComposerEnterAction(
  * sometimes won't break lines" with no connection to having typed an @.
  *
  * Never raising the action in newline mode is how 1.9 behaved and is what the current contract
- * asks for: newline mode inserts a newline, suggestions are accepted by tapping them.
+ * asks for: newline mode inserts a newline, suggestions are accepted by tapping them. A hardware
+ * keyboard's Enter or Tab on a list that shows rows is the list's in both modes, as on the web
+ * ([threadComposerSuggestionKeys]); that is a key handler and never touches the IME action.
  *
  * The underlying defect is avoided here, not repaired: Kuikly still re-sends returnKeyType only
  * for single-line fields, so on a multi-line editor an action that goes down never comes back up.
@@ -2820,15 +2849,21 @@ internal fun ThreadComposerContentLeaf(
             usesImmediateSuggestions = channelUsesImmediateSuggestions,
             sourceStatus = state.channelSuggestionsStatus
         )
+    // Esc closed the list (web useAutocomplete `dismiss`): it stays closed until the text changes.
+    var suggestionsDismissed by remember(state.instanceId, text) { mutableStateOf(false) }
     val suggestionPanelState =
-        threadComposerSuggestionPanelState(
-            focused = focused,
-            trigger = suggestionTrigger,
-            memberCount = filteredMemberSuggestions.size,
-            memberStatus = effectiveMemberSuggestionsStatus,
-            channelCount = filteredChannelSuggestions.size,
-            channelStatus = effectiveChannelSuggestionsStatus
-        )
+        if (suggestionsDismissed) {
+            ThreadComposerSuggestionPanelState.Hidden
+        } else {
+            threadComposerSuggestionPanelState(
+                focused = focused,
+                trigger = suggestionTrigger,
+                memberCount = filteredMemberSuggestions.size,
+                memberStatus = effectiveMemberSuggestionsStatus,
+                channelCount = filteredChannelSuggestions.size,
+                channelStatus = effectiveChannelSuggestionsStatus
+            )
+        }
     val suggestionSelectionContext =
         threadComposerSuggestionSelectionContext(
             text = text,
@@ -2836,14 +2871,10 @@ internal fun ThreadComposerContentLeaf(
             selectionEnd = selectionEnd,
             suggestionsEnabled = state.suggestionsEnabled
         )
-    var memberSuggestionSelectedIndex by remember(state.instanceId) { mutableStateOf(0) }
-    var channelSuggestionSelectedIndex by remember(state.instanceId) { mutableStateOf(0) }
-    LaunchedEffect(suggestionTrigger, suggestionPanelState, filteredMemberSuggestions) {
-        memberSuggestionSelectedIndex = 0
-    }
-    LaunchedEffect(suggestionTrigger, suggestionPanelState, filteredChannelSuggestions) {
-        channelSuggestionSelectedIndex = 0
-    }
+    // The open list's keyboard highlight (web useAutocomplete `index`): the first row, and back
+    // there whenever the query changes ([ThreadComposerSuggestionHighlight]).
+    var suggestionHighlight by remember(state.instanceId) { mutableStateOf(ThreadComposerSuggestionHighlight()) }
+    val suggestionHighlightIndex = suggestionHighlight.indexFor(suggestionTrigger)
     val suggestionRefreshRequest =
         remember(focused, suggestionTrigger) {
             threadComposerSuggestionRefreshRequest(
@@ -3093,18 +3124,51 @@ internal fun ThreadComposerContentLeaf(
             ThreadComposerEnterAction.AcceptMemberSuggestion ->
                 filteredMemberSuggestions
                     .composerMemberSuggestionCandidateAt(
-                        selectedIndex = memberSuggestionSelectedIndex,
+                        selectedIndex = suggestionHighlight.indexFor(suggestionTrigger),
                         groupByMentionChannel = surface.memberSuggestionHeadersVisible
                     )
                     ?.let(::applyMemberSuggestion)
             ThreadComposerEnterAction.AcceptChannelSuggestion ->
                 filteredChannelSuggestions
-                    .getOrNull(threadComposerSuggestionSelectedIndex(channelSuggestionSelectedIndex, filteredChannelSuggestions.size))
+                    .getOrNull(
+                        threadComposerSuggestionSelectedIndex(
+                            suggestionHighlight.indexFor(suggestionTrigger),
+                            filteredChannelSuggestions.size
+                        )
+                    )
                     ?.let(::applyChannelSuggestion)
             ThreadComposerEnterAction.CommitSuggestionToken -> commitSuggestionToken()
             ThreadComposerEnterAction.Send -> sendComposerMessage()
             ThreadComposerEnterAction.Noop -> Unit
         }
+    }
+
+    // ↑ ↓ Enter Tab Esc on the open @ / # list, as on the web ([threadComposerSuggestionKeyAction]):
+    // only while this composer's list is on screen, read when the key arrives. Enter and Tab go
+    // through the row's own click, so they insert exactly what a click inserts, never send.
+    val suggestionKeyPresses = remember(state.instanceId) { ThreadComposerSuggestionKeyPresses() }
+    fun handleSuggestionKeyDown(key: Key, shift: Boolean): Boolean {
+        val shown = suggestionPortal?.presentation?.takeIf { it.owner === suggestionPortalOwner } ?: return false
+        val rowCount = shown.suggestionRowCount()
+        val highlight = suggestionHighlight
+        val action =
+            threadComposerSuggestionKeyAction(
+                key = key,
+                shift = shift,
+                panelState = shown.panelState,
+                rowCount = rowCount,
+                composing = latestFieldValue.composition != null,
+            )
+        when (action) {
+            ThreadComposerSuggestionKeyAction.None -> return false
+            ThreadComposerSuggestionKeyAction.MoveUp ->
+                suggestionHighlight = highlight.moved(suggestionTrigger, rowCount, ThreadComposerSuggestionSelectionMove.Up)
+            ThreadComposerSuggestionKeyAction.MoveDown ->
+                suggestionHighlight = highlight.moved(suggestionTrigger, rowCount, ThreadComposerSuggestionSelectionMove.Down)
+            ThreadComposerSuggestionKeyAction.Pick -> shown.pickSuggestionRow(highlight.indexFor(suggestionTrigger))
+            ThreadComposerSuggestionKeyAction.Dismiss -> suggestionsDismissed = true
+        }
+        return true
     }
     val composerKeyboardActions =
         if (composerUsesImeAction) {
@@ -3183,10 +3247,10 @@ internal fun ThreadComposerContentLeaf(
                 panelState = suggestionPanelState,
                 surface = surface,
                 memberSuggestions = filteredMemberSuggestions,
-                memberSelectedIndex = memberSuggestionSelectedIndex,
+                memberSelectedIndex = suggestionHighlightIndex,
                 memberErrorCode = state.memberSuggestionsErrorCode,
                 channelSuggestions = filteredChannelSuggestions,
-                channelSelectedIndex = channelSuggestionSelectedIndex,
+                channelSelectedIndex = suggestionHighlightIndex,
                 channelErrorCode = state.channelSuggestionsErrorCode,
                 agentStatusResolver = agentStatusResolver,
                 onDismiss = dismissSuggestionPopover,
@@ -3542,6 +3606,11 @@ internal fun ThreadComposerContentLeaf(
                                 .threadComposerPasteAttachments {
                                     onEvent(ThreadComposerPasteAttachmentsAction, null, null, null)
                                 }
+                                // The open list's keys, ahead of the editor behaviour TextField
+                                // chains after this modifier (the hardware-Enter send among it).
+                                .threadComposerSuggestionKeys(suggestionKeyPresses) { key, shift ->
+                                    handleSuggestionKeyDown(key, shift)
+                                }
                         )
                         }
                     }
@@ -3789,6 +3858,7 @@ private fun ComposerSuggestionPanelContent(
         }
 
         ThreadComposerSuggestionPanelState.ChannelItems -> {
+            val selectedIndex = threadComposerSuggestionSelectedIndex(channelSelectedIndex, channelSuggestions.size)
             ComposerSuggestionPanel(
                 title = null,
                 showTitleDivider = false,
@@ -3799,11 +3869,10 @@ private fun ComposerSuggestionPanelContent(
                         includeHeader = false
                     ),
                 itemCount = channelSuggestions.size,
-                itemKey = { index -> "channel-$index-${channelSuggestions[index].name}" }
+                itemKey = { index -> "channel-$index-${channelSuggestions[index].name}" },
+                highlightedItem = selectedIndex.takeIf { channelSuggestions.isNotEmpty() }
             ) { index ->
                 val channel = channelSuggestions[index]
-                val selectedIndex =
-                    threadComposerSuggestionSelectedIndex(channelSelectedIndex, channelSuggestions.size)
                 ComposerChannelSuggestionRow(
                     channel = channel,
                     selected = index == selectedIndex,
@@ -3914,6 +3983,13 @@ internal fun List<RaftComposerMemberItem>.composerMemberSuggestionCandidateAt(
     val ordered = groups.inThread + groups.inMentionChannel + groups.notInMentionChannel
     val index = threadComposerSuggestionSelectedIndex(selectedIndex, ordered.size)
     return ordered.getOrNull(index)
+}
+
+/** How many rows the member panel draws for this list: the rows [composerMemberSuggestionCandidateAt] counts. */
+internal fun List<RaftComposerMemberItem>.composerMemberSuggestionRowCount(groupByMentionChannel: Boolean = true): Int {
+    if (!groupByMentionChannel) return size
+    val groups = composerMemberSuggestionGroups()
+    return groups.inThread.size + groups.inMentionChannel.size + groups.notInMentionChannel.size
 }
 
 internal data class ComposerMemberSuggestionGroups(
@@ -4111,7 +4187,8 @@ private fun ComposerMemberSuggestionPanel(
                     includeHeader = false
                 ),
             itemCount = members.size,
-            itemKey = { index -> "member-${members[index].composerMemberSuggestionKey()}" }
+            itemKey = { index -> "member-${members[index].composerMemberSuggestionKey()}" },
+            highlightedItem = clampedSelectedIndex.takeIf { members.isNotEmpty() }
         ) { index ->
             val member = members[index]
             ComposerMemberSuggestionRow(
@@ -4154,7 +4231,11 @@ private fun ComposerMemberSuggestionPanel(
         itemCount = panelEntries.entries.size,
         itemKey = { index ->
             panelEntries.entries[index].key
-        }
+        },
+        highlightedItem =
+            panelEntries.entries
+                .indexOfFirst { entry -> entry.member != null && entry.selectableIndex == clampedSelectedIndex }
+                .takeIf { it >= 0 }
     ) { index ->
         val entry = panelEntries.entries[index]
         if (entry.headerText != null) {
@@ -4289,6 +4370,7 @@ private fun ComposerSuggestionStatusRow(message: String) {
                 .heightIn(min = ComposerSuggestionStatusRowMinHeight)
                 // Raw clickable on purpose: a tap sink, so a tap on the status line stays in the
                 // suggestion panel instead of reaching what is under it.
+                .threadComposerSuggestionKeepsEditorFocus()
                 .clickable(onClick = {})
                 .padding(horizontal = ComposerSuggestionPanelInset + ComposerSuggestionItemPaddingHorizontal),
         contentAlignment = Alignment.CenterStart
@@ -4316,6 +4398,7 @@ private fun ComposerSuggestionHeader(
                 .background(Color.Transparent)
                 // Raw clickable on purpose: a tap sink, so a tap on a group label stays in the
                 // suggestion panel instead of reaching what is under it.
+                .threadComposerSuggestionKeepsEditorFocus()
                 .clickable(onClick = {})
     ) {
         if (topDivider) {
@@ -5418,8 +5501,16 @@ private fun ComposerSuggestionPanel(
     panelHeight: Dp,
     itemCount: Int,
     itemKey: (Int) -> Any,
+    /** The keyboard-highlighted item (of [itemCount]), kept in view as it moves; null: none. */
+    highlightedItem: Int? = null,
     itemContent: @Composable (Int) -> Unit
 ) {
+    val listState = rememberLazyListState()
+    // Its lazy index: after the top inset and the title.
+    ThreadComposerSuggestionRevealEffect(
+        listState = listState,
+        listIndex = highlightedItem?.let { item -> 1 + (if (title != null) 1 else 0) + item }
+    )
     Column(
         modifier =
             Modifier
@@ -5430,7 +5521,8 @@ private fun ComposerSuggestionPanel(
         verticalArrangement = Arrangement.spacedBy(0.dp)
     ) {
         LazyColumn(
-            modifier = Modifier.fillMaxWidth().height(panelHeight)
+            modifier = Modifier.fillMaxWidth().height(panelHeight),
+            state = listState
         ) {
             // `p-1` block inset; the side inset lives on the rows and labels.
             item(key = "inset-top", contentType = "inset") {
@@ -5551,6 +5643,9 @@ private fun ComposerSuggestionInteractiveRow(
                 Modifier
                     .fillMaxWidth()
                     .heightIn(min = minHeight)
+                    // A mouse press keeps the editor's focus, so the click lands and inserts at
+                    // the caret ([threadComposerSuggestionKeepsEditorFocus]).
+                    .threadComposerSuggestionKeepsEditorFocus()
                     .raftClickable(
                         onClick = onClick,
                         shape = RoundedCornerShape(RaftAppRadius.Chip),
