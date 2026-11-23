@@ -149,6 +149,7 @@ class RaftCloseButtonRulesTest {
                 "app/thread/ThreadMembersPage.kt" to Allowed(1, TextButton),
                 "app/thread/ThreadMessageMenuModel.kt" to Allowed(1, "Cancel, $MenuRow"),
                 "app/thread/ThreadPageHeader.kt" to Allowed(1, "Close as a row of ⋯ in a head too narrow for it, $MenuRow"),
+                "app/thread/ThreadQuoteChip.kt" to Allowed(1, "a quote chip's remove, $Remove"),
                 "app/thread/ThreadSettingsDrawer.kt" to Allowed(1, TextButton),
                 "app.desktop/RaftDesktopDownloadBar.kt" to Allowed(1, "the download bar's dismiss, $Dismiss"),
             )
