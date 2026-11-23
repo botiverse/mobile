@@ -230,6 +230,13 @@ const val AGENT_USAGE_FEATURE_FLAG_KEY: String = "agent_usage_v0"
  */
 const val MOBILE_RAFT_SIGN_IN_FEATURE_FLAG_KEY: String = "mobile_raft_sign_in_v0"
 
+/**
+ * Screenshot -> quick feedback sheet (#wg-mobile-feedback:#276): per-server allowlist for
+ * production builds. Default OFF everywhere when unresolved or missing; local developer override
+ * is registered in [build.raft.app.network.sync.DiagnosticFeatureFlagOverrideRegistry].
+ */
+const val MOBILE_SCREENSHOT_FEEDBACK_FEATURE_FLAG_KEY: String = "mobile_screenshot_feedback_v0"
+
 /** Web-shared product flags plus mobile-only runtime safety flags evaluated in the same prefetch batch. */
 val REGISTERED_SERVER_FEATURE_FLAG_KEYS: List<String> = listOf(
     SYNC_CORE_NOTIFICATION_PREFS_FEATURE_FLAG_KEY,
@@ -263,6 +270,8 @@ val REGISTERED_SERVER_FEATURE_FLAG_KEYS: List<String> = listOf(
     AGENT_USAGE_FEATURE_FLAG_KEY,
     // Mobile in-app browser App entries (`Raft-Host`) and native Log in with Raft (#proj-workspace:#356).
     MOBILE_RAFT_SIGN_IN_FEATURE_FLAG_KEY,
+    // Screenshot -> quick feedback sheet allowlist (#wg-mobile-feedback:#276).
+    MOBILE_SCREENSHOT_FEEDBACK_FEATURE_FLAG_KEY,
     // Minimum supported build (RaftMinBuildGate): the threshold is the flag's variant.
     MOBILE_MIN_BUILD_ANDROID_V1_FEATURE_FLAG_KEY,
     MOBILE_MIN_BUILD_IOS_V1_FEATURE_FLAG_KEY,

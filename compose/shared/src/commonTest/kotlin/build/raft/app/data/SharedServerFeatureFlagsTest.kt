@@ -72,6 +72,9 @@ class SharedServerFeatureFlagsTest {
         assertEquals("server_labs_ui_v0", SERVER_LABS_UI_FEATURE_FLAG_KEY)
         // #proj-workspace:#356: mobile Login-with-Raft in-app browser catch (default off).
         assertEquals("mobile_raft_sign_in_v0", MOBILE_RAFT_SIGN_IN_FEATURE_FLAG_KEY)
+        // #wg-mobile-feedback:#276 screenshot -> quick feedback sheet allowlist (default off).
+        assertEquals("mobile_screenshot_feedback_v0", MOBILE_SCREENSHOT_FEEDBACK_FEATURE_FLAG_KEY)
+        assertFalse(MOBILE_SCREENSHOT_FEEDBACK_FEATURE_FLAG_KEY in SERVER_FEATURE_FLAG_CLIENT_DEFAULT_ON_KEYS)
         for (
             key in listOf(
                 MOBILE_SERVER_SETUP_V1_FEATURE_FLAG_KEY,
@@ -80,6 +83,7 @@ class SharedServerFeatureFlagsTest {
                 DRAFTS_SECTION_FEATURE_FLAG_KEY,
                 SERVER_LABS_UI_FEATURE_FLAG_KEY,
                 MOBILE_RAFT_SIGN_IN_FEATURE_FLAG_KEY,
+                MOBILE_SCREENSHOT_FEEDBACK_FEATURE_FLAG_KEY,
             )
         ) {
             assertTrue(key in REGISTERED_SERVER_FEATURE_FLAG_KEYS, key)

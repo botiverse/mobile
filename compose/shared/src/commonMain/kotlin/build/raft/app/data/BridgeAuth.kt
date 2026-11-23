@@ -1,9 +1,14 @@
 package build.raft.app.data
 
+import build.raft.app.cmp.RaftCmpRouter
 import build.raft.app.flushRaftPlatformDiagnosticsDownstream
 import build.raft.app.flushRaftPlatformLogs
 import build.raft.app.host.HostCapabilities
 import build.raft.app.network.RaftAppIdentityRegistry
+import build.raft.app.network.sync.DiagnosticFeatureFlagOverrideMode
+import build.raft.app.network.sync.DiagnosticFeatureFlagOverrideMutationResult
+import build.raft.app.network.sync.DiagnosticFeatureFlagOverrideSnapshot
+import build.raft.app.network.sync.ProcessDiagnosticFeatureFlagOverrides
 import build.raft.app.optBoolean
 import build.raft.app.optInt
 import build.raft.app.optJsonArray
@@ -420,7 +425,17 @@ internal class BridgeSettingsPlatformCapabilities(
         if (response?.optString("status") != "ok") {
             return DataResult.Error(ScreenError(response?.optString("code").orEmpty().ifBlank { "settings_diagnostics_unavailable" }))
         }
-        return DataResult.Content(response.toDiagnosticsHostSnapshot())
+        val parsed = response.toDiagnosticsHostSnapshot()
+        if (parsed.featureFlagOverrides.isEmpty() && RaftCmpRouter.isDebugBuild) {
+            ProcessDiagnosticFeatureFlagOverrides.registry.configureEntitlement(true)
+            return DataResult.Content(
+                parsed.copy(
+                    featureFlagOverrides =
+                        ProcessDiagnosticFeatureFlagOverrides.registry.snapshots().map { it.toSettingsSnapshot() }
+                )
+            )
+        }
+        return DataResult.Content(parsed)
     }
 
     /**
@@ -447,10 +462,28 @@ internal class BridgeSettingsPlatformCapabilities(
                 }
             )
         if (response?.optString("status") != "ok") {
+            val code = response?.optString("code").orEmpty()
+            if (code == "settings_capability_unknown" && RaftCmpRouter.isDebugBuild) {
+                ProcessDiagnosticFeatureFlagOverrides.registry.configureEntitlement(true)
+                val parsedMode =
+                    when (mode.trim()) {
+                        "force_off" -> DiagnosticFeatureFlagOverrideMode.ForceOff
+                        "force_on" -> DiagnosticFeatureFlagOverrideMode.ForceOn
+                        "server" -> DiagnosticFeatureFlagOverrideMode.Server
+                        else ->
+                            return DataResult.Error(
+                                ScreenError("diagnostic_feature_flag_override_mode_unknown", retryable = false)
+                            )
+                    }
+                return when (val result = ProcessDiagnosticFeatureFlagOverrides.registry.setMode(key.trim(), parsedMode)) {
+                    is DiagnosticFeatureFlagOverrideMutationResult.Applied -> DataResult.Content(Unit)
+                    is DiagnosticFeatureFlagOverrideMutationResult.Rejected ->
+                        DataResult.Error(ScreenError(result.code, retryable = false))
+                }
+            }
             return DataResult.Error(
                 ScreenError(
-                    response?.optString("code").orEmpty()
-                        .ifBlank { "diagnostic_feature_flag_override_failed" },
+                    code.ifBlank { "diagnostic_feature_flag_override_failed" },
                     retryable = false,
                 )
             )
@@ -1117,6 +1150,28 @@ internal interface SharedThreadNetworkApi {
     suspend fun removeReaction(messageId: String, emoji: String): HomeNetworkResponse
     suspend fun createOrOpenThread(channelId: String, parentMessageId: String): HomeNetworkResponse
 }
+
+private fun DiagnosticFeatureFlagOverrideSnapshot.toSettingsSnapshot(): SharedSettingsDiagnosticFeatureFlagSnapshot =
+    SharedSettingsDiagnosticFeatureFlagSnapshot(
+        key = key,
+        supported = supported,
+        scopeKind = scopeKind?.name ?: "unsupported",
+        entitled = entitled,
+        clientOverride = mode.name,
+        observedScope = observedScope?.let { "${it.environmentId}|${it.serverId}" }.orEmpty(),
+        boundScope = boundScope?.let { "${it.environmentId}|${it.serverId}" }.orEmpty(),
+        expiresAtMillis = expiresAtMillis,
+        serverEffective = lastDecision?.serverEffective,
+        finalEffective = lastDecision?.finalEffective,
+        precedence = lastDecision?.precedence ?: "not_observed",
+        exactScopeMatched = lastDecision?.exactScopeMatched == true,
+        clearReason = clearReason.orEmpty(),
+        evidence =
+            listOfNotNull(
+                evidence.latestAdjudication?.takeIf { it.isNotBlank() }?.let { "adjudication=$it" },
+                evidence.destinationPublication?.takeIf { it.isNotBlank() }?.let { "pub=$it" },
+            ).joinToString(" · "),
+    )
 
 private fun mobileOAuthLinkStepUpError(response: JsonObject?): ScreenError {
     val challenge =

@@ -4031,6 +4031,7 @@ internal class RaftSharedStoreProvider private constructor(
                             {
                                 RaftShareSuggestionsHostProvider.clear("auth_session_authenticated")
                                 ProcessDiagnosticFeatureFlagOverrides.registry.clearObservations()
+                                build.raft.app.RaftScreenshotFeedbackRuntime.notifyEligibilitySignalChanged()
                                 processServerMembersCore.invalidateAll(reason = "authenticated")
                                 activityUnreadSummaryStore.invalidateAll(reason = "authenticated")
                             }
@@ -4041,6 +4042,8 @@ internal class RaftSharedStoreProvider private constructor(
                                 serverFeatureFlagLastKnown.clearAll()
                                 RaftMinBuildGate.onSignedOut()
                                 ProcessDiagnosticFeatureFlagOverrides.registry.clearObservations()
+                                build.raft.app.RaftScreenshotFeedbackRuntime.notifyEligibilitySignalChanged()
+                                build.raft.app.RaftScreenshotFeedbackRuntime.controller.onEligibilityLost()
                                 processServerMembersCore.invalidateAll(reason = "cleared")
                                 activityUnreadSummaryStore.invalidateAll(reason = "cleared")
                             }
@@ -4070,7 +4073,15 @@ internal class RaftSharedStoreProvider private constructor(
                 accountBinding
                     .map { binding -> binding.accountOrNull?.toServerFeatureFlagLastKnownBinding() }
                     .distinctUntilChanged()
-                    .collect { serverFeatureFlags.onLastKnownBindingChanged() }
+                    .collect {
+                        serverFeatureFlags.onLastKnownBindingChanged()
+                        build.raft.app.RaftScreenshotFeedbackRuntime.notifyEligibilitySignalChanged()
+                    }
+            }
+            CoroutineScope(SupervisorJob()).launch {
+                serverFeatureFlags.snapshotRevision.collect {
+                    build.raft.app.RaftScreenshotFeedbackRuntime.notifyEligibilitySignalChanged()
+                }
             }
             val attachmentCommentsReadCacheV2 = AttachmentCommentsReadCacheV2()
             val canonicalMessageV2Store =

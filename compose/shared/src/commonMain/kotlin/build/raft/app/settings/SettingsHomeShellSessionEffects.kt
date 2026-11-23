@@ -1156,7 +1156,10 @@ internal fun AppShellStackRootTabEffect(
 ) {
     var selectedTab by selectedTabState
     val stackRootTab = build.raft.app.nav.LocalRaftStackRootTab.current
-    if (stackRootTab != null) SideEffect { stackRootTab.tab = selectedTab }
+    SideEffect {
+        stackRootTab?.tab = selectedTab
+        RaftScreenshotFeedbackRuntime.updateActiveShellTab(selectedTab)
+    }
 }
 
 // Moved verbatim out of RaftAppShellReadyContent (JVM method size; #4802, task #102).
