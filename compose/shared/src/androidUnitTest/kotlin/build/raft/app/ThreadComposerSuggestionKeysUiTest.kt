@@ -55,7 +55,7 @@ class ThreadComposerSuggestionKeysUiTest {
             waitForIdle()
 
             assertEquals("@grace ", events.valueOf("change"), "Enter inserts the highlighted (second) member")
-            assertEquals("u-grace", decodeThreadComposerMentionEvent(events.valueOf(ThreadComposerSelectMentionEvent))?.id)
+            assertEquals(GRACE.memberId, decodeThreadComposerMentionEvent(events.valueOf(ThreadComposerSelectMentionEvent))?.id)
             assertTrue(events.none { (action, _) -> action == "send" }, "Enter on the list must not send: $events")
             onNodeWithText(GRACE.displayName, useUnmergedTree = true).assertDoesNotExist()
         }
@@ -114,7 +114,8 @@ class ThreadComposerSuggestionKeysUiTest {
     private fun List<Pair<String, String?>>.valueOf(action: String): String? = lastOrNull { it.first == action }?.second
 
     private companion object {
-        val ADA = RaftComposerMemberItem(displayName = "Ada Lovelace", handle = "ada", memberId = "u-ada")
-        val GRACE = RaftComposerMemberItem(displayName = "Grace Hopper", handle = "grace", memberId = "u-grace")
+        // Structured mentions carry only UUID ids (slock UUID_RE; composerPersonOrAgentStructuredMention).
+        val ADA = RaftComposerMemberItem(displayName = "Ada Lovelace", handle = "ada", memberId = "0a0a0a0a-0000-4000-8000-000000000001")
+        val GRACE = RaftComposerMemberItem(displayName = "Grace Hopper", handle = "grace", memberId = "06ace000-0000-4000-8000-000000000002")
     }
 }
