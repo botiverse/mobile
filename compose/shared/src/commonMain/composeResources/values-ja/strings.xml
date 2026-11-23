@@ -4117,6 +4117,10 @@
     <string name="joint_invite_notification_accept">承諾</string>
     <string name="joint_invite_notification_accepting">承諾中…</string>
     <string name="joint_invite_accept_failed">外部チャンネルの招待を承諾できませんでした。</string>
+    <string name="joint_invite_not_found">この招待が見つかりません。招待を送ったサーバーに、もう一度招待してもらってください。</string>
+    <string name="joint_invite_accept_forbidden">この招待を承諾できるのは、サーバー管理者のみです。</string>
+    <string name="joint_invite_not_acceptable">この招待はもう承諾できません。</string>
+    <string name="joint_invite_archived">このチャンネルはアーカイブされているため、招待を承諾できません。</string>
     <string name="home_section_create_external_channel">外部チャンネルを作成</string>
     <string name="joint_create_archived_name_held">#%1$s という名前は、アーカイブ済みのチャンネルで使用されています。</string>
     <string name="joint_create_unarchive">アーカイブを解除</string>

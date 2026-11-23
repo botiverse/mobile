@@ -9,6 +9,7 @@ internal fun englishErrorPresentationStringsForTest(): ErrorPresentationStrings 
             ErrorPresentationKey.ServerUnreachable to "The server could not be reached. Check your connection and try again.",
             ErrorPresentationKey.RequestTimedOut to "The server did not respond in time. Please try again.",
             ErrorPresentationKey.NetworkConnectionFailed to "The network connection failed. Check your connection and try again.",
+            ErrorPresentationKey.EdgeBlocked to "This request was blocked by the network.",
             ErrorPresentationKey.ServerUnavailable to "The server is unavailable right now. Please try again shortly.",
             ErrorPresentationKey.ItemNotFound to "This item could not be found. It may have been moved or deleted.",
             ErrorPresentationKey.PermissionDenied to "You do not have permission to view this page.",

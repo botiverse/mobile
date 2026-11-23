@@ -65,6 +65,13 @@ internal fun rememberHomeJointInvites(
             serverLimit = stringResource(Res.string.joint_limit_servers, JOINT_CHANNEL_MAX_SERVERS),
             hostLimit = stringResource(Res.string.joint_limit_host_free),
             fallback = stringResource(Res.string.joint_invite_accept_failed),
+            acceptRefusals =
+                JointInviteAcceptRefusalCopy(
+                    notFound = stringResource(Res.string.joint_invite_not_found),
+                    forbidden = stringResource(Res.string.joint_invite_accept_forbidden),
+                    notAcceptable = stringResource(Res.string.joint_invite_not_acceptable),
+                    archived = stringResource(Res.string.joint_invite_archived),
+                ),
         )
     val errorStrings = localizedErrorPresentationStrings()
     LaunchedEffect(store, state.effect) {

@@ -21,9 +21,20 @@ import build.raft.app.components.RaftDesignSystemTheme
 import build.raft.app.data.JOINT_CHANNEL_MAX_SERVERS
 import build.raft.app.data.JOINT_CHANNEL_PLAN_LIMIT_REACHED
 import build.raft.app.data.JOINT_FREE_SERVER_LIMIT
+import build.raft.app.data.JOINT_INVITE_ACCEPT_FORBIDDEN
+import build.raft.app.data.JOINT_INVITE_CHANNEL_ARCHIVED
+import build.raft.app.data.JOINT_INVITE_NOT_ACCEPTABLE
+import build.raft.app.data.JOINT_INVITE_NOT_FOUND
 import build.raft.app.data.JOINT_SERVER_LIMIT
 import build.raft.app.data.JointChannelServer
+import build.raft.app.data.PermissionBlocker
 import build.raft.app.data.RaftShellStoreScope
+import build.raft.app.data.ResolvedServerRefusal
+import build.raft.app.data.ScreenError
+import build.raft.app.data.ServerRefusalInput
+import build.raft.app.data.isAuthSessionErrorCode
+import build.raft.app.data.isEdgeBlockedMarker
+import build.raft.app.data.resolveServerRefusal
 import build.raft.app.data.runCatchingPreservingCancellation
 import build.raft.designsystem.components.RaftBadge
 import build.raft.designsystem.components.RaftBadgeAppearance
@@ -411,6 +422,17 @@ private val JointChannelFailure.traceId: String?
             is JointChannelFailure.Blocked -> blocker.traceId
         }
 
+/**
+ * Localized copy for joint-invite accept refusal codes (`botiverse/slock #16117`,
+ * `jointChannelLimit.ts` `jointInviteAcceptRefusalMessageId`).
+ */
+internal data class JointInviteAcceptRefusalCopy(
+    val notFound: String,
+    val forbidden: String,
+    val notAcceptable: String,
+    val archived: String,
+)
+
 /** Localized copy for each joint failure, with the web's precedence. */
 internal data class JointFailureCopy(
     val freeServerLimit: String,
@@ -418,23 +440,122 @@ internal data class JointFailureCopy(
     /** The host is at its plan's hosted-joint limit (web `channel.joint.inviteHostFreeLimit`). */
     val hostLimit: String,
     val fallback: String,
+    /** Non-null on the invite-accept surface so `#16117` accept refusal codes get specific copy. */
+    val acceptRefusals: JointInviteAcceptRefusalCopy? = null,
 )
 
+private enum class KnownJointFailureCode {
+    FreeServerLimit,
+    ServerLimit,
+    HostLimit,
+    InviteNotFound,
+    InviteForbidden,
+    InviteNotAcceptable,
+    InviteArchived,
+    NonAcceptArchived,
+}
+
+private fun JointChannelFailure.toServerRefusalInput(): ServerRefusalInput =
+    when (this) {
+        is JointChannelFailure.Error -> {
+            val status =
+                when {
+                    error.code == "server_unavailable" -> 500
+                    error.code.startsWith("joint_http_") -> error.code.removePrefix("joint_http_").toIntOrNull()
+                    else -> null
+                }
+            ServerRefusalInput(
+                status = status,
+                code = if (status == 0) null else error.code,
+                serverMessage = error.serverMessage,
+                traceId = error.traceId,
+            )
+        }
+        is JointChannelFailure.Blocked ->
+            ServerRefusalInput(
+                status = 403,
+                code = blocker.code,
+                serverMessage = blocker.serverMessage,
+                traceId = blocker.traceId,
+            )
+    }
+
+private fun JointChannelFailure.withoutServerMessage(): JointChannelFailure =
+    when (this) {
+        is JointChannelFailure.Error -> JointChannelFailure.Error(error.copy(serverMessage = null))
+        is JointChannelFailure.Blocked -> JointChannelFailure.Blocked(blocker.copy(serverMessage = null))
+    }
+
+private fun JointChannelFailure.scrubbedForInfrastructure(resolved: ResolvedServerRefusal.Infrastructure): JointChannelFailure {
+    val rawServerMessage =
+        when (this) {
+            is JointChannelFailure.Error -> error.serverMessage
+            is JointChannelFailure.Blocked -> blocker.serverMessage
+        }
+    return when {
+        resolved.code == "edge_blocked" || rawServerMessage.isEdgeBlockedMarker() ->
+            JointChannelFailure.Error(ScreenError(code = "edge_blocked", serverMessage = "edge_blocked", traceId = resolved.traceId))
+        resolved.status == 401 || resolved.code.isAuthSessionErrorCode() ->
+            JointChannelFailure.Blocked(
+                PermissionBlocker(
+                    code = "auth_required",
+                    requiredCapability = "auth_session",
+                    serverMessage = null,
+                    traceId = resolved.traceId,
+                )
+            )
+        else -> withoutServerMessage()
+    }
+}
+
 /**
- * Web `jointInviteAcceptErrorMessage`: limit codes get their localized copy (the Pro upgrade
- * guidance lives in the free-server copy), anything else goes through the app's error pipeline.
+ * Web `jointInviteAcceptErrorMessage` routed through [resolveServerRefusal]:
+ * - Tier 1 (infrastructure/auth/edge) scrubs raw body and falls back to [pipeline] / [JointFailureCopy.fallback].
+ * - Tier 2 maps known limit and (when [JointFailureCopy.acceptRefusals] is supplied) joint-invite
+ *   accept refusal codes (`#16117`) to localized web copy.
+ * - Tier 3 preserves usable server-worded refusal explanations for unknown non-5xx codes.
+ * - Tier 4 strips rejected/5xx raw server text and falls back to [pipeline] / [JointFailureCopy.fallback].
  */
 internal fun jointChannelFailureText(
     failure: JointChannelFailure,
     copy: JointFailureCopy,
     pipeline: (JointChannelFailure) -> String,
-): String =
-    when (failure.code) {
-        JOINT_FREE_SERVER_LIMIT -> copy.freeServerLimit
-        JOINT_SERVER_LIMIT -> copy.serverLimit
-        JOINT_CHANNEL_PLAN_LIMIT_REACHED -> copy.hostLimit
-        else -> pipeline(failure).takeIf(String::isNotBlank) ?: copy.fallback
+): String {
+    val acceptCopy = copy.acceptRefusals
+    val resolved =
+        resolveServerRefusal(failure.toServerRefusalInput()) { normalizedCode, _ ->
+            when (normalizedCode) {
+                JOINT_FREE_SERVER_LIMIT -> KnownJointFailureCode.FreeServerLimit
+                JOINT_SERVER_LIMIT -> KnownJointFailureCode.ServerLimit
+                JOINT_CHANNEL_PLAN_LIMIT_REACHED -> KnownJointFailureCode.HostLimit
+                JOINT_INVITE_NOT_FOUND -> KnownJointFailureCode.InviteNotFound.takeIf { acceptCopy != null }
+                JOINT_INVITE_ACCEPT_FORBIDDEN -> KnownJointFailureCode.InviteForbidden.takeIf { acceptCopy != null }
+                JOINT_INVITE_NOT_ACCEPTABLE -> KnownJointFailureCode.InviteNotAcceptable.takeIf { acceptCopy != null }
+                JOINT_INVITE_CHANNEL_ARCHIVED ->
+                    if (acceptCopy != null) KnownJointFailureCode.InviteArchived else KnownJointFailureCode.NonAcceptArchived
+                else -> null
+            }
+        }
+    return when (resolved) {
+        is ResolvedServerRefusal.KnownCode ->
+            when (resolved.known) {
+                KnownJointFailureCode.FreeServerLimit -> copy.freeServerLimit
+                KnownJointFailureCode.ServerLimit -> copy.serverLimit
+                KnownJointFailureCode.HostLimit -> copy.hostLimit
+                KnownJointFailureCode.InviteNotFound -> acceptCopy!!.notFound
+                KnownJointFailureCode.InviteForbidden -> acceptCopy!!.forbidden
+                KnownJointFailureCode.InviteNotAcceptable -> acceptCopy!!.notAcceptable
+                KnownJointFailureCode.InviteArchived -> acceptCopy!!.archived
+                KnownJointFailureCode.NonAcceptArchived ->
+                    pipeline(failure.withoutServerMessage()).takeIf(String::isNotBlank) ?: copy.fallback
+            }
+        is ResolvedServerRefusal.ServerWords -> resolved.message
+        is ResolvedServerRefusal.Infrastructure ->
+            pipeline(failure.scrubbedForInfrastructure(resolved)).takeIf(String::isNotBlank) ?: copy.fallback
+        is ResolvedServerRefusal.Generic ->
+            pipeline(failure.withoutServerMessage()).takeIf(String::isNotBlank) ?: copy.fallback
     }
+}
 
 @Composable
 internal fun jointChannelFailureMessage(failure: JointChannelFailure, fallback: String): String {

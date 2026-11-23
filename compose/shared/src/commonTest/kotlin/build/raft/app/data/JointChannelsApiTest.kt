@@ -203,6 +203,38 @@ class JointChannelsApiTest {
     }
 
     @Test
+    fun acceptInviteRefusalsPreserveSlock16117CodesAndTraceId() = runTest {
+        data class Case(val status: Int, val code: String, val error: String, val expectBlocked: Boolean)
+        val traceId = "4bf92f3577b34da6a3ce929d0e0e4736"
+        listOf(
+            Case(404, JOINT_INVITE_NOT_FOUND, "Joint channel invite not found", expectBlocked = false),
+            Case(403, JOINT_INVITE_ACCEPT_FORBIDDEN, "Only server admins can accept this invite", expectBlocked = true),
+            Case(409, JOINT_INVITE_NOT_ACCEPTABLE, "This invite can no longer be accepted", expectBlocked = false),
+            Case(409, JOINT_INVITE_CHANNEL_ARCHIVED, "Channel is archived", expectBlocked = false),
+        ).forEach { case ->
+            val client =
+                RecordingJointNetworkClient { _, _ ->
+                    HomeNetworkResponse(
+                        code = case.status,
+                        bodyText = """{"error":"${case.error}","code":"${case.code}"}""",
+                        responseHeaders = mapOf("X-Trace-Id" to listOf(traceId)),
+                    )
+                }
+            val result = RealJointChannelRepository(client).acceptInvite(ServerId("srv-target"), "inv-1")
+            assertEquals(case.code, result.jointFailureCode(), "status=${case.status}")
+            if (case.expectBlocked) {
+                val blocked = assertIs<DataResult.NoPermission>(result).blocker
+                assertEquals(case.error, blocked.serverMessage)
+                assertEquals(traceId, blocked.traceId)
+            } else {
+                val error = assertIs<DataResult.Error>(result).error
+                assertEquals(case.error, error.serverMessage)
+                assertEquals(traceId, error.traceId)
+            }
+        }
+    }
+
+    @Test
     fun aRateLimitWaitIsWholeMinutesRoundedUpAndAtLeastOne() {
         // The action card's feedback rate limit words its wait with this (ThreadActionCardSpecView).
         assertEquals(

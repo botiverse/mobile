@@ -48,6 +48,12 @@ internal const val JOINT_SERVER_LIMIT = "joint_server_limit"
 /** A host on a plan with a hosted-joint limit (AppSumo) is at it (botiverse/slock #15952). */
 internal const val JOINT_CHANNEL_PLAN_LIMIT_REACHED = "joint_channel_plan_limit_reached"
 
+/** Joint-invite accept refusal codes (botiverse/slock #16117, `jointChannelLimit.ts`). */
+internal const val JOINT_INVITE_NOT_FOUND = "joint_invite_not_found"
+internal const val JOINT_INVITE_ACCEPT_FORBIDDEN = "joint_invite_accept_forbidden"
+internal const val JOINT_INVITE_NOT_ACCEPTABLE = "joint_invite_not_acceptable"
+internal const val JOINT_INVITE_CHANNEL_ARCHIVED = "channel_archived"
+
 private val jointChannelsJson = Json {
     ignoreUnknownKeys = true
     encodeDefaults = true
@@ -397,15 +403,25 @@ internal fun <T> HomeNetworkResponse.toJointDataError(): DataResult<T> {
                     code = serverCode ?: "joint_forbidden",
                     requiredCapability = "federateChannels",
                     serverMessage = serverMessage,
+                    traceId = traceId,
                 )
             )
-        in 500..599 -> DataResult.Error(ScreenError(code = "server_unavailable", retryable = true, serverMessage = serverMessage))
+        in 500..599 ->
+            DataResult.Error(
+                ScreenError(
+                    code = "server_unavailable",
+                    retryable = true,
+                    serverMessage = serverMessage,
+                    traceId = traceId,
+                )
+            )
         else ->
             DataResult.Error(
                 ScreenError(
                     code = serverCode ?: "joint_http_$code",
                     retryable = false,
                     serverMessage = serverMessage,
+                    traceId = traceId,
                 )
             )
     }

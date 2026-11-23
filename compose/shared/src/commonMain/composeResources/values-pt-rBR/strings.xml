@@ -3938,6 +3938,10 @@
     <string name="joint_invite_notification_accept">Aceitar</string>
     <string name="joint_invite_notification_accepting">Aceitando…</string>
     <string name="joint_invite_accept_failed">Não foi possível aceitar o convite para o canal externo.</string>
+    <string name="joint_invite_not_found">Não foi possível encontrar este convite. Peça ao servidor que o enviou para convidar este servidor de novo.</string>
+    <string name="joint_invite_accept_forbidden">Só administradores do servidor podem aceitar este convite.</string>
+    <string name="joint_invite_not_acceptable">Este convite não pode mais ser aceito.</string>
+    <string name="joint_invite_archived">Este canal está arquivado, então não é possível aceitar o convite.</string>
     <string name="home_section_create_external_channel">Criar canal externo</string>
     <string name="joint_create_archived_name_held">O nome #%1$s está sendo usado por um canal arquivado.</string>
     <string name="joint_create_unarchive">Desarquivar</string>

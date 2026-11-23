@@ -3938,6 +3938,10 @@
     <string name="joint_invite_notification_accept">接受</string>
     <string name="joint_invite_notification_accepting">正在接受…</string>
     <string name="joint_invite_accept_failed">無法接受外部頻道邀請。</string>
+    <string name="joint_invite_not_found">找不到這個邀請。請發出邀請的伺服器重新邀請。</string>
+    <string name="joint_invite_accept_forbidden">只有伺服器管理員可以接受這個邀請。</string>
+    <string name="joint_invite_not_acceptable">這個邀請已經無法接受。</string>
+    <string name="joint_invite_archived">這個頻道已封存，無法接受邀請。</string>
     <string name="home_section_create_external_channel">建立外部頻道</string>
     <string name="joint_create_archived_name_held">名稱 #%1$s 已被一個已封存的頻道使用。</string>
     <string name="joint_create_unarchive">取消封存</string>
