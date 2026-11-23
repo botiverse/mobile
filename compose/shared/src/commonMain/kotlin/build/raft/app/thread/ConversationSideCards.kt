@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.LaunchedEffect
@@ -19,14 +20,20 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import build.raft.app.resources.*
+import build.raft.designsystem.components.LocalRaftPaneGridHeadTabs
 import build.raft.designsystem.components.RaftTab
+import build.raft.designsystem.components.RaftTabStrip
 import build.raft.designsystem.components.RaftTabs
+import build.raft.designsystem.components.raftPaneGridFitHead
 import build.raft.designsystem.focus.RaftFocusRegion
 import build.raft.designsystem.focus.RaftFocusRegionHost
 import build.raft.designsystem.gesture.rememberRaftBackSwipeDismiss
+import build.raft.designsystem.theme.RaftTheme
 import build.raft.app.data.SharedPreferenceStore
 import build.raft.app.data.raftSharedPreferenceStore
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -255,45 +262,97 @@ internal fun ConversationSideCardsCover(
 ) {
     val shown = cards.shown ?: return
     val swipeClose = rememberRaftBackSwipeDismiss(onDismiss = onSwipeClose)
-    Column(
-        modifier
-            .then(swipeClose)
-            .fillMaxSize()
-            .background(RaftColor.Canvas)
-            // The conversation under the cover takes no touches.
-            .pointerInput(Unit) { awaitPointerEventScope { while (true) awaitPointerEvent() } }
-    ) {
-        if (cards.openCards.size > 1) ConversationSideCardsSwitch(cards.openCards, shown, onPick)
-        RaftPanelBackHeader(title = shown.title(), subtitle = null, onBack = onBack)
-        Box(Modifier.weight(1f).fillMaxWidth()) {
-            when (shown) {
-                ConversationSideCard.Tasks -> tasksContent()
-                ConversationSideCard.Files -> filesContent()
+    // A phone/overlay cover sits under the conversation header and never steals the grid's row tabs.
+    CompositionLocalProvider(LocalRaftPaneGridHeadTabs provides null) {
+        Column(
+            modifier
+                .then(swipeClose)
+                .fillMaxSize()
+                .background(RaftColor.Canvas)
+                // The conversation under the cover takes no touches.
+                .pointerInput(Unit) { awaitPointerEventScope { while (true) awaitPointerEvent() } }
+        ) {
+            if (cards.openCards.size > 1) ConversationSideCardsSwitch(cards.openCards, shown, onPick, inColumn = false)
+            RaftPanelBackHeader(title = shown.title(), subtitle = null, onBack = onBack)
+            Box(Modifier.weight(1f).fillMaxWidth()) {
+                when (shown) {
+                    ConversationSideCard.Tasks -> tasksContent()
+                    ConversationSideCard.Files -> filesContent()
+                }
             }
         }
     }
 }
 
-/** The Tasks / Files switch over one card at a time (web `channel-side-switch`): 48dp, a seam under it. */
+internal const val CONVERSATION_SIDE_CARDS_SWITCH_TEST_TAG = "conversationSideCardsSwitch"
+
+/**
+ * The Tasks / Files switch over one card at a time (web `channel-side-switch`).
+ *
+ * In a wide split column (`shortSwitch`, [inColumn] = true), it sits at the top of the column
+ * beside the conversation header, so the shell owns its height ([RaftTheme.controls.headHeight]:
+ * 56dp touch, 44dp fine pointer) with the bottom seam inside that height and `.raftPaneGridFitHead()`
+ * so the first bottom hairline aligns across every visible column.
+ *
+ * In the phone overlay ([ConversationSideCardsCover], [inColumn] = false), it matches web
+ * `h-12 md:pointer-fine:h-panel-header` (48dp touch, 44dp fine pointer, seam inside).
+ */
 @Composable
 private fun ConversationSideCardsSwitch(
     open: List<ConversationSideCard>,
     shown: ConversationSideCard,
     onPick: (ConversationSideCard) -> Unit,
+    inColumn: Boolean = false,
 ) {
-    Box(Modifier.fillMaxWidth().height(48.dp).padding(horizontal = 16.dp), contentAlignment = Alignment.CenterStart) {
-        RaftTabs {
-            open.forEach { card ->
-                RaftTab(
-                    text = card.title(),
-                    selected = card == shown,
-                    onClick = { onPick(card) },
-                    icon = { RaftContentLucideIcon(card.icon) },
-                )
+    val headHeight = RaftTheme.controls.headHeight
+    val barHeight = if (inColumn) headHeight else minOf(48.dp, headHeight)
+    val contentHeight = (barHeight - RaftAppStroke.Thin).coerceAtLeast(0.dp)
+    Box(
+        modifier =
+            Modifier
+                .then(if (inColumn) Modifier.raftPaneGridFitHead() else Modifier)
+                .fillMaxWidth()
+                .height(barHeight)
+                .background(RaftColor.Canvas)
+                .testTag(CONVERSATION_SIDE_CARDS_SWITCH_TEST_TAG),
+    ) {
+        Box(
+            modifier = Modifier.fillMaxWidth().height(contentHeight).padding(horizontal = 16.dp),
+            contentAlignment = Alignment.CenterStart,
+        ) {
+            if (inColumn) {
+                RaftTabStrip(inHead = true) {
+                    open.forEach { card ->
+                        RaftTab(
+                            text = card.title(),
+                            selected = card == shown,
+                            onClick = { onPick(card) },
+                            icon = { RaftContentLucideIcon(card.icon) },
+                        )
+                    }
+                }
+            } else {
+                RaftTabs {
+                    open.forEach { card ->
+                        RaftTab(
+                            text = card.title(),
+                            selected = card == shown,
+                            onClick = { onPick(card) },
+                            icon = { RaftContentLucideIcon(card.icon) },
+                        )
+                    }
+                }
             }
         }
+        Box(
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .height(RaftAppStroke.Thin)
+                    .background(RaftColor.BorderSeam.compositeOver(RaftColor.Canvas))
+                    .align(Alignment.BottomCenter),
+        )
     }
-    Box(Modifier.fillMaxWidth().height(RaftAppStroke.Thin).background(RaftColor.BorderSeam))
 }
 
 internal val ConversationSideCard.icon: RaftLucideIconName
@@ -398,7 +457,7 @@ internal fun conversationSideCardsColumn(
                 }
             },
         shortShownCell = shown.paneCellId,
-        shortSwitch = { ConversationSideCardsSwitch(open, shown, onPick) },
+        shortSwitch = { ConversationSideCardsSwitch(open, shown, onPick, inColumn = true) },
         // Its tab where the row is short of 160 per column (#189 rule 4): web RowTabs joins its sections' titles.
         tabLabel = open.joinToString(" · ") { titles.getValue(it) },
         // Each card draws the column head (RaftPaneGridCard): the row tabs stand in the top card's head.

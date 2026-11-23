@@ -20,7 +20,9 @@ import build.raft.app.model.RealtimeRefreshRequired
 import build.raft.app.model.RealtimeRefreshScope
 import build.raft.app.model.TaskStatus
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
+import build.raft.designsystem.components.LocalRaftPaneGridHeadTabs
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
@@ -1033,23 +1035,28 @@ internal fun ThreadRouteScaffold(
                     .fillMaxSize()
                     .background(surfaceColor)
         ) {
+            val carriesMainTabs = LocalThreadAssistantPanelEmbed.current == null
             RaftPaneGrid(
                 columns = slots.sideColumns,
                 modifier = Modifier.fillMaxSize(),
-                topInset = if (LocalThreadAssistantPanelEmbed.current == null && slots.sideColumns.isNotEmpty()) raftTopSafeAreaPadding() else 0.dp,
+                topInset = if (carriesMainTabs && slots.sideColumns.isNotEmpty()) raftTopSafeAreaPadding() else 0.dp,
+                mainHeadCarriesTabs = carriesMainTabs,
             ) {
             Column(
                 modifier = Modifier.fillMaxSize().background(surfaceColor)
             ) {
                 // In the assistant's panel the panel's head stands for the page's (web ChatPanel `hideHeader`).
-                if (LocalThreadAssistantPanelEmbed.current == null) slots.header()
-                val bodyCover = slots.bodyCover
-                if (bodyCover == null) {
-                    slots.body(this)
-                } else {
-                    Box(Modifier.weight(1f).fillMaxWidth()) {
-                        Column(Modifier.fillMaxSize()) { slots.body(this) }
-                        bodyCover()
+                if (carriesMainTabs) slots.header()
+                // Only the conversation header carries the main pane's row tabs; body / cover headers do not.
+                CompositionLocalProvider(build.raft.designsystem.components.LocalRaftPaneGridHeadTabs provides null) {
+                    val bodyCover = slots.bodyCover
+                    if (bodyCover == null) {
+                        slots.body(this)
+                    } else {
+                        Box(Modifier.weight(1f).fillMaxWidth()) {
+                            Column(Modifier.fillMaxSize()) { slots.body(this) }
+                            bodyCover()
+                        }
                     }
                 }
             }

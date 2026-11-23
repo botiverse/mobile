@@ -262,12 +262,7 @@ fun RaftPaneGridColumnHead(
                 Box(Modifier.weight(1f).testTag(tag + RAFT_PANE_GRID_HEAD_TITLE_SUFFIX), contentAlignment = Alignment.CenterStart) {
                     if (tabs != null) {
                         // Rule 4: the row tabs in the title's place, the title's whole room; they scroll where they don't fit.
-                        RaftTabStrip(
-                            Modifier.testTag(RAFT_PANE_GRID_TABS_TEST_TAG + tabs.selected).semantics { contentDescription = labels.tabs },
-                            inHead = true,
-                        ) {
-                            tabs.tabs.forEach { (key, label) -> RaftTab(text = label, selected = key == tabs.selected, onClick = { tabs.onSelect(key) }) }
-                        }
+                        RaftPaneGridHeadRowTabs(tabs = tabs, contentDescription = labels.tabs)
                     } else {
                         // Truncated or not, its node carries the whole title: the head's name for screen readers.
                         RaftText(
@@ -315,6 +310,26 @@ fun RaftPaneGridColumnHead(
             }
         }
         Box(Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(RaftStroke.Hairline).background(colors.lineSeam))
+    }
+}
+
+/**
+ * Rule 4 row tabs standing in a column head's title slot (web `RowTabs` inside `PanelHeaderContent`):
+ * scrolls sideways under the edge fade where the tabs exceed the slot's width, with no seam or padding
+ * of its own because the enclosing head owns both. Shared by [RaftPaneGridColumnHead] and page-drawn
+ * column headers reading [LocalRaftPaneGridHeadTabs].
+ */
+@Composable
+fun RaftPaneGridHeadRowTabs(
+    tabs: RaftPaneGridRowTabs,
+    contentDescription: String,
+    modifier: Modifier = Modifier,
+) {
+    RaftTabStrip(
+        modifier.testTag(RAFT_PANE_GRID_TABS_TEST_TAG + tabs.selected).semantics { this.contentDescription = contentDescription },
+        inHead = true,
+    ) {
+        tabs.tabs.forEach { (key, label) -> RaftTab(text = label, selected = key == tabs.selected, onClick = { tabs.onSelect(key) }) }
     }
 }
 

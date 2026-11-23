@@ -5745,6 +5745,8 @@ private fun RaftAppShellReadyContent(
                                         bounds = RaftPaneGridColumns.Thread,
                                         resizeLabel = sideThreadResizeLabel,
                                         tabLabel = sideThreadTabLabel,
+                                        // ThreadPageHeader renders row tabs inline (web ThreadPanelHeader), avoiding an extra strip above the header.
+                                        headCarriesTabs = true,
                                         cells =
                                             listOf(
                                                 RaftPaneGridCell(id = "thread") {

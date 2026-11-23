@@ -454,6 +454,8 @@ internal fun raftProfileColumn(
         cells = cells.map { cell -> RaftPaneGridCell(id = cell.id) { content(cell) } },
         tabLabel = tabLabel,
         trailing = true,
+        // Profile / Details headers render row tabs inline (web PanelHeader), keeping one headHeight bar aligned with the row.
+        headCarriesTabs = true,
     )
 }
 
@@ -592,6 +594,11 @@ internal fun raftArtifactColumn(content: @Composable () -> Unit): RaftPaneGridCo
         cells = listOf(RaftPaneGridCell(id = RAFT_ARTIFACT_COLUMN_CELL) { content() }),
         tabLabel = title,
         trailing = true,
+        // Keep headCarriesTabs = false: once loaded, the embedded WebView draws the toolbar
+        // (hostToolbar=1, hostHead) and cannot host native Compose row tabs. Both loading and
+        // loaded therefore share one layout beneath the headHeight-tall RaftPaneGridTabStrip so
+        // the column's first horizontal hairline stays aligned with every adjacent column head.
+        headCarriesTabs = false,
     )
 }
 

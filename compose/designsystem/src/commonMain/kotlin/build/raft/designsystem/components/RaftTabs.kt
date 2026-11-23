@@ -128,12 +128,61 @@ fun RaftTabStrip(
     variant: RaftTabsVariant = RaftTabsVariant.Default,
     inHead: Boolean = false,
     content: @Composable RowScope.() -> Unit,
+) = RaftTabStripImpl(modifier, variant, inHead, height = null, content)
+
+/**
+ * Shared implementation of [RaftTabStrip]. When [height] is given (a pane grid's standalone
+ * row-tab bar, owned by [build.raft.designsystem.theme.RaftControlMetrics.headHeight]), the tabs
+ * are vertically centred inside [height] with the bottom `line-seam` inside that height so its
+ * bottom hairline aligns with every adjacent column's head.
+ */
+@Composable
+internal fun RaftTabStripImpl(
+    modifier: Modifier,
+    variant: RaftTabsVariant,
+    inHead: Boolean,
+    height: Dp?,
+    content: @Composable RowScope.() -> Unit,
 ) {
     val colors = RaftTheme.colors
     val scroll = rememberScrollState()
     val strip = remember(scroll) { RaftTabStripScroll(scroll) }
     val backSwipe = rememberRaftBackSwipeScroll(scroll)
     SideEffect { strip.composed = true }
+    if (height != null) {
+        Box(modifier.fillMaxWidth().height(height).background(colors.layerCanvas)) {
+            Box(
+                Modifier
+                    .fillMaxWidth()
+                    .height((height - RaftStroke.Hairline).coerceAtLeast(0.dp))
+                    // Read in the draw phase: reaching an edge redraws, the modifiers stay.
+                    .raftEdgeFade(colors.layerCanvas, start = { scroll.canScrollBackward }, end = { scroll.canScrollForward })
+                    .then(backSwipe.modifier)
+                    .horizontalScroll(scroll, enabled = backSwipe.userScrollEnabled),
+                contentAlignment = Alignment.CenterStart,
+            ) {
+                CompositionLocalProvider(LocalRaftTabStripScroll provides strip) {
+                    RaftTabs(
+                        Modifier
+                            .onPlaced { strip.content = it }
+                            .raftSafeAreaHorizontalPadding()
+                            .padding(horizontal = RaftTabStripInset),
+                        variant = variant,
+                        content = content,
+                    )
+                }
+            }
+            // Flattened onto the canvas so the seam rounds like the web's (a draw-time blend lands a level dark).
+            Box(
+                Modifier
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth()
+                    .height(RaftStroke.Hairline)
+                    .background(colors.lineSeam.compositeOver(colors.layerCanvas)),
+            )
+        }
+        return
+    }
     Column(modifier.fillMaxWidth().background(colors.layerCanvas)) {
         Box(
             Modifier

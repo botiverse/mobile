@@ -49,11 +49,13 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import build.raft.designsystem.components.LocalRaftPaneGridHeadTabs
 import build.raft.designsystem.components.RaftBackButton
 import build.raft.designsystem.components.RaftCloseButton
 import build.raft.designsystem.components.RaftButtonVariant
 import build.raft.designsystem.components.RaftIconButton
 import build.raft.designsystem.components.RaftIconButtonSize
+import build.raft.designsystem.components.RaftPaneGridHeadRowTabs
 import build.raft.designsystem.components.raftCopyable
 import build.raft.designsystem.components.raftPaneGridFitHead
 import build.raft.designsystem.components.raftSafeAreaHorizontalPadding
@@ -191,12 +193,14 @@ internal fun RaftTopPageHeader(
     // own stack, and the pane's Close ends a head that has a way out of its page.
     val shownBack = onBack?.takeIf { raftSidePaneShowsBack() }
     val paneCloses = raftSidePaneHeadCloses(onBack)
+    // Rule 4 crowded split view: row tabs stand in this header's title slot (web PanelHeader + RowTabs).
+    val headRowTabs = LocalRaftPaneGridHeadTabs.current
     // iOS native navigation (mobile_ios_native_nav_v1): the host's UINavigationBar draws this head
     // (title, Back, actions). The page's top safe area already includes the bar, so only that space
     // is kept. A head with Compose buttons but no bar buttons mapped keeps its Compose head (and
     // the host hides its bar) instead of losing those buttons.
     // iPhone Duo side column: the column holds Back and the actions, so the Compose head stays.
-    val nativeHeadMapped = !raftSideColumnActive() && raftNativeNavBarHeadMapped(trailingContent != null || paneCloses, nativeActions)
+    val nativeHeadMapped = headRowTabs == null && !raftSideColumnActive() && raftNativeNavBarHeadMapped(trailingContent != null || paneCloses, nativeActions)
     if (!nativeHeadMapped) RaftNativeNavBarDecline()
     // The title's channel tile / DM avatar as this head draws it, captured offscreen for the bar.
     val nativeTitleLeading = nativeTitleExtras.leading
@@ -247,6 +251,7 @@ internal fun RaftTopPageHeader(
         ) {
             when {
                 shownBack != null && !backInColumn -> RaftPaneAwareBackButton(onClick = shownBack)
+                headRowTabs != null -> Unit
                 leadingContent != null ->
                     Box(
                         modifier = Modifier.size(RaftAppSize.HeaderIcon),
@@ -271,7 +276,14 @@ internal fun RaftTopPageHeader(
                     }
             }
             titleLeadingContent?.invoke(this)
-            if (titleContent != null) {
+            if (headRowTabs != null) {
+                Box(Modifier.weight(1f), contentAlignment = Alignment.CenterStart) {
+                    RaftPaneGridHeadRowTabs(
+                        tabs = headRowTabs,
+                        contentDescription = stringResource(Res.string.pane_grid_row_tabs),
+                    )
+                }
+            } else if (titleContent != null) {
                 titleContent.invoke(this)
             } else {
                 val titleTapModifier =
@@ -397,10 +409,11 @@ internal fun RaftPanelBackHeader(
     // RaftTopPageHeader).
     val shownBack = onBack?.takeIf { raftSidePaneShowsBack() }
     val paneCloses = raftSidePaneHeadCloses(onBack)
+    val headRowTabs = LocalRaftPaneGridHeadTabs.current
     // iOS native navigation: the host's UINavigationBar draws this head (unless its Compose
     // buttons have no bar buttons mapped, see RaftTopPageHeader).
     val nativeHeadMapped =
-        leadingContent == null && !raftSideColumnActive() && raftNativeNavBarHeadMapped(trailingContent != null || paneCloses, nativeActions)
+        headRowTabs == null && leadingContent == null && !raftSideColumnActive() && raftNativeNavBarHeadMapped(trailingContent != null || paneCloses, nativeActions)
     if (!nativeHeadMapped) RaftNativeNavBarDecline()
     if (
         nativeHeadMapped &&
@@ -449,30 +462,39 @@ internal fun RaftPanelBackHeader(
                     RaftBackButton(onClick = onBack, label = stringResource(Res.string.common_back))
                 }
                 leadingContent?.invoke()
-                Column(
-                    // Title tap is a hidden shortcut (scroll to top), not a control: no press wash.
-                    modifier =
-                        Modifier.weight(1f).clickable(
-                            interactionSource = remember { MutableInteractionSource() },
-                            indication = null,
-                            enabled = onTitleClick != null
-                        ) { onTitleClick?.invoke() },
-                ) {
-                    Text(
-                        text = title,
-                        style = RaftPanelHeaderTitleStyle,
-                        color = RaftColor.TextBlack,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                    subtitle?.takeIf { it.isNotBlank() }?.let {
+                if (headRowTabs != null) {
+                    Box(Modifier.weight(1f), contentAlignment = Alignment.CenterStart) {
+                        RaftPaneGridHeadRowTabs(
+                            tabs = headRowTabs,
+                            contentDescription = stringResource(Res.string.pane_grid_row_tabs),
+                        )
+                    }
+                } else {
+                    Column(
+                        // Title tap is a hidden shortcut (scroll to top), not a control: no press wash.
+                        modifier =
+                            Modifier.weight(1f).clickable(
+                                interactionSource = remember { MutableInteractionSource() },
+                                indication = null,
+                                enabled = onTitleClick != null
+                            ) { onTitleClick?.invoke() },
+                    ) {
                         Text(
-                            text = it,
-                            style = RaftType.Caption,
-                            color = RaftColor.ForegroundHint,
+                            text = title,
+                            style = RaftPanelHeaderTitleStyle,
+                            color = RaftColor.TextBlack,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
                         )
+                        subtitle?.takeIf { it.isNotBlank() }?.let {
+                            Text(
+                                text = it,
+                                style = RaftType.Caption,
+                                color = RaftColor.ForegroundHint,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
                     }
                 }
                 if (refreshing) {

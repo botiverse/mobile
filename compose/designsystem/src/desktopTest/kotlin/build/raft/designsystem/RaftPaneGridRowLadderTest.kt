@@ -1,7 +1,10 @@
 package build.raft.designsystem
 
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.foundation.layout.wrapContentSize
 import androidx.compose.runtime.Composable
@@ -25,6 +28,7 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.test.runComposeUiTest
 import androidx.compose.ui.unit.dp
+import build.raft.designsystem.components.LocalRaftPaneGridHeadTabs
 import build.raft.designsystem.components.LocalRaftPaneGridSizes
 import build.raft.designsystem.components.RAFT_PANE_GRID_COLUMN_TEST_TAG
 import build.raft.designsystem.components.RAFT_PANE_GRID_TABS_TEST_TAG
@@ -32,13 +36,17 @@ import build.raft.designsystem.components.RaftPaneGrid
 import build.raft.designsystem.components.RaftPaneGridCell
 import build.raft.designsystem.components.RaftPaneGridColumn
 import build.raft.designsystem.components.RaftPaneGridColumnBounds
+import build.raft.designsystem.components.RaftPaneGridHeadRowTabs
 import build.raft.designsystem.components.RaftPaneGridMemorySizes
 import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.RaftAppearance
+import build.raft.designsystem.theme.RaftPointerInput
 import build.raft.designsystem.theme.RaftTheme
 import kotlin.math.abs
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /**
@@ -55,10 +63,11 @@ class RaftPaneGridRowLadderTest {
     private val profile = RaftPaneGridColumnBounds(id = "profile", defaultWidthDp = 400f, minWidthDp = 320f)
 
     private var rowWidth by mutableStateOf(2000f)
+    private var pointer by mutableStateOf(RaftPointerInput.Touch)
 
     private fun ComposeUiTest.showRow() {
         setContent {
-            RaftTheme(appearance = RaftAppearance.Light, systemDark = false) {
+            RaftTheme(appearance = RaftAppearance.Light, systemDark = false, pointerInput = pointer) {
                 val sizes = remember { RaftPaneGridMemorySizes() }
                 CompositionLocalProvider(LocalRaftPaneGridSizes provides sizes) {
                     // Wider than the test window: laid out from its start, unclipped by the window.
@@ -119,6 +128,96 @@ class RaftPaneGridRowLadderTest {
             onNodeWithText("Artifact").performSemanticsAction(SemanticsActions.OnClick)
             waitForIdle()
             onNodeWithTag(RAFT_PANE_GRID_TABS_TEST_TAG + artifact.id, useUnmergedTree = true).assertExists()
+        }
+
+    @Test
+    fun standaloneRowTabStripMatchesShellHeadHeightByTouchAndFinePointer() =
+        runComposeUiTest {
+            rowWidth = 700f
+            pointer = RaftPointerInput.Touch
+            showRow()
+            val tabTag = RAFT_PANE_GRID_TABS_TEST_TAG + artifact.id
+            val touchHeight = with(density) { onNodeWithTag(tabTag, useUnmergedTree = true).fetchSemanticsNode().size.height.toDp().value }
+            assertTrue(abs(56f - touchHeight) <= 1f, "touch tab strip height should be 56dp, was $touchHeight")
+
+            pointer = RaftPointerInput.Fine
+            waitForIdle()
+            val fineHeight = with(density) { onNodeWithTag(tabTag, useUnmergedTree = true).fetchSemanticsNode().size.height.toDp().value }
+            assertTrue(abs(44f - fineHeight) <= 1f, "fine-pointer tab strip height should be 44dp, was $fineHeight")
+        }
+
+    @Test
+    fun mainHeadCarriesTabsHandsUpWithoutExtraStripAndOnlyTopCellReceivesHeadTabs() =
+        runComposeUiTest {
+            var inputMode by mutableStateOf(RaftPointerInput.Touch)
+            var topCellTabsPresent: Boolean? = null
+            var bottomCellTabsPresent: Boolean? = null
+            setContent {
+                RaftTheme(appearance = RaftAppearance.Light, systemDark = false, pointerInput = inputMode) {
+                    val sizes = remember { RaftPaneGridMemorySizes() }
+                    CompositionLocalProvider(LocalRaftPaneGridSizes provides sizes) {
+                        Box(Modifier.wrapContentSize(Alignment.TopStart, unbounded = true).requiredSize(280.dp, 600.dp)) {
+                            RaftPaneGrid(
+                                columns =
+                                    listOf(
+                                        RaftPaneGridColumn(
+                                            cards,
+                                            "Resize cards",
+                                            listOf(
+                                                RaftPaneGridCell("tasks", 0.6f) {
+                                                    val headTabs = LocalRaftPaneGridHeadTabs.current
+                                                    topCellTabsPresent = headTabs != null
+                                                    Column(Modifier.fillMaxSize()) {
+                                                        Box(Modifier.fillMaxWidth().height(RaftTheme.controls.headHeight).testTag("cards-head")) {
+                                                            if (headTabs != null) RaftPaneGridHeadRowTabs(headTabs, "Row tabs")
+                                                        }
+                                                    }
+                                                },
+                                                RaftPaneGridCell("files", 0.4f) {
+                                                    bottomCellTabsPresent = LocalRaftPaneGridHeadTabs.current != null
+                                                    Cell("files")
+                                                },
+                                            ),
+                                            tabLabel = "Tasks · Files",
+                                            headCarriesTabs = true,
+                                        )
+                                    ),
+                                mainTabLabel = "Chat",
+                            ) {
+                                // Nested grid with empty own columns hands up mainHeadCarriesTabs = true to the outermost grid.
+                                RaftPaneGrid(columns = emptyList(), mainHeadCarriesTabs = true) {
+                                    val headTabs = LocalRaftPaneGridHeadTabs.current
+                                    Column(Modifier.fillMaxSize()) {
+                                        Box(Modifier.fillMaxWidth().height(RaftTheme.controls.headHeight).testTag("main-head")) {
+                                            if (headTabs != null) RaftPaneGridHeadRowTabs(headTabs, "Row tabs")
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            waitForIdle()
+            // Main header sits at y = 0 (no standalone strip pushed it down) and ends at 56dp (touch).
+            val mainBoundsTouch = onNodeWithTag("main-head", useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
+            assertTrue(abs(0f - with(density) { mainBoundsTouch.top.toDp().value }) <= 1f, "main head top should be 0dp")
+            assertTrue(abs(56f - with(density) { mainBoundsTouch.bottom.toDp().value }) <= 1f, "main head bottom should be 56dp")
+
+            // Switch to Tasks · Files tab: only top cell receives head tabs, bottom cell sees null.
+            onNodeWithText("Tasks · Files").performSemanticsAction(SemanticsActions.OnClick)
+            waitForIdle()
+            assertEquals(true, topCellTabsPresent, "top stacked cell should receive LocalRaftPaneGridHeadTabs")
+            assertEquals(false, bottomCellTabsPresent, "bottom stacked cell must not receive LocalRaftPaneGridHeadTabs")
+            val cardsBoundsTouch = onNodeWithTag("cards-head", useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
+            assertTrue(abs(0f - with(density) { cardsBoundsTouch.top.toDp().value }) <= 1f, "cards head top should be 0dp")
+            assertTrue(abs(56f - with(density) { cardsBoundsTouch.bottom.toDp().value }) <= 1f, "cards head bottom should be 56dp")
+
+            // Fine pointer tightens both to 44dp.
+            inputMode = RaftPointerInput.Fine
+            waitForIdle()
+            val cardsBoundsFine = onNodeWithTag("cards-head", useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
+            assertTrue(abs(44f - with(density) { cardsBoundsFine.bottom.toDp().value }) <= 1f, "fine cards head bottom should be 44dp")
         }
 
     private fun ComposeUiTest.onAllTabs(bounds: RaftPaneGridColumnBounds) =
