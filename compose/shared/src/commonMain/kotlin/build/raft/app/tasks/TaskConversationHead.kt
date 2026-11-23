@@ -38,6 +38,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.ui.platform.LocalDensity
 import build.raft.app.model.parseRaftTimestampEpochMillisOrNull
 import androidx.compose.material3.minimumInteractiveComponentSize
@@ -141,6 +142,7 @@ import build.raft.designsystem.components.RaftTimeline
 import build.raft.designsystem.components.RaftTimelineDetail
 import build.raft.designsystem.components.RaftTooltip
 import build.raft.designsystem.components.raftSafeAreaHorizontalPadding
+import build.raft.designsystem.components.raftComboboxPickerInPlace
 import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.RaftTheme
 import build.raft.designsystem.theme.RaftScale
@@ -326,7 +328,8 @@ private const val TaskHeadDescriptionCollapsedLines = 3
  * [taskHeadRowInView]) the top bar names the task's state ([collapsed]) and pulls the same head
  * down over the messages ([floatOpen], web `TaskHeadPullDown`, slock #11722): [toggleFloat] on the
  * bar. It closes on the bar again, a tap outside it, a swipe up on it, Back / Escape, focus in the
- * composer or the keyboard coming up ([closeFloat]), as soon as the reader scrolls the messages
+ * composer or the keyboard coming up ([closeFloat]; not for the search of a picker hanging from
+ * it, [floatPickerOpen]), as soon as the reader scrolls the messages
  * ([connection]) and when the row comes back in view. It never opens by itself.
  *
  * Every page lays the head out this way, a tablet's and a desktop window's too (artin 2026-11-19:
@@ -342,6 +345,12 @@ internal class TaskHeadScrollState {
 
     /** Delete task's confirmation is open (the ⋯ menu's Delete task, slock #14115). */
     internal var deleteConfirming by mutableStateOf(false)
+
+    /**
+     * A picker hangs from the pulled-down head (a wide window's assignee popup, in place): the
+     * keyboard its search brings up leaves the head down, or the popup would go with it.
+     */
+    internal var floatPickerOpen by mutableStateOf(false)
 
     /**
      * Some of the head's row is on screen (web: the row intersects the timeline). True until the
@@ -499,8 +508,9 @@ internal enum class TaskHeadPlacement {
 @Composable
 internal fun TaskConversationHeadPageEffects(scrollState: TaskHeadScrollState, keyboardUp: Boolean) {
     LaunchedEffect(scrollState, keyboardUp) {
-        // Typing: the composer has focus, so the pulled-down head goes back up.
-        if (keyboardUp) scrollState.closeFloat()
+        // Typing: the composer has focus, so the pulled-down head goes back up; not for the search
+        // of a picker that hangs from the head ([TaskHeadScrollState.floatPickerOpen]).
+        if (keyboardUp && !scrollState.floatPickerOpen) scrollState.closeFloat()
     }
 }
 
@@ -523,6 +533,8 @@ internal fun TaskHeadContent(
     onRetryHistory: (() -> Unit)? = null,
     /** Null: the title and description are plain text (no store to write to, or a read-only task). */
     editing: TaskHeadEditing? = null,
+    /** Composed in the assignee chip's box: the assignee picker hanging from it (a wide window's popup). */
+    assigneePicker: @Composable () -> Unit = {},
 ) {
     val editingField = editing?.state?.field
     val buttons =
@@ -549,7 +561,7 @@ internal fun TaskHeadContent(
                         editing?.takeIf { buttons.editDescription },
                     )
             }
-            TaskHeadFacts(model, onSelectStatus, onOpenAssignee, onOpenSource, onOpenEarlierDiscussion, onOpenCreator)
+            TaskHeadFacts(model, onSelectStatus, onOpenAssignee, onOpenSource, onOpenEarlierDiscussion, onOpenCreator, assigneePicker)
             TaskHeadHistorySection(model.history, initiallyHistoryOpen, onRetryHistory)
         }
     }
@@ -629,6 +641,7 @@ private fun TaskHeadFacts(
     onOpenSource: (() -> Unit)?,
     onOpenEarlierDiscussion: (() -> Unit)?,
     onOpenCreator: ((TaskHeadPerson) -> Unit)?,
+    assigneePicker: @Composable () -> Unit,
 ) {
     val bar = model.bar
     val statusLabel = bar.status.localizedLabel()
@@ -680,6 +693,8 @@ private fun TaskHeadFacts(
                         // The status badge's box (22dp chip): web InlineBadgeEditor draws both as the same chip.
                         size = RaftPickerTriggerSize.Chip,
                     )
+                    // In the chip's box, as the status menu is in its own: a popup in place anchors to it.
+                    assigneePicker()
                 }
             }
         }
@@ -1127,29 +1142,12 @@ internal fun TaskConversationHeadRoute(
         }
     }
     RaftDesignSystemTheme {
-        val content: @Composable () -> Unit = {
-            TaskHeadContent(
-                model = model,
-                onSelectStatus = onSelectStatus,
-                onOpenAssignee = onOpenAssignee,
-                onOpenSource = onOpenSource,
-                onOpenEarlierDiscussion = onOpenEarlierDiscussion,
-                onOpenCreator = onOpenCreator,
-                onRetryHistory = onRetryHistory,
-                editing = editing,
-            )
-        }
-        when (placement) {
-            TaskHeadPlacement.PullDown -> {
-                val label = task.taskNumber?.let { stringResource(Res.string.tasks_detail_task_identifier, it) } ?: task.title
-                TaskHeadFloat(scrollState = scrollState, label = label, content = content)
-            }
-            // The panel's frame without the panel: the head reads the same in the row as pulled down.
-            TaskHeadPlacement.FirstRow -> TaskHeadFrame(content)
-            TaskHeadPlacement.Page -> TaskConversationHeadPageEffects(scrollState, keyboardUp)
-        }
-        if (assigneeSheetOpen && model.bar.assigneeEditable) {
-            TaskConversationAssigneeSheet(
+        // On a wide window the picker opens in place, from the assignee chip of the head that was
+        // tapped; on a phone it is the bottom sheet, held here rather than in the head, so it stays
+        // when the keyboard of its search puts a pulled-down head back up.
+        val assigneeInPlace = raftComboboxPickerInPlace()
+        val assigneePicker: @Composable () -> Unit = {
+            TaskConversationAssigneePicker(
                 current = task.assignee,
                 candidates = taskConversationAssigneeCandidates(assigneeCandidates),
                 query = assigneeQuery,
@@ -1162,6 +1160,39 @@ internal fun TaskConversationHeadRoute(
                 onDismiss = { assigneeSheetOpen = false },
             )
         }
+        val assigneeOpen = assigneeSheetOpen && model.bar.assigneeEditable
+        if (placement == TaskHeadPlacement.PullDown) {
+            // A popup hanging from the pulled-down head keeps it down while the keyboard is up.
+            val hanging = assigneeInPlace && assigneeOpen
+            DisposableEffect(scrollState, hanging) {
+                scrollState.floatPickerOpen = hanging
+                onDispose { if (hanging) scrollState.floatPickerOpen = false }
+            }
+        }
+        val content: @Composable () -> Unit = {
+            TaskHeadContent(
+                model = model,
+                onSelectStatus = onSelectStatus,
+                onOpenAssignee = onOpenAssignee,
+                onOpenSource = onOpenSource,
+                onOpenEarlierDiscussion = onOpenEarlierDiscussion,
+                onOpenCreator = onOpenCreator,
+                onRetryHistory = onRetryHistory,
+                editing = editing,
+                assigneePicker = { if (assigneeInPlace && assigneeOpen) assigneePicker() },
+            )
+        }
+        when (placement) {
+            TaskHeadPlacement.PullDown -> {
+                val label = task.taskNumber?.let { stringResource(Res.string.tasks_detail_task_identifier, it) } ?: task.title
+                TaskHeadFloat(scrollState = scrollState, label = label, content = content)
+            }
+            // The panel's frame without the panel: the head reads the same in the row as pulled down.
+            TaskHeadPlacement.FirstRow -> TaskHeadFrame(content)
+            TaskHeadPlacement.Page -> TaskConversationHeadPageEffects(scrollState, keyboardUp)
+        }
+        // A phone's sheet (in place on a wide window: composed in the head above).
+        if (assigneeOpen && !assigneeInPlace) assigneePicker()
         // The page's own placement holds the confirmation (the ⋯ menu asks through [scrollState]).
         if (placement == TaskHeadPlacement.Page && scrollState.deleteConfirming && onDelete != null) {
             TaskDeleteConfirmDialog(

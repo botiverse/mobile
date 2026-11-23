@@ -49,8 +49,10 @@ internal object SharedTasksQueryToolbarTags {
  *
  * The applied filters come first and are filled; Clear all ends them (not the search, which has
  * its ×). Status is a multi-select menu with checkboxes, staying open while picking (as the
- * Computers Runtime filter); Channel, Creator and Assignee open their searchable sheets
- * ([onFilterClick] with `channel`, `creator`, `assignee`). Sort offers the web's three orders.
+ * Computers Runtime filter); Channel, Creator and Assignee open their searchable pickers
+ * ([onFilterClick] with `channel`, `creator`, `assignee`), which [filterPicker] draws next to
+ * the chip (a popover under it on a wide window, a sheet on a phone). Sort offers the web's
+ * three orders.
  *
  * As the toolbar narrows the search may give way to its button; opened over the scope, system
  * Back first empties it, then closes it (as Esc, and as the Members toolbar), and only while it
@@ -65,6 +67,8 @@ internal fun SharedTasksQueryToolbar(
     onModeSelected: (TasksViewMode) -> Unit,
     openFilterId: String?,
     onFilterClick: (String) -> Unit,
+    /** A filter's picker by its id, composed next to the filter's chip ([RaftFitToolbarChoice.popup]). */
+    filterPicker: @Composable (String) -> Unit = {},
 ) {
     val query = state.query
     var searchOpen by remember { mutableStateOf(false) }
@@ -81,7 +85,7 @@ internal fun SharedTasksQueryToolbar(
     val channelLabel = stringResource(Res.string.tasks_chip_channel)
     val creatorLabel = stringResource(Res.string.tasks_chip_creator)
     val assigneeLabel = stringResource(Res.string.tasks_chip_assignee)
-    // A filter that opens its sheet: its name, and how many it has chosen once applied (web "Assignee 1").
+    // A filter that opens its searchable picker: its name, and how many it has chosen once applied (web "Assignee 1").
     fun sheetChoice(id: String, label: String, icon: RaftLucideIconName, selected: Int, tag: String): Pair<RaftFitToolbarChoice, Boolean> =
         RaftFitToolbarChoice(
             text = if (selected == 0) label else "$label $selected",
@@ -92,6 +96,7 @@ internal fun SharedTasksQueryToolbar(
             applied = selected > 0 || openFilterId == id,
             testTag = tag,
             onOpen = { onFilterClick(id) },
+            popup = { filterPicker(id) },
         ) to (selected > 0)
     val status = tasksStatusFilterChoice(query.statuses, onIntent) to query.statuses.isNotEmpty()
     // Web order: Channel, Status, Creator, Assignee; the applied first.

@@ -63,7 +63,7 @@ import build.raft.designsystem.components.RaftDropdownMenu
 import build.raft.designsystem.components.RaftEmptyState
 import build.raft.designsystem.components.RaftFilterChip
 import build.raft.designsystem.components.RaftMenuItem
-import build.raft.designsystem.components.RaftMultiComboboxSheet
+import build.raft.designsystem.components.RaftMultiComboboxPicker
 import build.raft.designsystem.components.RaftPickerTriggerButton
 import build.raft.designsystem.components.RaftSegment
 import build.raft.designsystem.components.RaftSegmentedControl
@@ -385,8 +385,9 @@ private fun AgentMigrationLogDirectionChip(text: String, icon: RaftLucideIconNam
 }
 
 /**
- * Web `ListFilter`: a trigger that opens a list with search, several values at once. Applied, it
- * fills: one value shows its name, more the filter's name and how many.
+ * Web `ListFilter`: a trigger that opens a list with search, several values at once
+ * ([RaftMultiComboboxPicker]: under the trigger on a wide window, a bottom sheet on a phone).
+ * Applied, it fills: one value shows its name, more the filter's name and how many.
  */
 @Composable
 private fun <T> AgentMigrationLogListFilter(
@@ -404,33 +405,42 @@ private fun <T> AgentMigrationLogListFilter(
     var query by remember { mutableStateOf("") }
     val one = chosen.singleOrNull()?.let(chosenLabel)
     val spoken = one?.let { stringResource(Res.string.agent_migration_log_filter_value_label, name, it) }
-    RaftPickerTriggerButton(
-        text = one ?: if (chosen.size > 1) "$name ${chosen.size}" else name,
-        onClick = {
-            query = ""
-            open = true
-        },
-        modifier = Modifier.testTag(testTag).semantics { if (spoken != null) contentDescription = spoken },
-        hasValue = chosen.isNotEmpty(),
-        leadingIcon = { RaftSlotIcon(icon) },
-    )
-    if (!open) return
-    val noMatch = stringResource(Res.string.agent_migration_log_filter_no_match)
-    RaftMultiComboboxSheet(
-        values = chosen,
-        options = options,
-        onValuesChange = onChange,
-        onDismissRequest = { open = false },
-        title = name,
-        emptyText = { noMatch },
-        query = query,
-        onQueryChange = { query = it },
-        searchPlaceholder = searchPlaceholder,
-        doneLabel = stringResource(Res.string.common_done),
-        clearLabel = stringResource(Res.string.agent_migration_log_filter_clear),
-        optionLeading = optionLeading?.let { leading -> { option -> leading(option.value) } },
-    )
+    // The trigger's box: on a wide window the list hangs from it.
+    Box {
+        RaftPickerTriggerButton(
+            text = one ?: if (chosen.size > 1) "$name ${chosen.size}" else name,
+            onClick = {
+                query = ""
+                open = true
+            },
+            modifier = Modifier.testTag(testTag).semantics { if (spoken != null) contentDescription = spoken },
+            hasValue = chosen.isNotEmpty(),
+            leadingIcon = { RaftSlotIcon(icon) },
+        )
+        if (open) {
+            val noMatch = stringResource(Res.string.agent_migration_log_filter_no_match)
+            RaftMultiComboboxPicker(
+                expanded = true,
+                values = chosen,
+                options = options,
+                onValuesChange = onChange,
+                onDismissRequest = { open = false },
+                title = name,
+                emptyText = { noMatch },
+                query = query,
+                onQueryChange = { query = it },
+                searchPlaceholder = searchPlaceholder,
+                doneLabel = stringResource(Res.string.common_done),
+                clearLabel = stringResource(Res.string.agent_migration_log_filter_clear),
+                width = AgentMigrationLogFilterPopupWidth,
+                optionLeading = optionLeading?.let { leading -> { option -> leading(option.value) } },
+            )
+        }
+    }
 }
+
+/** web MigrationLogPage's `ListFilter`s (`w-[280px]`): the computer and agent filters' popup on a wide window. */
+private val AgentMigrationLogFilterPopupWidth = 280.dp
 
 private val AgentMigrationLogDays = listOf(null, 7, 30)
 

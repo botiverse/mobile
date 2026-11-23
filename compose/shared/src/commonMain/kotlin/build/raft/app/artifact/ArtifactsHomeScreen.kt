@@ -75,7 +75,7 @@ import build.raft.designsystem.components.RaftButton
 import build.raft.designsystem.components.RaftButtonSize
 import build.raft.designsystem.components.RaftButtonVariant
 import build.raft.designsystem.components.RaftComboboxOption
-import build.raft.designsystem.components.RaftComboboxSheet
+import build.raft.designsystem.components.RaftComboboxPicker
 import build.raft.designsystem.components.RaftDropdownMenu
 import build.raft.designsystem.components.RaftEmptyState
 import build.raft.designsystem.components.RaftIconTile
@@ -363,15 +363,34 @@ private fun ArtifactsHomeConversationFilter(state: ArtifactsHomeState, serverNam
     val conversationName =
         valueLabel?.let { stringResource(Res.string.artifacts_dashboard_conversation_applied, it) }
             ?: stringResource(Res.string.artifacts_dashboard_conversation_label)
-    RaftPickerTriggerButton(
-        text = valueLabel ?: stringResource(Res.string.artifacts_dashboard_conversation_label),
-        onClick = { onIntent(ArtifactsHomeIntent.OpenChoices(ArtifactsHomeChoiceKind.Conversation)) },
-        // web: named by the filter and its value ("Conversation: #proj").
-        modifier = Modifier.testTag(ArtifactsHomeTags.Conversation).semantics { contentDescription = conversationName },
-        hasValue = place != null,
-        leadingIcon = { RaftSlotIcon(artifactsHomePlaceIcon(place)) },
-    )
-    if (!choices.open) return
+    // The trigger's box: on a wide window the choices hang from it (web ArtifactFilterCombobox).
+    Box {
+        RaftPickerTriggerButton(
+            text = valueLabel ?: stringResource(Res.string.artifacts_dashboard_conversation_label),
+            onClick = { onIntent(ArtifactsHomeIntent.OpenChoices(ArtifactsHomeChoiceKind.Conversation)) },
+            // web: named by the filter and its value ("Conversation: #proj").
+            modifier = Modifier.testTag(ArtifactsHomeTags.Conversation).semantics { contentDescription = conversationName },
+            hasValue = place != null,
+            leadingIcon = { RaftSlotIcon(artifactsHomePlaceIcon(place)) },
+        )
+        if (choices.open) ArtifactsHomeConversationChoices(state, homeLabels, whoTitle, groupTitle, onIntent)
+    }
+}
+
+/**
+ * The Conversation filter's choices while open ([ArtifactsHomeConversationFilter]): a searchable
+ * pick of one ([RaftComboboxPicker]), under the trigger on a wide window, a bottom sheet on a phone.
+ */
+@Composable
+private fun ArtifactsHomeConversationChoices(
+    state: ArtifactsHomeState,
+    homeLabels: Map<ArtifactsHomeScope, String>,
+    whoTitle: String,
+    groupTitle: String,
+    onIntent: (ArtifactsHomeIntent) -> Unit,
+) {
+    val choices = state.conversationChoices
+    val place = state.query.place
     val conversations = state.shownConversationChoices
     val options =
         ArtifactsHomeScope.entries.map { scope ->
@@ -390,7 +409,8 @@ private fun ArtifactsHomeConversationFilter(state: ArtifactsHomeState, serverNam
     val failedText = stringResource(Res.string.artifacts_dashboard_conversation_failed)
     val loadingText = stringResource(Res.string.common_loading)
     val noMatch = stringResource(Res.string.artifacts_dashboard_conversation_no_match)
-    RaftComboboxSheet(
+    RaftComboboxPicker(
+        expanded = true,
         value = when (place) {
             is ArtifactsHomePlace.Home -> HomeValuePrefix + place.scope.wire
             is ArtifactsHomePlace.Conversation -> place.conversation.id
@@ -415,8 +435,12 @@ private fun ArtifactsHomeConversationFilter(state: ArtifactsHomeState, serverNam
         searchPlaceholder = stringResource(Res.string.artifacts_dashboard_conversation_search_placeholder),
         onClear = { onIntent(ArtifactsHomeIntent.SetPlace(null)) },
         clearLabel = stringResource(Res.string.artifacts_dashboard_conversation_clear),
+        width = ArtifactsHomeFilterPopupWidth,
     )
 }
+
+/** web ArtifactFilterCombobox `w-[320px]`: the filters' popup on a wide window. */
+private val ArtifactsHomeFilterPopupWidth = 320.dp
 
 private fun artifactsHomeChoicesEmptyText(phase: ArtifactsHomeChoicesPhase, failed: String, loading: String, noMatch: String): String =
     when (phase) {
@@ -460,14 +484,31 @@ private fun ArtifactsHomeAuthorFilter(state: ArtifactsHomeState, readerId: Strin
     val authorName =
         authorLabel?.let { stringResource(Res.string.artifacts_dashboard_author_applied, it) }
             ?: stringResource(Res.string.artifacts_dashboard_author_label)
-    RaftPickerTriggerButton(
-        text = authorLabel ?: stringResource(Res.string.artifacts_dashboard_author_label),
-        onClick = { onIntent(ArtifactsHomeIntent.OpenChoices(ArtifactsHomeChoiceKind.Author)) },
-        modifier = Modifier.testTag(ArtifactsHomeTags.Author).semantics { contentDescription = authorName },
-        hasValue = chosen != null,
-        leadingIcon = { RaftSlotIcon(RaftLucideIconName.CircleUser) },
-    )
-    if (!choices.open) return
+    // The trigger's box: on a wide window the choices hang from it (web ArtifactFilterCombobox).
+    Box {
+        RaftPickerTriggerButton(
+            text = authorLabel ?: stringResource(Res.string.artifacts_dashboard_author_label),
+            onClick = { onIntent(ArtifactsHomeIntent.OpenChoices(ArtifactsHomeChoiceKind.Author)) },
+            modifier = Modifier.testTag(ArtifactsHomeTags.Author).semantics { contentDescription = authorName },
+            hasValue = chosen != null,
+            leadingIcon = { RaftSlotIcon(RaftLucideIconName.CircleUser) },
+        )
+        if (choices.open) ArtifactsHomeAuthorChoices(state, readerId, unknown, onIntent)
+    }
+}
+
+/**
+ * The Author filter's choices while open ([ArtifactsHomeAuthorFilter]): a searchable pick of one
+ * ([RaftComboboxPicker]), under the trigger on a wide window, a bottom sheet on a phone.
+ */
+@Composable
+private fun ArtifactsHomeAuthorChoices(
+    state: ArtifactsHomeState,
+    readerId: String?,
+    unknown: String,
+    onIntent: (ArtifactsHomeIntent) -> Unit,
+) {
+    val choices = state.authorChoices
     val authors = state.shownAuthorChoices
     val agentTag = stringResource(Res.string.artifacts_dashboard_agent_tag)
     val yourAssistant = stringResource(Res.string.artifacts_dashboard_author_your_assistant)
@@ -490,7 +531,8 @@ private fun ArtifactsHomeAuthorFilter(state: ArtifactsHomeState, readerId: Strin
     val failedText = stringResource(Res.string.artifacts_dashboard_author_failed)
     val loadingText = stringResource(Res.string.common_loading)
     val noMatch = stringResource(Res.string.artifacts_dashboard_author_no_match)
-    RaftComboboxSheet(
+    RaftComboboxPicker(
+        expanded = true,
         value = state.query.author,
         options = options,
         onValueChange = { value -> onIntent(ArtifactsHomeIntent.SetAuthor(authors.firstOrNull { it.filterValue == value })) },
@@ -502,6 +544,7 @@ private fun ArtifactsHomeAuthorFilter(state: ArtifactsHomeState, readerId: Strin
         searchPlaceholder = stringResource(Res.string.artifacts_dashboard_author_search_placeholder),
         onClear = { onIntent(ArtifactsHomeIntent.SetAuthor(null)) },
         clearLabel = stringResource(Res.string.artifacts_dashboard_author_clear),
+        width = ArtifactsHomeFilterPopupWidth,
     )
 }
 
