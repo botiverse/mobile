@@ -5,6 +5,9 @@
 @import "./components/steps/otter-indicator.css";
 @import "./components/virtual-list/styles/virtual-list.css";
 @import "./components/scroll-area/scroll-area.css";
+/* The small-size marks of ricons' icons (packages/icons), so an app that loads
+   this stylesheet needs no import of ricons' own. */
+@import "@botiverse/ricons/styles.css";
 
 /* `dark:` follows the nearest explicit mode class, and before hydration the
    system preference. A `.light` island inside a dark page re-enters light
@@ -126,19 +129,39 @@
 }
 
 /* A column's content margin (design/foundations/alignment.md#usage): 16px on a
-   phone, 20px from 768px (`md`). Heads, notices and footers pad by it
-   (lib/head-edges.ts). A column of list cells sets it to 20px at every width
-   (`listColumnMargin`), where its rows' content starts (8px shape inset +
-   12px), so its head, toolbar and rows share one line on a phone too. */
+   phone, 20px from 768px (`md`) on a touch screen, 16px with a mouse. Heads, notices and footers pad by it
+   (lib/head-edges.ts). A column of list cells sets it to where its rows'
+   content starts (`listColumnMargin`): 20px at every width by touch (8px shape
+   inset + 12px), the 16px page inset with a mouse (8 + 8), so its head,
+   toolbar and rows share one line on a phone too. */
 @layer theme {
   :root,
   :host {
+    /* A surface's own padding (a dialog, a drawer, a panel section): 20px, the
+       page inset (16px) with a mouse on a desktop. One variable, so a caller's
+       `px-0` still replaces it (stdrc, 2026-11-05). */
+    --surface-inset: 20px;
     --column-margin: 16px;
+    /* The sidebar's two axes with a mouse on a desktop (stdrc, 2026-11-05,
+       option B): glyphs (a row's icon or avatar, a section's title) start on
+       the glyph axis, a row's text on the text axis; a row's shape is the
+       box inset from the sidebar's edges, its content 8px inside it. */
+    --sidebar-glyph-axis: var(--page-inset);
+    --sidebar-text-axis: calc(var(--sidebar-glyph-axis) + 24px);
   }
   @media (width >= 48rem) {
     :root,
     :host {
       --column-margin: 20px;
+    }
+  }
+  /* With a mouse on a desktop 16px, the page inset: the compact heads and the
+     content under them share one tighter edge (stdrc, 2026-11-05). */
+  @media (width >= 48rem) and (pointer: fine) {
+    :root,
+    :host {
+      --column-margin: var(--page-inset);
+      --surface-inset: var(--page-inset);
     }
   }
 }
@@ -178,6 +201,34 @@
       --text-control--line-height: 22px;
     }
   }
+}
+
+/* Raft Design System layer order (design/foundations/elevation.md#layer-order).
+   Each name is an ordinary Tailwind `z-*` utility (`z-raised`, `max-md:z-chrome`,
+   `before:z-below`) and a variable for CSS (`var(--z-index-sticky)`). In-page
+   layers stay below 50, where the overlays begin; nothing sits above toasts or
+   the drag lift. `z-below`, `z-base` and `z-raised` are local: the component's
+   root is `isolate`, so they rank parts inside it only. A component that needs
+   a third local layer orders it by DOM order inside its own `isolate`.
+   Static, so every variable exists for an app's own CSS whether or not a
+   utility uses it. `z-index-named.test.ts` keeps the order. */
+@theme static {
+  --z-index-below: -1;
+  --z-index-base: 0;
+  --z-index-raised: 1;
+  --z-index-control: 10;
+  --z-index-sticky: 20;
+  --z-index-float: 30;
+  --z-index-chrome: 35;
+  --z-index-cover: 40;
+  --z-index-app: 45;
+  --z-index-scrollbar: 49;
+  --z-index-popup: 50;
+  --z-index-dialog: 50;
+  --z-index-dialog-layer: 60;
+  --z-index-lightbox: 70;
+  --z-index-toast: 80;
+  --z-index-drag: 999;
 }
 
 @theme inline {
@@ -398,7 +449,7 @@
   --spacing-control-hit: var(--control-hit-inset);
   /* A chip or a button embedded in a frame sits `embedded-inset` (6px) inside
      the frame's outer edge on every side and from its sibling; in a field it
-     is `control-embedded` tall, 20px on a desktop and 32px on a phone, so the
+     is `control-embedded` tall, 22px on a desktop and 32px on a phone, so the
      field keeps the control height (design/foundations/shape.md#inside-a-frame).
      Consumers: `ComboboxChips`, `ComboboxControl`, `ComboboxSelect`,
      InputGroup's end addon, the composer, CodeBlock and the corner actions of
@@ -444,8 +495,8 @@
      Consumers: `SelectItem`, `ComboboxItem`, the menu items of `DropdownMenu`
      and `ContextMenu`, and `.r-combobox-select__option` (which writes the same
      calc in its CSS). */
-  --spacing-option: 2.25rem;
-  --spacing-option-inset: calc((2.25rem - 1lh) / 2);
+  --spacing-option: var(--option-height);
+  --spacing-option-inset: calc((var(--option-height) - 1lh) / 2);
   /* ─── Icon inset ────────────────────────────────────────────────────────────
      How far a frameless icon button's icon box sits inside its edge:
      (button - icon) / 2. 7px for a 32px button with an 18px icon, 11px for a
@@ -627,28 +678,18 @@ textarea:-webkit-autofill:disabled {
   background-image: linear-gradient(var(--located-fill), var(--located-fill));
 }
 
+/* Held by a tour stop: full info-soft while the coach mark on it is open, no
+   fade, no timeout (design/foundations/states.md#located). CoachMark sets
+   data-located="held" on its target and removes it when the stop closes. */
+[data-located="held"]:not(.list-cell),
+.list-cell[data-located="held"]::before {
+  animation: raft-located-still 1s linear infinite;
+}
+
 /* Reduced motion: the same 2s, held still, then off without a fade. */
 @media (prefers-reduced-motion: reduce) {
   [data-located] {
     --located-animation: raft-located-still;
-  }
-}
-
-/* An icon drawn twice: a drawn icon whose mark gets lost at 16px carries a
-   second mark for small sizes (design/foundations/iconography.md). The svg is
-   its own size container; below 18px the small mark replaces the default one.
-   Without this stylesheet, the small mark's display="none" keeps the default. */
-[data-icon-sizes] {
-  container-type: inline-size;
-}
-
-@container (width < 18px) {
-  [data-icon-mark="default"] {
-    display: none;
-  }
-
-  [data-icon-mark="small"] {
-    display: inline;
   }
 }
 
@@ -665,7 +706,8 @@ textarea:-webkit-autofill:disabled {
    mask-fade-t / mask-fade-b fade the top or bottom edge over fade-content
    (48px), where content is cut: a fold, a glimpse. mask-fade-x fades the
    sides of a strip that scrolls sideways over fade-edge (24px), on the side
-   its data-overflow names (start, end or both) and nowhere without it.
+   its data-overflow names (start, end or both; logical, so mirrored in
+   right-to-left) and nowhere without it.
    mask-fade-t-edge / mask-fade-b-edge take the edge length instead, for a
    fold too short to give 48px to the fade. */
 @utility mask-fade-t {
@@ -690,6 +732,13 @@ textarea:-webkit-autofill:disabled {
   }
   &[data-overflow="end"] {
     mask-image: linear-gradient(to left, transparent, oklch(0 0 0) var(--fade-edge));
+  }
+  /* start and end are logical: in right-to-left the start is the right side. */
+  &[data-overflow="start"]:dir(rtl) {
+    mask-image: linear-gradient(to left, transparent, oklch(0 0 0) var(--fade-edge));
+  }
+  &[data-overflow="end"]:dir(rtl) {
+    mask-image: linear-gradient(to right, transparent, oklch(0 0 0) var(--fade-edge));
   }
   &[data-overflow="both"] {
     mask-image: linear-gradient(
@@ -730,6 +779,33 @@ textarea:-webkit-autofill:disabled {
   background-color: var(--fill-subtle);
 }
 
+/* MessageItemTrailing (message-item.md#trailing): no column of its own. The
+   slot finds its body's last block itself and stamps it, so every rule ends in
+   an attribute (packages/ui/CLAUDE.md, Selector Cost; no parent-of selector
+   either, #386):
+   - data-trailing-line on the last text block (a paragraph, a heading, a
+     list's last item, a quote's last paragraph): it keeps an inline spacer as
+     wide as the slot (--message-trailing-width, set on the body), so the slot
+     sits at the end of the last line and the text wraps under it only when
+     that line is full;
+   - data-trailing="block" on the body when it ends with any other block (a
+     code block, a table, an image): the body keeps one line under it, where
+     the slot sits.
+   The body is the slot's containing block; the last block's bottom margin
+   still collapses out of it, so the slot stays on the last line. */
+[data-slot="message-item-body"][data-trailing] {
+  position: relative;
+}
+[data-slot="message-item-body"][data-trailing="block"] {
+  padding-block-end: 1lh;
+}
+[data-trailing-line]::after {
+  content: "";
+  display: inline-block;
+  inline-size: var(--message-trailing-width, 0px);
+  block-size: 1px;
+}
+
 @utility image-transparency-bg {
   --checker-cell: light-dark(oklch(0.1813 0.00497 17.62 / 0.12), oklch(1 0 0 / 0.1));
   background-color: light-dark(oklch(1 0 0), oklch(0.23 0 0));
@@ -754,8 +830,8 @@ textarea:-webkit-autofill:disabled {
    cards) and a row whose menu is open.
    overlay-medium: hover on small controls and press on everything; on a colour
    sticker overlay-sticker-medium, on the frame overlay-frame-medium.
-   Use the bg-fill-* colours instead on a transparent control whose fill fades
-   in with transition-colors. */
+   Use the bg-fill-* colours instead on a transparent control. Neither fades:
+   hover and press change at once (design/foundations/motion.md). */
 /* Theme decorations on the frame (themes.css): the theme's sprites on the top
    bar's right and above the rail's foot; none without a decorated theme. */
 /* The top bar's strip (190px) ends --frame-decor-top-end (72px if unset)
@@ -846,8 +922,9 @@ textarea:-webkit-autofill:disabled {
   --list-cell: 1;
 }
 
-/* The scrollbar of a scroller that holds list cells (design/patterns/
-   lists.md): an 8px classic scrollbar with a 4px thumb, so a cell's
+/* For a native scroller of list cells that can't be a ScrollArea
+   (design/patterns/lists.md; raft-ui's own list scrollers are ScrollAreas,
+   whose overlay scrollbar takes no room): an 8px classic scrollbar with a 4px thumb, so a cell's
    end inset can come out of the scrollbar's own width and its fill sits 8px
    from both edges of the list. Styling ::-webkit-scrollbar makes Chromium
    draw this classic, always-visible 8px bar even where the platform's own
