@@ -118,6 +118,7 @@ import build.raft.app.parseRaftJsonObjectOrNull
 import build.raft.app.renderThreadShareImageBitmap
 import build.raft.app.toRaftJsonString
 import androidx.compose.runtime.CompositionLocalProvider
+import build.raft.app.LocalThreadUseVirtualTimeline
 import androidx.compose.ui.platform.ComposeView
 import build.raft.app.compat.ui.LocalRaftHostImeInsets
 import build.raft.app.compat.ui.RaftHostImeInsets
@@ -1200,7 +1201,11 @@ internal open class RaftCmpActivity :
                     // This window's own focus bookkeeping: another app window's dialog or focused
                     // field never decides this window's composer focus (RaftWindowFocusScope).
                     RaftWindowFocusScope(coordinator = windowFocusCoordinator) {
-                        CompositionLocalProvider(LocalRaftHostImeInsets provides hostImeInsets) {
+                        CompositionLocalProvider(
+                            LocalRaftHostImeInsets provides hostImeInsets,
+                            // EXP #268 (non-merged experimental branch only): enable VirtualMessageTimeline in alpha APKs for on-device feel testing.
+                            LocalThreadUseVirtualTimeline provides true,
+                        ) {
                             RaftCmpToastLayer {
                                 RaftToastHostImeBottomInset()
                                 if (stack == null) {

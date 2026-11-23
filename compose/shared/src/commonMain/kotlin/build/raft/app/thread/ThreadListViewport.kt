@@ -31,7 +31,7 @@ internal val LocalThreadReverseLayout = staticCompositionLocalOf { false }
  * `VirtualMessageTimeline` (`LazyLayout`, forward-ordered, persistent Fenwick height index,
  * coalesced system rows, native bottom pinning & reading anchor compensation).
  */
-internal val LocalThreadUseVirtualTimeline = staticCompositionLocalOf { false }
+val LocalThreadUseVirtualTimeline = staticCompositionLocalOf { false }
 
 /**
  * The thread message list seen in forward (top-to-bottom, oldest-first) terms, whichever backend
