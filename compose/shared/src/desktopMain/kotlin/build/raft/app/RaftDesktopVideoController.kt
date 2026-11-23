@@ -47,6 +47,7 @@ data class RaftDesktopVideoSnapshot(
     val state: PlayState,
     val currentMs: Int,
     val totalMs: Int,
+    /** A picture of the video is on screen: the pages drop their spinner. */
     val firstFrame: Boolean,
 )
 
@@ -54,10 +55,20 @@ data class RaftDesktopVideoSnapshot(
  * The desktop video host's logic, kept apart from the native player and from Compose UI so it can
  * be tested headless. Mirrors the iOS controller (RaftVideoPlayer.ios.kt):
  * - the shared [VideoPlayControl] is applied only when it changes; `PREPLAY` opens the media paused
- *   (first frame, no playback), `STOP` stops and drops the media;
+ *   and puts its first frame on screen (no playback, no sound), `STOP` stops and drops the media;
  * - a seek request is applied once per distinct id;
  * - the on-video controls ([togglePlay], [seekToFraction], [toggleMuted], [changeVolume]) act on the
  *   player directly, like Media3's / AVKit's own controllers on mobile.
+ *
+ * The first frame of a `PREPLAY` open takes a warm-up. ComposeMediaPlayer's macOS backend (0.11.4)
+ * moves frames to the screen only while it plays: for a media opened paused, its native first-frame
+ * capture runs before AVFoundation has decoded anything, so the video stayed a black box until it
+ * was played. Once the media has loaded, [poll] silences the player, plays it until its clock has
+ * moved [RAFT_DESKTOP_VIDEO_WARM_UP_SECONDS] (frames are on screen by then), pauses it, takes it
+ * back to the start and gives the volume back. The pages never see it: the state stays paused at
+ * 0:00, and [RaftDesktopVideoSnapshot.firstFrame] turns true once it is done. Play during the
+ * warm-up plays from the start with sound; a pause leaves it to end paused; a seek lands when it
+ * ends. Re-check when bumping the library: once a paused open draws its first frame, drop it.
  */
 class RaftDesktopVideoController(
     private val source: String,
@@ -70,6 +81,16 @@ class RaftDesktopVideoController(
     private var hostMuted = false
     private var firstFrameReported = false
     private var playRequested = false
+
+    /** Where the first-frame warm-up stands (state: the on-video controls read it through [isPlaying]). */
+    private var warmUp by mutableStateOf(RaftDesktopVideoWarmUp.Off)
+
+    /**
+     * Where the video is shown to be (0..1 of the duration) during the warm-up and, after it, until
+     * the next play or seek: the start, or a seek asked for meanwhile. The player's own clock moved
+     * during the warm-up, and after its paused rewind it reads the old time for a while.
+     */
+    private var pinnedFraction by mutableStateOf<Float?>(null)
 
     /** Set from the player's end callback (any thread); cleared by play and seek. */
     @Volatile
@@ -88,14 +109,28 @@ class RaftDesktopVideoController(
     var ended by mutableStateOf(false)
         private set
 
-    val isPlaying: Boolean get() = !released && engine.isPlaying
+    /** Playing as the user sees it: the warm-up's silent playback does not count. */
+    val isPlaying: Boolean get() = !released && warmUp == RaftDesktopVideoWarmUp.Off && engine.isPlaying
+
+    /** A `PREPLAY` open is still putting its first frame on screen: the host polls faster meanwhile. */
+    val preparingFirstFrame: Boolean get() = !released && warmUp != RaftDesktopVideoWarmUp.Off
 
     val failed: Boolean get() = !released && engine.failed
 
     /** The source turned out to have no video track: the host shows its "not available" notice. */
     val noVideoTrack: Boolean get() = !released && engine.failed && engine.failedWithoutVideo
 
-    val positionMs: Int get() = raftDesktopVideoMillis(if (ended) engine.durationSeconds else engine.positionSeconds)
+    val positionMs: Int
+        get() {
+            val pinned = pinnedFraction
+            return raftDesktopVideoMillis(
+                when {
+                    pinned != null -> pinned * engine.durationSeconds
+                    ended -> engine.durationSeconds
+                    else -> engine.positionSeconds
+                }
+            )
+        }
 
     val durationMs: Int get() = raftDesktopVideoMillis(engine.durationSeconds)
 
@@ -138,15 +173,24 @@ class RaftDesktopVideoController(
         if (released) return
         when {
             engine.failed -> retry()
-            engine.isPlaying -> pause()
+            isPlaying -> pause()
             else -> play()
         }
     }
 
     fun seekToFraction(fraction: Float) {
         if (released || engine.durationSeconds <= 0.0) return
+        val clamped = fraction.coerceIn(0f, 1f)
+        if (warmUp != RaftDesktopVideoWarmUp.Off) {
+            // The warm-up ends there instead of at the start.
+            pinnedFraction = clamped
+            // While it plays silently, the player gets there when it ends.
+            if (warmUp == RaftDesktopVideoWarmUp.Playing || warmUp == RaftDesktopVideoWarmUp.Pausing) return
+        } else {
+            pinnedFraction = null
+        }
         markEnded(false)
-        engine.seekToFraction(fraction.coerceIn(0f, 1f))
+        engine.seekToFraction(clamped)
     }
 
     fun seekToMs(timeMs: Int) {
@@ -178,11 +222,20 @@ class RaftDesktopVideoController(
         markEnded(true)
     }
 
+    /** One tick of the host: moves the first-frame warm-up along, then reads the player. */
+    fun poll(): RaftDesktopVideoSnapshot {
+        advanceWarmUp()
+        return snapshot()
+    }
+
     fun snapshot(): RaftDesktopVideoSnapshot {
+        val warmingUp = warmUp != RaftDesktopVideoWarmUp.Off
         val state =
             when {
                 released -> PlayState.NONE
                 engine.failed -> PlayState.ERROR
+                // The warm-up is not playback: the pages see the media paused at its start.
+                warmingUp -> if (engine.hasMedia) PlayState.PAUSED else PlayState.NONE
                 endedFlag -> PlayState.PLAY_END
                 engine.isPlaying && engine.isLoading -> PlayState.BUFFERING
                 engine.isPlaying -> PlayState.PLAYING
@@ -190,9 +243,14 @@ class RaftDesktopVideoController(
                 playRequested && opened -> PlayState.BUFFERING
                 else -> PlayState.NONE
             }
-        if (ended != endedFlag) ended = endedFlag
-        val firstFrame = !released && engine.hasMedia && !engine.failed
-        if (firstFrame) firstFrameReported = true
+        if (!warmingUp && ended != endedFlag) ended = endedFlag
+        // Frames reach the screen while the player plays, and the last one stays when it stops at
+        // the end. A media opened paused gets its frame from the warm-up (finishWarmUp).
+        if (!released && !warmingUp && !engine.failed && engine.hasMedia &&
+            (endedFlag || (engine.isPlaying && engine.positionSeconds > 0.0))
+        ) {
+            firstFrameReported = true
+        }
         return RaftDesktopVideoSnapshot(
             state = state,
             currentMs = positionMs,
@@ -210,8 +268,47 @@ class RaftDesktopVideoController(
     private fun openIfNeeded(autoplay: Boolean) {
         if (opened || source.isBlank()) return
         opened = true
+        // Opened paused (PREPLAY): the warm-up puts the first frame up once the media has loaded.
+        warmUp = if (autoplay) RaftDesktopVideoWarmUp.Off else RaftDesktopVideoWarmUp.Opening
+        pinnedFraction = if (autoplay) null else 0f
         engine.open(source, autoplay)
         applyVolume()
+    }
+
+    /** One step of the warm-up per poll, so each step has reached the player before the next. */
+    private fun advanceWarmUp() {
+        if (released || engine.failed) return
+        when (warmUp) {
+            RaftDesktopVideoWarmUp.Off -> Unit
+            RaftDesktopVideoWarmUp.Opening ->
+                if (engine.hasMedia) {
+                    warmUp = RaftDesktopVideoWarmUp.Silencing
+                    applyVolume()
+                }
+            RaftDesktopVideoWarmUp.Silencing -> {
+                warmUp = RaftDesktopVideoWarmUp.Playing
+                engine.play()
+            }
+            RaftDesktopVideoWarmUp.Playing ->
+                when {
+                    // Shorter than the warm-up: it stopped at the end, its last frame on screen.
+                    endedFlag && !engine.isPlaying -> finishWarmUp()
+                    engine.isPlaying && engine.positionSeconds >= RAFT_DESKTOP_VIDEO_WARM_UP_SECONDS -> {
+                        warmUp = RaftDesktopVideoWarmUp.Pausing
+                        engine.pause()
+                    }
+                }
+            // The volume comes back only once the player has stopped.
+            RaftDesktopVideoWarmUp.Pausing -> if (!engine.isPlaying) finishWarmUp()
+        }
+    }
+
+    private fun finishWarmUp() {
+        warmUp = RaftDesktopVideoWarmUp.Off
+        markEnded(false)
+        engine.seekToFraction(pinnedFraction ?: 0f)
+        applyVolume()
+        firstFrameReported = true
     }
 
     private fun play() {
@@ -221,6 +318,11 @@ class RaftDesktopVideoController(
             openIfNeeded(autoplay = true)
             return
         }
+        if (warmUp != RaftDesktopVideoWarmUp.Off) {
+            playFromWarmUp()
+            return
+        }
+        pinnedFraction = null
         if (endedFlag) {
             markEnded(false)
             engine.seekToFraction(0f)
@@ -228,15 +330,33 @@ class RaftDesktopVideoController(
         engine.play()
     }
 
+    /** Play during the warm-up: from where the video is shown to be (the start, or a seek), with sound. */
+    private fun playFromWarmUp() {
+        val moved = warmUp == RaftDesktopVideoWarmUp.Playing || warmUp == RaftDesktopVideoWarmUp.Pausing
+        val target = pinnedFraction ?: 0f
+        warmUp = RaftDesktopVideoWarmUp.Off
+        pinnedFraction = null
+        markEnded(false)
+        // Back to that point before the sound comes back.
+        if (moved) engine.seekToFraction(target)
+        applyVolume()
+        engine.play()
+    }
+
     private fun pause() {
         if (released) return
         playRequested = false
+        // The warm-up is silent and ends paused by itself.
+        if (warmUp != RaftDesktopVideoWarmUp.Off) return
         if (opened) engine.pause()
     }
 
     private fun stop() {
         playRequested = false
         markEnded(false)
+        // A stop during the warm-up leaves the player silenced; the next open sets the volume again.
+        warmUp = RaftDesktopVideoWarmUp.Off
+        pinnedFraction = null
         if (!opened) return
         opened = false
         engine.stop()
@@ -245,6 +365,8 @@ class RaftDesktopVideoController(
     private fun retry() {
         engine.clearError()
         markEnded(false)
+        warmUp = RaftDesktopVideoWarmUp.Off
+        pinnedFraction = null
         opened = false
         engine.stop()
         playRequested = true
@@ -253,12 +375,43 @@ class RaftDesktopVideoController(
 
     private fun applyVolume() {
         if (released) return
-        engine.volume = if (userMuted || hostMuted) 0f else volume
+        engine.volume = if (userMuted || hostMuted || warmUpSilenced) 0f else volume
     }
+
+    /** From just before the warm-up plays until the player has stopped again. */
+    private val warmUpSilenced: Boolean
+        get() =
+            warmUp == RaftDesktopVideoWarmUp.Silencing ||
+                warmUp == RaftDesktopVideoWarmUp.Playing ||
+                warmUp == RaftDesktopVideoWarmUp.Pausing
 
     private fun markEnded(value: Boolean) {
         endedFlag = value
     }
+}
+
+/**
+ * How far the warm-up plays (seconds on the player's clock) before it pauses. The player copies a
+ * frame for the screen every 1/30 s or so while it plays, so several are up by then.
+ */
+private const val RAFT_DESKTOP_VIDEO_WARM_UP_SECONDS = 0.2
+
+/** The steps of [RaftDesktopVideoController]'s first-frame warm-up, at most one per poll. */
+private enum class RaftDesktopVideoWarmUp {
+    /** None asked for, or done. */
+    Off,
+
+    /** Opened paused (`PREPLAY`); waiting for the media to load. */
+    Opening,
+
+    /** Loaded; the volume goes to 0 now, playback starts on the next poll. */
+    Silencing,
+
+    /** Playing silently until the clock has moved far enough for frames to be on screen. */
+    Playing,
+
+    /** Pause asked; once the player has stopped: back to the start, volume back, frame reported. */
+    Pausing,
 }
 
 /** Seconds from the player to whole milliseconds; NaN, infinite and negative read as 0. */
