@@ -16,10 +16,10 @@ import kotlin.test.assertTrue
  * cold showed the content, then moved it up and down by the offline stand-in's 40dp top inset
  * several times before it settled. The numbers below are the ones the feedback log recorded
  * (density 3.375): a reversed list 1941px tall with a 135px top inset, the bottom padding row
- * and a 2118px newest message. The padding row was 54px (16dp) then; it is the production
- * [threadBottomSpacerAndAnchorTrailingHeight] here, the one height the list's last row and the
- * scroll owners' trailing padding share (it holds the typing line's slot whether or not the line
- * shows, so a line already showing at open changes none of this).
+ * and a 2118px newest message. The padding row was 54px (16dp) then, as it is again while nobody
+ * types or works there; it is the production [threadBottomSpacerAndAnchorTrailingHeight] here, the
+ * one height the list's last row and the scroll owners' trailing padding share (a line already
+ * showing at open grows both alike, so it changes none of this).
  *
  * The page's scroll owners are modelled frame by frame under virtual time against a fake reversed
  * raw list read through the production [ReversedThreadLayoutInfo]; the targets and the "anchored"
@@ -215,7 +215,7 @@ class ThreadChannelOpenSettleTest {
         const val Density = 3.375f
 
         /** The list's last row, and the trailing padding the owners anchor the newest message with. */
-        val PaddingRowPx = (threadBottomSpacerAndAnchorTrailingHeight(typingLineSlot = true).value * Density).toInt()
+        val PaddingRowPx = (threadBottomSpacerAndAnchorTrailingHeight(typingLineShown = false).value * Density).toInt()
         const val NewestRowPx = 2118
         const val OlderRowPx = 525
 
