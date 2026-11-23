@@ -615,19 +615,31 @@ class RealAgentActivityOverviewRepository(
             query = listOfNotNull("limit" to limit.toString(), before?.let { "before" to it }),
         )
         if (response.code == 401 || response.code == 403) {
-            return DataResult.NoPermission(PermissionBlocker(code = "activity_summaries_${response.code}"))
+            val envelope = response.parseHttpErrorEnvelope()
+            return DataResult.NoPermission(
+                PermissionBlocker(
+                    code = "activity_summaries_${response.code}",
+                    serverMessage = envelope?.serverMessage,
+                    serverCode = envelope?.serverCode,
+                    traceId = response.traceId,
+                )
+            )
         }
         if (!response.isSuccessful) {
+            val envelope = response.parseHttpErrorEnvelope()
             return DataResult.Error(
                 ScreenError(
                     code = "activity_summaries_${response.code}",
                     retryable = response.code == 0 || response.code >= 500,
+                    serverMessage = envelope?.serverMessage,
+                    serverCode = envelope?.serverCode,
+                    traceId = response.traceId,
                 )
             )
         }
         val page = response.bodyText?.let { body ->
             parseSharedAgentActivityTurnPage(body) { message -> logger("agent_activity_overview $message") }
-        } ?: return DataResult.Error(ScreenError("activity_summaries_contract_mismatch", retryable = false))
+        } ?: return DataResult.Error(ScreenError("activity_summaries_contract_mismatch", retryable = false, traceId = response.traceId))
         return DataResult.Content(page)
     }
 
@@ -642,15 +654,30 @@ class RealAgentActivityOverviewRepository(
             query = listOfNotNull(sinceEpochMillis?.let { "since" to it.toString() }),
         )
         if (response.code == 401 || response.code == 403) {
-            return DataResult.NoPermission(PermissionBlocker(code = "operator_events_${response.code}"))
+            val envelope = response.parseHttpErrorEnvelope()
+            return DataResult.NoPermission(
+                PermissionBlocker(
+                    code = "operator_events_${response.code}",
+                    serverMessage = envelope?.serverMessage,
+                    serverCode = envelope?.serverCode,
+                    traceId = response.traceId,
+                )
+            )
         }
         if (!response.isSuccessful) {
+            val envelope = response.parseHttpErrorEnvelope()
             return DataResult.Error(
-                ScreenError(code = "operator_events_${response.code}", retryable = response.code == 0 || response.code >= 500)
+                ScreenError(
+                    code = "operator_events_${response.code}",
+                    retryable = response.code == 0 || response.code >= 500,
+                    serverMessage = envelope?.serverMessage,
+                    serverCode = envelope?.serverCode,
+                    traceId = response.traceId,
+                )
             )
         }
         val page = response.bodyText?.let { parseSharedAgentOperatorEventsPage(it) }
-            ?: return DataResult.Error(ScreenError("operator_events_contract_mismatch", retryable = false))
+            ?: return DataResult.Error(ScreenError("operator_events_contract_mismatch", retryable = false, traceId = response.traceId))
         return DataResult.Content(page)
     }
 

@@ -36,28 +36,33 @@ class RaftServerSetupProjectionRepository(
     suspend fun load(serverId: ServerId): DataResult<ServerSetupProjection> {
         val response = api.projection(serverId)
         if (!response.isSuccessful) {
+            val envelope = response.parseHttpErrorEnvelope()
             return DataResult.Error(
                 ScreenError(
                     code = "server_setup_projection_request_failed",
                     retryable = response.code >= 500,
+                    serverMessage = envelope?.serverMessage,
+                    serverCode = envelope?.serverCode,
+                    traceId = response.traceId,
                 )
             )
         }
         val body = response.bodyText?.takeIf(String::isNotBlank)
-            ?: return contractMismatch()
+            ?: return contractMismatch(response.traceId)
         val wire = try {
             serverSetupProjectionJson.decodeFromString(ServerSetupProjectionWireDto.serializer(), body)
         } catch (_: SerializationException) {
-            return contractMismatch()
+            return contractMismatch(response.traceId)
         }
         return DataResult.Content(wire.toDomain())
     }
 
-    private fun contractMismatch(): DataResult.Error =
+    private fun contractMismatch(traceId: String?): DataResult.Error =
         DataResult.Error(
             ScreenError(
                 code = "server_setup_projection_contract_mismatch",
                 retryable = false,
+                traceId = traceId,
             )
         )
 }

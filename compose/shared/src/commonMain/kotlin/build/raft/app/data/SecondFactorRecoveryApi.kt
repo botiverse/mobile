@@ -75,27 +75,53 @@ data class SecondFactorRecovery(
  * GET /recovery's answer: [DataResult.Content] with the request (null: none, or the router is off
  * for this person, 404), else an error (the caller keeps what it shows).
  */
-fun parseSharedSecondFactorRecoveryResponse(statusCode: Int, bodyText: String?): DataResult<SecondFactorRecovery?> {
+fun parseSharedSecondFactorRecoveryResponse(
+    statusCode: Int,
+    bodyText: String?,
+    traceId: String? = null,
+): DataResult<SecondFactorRecovery?> {
     if (statusCode == 404) return DataResult.Content(null)
     if (statusCode !in 200..299) {
-        return DataResult.Error(ScreenError(code = "second_factor_recovery_http_$statusCode", retryable = statusCode >= 500))
+        val envelope = if (statusCode > 0) parseHttpErrorEnvelope(bodyText) else null
+        return DataResult.Error(
+            ScreenError(
+                code = "second_factor_recovery_http_$statusCode",
+                retryable = statusCode >= 500,
+                serverMessage = envelope?.serverMessage,
+                serverCode = envelope?.serverCode,
+                traceId = traceId,
+            )
+        )
     }
     val dto =
         bodyText?.takeIf { it.isNotBlank() }?.let { body ->
             runCatching { secondFactorRecoveryJson.decodeFromString(SecondFactorRecoveryResponseDto.serializer(), body) }.getOrNull()
-        } ?: return DataResult.Error(ScreenError(code = "second_factor_recovery_contract_mismatch", retryable = false))
+        } ?: return DataResult.Error(ScreenError(code = "second_factor_recovery_contract_mismatch", retryable = false, traceId = traceId))
     return DataResult.Content(dto.recovery?.toDomain())
 }
 
 /** DELETE /recovery's answer: [DataResult.Content] once nothing is pending (`cancelled` false: there was nothing). */
-fun parseSharedSecondFactorRecoveryCancelResponse(statusCode: Int, bodyText: String?): DataResult<Boolean> {
+fun parseSharedSecondFactorRecoveryCancelResponse(
+    statusCode: Int,
+    bodyText: String?,
+    traceId: String? = null,
+): DataResult<Boolean> {
     if (statusCode !in 200..299) {
-        return DataResult.Error(ScreenError(code = "second_factor_recovery_cancel_http_$statusCode", retryable = statusCode >= 500))
+        val envelope = if (statusCode > 0) parseHttpErrorEnvelope(bodyText) else null
+        return DataResult.Error(
+            ScreenError(
+                code = "second_factor_recovery_cancel_http_$statusCode",
+                retryable = statusCode >= 500,
+                serverMessage = envelope?.serverMessage,
+                serverCode = envelope?.serverCode,
+                traceId = traceId,
+            )
+        )
     }
     val dto =
         bodyText?.takeIf { it.isNotBlank() }?.let { body ->
             runCatching { secondFactorRecoveryJson.decodeFromString(SecondFactorRecoveryCancelResponseDto.serializer(), body) }.getOrNull()
-        } ?: return DataResult.Error(ScreenError(code = "second_factor_recovery_cancel_contract_mismatch", retryable = false))
+        } ?: return DataResult.Error(ScreenError(code = "second_factor_recovery_cancel_contract_mismatch", retryable = false, traceId = traceId))
     return DataResult.Content(dto.cancelled)
 }
 
@@ -122,13 +148,21 @@ internal class NetworkSecondFactorRecoveryDataSource(private val networkClient: 
         networkCall {
             // A refresh on foreground / opening the notification center: nothing waits on it.
             val response = networkClient.request(DataRequestPriority.Background, SECOND_FACTOR_RECOVERY_PATH)
-            parseSharedSecondFactorRecoveryResponse(response.code, response.bodyText?.takeIf { it.isNotBlank() } ?: response.errorBodyText)
+            parseSharedSecondFactorRecoveryResponse(
+                response.code,
+                if (response.isSuccessful) response.bodyText else response.errorBodyText?.takeIf { it.isNotBlank() } ?: response.bodyText,
+                response.traceId,
+            )
         }
 
     override suspend fun cancelRecovery(): DataResult<Boolean> =
         networkCall {
             val response = networkClient.request(DataRequestPriority.Foreground, SECOND_FACTOR_RECOVERY_PATH, method = "DELETE")
-            parseSharedSecondFactorRecoveryCancelResponse(response.code, response.bodyText?.takeIf { it.isNotBlank() } ?: response.errorBodyText)
+            parseSharedSecondFactorRecoveryCancelResponse(
+                response.code,
+                if (response.isSuccessful) response.bodyText else response.errorBodyText?.takeIf { it.isNotBlank() } ?: response.bodyText,
+                response.traceId,
+            )
         }
 
     private suspend fun <T> networkCall(call: suspend () -> DataResult<T>): DataResult<T> =
@@ -137,7 +171,7 @@ internal class NetworkSecondFactorRecoveryDataSource(private val networkClient: 
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (_: Throwable) {
-            DataResult.Error(ScreenError(code = "network_unavailable", retryable = true))
+            DataResult.Error(ScreenError(code = "network_unavailable", retryable = true, traceId = null))
         }
 }
 

@@ -353,8 +353,18 @@ internal class NetworkActivityObjectsRepository(private val networkClient: RaftN
             } catch (cancellation: kotlinx.coroutines.CancellationException) {
                 throw cancellation
             } catch (error: Throwable) {
-                return DataResult.Error(ScreenError(code = "network"))
+                return DataResult.Error(ScreenError(code = "network", traceId = null))
             }
-        return if (response.isSuccessful) DataResult.Content(Unit) else DataResult.Error(ScreenError(code = "http_${response.code}", retryable = response.code >= 500 || response.code == 429))
+        if (response.isSuccessful) return DataResult.Content(Unit)
+        val envelope = response.parseHttpErrorEnvelope()
+        return DataResult.Error(
+            ScreenError(
+                code = "http_${response.code}",
+                retryable = response.code >= 500 || response.code == 429,
+                serverMessage = envelope?.serverMessage,
+                serverCode = envelope?.serverCode,
+                traceId = response.traceId,
+            )
+        )
     }
 }
