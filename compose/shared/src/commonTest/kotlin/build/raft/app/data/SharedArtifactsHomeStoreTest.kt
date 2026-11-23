@@ -429,6 +429,44 @@ class SharedArtifactsHomeStoreTest {
     }
 
     @Test
+    fun clearAndServerSwitchCancelMultipleInFlightSettleJobsCleanly() = runTest {
+        val api = FakeDashboardApi()
+        api.answer = { _, _ -> ok(listOf(row("a", settledShown = true), row("b", settledShown = true))) }
+        val cancelledIds = mutableListOf<String>()
+        val gate = CompletableDeferred<ArtifactsHomeLoad<ArtifactsHomeSettlement>>()
+        api.settleAnswer = { _, artifactId, _ ->
+            try {
+                gate.await()
+            } finally {
+                cancelledIds += artifactId
+            }
+        }
+        val store = store(api)
+        store.dispatch(ArtifactsHomeIntent.Start("s-1", "r-1"))
+        advanceUntilIdle()
+
+        store.dispatch(ArtifactsHomeIntent.SetSettled("a", true))
+        store.dispatch(ArtifactsHomeIntent.SetSettled("b", true))
+        runCurrent()
+        assertEquals(setOf("a", "b"), store.state.value.settlingIds)
+
+        // Switching servers cancels all in-flight settle jobs without ConcurrentModificationException.
+        store.dispatch(ArtifactsHomeIntent.Start("s-2", "r-1"))
+        advanceUntilIdle()
+        assertEquals(setOf("a", "b"), cancelledIds.toSet())
+        assertEquals(emptySet(), store.state.value.settlingIds)
+
+        // Clear cancels multiple in-flight settle jobs cleanly as well.
+        cancelledIds.clear()
+        store.dispatch(ArtifactsHomeIntent.SetSettled("a", true))
+        store.dispatch(ArtifactsHomeIntent.SetSettled("b", true))
+        runCurrent()
+        store.clear()
+        advanceUntilIdle()
+        assertEquals(setOf("a", "b"), cancelledIds.toSet())
+    }
+
+    @Test
     fun filterChoicesAreAskedWhenOpenAndAnOlderServerFallsBackToTheRowsOnScreen() = runTest {
         val api = FakeDashboardApi()
         api.answer = { _, _ -> ok(listOf(row("a", actor("u-1")), row("b", actor("u-2")), row("c", actor("u-2")))) }
