@@ -50,6 +50,14 @@ const val RAFT_PRODUCT_EVENTS_HEADER_SWIPE_SLOCK_SHA: String = "86f1a6a3477068ca
  */
 const val RAFT_PRODUCT_EVENTS_SELECT_TEXT_SLOCK_SHA: String = "27f555f166a5f51e8758d8e10549751db15f4429"
 
+/**
+ * botiverse/slock #16252 (merged on staging as this commit): `MESSAGE_ACTIONS` gained `quote`, Quote
+ * putting the whole message into the composer as a quote (the registry still says "not released
+ * yet"). The server judges each event of a batch on its own: one before a server with #16252 is in
+ * production is refused alone, the rest of its batch kept.
+ */
+const val RAFT_PRODUCT_EVENTS_QUOTE_SLOCK_SHA: String = "35efb3b86baa4400d58cbab4444b76149bcf80e4"
+
 /** botiverse/slock #11045 merge commit on staging: `channel_tab_selected`, `message_action_selected`. */
 const val RAFT_PRODUCT_ENTRY_EVENTS_BASE_SLOCK_SHA: String = "3e959613eeeaa80607e826792c1f72bd17459191"
 
@@ -244,7 +252,9 @@ enum class RaftMessageActionSurface(val wire: String) {
  * `unpin`, `mark_unread`, `edit`, `delete`, `report` for the native menu; the app's message menu
  * has none of those items today, so they have no entry here. A reply thread's "Mark Thread as
  * Unread" (botiverse/slock #11687) marks the thread, not the message, and web sends no
- * `message_action_selected` for it either, so it is not `mark_unread`.
+ * `message_action_selected` for it either, so it is not `mark_unread`. Under task v2 the task item
+ * is Create Task from Message, `create_task` as web MessageItem sends it; the app has no Convert
+ * to Task, so it never sends `convert_to_task`.
  */
 @Serializable
 enum class RaftMessageAction(val wire: String) {
@@ -256,7 +266,9 @@ enum class RaftMessageAction(val wire: String) {
     @SerialName("unfollow_thread") UnfollowThread("unfollow_thread"),
     @SerialName("task_done") TaskDone("task_done"),
     @SerialName("task_reopen") TaskReopen("task_reopen"),
-    @SerialName("convert_to_task") ConvertToTask("convert_to_task"),
+    @SerialName("create_task") CreateTask("create_task"),
+    /** botiverse/slock #16252 @ [RAFT_PRODUCT_EVENTS_QUOTE_SLOCK_SHA]: the message menu's Quote. */
+    @SerialName("quote") Quote("quote"),
     @SerialName("copy_link") CopyLink("copy_link"),
     @SerialName("copy_markdown") CopyMarkdown("copy_markdown"),
     /** botiverse/slock #11467 @ [RAFT_PRODUCT_EVENTS_SELECT_TEXT_SLOCK_SHA]: opens the Select Text sheet. */

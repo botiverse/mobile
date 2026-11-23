@@ -7,6 +7,8 @@ import build.raft.app.SharedThreadStoreTest.FakeThreadApi
 import build.raft.app.SharedThreadStoreTestFakes.FakeConversationRepository
 import build.raft.app.SharedThreadStoreTestFixtures.cachePayloadForTest
 import build.raft.app.SharedThreadStoreTestFixtures.contentPayload
+import build.raft.app.SharedThreadStoreTestFixtures.localPendingMessage
+import build.raft.app.SharedThreadStoreTestFixtures.startLocalSendForCurrentOwner
 import build.raft.app.data.ChannelUnreadSnapshot
 import build.raft.app.data.DataResult
 import build.raft.app.data.InMemoryRaftAuthSessionStore
@@ -123,6 +125,21 @@ class SharedThreadStoreMarkThreadUnreadTest {
 
         assertEquals(listOf("unread:channel-1"), harness.repository.calls, "the page's conversation, its reads held")
         assertTrue(harness.notices.isEmpty())
+        harness.close()
+    }
+
+    // botiverse/slock #16250 (web messageStore.sendMessage): sending in it ends the hold as the send
+    // starts, so the person's own message reads the conversation and later ones are read on sight.
+    @Test
+    fun sendingInTheMarkedConversationEndsItsHold() = runTest {
+        val harness = harness(unreadAnswer = DataResult.Content(ReadReceiptResult(unreadCount = 1, readStateVersion = 9L)))
+        harness.store.accept(SharedThreadIntent.MarkConversationUnread)
+
+        harness.store.startLocalSendForCurrentOwner(harness.dataSource, localPendingMessage("local-1", "on it"))
+        harness.store.accept(SharedThreadIntent.MarkVisibleRead())
+        testScheduler.advanceUntilIdle()
+
+        assertEquals(listOf("unread:channel-1", "read:channel-1"), harness.repository.calls, "the send ended the hold")
         harness.close()
     }
 

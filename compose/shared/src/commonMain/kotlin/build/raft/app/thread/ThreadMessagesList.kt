@@ -5150,7 +5150,7 @@ private fun ThreadMessagesListContent(
                 }
                 val onConvertToTask: () -> Unit = {
                     closeActionMenu()
-                    trackLongPressMenuAction(message, RaftMessageAction.ConvertToTask)
+                    trackLongPressMenuAction(message, RaftMessageAction.CreateTask)
                     onThreadEvent("convertMessageToTask", message.id, null, null)
                 }
                 val variant =
@@ -5299,6 +5299,8 @@ private fun ThreadMessagesListContent(
                                     onThreadEvent("downloadAttachment", null, attachmentId, null)
                                 }
                             },
+                        // botiverse/slock #16252: web MessageItem counts its menu's Quote too.
+                        onQuoteChosen = { trackLongPressMenuAction(message, RaftMessageAction.Quote) },
                         link = linkSection,
                         diagnosticsLogger = diagnosticsLogger
                     )

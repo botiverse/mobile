@@ -7,6 +7,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.ComposeUiTest
 import androidx.compose.ui.test.ExperimentalTestApi
+import androidx.compose.ui.test.hasClickAction
+import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import build.raft.app.compat.json.JSONObject
@@ -19,6 +21,7 @@ import build.raft.app.data.AppLocale
 import build.raft.app.data.RaftEventBus
 import build.raft.app.data.RealtimeSubscription
 import build.raft.app.data.stringDescLocaleType
+import build.raft.app.model.TaskStatus
 import build.raft.app.resources.StringDesc
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
@@ -38,7 +41,8 @@ import org.robolectric.annotation.Config
  * A reply thread's header on a real composition, against the web ThreadPanelHeader
  * (`thread-header-channel-link` / `thread-header-reply-count`): the conversation the thread belongs
  * to, a link that opens the parent message there, then " · N replies". The Compose head and the
- * iOS native bar (mobile_ios_native_nav_v1) carry the same line and the same tap.
+ * iOS native bar (mobile_ios_native_nav_v1) carry the same line and the same tap. A task
+ * conversation's bar links its ref's place the same way (web TaskConversationBar, #16258).
  */
 @OptIn(ExperimentalTestApi::class)
 @RunWith(RobolectricTestRunner::class)
@@ -92,6 +96,7 @@ class ThreadHeaderParentLinkUiTest {
                 surfaceKind = RaftThreadSurfaceKind.ReplyThread,
                 channelKind = "dm",
             ),
+        taskChrome: TaskConversationHeaderChrome? = null,
     ) {
         setContent {
             val pager =
@@ -118,6 +123,7 @@ class ThreadHeaderParentLinkUiTest {
                             onOpenSearch = {},
                             onShowMembers = {},
                             onShowSettings = {},
+                            taskConversationChrome = taskChrome,
                         )
                     }
                 }
@@ -135,6 +141,54 @@ class ThreadHeaderParentLinkUiTest {
             onNodeWithText(" · 3 replies").assertExists()
             onNodeWithText("@Lagoon").performClick()
             runOnIdle { assertEquals(1, opens) }
+        }
+
+    /**
+     * Web #16258 (TaskConversationBar, `task-modal-bar-channel-link`): a task conversation's ref names
+     * its place as the reply thread's head names its conversation, a link to the task in its channel
+     * (View in Channel); the task's number after it stays text.
+     */
+    @Test
+    fun aTaskRefsPlaceOpensItsChannelAndItsNumberStaysText() =
+        runRobolectricComposeUiTest {
+            var views = 0
+            showHeader(
+                replyCount = null,
+                onOpenInChannel = {},
+                headerPayload =
+                    RaftThreadScreenPayload(
+                        instanceId = "task-conversation-24",
+                        status = "content",
+                        surfaceKind = RaftThreadSurfaceKind.Channel,
+                        channelKind = RaftTaskConversationChannelKind,
+                        showModeTabs = false,
+                        showSettingsAction = false,
+                        showMembersAction = false,
+                    ),
+                display =
+                    ThreadHeaderDisplayModel(
+                        title = "#video-production:#24 Cut the launch video",
+                        subtitle = null,
+                        surfaceKind = RaftThreadSurfaceKind.Channel,
+                        channelKind = RaftTaskConversationChannelKind,
+                    ),
+                taskChrome =
+                    TaskConversationHeaderChrome(
+                        ref = "#video-production:#24",
+                        taskNumber = 24,
+                        status = TaskStatus.Done,
+                        assigneeName = null,
+                        summarized = false,
+                        followed = null,
+                        onToggleHeadFloat = {},
+                        onViewInChannel = { views++ },
+                        onToggleFollow = {},
+                    ),
+            )
+            onNodeWithText(":#24", useUnmergedTree = true).assertExists()
+            onNode(hasText(":#24") and hasClickAction(), useUnmergedTree = true).assertDoesNotExist()
+            onNodeWithText("#video-production").performClick()
+            runOnIdle { assertEquals(1, views) }
         }
 
     /**

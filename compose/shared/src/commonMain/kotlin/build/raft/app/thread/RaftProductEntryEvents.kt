@@ -33,7 +33,8 @@ internal fun ThreadNewMessageMenuTool.productMessageAction(
         ThreadNewMessageMenuTool.CopyLink -> RaftMessageAction.CopyLink
         ThreadNewMessageMenuTool.FollowThread -> if (isThreadFollowed) RaftMessageAction.UnfollowThread else RaftMessageAction.FollowThread
         ThreadNewMessageMenuTool.TaskStatus -> if (isTaskDone) RaftMessageAction.TaskReopen else RaftMessageAction.TaskDone
-        ThreadNewMessageMenuTool.ConvertToTask -> RaftMessageAction.ConvertToTask
+        // Task v2: the tool is Create Task from Message, which web MessageItem sends as `create_task`.
+        ThreadNewMessageMenuTool.ConvertToTask -> RaftMessageAction.CreateTask
         ThreadNewMessageMenuTool.SelectText -> RaftMessageAction.SelectText
         ThreadNewMessageMenuTool.SelectAll -> null
         // Web sends nothing for its thread menus' Mark Thread as Unread (#11687) either.
