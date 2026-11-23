@@ -1,0 +1,69 @@
+package build.raft.app
+
+import androidx.compose.runtime.snapshotFlow
+import androidx.compose.runtime.snapshots.Snapshot
+import androidx.compose.ui.input.pointer.PointerEventType
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertTrue
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.test.UnconfinedTestDispatcher
+import kotlinx.coroutines.test.runCurrent
+import kotlinx.coroutines.test.runTest
+
+/**
+ * Task #253 (artin, the Mac app): a long thread scrolled up to its "Loading older messages…" row never
+ * loaded the older replies. The older page waits for the reader's own scroll (task #1303), and only a
+ * finger's drag was ever counted as one.
+ */
+class ThreadOlderPageReaderScrollTest {
+    @Test
+    fun aWheelOrTrackpadScrollUpToTheHistoryRowAsksForTheOlderPage() = runTest {
+        val reader = ThreadUserScrollGeneration()
+        // The list's older-page check observes the count: at the top of the list a scroll moves no row and
+        // changes no layout, so the count itself has to wake the check.
+        val checked = mutableListOf<Int>()
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
+            snapshotFlow { reader.observed }.collect { checked += it }
+        }
+
+        // A pointer moving over the list (desktop hover) and a sideways swipe move no row: not a scroll.
+        reader.onListPointerEvent(PointerEventType.Move, scrollDeltaY = 0f)
+        reader.onListPointerEvent(PointerEventType.Scroll, scrollDeltaY = 0f)
+        Snapshot.sendApplyNotifications()
+        runCurrent()
+        assertEquals(listOf(0), checked, "no scroll yet")
+
+        // What the desktop app delivers for a trackpad or mouse wheel scroll up (an iPad or an Android
+        // device with one too): a Scroll event with no button down, which the touch listener never sees.
+        reader.onListPointerEvent(PointerEventType.Scroll, scrollDeltaY = -1f)
+        Snapshot.sendApplyNotifications()
+        runCurrent()
+
+        assertEquals(listOf(0, 1), checked, "the older-page check re-ran on the scroll")
+        assertTrue(
+            shouldThreadAutoLoadOlderMessages(
+                boundaryIndex = 1,
+                firstVisibleIndex = 0,
+                userScrollGeneration = reader.observed,
+                lastSettledUserScrollGeneration = 0,
+            ),
+            "the history row is in view after the reader's scroll: the older page is asked for",
+        )
+    }
+
+    @Test
+    fun aListTooShortToScrollAsksForTheOlderPageWithoutAScroll() {
+        // Every row fits: the history row shows from the start, and no scroll can bring it any closer, so
+        // waiting for one would leave "Loading older messages…" up for good (the web loads then too).
+        assertTrue(
+            shouldThreadAutoLoadOlderMessages(
+                boundaryIndex = 1,
+                firstVisibleIndex = 0,
+                userScrollGeneration = 0,
+                lastSettledUserScrollGeneration = 0,
+                listScrolls = false,
+            )
+        )
+    }
+}
