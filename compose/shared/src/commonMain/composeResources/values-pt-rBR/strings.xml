@@ -1081,6 +1081,7 @@
     <string name="thread_action_card_status_reconfirm">Requer nova confirmação</string>
     <string name="thread_action_card_status_expired">Expirado</string>
     <string name="thread_action_card_status_withdrawn">Retirada</string>
+    <string name="thread_action_card_status_closed">Fechada</string>
     <string name="thread_action_card_expired_line">Expirou em %1$s. Peça ao agente para enviar uma nova solicitação.</string>
     <string name="thread_action_card_expired_line_own">Expirou em %1$s. Envie uma nova solicitação.</string>
     <string name="thread_action_card_expired_line_from_person">Expirou em %1$s. Peça a %2$s para enviar uma nova solicitação.</string>
@@ -4486,6 +4487,7 @@
     <string name="action_card_question_expired_line_anyone">Ninguém respondeu em %1$s. %2$s foi avisado.</string>
     <string name="action_card_question_withdrawn_line_one">%1$s retirou esta pergunta.</string>
     <string name="action_card_question_withdrawn_line_other">%1$s retirou estas perguntas.</string>
+    <string name="action_card_question_closed_line">%1$s fechou esta pergunta.</string>
     <string name="action_card_question_wait_days_one">%1$d dia</string>
     <string name="action_card_question_wait_days_other">%1$d dias</string>
     <string name="action_card_question_wait_hours_one">%1$d hora</string>

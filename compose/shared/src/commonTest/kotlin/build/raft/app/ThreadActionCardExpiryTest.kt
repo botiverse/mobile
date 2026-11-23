@@ -8,6 +8,7 @@ import build.raft.app.data.RAFT_APP_ACTION_CARD_CAPABILITIES
 import build.raft.app.data.RaftIntegrationsActionsPushApiClient
 import build.raft.app.data.ScreenError
 import build.raft.app.data.ThreadActionCard
+import build.raft.app.data.ThreadActionCardClosedBy
 import build.raft.app.data.WireActionCardMetadata
 import build.raft.app.data.actionCardFromMessageMetadata
 import build.raft.app.data.expiredAsOf
@@ -107,18 +108,68 @@ class ThreadActionCardExpiryTest {
     }
 
     @Test
-    fun theSpecStatusNamesExpiredAndWithdrawnAndKeepsUnknownStatesPrepared() {
+    fun theSpecStatusNamesExpiredWithdrawnClosedAndTreatsUnknownStatesAsEnded() {
         assertEquals(RaftActionCardStatus.Expired, card(state = "expired").actionCardSpecStatus())
         assertEquals(RaftActionCardStatus.Expired, card().expiredAsOf(after).actionCardSpecStatus())
         assertEquals(RaftActionCardStatus.Prepared, card().expiredAsOf(before).actionCardSpecStatus())
         assertEquals(RaftActionCardStatus.Withdrawn, card(type = "question:ask", state = "withdrawn").actionCardSpecStatus())
         assertEquals(RaftActionCardStatus.Expired, card(type = "question:ask", state = "expired").actionCardSpecStatus())
         assertEquals(RaftActionCardStatus.Expired, card(type = "seats:add", state = "expired").actionCardSpecStatus())
-        // `withdrawn` is a question card's state only; any other unknown state stays as before.
-        assertEquals(RaftActionCardStatus.Prepared, card(state = "withdrawn").actionCardSpecStatus())
-        assertEquals(RaftActionCardStatus.Prepared, card(state = "someday").actionCardSpecStatus())
-        assertFalse(card(state = "someday").hasEnded)
+        assertEquals(RaftActionCardStatus.Closed, card(type = "question:ask", state = "closed").actionCardSpecStatus())
+        assertEquals(
+            RaftActionCardStatus.Closed,
+            card(type = "question:ask", state = "expired").copy(closedBy = ThreadActionCardClosedBy(userId = "u-1", handle = "mei")).actionCardSpecStatus(),
+        )
+        // Unknown states (and question-only states on non-question cards) default to Ended (view-only, read-only).
+        assertEquals(RaftActionCardStatus.Ended, card(state = "withdrawn").actionCardSpecStatus())
+        assertEquals(RaftActionCardStatus.Ended, card(state = "closed").actionCardSpecStatus())
+        assertEquals(RaftActionCardStatus.Ended, card(state = "someday").actionCardSpecStatus())
+        assertTrue(card(state = "someday").hasEnded)
+        assertTrue(card(state = "someday").isUnknownState)
+        assertTrue(card(type = "question:ask", state = "someday").hasEnded)
+        assertEquals(RaftActionCardStatus.Ended, card(type = "question:ask", state = "someday").actionCardSpecStatus())
         assertEquals(RaftActionCardStatus.Executed, card(state = "executed").actionCardSpecStatus())
+    }
+
+    @Test
+    fun aClosedQuestionCardReadsClosedByAndRoundTripsThroughMetadata() {
+        // Server maps stored `closed` -> served `expired` with `closedAt` and `closedBy` for compatibility (slock #16473).
+        val servedAsExpired =
+            wire(
+                """{"kind":"action-card","state":"expired","closedAt":"2026-11-23T18:00:00.000Z",
+                   "closedBy":{"userId":"u-42","handle":"mei"},
+                   "action":{"type":"question:ask"}}""",
+            )
+        assertTrue(servedAsExpired.isClosed)
+        assertFalse(servedAsExpired.isExpired)
+        assertTrue(servedAsExpired.hasEnded)
+        assertEquals("2026-11-23T18:00:00.000Z", servedAsExpired.closedAt)
+        assertEquals(ThreadActionCardClosedBy(userId = "u-42", handle = "mei"), servedAsExpired.closedBy)
+        assertEquals(RaftActionCardStatus.Closed, servedAsExpired.actionCardSpecStatus())
+        assertEquals(servedAsExpired, actionCardFromMessageMetadata(servedAsExpired.toMessageMetadata()))
+
+        // Direct `closed` state (future server / agent view) also reads as Closed.
+        val directClosed =
+            wire(
+                """{"kind":"action-card","state":"closed",
+                   "closedBy":{"userId":"u-42","handle":"mei"},
+                   "action":{"type":"question:ask"}}""",
+            )
+        assertTrue(directClosed.isClosed)
+        assertFalse(directClosed.isExpired)
+        assertTrue(directClosed.hasEnded)
+        assertEquals(RaftActionCardStatus.Closed, directClosed.actionCardSpecStatus())
+
+        // An expired question card without `closedBy` (or with non-object `closedBy`) stays Expired.
+        val plainExpired = wire("""{"kind":"action-card","state":"expired","action":{"type":"question:ask"}}""")
+        assertFalse(plainExpired.isClosed)
+        assertTrue(plainExpired.isExpired)
+        assertEquals(RaftActionCardStatus.Expired, plainExpired.actionCardSpecStatus())
+
+        val malformedClosedBy = wire("""{"kind":"action-card","state":"expired","closedBy":"not-an-object","action":{"type":"question:ask"}}""")
+        assertNull(malformedClosedBy.closedBy)
+        assertFalse(malformedClosedBy.isClosed)
+        assertTrue(malformedClosedBy.isExpired)
     }
 
     @Test
@@ -141,7 +192,7 @@ class ThreadActionCardExpiryTest {
         val spec = assertNotNull(stripActionCardSpec(read, RAFT_APP_ACTION_CARD_CAPABILITIES))
         val go = spec.spec.element("go") as ActionCardSpecButton
         val site = spec.spec.element("site") as ActionCardSpecButton
-        for (status in listOf(RaftActionCardStatus.Expired, RaftActionCardStatus.Withdrawn)) {
+        for (status in listOf(RaftActionCardStatus.Expired, RaftActionCardStatus.Withdrawn, RaftActionCardStatus.Closed, RaftActionCardStatus.Ended)) {
             val frame = RaftActionCardFrameState(status = status)
             assertEquals(RaftCardButtonState.Hidden, actionCardFrameButtonState(frame, "go", go), status.name)
             assertEquals(RaftCardButtonState.Enabled, actionCardFrameButtonState(frame, "site", site), status.name)
@@ -176,6 +227,9 @@ class ThreadActionCardExpiryTest {
             assertTrue(threadActionCardCommitBlockedByEnd(card(type = type, state = "expired", expiresAt = null), before), type)
         }
         assertTrue(threadActionCardCommitBlockedByEnd(card(type = "question:ask", state = "withdrawn"), before))
+        assertTrue(threadActionCardCommitBlockedByEnd(card(type = "question:ask", state = "closed"), before))
+        assertTrue(threadActionCardCommitBlockedByEnd(card(type = "question:ask", state = "someday"), before))
+        assertTrue(threadActionCardCommitBlockedByEnd(card(state = "someday"), before))
         assertTrue(threadActionCardCommitBlockedByEnd(card(type = "seats:add", state = "expired"), before))
         assertFalse(threadActionCardCommitBlockedByEnd(card(state = "executed"), after))
     }

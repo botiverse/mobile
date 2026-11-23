@@ -1081,6 +1081,7 @@
     <string name="thread_action_card_status_reconfirm">需重新确认</string>
     <string name="thread_action_card_status_expired">已过期</string>
     <string name="thread_action_card_status_withdrawn">已撤回</string>
+    <string name="thread_action_card_status_closed">已关闭</string>
     <string name="thread_action_card_expired_line">已于 %1$s 过期。请让 Agent 重新发送请求。</string>
     <string name="thread_action_card_expired_line_own">已于 %1$s 过期。请重新发送请求。</string>
     <string name="thread_action_card_expired_line_from_person">已于 %1$s 过期。请让 %2$s 重新发送请求。</string>
@@ -4676,6 +4677,7 @@
     <string name="action_card_question_expired_line_anyone">%1$s 内无人回答，已告知 %2$s。</string>
     <string name="action_card_question_withdrawn_line_one">%1$s 撤回了问题。</string>
     <string name="action_card_question_withdrawn_line_other">%1$s 撤回了问题。</string>
+    <string name="action_card_question_closed_line">%1$s 关闭了问题。</string>
     <string name="action_card_question_wait_days_one">%1$d 天</string>
     <string name="action_card_question_wait_days_other">%1$d 天</string>
     <string name="action_card_question_wait_hours_one">%1$d 小时</string>

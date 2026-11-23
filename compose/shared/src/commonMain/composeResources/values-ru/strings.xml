@@ -1081,6 +1081,7 @@
     <string name="thread_action_card_status_reconfirm">Нужно подтвердить снова</string>
     <string name="thread_action_card_status_expired">Срок истёк</string>
     <string name="thread_action_card_status_withdrawn">Отозван</string>
+    <string name="thread_action_card_status_closed">Закрыт</string>
     <string name="thread_action_card_expired_line">Срок истёк %1$s. Попросите агента отправить новый запрос.</string>
     <string name="thread_action_card_expired_line_own">Срок истёк %1$s. Отправьте новый запрос.</string>
     <string name="thread_action_card_expired_line_from_person">Срок истёк %1$s. Попросите %2$s отправить новый запрос.</string>
@@ -4958,6 +4959,7 @@
     <string name="action_card_question_expired_line_anyone">За %1$s никто не ответил. Агент %2$s уведомлён.</string>
     <string name="action_card_question_withdrawn_line_one">Агент %1$s отозвал этот вопрос.</string>
     <string name="action_card_question_withdrawn_line_other">Агент %1$s отозвал эти вопросы.</string>
+    <string name="action_card_question_closed_line">Вопрос закрыт: %1$s.</string>
     <string name="action_card_question_wait_days_one">%1$d день</string>
     <string name="action_card_question_wait_days_other">%1$d дн.</string>
     <string name="action_card_question_wait_hours_one">%1$d час</string>

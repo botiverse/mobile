@@ -108,8 +108,10 @@ internal fun ThreadActionCardView(
             status =
                 when {
                     card.isExecuted -> stringResource(Res.string.common_done)
+                    card.isClosed -> stringResource(Res.string.thread_action_card_status_closed)
                     card.isExpired -> stringResource(Res.string.thread_action_card_status_expired)
                     card.isWithdrawn -> stringResource(Res.string.thread_action_card_status_withdrawn)
+                    card.isUnknownState -> stringResource(Res.string.thread_action_card_view_only)
                     card.isFrozen -> stringResource(Res.string.thread_action_card_frozen)
                     card.needsReconfirmation -> stringResource(Res.string.thread_action_card_status_reconfirm)
                     viewOnly -> stringResource(Res.string.thread_action_card_view_only)

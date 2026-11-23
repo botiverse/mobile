@@ -535,13 +535,23 @@ internal fun questionWaitText(wait: QuestionWait): String =
 
 /**
  * The one line an ended question card says where its question or options were (web
- * `QuestionCardEndedLine`, raft-design "When it ends unanswered"): withdrawn, "Scout withdrew these
- * questions."; expired, "Mei didn't answer within 3 days. Scout was told." ([addressee] null: asked
- * of anyone, "Nobody answered within …"). Null for a card that hasn't ended.
+ * `QuestionCardEndedLine`, raft-design "When it ends unanswered"): closed by a person,
+ * "Mei closed this question."; withdrawn, "Scout withdrew these questions."; expired, "Mei didn't
+ * answer within 3 days. Scout was told." ([addressee] null: asked of anyone, "Nobody answered
+ * within …"). Null for a card that hasn't ended or ended in an unknown state.
  */
 @Composable
-internal fun ThreadActionCard.questionEndedLine(asker: String, addressee: String?, questionCount: Int): String? =
+internal fun ThreadActionCard.questionEndedLine(
+    asker: String,
+    addressee: String?,
+    questionCount: Int,
+    closer: String? = null,
+): String? =
     when {
+        isClosed -> {
+            val by = closer?.takeIf { it.isNotBlank() } ?: stringResource(Res.string.action_card_question_someone)
+            stringResource(Res.string.action_card_question_closed_line, by)
+        }
         isWithdrawn ->
             if (questionCount == 1) stringResource(Res.string.action_card_question_withdrawn_line_one, asker) else stringResource(Res.string.action_card_question_withdrawn_line_other, asker)
         isExpired -> {
