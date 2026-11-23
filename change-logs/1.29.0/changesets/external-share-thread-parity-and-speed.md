@@ -3,6 +3,7 @@ type: improved
 area: share
 platforms: [android, ios]
 rollout: full
+pull_request: 5500
 ---
 
 ## zh-CN
