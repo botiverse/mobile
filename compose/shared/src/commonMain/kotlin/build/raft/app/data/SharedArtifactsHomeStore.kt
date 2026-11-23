@@ -140,8 +140,9 @@ internal class SharedArtifactsHomeStore(
         legacyAuthorJob?.cancel()
         choiceJobs.values.forEach { it.cancel() }
         choiceJobs.clear()
-        settleJobs.values.forEach { it.cancel() }
+        val pendingSettle = settleJobs.values.toList()
         settleJobs.clear()
+        pendingSettle.forEach { it.cancel() }
     }
 
     private fun start(serverId: String?, readerId: String?) {
@@ -161,8 +162,9 @@ internal class SharedArtifactsHomeStore(
             legacyAuthorJob?.cancel()
             choiceJobs.values.forEach { it.cancel() }
             choiceJobs.clear()
-            settleJobs.values.forEach { it.cancel() }
+            val pendingSettle = settleJobs.values.toList()
             settleJobs.clear()
+            pendingSettle.forEach { it.cancel() }
             val persisted =
                 if (serverId != null) {
                     filterRepository?.read(cleanReader, serverId) ?: ArtifactsHomeFilters.Default
@@ -407,7 +409,11 @@ internal class SharedArtifactsHomeStore(
                 }
             }
         settleJobs[artifactId] = job
-        job.invokeOnCompletion { settleJobs.remove(artifactId, job) }
+        job.invokeOnCompletion {
+            if (settleJobs[artifactId] === job) {
+                settleJobs.remove(artifactId)
+            }
+        }
     }
 
     private fun loadMore() {
