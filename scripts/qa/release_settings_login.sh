@@ -37,7 +37,7 @@ chmod 700 "$private_dir" "$work"
 rc=0
 node scripts/qa/testbed_release_settings.mjs challenge || rc=$?
 if [[ "$rc" == 0 ]]; then
-  env -u QA_TEST_EMAIL -u QA_TEST_PASSWORD -u QA_LOGIN_EMAIL -u QA_LOGIN_PASSWORD \
+  env -u QA_TEST_EMAIL -u QA_TEST_PASSWORD -u QA_LOGIN_ACCEPTANCE_EMAIL -u QA_LOGIN_ACCEPTANCE_PASSWORD -u QA_LOGIN_EMAIL -u QA_LOGIN_PASSWORD \
     QA_ATTEMPT_CHALLENGE_FILE="$RUNNER_TEMP/testbed-release-challenge-${STAMP_RUN_CASE_ID}.json" \
     QA_IDENTITY_PRIVATE_OUT="$private_dir/identity-private-${GITHUB_RUN_ID:-local}-${GITHUB_RUN_ATTEMPT:-1}.json" \
     QA_TESTBED_RELEASE_SETTINGS=1 \

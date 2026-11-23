@@ -19,11 +19,12 @@
 import fs from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
-import { LOGIN_LOG_MARKERS, RECORD, THREADTIME, readRecord, runId, secretValues } from "./login_phase.mjs";
+import { LOGIN_LOG_MARKERS, RECORD, THREADTIME, markUnknown, readRecord, runId, secretValues } from "./login_phase.mjs";
 import { readTerminal } from "./release_settings_terminal.mjs";
 
 export const GATE = "evidence-gate.json";
-const KEEP = new Set(["verdict.json", "agent-rc.txt", RECORD, GATE]);
+// Files that survive a failed gate (verdict.json and agent-rc.txt are overwritten on failure).
+const KEEP_ON_FAILURE = new Set(["verdict.json", "agent-rc.txt", RECORD, GATE]);
 const LOG_FILE = /^(logcat|system-log|syslog).*\.(txt|log|ndjson)$/i;
 const TEXT_FILE = /\.(txt|log|json|jsonl|ndjson|xml|ips|md|csv)$/i;
 
@@ -50,27 +51,39 @@ export function gate(dir, env = process.env) {
     const terminal = readTerminal(dir, record, env);
     if (!terminal.ok) why = terminal.reason;
   }
-  const files = () => walk(dir).filter((f) => !KEEP.has(path.relative(dir, f)));
+  // Separate what is kept on failure from what is scanned before publishing: verdict.json
+  // carries free-text from the agent and is both uploaded and echoed to $GITHUB_STEP_SUMMARY,
+  // so every publishable file (all files except this gate's own output) must be scanned.
+  const evidenceFiles = () => walk(dir).filter((f) => !KEEP_ON_FAILURE.has(path.relative(dir, f)));
+  const publishableFiles = () => walk(dir).filter((f) => path.relative(dir, f) !== GATE);
   // A release-prelogin record bounds the log the same way (lines strictly after login_end).
   if (!why && (record.mode === "password" || record.mode === "release-prelogin")) {
-    for (const f of files()) {
+    for (const f of evidenceFiles()) {
       if (f.endsWith(".xcresult")) fs.rmSync(f, { recursive: true, force: true });
       else if (LOG_FILE.test(path.basename(f))) fs.writeFileSync(f, linesAfter(fs.readFileSync(f, "utf8"), record.login_end));
     }
   }
   if (!why && record.mode === "none") {
-    const hit = files().find((f) => TEXT_FILE.test(f) && fs.statSync(f).isFile() && LOGIN_LOG_MARKERS.test(fs.readFileSync(f, "utf8")));
+    const hit = evidenceFiles().find((f) => TEXT_FILE.test(f) && fs.statSync(f).isFile() && LOGIN_LOG_MARKERS.test(fs.readFileSync(f, "utf8")));
     if (hit) why = `sign-in signal in ${path.basename(hit)} although this run never signs in`;
   }
-  const [password, email] = [env.QA_TEST_PASSWORD, env.QA_TEST_EMAIL].map((v) => (v && v.length >= 4 ? v : ""));
-  for (const f of why ? [] : files()) {
+  const passwords = [env.QA_TEST_PASSWORD, env.QA_LOGIN_ACCEPTANCE_PASSWORD].filter((v) => v && v.length >= 4);
+  const emails = [env.QA_TEST_EMAIL, env.QA_LOGIN_ACCEPTANCE_EMAIL].filter((v) => v && v.length >= 4);
+  for (const f of why ? [] : publishableFiles()) {
     if (!fs.statSync(f).isFile()) continue;
     const bytes = fs.readFileSync(f);
-    if (password && bytes.includes(password)) { why = `secret value in ${path.basename(f)}`; break; }
-    if (email && TEXT_FILE.test(f) && bytes.includes(email)) fs.writeFileSync(f, bytes.toString("utf8").split(email).join("***"));
+    if (passwords.some((password) => bytes.includes(password))) { why = `secret value in ${path.basename(f)}`; break; }
+    if (emails.length && TEXT_FILE.test(f)) {
+      let text = null;
+      for (const email of emails) {
+        if (bytes.includes(email)) text = (text ?? bytes.toString("utf8")).split(email).join("***");
+      }
+      if (text !== null) fs.writeFileSync(f, text);
+    }
   }
   if (why) {
-    for (const e of fs.readdirSync(dir)) if (!KEEP.has(e)) fs.rmSync(path.join(dir, e), { recursive: true, force: true });
+    if (ok) markUnknown(dir, why, env);
+    for (const e of fs.readdirSync(dir)) if (!KEEP_ON_FAILURE.has(e)) fs.rmSync(path.join(dir, e), { recursive: true, force: true });
     fs.writeFileSync(path.join(dir, "verdict.json"), `${JSON.stringify({ verdict: "unknown", reason: `UNKNOWN: ${why}; no evidence uploaded` }, null, 2)}\n`);
     fs.writeFileSync(path.join(dir, "agent-rc.txt"), "2\n");
   }

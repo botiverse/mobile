@@ -66,7 +66,7 @@ import {
   serverRef,
   userRef,
 } from "./app_identity_receipt_lib.mjs";
-import { ENVIRONMENTS } from "./release_auto_login_lib.mjs";
+import { ENVIRONMENTS, parseCredentialFile } from "./release_auto_login_lib.mjs";
 import { detectForeignAndroidSystemBlocker } from "./system_blocker.mjs";
 
 export const RECORD = "login-record.json";
@@ -119,7 +119,12 @@ export class LoginWindowError extends Error {
 }
 
 export const runId = (env = process.env) => `${env.GITHUB_RUN_ID || "local"}:${env.GITHUB_RUN_ATTEMPT || "1"}`;
-export const secretValues = (env = process.env) => [env.QA_TEST_PASSWORD, env.QA_TEST_EMAIL].filter((v) => v && v.length >= 4);
+export const secretValues = (env = process.env) => [
+  env.QA_TEST_PASSWORD,
+  env.QA_TEST_EMAIL,
+  env.QA_LOGIN_ACCEPTANCE_PASSWORD,
+  env.QA_LOGIN_ACCEPTANCE_EMAIL,
+].filter((v) => v && v.length >= 4);
 
 // Every driver that would put text into a process argument (adb input text, agent-device type,
 // the XCUITest file protocol) calls this first.
@@ -501,9 +506,45 @@ function clearLoginStores(adb) {
   return ok;
 }
 
+// Reads a 0600 two-line credential file (email\npassword\n) staged for a single login invocation
+// (same pattern as release_auto_login.mjs). Rejects symlinks, non-regular files and group/world-
+// readable modes; when `consume` is true, always removes the file in `finally` even on error.
+export function readCredentialFile(filePath, { consume = false } = {}) {
+  const remove = () => {
+    if (!consume || !filePath) return;
+    try { fs.rmSync(filePath, { force: true }); } catch { /* Best-effort cleanup. */ }
+  };
+  try {
+    if (!filePath) return { email: "", password: "", problem: "credential_file_missing" };
+    let stat;
+    try { stat = fs.lstatSync(filePath); } catch { return { email: "", password: "", problem: "credential_file_missing" }; }
+    if (stat.isSymbolicLink() || !stat.isFile()) return { email: "", password: "", problem: "credential_file_unreadable" };
+    if ((stat.mode & 0o077) !== 0) return { email: "", password: "", problem: "credential_file_unprotected" };
+    let text;
+    try { text = fs.readFileSync(filePath, "utf8"); } catch { return { email: "", password: "", problem: "credential_file_unreadable" }; }
+    try {
+      const { email, password } = parseCredentialFile(text);
+      return { email, password, problem: null };
+    } catch {
+      return { email: "", password: "", problem: "credential_file_invalid" };
+    }
+  } finally {
+    remove();
+  }
+}
+
 // `acceptance`: readTestbedInput's result (#216); null runs the login exactly as without it.
-export async function androidPasswordLogin({ out, pkg = "build.raft.app", device = "", env = process.env, timeoutMs = 180000, pollMs = 2000, expectedOrigin = loginOrigin(env), acceptance = null, chooserTimeoutMs = 30000 }) {
-  const { QA_TEST_EMAIL: email, QA_TEST_PASSWORD: password, ...adbEnv } = env;
+// `credentials`: optional result of readCredentialFile() when staged via --credential-file.
+export async function androidPasswordLogin({ out, pkg = "build.raft.app", device = "", env = process.env, timeoutMs = 180000, pollMs = 2000, expectedOrigin = loginOrigin(env), acceptance = null, credentials = null, chooserTimeoutMs = 30000 }) {
+  const {
+    QA_TEST_EMAIL: legacyEmail,
+    QA_TEST_PASSWORD: legacyPassword,
+    QA_LOGIN_ACCEPTANCE_EMAIL: acceptanceEmail,
+    QA_LOGIN_ACCEPTANCE_PASSWORD: acceptancePassword,
+    ...adbEnv
+  } = env;
+  const email = credentials ? credentials.email : (acceptance ? acceptanceEmail : legacyEmail);
+  const password = credentials ? credentials.password : (acceptance ? acceptancePassword : legacyPassword);
   let serial = device;
   const execAdb = (args, input) => execFileSync("adb", [...(serial ? ["-s", serial] : []), ...args], {
     env: adbEnv, encoding: "utf8", timeout: 60000, input, stdio: [input === undefined ? "ignore" : "pipe", "pipe", "pipe"],
@@ -609,7 +650,12 @@ export async function androidPasswordLogin({ out, pkg = "build.raft.app", device
     ...(acceptance ? { acceptance: { ...acceptance.binding, verdict: "unknown", reason: "not_finished" } } : {}) }, env);
   try {
     if (acceptance?.problem) return unknown(`login acceptance unknown: ${acceptance.problem}`, acceptance.problem);
-    if (!email || !password) return unknown("QA credentials missing");
+    if (credentials?.problem) {
+      return unknown(`login acceptance credential file error: ${credentials.problem}`);
+    }
+    if (!email || !password) {
+      return unknown(acceptance ? "login acceptance secrets QA_LOGIN_ACCEPTANCE_EMAIL / QA_LOGIN_ACCEPTANCE_PASSWORD missing" : "QA credentials missing");
+    }
     if ([email, password].some((value) => /[^!-~]/.test(value))) return unknown("unsupported credential format");
     if (!expectedOrigin) return unknown("unknown QA account environment");
     serial ||= adb("get-serialno").trim();
@@ -787,9 +833,13 @@ async function main() {
   const required = argv.includes("--require-acceptance");
   if (required && arg("--require-acceptance") !== LOGIN_ACCEPTANCE_CASE) { console.error(`--require-acceptance takes only ${LOGIN_ACCEPTANCE_CASE}`); process.exit(2); }
   // Testbed's run-bound input (#216): read and deleted first, in every mode; only Android password
-  // login runs the acceptance it may select.
+  // login runs the acceptance it may select. The staged credential file is likewise read and
+  // removed immediately on entry so early exits never leave it on disk.
   const testbedInput = arg("--testbed-input");
   const acceptance = testbedInput || required ? readTestbedInput(testbedInput, process.env, { required }) : null;
+  const credentialFile = arg("--credential-file");
+  const consumeCredentialFile = argv.includes("--consume-credential-file");
+  const credentials = credentialFile ? readCredentialFile(credentialFile, { consume: consumeCredentialFile }) : null;
   const platform = arg("--platform", "android");
   const passwordLogin = arg("--password-login");
   if (!["true", "false"].includes(passwordLogin)) { console.error("--password-login true|false is required"); process.exit(2); }
@@ -806,7 +856,7 @@ async function main() {
       result = { ok: true };
     }
   } else if (platform === "android") {
-    result = await androidPasswordLogin({ out, pkg: arg("--package", "build.raft.app"), device: arg("--device"), acceptance });
+    result = await androidPasswordLogin({ out, pkg: arg("--package", "build.raft.app"), device: arg("--device"), acceptance, credentials });
   } else if (required) {
     result = unsupported("password");
   } else {

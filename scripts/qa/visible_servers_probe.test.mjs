@@ -146,7 +146,9 @@ test("the claimed Android login checks the assigned API identity before the emul
       if (process.env.DEDICATED) assert.equal(init.redirect, "error");
       fs.appendFileSync(process.env.CALLS, u.pathname + "\n");
       if (u.pathname === "/api/auth/login") {
-        assert.deepEqual(JSON.parse(init.body), {email:process.env.QA_TEST_EMAIL, password:process.env.QA_TEST_PASSWORD});
+        const expectedEmail = process.env.DEDICATED ? process.env.QA_LOGIN_ACCEPTANCE_EMAIL : process.env.QA_TEST_EMAIL;
+        const expectedPassword = process.env.DEDICATED ? process.env.QA_LOGIN_ACCEPTANCE_PASSWORD : process.env.QA_TEST_PASSWORD;
+        assert.deepEqual(JSON.parse(init.body), {email:expectedEmail, password:expectedPassword});
         return Response.json({user:f.user, accessToken:"test-access", refreshToken:"test-refresh"});
       }
       if (u.pathname === "/api/servers") {
@@ -164,27 +166,39 @@ test("the claimed Android login checks the assigned API identity before the emul
     if (!options.missing) fs.writeFileSync(file, JSON.stringify(input), { mode: 0o600 });
     const script = fileURLToPath(new URL("./visible_servers_probe.mjs", import.meta.url));
     const args = options.ordinary ? [] : ["--testbed-input", file];
+    const baseEnv = {
+      STAMP_RUN_CASE_ID: runCase,
+      QA_TEST_EMAIL: "legacy@example.invalid",
+      QA_TEST_PASSWORD: "legacy-config-password",
+      QA_LOGIN_ACCEPTANCE_EMAIL: "acceptance@example.invalid",
+      QA_LOGIN_ACCEPTANCE_PASSWORD: "acceptance-config-password",
+      CALLS: calls, DEDICATED: options.ordinary ? "" : "1", FIXTURE: JSON.stringify(data),
+      ...options.env,
+    };
     const result = spawnSync(process.execPath, ["--import", "data:text/javascript," + encodeURIComponent(mock), script, ...args], {
-      encoding: "utf8", env: {
-        STAMP_RUN_CASE_ID: runCase, QA_TEST_EMAIL: "fixture@example.invalid", QA_TEST_PASSWORD: "test-config-password",
-        CALLS: calls, DEDICATED: options.ordinary ? "" : "1", FIXTURE: JSON.stringify(data),
-      },
+      encoding: "utf8", env: baseEnv,
     });
     assert.equal(result.status, expectedCode, name + " " + result.stderr);
     const output = (result.stdout + result.stderr).trim();
     assert.equal(output, expectedLine, name);
     if (!options.ordinary) {
-      for (const privateValue of [...Object.values(target), input.nonce, input.attempt_id, "test-config-password", "test-refresh", "test-access"]) {
+      for (const privateValue of [...Object.values(target), input.nonce, input.attempt_id, "legacy-config-password", "acceptance-config-password", "legacy@example.invalid", "acceptance@example.invalid", "test-refresh", "test-access"]) {
         assert.ok(!output.includes(privateValue), name);
       }
     }
     const paths = fs.readFileSync(calls, "utf8").trim().split("\n").filter(Boolean);
-    assert.deepEqual(paths, options.missing ? [] : options.ordinary ? ["/api/auth/login", "/api/servers"] :
+    assert.deepEqual(paths, options.missing || options.noCalls ? [] : options.ordinary ? ["/api/auth/login", "/api/servers"] :
       ["/api/auth/login", "/api/servers", "/api/auth/logout"], name);
     if (!options.missing) assert.deepEqual(JSON.parse(fs.readFileSync(file)), input, "the device login can consume the same input");
   }
   try {
     run("assigned", fixture, 0, "QA account preflight: account_and_server_confirmed");
+    run("missing acceptance email does not fall back to QA_TEST_*", fixture, 2, "QA account preflight: unavailable (credential)", {
+      env: { QA_LOGIN_ACCEPTANCE_EMAIL: "" }, noCalls: true,
+    });
+    run("missing acceptance password does not fall back to QA_TEST_*", fixture, 2, "QA account preflight: unavailable (credential)", {
+      env: { QA_LOGIN_ACCEPTANCE_PASSWORD: "" }, noCalls: true,
+    });
     run("another user", { ...fixture, user: {id:"another-user"} }, 1, "QA account preflight: configured_user_mismatch");
     for (const servers of [[{...member, id:"another-id"}], [{...member, slug:"another-slug"}], [member, member]]) {
       run("different or ambiguous membership", { ...fixture, servers }, 1, "QA account preflight: configured_membership_mismatch");
