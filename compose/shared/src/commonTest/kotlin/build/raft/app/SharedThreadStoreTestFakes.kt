@@ -474,6 +474,8 @@ internal object SharedThreadStoreTestFakes {
         var threadResult: DataResult<ThreadSnapshot> = DataResult.Content(threadSnapshot()),
         var threadReplySummariesResult: DataResult<ThreadReplySummariesSnapshot> =
             DataResult.Content(ThreadReplySummariesSnapshot(threads = emptyList())),
+        /** When set, answers each summaries request from the parent ids it asks for (else [threadReplySummariesResult]). */
+        var threadReplySummariesProvider: ((ThreadId, List<MessageId>) -> DataResult<ThreadReplySummariesSnapshot>)? = null,
         var threadResultsById: Map<ThreadId, DataResult<ThreadSnapshot>> = emptyMap(),
         var threadResultProvider: ((ThreadId, Boolean, Int) -> DataResult<ThreadSnapshot>)? = null,
         var threadDelayMillis: Long = 0L,
@@ -570,7 +572,7 @@ internal object SharedThreadStoreTestFakes {
             if (ignoreThreadReplySummariesCancellation) {
                 withContext(NonCancellable) { releaseThreadReplySummaries?.await() }
             } else releaseThreadReplySummaries?.await()
-            return threadReplySummariesResult
+            return threadReplySummariesProvider?.invoke(threadId, parentMessageIds) ?: threadReplySummariesResult
         }
 
         override suspend fun getReplyThread(
