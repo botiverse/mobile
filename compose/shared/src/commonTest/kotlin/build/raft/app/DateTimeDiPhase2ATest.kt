@@ -4,6 +4,10 @@ import build.raft.app.data.RaftDatetimeFoundationOwner
 import build.raft.app.data.RaftEpochMillisSource
 import build.raft.app.data.RaftLocalOffsetMinutesSource
 import build.raft.app.data.RaftTimeFormatRuntime
+import build.raft.app.data.RaftTimeZoneRuntime
+import build.raft.app.data.normalizeValidIanaTimeZoneOrNull
+import build.raft.app.data.offsetMinutesAt
+import build.raft.app.data.raftOffsetMinutesForTimeZoneOrNull
 import build.raft.app.model.RaftTimeContext
 import build.raft.app.model.RaftTimeFormat12Hour
 import build.raft.app.model.RaftTimeFormat24Hour
@@ -105,6 +109,63 @@ class DateTimeDiPhase2ATest {
         assertEquals("2026-11-01", inviteHumanExpiresDateLabel("2026-11-01", utcPlus8DateContext24h))
         // Unreadable value falls back to trimmed input.
         assertEquals("soon", inviteHumanExpiresDateLabel(" soon ", utcPlus8DateContext24h))
+    }
+
+    @Test
+    fun timeZoneRuntimeNormalizesValidIanaAndResetsWithoutLeakingState() {
+        RaftTimeZoneRuntime.resetForTest()
+        try {
+            assertNull(RaftTimeZoneRuntime.currentOrNull)
+
+            RaftTimeZoneRuntime.update(" America/New_York ")
+            assertEquals("America/New_York", RaftTimeZoneRuntime.currentOrNull)
+
+            RaftTimeZoneRuntime.update("Mars/Olympus_Mons")
+            assertNull(RaftTimeZoneRuntime.currentOrNull)
+
+            RaftTimeZoneRuntime.update("Asia/Shanghai")
+            assertEquals("Asia/Shanghai", RaftTimeZoneRuntime.currentOrNull)
+
+            RaftTimeZoneRuntime.update("   ")
+            assertNull(RaftTimeZoneRuntime.currentOrNull)
+
+            assertEquals("UTC", normalizeValidIanaTimeZoneOrNull(" UTC "))
+            assertNull(normalizeValidIanaTimeZoneOrNull("Not/A_Zone"))
+        } finally {
+            RaftTimeZoneRuntime.resetForTest()
+        }
+    }
+
+    @Test
+    fun ianaTimeZoneResolvesExactOffsetAcrossDstAndOverridesLegacyDeviceOffset() {
+        // 2026-11-21T16:23:00Z = 11:23 EST (UTC-5) in America/New_York, 10:23 CST (UTC-6) in America/Chicago.
+        val novEst = epochMillis("2026-11-21T16:23:00Z")
+        // 2026-07-21T16:23:00Z = 12:23 EDT (UTC-4) in America/New_York.
+        val julEdt = epochMillis("2026-07-21T16:23:00Z")
+
+        assertEquals(-5 * 60, raftOffsetMinutesForTimeZoneOrNull("America/New_York", novEst))
+        assertEquals(-4 * 60, raftOffsetMinutesForTimeZoneOrNull("America/New_York", julEdt))
+        assertEquals(-6 * 60, raftOffsetMinutesForTimeZoneOrNull("America/Chicago", novEst))
+        assertNull(raftOffsetMinutesForTimeZoneOrNull("Mars/Olympus", novEst))
+
+        // Live capabilities with account preferredTimezone override the device's UTC-6 host offset.
+        val deviceCapabilities = RaftTimeCapabilities(localOffsetMinutes = -6 * 60, timeFormat = RaftTimeFormat24Hour)
+        val accountCapabilities =
+            deviceCapabilities.withRuntimePreferences(
+                timeFormat = RaftTimeFormat24Hour,
+                preferredTimeZoneId = "America/New_York",
+                nowEpochMillis = novEst,
+            )
+        val context = accountCapabilities.contextAt(novEst, RaftLegacyTestDatetimeFoundationOwner)
+        assertEquals(-5 * 60, context.localOffsetMinutes)
+        assertEquals("America/New_York", context.timeZoneId)
+        assertEquals(-5 * 60, context.offsetMinutesAt(novEst))
+        assertEquals(-4 * 60, context.offsetMinutesAt(julEdt))
+
+        // Deterministic fixture contexts without timeZoneId keep localOffsetMinutes verbatim.
+        val pinned = RaftTimeContext(localOffsetMinutes = 8 * 60, todayEpochDay = raftEpochDayForDate(2026, 11, 21))
+        assertEquals(8 * 60, pinned.offsetMinutesAt(novEst))
+        assertEquals(8 * 60, pinned.offsetMinutesAt(julEdt))
     }
 
     private fun epochMillis(iso: String): Long =

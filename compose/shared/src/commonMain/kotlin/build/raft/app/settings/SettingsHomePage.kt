@@ -59,6 +59,7 @@ import build.raft.app.data.RaftAppUpdateEvents
 import build.raft.app.data.RaftChatLayoutPreferenceEvents
 import build.raft.app.data.RaftRealtimeEvents
 import build.raft.app.data.RaftTimeFormatRuntime
+import build.raft.app.data.RaftTimeZoneRuntime
 import build.raft.app.data.RealtimeRoomLeaseOwner
 import build.raft.app.data.AppLocale
 import build.raft.app.data.MyMessageAlignmentPreference
@@ -1271,6 +1272,7 @@ private fun RaftAppShellReadyContent(
                 },
                 serverNotificationLastKnownStore = sharedStores.settingsServerNotificationLastKnownStore,
                 onTimeFormatUpdated = RaftTimeFormatRuntime::update,
+                onTimeZoneUpdated = RaftTimeZoneRuntime::update,
             )
         }
     val myMessageAlignmentState = remember { mutableStateOf(MyMessageAlignmentPreference.Default) }
@@ -1312,8 +1314,12 @@ private fun RaftAppShellReadyContent(
     }
     val hostTimeFormat =
         RaftTimeFormatRuntime.observe(fallback = baseHostThreadTimeCapabilities?.timeFormat ?: RaftTimeFormat24Hour)
-    val hostThreadTimeCapabilities = remember(baseHostThreadTimeCapabilities, hostTimeFormat) {
-        baseHostThreadTimeCapabilities?.copy(timeFormat = hostTimeFormat)
+    val hostPreferredTimeZone = RaftTimeZoneRuntime.observe()
+    val hostThreadTimeCapabilities = remember(baseHostThreadTimeCapabilities, hostTimeFormat, hostPreferredTimeZone) {
+        baseHostThreadTimeCapabilities?.withRuntimePreferences(
+            timeFormat = hostTimeFormat,
+            preferredTimeZoneId = hostPreferredTimeZone,
+        )
     }
     val fallbackHostTimeContextProvider = currentRaftTimeContextProvider
     val ownHostThreadTimeContextProvider =
@@ -2251,12 +2257,14 @@ private fun RaftAppShellReadyContent(
         homeSurfaceVisible = homeSurfaceVisible,
     )
     val sessionTimeFormat = (readySession ?: homePreviewSession).appShellThreadTimeFormat()
+    val sessionPreferredTimezone = (readySession ?: homePreviewSession).appShellPreferredTimezone()
     val effectiveSessionTimeFormat =
         RaftTimeFormatRuntime.observe(fallback = sessionTimeFormat ?: RaftTimeFormat24Hour)
     val authRequired = authGateState is SharedAuthGateState.AuthRequired
-    LaunchedEffect(readySession?.user?.id, sessionTimeFormat, authRequired) {
+    LaunchedEffect(readySession?.user?.id, sessionTimeFormat, sessionPreferredTimezone, authRequired) {
         if (readySession != null || authRequired) {
             RaftTimeFormatRuntime.update(sessionTimeFormat)
+            RaftTimeZoneRuntime.update(sessionPreferredTimezone)
         }
     }
     // Subscribe only to low-frequency dateContext (updates on midnight, timezone/DST shift, or

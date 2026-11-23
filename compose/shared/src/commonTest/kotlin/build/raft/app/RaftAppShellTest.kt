@@ -339,6 +339,36 @@ class RaftAppShellTest {
     }
 
     @Test
+    fun appShellPreferredTimezoneReadsCanonicalAndRejectsInvalid() {
+        val session =
+            StoredAuthSession(
+                user =
+                    StoredAuthUser(
+                        id = "user-1",
+                        email = "user@slock.ai",
+                        preferredTimezone = "America/New_York",
+                        timezone = "Asia/Shanghai",
+                    ),
+                accessToken = "access",
+                refreshToken = "refresh",
+            )
+
+        assertEquals("America/New_York", session.appShellPreferredTimezone())
+        assertEquals(
+            "Asia/Shanghai",
+            session.copy(
+                user = session.user.copy(preferredTimezone = null, timezone = "Asia/Shanghai")
+            ).appShellPreferredTimezone(),
+        )
+        assertNull(
+            session.copy(
+                user = session.user.copy(preferredTimezone = "Mars/Olympus", timezone = null)
+            ).appShellPreferredTimezone(),
+        )
+        assertNull((null as StoredAuthSession?).appShellPreferredTimezone())
+    }
+
+    @Test
     fun appShellLazyListPositionsKeepServersIndependent() {
         val serverAPosition =
             AppShellLazyListPosition(firstVisibleItemIndex = 5, firstVisibleItemScrollOffset = 24)

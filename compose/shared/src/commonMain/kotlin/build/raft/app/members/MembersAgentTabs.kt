@@ -34,6 +34,7 @@ import build.raft.app.data.DataResult
 import build.raft.app.data.SharedAgentDetailStore
 import build.raft.app.data.RaftAgentsApiClient
 import build.raft.app.data.RaftTimeFormatRuntime
+import build.raft.app.data.RaftTimeZoneRuntime
 import build.raft.app.data.SharedServerMembersState
 import build.raft.app.model.MemberId
 import build.raft.app.model.MemberProfile
@@ -311,9 +312,13 @@ internal fun MembersAgentChatTab(
     val inheritedTimeContextProvider = LocalRaftTimeContextProvider.current
     val baseFallbackTimeCapabilities = remember(timeContext) { timeContext.toRaftTimeCapabilities() }
     val runtimeTimeFormat = RaftTimeFormatRuntime.observe(fallback = baseFallbackTimeCapabilities.timeFormat)
+    val runtimeTimeZone = RaftTimeZoneRuntime.observe()
     val fallbackTimeCapabilities =
-        remember(baseFallbackTimeCapabilities, runtimeTimeFormat) {
-            baseFallbackTimeCapabilities.copy(timeFormat = runtimeTimeFormat)
+        remember(baseFallbackTimeCapabilities, runtimeTimeFormat, runtimeTimeZone) {
+            baseFallbackTimeCapabilities.withRuntimePreferences(
+                timeFormat = runtimeTimeFormat,
+                preferredTimeZoneId = runtimeTimeZone,
+            )
         }
     val fallbackTimeContextProvider =
         rememberLiveRaftTimeContext(

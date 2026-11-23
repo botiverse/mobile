@@ -569,7 +569,7 @@ private fun MembersAgentActivityNowCard(
                     stringResource(
                         Res.string.member_recent_activity_last_ended,
                         stringResource(Res.string.member_activity_log_status_idle),
-                        membersActivityOverviewClock(headline.lastEndedAtEpochMillis, timeContext),
+                        membersAgentNowTurnTime(headline.lastEndedAtEpochMillis, timeContext),
                     )
                 MembersAgentNowHeadline.Status -> now.statusHeadline()
             },
@@ -887,6 +887,10 @@ internal fun MembersAgentActivityTurnBadges(turn: AgentActivityTurn, modifier: M
         }
     }
 }
+
+/** True when [MembersAgentActivityFinishedTurnBadges] renders at least one badge for this finished turn. */
+internal fun AgentActivityTurn.hasFinishedTurnBadges(): Boolean =
+    outcome != AgentActivityTurnOutcome.Completed || problemStepCount > 0 || lastReplyMessageId == null
 
 /** A finished turn's badges, one after another in the caller's row. */
 @Composable

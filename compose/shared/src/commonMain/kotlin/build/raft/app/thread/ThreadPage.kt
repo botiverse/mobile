@@ -121,6 +121,7 @@ import build.raft.app.data.SharedTasksViewModel
 import build.raft.app.data.RaftAuthSessionStore
 import build.raft.app.data.SharedAdaptiveScrollAnchor
 import build.raft.app.data.RaftTimeFormatRuntime
+import build.raft.app.data.RaftTimeZoneRuntime
 import build.raft.app.data.defaultNowMillis
 import build.raft.app.data.RaftShellStoreScope
 import build.raft.app.data.RaftSharedStoreRegistry
@@ -635,9 +636,13 @@ private fun ThreadPageScreen(
             parsedPayload.toRaftTimeCapabilities()
         }
     val runtimeTimeFormat = RaftTimeFormatRuntime.observe(fallback = baseTimeCapabilities.timeFormat)
+    val runtimeTimeZone = RaftTimeZoneRuntime.observe()
     val timeCapabilities =
-        remember(baseTimeCapabilities, runtimeTimeFormat) {
-            baseTimeCapabilities.copy(timeFormat = runtimeTimeFormat)
+        remember(baseTimeCapabilities, runtimeTimeFormat, runtimeTimeZone) {
+            baseTimeCapabilities.withRuntimePreferences(
+                timeFormat = runtimeTimeFormat,
+                preferredTimeZoneId = runtimeTimeZone,
+            )
         }
     val liveTimeContextProvider =
         rememberLiveRaftTimeContext(

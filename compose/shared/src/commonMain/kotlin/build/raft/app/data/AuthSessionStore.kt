@@ -549,6 +549,12 @@ data class StoredAuthUser(
     val preferredTimeFormat: String? = null,
     val timeFormat: String? = null,
     /**
+     * Account preferred IANA timezone from `GET /api/auth/me` (botiverse/slock
+     * `packages/server/src/services/userService.ts` `toPublicUser`, null: follow device timezone).
+     */
+    val preferredTimezone: String? = null,
+    val timezone: String? = null,
+    /**
      * The wide rail's tab order saved on the account, as `GET /api/auth/me` sends it (null: the
      * default; botiverse/slock 4ca2f2e6cb packages/server/src/services/userService.ts
      * `toPublicUser`). Read through [normalizeRaftRailTabOrder] ([SharedRailTabOrderStore]).

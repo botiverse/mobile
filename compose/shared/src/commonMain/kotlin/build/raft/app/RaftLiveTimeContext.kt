@@ -13,7 +13,9 @@ import androidx.compose.runtime.setValue
 import build.raft.app.data.ProcessRaftDatetimeFoundationOwner
 import build.raft.app.data.RaftDatetimeFoundationOwner
 import build.raft.app.data.RaftTimeFormatRuntime
+import build.raft.app.data.RaftTimeZoneRuntime
 import build.raft.app.data.defaultNowMillis
+import build.raft.app.data.raftOffsetMinutesForTimeZoneOrNull
 import build.raft.app.model.RaftTimeContext
 import build.raft.app.model.raftTimeContextRefreshDelayMillis
 import build.raft.app.compat.pager.LocalActivity
@@ -47,11 +49,13 @@ internal val currentRaftTimeContextProvider: RaftTimeContextProvider?
 @Composable
 internal fun ProvideRaftPageBaseTimeContext(pageVisibleTick: Int, content: @Composable () -> Unit) {
     val timeFormat = RaftTimeFormatRuntime.observe()
+    val preferredTimeZone = RaftTimeZoneRuntime.observe()
     val capabilities =
-        remember(timeFormat) {
+        remember(timeFormat, preferredTimeZone) {
             RaftTimeCapabilities(
                 localOffsetMinutes = ProcessRaftDatetimeFoundationOwner.localOffsetMinutesAt(RaftSystemTimeClock.nowEpochMillis(), 0),
                 timeFormat = timeFormat,
+                preferredTimeZoneId = preferredTimeZone,
             )
         }
     val provider = rememberLiveRaftTimeContext(capabilities = capabilities, pageVisibleTick = pageVisibleTick, active = true)
@@ -84,32 +88,58 @@ internal class RaftTimeContextProvider(initial: RaftTimeContext?) {
 
 internal data class RaftTimeCapabilities(
     val localOffsetMinutes: Int,
-    val timeFormat: String
+    val timeFormat: String,
+    val preferredTimeZoneId: String? = null,
 ) {
     fun staticContext(): RaftTimeContext =
         RaftTimeContext(
             localOffsetMinutes = localOffsetMinutes,
-            timeFormat = timeFormat
+            timeFormat = timeFormat,
+            timeZoneId = preferredTimeZoneId,
         )
 
     fun contextAt(
         nowEpochMillis: Long,
         foundationOwner: RaftDatetimeFoundationOwner,
-    ): RaftTimeContext =
-        RaftTimeContext(
-            localOffsetMinutes =
-                foundationOwner.localOffsetMinutesAt(
+    ): RaftTimeContext {
+        val resolvedOffset =
+            preferredTimeZoneId?.let { raftOffsetMinutesForTimeZoneOrNull(it, nowEpochMillis) }
+                ?: foundationOwner.localOffsetMinutesAt(
                     epochMillis = nowEpochMillis,
                     legacyOffsetMinutes = localOffsetMinutes,
-                ),
+                )
+        val resolvedTimeZoneId = preferredTimeZoneId ?: foundationOwner.effectiveTimeZoneIdOrNull()
+        return RaftTimeContext(
+            localOffsetMinutes = resolvedOffset,
             timeFormat = timeFormat,
+            timeZoneId = resolvedTimeZoneId,
         ).refreshedAt(nowEpochMillis)
+    }
 }
+
+internal fun RaftTimeCapabilities.withRuntimePreferences(
+    timeFormat: String,
+    preferredTimeZoneId: String?,
+    foundationOwner: RaftDatetimeFoundationOwner = ProcessRaftDatetimeFoundationOwner,
+    nowEpochMillis: Long = RaftSystemTimeClock.nowEpochMillis(),
+): RaftTimeCapabilities =
+    copy(
+        localOffsetMinutes =
+            preferredTimeZoneId?.let { raftOffsetMinutesForTimeZoneOrNull(it, nowEpochMillis) }
+                ?: if (this.preferredTimeZoneId != null) {
+                    foundationOwner.localOffsetMinutesAt(nowEpochMillis, localOffsetMinutes)
+                } else {
+                    localOffsetMinutes
+                },
+        timeFormat = timeFormat,
+        preferredTimeZoneId = preferredTimeZoneId,
+    )
 
 internal fun RaftTimeContext.toRaftTimeCapabilities(): RaftTimeCapabilities =
     RaftTimeCapabilities(
         localOffsetMinutes = localOffsetMinutes,
-        timeFormat = timeFormat
+        timeFormat = timeFormat,
+        preferredTimeZoneId = timeZoneId,
     )
 
 internal fun interface RaftTimeClock {

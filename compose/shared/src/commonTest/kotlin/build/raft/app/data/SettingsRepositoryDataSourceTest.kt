@@ -505,6 +505,82 @@ class SettingsRepositoryDataSourceTest {
     }
 
     @Test
+    fun timeZoneWriteAndClearUpdateCanonicalSessionAndRuntime() = runBlocking {
+        val store = KeyValueAuthSessionStore(InMemoryRaftKeyValueStore())
+        store.replaceAuthenticatedSession(sampleSession())
+        val observedTimeZones = mutableListOf<String?>()
+        val setRepo =
+            RealSettingsRepository(
+                store,
+                FakeSettingsNetworkClient(
+                    accountJson =
+                        """{"id":"user-1","email":"user@slock.ai","name":"slock-user","preferredTimezone":"America/New_York"}"""
+                ),
+                onTimeZoneUpdated = observedTimeZones::add,
+            )
+
+        val setResult =
+            setRepo.updateLanguageRegionPreference(
+                SettingsLanguageRegionPreferenceUpdateRequest(preferredTimezone = "America/New_York")
+            )
+        assertTrue(setResult is DataResult.Content)
+        assertEquals("America/New_York", store.readSession()?.user?.preferredTimezone)
+        assertEquals("America/New_York", store.readSession()?.user?.timezone)
+        assertEquals(listOf<String?>("America/New_York"), observedTimeZones)
+
+        val clearRepo =
+            RealSettingsRepository(
+                store,
+                FakeSettingsNetworkClient(
+                    accountJson =
+                        """{"id":"user-1","email":"user@slock.ai","name":"slock-user","preferredTimezone":null}"""
+                ),
+                onTimeZoneUpdated = observedTimeZones::add,
+            )
+        val clearResult =
+            clearRepo.updateLanguageRegionPreference(
+                SettingsLanguageRegionPreferenceUpdateRequest(clearPreferredTimezone = true)
+            )
+        assertTrue(clearResult is DataResult.Content)
+        assertNull(store.readSession()?.user?.preferredTimezone)
+        assertNull(store.readSession()?.user?.timezone)
+        assertEquals(listOf("America/New_York", null), observedTimeZones)
+    }
+
+    @Test
+    fun staleInFlightTimeZoneWriteAfterAccountSwitchDoesNotUpdateRuntime() = runBlocking {
+        val store = KeyValueAuthSessionStore(InMemoryRaftKeyValueStore())
+        val initialSession =
+            sampleSession().copy(user = sampleSession().user.copy(id = "user-1", preferredTimezone = "UTC"))
+        val switchedSession =
+            sampleSession().copy(user = sampleSession().user.copy(id = "user-2", preferredTimezone = "Asia/Shanghai"))
+        store.replaceAuthenticatedSession(initialSession)
+        val observedTimeZones = mutableListOf<String?>()
+        val repository =
+            RealSettingsRepository(
+                store,
+                FakeSettingsNetworkClient(
+                    accountJson =
+                        """{"id":"user-1","email":"user@slock.ai","name":"slock-user","preferredTimezone":"America/New_York"}""",
+                    onAccountPatch = {
+                        store.replaceAuthenticatedSession(switchedSession)
+                    },
+                ),
+                onTimeZoneUpdated = observedTimeZones::add,
+            )
+
+        val result =
+            repository.updateLanguageRegionPreference(
+                SettingsLanguageRegionPreferenceUpdateRequest(preferredTimezone = "America/New_York")
+            )
+
+        assertTrue(result is DataResult.Content)
+        assertEquals(emptyList(), observedTimeZones)
+        assertEquals("user-2", store.readSession()?.user?.id)
+        assertEquals("Asia/Shanghai", store.readSession()?.user?.preferredTimezone)
+    }
+
+    @Test
     fun appearanceUsesAuthMePreferredMessageBodyFontSize() = runBlocking {
         val network =
             FakeSettingsNetworkClient(
