@@ -64,6 +64,21 @@ class AgentLoungeTest {
     }
 
     @Test
+    fun aLoungeWithTheNewSlugIsStillNamedAfterItsAgent() {
+        // slock #16272: `_lounge-<agent>-<first 4 of the agent id>`, 8 on a collision.
+        assertEquals("bugen", loungeAgentNameFromChannelName("_lounge-bugen-3f9a"))
+        assertEquals("bugen", loungeAgentDisplayName(null, "#_lounge-bugen-3f9a"))
+        assertEquals("bugen", loungeAgentDisplayName("  ", "_lounge-bugen-3f9a07c1"))
+        assertEquals("code-reviewer", loungeAgentNameFromChannelName("_lounge-code-reviewer-a1b2"))
+        // The agent's own name still wins over any slug.
+        assertEquals("Bugen", loungeAgentDisplayName("Bugen", "_lounge-bugen-3f9a"))
+        assertEquals("Bugen", RaftAgentLounge(ChannelId("l"), "agent-bugen", agentName = "Bugen", channelName = "_lounge-bugen-3f9a").displayAgentName)
+        assertEquals("bugen", RaftAgentLounge(ChannelId("l"), "agent-bugen", channelName = "_lounge-bugen-3f9a").displayAgentName)
+        // Not a slug: left as it is, like any other name.
+        assertEquals("_lounge-bugen", loungeAgentNameFromChannelName("_lounge-bugen"))
+    }
+
+    @Test
     fun theSidebarRowShowsOnlyOnceJoinedOrMentioned() {
         val lounge = ChannelId("lounge-bugen")
         assertNull(agentLoungeSidebarEntry(null, null), "an agent with no Lounge yet")
