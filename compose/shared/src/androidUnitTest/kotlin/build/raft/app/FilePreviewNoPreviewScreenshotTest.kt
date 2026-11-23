@@ -92,9 +92,8 @@ private fun NoPreviewPage(payload: RaftFilePreviewPayload, videoProfile: RaftVid
             onOpenUrl = {},
             downloadState = RaftFilePreviewDownloadUiState.NotDownloaded,
             onDownload = {},
-            onExternalBrowserOpen = {},
             onRetryLoad = if (payload.canRetryPreviewLoad()) ({}) else null,
-            onPdfOpenInOtherApp = {},
+            onOpenInOtherApp = {},
             videoProfile = videoProfile,
             modifier = Modifier.fillMaxSize()
         )

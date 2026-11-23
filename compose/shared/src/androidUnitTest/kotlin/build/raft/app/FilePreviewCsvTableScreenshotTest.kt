@@ -102,7 +102,7 @@ internal fun CsvPreviewPage(payload: RaftFilePreviewPayload) {
             onPauseDownload = {},
             onResumeDownload = {},
             onStopDownload = {},
-            onExternalBrowserOpen = {},
+            onOpenInOtherApp = {},
             onShare = null,
             modifier = Modifier.fillMaxSize()
         )
