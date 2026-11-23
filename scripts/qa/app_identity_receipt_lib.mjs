@@ -252,6 +252,56 @@ const CHECK_STATUSES = ["pass", "fail", "pending", "not_run"];
 export const TESTBED_DECISION_STATES = ["matched", "awaiting_confirmation", "identity_mismatch", "unknown"];
 const PUBLIC_STATES = [...TESTBED_DECISION_STATES, "unsupported_build"];
 
+/**
+ * Closed allowlist of sanitized check categories for a runner-side `mismatch` (#227): names ONLY
+ * which check category failed, never receipt values, hashes, IDs, paths or screen text.
+ */
+export const MISMATCH_CATEGORIES = [
+  "os_facts_unavailable",
+  "request_binding",
+  "package",
+  "version_code",
+  "signer",
+  "debuggable",
+  "device_sdk",
+  "apk_integrity",
+  "process",
+  "session_state",
+  "session_origin",
+  "user_or_server_ref",
+  "pair_ref",
+  "expected_ref",
+  "unknown",
+];
+
+const MISMATCH_CATEGORY_RULES = [
+  [/^os_facts_unavailable$/, "os_facts_unavailable"],
+  [/receipt does not echo this request/, "request_binding"],
+  [/package differs from the installed package/, "package"],
+  [/version_code differs from dumpsys package/, "version_code"],
+  [/signer/, "signer"],
+  [/debuggable/, "debuggable"],
+  [/released SDK/, "device_sdk"],
+  [/single APK|APK digest|installed base\.apk differs/, "apk_integrity"],
+  [/pid changed|process start time changed/, "process"],
+  [/app is not signed in/, "session_state"],
+  [/session origin is /, "session_origin"],
+  [/no user_ref\/server_ref/, "user_or_server_ref"],
+  [/no user_pair_ref\/server_pair_ref/, "pair_ref"],
+  [/user_ref differs|server_ref differs/, "expected_ref"],
+];
+
+/** Maps runner-side cross-check problems to deduplicated allowlisted check categories (no free text). */
+export function mismatchCategories(problems) {
+  const seen = new Set();
+  for (const problem of Array.isArray(problems) ? problems : []) {
+    const text = typeof problem === "string" ? problem : "";
+    const match = MISMATCH_CATEGORY_RULES.find(([pattern]) => pattern.test(text));
+    seen.add(match ? match[1] : "unknown");
+  }
+  return MISMATCH_CATEGORIES.filter((category) => seen.has(category));
+}
+
 /** Projects to the agreed public field list; any other key or value is dropped. */
 export function publicIdentitySummary(result) {
   const out = {};
@@ -334,8 +384,9 @@ export async function runIdentityGate({ runner, request, readOsFacts, expected =
   writePrivate({ attempt_id: request.attemptId, request_id: request.requestId, receipt: answer.receipt, os, problems });
   const osCheck = problems.length ? "fail" : "pass";
   if (problems.length) {
+    const categories = mismatchCategories(problems);
     show({ receipt_check: "pass", os_check: osCheck, ...checks, state: "unknown" });
-    return { matched: false, reason: "mismatch", problems };
+    return { matched: false, reason: "mismatch", problems, categories };
   }
   let state = "unknown";
   try {

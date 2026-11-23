@@ -816,7 +816,15 @@ function identityGate(request) {
         publish: (result) => { summary.identity_receipt = publicIdentitySummary(result); },
         testbed: testbedDecisionSource(),
       });
-      log(`identity receipt: ${outcome.matched ? "matched" : outcome.reason}`);
+      if (outcome.matched) {
+        log("identity receipt: matched");
+      } else if (outcome.reason === "mismatch") {
+        const categories = Array.isArray(outcome.categories) && outcome.categories.length ? outcome.categories.join(",") : "unknown";
+        const checks = Object.entries(summary.identity_receipt ?? {}).map(([k, v]) => `${k}=${v}`).join(" ");
+        log(`identity receipt: mismatch categories=${categories}${checks ? ` (${checks})` : ""}`);
+      } else {
+        log(`identity receipt: ${outcome.reason}`);
+      }
       if (outcome.matched && called?.os?.pidBefore && called.os.startTicksBefore) matchedProcess = `${called.os.pidBefore}:${called.os.startTicksBefore}`;
       if (!outcome.matched) stop(`identity receipt not matched (${outcome.reason}); nothing captured, no scenario`);
       return { testbed: "matched" };
@@ -1040,7 +1048,10 @@ async function main() {
             // The device time of the app's own exchange line (threadtime), for the release lane's login record.
             loginExchangeAt = parseLoginReceipt(appLog()).stamp ?? null;
           }
-          if (verdict.status === "exchanged") return { exchange: "exchanged", exchange_log: `result=${verdict.result} reason=${verdict.reason}`, screen };
+          if (verdict.status === "exchanged") {
+            log(`verify-signed-in: screen=${screen}`);
+            return { exchange: "exchanged", exchange_log: `result=${verdict.result} reason=${verdict.reason}`, screen };
+          }
           // Signed-in screen but no verdict line yet: give the log 30s to catch up, then say so.
           if (now() - screenSince > 30_000) {
             const note = `signed-in screen (${screen}) but the app logged no app_login_complete line (last: ${verdict.status})`;

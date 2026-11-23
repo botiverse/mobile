@@ -7,11 +7,13 @@ import {
   UNSUPPORTED_MESSAGE,
   UnsupportedBuildError,
   APKSIG_BUILD_TOOLS,
+  MISMATCH_CATEGORIES,
   PUBLIC_IDENTITY_FIELDS,
   apkSignerInspectorArgs,
   componentFor,
   contentCallCommand,
   createIdentityReceiptRunner,
+  mismatchCategories,
   probeCallCommand,
   providerOverride,
   providerStartState,
@@ -692,4 +694,59 @@ test("Testbed decisions bind to this attempt and request; release mode accepts n
   assert.equal((source.match(/captureEvidence\(/g) ?? []).length, 1, "captureEvidence is only reached through the gate");
   assert.doesNotMatch(source, /if \(SCENARIO\) await runScenario/);
   assert.match(source, /runScenario: SCENARIO \? \(\) => runScenario\(webSession\) : null/);
+});
+
+test("#227 mismatchCategories maps every runner-side cross-check problem to a closed allowlist without leaking values", async () => {
+  const cases = [
+    [["os_facts_unavailable"], ["os_facts_unavailable"]],
+    [["receipt does not echo this request"], ["request_binding"]],
+    [["package differs from the installed package"], ["package"]],
+    [["version_code differs from dumpsys package"], ["version_code"]],
+    [["receipt has no single signer", "signer_sha256 differs from apksigner (device SDK certificate)"], ["signer"]],
+    [["build is debuggable", "debuggable flag could not be read"], ["debuggable"]],
+    [["device is not on a released SDK (codename is not REL or unread)"], ["device_sdk"]],
+    [["installed package is not a single APK", "installed APK digest is unknown", "installed base.apk differs from --apk"], ["apk_integrity"]],
+    [["pid changed around the call", "process start time changed around the call"], ["process"]],
+    [["app is not signed in"], ["session_state"]],
+    [["session origin is qa_bootstrap"], ["session_origin"]],
+    [["receipt has no user_ref/server_ref (no selected server, or it has no slug)"], ["user_or_server_ref"]],
+    [["receipt has no user_pair_ref/server_pair_ref"], ["pair_ref"]],
+    [["user_ref differs from the frozen value", "server_ref differs from the frozen value"], ["expected_ref"]],
+    [["unexpected free text nonce=" + fixture.nonce + " secret=fake"], ["unknown"]],
+  ];
+  for (const [problems, expectedCategories] of cases) {
+    const categories = mismatchCategories(problems);
+    assert.deepEqual(categories, expectedCategories, JSON.stringify(problems));
+    for (const c of categories) assert.ok(MISMATCH_CATEGORIES.includes(c), c);
+    assert.ok(!categories.join(",").includes(fixture.nonce));
+    assert.ok(!categories.join(",").includes("qa_bootstrap"));
+  }
+
+  // runIdentityGate exposes allowlisted categories on runner-side mismatch while keeping published
+  // output strictly inside PUBLIC_IDENTITY_FIELDS and keeping the evidence gate closed.
+  const noServer = gateFixture({ answer: { receipt: { ...pairing.receipt, server_ref: null, server_pair_ref: null } } });
+  const noServerOutcome = await runIdentityGate({
+    runner: { call: () => ({ receipt: { ...pairing.receipt, server_ref: null, server_pair_ref: null }, os: { pidBefore: "4242", pidAfter: "4242", startTicksBefore: "987654", startTicksAfter: "987654" } }) },
+    request: pairedRequest,
+    gate: createCaptureGate({ identityMode: true }),
+    readOsFacts: () => ({ ...os }),
+    writePrivate: () => {},
+    publish: (result) => {
+      assert.ok(Object.keys(result).every((key) => PUBLIC_IDENTITY_FIELDS.includes(key)), JSON.stringify(result));
+      assert.equal("categories" in result, false);
+    },
+    testbed: { observe: async () => { throw new Error("must not observe on runner mismatch"); }, decide: async () => { throw new Error("must not decide on runner mismatch"); } },
+  });
+  assert.equal(noServerOutcome.matched, false);
+  assert.equal(noServerOutcome.reason, "mismatch");
+  assert.deepEqual(noServerOutcome.categories, ["user_or_server_ref", "pair_ref"]);
+  const noServerRun = await noServer.run();
+  assert.equal(noServerRun.matched, false);
+  assert.equal(noServer.counts.observed, 0);
+
+  // release_auto_login.mjs logs only the sanitized categories and public check statuses, never raw problems.
+  const source = fs.readFileSync(new URL("./release_auto_login.mjs", import.meta.url), "utf8");
+  assert.match(source, /identity receipt: mismatch categories=\$\{categories\}/);
+  assert.doesNotMatch(source, /outcome\.problems/);
+  assert.match(source, /log\(`verify-signed-in: screen=\$\{screen\}`\)/);
 });
