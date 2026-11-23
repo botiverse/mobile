@@ -23,8 +23,10 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 
 /**
- * The two axes of the scale (artin 2026-11-02): the type follows the window width alone, the
- * control metrics the input in use, read from real pointer events on an offscreen scene.
+ * The two axes of the scale (artin 2026-11-02): the layout follows the window width alone; the
+ * component sizes take the desktop values on a wide window with a mouse or trackpad, as the Web's
+ * desktop (raft-ui tokens.resolved.json). The input is read from real pointer events on an
+ * offscreen scene.
  */
 @OptIn(ExperimentalComposeUiApi::class)
 class RaftPointerInputTest {
@@ -40,14 +42,15 @@ class RaftPointerInputTest {
     }
 
     /**
-     * A mouse switches the controls to the 34dp metrics as soon as it moves; a finger switches
-     * them back only when it lifts, so a control never resizes under the finger pressing it.
+     * On a wide window a mouse switches the controls to the 34dp metrics as soon as it moves; a
+     * finger switches them back only when it lifts, so a control never resizes under the finger
+     * pressing it.
      */
     @Test
     fun controlsFollowTheLastInputWithoutResizingUnderAPress() {
         var height: Dp = 0.dp
         ImageComposeScene(width = 200, height = 200, density = Density(1f)) {
-            RaftTheme(appearance = RaftAppearance.Light, systemDark = false) {
+            RaftTheme(appearance = RaftAppearance.Light, systemDark = false, scale = RaftScale.Wide) {
                 height = RaftTheme.controls.height
                 Box(Modifier.fillMaxSize().raftTrackPointerInput())
             }
@@ -69,6 +72,26 @@ class RaftPointerInputTest {
             scene.sendPointerEvent(PointerEventType.Release, at, type = PointerType.Stylus)
             scene.render(64_000_000L)
             assertEquals(44.dp, height, "a pen changes nothing")
+        }
+    }
+
+    /**
+     * A mouse in a narrow window keeps the touch controls, as the Web below 768px; only the tokens
+     * that follow the input alone change (`list-row.min-height`).
+     */
+    @Test
+    fun aMouseInANarrowWindowKeepsTheTouchControls() {
+        var height: Dp = 0.dp
+        var listRowMinHeight: Dp = 0.dp
+        ImageComposeScene(width = 200, height = 200, density = Density(1f)) {
+            RaftTheme(appearance = RaftAppearance.Light, systemDark = false, scale = RaftScale.Compact, pointerInput = RaftPointerInput.Fine) {
+                height = RaftTheme.controls.height
+                listRowMinHeight = RaftTheme.sizes.listRowMinHeight
+            }
+        }.use { scene ->
+            scene.render()
+            assertEquals(44.dp, height)
+            assertEquals(0.dp, listRowMinHeight)
         }
     }
 

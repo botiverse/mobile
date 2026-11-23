@@ -1964,7 +1964,7 @@ internal fun RaftTaskStatusChip(
 private val SharedTaskMonoMetaStyle: androidx.compose.ui.text.TextStyle
     get() = RaftType.Caption.copy(fontFamily = RaftMonoFamily, fontWeight = FontWeight.Normal, fontSize = 12.sp, lineHeight = 16.sp)
 
-private val SharedTasksListSectionGap = 24.dp
+private val SharedTasksListSectionGap = 24.dp // not a token: web TasksPanel `stack-y-6`, not `--section-gap`
 private val SharedTasksListItemGap = 10.dp
 
 private data class SharedTaskCardGestureCallbacks(

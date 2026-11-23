@@ -18,12 +18,13 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import build.raft.designsystem.theme.LocalRaftContentColor
 import build.raft.designsystem.theme.RaftTheme
+import build.raft.designsystem.tokens.RaftUiComponentTokens
 import build.raft.designsystem.tokens.RaftUiPalette
 
 /** raft-ui `InboxItemLeading` / `InboxItemLeadingBadge` metrics (`inbox-item.recipe.ts`). */
 object RaftInboxItemLeadingDefaults {
-    /** `size-9`: the leading slot; the avatar or tile inside is the 35dp `md` step. */
-    val Slot: Dp = 36.dp
+    /** `avatar-column.size`: the leading slot, the 35dp `md` avatar or tile exactly (raft-design #1393). */
+    val Slot: Dp = RaftUiComponentTokens.Touch.avatarColumnSize
 
     /** `size-3.5`. */
     val BadgeSize: Dp = 14.dp

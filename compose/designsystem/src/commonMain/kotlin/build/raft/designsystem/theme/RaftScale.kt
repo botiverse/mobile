@@ -16,6 +16,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import build.raft.designsystem.tokens.RaftUiComponentTokens
 
 /**
  * Which raft-ui type scale [RaftTheme] provides: the type and information density. It follows
@@ -47,29 +48,40 @@ enum class RaftScale {
 }
 
 /**
- * The input in use, which picks the control metrics ([controls]): raft-ui foundation.css switches
- * `--control-*` for a fine pointer. A finger keeps 44; a mouse or trackpad that is actually in use
- * takes the tighter desktop metrics, at any width.
+ * The input in use. With the window's [RaftScale] it picks the component sizes
+ * ([raftComponentTokens]): raft-ui's desktop sizes (34dp controls, 44dp heads) need a wide window
+ * and a mouse or trackpad, as foundation.css's `(width >= 48rem) and (pointer: fine)`; a mouse in
+ * a narrow window keeps the touch sizes but for the few tokens that follow the input alone
+ * (`list-row.min-height`). Hover and the other interactions follow the input at any width.
  */
 enum class RaftPointerInput {
-    /** A finger (or nothing seen yet on a touch platform): 44dp controls. */
+    /** A finger (or nothing seen yet on a touch platform). */
     Touch,
 
-    /** A mouse or trackpad: the desktop's 34dp controls (sizing v12). */
+    /** A mouse or trackpad: the desktop's 34dp controls on a wide window (sizing v12). */
     Fine,
-    ;
-
-    /** The control metrics of this input. */
-    val controls: RaftControlMetrics
-        get() = if (this == Fine) RaftControlMetrics.Desktop else RaftControlMetrics.Mobile
 }
 
 /**
- * raft-ui foundation.css control metrics, the ones its fine-pointer query switches, and the
- * density that goes with them (sizing v12, raft-ui 0.65 desktop density): under a mouse or
- * trackpad the heads, bars, rows and switches tighten too, while a finger keeps today's sizes.
- * CSS px map 1:1 to dp. [Mobile] holds the touch values the components always had, so touch
- * rendering does not change; [Desktop] the pointer ones.
+ * raft-ui's component tokens for a window of [scale] used by [pointerInput]: [RaftUiComponentTokens.Desktop]
+ * on a wide window with a mouse or trackpad, [RaftUiComponentTokens.Fine] with a mouse in a narrow
+ * one, else [RaftUiComponentTokens.Touch]. The app's wide layout starts at [RaftScale.WideMinWidth]
+ * (744), the Web's desktop at 768.
+ */
+fun raftComponentTokens(scale: RaftScale, pointerInput: RaftPointerInput): RaftUiComponentTokens.Values =
+    RaftUiComponentTokens.of(wide = scale == RaftScale.Wide, fine = pointerInput == RaftPointerInput.Fine)
+
+/** The control metrics for a window of [scale] used by [pointerInput] ([raftComponentTokens]). */
+fun raftControlMetrics(scale: RaftScale, pointerInput: RaftPointerInput): RaftControlMetrics =
+    if (raftComponentTokens(scale, pointerInput) == RaftUiComponentTokens.Desktop) RaftControlMetrics.Desktop else RaftControlMetrics.Mobile
+
+/**
+ * The control metrics: raft-ui's component tokens ([RaftUiComponentTokens], generated from its
+ * `tokens.resolved.json`) as the components read them, and the density that goes with them
+ * (sizing v12, raft-ui 0.65 desktop density): on a wide window with a mouse or trackpad the heads,
+ * bars, rows and switches tighten too. CSS px map 1:1 to dp. [Mobile] is the touch context,
+ * [Desktop] the desktop one; [of] builds them, so a token change reaches every component. The few
+ * values with no token (the bar glyph, the settings cards) are the app's own and say so.
  */
 @Immutable
 data class RaftControlMetrics(
@@ -161,58 +173,47 @@ data class RaftControlMetrics(
     val settingsCardGap: Dp,
 ) {
     companion object {
-        /** foundation.css `:root`: a finger's 44. */
-        val Mobile =
-            RaftControlMetrics(
-                height = 44.dp,
-                ctaHeight = 52.dp,
-                iconSize = 22.dp,
-                hitInset = 0.dp,
-                embeddedSize = 32.dp,
-                controlRadius = 10.dp,
-                rowHeight = null,
-                headHeight = 56.dp,
-                barButtonSize = 44.dp,
-                barIconSize = 22.dp,
-                barButtonRadius = 10.dp,
-                barEdgeInset = 5.dp,
-                topBarHeight = 48.dp,
-                topBarItemSize = 36.dp,
-                railCompact = false,
-                switchWidth = 50.dp,
-                switchHeight = 30.dp,
-                switchKnobSize = 22.dp,
-                settingsCardPadding = 16.dp,
-                settingsCardGap = 12.dp,
-            )
-
         /**
-         * foundation.css fine-pointer query at sizing v12 (raft-ui 0.65 desktop density): 34dp
-         * controls (32 before v12), so the hit inset is (44 - 34) / 2.
+         * The metrics of [tokens]. [Desktop] alone has a shared [rowHeight]; with a finger each
+         * medium control keeps its own touch height.
          */
-        val Desktop =
-            RaftControlMetrics(
-                height = 34.dp,
-                ctaHeight = 40.dp,
-                iconSize = 18.dp,
-                hitInset = 5.dp,
-                embeddedSize = 22.dp,
-                controlRadius = 8.dp,
-                rowHeight = 34.dp,
-                headHeight = 44.dp,
-                barButtonSize = 28.dp,
-                barIconSize = 16.dp,
-                barButtonRadius = 6.dp,
-                barEdgeInset = 10.dp,
-                topBarHeight = 44.dp,
-                topBarItemSize = 34.dp,
-                railCompact = true,
-                switchWidth = 38.dp,
-                switchHeight = 22.dp,
-                switchKnobSize = 14.dp,
-                settingsCardPadding = 20.dp,
-                settingsCardGap = 16.dp,
+        fun of(tokens: RaftUiComponentTokens.Values): RaftControlMetrics {
+            val desktop = tokens == RaftUiComponentTokens.Desktop
+            // App-only: raft-ui has no token for a bar button's glyph (Button `icon-lg` draws the
+            // control icon, 22; the desktop bar button's is 16) or for the settings cards.
+            val barIconSize = if (desktop) 16.dp else tokens.controlIconSize
+            return RaftControlMetrics(
+                height = tokens.controlHeight,
+                ctaHeight = tokens.controlHeightCta,
+                iconSize = tokens.controlIconSize,
+                hitInset = tokens.controlHitInset,
+                embeddedSize = tokens.controlEmbeddedSize,
+                controlRadius = tokens.controlRadius,
+                rowHeight = if (desktop) tokens.rowHeight else null,
+                headHeight = tokens.headerHeight,
+                barButtonSize = tokens.barButtonSize,
+                barIconSize = barIconSize,
+                barButtonRadius = tokens.barButtonRadius,
+                // The first bar button's glyph lands on the page inset.
+                barEdgeInset = tokens.pageInset - (tokens.barButtonSize - barIconSize) / 2,
+                // Web AppTopBar: `h-[calc(var(--frame-item-height)+2*var(--header-air))]`.
+                topBarHeight = tokens.frameItemHeight + tokens.headerAir * 2,
+                topBarItemSize = tokens.frameItemHeight,
+                railCompact = tokens.railWidth == tokens.railWidthShort,
+                switchWidth = tokens.switchWidth,
+                switchHeight = tokens.switchHeight,
+                // The knob sits 4dp inside the track all round (raft-ui Switch).
+                switchKnobSize = tokens.switchHeight - 8.dp,
+                settingsCardPadding = if (desktop) 20.dp else 16.dp,
+                settingsCardGap = if (desktop) 16.dp else 12.dp,
             )
+        }
+
+        /** The touch context: a phone, and a touch screen at any width (44dp controls). */
+        val Mobile = of(RaftUiComponentTokens.Touch)
+
+        /** The desktop context: a wide window with a mouse or trackpad (34dp controls). */
+        val Desktop = of(RaftUiComponentTokens.Desktop)
     }
 }
 
@@ -300,7 +301,10 @@ fun raftTypeScale(scale: RaftScale, pointerInput: RaftPointerInput): RaftScale =
 /** The pointer input of the enclosing [RaftTheme], null outside any; inherited as [LocalRaftScale]. */
 internal val LocalRaftPointerInput = staticCompositionLocalOf<RaftPointerInput?> { null }
 
-/** The control metrics of the enclosing [RaftTheme] ([RaftPointerInput.controls]). */
+/** The component tokens of the enclosing [RaftTheme] ([RaftTheme.sizes]). */
+internal val LocalRaftComponentTokens = staticCompositionLocalOf<RaftUiComponentTokens.Values> { RaftUiComponentTokens.Touch }
+
+/** The control metrics of the enclosing [RaftTheme] ([raftControlMetrics]). */
 internal val LocalRaftControls = staticCompositionLocalOf { RaftControlMetrics.Mobile }
 
 /**

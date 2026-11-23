@@ -23,6 +23,7 @@ import build.raft.designsystem.components.LocalRaftPulseClock
 import build.raft.designsystem.components.rememberRaftPulseClock
 import build.raft.designsystem.tokens.RaftRadius
 import build.raft.designsystem.tokens.RaftThemeId
+import build.raft.designsystem.tokens.RaftUiComponentTokens
 import build.raft.designsystem.tokens.RaftUiThemeColors
 
 /** The user's appearance choice. [System] follows the OS light/dark setting. */
@@ -180,10 +181,11 @@ val LocalRaftSurfaceColor = staticCompositionLocalOf { Color.Unspecified }
  * window as it is resized. The type scale ([RaftTheme.typeScale]) is the wide one only when
  * [pointerInput] is [RaftPointerInput.Fine] as well, as on the Web.
  *
- * [pointerInput] picks the control metrics ([RaftPointerInput.controls]). Null inherits the
- * enclosing theme's; the outermost one follows the input in use ([RaftPointerInputState]): 44dp
- * for a finger, 34dp while a mouse or trackpad is in use. Pass either to pin it for the subtree
- * (tests, previews).
+ * [pointerInput] is the input in use. Null inherits the enclosing theme's; the outermost one
+ * follows the input in use ([RaftPointerInputState]). With the scale it picks raft-ui's component
+ * sizes ([RaftTheme.sizes], [RaftTheme.controls]): 34dp controls on a wide window with a mouse or
+ * trackpad, as the Web's desktop; 44dp with a finger, and with a mouse in a narrow window. Pass
+ * either to pin it for the subtree (tests, previews).
  *
  * This is not a Material theme: components read [RaftTheme], never `MaterialTheme`.
  */
@@ -216,7 +218,8 @@ fun RaftTheme(
         LocalRaftScale provides resolvedScale,
         LocalRaftTypeScale provides typeScale,
         LocalRaftPointerInput provides resolvedPointerInput,
-        LocalRaftControls provides resolvedPointerInput.controls,
+        LocalRaftComponentTokens provides raftComponentTokens(resolvedScale, resolvedPointerInput),
+        LocalRaftControls provides raftControlMetrics(resolvedScale, resolvedPointerInput),
         LocalRaftShapes provides RaftShapes(),
         LocalRaftIsDark provides dark,
         LocalRaftThemeId provides raftTheme,
@@ -291,7 +294,17 @@ object RaftTheme {
         @Composable @ReadOnlyComposable
         get() = LocalRaftPointerInput.current ?: RaftPointerInput.Touch
 
-    /** The control metrics of [pointerInput] (`--control-height`, `--control-icon-size`, ...). */
+    /**
+     * raft-ui's component tokens in effect ([raftComponentTokens] of [scale] and [pointerInput]):
+     * the sizes the Web and the apps both draw (`list-toolbar.height`, `list-row.min-height`,
+     * `mobile-nav.height`...). Read a size from here, not as a number; [RaftUiComponentTokens.Touch]
+     * outside any theme.
+     */
+    val sizes: RaftUiComponentTokens.Values
+        @Composable @ReadOnlyComposable
+        get() = LocalRaftComponentTokens.current
+
+    /** The control metrics of [sizes] (`--control-height`, `--control-icon-size`, ...). */
     val controls: RaftControlMetrics
         @Composable @ReadOnlyComposable
         get() = LocalRaftControls.current

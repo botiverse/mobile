@@ -214,9 +214,6 @@ object RaftFitToolbarDefaults {
      */
     val SearchMaxLeast: Dp = 120.dp
 
-    /** A line's controls with a finger (a mouse or trackpad takes the shared row height, 34). */
-    internal val TouchControlHeight: Dp = 32.dp
-
     /** A field's room besides its placeholder: 13.5dp edges (inside the 1.5dp border), the 18dp icon and 8dp after it. */
     internal val SearchChrome: Dp = 13.5.dp + 18.dp + 8.dp + 13.5.dp
 
@@ -273,7 +270,8 @@ fun RaftFitToolbar(
     horizontalPadding: Dp = RaftFitToolbarDefaults.HorizontalPadding,
 ) {
     val fine = RaftTheme.pointerInput == RaftPointerInput.Fine
-    val controlHeight = RaftTheme.controls.rowHeight ?: RaftFitToolbarDefaults.TouchControlHeight
+    // `control-height-small`: 32 with a finger, the 34 control height on a desktop.
+    val controlHeight = RaftTheme.sizes.controlHeightSmall
     // raft-design Spacing › Heights: the header air round the controls, less the seam below.
     val airTop = if (fine) 5.dp else 8.dp
     val airBottom = if (fine) 4.dp else 8.dp
