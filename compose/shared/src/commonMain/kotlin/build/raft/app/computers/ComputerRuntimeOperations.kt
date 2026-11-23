@@ -60,6 +60,7 @@ internal fun computerRuntimeOperationRefusal(code: String?): ComputerRuntimeOper
 internal fun RuntimeAuthRequestError.toOperationRefusal(): Pair<ComputerRuntimeOperationRefusal, String?> {
     val known = computerRuntimeOperationRefusal(code)
     if (known != ComputerRuntimeOperationRefusal.Failed) return known to null
+    if (code == "malformed_response") return ComputerRuntimeOperationRefusal.Failed to null
     val httpStatus = status?.takeIf { it > 0 } ?: return ComputerRuntimeOperationRefusal.Failed to null
     val resolved =
         resolveServerRefusal(

@@ -1287,7 +1287,7 @@ private fun <T> HomeNetworkResponse.toComputersDataError(): DataResult<T> {
                 ScreenError(
                     code = "machine_offline",
                     retryable = true,
-                    serverMessage = serverMessage,
+                    serverMessage = null,
                     serverCode = serverCode,
                     traceId = traceId,
                 )
@@ -1297,7 +1297,7 @@ private fun <T> HomeNetworkResponse.toComputersDataError(): DataResult<T> {
                 ScreenError(
                     code = "server_unavailable",
                     retryable = true,
-                    serverMessage = serverMessage,
+                    serverMessage = null,
                     serverCode = serverCode,
                     traceId = traceId,
                 )
@@ -2054,13 +2054,14 @@ private data class ComputerUpgradeResponseDto(val upgradeRequest: ComputerUpgrad
  * machine-readable code falls back to the status mapping of the other Computer routes.
  */
 private fun <T> HomeNetworkResponse.toComputerControlError(): DataResult<T> {
+    if (this.code == 401) return toComputersDataError()
     val envelope = parseHttpErrorEnvelope()
     val code = envelope?.serverCode ?: return toComputersDataError()
     return DataResult.Error(
         ScreenError(
             code = code,
             retryable = this.code >= 500,
-            serverMessage = envelope.serverMessage,
+            serverMessage = if (this.code >= 500) null else envelope.serverMessage,
             serverCode = code,
             traceId = traceId,
         )

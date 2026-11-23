@@ -200,6 +200,7 @@ internal data class ComputerRuntimeAuthFailure(
 )
 
 private fun RuntimeAuthRequestError.usableServerWordsOrNull(): String? {
+    if (code == "malformed_response") return null
     val httpStatus = status?.takeIf { it > 0 } ?: return null
     val resolved =
         resolveServerRefusal(

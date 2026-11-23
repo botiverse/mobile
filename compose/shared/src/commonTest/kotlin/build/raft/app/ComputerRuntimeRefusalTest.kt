@@ -54,6 +54,10 @@ class ComputerRuntimeRefusalTest {
             ComputerRuntimeOperationRefusal.Failed to null,
             RuntimeAuthRequestError(null, null, null, "Connection reset by peer").toOperationRefusal(),
         )
+        assertEquals(
+            ComputerRuntimeOperationRefusal.Failed to null,
+            RuntimeAuthRequestError(200, "malformed_response", sampleTraceId, "unexpected payload").toOperationRefusal(),
+        )
     }
 
     @Test
@@ -78,6 +82,12 @@ class ComputerRuntimeRefusalTest {
                 .signInStartFailure(RuntimeAuthRuntime.Claude)
         assertEquals(ComputerRuntimeAuthProblem.StartFailed, infraSignIn.problem)
         assertNull(infraSignIn.serverMessage)
+
+        val malformedSignIn =
+            RuntimeAuthRequestError(200, "malformed_response", sampleTraceId, "Unexpected JSON")
+                .signInStartFailure(RuntimeAuthRuntime.Claude)
+        assertEquals(ComputerRuntimeAuthProblem.StartFailed, malformedSignIn.problem)
+        assertNull(malformedSignIn.serverMessage)
 
         assertNull(RuntimeAuthRequestError(504, "computer_timeout", sampleTraceId, "timed out").signOutServerMessageOrNull())
         assertEquals(
@@ -125,14 +135,15 @@ class ComputerRuntimeRefusalTest {
     }
 
     @Test
-    fun computerUpgradeModelSurfacesScrubbedUnknownRefusalMessageAndTraceId() {
+    fun computerUpgradeAndRestartRefusalsScrubInfraWithoutDroppingValid4xxCodes() {
         val computer =
             SettingsComputerSnapshot(
                 id = "m1",
                 name = "Work Mac",
-                status = "online",
-                isComputer = true,
+                daemonVersion = "",
                 computerVersion = "1.0.46",
+                isComputer = true,
+                online = true,
                 latestComputerVersion = "1.0.50",
                 remoteUpgradeSupported = true,
                 upgradeAvailable = true,
@@ -159,40 +170,92 @@ class ComputerRuntimeRefusalTest {
         assertEquals("Upgrades are paused during maintenance windows.", model.refusalMessage)
         assertEquals(sampleTraceId, model.refusalTraceId)
 
-        val infraRefusal =
+        // Valid 4xx wire codes containing substrings like "mismatch" or "host" must NOT be scrubbed.
+        val mismatchRefusal =
             SettingsComputerControlState(
                 upgradeRefusal =
                     SettingsComputerUpgradeRefusal(
                         machineId = "m1",
                         availabilityKey = availabilityKey,
-                        code = "server_unavailable",
-                        serverMessage = "upstream 503",
+                        code = "target_version_mismatch",
+                        serverMessage = "Target version 1.0.50 is no longer offered for this host.",
                         traceId = sampleTraceId,
                     )
             )
-        val scrubbedModel = raftComputerUpgradeModel(computer, infraRefusal, nowMillis = 1_000L)
-        assertEquals(RaftComputerUpgradeRefusal.Unknown, scrubbedModel.refusal)
-        assertNull(scrubbedModel.refusalMessage)
-        assertEquals(sampleTraceId, scrubbedModel.refusalTraceId)
+        assertEquals(
+            "Target version 1.0.50 is no longer offered for this host.",
+            raftComputerUpgradeModel(computer, mismatchRefusal, nowMillis = 1_000L).refusalMessage,
+        )
+        assertEquals(
+            "Upgrades on this host are temporarily paused.",
+            computerControlRefusalServerMessageOrNull(
+                code = "upgrade_host_paused",
+                serverMessage = "Upgrades on this host are temporarily paused.",
+                traceId = sampleTraceId,
+            ),
+        )
+
+        // Transport, null/blank, 5xx, auth, and edge/HTML markers must all be scrubbed.
+        val scrubbedCodes = listOf(null, "", "http_0", "http_-1", "http_401", "http_500", "http_503", "auth_required", "server_unavailable", "machine_offline", "machine_offline_replay", "settings_unavailable", "malformed_response", "internal_error", "edge_blocked")
+        scrubbedCodes.forEach { code ->
+            assertNull(
+                computerControlRefusalServerMessageOrNull(code = code, serverMessage = "raw backend failure", traceId = sampleTraceId),
+                "Expected code=$code to be scrubbed",
+            )
+        }
+        assertNull(
+            computerControlRefusalServerMessageOrNull(
+                code = "upgrade_window_closed",
+                serverMessage = "<html>502 Bad Gateway</html>",
+                traceId = sampleTraceId,
+            )
+        )
+        val infraModel =
+            raftComputerUpgradeModel(
+                computer,
+                SettingsComputerControlState(
+                    upgradeRefusal =
+                        SettingsComputerUpgradeRefusal(
+                            machineId = "m1",
+                            availabilityKey = availabilityKey,
+                            code = "http_0",
+                            serverMessage = "Connection reset by peer",
+                            traceId = sampleTraceId,
+                        )
+                ),
+                nowMillis = 1_000L,
+            )
+        assertEquals(RaftComputerUpgradeRefusal.Unknown, infraModel.refusal)
+        assertNull(infraModel.refusalMessage)
+        assertEquals(sampleTraceId, infraModel.refusalTraceId)
     }
 
     @Test
-    fun computersApiControlAndDataErrorsPreserveServerCodeMessageAndTraceId() = runTest {
+    fun computersApiControlAndDataErrorsPreserve4xxAndScrub401And5xx() = runTest {
         val traceHeaders = mapOf("X-Trace-Id" to listOf(sampleTraceId))
+        var controlResponse =
+            HomeNetworkResponse(
+                code = 409,
+                bodyText = null,
+                errorBodyText = """{"error":"Upgrade paused during deploy freeze.","code":"upgrade_frozen"}""",
+                responseHeaders = traceHeaders,
+            )
         val api =
             object : RaftComputersApi {
+                override suspend fun machines(serverId: ServerId): HomeNetworkResponse = error("unused")
+                override suspend fun registerMachine(serverId: ServerId, body: String): HomeNetworkResponse = error("unused")
+                override suspend fun renameMachine(serverId: ServerId, machineId: String, body: String): HomeNetworkResponse = error("unused")
+                override suspend fun rotateMachineKey(serverId: ServerId, machineId: String): HomeNetworkResponse = error("unused")
+                override suspend fun machineWorkspaces(serverId: ServerId, machineId: String): HomeNetworkResponse = error("unused")
+                override suspend fun runtimeModels(serverId: ServerId, machineId: String, runtime: String): HomeNetworkResponse = error("unused")
+                override suspend fun deleteMachineWorkspace(serverId: ServerId, machineId: String, directoryName: String): HomeNetworkResponse = error("unused")
+
                 override suspend fun controlComputer(
                     serverId: ServerId,
                     machineId: String,
                     action: String,
-                    bodyText: String,
-                ): HomeNetworkResponse =
-                    HomeNetworkResponse(
-                        code = 409,
-                        bodyText = null,
-                        errorBodyText = """{"error":"Upgrade paused during deploy freeze.","code":"upgrade_frozen"}""",
-                        responseHeaders = traceHeaders,
-                    )
+                    body: String,
+                ): HomeNetworkResponse = controlResponse
 
                 override suspend fun deleteMachine(serverId: ServerId, machineId: String): HomeNetworkResponse =
                     HomeNetworkResponse(
@@ -208,6 +271,45 @@ class ComputerRuntimeRefusalTest {
         assertEquals("upgrade_frozen", upgradeResult.error.serverCode)
         assertEquals("Upgrade paused during deploy freeze.", upgradeResult.error.serverMessage)
         assertEquals(sampleTraceId, upgradeResult.error.traceId)
+
+        // HTTP 500 with a JSON code must scrub serverMessage (Tier 4).
+        controlResponse =
+            HomeNetworkResponse(
+                code = 500,
+                bodyText = null,
+                errorBodyText = """{"code":"upstream_db_error","error":"SQLSTATE[08006] connection refused"}""",
+                responseHeaders = traceHeaders,
+            )
+        val serverFaultResult = assertIs<DataResult.Error>(client.upgradeComputer(ServerId("s1"), "m1", "1.0.50"))
+        assertEquals("upstream_db_error", serverFaultResult.error.code)
+        assertTrue(serverFaultResult.error.retryable)
+        assertNull(serverFaultResult.error.serverMessage)
+        assertEquals(sampleTraceId, serverFaultResult.error.traceId)
+
+        // HTTP 503 without a JSON code maps to machine_offline with scrubbed serverMessage.
+        controlResponse =
+            HomeNetworkResponse(
+                code = 503,
+                bodyText = null,
+                errorBodyText = """{"error":"upstream 503 backend down"}""",
+                responseHeaders = traceHeaders,
+            )
+        val offline503Result = assertIs<DataResult.Error>(client.restartComputer(ServerId("s1"), "m1"))
+        assertEquals("machine_offline", offline503Result.error.code)
+        assertTrue(offline503Result.error.retryable)
+        assertNull(offline503Result.error.serverMessage)
+
+        // HTTP 401 with a JSON code still routes to auth_required NoPermission (Tier 1).
+        controlResponse =
+            HomeNetworkResponse(
+                code = 401,
+                bodyText = null,
+                errorBodyText = """{"code":"token_expired","error":"jwt signature invalid"}""",
+                responseHeaders = traceHeaders,
+            )
+        val authResult = assertIs<DataResult.NoPermission>(client.upgradeComputer(ServerId("s1"), "m1", "1.0.50"))
+        assertEquals("auth_required", authResult.blocker.code)
+        assertEquals(sampleTraceId, authResult.blocker.traceId)
 
         val deleteResult = assertIs<DataResult.NoPermission>(client.deleteMachine(ServerId("s1"), "m1"))
         assertEquals("server_forbidden", deleteResult.blocker.code)

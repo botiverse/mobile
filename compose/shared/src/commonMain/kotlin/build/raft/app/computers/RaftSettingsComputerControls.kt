@@ -17,13 +17,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import build.raft.app.data.ScreenError
 import build.raft.app.data.SettingsComputerCommandContext
 import build.raft.app.data.SettingsComputerReleaseNotesSnapshot
 import build.raft.app.data.SettingsComputerRestartProgress
 import build.raft.app.data.SettingsComputerSnapshot
 import build.raft.app.data.COMPUTER_RESTART_TIMED_OUT
-import build.raft.app.data.errorPresentation
 import build.raft.app.markdown.RaftMarkdownBody
 import build.raft.designsystem.components.RaftBanner
 import build.raft.designsystem.components.RaftBannerStatus
@@ -473,9 +471,11 @@ internal fun RaftComputerServiceCard(context: RaftComputerControlsContext) {
                         else -> null
                     }
                 if (outcome != null) {
-                    RaftComputerProblem(outcome)
-                    if (unknownUpgradeRefusal && upgrade.refusalTraceId != null) {
-                        RaftTraceIdNote(upgrade.refusalTraceId)
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        RaftComputerProblem(outcome)
+                        if (unknownUpgradeRefusal && upgrade.refusalTraceId != null) {
+                            RaftTraceIdNote(upgrade.refusalTraceId)
+                        }
                     }
                 }
                 if (outcome != null && card is RaftComputerCardState.OneClick) {
@@ -588,11 +588,11 @@ private fun raftComputerRestartErrorText(restart: SettingsComputerRestartProgres
         "restart_failed", null -> stringResource(Res.string.settings_computers_restart_failed)
         else ->
             if (restart.requestId == null) {
-                ScreenError(
+                computerControlRefusalServerMessageOrNull(
                     code = code,
                     serverMessage = restart.serverMessage,
                     traceId = restart.traceId,
-                ).errorPresentation().rawServerMessage
+                )
                     ?: stringResource(Res.string.settings_computers_restart_request_failed)
             } else {
                 code.orEmpty()
