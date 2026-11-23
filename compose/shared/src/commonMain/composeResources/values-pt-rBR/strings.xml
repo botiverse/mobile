@@ -2062,6 +2062,7 @@
     <string name="tasks_section_assigned">Atribuídas a você</string>
     <string name="tasks_section_started">Iniciadas por você</string>
     <string name="tasks_section_empty">Nenhuma</string>
+    <string name="tasks_activity_stale_three_days">sem atualização há 3 dias</string>
     <string name="tasks_no_match">Nenhuma tarefa corresponde</string>
     <string name="tasks_chip_channel">Canal</string>
     <string name="tasks_chip_creator">Criado por</string>

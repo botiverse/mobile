@@ -11,6 +11,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.unit.Dp
 import build.raft.app.data.ServerTaskBoardStatuses
 import build.raft.app.data.ServerTaskSort
 import build.raft.app.data.TasksPageScope
@@ -23,6 +24,7 @@ import build.raft.designsystem.components.RaftCheckboxIndicator
 import build.raft.designsystem.components.RaftFitToolbar
 import build.raft.designsystem.components.RaftFitToolbarAction
 import build.raft.designsystem.components.RaftFitToolbarChoice
+import build.raft.designsystem.components.RaftFitToolbarDefaults
 import build.raft.designsystem.components.RaftFitToolbarOption
 import build.raft.designsystem.components.RaftFitToolbarScope
 import build.raft.designsystem.components.RaftFitToolbarSearch
@@ -68,6 +70,8 @@ internal fun SharedTasksQueryToolbar(
     onModeSelected: (TasksViewMode) -> Unit,
     openFilterId: String?,
     onFilterClick: (String) -> Unit,
+    /** Horizontal inset matching the Tasks page container (`16dp` narrow, `20dp` wide; web `TASKS_PAGE_TOOLBAR_CLASS`). */
+    horizontalPadding: Dp = RaftFitToolbarDefaults.HorizontalPadding,
     /** A filter's picker by its id, composed next to the filter's chip ([RaftFitToolbarChoice.popup]). */
     filterPicker: @Composable (String) -> Unit = {},
 ) {
@@ -173,6 +177,7 @@ internal fun SharedTasksQueryToolbar(
                 ),
             moreLabel = stringResource(Res.string.list_toolbar_more),
             wrap = true,
+            horizontalPadding = horizontalPadding,
             filtersTestTag = SharedTasksQueryToolbarTags.Filters,
         )
     }
@@ -240,6 +245,7 @@ private fun tasksSortChoice(
         onSelect = { key -> ServerTaskSort.fromWire(key)?.let { onIntent(TasksQueryIntent.SetSort(it)) } },
         heading = stringResource(Res.string.list_toolbar_sort),
         contentDescription = stringResource(Res.string.tasks_sort_trigger_label, label),
+        applied = sort != ServerTaskSort.Default,
         testTag = SharedTasksQueryToolbarTags.Sort,
         key = SharedTasksQueryToolbarTags.Sort,
     )

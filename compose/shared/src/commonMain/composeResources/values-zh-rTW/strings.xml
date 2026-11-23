@@ -2062,6 +2062,7 @@
     <string name="tasks_section_assigned">指派給你</string>
     <string name="tasks_section_started">你發起的</string>
     <string name="tasks_section_empty">沒有</string>
+    <string name="tasks_activity_stale_three_days">3 天沒有更新</string>
     <string name="tasks_no_match">沒有符合條件的任務</string>
     <string name="tasks_chip_channel">頻道</string>
     <string name="tasks_chip_creator">建立者</string>

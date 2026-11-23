@@ -2066,6 +2066,7 @@
     <string name="tasks_section_assigned">Assigned</string>
     <string name="tasks_section_started">Started by you</string>
     <string name="tasks_section_empty">No tasks</string>
+    <string name="tasks_activity_stale_three_days">no update for 3 days</string>
     <string name="tasks_no_match">No tasks match</string>
     <string name="tasks_chip_channel">Channel</string>
     <string name="tasks_chip_creator">Creator</string>

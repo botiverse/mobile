@@ -91,4 +91,51 @@ class SharedTasksPageTest {
         assertEquals(-90f, taskSectionChevronRotation(collapsed = true))
         assertEquals(0f, taskSectionChevronRotation(collapsed = false))
     }
+
+    @Test
+    fun compactRowFormatsLeadingRefAndChannelTagByContainerWidth() {
+        val channelTask =
+            TaskSummary(
+                id = TaskId("task-25"),
+                title = "Phone tasks list parity",
+                status = TaskStatus.InProgress,
+                taskNumber = 25,
+                channelId = ChannelId("ch-mobile"),
+                channelName = "proj-mobile",
+                channelType = "channel",
+                updatedAtLabel = "2026-11-20T12:00:00Z",
+            )
+        val dmTask = channelTask.copy(channelName = "alice", channelType = "dm")
+
+        assertEquals("#25", channelTask.tasksCompactLeadingRef(showChannel = true, narrow = true))
+        assertEquals("#proj-mobile:#25", channelTask.tasksCompactLeadingRef(showChannel = true, narrow = false))
+        assertEquals("dm:@alice:#25", dmTask.tasksCompactLeadingRef(showChannel = true, narrow = false))
+        assertEquals("#25", channelTask.tasksCompactLeadingRef(showChannel = false, narrow = false))
+
+        assertEquals("#proj-mobile", channelTask.tasksCompactChannelTag(showChannel = true, narrow = true))
+        assertNull(channelTask.tasksCompactChannelTag(showChannel = true, narrow = false))
+        assertNull(channelTask.tasksCompactChannelTag(showChannel = false, narrow = true))
+    }
+
+    @Test
+    fun compactRowStaleCheckFlagsOnlyOpenTasksOlderThanThreeDays() {
+        val now = 1_795_000_000_000L // 2026-11-18T11:06:40Z
+        val timeContext = build.raft.app.model.RaftTimeContext(localOffsetMinutes = 0, nowEpochMillis = now)
+        val oldOpen =
+            TaskSummary(
+                id = TaskId("task-old"),
+                title = "Stale task",
+                status = TaskStatus.InProgress,
+                updatedAtLabel = "2026-11-10T10:00:00Z",
+                activityAt = "2026-11-10T10:00:00Z",
+            )
+        val recentOpen = oldOpen.copy(updatedAtLabel = "2026-11-17T10:00:00Z", activityAt = "2026-11-17T10:00:00Z")
+        val oldDone = oldOpen.copy(status = TaskStatus.Done)
+        val oldBacklog = oldOpen.copy(status = TaskStatus.Backlog)
+
+        assertEquals(true, oldOpen.isTasksCompactStale(timeContext))
+        assertEquals(false, recentOpen.isTasksCompactStale(timeContext))
+        assertEquals(false, oldDone.isTasksCompactStale(timeContext))
+        assertEquals(false, oldBacklog.isTasksCompactStale(timeContext))
+    }
 }

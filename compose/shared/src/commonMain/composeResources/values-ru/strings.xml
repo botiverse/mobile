@@ -2062,6 +2062,7 @@
     <string name="tasks_section_assigned">Назначены вам</string>
     <string name="tasks_section_started">Начаты вами</string>
     <string name="tasks_section_empty">Нет</string>
+    <string name="tasks_activity_stale_three_days">нет обновлений 3 дня</string>
     <string name="tasks_no_match">Нет подходящих задач</string>
     <string name="tasks_chip_channel">Канал</string>
     <string name="tasks_chip_creator">Автор</string>
