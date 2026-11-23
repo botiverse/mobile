@@ -1,5 +1,6 @@
 package build.raft.app.data
 
+import build.raft.app.data.realtime.PerReceiverReadStateCheckpoint
 import build.raft.app.model.ChannelId
 import build.raft.app.model.ThreadUpdated
 import build.raft.app.model.mentionsUser
@@ -44,12 +45,30 @@ internal enum class HomeThreadReplyDecision {
 internal fun HomeSnapshot.decideThreadReply(
     event: ThreadUpdated,
     openConversationId: String?
+): HomeThreadReplyDecision =
+    decideThreadReply(
+        event = event,
+        openConversationIds = setOfNotNull(openConversationId),
+        openParentMessageId = null,
+    )
+
+internal fun HomeSnapshot.decideThreadReply(
+    event: ThreadUpdated,
+    openConversationIds: Set<String>,
+    openParentMessageId: String? = null,
 ): HomeThreadReplyDecision {
     val me = currentMember.id.value
     // The server never counts the user's own reply as unread; nothing to bump or reload.
     if (event.latestReply?.senderId == me) return HomeThreadReplyDecision.Ignore
+    // A thread currently open on screen (main detail or side pane) is being read live:
+    // neither bump its unread nor schedule a summary reload that could race its read receipt.
+    if (
+        event.threadChannelId.value in openConversationIds ||
+        (openParentMessageId != null && event.parentMessageId.value == openParentMessageId)
+    ) {
+        return HomeThreadReplyDecision.Ignore
+    }
     if (event.threadChannelId.value !in followedThreadUnread) return HomeThreadReplyDecision.Refresh
-    if (openConversationId == event.threadChannelId.value) return HomeThreadReplyDecision.Ignore
     return HomeThreadReplyDecision.Bump
 }
 
@@ -81,9 +100,93 @@ internal fun HomeSnapshot.withFollowedThreadServerUnread(
     }
 }
 
+/**
+ * Projects a served `channels/unread?summary=1` followed-thread map against locally known read
+ * state before applying it to Home (web `applyKnownReadStateProjectionsToFollowedThreads` /
+ * `isServedThreadRowRead`, `#wg-mobile-sync:#257`), so a lagging read-model summary cannot briefly
+ * resurrect a thread the user just read or unfollowed.
+ */
+internal fun projectFollowedThreadUnread(
+    served: Map<String, HomeFollowedThreadUnread>,
+    servedLatestActivitySeqs: Map<String, Long> = emptyMap(),
+    servedReadFrontiers: Map<String, ReadReceiptFrontier> = emptyMap(),
+    servedMarkedUnreadIds: Set<String> = emptySet(),
+    pendingUnfollows: Set<String> = emptySet(),
+    pendingReadSeqs: Map<ChannelId, Long> = emptyMap(),
+    acknowledgedReadSeqs: Map<ChannelId, Long> = emptyMap(),
+    currentFollowedThreadUnread: Map<String, HomeFollowedThreadUnread> = emptyMap(),
+    currentLatestActivitySeqs: Map<String, Long> = emptyMap(),
+    acceptedCheckpoint: (threadId: String) -> PerReceiverReadStateCheckpoint? = { null },
+): Map<String, HomeFollowedThreadUnread> {
+    if (served.isEmpty()) return emptyMap()
+    val filtered = LinkedHashMap<String, HomeFollowedThreadUnread>(served.size)
+    for ((threadId, row) in served) {
+        if (threadId in pendingUnfollows) continue
+        val latestSeq = servedLatestActivitySeqs[threadId]
+        val markedUnread = threadId in servedMarkedUnreadIds || servedReadFrontiers[threadId]?.markedUnread == true
+        if (latestSeq != null) {
+            val channelId = ChannelId(threadId)
+            val pendingRead = pendingReadSeqs[channelId]
+            if (pendingRead != null && pendingRead >= latestSeq) continue
+            val acknowledgedRead = acknowledgedReadSeqs[channelId]
+            if (!markedUnread && acknowledgedRead != null && acknowledgedRead >= latestSeq) continue
+            val checkpoint = acceptedCheckpoint(threadId)
+            val servedVersion = servedReadFrontiers[threadId]?.readStateVersion ?: 0L
+            if (checkpoint != null && checkpoint.version > servedVersion && checkpoint.maxReadSeq >= latestSeq) {
+                continue
+            }
+            if (
+                !markedUnread &&
+                threadId !in currentFollowedThreadUnread &&
+                currentLatestActivitySeqs[threadId] == latestSeq
+            ) {
+                continue
+            }
+        }
+        filtered[threadId] = row
+    }
+    return filtered
+}
+
 /** A reloaded summary replaces the followed threads wholesale (web `loadFollowedThreads`). */
-internal fun HomeSnapshot.withFollowedThreadUnread(threads: Map<String, HomeFollowedThreadUnread>): HomeSnapshot =
-    if (threads == followedThreadUnread) this else copy(followedThreadUnread = threads)
+internal fun HomeSnapshot.withFollowedThreadUnread(
+    threads: Map<String, HomeFollowedThreadUnread>,
+    latestActivitySeqs: Map<String, Long> = emptyMap(),
+    readFrontiers: Map<String, ReadReceiptFrontier> = emptyMap(),
+): HomeSnapshot {
+    val nextLatestSeqs =
+        if (latestActivitySeqs.isEmpty()) {
+            unreadLatestActivitySeqs
+        } else {
+            val merged = LinkedHashMap(unreadLatestActivitySeqs)
+            for ((scopeId, seq) in latestActivitySeqs) {
+                val existing = merged[scopeId]
+                if (existing == null || seq > existing) merged[scopeId] = seq
+            }
+            if (merged == unreadLatestActivitySeqs) unreadLatestActivitySeqs else merged
+        }
+    val nextFrontiers =
+        if (readFrontiers.isEmpty()) {
+            unreadReadFrontiers
+        } else {
+            val merged = LinkedHashMap(unreadReadFrontiers)
+            for ((scopeId, frontier) in readFrontiers) {
+                val existing = merged[scopeId]
+                if (existing == null || (frontier.readStateVersion ?: -1L) >= (existing.readStateVersion ?: -1L)) {
+                    merged[scopeId] = frontier
+                }
+            }
+            if (merged == unreadReadFrontiers) unreadReadFrontiers else merged
+        }
+    if (threads == followedThreadUnread && nextLatestSeqs === unreadLatestActivitySeqs && nextFrontiers === unreadReadFrontiers) {
+        return this
+    }
+    return copy(
+        followedThreadUnread = threads,
+        unreadLatestActivitySeqs = nextLatestSeqs,
+        unreadReadFrontiers = nextFrontiers,
+    )
+}
 
 /**
  * Where a thread's Unfollow is (web #11687 `markThreadUnfollowed`: unfollowing a thread clears its

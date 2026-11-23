@@ -1,5 +1,6 @@
 package build.raft.app.data
 
+import build.raft.app.data.realtime.PerReceiverReadStateCheckpoint
 import build.raft.app.model.ChannelId
 import build.raft.app.model.MemberId
 import build.raft.app.model.MemberKind
@@ -146,6 +147,23 @@ class HomeUnreadMarksReducerTest {
         assertEquals(HomeThreadReplyDecision.Bump, snapshot.decideThreadReply(threadReply(threadA, "user-2"), null))
         assertEquals(HomeThreadReplyDecision.Ignore, snapshot.decideThreadReply(threadReply(threadA, "user-1"), null))
         assertEquals(HomeThreadReplyDecision.Ignore, snapshot.decideThreadReply(threadReply(threadA, "user-2"), threadA.value))
+        // Open in the side pane (by channel id or by parent message id): neither bump nor reload, even if currently read.
+        assertEquals(
+            HomeThreadReplyDecision.Ignore,
+            snapshot.decideThreadReply(threadReply(threadA, "user-2"), setOf(general.value, threadA.value))
+        )
+        assertEquals(
+            HomeThreadReplyDecision.Ignore,
+            snapshot.decideThreadReply(threadReply(ChannelId("thread-new"), "user-2"), setOf(general.value, "thread-new"))
+        )
+        assertEquals(
+            HomeThreadReplyDecision.Ignore,
+            snapshot.decideThreadReply(
+                threadReply(ChannelId("thread-new"), "user-2"),
+                openConversationIds = setOf(general.value),
+                openParentMessageId = "parent-1",
+            )
+        )
         assertEquals(
             HomeThreadReplyDecision.Refresh,
             snapshot.decideThreadReply(threadReply(ChannelId("thread-new"), "user-2"), null)
@@ -187,6 +205,47 @@ class HomeUnreadMarksReducerTest {
 
         assertSame(snapshot, snapshot.withFollowedThreadUnread(snapshot.followedThreadUnread))
         assertEquals(emptyMap(), snapshot.withFollowedThreadUnread(emptyMap()).followedThreadUnread)
+    }
+
+    @Test
+    fun projectFollowedThreadUnreadSuppressesLaggingRowsCoveredByKnownReadState() {
+        val served =
+            mapOf(
+                "thread-pending" to HomeFollowedThreadUnread(general, unreadCount = 1),
+                "thread-acked" to HomeFollowedThreadUnread(general, unreadCount = 2),
+                "thread-checkpoint" to HomeFollowedThreadUnread(general, unreadCount = 1),
+                "thread-local-cleared" to HomeFollowedThreadUnread(general, unreadCount = 1),
+                "thread-newer" to HomeFollowedThreadUnread(general, unreadCount = 1),
+                "thread-marked-unread" to HomeFollowedThreadUnread(general, unreadCount = 1),
+            )
+        val projected =
+            projectFollowedThreadUnread(
+                served = served,
+                servedLatestActivitySeqs =
+                    mapOf(
+                        "thread-pending" to 10L,
+                        "thread-acked" to 20L,
+                        "thread-checkpoint" to 30L,
+                        "thread-local-cleared" to 40L,
+                        "thread-newer" to 51L,
+                        "thread-marked-unread" to 60L,
+                    ),
+                servedReadFrontiers =
+                    mapOf(
+                        "thread-checkpoint" to ReadReceiptFrontier(maxReadSeq = 25L, readStateVersion = 2L, markedUnread = false),
+                        "thread-marked-unread" to ReadReceiptFrontier(maxReadSeq = 60L, readStateVersion = 3L, markedUnread = true),
+                    ),
+                pendingReadSeqs = mapOf(ChannelId("thread-pending") to 10L, ChannelId("thread-newer") to 50L),
+                acknowledgedReadSeqs = mapOf(ChannelId("thread-acked") to 20L, ChannelId("thread-marked-unread") to 60L),
+                currentFollowedThreadUnread = emptyMap(),
+                currentLatestActivitySeqs = mapOf("thread-local-cleared" to 40L, "thread-newer" to 50L),
+                acceptedCheckpoint = { threadId ->
+                    if (threadId == "thread-checkpoint") PerReceiverReadStateCheckpoint(version = 3L, maxReadSeq = 30L)
+                    else PerReceiverReadStateCheckpoint()
+                },
+            )
+
+        assertEquals(setOf("thread-newer", "thread-marked-unread"), projected.keys)
     }
 
     @Test
