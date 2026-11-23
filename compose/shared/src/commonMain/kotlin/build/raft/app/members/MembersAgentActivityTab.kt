@@ -52,6 +52,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -150,12 +151,20 @@ internal fun MembersAgentActivityTab(
             .background(RaftTheme.colors.layerCanvas),
         header = {
             if (overview != null || showSubagents) {
+                // Web AgentActivityLog's view toolbar (stdrc 2026-11-04/05): no bar of its own, so no
+                // divider under it. By touch at least the header height with 12dp above and below
+                // (`min-h-(--header-height) py-3`); with a mouse on a desktop part of the content, the
+                // page's top inset above and nothing below (`pt-(--page-top) pb-0`).
+                val desktop = RaftTheme.controls.rowHeight != null
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
+                        .then(if (desktop) Modifier else Modifier.heightIn(min = RaftTheme.sizes.headerHeight))
                         .padding(
-                            horizontal = MembersPageInset,
-                            vertical = RaftAppSpacing.Sm
+                            start = MembersPageInset,
+                            end = MembersPageInset,
+                            top = if (desktop) RaftTheme.sizes.pageTop else 12.dp,
+                            bottom = if (desktop) 0.dp else 12.dp,
                         ),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(RaftAppSpacing.Sm)
@@ -184,7 +193,6 @@ internal fun MembersAgentActivityTab(
                         )
                     }
                 }
-                MembersDetailSectionDivider()
             }
         },
     ) { index ->
