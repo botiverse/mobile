@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
@@ -226,7 +227,7 @@ internal fun LazyListScope.activityDayHeadingItem(
     horizontalPadding: Dp = 16.dp,
 ) {
     stickyHeader(key = heading.key, contentType = "activity_day_heading") {
-        ActivityDayHeading(heading.label, first = heading.first, background = background, horizontalPadding = horizontalPadding)
+        ActivityDayHeading(heading.label, first = heading.first, background = background, modifier = Modifier.testTag("inbox-day-heading"), horizontalPadding = horizontalPadding)
     }
 }
 

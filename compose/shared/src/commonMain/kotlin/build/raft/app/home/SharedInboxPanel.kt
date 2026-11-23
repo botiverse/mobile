@@ -2511,6 +2511,7 @@ internal fun SharedActivityList(
                                     onExitCollapsed = { completePendingRowExit(item.key) },
                                     onInFlightExitDisposed = { completePendingRowExit(item.key) },
                                     layout = rowLayout,
+                                    modifier = Modifier.testTag("inbox-row"),
                                 )
                             }
                         }
