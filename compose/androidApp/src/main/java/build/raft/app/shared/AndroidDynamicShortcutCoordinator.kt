@@ -17,6 +17,7 @@ import build.raft.app.MainActivity
 import build.raft.app.R
 import build.raft.app.RaftPixelAvatarRaster
 import build.raft.app.core.data.auth.androidMMKVLocalPreferenceKeyValueStore
+import build.raft.app.core.data.diagnostics.RaftAppLog
 import build.raft.app.data.RaftDesktopShortcutContract
 import build.raft.app.data.RaftDesktopShortcutItem
 import build.raft.app.data.RaftShareSuggestion
