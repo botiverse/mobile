@@ -54,6 +54,7 @@ internal object VisualAndroidArtifacts {
         listOf(
             "$caseId.png",
             "$caseId.metadata.json",
+            "$caseId.components.json",
             "$caseId.failure.png",
             "$caseId.failure.json"
         )
