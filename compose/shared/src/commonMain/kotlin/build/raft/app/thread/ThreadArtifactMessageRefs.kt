@@ -27,8 +27,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.layout.layout
-import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.semantics
@@ -55,7 +53,6 @@ import build.raft.app.model.MillisPerMinute
 import build.raft.app.model.RaftTimeContext
 import build.raft.app.model.formatRaftTimestampEpochMillis
 import build.raft.app.resources.*
-import build.raft.designsystem.components.RaftAppLinkCardDefaults
 import build.raft.designsystem.components.RaftBadge
 import build.raft.designsystem.components.RaftBadgeAppearance
 import build.raft.designsystem.components.RaftBadgeVariant
@@ -315,8 +312,12 @@ internal fun ThreadArtifactMessageRefsContent(
  */
 internal val LocalArtifactScreenshotReader = staticCompositionLocalOf<ArtifactScreenshotReader?> { null }
 
-/** web `PHONE_QUERY` `(max-width: 767px)`: a phone-width layout shows a card's phone screenshot. */
-internal fun artifactScreenshotPhoneLayout(windowWidth: Dp): Boolean = windowWidth < RaftAppLinkCardDefaults.PhoneBelow
+/**
+ * Whether a [windowWidth]-wide window shows a card's phone screenshot (web `PHONE_QUERY`, under its
+ * `md`): a phone layout, any window under the app's wide breakpoint ([raftWindowWide]). A window
+ * with the rail and two panes shows the desktop one.
+ */
+internal fun artifactScreenshotPhoneLayout(windowWidth: Dp): Boolean = !raftWindowWide(windowWidth)
 
 /** web `ArtifactCardPicture` for a screenshot: none, its place kept while it is read, or shown. */
 @Immutable
@@ -346,8 +347,7 @@ internal sealed interface ArtifactCardScreenshotView {
 @Composable
 internal fun rememberArtifactCardScreenshot(summary: ArtifactSummary): ArtifactCardScreenshotView {
     val reader = LocalArtifactScreenshotReader.current ?: return ArtifactCardScreenshotView.None
-    val windowWidth = with(LocalDensity.current) { LocalWindowInfo.current.containerSize.width.toDp() }
-    val fileId = artifactScreenshotFile(summary.screenshot, artifactScreenshotPhoneLayout(windowWidth)) ?: return ArtifactCardScreenshotView.None
+    val fileId = artifactScreenshotFile(summary.screenshot, artifactScreenshotPhoneLayout(raftWindowWidth())) ?: return ArtifactCardScreenshotView.None
     val cardId = summary.id
     var bytes by remember(reader, cardId, fileId) { mutableStateOf(reader.kept(cardId, fileId)) }
     var failed by remember(reader, cardId, fileId) { mutableStateOf(false) }

@@ -1,10 +1,12 @@
 package build.raft.app
 
+import androidx.compose.ui.unit.dp
 import build.raft.app.data.StoredAuthServer
 import build.raft.app.data.StoredAuthSession
 import build.raft.app.data.StoredAuthUser
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 /**
@@ -22,18 +24,37 @@ class SettingsThemePageTest {
                 SettingsThemePageSection.Avatars,
                 SettingsThemePageSection.Decor,
             ),
-            settingsThemePageSections(hasServer = true, largeScreen = true),
+            settingsThemePageSections(hasServer = true, decorSwitch = true),
         )
         assertEquals(SettingsThemePageSection.Mode, SettingsThemePageSections.first())
     }
 
     @Test
-    fun aPhoneHasNoPixelArtSwitch() {
-        // The frame's pixel art shows on wide screens only: an ordinary phone never sees it.
-        assertEquals(
-            listOf(SettingsThemePageSection.Mode, SettingsThemePageSection.Basics, SettingsThemePageSection.Avatars),
-            settingsThemePageSections(hasServer = true, largeScreen = false),
-        )
+    fun aPhoneHasThePixelArtSwitchWhereItsWindowHasTheRail() {
+        // #307: the frame's pixel art is drawn on the rail and the wide top bar. A phone held
+        // sideways (874x402) is wide enough for the rail, so it draws the art and needs the switch
+        // to turn it off; held upright it has neither (settings cleanup, 1.27.0).
+        fun railShown(widthDp: Int, heightDp: Int): Boolean =
+            raftAdaptiveNavRailActive(
+                desktopModeEnabled = true,
+                paneState =
+                    reduceRaftAdaptivePane(
+                        RaftAdaptivePaneState(),
+                        RaftAdaptivePaneEvent(widthDp * 3, heightDp * 3, 3f, RaftAdaptivePanePosture.Flat),
+                    ),
+            )
+        fun phoneHasSwitch(widthDp: Int): Boolean =
+            SettingsThemePageSection.Decor in
+                settingsThemePageSections(
+                    hasServer = true,
+                    decorSwitch = settingsThemeDecorSwitchShown(largeScreen = false, windowWide = raftWindowWide(widthDp.dp)),
+                )
+        assertTrue(railShown(874, 402))
+        assertTrue(phoneHasSwitch(874), "held sideways, with the rail")
+        assertFalse(railShown(402, 874))
+        assertFalse(phoneHasSwitch(402), "held upright")
+        // A large screen keeps it in any window, a split-screen half included.
+        assertTrue(settingsThemeDecorSwitchShown(largeScreen = true, windowWide = false))
     }
 
     @Test

@@ -58,8 +58,9 @@ import kotlinx.coroutines.launch
 // `GET servers/:id/assistant/wechat/status` and `DELETE .../wechat/binding?bindingId=`
 // (botiverse/slock packages/server/src/routes/assistantWeChat.ts; RaftAssistantDmCardsApi).
 //
-// Connecting is offered where web offers it (wechatConnectHere.ts): a window at least as wide as
-// web's non-phone layout (tablet, unfolded foldable, desktop; [threadAssistantPanelWide]) shows
+// Connecting is offered where web offers it (wechatConnectHere.ts): a window wide enough for the
+// non-phone layout (tablet, unfolded foldable, desktop; [threadAssistantPanelWide], from the app's
+// wide breakpoint, where web's is its `md`) shows
 // the QR code flow (AssistantWeChatConnect*.kt), carrying the attempt's binding cookie by hand
 // since the app keeps no cookies. At phone width the QR code would have to be scanned with WeChat
 // on this very phone (web `phone`): the dialog says to connect from a computer, as web's phone
@@ -148,7 +149,7 @@ internal val WeChatBinding.stoppedWorking: Boolean get() = state == "reconnect_r
 
 /**
  * Connect WeChat / WeChat (web `WeChatConnectDialog`), centered: the connection while one exists or
- * right after connecting ([WeChatConnectionBody]); else, in a window as wide as web's non-phone
+ * right after connecting ([WeChatConnectionBody]); else, in a window wide enough for the non-phone
  * layout ([wide], [threadAssistantPanelWide]) with [connect] available, the connect flow
  * ([AssistantWeChatConnectFlowDialog]); else where to connect instead (web's phone dialog: the
  * intro, the info banner, one pink Close). Closing stops the flow (its polls and cookie end).

@@ -22,8 +22,9 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
 // Connecting WeChat from the app (web assistant/useWeChatConnect.ts, botiverse/slock staging
-// 34511fe7). Offered only where web offers it: a window at least as wide as web's
-// PHONE_MEDIA_QUERY ([threadAssistantPanelWide]); a phone keeps "connect from a computer".
+// 34511fe7). Offered only where web offers it, a window past the phone layout (web's
+// PHONE_MEDIA_QUERY; here the app's wide breakpoint, [threadAssistantPanelWide]); a phone keeps
+// "connect from a computer".
 
 /** Why connecting stopped (web `WeChatConnectFailure`); each has its own sentence and offers a new code. */
 internal enum class WeChatConnectFailure {
