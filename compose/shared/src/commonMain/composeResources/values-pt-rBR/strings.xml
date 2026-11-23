@@ -1929,11 +1929,11 @@
     <string name="file_preview_fallback_text_file">Arquivo de texto</string>
     <string name="file_preview_image_placeholder">IMG</string>
     <string name="file_preview_no_preview">Não há pré-visualização disponível para este tipo de arquivo.</string>
-    <string name="file_preview_download_to_open">Baixe este arquivo ou use Abrir com para vê-lo em outro app.</string>
-    <string name="file_preview_no_preview_too_large_download">Este arquivo é grande demais para pré-visualizar. Baixe-o ou use Abrir com para vê-lo em outro app.</string>
+    <string name="file_preview_download_to_open">Baixe este arquivo ou abra-o em outro app.</string>
+    <string name="file_preview_no_preview_too_large_download">Este arquivo é grande demais para pré-visualizar. Baixe-o ou abra-o em outro app.</string>
     <string name="file_preview_video_format_unplayable_ios">Este formato de vídeo não pode ser reproduzido no iPhone. Baixe-o ou abra-o em outro app.</string>
     <string name="file_preview_video_format_unplayable_mac">Este formato de vídeo não pode ser reproduzido no Mac. Baixe-o ou abra-o em outro app.</string>
-    <string name="file_preview_no_preview_temporarily_download">A pré-visualização deste arquivo está temporariamente indisponível. Baixe-o ou use Abrir com para vê-lo em outro app.</string>
+    <string name="file_preview_no_preview_temporarily_download">A pré-visualização deste arquivo está temporariamente indisponível. Baixe-o ou abra-o em outro app.</string>
     <string name="file_preview_error_image_unavailable">A pré-visualização da imagem não está disponível.</string>
     <string name="file_preview_image_full_load_failed">Não foi possível carregar a imagem completa</string>
     <string name="file_preview_error_load_generic">Não foi possível carregar a pré-visualização deste arquivo.</string>

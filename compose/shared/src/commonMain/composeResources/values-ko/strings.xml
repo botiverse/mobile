@@ -1929,11 +1929,11 @@
     <string name="file_preview_fallback_text_file">텍스트 파일</string>
     <string name="file_preview_image_placeholder">IMG</string>
     <string name="file_preview_no_preview">이 파일 형식은 미리보기를 지원하지 않아요.</string>
-    <string name="file_preview_download_to_open">이 파일을 다운로드하거나 ‘다른 앱으로 열기’로 다른 앱에서 확인하세요.</string>
-    <string name="file_preview_no_preview_too_large_download">파일이 너무 커서 미리볼 수 없어요. 다운로드하거나 ‘다른 앱으로 열기’로 다른 앱에서 확인하세요.</string>
+    <string name="file_preview_download_to_open">이 파일을 다운로드하거나 다른 앱에서 여세요.</string>
+    <string name="file_preview_no_preview_too_large_download">파일이 너무 커서 미리볼 수 없어요. 다운로드하거나 다른 앱에서 여세요.</string>
     <string name="file_preview_video_format_unplayable_ios">이 동영상 형식은 iPhone에서 재생할 수 없어요. 다운로드하거나 다른 앱에서 여세요.</string>
     <string name="file_preview_video_format_unplayable_mac">이 동영상 형식은 Mac에서 재생할 수 없어요. 다운로드하거나 다른 앱에서 여세요.</string>
-    <string name="file_preview_no_preview_temporarily_download">이 파일의 미리보기를 일시적으로 사용할 수 없어요. 다운로드하거나 ‘다른 앱으로 열기’로 다른 앱에서 확인하세요.</string>
+    <string name="file_preview_no_preview_temporarily_download">이 파일의 미리보기를 일시적으로 사용할 수 없어요. 다운로드하거나 다른 앱에서 여세요.</string>
     <string name="file_preview_error_image_unavailable">이미지 미리보기를 사용할 수 없어요.</string>
     <string name="file_preview_image_full_load_failed">원본 이미지를 불러오지 못했어요</string>
     <string name="file_preview_error_load_generic">이 파일의 미리보기를 불러오지 못했어요.</string>

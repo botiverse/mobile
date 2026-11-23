@@ -1929,11 +1929,11 @@
     <string name="file_preview_fallback_text_file">Текстовый файл</string>
     <string name="file_preview_image_placeholder">Изображение</string>
     <string name="file_preview_no_preview">Для этого типа файлов предпросмотр недоступен.</string>
-    <string name="file_preview_download_to_open">Скачайте файл или откройте его в другом приложении через «Открыть с помощью».</string>
-    <string name="file_preview_no_preview_too_large_download">Файл слишком большой для предпросмотра. Скачайте его или откройте в другом приложении через «Открыть с помощью».</string>
+    <string name="file_preview_download_to_open">Скачайте файл или откройте его в другом приложении.</string>
+    <string name="file_preview_no_preview_too_large_download">Файл слишком большой для предпросмотра. Скачайте его или откройте в другом приложении.</string>
     <string name="file_preview_video_format_unplayable_ios">Этот формат видео не воспроизводится на iPhone. Скачайте его или откройте в другом приложении.</string>
     <string name="file_preview_video_format_unplayable_mac">Этот формат видео не воспроизводится на Mac. Скачайте его или откройте в другом приложении.</string>
-    <string name="file_preview_no_preview_temporarily_download">Предпросмотр этого файла временно недоступен. Скачайте его или откройте в другом приложении через «Открыть с помощью».</string>
+    <string name="file_preview_no_preview_temporarily_download">Предпросмотр этого файла временно недоступен. Скачайте его или откройте в другом приложении.</string>
     <string name="file_preview_error_image_unavailable">Предпросмотр изображения недоступен.</string>
     <string name="file_preview_image_full_load_failed">Не удалось загрузить изображение в полном размере</string>
     <string name="file_preview_error_load_generic">Не удалось загрузить предпросмотр файла.</string>
