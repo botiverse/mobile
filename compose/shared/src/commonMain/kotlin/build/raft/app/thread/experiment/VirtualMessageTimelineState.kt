@@ -416,7 +416,7 @@ internal class VirtualMessageTimelineState(
             scrollOffsetPx = (estimatedTop - desiredTop).coerceIn(0, maxScrollOffsetPx).toFloat()
             updateScrollBoundsFlags()
         }
-        invalidateMeasureSafe()
+        requestMeasure()
     }
 
     fun jumpToIndex(
@@ -465,7 +465,7 @@ internal class VirtualMessageTimelineState(
             this.scrollOffsetPx = (estimatedTop + scrollOffsetPx).coerceIn(0, maxScrollOffsetPx).toFloat()
             updateScrollBoundsFlags()
         }
-        invalidateMeasureSafe()
+        requestMeasure()
     }
 
     fun scrollToTop(suppressAutoLoad: Boolean = false) {
@@ -487,7 +487,7 @@ internal class VirtualMessageTimelineState(
             scrollOffsetPx = maxScrollOffsetPx.toFloat()
             updateScrollBoundsFlags()
         }
-        invalidateMeasureSafe()
+        requestMeasure()
     }
 
     fun clearAutoLoadSuppression() {
@@ -891,7 +891,22 @@ internal class VirtualMessageTimelineState(
 
             var index = firstMountedIndex
             while (index <= lastMountedIndex) {
-                measureItemOnce(index)
+                val measuredHeight = measureItemOnce(index)
+                // Stop early once measured items past the anchor already fill viewport + overscan,
+                // preventing cold estimated ranges from over-composing far-below rows that would
+                // be immediately disposed on the next scroll step.
+                if (index >= anchorIndex) {
+                    val liveScroll =
+                        if (shouldCompensateAboveAnchor) {
+                            (heightIndex.offsetOf(anchorIndex) - anchorViewportTopBefore).coerceIn(0, currentMaxScroll())
+                        } else {
+                            currentScrollInt
+                        }
+                    if (heightIndex.offsetOf(index) + measuredHeight >= liveScroll + availableViewportHeight + overscanPx) {
+                        lastMountedIndex = index
+                        break
+                    }
+                }
                 index += 1
             }
 

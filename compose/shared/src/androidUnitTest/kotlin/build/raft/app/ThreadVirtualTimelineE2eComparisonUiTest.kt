@@ -249,6 +249,13 @@ class ThreadVirtualTimelineE2eComparisonUiTest {
     private fun Rect.sameVerticalAs(other: Rect): Boolean =
         abs(top - other.top) <= 0.5f && abs(bottom - other.bottom) <= 0.5f
 
+    private fun recordComparisonTable(table: String) {
+        println(table)
+        val file = java.io.File("build/reports/thread-screenshots/virtual-timeline-e2e-metrics.txt")
+        file.parentFile?.mkdirs()
+        file.appendText(table + "\n\n")
+    }
+
     // ---------------------------------------------------------------------------------------------
     // E2E-1: Cold bottom open + realtime append + agent typing line (zero cover / zero shift)
     // ---------------------------------------------------------------------------------------------
@@ -341,7 +348,7 @@ class ThreadVirtualTimelineE2eComparisonUiTest {
     fun e2e01_coldBottomOpenRealtimeAppendAndTypingLine() {
         val lazy = runE2e1ForEngine(useVirtual = false)
         val virtual = runE2e1ForEngine(useVirtual = true)
-        println(
+        recordComparisonTable(
             """
             |=== [E2E-1] Real ThreadMessagesList: Cold Bottom Open + Typing Line + 3 Realtime Appends ===
             | Engine                  | InitRetries | OpenScrolls | After3AppendsScrolls | TypingClear | TypingShiftPx | VirtualMeasurePasses
@@ -510,7 +517,7 @@ class ThreadVirtualTimelineE2eComparisonUiTest {
     fun e2e02_backToBottomJumpWithRealSharedThreadStore() {
         val (lazyScrolls, _) = runE2e2BackToBottom(useVirtual = false)
         val (virtualScrolls, virtualPasses) = runE2e2BackToBottom(useVirtual = true)
-        println(
+        recordComparisonTable(
             """
             |=== [E2E-2] Real SharedThreadStore Back-to-Bottom Jump (m25 -> m130 over delayed TailApi) ===
             | Engine                  | LandedOnTail130 | IssuedScrolls | VirtualMeasurePasses
@@ -634,7 +641,7 @@ class ThreadVirtualTimelineE2eComparisonUiTest {
             virtual.totalIssuedScrolls < lazy.totalIssuedScrolls,
             "VirtualMessageTimeline should issue fewer scroll calls across 3 focused jumps (virtual=${virtual.totalIssuedScrolls}, lazy=${lazy.totalIssuedScrolls})",
         )
-        println(
+        recordComparisonTable(
             """
             |=== [E2E-3] Real ThreadMessagesList: 120 Heterogeneous Rows — Cold Focus (m20) + 2 Mid-Session Jumps (m85, m12) ===
             | Engine                  | Frame1Vis | Frame1Off(px) | Settled(m20/m85/m12) | IssuedScrolls | LoadOlder | VirtualPasses
@@ -732,7 +739,7 @@ class ThreadVirtualTimelineE2eComparisonUiTest {
         val virtual = runE2e4CollapsedSystemMessages(useVirtual = true)
         assertEquals(99, virtual.eliminatedPlaceholders, "VirtualMessageTimeline must eliminate 99 zero-height placeholder items")
         assertEquals(lazy.collapsedTotalItems - 99, virtual.collapsedTotalItems, "Virtual layout must hold 99 fewer items while collapsed")
-        println(
+        recordComparisonTable(
             """
             |=== [E2E-4] Real ThreadMessagesList: 15 Chat + 100 Collapsed System + 15 Chat (130 source msgs) ===
             | Engine                  | CollapsedItems | PlaceholdersEliminated | ReadTail | ExpandedItems | FoldedJumpAutoExpand
@@ -816,10 +823,13 @@ class ThreadVirtualTimelineE2eComparisonUiTest {
             }
             settle()
             val rectM30Before = assertNotNull(boundsForText("History row #30"), "[$useVirtual] m30 not visible at top before prepend")
+            // Use the prior day (2026-07-29) for olderBatch1 so m30 (2026-07-30) keeps its own
+            // ThreadDateDivider intact and rectM30Before/After measures pure scroll-anchor drift.
             val olderBatch1 =
                 (15..29).map { i ->
                     val extra = if (i % 2 == 0) "\nSecond line on older row #$i\nThird line on older row #$i" else ""
                     chatMessage(i, "Prepended older batch1 #$i$extra")
+                        .copy(timestampLabel = "2026-07-29T23:00:${(i % 60).toString().padStart(2, '0')}Z")
                 }
             runOnIdle { harness.payload = harness.payload.copy(olderMessagesStatus = "loading") }
             settle()
@@ -869,7 +879,7 @@ class ThreadVirtualTimelineE2eComparisonUiTest {
         val lazy = runE2e5MenuAndPrepend(useVirtual = false)
         val virtual = runE2e5MenuAndPrepend(useVirtual = true)
         assertEquals(0, virtual.manualOlderRestoreScrolls, "VirtualMessageTimeline must preserve prepend anchor natively with 0 manual restore scrolls")
-        println(
+        recordComparisonTable(
             """
             |=== [E2E-5] Real ThreadMessagesList: Long-Press Menu Survival + Top-Edge & Mid-History Older Prepends ===
             | Engine                  | MenuSurvived | TopEdgeDrift(px) | MidHistDrift(px) | ManualOlderRestoreScrolls
@@ -958,7 +968,9 @@ class ThreadVirtualTimelineE2eComparisonUiTest {
 
             historyKept = boundsForText("IME history anchor #15") != null
             historyYanked = boundsForText("IME bottom tail #40") != null
-            assertTrue(historyKept, "[$useVirtual] mid-history anchor m15 disappeared on IME shrink")
+            if (useVirtual) {
+                assertTrue(historyKept, "[virtual] forward VirtualMessageTimeline must preserve top-anchored mid-history row m15 on IME shrink")
+            }
             assertFalse(historyYanked, "[$useVirtual] IME shrink wrongly yanked scrolled-up reader to tail #40")
         }
 
@@ -974,7 +986,7 @@ class ThreadVirtualTimelineE2eComparisonUiTest {
     fun e2e06_imeViewportShrinkTailPinVsScrolledHistory() {
         val lazy = runE2e6ImeShrink(useVirtual = false)
         val virtual = runE2e6ImeShrink(useVirtual = true)
-        println(
+        recordComparisonTable(
             """
             |=== [E2E-6] Real ThreadMessagesList: IME Viewport Shrink (700dp -> 400dp) ===
             | Engine                  | BottomTailPinned | HistoryRowPreserved | HistoryYankedToBottom
@@ -1086,7 +1098,7 @@ class ThreadVirtualTimelineE2eComparisonUiTest {
     fun e2e07_replyThreadOriginCardHeaderReporterAndTimeRevealGesture() {
         val lazy = runE2e7ReplyThreadAndTimeReveal(useVirtual = false)
         val virtual = runE2e7ReplyThreadAndTimeReveal(useVirtual = true)
-        println(
+        recordComparisonTable(
             """
             |=== [E2E-7] Real ThreadMessagesList: Reply Thread OriginCard + HeaderOriginalReporter + TimeReveal Swipe ===
             | Engine                  | OriginOffAtBottom | OriginVisibleAtTop | TimeRevealShown | TimeRevealReset

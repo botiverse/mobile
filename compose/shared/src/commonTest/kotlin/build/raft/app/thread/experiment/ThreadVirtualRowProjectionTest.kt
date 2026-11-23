@@ -139,7 +139,7 @@ class ThreadVirtualRowProjectionTest {
             )
         assertEquals(134, expanded.totalRowCount)
         assertEquals(0, expanded.collapsedPlaceholderRowsEliminated)
-        assertEquals(2 + 64, expanded.rowIndexForMessageId("sys79"))
+        assertEquals(2 + 79, expanded.rowIndexForMessageId("sys79"))
         assertEquals(131, expanded.latestMessageRowIndex)
     }
 
