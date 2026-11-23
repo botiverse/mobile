@@ -353,33 +353,39 @@ class SharedThreadMembershipResumeRegressionTest {
                         },
                     ),
             )
-        // Warm cached joined frame AND remembered resolved access -> reopening genuinely starts in
-        // keptResolvedAccess (accessResolution=Resolved, canonicalAccessResolved=false, writeActionsEnabled=true).
-        val resolvedProvenance = assertNotNull(dataSource.captureReplyCacheProducerContext()?.provenance)
-        dataSource.rememberResolvedThreadAccess(channelId, resolvedProvenance, resolved = true)
+        // Warm a read-only cached joined frame AND remembered resolved access so reopening starts in
+        // keptResolvedAccess (accessResolution=Resolved, canonicalAccessResolved=false, writeActionsEnabled=false)
+        // and refreshOnce launches initial access resolution via retryingReadOnlyParentAccess.
         dataSource.cachePayloadForTest(
             contentPayloadForRoute(route, "cached body").copy(
                 joined = true,
-                canSend = true,
-                composer = route.composer.copy(enabled = true),
+                canSend = false,
+                composer = route.composer.copy(enabled = false),
             )
         )
+        val resolvedProvenance = assertNotNull(dataSource.captureReplyCacheProducerContext()?.provenance)
+        dataSource.rememberResolvedThreadAccess(channelId, resolvedProvenance, resolved = true)
 
         val scope = CoroutineScope(SupervisorJob() + StandardTestDispatcher(testScheduler))
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
         store.dispatch(SharedThreadIntent.Start(route))
         runCurrent()
 
-        // Before the stale Home lookup finishes, keptResolvedAccess holds Resolved + writeActionsEnabled=true.
+        // Before refreshOnce launches initial access resolution, keptResolvedAccess holds Resolved + joined=true.
         val keptState = store.state.value
         assertEquals(ThreadAccessResolution.Resolved, keptState.accessResolution, "expected keptResolvedAccess=Resolved; state=$keptState")
         assertFalse(keptState.canonicalAccessResolved, "expected canonicalAccessResolved=false; state=$keptState")
-        assertTrue(keptState.writeActionsEnabled, "expected writeActionsEnabled=true before Home lookup; state=$keptState")
+        assertTrue(keptState.payload.joined, "expected cached joined=true before Home lookup; state=$keptState")
+        assertFalse(keptState.writeActionsEnabled, "expected read-only writeActionsEnabled=false before refresh; state=$keptState")
+
+        // Advance past SharedThreadFirstFrameDelayMillis (16ms) so refreshOnce launches initial
+        // access resolution (retryingReadOnlyParentAccess), without hitting the 1000ms lookup timeout.
+        advanceTimeBy(50)
+        runCurrent()
 
         // Home lookup returns a stale unjoined row while canonical fetch is still in flight:
-        // must NOT keep Resolved + writeActionsEnabled=true with joined=false (which would flash Join).
+        // must NOT keep Resolved with joined=false (which would flash Join).
         releaseHome.complete(Unit)
-        advanceTimeBy(500)
         runCurrent()
         val waitingState = store.state.value
         assertEquals(
@@ -390,6 +396,10 @@ class SharedThreadMembershipResumeRegressionTest {
         assertFalse(
             waitingState.writeActionsEnabled,
             "writeActionsEnabled must stay false while waiting on canonical over stale unjoined Home row; state=$waitingState",
+        )
+        assertTrue(
+            waitingState.initialHomeAccessLookupComplete,
+            "expected Home lookup to complete before asserting Loading; state=$waitingState",
         )
 
         // Canonical fetch confirms membership -> composer mounts cleanly.
