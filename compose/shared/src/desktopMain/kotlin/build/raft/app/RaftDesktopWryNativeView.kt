@@ -8,6 +8,8 @@ import java.awt.event.ComponentAdapter
 import java.awt.event.ComponentEvent
 import java.awt.event.HierarchyBoundsAdapter
 import java.awt.event.HierarchyEvent
+import java.awt.event.MouseAdapter
+import java.awt.event.MouseEvent
 import java.lang.reflect.Field
 import java.lang.reflect.Method
 import javax.swing.JPanel
@@ -26,9 +28,11 @@ import javax.swing.JPanel
  * - Leaving the hierarchy moves the native view off screen at once ([removeNotify]), before Wry
  *   gets to destroy it; coming back (or [reveal]) puts it where the panel is.
  * - Every move or resize of the panel or an ancestor re-sends the native bounds.
+ * - A click on the panel focuses the page through [RaftDesktopWryCalls] (the panel's own
+ *   click-to-focus waits for the macOS main thread on the AWT event thread: #317).
  *
  * The panel's private bounds sync is reached by reflection ([RaftDesktopWryPanelAccess]); the jar is pinned by
- * checksum (desktopApp `verifyWryWebviewChecksum`) and a test checks the members exist.
+ * checksum (desktopApp `verifyWryWebviewChecksum`).
  */
 internal class RaftDesktopWryNativeView(val panel: WryWebViewPanel) : JPanel() {
     /** Set once the page is ready to be seen (the host's readiness check). */
@@ -59,6 +63,7 @@ internal class RaftDesktopWryNativeView(val panel: WryWebViewPanel) : JPanel() {
                 override fun ancestorResized(e: HierarchyEvent) = syncNative()
             },
         )
+        RaftDesktopWryPanelAccess.routeClickFocus(panel) { RaftDesktopWryCalls.focus(panel) }
     }
 
     fun reveal() {
@@ -122,17 +127,46 @@ internal class RaftDesktopWryNativeView(val panel: WryWebViewPanel) : JPanel() {
     }
 }
 
-/** Reflection into [WryWebViewPanel]'s bounds sync (pinned artifact; see [RaftDesktopWryNativeView]). */
+/**
+ * Reflection into [WryWebViewPanel]: its WebView id, bounds sync and click-to-focus (pinned
+ * artifact; see [RaftDesktopWryNativeView]). AWT event thread only, like the panel.
+ */
 object RaftDesktopWryPanelAccess {
     private val webviewIdField: Field? = member { WryWebViewPanel::class.java.getDeclaredField("webviewId") }
     private val lastBoundsField: Field? = member { WryWebViewPanel::class.java.getDeclaredField("lastBounds") }
     private val updateBoundsMethod: Method? = member { WryWebViewPanel::class.java.getDeclaredMethod("updateBounds") }
+    private val hostField: Field? = member { WryWebViewPanel::class.java.getDeclaredField("host") }
 
-    /** Whether every member this needs is there (a test pins it to the shipped jar). */
-    val available: Boolean get() = webviewIdField != null && lastBoundsField != null && updateBoundsMethod != null
+    /** Whether every member this needs is there in the shipped jar. */
+    val available: Boolean
+        get() = webviewIdField != null && lastBoundsField != null && updateBoundsMethod != null && hostField != null
+
+    /** The native WebView's id, null until Wry has created it (or after it is gone). */
+    internal fun webviewId(panel: WryWebViewPanel): ULong? = runCatching { webviewIdField?.get(panel) as? ULong }.getOrNull()
+
+    /**
+     * Swaps the panel's click-to-focus for [focus]. Its own listener calls Wry's focus on the AWT
+     * event thread, a call that waits for the macOS main thread ([RaftDesktopWryCalls], #317).
+     * Without the member the panel keeps its listener.
+     */
+    internal fun routeClickFocus(
+        panel: WryWebViewPanel,
+        focus: () -> Unit,
+    ) {
+        val host = runCatching { hostField?.get(panel) as? java.awt.Component }.getOrNull() ?: return
+        // The panel's listener is its anonymous MouseAdapter (WryWebViewPanel$1).
+        host.mouseListeners
+            .filter { it.javaClass.name.startsWith(WryWebViewPanel::class.java.name) }
+            .forEach(host::removeMouseListener)
+        host.addMouseListener(
+            object : MouseAdapter() {
+                override fun mousePressed(e: MouseEvent) = focus()
+            },
+        )
+    }
 
     internal fun moveOffScreen(panel: WryWebViewPanel) {
-        val id = runCatching { webviewIdField?.get(panel) as? ULong }.getOrNull() ?: return
+        val id = webviewId(panel) ?: return
         runCatching {
             // Same size, far off the window: the page keeps its viewport (a 1px one would relayout it).
             io.github.kdroidfilter.webview.wry.setBounds(

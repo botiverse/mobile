@@ -5,7 +5,7 @@ Per the test-discipline announcement (#all 2026-07-25, artin-directed): static
 constraints live here as an explicit gate with a self-test, instead of being
 dressed up as source-grep "contract tests" inside test directories.
 
-Seven constraints remain: check_no_conditional_interaction_state, born from the
+Eight constraints remain: check_no_conditional_interaction_state, born from the
 1.15.0 release crash on launch, check_native_apple_authentication_services
 (task #82: Swift-side Sign in with Apple, which no Android or JVM test covers),
 check_no_production_run_blocking (#3823: a main-thread runBlocking on the
@@ -19,7 +19,11 @@ Compose snapshot state initialized in `<clinit>` off the main thread crashed
 Android cold start with `SnapshotKt.readError`), and check_date_time_di_invariants
 (dm:@artin:#2 Phase 2A: prevents UI files from bypassing RaftTimeContext DI via
 TimeZone.currentSystemDefault/toLocalDateTime, reading LocalRaftPageBaseTimeContextProvider
-directly, slicing raw UTC ISO dates, or introducing new `.staticContext()` call sites).
+directly, slicing raw UTC ISO dates, or introducing new `.staticContext()` call sites),
+and check_wry_main_thread_calls_through_owner (#317: the 1.28 Mac app froze for good
+when the AWT event thread made a Wry call that waits for the macOS main thread while
+AppKit waited for the AWT event thread; desktop code is not compiled by PR CI and a
+deadlock needs the two threads to meet, so no unit test catches a new call site).
 The other "forbid a future pattern" guards were deleted as redundant; behavior
 is proven by behavior tests.
 
@@ -542,6 +546,104 @@ def _native_test_sources(root: Path) -> dict[str, str]:
     return sources
 
 
+# #317 (1.28 Mac freeze, artin's sample): on macOS these Wry calls run on the main thread and wait
+# for it (wrywebview 1.0.0-beta-02 lib.rs: run_on_main_thread = dispatch2::run_on_main, a
+# synchronous dispatch to the main queue). Made on the AWT event thread, Compose desktop's UI
+# thread, they deadlock: while the user types with an input method or resizes the window, AppKit's
+# main thread waits for the AWT event thread (LWCToolkit.invokeAndWait) in a run loop mode that does
+# not run the main queue. RaftDesktopWryCalls makes them on its own thread and nothing waits for it.
+# setBounds and destroyWebview are absent on purpose: Wry hands them to the main thread without
+# waiting. The state reads (isLoading, getTitle, canGoBack, drainIpcMessages, ...) never leave Rust.
+WRY_CALLS_OWNER = "compose/shared/src/desktopMain/kotlin/build/raft/app/RaftDesktopWryCalls.kt"
+WRY_MAIN_THREAD_FUNCTIONS = (
+    "clearAllCookies",
+    "clearCookiesForUrl",
+    "closeDevTools",
+    "createWebview",
+    "evaluateJavascript",
+    "focus",
+    "getCookies",
+    "getCookiesForUrl",
+    "goBack",
+    "goForward",
+    "loadHtml",
+    "loadUrl",
+    "loadUrlWithHeaders",
+    "openDevTools",
+    "reload",
+    "setCookie",
+    "stopLoading",
+)
+# WryWebViewPanel's methods that make one of those calls on the AWT event thread (called from
+# another thread they post themselves there, so they cannot be used at all).
+WRY_PANEL_MAIN_THREAD_METHODS = (
+    "clearAllCookies",
+    "clearCookiesForUrl",
+    "closeDevTools",
+    "evaluateJavaScript",
+    "getCookies",
+    "getCookiesForUrl",
+    "goBack",
+    "goForward",
+    "loadHtml",
+    "loadUrl",
+    "openDevTools",
+    "reload",
+    "requestWebViewFocus",
+    "setCookie",
+    "stopLoading",
+)
+# A file that can reach a Wry panel: Wry's package, the panel type, or the host holding one.
+WRY_REFERENCE = re.compile(r"\bio\.github\.kdroidfilter\.webview\.wry\b|\bWryWebViewPanel\b|\bRaftDesktopWryWebView\b")
+_WRY_PACKAGE = r"io\s*\.\s*github\s*\.\s*kdroidfilter\s*\.\s*webview\s*\.\s*wry"
+WRY_FUNCTION_IMPORT = re.compile(
+    r"^[ \t]*import\s+" + _WRY_PACKAGE + r"\s*\.\s*(\*|(?:" + "|".join(WRY_MAIN_THREAD_FUNCTIONS) + r")\b)",
+    re.MULTILINE,
+)
+WRY_QUALIFIED_CALL = re.compile(
+    r"\b" + _WRY_PACKAGE + r"\s*\.\s*(" + "|".join(WRY_MAIN_THREAD_FUNCTIONS) + r")\s*\("
+)
+WRY_PANEL_CALL = re.compile(r"\.\s*(" + "|".join(WRY_PANEL_MAIN_THREAD_METHODS) + r")\s*\(")
+# The owner as the receiver, simple or qualified (`RaftDesktopWryCalls.loadUrl(...)`).
+WRY_OWNER_RECEIVER = re.compile(r"(?:^|[^\w.])(?:\w+\s*\.\s*)*RaftDesktopWryCalls\s*\??$")
+
+
+def check_wry_main_thread_calls_through_owner(
+    sources: dict[str, str],
+    owner: str = WRY_CALLS_OWNER,
+) -> None:
+    """#317: a Wry call that waits for the macOS main thread, made outside RaftDesktopWryCalls."""
+    if owner not in sources:
+        raise Violation(f"Wry main-thread call scan never reached its owner {owner} (fail-closed)")
+    for name in sorted(sources):
+        if name == owner:
+            continue
+        text = sources[name]
+        code = _kotlin_code_only(text)
+        if not WRY_REFERENCE.search(code):
+            continue
+        raw_lines = text.split("\n")
+        found: list[tuple[int, str]] = []
+        for match in WRY_FUNCTION_IMPORT.finditer(code):
+            found.append((match.start(), match.group(1)))
+        for match in WRY_QUALIFIED_CALL.finditer(code):
+            found.append((match.start(), match.group(1)))
+        for match in WRY_PANEL_CALL.finditer(code):
+            if WRY_OWNER_RECEIVER.search(code[: match.start()].rstrip()):
+                continue
+            found.append((match.start(), match.group(1)))
+        if found:
+            position, call = min(found)
+            line = code.count("\n", 0, position) + 1
+            raise Violation(
+                f"Wry `{call}` outside RaftDesktopWryCalls: {name}:{line} `{raw_lines[line - 1].strip()}`. "
+                "On macOS it runs on the main thread and waits for it; on the AWT event thread that "
+                "deadlocks while AppKit waits for the AWT event thread (typing with an input method, "
+                "resizing the window): the 1.28 Mac freeze, #317. Make the call through "
+                f"RaftDesktopWryCalls ({owner}), adding it there if it is missing."
+            )
+
+
 # task #256: a null agent-status resolution means Unknown, but the label-facing
 # resolver substitutes a placeholder built with Presence.Offline, whose colour maps
 # to PresenceOffline. Feeding that to a dot makes an unknown agent look offline.
@@ -1008,7 +1110,9 @@ def run(root: Path) -> None:
         entitlements=read(IOS_ENTITLEMENTS),
         xcode_project=read(IOS_XCODE_PROJECT),
     )
-    check_no_production_run_blocking(_production_kotlin_sources(root))
+    production_kotlin = _production_kotlin_sources(root)
+    check_no_production_run_blocking(production_kotlin)
+    check_wry_main_thread_calls_through_owner(production_kotlin)
     check_native_safe_test_names(_native_test_sources(root))
     check_no_top_level_or_object_snapshot_state(_top_level_snapshot_state_sources(root))
     check_date_time_di_invariants(_date_time_di_sources(root))
@@ -1348,6 +1452,53 @@ com.apple.SignInWithApple = {
         else:
             raise SystemExit(f"self-test: date/time DI checker accepted {bad_sources!r}")
 
+    wry_owner = "o/RaftDesktopWryCalls.kt"
+    wry_host = "d/RaftSandboxWebView.desktop.kt"
+    good_wry = {
+        wry_owner: (
+            "import io.github.kdroidfilter.webview.wry.JavaScriptCallback\n"
+            "fun load(id: ULong, url: String) = io.github.kdroidfilter.webview.wry.loadUrl(id, url)\n"
+            "fun js(id: ULong) = io.github.kdroidfilter.webview.wry.evaluateJavascript(id, s, cb)\n"
+        ),
+        wry_host: (
+            "import io.github.kdroidfilter.webview.wry.WryWebViewPanel\n"
+            "import io.github.kdroidfilter.webview.wry.Rgba\n"
+            "fun poll() {\n"
+            "    val loading = panel.isLoading()\n"
+            "    if (panel.canGoBack()) RaftDesktopWryCalls.goBack(panel)\n"
+            "    RaftDesktopWryCalls.loadUrl(panel, back)\n"
+            "    RaftDesktopWryCalls\n        .reload(panel)\n"
+            "    build.raft.app.RaftDesktopWryCalls.stopLoading(panel)\n"
+            "    io.github.kdroidfilter.webview.wry.setBounds(id, 0, 0, 1, 1)\n"
+            "    // panel.loadUrl(url) froze the app (#317)\n"
+            '    val s = "panel.reload()"\n'
+            "}\n"
+        ),
+        # No Wry in reach: another WebView's methods with the same names are fine.
+        "a/AndroidWebView.kt": "fun back() { webView.goBack(); webView.reload(); webView.loadUrl(u) }\n",
+    }
+    check_wry_main_thread_calls_through_owner(good_wry, wry_owner)
+    for bad_sources in (
+        {**good_wry, wry_host: good_wry[wry_host] + "fun f() { panel.evaluateJavaScript(script) {} }\n"},
+        {**good_wry, wry_host: good_wry[wry_host] + "fun f() { panel?.loadUrl(url) }\n"},
+        {**good_wry, wry_host: good_wry[wry_host] + "fun f() {\n    panel\n        .reload()\n}\n"},
+        {**good_wry, wry_host: good_wry[wry_host] + "fun f() { NotTheRaftDesktopWryCalls.reload(panel) }\n"},
+        {**good_wry, wry_host: good_wry[wry_host] + "fun f() = io.github.kdroidfilter.webview.wry.focus(id)\n"},
+        {**good_wry, wry_host: "import io.github.kdroidfilter.webview.wry.focus\nfun f() = focus(id)\n"},
+        {**good_wry, wry_host: "import io.github.kdroidfilter.webview.wry.*\nfun f() = Rgba(0u, 0u, 0u, 0u)\n"},
+        {**good_wry, wry_host: "import io.github.kdroidfilter.webview.wry.loadUrl as wryLoad\n"},
+        {**good_wry, "d/Other.kt": "fun f(host: RaftDesktopWryWebView) { host.panel.requestWebViewFocus() }\n"},
+        {**good_wry, "d/Other.kt": "val p = WryWebViewPanel(url)\nfun f() { p.setCookie(cookie) }\n"},
+        # The owner went missing: fail closed.
+        {wry_host: good_wry[wry_host]},
+    ):
+        try:
+            check_wry_main_thread_calls_through_owner(bad_sources, wry_owner)
+        except Violation:
+            pass
+        else:
+            raise SystemExit(f"self-test: #317 Wry main-thread call checker accepted {bad_sources!r}")
+
     print("check_source_constraints self-test passed")
 
 
@@ -1367,7 +1518,7 @@ def main(argv: list[str]) -> int:
         "source constraints hold (1.15.0 conditional interaction state, task #82 native Apple, "
         "#3823 no production runBlocking, #3845 Native-safe test names, "
         "1.17.1 NSInvocation object return, #264 no top-level/object snapshot state, "
-        "dm:@artin:#2 date/time DI invariants)"
+        "dm:@artin:#2 date/time DI invariants, #317 Wry main-thread calls through their owner)"
     )
     return 0
 

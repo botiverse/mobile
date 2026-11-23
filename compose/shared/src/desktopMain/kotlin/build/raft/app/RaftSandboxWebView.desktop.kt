@@ -118,8 +118,12 @@ private const val RaftDesktopWebViewReadyScript =
 private const val RaftDesktopWebViewMaxRestores = 2
 
 /**
- * One native WebView. Everything except [onNavigation] (Wry calls it on the engine's thread) runs
- * on the AWT event thread, which is Compose desktop's main thread.
+ * One native WebView. Everything runs on the AWT event thread, which is Compose desktop's main
+ * thread, except [onNavigation] (Wry calls it on the engine's thread) and the Wry calls that run on
+ * the macOS main thread (load, stop, back / forward, reload, JavaScript): those go through
+ * [RaftDesktopWryCalls] and their answers come back here, because this thread waiting for the
+ * main thread froze the app while typing with an input method or resizing the window (#317).
+ * Reads of Wry's own state (loading, title, back / forward, host messages) stay here.
  */
 internal class RaftDesktopWryWebView(
     private val policy: RaftDesktopWebViewPolicy,
@@ -233,7 +237,7 @@ internal class RaftDesktopWryWebView(
         val nowLoading = panel.isLoading()
         topLevelCheck.beginRequest(now)?.let { token ->
             val idle = !nowLoading
-            panel.evaluateJavaScript(HrefScript) { result ->
+            RaftDesktopWryCalls.evaluateJavaScript(panel, HrefScript) { result ->
                 val href = RaftDesktopWebViewPolicy.decodeEvaluatedString(result)
                 SwingUtilities.invokeLater { onTopLevelUrl(token, idle, href) }
             }
@@ -266,7 +270,7 @@ internal class RaftDesktopWryWebView(
             return
         }
         readyCheckPending = true
-        panel.evaluateJavaScript(RaftDesktopWebViewReadyScript) { result ->
+        RaftDesktopWryCalls.evaluateJavaScript(panel, RaftDesktopWebViewReadyScript) { result ->
             val ready = RaftDesktopWebViewPolicy.decodeEvaluatedString(result) == "1"
             SwingUtilities.invokeLater {
                 readyCheckPending = false
@@ -320,10 +324,10 @@ internal class RaftDesktopWryWebView(
             lastBlockedUrl = blockedUrl
             events.onNavigationBlocked(blockedUrl)
         }
-        panel.stopLoading()
+        RaftDesktopWryCalls.stopLoading(panel)
         val back = lastTrustedUrl?.takeIf { restores < RaftDesktopWebViewMaxRestores } ?: "about:blank"
         restores += 1
-        panel.loadUrl(back)
+        RaftDesktopWryCalls.loadUrl(panel, back)
     }
 
     private fun onChannelMessage(raw: String) {
@@ -343,26 +347,26 @@ internal class RaftDesktopWryWebView(
             val script = command.removePrefix(RaftWebViewController.COMMAND_EVALUATE_JAVA_SCRIPT_PREFIX)
             if (script.isEmpty() || script.length > RaftWebViewMaxRuntimeJavaScriptLength) return
             if (!policy.canRunRuntimeScript(currentUrl)) return
-            panel.evaluateJavaScript(policy.guardRuntimeScript(script)) {}
+            RaftDesktopWryCalls.evaluateJavaScript(panel, policy.guardRuntimeScript(script)) {}
             return
         }
         if (command == RaftWebViewController.COMMAND_PROBE_DOCUMENT_CONTENT) {
             // The fixed, read-only probe ('1'/'0'), so not fenced like runtime scripts.
-            panel.evaluateJavaScript(RaftWebViewContentProbeScript) { result ->
+            RaftDesktopWryCalls.evaluateJavaScript(panel, RaftWebViewContentProbeScript) { result ->
                 val answer = raftWebViewDecodeContentProbe(RaftDesktopWebViewPolicy.decodeEvaluatedString(result) ?: result)
                 SwingUtilities.invokeLater { if (!disposed) events.onContentProbe(answer) }
             }
             return
         }
         when (command) {
-            RaftWebViewController.COMMAND_GO_BACK -> if (panel.canGoBack()) panel.goBack()
-            RaftWebViewController.COMMAND_GO_FORWARD -> if (panel.canGoForward()) panel.goForward()
+            RaftWebViewController.COMMAND_GO_BACK -> if (panel.canGoBack()) RaftDesktopWryCalls.goBack(panel)
+            RaftWebViewController.COMMAND_GO_FORWARD -> if (panel.canGoForward()) RaftDesktopWryCalls.goForward(panel)
             RaftWebViewController.COMMAND_RELOAD -> {
                 restores = 0
                 progress = 0
-                panel.reload()
+                RaftDesktopWryCalls.reload(panel)
             }
-            RaftWebViewController.COMMAND_STOP -> panel.stopLoading()
+            RaftWebViewController.COMMAND_STOP -> RaftDesktopWryCalls.stopLoading(panel)
             else -> return
         }
         notifyState(force = true)
