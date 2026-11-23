@@ -251,8 +251,8 @@ object RaftFitToolbarDefaults {
  *
  * [filtersEnd] is pinned after the filters while it is given (web Computers' Clear all): a ghost
  * button with its words, its icon alone (its words its name and tooltip) once the filters show
- * their icons or move to the second line. [view] follows the display controls (web Cards / List)
- * and gives way with them.
+ * their icons or move to the second line. [filtersTestTag] tags the scrolling filter strip.
+ * [view] follows the display controls (web Cards / List) and gives way with them.
  */
 @Composable
 fun RaftFitToolbar(
@@ -268,6 +268,7 @@ fun RaftFitToolbar(
     moreLabel: String = LocalRaftStrings.current.moreActions,
     wrap: Boolean = false,
     horizontalPadding: Dp = RaftFitToolbarDefaults.HorizontalPadding,
+    filtersTestTag: String? = null,
 ) {
     val fine = RaftTheme.pointerInput == RaftPointerInput.Fine
     // `control-height-small`: 32 with a finger, the 34 control height on a desktop.
@@ -420,7 +421,7 @@ fun RaftFitToolbar(
             parts +=
                 RaftFitPart(
                     shown("filters", Constraints(maxWidth = available)) {
-                        RaftFitToolbarFilterRow(filters, filtersEnd, forms.filterIcons, forms.filterIcons, controlHeight)
+                        RaftFitToolbarFilterRow(filters, filtersEnd, forms.filterIcons, forms.filterIcons, controlHeight, filtersTestTag)
                     },
                 )
         }
@@ -466,7 +467,7 @@ fun RaftFitToolbar(
                     }
                 RaftFitFiller.Filters ->
                     shown("filters", Constraints.fixedWidth(fillerWidth)) {
-                        RaftFitToolbarFilterRow(filters, filtersEnd, forms.filterIcons, forms.filterIcons, controlHeight)
+                        RaftFitToolbarFilterRow(filters, filtersEnd, forms.filterIcons, forms.filterIcons, controlHeight, filtersTestTag)
                     }
                 RaftFitFiller.Space -> null
             }
@@ -498,7 +499,9 @@ fun RaftFitToolbar(
         val secondLine =
             if (forms.filtersWrapped) {
                 // Their words back on their own line; the end (Clear all) stays its icon.
-                shown("filters", Constraints(maxWidth = available)) { RaftFitToolbarFilterRow(filters, filtersEnd, false, true, controlHeight) }
+                shown("filters", Constraints(maxWidth = available)) {
+                    RaftFitToolbarFilterRow(filters, filtersEnd, false, true, controlHeight, filtersTestTag)
+                }
             } else {
                 null
             }
@@ -730,6 +733,7 @@ private fun RaftFitToolbarFilterRow(
     iconsOnly: Boolean,
     endIconOnly: Boolean,
     controlHeight: Dp,
+    filtersTestTag: String? = null,
 ) {
     Row(
         horizontalArrangement = Arrangement.spacedBy(RaftFitToolbarDefaults.Gap),
@@ -737,16 +741,22 @@ private fun RaftFitToolbarFilterRow(
     ) {
         if (filters.isNotEmpty()) {
             val scroll = rememberScrollState()
+            val reveal = rememberRaftScrollIntoViewGroup(scroll)
             Row(
-                Modifier.weight(1f, fill = false).raftScrollEdgeFade(scroll).horizontalScroll(scroll),
+                Modifier
+                    .weight(1f, fill = false)
+                    .raftFitTag(filtersTestTag)
+                    .raftScrollIntoViewGroup(reveal)
+                    .raftScrollEdgeFade(scroll)
+                    .horizontalScroll(scroll),
                 horizontalArrangement = Arrangement.spacedBy(RaftFitToolbarDefaults.Gap),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 // Keyed, not placed: a reordered filter keeps its own open menu (review of #4627).
-                // An applied filter scrolls itself into view, clear of the edge fade (web `data-active`).
+                // An applied filter is kept in view, clear of the edge fade (web `data-active`, FitToolbar `useScrollGroup`).
                 filters.forEach { choice ->
                     key(choice.key) {
-                        Box(Modifier.raftScrollIntoViewWhen(choice.applied)) {
+                        Box(Modifier.raftScrollIntoViewWhen(choice.applied, reveal)) {
                             RaftFitToolbarPicker(choice, iconsOnly, controlHeight, withPopup = true)
                         }
                     }

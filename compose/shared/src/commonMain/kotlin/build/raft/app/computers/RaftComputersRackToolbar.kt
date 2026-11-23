@@ -67,6 +67,7 @@ import build.raft.designsystem.tokens.RaftRadius
 internal object RaftComputersRackTags {
     const val Toolbar = "computers-rack-toolbar"
     const val Search = "computers-rack-search"
+    const val FilterStrip = "computers-rack-filter-strip"
     const val Status = "computers-rack-status"
     const val Runtime = "computers-rack-runtime"
     const val Group = "computers-rack-group"
@@ -160,6 +161,7 @@ internal fun RaftComputersRackToolbar(
                 },
             moreLabel = stringResource(Res.string.list_toolbar_more),
             wrap = true,
+            filtersTestTag = RaftComputersRackTags.FilterStrip,
         )
     }
 }
