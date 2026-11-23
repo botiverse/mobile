@@ -3527,6 +3527,8 @@
     <string name="runtime_form_v2_load_failed">無法載入執行環境表單（%1$s）。</string>
     <string name="runtime_form_v2_unavailable">無法取得執行環境設定。</string>
     <string name="runtime_form_v2_source_refresh_failed">無法重新整理此清單，仍顯示先前的選項。</string>
+    <string name="runtime_form_v2_refresh_source_title">立即重新載入此清單</string>
+    <string name="runtime_form_v2_refresh_source_label">重新整理此清單</string>
     <string name="runtime_form_v2_source_status_fallback">已改為顯示標準清單。</string>
     <string name="runtime_form_v2_source_status_stale">這台電腦未能及時回應，選項可能不是最新的。</string>
     <string name="runtime_form_v2_source_status_probe_timeout">這台電腦列出選項的時間過長。</string>

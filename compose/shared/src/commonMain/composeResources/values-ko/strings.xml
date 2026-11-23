@@ -3527,6 +3527,8 @@
     <string name="runtime_form_v2_load_failed">런타임 양식을 불러오지 못했어요(%1$s).</string>
     <string name="runtime_form_v2_unavailable">런타임 설정을 사용할 수 없어요.</string>
     <string name="runtime_form_v2_source_refresh_failed">이 목록을 새로고침하지 못했어요. 이전 옵션을 표시하고 있어요.</string>
+    <string name="runtime_form_v2_refresh_source_title">이 목록을 지금 다시 불러오기</string>
+    <string name="runtime_form_v2_refresh_source_label">이 목록 새로고침</string>
     <string name="runtime_form_v2_source_status_fallback">대신 표준 목록을 표시하고 있어요.</string>
     <string name="runtime_form_v2_source_status_stale">이 컴퓨터가 제시간에 응답하지 않아 옵션이 최신이 아닐 수 있어요.</string>
     <string name="runtime_form_v2_source_status_probe_timeout">이 컴퓨터에서 옵션 목록을 가져오는 데 시간이 너무 오래 걸렸어요.</string>

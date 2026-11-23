@@ -3706,6 +3706,8 @@
     <string name="runtime_form_v2_load_failed">ランタイムフォームを読み込めませんでした（%1$s）。</string>
     <string name="runtime_form_v2_unavailable">ランタイム設定を利用できません。</string>
     <string name="runtime_form_v2_source_refresh_failed">一覧を更新できませんでした。前回の選択肢を表示しています。</string>
+    <string name="runtime_form_v2_refresh_source_title">この一覧を今すぐ再読み込み</string>
+    <string name="runtime_form_v2_refresh_source_label">この一覧を更新</string>
     <string name="runtime_form_v2_source_status_fallback">代わりに標準の一覧を表示しています。</string>
     <string name="runtime_form_v2_source_status_stale">このコンピューターが時間内に応答しなかったため、選択肢が最新でない可能性があります。</string>
     <string name="runtime_form_v2_source_status_probe_timeout">この Computer が選択肢を一覧表示するのに時間がかかりすぎました。</string>

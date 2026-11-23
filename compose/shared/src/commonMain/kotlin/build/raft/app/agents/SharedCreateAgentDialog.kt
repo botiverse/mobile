@@ -1,9 +1,9 @@
 package build.raft.app
 
+import build.raft.app.format.raftKeepTogether
 import build.raft.app.resources.*
 import build.raft.app.components.raftUpsellCopy
 import build.raft.app.components.RaftViewPlanButton
-import build.raft.app.components.RaftIconSpinner
 import build.raft.designsystem.components.RaftTextFieldDefaults
 import build.raft.designsystem.components.RaftComboboxOption
 import build.raft.designsystem.components.RaftFieldLabel
@@ -1211,7 +1211,8 @@ private fun PlanLimitBanner(
                 Res.string.agent_create_error_limit_plan
                     .format(listOf(currentAgentCount, maxAgents, planLabel))
                     .localized()
-            val upgrade = stringResource(raftUpsellCopy(Res.string.agent_create_action_upgrade_for_more, offersUpgrade))
+            // Web `<upgrade>` is one unbreakable run: on a narrow line the whole phrase wraps, never its middle.
+            val upgrade = raftKeepTogether(stringResource(raftUpsellCopy(Res.string.agent_create_action_upgrade_for_more, offersUpgrade)))
             // raft-ui: an action inside a Banner's text is a strong TextLink (web CreateAgentDialog
             // `<upgrade>`); only the upgrade wording links, never the neutral iOS statement.
             val upgradeLink = onUpgrade?.takeIf { offersUpgrade && viewPlan == null }
@@ -1426,50 +1427,6 @@ internal fun AdvancedToggleButton(open: Boolean, onToggle: () -> Unit) {
     }
 }
 
-@Composable
-internal fun CreateAgentSectionLabelWithAction(
-    label: String,
-    actionIcon: RaftLucideIconName,
-    actionEnabled: Boolean,
-    loading: Boolean = false,
-    onAction: () -> Unit
-) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        RaftFieldLabel(text = label, modifier = Modifier.weight(1f))
-        CreateAgentLabelAction(actionIcon, actionEnabled, loading, onAction)
-    }
-}
-
-/** The small action at the end of a field's label row (refresh / rescan), spinning while [loading]. */
-@Composable
-internal fun CreateAgentLabelAction(
-    actionIcon: RaftLucideIconName,
-    actionEnabled: Boolean,
-    loading: Boolean = false,
-    onAction: () -> Unit
-) {
-    Box(
-        modifier =
-            Modifier
-                .size(22.dp)
-                .raftClickable(onClick = onAction, enabled = actionEnabled, shape = RoundedCornerShape(RaftRadius.Chip)),
-        contentAlignment = Alignment.Center
-    ) {
-        if (loading) {
-            RaftCreateAgentSpinnerIcon()
-        } else {
-            RaftLucideIcon(
-                actionIcon,
-                modifier = Modifier.size(13.dp),
-                color = if (actionEnabled) RaftColor.TextMutedGrayArgb else if (RaftAppThemeState.isDark) raftArgbHex(RaftColor.ForegroundDisabled) else "#33000000"
-            )
-        }
-    }
-}
-
 /**
  * Dice button beside the Name label that rolls another suggested name (react
  * `create-agent-random-name`: ghost, icon-xs, Dices 12px). Ghost = no fill, border or
@@ -1503,11 +1460,6 @@ private fun rememberCreateAgentEnvVarEditor(keyboardOptions: KeyboardOptions): R
         onFocus = {},
         onBlur = {}
     )
-
-@Composable
-private fun RaftCreateAgentSpinnerIcon() {
-    RaftIconSpinner(size = 13.dp, color = RaftColor.TextMutedGray)
-}
 
 @Composable
 internal fun EnvVarsEditor(

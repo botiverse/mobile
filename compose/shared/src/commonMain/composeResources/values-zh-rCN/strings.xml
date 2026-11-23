@@ -3706,6 +3706,8 @@
     <string name="runtime_form_v2_load_failed">运行时表单加载失败（%1$s）。</string>
     <string name="runtime_form_v2_unavailable">运行时配置不可用。</string>
     <string name="runtime_form_v2_source_refresh_failed">列表刷新失败，仍显示之前的选项。</string>
+    <string name="runtime_form_v2_refresh_source_title">立即重新获取这个列表</string>
+    <string name="runtime_form_v2_refresh_source_label">刷新此列表</string>
     <string name="runtime_form_v2_source_status_fallback">已改为显示标准列表。</string>
     <string name="runtime_form_v2_source_status_stale">此 Computer 未能及时响应，可选项可能不是最新的。</string>
     <string name="runtime_form_v2_source_status_probe_timeout">此 Computer 列出可选项超时。</string>
