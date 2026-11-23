@@ -244,7 +244,7 @@ fun IconButtonGallery() {
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Caption(variant.name, Modifier.width(72.dp))
-                RaftIconButtonSize.entries.forEach { size ->
+                (RaftIconButtonSize.entries - RaftIconButtonSize.Row).forEach { size ->
                     listOf("Rest", "Pressed", "Hovered", "Focused", "Disabled").forEach { state ->
                         StateCell(pressed = state == "Pressed", focused = state == "Focused", hovered = state == "Hovered") {
                             RaftIconButton(
@@ -258,7 +258,7 @@ fun IconButtonGallery() {
                                     RaftGlyph.Plus,
                                     when (size) {
                                         RaftIconButtonSize.Lg -> 22.dp
-                                        RaftIconButtonSize.Md, RaftIconButtonSize.Row -> 18.dp
+                                        RaftIconButtonSize.Md -> 18.dp
                                         else -> 16.dp
                                     },
                                 )
