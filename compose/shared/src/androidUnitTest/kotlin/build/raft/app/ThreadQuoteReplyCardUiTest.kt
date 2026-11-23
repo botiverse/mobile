@@ -23,6 +23,7 @@ import build.raft.app.components.RaftDesignSystemTheme
 import build.raft.app.model.ResolvedInlineQuote
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 import org.junit.Rule
 import org.junit.runner.RunWith
@@ -31,10 +32,11 @@ import org.robolectric.RuntimeEnvironment
 import org.robolectric.annotation.Config
 
 /**
- * Quote replies in a message row (web `quote_reply_v0`): a quote the server verified is a card naming
- * the quoted message's author over its excerpt, and a tap on it jumps to that message; a quote it
- * did not verify keeps its excerpt as a plain quote. Neither shows the `> msg=<id>` line. Drives the
- * production [ThreadMessageCard].
+ * Quote replies in a message row (web `quote_reply_v0`, botiverse/slock #16210):
+ * - Verified quotes render as one-line chips (avatar when unambiguous, author, single-line excerpt
+ *   prefixed with `…` only for partial quotes) and tap jumps to the quoted message.
+ * - Unverified quotes stay plain blockquotes without the `> msg=<id>` line.
+ * - When `quote_reply_v0` is off, no chip is rendered and the raw body passes through.
  */
 @OptIn(ExperimentalTestApi::class)
 @RunWith(RobolectricTestRunner::class)
@@ -55,12 +57,28 @@ class ThreadQuoteReplyCardUiTest {
             resolvedQuotes = resolvedQuotes,
         )
 
-    private fun ComposeUiTest.showRow(message: RaftThreadMessageItem, onJump: (String) -> Unit = {}) {
+    private fun ComposeUiTest.showRow(
+        message: RaftThreadMessageItem,
+        quoteReplyEnabled: Boolean = true,
+        avatarLookup: ThreadQuoteChipAvatarLookup = ThreadQuoteChipAvatarLookup.Empty,
+        onJump: (String) -> Unit = {},
+    ) {
         // Compose string resources read the app context through the shared SQLDelight holder.
         build.raft.app.data.RaftAndroidSqlDatabaseContext.init(RuntimeEnvironment.getApplication())
         setContent {
             val pager = remember { object : Pager() {}.apply { pageData = PageData(JSONObject()) } }
-            CompositionLocalProvider(LocalActivity provides RaftPageActivity(pager)) {
+            val host =
+                remember(quoteReplyEnabled, avatarLookup, onJump) {
+                    ThreadQuoteReplyHost(
+                        enabled = quoteReplyEnabled,
+                        avatarLookup = avatarLookup,
+                        onJumpToQuotedMessage = onJump,
+                    )
+                }
+            CompositionLocalProvider(
+                LocalActivity provides RaftPageActivity(pager),
+                LocalThreadQuoteReplyHost provides host,
+            ) {
                 RaftDesignSystemTheme {
                     Column(Modifier.width(390.dp)) {
                         ThreadMessageCard(
@@ -91,11 +109,14 @@ class ThreadQuoteReplyCardUiTest {
             .fetchSemanticsNodes()
             .flatMap { node -> node.config.getOrNull(SemanticsProperties.Text).orEmpty().map { it.text } }
 
-    private fun ComposeUiTest.cardShown(): Boolean =
+    private fun ComposeUiTest.chipShown(): Boolean =
         onAllNodes(hasTestTag(threadQuoteReplyCardTestTag(0)), useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty()
 
+    private fun ComposeUiTest.avatarShown(): Boolean =
+        onAllNodes(hasTestTag(quoteChipAvatarTestTag()), useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty()
+
     @Test
-    fun aVerifiedQuoteIsACardOfItsAuthorAndExcerptThatJumpsToTheQuotedMessage() =
+    fun aVerifiedPartialQuoteRendersOneLineChipWithAvatarEllipsisAndJump() =
         runRobolectricComposeUiTest {
             val jumps = mutableListOf<String>()
             val quote =
@@ -107,18 +128,69 @@ class ThreadQuoteReplyCardUiTest {
                     createdAt = "2026-11-22T08:00:00.000Z",
                     isPartial = true,
                 )
-            showRow(reply(mapOf("0" to quote)), onJump = { jumps += it })
+            val lookup =
+                ThreadQuoteChipAvatarLookup { _, author, _ ->
+                    QuoteChipAuthorAvatar(kind = RaftAvatarKind.Human, avatarWireValue = null, label = author)
+                }
+            showRow(reply(mapOf("0" to quote)), avatarLookup = lookup, onJump = { jumps += it })
 
             val texts = shownTexts()
-            assertTrue(cardShown(), "a quote card")
-            assertTrue(texts.any { "Alice" in it }, "the card names the quoted message's author: $texts")
-            assertTrue(texts.any { Excerpt in it }, "the card shows the excerpt: $texts")
-            assertTrue(texts.any { "Agreed on that one." in it }, "the reply follows the card: $texts")
+            assertTrue(chipShown(), "a quote chip")
+            assertTrue(avatarShown(), "known author draws the 14dp avatar")
+            assertTrue(texts.any { it == "Alice" }, "the chip names the quoted message's author: $texts")
+            assertTrue(texts.any { it == "…$Excerpt" }, "partial excerpt starts with ellipsis: $texts")
+            assertTrue(texts.any { "Agreed on that one." in it }, "the reply follows the chip: $texts")
             assertTrue(texts.none { "msg=" in it }, "no msg= line: $texts")
 
-            onNodeWithTag(threadQuoteReplyCardTestTag(0), useUnmergedTree = true).performClick()
+            onNodeWithTag(threadQuoteReplyChipTestTag(0), useUnmergedTree = true).performClick()
             waitForIdle()
             assertEquals(listOf(QuotedId), jumps)
+        }
+
+    @Test
+    fun wholeMessageQuoteOmitsEllipsisAndUnknownAuthorOmitsAvatar() =
+        runRobolectricComposeUiTest {
+            val quote =
+                ResolvedInlineQuote(
+                    messageId = QuotedId,
+                    shortId = "54a733de",
+                    authorName = "Alice",
+                    authorType = "user",
+                    createdAt = "2026-11-22T08:00:00.000Z",
+                    isPartial = false,
+                )
+            showRow(reply(mapOf("0" to quote)), avatarLookup = ThreadQuoteChipAvatarLookup.Empty)
+
+            val texts = shownTexts()
+            assertTrue(chipShown(), "a quote chip")
+            assertFalse(avatarShown(), "uncertain author omits avatar")
+            assertTrue(texts.any { it == Excerpt }, "whole quote keeps excerpt without leading ellipsis: $texts")
+        }
+
+    @Test
+    fun unverifiedQuoteStaysPlainBlockquoteWithoutRefLine() =
+        runRobolectricComposeUiTest {
+            showRow(reply(emptyMap()), quoteReplyEnabled = true)
+            val unverifiedTexts = shownTexts()
+            assertFalse(chipShown(), "unverified quote must not render a chip")
+            assertTrue(unverifiedTexts.any { Excerpt in it }, "keeps excerpt as plain quote: $unverifiedTexts")
+            assertTrue(unverifiedTexts.none { "msg=" in it }, "unverified quote strips msg= line: $unverifiedTexts")
+        }
+
+    @Test
+    fun disabledFlagRendersNoQuoteChip() =
+        runRobolectricComposeUiTest {
+            val verified =
+                ResolvedInlineQuote(
+                    messageId = QuotedId,
+                    shortId = "54a733de",
+                    authorName = "Alice",
+                    authorType = "user",
+                    createdAt = "2026-11-22T08:00:00.000Z",
+                    isPartial = true,
+                )
+            showRow(reply(mapOf("0" to verified)), quoteReplyEnabled = false)
+            assertFalse(chipShown(), "flag off must never render a quote chip")
         }
 
     private companion object {

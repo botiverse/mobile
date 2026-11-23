@@ -538,10 +538,20 @@ internal fun ThreadMessageActionMenu(
     diagnosticsLogger: (String) -> Unit = {}
 ) {
     val reactionAtlasImage = LocalThreadReactionAtlasImage.current
-    // web MessageItem "Quote" (quote_reply_v0): the message's opening as a quote reply, into this
-    // page's composer (the append Select Text > Quote makes); no composer on the page, no Quote.
-    val quoteIntoComposer = LocalThreadInPlaceTextSelectionHost.current?.quoteIntoComposer
-    val menuQuote = if (quoteIntoComposer != null) threadMessageMenuQuote(message) else null
+    // web MessageItem "Quote" (quote_reply_v0): gated behind `quote_reply_v0`, inserts the
+    // message's opening as a structured quote chip into this page's composer; no composer or flag
+    // off, no Quote.
+    val selectionHost = LocalThreadInPlaceTextSelectionHost.current
+    val quoteIntoComposer = selectionHost?.quoteIntoComposer
+    val insertQuoteIntoComposer = selectionHost?.insertQuoteIntoComposer
+    val quoteReplyHost = LocalThreadQuoteReplyHost.current
+    val authorDisplayName = message.localizedAuthorName()
+    val menuPendingQuote =
+        if (quoteReplyHost.enabled && (insertQuoteIntoComposer != null || quoteIntoComposer != null)) {
+            threadMessageMenuPendingQuote(message, authorDisplayName)
+        } else {
+            null
+        }
     val actions =
         remember(
             message,
@@ -578,7 +588,8 @@ internal fun ThreadMessageActionMenu(
             onCopySelection,
             onDownloadVideo,
             link != null,
-            menuQuote,
+            menuPendingQuote,
+            insertQuoteIntoComposer,
             quoteIntoComposer,
             onQuoteChosen,
             onDismiss
@@ -618,12 +629,21 @@ internal fun ThreadMessageActionMenu(
                 onForward = onForward,
                 onMarkThreadUnread = onMarkThreadUnread,
                 onDownloadVideo = onDownloadVideo,
-                showQuoteAction = menuQuote != null && quoteIntoComposer != null,
+                showQuoteAction = menuPendingQuote != null,
                 onQuote = {
-                    if (menuQuote != null && quoteIntoComposer != null) {
+                    if (menuPendingQuote != null) {
                         onQuoteChosen()
                         onDismiss()
-                        quoteIntoComposer(menuQuote)
+                        val insert =
+                            ThreadComposerQuoteInsert(
+                                quote = menuPendingQuote,
+                                fallbackMarkdown = formatThreadMessageQuote(menuPendingQuote.excerpt),
+                            )
+                        if (insertQuoteIntoComposer != null) {
+                            insertQuoteIntoComposer(insert)
+                        } else {
+                            threadMessageMenuQuote(message)?.let { quoteIntoComposer?.invoke(it) }
+                        }
                     }
                 }
             )
