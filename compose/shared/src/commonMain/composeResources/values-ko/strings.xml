@@ -6005,4 +6005,9 @@
     <string name="settings_appearance_send_key_title">메시지 보내기 키</string>
     <string name="settings_appearance_send_key_save_failed">메시지 보내기 키를 바꾸지 못했어요. 다시 시도해 주세요.</string>
     <string name="composer_send_key_hint">%1$s 키로 보내기</string>
+    <string name="mobile_web_panel_signed_in_as">%1$s(으)로 로그인됨</string>
+    <string name="mobile_web_panel_page_still_open">%1$s · 페이지가 열려 있음</string>
+    <string name="mobile_web_panel_return_to_conversation">대화로 돌아가기</string>
+    <string name="mobile_web_panel_return_to_page">돌아가기</string>
+    <string name="mobile_web_panel_apps_source">앱</string>
 </resources>

@@ -1,0 +1,264 @@
+package build.raft.app
+
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertNotNull
+import kotlin.test.assertNull
+import kotlin.test.assertTrue
+
+class RaftMobileWebPanelStateTest {
+    @Test
+    fun storagePartitionSelectsDefaultForRaftAppIsolatedForThirdPartyAndFailsClosedWithoutMultiProfile() {
+        // Layer 2 Raft App entry always uses Default (even on pre-119 Android without MULTI_PROFILE).
+        assertEquals(
+            RaftMobileWebPanelLaunchResolution.OpenInPanel(
+                storagePartition = RaftWebViewStoragePartition.Default,
+                isRaftApp = true,
+            ),
+            resolveRaftMobileWebPanelStorage(
+                isRaftAppEntry = true,
+                useEphemeralStore = false,
+                supportsIsolatedThirdPartyProfile = false,
+            ),
+        )
+        // Layer 3 third-party ordinary link uses IsolatedThirdParty when supported.
+        assertEquals(
+            RaftMobileWebPanelLaunchResolution.OpenInPanel(
+                storagePartition = RaftWebViewStoragePartition.IsolatedThirdParty,
+                isRaftApp = false,
+            ),
+            resolveRaftMobileWebPanelStorage(
+                isRaftAppEntry = false,
+                useEphemeralStore = false,
+                supportsIsolatedThirdPartyProfile = true,
+            ),
+        )
+        // Layer 3 third-party link fails closed to system browser when MULTI_PROFILE is unavailable (never Default).
+        assertEquals(
+            RaftMobileWebPanelLaunchResolution.FailClosedToSystemBrowser,
+            resolveRaftMobileWebPanelStorage(
+                isRaftAppEntry = false,
+                useEphemeralStore = false,
+                supportsIsolatedThirdPartyProfile = false,
+            ),
+        )
+        // Own-host ephemeral always keeps Ephemeral partition.
+        assertEquals(
+            RaftMobileWebPanelLaunchResolution.OpenInPanel(
+                storagePartition = RaftWebViewStoragePartition.Ephemeral,
+                isRaftApp = false,
+            ),
+            resolveRaftMobileWebPanelStorage(
+                isRaftAppEntry = false,
+                useEphemeralStore = true,
+                supportsIsolatedThirdPartyProfile = false,
+            ),
+        )
+    }
+
+    @Test
+    fun displayHostStripsWwwConvertsIdnToPunycodeAndPreservesNonDefaultPorts() {
+        assertEquals("docs.example.com", raftMobileWebPanelDisplayHost("https://docs.example.com/push/ios-setup?k=v#top"))
+        assertEquals("docs.example.com", raftMobileWebPanelDisplayHost("https://www.docs.example.com/push"))
+        assertEquals("example.com", raftMobileWebPanelDisplayHost("https://WWW.Example.COM:443/path"))
+        assertEquals("xn--bcher-kva.example", raftMobileWebPanelDisplayHost("https://bücher.example/shop"))
+        assertEquals("xn--bcher-kva.example", raftMobileWebPanelDisplayHost("https://www.bücher.example/shop"))
+        assertEquals("example.com:8443", raftMobileWebPanelDisplayHost("https://www.example.com:8443/x"))
+        assertEquals("localhost:3000", raftMobileWebPanelDisplayHost("http://localhost:3000/app"))
+        assertEquals("www.com", raftMobileWebPanelDisplayHost("https://www.com/"))
+        assertEquals("", raftMobileWebPanelDisplayHost("   "))
+    }
+
+    @Test
+    fun overflowMenuOmitsOpenInBrowserForRaftAppsOnly() {
+        assertEquals(
+            listOf(
+                RaftMobileWebPanelMenuAction.Share,
+                RaftMobileWebPanelMenuAction.CopyLink,
+                RaftMobileWebPanelMenuAction.OpenInBrowser,
+            ),
+            raftMobileWebPanelMenuActions(isRaftApp = false),
+        )
+        assertEquals(
+            listOf(
+                RaftMobileWebPanelMenuAction.Share,
+                RaftMobileWebPanelMenuAction.CopyLink,
+            ),
+            raftMobileWebPanelMenuActions(isRaftApp = true),
+        )
+    }
+
+    @Test
+    fun backActionGoesBackWithWebHistoryAndCollapsesKeepingAliveAtFirstEntry() {
+        assertEquals(
+            RaftMobileWebPanelBackAction.WebGoBack,
+            resolveRaftMobileWebPanelBackAction(RaftMobileWebPanelDetent.Default88, canGoBack = true),
+        )
+        assertEquals(
+            RaftMobileWebPanelBackAction.WebGoBack,
+            resolveRaftMobileWebPanelBackAction(RaftMobileWebPanelDetent.Fullscreen, canGoBack = true),
+        )
+        assertEquals(
+            RaftMobileWebPanelBackAction.CollapseKeepingAlive,
+            resolveRaftMobileWebPanelBackAction(RaftMobileWebPanelDetent.Default88, canGoBack = false),
+        )
+        assertEquals(
+            RaftMobileWebPanelBackAction.CollapseKeepingAlive,
+            resolveRaftMobileWebPanelBackAction(RaftMobileWebPanelDetent.Fullscreen, canGoBack = false),
+        )
+        assertEquals(
+            RaftMobileWebPanelBackAction.Ignore,
+            resolveRaftMobileWebPanelBackAction(RaftMobileWebPanelDetent.Collapsed, canGoBack = true),
+        )
+    }
+
+    @Test
+    fun dragTransitionsBetweenDefault88FullscreenAndCollapsed() {
+        assertEquals(
+            RaftMobileWebPanelDetent.Fullscreen,
+            resolveRaftMobileWebPanelDragTarget(
+                current = RaftMobileWebPanelDetent.Default88,
+                dragDeltaPx = -120f,
+                velocityYPxPerSec = 0f,
+                viewportHeightPx = 844f,
+            ),
+        )
+        assertEquals(
+            RaftMobileWebPanelDetent.Collapsed,
+            resolveRaftMobileWebPanelDragTarget(
+                current = RaftMobileWebPanelDetent.Default88,
+                dragDeltaPx = 120f,
+                velocityYPxPerSec = 0f,
+                viewportHeightPx = 844f,
+            ),
+        )
+        assertEquals(
+            RaftMobileWebPanelDetent.Default88,
+            resolveRaftMobileWebPanelDragTarget(
+                current = RaftMobileWebPanelDetent.Default88,
+                dragDeltaPx = 18f,
+                velocityYPxPerSec = 0f,
+                viewportHeightPx = 844f,
+            ),
+        )
+        // Dragging down from Fullscreen steps back to Default88 first.
+        assertEquals(
+            RaftMobileWebPanelDetent.Default88,
+            resolveRaftMobileWebPanelDragTarget(
+                current = RaftMobileWebPanelDetent.Fullscreen,
+                dragDeltaPx = 160f,
+                velocityYPxPerSec = 900f,
+                viewportHeightPx = 844f,
+            ),
+        )
+    }
+
+    @Test
+    fun coordinatorEnforcesSingleKeptAlivePageLifecycleTokenReleaseAndAccountSwitch() {
+        val releasedTokens = mutableListOf<Pair<String, String>>()
+        val coordinator =
+            RaftMobileWebPanelCoordinator(
+                releaseEntryToken = { token, owner -> releasedTokens += token to owner },
+            )
+        val msgSource =
+            RaftMobileWebPanelSource.Message(
+                messageId = "msg-1",
+                authorName = "Xiaofan",
+                authorAvatarKind = RaftAvatarKind.Agent,
+                previewText = "Check iOS push setup",
+                timestampLabel = "10:04",
+            )
+
+        // Open Layer 3 link -> Default88 detent, dynamic host label.
+        val first =
+            coordinator.open(
+                ownerHostId = "host-1",
+                launchUrl = "https://www.docs.example.com/push/ios-setup",
+                isRaftApp = false,
+                source = msgSource,
+                accountId = "acct-1",
+                environmentKey = "prod",
+            )
+        assertEquals(RaftMobileWebPanelDetent.Default88, first.detent)
+        assertEquals("docs.example.com", first.keepOpenLabel)
+
+        // Dynamic navigation updates currentUrl and keepOpenLabel.
+        coordinator.updateCurrentUrl(first.sessionId, "https://accounts.example.com/login")
+        assertEquals("accounts.example.com", coordinator.session.value?.keepOpenLabel)
+
+        // Collapse keeps page alive; reopen restores exact session.
+        assertTrue(coordinator.collapse(first.sessionId))
+        assertTrue(coordinator.session.value?.isCollapsedKeptAlive == true)
+        assertTrue(coordinator.expand(first.sessionId))
+        assertEquals(first.sessionId, coordinator.session.value?.sessionId)
+        assertEquals(RaftMobileWebPanelDetent.Default88, coordinator.session.value?.detent)
+
+        // Opening a Layer 2 Raft App replaces the previous kept page (strictly 1 kept page).
+        val appSession =
+            coordinator.open(
+                ownerHostId = "host-1",
+                launchUrl = "https://tracker.example/view/1",
+                appEntryToken = "tok-app-1",
+                appName = "Tracker",
+                isRaftApp = true,
+                source = msgSource,
+                accountId = "acct-1",
+                environmentKey = "prod",
+            )
+        assertEquals("Tracker", appSession.keepOpenLabel)
+        assertTrue(releasedTokens.isEmpty())
+
+        // Opening another link replaces the Raft App and immediately releases its entry token.
+        val third =
+            coordinator.open(
+                ownerHostId = "host-2",
+                launchUrl = "https://news.example.org/item",
+                appEntryToken = "tok-app-2",
+                appName = "News",
+                isRaftApp = true,
+                accountId = "acct-1",
+                environmentKey = "prod",
+            )
+        assertEquals(listOf("tok-app-1" to "host-1"), releasedTokens)
+        assertEquals(third.sessionId, coordinator.session.value?.sessionId)
+
+        // Low-memory clearCollapsed ignores expanded sessions, clears collapsed ones.
+        coordinator.clearCollapsed()
+        assertNotNull(coordinator.session.value)
+        coordinator.collapse(third.sessionId)
+        coordinator.clearCollapsed()
+        assertNull(coordinator.session.value)
+        assertEquals(listOf("tok-app-1" to "host-1", "tok-app-2" to "host-2"), releasedTokens)
+
+        // Account switch and sign-out destroy active/collapsed sessions and release tokens.
+        val fourth =
+            coordinator.open(
+                ownerHostId = "host-2",
+                launchUrl = "https://tracker.example/view/2",
+                appEntryToken = "tok-app-3",
+                appName = "Tracker",
+                isRaftApp = true,
+                accountId = "acct-1",
+                environmentKey = "prod",
+            )
+        coordinator.onAccountOrEnvironmentChanged(accountId = "acct-1", environmentKey = "prod")
+        assertNotNull(coordinator.session.value)
+        coordinator.onAccountOrEnvironmentChanged(accountId = "acct-2", environmentKey = "prod")
+        assertNull(coordinator.session.value)
+        assertEquals("tok-app-3" to "host-2", releasedTokens.last())
+
+        // Explicit close on a stale sessionId is a no-op; on current sessionId destroys and releases.
+        assertFalse(coordinator.close(fourth.sessionId))
+        val fifth =
+            coordinator.open(
+                ownerHostId = "host-2",
+                launchUrl = "https://docs.example.com/a",
+                isRaftApp = false,
+                accountId = "acct-2",
+                environmentKey = "prod",
+            )
+        assertTrue(coordinator.close(fifth.sessionId))
+        assertNull(coordinator.session.value)
+    }
+}

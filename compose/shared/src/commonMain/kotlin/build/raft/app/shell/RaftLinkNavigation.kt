@@ -1,10 +1,13 @@
 package build.raft.app
 
 import build.raft.app.resources.*
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.platform.UriHandler
 import build.raft.app.base.BridgeModule
@@ -277,8 +280,19 @@ internal class RaftLinkNavigator(
     private val openAppStoreRestrictedPurchaseUrl: (String) -> Boolean = { false },
     /** Opens an App entry page with its single-use registry token (#proj-workspace:#356). */
     private val openInAppBrowserWithEntry: (url: String, appEntryToken: String) -> Boolean = { url, _ -> openInAppBrowser(url) },
+    /** Optional richer entry opener receiving the validated [RaftAppEntryRequest] (e.g. mobile web panel host). */
+    private val openInAppBrowserWithEntryRequest: ((url: String, appEntryToken: String, request: RaftAppEntryRequest) -> Boolean)? = null,
     /** False on desktop, which has no in-app browser so entries stay ordinary opens. */
     private val supportsInAppBrowser: () -> Boolean = ::raftPlatformSupportsInAppBrowser,
+    /**
+     * Whether Layer 3 third-party links can run in an isolated WebView storage partition
+     * (#proj-workspace:#397: Android Chromium 119+ `MULTI_PROFILE`; always true on iOS).
+     * When false, ordinary third-party links fail closed to the system browser and NEVER open in
+     * the default profile.
+     */
+    private val supportsIsolatedWebViewProfile: () -> Boolean = { true },
+    /** Called when an open completes on a non-panel target so any pending message source is cleared. */
+    private val clearPendingWebPanelSource: () -> Unit = {},
     /** Raft's own hosts (env web + API + production + client config): never an App entry scope. */
     private val raftHostsProvider: () -> Collection<String> = { emptySet() },
     private val debugBuild: Boolean = RaftCmpRouter.isDebugBuild,
@@ -287,8 +301,8 @@ internal class RaftLinkNavigator(
     /**
      * Opens an App entry (#proj-workspace:#356): checks iOS 3.1.1 first, then validates [request]'s
      * scope via [raftAppEntryScopeOrigin], mints a single-use token in [appEntryRegistry], and opens
-     * in-app regardless of [LinkOpenMode]. An invalid scope or a platform without an in-app browser
-     * falls back to ordinary [open].
+     * in-app regardless of [LinkOpenMode] (Layer 2 uses [RaftWebViewStoragePartition.Default]). An
+     * invalid scope or a platform without an in-app browser falls back to ordinary [open].
      */
     fun openAppEntry(
         rawUrl: String,
@@ -296,10 +310,12 @@ internal class RaftLinkNavigator(
     ): RaftLinkOpenDecision {
         val decision = resolveRaftLinkOpenDecision(rawUrl, LinkOpenMode.InAppBrowser)
         if (decision.target == RaftLinkOpenTarget.Rejected) {
+            clearPendingWebPanelSource()
             onRejected(requireNotNull(decision.rejectReason))
             return decision
         }
         if (isAppStoreRestrictedPurchaseUrl(decision.url)) {
+            clearPendingWebPanelSource()
             if (openAppStoreRestrictedPurchaseUrl(decision.url)) {
                 return RaftLinkOpenDecision(RaftLinkOpenTarget.InAppDestination, decision.url)
             }
@@ -311,10 +327,15 @@ internal class RaftLinkNavigator(
         }
         val scopeOrigin = raftAppEntryScopeOrigin(request.scopeOrigin, decision.url, raftHostsProvider(), debugBuild)
             ?: return open(decision.url)
-        val token = appEntryRegistry.register(decision.url, request.copy(scopeOrigin = scopeOrigin))
-        if (openInAppBrowserWithEntry(decision.url, token)) {
+        val scopedRequest = request.copy(scopeOrigin = scopeOrigin)
+        val token = appEntryRegistry.register(decision.url, scopedRequest)
+        val opened =
+            openInAppBrowserWithEntryRequest?.invoke(decision.url, token, scopedRequest)
+                ?: openInAppBrowserWithEntry(decision.url, token)
+        if (opened) {
             return RaftLinkOpenDecision(RaftLinkOpenTarget.InAppBrowser, decision.url)
         }
+        clearPendingWebPanelSource()
         appEntryRegistry.release(token, owner = "")
         onRejected(RaftLinkRejectReason.RouteUnavailable)
         return rejectedLink(RaftLinkRejectReason.RouteUnavailable)
@@ -328,6 +349,7 @@ internal class RaftLinkNavigator(
         // App Store Guideline 3.1.1: intercept billing, /servers/*/upgrade, and Stripe URLs before
         // any in-app WebView or SFSafariViewController path can open them on iOS.
         if (decision.target != RaftLinkOpenTarget.Rejected && isAppStoreRestrictedPurchaseUrl(decision.url)) {
+            clearPendingWebPanelSource()
             if (openAppStoreRestrictedPurchaseUrl(decision.url)) {
                 return RaftLinkOpenDecision(RaftLinkOpenTarget.InAppDestination, decision.url)
             }
@@ -336,14 +358,17 @@ internal class RaftLinkNavigator(
         }
         // An Artifact's address opens Raft's own viewer, as an Artifact card does, whatever the setting.
         if (intent == RaftLinkOpenIntent.Ordinary && decision.target != RaftLinkOpenTarget.Rejected && openArtifactAddress(decision.url)) {
+            clearPendingWebPanelSource()
             return RaftLinkOpenDecision(RaftLinkOpenTarget.ArtifactViewer, decision.url)
         }
         // A server join link opens the app's join page (the shell's, through the join link inbox).
         if (intent == RaftLinkOpenIntent.Ordinary && decision.target != RaftLinkOpenTarget.Rejected && openServerJoinLink(decision.url)) {
+            clearPendingWebPanelSource()
             return RaftLinkOpenDecision(RaftLinkOpenTarget.ServerJoinPage, decision.url)
         }
         // Any other Raft page the app has a screen for: that screen (the web opens a Raft page in Raft, not a tab).
         if (intent == RaftLinkOpenIntent.Ordinary && decision.target != RaftLinkOpenTarget.Rejected && openOwnLink(decision.url)) {
+            clearPendingWebPanelSource()
             return RaftLinkOpenDecision(RaftLinkOpenTarget.InAppDestination, decision.url)
         }
         // A Raft page it has none for: the web page, authenticated in-app when on the active environment.
@@ -353,18 +378,33 @@ internal class RaftLinkNavigator(
         // Active-environment Raft web pages open in the authenticated WebView regardless of LinkOpenMode;
         // ForceExternal and RaftWebPageInBrowser bypass this and always reach the system browser.
         if (intent == RaftLinkOpenIntent.RaftWebPage && decision.target != RaftLinkOpenTarget.Rejected && openRaftWebPageInApp(decision.url)) {
+            clearPendingWebPanelSource()
             return RaftLinkOpenDecision(RaftLinkOpenTarget.InAppDestination, decision.url)
         }
         return when (decision.target) {
             RaftLinkOpenTarget.InAppBrowser -> {
+                // #proj-workspace:#397: Layer 3 third-party links require an isolated WebView storage
+                // partition. When unavailable (e.g. pre-Chromium 119 Android without MULTI_PROFILE),
+                // fail closed to the system browser and NEVER fall back to the Default profile.
+                if (!supportsIsolatedWebViewProfile()) {
+                    clearPendingWebPanelSource()
+                    if (intent == RaftLinkOpenIntent.RaftWebPage || intent == RaftLinkOpenIntent.RaftWebPageInBrowser) {
+                        openRaftWebPageInBrowser(decision.url)
+                    } else {
+                        openExternalBrowser(decision.url)
+                    }
+                    return RaftLinkOpenDecision(RaftLinkOpenTarget.ExternalBrowser, decision.url)
+                }
                 if (openInAppBrowser(decision.url)) {
                     decision
                 } else {
+                    clearPendingWebPanelSource()
                     onRejected(RaftLinkRejectReason.RouteUnavailable)
                     rejectedLink(RaftLinkRejectReason.RouteUnavailable)
                 }
             }
             RaftLinkOpenTarget.ExternalBrowser -> {
+                clearPendingWebPanelSource()
                 if (intent == RaftLinkOpenIntent.RaftWebPage || intent == RaftLinkOpenIntent.RaftWebPageInBrowser) {
                     openRaftWebPageInBrowser(decision.url)
                 } else {
@@ -373,12 +413,16 @@ internal class RaftLinkNavigator(
                 decision
             }
             RaftLinkOpenTarget.Rejected -> {
+                clearPendingWebPanelSource()
                 onRejected(requireNotNull(decision.rejectReason))
                 decision
             }
             RaftLinkOpenTarget.ArtifactViewer,
             RaftLinkOpenTarget.ServerJoinPage,
-            RaftLinkOpenTarget.InAppDestination -> decision
+            RaftLinkOpenTarget.InAppDestination -> {
+                clearPendingWebPanelSource()
+                decision
+            }
         }
     }
 }
@@ -437,6 +481,7 @@ internal fun rememberRaftLinkNavigator(
     bridge: BridgeModule,
     routeScope: RaftInAppBrowserRouteScope = RaftInAppBrowserRouteScope.InheritShell,
     artifactConversationId: String? = null,
+    useWebPanelHost: Boolean = true,
 ): RaftLinkNavigator {
     // Lazy: every page has a navigator (ProvideRaftLinkOpening), few of them open a link.
     val preferenceRepository =
@@ -451,13 +496,22 @@ internal fun rememberRaftLinkNavigator(
     // An app-shell tab's page has no scope of its own: the viewer opens with the tab's ([LocalRaftArtifactOpenStoreScope]).
     val artifactStoreScope = LocalRaftArtifactOpenStoreScope.current
     val artifactConversation = raftArtifactViewerHostConversationOrNull(artifactConversationId)
-    return remember(pager, bridge, preferenceRepository, routeScope, rejectedMessage, artifactStoreScope, artifactConversation) {
+    val webPanelHost = if (useWebPanelHost) LocalRaftMobileWebPanelHost.current else null
+    return remember(pager, bridge, preferenceRepository, routeScope, rejectedMessage, artifactStoreScope, artifactConversation, webPanelHost) {
+        fun currentEnvironmentKey(): String {
+            val env = RaftSharedStoreRegistry.get(bridge).apiEnvironmentStore.current()
+            return "${env.webUrl}|${env.apiBaseUrl}"
+        }
         RaftLinkNavigator(
             modeProvider = { effectiveLinkOpenMode(preferenceRepository.value.getLinkOpenModeSync()) },
             openInAppBrowser = { url ->
-                when (routeScope) {
-                    RaftInAppBrowserRouteScope.InheritShell -> pager.openRaftInAppBrowserPage(url)
-                    RaftInAppBrowserRouteScope.Unscoped -> pager.openUnscopedRaftInAppBrowserPage(url)
+                if (webPanelHost != null) {
+                    webPanelHost.openLink(url = url, environmentKey = currentEnvironmentKey())
+                } else {
+                    when (routeScope) {
+                        RaftInAppBrowserRouteScope.InheritShell -> pager.openRaftInAppBrowserPage(url)
+                        RaftInAppBrowserRouteScope.Unscoped -> pager.openUnscopedRaftInAppBrowserPage(url)
+                    }
                 }
             },
             openExternalBrowser = { url -> bridge.openUrl(url) },
@@ -526,6 +580,19 @@ internal fun rememberRaftLinkNavigator(
                         pager.openUnscopedRaftInAppBrowserPage(url, appEntryToken = appEntryToken)
                 }
             },
+            openInAppBrowserWithEntryRequest =
+                webPanelHost?.let { panelHost ->
+                    { url, appEntryToken, request ->
+                        panelHost.openAppEntry(
+                            url = url,
+                            appEntryToken = appEntryToken,
+                            request = request,
+                            environmentKey = currentEnvironmentKey(),
+                        )
+                    }
+                },
+            supportsIsolatedWebViewProfile = ::raftPlatformSupportsIsolatedWebViewProfile,
+            clearPendingWebPanelSource = { webPanelHost?.clearPendingSource() },
             raftHostsProvider = {
                 val env = RaftSharedStoreRegistry.get(bridge).apiEnvironmentStore.current()
                 raftBrowserRaftHosts(env.webUrl, env.apiBaseUrl)
@@ -539,24 +606,54 @@ internal val LocalRaftLinkNavigator = staticCompositionLocalOf<RaftLinkNavigator
 /**
  * The one way a page opens a link (artin, Hands ff72869f): Compose's [LocalUriHandler] default starts its own
  * VIEW, so anything reading it opened differently from a message link. Every page sits under this (BasePager).
+ *
+ * On mobile (outside [ComposeRaftInAppBrowserPage] and embedded child pages that already inherit a
+ * parent window's host), also installs the unified bottom-rising mobile web panel overlay
+ * ([RaftMobileWebPanelOverlay]) so third-party links and Raft Apps open in-place over the page.
  */
 @Composable
 internal fun ProvideRaftLinkOpening(pager: Pager, content: @Composable () -> Unit) {
     val bridge = remember(pager) { Utils.bridgeModule(pager.pagerId) }
-    val navigator = rememberRaftLinkNavigator(pager, bridge)
-    val uriHandler =
-        remember(navigator) {
-            object : UriHandler {
-                override fun openUri(uri: String) {
-                    navigator.open(uri)
+    val parentWebPanelHost = LocalRaftMobileWebPanelHost.current
+    val ownsWebPanelHost =
+        parentWebPanelHost == null &&
+            raftPlatformSupportsInAppBrowser() &&
+            pager !is ComposeRaftInAppBrowserPage
+    val ownedWebPanelHost =
+        if (ownsWebPanelHost) {
+            remember(pager.pagerId) { RaftMobileWebPanelHostController(hostId = pager.pagerId) }
+        } else {
+            null
+        }
+    val effectiveWebPanelHost = ownedWebPanelHost ?: parentWebPanelHost
+    CompositionLocalProvider(LocalRaftMobileWebPanelHost provides effectiveWebPanelHost) {
+        val navigator = rememberRaftLinkNavigator(pager, bridge)
+        val uriHandler =
+            remember(navigator) {
+                object : UriHandler {
+                    override fun openUri(uri: String) {
+                        navigator.open(uri)
+                    }
                 }
             }
+        CompositionLocalProvider(
+            LocalRaftLinkNavigator provides navigator,
+            LocalUriHandler provides uriHandler,
+        ) {
+            if (ownedWebPanelHost != null) {
+                Box(modifier = Modifier.fillMaxSize()) {
+                    content()
+                    RaftMobileWebPanelOverlay(
+                        pager = pager,
+                        bridge = bridge,
+                        host = ownedWebPanelHost,
+                    )
+                }
+            } else {
+                content()
+            }
         }
-    CompositionLocalProvider(
-        LocalRaftLinkNavigator provides navigator,
-        LocalUriHandler provides uriHandler,
-        content = content,
-    )
+    }
 }
 
 /**

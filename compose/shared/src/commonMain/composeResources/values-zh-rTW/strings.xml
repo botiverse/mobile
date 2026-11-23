@@ -6005,4 +6005,9 @@
     <string name="settings_appearance_send_key_title">傳送訊息的按鍵</string>
     <string name="settings_appearance_send_key_save_failed">無法變更傳送方式，請再試一次。</string>
     <string name="composer_send_key_hint">按 %1$s 傳送</string>
+    <string name="mobile_web_panel_signed_in_as">已登入為 %1$s</string>
+    <string name="mobile_web_panel_page_still_open">%1$s · 頁面仍開啟</string>
+    <string name="mobile_web_panel_return_to_conversation">回到對話</string>
+    <string name="mobile_web_panel_return_to_page">返回</string>
+    <string name="mobile_web_panel_apps_source">應用程式</string>
 </resources>

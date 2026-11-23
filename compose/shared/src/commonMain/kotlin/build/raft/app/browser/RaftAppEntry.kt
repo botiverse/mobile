@@ -34,6 +34,7 @@ internal data class RaftAppEntryRequest(
     val scopeOrigin: String,
     val appName: String? = null,
     val preferredServerId: String? = null,
+    val appLogoUrl: String? = null,
 )
 
 /** `Raft-Host: [value]` on the main frame's GET navigations to [origin], and nowhere else: what the WebView is given. */
@@ -46,6 +47,7 @@ internal data class RaftAppEntryContext(
     val scopeOrigin: String,
     val appName: String?,
     val preferredServerId: String?,
+    val appLogoUrl: String? = null,
 ) {
     /** The header the page's WebView sends, or null when there is none to send. */
     val raftHost: RaftHostHeader?
@@ -107,6 +109,7 @@ internal fun raftAppEntryContext(
         scopeOrigin = scopeOrigin,
         appName = request.appName,
         preferredServerId = request.preferredServerId,
+        appLogoUrl = request.appLogoUrl,
     )
 }
 

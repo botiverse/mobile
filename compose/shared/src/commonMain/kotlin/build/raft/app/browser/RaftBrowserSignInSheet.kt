@@ -61,6 +61,7 @@ internal data class RaftInAppBrowserSignInHost(
     val stepUp: SecondFactorStepUpCoordinator,
     val flagEnabled: Boolean,
     val appForeground: Boolean,
+    val signedInAsName: String? = null,
 )
 
 @Composable
@@ -74,6 +75,8 @@ internal fun rememberInAppBrowserSignInHost(
     activeApiBaseUrl: String,
     controller: RaftWebViewController,
     onOpenInBrowser: (String) -> Unit,
+    sessionKey: Any = Unit,
+    panelVisible: Boolean = true,
 ): RaftInAppBrowserSignInHost {
     val authStore =
         remember(sharedStores, storeScope) {
@@ -104,7 +107,7 @@ internal fun rememberInAppBrowserSignInHost(
             flagServerId != null &&
                 sharedStores.serverFeatureFlags.isEnabled(flagServerId, MOBILE_RAFT_SIGN_IN_FEATURE_FLAG_KEY)
         }
-    val pageVisible = rememberRaftPagerAppeared(pager)
+    val pageVisible = rememberRaftPagerAppeared(pager) && panelVisible
     val appForeground by RaftStaleReadRecoverySignals.foreground.collectAsState()
     val scope = rememberCoroutineScope()
 
@@ -134,7 +137,7 @@ internal fun rememberInAppBrowserSignInHost(
     val currentEnvKey by rememberUpdatedState(environmentKey)
 
     val signInSession =
-        remember(pager.pagerId, signInApi, stepUp, controller, entryContext?.preferredServerId) {
+        remember(pager.pagerId, sessionKey, signInApi, stepUp, controller, entryContext?.preferredServerId) {
             RaftBrowserSignInSession(
                 scope = scope,
                 authorizeOriginProvider = {
@@ -165,11 +168,15 @@ internal fun rememberInAppBrowserSignInHost(
     DisposableEffect(signInSession) {
         onDispose { signInSession.onPageClosed() }
     }
+    val signedInAsName =
+        authSession?.user?.displayName?.trim()?.takeIf { it.isNotEmpty() }
+            ?: authSession?.user?.email?.trim()?.takeIf { it.isNotEmpty() }
     return RaftInAppBrowserSignInHost(
         session = signInSession,
         stepUp = stepUp,
         flagEnabled = flagEnabled,
         appForeground = appForeground,
+        signedInAsName = signedInAsName,
     )
 }
 

@@ -80,6 +80,7 @@ internal fun raftWebKitDisplayNameMatchesHosts(displayName: String, hosts: Set<S
 internal suspend fun raftClearWebViewAuthStorage(
     origins: Set<String> = emptySet(),
 ) {
+    RaftMobileWebPanelCoordinator.process.clearAll()
     raftClearPlatformWebViewAuthStorage(origins)
 }
 

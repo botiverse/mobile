@@ -187,6 +187,8 @@ internal fun RaftSandboxWebView(
     raftHost: RaftHostHeader? = null,
     /** [RaftWebViewEvents.catchesMainFrameNavigation]. */
     catchesMainFrameNavigation: ((RaftWebViewMainFrameCatchAsk) -> Boolean)? = null,
+    /** [RaftWebViewEvents.onContentProcessGone]. */
+    onContentProcessGone: ((String) -> Unit)? = null,
 ) {
     val events = remember { RaftWebViewEvents() }
     events.catchesMainFrameNavigation = catchesMainFrameNavigation
@@ -203,7 +205,10 @@ internal fun RaftSandboxWebView(
         if (loadWatchdog == null) onNavigationStateChange else { state -> loadWatchdog.onNavigationState(state); onNavigationStateChange(state) }
     events.onHostMessage = onHostMessage
     events.onContentProbe = { hasContent -> loadWatchdog?.onContentProbe(hasContent) }
-    events.onContentProcessGone = { reason -> loadWatchdog?.onProcessGone(reason) }
+    events.onContentProcessGone = { reason ->
+        loadWatchdog?.onProcessGone(reason)
+        onContentProcessGone?.invoke(reason)
+    }
     if (loadWatchdog != null) RaftWebViewLoadWatchdogEffect(loadWatchdog, controller)
     val backgroundArgb = RaftTheme.colors.layerCanvas.toArgb()
     val allowedNavigationSchemesValue = allowedNavigationSchemes.toRaftWebViewAllowedNavigationSchemesValue()
@@ -342,6 +347,8 @@ internal fun RaftWebView(
     raftHost: RaftHostHeader? = null,
     /** [RaftWebViewEvents.catchesMainFrameNavigation]. */
     catchesMainFrameNavigation: ((RaftWebViewMainFrameCatchAsk) -> Boolean)? = null,
+    /** [RaftWebViewEvents.onContentProcessGone]. */
+    onContentProcessGone: ((String) -> Unit)? = null,
 ) {
     RaftSandboxWebView(
         url = url,
@@ -372,6 +379,7 @@ internal fun RaftWebView(
         allowsBackForwardNavigationGestures = allowsBackForwardNavigationGestures,
         raftHost = raftHost,
         catchesMainFrameNavigation = catchesMainFrameNavigation,
+        onContentProcessGone = onContentProcessGone,
     )
 }
 

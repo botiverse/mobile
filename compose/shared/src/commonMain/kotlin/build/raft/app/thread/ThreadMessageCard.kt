@@ -636,7 +636,7 @@ private fun ThreadMessageCardContent(
     val onCommitActionCard = callbacks.onCommitActionCard
     val currentServerSlug = data.currentServerSlug
     val onOpenMarkdownTag = callbacks.onOpenMarkdownTag
-    val onOpenMarkdownUrl = callbacks.onOpenMarkdownUrl
+    val rawOnOpenMarkdownUrl = callbacks.onOpenMarkdownUrl
     val onMentionAuthor = callbacks.onMentionAuthor
     val richContentEnabled = data.richContentEnabled
     val focused = data.focused
@@ -877,6 +877,30 @@ private fun ThreadMessageCardContent(
     // The body always renders in full; a long one is clipped visually by RaftLongMessageCollapsibleBody.
     val renderedBody = translation?.displayBody ?: message.body
     val bodyForRender = renderedBody
+    val webPanelHost = LocalRaftMobileWebPanelHost.current
+    val webPanelMessageSource =
+        remember(message.id, localizedAuthorName, avatarWireValue, message.avatarWireValue, message.externalAuthor, renderedBody, timestampLabel) {
+            RaftMobileWebPanelSource.Message(
+                messageId = message.id,
+                authorName = localizedAuthorName,
+                authorAvatarKind = message.threadAvatarKind(),
+                authorAvatarWireValue = if (message.externalAuthor != null) message.avatarWireValue else avatarWireValue,
+                authorCacheSubject =
+                    raftMemberAvatarCacheSubject(
+                        message.authorKind.projectedMemberKindOrNull(),
+                        message.authorId,
+                    ),
+                previewText = markdownToPreviewText(renderedBody),
+                timestampLabel = timestampLabel,
+            )
+        }
+    val onOpenMarkdownUrl: (String) -> Unit =
+        remember(webPanelHost, webPanelMessageSource, rawOnOpenMarkdownUrl) {
+            { url ->
+                webPanelHost?.setPendingSource(webPanelMessageSource)
+                rawOnOpenMarkdownUrl(url)
+            }
+        }
     val showSavedBadge =
         shouldShowThreadMessageSavedBadge(
             showSaveAction = showSaveAction,
@@ -1637,6 +1661,7 @@ private fun ThreadMessageCardContent(
                                                           RaftMarkdownMentionReadStateScope(mentionReadStates) {
                                                           // artin #20 lane L: App links as chips, read
                                                           // for a sent message only (web MessageItem).
+                                                          CompositionLocalProvider(LocalRaftMobileWebPanelMessageSource provides webPanelMessageSource) {
                                                           ThreadAppLinkPreviewScope(
                                                               messageId = message.id,
                                                               body = message.body,
@@ -1694,6 +1719,7 @@ private fun ThreadMessageCardContent(
                                                                 performanceLogger = diagnosticsLogger
                                                             )
                                                             }
+                                                          }
                                                           }
                                                           }
                                                           }
@@ -1837,6 +1863,12 @@ private fun ThreadMessageCardContent(
                                     )
                                 }
                             }
+                        }
+                        if (richContentEnabled && !shareCaptureActive && !message.isRetracted) {
+                            ThreadMessageKeepOpenBadgeSlot(
+                                messageId = message.id,
+                                modifier = Modifier.padding(top = RaftAppSpacing.Xxs),
+                            )
                         }
                         threadMessageTrailingSectionOrder(
                             hasMetaChips = hasFooterMeta,

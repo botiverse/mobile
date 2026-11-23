@@ -5116,13 +5116,37 @@ private fun ThreadMessagesListContent(
                 }
                 // A long press on a link in this message (artin, 1.24): the link's section leads the
                 // menu, whichever menu shows (ThreadMessageLinkMenu.kt). Open is the link's own tap.
+                val linkMenuWebPanelHost = LocalRaftMobileWebPanelHost.current
+                val linkMenuAuthorName = message.localizedAuthorName()
                 val linkSection =
                     inPlaceSelectionMenuHost?.contextMenuLinkFor(message.id, resolvedActionAnchor)?.let { url ->
                         rememberThreadMessageLinkMenuSection(
                             url = url,
                             webUrl = adaptiveSharedStores.apiEnvironmentStore.current().webUrl,
                             close = closeActionMenu,
-                            openLink = { linkUrl -> onThreadEvent("openMarkdownUrl", linkUrl, null, null) },
+                            openLink = { linkUrl ->
+                                linkMenuWebPanelHost?.setPendingSource(
+                                    RaftMobileWebPanelSource.Message(
+                                        messageId = message.id,
+                                        authorName = linkMenuAuthorName,
+                                        authorAvatarKind =
+                                            when {
+                                                message.externalAuthor != null -> RaftAvatarKind.Labeled
+                                                message.isThreadAgentAuthor() -> RaftAvatarKind.Agent
+                                                else -> RaftAvatarKind.Human
+                                            },
+                                        authorAvatarWireValue = message.avatarWireValue,
+                                        authorCacheSubject =
+                                            raftMemberAvatarCacheSubject(
+                                                message.authorKind.projectedMemberKindOrNull(),
+                                                message.authorId,
+                                            ),
+                                        previewText = build.raft.app.markdown.markdownToPreviewText(message.body),
+                                        timestampLabel = message.timestampLabel,
+                                    ),
+                                )
+                                onThreadEvent("openMarkdownUrl", linkUrl, null, null)
+                            },
                             // The list's scope: Share answers after the menu has closed.
                             scope = coroutineScope,
                             diagnosticsLogger = diagnosticsLogger
