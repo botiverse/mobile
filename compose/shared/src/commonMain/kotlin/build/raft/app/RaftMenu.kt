@@ -85,6 +85,7 @@ private val RaftBaseMenuGroupLabelHeight = 28.dp
 
 private val RaftBaseMenuMinWidth = 136.dp
 private val RaftBaseMenuMaxWidth = 280.dp
+// not a token: the legacy base menu's fixed row, on every input; RaftMenu reads `option.height`.
 private val RaftBaseMenuRowHeight = 34.dp
 private val RaftBaseMenuHorizontalOffset = (-8).dp
 private val RaftBaseMenuVerticalOffset = 8.dp

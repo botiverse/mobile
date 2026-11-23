@@ -82,6 +82,7 @@ import build.raft.designsystem.theme.RaftTheme
 import build.raft.designsystem.tokens.RaftOpacity
 import build.raft.designsystem.tokens.RaftRadius
 import build.raft.designsystem.tokens.RaftStroke
+import build.raft.designsystem.tokens.RaftUiComponentTokens
 import build.raft.designsystem.tokens.RaftUiPalette
 
 // raft-ui MobileNav (raft-design #712, design D1a, #proj-raft-ui task #152): the phone bar's
@@ -98,13 +99,13 @@ import build.raft.designsystem.tokens.RaftUiPalette
 object RaftMobileNavDefaults {
     // raft-ui 0.57 MobileNav (artin 2026-11-02: the phone bar follows the web's metrics).
     /**
-     * The bar above its bottom padding: the 1dp seam, [TopPadding] and a 45dp item (MobileNavItem
-     * `pt-1`, the 22dp icon, `gap-[7px]`, the 12dp label line).
+     * The bar above its bottom padding (`mobile-nav.height`): the 1dp seam, [TopPadding] and a
+     * 45dp item (MobileNavItem `pt-1`, the 22dp icon, `gap-[7px]`, the 12dp label line).
      */
-    val ContentHeight: Dp = 52.dp
+    val ContentHeight: Dp = RaftUiComponentTokens.Touch.mobileNavHeight
 
-    /** The bar's bottom padding where nothing is under it (`pb-[max(8px,…)]`). */
-    val MinBottomPadding: Dp = 8.dp
+    /** The bar's bottom padding where nothing is under it (`mobile-nav.inset-bottom-min`). */
+    val MinBottomPadding: Dp = RaftUiComponentTokens.Touch.mobileNavInsetBottomMin
 
     /**
      * The bar's bottom padding over [bottomSafeArea] (the home indicator, Android's navigation

@@ -1044,7 +1044,7 @@ internal fun ChannelSettingsScaffold(
 }
 
 /** web `stack-y-6`: 24 between the details' sections. */
-private val ChannelDetailsSectionGap = 24.dp
+private val ChannelDetailsSectionGap = 24.dp // not a token: the web writes `stack-y-6`, not `--section-gap`
 
 /** web `--surface-inset`: the details' side margin, 16 under a mouse or trackpad, 20 with a finger. */
 @Composable

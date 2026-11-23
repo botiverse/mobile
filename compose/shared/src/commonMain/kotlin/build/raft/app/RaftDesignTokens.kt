@@ -17,6 +17,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.snapshots.Snapshot
 import build.raft.designsystem.theme.RaftTheme
+import build.raft.designsystem.tokens.RaftUiComponentTokens
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.unit.dp
@@ -212,7 +213,7 @@ internal object RaftAppSize {
     // raft panel heads are 56px (48px under 600px window height). This is the touch head; the
     // heads themselves read RaftTheme.controls.headHeight, 44 under a mouse or trackpad (sizing
     // v12, raft-ui 0.65 desktop density).
-    val PageHeaderHeight = 56.dp
+    val PageHeaderHeight = RaftUiComponentTokens.Touch.headerHeight
     val PageHeaderContentHeight = PageHeaderHeight - RaftAppStroke.Default
     // raft-ui MobileNav bar, without the safe-area inset.
     val BottomBarHeight = 60.dp

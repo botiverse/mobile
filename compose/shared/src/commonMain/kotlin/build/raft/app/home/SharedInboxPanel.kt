@@ -176,6 +176,7 @@ import kotlin.time.TimeSource
 import build.raft.designsystem.components.RaftEmptyState
 import build.raft.designsystem.components.RaftEmptyStateDefaults
 import build.raft.designsystem.components.RaftButtonSize
+import build.raft.designsystem.theme.raftComponentTokens
 
 
 @Composable
@@ -1409,7 +1410,7 @@ private fun SharedActivityMarkAllReadButton(iconOnly: Boolean, onClick: () -> Un
  * and on the wide layout with a finger, 44 only on the wide layout under a mouse or trackpad.
  */
 internal fun activityFilterBarHeight(scale: RaftScale, pointerInput: RaftPointerInput): Dp =
-    if (scale == RaftScale.Wide && pointerInput == RaftPointerInput.Fine) 44.dp else 49.dp
+    raftComponentTokens(scale, pointerInput).listToolbarHeight
 
 /**
  * The Activity column's margin, where its toolbar and its rows start (raft-design lists.md, One

@@ -854,10 +854,9 @@ internal fun raftOptionInset(style: TextStyle): Dp {
 }
 
 /**
- * [RaftMenuMetrics.OptionHeight] (36) with a finger; the shared 34dp row height under a fine
- * pointer (sizing v12, raft-ui 0.65 desktop density), so a menu option matches the sidebar row
- * and the field beside it.
+ * `option.height`: 36 with a finger; the shared 34dp row height on a desktop (sizing v12, raft-ui
+ * 0.65 desktop density), so a menu option matches the sidebar row and the field beside it.
  */
 internal val RaftOptionHeight: Dp
     @Composable @ReadOnlyComposable
-    get() = RaftTheme.controls.rowHeight ?: RaftMenuMetrics.OptionHeight
+    get() = RaftTheme.sizes.optionHeight

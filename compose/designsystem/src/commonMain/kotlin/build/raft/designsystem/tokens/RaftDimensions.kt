@@ -67,7 +67,8 @@ object RaftStroke {
 object RaftMenuMetrics {
     val Padding = 4.dp
     val SeparatorInset = 4.dp
-    val OptionHeight = 36.dp
+    /** `option.height` with a finger; a menu reads the context's ([build.raft.designsystem.theme.RaftTheme.sizes]). */
+    val OptionHeight = RaftUiComponentTokens.Touch.optionHeight
     val ItemPaddingHorizontal = 10.dp
     val ItemGap = 10.dp
     val IconSize = 16.dp
@@ -105,6 +106,7 @@ object RaftFade {
  * 60%. (A drag origin stays 40%; the app has no drag.)
  */
 object RaftOpacity {
+    // A const for const callers; RaftOpacityTokenTest holds it to `opacity.dimmed`.
     const val Dimmed = 0.6f
 }
 
@@ -118,9 +120,9 @@ object RaftSize {
      * heads read [build.raft.designsystem.theme.RaftControlMetrics.headHeight], 44 under a mouse
      * or trackpad (sizing v12, raft-ui 0.65 desktop density).
      */
-    val PageHeaderHeight = 56.dp
-    /** raft-ui MobileNav bar, without the safe-area inset. */
-    val BottomBarHeight = 60.dp
+    val PageHeaderHeight = RaftUiComponentTokens.Touch.headerHeight
+    /** raft-ui MobileNav bar with its least bottom padding, without a safe-area inset. */
+    val BottomBarHeight = RaftUiComponentTokens.Touch.mobileNavHeight + RaftUiComponentTokens.Touch.mobileNavInsetBottomMin
 
     /** A status light beside text (raft-ui `Status md`, 10px since raft-design #722). */
     val StatusPixel = 10.dp

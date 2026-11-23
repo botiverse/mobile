@@ -87,6 +87,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
 import build.raft.designsystem.components.raftClickable
+import build.raft.designsystem.tokens.RaftUiComponentTokens
 
 internal data class ThreadMessageMetadataSlotLayout(
     val widthDp: Float,
@@ -128,8 +129,8 @@ private fun Modifier.threadMessageHeaderBodyGapTrim(): Modifier =
         layout(placeable.width, height) { placeable.place(0, 0) }
     }
 
-/** raft-ui `--spacing-timeline-row`: every message row's inset above and below its text. */
-internal val ThreadMessageTimelineRowInset = 4.dp
+/** raft-ui `timeline.row-inset`: every message row's inset above and below its text. */
+internal val ThreadMessageTimelineRowInset = RaftUiComponentTokens.Touch.timelineRowInset
 
 /** raft-ui `--spacing-timeline-turn`: the transparent band above a turn's first row. */
 internal val ThreadMessageTimelineTurn = 8.dp

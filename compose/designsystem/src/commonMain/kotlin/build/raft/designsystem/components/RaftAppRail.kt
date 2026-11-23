@@ -55,6 +55,7 @@ import build.raft.designsystem.theme.raftThemeDecor
 import build.raft.designsystem.theme.raftThemeDecorShown
 import build.raft.designsystem.tokens.RaftRadius
 import build.raft.designsystem.tokens.RaftStroke
+import build.raft.designsystem.tokens.RaftUiComponentTokens
 import build.raft.designsystem.tokens.RaftUiPalette
 
 // raft-ui AppRail (packages/ui/src/components/app-rail): the leftmost column of a wide layout,
@@ -67,14 +68,14 @@ import build.raft.designsystem.tokens.RaftUiPalette
 
 /** raft-ui AppRail metrics (icons-only variant, the one the product ships). */
 object RaftAppRailDefaults {
-    /** The rail, without its 1dp `line-seam` (raft-ui: 56px plus the seam). */
-    val Width: Dp = 56.dp
+    /** The rail, without its 1dp `line-seam` (`rail.width`, 57, includes it). */
+    val Width: Dp = RaftUiComponentTokens.Touch.railWidth - RaftStroke.Hairline
 
-    /** The header square; its seam lines up with the sidebar's and the panels' headers. */
-    val HeaderHeight: Dp = 56.dp
+    /** The header square (`header.height`); its seam lines up with the sidebar's and the panels' headers. */
+    val HeaderHeight: Dp = RaftUiComponentTokens.Touch.headerHeight
 
-    /** One destination's square (`size-10`). */
-    val ItemSize: Dp = 40.dp
+    /** One destination's square (`rail.item`). */
+    val ItemSize: Dp = RaftUiComponentTokens.Touch.railItem
 
     /** Between items, in the nav and the footer (`gap-1.5`). */
     val ItemGap: Dp = 6.dp
@@ -111,11 +112,11 @@ object RaftAppRailDefaults {
  */
 @Immutable
 data class RaftAppRailMetrics(
-    /** The rail without its seam (root `w-[calc(56px+1px)]`, compact `w-[49px]`). */
+    /** The rail without its seam (`rail.width`, compact `rail.width-short`, both with the seam). */
     val width: Dp,
-    /** The header square (`h-(--shell-header-height,56px)`, compact `h-12`). */
+    /** The header square (`header.height`, compact `header.height-short`). */
     val headerHeight: Dp,
-    /** One item's square (`size-10`, compact `size-9`). */
+    /** One item's square (`rail.item`, compact `rail.item-short`). */
     val itemSize: Dp,
     /** `[&_svg]:size-5` in both sizes. */
     val iconSize: Dp,
@@ -146,9 +147,9 @@ data class RaftAppRailMetrics(
 
         val Compact =
             RaftAppRailMetrics(
-                width = 48.dp,
-                headerHeight = 48.dp,
-                itemSize = 36.dp,
+                width = RaftUiComponentTokens.Touch.railWidthShort - RaftStroke.Hairline,
+                headerHeight = RaftUiComponentTokens.Touch.headerHeightShort,
+                itemSize = RaftUiComponentTokens.Touch.railItemShort,
                 iconSize = RaftAppRailDefaults.IconSize,
                 itemGap = RaftAppRailDefaults.ItemGap,
                 navTopUnderHeader = 6.dp,

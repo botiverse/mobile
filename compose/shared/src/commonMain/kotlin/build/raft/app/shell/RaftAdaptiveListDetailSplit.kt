@@ -34,6 +34,8 @@ import build.raft.designsystem.focus.RaftFocusRegion
 import build.raft.designsystem.focus.RaftFocusRegionHost
 import build.raft.designsystem.theme.RaftPointerInput
 import build.raft.designsystem.theme.RaftPointerInputState
+import build.raft.designsystem.theme.RaftScale
+import build.raft.designsystem.theme.raftControlMetrics
 import build.raft.designsystem.theme.RaftTheme
 import build.raft.app.data.KeyValueChatLayoutPreferenceStore
 import build.raft.app.data.RAFT_LIST_PANE_COLLAPSE_RELEASE_SHARE
@@ -372,7 +374,8 @@ internal const val RAFT_LIST_PANE_EXPAND_TEST_TAG = "raftListPaneExpand"
  * content margin on either side of its glyph (54 with a finger, 48 under a mouse or trackpad).
  */
 internal fun raftListPaneExpandStripWidthDp(pointerInput: RaftPointerInput): Float =
-    pointerInput.controls.let { controls -> controls.barButtonSize.value + 2 * controls.barEdgeInset.value }
+    // The split is the wide layout's, so its controls are the wide window's under [pointerInput].
+    raftControlMetrics(RaftScale.Wide, pointerInput).let { controls -> controls.barButtonSize.value + 2 * controls.barEdgeInset.value }
 
 /**
  * Where the list was while it is collapsed: a strip of the list's surface at the row's start holding the rail toggle's

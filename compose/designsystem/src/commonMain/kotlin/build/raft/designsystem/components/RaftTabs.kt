@@ -409,7 +409,8 @@ internal fun RaftStickerItem(
     val isFocused = raftIsFocused(source)
     val focused = enabled && isFocused
     val typography = RaftTheme.typography
-    val height = RaftTheme.controls.rowHeight ?: 32.dp
+    // `control-height-small`: 32 with a finger, the 34 control height on a desktop.
+    val height = RaftTheme.sizes.controlHeightSmall
     if (iconsOnly && icon != null) {
         // raft-ui `data-icons-only`: a 32dp square with only its icon; the label (and count)
         // stays the accessible name, given by the caller's semantics.
