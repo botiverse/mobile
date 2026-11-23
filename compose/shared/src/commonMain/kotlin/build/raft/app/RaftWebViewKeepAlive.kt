@@ -69,16 +69,16 @@ internal fun raftWebKitDisplayNameMatchesHosts(displayName: String, hosts: Set<S
 }
 
 /**
- * Clears persistent WebView auth storage (`localStorage`, Raft own-origin cookies, site data) and
- * drops any kept or spare WebViews, suspending until platform cleanup completes so an account
- * switch never races a new account's token injection (#proj-mobile:#204).
+ * Clears persistent default WebView storage (`localStorage`, cookies, site data) and drops any
+ * kept or spare WebViews, suspending until platform cleanup completes so sign-out or an account
+ * switch wipes both Raft auth tokens and Raft App sessions (#proj-workspace:#356 Decision #7).
  *
- * On Android, `WebStorage.deleteAllData()` is always used because Chromium's `deleteOrigin()`
- * omits `LOCAL_STORAGE`; cookies are still cleared per Raft origin so third-party cookie logins in
- * [InAppBrowserPage] survive. On iOS, `WKWebsiteDataStore` records matching Raft hosts are deleted.
+ * Passing [origins] as `emptySet()` (the default) clears the entire default store on Android
+ * (`WebStorage.deleteAllData()` + `CookieManager.removeAllCookies`) and iOS
+ * (`WKWebsiteDataStore.defaultDataStore().removeDataOfTypes(..., modifiedSince = epoch 0)`).
  */
 internal suspend fun raftClearWebViewAuthStorage(
-    origins: Set<String> = raftWebViewAuthOriginsToClear(),
+    origins: Set<String> = emptySet(),
 ) {
     raftClearPlatformWebViewAuthStorage(origins)
 }

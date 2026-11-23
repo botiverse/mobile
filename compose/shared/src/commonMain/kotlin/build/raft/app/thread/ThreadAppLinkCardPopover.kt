@@ -44,7 +44,10 @@ internal data class ThreadAppLinkOpenCard(val url: String, val anchor: RaftPopov
  */
 internal class ThreadAppLinkCards(
     private val messageId: String,
+    val preferredServerId: String?,
     val openLink: (String) -> Unit,
+    val openAppEntry: (String, RaftAppEntryRequest) -> Unit,
+    val openInSystemBrowser: (String) -> Unit,
 ) {
     private val refs = mutableMapOf<String, RaftLiveRootAnchorRef>()
 
@@ -66,7 +69,14 @@ internal class ThreadAppLinkCards(
     fun open(card: AppLinkResult.Card) {
         val anchor = resolve(card.url)
         if (anchor == null) {
-            openLink(card.url)
+            openThreadAppLinkAddress(
+                address = card.connectUrl ?: card.url,
+                card = card,
+                preferredServerId = preferredServerId,
+                openLink = openLink,
+                openAppEntry = openAppEntry,
+                openInSystemBrowser = openInSystemBrowser,
+            )
             return
         }
         if (card.url !in openedUrls) openedUrls += card.url
@@ -81,9 +91,25 @@ internal class ThreadAppLinkCards(
 }
 
 @Composable
-internal fun rememberThreadAppLinkCards(messageId: String, onOpenLink: (String) -> Unit): ThreadAppLinkCards {
+internal fun rememberThreadAppLinkCards(
+    messageId: String,
+    preferredServerId: String? = null,
+    onOpenLink: (String) -> Unit,
+    onOpenAppEntry: (String, RaftAppEntryRequest) -> Unit = { url, _ -> onOpenLink(url) },
+    onOpenInSystemBrowser: (String) -> Unit = rememberRaftSystemBrowserOpener(),
+): ThreadAppLinkCards {
     val openLink by rememberUpdatedState(onOpenLink)
-    return remember(messageId) { ThreadAppLinkCards(messageId) { openLink(it) } }
+    val openAppEntry by rememberUpdatedState(onOpenAppEntry)
+    val openInSystemBrowser by rememberUpdatedState(onOpenInSystemBrowser)
+    return remember(messageId, preferredServerId) {
+        ThreadAppLinkCards(
+            messageId = messageId,
+            preferredServerId = preferredServerId,
+            openLink = { openLink(it) },
+            openAppEntry = { url, request -> openAppEntry(url, request) },
+            openInSystemBrowser = { openInSystemBrowser(it) },
+        )
+    }
 }
 
 /**
@@ -143,7 +169,14 @@ internal fun ThreadAppLinkCardPopoverHost(
     // A link of the card (the App's, or Raft's Open Link) closes the card and opens its address.
     val openAddress: (String) -> Unit = { address ->
         cards.close()
-        openThreadAppLinkAddress(address, card.connectUrl, cards.openLink, openInSystemBrowser)
+        openThreadAppLinkAddress(
+            address = address,
+            card = card,
+            preferredServerId = cards.preferredServerId,
+            openLink = cards.openLink,
+            openAppEntry = cards.openAppEntry,
+            openInSystemBrowser = openInSystemBrowser,
+        )
     }
     Modal(onWillDismiss = { cards.close() }) {
         RaftDesignSystemTheme {

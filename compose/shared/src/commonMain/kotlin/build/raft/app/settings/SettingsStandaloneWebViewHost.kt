@@ -292,6 +292,12 @@ internal data class StandaloneSettingsWebViewSpec(
     val frameHosts: Set<String> = emptySet(),
     val bottomContentPadding: Dp = 0.dp,
     val hostEventsEnabled: Boolean = false,
+    /**
+     * When true (Marketplace / Connected Apps surface only), `#host=open-app&to=...` opens verified
+     * installed Apps via [RaftLinkNavigator.openAppEntry] (#proj-workspace:#356). Other surfaces
+     * treat `#host=open-app` as an ordinary external link.
+     */
+    val opensAppEntries: Boolean = false,
     /** Uses non-persistent/incognito WebView storage (e.g. Desktop Wry or iOS own-web fallback). */
     val ephemeral: Boolean = raftPlatformUsesEphemeralAuthWebView(),
     val buildWebUrl: (webBaseUrl: String?, session: StoredAuthSession?, localeTag: String) -> String,
@@ -533,6 +539,15 @@ private fun StandaloneSettingsWebViewBody(
         remember(sharedStores, storeScope, authStore) {
             SettingsWebViewAccessTokenRefresher(authStore, sharedStores.createAuthDataSourceForCurrentEnvironment(storeScope))
         }
+    val verifyInstalledAppOrigin: (suspend (serverId: String, targetOrigin: String) -> RaftInstalledAppOriginMatch?)? =
+        remember(sharedStores, storeScope, spec.opensAppEntries) {
+            if (spec.opensAppEntries) {
+                val api = NetworkRaftBrowserSignInApi(sharedStores.networkClient(storeScope))
+                api::findInstalledAppByOrigin
+            } else {
+                null
+            }
+        }
     LaunchedEffect(spec.surface, spec) {
         bridge.log("settings_${spec.surface.diagnosticsName}_open")
     }
@@ -564,6 +579,7 @@ private fun StandaloneSettingsWebViewBody(
         onOpenExternalLink = onOpenExternalLink,
         onOpenBlockedNavigation = onOpenBlockedNavigation,
         routesMainFrameNavigation = routesMainFrameNavigation,
+        verifyInstalledAppOrigin = verifyInstalledAppOrigin,
     )
 }
 
@@ -586,6 +602,7 @@ internal fun StandaloneSettingsWebViewContent(
     onOpenExternalLink: ((String) -> Unit)? = null,
     onOpenBlockedNavigation: ((String) -> Unit)? = null,
     routesMainFrameNavigation: ((String) -> Boolean)? = null,
+    verifyInstalledAppOrigin: (suspend (serverId: String, targetOrigin: String) -> RaftInstalledAppOriginMatch?)? = null,
 ) {
     val linkNavigator = LocalRaftLinkNavigator.current
     val uriHandler = LocalUriHandler.current
@@ -599,6 +616,7 @@ internal fun StandaloneSettingsWebViewContent(
     val currentOpenExternalLink by rememberUpdatedState(openExternalLink)
     val currentOpenBlockedNavigation by rememberUpdatedState(onOpenBlockedNavigation ?: openExternalLink)
     val currentLogger by rememberUpdatedState(accessTokenSyncLogger)
+    val currentVerifyInstalledAppOrigin by rememberUpdatedState(verifyInstalledAppOrigin)
     val session = authSnapshot.session
     // Every Raft web page the App embeds opens in the App's UI language (#proj-workspace:#388):
     // `lang=` is added here, after the page's own builder, so no page can leave it out.
@@ -642,11 +660,22 @@ internal fun StandaloneSettingsWebViewContent(
         if (target != null) {
             val loggedUrl =
                 if (spec.surface == SettingsWebViewSurface.WebPage) raftOwnWebUrlForLog(target) else raftWebViewUrlForLog(target)
+            val result =
+                dispatchSettingsWebViewHostOpen(
+                    decision = decision,
+                    opensAppEntries = spec.opensAppEntries,
+                    currentServerId = session?.currentServerId,
+                    verifyInstalledAppOrigin = currentVerifyInstalledAppOrigin,
+                    openAppEntry =
+                        linkNavigator?.let { navigator ->
+                            { url, request -> navigator.openAppEntry(url, request) }
+                        },
+                    openExternal = currentOpenExternalLink,
+                )
             currentLogger(
-                "settings_${spec.surface.diagnosticsName}_host_open_external " +
-                    "result=open url=$loggedUrl"
+                "settings_${spec.surface.diagnosticsName}_host_open_${if (decision.kind == SettingsWebViewHostOpenKind.App) "app" else "external"} " +
+                    "result=$result url=$loggedUrl"
             )
-            currentOpenExternalLink(target)
         } else {
             currentLogger(
                 "settings_${spec.surface.diagnosticsName}_host_open_external " +

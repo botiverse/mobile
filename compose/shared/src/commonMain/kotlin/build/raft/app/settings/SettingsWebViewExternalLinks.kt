@@ -327,3 +327,53 @@ internal class SettingsWebViewHostOpenExternalDeduper(
         )
     }
 }
+
+/**
+ * Dispatches a validated `#host=open-external` or `#host=open-app` decision from a Settings WebView
+ * (#proj-workspace:#356 Decision #9).
+ *
+ * Only surfaces with [opensAppEntries] = true (Marketplace) promote `#host=open-app` to
+ * [openAppEntry], and only after [verifyInstalledAppOrigin] confirms the destination origin matches
+ * the `homepageUrl` origin of an App installed on [currentServerId]. Any mismatch, missing server,
+ * failed verification, or non-Marketplace surface falls back to ordinary [openExternal] (no
+ * `Raft-Host` header).
+ */
+internal suspend fun dispatchSettingsWebViewHostOpen(
+    decision: SettingsWebViewHostOpenExternalDecision,
+    opensAppEntries: Boolean,
+    currentServerId: String?,
+    verifyInstalledAppOrigin: (suspend (serverId: String, targetOrigin: String) -> RaftInstalledAppOriginMatch?)?,
+    openAppEntry: ((String, RaftAppEntryRequest) -> Unit)?,
+    openExternal: (String) -> Unit,
+): String {
+    val target = decision.targetUrl ?: return "dropped"
+    if (decision.kind == SettingsWebViewHostOpenKind.App && opensAppEntries && openAppEntry != null) {
+        val targetOrigin = raftAppEntryOriginOf(target)
+        val serverId = currentServerId?.trim()?.takeIf { it.isNotEmpty() }
+        if (targetOrigin != null && serverId != null && verifyInstalledAppOrigin != null) {
+            val matched =
+                try {
+                    verifyInstalledAppOrigin(serverId, targetOrigin)
+                } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                    throw cancelled
+                } catch (_: Throwable) {
+                    null
+                }
+            if (matched != null && matched.origin == targetOrigin) {
+                openAppEntry(
+                    target,
+                    RaftAppEntryRequest(
+                        scopeOrigin = matched.origin,
+                        appName = matched.appName,
+                        preferredServerId = serverId,
+                    ),
+                )
+                return "entry"
+            }
+        }
+        openExternal(target)
+        return "fallback_external"
+    }
+    openExternal(target)
+    return "open"
+}

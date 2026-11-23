@@ -81,6 +81,11 @@ internal data class RaftAppLinkChipHost(
      * under the message does. Null: the author's link opens as any link.
      */
     val onOpenArtifactInPlace: ((ArtifactLinkTarget, ArtifactSummary) -> Unit)? = null,
+    /**
+     * A tap on a plain App link chip (no card body): routes through `openThreadAppLinkAddress`
+     * so App entries open signed in (#proj-workspace:#356). Null falls back to `openUri`.
+     */
+    val onOpenAppLink: ((AppLinkResult.Card) -> Unit)? = null,
 )
 
 /**
@@ -202,7 +207,10 @@ internal fun AnnotatedString.withRaftAppLinkChipContent(
                         LinkAnnotation.Url(
                             url = result.url,
                             styles = raftAppLinkChipLinkStyles(),
-                            linkInteractionListener = LinkInteractionListener { openUri(result.url) },
+                            linkInteractionListener =
+                                LinkInteractionListener {
+                                    host.onOpenAppLink?.invoke(result) ?: openUri(result.url)
+                                },
                         )
                     }
                 is AppLinkResult.Consent ->

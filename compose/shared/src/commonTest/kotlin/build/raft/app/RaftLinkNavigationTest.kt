@@ -143,4 +143,132 @@ class RaftLinkNavigationTest {
             raftInAppBrowserDisplayUrl("https://example.test/docs?token=secret#section"),
         )
     }
+
+    @Test
+    fun openAppEntryIgnoresSystemBrowserModeAndRegistersSingleUseToken() {
+        val opened = mutableListOf<String>()
+        val registry = RaftAppEntryRegistry(newToken = { "tok-1" })
+        val navigator =
+            RaftLinkNavigator(
+                modeProvider = { LinkOpenMode.SystemBrowser },
+                openInAppBrowser = { opened += "in_app:$it"; true },
+                openExternalBrowser = { opened += "external:$it" },
+                onRejected = { opened += "rejected:$it" },
+                openInAppBrowserWithEntry = { url, token ->
+                    opened += "entry:$url|$token"
+                    true
+                },
+                supportsInAppBrowser = { true },
+                raftHostsProvider = { setOf("app.raft.build", "api.raft.build") },
+                debugBuild = false,
+                appEntryRegistry = registry,
+            )
+
+        val url = "https://stamp.build/pulls/1"
+        val request = RaftAppEntryRequest(scopeOrigin = "https://stamp.build", appName = "Stamp", preferredServerId = "srv-1")
+        assertEquals(
+            RaftLinkOpenDecision(RaftLinkOpenTarget.InAppBrowser, url),
+            navigator.openAppEntry(url, request),
+        )
+        assertEquals(listOf("entry:$url|tok-1"), opened)
+        assertEquals(request, registry.claim("tok-1", url, owner = "pager-1"))
+    }
+
+    @Test
+    fun openAppEntryFallsBackToOrdinaryOpenOnInvalidScopeOrDesktop() {
+        val opened = mutableListOf<String>()
+        val registry = RaftAppEntryRegistry(newToken = { "tok-unused" })
+        fun makeNavigator(supportsInApp: Boolean, debug: Boolean) =
+            RaftLinkNavigator(
+                modeProvider = { LinkOpenMode.SystemBrowser },
+                openInAppBrowser = { opened += "in_app:$it"; true },
+                openExternalBrowser = { opened += "external:$it" },
+                onRejected = { opened += "rejected:$it" },
+                openInAppBrowserWithEntry = { url, token ->
+                    opened += "entry:$url|$token"
+                    true
+                },
+                supportsInAppBrowser = { supportsInApp },
+                raftHostsProvider = { setOf("app.raft.build", "api.raft.build") },
+                debugBuild = debug,
+                appEntryRegistry = registry,
+            )
+
+        // Off-origin scope falls back to ordinary open (SystemBrowser).
+        makeNavigator(supportsInApp = true, debug = false).openAppEntry(
+            "https://other.example/home",
+            RaftAppEntryRequest(scopeOrigin = "https://stamp.build"),
+        )
+        // Raft own host scope falls back to ordinary open.
+        makeNavigator(supportsInApp = true, debug = false).openAppEntry(
+            "https://app.raft.build/s/hq",
+            RaftAppEntryRequest(scopeOrigin = "https://app.raft.build"),
+        )
+        // Non-debug http loopback falls back to ordinary open.
+        makeNavigator(supportsInApp = true, debug = false).openAppEntry(
+            "http://10.0.2.2:3000/app",
+            RaftAppEntryRequest(scopeOrigin = "http://10.0.2.2:3000"),
+        )
+        // Debug emulator loopback 10.0.2.2 opens as an App entry (#356 Decision #8).
+        makeNavigator(supportsInApp = true, debug = true).openAppEntry(
+            "http://10.0.2.2:3000/app",
+            RaftAppEntryRequest(scopeOrigin = "http://10.0.2.2:3000", appName = "DevApp"),
+        )
+        // Desktop (supportsInAppBrowser = false) falls back to ordinary open.
+        makeNavigator(supportsInApp = false, debug = false).openAppEntry(
+            "https://stamp.build/pulls/2",
+            RaftAppEntryRequest(scopeOrigin = "https://stamp.build"),
+        )
+
+        assertEquals(
+            listOf(
+                "external:https://other.example/home",
+                "external:https://app.raft.build/s/hq",
+                "external:http://10.0.2.2:3000/app",
+                "entry:http://10.0.2.2:3000/app|tok-unused",
+                "external:https://stamp.build/pulls/2",
+            ),
+            opened,
+        )
+    }
+
+    @Test
+    fun inAppBrowserRoutesRaftHostsOutOnAndroidAsWellAsIos() {
+        val webBase = "https://app.raft.build"
+        val apiBase = "https://api.raft.build"
+
+        assertEquals(
+            true,
+            raftInAppBrowserShouldRouteNavigation(
+                candidateUrl = "https://app.raft.build/s/hq",
+                activeWebBaseUrl = webBase,
+                appStoreBillingRules = false,
+                useEphemeralStore = false,
+                activeApiBaseUrl = apiBase,
+                appHosts = emptySet(),
+            ),
+        )
+        assertEquals(
+            true,
+            raftInAppBrowserShouldRouteNavigation(
+                candidateUrl = "https://api.raft.build/api/oauth/authorize?client_id=x",
+                activeWebBaseUrl = webBase,
+                appStoreBillingRules = false,
+                useEphemeralStore = false,
+                activeApiBaseUrl = apiBase,
+                appHosts = emptySet(),
+            ),
+        )
+        assertEquals(
+            false,
+            raftInAppBrowserShouldRouteNavigation(
+                candidateUrl = "https://stamp.build/pulls/1",
+                activeWebBaseUrl = webBase,
+                appStoreBillingRules = false,
+                useEphemeralStore = false,
+                activeApiBaseUrl = apiBase,
+                appHosts = emptySet(),
+            ),
+        )
+    }
 }

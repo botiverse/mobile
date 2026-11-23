@@ -20,6 +20,7 @@ internal val settingsMarketplaceWebViewSpec =
     StandaloneSettingsWebViewSpec(
         surface = SettingsWebViewSurface.Marketplace,
         lockToWebOrigin = true,
+        opensAppEntries = true,
         buildWebUrl = { webBaseUrl, session, _ -> settingsMarketplaceWebViewUrl(webBaseUrl, session) },
     )
 
@@ -44,10 +45,13 @@ internal fun settingsMarketplaceWebViewUrl(
             ?.let { "s/$it/settings/integrations" }
             ?: "settings/integrations"
     val extraQueryParameters =
-        installedAppId
-            ?.trim()
-            ?.takeIf { it.isNotEmpty() }
-            ?.let { listOf("installed_app" to it.percentEncode()) }
-            ?: emptyList()
+        buildList {
+            // Advertise #host=open-app capability ONLY on the Marketplace surface (#proj-workspace:#356).
+            add("hostOpen" to "app")
+            installedAppId
+                ?.trim()
+                ?.takeIf { it.isNotEmpty() }
+                ?.let { add("installed_app" to it.percentEncode()) }
+        }
     return sharedSettingsHostShellWebUrl(webBaseUrl, path, extraQueryParameters)
 }
