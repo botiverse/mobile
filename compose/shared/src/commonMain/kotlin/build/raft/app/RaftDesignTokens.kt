@@ -416,9 +416,9 @@ private val RaftScaleWide: RaftTypography =
     RaftTypography.from(RaftFonts(sans = FontFamily.SansSerif, mono = FontFamily.Monospace), scale = DesignSystemScale.Wide)
 
 /**
- * The scale the app's [build.raft.app.components.RaftDesignSystemTheme] resolved
- * ([build.raft.designsystem.theme.RaftTheme.scale]: wide from the wide breakpoint, by window
- * width alone, any input). Snapshot state, so text styled through [RaftType] recomposes when a
+ * The type scale the app's [build.raft.app.components.RaftDesignSystemTheme] resolved
+ * ([build.raft.designsystem.theme.RaftTheme.typeScale]: wide on a wide window with a mouse or
+ * trackpad only, as raft-ui's desktop type). Snapshot state, so text styled through [RaftType] recomposes when a
  * window crosses it.
  */
 internal object RaftAppTypeScale {
@@ -426,8 +426,8 @@ internal object RaftAppTypeScale {
 }
 
 /**
- * Points [RaftAppTypeScale] at the enclosing designsystem theme's scale ([RaftTheme.scale]: the
- * window's width, or the platform's guess before the window is measured), in composition and
+ * Points [RaftAppTypeScale] at the enclosing designsystem theme's type scale ([RaftTheme.typeScale]:
+ * the window's width and the input in use, or the platform's guess before the window is measured), in composition and
  * before [content] composes, so every [RaftType] text in [content] draws its first frame at the
  * window's scale. The page host ([build.raft.app.compat.pager.RaftPagerHost]) runs this round
  * every page, so text a page draws before (or outside) any [build.raft.app.components.RaftDesignSystemTheme]
@@ -439,7 +439,7 @@ internal object RaftAppTypeScale {
  */
 @Composable
 internal fun RaftProvideAppTypeScale(content: @Composable () -> Unit) {
-    val scale = RaftTheme.scale
+    val scale = RaftTheme.typeScale
     if (Snapshot.withoutReadObservation { RaftAppTypeScale.scale } != scale) RaftAppTypeScale.scale = scale
     content()
 }

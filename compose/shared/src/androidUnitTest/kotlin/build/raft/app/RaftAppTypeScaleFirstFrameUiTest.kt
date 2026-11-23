@@ -5,6 +5,7 @@ import androidx.compose.runtime.SideEffect
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.sp
+import build.raft.designsystem.theme.RaftPointerInput
 import build.raft.designsystem.theme.RaftTheme
 import org.junit.Rule
 import org.junit.runner.RunWith
@@ -31,14 +32,19 @@ class RaftAppTypeScaleFirstFrameUiTest {
 
     @Test
     @Config(qualifiers = "w1024dp-h768dp")
-    fun wideWindowDrawsWideBodyFromTheFirstFrame() = assertBodySizes(expected = 14.sp)
+    fun wideWindowWithAMouseDrawsWideBodyFromTheFirstFrame() = assertBodySizes(expected = 14.sp, pointerInput = RaftPointerInput.Fine)
 
-    private fun assertBodySizes(expected: TextUnit) {
+    /** raft-design #601: a touch screen keeps the phone's type at any width. */
+    @Test
+    @Config(qualifiers = "w1024dp-h768dp")
+    fun wideWindowByTouchKeepsThePhoneBody() = assertBodySizes(expected = 16.sp, pointerInput = RaftPointerInput.Touch)
+
+    private fun assertBodySizes(expected: TextUnit, pointerInput: RaftPointerInput) {
         val composed = mutableListOf<TextUnit>()
         val committed = mutableListOf<TextUnit>()
         runRobolectricComposeUiTest {
             setContent {
-                RaftTheme {
+                RaftTheme(pointerInput = pointerInput) {
                     RaftProvideAppTypeScale {
                         val style = RaftType.Body
                         composed += style.fontSize

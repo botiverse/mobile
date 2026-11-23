@@ -78,7 +78,7 @@ object RaftTextFieldDefaults {
     /**
      * `--control-embedded-size`: a chip or a button embedded in a field, the field's height
      * less [EmbeddedInset] above and below, so the field keeps its height. 32dp for a finger,
-     * 20dp for a mouse or trackpad: the components read [RaftTheme.controls]`.embeddedSize`;
+     * 22dp for a mouse or trackpad (the 34 control less 6 + 6): the components read [RaftTheme.controls]`.embeddedSize`;
      * this is the touch value.
      */
     val EmbeddedControlSize: Dp = 32.dp

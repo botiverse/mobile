@@ -64,7 +64,7 @@ fun rememberRaftFonts(): RaftFonts {
  * where the web puts them.
  *
  * The sizes below are the default ([RaftScale.Compact]) scale. Under [RaftScale.Wide] (raft-ui
- * 0.54 styles.css "Desktop type"; the app takes it from its wide breakpoint, any input)
+ * styles.css "Desktop type": a wide window with a mouse or trackpad, [RaftTheme.typeScale])
  * headline is 16/24; body, subhead, callout, control, field and card title 14/22; footnote,
  * caption and mono-meta 12/18; mono-code stays 13/20. Hero, display, title and label do
  * not change. Weights and tracking are the same in both.
@@ -176,7 +176,7 @@ data class RaftTypography(
             )
         }
 
-        /** [from] at [RaftScale.Wide]: raft-ui's desktop type, which the app takes from its wide breakpoint. */
+        /** [from] at [RaftScale.Wide]: raft-ui's desktop type (a wide window with a mouse or trackpad). */
         fun wide(fonts: RaftFonts, localeList: LocaleList? = null): RaftTypography = from(fonts, localeList, RaftScale.Wide)
 
         private fun style(
