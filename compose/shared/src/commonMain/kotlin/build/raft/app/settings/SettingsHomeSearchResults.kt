@@ -1,6 +1,7 @@
 package build.raft.app
 
 import build.raft.designsystem.components.raftSafeAreaHorizontalPadding
+import build.raft.designsystem.components.raftSearchRowHover
 import build.raft.designsystem.components.raftScrollEdgeFade
 import build.raft.designsystem.components.raftScrollIntoViewGroup
 import build.raft.designsystem.components.raftScrollIntoViewWhen
@@ -400,9 +401,10 @@ internal fun sharedHomeSearchTimestampTextStyle() =
 // a title over its subtitle is the web's 62dp), under a mouse `py-3` (min 64dp), its content 20dp
 // in, `gap-3` between a 27dp leading avatar / IconTile and the text; `text-body` semibold title
 // with at most one mark ([homeSearchEntityBadge]), `text-callout` `foreground-muted` description;
-// 2dp between rows, no line; pressed fills the cell shape. One tappable row, no Join: a channel the
-// reader hasn't joined says "Not joined" and opens on its preview. An archived channel mutes its
-// title and description.
+// 2dp between rows, no line; pressed fills the cell shape, and so does a mouse over it (not while
+// [selected]: the keyboard cursor or the row open beside the list, drawn by the caller). One
+// tappable row, no Join: a channel the reader hasn't joined says "Not joined" and opens on its
+// preview. An archived channel mutes its title and description.
 @Composable
 internal fun SharedHomeSearchEntityRow(
     result: SearchEntityResult,
@@ -411,6 +413,7 @@ internal fun SharedHomeSearchEntityRow(
     memberAvatarResolver: RaftMemberAvatarResolver = EmptyRaftMemberAvatarResolver,
     isPinned: Boolean = false,
     showSeparator: Boolean = false,
+    selected: Boolean = false,
     visualTextScale: Float = 1f,
     onOpen: () -> Unit,
     onContextMenu: ((RaftPopoverAnchor) -> Unit)? = null
@@ -437,6 +440,7 @@ internal fun SharedHomeSearchEntityRow(
                 .heightIn(min = RaftSearchMetrics.entityMinHeight(pointer))
                 .raftSearchRowGap(showSeparator)
                 .raftSearchRowPressed(pressed, RaftColor.FillPressed)
+                .raftSearchRowHover(interactionSource, selected = selected, pressed = pressed)
                 .raftCaptureLiveRootAnchor(contentAnchor)
                 .raftGesturePointerInput(gestureOwner, interactionSource) { owner ->
                     var gesture: RaftGestureSession<SharedHomeSearchEntityGestureCallbacks>? = null
@@ -650,6 +654,8 @@ internal fun SharedHomeThreadResultGroup(
     group: HomeSearchResultGroup.Thread,
     query: String,
     showSeparator: Boolean = false,
+    // The group is the row open beside the list: its hits don't hover.
+    selected: Boolean = false,
     cacheServerId: String? = null,
     memberAvatarResolver: RaftMemberAvatarResolver = EmptyRaftMemberAvatarResolver,
     timeContext: AppShellThreadTimeContext? = null,
@@ -730,6 +736,7 @@ internal fun SharedHomeThreadResultGroup(
                 item = item,
                 query = query,
                 showSeparator = index > 0,
+                selected = selected,
                 cacheServerId = cacheServerId,
                 memberAvatarResolver = memberAvatarResolver,
                 timeContext = timeContext,
@@ -748,7 +755,8 @@ internal fun homeSearchThreadHitsCount(count: Int): StringDesc =
     (if (count == 1) Res.string.search_hits_count_one else Res.string.search_hits_count_other).format(count)
 
 // raft-ui search-message: a flat list-cell row, `py-3` with its content 20dp in (8dp cell inset +
-// 12dp padding), 2dp from the row above and no line between hits; pressed fills the cell shape.
+// 12dp padding), 2dp from the row above and no line between hits; pressed fills the cell shape, and
+// so does a mouse over it (not while [selected], the caller's selection).
 // The header line is mono-meta `foreground-hint` with the sender first (14dp avatar,
 // `text-callout` bold `foreground`), then #channel, thread, and the time at the end; the body is `text-callout` `foreground-muted`, two lines, 2dp below.
 @Composable
@@ -756,6 +764,7 @@ internal fun SharedHomeSearchMessageResultRow(
     item: InboxItem,
     query: String,
     showSeparator: Boolean = false,
+    selected: Boolean = false,
     cacheServerId: String? = null,
     memberAvatarResolver: RaftMemberAvatarResolver = EmptyRaftMemberAvatarResolver,
     timeContext: AppShellThreadTimeContext? = null,
@@ -780,6 +789,7 @@ internal fun SharedHomeSearchMessageResultRow(
                 .fillMaxWidth()
                 .raftSearchRowGap(showSeparator)
                 .raftSearchRowPressed(pressed, RaftColor.FillPressed)
+                .raftSearchRowHover(interactionSource, selected = selected, pressed = pressed)
                 .clickable(interactionSource = interactionSource, indication = null, onClick = onOpen)
                 .raftSafeAreaHorizontalPadding().padding(horizontal = RaftSearchMetrics.Inset, vertical = RaftSearchMetrics.RowPaddingVertical),
         horizontalArrangement = Arrangement.spacedBy(RaftSearchMetrics.EntityGap),

@@ -215,7 +215,8 @@ internal fun HomeSearchOverlayContent.entries(): List<HomeSearchOverlayEntry> =
  * The panel's body: Recent conversations (or the "Search everything" state) with nothing typed;
  * once typed, the exact destination, "Search for", the destinations (5, then Show All), and up to
  * five messages. [selectedKey] is the keyboard cursor's row ([HomeSearchOverlayCursor]); the
- * list keeps it in view as it moves. Every row is at least 44dp tall and opens with a tap.
+ * list keeps it in view as it moves. Every row is at least 44dp tall and opens with a tap. A mouse
+ * over a row lays the list cell's hover on it without moving the cursor (web: only ↑ / ↓ move it).
  */
 @Composable
 internal fun HomeSearchOverlayBody(
@@ -304,6 +305,7 @@ internal fun HomeSearchOverlayBody(
                                     item = group.item,
                                     query = query,
                                     showSeparator = false,
+                                    selected = selected,
                                     cacheServerId = cacheServerId,
                                     memberAvatarResolver = memberAvatarResolver,
                                     timeContext = timeContext,
@@ -314,6 +316,7 @@ internal fun HomeSearchOverlayBody(
                                     group = group,
                                     query = query,
                                     showSeparator = false,
+                                    selected = selected,
                                     cacheServerId = cacheServerId,
                                     memberAvatarResolver = memberAvatarResolver,
                                     timeContext = timeContext,
@@ -365,6 +368,7 @@ private fun OverlayEntityRow(
         SharedHomeSearchEntityRow(
             result = result,
             query = query,
+            selected = selected,
             agentStatusResolver = agentStatusResolver,
             memberAvatarResolver = memberAvatarResolver,
             onOpen = onOpen,

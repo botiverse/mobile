@@ -45,6 +45,7 @@ import build.raft.app.model.raftEpochDayForDate
 import build.raft.app.model.ThreadId
 import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.RaftAppearance
+import build.raft.designsystem.theme.RaftPointerInput
 import build.raft.designsystem.theme.RaftTheme
 import kotlin.test.Test
 import kotlinx.coroutines.flow.flowOf
@@ -74,7 +75,7 @@ class SearchOverlayPanelScreenshotTest {
     @get:Rule
     val activities = RobolectricComposeActivityRule()
 
-    @Test fun results() = capture("search.overlay.results", resultsState)
+    @Test fun results() = capture("search.overlay.results", searchOverlayResultsState)
 
     @Test fun empty() = capture("search.overlay.empty", SharedHomeSearchPanelState(serverId = serverId))
 
@@ -88,50 +89,65 @@ class SearchOverlayPanelScreenshotTest {
         visited: List<String> = emptyList(),
     ) {
         RaftRobolectricScreenshot.capture(name, appearance, reportDir = "build/reports/home-screenshots", activities = activities) {
-            val pager =
-                remember {
-                    object : Pager() {}.apply {
-                        pageData = PageData(JSONObject().apply { put("slockVisualZeroSafeArea", true) })
-                    }
-                }
-            CompositionLocalProvider(LocalActivity provides RaftPageActivity(pager)) {
-                RaftTheme(appearance = if (appearance == RaftAppAppearance.Dark) RaftAppearance.Dark else RaftAppearance.Light) {
-                    Box(Modifier.fillMaxSize()) {
-                        StandInPage()
-                        SharedHomeSearchPanel(
-                            state = state,
-                            homeState = homeState,
-                            onIntent = {},
-                            onOpenItem = {},
-                            onOpenEntity = {},
-                            bottomContentPadding = 0.dp,
-                            // Android Developer 4 is online: the lime square on its avatar (web AgentActivityDot).
-                            agentStatusResolver = { id ->
-                                flowOf(
-                                    RaftAgentStatusIndicatorState(status = AgentStatus.Online, color = RaftColor.AccentLime, label = "Online", external = false)
-                                        .takeIf { id == "agent-android-developer-4" }
-                                )
-                            },
-                            // The web render's clock: the fixture's June messages read "134 days ago".
-                            timeContext =
-                                RaftTimeContext(
-                                    localOffsetMinutes = 0,
-                                    todayEpochDay = raftEpochDayForDate(2026, 11, 3),
-                                    nowEpochMillis = java.time.Instant.parse("2026-11-03T10:30:00Z").toEpochMilli(),
-                                ),
-                            overlay =
-                                HomeSearchOverlayChrome(
-                                    // The top bar field's top: (48 - 36) / 2 under the window top.
-                                    anchorTop = 6.dp,
-                                    anchorWidth = 0.dp,
-                                    visitedThreadIds = visited,
-                                    excludeThreadId = null,
-                                    onDismiss = {},
-                                    onOpenFullResults = {},
-                                ),
+            SearchOverlayPanelFixture(state, appearance = appearance, visited = visited)
+        }
+    }
+}
+
+/**
+ * The real [SharedHomeSearchPanel] in panel mode over [StandInPage], with the fixture's home and
+ * agent statuses: [SearchOverlayPanelScreenshotTest]'s frame, also driven by
+ * [SearchOverlayRowHoverUiTest]. [pointerInput] null keeps the theme's own.
+ */
+@Composable
+internal fun SearchOverlayPanelFixture(
+    state: SharedHomeSearchPanelState,
+    appearance: RaftAppAppearance = RaftAppAppearance.Light,
+    visited: List<String> = emptyList(),
+    pointerInput: RaftPointerInput? = null,
+) {
+    val pager =
+        remember {
+            object : Pager() {}.apply {
+                pageData = PageData(JSONObject().apply { put("slockVisualZeroSafeArea", true) })
+            }
+        }
+    CompositionLocalProvider(LocalActivity provides RaftPageActivity(pager)) {
+        RaftTheme(appearance = if (appearance == RaftAppAppearance.Dark) RaftAppearance.Dark else RaftAppearance.Light, pointerInput = pointerInput) {
+            Box(Modifier.fillMaxSize()) {
+                StandInPage()
+                SharedHomeSearchPanel(
+                    state = state,
+                    homeState = homeState,
+                    onIntent = {},
+                    onOpenItem = {},
+                    onOpenEntity = {},
+                    bottomContentPadding = 0.dp,
+                    // Android Developer 4 is online: the lime square on its avatar (web AgentActivityDot).
+                    agentStatusResolver = { id ->
+                        flowOf(
+                            RaftAgentStatusIndicatorState(status = AgentStatus.Online, color = RaftColor.AccentLime, label = "Online", external = false)
+                                .takeIf { id == "agent-android-developer-4" }
                         )
-                    }
-                }
+                    },
+                    // The web render's clock: the fixture's June messages read "134 days ago".
+                    timeContext =
+                        RaftTimeContext(
+                            localOffsetMinutes = 0,
+                            todayEpochDay = raftEpochDayForDate(2026, 11, 3),
+                            nowEpochMillis = java.time.Instant.parse("2026-11-03T10:30:00Z").toEpochMilli(),
+                        ),
+                    overlay =
+                        HomeSearchOverlayChrome(
+                            // The top bar field's top: (48 - 36) / 2 under the window top.
+                            anchorTop = 6.dp,
+                            anchorWidth = 0.dp,
+                            visitedThreadIds = visited,
+                            excludeThreadId = null,
+                            onDismiss = {},
+                            onOpenFullResults = {},
+                        ),
+                )
             }
         }
     }
@@ -202,7 +218,8 @@ private val homeState: SharedHomeState
                 ),
         )
 
-private val resultsState: SharedHomeSearchPanelState
+/** Query "android": a channel, an agent and two messages (one in a thread). */
+internal val searchOverlayResultsState: SharedHomeSearchPanelState
     get() =
         SharedHomeSearchPanelState(
             serverId = serverId,
