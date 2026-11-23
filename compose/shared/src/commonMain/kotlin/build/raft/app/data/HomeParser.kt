@@ -21,10 +21,18 @@ import build.raft.app.model.RaftSlackSyncProblem
 import build.raft.app.model.ServerId
 import build.raft.app.model.ServerSummary
 import build.raft.app.model.ThreadId
+import kotlinx.serialization.KSerializer
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.SerializationException
 import kotlinx.serialization.builtins.ListSerializer
+import kotlinx.serialization.descriptors.SerialDescriptor
+import kotlinx.serialization.descriptors.buildClassSerialDescriptor
+import kotlinx.serialization.encoding.Decoder
+import kotlinx.serialization.encoding.Encoder
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonDecoder
+import kotlinx.serialization.json.JsonObject
 
 /**
  * Canonical Slock home parser.
@@ -184,7 +192,7 @@ data class HomeChannelWireDto(
 )
 
 /**
- * Agent Lounge v0: the `lounge` an agent DM row carries in `GET /channels/dm`
+ * Agent Lounge v0: the `lounge` an agent DM row or standalone lounge item carries in `GET /channels/dm`
  * (botiverse/slock packages/server/src/services/agentLoungeService.ts `loungeSummariesForAgents`),
  * present only once that agent's Lounge exists.
  */
@@ -192,8 +200,75 @@ data class HomeChannelWireDto(
 data class HomeAgentLoungeWireDto(
     val channelId: String,
     val joined: Boolean = false,
+    val canPost: Boolean? = null,
     val listed: Boolean? = null,
+    val unreadCount: Int? = null,
+    val mentionCount: Int? = null,
 )
+
+/**
+ * Standalone listed Lounge entry returned under `lounges[]` by `GET /channels/dm?include=lounges`
+ * for members who have no DM row with that agent (`#proj-chat:#44`).
+ */
+@Serializable
+data class HomeStandaloneLoungeWireDto(
+    val agentId: String,
+    val peerType: String = "agent",
+    val peerName: String = "",
+    val peerDisplayName: String? = null,
+    val peerDescription: String? = null,
+    val peerAvatarUrl: String? = null,
+    val lounge: HomeAgentLoungeWireDto,
+)
+
+/**
+ * Dual-shape wire payload for `GET /channels/dm?include=lounges` (`#proj-chat:#44`):
+ * - Older servers return a root JSON array of [HomeDirectMessageWireDto].
+ * - Servers supporting `include=lounges` return `{ "dms": [...], "lounges": [...] }`.
+ */
+@Serializable(with = HomeDirectMessagesWireResultSerializer::class)
+data class HomeDirectMessagesWireResult(
+    val dms: List<HomeDirectMessageWireDto>,
+    val lounges: List<HomeStandaloneLoungeWireDto> = emptyList(),
+)
+
+internal object HomeDirectMessagesWireResultSerializer : KSerializer<HomeDirectMessagesWireResult> {
+    override val descriptor: SerialDescriptor = buildClassSerialDescriptor("HomeDirectMessagesWireResult")
+    private val dmListSerializer = ListSerializer(HomeDirectMessageWireDto.serializer())
+    private val loungeListSerializer = ListSerializer(HomeStandaloneLoungeWireDto.serializer())
+
+    override fun deserialize(decoder: Decoder): HomeDirectMessagesWireResult {
+        val jsonDecoder = decoder as? JsonDecoder
+            ?: throw SerializationException("HomeDirectMessagesWireResult requires JSON")
+        return when (val element = jsonDecoder.decodeJsonElement()) {
+            is JsonArray ->
+                HomeDirectMessagesWireResult(
+                    dms = jsonDecoder.json.decodeFromJsonElement(dmListSerializer, element),
+                    lounges = emptyList(),
+                )
+            is JsonObject -> {
+                val dmsElement = element["dms"] as? JsonArray
+                    ?: throw SerializationException("Expected 'dms' array in channels/dm object response")
+                val loungesElement = element["lounges"]
+                val lounges =
+                    when (loungesElement) {
+                        null -> emptyList()
+                        is JsonArray -> jsonDecoder.json.decodeFromJsonElement(loungeListSerializer, loungesElement)
+                        else -> throw SerializationException("Expected 'lounges' array in channels/dm object response")
+                    }
+                HomeDirectMessagesWireResult(
+                    dms = jsonDecoder.json.decodeFromJsonElement(dmListSerializer, dmsElement),
+                    lounges = lounges,
+                )
+            }
+            else -> throw SerializationException("Expected array or {dms, lounges} object for channels/dm")
+        }
+    }
+
+    override fun serialize(encoder: Encoder, value: HomeDirectMessagesWireResult) {
+        error("HomeDirectMessagesWireResult serialization is not used")
+    }
+}
 
 @Serializable
 data class HomeDirectMessageWireDto(
@@ -389,7 +464,18 @@ fun parseRaftHome(
         .map { it.toDirectMessageRow(warningLogger) }
         .dedupeHomeDirectMessages()
 
-    if (channels.isEmpty() && directMessages.isEmpty()) {
+    val dmAgentIdsWithLounge =
+        directMessages
+            .filter { it.directMessagePeerType.equals("agent", ignoreCase = true) && it.lounge != null }
+            .mapNotNull { it.presenceMemberId?.value?.takeIf { id -> id.isNotBlank() } }
+            .toSet()
+    val standaloneLounges =
+        payload.standaloneLounges
+            .mapNotNull { wire -> wire.toStandaloneLoungeRow() }
+            .filterNot { it.agentId in dmAgentIdsWithLounge }
+            .distinctBy { it.agentId }
+
+    if (channels.isEmpty() && directMessages.isEmpty() && standaloneLounges.isEmpty()) {
         return DataResult.Empty(EmptyReason.NoChannels)
     }
 
@@ -398,10 +484,12 @@ fun parseRaftHome(
     val channelsWithUnread = channels.applyChannelUnreadCounts(unreadCounts, mentioned)
     val dmsWithUnread = directMessages.applyDirectMessageUnreadCounts(unreadCounts, mentioned)
         .applyAgentLoungeUnreadCounts(unreadCounts, mentioned)
+    val standaloneLoungesWithUnread = standaloneLounges.applyStandaloneLoungeUnreadCounts(unreadCounts, mentioned)
     // Lounges are unread like any channel (the server's own total counts them).
     val channelUnreadTotal =
         channelsWithUnread.sumOf { it.unreadCount } + dmsWithUnread.sumOf { it.unreadCount } +
-            dmsWithUnread.sumOf { it.lounge?.unreadCount ?: 0 }
+            dmsWithUnread.sumOf { it.lounge?.unreadCount ?: 0 } +
+            standaloneLoungesWithUnread.sumOf { it.lounge.unreadCount }
     val serverUnreadTotal =
         payload.serverUnreadSummary
             .firstOrNull { it.serverId == currentServer.id.value }
@@ -430,6 +518,7 @@ fun parseRaftHome(
             serverPushMutedByServer = serverPushMutedByServer,
             serverUnreadSummaryAvailable = payload.serverUnreadSummaryAvailable,
             followedThreadUnread = payload.followedThreadUnread,
+            standaloneLounges = standaloneLoungesWithUnread,
             markedUnreadIds = payload.markedUnreadIds,
             unreadLatestActivitySeqs = payload.unreadLatestActivitySeqs,
             unreadReadFrontiers = payload.unreadReadFrontiers,
@@ -651,7 +740,36 @@ private fun HomeDirectMessageWireDto.toDirectMessageRow(warningLogger: (String) 
             ),
         lounge = lounge
             ?.takeIf { peerType.equals("agent", ignoreCase = true) && it.channelId.isNotBlank() }
-            ?.let { AgentLoungeSummary(channelId = ChannelId(it.channelId), joined = it.joined, listed = it.listed) }
+            ?.let {
+                AgentLoungeSummary(
+                    channelId = ChannelId(it.channelId),
+                    joined = it.joined,
+                    unreadCount = (it.unreadCount ?: 0).coerceAtLeast(0),
+                    mentionCount = (it.mentionCount ?: 0).coerceAtLeast(0),
+                    listed = it.listed,
+                )
+            }
+    )
+}
+
+private fun HomeStandaloneLoungeWireDto.toStandaloneLoungeRow(): HomeStandaloneLoungeRow? {
+    if (!peerType.equals("agent", ignoreCase = true)) return null
+    val cleanAgentId = agentId.trim().takeIf { it.isNotEmpty() } ?: return null
+    val cleanChannelId = lounge.channelId.trim().takeIf { it.isNotEmpty() } ?: return null
+    val displayName = peerDisplayName?.trim()?.takeIf { it.isNotEmpty() } ?: peerName.trim()
+    return HomeStandaloneLoungeRow(
+        agentId = cleanAgentId,
+        agentName = displayName,
+        avatarWireValue = peerAvatarUrl?.trim()?.takeIf { it.isNotEmpty() },
+        canPost = lounge.canPost,
+        lounge =
+            AgentLoungeSummary(
+                channelId = ChannelId(cleanChannelId),
+                joined = lounge.joined,
+                unreadCount = (lounge.unreadCount ?: 0).coerceAtLeast(0),
+                mentionCount = (lounge.mentionCount ?: 0).coerceAtLeast(0),
+                listed = lounge.listed,
+            ),
     )
 }
 
@@ -741,6 +859,10 @@ private fun List<HomeDirectMessageRow>.applyAgentLoungeUnreadCounts(
 ): List<HomeDirectMessageRow> =
     map { conversation ->
         val lounge = conversation.lounge ?: return@map conversation
+        // #proj-chat:#44: when the server sends explicit `listed`, the summary already carries the
+        // authoritative unread/mention counts (followed threads + legacy joined); never overwrite
+        // them with channel-level counts from GET /channels/unread.
+        if (lounge.listed != null) return@map conversation
         val count = counts[lounge.channelId]
         val mention = lounge.channelId in mentioned
         // A mention keeps its @ even when the summary carries no count for the Lounge.
@@ -749,6 +871,24 @@ private fun List<HomeDirectMessageRow>.applyAgentLoungeUnreadCounts(
             lounge = lounge.copy(
                 unreadCount = (count ?: 0).coerceAtLeast(0),
                 mentionCount = if (mention) 1 else 0
+            )
+        )
+    }
+
+private fun List<HomeStandaloneLoungeRow>.applyStandaloneLoungeUnreadCounts(
+    counts: Map<ChannelId, Int>,
+    mentioned: Set<ChannelId>,
+): List<HomeStandaloneLoungeRow> =
+    map { row ->
+        val lounge = row.lounge
+        if (lounge.listed != null) return@map row
+        val count = counts[lounge.channelId]
+        val mention = lounge.channelId in mentioned
+        if (count == null && !mention) return@map row
+        row.copy(
+            lounge = lounge.copy(
+                unreadCount = (count ?: 0).coerceAtLeast(0),
+                mentionCount = if (mention) 1 else 0,
             )
         )
     }

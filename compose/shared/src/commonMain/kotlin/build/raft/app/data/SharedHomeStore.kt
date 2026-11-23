@@ -5004,6 +5004,10 @@ internal class SharedHomeStore(
                 content.baseSnapshot.server.id.value,
                 content.baseSnapshot.directMessages
             )
+            RaftAgentLounges.rememberStandaloneLounges(
+                content.baseSnapshot.server.id.value,
+                content.baseSnapshot.standaloneLounges
+            )
             contentByServer[content.baseSnapshot.server.id] = content
             content.baseSnapshot.sidebarOrder?.let { sidebarOrder ->
                 sidebarOrderByServer[content.baseSnapshot.server.id] = sidebarOrder
@@ -5779,6 +5783,22 @@ internal fun HomeSnapshot.withConversationUnread(
     }
     val nextChannels = channels.map { it.updated() }
     val nextDirectMessages = directMessages.map { it.updated() }
+    val nextStandaloneLounges =
+        standaloneLounges.map { row ->
+            if (row.lounge.channelId.value != conversationId) {
+                row
+            } else {
+                val nextLoungeUnread = unreadCount.coerceAtLeast(0)
+                delta += nextLoungeUnread - row.lounge.unreadCount
+                row.copy(
+                    lounge =
+                        row.lounge.copy(
+                            unreadCount = nextLoungeUnread,
+                            mentionCount = if (nextLoungeUnread > 0) row.lounge.mentionCount else 0,
+                        )
+                )
+            }
+        }
     // A read of a followed thread (its id is the conversation id) clears its part of the parent mark.
     val nextThreads =
         if (unreadCount <= 0) {
@@ -5792,6 +5812,7 @@ internal fun HomeSnapshot.withConversationUnread(
         return copy(
             channels = nextChannels,
             directMessages = nextDirectMessages,
+            standaloneLounges = nextStandaloneLounges,
             followedThreadUnread = nextThreads,
             markedUnreadIds = nextMarked
         )
@@ -5801,6 +5822,7 @@ internal fun HomeSnapshot.withConversationUnread(
     return copy(
         channels = nextChannels,
         directMessages = nextDirectMessages,
+        standaloneLounges = nextStandaloneLounges,
         followedThreadUnread = nextThreads,
         markedUnreadIds = nextMarked,
         server = server.copy(unreadCount = nextServerUnreadCount),

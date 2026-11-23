@@ -159,15 +159,23 @@ class AgentLoungeTest {
         // A server that left `loungeAgentId` off the row: still the Lounge of the agent asked for.
         val bare =
             parseSharedAgentLoungeOpenResult(
-                """{"channel":{"id":"lounge-bugen","name":"bugen-lounge","type":"channel"},"joined":true,"canPost":false,"listed":true}""",
+                """{"channel":{"id":"lounge-bugen","name":"bugen-lounge","type":"channel"},"joined":true,"canPost":false,"listed":true,"unreadCount":3,"mentionCount":1}""",
                 agentId = "agent-bugen",
             )
         assertEquals("agent-bugen", bare?.channel?.loungeAgentId)
         assertEquals(true, bare?.joined)
         assertEquals(false, bare?.canPost)
         assertEquals(true, bare?.listed)
+        assertEquals(3, bare?.unreadCount)
+        assertEquals(1, bare?.mentionCount)
         assertNull(created.data.listed, "older servers omit listed")
         assertNull(parseSharedAgentLoungeOpenResult("""{"lounge":{}}""", "agent-bugen"), "no guessed envelope")
+
+        // markListed flips listed=true locally on thread follow without setting joined=true.
+        RaftAgentLounges.rememberRow("server-1", loungeRow().copy(joined = false), listed = false)
+        RaftAgentLounges.markListed("server-1", "lounge-bugen")
+        assertEquals(true, RaftAgentLounges.lounge("server-1", "lounge-bugen")?.listed)
+        assertEquals(false, RaftAgentLounges.lounge("server-1", "lounge-bugen")?.joined)
     }
 
     @Test

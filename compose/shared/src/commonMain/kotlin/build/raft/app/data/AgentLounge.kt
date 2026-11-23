@@ -115,15 +115,25 @@ data class RaftAgentLounge(
         get() = activityNotificationPreference?.activityMuted == true
 
     /**
-     * Web `canToggleActivityMute` for a Lounge (a public channel): only once joined, and only once
-     * its row (the mute it carries) is loaded. A stored mute keeps its Unmute.
+     * #proj-chat:#44: Lounge has no channel membership, so Mute is removed; an already-muted
+     * Lounge keeps its Unmute action so users can clear stored mute state.
      */
     val canToggleActivityMute: Boolean
-        get() {
-            val preference = activityNotificationPreference ?: return false
-            return preference.activityMuted || (joined && preference.activityMuteSupported)
-        }
+        get() = activityNotificationPreference?.activityMuted == true
 }
+
+/**
+ * Standalone listed Lounge for a member who has no DM row with that agent
+ * (`GET /channels/dm?include=lounges` `lounges[]`, `#proj-chat:#44`).
+ */
+@Serializable
+data class HomeStandaloneLoungeRow(
+    val agentId: String,
+    val agentName: String,
+    val avatarWireValue: String? = null,
+    val canPost: Boolean? = null,
+    val lounge: AgentLoungeSummary,
+)
 
 /** The Lounge's own sidebar row (web `agentLoungeSidebarEntry`). */
 data class AgentLoungeSidebarEntry(
@@ -137,23 +147,47 @@ data class AgentLoungeSidebarEntry(
  * (`#proj-chat:#44`, true when this reader follows a thread in the Lounge or is still a member),
  * falling back to `joined` when `listed` is absent on older servers, or shown whenever someone
  * mentioned you there. [known] is the Lounge the client holds (fresher, e.g. right after your
- * first post); [summary] is what the agent's DM row carried.
+ * first post or thread follow); [summary] is what the DM or standalone Lounge entry carried.
+ * When [followedThreadUnreadCount] is provided on the explicit-`listed` model, non-member Lounges
+ * (`!joined`) track live followed-thread unread locally without waiting for a DM-list reload.
  */
-fun agentLoungeSidebarEntry(summary: AgentLoungeSummary?, known: RaftAgentLounge?): AgentLoungeSidebarEntry? {
+fun agentLoungeSidebarEntry(
+    summary: AgentLoungeSummary?,
+    known: RaftAgentLounge?,
+    followedThreadUnreadCount: Int? = null,
+    followedThreadHasMention: Boolean? = null,
+): AgentLoungeSidebarEntry? {
     val channelId = known?.channelId ?: summary?.channelId ?: return null
+    val hasExplicitListed = known?.listed != null || summary?.listed != null
     val listed =
         when {
             known?.listed == true || summary?.listed == true -> true
-            known?.listed != null || summary?.listed != null -> false
+            hasExplicitListed -> false
             else -> known?.joined == true || summary?.joined == true
         }
     val sameChannel = summary?.channelId == channelId
-    val mentionCount = if (sameChannel) summary?.mentionCount ?: 0 else 0
-    if (!listed && mentionCount <= 0) return null
+    val summaryUnread = if (sameChannel) summary?.unreadCount ?: 0 else 0
+    val summaryMentioned = sameChannel && (summary?.mentionCount ?: 0) > 0
+    val joined = known?.joined == true || summary?.joined == true
+    val useLiveThreadOnly = hasExplicitListed && !joined && followedThreadUnreadCount != null
+    val unreadCount =
+        when {
+            useLiveThreadOnly -> followedThreadUnreadCount.coerceAtLeast(0)
+            hasExplicitListed && followedThreadUnreadCount != null ->
+                maxOf(summaryUnread, followedThreadUnreadCount.coerceAtLeast(0))
+            else -> summaryUnread
+        }
+    val mentioned =
+        when {
+            useLiveThreadOnly -> followedThreadHasMention == true
+            hasExplicitListed && followedThreadHasMention != null -> summaryMentioned || followedThreadHasMention
+            else -> summaryMentioned
+        }
+    if (!listed && !mentioned) return null
     return AgentLoungeSidebarEntry(
         channelId = channelId,
-        unreadCount = if (sameChannel) summary?.unreadCount ?: 0 else 0,
-        mentioned = mentionCount > 0,
+        unreadCount = unreadCount,
+        mentioned = mentioned,
     )
 }
 
@@ -163,6 +197,8 @@ data class AgentLoungeOpenResult(
     val joined: Boolean,
     val canPost: Boolean,
     val listed: Boolean? = null,
+    val unreadCount: Int? = null,
+    val mentionCount: Int? = null,
 )
 
 @Serializable
@@ -171,6 +207,8 @@ private data class AgentLoungeOpenWireDto(
     val joined: Boolean? = null,
     val canPost: Boolean? = null,
     val listed: Boolean? = null,
+    val unreadCount: Int? = null,
+    val mentionCount: Int? = null,
 )
 
 /** The server's refusal code for a Guest (`403 {code: "agent_lounge_guest"}`). */
@@ -205,6 +243,8 @@ fun parseSharedAgentLoungeOpenResult(bodyText: String, agentId: String): AgentLo
         joined = row.joined,
         canPost = wire.canPost ?: !row.archived,
         listed = wire.listed,
+        unreadCount = wire.unreadCount,
+        mentionCount = wire.mentionCount,
     )
 }
 
@@ -495,6 +535,29 @@ object RaftAgentLounges {
         }
     }
 
+    /** Remember listed Lounges returned outside DM rows (`GET /channels/dm?include=lounges` `lounges[]`). */
+    fun rememberStandaloneLounges(serverId: String, standaloneLounges: List<HomeStandaloneLoungeRow>) {
+        if (standaloneLounges.isEmpty()) return
+        byServer.update { all ->
+            val current = all[serverId].orEmpty()
+            val next = current.toMutableMap()
+            for (row in standaloneLounges) {
+                val summary = row.lounge
+                val previous = current[summary.channelId.value]
+                next[summary.channelId.value] =
+                    (previous ?: RaftAgentLounge(channelId = summary.channelId, agentId = row.agentId))
+                        .copy(
+                            agentId = row.agentId,
+                            agentName = row.agentName.takeIf { it.isNotBlank() } ?: previous?.agentName,
+                            joined = if (summary.listed != null) summary.joined else (summary.joined || previous?.joined == true),
+                            listed = summary.listed ?: previous?.listed,
+                            canPost = row.canPost ?: previous?.canPost,
+                        )
+            }
+            if (next == current) all else all + (serverId to next)
+        }
+    }
+
     /**
      * The Lounge was unarchived (or archived) here. The open answer's `canPost` was computed from
      * `archivedAt` too, so unarchiving forgets it (absent = may post) until the next open says otherwise.
@@ -512,6 +575,13 @@ object RaftAgentLounges {
                 joined = if (previous.listed != null) previous.joined else true,
                 listed = true,
             )
+        }
+    }
+
+    /** Following a thread in this Lounge lists it locally without waiting for `GET /channels/dm` (`#proj-chat:#44`). */
+    fun markListed(serverId: String, channelId: String) {
+        remember(serverId, channelId) { previous ->
+            previous?.copy(listed = true)
         }
     }
 
@@ -575,9 +645,14 @@ internal fun latestLoungeActivity(a: String?, b: String?): String? {
 internal fun HomeSnapshot.agentLoungeConversationRow(channelId: String): HomeChannelRow? {
     if (channelId.isBlank()) return null
     val carriedBy = directMessages.firstOrNull { it.lounge?.channelId?.value == channelId }
-    val summary = carriedBy?.lounge
+    val standalone = if (carriedBy == null) standaloneLounges.firstOrNull { it.lounge.channelId.value == channelId } else null
+    val summary = carriedBy?.lounge ?: standalone?.lounge
     val known = RaftAgentLounges.lounge(server.id.value, channelId)
-    val agentId = known?.agentId ?: carriedBy?.presenceMemberId?.value?.takeIf { it.isNotBlank() } ?: return null
+    val agentId =
+        known?.agentId
+            ?: carriedBy?.presenceMemberId?.value?.takeIf { it.isNotBlank() }
+            ?: standalone?.agentId?.takeIf { it.isNotBlank() }
+            ?: return null
     return HomeChannelRow(
         threadId = ThreadId(channelId),
         channelId = ChannelId(channelId),
