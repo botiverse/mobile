@@ -445,7 +445,7 @@ class RaftSandboxWebViewNavigationFenceIosTest {
             asks.last(),
         )
         assertEquals(0, routedCalls)
-        assertEquals(emptyList(), localBlocked)
+        assertEquals(emptyList<String>(), localBlocked)
     }
 
     @Test

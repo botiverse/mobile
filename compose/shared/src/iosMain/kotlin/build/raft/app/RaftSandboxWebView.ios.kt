@@ -735,8 +735,7 @@ internal class RaftIosSandboxWebView(
         return when (outcome) {
             RaftIosMainFramePolicyOutcome.Allow -> RaftIosNavigationDecision.Allow
             RaftIosMainFramePolicyOutcome.Cancel -> RaftIosNavigationDecision.Cancel
-            is RaftIosMainFramePolicyOutcome.ReissueWithHeader,
-            is RaftIosMainFramePolicyOutcome.ReissueWithoutHeader -> {
+            is RaftIosMainFramePolicyOutcome.Reissue -> {
                 if (targetURL != null) {
                     val includeHeader = outcome is RaftIosMainFramePolicyOutcome.ReissueWithHeader
                     val reissued = buildReissuedRequest(action.request, targetURL, includeHeader = includeHeader)
@@ -1362,9 +1361,13 @@ internal sealed interface RaftIosMainFramePolicyOutcome {
 
     data object Cancel : RaftIosMainFramePolicyOutcome
 
-    data class ReissueWithHeader(val url: String) : RaftIosMainFramePolicyOutcome
+    sealed interface Reissue : RaftIosMainFramePolicyOutcome {
+        val url: String
+    }
 
-    data class ReissueWithoutHeader(val url: String) : RaftIosMainFramePolicyOutcome
+    data class ReissueWithHeader(override val url: String) : Reissue
+
+    data class ReissueWithoutHeader(override val url: String) : Reissue
 }
 
 /** ABI-stable WebKit `WKNavigationType` raw values (iOS 8+). */
