@@ -40,7 +40,9 @@ internal fun parseHttpErrorEnvelope(
 internal fun HomeNetworkResponse.parseHttpErrorEnvelope(
     trimMessage: Boolean = true,
 ): HttpErrorEnvelope? {
-    if (isSuccessful) return null
+    // code <= 0 represents synthetic client-side transport/timeout responses (no server answer),
+    // which must never be decoded as a server refusal message.
+    if (code <= 0 || isSuccessful) return null
     val payload = errorBodyText?.takeIf { it.isNotBlank() } ?: bodyText?.takeIf { it.isNotBlank() }
     return parseHttpErrorEnvelope(payload, trimMessage = trimMessage)
 }

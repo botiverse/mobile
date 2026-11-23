@@ -579,7 +579,6 @@ private fun buildChannelVisitorVisibleBody(visitorVisible: Boolean): String =
 @Serializable
 private data class ChannelErrorBody(
     val code: String? = null,
-    val error: String? = null,
     // `archived_name_collision` (409 from `POST channels`): the archived channel holding the name.
     val archivedChannelId: String? = null,
     val archivedChannelName: String? = null,

@@ -3,8 +3,6 @@ package build.raft.app.data
 import build.raft.app.model.ServerId
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.JsonPrimitive
 
 /**
  * The Artifacts home page's reads (botiverse/slock staging aae2b7a89; contract
@@ -272,10 +270,6 @@ fun parseArtifactsHomeConversations(bodyText: String?): List<ArtifactsHomeConver
                 peer = it.peer?.toArtifactsHomeActor(),
             )
         }
-
-/** The refusal's `code` (top level, as `webCommon.ts` `refuse` writes it). */
-internal fun HomeNetworkResponse.artifactsErrorCodeOrNull(): String? =
-    parseHttpErrorEnvelope()?.serverCode
 
 private fun <T> HomeNetworkResponse.toArtifactsHomeLoad(parse: (String?) -> T?): ArtifactsHomeLoad<T> {
     if (isSuccessful) {

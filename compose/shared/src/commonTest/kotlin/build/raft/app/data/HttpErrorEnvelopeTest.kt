@@ -1,5 +1,6 @@
 package build.raft.app.data
 
+import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
@@ -25,6 +26,17 @@ class HttpErrorEnvelopeTest {
         val primary = parseHttpErrorEnvelope("""{"error":" Channel is full ","code":" channel_full "}""")
         assertEquals(HttpErrorEnvelope(serverMessage = "Channel is full", serverCode = "channel_full"), primary)
 
+        val primaryWins = parseHttpErrorEnvelope("""{"error":"Primary","message":"Fallback","code":"primary_code","errorCode":"fallback_code"}""")
+        assertEquals(HttpErrorEnvelope(serverMessage = "Primary", serverCode = "primary_code"), primaryWins)
+
+        val blankPrimaryFallsBack =
+            parseHttpErrorEnvelope("""{"error":"  ","message":"From message","code":"","errorCode":"from_error_code"}""")
+        assertEquals(HttpErrorEnvelope(serverMessage = "From message", serverCode = "from_error_code"), blankPrimaryFallsBack)
+
+        val nonStringPrimaryFallsBack =
+            parseHttpErrorEnvelope("""{"error":123,"message":"From message","code":400,"errorCode":"from_error_code"}""")
+        assertEquals(HttpErrorEnvelope(serverMessage = "From message", serverCode = "from_error_code"), nonStringPrimaryFallsBack)
+
         val aliases = parseHttpErrorEnvelope("""{"message":"Not allowed","errorCode":"forbidden_action"}""")
         assertEquals(HttpErrorEnvelope(serverMessage = "Not allowed", serverCode = "forbidden_action"), aliases)
 
@@ -36,7 +48,7 @@ class HttpErrorEnvelopeTest {
     }
 
     @Test
-    fun toleratesNonStringSiblingsBlankBodyFallbackAndIgnores2xx() {
+    fun toleratesNonStringSiblingsBodyFallbacksIgnores2xxAndIgnoresCodeZeroTimeouts() {
         assertEquals(
             HttpErrorEnvelope(serverMessage = "Invalid input", serverCode = null),
             parseHttpErrorEnvelope("""{"code":400,"error":"Invalid input"}"""),
@@ -54,8 +66,34 @@ class HttpErrorEnvelopeTest {
                 .parseHttpErrorEnvelope()
         assertEquals(HttpErrorEnvelope(serverMessage = "Quota reached", serverCode = "free_external_limit"), fromErrorBody)
 
+        // Blank errorBodyText must fall back to bodyText as well.
+        val fromBody =
+            response(code = 409, bodyText = """{"error":"Already archived","code":"channel_archived"}""", errorBodyText = "   ")
+                .parseHttpErrorEnvelope()
+        assertEquals(HttpErrorEnvelope(serverMessage = "Already archived", serverCode = "channel_archived"), fromBody)
+
         // Successful 2xx responses never decode as error envelopes.
         assertNull(response(code = 200, bodyText = """{"error":"ignored","code":"ignored"}""").parseHttpErrorEnvelope())
+
+        // Synthetic code == 0 client-side timeout/transport responses must never leak as server refusals.
+        assertNull(
+            response(code = 0, errorBodyText = """{"error":"network_timeout","message":"Request timed out"}""")
+                .parseHttpErrorEnvelope()
+        )
+    }
+
+    @Test
+    fun toAuthSessionRequiredResultThreadsEnvelopeAndTraceId() {
+        val result =
+            response(
+                code = 401,
+                errorBodyText = """{"error":"Session revoked","code":"unauthenticated"}""",
+            ).toAuthSessionRequiredResult()
+        assertEquals("auth_required", result.blocker.code)
+        assertEquals("auth_session", result.blocker.requiredCapability)
+        assertEquals("Session revoked", result.blocker.serverMessage)
+        assertEquals("unauthenticated", result.blocker.serverCode)
+        assertEquals(traceId, result.blocker.traceId)
     }
 
     @Test
@@ -85,7 +123,7 @@ class HttpErrorEnvelopeTest {
     }
 
     @Test
-    fun searchAndArtifactsApisPreserveServerMessageAlongsideServerCode() {
+    fun searchAndArtifactsApisPreserveServerMessageAlongsideServerCode() = runTest {
         val webSearch =
             response(
                 code = 429,
@@ -107,5 +145,25 @@ class HttpErrorEnvelopeTest {
         assertEquals("Search disabled", coreError.serverMessage)
         assertEquals("SEARCH_FORBIDDEN", coreError.serverCode)
         assertEquals(traceId, coreError.traceId)
+
+        val fakeArtifactsApi =
+            object : RaftArtifactsDashboardApi {
+                override suspend fun all(
+                    serverId: String,
+                    query: ArtifactsHomeQuery,
+                    cursor: String?,
+                    priority: DataRequestPriority,
+                ) = response(code = 403, errorBodyText = """{"error":"Artifacts access restricted","code":"FORBIDDEN"}""")
+
+                override suspend fun authors(serverId: String, q: String) = response(code = 200, bodyText = "{}")
+
+                override suspend fun conversations(serverId: String, q: String) = response(code = 200, bodyText = "{}")
+            }
+        val artifactsLoad = fakeArtifactsApi.loadArtifactsHomePage("srv-1", ArtifactsHomeQuery(), cursor = null, DataRequestPriority.Visible)
+        val artifactsError = assertIs<ArtifactsHomeLoad.Failed>(artifactsLoad).error
+        assertEquals("artifacts_home_http_403", artifactsError.code)
+        assertEquals("Artifacts access restricted", artifactsError.serverMessage)
+        assertEquals("FORBIDDEN", artifactsError.serverCode)
+        assertEquals(traceId, artifactsError.traceId)
     }
 }
