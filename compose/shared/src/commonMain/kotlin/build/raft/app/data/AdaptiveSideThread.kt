@@ -162,6 +162,43 @@ internal fun SharedAdaptiveWorkspaceSession.visibleSideThread(): AdaptiveSideThr
     sideThread?.takeIf { it.owner == workspace?.selection }
 
 /**
+ * Identifiers of the reply thread currently shown in the adaptive side pane, so Home's live
+ * unread check treats replies into that thread as read on screen (web `isConversationShownRead`,
+ * `#wg-mobile-sync:#257`).
+ */
+internal data class AdaptiveOpenSideThread(
+    val conversationIds: Set<String>,
+    val parentMessageId: String? = null,
+)
+
+/**
+ * The reply thread currently shown in the wide side column for a visible dual-pane workspace, or
+ * null when no side thread is on screen.
+ */
+internal fun SharedAdaptiveWorkspaceSession.openSideThreadMatch(): AdaptiveOpenSideThread? {
+    val current = workspace ?: return null
+    if (!current.parentVisible || current.pane.layout != RaftAdaptivePaneLayout.DualPane) return null
+    val side = visibleSideThread() ?: return null
+    val ids =
+        listOfNotNull(
+            side.identity.streamChannelId,
+            side.identity.channelId,
+            side.identity.threadId,
+            side.payload.streamChannelId,
+            side.payload.threadId,
+        )
+            .map(String::trim)
+            .filter(String::isNotEmpty)
+            .toSet()
+    val parentMessageId =
+        (side.identity.parentMessageId ?: side.payload.parentMessageId)
+            ?.trim()
+            ?.takeIf(String::isNotEmpty)
+    if (ids.isEmpty() && parentMessageId == null) return null
+    return AdaptiveOpenSideThread(conversationIds = ids, parentMessageId = parentMessageId)
+}
+
+/**
  * Routes a thread open requested from inside the wide detail (main page or side column):
  * side column first, then the existing in-pane replace for a valid source that cannot use it.
  * An ignored (stale/foreign) source leaves the session untouched.

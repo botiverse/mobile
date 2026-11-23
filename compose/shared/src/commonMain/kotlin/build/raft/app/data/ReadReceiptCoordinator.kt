@@ -190,6 +190,18 @@ class ReadReceiptCoordinator(
         pendingStore?.seqsFor(owner).orEmpty()
 
     /**
+     * Reads already acknowledged on the server for [owner] in this process (cleared by
+     * [forgetAcknowledged] on Mark as Unread and by [revoke]). Used to guard lagging read-model
+     * summaries (e.g. followed-thread unread reloads) from resurrecting a thread just read.
+     */
+    fun acknowledgedReadSeqs(owner: ReadReceiptOwner): Map<ChannelId, Long> =
+        synchronized(lock) {
+            acknowledgedSeqs
+                .filterKeys { key -> key.owner == owner }
+                .mapKeys { (key, _) -> key.channelId }
+        }
+
+    /**
      * The reads a Home response for [owner] must not undo: those still saved, plus those [atRequest]
      * (taken when the request went out) acknowledged since, which the response may not reflect.
      */
