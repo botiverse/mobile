@@ -109,5 +109,54 @@ class ThreadOlderPageReaderScrollTest {
             )
         assertEquals(Res.string.thread_state_loading_older_replies.desc(), threadStandInLoading.label)
         assertTrue(threadStandInLoading.loading)
+
+        val channelBeginning =
+            assertNotNull(
+                threadOlderMessagesStatusSpec(
+                    RaftThreadScreenPayload(
+                        surfaceKind = RaftThreadSurfaceKind.Channel,
+                        channelKind = "channel",
+                        canLoadMoreBefore = false,
+                    )
+                )
+            )
+        assertEquals(Res.string.thread_state_beginning_conversation.desc(), channelBeginning.label)
+
+        val replyThreadBeginning =
+            assertNotNull(
+                threadOlderMessagesStatusSpec(
+                    RaftThreadScreenPayload(
+                        surfaceKind = RaftThreadSurfaceKind.ReplyThread,
+                        canLoadMoreBefore = false,
+                    )
+                )
+            )
+        assertEquals(Res.string.thread_state_beginning_replies.desc(), replyThreadBeginning.label)
+
+        val taskBeginning =
+            assertNotNull(
+                threadOlderMessagesStatusSpec(
+                    RaftThreadScreenPayload(
+                        surfaceKind = RaftThreadSurfaceKind.Channel,
+                        channelKind = RaftTaskConversationChannelKind,
+                        canLoadMoreBefore = false,
+                    )
+                )
+            )
+        assertEquals(Res.string.thread_state_beginning_replies.desc(), taskBeginning.label)
+
+        val taskLoading =
+            assertNotNull(
+                threadOlderMessagesStatusSpec(
+                    RaftThreadScreenPayload(
+                        surfaceKind = RaftThreadSurfaceKind.Channel,
+                        channelKind = RaftTaskConversationChannelKind,
+                        canLoadMoreBefore = true,
+                        olderMessagesStatus = "loading",
+                    )
+                )
+            )
+        assertEquals(Res.string.thread_state_loading_older_replies.desc(), taskLoading.label)
+        assertTrue(taskLoading.loading)
     }
 }

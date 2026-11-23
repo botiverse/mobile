@@ -681,16 +681,27 @@ internal fun ThreadListViewport.shouldShowThreadBackToBottom(latestItemIndex: In
 /**
  * Whether row [itemIndex] (plus [trailingPaddingSize]) ends at the rendered bottom: the forward
  * [LazyListLayoutInfo.viewportEndOffset], the edge every bottom-anchor owner aims at.
+ *
+ * When [allowSparseTopFit] is true (a top-anchored short conversation such as a task conversation
+ * laid out with `Arrangement.Top` inside `reverseLayout = true`), a list whose entire content fits
+ * within the viewport starting at forward index 0 (`offset >= 0`) and ending at or above
+ * `viewportEndOffset` is already at its rendered end even though blank space sits below it.
  */
 internal fun threadItemAtRenderedBottom(
     info: LazyListLayoutInfo,
     itemIndex: Int,
-    trailingPaddingSize: Int = 0
+    trailingPaddingSize: Int = 0,
+    allowSparseTopFit: Boolean = false,
 ): Boolean {
     if (info.totalItemsCount <= itemIndex) return false
     val item = info.visibleItemsInfo.firstOrNull { it.index == itemIndex } ?: return false
     val bottom = item.offset + item.size + trailingPaddingSize.coerceAtLeast(0)
-    return kotlin.math.abs(bottom - info.viewportEndOffset) <= ThreadBackToBottomTolerancePx
+    if (kotlin.math.abs(bottom - info.viewportEndOffset) <= ThreadBackToBottomTolerancePx) return true
+    if (!allowSparseTopFit) return false
+    val firstVisible = info.visibleItemsInfo.firstOrNull() ?: return false
+    return firstVisible.index == 0 &&
+        firstVisible.offset >= 0 &&
+        bottom <= info.viewportEndOffset + ThreadBackToBottomTolerancePx
 }
 
 /**

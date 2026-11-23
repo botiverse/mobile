@@ -1346,6 +1346,7 @@
     <string name="thread_offline_last_known_tip">Offline content — may be out of date</string>
     <string name="thread_offline_older_unavailable">Older messages are not available offline</string>
     <string name="thread_state_beginning_conversation">Beginning of conversation</string>
+    <string name="thread_state_beginning_replies">Beginning of replies</string>
     <string name="thread_date_divider_today">TODAY</string>
     <string name="thread_date_divider_yesterday">YESTERDAY</string>
     <string name="thread_message_time_yesterday">Yesterday</string>
@@ -2119,6 +2120,8 @@
     <string name="task_head_source">Source</string>
     <string name="task_head_source_open">Open the source message</string>
     <string name="task_head_source_unloaded">Message not loaded</string>
+    <string name="task_head_source_not_recorded">Not recorded</string>
+    <string name="task_head_open_assignee_profile">Open %1$s's profile</string>
     <string name="task_head_created_by">Created by</string>
     <string name="task_head_created_at_value">Created at %1$s</string>
     <string name="task_head_month_1">Jan</string>

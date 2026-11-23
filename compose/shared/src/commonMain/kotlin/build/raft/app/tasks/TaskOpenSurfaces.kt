@@ -506,6 +506,8 @@ internal fun TaskOpenSurfaceHost(
     onConversationArrived: (TaskSummary) -> Unit = {},
     /** Whether the reader may write the task's channel (web canWriteTasksInChannel); unknown: yes. */
     canWriteTaskChannel: (ChannelId?) -> Boolean = { true },
+    /** Signed-in user's id so self-assigned tasks display "You". */
+    viewerUserId: String? = null,
 ) {
     when (val surface = flow.surface) {
         is TaskOpenSurface.Pending -> {
@@ -589,6 +591,10 @@ internal fun TaskOpenSurfaceHost(
                 summaryDetailHydrationSettled = true
             }
             val edits = channelTasks?.let { TaskHeadEdits(it::dispatch) }
+            val agentStatusResolver =
+                remember(membersStore, serverId) {
+                    membersStore?.let { store -> raftScopedAgentStatusResolver(store, serverId) }
+                }
             TaskPendingConversationWindow(onDismissRequest = { flow.requestClose() }) {
                 TaskPendingConversationPage(
                     task = task,
@@ -614,6 +620,8 @@ internal fun TaskOpenSurfaceHost(
                     onMoveToBacklog = { reason -> edits?.moveToBacklog(task, reason) },
                     onAmend = channelTasks.taskHeadAmend(task),
                     loadingDiscussion = needsSummaryHydration,
+                    viewerUserId = viewerUserId,
+                    agentStatusResolver = agentStatusResolver,
                 )
             }
         }
@@ -772,6 +780,10 @@ internal fun TaskPendingConversationPage(
      * server: shows a spinner instead of falsely claiming "No discussion in this task yet".
      */
     loadingDiscussion: Boolean = false,
+    /** Signed-in user's id so self-assigned tasks display "You". */
+    viewerUserId: String? = null,
+    /** Resolves an agent assignee's live status dot beside its face (null: no dot). */
+    agentStatusResolver: RaftAgentStatusResolver? = null,
 ) {
     val colors = RaftTheme.colors
     val typography = RaftTheme.typography
@@ -785,6 +797,7 @@ internal fun TaskPendingConversationPage(
             onViewInChannel = {},
             onToggleFollow = {},
             serverId = serverId,
+            viewerUserId = viewerUserId,
         )
     val density = LocalDensity.current
     val keyboardUp =
@@ -847,6 +860,8 @@ internal fun TaskPendingConversationPage(
                 canWriteChannel = canWriteChannel,
                 placement = placement,
                 serverId = serverId,
+                viewerUserId = viewerUserId,
+                agentStatusResolver = agentStatusResolver,
             )
         }
         val headRow = rememberTaskConversationHeadRow(headScrollState) { headRoute(TaskHeadPlacement.FirstRow) }

@@ -1345,6 +1345,7 @@
     <string name="thread_offline_last_known_tip">目前為離線內容，可能不是最新版本</string>
     <string name="thread_offline_older_unavailable">離線時無法載入較早的訊息</string>
     <string name="thread_state_beginning_conversation">對話的開頭</string>
+    <string name="thread_state_beginning_replies">回覆的開頭</string>
     <string name="thread_date_divider_today">今天</string>
     <string name="thread_date_divider_yesterday">昨天</string>
     <string name="thread_message_time_yesterday">昨天</string>
@@ -2115,6 +2116,8 @@
     <string name="task_head_source">來源</string>
     <string name="task_head_source_open">開啟來源訊息</string>
     <string name="task_head_source_unloaded">訊息未載入</string>
+    <string name="task_head_source_not_recorded">未記錄</string>
+    <string name="task_head_open_assignee_profile">打開 %1$s 的資料</string>
     <string name="task_head_created_by">建立者</string>
     <string name="task_head_created_at_value">建立於 %1$s</string>
     <string name="task_head_month_1">1月</string>

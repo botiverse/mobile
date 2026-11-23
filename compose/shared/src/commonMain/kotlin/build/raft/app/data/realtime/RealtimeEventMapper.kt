@@ -866,6 +866,7 @@ private data class TaskInfoWireDto(
     // slock `projectTaskCreated` / the `task:updated` task DTO: the message the task hangs under
     // (default: the field is missing; an explicit null decodes as null).
     val sourceMessageId: String? = TaskSourceMessageIdAbsent,
+    val sourceRecorded: Boolean? = null,
     val conversationChannelId: String? = null,
     val conversationAnchored: Boolean? = null,
     val conversationReplyCount: Int? = null,
@@ -1652,6 +1653,7 @@ private fun TaskInfoWireDto.toDomain(
         hostMessageId = hostMessageId?.takeIf { it.isNotBlank() }?.let(::MessageId),
         sourceMessageId = sourceMessageId.reportedSourceMessageId(),
         sourceMessageReported = sourceMessageId != TaskSourceMessageIdAbsent,
+        sourceRecorded = sourceRecorded,
         conversationChannelId = conversationChannelId?.takeIf { it.isNotBlank() }?.let(::ChannelId),
         conversationAnchored = taskV2,
         conversationReplyCount = conversationReplyCount?.coerceAtLeast(0) ?: 0,

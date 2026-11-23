@@ -66,7 +66,7 @@ internal fun threadOlderMessagesStatusSpec(timelineSlice: ThreadTimelineSlice): 
     threadOlderMessagesStatusSpec(
         canLoadMoreBefore = timelineSlice.canLoadMoreBefore,
         olderMessagesStatus = timelineSlice.olderMessagesStatus,
-        replyThread = timelineSlice.replyThreadSurface,
+        replyThread = timelineSlice.replyThreadSurface || timelineSlice.taskConversationSurface,
         secondaryLabel = timelineSlice.beginningReplyCountLabel,
         secondaryReplyCount = timelineSlice.beginningReplyCount,
         durableLastKnown = timelineSlice.durableLastKnown,
@@ -112,7 +112,12 @@ internal fun threadOlderMessagesStatusSpec(
             ThreadHistoryStatusSpec(label = Res.string.thread_offline_older_unavailable.desc())
         else ->
             ThreadHistoryStatusSpec(
-                label = Res.string.thread_state_beginning_conversation.desc(),
+                label =
+                    if (replyThread) {
+                        Res.string.thread_state_beginning_replies.desc()
+                    } else {
+                        Res.string.thread_state_beginning_conversation.desc()
+                    },
                 secondaryLabel = secondaryLabel,
                 secondaryReplyCount = secondaryReplyCount
             )

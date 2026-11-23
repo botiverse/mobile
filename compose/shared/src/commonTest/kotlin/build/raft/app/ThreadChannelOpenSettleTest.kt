@@ -201,6 +201,48 @@ class ThreadChannelOpenSettleTest {
         )
     }
 
+    @Test
+    fun sparseTopAnchoredTaskConversationCountsAsAnchoredOnlyWhenWhollyVisible() {
+        // Short task conversation laid out with reverseLayout = true and Arrangement.Top inside a
+        // 1600px viewport: head (500px) + 1 reply (120px) + bottom padding (54px) = 674px total,
+        // leaving 926px of blank space below the padding row (so raw index 0 starts at rawOffset = 926).
+        val viewportPx = 1600
+        val headPx = 500
+        val replyPx = 120
+        val padPx = 54
+        val topSpaceBelow = viewportPx - (headPx + replyPx + padPx)
+        val shortRaw =
+            listOf(
+                RawItem(index = 0, offset = topSpaceBelow, size = padPx),
+                RawItem(index = 1, offset = topSpaceBelow + padPx, size = replyPx),
+                RawItem(index = 2, offset = topSpaceBelow + padPx + replyPx, size = headPx),
+            )
+        val shortInfo = ReversedThreadLayoutInfo(RawInfo(shortRaw, totalItemsCount = 3, layoutSize = viewportPx, afterContentPadding = 0))
+        assertEquals(0, shortInfo.visibleItemsInfo.first().offset, "head starts flush at visual y = 0")
+        assertFalse(
+            threadItemAtRenderedBottom(shortInfo, itemIndex = 1, trailingPaddingSize = padPx, allowSparseTopFit = false),
+            "bottom-anchored channels still require newest item at viewport bottom"
+        )
+        assertTrue(
+            threadItemAtRenderedBottom(shortInfo, itemIndex = 1, trailingPaddingSize = padPx, allowSparseTopFit = true),
+            "sparse top-anchored task conversation settles immediately without stalling initialBottomAnchorReady"
+        )
+
+        // Tall conversation scrolled up away from the bottom (newest item bottom extends past viewport):
+        // allowSparseTopFit must NOT treat a scrolled-up overflowing conversation as anchored at bottom.
+        val tallOverflowRaw =
+            listOf(
+                RawItem(index = 0, offset = -300, size = padPx),
+                RawItem(index = 1, offset = -300 + padPx, size = 400),
+                RawItem(index = 2, offset = -300 + padPx + 400, size = 1600),
+            )
+        val tallInfo = ReversedThreadLayoutInfo(RawInfo(tallOverflowRaw, totalItemsCount = 3, layoutSize = viewportPx, afterContentPadding = 0))
+        assertFalse(
+            threadItemAtRenderedBottom(tallInfo, itemIndex = 1, trailingPaddingSize = padPx, allowSparseTopFit = true),
+            "overflowing conversation scrolled away from bottom is not anchored"
+        )
+    }
+
     private fun contentPayload(): RaftThreadScreenPayload =
         RaftThreadScreenPayload(
             instanceId = "shared-shell-thread-dm-1",

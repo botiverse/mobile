@@ -5477,6 +5477,7 @@ private fun SharedThreadRouteContentContent(
             detailsRepository = taskConversation.detailsRepository,
             membersStore = serverMembersStore,
             serverId = currentServerId,
+            viewerUserId = currentSession?.user?.id,
             // The conversation page's head writes: the same task channel store, gates and failure toasts.
             editing =
                 TaskPageEditing(
@@ -6135,6 +6136,7 @@ private fun SharedThreadRouteContentContent(
                     },
                     onToggleFollow = { followed -> taskConversationHeaderViewModel?.toggleFollow(followed) },
                     serverId = currentServerId,
+                    viewerUserId = currentSession?.user?.id,
                     // Web #14115: the creator, or a server owner / admin (`deleteAnyTask`); asks first.
                     onDeleteTask =
                         { taskHeadScrollState.deleteConfirming = true }.takeIf {
@@ -6179,6 +6181,8 @@ private fun SharedThreadRouteContentContent(
                         openTaskInChannel = openTaskInChannel,
                         onOpenTaskConversationTarget = ::openTaskConversationTarget,
                         onTaskConversationDirectory = ::taskConversationDirectory,
+                        viewerUserId = currentSession?.user?.id,
+                        agentStatusResolver = agentStatusResolver,
                     )
                 }
             } else {

@@ -50,12 +50,39 @@ internal data class TaskConversationDetailsState(
     val earlierDiscussion: TaskDetailLoad<TaskEarlierDiscussion> = TaskDetailLoad.Idle,
 )
 
+/** Web `taskSourceDisplay` (`packages/web/src/utils/taskConversation.ts`): Source row state. */
+internal sealed interface TaskHeadSourceDisplay {
+    data class Message(val messageId: MessageId) : TaskHeadSourceDisplay
+
+    data object NotRecorded : TaskHeadSourceDisplay
+}
+
 /**
- * Web `TaskSourceProperty`'s `hidden`: no source, or a pre-v2 task whose source IS its host (its
- * Earlier discussion row already leads there).
+ * Web `taskSourceDisplay`: when the server reports `sourceRecorded`, show the source message when
+ * recorded or `"Not recorded"` when not. For older servers lacking `sourceRecorded`, omit the row
+ * when there is no source message or when a pre-v2 task's source IS its host (Earlier discussion
+ * already leads there).
+ */
+internal fun TaskSummary.taskHeadSourceDisplay(): TaskHeadSourceDisplay? {
+    if (sourceRecorded != null) {
+        return if (sourceRecorded && sourceMessageId != null) {
+            TaskHeadSourceDisplay.Message(sourceMessageId)
+        } else {
+            TaskHeadSourceDisplay.NotRecorded
+        }
+    }
+    val hostId = hostMessageId ?: messageId
+    val sourceId = sourceMessageId ?: return null
+    if (sourceId == hostId) return null
+    return TaskHeadSourceDisplay.Message(sourceId)
+}
+
+/**
+ * Web `TaskSourceProperty`'s loadable source message id, or null when the Source row is omitted or
+ * shows `"Not recorded"`.
  */
 internal fun TaskSummary.taskHeadSourceMessageId(): MessageId? =
-    sourceMessageId?.takeUnless { hostMessageId != null && it == hostMessageId }
+    (taskHeadSourceDisplay() as? TaskHeadSourceDisplay.Message)?.messageId
 
 /** Web `TaskEarlierDiscussionProperty`: shown for a host message unless it is known to have no replies. */
 internal fun TaskConversationDetailsState.earlierDiscussionVisible(): Boolean =

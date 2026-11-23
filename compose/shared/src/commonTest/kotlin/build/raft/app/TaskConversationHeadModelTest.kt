@@ -209,6 +209,112 @@ class TaskConversationHeadModelTest {
         assertEquals(TaskHeadPerson(MemberKind.Agent, "agent-9", avatar), model.creator)
     }
 
+    @Test
+    fun sourceRowShowsNotRecordedWhenSourceRecordedIsFalseAndOmitsWhenAbsent() {
+        val unrecorded =
+            parseSharedServerTasksPayload(
+                """
+                {"tasks":[{"id":"task-2","messageId":"task-2","hostMessageId":null,"sourceMessageId":null,"sourceRecorded":false,
+                 "conversationReplyCount":0,"conversationChannelId":"conv-2","conversationAnchored":true,"channelId":"channel-1",
+                 "channelName":"general","channelType":"channel","taskNumber":8,"title":"No source recorded","description":null,
+                 "status":"in_progress","createdByType":"user","createdById":"user-1","createdByName":"Artin","claimedByType":null,
+                 "claimedById":null,"claimedByName":null,"createdAt":"2026-10-27T09:00:00.000Z","updatedAt":"2026-10-27T09:30:00.000Z",
+                 "revision":1,"isLegacy":false,"readOnlyReason":null}]}
+                """.trimIndent()
+            )?.tasks?.single() ?: error("task dropped")
+        assertEquals(false, unrecorded.sourceRecorded)
+        val unrecordedModel =
+            unrecorded.taskConversationHeadModel(
+                TaskConversationHeaderState(ChannelId("conv-2")),
+                TaskConversationDetailsState(),
+                false,
+                emptyList(),
+                null,
+            )
+        assertEquals(TaskHeadSource.NotRecorded, unrecordedModel.source)
+
+        // Older server omitting sourceRecorded with null sourceMessageId omits the row.
+        val legacyModel =
+            task().taskConversationHeadModel(
+                TaskConversationHeaderState(ChannelId("conv-1")),
+                TaskConversationDetailsState(),
+                false,
+                emptyList(),
+                null,
+            )
+        assertNull(legacyModel.source)
+    }
+
+    @Test
+    fun assigneeCarriesViewerFlagAndChannelMemberAvatarForHeadAndChrome() {
+        val avatar = "https://cdn.raft.build/avatars/other-server/imprint.webp"
+        val humanAssignee = MemberProfile(id = MemberId("user-1"), displayName = "Artin", handle = "artin", kind = MemberKind.Human)
+        val agentAssignee = MemberProfile(id = MemberId("agent-9"), displayName = "Imprint", handle = "imprint", kind = MemberKind.Agent)
+        val members =
+            listOf(
+                MemberProfile(id = MemberId("user-1"), displayName = "Artin Display", handle = "artin", kind = MemberKind.Human),
+                MemberProfile(id = MemberId("agent-9"), displayName = "Imprint Display", handle = "imprint", kind = MemberKind.Agent, avatar = AvatarReference.Url(avatar)),
+            )
+
+        val selfTask = task().copy(assignee = humanAssignee)
+        val selfModel =
+            selfTask.taskConversationHeadModel(
+                TaskConversationHeaderState(ChannelId("conv-1")),
+                TaskConversationDetailsState(),
+                false,
+                members,
+                null,
+                serverId = "server-1",
+                viewerUserId = "user-1",
+            )
+        assertEquals(
+            TaskHeadAssignee(
+                kind = MemberKind.Human,
+                id = "user-1",
+                displayName = "Artin Display",
+                avatarWireValue = null,
+                isViewer = true,
+                isJointChannel = false,
+            ),
+            selfModel.assignee,
+        )
+        val selfChrome =
+            selfTask.taskConversationHeaderChrome(
+                state = TaskConversationHeaderState(ChannelId("conv-1")),
+                summarized = true,
+                headFloatOpen = false,
+                onToggleHeadFloat = {},
+                onViewInChannel = {},
+                onToggleFollow = {},
+                serverId = "server-1",
+                viewerUserId = "user-1",
+            )
+        assertEquals(true, selfChrome.assigneeIsViewer)
+
+        val agentTask = task().copy(assignee = agentAssignee, channelType = "joint")
+        val agentModel =
+            agentTask.taskConversationHeadModel(
+                TaskConversationHeaderState(ChannelId("conv-1")),
+                TaskConversationDetailsState(),
+                false,
+                members,
+                null,
+                serverId = "server-1",
+                viewerUserId = "agent-9",
+            )
+        assertEquals(
+            TaskHeadAssignee(
+                kind = MemberKind.Agent,
+                id = "agent-9",
+                displayName = "Imprint Display",
+                avatarWireValue = avatar,
+                isViewer = false,
+                isJointChannel = true,
+            ),
+            agentModel.assignee,
+        )
+    }
+
     private fun task(): TaskSummary =
         parseSharedServerTasksPayload(
             """

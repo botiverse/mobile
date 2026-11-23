@@ -95,6 +95,9 @@ internal data class ThreadTimelineSlice(
 
     /** The page is a reply thread (its rows other than the origin are thread replies). */
     val replyThreadSurface: Boolean get() = surfaceKind == RaftThreadSurfaceKind.ReplyThread
+
+    /** The page is a task's own conversation (`channels.type = 'task'`). */
+    val taskConversationSurface: Boolean get() = channelKind.normalizedThreadChannelKind() == RaftTaskConversationChannelKind
 }
 
 internal data class ThreadInlineSearchMatch(
