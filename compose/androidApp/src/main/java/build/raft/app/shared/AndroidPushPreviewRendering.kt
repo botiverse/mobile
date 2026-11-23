@@ -155,7 +155,8 @@ internal data class UnreadNotificationText(
     val publicTitle: String,
     val publicBody: String,
     val subtitle: String? = null,
-    val sender: String? = null
+    val sender: String? = null,
+    val serverName: String? = null
 )
 
 /**
@@ -214,6 +215,7 @@ internal fun resolveUnreadNotificationText(
             ?: defaultBody
     val title = titleKey?.let { strings.resolve(it, parseArgs(request.optString("titleArgs"))) } ?: rawTitle
     val subtitle = subtitleKey?.let { strings.resolve(it, parseArgs(request.optString("subtitleArgs"))) } ?: rawSubtitle
+    val serverName = unreadNotificationServerName(request, subtitle, subtitleKey, category)
     val body = bodyKey?.let { strings.resolve(it, bodyArgs) } ?: rawBody
     val pushMode = pushRedactionMode(bodyKey, request.optString("previewMode"))
     if (pushMode.strictness >= devicePreviewMode.strictness) {
@@ -225,16 +227,19 @@ internal fun resolveUnreadNotificationText(
                     publicTitle = publicTitle,
                     publicBody = publicBody,
                     subtitle = subtitle,
-                    sender = unreadNotificationSender(request, category, rawTitle, rawBody, bodyKey, bodyArgs)
+                    sender = unreadNotificationSender(request, category, rawTitle, rawBody, bodyKey, bodyArgs),
+                    serverName = serverName
                 )
             // Already redacted by the server: its title and subtitle stand (hidden sends none).
-            PushPreviewMode.SenderOnly -> UnreadNotificationText(title, body, publicTitle, publicBody, subtitle = subtitle)
+            PushPreviewMode.SenderOnly ->
+                UnreadNotificationText(title, body, publicTitle, publicBody, subtitle = subtitle, serverName = serverName)
             PushPreviewMode.Hidden -> UnreadNotificationText(title, body, publicTitle, publicBody)
         }
     }
     // The device is stricter than what arrived (raw content, or a sender_only push on a hidden device).
     return when (devicePreviewMode) {
-        PushPreviewMode.Full -> UnreadNotificationText(title, body, publicTitle, publicBody, subtitle = subtitle)
+        PushPreviewMode.Full ->
+            UnreadNotificationText(title, body, publicTitle, publicBody, subtitle = subtitle, serverName = serverName)
         PushPreviewMode.Hidden -> UnreadNotificationText(publicTitle, publicBody, publicTitle, publicBody)
         PushPreviewMode.SenderOnly -> {
             // Only reached for raw content (a sender_only or hidden push is at least as strict).
@@ -249,9 +254,49 @@ internal fun resolveUnreadNotificationText(
                 } else {
                     title
                 }
-            UnreadNotificationText(redactedTitle, redactedBody, publicTitle, publicBody, subtitle = subtitle)
+            UnreadNotificationText(
+                redactedTitle,
+                redactedBody,
+                publicTitle,
+                publicBody,
+                subtitle = subtitle,
+                serverName = serverName
+            )
         }
     }
+}
+
+/**
+ * Resolves the server display label for grouping headers when the notification is not `hidden`.
+ * Prefers the server's multi-server subtitle context (`subtitleKey = push.subtitle.dm_server`,
+ * `context · Server`, or non-task `subtitle`), falling back to an explicit `serverName` field
+ * (present on mobile socket pushes and future FCM payloads).
+ */
+internal fun unreadNotificationServerName(
+    request: JSONObject,
+    subtitle: String?,
+    subtitleKey: String?,
+    category: String?
+): String? {
+    when (subtitleKey) {
+        "push.subtitle.dm_server" ->
+            parseArgs(request.optString("subtitleArgs"))
+                .firstOrNull()
+                ?.trim()
+                ?.takeIf { it.isNotEmpty() }
+                ?.let { return it }
+        "push.subtitle.dm" -> return null
+    }
+    val cleanSubtitle = subtitle?.trim()?.takeIf { it.isNotEmpty() }
+    if (cleanSubtitle != null) {
+        val separator = cleanSubtitle.lastIndexOf(" · ")
+        if (separator >= 0) {
+            cleanSubtitle.substring(separator + 3).trim().takeIf { it.isNotEmpty() }?.let { return it }
+        } else if (!isTaskSurface(request, category)) {
+            return cleanSubtitle
+        }
+    }
+    return request.optString("serverName").trim().takeIf { it.isNotEmpty() }
 }
 
 /**

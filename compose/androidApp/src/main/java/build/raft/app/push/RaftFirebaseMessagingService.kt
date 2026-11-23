@@ -156,6 +156,7 @@ internal fun raftFcmUnreadNotificationRequest(data: Map<String, String>): JSONOb
 private val FCM_UNREAD_NOTIFICATION_KEYS =
     listOf(
         "serverId",
+        "serverName",
         "messageId",
         "threadId",
         "channelId",

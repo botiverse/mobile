@@ -36,14 +36,73 @@ class AndroidNotificationBannerCopyTest {
     fun aJoinedTitleIsSplitAndTheSubtitleIsTheSubText() {
         // FCM to an app of key set 1 / 2, and the mobile socket: `title · subtitle`.
         val joined = build(fcm("title" to "Thread in #general · Acme", "subtitle" to "Acme"))
-        assertEquals("Thread in #general", titleOf(joined))
+        assertEquals("Thread in #general", joined.extras.getString(AndroidUnreadNotificationGrouping.EXTRA_TITLE))
+        // On Android 12+ (SDK 34), MessagingStyle ConversationLayout hides setSubText, so a non-DM
+        // conversationTitle includes the subtitle to keep the server label visible on standalone cards.
+        assertEquals("Thread in #general · Acme", titleOf(joined))
         assertEquals("Acme", joined.extras.getCharSequence(Notification.EXTRA_SUB_TEXT).toString())
+        assertEquals("Acme", joined.extras.getString(AndroidUnreadNotificationGrouping.EXTRA_SERVER_NAME))
         // FCM to key set 3: the plain title and the subtitle on its own.
         val plain = build(fcm("title" to "Thread in #general", "subtitle" to "Acme"))
-        assertEquals("Thread in #general", titleOf(plain))
+        assertEquals("Thread in #general", plain.extras.getString(AndroidUnreadNotificationGrouping.EXTRA_TITLE))
+        assertEquals("Thread in #general · Acme", titleOf(plain))
         assertEquals("Acme", plain.extras.getCharSequence(Notification.EXTRA_SUB_TEXT).toString())
-        // A receiver of one server: no subtitle at all.
-        assertNull(build(fcm()).extras.getCharSequence(Notification.EXTRA_SUB_TEXT))
+        assertEquals("Acme", plain.extras.getString(AndroidUnreadNotificationGrouping.EXTRA_SERVER_NAME))
+        // A receiver of one server: no subtitle or server name at all.
+        val singleServer = build(fcm())
+        assertEquals("#general", titleOf(singleServer))
+        assertNull(singleServer.extras.getCharSequence(Notification.EXTRA_SUB_TEXT))
+        assertNull(singleServer.extras.getString(AndroidUnreadNotificationGrouping.EXTRA_SERVER_NAME))
+    }
+
+    @Test
+    fun serverNameExtractsFromTaskSubtitlesWithoutMisreadingSingleServerChannel() {
+        val dmTaskMulti =
+            build(
+                fcm(
+                    "category" to "task_status",
+                    "title" to "#4 Stamp record",
+                    "body" to "Edgar changed title",
+                    "subtitle" to "DM · Raft",
+                    "subtitleKey" to "push.subtitle.dm_server",
+                    "subtitleArgs" to """["Raft"]"""
+                )
+            )
+        assertEquals("Raft", dmTaskMulti.extras.getString(AndroidUnreadNotificationGrouping.EXTRA_SERVER_NAME))
+
+        val channelTaskMulti =
+            build(
+                fcm(
+                    "category" to "task_status",
+                    "title" to "#4 Stamp record",
+                    "body" to "Edgar changed title",
+                    "subtitle" to "#general · Raft"
+                )
+            )
+        assertEquals("Raft", channelTaskMulti.extras.getString(AndroidUnreadNotificationGrouping.EXTRA_SERVER_NAME))
+
+        val dmTaskSingle =
+            build(
+                fcm(
+                    "category" to "task_status",
+                    "title" to "#4 Stamp record",
+                    "body" to "Edgar changed title",
+                    "subtitle" to "DM",
+                    "subtitleKey" to "push.subtitle.dm"
+                )
+            )
+        assertNull(dmTaskSingle.extras.getString(AndroidUnreadNotificationGrouping.EXTRA_SERVER_NAME))
+
+        val channelTaskSingle =
+            build(
+                fcm(
+                    "category" to "task_status",
+                    "title" to "#4 Stamp record",
+                    "body" to "Edgar changed title",
+                    "subtitle" to "#general"
+                )
+            )
+        assertNull(channelTaskSingle.extras.getString(AndroidUnreadNotificationGrouping.EXTRA_SERVER_NAME))
     }
 
     private fun baseFcm(): Map<String, String> =
