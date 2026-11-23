@@ -438,7 +438,7 @@ class ExternalShareStoreTest {
                 id = "agent-1",
                 title = "AirenaAgent",
                 channelId = ChannelId("dm-agent-1"),
-                channelKind = ConversationKind.Dm
+                channelKind = ConversationKind.DirectMessage
             )
         val envelopes = FakeEnvelopeRepository(zipEnvelope)
         val drafts = FakeDraftRepository()
