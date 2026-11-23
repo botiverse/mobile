@@ -1334,6 +1334,7 @@
     <string name="thread_state_beginning_conversation">Начало чата</string>
     <string name="thread_date_divider_today">СЕГОДНЯ</string>
     <string name="thread_date_divider_yesterday">ВЧЕРА</string>
+    <string name="thread_message_time_yesterday">Вчера</string>
     <string name="thread_date_divider_date">%1$s, %3$d %2$s</string>
     <string name="thread_date_divider_weekday_sunday">ВОСКРЕСЕНЬЕ</string>
     <string name="thread_date_divider_weekday_monday">ПОНЕДЕЛЬНИК</string>

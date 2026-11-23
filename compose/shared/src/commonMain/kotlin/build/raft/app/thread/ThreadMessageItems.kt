@@ -562,41 +562,34 @@ internal fun ThreadTimelineRenderConfig.dateDividerTimeContext(liveTodayEpochDay
     )
 
 /**
- * The time on an action card's done line (web `CommittedByLine`: `formatMessageTime(executedAt)`):
- * the clock today, else the date and the clock, in the person's 12h/24h choice. The thread payload
- * carries no "today", so the page's live day ([LocalRaftTimeContextProvider]) supplies it, as for the
- * date dividers. Without a day there is no time rather than the raw wire timestamp.
+ * The time on an action card's done line (web `CommittedByLine`: `formatMessageTime(executedAt)`),
+ * as the message rows write it ([messageTime]). The thread payload carries no "today", so the page's
+ * live day ([LocalRaftTimeContextProvider]) supplies it, as for the date dividers. Without a day, or
+ * a time that can't be read, there is no time rather than the raw wire timestamp.
  */
 internal fun ThreadTimelineRenderConfig.formatActionCardExecutedTimeLabel(
     executedAt: String?,
-    liveTodayEpochDay: Long?
+    liveTodayEpochDay: Long?,
+    messageTime: RaftMessageTimeFormat,
 ): String? {
     val value = executedAt?.trim()?.takeIf { it.isNotBlank() } ?: return null
     val context = dateDividerTimeContext(liveTodayEpochDay)
     if (context.todayEpochDay == null) return null
-    return context.formatTimestampLabel(value).takeIf { it.isNotBlank() }
+    return messageTime.format(value, context)?.takeIf { it.isNotBlank() }
 }
 
 /**
- * A row's time as its header shows it in absolute mode (the clock today, else the date and the clock,
- * in the 12/24-hour setting), or [fallback] (the compact HH:mm) without a live time context. Never the
- * raw wire timestamp.
+ * A row's time as its header shows it in absolute mode ([messageTime]), or [fallback] (the compact
+ * HH:mm) without a live time context. Never the raw wire timestamp.
  */
 internal fun threadRowTimeAccessibilityLabel(
     timestampLabel: String,
     fallback: String,
     timeContext: RaftTimeContext?,
-): String? {
-    val formatted =
-        timeContext
-            ?.takeIf {
-                it.resolvedTodayEpochDay() != null &&
-                    parseRaftTimestampEpochMillisOrNull(timestampLabel, it.localOffsetMinutes) != null
-            }
-            ?.formatTimestampLabel(timestampLabel)
-            ?.takeIf { it.isNotBlank() }
-    return formatted ?: fallback.takeIf { it.isNotBlank() }
-}
+    messageTime: RaftMessageTimeFormat,
+): String? =
+    messageTime.format(timestampLabel, timeContext)?.takeIf { it.isNotBlank() }
+        ?: fallback.takeIf { it.isNotBlank() }
 
 internal fun formatThreadCompactTimestampLabel(
     value: String,

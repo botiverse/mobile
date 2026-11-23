@@ -1334,6 +1334,7 @@
     <string name="thread_state_beginning_conversation">Inicio de la conversación</string>
     <string name="thread_date_divider_today">HOY</string>
     <string name="thread_date_divider_yesterday">AYER</string>
+    <string name="thread_message_time_yesterday">Ayer</string>
     <string name="thread_date_divider_date">%1$s, %3$d DE %2$s</string>
     <string name="thread_date_divider_weekday_sunday">DOMINGO</string>
     <string name="thread_date_divider_weekday_monday">LUNES</string>
