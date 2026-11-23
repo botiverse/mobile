@@ -317,12 +317,13 @@ internal fun rememberRaftArtifactOpener(
                             target,
                             conversation,
                             hostHead,
+                            raftEmbeddedWebLangTag(),
                         )
                     if (raftWebViewEvaluateInKept(scope.keepAliveKey, scope.webOrigin, script)) {
                         RaftArtifactViewerMemory.cache.rememberKeptDocument(
                             scope,
                             target,
-                            raftArtifactViewerEmbeddedPageUrl(host.webBaseUrl, target, conversation, hostHead),
+                            raftArtifactViewerEmbeddedPageUrl(host.webBaseUrl, target, conversation, hostHead, raftEmbeddedWebLangTag()),
                             session.accessToken,
                         )
                         RaftArtifactOpenTrace.mark("viewer_nav_started", "where=tap")
@@ -419,7 +420,7 @@ internal fun RaftArtifactViewerPrewarmRuntime(
             } else {
                 RaftArtifactViewerMemory.cache.markKeptWarm(scope, session.accessToken, conversation, head)
                 raftArtifactViewerWebViewConfig(
-                    url = raftArtifactViewerWarmUrl(webBaseUrl, conversation, head),
+                    url = raftArtifactViewerWarmUrl(webBaseUrl, conversation, head, raftEmbeddedWebLangTag()),
                     scope = scope,
                     injectedJavaScript =
                         raftArtifactViewerInjectedScript(scope.webOrigin, raftArtifactViewerSessionScript(scope, session, binding), desktopMode),
@@ -570,7 +571,7 @@ private fun RaftArtifactViewerScreen() {
     // With Desktop Mode's state and the head height at open; the App keeps both current in the address afterwards.
     val embeddedPageUrl =
         remember(webBaseUrl, bodyTarget) {
-            raftArtifactViewerWithHostDesktop(raftArtifactViewerEmbeddedPageUrl(webBaseUrl, bodyTarget, conversationId, hostHead), hostDesktop)
+            raftArtifactViewerWithHostDesktop(raftArtifactViewerEmbeddedPageUrl(webBaseUrl, bodyTarget, conversationId, hostHead, raftEmbeddedWebLangTag()), hostDesktop)
         }
     var freshReloadUsed by remember(params.toString()) { mutableStateOf(false) }
     // #300: one session recovery reload a minute at most ([RaftArtifactViewerSessionRecoveryGuard]).
@@ -1045,7 +1046,7 @@ private fun RaftArtifactViewerWebBody(
             RaftArtifactViewerMemory.cache.rememberKeptDocument(
                 scope,
                 switched,
-                raftArtifactViewerEmbeddedPageUrl(host.webBaseUrl, switched, conversationId, hostHead),
+                raftArtifactViewerEmbeddedPageUrl(host.webBaseUrl, switched, conversationId, hostHead, raftEmbeddedWebLangTag()),
                 currentAppToken,
             )
             currentOnSwitch(switched)
@@ -1114,6 +1115,7 @@ private fun RaftArtifactViewerWebBody(
                 target,
                 conversationId,
                 hostHead,
+                raftEmbeddedWebLangTag(),
             )
         if (controller.evaluateJavaScript(script)) {
             // The kept page routes to this Artifact now: its splash counts from here, so the App's does too.
@@ -1247,7 +1249,7 @@ private fun RaftArtifactViewerWebBody(
                 RaftArtifactViewerMemory.cache.rememberKeptDocument(
                     scope,
                     currentShownTarget,
-                    raftArtifactViewerEmbeddedPageUrl(host.webBaseUrl, currentShownTarget, conversationId, documentHostHead),
+                    raftArtifactViewerEmbeddedPageUrl(host.webBaseUrl, currentShownTarget, conversationId, documentHostHead, raftEmbeddedWebLangTag()),
                     currentAppToken,
                 )
                 RaftArtifactViewerMemory.cache.noteKeptBoot(scope, conversationId, documentHostHead)
@@ -1359,6 +1361,7 @@ private fun RaftArtifactViewerWebBody(
                                         ArtifactLinkTarget(shownTarget.id, sameArtifact.version),
                                         conversationId,
                                         hostHead,
+                                        raftEmbeddedWebLangTag(),
                                     )
                                 )
                             }

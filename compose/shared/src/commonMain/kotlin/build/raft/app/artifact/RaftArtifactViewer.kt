@@ -594,16 +594,20 @@ private val RaftArtifactViewerEmbedKeys =
         RAFT_ARTIFACT_VIEWER_HOST_LOADED_PARAM,
         RAFT_ARTIFACT_VIEWER_HOST_CONVERSATION_PARAM,
         RAFT_ARTIFACT_VIEWER_HOST_HEAD_PARAM,
+        RAFT_EMBEDDED_WEB_LANG_PARAM,
     )
 
 /**
- * The embed contract's query, with `hostConversation` when [conversationId] is one ([raftArtifactViewerHostConversationOrNull])
- * and `hostHead` when [hostHead] is one ([raftArtifactViewerHostHeadOrNull]: the Artifact column's).
+ * The embed contract's query, with `hostConversation` when [conversationId] is one ([raftArtifactViewerHostConversationOrNull]),
+ * `hostHead` when [hostHead] is one ([raftArtifactViewerHostHeadOrNull]: the Artifact column's) and `lang` when [langTag]
+ * is one: the App's UI language ([raftEmbeddedWebLangTag]), which the page's own menus and labels follow (web
+ * `resolveLangParamLocale`; without it they follow the WebView's language, English on an English device).
  */
-internal fun raftArtifactViewerEmbedQuery(conversationId: String? = null, hostHead: Int? = null): String =
+internal fun raftArtifactViewerEmbedQuery(conversationId: String? = null, hostHead: Int? = null, langTag: String? = null): String =
     RaftArtifactViewerEmbedQuery +
         (raftArtifactViewerHostConversationOrNull(conversationId)?.let { "&$RAFT_ARTIFACT_VIEWER_HOST_CONVERSATION_PARAM=$it" } ?: "") +
-        (raftArtifactViewerHostHeadOrNull(hostHead)?.let { "&$RAFT_ARTIFACT_VIEWER_HOST_HEAD_PARAM=$it" } ?: "")
+        (raftArtifactViewerHostHeadOrNull(hostHead)?.let { "&$RAFT_ARTIFACT_VIEWER_HOST_HEAD_PARAM=$it" } ?: "") +
+        (raftEmbeddedWebLangOrNull(langTag)?.let { "&$RAFT_EMBEDDED_WEB_LANG_PARAM=$it" } ?: "")
 
 /**
  * [url] with the embed contract in its query: any `embed`/`shell` already there is replaced and a `chrome` dropped, every
@@ -611,7 +615,7 @@ internal fun raftArtifactViewerEmbedQuery(conversationId: String? = null, hostHe
  * [conversationId]'s alone (one already there is dropped; none without a conversation), and `hostHead` [hostHead]'s
  * alone (none outside the Artifact column).
  */
-internal fun raftArtifactViewerEmbeddedUrl(url: String, conversationId: String? = null, hostHead: Int? = null): String {
+internal fun raftArtifactViewerEmbeddedUrl(url: String, conversationId: String? = null, hostHead: Int? = null, langTag: String? = null): String {
     val fragment = url.indexOf('#').let { if (it < 0) "" else url.substring(it) }
     val beforeFragment = url.removeSuffix(fragment)
     val path = beforeFragment.substringBefore('?')
@@ -619,7 +623,7 @@ internal fun raftArtifactViewerEmbeddedUrl(url: String, conversationId: String? 
         beforeFragment.substringAfter('?', missingDelimiterValue = "")
             .split('&')
             .filter { it.isNotEmpty() && it.substringBefore('=') !in RaftArtifactViewerEmbedKeys }
-    return path + "?" + (kept + raftArtifactViewerEmbedQuery(conversationId, hostHead)).joinToString("&") + fragment
+    return path + "?" + (kept + raftArtifactViewerEmbedQuery(conversationId, hostHead, langTag)).joinToString("&") + fragment
 }
 
 /**
@@ -632,7 +636,8 @@ internal fun raftArtifactViewerEmbeddedPageUrl(
     target: ArtifactLinkTarget,
     conversationId: String? = null,
     hostHead: Int? = null,
-): String = raftArtifactViewerEmbeddedUrl(raftArtifactViewerPageUrl(webBaseUrl, target), conversationId, hostHead)
+    langTag: String? = null,
+): String = raftArtifactViewerEmbeddedUrl(raftArtifactViewerPageUrl(webBaseUrl, target), conversationId, hostHead, langTag)
 
 /**
  * The page a prewarmed WebView boots: the canonical link's route with no Artifact (an address the
@@ -642,8 +647,8 @@ internal fun raftArtifactViewerEmbeddedPageUrl(
  * later routes to is drawn without its own header too, and with the conversation and the head
  * height ([hostHead]) of the viewer the warm document is meant for.
  */
-internal fun raftArtifactViewerWarmUrl(webBaseUrl: String, conversationId: String? = null, hostHead: Int? = null): String =
-    raftArtifactViewerEmbeddedUrl(webBaseUrl.trim().trimEnd('/') + "/artifacts/" + RAFT_ARTIFACT_VIEWER_WARM_SEGMENT, conversationId, hostHead)
+internal fun raftArtifactViewerWarmUrl(webBaseUrl: String, conversationId: String? = null, hostHead: Int? = null, langTag: String? = null): String =
+    raftArtifactViewerEmbeddedUrl(webBaseUrl.trim().trimEnd('/') + "/artifacts/" + RAFT_ARTIFACT_VIEWER_WARM_SEGMENT, conversationId, hostHead, langTag)
 
 internal const val RAFT_ARTIFACT_VIEWER_WARM_SEGMENT = "raft-app-warm"
 
@@ -674,13 +679,14 @@ internal fun raftArtifactViewerNavigateScript(
     target: ArtifactLinkTarget,
     conversationId: String? = null,
     hostHead: Int? = null,
+    langTag: String? = null,
 ): String {
     val path = Json.encodeToString(String.serializer(), raftArtifactViewerPagePath(target))
     // The address keeps the embed contract (the web's keeper would put it back; this saves a write). The kept
     // document latched its conversation and head height when it booted: only one booted with [conversationId] and
     // [hostHead] is routed ([RaftArtifactViewerCache.keptDocumentUsable]), so the address names the same ones.
     val address =
-        Json.encodeToString(String.serializer(), raftArtifactViewerPagePath(target) + "?" + raftArtifactViewerEmbedQuery(conversationId, hostHead))
+        Json.encodeToString(String.serializer(), raftArtifactViewerPagePath(target) + "?" + raftArtifactViewerEmbedQuery(conversationId, hostHead, langTag))
     return raftArtifactViewerGuardedScript(
         webOrigin,
         """

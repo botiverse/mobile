@@ -30,7 +30,6 @@ internal fun Pager.openSettingsAccountDeletionPage(storeScope: RaftShellStoreSco
 internal val settingsAccountDeletionWebViewSpec =
     StandaloneSettingsWebViewSpec(
         surface = SettingsWebViewSurface.AccountDeletion,
-        includeLocaleQuery = true,
         // The page emits `session:logout` through window.RaftHost (embed/hostBridge.ts).
         hostEventsEnabled = true,
         buildWebUrl = ::settingsAccountDeletionWebViewUrl,
