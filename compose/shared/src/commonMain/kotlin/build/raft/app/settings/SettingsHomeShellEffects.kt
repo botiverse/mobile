@@ -170,8 +170,9 @@ internal fun AppShellNotificationBadgeEffects(
             )
         }
     }
-    // Sync top pinned channels / DMs to the host launcher icon dynamic shortcut menu. The label of a
-    // DM without a name is resolved here, in composition, so a language change syncs the menu again.
+    // Sync top pinned channels / DMs to the host launcher icon dynamic shortcut menu, and recent
+    // writable conversations to the OS Share Sheet Direct Share surface. The label of a DM without
+    // a name is resolved here, in composition, so a language change syncs the launcher menu again.
     val directMessageShortcutTitle = stringResource(Res.string.thread_direct_message_title)
     LaunchedEffect(homeState.content, readySession, authoritativeHomeStartAllowed, directMessageShortcutTitle) {
         if (!authoritativeHomeStartAllowed || readySession == null) {
@@ -187,6 +188,19 @@ internal fun AppShellNotificationBadgeEffects(
                     maxCount = 4
                 )
             bridge.syncDesktopShortcuts(shortcuts)
+            val contentOwnedBySession =
+                content.snapshot.currentMember.id.value == readySession.user.id &&
+                    content.session.user.id == readySession.user.id &&
+                    readySession.servers.any { it.id == content.snapshot.server.id.value }
+            if (!content.isDurableIdentityCache && contentOwnedBySession) {
+                val shareSuggestions =
+                    build.raft.app.data.extractRecentShareSuggestions(snapshot = content.snapshot)
+                build.raft.app.data.RaftShareSuggestionsHostProvider.publish(
+                    accountId = readySession.user.id,
+                    serverId = content.snapshot.server.id.value,
+                    suggestions = shareSuggestions
+                )
+            }
         }
     }
     LaunchedEffect(sharedStores.activityUnreadSummaryStore, readyServerId, authoritativeHomeStartAllowed) {

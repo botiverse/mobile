@@ -18,6 +18,7 @@ import build.raft.app.core.data.diagnostics.RaftWebViewRendererGoneReporter
 import build.raft.app.data.raftClearLegacyFontPreference
 import build.hands.update.HandsCrash
 import build.raft.app.shared.AndroidAppScopeRealtimeOwner
+import build.raft.app.shared.AndroidDynamicShortcutCoordinator
 import build.raft.app.shared.AndroidRealtimeKeepAliveController
 import build.raft.app.shared.RaftAndroidHostHooks
 import build.raft.app.shared.RaftAndroidInstallReferrer
@@ -30,7 +31,9 @@ import build.raft.app.shared.installAndroidThreadComposerTemporaryFileRetirement
 import build.raft.app.shared.isAndroidSystemDark
 import build.raft.app.data.KeyValueAuthSessionStore
 import build.raft.app.data.RaftAppAppearanceRuntime
+import build.raft.app.data.RaftAuthSessionState
 import build.raft.app.data.installAndroidAppScopeEventBus
+import build.raft.app.data.sessionOrNull
 import build.raft.app.network.installAndroidRaftAppIdentity
 import build.raft.app.network.installAndroidRaftUserAgentDevice
 import build.raft.app.push.AndroidPushRegistration
@@ -121,6 +124,7 @@ class RaftApplication : Application() {
         installAndroidAppScopePlatformFileResolver(this)
         installAndroidThreadComposerTemporaryFileRetirement(this)
         installAndroidExternalShareInbox(this)
+        AndroidDynamicShortcutCoordinator.install(this)
         installAndroidAppScopeEventBus(this)
         AndroidAppScopeRealtimeOwner.install(this)
         AndroidPushRegistration.start(this)
@@ -136,14 +140,19 @@ class RaftApplication : Application() {
         // releases to this caller's event loop. It stays synchronous on purpose: the cloned-install
         // id must be discarded and the diagnostics user context set before HandsCrash and any
         // Activity start. Do not add Main/Main.immediate session readers above this line.
-        runCatching {
-            runBlocking {
-                val authStore = KeyValueAuthSessionStore(androidMMKVAuthKeyValueStore(this@RaftApplication))
-                // A restored/cloned install may carry an installation id without its session.
-                authStore.discardAuthInstallationIdWithoutSession()
-                authStore.readSession()
-            }
-        }.getOrNull()?.let { session ->
+        val initialSessionState =
+            runCatching {
+                runBlocking {
+                    val authStore = KeyValueAuthSessionStore(androidMMKVAuthKeyValueStore(this@RaftApplication))
+                    // A restored/cloned install may carry an installation id without its session.
+                    authStore.discardAuthInstallationIdWithoutSession()
+                    authStore.readSessionState()
+                }
+            }.getOrNull()
+        if (initialSessionState is RaftAuthSessionState.SignedOut) {
+            AndroidDynamicShortcutCoordinator.clear("cold_start_signed_out")
+        }
+        initialSessionState?.sessionOrNull?.let { session ->
             RaftAndroidLocalDiagnostics.updateUserContext(
                 context = this,
                 userId = session.user.id,

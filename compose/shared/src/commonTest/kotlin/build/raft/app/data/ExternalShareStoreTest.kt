@@ -314,6 +314,260 @@ class ExternalShareStoreTest {
         assertEquals(emptyList(), finalState.conversationTargets)
     }
 
+    @Test
+    fun preselectedTargetHintMatchesLiveSameServerTargetAndHandsOffDirectlyToComposer() = runPortableCoroutineTest {
+        val hint =
+            RaftShareSuggestionContract.encodeTargetHint(
+                serverId = "server",
+                kind = RaftShareSuggestionKind.DirectMessage,
+                channelId = "dm-agent-1"
+            )
+        val dmTarget =
+            ForwardMessageTarget(
+                serverId = ServerId("server"),
+                kind = ForwardMessageTargetKind.RecentDirectMessage,
+                id = "dm-agent-1",
+                title = "AirenaAgent",
+                channelId = ChannelId("dm-agent-1"),
+                channelKind = ConversationKind.DirectMessage,
+                channelType = "dm",
+                canForwardNow = true
+            )
+        val native = FakeEnvelopeRepository(envelope(preselectedTargetHint = hint))
+        val drafts = FakeDraftRepository()
+        val targets = FakeTargetRepository(listOf(target("one"), dmTarget))
+        val store = store(native, drafts, targets)
+
+        store.dispatch(load())
+
+        val ready = store.awaitState<ExternalShareState.ReadyForComposer>()
+        assertEquals("server", ready.handoff.serverId)
+        assertEquals("dm-agent-1", ready.handoff.target.id)
+        assertEquals(ChannelId("resolved-dm-agent-1"), ready.handoff.target.channelId)
+        assertEquals(ConversationKind.DirectMessage, ready.handoff.target.channelKind)
+        assertEquals(1, targets.resolveCalls)
+        assertEquals(listOf("consume"), native.events)
+        assertEquals(ExternalShareDraftStage.ComposerHandoff, drafts.draft?.stage)
+        assertTrue(drafts.draft?.hintHandled == true)
+        assertFalse(native.deleted)
+    }
+
+    @Test
+    fun preselectedTargetHintSupportsAuthorizedCrossServerTarget() = runPortableCoroutineTest {
+        val hint =
+            RaftShareSuggestionContract.encodeTargetHint(
+                serverId = "server-b",
+                kind = RaftShareSuggestionKind.Channel,
+                channelId = "design"
+            )
+        val crossTarget = target("design", serverId = "server-b")
+        val targets =
+            FakeTargetRepository(listOf(target("one", serverId = "server"))).apply {
+                targetsByServer =
+                    mapOf(
+                        "server" to listOf(target("one", serverId = "server")),
+                        "server-b" to listOf(crossTarget)
+                    )
+            }
+        val native = FakeEnvelopeRepository(envelope(preselectedTargetHint = hint))
+        val drafts = FakeDraftRepository()
+        val store = store(native, drafts, targets)
+
+        store.dispatch(
+            ExternalShareIntent.Load(
+                token = "opaque-token_1234567890",
+                accountId = "account",
+                serverId = "server",
+                serverOptions =
+                    listOf(
+                        ExternalShareServerOption("server", "Server A"),
+                        ExternalShareServerOption("server-b", "Server B")
+                    )
+            )
+        )
+
+        val ready = store.awaitState<ExternalShareState.ReadyForComposer>()
+        assertEquals("server-b", ready.handoff.serverId)
+        assertEquals(ChannelId("resolved-design"), ready.handoff.target.channelId)
+        assertEquals(1, targets.resolveCalls)
+    }
+
+    @Test
+    fun preselectedTargetHintFallsBackSilentlyToPickerWhenUnauthorizedStaleKindMismatchOrMalformed() =
+        runPortableCoroutineTest {
+            val cases =
+                listOf(
+                    // Unauthorized server (account switched or server removed).
+                    RaftShareSuggestionContract.encodeTargetHint("server-unauthorized", RaftShareSuggestionKind.Channel, "one"),
+                    // Stale channel not present in live targets (left / archived / frozen).
+                    RaftShareSuggestionContract.encodeTargetHint("server", RaftShareSuggestionKind.Channel, "deleted-room"),
+                    // Kind mismatch (channel id points to a channel, not a DM).
+                    RaftShareSuggestionContract.encodeTargetHint("server", RaftShareSuggestionKind.DirectMessage, "one"),
+                    // Malformed / injected hint.
+                    "javascript:alert(1)"
+                )
+
+            cases.forEachIndexed { index, rawHint ->
+                val token = "hint-fallback-token-$index-123456"
+                val native = FakeEnvelopeRepository(envelope(token = token, preselectedTargetHint = rawHint))
+                val drafts = FakeDraftRepository()
+                val targets = FakeTargetRepository(listOf(target("one")))
+                val store = store(native, drafts, targets)
+
+                store.dispatch(load(token = token))
+
+                val selecting =
+                    store.awaitState<ExternalShareState.SelectingTargets> { !it.loading && it.targets.isNotEmpty() }
+                assertEquals("server", selecting.serverId)
+                assertEquals(listOf("one"), selecting.targets.map { it.id })
+                assertNull(selecting.errorCode)
+                assertEquals(0, targets.resolveCalls)
+                assertTrue(drafts.draft?.hintHandled == true)
+            }
+        }
+
+    @Test
+    fun preselectedTargetHintRejectsUnjoinedChannelAndFallsBackToPicker() = runPortableCoroutineTest {
+        val hint =
+            RaftShareSuggestionContract.encodeTargetHint("server", RaftShareSuggestionKind.Channel, "public-unjoined")
+        val unjoined =
+            ForwardMessageTarget(
+                serverId = ServerId("server"),
+                kind = ForwardMessageTargetKind.PublicChannelUnjoined,
+                id = "public-unjoined",
+                title = "#public-unjoined",
+                channelId = ChannelId("public-unjoined"),
+                channelKind = ConversationKind.Channel,
+                joined = false,
+                canForwardNow = false,
+                requiredAction = ForwardMessageTargetRequiredAction.JoinChannel
+            )
+        val targets = FakeTargetRepository(listOf(target("one"), unjoined))
+        val store = store(FakeEnvelopeRepository(envelope(preselectedTargetHint = hint)), FakeDraftRepository(), targets)
+
+        store.dispatch(load())
+
+        val selecting = store.awaitState<ExternalShareState.SelectingTargets> { !it.loading && it.targets.isNotEmpty() }
+        assertNull(selecting.errorCode)
+        assertEquals(0, targets.resolveCalls)
+    }
+
+    @Test
+    fun restoredSelectingTargetsDraftWithHintHandledNeverReplaysPreselectedHint() = runPortableCoroutineTest {
+        val hint = RaftShareSuggestionContract.encodeTargetHint("server", RaftShareSuggestionKind.Channel, "one")
+        val persisted =
+            ExternalShareDraft(
+                envelope = envelope(preselectedTargetHint = hint),
+                serverId = "server",
+                stage = ExternalShareDraftStage.SelectingTargets,
+                selectedTargets = emptyList(),
+                envelopeConsumed = true,
+                hintHandled = true
+            )
+        val targets = FakeTargetRepository(listOf(target("one")))
+        val store = store(FakeEnvelopeRepository(persisted.envelope), FakeDraftRepository(persisted), targets)
+
+        store.dispatch(load())
+
+        val selecting = store.awaitState<ExternalShareState.SelectingTargets> { !it.loading && it.targets.isNotEmpty() }
+        assertEquals(listOf("one"), selecting.targets.map { it.id })
+        assertEquals(0, targets.resolveCalls)
+    }
+
+    @Test
+    fun preselectedTargetHintResolveFailureFallsBackSilentlyToPicker() = runPortableCoroutineTest {
+        val hint = RaftShareSuggestionContract.encodeTargetHint("server", RaftShareSuggestionKind.Channel, "one")
+        val targets =
+            FakeTargetRepository(listOf(target("one"))).apply {
+                resolveOverride = { _, _ ->
+                    DataResult.NoPermission(PermissionBlocker("channel_read_only", "Read only"))
+                }
+            }
+        val drafts = FakeDraftRepository()
+        val store = store(FakeEnvelopeRepository(envelope(preselectedTargetHint = hint)), drafts, targets)
+
+        store.dispatch(load())
+
+        val selecting = store.awaitState<ExternalShareState.SelectingTargets> { !it.loading && it.targets.isNotEmpty() }
+        assertEquals("server", selecting.serverId)
+        assertNull(selecting.errorCode)
+        assertEquals(1, targets.resolveCalls)
+        assertTrue(drafts.draft?.hintHandled == true)
+        assertEquals(ExternalShareDraftStage.SelectingTargets, drafts.draft?.stage)
+    }
+
+    @Test
+    fun restoredSelectingTargetsDraftWithUnhandledHintResolvesValidAndFallsBackOnUnauthorized() =
+        runPortableCoroutineTest {
+            val validHint = RaftShareSuggestionContract.encodeTargetHint("server", RaftShareSuggestionKind.Channel, "one")
+            val validDraft =
+                ExternalShareDraft(
+                    envelope = envelope(preselectedTargetHint = validHint),
+                    serverId = "server",
+                    stage = ExternalShareDraftStage.SelectingTargets,
+                    selectedTargets = emptyList(),
+                    envelopeConsumed = true,
+                    hintHandled = false
+                )
+            val validTargets = FakeTargetRepository(listOf(target("one")))
+            val validStore = store(FakeEnvelopeRepository(validDraft.envelope), FakeDraftRepository(validDraft), validTargets)
+            validStore.dispatch(load())
+            val ready = validStore.awaitState<ExternalShareState.ReadyForComposer>()
+            assertEquals("one", ready.handoff.target.id)
+            assertEquals(1, validTargets.resolveCalls)
+
+            val unauthorizedHint =
+                RaftShareSuggestionContract.encodeTargetHint("other-server", RaftShareSuggestionKind.Channel, "one")
+            val unauthorizedDraft =
+                ExternalShareDraft(
+                    envelope = envelope(token = "restored-unauth-12345678", preselectedTargetHint = unauthorizedHint),
+                    serverId = "server",
+                    stage = ExternalShareDraftStage.SelectingTargets,
+                    selectedTargets = emptyList(),
+                    envelopeConsumed = true,
+                    hintHandled = false
+                )
+            val fallbackDrafts = FakeDraftRepository(unauthorizedDraft)
+            val fallbackTargets = FakeTargetRepository(listOf(target("one")))
+            val fallbackStore =
+                store(FakeEnvelopeRepository(unauthorizedDraft.envelope), fallbackDrafts, fallbackTargets)
+            fallbackStore.dispatch(load(token = "restored-unauth-12345678"))
+            val selecting =
+                fallbackStore.awaitState<ExternalShareState.SelectingTargets> { !it.loading && it.targets.isNotEmpty() }
+            assertNull(selecting.errorCode)
+            assertEquals(0, fallbackTargets.resolveCalls)
+            assertTrue(fallbackDrafts.draft?.hintHandled == true)
+        }
+
+    @Test
+    fun clearCancelsInFlightPreselectedHintLookup() = runPortableCoroutineTest {
+        val hint = RaftShareSuggestionContract.encodeTargetHint("server", RaftShareSuggestionKind.Channel, "one")
+        val lookupStarted = CompletableDeferred<Unit>()
+        val lookupGate = CompletableDeferred<List<ForwardMessageTarget>>()
+        var lookupCancelled = false
+        val targets =
+            FakeTargetRepository(listOf(target("one"))).apply {
+                recentTargetsOverride = {
+                    lookupStarted.complete(Unit)
+                    try {
+                        DataResult.Content(lookupGate.await())
+                    } catch (c: kotlinx.coroutines.CancellationException) {
+                        lookupCancelled = true
+                        throw c
+                    }
+                }
+            }
+        val store = store(FakeEnvelopeRepository(envelope(preselectedTargetHint = hint)), FakeDraftRepository(), targets)
+
+        store.dispatch(load())
+        lookupStarted.await()
+        store.clear()
+        repeat(10) { yield() }
+
+        assertTrue(lookupCancelled)
+        assertIs<ExternalShareState.Idle>(store.state.value)
+    }
+
     private fun CoroutineScope.store(
         native: FakeEnvelopeRepository,
         drafts: FakeDraftRepository,
@@ -362,13 +616,17 @@ class ExternalShareStoreTest {
         )
     }
 
-    private fun envelope(token: String = "opaque-token_1234567890") =
+    private fun envelope(
+        token: String = "opaque-token_1234567890",
+        preselectedTargetHint: String? = null
+    ) =
         ExternalShareEnvelope(
             token = token,
             createdAtEpochMillis = 1L,
             sourcePlatform = "android",
             text = "hello",
-            items = listOf(ExternalShareItem("private://one", "one.jpg", "image/jpeg", 10L))
+            items = listOf(ExternalShareItem("private://one", "one.jpg", "image/jpeg", 10L)),
+            preselectedTargetHint = preselectedTargetHint
         )
 
     private fun target(id: String, serverId: String = "server") =
@@ -464,6 +722,8 @@ class ExternalShareStoreTest {
             DataResult.Error(ScreenError("forward_thread_parent_unavailable", retryable = false))
         }
         var interimByQuery: (String) -> List<ForwardMessageTarget> = { emptyList() }
+        var recentTargetsOverride: (suspend (ServerId) -> DataResult<List<ForwardMessageTarget>>)? = null
+        var resolveOverride: (suspend (ServerId, ForwardMessageTarget) -> DataResult<ForwardMessageDestination>)? = null
 
         /** When set, each search query waits for its own gate and answers `server-<query>`. */
         var serverGates: MutableMap<String, CompletableDeferred<Unit>>? = null
@@ -475,7 +735,8 @@ class ExternalShareStoreTest {
         ): List<ForwardMessageTarget> = interimByQuery(query)
 
         override suspend fun recentTargets(serverId: ServerId, limit: Int): DataResult<List<ForwardMessageTarget>> =
-            DataResult.Content(targetsByServer?.get(serverId.value) ?: values)
+            recentTargetsOverride?.invoke(serverId)
+                ?: DataResult.Content(targetsByServer?.get(serverId.value) ?: values)
 
         override suspend fun conversationTargets(
             serverId: ServerId,
@@ -518,6 +779,7 @@ class ExternalShareStoreTest {
             allowJoin: Boolean
         ): DataResult<ForwardMessageDestination> {
             resolveCalls += 1
+            resolveOverride?.let { return it(sourceServerId, target) }
             return DataResult.Content(
                 ForwardMessageDestination(
                     serverId = sourceServerId,

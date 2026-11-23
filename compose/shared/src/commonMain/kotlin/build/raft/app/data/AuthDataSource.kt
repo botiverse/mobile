@@ -1451,6 +1451,7 @@ class SharedAuthDataSource(
             retireCapturedAvatarOwners(avatarRetirement, source = "logout")
             clearAccountImageCaches(source = "logout")
             clearAccountWebViewStorage(source = "logout")
+            RaftShareSuggestionsHostProvider.clear("logout")
             diagnosticsLogger("auth_logout_cleared serverRevocation=$serverRevocation")
             SharedAuthResult.Success(Unit)
         }
@@ -1461,6 +1462,7 @@ class SharedAuthDataSource(
         retireCapturedAvatarOwners(capture, source)
         clearAccountImageCaches(source)
         clearAccountWebViewStorage(source)
+        RaftShareSuggestionsHostProvider.clear("session_cleared:$reason")
     }
 
     private suspend fun replaceAuthenticatedSessionAndRetireChangedAccount(
@@ -1479,6 +1481,7 @@ class SharedAuthDataSource(
             // Clear and await previous account's WebView auth storage BEFORE persisting the new
             // session so async cleanup can never race and wipe the new account's injected token.
             clearAccountWebViewStorage(source)
+            RaftShareSuggestionsHostProvider.clear("account_changed:$source")
         }
         if (!sessionStore.replaceAuthenticatedSessionIfCurrent(session, isCurrent)) return false
         retireCapturedAvatarOwners(capture, source)

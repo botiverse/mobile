@@ -4029,12 +4029,14 @@ internal class RaftSharedStoreProvider private constructor(
                     when (event) {
                         is AuthSessionEvent.Authenticated ->
                             {
+                                RaftShareSuggestionsHostProvider.clear("auth_session_authenticated")
                                 ProcessDiagnosticFeatureFlagOverrides.registry.clearObservations()
                                 processServerMembersCore.invalidateAll(reason = "authenticated")
                                 activityUnreadSummaryStore.invalidateAll(reason = "authenticated")
                             }
                         is AuthSessionEvent.Cleared ->
                             {
+                                RaftShareSuggestionsHostProvider.clear("auth_session_cleared")
                                 RaftProductEvents.setSignedOut()
                                 serverFeatureFlagLastKnown.clearAll()
                                 RaftMinBuildGate.onSignedOut()
