@@ -46,11 +46,16 @@ internal data class RuntimePickerRow(
     val group: RuntimePickerGroup,
     val enabled: Boolean,
     val suffix: RuntimePickerSuffix = RuntimePickerSuffix.None,
-    val deprecated: Boolean = false
+    val deprecated: Boolean = false,
+    /**
+     * Per-Computer / server-resolved capabilities (slock #16178); null on older servers, where
+     * [guidance] falls back to [RuntimeRaftCapabilityTable].
+     */
+    val raftCapabilities: ResolvedRuntimeRaftCapabilities? = null
 ) {
     /** Recommended / Limited and the capability hint ([runtimePickerGuidance]); a deprecated row has none. */
     val guidance: RuntimePickerGuidance
-        get() = runtimePickerGuidance(id, deprecated)
+        get() = runtimePickerGuidance(id, deprecated, raftCapabilities)
 
     /** The group heading already says the suffix, so the open list drops it (the closed field keeps it). */
     val suffixInList: Boolean
@@ -165,7 +170,8 @@ private fun serverRowPickerRows(
                 group = group,
                 enabled = group == RuntimePickerGroup.Current || group == RuntimePickerGroup.Ready,
                 suffix = suffix,
-                deprecated = deprecated
+                deprecated = deprecated,
+                raftCapabilities = row.raftCapabilities
             )
         }
     if (current == null || rows.any { it.id == current }) return rows
@@ -216,7 +222,8 @@ private fun catalogPickerRows(
             group = group,
             enabled = group == RuntimePickerGroup.Current || group == RuntimePickerGroup.Ready,
             suffix = suffix,
-            deprecated = entry.deprecated
+            deprecated = entry.deprecated,
+            raftCapabilities = entry.raftCapabilities
         )
     }
 }

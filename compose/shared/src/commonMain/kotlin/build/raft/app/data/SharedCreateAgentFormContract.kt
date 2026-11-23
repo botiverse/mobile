@@ -1,5 +1,12 @@
 package build.raft.app.data
 
+import build.raft.app.ResolvedRuntimeRaftCapabilities
+import build.raft.app.RuntimeCapabilitySource
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.booleanOrNull
+import kotlinx.serialization.json.contentOrNull
 
 internal const val CREATE_AGENT_BUILTIN_RUNTIME_ID = "builtin"
 
@@ -49,7 +56,13 @@ internal data class SharedCreateAgentRuntimeOption(
     val manageableForCurrentAgent: Boolean,
     val canSelectInThisContext: Boolean,
     /** The row carries the `runtimeFormV2` marker: the server has a v2 form for this runtime. */
-    val runtimeFormV2: Boolean = false
+    val runtimeFormV2: Boolean = false,
+    /**
+     * Resolved Raft capabilities for this runtime on this Computer and server (slock #16178),
+     * returned when the request sends `X-Raft-Client-Capabilities: runtime-options-capabilities@1`;
+     * null on older servers (pickers fall back to the bundled table).
+     */
+    val raftCapabilities: ResolvedRuntimeRaftCapabilities? = null
 ) {
     val selectable: Boolean
         get() =
@@ -59,6 +72,36 @@ internal data class SharedCreateAgentRuntimeOption(
                 admissionReason == null &&
                 availableForNew &&
                 !current
+}
+
+/**
+ * Lenient decode of `option.raftCapabilities` (`/runtime-options`, slock #16178) and
+ * `entry.raftCapabilities` (`GET /api/servers/:id/runtimes`, catalogVersion >= 2).
+ *
+ * Requires strict JSON booleans for the 3 picker flags (`midTurnSteering`, `subagents`,
+ * `compactionReported`). Ignores `internal` and unknown keys. A malformed value returns null
+ * (falling back to the bundled table) instead of failing the enclosing runtime row.
+ */
+internal fun decodeResolvedRuntimeRaftCapabilities(element: JsonElement?): ResolvedRuntimeRaftCapabilities? {
+    val obj = element as? JsonObject ?: return null
+    fun strictBoolean(key: String): Boolean? =
+        (obj[key] as? JsonPrimitive)?.takeIf { !it.isString }?.booleanOrNull
+    val midTurnSteering = strictBoolean("midTurnSteering") ?: return null
+    val subagents = strictBoolean("subagents") ?: return null
+    val compactionReported = strictBoolean("compactionReported") ?: return null
+    val rawSource = (obj["source"] as? JsonPrimitive)?.takeIf { it.isString }?.contentOrNull?.trim()
+    val source =
+        when (rawSource) {
+            "machine" -> RuntimeCapabilitySource.Machine
+            "default" -> RuntimeCapabilitySource.Default
+            else -> RuntimeCapabilitySource.Unknown
+        }
+    return ResolvedRuntimeRaftCapabilities(
+        midTurnSteering = midTurnSteering,
+        subagents = subagents,
+        compactionReported = compactionReported,
+        source = source
+    )
 }
 
 /**

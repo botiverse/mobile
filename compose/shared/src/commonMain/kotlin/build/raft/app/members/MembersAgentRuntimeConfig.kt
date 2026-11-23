@@ -355,7 +355,8 @@ internal fun MembersAgentRuntimeConfigSection(
     var agentRuntimeOptions by remember(member.id.value, agentRuntimeOptionsServerId) {
         mutableStateOf<ExistingAgentRuntimeOptions?>(null)
     }
-    LaunchedEffect(createAgentFormStore, agentRuntimeOptionsServerId, member.id.value, canonicalRuntimeId) {
+    val agentMachineRuntimesKey = remember(agentMachineRuntimes) { agentMachineRuntimes.sorted() }
+    LaunchedEffect(createAgentFormStore, agentRuntimeOptionsServerId, member.id.value, canonicalRuntimeId, agentMachineRuntimesKey) {
         val store = createAgentFormStore ?: return@LaunchedEffect
         val serverId = agentRuntimeOptionsServerId ?: return@LaunchedEffect
         if (canonicalRuntimeId == null) return@LaunchedEffect
