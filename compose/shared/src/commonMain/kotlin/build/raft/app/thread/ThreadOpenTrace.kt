@@ -62,6 +62,9 @@ internal object ThreadViewportOwnerTag {
     const val AnchorRestore = "anchor_restore"
     const val AdaptiveRestore = "adaptive_restore"
     const val LongMessageToggle = "long_message_toggle"
+
+    /** The typing / working line came or went while the list rested on its end (ThreadMessagesList). */
+    const val TypingLineEnd = "typing_line_end"
 }
 
 /** A shift's cause when no viewport owner scrolled in its frame. */

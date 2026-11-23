@@ -166,6 +166,108 @@ class TaskConversationContractTest {
         assertEquals(ConversationKind.Task, conversation.kind)
         assertFalse(conversation.joined)
         assertFalse(conversation.permissions.canSend)
+        assertFalse(conversation.membershipKnown)
+    }
+
+    @Test
+    fun taskConversationParentFetchFailureMarksMembershipUnknownInsteadOfReusingStaleParent() = runTest {
+        var parentStatus = 200
+        val network =
+            object : RaftNetworkClient {
+                override suspend fun request(
+                    priority: DataRequestPriority,
+                    path: String,
+                    method: String,
+                    query: List<Pair<String, String>>,
+                    serverIdOverride: build.raft.app.model.ServerId?,
+                    bodyText: String?,
+                ): HomeNetworkResponse =
+                    when (path.trim('/')) {
+                        "messages/channel/conv-1" ->
+                            HomeNetworkResponse(
+                                code = 200,
+                                bodyText =
+                                    """{"historyLimited":false,"messages":[{"id":"reply-1","seq":4,"channelId":"conv-1","senderType":"user","senderId":"user-1","senderName":"Artin","messageType":"chat","content":"on it","createdAt":"2026-10-27T10:00:00.000Z"}]}""",
+                            )
+                        "channels/conv-1" -> HomeNetworkResponse(code = 200, bodyText = taskChannelDetailJson())
+                        "channels/channel-1" ->
+                            if (parentStatus == 200) {
+                                HomeNetworkResponse(
+                                    code = 200,
+                                    bodyText = """{"id":"channel-1","name":"general","type":"channel","joined":true}""",
+                                )
+                            } else {
+                                HomeNetworkResponse(code = parentStatus, bodyText = null, errorBodyText = "unavailable")
+                            }
+                        else -> HomeNetworkResponse(code = 200, bodyText = """{"threads":[]}""")
+                    }
+            }
+        val repository = RealConversationRepository(conversationRepositoryTestSessionStore(), network)
+
+        val first =
+            assertIs<DataResult.Content<ThreadSnapshot>>(repository.getThread(ThreadId("conv-1"))).data.conversation
+        assertTrue(first.joined)
+        assertTrue(first.permissions.canSend)
+        assertTrue(first.membershipKnown)
+
+        // Subsequent parent fetch failure (network blip or 403/404 after leave/removal) must NOT
+        // reuse the stale cached parent as membershipKnown=true; marking membershipKnown=false lets
+        // SharedThreadStore preserve live/Home membership without flashing Join or resurrecting stale access.
+        parentStatus = 404
+        val second =
+            assertIs<DataResult.Content<ThreadSnapshot>>(repository.getThread(ThreadId("conv-1"))).data.conversation
+        assertFalse(second.membershipKnown, "failed parent fetch must not reuse stale cached membership as authoritative")
+        assertFalse(second.joined)
+        assertFalse(second.permissions.canSend)
+    }
+
+    @Test
+    fun threadTypeChannelDetailNeverStampsJoinedFalseOntoSnapshot() = runTest {
+        val network =
+            FakeConversationNetworkClient(
+                responses =
+                    mapOf(
+                        "GET messages/channel/thread-1" to
+                            """{"historyLimited":false,"messages":[{"id":"r1","seq":9,"channelId":"thread-1","senderType":"user","senderId":"user-1","senderName":"Artin","messageType":"chat","content":"reply","createdAt":"2026-10-27T10:00:00.000Z"}]}""",
+                        "GET channels/thread-1" to
+                            """{"id":"thread-1","serverId":"server-1","name":"thread-1","type":"thread","joined":false,"archivedAt":null}""",
+                    ),
+            )
+        val repository = RealConversationRepository(conversationRepositoryTestSessionStore(), network)
+
+        val snapshot =
+            assertIs<DataResult.Content<ThreadSnapshot>>(repository.getThread(ThreadId("thread-1"))).data
+
+        assertTrue(snapshot.conversation.joined, "synthetic thread detail joined=false must not overwrite conversation.joined")
+        assertFalse(snapshot.conversation.membershipKnown)
+        assertEquals(ConversationKind.Thread, snapshot.conversation.kind)
+        assertEquals("thread", snapshot.conversation.channelType)
+        assertEquals(ConversationKind.Thread, snapshot.canonicalConversationDetail?.kind)
+        assertFalse(snapshot.canonicalConversationDetail?.membershipKnown == true)
+    }
+
+    @Test
+    fun threadTypeEmptyChannelDetailNeverStampsJoinedFalseOntoSnapshot() = runTest {
+        val network =
+            FakeConversationNetworkClient(
+                responses =
+                    mapOf(
+                        "GET messages/channel/thread-empty" to
+                            """{"historyLimited":false,"messages":[]}""",
+                        "GET channels/thread-empty" to
+                            """{"id":"thread-empty","serverId":"server-1","name":"thread-empty","type":"thread","joined":false,"archivedAt":null}""",
+                    ),
+            )
+        val repository = RealConversationRepository(conversationRepositoryTestSessionStore(), network)
+
+        val snapshot =
+            assertIs<DataResult.Content<ThreadSnapshot>>(repository.getThread(ThreadId("thread-empty"))).data
+
+        assertTrue(snapshot.messages.isEmpty())
+        assertTrue(snapshot.conversation.joined, "empty thread detail joined=false must not stamp joined=false")
+        assertFalse(snapshot.conversation.membershipKnown)
+        assertEquals(ConversationKind.Thread, snapshot.conversation.kind)
+        assertEquals("thread", snapshot.conversation.channelType)
     }
 
     @Test

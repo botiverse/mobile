@@ -1,5 +1,5 @@
 [versions]
-agp = "9.5.1"
+agp = "9.5.2"
 kotlin = "2.4.21"
 ksp = "2.3.12"
 composePlugin = "1.12.2"
@@ -23,7 +23,7 @@ coreSplashscreen = "1.2.0"
 webkit = "1.18.0"
 credentials = "1.6.0"
 junit = "4.13.2"
-robolectric = "4.17"
+robolectric = "4.18.1"
 junitVersion = "1.3.0"
 espressoCore = "3.7.0"
 lifecycleRuntimeKtx = "2.11.0"
@@ -51,7 +51,7 @@ wrywebview = "1.0.0-beta-02"
 # FileKit (MIT): the system open / save panels on desktop (macOS NSOpenPanel / NSSavePanel through
 # JNA). :desktopApp only; built against Kotlin 2.4.21 / coroutines 1.11.0 like the app.
 # Jar SHA-256s pinned in desktopApp/build.gradle.kts (verifyPinnedDesktopJars): bump both together.
-filekit = "0.17.0"
+filekit = "0.17.1"
 # JetBrains Runtime API (Apache-2.0): the macOS custom title bar (RaftDesktopTitleBar). :desktopApp
 # only; jar SHA-256 pinned in desktopApp/build.gradle.kts (verifyPinnedDesktopJars).
 jbrApi = "1.12.0"

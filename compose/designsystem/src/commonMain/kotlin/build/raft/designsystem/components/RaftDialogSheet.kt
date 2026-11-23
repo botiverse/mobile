@@ -58,7 +58,7 @@ import build.raft.designsystem.tokens.RaftStroke
  *
  * - Surface: `layer-popover`, the dialog radius on its top corners, the `line-seam` ring.
  * - Head: a pushed page's head, 56dp with a seam under it: × at the start
- *   ([RaftBackButton] with [RaftGlyph.X], named [closeLabel]), the [title] in
+ *   ([RaftCloseButton], named [closeLabel]), the [title] in
  *   `text-headline`, and the dialog's one commit button at the end ([commitLabel], 32dp,
  *   [commitVariant]: the same colour and words as on a desktop). No footer: × is Cancel.
  *   A null [commitLabel] leaves the head without one, for a view of the dialog that commits
@@ -128,9 +128,9 @@ private fun RaftDialogSheetSurfaceImpl(
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     if (onBack != null) {
-                        RaftBackButton(onClick = onBack, label = backLabel, glyph = RaftGlyph.ArrowLeft, enabled = closeEnabled)
+                        RaftBackButton(onClick = onBack, label = backLabel, enabled = closeEnabled)
                     } else {
-                        RaftBackButton(onClick = onClose, label = closeLabel, glyph = RaftGlyph.X, enabled = closeEnabled)
+                        RaftCloseButton(onClick = onClose, label = closeLabel, enabled = closeEnabled)
                     }
                     RaftText(
                         title,

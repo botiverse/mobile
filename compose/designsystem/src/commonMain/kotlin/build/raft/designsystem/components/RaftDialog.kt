@@ -185,8 +185,9 @@ fun RaftDialogSurface(
  *   `pt-1.5 pb-5`: 6dp under the header).
  * - [title]: `text-headline` bold `foreground`, a heading for screen readers; it wraps.
  * - [description]: `text-subhead` `foreground-muted`, 6dp under the title row.
- * - [onClose]: the ghost × `icon-md` named [closeLabel] ([RaftStrings.close] by default) at
- *   the end, pulled 6dp into the corner (`-my-1.5 -mr-1.5`) so it doesn't make the row taller.
+ * - [onClose]: the ghost × `icon-md` ([RaftCloseButton], [RaftCloseButtonSize.Dialog]) named
+ *   [closeLabel] ([RaftStrings.close] by default) at the end, pulled 6dp into the corner
+ *   (`-my-1.5 -mr-1.5`) so it doesn't make the row taller.
  */
 @Composable
 fun RaftDialogHeader(
@@ -218,9 +219,7 @@ fun RaftDialogHeader(
                 // `-my-1.5 -mr-1.5`: the 32dp button doesn't make the header taller and
                 // its glyph lines up with the body's edge.
                 Box(Modifier.raftBleed(end = 6.dp, vertical = 6.dp)) {
-                    RaftIconButton(onClick = onClose, tooltip = closeLabel, variant = RaftButtonVariant.Ghost, enabled = closeEnabled) {
-                        RaftGlyphIcon(RaftGlyph.X, size = 18.dp)
-                    }
+                    RaftCloseButton(onClick = onClose, label = closeLabel, size = RaftCloseButtonSize.Dialog, enabled = closeEnabled)
                 }
             }
         }
@@ -384,9 +383,7 @@ internal fun RaftSheetSurfaceImpl(
                         if (onClose != null) {
                             // The 32dp ghost × beside the 22dp title line, its glyph on the body's edge.
                             Box(Modifier.raftBleed(end = 6.dp, vertical = 5.dp)) {
-                                RaftIconButton(onClick = onClose, tooltip = closeLabel, variant = RaftButtonVariant.Ghost) {
-                                    RaftGlyphIcon(RaftGlyph.X, size = 18.dp)
-                                }
+                                RaftCloseButton(onClick = onClose, label = closeLabel, size = RaftCloseButtonSize.Dialog)
                             }
                         }
                     }

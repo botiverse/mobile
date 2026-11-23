@@ -50,6 +50,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import build.raft.designsystem.components.RaftBackButton
+import build.raft.designsystem.components.RaftCloseButton
 import build.raft.designsystem.components.RaftButtonVariant
 import build.raft.designsystem.components.RaftIconButton
 import build.raft.designsystem.components.RaftIconButtonSize
@@ -57,7 +58,6 @@ import build.raft.designsystem.components.raftCopyable
 import build.raft.designsystem.components.raftPaneGridFitHead
 import build.raft.designsystem.components.raftSafeAreaHorizontalPadding
 import build.raft.designsystem.components.RaftBackButtonDefaults
-import build.raft.designsystem.components.RaftGlyph
 
 // raft-ui `sidebarSectionDisclosure`: a 14px chevron (`size-3.5`), `gap-1.5`, all in ink-3.
 private val SectionChevronSize = 14.dp
@@ -123,14 +123,14 @@ internal fun RaftPaneAwareBackButton(onClick: () -> Unit) {
 }
 
 /**
- * A wide side pane's Close (×), the last control of its page's head (web PanelHeader actions: …, ⋯, Expand, Close):
- * closes the pane, and only it, the conversation beside it staying ([RaftSidePanePage.close]). Nothing outside a side
- * pane.
+ * A wide side pane's Close (×, [RaftCloseButton]), the last control of its page's head (web PanelHeader actions: …,
+ * ⋯, Expand, Close): closes the pane, and only it, the conversation beside it staying ([RaftSidePanePage.close]).
+ * Nothing outside a side pane.
  */
 @Composable
 internal fun RaftSidePaneCloseButton() {
     val pane = LocalRaftSidePanePage.current ?: return
-    RaftBackButton(onClick = pane.close, label = stringResource(Res.string.common_close), glyph = RaftGlyph.X)
+    RaftCloseButton(onClick = pane.close, label = stringResource(Res.string.common_close))
 }
 
 @Composable

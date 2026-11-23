@@ -4,6 +4,7 @@ import build.raft.app.data.ChannelProfileUpdateResult
 import build.raft.app.data.ChannelRepository
 import build.raft.app.data.ConversationRepository
 import build.raft.app.data.HomeSnapshot
+import build.raft.app.data.HomeSnapshotLookup
 import build.raft.app.data.MemberRepository
 import build.raft.app.data.ReadReceiptCoordinator
 import build.raft.app.data.ReadReceiptOwner
@@ -44,6 +45,7 @@ internal fun testSharedThreadDataSource(
     conversationRepository: ConversationRepository? = null,
     channelRepository: ChannelRepository? = null,
     homeSnapshotProvider: (suspend (ServerId) -> HomeSnapshot?)? = null,
+    homeSnapshotLookupProvider: (suspend (ServerId) -> HomeSnapshotLookup?)? = null,
     channelProfileUpdateSink: suspend (ChannelProfileUpdateResult) -> Unit = {},
     messageStore: SharedThreadMessageStore? = null,
     cacheEnvironmentIdProvider: () -> String,
@@ -92,6 +94,7 @@ internal fun testSharedThreadDataSource(
     conversationRepository = conversationRepository,
     channelRepository = channelRepository,
     homeSnapshotProvider = homeSnapshotProvider,
+    homeSnapshotLookupProvider = homeSnapshotLookupProvider,
     channelProfileUpdateSink = channelProfileUpdateSink,
     messageStore = messageStore ?: storeScope?.let { SharedThreadMessageStore(scope = it) },
     cacheEnvironmentIdProvider = cacheEnvironmentIdProvider,

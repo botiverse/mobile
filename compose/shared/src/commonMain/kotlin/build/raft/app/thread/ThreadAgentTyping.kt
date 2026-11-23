@@ -174,10 +174,10 @@ internal val LocalThreadAgentTyping = compositionLocalOf<ThreadAgentTypingUi?> {
  * to sit on (web renders the line with the composer only). Not for a channel previewed without
  * joining (the join footer) or an archived one (the archived banner).
  *
- * The one condition for the line itself ([rememberThreadAgentTyping]) and for its slot at the
- * list's end ([ThreadTimelineSlice.agentTypingLineSlot]): a line without its slot would cover the
- * newest message. Read from the conversation's own flags only, never from access resolution,
- * write authority or agent activity, which change while a conversation is open.
+ * The condition for the line itself ([rememberThreadAgentTyping]); the list's end makes room for
+ * the line exactly while it shows ([threadBottomSpacerAndAnchorTrailingHeight]), so nothing is
+ * reserved here while nobody types or works. Read from the conversation's own flags only, never
+ * from access resolution or write authority, which change while a conversation is open.
  */
 internal fun RaftThreadScreenPayload.agentTypingLineCanShow(): Boolean = showComposer && joined && !channelArchived
 
@@ -310,13 +310,54 @@ internal fun rememberThreadAgentTyping(
 internal val ThreadAgentTypingLineHeight = 24.dp
 
 /**
- * web `AgentTypingListEnd` `h-7.5`: the line's slot at the list's end. The list's whole end
- * ([threadBottomSpacerAndAnchorTrailingHeight]) in every conversation that can show the line
- * ([agentTypingLineCanShow]), in place of its 16dp end, not only while the line shows, so the line
- * coming or going moves no message. It is the line's row ([ThreadAgentTypingLineHeight]) and 6dp
- * between it and the newest message.
+ * web `AgentTypingListEnd` `h-7.5`: the line's slot, added to the list's own end only while the line
+ * shows ([threadBottomSpacerAndAnchorTrailingHeight]); nothing while nobody types or works here. It
+ * is the line's row ([ThreadAgentTypingLineHeight]) and 6dp more, so the newest message rests whole
+ * above the line, the list's own end between them.
  */
 internal val ThreadAgentTypingListEndHeight = 30.dp
+
+/**
+ * Whether the line coming ([lineShown]) or going retires the viewport's intent to
+ * [LazyViewportIntent.FollowingLatest] before the list's end changes height (web MessageTimeline
+ * keeps a reader who follows the bottom pinned when AgentTypingListEnd appears or goes, and holds
+ * the reading position of one scrolled up).
+ *
+ * The bottom-up list keeps a reader resting on its end there by itself: the rows ride up by the
+ * slot, the newest message clear of the line, and come back when it goes. Only a reader there under
+ * another intent (opened on the newest message from Inbox or Activity, a focused tail, a drag let go
+ * just above the end) needs this; otherwise the reading anchor keeper puts the old position back
+ * and the line covers the newest message's last line (Android 1.27.0, #proj-mobile #227). The
+ * keyboard correction retires a parked tail the same way ([resolveThreadComposerInsetViewportAction]).
+ *
+ * When the line comes, any reader who sees the end row ([listEndInView]) sees the newest message
+ * whole, and keeps seeing it whole above the line. When it goes, only a reader resting on the end
+ * ([restsOnListEnd], the tolerance a settled drag counts as following) follows: one further up
+ * keeps their place as far as the shorter end allows, where following would drop the rows by the
+ * slot and then bring them back up to the end.
+ *
+ * Nothing to follow for a reader scrolled up (the end changes out of view), while a drag or fling
+ * owns the viewport (a finger down included), before the placement settles (the initial anchor, a
+ * share capture or an adaptive restore owns it), or while the loaded window stops short of the
+ * latest messages ([newerPagePending]: newer pages decide where the end is).
+ */
+internal fun threadTypingLineEndFollowsLatest(
+    reverseLayout: Boolean,
+    lineShown: Boolean,
+    intent: LazyViewportIntent,
+    listEndInView: Boolean,
+    restsOnListEnd: Boolean,
+    scrollInProgress: Boolean,
+    placementSettled: Boolean,
+    newerPagePending: Boolean,
+): Boolean =
+    reverseLayout &&
+        (if (lineShown) listEndInView else restsOnListEnd) &&
+        !scrollInProgress &&
+        placementSettled &&
+        !newerPagePending &&
+        intent != LazyViewportIntent.FollowingLatest &&
+        intent != LazyViewportIntent.UserDragging
 
 private const val ThreadAgentTypingMaxFaces = 3
 
@@ -359,14 +400,17 @@ internal fun ThreadMessageListEndFade(typingLineShown: Boolean, modifier: Modifi
 
 /**
  * The fade's height above the solid strip: the section step while the typing line is hidden; while
- * it shows, only the room the list's end leaves above the line ([ThreadAgentTypingListEndHeight]
- * minus [ThreadAgentTypingLineHeight]), so the strip and its fade end where the newest message
- * rests and never cover its last line (artin 11-22: the 24dp fade above the line covered it once
- * #5315 made the end 30dp). The web's end grows while the line shows and keeps a 16px fade above
- * it; that behaviour is #proj-mobile:#271.
+ * it shows, the room the list's end leaves above the line (the end grown by the line's slot, minus
+ * [ThreadAgentTypingLineHeight]), so the strip and its fade end where the newest message rests and
+ * never cover its last line (artin 11-22). As on the web, the end grows while the line shows and a
+ * fade about as tall as the hidden one runs above the strip.
  */
 internal fun threadMessageListEndFadeGradientHeight(typingLineShown: Boolean): Dp =
-    if (typingLineShown) ThreadAgentTypingListEndHeight - ThreadAgentTypingLineHeight else ThreadMessageListEndFadeHeight
+    if (typingLineShown) {
+        threadBottomSpacerAndAnchorTrailingHeight(typingLineShown = true) - ThreadAgentTypingLineHeight
+    } else {
+        ThreadMessageListEndFadeHeight
+    }
 
 /**
  * The line itself, on the composer's 20dp edge. It has no fade of its own: it sits on the list's

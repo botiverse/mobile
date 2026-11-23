@@ -1,7 +1,9 @@
 package build.raft.app
 
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -10,12 +12,12 @@ import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.unit.dp
 import build.raft.app.resources.*
-import build.raft.designsystem.components.RaftButtonVariant
-import build.raft.designsystem.components.RaftIconButton
-import build.raft.designsystem.components.RaftIconButtonSize
+import build.raft.designsystem.components.RaftCloseButton
 import build.raft.designsystem.components.RaftIconToggleButton
 import build.raft.designsystem.focus.RaftFocusRegion
 import build.raft.designsystem.focus.RaftFocusRegionHost
@@ -84,7 +86,8 @@ internal object RaftTasksTaskColumnTags {
 
 /**
  * Expand (pressed: Restore) and Close, the head's last two actions (raft-design panel.md: a
- * window control, after ⋯, Close last; web ExpandToggleAction and the task head's ×).
+ * window control, after ⋯, Close last; web ExpandToggleAction and the task head's ×). Close is
+ * the head's [RaftCloseButton].
  */
 @Composable
 internal fun RaftTaskColumnHeadActions(head: RaftTaskColumnHead) {
@@ -103,14 +106,22 @@ internal fun RaftTaskColumnHeadActions(head: RaftTaskColumnHead) {
             )
         }
     }
-    RaftIconButton(
+    RaftCloseButton(
         onClick = head.onClose,
-        tooltip = stringResource(Res.string.tasks_task_column_close),
         modifier = Modifier.testTag(RaftTasksTaskColumnTags.Close),
-        variant = RaftButtonVariant.Ghost,
-        size = RaftIconButtonSize.Lg,
-    ) {
-        RaftContentLucideIcon(RaftLucideIconName.X, size = RaftTheme.controls.barIconSize)
+        label = stringResource(Res.string.tasks_task_column_close),
+    )
+}
+
+/**
+ * [RaftTaskColumnHeadActions] as the whole end of a head that has no other actions (a task's page
+ * while it loads, or before its conversation exists): Expand and Close side by side, 2dp apart
+ * (raft-ui `panelHeadActions`).
+ */
+@Composable
+internal fun RaftTaskColumnHeadEnd(head: RaftTaskColumnHead) {
+    Row(horizontalArrangement = Arrangement.spacedBy(2.dp), verticalAlignment = Alignment.CenterVertically) {
+        RaftTaskColumnHeadActions(head)
     }
 }
 

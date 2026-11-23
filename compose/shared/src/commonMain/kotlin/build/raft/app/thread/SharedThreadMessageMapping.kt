@@ -288,6 +288,7 @@ internal fun ThreadSnapshot.toRaftThreadPayload(
         muteFromSeq = conversation.muteFromSeq,
         activityMuteSupported = conversation.activityMuteSupported,
         replySummariesAuthority = replySummariesAuthority,
+        canonicalAccessKnown = conversation.membershipKnown,
     )
         .withOriginReplyCountAtLeastLoadedReplies()
         .withReplySummaries(replySummaries, replySummariesAuthority)

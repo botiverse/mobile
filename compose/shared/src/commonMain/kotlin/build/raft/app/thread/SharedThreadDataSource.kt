@@ -12,6 +12,7 @@ import build.raft.app.data.EmptyReason
 import build.raft.app.data.HomeChannelRow
 import build.raft.app.data.HomeConversationRow
 import build.raft.app.data.HomeSnapshot
+import build.raft.app.data.HomeSnapshotLookup
 import build.raft.app.data.ThreadActionResult
 import build.raft.app.data.PlatformFile
 import build.raft.app.data.AttachmentUploadRequest
@@ -146,6 +147,7 @@ internal class SharedThreadDataSource(
     private val conversationRepository: ConversationRepository? = null,
     private val channelRepository: ChannelRepository? = null,
     private val homeSnapshotProvider: (suspend (ServerId) -> HomeSnapshot?)? = null,
+    private val homeSnapshotLookupProvider: (suspend (ServerId) -> HomeSnapshotLookup?)? = null,
     private val channelProfileUpdateSink: suspend (ChannelProfileUpdateResult) -> Unit = {},
     private val messageStore: SharedThreadMessageStore? = null,
     // REQUIRED: the cache environment is an identity dimension of every reply cache. There is no
@@ -289,6 +291,7 @@ internal class SharedThreadDataSource(
         conversationRepository: ConversationRepository? = null,
         channelRepository: ChannelRepository? = null,
         homeSnapshotProvider: (suspend (ServerId) -> HomeSnapshot?)? = null,
+        homeSnapshotLookupProvider: (suspend (ServerId) -> HomeSnapshotLookup?)? = null,
         channelProfileUpdateSink: suspend (ChannelProfileUpdateResult) -> Unit = {},
         messageStore: SharedThreadMessageStore? = null,
         cacheEnvironmentIdProvider: () -> String,
@@ -326,6 +329,7 @@ internal class SharedThreadDataSource(
         conversationRepository = conversationRepository,
         channelRepository = channelRepository,
         homeSnapshotProvider = homeSnapshotProvider,
+        homeSnapshotLookupProvider = homeSnapshotLookupProvider,
         channelProfileUpdateSink = channelProfileUpdateSink,
         messageStore = messageStore,
         cacheEnvironmentIdProvider = cacheEnvironmentIdProvider,
@@ -1871,12 +1875,13 @@ internal class SharedThreadDataSource(
                     requiresBackgroundHomeContextHydration = true,
                 )
 
-        homeSnapshotProvider?.invoke(serverId)
-            ?.takeIf { snapshot ->
-                snapshot.server.id == serverId &&
-                    snapshot.currentMember.id.value == resolutionScope.provenance.principalId
+        resolveHomeSnapshotLookup(serverId)
+            ?.takeIf { lookup ->
+                lookup.snapshot.server.id == serverId &&
+                    lookup.snapshot.currentMember.id.value == resolutionScope.provenance.principalId
             }
-            ?.let { home ->
+            ?.let { lookup ->
+                val home = lookup.snapshot
                 val candidate =
                     payload.exactReplyParentAccessCandidate(
                         serverId = serverId,
@@ -1884,6 +1889,13 @@ internal class SharedThreadDataSource(
                         parentKind = parentKind,
                         conversations = home.channels + home.directMessages,
                     ) ?: return@let
+                // A non-authoritative Home snapshot (durable identity cache or refresh-pending)
+                // may grant fast positive write access, but must never short-circuit a negative
+                // (unjoined or non-writable) parent row and lock the thread into Join without
+                // checking the network directory.
+                if (!lookup.authoritative && (!candidate.joined || !candidate.permissions.canSend)) {
+                    return@let
+                }
                 val ownerCurrent = replyAccessResolutionOwnerStillCurrent(resolutionScope)
                 return ThreadHomeContextResolution(
                     payload = payload.withKnownMarkdownChannelNames(home),
@@ -2229,7 +2241,7 @@ internal class SharedThreadDataSource(
     /** The conversation directory a reference resolves names in: local, unless it has to be fetched. */
     private suspend fun referenceHomeSnapshot(session: StoredAuthSession, actionId: String?): HomeSnapshot? {
         val serverId = session.currentServerId?.takeIf { it.isNotBlank() }?.let(::ServerId) ?: return null
-        homeSnapshotProvider?.invoke(serverId)?.let { return it }
+        resolveHomeSnapshotLookup(serverId)?.snapshot?.let { return it }
         // No home snapshot on the device: reading it is part of the reference's fetch.
         return referenceResolver.fetchPhase(actionId) { currentHomeSnapshot(session) }
     }
@@ -5168,7 +5180,15 @@ internal class SharedThreadDataSource(
             } catch (_: Throwable) {
                 return DataResult.Error(ScreenError(code = fallbackCode, retryable = true, traceId = null))
             }
-        val detail = (result as? DataResult.Content)?.data?.canonicalConversationDetail
+        val detail =
+            (result as? DataResult.Content)
+                ?.data
+                ?.canonicalConversationDetail
+                ?.takeIf { candidate ->
+                    candidate.membershipKnown &&
+                        !candidate.channelType.equals("thread", ignoreCase = true) &&
+                        candidate.kind != ConversationKind.Thread
+                }
         if (detail != null) {
             if (!isCurrentReplyCacheProvenance(expectedProvenance)) {
                 diagnosticsLogger(
@@ -5264,9 +5284,15 @@ internal class SharedThreadDataSource(
     private fun currentKnownMarkdownMemberProfilesById(home: HomeSnapshot): Map<String, MemberProfile> =
         serverMembersStore?.currentKnownMemberProfilesById(home.server.id).orEmpty()
 
+    private suspend fun resolveHomeSnapshotLookup(serverId: ServerId): HomeSnapshotLookup? =
+        homeSnapshotLookupProvider?.invoke(serverId)
+            ?: homeSnapshotProvider?.invoke(serverId)?.let { snapshot ->
+                HomeSnapshotLookup(snapshot = snapshot, authoritative = true)
+            }
+
     private suspend fun currentHomeSnapshot(session: StoredAuthSession): HomeSnapshot? {
         val serverId = session.currentServerId?.takeIf { it.isNotBlank() }?.let(::ServerId) ?: return null
-        homeSnapshotProvider?.invoke(serverId)?.let { snapshot ->
+        resolveHomeSnapshotLookup(serverId)?.snapshot?.let { snapshot ->
             diagnosticsLogger("thread_home_context source=shared_home_store serverId=${serverId.value}")
             return snapshot
         }

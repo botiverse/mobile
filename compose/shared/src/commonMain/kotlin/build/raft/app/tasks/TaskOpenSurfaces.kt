@@ -798,19 +798,37 @@ internal fun TaskPendingConversationPage(
     // A press anywhere on the page outside the pulled-down head puts it back up, the composer included.
     CompositionLocalProvider(LocalRaftJointActorSurface provides jointSurface) {
         Column(modifier.fillMaxSize().background(colors.layerCanvas).taskHeadFloatOutsidePress(headScrollState)) {
-        // The conversation page's top bar (ThreadPage's header for a task conversation).
+        // The conversation page's top bar (ThreadPage's header for a task conversation). In the Tasks page's task
+        // column (web TaskConversationBar on a desktop) the column's Expand and Close end it and it has no Back, as
+        // the conversation's own head there; as a page of its own Back leads it.
+        val taskColumnHead = LocalRaftTaskColumnHead.current
         RaftTopPageHeader(
             title = task.taskRefTitle(),
             backgroundColor = RaftColor.Canvas,
             topSafeAreaOverride = if (useHostSafeArea) null else WindowInsets.safeDrawing.asPaddingValues().calculateTopPadding(),
-            contentStartPadding = RaftBackButtonDefaults.EdgeInset,
-            contentEndPadding = if (shareEntry != null) RaftBackButtonDefaults.EdgeInset else RaftTopPageHeaderContentEndPadding,
+            contentStartPadding = if (taskColumnHead == null) RaftBackButtonDefaults.EdgeInset else ThreadSplitDetailEdgeInset,
+            contentEndPadding =
+                if (taskColumnHead != null || shareEntry != null) RaftBackButtonDefaults.EdgeInset else RaftTopPageHeaderContentEndPadding,
             contentSpacing = ThreadHeaderContentSpacing,
-            titleLeadingContent = {
-                RaftBackButton(onClick = { if (!sending) onBack() }, label = stringResource(Res.string.common_back))
-            },
+            titleLeadingContent =
+                if (taskColumnHead == null) {
+                    { RaftBackButton(onClick = { if (!sending) onBack() }, label = stringResource(Res.string.common_back)) }
+                } else {
+                    null
+                },
             titleContent = { TaskConversationBarTitle(chrome, Modifier.weight(1f)) },
-            trailingContent = shareEntry?.let { entry -> { TaskPendingHeaderMoreMenu(entry) } },
+            // ⋯ first, then the column's Expand and Close (raft-ui panelHeadActions: Close last).
+            trailingContent =
+                if (shareEntry == null && taskColumnHead == null) {
+                    null
+                } else {
+                    {
+                        Row(horizontalArrangement = Arrangement.spacedBy(2.dp), verticalAlignment = Alignment.CenterVertically) {
+                            shareEntry?.let { TaskPendingHeaderMoreMenu(it) }
+                            taskColumnHead?.let { RaftTaskColumnHeadActions(it) }
+                        }
+                    }
+                },
         )
         // The head, as on the conversation page: the first row of what scrolls here, and pulled down
         // from the bar while that row is out of view ([TaskHeadPlacement.Page] holds the page's effects).

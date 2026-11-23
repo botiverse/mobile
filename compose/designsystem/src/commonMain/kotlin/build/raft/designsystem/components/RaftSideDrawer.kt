@@ -60,7 +60,7 @@ import build.raft.designsystem.tokens.RaftStroke
  *   `text-headline`, then the optional [titleTrailing] on the same line, baseline-aligned (a
  *   secondary item, e.g. "· #design" in muted mono; give a text that may run long
  *   `Modifier.weight(1f, fill = false)` so it ellipsizes and the title stays whole), and the
- *   ghost × ([closeLabel]) at the end, its glyph on the head's edge (raft-ui PanelAction).
+ *   ghost × ([closeLabel], [RaftCloseButton]) at the end, its glyph on the head's edge.
  * - Body: [content] fills the rest as given (a lazy list scrolls itself); keep
  *   [RaftSideDrawerDefaults.BodyPadding] inside it (`px-5 py-4`).
  * - Footer: with [footer], a seam over a row of buttons at the end (`DrawerActions` on the x
@@ -117,9 +117,7 @@ fun RaftSideDrawerSurface(
                 // glyph sits on the edge.
                 val closeBox = RaftTheme.controls.rowHeight ?: RaftIconButtonSize.Md.box
                 Box(Modifier.raftBleed(end = (closeBox - 18.dp) / 2)) {
-                    RaftIconButton(onClick = onClose, tooltip = closeLabel, variant = RaftButtonVariant.Ghost, enabled = closeEnabled) {
-                        RaftGlyphIcon(RaftGlyph.X, size = 18.dp)
-                    }
+                    RaftCloseButton(onClick = onClose, label = closeLabel, size = RaftCloseButtonSize.Dialog, enabled = closeEnabled)
                 }
             }
             Box(Modifier.fillMaxWidth().height(RaftStroke.Hairline).background(colors.lineSeam))

@@ -787,18 +787,28 @@ private fun TaskPendingConversationRoute(pageVisible: Boolean) {
             val activeLoadState = activeState?.loadState
             val activeSettled = activeState != null && !activeState.standIn && !activeState.refreshing
             Column(Modifier.fillMaxSize().background(RaftTheme.colors.layerCanvas)) {
+                // In the Tasks page's task column the column's Expand and Close end the head (web
+                // TaskConversationLoading on a desktop), with no Back; as a page of its own Back leads it.
+                val taskColumnHead = LocalRaftTaskColumnHead.current
                 RaftTopPageHeader(
                     title = "",
                     backgroundColor = RaftColor.Canvas,
                     topSafeAreaOverride = null,
-                    contentStartPadding = RaftBackButtonDefaults.EdgeInset,
+                    contentStartPadding = if (taskColumnHead == null) RaftBackButtonDefaults.EdgeInset else ThreadSplitDetailEdgeInset,
+                    contentEndPadding = if (taskColumnHead == null) RaftTopPageHeaderContentEndPadding else RaftBackButtonDefaults.EdgeInset,
                     contentSpacing = ThreadHeaderContentSpacing,
-                    titleLeadingContent = {
-                        RaftBackButton(
-                            onClick = { routerModule.closePage() },
-                            label = stringResource(Res.string.common_back),
-                        )
-                    },
+                    titleLeadingContent =
+                        if (taskColumnHead == null) {
+                            {
+                                RaftBackButton(
+                                    onClick = { routerModule.closePage() },
+                                    label = stringResource(Res.string.common_back),
+                                )
+                            }
+                        } else {
+                            null
+                        },
+                    trailingContent = if (taskColumnHead != null) { { RaftTaskColumnHeadEnd(taskColumnHead) } } else null,
                 )
                 Box(Modifier.fillMaxSize().padding(16.dp), contentAlignment = Alignment.Center) {
                     when (activeLoadState) {
@@ -931,6 +941,12 @@ private fun TaskPendingConversationRoute(pageVisible: Boolean) {
                                     joinedLocally = true
                                     latestServerId?.takeIf(String::isNotBlank)?.let { serverId ->
                                         realtimeRoomLeaseRegistry.markJoinedByUser(serverId, result.data.channelId.value)
+                                        sharedHomeStore?.dispatch(
+                                            SharedHomeIntent.ChannelJoined(
+                                                serverId = serverId,
+                                                channelId = result.data.channelId,
+                                            )
+                                        )
                                         sharedHomeStore?.dispatch(SharedHomeIntent.Refresh)
                                     }
                                     realtimeEvents.joinChannel(result.data.channelId.value, latestServerId)

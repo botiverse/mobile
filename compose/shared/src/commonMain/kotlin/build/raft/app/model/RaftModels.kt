@@ -202,7 +202,15 @@ data class ConversationSummary(
      * Agent Lounge v0: the agent this channel is the Lounge of (web `Channel.loungeAgentId`).
      * Null: not a Lounge. A Lounge is a plain channel on the wire, kept out of every channel list.
      */
-    val loungeAgentId: String? = null
+    val loungeAgentId: String? = null,
+    /**
+     * Whether [joined] / write permissions on this summary were attested by an authoritative
+     * membership source. False for synthetic `type = "thread"` channel details (which have no
+     * `channel_humans` rows on the server) and for task conversations whose parent channel detail
+     * could not be fetched: callers must preserve any already-known membership or stay fail-closed
+     * without showing a "Join channel" prompt (web tri-state `parentJoined === undefined`).
+     */
+    val membershipKnown: Boolean = true
 ) {
     val activityMuted: Boolean
         get() = activityNotificationPreference.activityMuted

@@ -6,6 +6,7 @@ import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberProfile
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -37,16 +38,77 @@ class ThreadAgentTypingTest {
         )
     }
 
+    @Test fun theListMakesRoomForTheLineOnlyWhileItShows() {
+        // Nobody typing or working: the list's own end, shorter than the line's slot, so it holds no
+        // slot (web: AgentTypingListEnd renders nothing). While the line shows the end grows by
+        // exactly the slot, which is taller than the line, so the newest message rests whole above it.
+        val idle = threadBottomSpacerAndAnchorTrailingHeight(typingLineShown = false)
+        val shown = threadBottomSpacerAndAnchorTrailingHeight(typingLineShown = true)
+        assertTrue(idle < ThreadAgentTypingListEndHeight, "a $idle end holds the line's slot")
+        assertEquals(idle + ThreadAgentTypingListEndHeight, shown)
+        assertTrue(ThreadAgentTypingListEndHeight > ThreadAgentTypingLineHeight)
+    }
+
     @Test fun theEndFadeUnderTheLineEndsWhereTheNewestMessageRests() {
         // The newest message rests on the list's end. While the line shows, its solid strip and the
         // fade above it stay inside that end, so they never cover the message's last line (artin 11-22);
         // some fade remains, so a message scrolled under the line still softens.
-        val end = threadBottomSpacerAndAnchorTrailingHeight(typingLineSlot = true)
+        val end = threadBottomSpacerAndAnchorTrailingHeight(typingLineShown = true)
         val shownFade = threadMessageListEndFadeGradientHeight(typingLineShown = true)
         assertTrue(ThreadAgentTypingLineHeight + shownFade <= end, "strip + fade ${ThreadAgentTypingLineHeight + shownFade} over a $end end")
         assertTrue(shownFade.value > 0f)
-        // Hidden: the section step's fade lies over the empty end only.
-        assertTrue(threadMessageListEndFadeGradientHeight(typingLineShown = false) <= end)
+    }
+
+    @Test fun aReaderRestingOnTheEndFollowsItAndOneScrolledUpKeepsTheirPlace() {
+        // Opened on the newest message (Inbox, Activity): anchored on it, resting on the list's end.
+        val anchoredOnTheNewest =
+            LazyViewportIntent.Anchored(
+                target = LazyViewportAnchorTarget.Message("m40"),
+                offset = 0,
+                layoutGeneration = 0L,
+                placement = LazyViewportAnchorPlacement.Focused,
+                fallback = LazyViewportAnchorFallback.Free,
+            )
+
+        fun follows(
+            lineShown: Boolean = true,
+            intent: LazyViewportIntent = anchoredOnTheNewest,
+            listEndInView: Boolean = true,
+            restsOnListEnd: Boolean = true,
+            scrollInProgress: Boolean = false,
+            placementSettled: Boolean = true,
+            newerPagePending: Boolean = false,
+        ) =
+            threadTypingLineEndFollowsLatest(
+                reverseLayout = true,
+                lineShown = lineShown,
+                intent = intent,
+                listEndInView = listEndInView,
+                restsOnListEnd = restsOnListEnd,
+                scrollInProgress = scrollInProgress,
+                placementSettled = placementSettled,
+                newerPagePending = newerPagePending,
+            )
+
+        // Resting on the end, the reader follows it: the newest message rises above the line instead
+        // of the reading anchor holding it under the line (Android 1.27.0, #proj-mobile #227).
+        assertTrue(follows())
+        // Let go a little above the end, the newest message still whole on screen: it stays whole
+        // above the line too.
+        assertTrue(follows(restsOnListEnd = false))
+        // When the line goes, only a reader resting on the end follows; one a little above it keeps
+        // their place.
+        assertTrue(follows(lineShown = false))
+        assertFalse(follows(lineShown = false, restsOnListEnd = false))
+        // Scrolled up into the history: the end changes out of view and the reader keeps their place.
+        assertFalse(follows(listEndInView = false, restsOnListEnd = false))
+        // The user's drag or fling owns the viewport, and so does a finger resting on the list.
+        assertFalse(follows(scrollInProgress = true))
+        assertFalse(follows(intent = LazyViewportIntent.UserDragging))
+        // Another owner places the list (the initial anchor, a share capture, an adaptive restore).
+        assertFalse(follows(placementSettled = false))
+        // The loaded window stops short of the latest messages: its end is not the conversation's.
+        assertFalse(follows(newerPagePending = true))
     }
 
     @Test fun onlyAgentsAreNamedAndUnknownIdsUseTheFallback() {

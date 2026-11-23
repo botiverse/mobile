@@ -144,11 +144,11 @@ internal fun BoxWithConstraintsScope.ThreadMessagesListOverlays(
         // Kuikly-era rule kept: the native dispatch capture sits on the pills' ancestor path so
         // a tap on a pill never also starts a gesture on the message row underneath.
         RaftMessageListJumpControls(
-            // The pills sit above the typing line's slot (web `--message-list-bottom-inset`)
-            // where the conversation has one, whether or not the line shows: like the list's
-            // end, they do not move when it comes or goes.
+            // While the typing line shows, the pills sit above its row (web
+            // `--message-list-bottom-inset`, ABOVE_AGENT_TYPING_LINE_CLASS), so the two never
+            // overlap; otherwise on the list's edge, as the list's end keeps no slot then either.
             modifier = Modifier.align(Alignment.BottomCenter)
-                .padding(bottom = if (renderPayload.agentTypingLineSlot) ThreadAgentTypingLineHeight else 0.dp)
+                .padding(bottom = if (agentTypingLineShown) ThreadAgentTypingLineHeight else 0.dp)
                 .zIndex(ThreadJumpControlsZIndex).raftNativeDispatchCapture(),
         ) {
             // Web BottomJumpControls: first on the controls' line (nearest the edge when stacked).

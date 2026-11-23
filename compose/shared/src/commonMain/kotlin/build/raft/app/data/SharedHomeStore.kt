@@ -330,6 +330,16 @@ internal class SharedHomeStore(
             ?.snapshot
             ?.takeIf { snapshot -> snapshot.server.id == serverId }
 
+    internal fun snapshotLookupFor(serverId: ServerId): HomeSnapshotLookup? =
+        (_state.value.content as? SharedHomeContentState.Content)
+            ?.takeIf { content -> content.snapshot.server.id == serverId }
+            ?.let { content ->
+                HomeSnapshotLookup(
+                    snapshot = content.snapshot,
+                    authoritative = !content.isDurableIdentityCache && !content.needsNetworkRefresh,
+                )
+            }
+
     /**
      * Bounded wait for an in-flight home load, returning the resulting snapshot when it belongs to
      * [serverId]. Lets cold-start readers (e.g. thread initial access, task #387) reuse the single
@@ -344,6 +354,24 @@ internal class SharedHomeStore(
             if (remaining <= 0) return null
             val job = loadJob?.takeIf { it.isActive } ?: return null
             withTimeoutOrNull(remaining) { job.join() } ?: return null
+        }
+    }
+
+    /**
+     * Like [awaitSnapshotFor], but also reports whether the snapshot came from a live network
+     * refresh rather than the durable identity cache or a refresh-pending state. When a non-
+     * authoritative cached snapshot is present while a live [loadJob] is active (e.g. Android cold
+     * restore after backgrounding), waits boundedly for the live refresh before returning.
+     */
+    internal suspend fun awaitSnapshotLookupFor(serverId: ServerId, timeoutMillis: Long): HomeSnapshotLookup? {
+        val deadline = kotlin.time.TimeSource.Monotonic.markNow()
+        while (true) {
+            val lookup = snapshotLookupFor(serverId)
+            if (lookup != null && lookup.authoritative) return lookup
+            val remaining = timeoutMillis - deadline.elapsedNow().inWholeMilliseconds
+            if (remaining <= 0) return lookup
+            val job = loadJob?.takeIf { it.isActive } ?: return lookup
+            withTimeoutOrNull(remaining) { job.join() } ?: return snapshotLookupFor(serverId) ?: lookup
         }
     }
 
@@ -5902,7 +5930,24 @@ private fun HomeChannelRow.leaveRevokesAccess(): Boolean =
         channelType.equals("joint", ignoreCase = true)
 
 private fun HomeSnapshot.withHomeChannelLeft(conversationId: String): HomeSnapshot =
-    copy(channels = channels.map { if (it.matchesHomeConversation(conversationId)) it.copy(joined = false) else it })
+    copy(
+        channels =
+            channels.map {
+                if (it.matchesHomeConversation(conversationId)) {
+                    it.copy(
+                        joined = false,
+                        permissions =
+                            it.permissions.copy(
+                                canSend = false,
+                                canAttach = false,
+                                canCreateTask = false,
+                            ),
+                    )
+                } else {
+                    it
+                }
+            }
+    )
 
 private fun HomeConversationRow.matchesHomeConversation(conversationId: String): Boolean =
     threadId.value == conversationId ||
@@ -6646,13 +6691,36 @@ internal data class HomeJoinedChannelGuard(
             (snapshot.server.id == serverId && snapshot.channels.any { it.channelId == channelId && it.joined })
 }
 
+private fun HomeChannelRow.withJoinedMembership(): HomeChannelRow =
+    copy(
+        joined = true,
+        permissions =
+            permissions.copy(
+                canSend = !archived,
+                canAttach = !archived,
+                canCreateTask = !archived,
+            ),
+    )
+
+/** Result of looking up a server's Home snapshot along with whether it came from a live network fetch. */
+internal data class HomeSnapshotLookup(
+    val snapshot: HomeSnapshot,
+    val authoritative: Boolean,
+)
+
 /** The row of [channelId] marked joined, or [rowIfMissing] listed when there is none; unchanged otherwise. */
 internal fun HomeSnapshot.withJoinedChannel(channelId: ChannelId, rowIfMissing: HomeChannelRow?): HomeSnapshot {
     val existing = channels.firstOrNull { it.channelId == channelId }
     return when {
-        existing == null && rowIfMissing != null -> copy(channels = channels + rowIfMissing.copy(joined = true))
-        existing == null || existing.joined -> this
-        else -> copy(channels = channels.map { if (it.channelId == channelId) it.copy(joined = true) else it })
+        existing == null && rowIfMissing != null ->
+            copy(channels = channels + rowIfMissing.withJoinedMembership())
+        existing == null -> this
+        existing.joined &&
+            existing.permissions.canSend == !existing.archived &&
+            existing.permissions.canAttach == !existing.archived &&
+            existing.permissions.canCreateTask == !existing.archived -> this
+        else ->
+            copy(channels = channels.map { if (it.channelId == channelId) it.withJoinedMembership() else it })
     }
 }
 

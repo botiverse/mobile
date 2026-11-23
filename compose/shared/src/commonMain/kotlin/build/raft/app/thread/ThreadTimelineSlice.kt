@@ -83,12 +83,6 @@ internal data class ThreadTimelineSlice(
     /** [RaftThreadScreenPayload.historyStartFocusRequest]: a new value scrolls the list to its history start. */
     val historyStartFocusRequest: Int = 0,
     /**
-     * [RaftThreadScreenPayload.agentTypingLineCanShow]: the list's end holds the typing / working
-     * line's slot (`threadBottomSpacerAndAnchorTrailingHeight`). A property of the conversation,
-     * not of agent activity.
-     */
-    val agentTypingLineSlot: Boolean = true,
-    /**
      * #proj-mobile:#265: whether an initial loading state has passed [ThreadInitialLoadingRevealDelayMs]
      * and should render [ThreadLoadingState]. Stays false while brief local-cache reads are in flight
      * so cached opens do not flash a spinner; defaults to true so standalone previews/tests without a
@@ -152,8 +146,7 @@ internal fun RaftThreadScreenPayload.toThreadTimelineSlice(): ThreadTimelineSlic
         historyChannelId = (streamChannelId ?: sourceThreadId)?.trim()?.takeIf { it.isNotEmpty() },
         joined = joined,
         originHiddenTarget = threadOriginHiddenTargetOrNull(),
-        historyStartFocusRequest = historyStartFocusRequest,
-        agentTypingLineSlot = agentTypingLineCanShow()
+        historyStartFocusRequest = historyStartFocusRequest
     )
 
 internal fun RaftThreadMessageItem.toThreadReplyMetadata(): ThreadReplyMetadata =

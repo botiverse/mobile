@@ -273,8 +273,8 @@ fun IconButtonGallery() {
 }
 
 /**
- * The top-bar Back: rest, pressed, focused, disabled; a leading Close; a light arrow on a
- * dark overlay (image preview); and in a header row at its 3dp edge inset.
+ * The top-bar Back: rest, pressed, focused, disabled; a head's Close ([RaftCloseButton]); a light
+ * arrow on a dark overlay (image preview); and in a header row at its 3dp edge inset.
  */
 @VCase("ds.back-button.gallery")
 @Composable
@@ -287,7 +287,7 @@ fun BackButtonGallery() {
                     RaftBackButton(onClick = {}, label = "Back", enabled = state != "Disabled")
                 }
             }
-            RaftBackButton(onClick = {}, label = "Close", glyph = RaftGlyph.X)
+            build.raft.designsystem.components.RaftCloseButton(onClick = {}, label = "Close")
         }
         Caption("On a dark overlay")
         Row(Modifier.background(Color(0xFF111111)).padding(4.dp)) {

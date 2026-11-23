@@ -1,10 +1,9 @@
 package build.raft.app
 
 import build.raft.app.resources.*
-import build.raft.designsystem.components.RaftGlyph
 import build.raft.designsystem.components.LocalRaftCopyHandler
 import build.raft.designsystem.components.raftCopyable
-import build.raft.designsystem.components.RaftBackButton
+import build.raft.designsystem.components.RaftCloseButton
 import build.raft.designsystem.components.RaftListRowGroup
 import build.raft.designsystem.components.RaftBadge
 import build.raft.designsystem.components.RaftBadgeAppearance
@@ -799,10 +798,9 @@ private fun RaftUnifiedDialogSurface(
                                 overflow = TextOverflow.Ellipsis
                             )
                         }
-                        RaftBackButton(
+                        RaftCloseButton(
                             onClick = onDismiss,
                             label = stringResource(Res.string.common_close),
-                            glyph = RaftGlyph.X,
                             enabled = dismissEnabled,
                         )
                     }
