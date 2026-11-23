@@ -216,6 +216,7 @@ internal fun inviteeMessageDesc(message: InviteeMessage, target: String, channel
         InviteeMessage.AlreadyMember -> Res.string.external_invite_error_already_member.format(server, channel)
         InviteeMessage.GuestElsewhere -> Res.string.external_invite_error_guest_elsewhere.format(channel)
         InviteeMessage.ChannelFull -> Res.string.external_invite_error_channel_full.format(channel, inviter)
+        InviteeMessage.DeploymentUserLimitReached -> Res.string.external_invite_error_deployment_user_limit.desc()
         InviteeMessage.InvalidServer -> Res.string.external_invite_error_invalid_server.format(target, channel)
         InviteeMessage.ServerAdminRequired -> Res.string.external_invite_error_server_admin_required.format(target)
         InviteeMessage.ServerMembershipRequired -> Res.string.external_invite_error_server_membership_required.format(target)
@@ -806,9 +807,9 @@ private fun InviteProgressList(state: ExternalInviteState, values: InviteValues,
                     else ->
                         stringResource(Res.string.external_invite_progress_not_connected) to
                             row.refusal?.let {
-                                val refusal = it.asRefusal()
-                                val message = inviteeErrorMessage(refusal, InviteeAction.Connect, state.myServer(row.serverId), row.serverId)
-                                inviteeServerWords(refusal, message) ?: inviteeMessageText(message, values, row.name)
+                                val (message, serverWords) =
+                                    resolveInviteeRefusal(it.asRefusal(), InviteeAction.Connect, state.myServer(row.serverId), row.serverId)
+                                serverWords ?: inviteeMessageText(message, values, row.name)
                             }
                 }
             RaftListRow(

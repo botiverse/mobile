@@ -5531,6 +5531,7 @@
     <string name="external_invite_error_already_member">你已经是 %1$s 的成员。请那里的管理员把你加入 %2$s。</string>
     <string name="external_invite_error_guest_elsewhere">你已是另一个频道的访客，不能作为访客加入 %1$s。请改为连接或创建一个服务器。</string>
     <string name="external_invite_error_channel_full">%1$s 已满。请 %2$s 腾出名额后，再打开这个链接。</string>
+    <string name="external_invite_error_deployment_user_limit">这个 Raft 社区版部署已有 5 人，达到 Raft 许可证的上限。如需超出，请发邮件至 contact@raft.build 申请单独的许可证。</string>
     <string name="external_invite_error_invalid_server">%1$s 不能连接到 %2$s，请选择其他服务器。</string>
     <string name="external_invite_error_server_admin_required">只有 %1$s 的管理员可以连接它。再次选择它，即可请一位管理员批准。</string>
     <string name="external_invite_error_server_membership_required">你已不是 %1$s 的成员。</string>

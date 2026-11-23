@@ -5348,6 +5348,7 @@
     <string name="external_invite_error_already_member">Ya eres miembro de %1$s. Pide a un administrador de ese servidor que te agregue a %2$s.</string>
     <string name="external_invite_error_guest_elsewhere">Ya eres invitado en otro canal, así que no puedes unirte a %1$s como invitado. En su lugar, conecta o crea un servidor.</string>
     <string name="external_invite_error_channel_full">%1$s está lleno. Pide a %2$s que libere una plaza y vuelve a abrir este enlace.</string>
+    <string name="external_invite_error_deployment_user_limit">Este despliegue de Raft Community Edition ya tiene 5 personas, el límite de la Raft License. Para superarlo, escribe a contact@raft.build y solicita una licencia aparte.</string>
     <string name="external_invite_error_invalid_server">%1$s no se puede conectar a %2$s. Elige otro servidor.</string>
     <string name="external_invite_error_server_admin_required">Solo un administrador de %1$s puede conectarlo. Vuelve a elegirlo para pedirle la aprobación a un administrador.</string>
     <string name="external_invite_error_server_membership_required">Ya no eres miembro de %1$s.</string>

@@ -3,8 +3,11 @@ package build.raft.app
 import build.raft.app.data.JointChannelConnections
 import build.raft.app.data.JointChannelRole
 import build.raft.app.data.JointChannelServer
+import build.raft.app.data.ResolvedServerRefusal
 import build.raft.app.data.ServerConnectOutcome
+import build.raft.app.data.ServerRefusalInput
 import build.raft.app.data.StoredAuthSession
+import build.raft.app.data.resolveServerRefusal
 
 /**
  * Connect your servers (#wg-rbac:#36, web `packages/web/src/components/channel/memberConnect.ts`,
@@ -205,22 +208,28 @@ private fun ServerConnectOutcome.Refused.limitIsMine(): Boolean {
     return limitServerId == serverId
 }
 
-/** Web `memberConnectRefusalMessageId`: one chosen server's refusal. */
-internal fun memberConnectRefusalMessage(outcome: ServerConnectOutcome.Refused): MemberConnectMessage {
-    val code = outcome.code
-    code?.let { MEMBER_REFUSAL_MESSAGES[it] }?.let { return it }
+private fun memberConnectKnownCodeMessage(
+    outcome: ServerConnectOutcome.Refused,
+    normalizedCode: String?,
+    status: Int?,
+): MemberConnectMessage? {
+    normalizedCode?.let { MEMBER_REFUSAL_MESSAGES[it] }?.let { return it }
     // Web approverErrorMessage(refusalAsError(outcome), { id: outcome.serverId }).
     val hasLimit = outcome.limitSide == "host" || outcome.limitSide == "connecting"
     return when {
-        code == "free_external_limit" ->
+        normalizedCode == "free_external_limit" ->
             if (outcome.limitIsMine()) MemberConnectMessage.TargetFreeLimit else MemberConnectMessage.HostLimit
-        code == "joint_free_server_limit" ->
+        normalizedCode == "joint_free_server_limit" ->
             if (outcome.limitIsMine() && hasLimit) MemberConnectMessage.JointFreeServerLimit else MemberConnectMessage.HostLimit
-        code != null && code in APPROVER_REFUSAL_MESSAGES -> APPROVER_REFUSAL_MESSAGES.getValue(code)
-        outcome.status == 429 -> MemberConnectMessage.TooManyAttempts
-        else -> MemberConnectMessage.Generic
+        normalizedCode != null && normalizedCode in APPROVER_REFUSAL_MESSAGES -> APPROVER_REFUSAL_MESSAGES.getValue(normalizedCode)
+        status == 429 -> MemberConnectMessage.TooManyAttempts
+        else -> null
     }
 }
+
+/** Web `memberConnectRefusalMessageId`: one chosen server's refusal. */
+internal fun memberConnectRefusalMessage(outcome: ServerConnectOutcome.Refused): MemberConnectMessage =
+    memberConnectRefusedLine(outcome).message
 
 /** Web `memberConnectRefusalRowState`: after a refusal, the row is chosen again only where trying again could help. */
 internal fun memberConnectRefusalRowState(outcome: ServerConnectOutcome.Refused): MemberConnectRowState? =
@@ -233,15 +242,56 @@ internal fun memberConnectRefusalRowState(outcome: ServerConnectOutcome.Refused)
 /** A whole request refused (web `memberConnectRequestError`); [closed]: the route is gone for this viewer. */
 internal data class MemberConnectRequestRefusal(val message: MemberConnectMessage, val closed: Boolean)
 
-/** By the server's code, else by status. Null [status]: no answer (network). */
+/** By the server's explicit code, else by status (for callers without a server sentence). */
 internal fun memberConnectRequestRefusal(status: Int?, code: String?): MemberConnectRequestRefusal =
+    memberConnectRequestKnownCode(status, code?.trim()?.lowercase())
+        ?: memberConnectRequestFallback(status)
+
+private fun memberConnectRequestKnownCode(status: Int?, code: String?): MemberConnectRequestRefusal? =
     when {
         code == "guest_has_computer" -> MemberConnectRequestRefusal(MemberConnectMessage.GuestHasComputer, closed = true)
         code == "channel_not_invitable" -> MemberConnectRequestRefusal(MemberConnectMessage.NotAllowed, closed = true)
         code == "invalid_input" -> MemberConnectRequestRefusal(MemberConnectMessage.Generic, closed = false)
-        status == 404 || status == 403 -> MemberConnectRequestRefusal(MemberConnectMessage.NotAllowed, closed = true)
         status == 429 -> MemberConnectRequestRefusal(MemberConnectMessage.TooManyAttempts, closed = false)
+        // Documented codeless HTTP 403/404 responses (e.g. `404 {"error":"Channel not found"}`)
+        // keep localized NotAllowed copy; Tier 1 already intercepted edge_blocked 403, and any
+        // non-null unknown refusal code falls through to Tier 3 verbatim server wording.
+        code == null && (status == 404 || status == 403) ->
+            MemberConnectRequestRefusal(MemberConnectMessage.NotAllowed, closed = true)
+        else -> null
+    }
+
+private fun memberConnectRequestFallback(status: Int?): MemberConnectRequestRefusal =
+    when (status) {
+        404, 403 -> MemberConnectRequestRefusal(MemberConnectMessage.NotAllowed, closed = true)
+        429 -> MemberConnectRequestRefusal(MemberConnectMessage.TooManyAttempts, closed = false)
         else -> MemberConnectRequestRefusal(MemberConnectMessage.Generic, closed = false)
+    }
+
+/** Resolves a whole-request `connect-my-servers` refusal through [resolveServerRefusal]. */
+internal fun resolveMemberConnectRequestLine(
+    status: Int?,
+    code: String?,
+    error: String?,
+    traceId: String?,
+): Pair<MemberConnectLine.Request, Boolean> =
+    when (
+        val resolved =
+            resolveServerRefusal(
+                ServerRefusalInput(status = status, code = code, serverMessage = error, traceId = traceId),
+                knownCode = { normalizedCode, st -> memberConnectRequestKnownCode(st, normalizedCode) },
+            )
+    ) {
+        is ResolvedServerRefusal.KnownCode ->
+            MemberConnectLine.Request(resolved.known.message) to resolved.known.closed
+        is ResolvedServerRefusal.ServerWords ->
+            MemberConnectLine.Request(MemberConnectMessage.Generic, serverWords = resolved.message) to (status == 403 || status == 404)
+        is ResolvedServerRefusal.Infrastructure ->
+            MemberConnectLine.Request(MemberConnectMessage.Generic) to false
+        is ResolvedServerRefusal.Generic -> {
+            val fallback = memberConnectRequestFallback(status)
+            MemberConnectLine.Request(fallback.message) to fallback.closed
+        }
     }
 
 /** One line of the sheet's warning banner. */
@@ -251,7 +301,7 @@ internal sealed interface MemberConnectLine {
 
     /**
      * A chosen server's refusal; [serverId] is its {target}. [serverWords]: the server's own sentence
-     * for a channel conversion refusal this flow has no sentence for (slock #15771), shown instead.
+     * for an unknown or dynamic refusal code ([resolveServerRefusal]), shown instead.
      */
     data class Refused(val serverId: String, val message: MemberConnectMessage, val serverWords: String? = null) : MemberConnectLine
 
@@ -259,15 +309,28 @@ internal sealed interface MemberConnectLine {
     data class Request(val message: MemberConnectMessage, val serverWords: String? = null) : MemberConnectLine
 }
 
-/** [MemberConnectLine.Refused] for one chosen server's refusal: [memberConnectRefusalMessage], or the server's words (slock #15771). */
-internal fun memberConnectRefusedLine(outcome: ServerConnectOutcome.Refused): MemberConnectLine.Refused {
-    val message = memberConnectRefusalMessage(outcome)
-    return MemberConnectLine.Refused(
-        serverId = outcome.serverId,
-        message = message,
-        serverWords = channelConversionServerWords(outcome.code, outcome.error, localFallback = message == MemberConnectMessage.Generic),
-    )
-}
+/** [MemberConnectLine.Refused] for one chosen server's refusal routed through [resolveServerRefusal]. */
+internal fun memberConnectRefusedLine(outcome: ServerConnectOutcome.Refused): MemberConnectLine.Refused =
+    when (
+        val resolved =
+            resolveServerRefusal(
+                ServerRefusalInput(
+                    status = outcome.status.takeIf { it > 0 },
+                    code = outcome.code,
+                    serverMessage = outcome.error,
+                ),
+                knownCode = { normalizedCode, st -> memberConnectKnownCodeMessage(outcome, normalizedCode, st) },
+            )
+    ) {
+        is ResolvedServerRefusal.KnownCode ->
+            MemberConnectLine.Refused(serverId = outcome.serverId, message = resolved.known)
+        is ResolvedServerRefusal.ServerWords ->
+            MemberConnectLine.Refused(serverId = outcome.serverId, message = MemberConnectMessage.Generic, serverWords = resolved.message)
+        is ResolvedServerRefusal.Infrastructure,
+        is ResolvedServerRefusal.Generic,
+        ->
+            MemberConnectLine.Refused(serverId = outcome.serverId, message = MemberConnectMessage.Generic)
+    }
 
 /** The open Connect your servers sheet (web ConnectYourServersDialog's state). */
 internal data class MemberConnectSheet(

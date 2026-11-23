@@ -5348,6 +5348,7 @@
     <string name="external_invite_error_already_member">Вы уже участник сервера %1$s. Попросите администратора этого сервера добавить вас в канал %2$s.</string>
     <string name="external_invite_error_guest_elsewhere">Так как вы уже гость в другом канале, присоединиться к каналу %1$s как гость нельзя. Вместо этого подключите или создайте сервер.</string>
     <string name="external_invite_error_channel_full">В канале %1$s не осталось мест. Попросите участника %2$s освободить место, а затем снова откройте эту ссылку.</string>
+    <string name="external_invite_error_deployment_user_limit">В этом развёртывании Raft Community Edition уже 5 человек — это лимит Raft License. Чтобы превысить его, напишите на contact@raft.build и запросите отдельную лицензию.</string>
     <string name="external_invite_error_invalid_server">Сервер %1$s нельзя подключить к каналу %2$s. Выберите другой сервер.</string>
     <string name="external_invite_error_server_admin_required">Подключить сервер %1$s может только его администратор. Выберите этот сервер ещё раз, чтобы запросить одобрение у администратора.</string>
     <string name="external_invite_error_server_membership_required">Вы больше не участник сервера %1$s.</string>

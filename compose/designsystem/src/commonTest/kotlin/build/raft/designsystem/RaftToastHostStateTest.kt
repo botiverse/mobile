@@ -108,4 +108,18 @@ class RaftToastHostStateTest {
         // No override registered: falls back to safeDrawing.
         assertEquals(56f, raftToastSafeBottomPx(overridePx = null, safeDrawingBottomPx = 56f))
     }
+
+    @Test
+    fun footnotePreservesSeparateLineIdentityAndSurvivesHandOff() = runTest {
+        val source = host(limit = 2)
+        val target = host(limit = 2)
+        val id1 = source.show("Beta wasn't connected", description = "Too many messages.", footnote = "Trace ID 62ac7fa7…")
+        val id2 = source.show("Beta wasn't connected", description = "Too many messages.", footnote = "Trace ID 49a2bff6…")
+        assertTrue(id2 != id1, "distinct trace footnotes must not collapse into one toast")
+        assertEquals(listOf("Trace ID 62ac7fa7…", "Trace ID 49a2bff6…"), source.visible.map { it.footnote })
+
+        source.handOffTo(target)
+        assertEquals(emptyList(), source.visible)
+        assertEquals(listOf("Trace ID 62ac7fa7…", "Trace ID 49a2bff6…"), target.visible.map { it.footnote })
+    }
 }

@@ -5531,6 +5531,7 @@
     <string name="external_invite_error_already_member">すでに %1$s のメンバーです。%1$s の管理者に、%2$s への追加を依頼してください。</string>
     <string name="external_invite_error_guest_elsewhere">すでに別のチャンネルのゲストであるため、ゲストとして %1$s に参加することはできません。代わりに、サーバーを接続するか作成してください。</string>
     <string name="external_invite_error_channel_full">%1$s は満員です。%2$s に枠を空けてもらってから、もう一度このリンクを開いてください。</string>
+    <string name="external_invite_error_deployment_user_limit">この Raft Community Edition の環境には、Raft ライセンスの上限である 5 人がすでに登録されています。上限を超えて利用するには、contact@raft.build までメールで別途ライセンスをお申し込みください。</string>
     <string name="external_invite_error_invalid_server">%1$s は %2$s に接続できません。別のサーバーを選んでください。</string>
     <string name="external_invite_error_server_admin_required">%1$s を接続できるのは、そのサーバーの管理者のみです。もう一度選択すると、管理者に承認を依頼できます。</string>
     <string name="external_invite_error_server_membership_required">%1$s のメンバーではなくなりました。</string>

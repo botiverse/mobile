@@ -387,37 +387,56 @@ internal class BridgeModule : Module() {
 
     /**
      * [toast] for an error (AGENTS.md "Errors carry the trace ID"): with the failed request's
-     * [traceId] the toast shows "Trace ID a1b2c3d4…" under [content] and a Copy action that copies
-     * the whole id ("Trace ID copied"), as the web's error toasts do. [traceId] defaults to the
-     * failure the HTTP layer saw just now (web `recentFailedRequestTraceId`); pass the error's own
-     * ([build.raft.app.data.ScreenError.traceId]) when there is one. Without one: a plain [toast].
+     * [traceId] the toast shows "Trace ID a1b2c3d4…" in its footnote row and a Copy action that
+     * copies the whole id ("Trace ID copied"), as the web's error toasts do (`LocalizedToastProvider`).
+     * [traceId] defaults to the failure the HTTP layer saw just now (web `recentFailedRequestTraceId`);
+     * pass the error's own ([build.raft.app.data.ScreenError.traceId]) when there is one.
      */
     fun errorToast(
         content: String,
         traceId: String? = RaftFailedRequestTraceIds.recent(),
         strings: () -> RaftTraceIdToastStrings = ::localizedRaftTraceIdToastStrings,
+    ) = errorToast(title = content, reason = null, traceId = traceId, strings = strings)
+
+    /**
+     * Structured [errorToast] separating the heading ([title]), optional multi-line refusal
+     * explanation ([reason], placed in `RaftToast.description` so it wraps naturally), and
+     * [traceId] (placed on its own footnote row underneath [reason], mirroring web
+     * `LocalizedToastProvider`). Callers must pass [reason] here instead of concatenating `\n` into
+     * [title]. [traceId] has no default on this overload so 2-argument calls can never silently
+     * misroute [reason] into the 2-argument `(content, traceId)` overload.
+     */
+    fun errorToast(
+        title: String,
+        reason: String?,
+        traceId: String?,
+        strings: () -> RaftTraceIdToastStrings = ::localizedRaftTraceIdToastStrings,
     ) {
+        val cleanReason = reason?.trim()?.takeIf { it.isNotEmpty() }
         val id = raftValidTraceIdOrNull(traceId)
-        if (id == null) {
-            toast(content)
-            return
-        }
-        val copy = strings()
-        val line = copy.line(raftShortTraceId(id))
+        val copy = if (id != null) strings() else null
+        val line = if (id != null && copy != null) copy.line(raftShortTraceId(id)) else null
         val posted =
             RaftCmpToasts.post(
-                content,
+                title,
                 origin = pager?.host?.capabilities,
-                description = line,
-                actionLabel = copy.copyAction,
-                onAction = {
-                    copyToPasteboard(id)
-                    briefToast(copy.copied)
-                },
+                description = cleanReason,
+                footnote = line,
+                intent = RaftToastIntent.Error,
+                actionLabel = copy?.copyAction,
+                onAction =
+                    if (id != null && copy != null) {
+                        {
+                            copyToPasteboard(id)
+                            briefToast(copy.copied)
+                        }
+                    } else {
+                        null
+                    },
             )
         if (posted) return
         val methodArgs = JSONObject()
-        methodArgs.put("content", "$content\n$line")
+        methodArgs.put("content", listOfNotNull(title, cleanReason, line).joinToString("\n"))
         callNativeMethod("toast", methodArgs, null)
     }
 

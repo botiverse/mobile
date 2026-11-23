@@ -12,6 +12,7 @@ import build.raft.app.compat.module.Module
 import build.raft.app.compat.pager.PageData
 import build.raft.app.compat.pager.Pager
 import build.raft.designsystem.components.RaftToastHostState
+import build.raft.designsystem.components.RaftToastIntent
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.jsonObject
@@ -72,12 +73,66 @@ class BridgeModuleToastTest {
 
         val toast = window.state.visible.single()
         assertEquals("Unable to open thread", toast.title)
-        assertEquals("Trace ID 4bf92f35…", toast.description)
+        assertNull(toast.description)
+        assertEquals("Trace ID 4bf92f35…", toast.footnote)
+        assertEquals(RaftToastIntent.Error, toast.intent)
         assertEquals("Copy", toast.actionLabel)
         toast.onAction!!.invoke()
         val copied = calls.single { it.method == "copyToPasteboard" }
         assertEquals(traceId, Json.parseToJsonElement(copied.params).jsonObject.getValue("content").jsonPrimitive.content)
         assertEquals(listOf("Trace ID copied"), window.state.visible.map { it.title })
+    }
+
+    @Test
+    fun structuredErrorToastSeparatesTitleReasonAndTraceIdFootnote() {
+        val window = window(visible = true)
+        window.addOrigin(capabilities)
+        val traceId = "62ac7fa79a3785a6bee414a074f82634"
+        val reason =
+            "This channel has 151 messages, which is more than can be moved to a shared channel right now. Nothing was changed. Start a new shared channel instead."
+
+        bridge().errorToast(
+            title = "Acme wasn't connected",
+            reason = reason,
+            traceId = traceId,
+        ) { RaftTraceIdToastStrings({ "Trace ID $it" }, "Copy", "Trace ID copied") }
+
+        val toast = window.state.visible.single()
+        assertEquals("Acme wasn't connected", toast.title)
+        assertEquals(reason, toast.description)
+        assertEquals("Trace ID 62ac7fa7…", toast.footnote)
+        assertEquals(RaftToastIntent.Error, toast.intent)
+        assertEquals("Copy", toast.actionLabel)
+    }
+
+    @Test
+    fun structuredErrorToastWithoutTraceIdStillShowsReasonInDescription() {
+        val window = window(visible = true)
+        window.addOrigin(capabilities)
+
+        bridge().errorToast(title = "Acme wasn't connected", reason = "Try again later.", traceId = null)
+
+        val toast = window.state.visible.single()
+        assertEquals("Acme wasn't connected", toast.title)
+        assertEquals("Try again later.", toast.description)
+        assertNull(toast.footnote)
+        assertEquals(RaftToastIntent.Error, toast.intent)
+        assertNull(toast.actionLabel)
+    }
+
+    @Test
+    fun errorToastWithoutReasonOrTraceIdKeepsErrorIntent() {
+        val window = window(visible = true)
+        window.addOrigin(capabilities)
+
+        bridge().errorToast("Long server refusal sentence without a trace id", traceId = null)
+
+        val toast = window.state.visible.single()
+        assertEquals("Long server refusal sentence without a trace id", toast.title)
+        assertNull(toast.description)
+        assertNull(toast.footnote)
+        assertEquals(RaftToastIntent.Error, toast.intent)
+        assertNull(toast.actionLabel)
     }
 
     @Test

@@ -992,6 +992,250 @@ def _date_time_di_sources(root: Path) -> dict[str, str]:
     return sources
 
 
+ERROR_TOAST_CALL_RE = re.compile(r"\berrorToast\s*\(")
+PREFIX_GATED_REFUSAL_RE = re.compile(
+    r"""(?:\bchannelConversionServerWords\b|\bstartsWith\s*\(\s*"channel_conversion_[^"]*"\s*[,)])"""
+)
+NAMED_ARG_RE = re.compile(r"^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=(?!=)\s*(.*)$", re.DOTALL)
+
+
+def _extract_call_args(code: str, open_paren_index: int) -> list[str]:
+    """Return all top-level arguments inside `(...)`, handling Kotlin strings, raw strings, and `${...}` templates."""
+    args: list[str] = []
+    arg_start = open_paren_index + 1
+    depth = 1
+    i = open_paren_index + 1
+    n = len(code)
+    # State stack: entries are ("str", None), ("triple", None), ("interp", brace_depth)
+    stack: list[tuple[str, int]] = []
+    in_char = False
+    while i < n and depth > 0:
+        ch = code[i]
+        if in_char:
+            if ch == "\\" and i + 1 < n:
+                i += 2
+                continue
+            if ch == "'":
+                in_char = False
+            i += 1
+            continue
+        top = stack[-1][0] if stack else None
+        if top == "triple":
+            if code[i : i + 3] == '"""':
+                stack.pop()
+                i += 3
+                continue
+            if ch == "$" and i + 1 < n and code[i + 1] == "{":
+                stack.append(("interp", 1))
+                i += 2
+                continue
+            i += 1
+            continue
+        if top == "str":
+            if ch == "\\" and i + 1 < n:
+                i += 2
+                continue
+            if ch == "$" and i + 1 < n and code[i + 1] == "{":
+                stack.append(("interp", 1))
+                i += 2
+                continue
+            if ch == '"':
+                stack.pop()
+            i += 1
+            continue
+        # Code mode (either top-level or inside `${...}` interpolation)
+        if code[i : i + 3] == '"""':
+            stack.append(("triple", 0))
+            i += 3
+            continue
+        if ch == '"':
+            stack.append(("str", 0))
+            i += 1
+            continue
+        if ch == "'":
+            in_char = True
+            i += 1
+            continue
+        if top == "interp":
+            if ch == "{":
+                stack[-1] = ("interp", stack[-1][1] + 1)
+            elif ch == "}":
+                b = stack[-1][1] - 1
+                if b == 0:
+                    stack.pop()
+                else:
+                    stack[-1] = ("interp", b)
+            i += 1
+            continue
+        if ch in "([{":
+            depth += 1
+        elif ch in ")]}":
+            depth -= 1
+            if depth == 0:
+                tail = code[arg_start:i]
+                if tail.strip() or args:
+                    args.append(tail)
+                return args
+        elif ch == "," and depth == 1:
+            args.append(code[arg_start:i])
+            arg_start = i + 1
+        i += 1
+    if arg_start < i:
+        args.append(code[arg_start:i])
+    return args
+
+
+def _arg_contains_newline_literal(arg_expr: str) -> bool:
+    """Return True if a Kotlin argument expression embeds a newline (`\\n` escape or raw multiline string)."""
+    if "\\n" in arg_expr:
+        return True
+    # Check raw triple-quoted strings (`"""..."""`) for embedded literal newlines.
+    i = 0
+    n = len(arg_expr)
+    while i < n:
+        if arg_expr[i : i + 3] == '"""':
+            end = arg_expr.find('"""', i + 3)
+            if end == -1:
+                return "\n" in arg_expr[i + 3 :]
+            if "\n" in arg_expr[i + 3 : end]:
+                return True
+            i = end + 3
+        else:
+            i += 1
+    return False
+
+
+def _select_error_toast_title_arg(args: list[str]) -> str | None:
+    """Return the title/content expression passed to `errorToast(...)`, ignoring named `reason =` / `traceId =`."""
+    for arg in args:
+        named = NAMED_ARG_RE.match(arg)
+        if named and named.group(1) in ("title", "content"):
+            return named.group(2)
+    if args and not NAMED_ARG_RE.match(args[0]):
+        return args[0]
+    return None
+
+
+def _strip_kotlin_comments_preserving_strings(text: str) -> str:
+    """Strip Kotlin line and nested block comments while keeping string literals intact."""
+    out: list[str] = []
+    i = 0
+    n = len(text)
+    in_str = False
+    in_triple = False
+    in_char = False
+    block_depth = 0
+    while i < n:
+        ch = text[i]
+        nxt = text[i + 1] if i + 1 < n else ""
+        if block_depth > 0:
+            if ch == "/" and nxt == "*":
+                block_depth += 1
+                out.append("  ")
+                i += 2
+            elif ch == "*" and nxt == "/":
+                block_depth -= 1
+                out.append("  ")
+                i += 2
+            else:
+                out.append("\n" if ch == "\n" else " ")
+                i += 1
+            continue
+        if in_triple:
+            if text[i : i + 3] == '"""':
+                in_triple = False
+                out.append('"""')
+                i += 3
+            else:
+                out.append(ch)
+                i += 1
+            continue
+        if in_str:
+            if ch == "\\" and i + 1 < n:
+                out.append(text[i : i + 2])
+                i += 2
+            elif ch == '"':
+                in_str = False
+                out.append(ch)
+                i += 1
+            else:
+                out.append(ch)
+                i += 1
+            continue
+        if in_char:
+            if ch == "\\" and i + 1 < n:
+                out.append(text[i : i + 2])
+                i += 2
+            elif ch == "'":
+                in_char = False
+                out.append(ch)
+                i += 1
+            else:
+                out.append(ch)
+                i += 1
+            continue
+        if ch == "/" and nxt == "/":
+            while i < n and text[i] != "\n":
+                out.append(" ")
+                i += 1
+            continue
+        if ch == "/" and nxt == "*":
+            block_depth = 1
+            out.append("  ")
+            i += 2
+            continue
+        if text[i : i + 3] == '"""':
+            in_triple = True
+            out.append('"""')
+            i += 3
+            continue
+        if ch == '"':
+            in_str = True
+            out.append(ch)
+            i += 1
+            continue
+        if ch == "'":
+            in_char = True
+            out.append(ch)
+            i += 1
+            continue
+        out.append(ch)
+        i += 1
+    return "".join(out)
+
+
+def check_server_refusal_surface_invariants(sources: dict[str, str]) -> None:
+    """Enforce #proj-mobile:#319 PR1 refusal-surface invariants on production Kotlin sources:
+    1. Never concatenate `\\n` into the first (`title`) argument of `errorToast(...)` — use the
+       structured `errorToast(title, reason, traceId)` overload so `RaftToast.description` wraps
+       the refusal explanation without truncation.
+    2. Never gate server-worded refusal passthrough by code prefix (`channelConversionServerWords`
+       or `startsWith("channel_conversion_")`); route refusals through `resolveServerRefusal`.
+    """
+    for name, text in sorted(sources.items()):
+        code = _strip_kotlin_comments_preserving_strings(text)
+        for match in PREFIX_GATED_REFUSAL_RE.finditer(code):
+            line = code.count("\n", 0, match.start()) + 1
+            raise Violation(
+                f"server-refusal invariant violation (#proj-mobile:#319): {name}:{line} uses prefix-gated "
+                f"refusal passthrough (`{match.group(0)}`); route through `resolveServerRefusal` instead."
+            )
+        for match in ERROR_TOAST_CALL_RE.finditer(code):
+            # Ignore function declarations (`fun errorToast(`).
+            prefix = code[max(0, match.start() - 16) : match.start()]
+            if re.search(r"\bfun\s+$", prefix):
+                continue
+            args = _extract_call_args(code, match.end() - 1)
+            title_arg = _select_error_toast_title_arg(args)
+            if title_arg is not None and _arg_contains_newline_literal(title_arg):
+                line = code.count("\n", 0, match.start()) + 1
+                raise Violation(
+                    f"server-refusal invariant violation (#proj-mobile:#319): {name}:{line} concatenates a "
+                    "newline in `errorToast(...)`'s title argument; pass `reason` via the structured "
+                    "`errorToast(title, reason, traceId)` overload instead."
+                )
+
+
 def run(root: Path) -> None:
     def read(rel: str) -> str:
         path = root / rel
@@ -1008,7 +1252,9 @@ def run(root: Path) -> None:
         entitlements=read(IOS_ENTITLEMENTS),
         xcode_project=read(IOS_XCODE_PROJECT),
     )
-    check_no_production_run_blocking(_production_kotlin_sources(root))
+    prod_kotlin = _production_kotlin_sources(root)
+    check_no_production_run_blocking(prod_kotlin)
+    check_server_refusal_surface_invariants(prod_kotlin)
     check_native_safe_test_names(_native_test_sources(root))
     check_no_top_level_or_object_snapshot_state(_top_level_snapshot_state_sources(root))
     check_date_time_di_invariants(_date_time_di_sources(root))
@@ -1348,6 +1594,34 @@ com.apple.SignInWithApple = {
         else:
             raise SystemExit(f"self-test: date/time DI checker accepted {bad_sources!r}")
 
+    good_refusal = {
+        "a.kt": (
+            "// channelConversionServerWords and errorToast(\"a\\nb\") in comments are fine\n"
+            "fun errorToast(title: String, reason: String?) {}\n"
+            'bridge.errorToast(title, "line1\\nline2", traceId)\n'
+            'bridge.errorToast(reason = "line1\\nline2", title = "Failed", traceId = traceId)\n'
+            "bridge.errorToast(toast.title, toast.reason, toast.traceId)\n"
+        ),
+    }
+    check_server_refusal_surface_invariants(good_refusal)
+    for bad_refusal in (
+        {"a.kt": 'bridge.errorToast("$title\\n$reason", traceId)\n'},
+        {"a.kt": 'bridge.errorToast("Failed\\nDetails", traceId)\n'},
+        {"a.kt": 'bridge.errorToast(traceId = id, title = "$a\\n$b")\n'},
+        {"a.kt": 'bridge.errorToast(traceId = id, content = "$a\\n$b")\n'},
+        {"a.kt": 'bridge.errorToast("${foo("a", "b")}\\n$reason", traceId)\n'},
+        {"a.kt": 'bridge.errorToast("""line1\nline2""", traceId)\n'},
+        {"a.kt": 'val msg = channelConversionServerWords(code, err, true)\n'},
+        {"a.kt": 'val ok = code?.startsWith("channel_conversion_") == true\n'},
+        {"a.kt": 'val ok = code?.startsWith("channel_conversion_", ignoreCase = true) == true\n'},
+    ):
+        try:
+            check_server_refusal_surface_invariants(bad_refusal)
+        except Violation:
+            pass
+        else:
+            raise SystemExit(f"self-test: server-refusal checker accepted {bad_refusal!r}")
+
     print("check_source_constraints self-test passed")
 
 
@@ -1367,7 +1641,7 @@ def main(argv: list[str]) -> int:
         "source constraints hold (1.15.0 conditional interaction state, task #82 native Apple, "
         "#3823 no production runBlocking, #3845 Native-safe test names, "
         "1.17.1 NSInvocation object return, #264 no top-level/object snapshot state, "
-        "dm:@artin:#2 date/time DI invariants)"
+        "dm:@artin:#2 date/time DI invariants, #proj-mobile:#319 server refusal invariants)"
     )
     return 0
 

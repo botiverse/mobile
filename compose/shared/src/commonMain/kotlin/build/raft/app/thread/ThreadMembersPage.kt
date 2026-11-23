@@ -552,29 +552,34 @@ private fun ThreadMembersPageScreen() {
         if (externalInviteManagementOn) externalInvitesStore.dispatch(ExternalInvitesIntent.Load)
     }
     LaunchedEffect(externalInvitesState.effects) {
-        externalInvitesState.effects.forEach { effect ->
+        val pending = externalInvitesState.effects
+        if (pending.isEmpty()) return@LaunchedEffect
+        val toastEffects = mutableListOf<ExternalInvitesEffect>()
+        pending.forEach { effect ->
+            externalInvitesStore.dispatch(ExternalInvitesIntent.ConsumeEffect(effect))
             if (effect == ExternalInvitesEffect.FreeLimitUpgrade) {
-                externalInvitesStore.dispatch(ExternalInvitesIntent.ConsumeEffect(effect))
                 // Web openExternalLimitUpgrade (surface external_invite_dialog); iOS view-only Billing: the plan page.
                 if (settingsBillingOffersUpgrade()) {
                     pager.openRaftUpgradeDialog(RaftUpgradeGate.ExternalChannelFreeLimit, storeScope)
                 } else {
                     pager.openSettingsBillingPage(storeScope)
                 }
-                return@forEach
+            } else {
+                toastEffects += effect
             }
-            val title = externalInviteEffectDesc(effect, externalInviteJoint).resolve()
-            // Web toastServerOutcomes: a refused server's toast says why under its title.
-            val text =
-                if (effect is ExternalInvitesEffect.ServerRefused) {
-                    val reason =
-                        externalInviteServerRefusalDesc(effect.reason, target = effect.serverName, channel = "#$channelName", host = viewerServerName)
-                    "$title\n${reason.resolve()}"
-                } else {
-                    title
-                }
-            if (effect.isError) bridge.errorToast(text, effect.traceId) else bridge.toast(text)
-            externalInvitesStore.dispatch(ExternalInvitesIntent.ConsumeEffect(effect))
+        }
+        buildExternalInviteToasts(
+            effects = toastEffects,
+            joint = externalInviteJoint,
+            channel = "#$channelName",
+            host = viewerServerName,
+            resolveDesc = { desc -> desc.resolve() },
+        ).forEach { toast ->
+            if (toast.isError) {
+                bridge.errorToast(title = toast.title, reason = toast.reason, traceId = toast.traceId)
+            } else {
+                bridge.toast(toast.title)
+            }
         }
     }
     val membersLoading =

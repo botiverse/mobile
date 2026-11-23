@@ -72,7 +72,11 @@ internal fun raftToastLook(surface: RaftToastSurface, colors: RaftUiThemeColors)
  *   the 20dp column, centred on the first line; never a status light.
  * - [icon]: raft-ui `leading`, a 20dp slot for who did it (an avatar); replaces the
  *   [intent]'s icon.
- * - [description]: more detail in the muted ink.
+ * - [description]: more detail in the muted ink, wrapping naturally across lines (e.g. a server
+ *   refusal reason).
+ * - [footnote]: optional third muted line in `footnote` typography on its own row under
+ *   [description], mirroring web `LocalizedToastProvider` (`ToastTitle` -> `ToastDescription` ->
+ *   `TraceIdNote`).
  * - [actionLabel] / [onAction]: one bold text action ("View", "Undo"), never a button;
  *   underlined only under a mouse or trackpad and while pressed (raft-ui
  *   `not-disabled:hover:underline`); it takes touches 44dp round it.
@@ -86,6 +90,7 @@ fun RaftToast(
     title: String,
     modifier: Modifier = Modifier,
     description: String? = null,
+    footnote: String? = null,
     surface: RaftToastSurface = RaftToastSurface.Hud,
     intent: RaftToastIntent? = null,
     icon: (@Composable () -> Unit)? = null,
@@ -96,7 +101,8 @@ fun RaftToast(
     val typography = RaftTheme.typography
     val leading: (@Composable () -> Unit)? =
         icon ?: intent?.let { { RaftGlyphIcon(it.glyph, size = 16.dp, color = look.ink) } }
-    val titleOnly = leading == null && description == null && actionLabel == null
+    val hasDetail = description != null || footnote != null
+    val titleOnly = leading == null && !hasDetail && actionLabel == null
     CompositionLocalProvider(LocalRaftContentColor provides look.ink, LocalRaftSurfaceColor provides look.fill) {
         Row(
             modifier
@@ -107,7 +113,7 @@ fun RaftToast(
                 .semantics { liveRegion = if (intent == RaftToastIntent.Error) LiveRegionMode.Assertive else LiveRegionMode.Polite }
                 .padding(horizontal = 16.dp, vertical = 12.dp),
             horizontalArrangement = Arrangement.spacedBy(12.dp, if (titleOnly) Alignment.CenterHorizontally else Alignment.Start),
-            verticalAlignment = if (description != null) Alignment.Top else Alignment.CenterVertically,
+            verticalAlignment = if (hasDetail) Alignment.Top else Alignment.CenterVertically,
         ) {
             // `ToastIcon`: `w-5 h-lh`, on the first line however the title wraps.
             if (leading != null) Box(Modifier.size(20.dp).align(Alignment.Top), contentAlignment = Alignment.Center) { leading() }
@@ -118,11 +124,21 @@ fun RaftToast(
                     title,
                     style = typography.callout,
                     color = look.ink,
-                    maxLines = if (description == null) 2 else 1,
+                    maxLines = if (intent == RaftToastIntent.Error) Int.MAX_VALUE else 2,
                     overflow = TextOverflow.Ellipsis,
                     textAlign = if (titleOnly) TextAlign.Center else null,
                 )
                 if (description != null) RaftText(description, style = typography.callout, color = look.muted)
+                if (footnote != null) {
+                    RaftText(
+                        footnote,
+                        modifier = Modifier.padding(top = 2.dp),
+                        style = typography.footnote,
+                        color = look.muted,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
             }
             if (hasAction) {
                 val source = remember { MutableInteractionSource() }

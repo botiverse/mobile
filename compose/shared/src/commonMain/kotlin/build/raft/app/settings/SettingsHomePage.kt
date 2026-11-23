@@ -6900,31 +6900,32 @@ private fun RaftAppShellReadyContent(
                     val createChannelNameForToasts = createExternalState?.created?.channel?.name?.removePrefix("#").orEmpty()
                     LaunchedEffect(createExternalState?.effects) {
                         val store = createExternalStore ?: return@LaunchedEffect
-                        createExternalState?.effects.orEmpty().forEach { effect ->
+                        val pending = createExternalState?.effects.orEmpty()
+                        if (pending.isEmpty()) return@LaunchedEffect
+                        val toastEffects = mutableListOf<ExternalInvitesEffect>()
+                        val finishedChannels = mutableListOf<HomeChannelRow>()
+                        pending.forEach { effect ->
                             store.dispatch(CreateExternalChannelIntent.ConsumeEffect(effect))
                             when (effect) {
                                 is CreateExternalChannelEffect.CreateFailed -> showCreateChannelRefusal(effect.result)
-                                is CreateExternalChannelEffect.Finished -> landInCreatedChannel(effect.channel.channel, toast = false)
-                                is CreateExternalChannelEffect.Toast -> {
-                                    val toast = effect.effect
-                                    val title = externalInviteEffectDesc(toast).resolve()
-                                    val text =
-                                        if (toast is ExternalInvitesEffect.ServerRefused) {
-                                            val reason =
-                                                externalInviteServerRefusalDesc(
-                                                    toast.reason,
-                                                    target = toast.serverName,
-                                                    channel = "#$createChannelNameForToasts",
-                                                    host = createServerName,
-                                                )
-                                            "$title\n${reason.resolve()}"
-                                        } else {
-                                            title
-                                        }
-                                    if (toast.isError) bridge.errorToast(text, toast.traceId) else bridge.toast(text)
-                                }
+                                is CreateExternalChannelEffect.Finished -> finishedChannels += effect.channel.channel
+                                is CreateExternalChannelEffect.Toast -> toastEffects += effect.effect
                             }
                         }
+                        buildExternalInviteToasts(
+                            effects = toastEffects,
+                            joint = false,
+                            channel = "#$createChannelNameForToasts",
+                            host = createServerName,
+                            resolveDesc = { desc -> desc.resolve() },
+                        ).forEach { toast ->
+                            if (toast.isError) {
+                                bridge.errorToast(title = toast.title, reason = toast.reason, traceId = toast.traceId)
+                            } else {
+                                bridge.toast(toast.title)
+                            }
+                        }
+                        finishedChannels.forEach { channel -> landInCreatedChannel(channel, toast = false) }
                     }
                     SharedCreateChannelDialog(
                         externalStore = createExternalStore,

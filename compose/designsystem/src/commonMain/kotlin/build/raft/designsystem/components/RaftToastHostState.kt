@@ -39,9 +39,20 @@ class RaftToastData internal constructor(
     val onAction: (() -> Unit)?,
     val durationMillis: Long,
     val appearAtOnce: Boolean = false,
+    val footnote: String? = null,
 ) {
-    internal fun isSameMessage(title: String, description: String?, intent: RaftToastIntent?, actionLabel: String?): Boolean =
-        this.title == title && this.description == description && this.intent == intent && this.actionLabel == actionLabel
+    internal fun isSameMessage(
+        title: String,
+        description: String?,
+        footnote: String?,
+        intent: RaftToastIntent?,
+        actionLabel: String?,
+    ): Boolean =
+        this.title == title &&
+            this.description == description &&
+            this.footnote == footnote &&
+            this.intent == intent &&
+            this.actionLabel == actionLabel
 }
 
 /**
@@ -107,6 +118,7 @@ class RaftToastHostState(
         actionLabel: String? = null,
         onAction: (() -> Unit)? = null,
         durationMillis: Long? = null,
+        footnote: String? = null,
     ): Long {
         val hasAction = actionLabel != null && onAction != null
         val duration = (durationMillis ?: raftToastDefaultDurationMillis(hasAction, intent)).coerceAtLeast(0)
@@ -119,7 +131,7 @@ class RaftToastHostState(
             val start = pausedAt ?: now
             val deadline = if (duration > 0) start + duration.milliseconds else null
             val newest = m.entries.lastOrNull()
-            if (newest != null && newest.toast.isSameMessage(title, description, intent, actionLabel)) {
+            if (newest != null && newest.toast.isSameMessage(title, description, footnote, intent, actionLabel)) {
                 shown = newest.toast.id
                 val refreshed =
                     RaftToastData(
@@ -131,11 +143,22 @@ class RaftToastHostState(
                         onAction = onAction,
                         durationMillis = duration,
                         appearAtOnce = newest.toast.appearAtOnce,
+                        footnote = footnote,
                     )
                 m.copy(entries = m.entries.dropLast(1) + Entry(refreshed, deadline), pausedAt = pausedAt)
             } else {
                 shown = m.nextId
-                val toast = RaftToastData(m.nextId, title, description, intent, actionLabel, onAction, duration)
+                val toast =
+                    RaftToastData(
+                        id = m.nextId,
+                        title = title,
+                        description = description,
+                        intent = intent,
+                        actionLabel = actionLabel,
+                        onAction = onAction,
+                        durationMillis = duration,
+                        footnote = footnote,
+                    )
                 m.copy(entries = (m.entries + Entry(toast, deadline)).takeLast(limit), pausedAt = pausedAt, nextId = m.nextId + 1)
             }
         }
@@ -251,6 +274,7 @@ class RaftToastHostState(
                             onAction = toast.onAction,
                             durationMillis = toast.durationMillis,
                             appearAtOnce = true,
+                            footnote = toast.footnote,
                         )
                     Entry(transferred, remaining?.let { start + it })
                 }

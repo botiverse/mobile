@@ -251,4 +251,60 @@ class CreateExternalChannelStoreTest {
         created.dispatch(CreateExternalChannelIntent.Leave)
         assertIs<CreateExternalChannelEffect.Finished>(created.state.value.effects.single())
     }
+
+    @Test
+    fun wholeRequestConnectRefusalStaysInDialogForServerOnlyAndCarriesDetailWhenEmailsSent() = runTest {
+        val traceId = "62ac7fa79a3785a6bee414a074f82634"
+        val sentence = "This channel has 151 messages, which is more than can be moved to a shared channel right now."
+        val serverOnlySource =
+            FakeCreateExternalChannelDataSource().apply {
+                servers = listOf(InviteConnectableServer(id = "s2", name = "Beta"))
+                connectAnswer =
+                    DataResult.Content(
+                        ExternalInviteAnswer.Refused(
+                            ExternalInviteRefusal(409, "channel_conversion_too_large", sentence, traceId = traceId)
+                        )
+                    )
+            }
+        val serverOnly = started(serverOnlySource)
+        serverOnly.dispatch(CreateExternalChannelIntent.LoadServers)
+        runCurrent()
+        serverOnly.dispatch(CreateExternalChannelIntent.SetServers(setOf("s2")))
+        serverOnly.dispatch(CreateExternalChannelIntent.Review)
+        runCurrent()
+        serverOnly.dispatch(CreateExternalChannelIntent.Commit(draft))
+        runCurrent()
+
+        assertNotNull(serverOnly.state.value.created)
+        assertFalse(serverOnly.state.value.invite.busy)
+        assertEquals(sentence, serverOnly.state.value.invite.failure?.serverMessage)
+        assertEquals(traceId, serverOnly.state.value.invite.failure?.traceId)
+        assertEquals(emptyList(), serverOnly.state.value.effects)
+
+        val mixedSource =
+            FakeCreateExternalChannelDataSource().apply {
+                servers = listOf(InviteConnectableServer(id = "s2", name = "Beta"))
+                connectAnswer =
+                    DataResult.Content(
+                        ExternalInviteAnswer.Refused(
+                            ExternalInviteRefusal(409, "channel_conversion_too_large", sentence, traceId = traceId)
+                        )
+                    )
+            }
+        val mixed = started(mixedSource)
+        mixed.dispatch(CreateExternalChannelIntent.LoadServers)
+        runCurrent()
+        mixed.dispatch(CreateExternalChannelIntent.SetText("new@example.com"))
+        mixed.dispatch(CreateExternalChannelIntent.SetServers(setOf("s2")))
+        mixed.dispatch(CreateExternalChannelIntent.Review)
+        runCurrent()
+        mixed.dispatch(CreateExternalChannelIntent.Commit(draft))
+        runCurrent()
+
+        val toastEffects = mixed.state.value.effects.filterIsInstance<CreateExternalChannelEffect.Toast>().map { it.effect }
+        val notConnected = assertIs<ExternalInvitesEffect.ServersNotConnected>(toastEffects.last())
+        assertEquals(traceId, notConnected.traceId)
+        assertEquals(sentence, notConnected.failure?.serverMessage)
+        assertIs<CreateExternalChannelEffect.Finished>(mixed.state.value.effects.last())
+    }
 }

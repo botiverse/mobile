@@ -5348,6 +5348,7 @@
     <string name="external_invite_error_already_member">你已經是 %1$s 的成員。請該伺服器的管理員將你加入 %2$s。</string>
     <string name="external_invite_error_guest_elsewhere">你已是另一個頻道的訪客，因此無法以訪客身分加入 %1$s。請改為連結或建立一個伺服器。</string>
     <string name="external_invite_error_channel_full">%1$s 已滿。請 %2$s 騰出名額後，再重新開啟這個連結。</string>
+    <string name="external_invite_error_deployment_user_limit">這個 Raft 社群版部署已有 5 人，達到 Raft 授權條款的上限。如需超過上限，請寄信至 contact@raft.build 申請另行授權。</string>
     <string name="external_invite_error_invalid_server">%1$s 無法連結到 %2$s，請選擇其他伺服器。</string>
     <string name="external_invite_error_server_admin_required">只有 %1$s 的管理員可以連結這個伺服器。再次選擇它，即可請一位管理員核准。</string>
     <string name="external_invite_error_server_membership_required">你已不是 %1$s 的成員。</string>

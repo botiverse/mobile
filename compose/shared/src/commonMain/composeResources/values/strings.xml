@@ -5532,6 +5532,7 @@
     <string name="external_invite_error_already_member">You're already a member of %1$s. Ask an admin there to add you to %2$s.</string>
     <string name="external_invite_error_guest_elsewhere">You're already a guest in another channel, so you can't join %1$s as a guest. Connect or create a server instead.</string>
     <string name="external_invite_error_channel_full">%1$s is full. Ask %2$s to free a slot, then open this link again.</string>
+    <string name="external_invite_error_deployment_user_limit">This Raft Community Edition deployment already has 5 people, the Raft License limit. To go above it, email contact@raft.build for a separate license.</string>
     <string name="external_invite_error_invalid_server">%1$s can't be connected to %2$s. Choose another server.</string>
     <string name="external_invite_error_server_admin_required">Only an admin of %1$s can connect it. Choose it again to ask an admin to approve.</string>
     <string name="external_invite_error_server_membership_required">You're no longer a member of %1$s.</string>
