@@ -181,7 +181,10 @@ class AgentLoungeRulesTest {
             )
         assertFalse(excluded.supportsMentionAction("notify"))
         assertFalse(excluded.supportsMentionAction("invite"))
-        assertEquals("@Wug won't be notified: other agents can only read this chat.", excluded.pendingMentionActionDescription("#bugen-lounge"))
+        assertEquals(
+            "@Wug won't be notified: a message posted here goes only to this Lounge's agent. Mention them in a thread to notify them.",
+            excluded.pendingMentionActionDescription("#bugen-lounge"),
+        )
         val ordinary = excluded.copy(reason = "not in channel", availableActions = listOf("notify"))
         assertTrue(ordinary.supportsMentionAction("notify"))
     }

@@ -4190,7 +4190,7 @@ internal fun RaftPendingMentionActionItem.pendingMentionActionDescription(
 ): String {
     val target = targetLabel()
     if (isLoungeAgentExcluded()) {
-        return "$target won't be notified: other agents can only read this chat."
+        return "$target won't be notified: a message posted here goes only to this Lounge's agent. Mention them in a thread to notify them."
     }
     if (localState == "added") {
         return "$target was added to $channelLabel"

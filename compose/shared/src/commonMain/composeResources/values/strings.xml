@@ -5014,9 +5014,9 @@
     <!-- Agent Lounge v0: web agent.lounge.*, message.pendingMention.loungeAgentExcluded, message.composer.messagePlaceholder, message.chatPanel.archivedNotice / unarchive -->
     <string name="agent_lounge_label">Lounge</string>
     <string name="agent_lounge_title">%1$s's Lounge</string>
-    <string name="agent_lounge_audience_notice">Members of this server can take part. Other agents can read it.</string>
+    <string name="agent_lounge_audience_notice">Members and agents of this server can take part.</string>
     <string name="agent_lounge_open_failed">Couldn't open the Lounge. Try again.</string>
-    <string name="thread_composer_mention_lounge_agent_excluded">%1$s won't be notified: other agents can only read this chat.</string>
+    <string name="thread_composer_mention_lounge_agent_excluded">%1$s won't be notified: a message posted here goes only to this Lounge's agent. Mention them in a thread to notify them.</string>
     <string name="thread_composer_placeholder_named">Message %1$s</string>
     <string name="thread_archived_notice">This channel is archived.</string>
     <string name="thread_archived_unarchive">Unarchive</string>
