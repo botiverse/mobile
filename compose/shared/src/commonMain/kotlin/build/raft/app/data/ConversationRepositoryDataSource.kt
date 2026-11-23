@@ -2,6 +2,7 @@ package build.raft.app.data
 
 import build.raft.app.projectionRejectingDiagnosticsLogger
 import build.raft.app.strictProjectionDiagnosticsLogger
+import build.raft.app.RaftTaskConversationChannelKind
 import build.raft.app.RaftThreadSurfaceKind
 import build.raft.app.normalizedThreadChannelKind
 import build.raft.app.model.AttachmentId
@@ -385,7 +386,9 @@ class RealConversationRepository private constructor(
             },
             source = "conversation_detail",
             mapper = { bodyText ->
-                parseRaftChannelDetail(bodyText, warningLogger)?.toConversationSummary()
+                parseRaftChannelDetail(bodyText, warningLogger)
+                    ?.toConversationSummary()
+                    ?.normalizeSyntheticChannelMembership()
                     ?: throw IllegalStateException("Conversation detail response missing channel")
             },
         )
@@ -923,11 +926,16 @@ class RealConversationRepository private constructor(
             warningLogger("conversation_detail_unavailable channelId=${channelId.value} status=${response.code}")
             return null
         }
-        val detail = parseRaftChannelDetail(response.bodyText.orEmpty(), warningLogger)?.toConversationSummary()
-        if (detail == null) {
+        val parsedDetail = parseRaftChannelDetail(response.bodyText.orEmpty(), warningLogger)?.toConversationSummary()
+        if (parsedDetail == null) {
             warningLogger("conversation_detail_parse_failed channelId=${channelId.value}")
             return null
         }
+        // Server `GET /channels/:id` computes `joined = isChannelHuman(channel.id, userId)` which
+        // is always false for `type = "thread"` and `type = "task"` channels (they carry no
+        // `channel_humans` rows; write authority belongs to the parent channel). Mark membership
+        // unknown so synthetic channel details never stamp `joined = false` onto snapshots or caches.
+        val detail = parsedDetail.normalizeSyntheticChannelMembership()
         val taskConversation = parseTaskConversationChannelDetail(response.bodyText.orEmpty())
             ?: return detail
         return loadTaskConversationDetail(detail, taskConversation, priority, serverId)
@@ -948,20 +956,25 @@ class RealConversationRepository private constructor(
         // Hands 4cf4c781: write authority is the parent channel's alone, so the load waits only for
         // the parent detail. The task (title only) is used when a recent fetch has it; otherwise the
         // title is left pending (blank) and [loadTaskConversationTitle] fills it in.
+        // Do NOT reuse a stale cached parent as authoritative membership when the live parent fetch
+        // fails (including 403/404 after leave/removal, or stale unjoined after join): passing
+        // `parent = null` sets `membershipKnown = false` so SharedThreadStore preserves live Home /
+        // in-memory membership without flashing Join or resurrecting stale access.
         val key = taskConversationContextKey(serverId, taskConversation)
-        val parent =
+        val fetchedParent =
             taskConversationParentFlights.run(key, priority) {
                 loadConversationDetail(taskConversation.parentChannelId, priority, serverId)
                     ?.takeUnless { it.kind == ConversationKind.Task }
             }
-        recordRecentTaskConversation(key, taskConversation, parent)
+        recordRecentTaskConversation(key, taskConversation, fetchedParent)
         val task = recentTaskConversationTask(key)
         warningLogger(
             "task_conversation_detail channelId=${taskConversation.conversationChannelId.value} " +
                 "parentChannelId=${taskConversation.parentChannelId.value} taskId=${taskConversation.taskId.value} " +
-                "parent=${parent != null} task=${if (task != null) "recent" else "pending"}"
+                "parent=${fetchedParent != null} " +
+                "task=${if (task != null) "recent" else "pending"}"
         )
-        return detail.withTaskConversationContext(parent = parent, task = task, taskPending = task == null)
+        return detail.withTaskConversationContext(parent = fetchedParent, task = task, taskPending = task == null)
     }
 
     /**
@@ -1832,9 +1845,24 @@ class RealConversationRepository private constructor(
                     "followedSummaries=0 mergedSummaries=0 " +
                     "durationMs=${loadStartedAt.elapsedNow().inWholeMilliseconds}"
             )
+            val emptyConversation =
+                if (canonicalDetail.channelType.equals("thread", ignoreCase = true) ||
+                    canonicalDetail.kind == ConversationKind.Thread
+                ) {
+                    buildDefaultConversation(threadId, canonicalDetail.name).copy(
+                        kind = ConversationKind.Thread,
+                        channelType = canonicalDetail.channelType,
+                        subtitle = canonicalDetail.subtitle,
+                        archived = canonicalDetail.archived,
+                        channelCapabilities = canonicalDetail.channelCapabilities,
+                        membershipKnown = false,
+                    )
+                } else {
+                    canonicalDetail
+                }
             DataResult.Content(
                 ThreadSnapshot(
-                    conversation = canonicalDetail,
+                    conversation = emptyConversation,
                     canonicalConversationDetail = canonicalDetail,
                     messages = emptyList(),
                 )
@@ -2255,6 +2283,15 @@ internal fun embeddedReplyCountsOrNull(element: JsonElement?): Map<String, Int>?
 
 private val rawMessagePageJson = Json { ignoreUnknownKeys = true }
 
+private fun ConversationSummary.normalizeSyntheticChannelMembership(): ConversationSummary =
+    when {
+        channelType.equals("thread", ignoreCase = true) ->
+            copy(kind = ConversationKind.Thread, membershipKnown = false)
+        channelType.equals(RaftTaskConversationChannelKind, ignoreCase = true) ->
+            copy(kind = ConversationKind.Task, membershipKnown = false)
+        else -> this
+    }
+
 private fun ThreadSnapshot.withConversationDetail(
     detail: ConversationSummary?,
     canonicalReplyThread: Boolean
@@ -2263,15 +2300,28 @@ private fun ThreadSnapshot.withConversationDetail(
     val snapshotChannelId = conversation.channelId?.value ?: return this
     val detailChannelId = detail.channelId?.value ?: return this
     if (snapshotChannelId != detailChannelId) return this
-    if (canonicalReplyThread) {
+    if (canonicalReplyThread ||
+        detail.channelType.equals("thread", ignoreCase = true) ||
+        detail.kind == ConversationKind.Thread
+    ) {
+        val threadDetail = detail.channelType.equals("thread", ignoreCase = true) || detail.kind == ConversationKind.Thread
         return copy(
             canonicalConversationDetail = detail,
             conversation =
                 conversation.copy(
-                    name = detail.name,
+                    kind = if (!canonicalReplyThread && threadDetail) ConversationKind.Thread else conversation.kind,
+                    channelType =
+                        if (!canonicalReplyThread && threadDetail) {
+                            detail.channelType ?: conversation.channelType
+                        } else {
+                            conversation.channelType
+                        },
+                    name = detail.name.takeIf { it.isNotBlank() } ?: conversation.name,
                     subtitle = conversation.subtitle ?: detail.subtitle,
                     // The parent channel's archive is the thread's (its replies are refused too).
-                    archived = conversation.archived || detail.archived
+                    archived = conversation.archived || detail.archived,
+                    channelCapabilities = detail.channelCapabilities ?: conversation.channelCapabilities,
+                    membershipKnown = if (canonicalReplyThread) conversation.membershipKnown else false,
                 )
         )
     }

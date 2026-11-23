@@ -163,6 +163,14 @@ internal data class RaftThreadScreenPayload(
     @Transient
     val replySummariesAuthority: build.raft.app.data.ThreadReplySummariesAuthority =
         build.raft.app.data.ThreadReplySummariesAuthority.Unavailable,
+    /**
+     * In-process access provenance: false when the canonical snapshot came from an endpoint that
+     * does not attest membership (a synthetic `type = "thread"` detail or a task conversation
+     * whose parent detail fetch failed). Never overwrite already-known membership or render Join
+     * from an unknown answer.
+     */
+    @Transient
+    val canonicalAccessKnown: Boolean = true,
 ) {
     /** Derived from [surfaceKind] and [channelKind]; never stored, so no constructor can forget it. */
     val showReplyActions: Boolean get() = RaftThreadSurfaceKind.allowsReplyInThread(surfaceKind, channelKind)
