@@ -114,6 +114,15 @@ class RaftMobileWebPanelStateTest {
     }
 
     @Test
+    fun backdropAlphaRemainsOpaqueWhenExpandedAndClampsSlideProgress() {
+        assertEquals(0f, resolveRaftMobileWebPanelBackdropAlpha(-0.25f))
+        assertEquals(0f, resolveRaftMobileWebPanelBackdropAlpha(0f))
+        assertEquals(0.5f, resolveRaftMobileWebPanelBackdropAlpha(0.5f))
+        assertEquals(1f, resolveRaftMobileWebPanelBackdropAlpha(1f))
+        assertEquals(1f, resolveRaftMobileWebPanelBackdropAlpha(1.25f))
+    }
+
+    @Test
     fun dragTransitionsBetweenDefault88FullscreenAndCollapsed() {
         assertEquals(
             RaftMobileWebPanelDetent.Fullscreen,

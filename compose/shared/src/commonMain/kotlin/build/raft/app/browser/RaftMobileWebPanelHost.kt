@@ -40,6 +40,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.hideFromAccessibility
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 import build.raft.app.base.BridgeModule
@@ -53,6 +54,7 @@ import build.raft.app.components.RaftDesignSystemTheme
 import build.raft.app.data.RaftSharedStoreRegistry
 import build.raft.app.data.RaftShellStoreScope
 import build.raft.app.resources.*
+import build.raft.designsystem.components.RaftStatusBarBackdropClaim
 import build.raft.designsystem.gesture.RaftBlockBackSwipe
 import build.raft.designsystem.motion.RaftMotion
 import build.raft.designsystem.motion.rememberRaftReducedMotion
@@ -72,6 +74,7 @@ import kotlin.math.roundToInt
  */
 
 internal const val RAFT_WEB_PANEL_OVERLAY_TAG = "raft_web_panel_overlay"
+internal const val RAFT_WEB_PANEL_BACKDROP_TAG = "raft_web_panel_backdrop"
 
 /** Local message source set inside each ThreadMessageCard so link/App taps capture source context. */
 internal val LocalRaftMobileWebPanelMessageSource = compositionLocalOf<RaftMobileWebPanelSource.Message?> { null }
@@ -250,6 +253,47 @@ internal fun RaftMobileWebPanelOverlay(
     }
 }
 
+/**
+ * Opaque canvas backdrop + dimmed 1-line source message strip shown above the 88% web panel.
+ * Uses an opaque [RaftTheme.colors.layerCanvas] fill so the underlying conversation header cannot
+ * bleed through behind the source strip or top safe area while expanded.
+ */
+@Composable
+internal fun RaftMobileWebPanelBackdrop(
+    slideProgress: Float,
+    fullscreen: Boolean,
+    source: RaftMobileWebPanelSource?,
+    topSafeArea: Dp,
+    onCollapse: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val colors = RaftTheme.colors
+    val scrimAlpha = resolveRaftMobileWebPanelBackdropAlpha(slideProgress)
+    RaftStatusBarBackdropClaim(colors.layerCanvas, enabled = topSafeArea > 0.dp && scrimAlpha > 0.5f)
+    Box(
+        modifier =
+            modifier
+                .fillMaxSize()
+                .testTag(RAFT_WEB_PANEL_BACKDROP_TAG)
+                .graphicsLayer { alpha = scrimAlpha }
+                .background(colors.layerCanvas)
+                .clickable(
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = null,
+                    onClick = onCollapse,
+                ),
+    ) {
+        if (!fullscreen) {
+            RaftMobileWebPanelSourceStrip(
+                source = source,
+                topSafeArea = topSafeArea,
+                onCollapse = onCollapse,
+                modifier = Modifier.align(Alignment.TopStart),
+            )
+        }
+    }
+}
+
 @Composable
 private fun RaftMobileWebPanelOverlaySession(
     pager: Pager,
@@ -322,30 +366,15 @@ private fun RaftMobileWebPanelOverlaySession(
         val panelShape = RoundedCornerShape(topStart = cornerRadius, topEnd = cornerRadius)
         val colors = RaftTheme.colors
 
-        // Dimmed backdrop + 1-line source message strip visible above the 88% panel.
+        // Opaque canvas backdrop + dimmed 1-line source message strip visible above the 88% panel.
         if (!panelHiddenOffscreen) {
-            val scrimAlpha = (slideProgress.value * (1f - detentProgress.value * 0.4f)).coerceIn(0f, 1f)
-            Box(
-                modifier =
-                    Modifier
-                        .fillMaxSize()
-                        .graphicsLayer { alpha = scrimAlpha }
-                        .background(colors.layerCanvas.copy(alpha = 0.92f))
-                        .clickable(
-                            interactionSource = remember { MutableInteractionSource() },
-                            indication = null,
-                            onClick = { host.collapse(session.sessionId) },
-                        ),
-            ) {
-                if (!fullscreen) {
-                    RaftMobileWebPanelSourceStrip(
-                        source = session.source,
-                        topSafeArea = topSafeArea,
-                        onCollapse = { host.collapse(session.sessionId) },
-                        modifier = Modifier.align(Alignment.TopStart),
-                    )
-                }
-            }
+            RaftMobileWebPanelBackdrop(
+                slideProgress = slideProgress.value,
+                fullscreen = fullscreen,
+                source = session.source,
+                topSafeArea = topSafeArea,
+                onCollapse = { host.collapse(session.sessionId) },
+            )
         }
 
         // The live WebView panel. When fully collapsed, measured at full bounds but NOT placed so

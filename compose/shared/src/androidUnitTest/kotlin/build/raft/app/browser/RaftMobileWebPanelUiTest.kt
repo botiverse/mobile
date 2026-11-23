@@ -1,23 +1,32 @@
 package build.raft.app
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.toPixelMap
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.unit.dp
 import build.raft.app.components.RaftDesignSystemTheme
+import build.raft.designsystem.theme.RaftTheme
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
@@ -26,9 +35,11 @@ import org.junit.Rule
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
+import org.robolectric.annotation.GraphicsMode
 
 @OptIn(ExperimentalTestApi::class)
 @RunWith(RobolectricTestRunner::class)
+@GraphicsMode(GraphicsMode.Mode.NATIVE)
 @Config(sdk = [34], qualifiers = "w400dp-h844dp")
 class RaftMobileWebPanelUiTest {
     @get:Rule
@@ -228,5 +239,59 @@ class RaftMobileWebPanelUiTest {
             assertTrue(coordinator.session.value?.isExpanded == true)
         }
         onNodeWithText("Apps").assertIsDisplayed()
+    }
+
+    @Test
+    fun backdropOpaqueMasksUnderlyingHeaderInDefault88AndFullscreen() = runRobolectricComposeUiTest {
+        var fullscreen by mutableStateOf(false)
+        var collapses = 0
+        var expectedCanvas = Color.Unspecified
+
+        setContent {
+            RaftDesignSystemTheme {
+                expectedCanvas = RaftTheme.colors.layerCanvas
+                Box(modifier = Modifier.fillMaxSize()) {
+                    // Simulated underlying channel header with bright magenta fill; any translucency
+                    // in the backdrop lets this bleed through behind the source strip or top safe area.
+                    Box(
+                        modifier =
+                            Modifier
+                                .fillMaxWidth()
+                                .height(96.dp)
+                                .background(Color.Magenta),
+                    )
+                    RaftMobileWebPanelBackdrop(
+                        slideProgress = 1f,
+                        fullscreen = fullscreen,
+                        source = RaftMobileWebPanelSource.Surface("Apps"),
+                        topSafeArea = 24.dp,
+                        onCollapse = { collapses += 1 },
+                    )
+                }
+            }
+        }
+        waitForIdle()
+
+        val sampleX = with(density) { 360.dp.toPx() }.toInt()
+        val safeAreaY = with(density) { 12.dp.toPx() }.toInt()
+        val stripRowY = with(density) { 44.dp.toPx() }.toInt()
+
+        // Default88: source strip is visible and backdrop completely masks the magenta header.
+        onNodeWithTag(RAFT_WEB_PANEL_SOURCE_STRIP_TAG).assertIsDisplayed()
+        val defaultPixels = onRoot().captureToImage().toPixelMap()
+        assertEquals(expectedCanvas, defaultPixels[sampleX, safeAreaY])
+        assertEquals(expectedCanvas, defaultPixels[sampleX, stripRowY])
+
+        // Tapping the backdrop collapses the panel.
+        onNodeWithTag(RAFT_WEB_PANEL_BACKDROP_TAG).performClick()
+        assertEquals(1, collapses)
+
+        // Fullscreen: source strip hides and backdrop still completely masks the top safe area.
+        runOnIdle { fullscreen = true }
+        waitForIdle()
+        onNodeWithTag(RAFT_WEB_PANEL_SOURCE_STRIP_TAG).assertDoesNotExist()
+        val fullscreenPixels = onRoot().captureToImage().toPixelMap()
+        assertEquals(expectedCanvas, fullscreenPixels[sampleX, safeAreaY])
+        assertEquals(expectedCanvas, fullscreenPixels[sampleX, stripRowY])
     }
 }
