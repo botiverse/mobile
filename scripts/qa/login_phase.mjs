@@ -119,7 +119,12 @@ export class LoginWindowError extends Error {
 }
 
 export const runId = (env = process.env) => `${env.GITHUB_RUN_ID || "local"}:${env.GITHUB_RUN_ATTEMPT || "1"}`;
-export const secretValues = (env = process.env) => [env.QA_TEST_PASSWORD, env.QA_TEST_EMAIL].filter((v) => v && v.length >= 4);
+export const secretValues = (env = process.env) => [
+  env.QA_TEST_PASSWORD,
+  env.QA_TEST_EMAIL,
+  env.QA_LOGIN_ACCEPTANCE_PASSWORD,
+  env.QA_LOGIN_ACCEPTANCE_EMAIL,
+].filter((v) => v && v.length >= 4);
 
 // Every driver that would put text into a process argument (adb input text, agent-device type,
 // the XCUITest file protocol) calls this first.
@@ -503,7 +508,15 @@ function clearLoginStores(adb) {
 
 // `acceptance`: readTestbedInput's result (#216); null runs the login exactly as without it.
 export async function androidPasswordLogin({ out, pkg = "build.raft.app", device = "", env = process.env, timeoutMs = 180000, pollMs = 2000, expectedOrigin = loginOrigin(env), acceptance = null, chooserTimeoutMs = 30000 }) {
-  const { QA_TEST_EMAIL: email, QA_TEST_PASSWORD: password, ...adbEnv } = env;
+  const {
+    QA_TEST_EMAIL: legacyEmail,
+    QA_TEST_PASSWORD: legacyPassword,
+    QA_LOGIN_ACCEPTANCE_EMAIL: acceptanceEmail,
+    QA_LOGIN_ACCEPTANCE_PASSWORD: acceptancePassword,
+    ...adbEnv
+  } = env;
+  const email = acceptance ? acceptanceEmail : legacyEmail;
+  const password = acceptance ? acceptancePassword : legacyPassword;
   let serial = device;
   const execAdb = (args, input) => execFileSync("adb", [...(serial ? ["-s", serial] : []), ...args], {
     env: adbEnv, encoding: "utf8", timeout: 60000, input, stdio: [input === undefined ? "ignore" : "pipe", "pipe", "pipe"],
@@ -609,7 +622,9 @@ export async function androidPasswordLogin({ out, pkg = "build.raft.app", device
     ...(acceptance ? { acceptance: { ...acceptance.binding, verdict: "unknown", reason: "not_finished" } } : {}) }, env);
   try {
     if (acceptance?.problem) return unknown(`login acceptance unknown: ${acceptance.problem}`, acceptance.problem);
-    if (!email || !password) return unknown("QA credentials missing");
+    if (!email || !password) {
+      return unknown(acceptance ? "login acceptance secrets QA_LOGIN_ACCEPTANCE_EMAIL / QA_LOGIN_ACCEPTANCE_PASSWORD missing" : "QA credentials missing");
+    }
     if ([email, password].some((value) => /[^!-~]/.test(value))) return unknown("unsupported credential format");
     if (!expectedOrigin) return unknown("unknown QA account environment");
     serial ||= adb("get-serialno").trim();

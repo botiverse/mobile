@@ -534,10 +534,17 @@ jobs:
         env:
           STAMP_CLAIMED_CASE: ${{ steps.stamp-claim.outputs.claimed_case }}
           STAMP_RUN_CASE_ID: ${{ inputs.stamp_run_case_id }}
-          QA_TEST_EMAIL: ${{ secrets.QA_TEST_EMAIL }}
-          QA_TEST_PASSWORD: ${{ secrets.QA_TEST_PASSWORD }}
+          QA_TEST_EMAIL: ${{ steps.stamp-claim.outputs.claimed_case != 'login-email-password' && secrets.QA_TEST_EMAIL || '' }}
+          QA_TEST_PASSWORD: ${{ steps.stamp-claim.outputs.claimed_case != 'login-email-password' && secrets.QA_TEST_PASSWORD || '' }}
+          QA_LOGIN_ACCEPTANCE_EMAIL: ${{ steps.stamp-claim.outputs.claimed_case == 'login-email-password' && secrets.QA_LOGIN_ACCEPTANCE_EMAIL || '' }}
+          QA_LOGIN_ACCEPTANCE_PASSWORD: ${{ steps.stamp-claim.outputs.claimed_case == 'login-email-password' && secrets.QA_LOGIN_ACCEPTANCE_PASSWORD || '' }}
         run: |
           if [ "$STAMP_CLAIMED_CASE" = "login-email-password" ]; then
+            if [ -z "$QA_LOGIN_ACCEPTANCE_EMAIL" ] || [ -z "$QA_LOGIN_ACCEPTANCE_PASSWORD" ]; then
+              echo "::error::login-email-password requires repository secrets QA_LOGIN_ACCEPTANCE_EMAIL and QA_LOGIN_ACCEPTANCE_PASSWORD"
+              echo "QA account preflight: missing_login_acceptance_secrets"
+              exit 2
+            fi
             node scripts/qa/visible_servers_probe.mjs --testbed-input "$RUNNER_TEMP/testbed-login-acceptance/input.json"
             exit $?
           fi
@@ -579,7 +586,7 @@ jobs:
       # For the claimed case login-email-password (#216) stamp_report.sh sends no credential receipt, here
       # or in report-evidence: that case reports only its verdict and reason code.
       - name: Freeze legacy credential identity receipt
-        if: ${{ inputs.stamp_run_case_id != '' && inputs.login_mode != 'release-prelogin' && steps.stamp-claim.outputs.bootstrap_required != 'true' }}
+        if: ${{ inputs.stamp_run_case_id != '' && inputs.login_mode != 'release-prelogin' && steps.stamp-claim.outputs.bootstrap_required != 'true' && steps.stamp-claim.outputs.claimed_case != 'login-email-password' }}
         env:
           STAMP_RUN_CASE_ID: ${{ inputs.stamp_run_case_id }}
           STAMP_URL: ${{ secrets.STAMP_URL }}
@@ -597,7 +604,7 @@ jobs:
       # idempotently ensures one image-bearing fixture message exists in the
       # QA channel. Best-effort: seeding never fails the acceptance job.
       - name: Seed media fixtures (image + workspace)
-        if: ${{ inputs.login_mode != 'release-prelogin' && (inputs.stamp_run_case_id == '' || steps.stamp-claim.outputs.bootstrap_required != 'true') }}
+        if: ${{ inputs.login_mode != 'release-prelogin' && (inputs.stamp_run_case_id == '' || steps.stamp-claim.outputs.bootstrap_required != 'true') && steps.stamp-claim.outputs.claimed_case != 'login-email-password' }}
         env:
           QA_TEST_EMAIL: ${{ secrets.QA_TEST_EMAIL }}
           QA_TEST_PASSWORD: ${{ secrets.QA_TEST_PASSWORD }}
@@ -667,8 +674,10 @@ jobs:
           QA_MODEL_RELEASE_ATTEMPTS: ${{ vars.QA_MODEL_RELEASE_ATTEMPTS || '3' }}
           QA_MODEL_QUEUE_TIMEOUT_MS: ${{ vars.QA_MODEL_QUEUE_TIMEOUT_MS || '900000' }}
           SLOCK_PI_AI_MODULE: ${{ runner.temp }}/m3/node_modules/@earendil-works/pi-ai/dist/providers/all.js
-          QA_TEST_EMAIL: ${{ inputs.login_mode != 'release-prelogin' && (inputs.stamp_run_case_id == '' || steps.stamp-claim.outputs.bootstrap_required != 'true') && secrets.QA_TEST_EMAIL || '' }}
-          QA_TEST_PASSWORD: ${{ inputs.login_mode != 'release-prelogin' && (inputs.stamp_run_case_id == '' || steps.stamp-claim.outputs.bootstrap_required != 'true') && secrets.QA_TEST_PASSWORD || '' }}
+          QA_TEST_EMAIL: ${{ inputs.login_mode != 'release-prelogin' && (inputs.stamp_run_case_id == '' || steps.stamp-claim.outputs.bootstrap_required != 'true') && steps.stamp-claim.outputs.claimed_case != 'login-email-password' && secrets.QA_TEST_EMAIL || '' }}
+          QA_TEST_PASSWORD: ${{ inputs.login_mode != 'release-prelogin' && (inputs.stamp_run_case_id == '' || steps.stamp-claim.outputs.bootstrap_required != 'true') && steps.stamp-claim.outputs.claimed_case != 'login-email-password' && secrets.QA_TEST_PASSWORD || '' }}
+          QA_LOGIN_ACCEPTANCE_EMAIL: ${{ inputs.login_mode != 'release-prelogin' && (inputs.stamp_run_case_id == '' || steps.stamp-claim.outputs.bootstrap_required != 'true') && steps.stamp-claim.outputs.claimed_case == 'login-email-password' && secrets.QA_LOGIN_ACCEPTANCE_EMAIL || '' }}
+          QA_LOGIN_ACCEPTANCE_PASSWORD: ${{ inputs.login_mode != 'release-prelogin' && (inputs.stamp_run_case_id == '' || steps.stamp-claim.outputs.bootstrap_required != 'true') && steps.stamp-claim.outputs.claimed_case == 'login-email-password' && secrets.QA_LOGIN_ACCEPTANCE_PASSWORD || '' }}
           QA_RELEASE_PRELOGIN: ${{ inputs.login_mode == 'release-prelogin' }}
           QA_GOAL: ${{ inputs.goal || '' }}
           QA_MAX_TURNS: ${{ inputs.max_turns || '30' }}
@@ -726,7 +735,7 @@ jobs:
             [ -f qa-release-lane ] && exit 0; adb shell dumpsys gfxinfo "$(cat qa-app-package.txt 2>/dev/null || echo build.raft.app)" reset || true
             [ -f qa-release-lane ] && exit 0; date +%s%3N > qa-evidence/perf-started.txt
             [ -f qa-release-lane ] && exit 0; [ -f qa-login-ok ] && adb shell "nohup sh -c 'i=1; while [ \$i -le 8 ]; do screenrecord --size 540x1200 --bit-rate 1000000 --time-limit 180 /sdcard/qa-rec-\$(printf %02d \$i).mp4; i=\$((i+1)); done' >/dev/null 2>&1 &"
-            [ -f qa-release-lane ] && exit 0; if [ ! -f qa-login-ok ]; then echo 2 > qa-evidence/agent-rc.txt; exit 0; fi; if [ "${STAMP_BOOTSTRAP_REQUIRED:-false}" = "true" ]; then . "$RUNNER_TEMP/stamp-bootstrap-capture-env-${STAMP_RUN_CASE_ID}.sh"; fi; export MINIMAX_API_KEY="$PI_API_KEY"; env -u QA_TEST_EMAIL -u QA_TEST_PASSWORD -u ACTIONS_ID_TOKEN_REQUEST_URL -u ACTIONS_ID_TOKEN_REQUEST_TOKEN node scripts/qa/acceptance_agent.mjs --goal "${QA_GOAL:-$DEFAULT_GOAL}" --max-turns "$QA_MAX_TURNS" --max-minutes "$QA_MAX_MINUTES" --no-progress-turns "$QA_NO_PROGRESS_TURNS" --package "$(cat qa-app-package.txt 2>/dev/null || echo build.raft.app)" --out qa-evidence; echo "$?" > qa-evidence/agent-rc.txt; echo "agent exit code $(cat qa-evidence/agent-rc.txt)"
+            [ -f qa-release-lane ] && exit 0; if [ ! -f qa-login-ok ]; then echo 2 > qa-evidence/agent-rc.txt; exit 0; fi; if [ "${STAMP_BOOTSTRAP_REQUIRED:-false}" = "true" ]; then . "$RUNNER_TEMP/stamp-bootstrap-capture-env-${STAMP_RUN_CASE_ID}.sh"; fi; export MINIMAX_API_KEY="$PI_API_KEY"; env -u QA_TEST_EMAIL -u QA_TEST_PASSWORD -u QA_LOGIN_ACCEPTANCE_EMAIL -u QA_LOGIN_ACCEPTANCE_PASSWORD -u ACTIONS_ID_TOKEN_REQUEST_URL -u ACTIONS_ID_TOKEN_REQUEST_TOKEN node scripts/qa/acceptance_agent.mjs --goal "${QA_GOAL:-$DEFAULT_GOAL}" --max-turns "$QA_MAX_TURNS" --max-minutes "$QA_MAX_MINUTES" --no-progress-turns "$QA_NO_PROGRESS_TURNS" --package "$(cat qa-app-package.txt 2>/dev/null || echo build.raft.app)" --out qa-evidence; echo "$?" > qa-evidence/agent-rc.txt; echo "agent exit code $(cat qa-evidence/agent-rc.txt)"
             [ -f qa-release-lane ] && exit 0; [ -f qa-login-ok ] && adb logcat -d -v threadtime > qa-evidence/logcat-full.txt 2>&1 || true
             [ -f qa-release-lane ] && exit 0; [ -f qa-login-ok ] || exit 0; if [ "${STAMP_BOOTSTRAP_REQUIRED:-false}" = "true" ]; then . "$RUNNER_TEMP/stamp-bootstrap-capture-env-${STAMP_RUN_CASE_ID}.sh"; fi; PKG="$(cat qa-app-package.txt 2>/dev/null || echo build.raft.app)"; adb shell pidof "$PKG" >> qa-evidence/app-pids.txt 2>/dev/null || true; node scripts/qa/scope_logcat.mjs --input qa-evidence/logcat-full.txt --output qa-evidence/logcat.txt --verdict qa-evidence/verdict.json --pids qa-evidence/app-pids.txt --package "$PKG" --generation "${QA_CAPTURE_SCOPE_GENERATION:-${GITHUB_RUN_ID}:${GITHUB_RUN_ATTEMPT}}" || true
             [ -f qa-release-lane ] && exit 0; [ -f qa-login-ok ] && adb shell dumpsys activity top > qa-evidence/activity-top.txt 2>&1 || true

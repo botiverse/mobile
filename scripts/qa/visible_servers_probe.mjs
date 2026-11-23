@@ -171,9 +171,14 @@ async function probe(inputFile) {
     acceptance = readTestbedInput(inputFile, process.env, { required: true, consume: false });
     if (acceptance.problem || acceptance.binding.attempt !== 1) throw new ProbeError("contract", "private_target_unavailable");
   }
-  const email = process.env.QA_TEST_EMAIL;
-  const password = process.env.QA_TEST_PASSWORD;
-  if (!email || !password) throw new ProbeError("credential", "QA_TEST_EMAIL / QA_TEST_PASSWORD not set");
+  const email = inputFile ? process.env.QA_LOGIN_ACCEPTANCE_EMAIL : process.env.QA_TEST_EMAIL;
+  const password = inputFile ? process.env.QA_LOGIN_ACCEPTANCE_PASSWORD : process.env.QA_TEST_PASSWORD;
+  if (!email || !password) {
+    throw new ProbeError(
+      "credential",
+      inputFile ? "QA_LOGIN_ACCEPTANCE_EMAIL / QA_LOGIN_ACCEPTANCE_PASSWORD not set" : "QA_TEST_EMAIL / QA_TEST_PASSWORD not set",
+    );
+  }
 
   // The dedicated job pins the first-party production origin and keeps the login on its runner.
   const requestOptions = () => inputFile ? { redirect: "error", signal: AbortSignal.timeout(20000) } : {};

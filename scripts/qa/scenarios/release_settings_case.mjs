@@ -42,7 +42,7 @@ export async function run(ctx) {
   writeReleaseLoginRecord(EVIDENCE, { exchangeAt: ctx.releaseLogin?.exchangeAt, loginEnd });
   // No QA account in the case's environment (the login read it from a consumed file anyway).
   const env = { ...process.env };
-  for (const key of ["QA_LOGIN_EMAIL", "QA_LOGIN_PASSWORD", "QA_TEST_EMAIL", "QA_TEST_PASSWORD", "ACTIONS_ID_TOKEN_REQUEST_URL", "ACTIONS_ID_TOKEN_REQUEST_TOKEN"]) delete env[key];
+  for (const key of ["QA_LOGIN_EMAIL", "QA_LOGIN_PASSWORD", "QA_TEST_EMAIL", "QA_TEST_PASSWORD", "QA_LOGIN_ACCEPTANCE_EMAIL", "QA_LOGIN_ACCEPTANCE_PASSWORD", "ACTIONS_ID_TOKEN_REQUEST_URL", "ACTIONS_ID_TOKEN_REQUEST_TOKEN"]) delete env[key];
   fs.rmSync(`${EVIDENCE}/agent-rc.txt`, { force: true });
   const result = spawnSync("bash", ["scripts/qa/release_settings_case.sh"], { stdio: "inherit", env });
   const ran = result.status === 0 && fs.existsSync(`${EVIDENCE}/agent-rc.txt`);

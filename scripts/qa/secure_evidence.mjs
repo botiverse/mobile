@@ -62,12 +62,19 @@ export function gate(dir, env = process.env) {
     const hit = files().find((f) => TEXT_FILE.test(f) && fs.statSync(f).isFile() && LOGIN_LOG_MARKERS.test(fs.readFileSync(f, "utf8")));
     if (hit) why = `sign-in signal in ${path.basename(hit)} although this run never signs in`;
   }
-  const [password, email] = [env.QA_TEST_PASSWORD, env.QA_TEST_EMAIL].map((v) => (v && v.length >= 4 ? v : ""));
+  const passwords = [env.QA_TEST_PASSWORD, env.QA_LOGIN_ACCEPTANCE_PASSWORD].filter((v) => v && v.length >= 4);
+  const emails = [env.QA_TEST_EMAIL, env.QA_LOGIN_ACCEPTANCE_EMAIL].filter((v) => v && v.length >= 4);
   for (const f of why ? [] : files()) {
     if (!fs.statSync(f).isFile()) continue;
     const bytes = fs.readFileSync(f);
-    if (password && bytes.includes(password)) { why = `secret value in ${path.basename(f)}`; break; }
-    if (email && TEXT_FILE.test(f) && bytes.includes(email)) fs.writeFileSync(f, bytes.toString("utf8").split(email).join("***"));
+    if (passwords.some((password) => bytes.includes(password))) { why = `secret value in ${path.basename(f)}`; break; }
+    if (emails.length && TEXT_FILE.test(f)) {
+      let text = null;
+      for (const email of emails) {
+        if (bytes.includes(email)) text = (text ?? bytes.toString("utf8")).split(email).join("***");
+      }
+      if (text !== null) fs.writeFileSync(f, text);
+    }
   }
   if (why) {
     for (const e of fs.readdirSync(dir)) if (!KEEP.has(e)) fs.rmSync(path.join(dir, e), { recursive: true, force: true });

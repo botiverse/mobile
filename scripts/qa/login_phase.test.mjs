@@ -153,7 +153,7 @@ if (a === "exec-out screencap -p") {
 if (a === "shell wm size") { out("Physical size: 1080x2400\n"); end(); }
 if (args[1] === "input" && args[2] === "text") { D.type(s, args.slice(3).join(" ").replace(/%s/g, " ")); end(); }
 if (a.startsWith("shell -T uiautomator runtest ") && args.includes("RaftQaLoginForm#testFill")) {
-  if (process.env.QA_TEST_PASSWORD || process.env.QA_TEST_EMAIL) end(1);
+  if (process.env.QA_TEST_PASSWORD || process.env.QA_TEST_EMAIL || process.env.QA_LOGIN_ACCEPTANCE_PASSWORD || process.env.QA_LOGIN_ACCEPTANCE_EMAIL) end(1);
   const [email, password] = fs.readFileSync(0, "utf8").split("\n");
   if (s.driverResult === "site-unverified") { out("QA_LOGIN_SITE_UNVERIFIED\n"); end(); }
   if (s.screen !== "form" || s.refuseField || s.driverResult === "no-markers") end();
@@ -524,7 +524,7 @@ test("rule 2: the workflow starts the recorder, the agent and every post-run rea
   assert.ok(login > 0 && login < at(/screenrecord --size/) && login < at(/acceptance_agent\.mjs/));
   assert.match(lines[login], /&& touch qa-login-ok/);
   for (const re of [/screenrecord --size/, /adb logcat -d -v threadtime/, /adb shell dumpsys activity top/, /scope_logcat\.mjs/]) assert.match(lines[at(re)], /\[ -f qa-login-ok \]/, String(re));
-  assert.match(lines[at(/acceptance_agent\.mjs/)], /if \[ ! -f qa-login-ok \]; then echo 2 > qa-evidence\/agent-rc\.txt; exit 0; fi;.*env -u QA_TEST_EMAIL -u QA_TEST_PASSWORD -u ACTIONS_ID_TOKEN_REQUEST_URL -u ACTIONS_ID_TOKEN_REQUEST_TOKEN node scripts\/qa\/acceptance_agent\.mjs/);
+  assert.match(lines[at(/acceptance_agent\.mjs/)], /if \[ ! -f qa-login-ok \]; then echo 2 > qa-evidence\/agent-rc\.txt; exit 0; fi;.*env -u QA_TEST_EMAIL -u QA_TEST_PASSWORD -u QA_LOGIN_ACCEPTANCE_EMAIL -u QA_LOGIN_ACCEPTANCE_PASSWORD -u ACTIONS_ID_TOKEN_REQUEST_URL -u ACTIONS_ID_TOKEN_REQUEST_TOKEN node scripts\/qa\/acceptance_agent\.mjs/);
   // Release settings lane: release_settings_login.sh runs the case inside the matched process; every
   // later capture/agent/post-run line of the workflow is skipped in that lane.
   for (const re of [/^\s+adb logcat -c$/, /screenrecord --size/, /acceptance_agent\.mjs/, /adb logcat -d -v threadtime/, /scope_logcat\.mjs/, /adb shell dumpsys activity top/, /dumpsys gfxinfo .* reset/, /perf-started\.txt$/, /gfxinfo\.txt 2>&1/]) {
@@ -673,6 +673,7 @@ test("rule 3: a mode that never signs in but shows a sign-in signal, or evidence
     ["web login in a no-login run", "logcat-iosApp.txt", '{"eventMessage":"web_login_attempt phase=opening"}', {}],
     ["app login line in a no-login run", "system-log-raft.txt", "SlockAppLogin: app_login_complete result=app_shell", {}],
     ["password bytes in a screenshot", "step-03.png", `PNG...${PASSWORD}...`, { QA_TEST_PASSWORD: PASSWORD }],
+    ["acceptance password bytes in a screenshot", "step-04.png", `PNG...${PASSWORD}...`, { QA_LOGIN_ACCEPTANCE_PASSWORD: PASSWORD }],
   ]) {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "gate-none-"));
     phase.writeRecord(dir, { mode: "none", status: "no-login", login_end: null }, RUN);
@@ -680,12 +681,14 @@ test("rule 3: a mode that never signs in but shows a sign-in signal, or evidence
     assert.equal(gate.gate(dir, { ...RUN, ...env }).ok, false, name);
     assert.equal(fs.existsSync(path.join(dir, file)), false, name);
   }
-  // A clean no-login run uploads, with the email redacted from text.
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "gate-clean-"));
-  phase.writeRecord(dir, { mode: "none", status: "no-login", login_end: null }, RUN);
-  fs.writeFileSync(path.join(dir, "steps.jsonl"), `{"note":"account ${EMAIL}"}\n`);
-  assert.equal(gate.gate(dir, { ...RUN, QA_TEST_EMAIL: EMAIL }).ok, true);
-  assert.equal(fs.readFileSync(path.join(dir, "steps.jsonl"), "utf8"), '{"note":"account ***"}\n');
+  // A clean no-login run uploads, with the email redacted from text (legacy and dedicated acceptance secrets).
+  for (const env of [{ QA_TEST_EMAIL: EMAIL }, { QA_LOGIN_ACCEPTANCE_EMAIL: EMAIL }]) {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "gate-clean-"));
+    phase.writeRecord(dir, { mode: "none", status: "no-login", login_end: null }, RUN);
+    fs.writeFileSync(path.join(dir, "steps.jsonl"), `{"note":"account ${EMAIL}"}\n`);
+    assert.equal(gate.gate(dir, { ...RUN, ...env }).ok, true);
+    assert.equal(fs.readFileSync(path.join(dir, "steps.jsonl"), "utf8"), '{"note":"account ***"}\n');
+  }
 });
 
 test("rule 3: Stamp gets no evidence and no pass for an UNKNOWN run", () => {
@@ -736,7 +739,14 @@ function writeTestbedInput(dir, patch = {}, mode = 0o600) {
 }
 
 const loginWith = (w, acceptance, options = {}) => phase.androidPasswordLogin({ out: path.join(w.root, "ev"),
-  env: { ...w.env, QA_TEST_EMAIL: EMAIL, QA_TEST_PASSWORD: PASSWORD }, pollMs: 5, chooserTimeoutMs: 100, acceptance, ...options });
+  env: {
+    ...w.env,
+    ...(acceptance
+      ? { QA_LOGIN_ACCEPTANCE_EMAIL: EMAIL, QA_LOGIN_ACCEPTANCE_PASSWORD: PASSWORD, QA_TEST_EMAIL: "wrong.legacy@example.test", QA_TEST_PASSWORD: "wrong-legacy-pw" }
+      : { QA_TEST_EMAIL: EMAIL, QA_TEST_PASSWORD: PASSWORD, QA_LOGIN_ACCEPTANCE_EMAIL: "wrong.accept@example.test", QA_LOGIN_ACCEPTANCE_PASSWORD: "wrong-accept-pw" }),
+    ...(options.env ?? {}),
+  },
+  pollMs: 5, chooserTimeoutMs: 100, acceptance, ...options, ...(options.env ? { env: { ...w.env, ...options.env } } : {}) });
 const recordOf = (w) => JSON.parse(fs.readFileSync(path.join(w.root, "ev", "login-record.json"), "utf8"));
 
 test("#216 the Testbed input is read once and deleted; only case login-email-password selects the acceptance, with the vector's refs", () => {
@@ -783,9 +793,10 @@ test("#216 pass: signed out on the sign-in page, the form submitted, then the ex
   try {
     const input = writeTestbedInput(w.root);
     const ev = path.join(w.root, "qa-evidence");
-    // As qa-acceptance.yml runs it for the claimed case: the required switch and the job's run case.
+    // As qa-acceptance.yml runs it for the claimed case: the required switch, the job's run case, and the dedicated acceptance secrets.
     const r = await runAsync(w, [path.join(here, "login_phase.mjs"), "login", "--platform", "android", "--password-login", "true", "--device", "emulator-5554",
-      "--out", ev, "--testbed-input", input, "--require-acceptance", "login-email-password"], { QA_TEST_EMAIL: EMAIL, QA_TEST_PASSWORD: PASSWORD, STAMP_RUN_CASE_ID: RUN_CASE_ID });
+      "--out", ev, "--testbed-input", input, "--require-acceptance", "login-email-password"],
+      { QA_LOGIN_ACCEPTANCE_EMAIL: EMAIL, QA_LOGIN_ACCEPTANCE_PASSWORD: PASSWORD, QA_TEST_EMAIL: "wrong.legacy@example.test", QA_TEST_PASSWORD: "wrong-legacy-pw", STAMP_RUN_CASE_ID: RUN_CASE_ID });
     assert.equal(r.status, 0, r.stdout + r.stderr);
     assert.match(r.stdout, /^login phase: OK$/m);
     assert.match(r.stdout, /^login acceptance: pass \(signed_in_as_expected\)$/m);
@@ -985,11 +996,32 @@ test("#216 --require-acceptance: no usable input ends unknown before any device 
   }
 });
 
+test("#216 missing dedicated acceptance secrets fail closed before any device call without falling back to QA_TEST_*", async () => {
+  for (const [name, creds] of [
+    ["both missing with legacy set", { QA_TEST_EMAIL: EMAIL, QA_TEST_PASSWORD: PASSWORD }],
+    ["email missing with legacy set", { QA_TEST_EMAIL: EMAIL, QA_TEST_PASSWORD: PASSWORD, QA_LOGIN_ACCEPTANCE_PASSWORD: PASSWORD }],
+    ["password missing with legacy set", { QA_TEST_EMAIL: EMAIL, QA_TEST_PASSWORD: PASSWORD, QA_LOGIN_ACCEPTANCE_EMAIL: EMAIL }],
+  ]) {
+    const w = identityWorld();
+    try {
+      const acceptance = phase.readTestbedInput(writeTestbedInput(w.root), { ...w.env, STAMP_RUN_CASE_ID: RUN_CASE_ID }, { required: true });
+      const result = await phase.androidPasswordLogin({ out: path.join(w.root, "ev"), env: { ...w.env, ...creds }, pollMs: 5, chooserTimeoutMs: 100, acceptance });
+      assert.equal(result.ok, false, name);
+      assert.match(result.reason, /QA_LOGIN_ACCEPTANCE_EMAIL \/ QA_LOGIN_ACCEPTANCE_PASSWORD missing/, name);
+      assert.deepEqual(result.acceptance, { verdict: "unknown", reason: "login_not_completed" }, name);
+      const record = recordOf(w);
+      assert.equal(record.status, "unknown", name);
+      assert.deepEqual(record.acceptance, { ...BINDING, verdict: "unknown", reason: "login_not_completed" }, name);
+      assert.equal(fs.readFileSync(w.files.argv, "utf8"), "", `${name}: no device call`);
+    } finally { w.close(); }
+  }
+});
+
 test("#216 --require-acceptance on the command line: no input or a mode that cannot run it is unknown; another case is a usage error", async () => {
   const w = identityWorld();
   try {
     const login = (args, extra = {}) => runAsync(w, [path.join(here, "login_phase.mjs"), "login", "--out", path.join(w.root, "ev"), ...args],
-      { QA_TEST_EMAIL: EMAIL, QA_TEST_PASSWORD: PASSWORD, STAMP_RUN_CASE_ID: RUN_CASE_ID, ...extra });
+      { QA_LOGIN_ACCEPTANCE_EMAIL: EMAIL, QA_LOGIN_ACCEPTANCE_PASSWORD: PASSWORD, STAMP_RUN_CASE_ID: RUN_CASE_ID, ...extra });
     const missing = await login(["--platform", "android", "--password-login", "true", "--require-acceptance", "login-email-password"]);
     assert.equal(missing.status, 1);
     assert.match(missing.stdout, /^login acceptance: unknown \(input_missing\)$/m);
@@ -1034,7 +1066,12 @@ test("#216 qa-acceptance requires the login acceptance only for the claimed case
   const inputAt = source.indexOf("- name: Fetch the login acceptance input from Testbed");
   const probeAt = source.indexOf("- name: Preflight — QA account must not see the production server");
   assert.ok(claimAt < inputAt && inputAt < probeAt && probeAt < source.indexOf("- name: Run acceptance agent"));
-  assert.match(step("Preflight — QA account must not see the production server"), /if \[ "\$STAMP_CLAIMED_CASE" = "login-email-password" \]; then\s+node scripts\/qa\/visible_servers_probe\.mjs --testbed-input/);
+  const preflight = step("Preflight — QA account must not see the production server");
+  assert.match(preflight, /QA_TEST_EMAIL: \$\{\{ steps\.stamp-claim\.outputs\.claimed_case != 'login-email-password' && secrets\.QA_TEST_EMAIL \|\| '' \}\}/);
+  assert.match(preflight, /QA_TEST_PASSWORD: \$\{\{ steps\.stamp-claim\.outputs\.claimed_case != 'login-email-password' && secrets\.QA_TEST_PASSWORD \|\| '' \}\}/);
+  assert.match(preflight, /QA_LOGIN_ACCEPTANCE_EMAIL: \$\{\{ steps\.stamp-claim\.outputs\.claimed_case == 'login-email-password' && secrets\.QA_LOGIN_ACCEPTANCE_EMAIL \|\| '' \}\}/);
+  assert.match(preflight, /QA_LOGIN_ACCEPTANCE_PASSWORD: \$\{\{ steps\.stamp-claim\.outputs\.claimed_case == 'login-email-password' && secrets\.QA_LOGIN_ACCEPTANCE_PASSWORD \|\| '' \}\}/);
+  assert.match(preflight, /if \[ "\$STAMP_CLAIMED_CASE" = "login-email-password" \]; then[\s\S]*if \[ -z "\$QA_LOGIN_ACCEPTANCE_EMAIL" \] \|\| \[ -z "\$QA_LOGIN_ACCEPTANCE_PASSWORD" \]; then[\s\S]*missing_login_acceptance_secrets[\s\S]*exit 2[\s\S]*node scripts\/qa\/visible_servers_probe\.mjs --testbed-input/);
   assert.match(fetchStep, /continue-on-error: true\n/);
   assert.match(fetchStep.split("\n      #")[0].trimEnd(), /run: node scripts\/qa\/testbed_login_acceptance_input\.mjs$/);
   assert.deepEqual([...fetchStep.matchAll(/^ {10}([A-Z_]+):/gm)].map((m) => m[1]), ["STAMP_RUN_CASE_ID", "STAMP_URL", "STAMP_TOKEN"], "no QA account in the fetch step");
