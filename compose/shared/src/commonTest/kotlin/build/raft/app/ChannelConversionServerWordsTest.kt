@@ -141,7 +141,7 @@ class ChannelConversionServerWordsTest {
         assertNull(licenseLimit.serverWords)
 
         // InviteeRefusal with unknown non-conversion code preserves server words.
-        val inviteeUnknown = InviteeRefusal(409, "membership_changed", "Your role changed on that server.")
+        val inviteeUnknown = InviteeRefusal(status = 409, code = "membership_changed", error = "Your role changed on that server.")
         val inviteeMsg = inviteeErrorMessage(inviteeUnknown, InviteeAction.Connect, target = null, targetId = "s1")
         assertEquals(InviteeMessage.Generic, inviteeMsg)
         assertEquals("Your role changed on that server.", inviteeServerWords(inviteeUnknown, inviteeMsg))
