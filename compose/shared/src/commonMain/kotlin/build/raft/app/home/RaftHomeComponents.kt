@@ -5544,12 +5544,14 @@ internal fun sidebarCustomSectionRows(
  * system section (analogous to [sidebarPinnedConversationIds]), so orphaned or
  * skipped placements can never hide a conversation from every section.
  */
-internal fun List<RaftHomeCustomSectionRows>.sidebarCustomShownConversationIds(): Set<String> =
-    buildSet {
-        forEach { sectionRows ->
+internal fun List<RaftHomeCustomSectionRows>.sidebarCustomShownConversationIds(): Set<String> {
+    val rows = this
+    return buildSet {
+        rows.forEach { sectionRows ->
             sectionRows.items.forEach { add(it.id) }
         }
     }
+}
 
 private fun String?.homeDmPeerMemberKindOrNull(): MemberKind? =
     parsedMemberKindOrNull(MemberKindWireContract.InternalActor)
