@@ -69,6 +69,7 @@ import androidx.compose.ui.semantics.testTag
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.constrainHeight
@@ -720,17 +721,12 @@ internal fun ThreadHeaderChannelLinkSubtitle(
     onOpenInChannel: () -> Unit,
 ) {
     Row(verticalAlignment = Alignment.CenterVertically) {
-        RaftTooltip(
-            text = stringResource(Res.string.task_conversation_view_in_channel),
+        ThreadHeaderViewInChannelLink(
+            label = channelLabel,
+            onViewInChannel = onOpenInChannel,
+            style = ThreadHeaderMetaStyle,
             modifier = Modifier.weight(1f, fill = false)
-        ) {
-            RaftTextLink(
-                text = channelLabel,
-                onClick = onOpenInChannel,
-                style = ThreadHeaderMetaStyle,
-                maxLines = 1
-            )
-        }
+        )
         replyCountLabel?.takeIf { it.isNotBlank() }?.let { count ->
             Text(
                 text = " · $count",
@@ -740,6 +736,30 @@ internal fun ThreadHeaderChannelLinkSubtitle(
                 softWrap = false
             )
         }
+    }
+}
+
+/**
+ * A conversation's name as a link that does what View in Channel does, under its tooltip: a reply
+ * thread's channel or DM (web ThreadPanelHeader #10285) and the place in a task's ref (web
+ * TaskConversationBar #16258). Screen readers hear where it goes, not just the name.
+ */
+@Composable
+internal fun ThreadHeaderViewInChannelLink(
+    label: String,
+    onViewInChannel: () -> Unit,
+    style: TextStyle,
+    modifier: Modifier = Modifier,
+) {
+    val viewInChannel = stringResource(Res.string.task_conversation_view_in_channel)
+    RaftTooltip(text = viewInChannel, modifier = modifier) {
+        RaftTextLink(
+            text = label,
+            onClick = onViewInChannel,
+            modifier = Modifier.semantics { onClick(label = viewInChannel) { onViewInChannel(); true } },
+            style = style,
+            maxLines = 1
+        )
     }
 }
 

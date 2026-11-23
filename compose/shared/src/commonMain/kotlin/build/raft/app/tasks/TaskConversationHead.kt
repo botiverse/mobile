@@ -1,6 +1,5 @@
 package build.raft.app
 
-import androidx.compose.ui.semantics.onClick
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.tween
@@ -86,6 +85,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import build.raft.app.data.TaskConversationDetailsState
 import build.raft.app.data.formatTaskConversationRef
+import build.raft.app.data.taskConversationRefParts
 import kotlinx.coroutines.flow.onStart
 import build.raft.app.data.DataRequestPriority
 import build.raft.app.data.SharedServerChannelMembersSlice
@@ -1354,18 +1354,8 @@ internal fun TaskConversationBarTitle(chrome: TaskConversationHeaderChrome, modi
         } else {
             Modifier
         }
-    val viewInChannel = stringResource(Res.string.task_conversation_view_in_channel)
-    // The ref names the task's channel: a tap goes there, to the task (artin, task #35).
-    val refLink: @Composable (Modifier) -> Unit = { refModifier ->
-        RaftTextLink(
-            text = chrome.ref,
-            onClick = chrome.onViewInChannel,
-            // Screen readers say where the ref goes, not just the ref.
-            modifier = refModifier.semantics { onClick(label = viewInChannel) { chrome.onViewInChannel(); true } },
-            style = typography.monoMeta,
-            maxLines = 1,
-        )
-    }
+    // The ref names the task's channel: its place goes there, to the task (artin, task #35).
+    val refLink: @Composable (Modifier) -> Unit = { refModifier -> TaskConversationBarRef(chrome, refModifier) }
     if (RaftTheme.scale == RaftScale.Wide && !chrome.summarized) {
         // The wide layout: one line, as every head from 768 (raft-design desktop-density rule 2;
         // web taskConversationBarClasses BAR_NAME_CLASS): "Task #7", then the ref after it on its
@@ -1426,6 +1416,34 @@ internal fun TaskConversationBarTitle(chrome: TaskConversationHeaderChrome, modi
         } else {
             RaftText(label, style = typography.subhead.copy(fontWeight = FontWeight.Bold), color = colors.foreground, maxLines = 1)
         }
+    }
+}
+
+/**
+ * The bar's ref (web TaskConversationBar, slock #16258): its place (`#channel`, `dm:@peer`) does
+ * View in Channel as a reply thread head's channel name does ([ThreadHeaderViewInChannelLink]); the
+ * number after it (`:#7`) stays text and gives up its room first. A ref with no place (a bare `#7`,
+ * or the title of a task without a number) is text only.
+ */
+@Composable
+private fun TaskConversationBarRef(chrome: TaskConversationHeaderChrome, modifier: Modifier) {
+    val style = RaftTheme.typography.monoMeta
+    val color = RaftTheme.colors.foregroundMuted
+    val parts = chrome.taskNumber?.let { taskConversationRefParts(chrome.ref) }
+    if (parts == null) {
+        RaftText(chrome.ref, modifier = modifier, style = style, color = color, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        return
+    }
+    Row(modifier) {
+        ThreadHeaderViewInChannelLink(label = parts.first, onViewInChannel = chrome.onViewInChannel, style = style)
+        RaftText(
+            parts.second,
+            modifier = Modifier.weight(1f, fill = false),
+            style = style,
+            color = color,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
     }
 }
 

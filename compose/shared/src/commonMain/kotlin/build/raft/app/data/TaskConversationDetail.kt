@@ -62,6 +62,17 @@ internal fun formatTaskConversationRef(
     }
 }
 
+/**
+ * A task ref's place (`#channel`, `dm:@peer`) and its number after it (`:#7`), split at the last `:#`
+ * as web TaskConversationBar splits it (slock #16258, shared `RAFT_TASK_REF_SEPARATOR`); null for a
+ * bare `#7`, which names no place.
+ */
+internal fun taskConversationRefParts(ref: String): Pair<String, String>? {
+    val placeEnd = ref.lastIndexOf(":#")
+    if (placeEnd <= 0) return null
+    return ref.substring(0, placeEnd) to ref.substring(placeEnd)
+}
+
 /** `#channel:#7 title` (web `formatTaskConversationTitle`). */
 internal fun formatTaskConversationTitle(ref: String, title: String?): String =
     title?.trim()?.takeIf { it.isNotBlank() }?.let { "$ref $it" } ?: ref
