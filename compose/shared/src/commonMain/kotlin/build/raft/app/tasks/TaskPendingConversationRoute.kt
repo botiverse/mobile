@@ -925,6 +925,12 @@ private fun TaskPendingConversationRoute(pageVisible: Boolean) {
                                     joinedLocally = true
                                     latestServerId?.takeIf(String::isNotBlank)?.let { serverId ->
                                         realtimeRoomLeaseRegistry.markJoinedByUser(serverId, result.data.channelId.value)
+                                        sharedHomeStore?.dispatch(
+                                            SharedHomeIntent.ChannelJoined(
+                                                serverId = serverId,
+                                                channelId = result.data.channelId,
+                                            )
+                                        )
                                         sharedHomeStore?.dispatch(SharedHomeIntent.Refresh)
                                     }
                                     realtimeEvents.joinChannel(result.data.channelId.value, latestServerId)

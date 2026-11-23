@@ -883,9 +883,9 @@ private fun ThreadPageScreen(
                         warningLogger = { message -> bridge.log("thread_conversation_repository $message") }
                     ),
                 channelRepository = channelRepository,
-                homeSnapshotProvider =
+                homeSnapshotLookupProvider =
                     sharedHomeStore?.let { store ->
-                        { serverId -> store.awaitSnapshotFor(serverId, ThreadHomeSnapshotAwaitTimeoutMs) }
+                        { serverId -> store.awaitSnapshotLookupFor(serverId, ThreadHomeSnapshotAwaitTimeoutMs) }
                     },
                 channelProfileUpdateSink = { result ->
                     sharedHomeStore?.accept(
@@ -1988,57 +1988,6 @@ private fun SharedThreadRouteContentContent(
     // parent detail this reply load reads by id) it is the parent row. No Join: replying before
     // joining is allowed, as in the Lounge itself; a Lounge you may only read stays read-only.
     val knownLounges by RaftAgentLounges.lounges.collectAsState()
-    LaunchedEffect(
-        payload.surfaceKind,
-        payload.parentChannelId,
-        payload.parentMessageId,
-        payload.originParentMessageId,
-        sharedHomeState,
-        knownLounges,
-    ) {
-        if (payload.surfaceKind != RaftThreadSurfaceKind.ReplyThread) return@LaunchedEffect
-        val parentChannelId =
-            payload.parentChannelId?.takeIf { it.isNotBlank() } ?: return@LaunchedEffect
-        val parentMessageId =
-            payload.parentMessageId?.takeIf { it.isNotBlank() }
-                ?: payload.originParentMessageId?.takeIf { it.isNotBlank() }
-                ?: return@LaunchedEffect
-        val homeContent = sharedHomeState.content as? SharedHomeContentState.Content
-        val snapshot = homeContent?.baseSnapshot
-        val parentRow =
-            snapshot?.channels?.firstOrNull { it.channelId?.value == parentChannelId }
-                ?: snapshot?.directMessages?.firstOrNull { it.channelId?.value == parentChannelId }
-        val parentLounge = if (parentRow == null) RaftAgentLounges.loungeAnyServer(parentChannelId) else null
-        if (parentLounge != null) {
-            threadViewModel.dispatch(
-                SharedThreadIntent.ApplyParentDirectoryHint(
-                    parentChannelId = parentChannelId,
-                    parentMessageId = parentMessageId,
-                    present = true,
-                    joined = parentLounge.postable,
-                    canSend = parentLounge.postable,
-                    authoritative = true,
-                )
-            )
-            return@LaunchedEffect
-        }
-        threadViewModel.dispatch(
-            SharedThreadIntent.ApplyParentDirectoryHint(
-                parentChannelId = parentChannelId,
-                parentMessageId = parentMessageId,
-                present = parentRow != null,
-                joined = parentRow?.joined == true,
-                canSend = parentRow?.permissions?.canSend == true && parentRow.archived == false,
-                // Only a live network snapshot (not the durable identity cache,
-                // and not one still awaiting refresh) may attest that a missing
-                // parent row means the channel was deleted.
-                authoritative =
-                    homeContent != null &&
-                        !homeContent.isDurableIdentityCache &&
-                        !homeContent.needsNetworkRefresh,
-            )
-        )
-    }
     val initialThreadInstanceKey = initialRouteIdentity.instanceKey
     val canonicalFinalThreadSurfaceRouteKey =
         remember(initialPayload.instanceId, initialThreadInstanceKey) {
@@ -2059,6 +2008,24 @@ private fun SharedThreadRouteContentContent(
             threadInstanceKey = initialThreadInstanceKey,
         )
     val currentSession = producerContextState.session
+    val replyParentHintServerId = currentSession?.currentServerId ?: storeScope.initialServerId
+    LaunchedEffect(
+        payload.surfaceKind,
+        payload.parentChannelId,
+        payload.parentMessageId,
+        payload.originParentMessageId,
+        sharedHomeState,
+        knownLounges,
+        replyParentHintServerId,
+    ) {
+        val hint =
+            resolveReplyParentDirectoryHint(
+                payload = payload,
+                homeState = sharedHomeState,
+                expectedServerId = replyParentHintServerId,
+            ) ?: return@LaunchedEffect
+        threadViewModel.dispatch(hint)
+    }
     val replyCacheProvenanceOwner = producerContextState.provenanceOwner
     val currentServerSlug = producerContextState.serverSlug
     val producerContextCaptured = producerContextState.captured
@@ -5514,9 +5481,13 @@ private fun SharedThreadRouteContentContent(
                     channelId != renderedThread.joinChannelTargetId() ||
                     renderedThread.channelTaskWritesShown()
             },
-            // Known for the channel this page shows (web ThreadPanel `parentJoined`); else not known here.
+            // Known for the channel this page shows once write access is resolved (web ThreadPanel
+            // `parentJoined`); otherwise unknown (null) so a loading or unresolved page never
+            // flashes "Join channel to reply".
             joined = { task ->
-                task.channelId?.takeIf { it == renderedThread.joinChannelTargetId() }?.let { renderedThread.joined }
+                task.channelId
+                    ?.takeIf { it == renderedThread.joinChannelTargetId() && renderSlice.writeActionsEnabled }
+                    ?.let { renderedThread.joined }
             },
             onJoin = { task ->
                 val channelId = task.channelId

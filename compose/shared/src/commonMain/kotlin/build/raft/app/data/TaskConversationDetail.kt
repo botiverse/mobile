@@ -79,12 +79,14 @@ internal fun ConversationSummary.withTaskConversationContext(
     taskPending: Boolean = false,
 ): ConversationSummary {
     val title = task?.let { taskConversationDisplayTitle(parent, it) }
+    val membershipKnown = parent?.membershipKnown ?: false
     val joined = parent?.joined ?: false
     return copy(
         kind = ConversationKind.Task,
         channelType = RaftTaskConversationChannelKind,
         name = title ?: if (taskPending) "" else name,
         joined = joined,
+        membershipKnown = membershipKnown,
         permissions =
             (parent?.permissions ?: permissions).copy(
                 canSend = joined && parent?.permissions?.canSend == true,
