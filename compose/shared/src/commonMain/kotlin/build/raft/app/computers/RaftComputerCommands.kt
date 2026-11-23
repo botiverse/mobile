@@ -1,6 +1,8 @@
 package build.raft.app
 
 import build.raft.app.data.SettingsComputerCommandContext
+import build.raft.app.data.SharedApiEnvironmentStore
+import build.raft.app.data.SharedSettingsApiEnvironmentOption
 
 /*
  * The `raft-computer` terminal commands of the computer detail page: a port of the web's
@@ -86,6 +88,25 @@ private fun raftComputerIsDefaultServerUrl(serverUrl: String?): Boolean {
 
 /** staging / slockdev are internal test surfaces: every command carries a per-server home and binary. */
 private val raftComputerIsolatedDeploymentEnvs = setOf("staging", "slockdev")
+
+/** Web `getComputerCommands(serverSlug, deploymentEnv, getServerUrl())` context from a server slug and API environment. */
+internal fun raftComputerCommandContext(
+    serverSlug: String?,
+    environment: SharedSettingsApiEnvironmentOption,
+): SettingsComputerCommandContext? {
+    val slug = serverSlug?.trim()?.trimStart('/')?.takeIf { it.isNotBlank() } ?: return null
+    val deploymentEnv =
+        when (environment.key) {
+            SharedApiEnvironmentStore.Production.key -> "production"
+            SharedApiEnvironmentStore.Staging.key -> "staging"
+            else -> "slockdev"
+        }
+    return SettingsComputerCommandContext(
+        serverSlug = slug,
+        deploymentEnv = deploymentEnv,
+        serverUrl = environment.socketBaseUrl.trim().trimEnd('/').takeIf { it.isNotBlank() },
+    )
+}
 
 /**
  * Web `getComputerCommands(serverSlug, deploymentEnv, serverUrl, { machineId, platform, version })`;

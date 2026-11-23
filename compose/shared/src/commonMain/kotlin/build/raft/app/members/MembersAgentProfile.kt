@@ -930,7 +930,14 @@ internal class MembersAgentLifecycleInputs(
      * Web AgentDetailPanel `AgentRecentActivity` under the hero, with the status as its first line;
      * null where the profile shows none (the status stays in the hero).
      */
-    val recentActivity: MembersAgentRecentActivityInputs? = null
+    val recentActivity: MembersAgentRecentActivityInputs? = null,
+    /**
+     * Web AgentDetailPanel `AgentComputerOfflineCard` (slock #13076): shown directly under the
+     * profile hero while the agent's Computer is offline; null otherwise.
+     */
+    val computerOfflineCard: MembersAgentComputerOfflineCardState? = null,
+    /** Optional copy override for [computerOfflineCard]'s restart command; null uses `rememberRaftCopyAction`. */
+    val onCopyComputerCommand: ((String) -> Unit)? = null
 )
 
 /**
@@ -1937,6 +1944,17 @@ private fun MembersAgentProfileIdentity(
                 // With Recent activity the status is the card's first line (web).
                 showStatus = recentActivity == null
             )
+            lifecycle.computerOfflineCard?.let { offlineCard ->
+                // Web AgentDetailPanel: `<div className="px-5 pb-4"><AgentComputerOfflineCard /></div>`,
+                // right under the hero and above Recent activity / AgentProfileInfo.
+                MembersAgentComputerOfflineCard(
+                    state = offlineCard,
+                    timeContext = lifecycle.timeContext,
+                    onOpenComputer = lifecycle.onOpenComputer,
+                    onCopyCommand = lifecycle.onCopyComputerCommand,
+                    modifier = Modifier.padding(bottom = 4.dp),
+                )
+            }
             if (recentActivity != null) {
                 // Web `px-5 py-4` then a full-bleed Separator, before AgentProfileInfo: 36dp from
                 // the hero (its 8dp, the column's 16dp, 12dp here), 12dp from the separator to

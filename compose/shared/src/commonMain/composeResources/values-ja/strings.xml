@@ -4982,6 +4982,11 @@
     <string name="agent_status_computer_access_revoked">コンピューターのアクセスが取り消されました。エージェントを別のコンピューターに移動してください（再接続すると新しいコンピューターとして追加されます）</string>
     <string name="agent_status_computer_update_required">コンピューターのアップデートが必要</string>
     <string name="agent_status_computer_offline">コンピューターがオフライン</string>
+    <string name="agent_computer_offline_card_title">%1$s は %2$s からオフラインです</string>
+    <string name="agent_computer_offline_card_title_no_time">%1$s はオフラインです</string>
+    <string name="agent_computer_offline_step_power_owner">%1$s さんのコンピューター「%2$s」の電源を入れ、スリープしないようにする</string>
+    <string name="agent_computer_offline_step_power">コンピューター「%1$s」の電源を入れ、スリープしないようにする</string>
+    <string name="agent_computer_offline_step_run">そのコンピューターで Raft Desktop を開くか、次を実行する：</string>
     <string name="agent_status_open_computer">コンピューターを開く</string>
     <string name="agent_migration_place_from_revoked_computer_note">このエージェントのコンピューターはサーバーへのアクセスを失ったため、ファイルを移せません。選んだコンピューターに移動し、次にメッセージを受け取ったときにそこで新しいセッションを始めます。</string>
     <string name="agent_status_model_unsupported">このランタイムのアカウントまたはプランには「%1$s」が含まれていません。モデルを変更するか、このモデルを含むアカウントでログインしてください</string>

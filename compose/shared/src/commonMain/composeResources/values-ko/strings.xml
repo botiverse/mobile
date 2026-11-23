@@ -4799,6 +4799,11 @@
     <string name="agent_status_computer_access_revoked">컴퓨터 접근 권한이 취소되었어요. 에이전트를 다른 컴퓨터로 옮겨 주세요(다시 연결하면 새 컴퓨터로 추가돼요)</string>
     <string name="agent_status_computer_update_required">컴퓨터 업데이트 필요</string>
     <string name="agent_status_computer_offline">컴퓨터 오프라인</string>
+    <string name="agent_computer_offline_card_title">%1$s은(는) %2$s부터 오프라인이에요</string>
+    <string name="agent_computer_offline_card_title_no_time">%1$s은(는) 오프라인이에요</string>
+    <string name="agent_computer_offline_step_power_owner">%1$s님의 컴퓨터 %2$s을(를) 켜고 절전 모드로 들어가지 않게 하세요</string>
+    <string name="agent_computer_offline_step_power">컴퓨터 %1$s을(를) 켜고 절전 모드로 들어가지 않게 하세요</string>
+    <string name="agent_computer_offline_step_run">그 컴퓨터에서 Raft Desktop을 열거나 다음을 실행하세요:</string>
     <string name="agent_status_open_computer">컴퓨터 열기</string>
     <string name="agent_migration_place_from_revoked_computer_note">이 에이전트의 컴퓨터가 서버 접근 권한을 잃어서 파일을 가져올 수 없어요. 선택한 컴퓨터로 옮겨지고, 다음 메시지를 받을 때 그곳에서 새 세션을 시작해요.</string>
     <string name="agent_status_model_unsupported">이 런타임의 계정이나 플랜에 ‘%1$s’ 모델이 포함되어 있지 않아요. 모델을 변경하거나 이 모델이 포함된 계정으로 로그인하세요</string>

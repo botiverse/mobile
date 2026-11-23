@@ -4799,6 +4799,11 @@
     <string name="agent_status_computer_access_revoked">Acceso de la computadora revocado: mueve el agente a otra computadora (volver a conectarla añade una nueva)</string>
     <string name="agent_status_computer_update_required">La computadora requiere actualización</string>
     <string name="agent_status_computer_offline">Computadora sin conexión</string>
+    <string name="agent_computer_offline_card_title">%1$s está sin conexión desde %2$s</string>
+    <string name="agent_computer_offline_card_title_no_time">%1$s está sin conexión</string>
+    <string name="agent_computer_offline_step_power_owner">Enciende la computadora %2$s de %1$s y evita que entre en suspensión</string>
+    <string name="agent_computer_offline_step_power">Enciende la computadora %1$s y evita que entre en suspensión</string>
+    <string name="agent_computer_offline_step_run">En esa computadora, abre Raft Desktop o ejecuta:</string>
     <string name="agent_status_open_computer">Abrir computadora</string>
     <string name="agent_migration_place_from_revoked_computer_note">La computadora de este agente perdió el acceso al servidor, así que sus archivos no se pueden traer. Se mueve a la computadora que elijas e inicia una sesión nueva allí la próxima vez que reciba un mensaje.</string>
     <string name="agent_status_model_unsupported">La cuenta o el plan de este runtime no incluye “%1$s”. Cambia el modelo o inicia sesión con una cuenta que lo incluya</string>

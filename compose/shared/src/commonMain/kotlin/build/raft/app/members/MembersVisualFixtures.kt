@@ -31,6 +31,7 @@ import build.raft.app.data.DataRequestPriority
 import build.raft.app.data.DataResult
 import build.raft.app.data.RaftPrivacyMode
 import build.raft.app.data.ScreenError
+import build.raft.app.data.SettingsComputerCommandContext
 import build.raft.app.data.SettingsServerActionResult
 import build.raft.app.data.ComputerStatus
 import build.raft.app.data.ComputerSummary
@@ -115,6 +116,22 @@ private val membersVisualFixtureMachineStatusRow: (String?) -> MembersMachineSta
         hasSnapshot = true
     )
 }
+
+/**
+ * Fixture computers-store + server slug (`packages/visual-testing/shared/fixtureData.json`,
+ * `server.slug = "visual"`), so `screens.members.agent-detail.profile.computer-offline` (vcase
+ * #280) renders [MembersAgentComputerOfflineCard] with the exact same restart command as the web.
+ */
+private val membersVisualFixtureOfflineComputerInputs =
+    MembersAgentOfflineComputerInputs(
+        machines = membersVisualFixtureMachines,
+        commandContext =
+            SettingsComputerCommandContext(
+                serverSlug = "visual",
+                deploymentEnv = "production",
+                serverUrl = RAFT_COMPUTER_DEFAULT_SERVER_URL,
+            ),
+    )
 
 private val membersAgentDetailVisualMember = MemberProfile(
     id = MemberId("agent-product-ux"),
@@ -701,14 +718,16 @@ internal fun MembersAgentDetailVisualVariantContent(
     payload: RaftMemberDetailPayload,
     variant: MembersAgentDetailVisualVariant?,
     pageVisibleTick: Int,
-    machineStatusRow: ((String?) -> MembersMachineStatusRow)? = null
+    machineStatusRow: ((String?) -> MembersMachineStatusRow)? = null,
+    offlineComputerInputs: MembersAgentOfflineComputerInputs? = null
 ) {
     val seed = remember(variant) { variant?.toSeed() ?: membersAgentDetailDefaultVisualSeed() }
     MemberDetailVisualSeedContent(
         payload = payload,
         seed = seed,
         pageVisibleTick = pageVisibleTick,
-        machineStatusRow = machineStatusRow ?: membersVisualFixtureMachineStatusRow
+        machineStatusRow = machineStatusRow ?: membersVisualFixtureMachineStatusRow,
+        offlineComputerInputs = offlineComputerInputs ?: membersVisualFixtureOfflineComputerInputs
     )
 }
 
@@ -718,7 +737,8 @@ internal fun MemberDetailVisualSeedContent(
     seed: MemberDetailVisualSeed,
     pageVisibleTick: Int,
     // Gated visual fixture pages inject other computers-store states (e.g. still loading).
-    machineStatusRow: (String?) -> MembersMachineStatusRow = membersVisualFixtureMachineStatusRow
+    machineStatusRow: (String?) -> MembersMachineStatusRow = membersVisualFixtureMachineStatusRow,
+    offlineComputerInputs: MembersAgentOfflineComputerInputs = membersVisualFixtureOfflineComputerInputs
 ) {
     val initialAgentTab = remember(payload.initialAgentTab) {
         payload.initialAgentTab.toMembersAgentDetailTabOrNull()
@@ -752,6 +772,7 @@ internal fun MemberDetailVisualSeedContent(
                 profileGeneration = 0L
             ),
         machineStatusRow = machineStatusRow,
+        offlineComputerInputs = offlineComputerInputs,
         actions = MembersDetailActions(
             onBack = {},
             onOpenDirectMessage = {},
@@ -839,6 +860,7 @@ internal fun MembersAgentDetailVisualContent(
                 profileGeneration = 0L
             ),
         machineStatusRow = membersVisualFixtureMachineStatusRow,
+        offlineComputerInputs = membersVisualFixtureOfflineComputerInputs,
         actions = MembersDetailActions(
             onBack = protoOnBack ?: {},
             onOpenDirectMessage = {},
@@ -916,6 +938,7 @@ internal fun MembersRemoteAgentProfileVisualContent(
         canViewPrivateAgentSurfaces = { _, _ -> false },
         canManageAgent = { _, _ -> false },
         machineStatusRow = membersVisualFixtureMachineStatusRow,
+        offlineComputerInputs = membersVisualFixtureOfflineComputerInputs,
         actions = MembersDetailActions(
             onBack = {},
             onOpenDirectMessage = {},

@@ -349,6 +349,8 @@ internal fun MembersDetailContent(
     canManageAgent: (MemberProfile, AgentDetailSnapshot?) -> Boolean,
     /** Task #259: resolves the machine status row from the computers store. No default on purpose -- a silent fallback here is the #253 shape. */
     machineStatusRow: (machineId: String?) -> MembersMachineStatusRow,
+    /** Computers-store snapshot and server command context for [MembersAgentComputerOfflineCard]. */
+    offlineComputerInputs: MembersAgentOfflineComputerInputs = MembersAgentOfflineComputerInputs(),
     actions: MembersDetailActions,
     humanRole: MembersHumanRoleInputs = MembersHumanRoleInputs(),
     agentDetailActions: SharedAgentDetailActions? = null,
@@ -902,6 +904,33 @@ internal fun MembersDetailContent(
     // no confirmation; "Failed to reset agent" when it does not go through.
     val retryRestartComputerOffline =
         (machineStatusRow(detail?.summary?.machineId) as? MembersMachineStatusRow.Machine)?.online == false
+    val computerOfflineCard =
+        if (member.kind == MemberKind.Agent) {
+            val serverMembers =
+                currentServerId?.takeIf { it.isNotBlank() }?.let { serverId ->
+                    serverMembersState.entryFor(ServerId(serverId))?.members
+                }.orEmpty()
+            resolveMembersAgentComputerOfflineCardState(
+                machineId = detail?.summary?.machineId ?: member.membersComputerId,
+                machines = offlineComputerInputs.machines,
+                offlineObservedAtMs = offlineComputerInputs.offlineObservedAtMs,
+                serverMembers = serverMembers,
+                commandContext = offlineComputerInputs.commandContext,
+                deleted = deleted || member.agentDeletedAt?.isNotBlank() == true,
+                isExternalAgent =
+                    isExternalAgent || build.raft.app.model.isExternalAgentRuntime(detail?.summary?.runtime),
+                isBoundedPublicProjection =
+                    membersAgentIsBoundedPublicProjection(
+                        accessMode = accessMode,
+                        profileProjection =
+                            detail?.summary?.profileProjection?.takeIf { it.isNotBlank() }
+                                ?: member.profileProjection,
+                    ),
+                offlineFromRefusalIds = offlineComputerInputs.offlineFromRefusalIds,
+            )
+        } else {
+            null
+        }
     val canRetryRestart =
         canManage && agentDetailActions != null && !membersAgentProfileIsRemote(accessMode) && !retryRestartComputerOffline
     var retryRestartInFlight by remember(member.id.value) { mutableStateOf(false) }
@@ -1348,7 +1377,8 @@ internal fun MembersDetailContent(
                                                                 selectedTabOverride = MembersAgentDetailTab.Activity
                                                             }
                                                         )
-                                                    }
+                                                    },
+                                                computerOfflineCard = computerOfflineCard
                                             ),
                                             machineStatusRow = machineStatusRow,
                                             timeContext = timeContext,

@@ -318,8 +318,14 @@ internal data class RaftMessageTimeFormat(
     /** [value] (a wire timestamp) in [timeContext]; null when it is not a timestamp or there is no today. */
     fun format(value: String?, timeContext: RaftTimeContext?): String? {
         val context = timeContext ?: return null
-        val today = context.resolvedTodayEpochDay() ?: return null
         val epochMillis = parseRaftTimestampEpochMillisOrNull(value, context.localOffsetMinutes) ?: return null
+        return formatEpochMillis(epochMillis, context)
+    }
+
+    /** [epochMillis] (an instant in epoch milliseconds) in [timeContext]; null when there is no today. */
+    fun formatEpochMillis(epochMillis: Long, timeContext: RaftTimeContext?): String? {
+        val context = timeContext ?: return null
+        val today = context.resolvedTodayEpochDay() ?: return null
         val day = context.localEpochDay(epochMillis)
         val clock = context.formatClock(epochMillis)
         if (day == today) return clock
