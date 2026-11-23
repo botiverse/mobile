@@ -201,6 +201,11 @@ internal class SharedHomeStore(
      */
     private val selectedConversationSeen: () -> Boolean = { RaftHostInUse.isInUse },
     /**
+     * Reply thread currently open in the wide side column alongside the selected conversation
+     * (`#wg-mobile-sync:#257`), gated by [selectedConversationSeen] just like [SharedHomeState.selectedConversationId].
+     */
+    private val openSideThread: () -> AdaptiveOpenSideThread? = { null },
+    /**
      * Waits for an active Home scroll to settle before launching background member/agent projection
      * refreshes (#wg-mobile-feedback:#271). Returns immediately when Home is not scrolling.
      */
@@ -1788,7 +1793,8 @@ internal class SharedHomeStore(
     private fun applyThreadUpdatedLocally(event: ThreadUpdated): Boolean {
         val current = _state.value
         val content = current.content as? SharedHomeContentState.Content ?: return false
-        return when (content.baseSnapshot.decideThreadReply(event, current.seenSelectedConversationId())) {
+        val (openConversationIds, openParentMessageId) = current.seenOpenConversations()
+        return when (content.baseSnapshot.decideThreadReply(event, openConversationIds, openParentMessageId)) {
             HomeThreadReplyDecision.Ignore -> false
             HomeThreadReplyDecision.Refresh -> {
                 diagnosticsLogger("home_followed_thread_refresh_request threadId=${event.threadChannelId.value}")
@@ -1803,11 +1809,27 @@ internal class SharedHomeStore(
     private fun SharedHomeState.seenSelectedConversationId(): String? =
         selectedConversationId?.takeIf { selectedConversationSeen() }
 
+    /** Open conversations currently seen on screen: main detail plus any visible side thread. */
+    private fun SharedHomeState.seenOpenConversations(): Pair<Set<String>, String?> {
+        if (!selectedConversationSeen()) return emptySet<String>() to null
+        val main = selectedConversationId?.trim()?.takeIf(String::isNotEmpty)
+        val side = openSideThread()
+        val ids =
+            buildSet {
+                if (main != null) add(main)
+                if (side != null) addAll(side.conversationIds)
+            }
+        return ids to side?.parentMessageId
+    }
+
     /** One `channels/unread?summary=1` read that replaces only the followed-thread mark. */
     private suspend fun refreshFollowedThreadUnread() {
         val content = _state.value.content as? SharedHomeContentState.Content ?: return
         val serverId = content.baseSnapshot.server.id
         val accountId = content.baseSnapshot.currentMember.id
+        val pendingReadOwner = readReceiptOwnerFactory?.invoke(serverId.value, accountId.value)
+        val pendingReadsAtRequest =
+            pendingReadOwner?.let { owner -> readReceiptCoordinator?.pendingReadSeqs(owner) }.orEmpty()
         val result =
             try {
                 dataSource.channelUnreadSummary(serverId, DataRequestPriority.Background)
@@ -1831,16 +1853,52 @@ internal class SharedHomeStore(
             diagnosticsLogger("home_followed_thread_refresh result=unavailable")
             return
         }
+        pendingReadOwner?.let { owner ->
+            val coordinator = readReceiptCoordinator ?: return@let
+            summary.readFrontiers.forEach { (id, frontier) ->
+                coordinator.noteReadFrontier(owner, ChannelId(id), frontier)
+            }
+        }
         val changed =
             synchronized(readProjectionOwnerLock) {
                 val now = _state.value.content as? SharedHomeContentState.Content ?: return@synchronized false
                 if (now.baseSnapshot.server.id != serverId || now.baseSnapshot.currentMember.id != accountId) {
                     return@synchronized false
                 }
-                val pendingUnfollows = pendingThreadUnfollows.keys
+                val pendingOverlay =
+                    pendingReadOwner?.let { owner ->
+                        readReceiptCoordinator?.pendingReadOverlay(owner, pendingReadsAtRequest)
+                    }.orEmpty()
+                val acknowledgedSeqs =
+                    pendingReadOwner?.let { owner ->
+                        readReceiptCoordinator?.acknowledgedReadSeqs(owner)
+                    }.orEmpty()
                 val threads =
-                    if (pendingUnfollows.isEmpty()) summary.followedThreadUnread else summary.followedThreadUnread - pendingUnfollows
-                applyHomeSnapshotLocally { it.withFollowedThreadUnread(threads) }
+                    projectFollowedThreadUnread(
+                        served = summary.followedThreadUnread,
+                        servedLatestActivitySeqs = summary.latestActivitySeqs,
+                        servedReadFrontiers = summary.readFrontiers,
+                        servedMarkedUnreadIds = summary.markedUnreadIds,
+                        pendingUnfollows = pendingThreadUnfollows.keys,
+                        pendingReadSeqs = pendingOverlay,
+                        acknowledgedReadSeqs = acknowledgedSeqs,
+                        currentFollowedThreadUnread = now.baseSnapshot.followedThreadUnread,
+                        currentLatestActivitySeqs = now.baseSnapshot.unreadLatestActivitySeqs,
+                        acceptedCheckpoint = { threadId ->
+                            perReceiverStateVersionStore.readReadStateCheckpoint(
+                                serverId = serverId,
+                                memberId = accountId,
+                                scopeId = ChannelId(threadId),
+                            )
+                        },
+                    )
+                applyHomeSnapshotLocally {
+                    it.withFollowedThreadUnread(
+                        threads = threads,
+                        latestActivitySeqs = summary.latestActivitySeqs,
+                        readFrontiers = summary.readFrontiers,
+                    )
+                }
             }
         diagnosticsLogger(
             "home_followed_thread_refresh result=content threads=${summary.followedThreadUnread.size} changed=$changed"

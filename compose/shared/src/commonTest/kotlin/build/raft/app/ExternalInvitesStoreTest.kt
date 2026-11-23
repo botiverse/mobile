@@ -33,6 +33,7 @@ internal class FakeExternalInvitesDataSource : ExternalInvitesDataSource {
         DataResult.Content(ExternalInviteAnswer.Ok(ChannelExternalInviteList(listOf(externalTestInvite("i1", "a@example.com")), slotsLeft = 28)))
     var previewAnswer: DataResult<ExternalInviteAnswer<ExternalInvitePreview>> =
         DataResult.Content(ExternalInviteAnswer.Ok(ExternalInvitePreview(valid = listOf("new@example.com"), slotsLeft = 28)))
+    var previewDeferred: CompletableDeferred<DataResult<ExternalInviteAnswer<ExternalInvitePreview>>>? = null
     var sendAnswer: DataResult<ExternalInviteAnswer<SendExternalInvitesResult>> =
         DataResult.Content(
             ExternalInviteAnswer.Ok(SendExternalInvitesResult(sent = listOf(SentExternalInvite("i9", "new@example.com")), added = listOf("m@example.com")))
@@ -51,7 +52,15 @@ internal class FakeExternalInvitesDataSource : ExternalInvitesDataSource {
         return listResults.removeFirstOrNull()?.await() ?: listAnswer
     }
 
-    override suspend fun preview(emails: List<String>) = previewAnswer.also { previewCalls += emails }
+    override suspend fun preview(emails: List<String>): DataResult<ExternalInviteAnswer<ExternalInvitePreview>> {
+        previewCalls += emails
+        val deferred = previewDeferred
+        if (deferred != null) {
+            previewDeferred = null
+            return deferred.await()
+        }
+        return previewAnswer
+    }
 
     val connectMemberCalls = mutableListOf<List<String>>()
 
@@ -82,9 +91,18 @@ internal class FakeExternalInvitesDataSource : ExternalInvitesDataSource {
         connectAnswer.also { connectCalls += serverIds to makePrivate }
 
     var freeLimitAnswer: Boolean? = false
+    var freeLimitDeferred: CompletableDeferred<Boolean?>? = null
     var freeLimitCalls = 0
 
-    override suspend fun freeLimitReached() = freeLimitAnswer.also { freeLimitCalls++ }
+    override suspend fun freeLimitReached(): Boolean? {
+        freeLimitCalls++
+        val deferred = freeLimitDeferred
+        if (deferred != null) {
+            freeLimitDeferred = null
+            return deferred.await()
+        }
+        return freeLimitAnswer
+    }
 }
 
 internal fun externalTestInvite(

@@ -39,11 +39,15 @@ import build.raft.app.components.RaftDesignSystemTheme
 import build.raft.app.data.DataResult
 import build.raft.app.data.RaftSharedStoreRegistry
 import build.raft.app.data.RaftShellStoreScope
+import build.raft.app.data.ResolvedServerRefusal
 import build.raft.app.data.ServerJoinAgreement
 import build.raft.app.data.ServerJoinAnswer
 import build.raft.app.data.ServerJoinInviteInfo
 import build.raft.app.data.ServerJoinLinkApi
+import build.raft.app.data.ServerJoinRefusal
+import build.raft.app.data.ServerRefusalInput
 import build.raft.app.data.SharedAuthResult
+import build.raft.app.data.resolveServerRefusal
 import build.raft.app.data.runCatchingPreservingCancellation
 import build.raft.app.markdown.RaftMarkdownBody
 import build.raft.designsystem.components.RaftBanner
@@ -107,7 +111,88 @@ internal sealed interface ServerJoinView {
     data class Joined(val serverName: String) : ServerJoinView
 }
 
-internal enum class ServerJoinFailure { InvalidOrExpired, TooManyAttempts, FailedToLoad, FailedToAccept, HumanSeatLimit }
+internal enum class ServerJoinFailure {
+    InvalidOrExpired,
+    TooManyAttempts,
+    FailedToLoad,
+    FailedToAccept,
+    HumanSeatLimit,
+    DeploymentUserLimit,
+}
+
+internal fun resolveServerJoinInfoRefusal(refusal: ServerJoinRefusal): ServerJoinView.Failed {
+    if (refusal.status <= 0) {
+        return ServerJoinView.Failed(ServerJoinFailure.FailedToLoad, traceId = refusal.traceId)
+    }
+    return when (
+        val resolved =
+            resolveServerRefusal(
+                ServerRefusalInput(
+                    status = refusal.status,
+                    code = refusal.code,
+                    serverMessage = refusal.error,
+                    traceId = refusal.traceId,
+                ),
+            ) { normalizedCode, status ->
+                when {
+                    normalizedCode == "human_seat_limit_reached" -> ServerJoinFailure.HumanSeatLimit
+                    normalizedCode == "deployment_user_limit_reached" -> ServerJoinFailure.DeploymentUserLimit
+                    status == 404 -> ServerJoinFailure.InvalidOrExpired
+                    status == 429 -> ServerJoinFailure.TooManyAttempts
+                    else -> null
+                }
+            }
+    ) {
+        is ResolvedServerRefusal.Infrastructure ->
+            ServerJoinView.Failed(ServerJoinFailure.FailedToLoad, traceId = resolved.traceId)
+        is ResolvedServerRefusal.KnownCode ->
+            ServerJoinView.Failed(resolved.known, traceId = resolved.traceId)
+        is ResolvedServerRefusal.ServerWords ->
+            ServerJoinView.Failed(ServerJoinFailure.FailedToLoad, message = resolved.message, traceId = resolved.traceId)
+        is ResolvedServerRefusal.Generic ->
+            ServerJoinView.Failed(ServerJoinFailure.FailedToLoad, traceId = resolved.traceId)
+    }
+}
+
+internal fun resolveServerJoinAcceptRefusal(
+    info: ServerJoinInviteInfo,
+    refusal: ServerJoinRefusal,
+): ServerJoinView {
+    // A new or changed agreement: show it, then Agree & join (web).
+    if (refusal.agreement != null) {
+        return ServerJoinView.Ready(info.copy(agreement = refusal.agreement))
+    }
+    if (refusal.status <= 0) {
+        return ServerJoinView.Failed(ServerJoinFailure.FailedToAccept, traceId = refusal.traceId)
+    }
+    return when (
+        val resolved =
+            resolveServerRefusal(
+                ServerRefusalInput(
+                    status = refusal.status,
+                    code = refusal.code,
+                    serverMessage = refusal.error,
+                    traceId = refusal.traceId,
+                ),
+            ) { normalizedCode, status ->
+                when {
+                    normalizedCode == "human_seat_limit_reached" -> ServerJoinFailure.HumanSeatLimit
+                    normalizedCode == "deployment_user_limit_reached" -> ServerJoinFailure.DeploymentUserLimit
+                    status == 429 -> ServerJoinFailure.TooManyAttempts
+                    else -> null
+                }
+            }
+    ) {
+        is ResolvedServerRefusal.Infrastructure ->
+            ServerJoinView.Failed(ServerJoinFailure.FailedToAccept, traceId = resolved.traceId)
+        is ResolvedServerRefusal.KnownCode ->
+            ServerJoinView.Failed(resolved.known, traceId = resolved.traceId)
+        is ResolvedServerRefusal.ServerWords ->
+            ServerJoinView.Failed(ServerJoinFailure.FailedToAccept, message = resolved.message, traceId = resolved.traceId)
+        is ResolvedServerRefusal.Generic ->
+            ServerJoinView.Failed(ServerJoinFailure.FailedToAccept, traceId = resolved.traceId)
+    }
+}
 
 private fun DataResult<*>.traceIdOrNull(): String? =
     when (this) {
@@ -141,15 +226,7 @@ private fun ServerJoinScreen() {
         view =
             when (val answer = (result as? DataResult.Content)?.data) {
                 is ServerJoinAnswer.Ok -> ServerJoinView.Ready(answer.value)
-                is ServerJoinAnswer.Refused ->
-                    ServerJoinView.Failed(
-                        when (answer.refusal.status) {
-                            404 -> ServerJoinFailure.InvalidOrExpired
-                            429 -> ServerJoinFailure.TooManyAttempts
-                            else -> ServerJoinFailure.FailedToLoad
-                        },
-                        traceId = answer.refusal.traceId,
-                    )
+                is ServerJoinAnswer.Refused -> resolveServerJoinInfoRefusal(answer.refusal)
                 null -> ServerJoinView.Failed(ServerJoinFailure.FailedToLoad, traceId = result.traceIdOrNull())
             }
         bridge.log("server_join_info result=${view::class.simpleName}")
@@ -237,17 +314,7 @@ private fun ServerJoinScreen() {
                 is ServerJoinAnswer.Refused -> {
                     val refusal = answer.refusal
                     bridge.log("server_join_accept result=refused status=${refusal.status} agreement=${refusal.agreement != null}")
-                    view =
-                        when {
-                            // A new or changed agreement: show it, then Agree & join (web).
-                            refusal.agreement != null -> ServerJoinView.Ready(info.copy(agreement = refusal.agreement))
-                            refusal.code == "human_seat_limit_reached" ->
-                                ServerJoinView.Failed(ServerJoinFailure.HumanSeatLimit, traceId = refusal.traceId)
-                            // The server's own reason (revoked, expired, used up), as the web shows it.
-                            refusal.status == 400 && refusal.error != null ->
-                                ServerJoinView.Failed(ServerJoinFailure.FailedToAccept, message = refusal.error, traceId = refusal.traceId)
-                            else -> ServerJoinView.Failed(ServerJoinFailure.FailedToAccept, traceId = refusal.traceId)
-                        }
+                    view = resolveServerJoinAcceptRefusal(info, refusal)
                 }
                 null -> {
                     bridge.log("server_join_accept result=error")
@@ -413,6 +480,7 @@ private fun serverJoinFailureText(failure: ServerJoinFailure): String =
         ServerJoinFailure.FailedToLoad -> stringResource(Res.string.server_join_failed_to_load)
         ServerJoinFailure.FailedToAccept -> stringResource(Res.string.server_join_failed_to_accept)
         ServerJoinFailure.HumanSeatLimit -> stringResource(Res.string.server_join_human_seat_limit)
+        ServerJoinFailure.DeploymentUserLimit -> stringResource(Res.string.external_invite_error_deployment_user_limit)
     }
 
 /**

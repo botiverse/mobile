@@ -2359,7 +2359,23 @@ private fun RaftFilePreviewStandalonePageContent() {
                                 serverMessage = failure.serverMessage,
                                 traceId = failure.traceId
                             )
-                    bridge.errorToast(unableToSendComment, result.traceId)
+                    val commentFailureError =
+                        if (result.code <= 0) {
+                            ScreenError(
+                                code = failure.errorCode.takeUnless { it == "http_${result.code}" } ?: "network_unavailable",
+                                retryable = true,
+                                traceId = failure.traceId,
+                            )
+                        } else {
+                            ScreenError(
+                                code = "http_${result.code}",
+                                retryable = result.code >= 500 || result.code == 429,
+                                serverCode = failure.errorCode.takeUnless { it == "http_${result.code}" },
+                                serverMessage = failure.serverMessage,
+                                traceId = failure.traceId,
+                            )
+                        }
+                    bridge.errorToast(unableToSendComment, commentFailureError)
                 }
                 null -> {
                     payload = payload.withFilePreviewAuthorityRejected()

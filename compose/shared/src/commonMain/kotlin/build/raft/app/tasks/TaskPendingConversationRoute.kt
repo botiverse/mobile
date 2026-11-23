@@ -40,6 +40,7 @@ import build.raft.app.data.RaftSharedStoreRegistry
 import build.raft.app.data.RaftShellStoreScope
 import build.raft.app.data.RaftThreadApiClient
 import build.raft.app.data.RaftTimeFormatRuntime
+import build.raft.app.data.RaftTimeZoneRuntime
 import build.raft.app.data.RealChannelRepository
 import build.raft.app.data.ScreenLoadState
 import build.raft.app.data.SharedConversationDirectoryState
@@ -556,9 +557,13 @@ private fun TaskPendingConversationRoute(pageVisible: Boolean) {
     val baseTimeCapabilities = remember(params.toString()) { params.threadTimeCapabilities() }
     val runtimeTimeFormat =
         RaftTimeFormatRuntime.observe(fallback = baseTimeCapabilities?.timeFormat ?: RaftTimeFormat24Hour)
+    val runtimeTimeZone = RaftTimeZoneRuntime.observe()
     val timeCapabilities =
-        remember(baseTimeCapabilities, runtimeTimeFormat) {
-            baseTimeCapabilities?.copy(timeFormat = runtimeTimeFormat)
+        remember(baseTimeCapabilities, runtimeTimeFormat, runtimeTimeZone) {
+            baseTimeCapabilities?.withRuntimePreferences(
+                timeFormat = runtimeTimeFormat,
+                preferredTimeZoneId = runtimeTimeZone,
+            )
         }
     val inheritedTimeContextProvider = LocalRaftTimeContextProvider.current
     val fallbackTimeContextProvider = currentRaftTimeContextProvider
@@ -634,10 +639,11 @@ private fun TaskPendingConversationRoute(pageVisible: Boolean) {
     LaunchedEffect(channelTasks) {
         channelTasks?.uiEvents?.collect { event ->
             if (event is SharedTasksEvent.OperationFailed) {
-                when {
-                    event.code.startsWith("tasks_status") -> bridge.errorToast(updateTaskFailedLabel, event.traceId)
-                    event.code.startsWith("tasks_assign") -> bridge.errorToast(updateAssigneeFailedLabel, event.traceId)
-                }
+                bridge.showTaskOperationFailedToast(
+                    event = event,
+                    updateFailedLabel = updateTaskFailedLabel,
+                    assignFailedLabel = updateAssigneeFailedLabel,
+                )
             }
         }
     }
@@ -947,7 +953,7 @@ private fun TaskPendingConversationRoute(pageVisible: Boolean) {
                                     bridge.toast(joinedChannelLabel)
                                 }
                                 is DataResult.NoPermission ->
-                                    bridge.errorToast(unableToJoinChannelLabel, result.blocker.traceId)
+                                    bridge.errorToast(unableToJoinChannelLabel, result.blocker)
                                 is DataResult.Error ->
                                     bridge.errorToast(unableToJoinChannelLabel, result.error)
                                 else -> bridge.toast(unableToJoinChannelLabel)

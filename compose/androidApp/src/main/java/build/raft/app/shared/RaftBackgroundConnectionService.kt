@@ -121,7 +121,7 @@ class RaftBackgroundConnectionService : Service() {
                 )
                 // Minimal notification so startForeground can still be called.
                 NotificationCompat.Builder(this, CHANNEL_ID)
-                    .setSmallIcon(android.R.drawable.ic_dialog_info)
+                    .setSmallIcon(R.drawable.ic_stat_raft)
                     .setOngoing(true)
                     .setSilent(true)
                     .build()
@@ -305,7 +305,7 @@ class RaftBackgroundConnectionService : Service() {
                     )
                 }
             return NotificationCompat.Builder(context, CHANNEL_ID)
-                .setSmallIcon(android.R.drawable.ic_dialog_info)
+                .setSmallIcon(R.drawable.ic_stat_raft)
                 .setContentTitle(context.getString(R.string.raft_background_connection_notification_title))
                 .setContentText(context.getString(R.string.raft_background_connection_notification_text))
                 .setPriority(NotificationCompat.PRIORITY_MIN)

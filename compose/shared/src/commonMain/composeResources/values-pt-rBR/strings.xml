@@ -224,6 +224,7 @@
     <string name="settings_step_up_passkeys_unavailable">As chaves de acesso não estão disponíveis no momento. Tente novamente mais tarde.</string>
     <string name="settings_step_up_passkey_none_here">Não há nenhuma chave de acesso do Raft neste dispositivo. Use outro método.</string>
     <string name="settings_step_up_passkey_unsupported">Este dispositivo não pode usar sua chave de acesso aqui. Use outro método.</string>
+    <string name="settings_step_up_passkey_failed">Não foi possível concluir a verificação com a chave de acesso. Verifique sua conexão de rede e tente novamente, ou use outro método.</string>
     <string name="settings_step_up_failed">Não foi possível verificar. Tente novamente.</string>
     <string name="settings_step_up_lost_device_description">Desconectar um dispositivo perdido e o que ele aprovou exige passar pela segunda etapa de novo. A verificação vale por 10 minutos.</string>
     <string name="settings_step_up_lost_authenticator">Perdeu o dispositivo com seu app autenticador?</string>
@@ -2746,11 +2747,13 @@
     <string name="settings_notifications_battery_optimization_detail">Desative a otimização de bateria para o Raft para que o sistema não interrompa a conexão em segundo plano. Em alguns celulares, também é preciso permitir o Raft nas configurações de inicialização de apps ou de atividade em segundo plano.</string>
     <string name="settings_notifications_battery_optimization_allowed">Permitidos</string>
     <string name="settings_notifications_battery_optimization_request">Permitir</string>
+    <string name="settings_notifications_vendor_background_title">Início automático e segundo plano</string>
+    <string name="settings_notifications_vendor_background_detail_huawei">Em Inicialização de apps, mude o Raft para Gerenciar manualmente e permita Início automático, Início secundário e Executar em segundo plano.</string>
+    <string name="settings_notifications_vendor_background_detail_lenovo">Permita que o Raft inicie automaticamente e continue em execução nas configurações de gerenciamento em segundo plano do dispositivo.</string>
+    <string name="settings_notifications_vendor_background_detail_vendor">Permita que o Raft inicie automaticamente e funcione sem restrições em segundo plano nas configurações do sistema.</string>
+    <string name="settings_notifications_vendor_background_detail_app_details">Permita que o Raft funcione sem restrições de bateria nas configurações do sistema para que não seja encerrado em segundo plano.</string>
     <string name="background_kill_notice_title">O Raft foi encerrado em segundo plano</string>
-    <string name="background_kill_notice_body_huawei">Seu dispositivo encerrou o Raft enquanto ele estava em segundo plano, o que pode atrasar mensagens e notificações. Em Inicialização de apps, mude o Raft para Gerenciar manualmente e permita Início automático, Início secundário e Executar em segundo plano.</string>
-    <string name="background_kill_notice_body_lenovo">Seu dispositivo encerrou o Raft enquanto ele estava em segundo plano, o que pode atrasar mensagens e notificações. Permita que o Raft inicie automaticamente e continue em execução nas configurações de gerenciamento em segundo plano do dispositivo.</string>
-    <string name="background_kill_notice_body_vendor">Seu dispositivo encerrou o Raft enquanto ele estava em segundo plano, o que pode atrasar mensagens e notificações. Permita que o Raft inicie automaticamente e funcione sem restrições em segundo plano nas configurações do sistema.</string>
-    <string name="background_kill_notice_body_app_details">Seu dispositivo encerrou o Raft enquanto ele estava em segundo plano, o que pode atrasar mensagens e notificações. Abra Informações do app, acesse Bateria e defina o Raft como Sem restrições.</string>
+    <string name="background_kill_notice_body">Seu dispositivo encerrou o Raft enquanto ele estava em segundo plano, o que pode atrasar mensagens e notificações. Abra as configurações de notificações para permitir que o Raft seja executado em segundo plano.</string>
     <string name="background_kill_notice_action_open_settings">Abrir configurações</string>
     <string name="background_kill_notice_action_dont_show_again">Não mostrar novamente</string>
     <string name="settings_notifications_offline_computers_title">Alertas de computadores offline</string>
@@ -3924,6 +3927,10 @@
     <string name="joint_member_connect_row_connected_by_you">Conectado por você</string>
     <string name="joint_member_connect_row_connected_now">Conectado agora</string>
     <string name="joint_member_connect_row_not_admin">Só um proprietário ou administrador pode conectá-lo</string>
+    <string name="joint_member_connect_row_at_limit">Gratuito · já está em outro canal externo</string>
+    <string name="joint_member_connect_row_ask_owner">Pedir upgrade a um proprietário</string>
+    <string name="joint_member_connect_row_ask_owner_server">Pedir a um proprietário de %1$s para fazer upgrade</string>
+    <string name="external_invite_connect_upgrade_server">Fazer upgrade de %1$s</string>
     <string name="joint_member_connect_row_owner">Você é o proprietário</string>
     <string name="joint_member_connect_search">Pesquisar servidores</string>
     <string name="joint_member_connect_title">Conectar seus servidores</string>
@@ -4676,6 +4683,7 @@
     <string name="upgrade_dialog_general_hint">O Pro remove os limites do Free em mensagens, arquivos e canais externos.</string>
     <string name="upgrade_dialog_external_limit_title">Compartilhar mais canais fora de %1$s</string>
     <string name="upgrade_dialog_external_limit_hint">O plano gratuito inclui 1 canal externo, e %1$s já tem um. No Pro, %1$s pode compartilhar quantos precisar.</string>
+    <string name="upgrade_dialog_external_limit_hint_channel">O plano gratuito inclui 1 canal externo, e o de %1$s é %2$s. No Pro, %1$s pode compartilhar quantos precisar.</string>
     <string name="upgrade_dialog_external_frozen_title">Voltar a publicar nos seus canais externos</string>
     <string name="upgrade_dialog_external_frozen_hint">O plano gratuito permite 1 canal externo. Faça upgrade para voltar a publicar em todos eles.</string>
     <string name="external_freeze_notice">Este servidor está no plano gratuito e compartilha mais de um canal com pessoas de fora. A partir de %1$s, ele não poderá publicar neles. Para continuar publicando, faça upgrade ou saia de todos esses canais, exceto um.</string>
@@ -4722,6 +4730,7 @@
     <string name="upgrade_dialog_limit_pro_theme">O tema Cinza sem graça não está incluído no plano gratuito.</string>
     <string name="upgrade_dialog_limit_general">%1$s está no plano gratuito.</string>
     <string name="upgrade_dialog_limit_external_limit">O plano gratuito inclui 1 canal externo, e %1$s já tem um.</string>
+    <string name="upgrade_dialog_limit_external_limit_channel">O plano gratuito inclui 1 canal externo, e o de %1$s é %2$s.</string>
     <string name="upgrade_dialog_limit_external_frozen">O plano gratuito permite 1 canal externo.</string>
     <string name="upgrade_dialog_limit_seats">Todas as licenças de %1$s estão em uso.</string>
     <string name="invite_human_view_billing">Ver cobrança</string>

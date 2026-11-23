@@ -636,6 +636,13 @@ private fun SecondFactorStepUpBannerView(
                 status = RaftBannerStatus.Warning,
                 size = RaftBannerSize.Sm
             )
+        SecondFactorStepUpBanner.PasskeyFailed ->
+            RaftBanner(
+                description = stringResource(Res.string.settings_step_up_passkey_failed),
+                modifier = tagged,
+                status = RaftBannerStatus.Warning,
+                size = RaftBannerSize.Sm
+            )
         SecondFactorStepUpBanner.WebStepUpCancelled ->
             RaftBanner(
                 description = stringResource(Res.string.settings_step_up_web_cancelled),

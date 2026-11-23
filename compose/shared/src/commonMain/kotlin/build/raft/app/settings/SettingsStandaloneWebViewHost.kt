@@ -28,6 +28,8 @@ import build.raft.designsystem.components.RaftStickerTile
 import build.raft.app.components.RaftSlotIcon
 import build.raft.app.data.AppLocale
 import build.raft.app.data.KeyValueLocalePreferenceStore
+import build.raft.app.data.RaftAuthSessionEventSource
+import build.raft.app.data.RaftAuthSessionStore
 import build.raft.app.data.RaftShellStoreScope
 import build.raft.app.data.StoredAuthSession
 import build.raft.app.data.raftSharedPreferenceStore
@@ -517,7 +519,14 @@ private fun StandaloneSettingsWebViewBody(
         remember(sharedStores, storeScope) {
             sharedStores.authStore(storeScope)
         }
-    val authSnapshot = rememberSettingsWebViewAuthSnapshot(authStore, sharedStores.authStore)
+    // Subscribe to the shell-scoped auth store's own event stream when available (which forwards
+    // all process-level auth events AND emits BindingMetadataChanged after every shell-local
+    // server switch, even when the process store already selected the target server; #247).
+    val authEvents =
+        remember(authStore, sharedStores.authStore) {
+            settingsWebViewAuthEventSource(authStore, sharedStores.authStore)
+        }
+    val authSnapshot = rememberSettingsWebViewAuthSnapshot(authStore, authEvents)
     val webBaseUrl = standaloneSettingsWebBaseUrl(sharedStores.apiEnvironmentStore)
     // #300: the page holds only the access token; it is refreshed ahead of its expiry while shown.
     val accessTokenRefresher =
@@ -689,7 +698,10 @@ internal fun StandaloneSettingsWebViewContent(
                 ephemeral = spec.ephemeral,
                 injectedJavaScript = injectedJavaScript,
                 controller = controller,
-                generationKey = hostAuthBinding?.webViewGeneration,
+                // Key the WebView on both auth binding generation and selected server id so a page
+                // kept on screen across a server switch reloads cleanly even if its URL has no
+                // server slug or hostAuthBinding was temporarily null (#247).
+                generationKey = hostAuthBinding?.webViewGeneration to session.currentServerId,
                 onLoadCommit = onLoadCommit,
                 onLoadSuccess = onLoadSuccess,
                 onUrlChange = { changedUrl ->
@@ -797,9 +809,10 @@ internal fun SettingsWebViewContent(
             mutableStateOf(RaftWebViewNavigationState(url = url, isLoading = true))
         }
     // The WebView attaches once this frame has been measured at a real place: a native view
-    // attached before layout would draw over the page header for a frame (task #227). That
-    // measurement is already one rendered frame after the body entered; no further frame delay.
-    var webViewAttachReady by remember(url, generationKey, reloadKey) { mutableStateOf(false) }
+    // attached before layout would draw over the page header for a frame (task #227). Once
+    // measured, keep the attach gate open across URL / generation / retry swaps at identical
+    // bounds so switching servers never drops the WebView waiting for a relayout (#247).
+    var webViewAttachReady by remember { mutableStateOf(false) }
     val navigationAuthority = remember { SettingsWebViewNavigationAuthority() }
     val loadWatchdog =
         remember(url, generationKey, reloadKey) {
@@ -1137,6 +1150,11 @@ internal fun readStandaloneSettingsLocaleTag(): String =
     } catch (_: Throwable) {
         AppLocale.Default.languageTag
     }
+
+internal fun settingsWebViewAuthEventSource(
+    shellAuthStore: RaftAuthSessionStore,
+    fallbackProcessAuthEvents: RaftAuthSessionEventSource,
+): RaftAuthSessionEventSource = (shellAuthStore as? RaftAuthSessionEventSource) ?: fallbackProcessAuthEvents
 
 internal fun standaloneSettingsServerSlug(session: StoredAuthSession?): String? =
     session?.selectedServerSlug

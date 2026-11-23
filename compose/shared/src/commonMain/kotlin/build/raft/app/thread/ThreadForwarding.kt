@@ -31,6 +31,7 @@ import build.raft.app.data.map
 import build.raft.app.data.RaftShellStoreScope
 import build.raft.app.data.RaftSharedStoreRegistry
 import build.raft.app.data.RaftTimeFormatRuntime
+import build.raft.app.data.RaftTimeZoneRuntime
 import build.raft.app.data.messageBodyFontSizeOwnerKey
 import build.raft.app.model.ConversationKind
 import build.raft.app.model.ForwardMessageAttachment
@@ -707,9 +708,13 @@ private fun ThreadForwardBundleScreen() {
     val baseTimeCapabilities = remember(params.toString()) { params.threadForwardBundleTimeCapabilitiesOrNull() }
     val runtimeTimeFormat =
         RaftTimeFormatRuntime.observe(fallback = baseTimeCapabilities?.timeFormat ?: RaftTimeFormat24Hour)
+    val runtimeTimeZone = RaftTimeZoneRuntime.observe()
     val timeCapabilities =
-        remember(baseTimeCapabilities, runtimeTimeFormat) {
-            baseTimeCapabilities?.copy(timeFormat = runtimeTimeFormat)
+        remember(baseTimeCapabilities, runtimeTimeFormat, runtimeTimeZone) {
+            baseTimeCapabilities?.withRuntimePreferences(
+                timeFormat = runtimeTimeFormat,
+                preferredTimeZoneId = runtimeTimeZone,
+            )
         }
     val inheritedTimeContextProvider = LocalRaftTimeContextProvider.current
     val fallbackTimeContextProvider = currentRaftTimeContextProvider

@@ -158,7 +158,16 @@ class TaskConversationHeaderStoreTest {
     @Test
     fun viewModelFollowsAndUnfollowsByTheConversationIdAndReportsAFailure() = runTest {
         val calls = mutableListOf<String>()
-        var unfollowResult: DataResult<ThreadActionResult> = DataResult.Error(ScreenError("thread_unfollow_500"))
+        val traceId = "62ac7fa79a3785a6bee414a074f82634"
+        var unfollowResult: DataResult<ThreadActionResult> =
+            DataResult.Error(
+                ScreenError(
+                    code = "thread_unfollow_403",
+                    serverMessage = "Archived task conversations cannot be unfollowed.",
+                    serverCode = "channel_archived",
+                    traceId = traceId,
+                )
+            )
         val viewModel =
             headerViewModel(
                 follow = { id ->
@@ -185,7 +194,15 @@ class TaskConversationHeaderStoreTest {
         assertEquals(listOf("follow:conv-1", "unfollow:conv-1"), calls)
         assertEquals(true, viewModel.state.value.followed(taskFollowed = false), "a failed unfollow keeps the follow")
         val event = assertIs<TaskConversationHeaderEvent.FollowFailed>(failure.await())
-        assertEquals("thread_unfollow_500", event.code)
+        assertEquals("thread_unfollow_403", event.code)
+        assertEquals(traceId, event.traceId)
+        assertEquals("Archived task conversations cannot be unfollowed.", event.serverMessage)
+        assertEquals("channel_archived", event.serverCode)
+        val error = event.toScreenError()
+        assertEquals("thread_unfollow_403", error.code)
+        assertEquals("Archived task conversations cannot be unfollowed.", error.serverMessage)
+        assertEquals("channel_archived", error.serverCode)
+        assertEquals(traceId, error.traceId)
         collector.cancel()
 
         unfollowResult = DataResult.Content(ThreadActionResult(ChannelId("conv-1"), changed = true))

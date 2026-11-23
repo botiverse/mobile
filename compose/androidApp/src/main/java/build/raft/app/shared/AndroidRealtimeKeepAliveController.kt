@@ -20,16 +20,19 @@ internal object AndroidRealtimeKeepAliveController {
     private val startupScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     /**
-     * Process start: wires the Settings controls synchronously (no IPC) and moves the Play
-     * services, service-declaration, default-seeding, and battery-exemption probes onto IO.
+     * Process start: wires the unified Settings controls synchronously (no IPC) and moves the Play
+     * services, service-declaration, permission, default-seeding, and battery-exemption probes onto IO.
      */
     fun installNoPlayServicesFallback(context: Context) {
         val appContext = context.applicationContext
         val controls = RaftAndroidBackgroundConnectionControls(appContext)
         RaftBackgroundConnectionControlsRegistry.controls = controls
         startupScope.launch {
+            val canRequestBattery = controls.canRequestBatteryOptimizationExemption()
             if (noPlayServicesFallbackApplies(appContext)) {
                 seedNoPlayServicesDefault(appContext, fcmUnavailable = true)
+            }
+            if (canRequestBattery) {
                 controls.refreshBatteryOptimizationStatus()
             }
         }
@@ -187,10 +190,10 @@ internal object AndroidRealtimeKeepAliveController {
     /** Called from activity resume: re-reads inputs that can change while the app was away. */
     fun onHostResumed(context: Context) {
         val appContext = context.applicationContext
-        val fcmUnavailable = RaftPlayServicesAvailability.refresh(appContext)
-        if (fcmUnavailable && RaftBackgroundConnectionService.isDeclared(appContext)) {
-            (RaftBackgroundConnectionControlsRegistry.controls as? RaftAndroidBackgroundConnectionControls)
-                ?.refreshBatteryOptimizationStatus()
+        RaftPlayServicesAvailability.refresh(appContext)
+        val controls = RaftBackgroundConnectionControlsRegistry.controls as? RaftAndroidBackgroundConnectionControls
+        if (controls != null && controls.canRequestBatteryOptimizationExemption()) {
+            controls.refreshBatteryOptimizationStatus()
         }
     }
 

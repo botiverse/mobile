@@ -25,6 +25,9 @@ import build.raft.app.data.SharedAuthGateState
 import build.raft.app.data.StoredAuthSession
 import build.raft.app.data.SharedTasksDataStore
 import build.raft.app.data.SharedTasksEvent
+import build.raft.app.data.isAssignFailure
+import build.raft.app.data.isStatusFailure
+import build.raft.app.data.toScreenError
 import build.raft.app.data.SharedTasksRouteIntent
 import build.raft.app.data.SharedTasksScope
 import build.raft.app.data.SharedTasksViewModel
@@ -453,8 +456,33 @@ internal class TaskPageEditing(
     /** A refused write's [SharedTasksEvent.OperationFailed] code, for the host's toast. */
     val onFailed: (String) -> Unit = {},
     val onFailedWithTrace: ((code: String, traceId: String?) -> Unit)? = null,
+    val onOperationFailed: ((SharedTasksEvent.OperationFailed) -> Unit)? = null,
     val log: (String) -> Unit = {},
 )
+
+/**
+ * Surfaces a refused task status or assignee mutation as a structured error toast (with server
+ * refusal reason and Trace ID via [BridgeModule.errorToast]). Out of `SharedThreadRouteContentContent`
+ * to keep that composable below its JVM bytecode ceiling.
+ */
+internal fun build.raft.app.base.BridgeModule.showTaskOperationFailedToast(
+    event: SharedTasksEvent.OperationFailed,
+    updateFailedLabel: String,
+    assignFailedLabel: String,
+    onToast: (title: String, error: build.raft.app.data.ScreenError) -> Unit = { title, error ->
+        errorToast(title, error)
+    },
+    routeAuthRequired: (String?) -> Boolean = { false },
+) {
+    val label =
+        when {
+            event.isStatusFailure() -> updateFailedLabel
+            event.isAssignFailure() -> assignFailedLabel
+            else -> return
+        }
+    if (routeAuthRequired(event.code)) return
+    onToast(label, event.toScreenError())
+}
 
 /** Renders the flow's surface (the pending task page or the legacy panel). */
 @Composable
@@ -492,10 +520,13 @@ internal fun TaskOpenSurfaceHost(
             }
             val onFailed by rememberUpdatedState(editing?.onFailed)
             val onFailedWithTrace by rememberUpdatedState(editing?.onFailedWithTrace)
+            val onOperationFailed by rememberUpdatedState(editing?.onOperationFailed)
             LaunchedEffect(channelTasks) {
                 channelTasks?.uiEvents?.collect { event ->
                     if (event is SharedTasksEvent.OperationFailed) {
-                        onFailedWithTrace?.invoke(event.code, event.traceId) ?: onFailed?.invoke(event.code)
+                        onOperationFailed?.invoke(event)
+                            ?: onFailedWithTrace?.invoke(event.code, event.traceId)
+                            ?: onFailed?.invoke(event.code)
                     }
                 }
             }
@@ -1085,7 +1116,7 @@ internal fun launchTasksTabTaskOpen(
     openSurface: (TaskOpenSurface) -> Unit,
     openPage: (task: TaskSummary, resolvedConversationChannelId: ChannelId?) -> Unit,
     onLoadError: (build.raft.app.data.ScreenError) -> Unit,
-    onNoPermission: (traceId: String?) -> Unit,
+    onNoPermission: (build.raft.app.data.PermissionBlocker) -> Unit,
     onNotFound: () -> Unit,
     log: (String) -> Unit,
 ) {
@@ -1177,7 +1208,7 @@ internal fun launchTasksTabTaskOpen(
                             storedTask
                         }
                         is DataResult.NoPermission -> {
-                            if (isStillActive()) onNoPermission(detail.blocker.traceId)
+                            if (isStillActive()) onNoPermission(detail.blocker)
                             return@launch
                         }
                         is DataResult.Empty -> {

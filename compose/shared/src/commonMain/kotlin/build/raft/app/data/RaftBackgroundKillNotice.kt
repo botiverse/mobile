@@ -25,15 +25,21 @@ data class RaftBackgroundKillNotice(
 )
 
 /**
- * Host contract for the Android background-kill whitelist guidance notice.
+ * Host contract for the Android background-kill notice.
  *
  * Only Android installs a host; iOS and desktop leave [RaftBackgroundKillNoticeHostRegistry.host]
- * null and render nothing.
+ * null and render nothing. Tapping the notice's action button opens Raft's in-app Notification
+ * settings (the single unified entry for background keep-alive controls) and calls
+ * [markSettingsOpened] to acknowledge the notice and start its cooldown.
  */
 interface RaftBackgroundKillNoticeHost {
     val notice: StateFlow<RaftBackgroundKillNotice?>
 
-    fun openVendorWhitelistSettings()
+    /**
+     * The user tapped the notice action to open in-app Notification settings: acknowledges the
+     * current exit, hides the notice, and starts the 24-hour settings cooldown.
+     */
+    fun markSettingsOpened()
 
     fun dismiss()
 

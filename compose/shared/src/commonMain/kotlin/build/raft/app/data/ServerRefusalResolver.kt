@@ -107,3 +107,36 @@ internal fun usableServerRefusalMessage(raw: String?): String? {
     }
     return trimmed
 }
+
+/**
+ * Extracts a usable, non-redundant server refusal explanation for a structured error toast
+ * (`RaftToast.description`), applying the same Tier 1–4 scrubbing as [ScreenError.errorPresentation]:
+ * - Infrastructure, 401, 5xx, `internal_error`, `edge_blocked`, HTML, and stack traces -> `null`.
+ * - Already present verbatim inside [title] (case-insensitive) -> `null` so callers that already
+ *   interpolated `userFacingMessage(...)` into [title] never duplicate the sentence.
+ */
+internal fun usableServerRefusalReasonForToast(title: String, error: ScreenError): String? =
+    nonRedundantToastReason(title, error.errorPresentation().rawServerMessage)
+
+/** See [usableServerRefusalReasonForToast] for [ScreenError]. */
+internal fun usableServerRefusalReasonForToast(title: String, blocker: PermissionBlocker): String? =
+    nonRedundantToastReason(title, blocker.errorPresentation().rawServerMessage)
+
+/** See [usableServerRefusalReasonForToast] for [ScreenError]. */
+internal fun usableServerRefusalReasonForToast(title: String, result: DataResult<*>): String? =
+    when (result) {
+        is DataResult.Error -> usableServerRefusalReasonForToast(title, result.error)
+        is DataResult.NoPermission -> usableServerRefusalReasonForToast(title, result.blocker)
+        is DataResult.Content,
+        is DataResult.Empty -> null
+    }
+
+private fun nonRedundantToastReason(title: String, candidate: String?): String? {
+    val reason = usableServerRefusalMessage(candidate) ?: return null
+    val normalizedTitle = title.trim().trimEnd('.', '。', '!', '！')
+    val normalizedReason = reason.trimEnd('.', '。', '!', '！')
+    if (normalizedReason.isEmpty() || normalizedTitle.contains(normalizedReason, ignoreCase = true)) {
+        return null
+    }
+    return reason
+}

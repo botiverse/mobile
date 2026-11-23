@@ -150,6 +150,11 @@ kotlin {
                     "-Xdisable-phases=${disabledPhases.joinToString(",")}" +
                     listOfNotNull("-Xprofile-phases".takeIf { raftIosLinkProbeProfilePhases })
             if (raftIosLinkProbeSmallBinary) binaryOption("smallBinary", "true")
+            // Objective-C export narrowed to the Kotlin API the iOS host app (Swift + Objective-C under
+            // compose/iosApp) actually names, listed by scripts/ios/objc_entry_points.py. Without it every
+            // public declaration of :shared and :ui-cmp gets an Objective-C bridge and stays alive through
+            // dead-code elimination (#wg-mobile-sync:#220, the 200 MB cellular limit).
+            binaryOption("objcExportEntryPointsPath", project.file("objc-entry-points.txt").absolutePath)
             isStatic = true
             license = "MIT"
             // Compose Multiplatform pages: Swift/ObjC reach RaftCmpIos (view controller factory,

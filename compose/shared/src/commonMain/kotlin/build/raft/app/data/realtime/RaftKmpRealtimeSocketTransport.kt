@@ -173,6 +173,7 @@ class RaftKmpRealtimeSocketTransport(
     ) : RaftSocketIoListener {
         var socket: build.raft.realtime.socket.RaftSocketIoNamespace? = null
         private val unlisted = mutableSetOf<String>()
+        private val drops = RaftRealtimeDropTracker(context.serverId.value)
 
         fun close() {
             socket?.disconnect()
@@ -181,6 +182,7 @@ class RaftKmpRealtimeSocketTransport(
 
         override fun onConnected(connection: RaftSocketConnection) {
             logger("transport_connected serverId=${context.serverId.value} reconnect=${connection.reconnect}")
+            if (linearize { current === this }) drops.onConnected(connection)
             if (connection.reconnect) fire(this, RealtimeSocketEvents.Reconnect, null)
             fire(this, RealtimeSocketEvents.Connect, null)
         }
@@ -203,6 +205,7 @@ class RaftKmpRealtimeSocketTransport(
 
         override fun onDisconnected(connection: RaftSocketConnection, reason: RaftSocketDisconnectReason, detail: String) {
             logger("transport_disconnected serverId=${context.serverId.value} reason=${reason.token}")
+            drops.onDisconnected(reason)
             fire(this, RealtimeSocketEvents.Disconnect, reason.token)
         }
 

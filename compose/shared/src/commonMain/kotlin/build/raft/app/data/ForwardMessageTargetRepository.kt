@@ -6,6 +6,7 @@ import build.raft.app.model.ConversationKind
 import build.raft.app.model.MemberId
 import build.raft.app.model.MemberProfile
 import build.raft.app.model.Message
+import build.raft.app.model.MessageId
 import build.raft.app.model.ServerId
 import build.raft.app.model.ThreadId
 import build.raft.app.model.messageStreamChannelId
@@ -16,6 +17,8 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.channelFlow
@@ -50,8 +53,8 @@ enum class ForwardMessageTargetKind {
     HumanDirectMessageCandidate,
     AgentDirectMessageCandidate,
     /**
-     * slock #12620: a thread the person follows, forwarded into like a reply. Only from the
-     * server (`/forward/targets/conversations` and search rows); never persisted for external share.
+     * slock #12620: a thread the person follows, forwarded into like a reply. From the server
+     * (`/forward/targets/conversations` and search rows).
      */
     ConversationThread,
     /** slock #12620: a task discussion the person follows (`channels.type = 'task'`). */
@@ -93,6 +96,8 @@ data class ForwardMessageTarget(
     val parentChannelName: String? = null,
     /** `channel` / `private` / `joint` / `dm`, as the server sends it. */
     val parentChannelType: String? = null,
+    /** Reply thread root message id, populated from search/conversations or `GET channels/:id`. */
+    val parentMessageId: MessageId? = null,
     val taskNumber: Int? = null,
     val taskTitle: String? = null,
     val parentMessagePreview: String? = null,
@@ -224,6 +229,12 @@ data class ForwardMessageBatchResult(
     val failures: List<ForwardMessageBatchFailure>
 )
 
+data class ForwardThreadParentInfo(
+    val parentChannelId: ChannelId,
+    val parentMessageId: MessageId,
+    val parentChannelType: String? = null
+)
+
 interface ForwardMessageTargetRepository {
     suspend fun recentTargets(serverId: ServerId, limit: Int): DataResult<List<ForwardMessageTarget>>
     suspend fun directoryTargets(
@@ -285,6 +296,18 @@ interface ForwardMessageTargetRepository {
         serverId: ServerId,
         currentChannelId: ChannelId?
     ): List<ForwardMessageTarget> = emptyList()
+
+    /**
+     * Resolves a reply thread channel's parent conversation and parent message id
+     * (`GET /api/channels/:id`), used when opening the reply thread's composer directly (e.g.
+     * Share-to-Raft composer handoff).
+     */
+    suspend fun resolveConversationThreadParent(
+        serverId: ServerId,
+        threadChannelId: ChannelId
+    ): DataResult<ForwardThreadParentInfo> =
+        DataResult.Error(ScreenError(code = "forward_thread_parent_unavailable", retryable = false))
+
     suspend fun resolveTargetChannel(
         sourceServerId: ServerId,
         target: ForwardMessageTarget,
@@ -318,6 +341,8 @@ internal const val ForwardConversationTargetsPath = "messages/forward/targets/co
 /** slock web `FORWARD_CONVERSATION_TARGET_LIMIT` / server `MAX_FORWARD_CONVERSATIONS_LIMIT`. */
 internal const val ForwardConversationTargetLimit = 4
 
+private const val ForwardLifecycleRetiredErrorBody = "network_request_lifecycle_retired"
+
 class RealForwardMessageTargetRepository(
     private val sessionStore: RaftAuthSessionStore,
     private val networkClient: RaftNetworkClient,
@@ -325,7 +350,9 @@ class RealForwardMessageTargetRepository(
     private val memberRepository: MemberRepository,
     private val nowMillis: () -> Long = ::defaultNowMillis,
     private val warningLogger: (String) -> Unit = {},
-    private val computeDispatcher: CoroutineDispatcher = Dispatchers.Default
+    private val computeDispatcher: CoroutineDispatcher = Dispatchers.Default,
+    /** Already-loaded live Home snapshot for instant Recent DMs & channels without cold-fetching. */
+    private val cachedHomeSnapshotProvider: (ServerId) -> HomeSnapshot? = { null }
 ) : ForwardMessageTargetRepository {
     private var nextDirectorySnapshotId = 0L
     private val directorySnapshots = mutableMapOf<String, ForwardMessageTargetDirectorySnapshot>()
@@ -339,8 +366,17 @@ class RealForwardMessageTargetRepository(
 
     override suspend fun recentTargets(serverId: ServerId, limit: Int): DataResult<List<ForwardMessageTarget>> {
         currentSession() ?: return forwardAuthRequired()
-        val directMessages = channelRepository.getDirectMessages(serverId).contentOrEmpty { it.directMessages }
-        val channels = channelRepository.getChannels(serverId).contentOrEmpty { it.channels }
+        val cachedSnapshot = cachedHomeSnapshotProvider(serverId)
+        val (directMessages, channels) =
+            if (cachedSnapshot != null) {
+                cachedSnapshot.directMessages to cachedSnapshot.channels
+            } else {
+                coroutineScope {
+                    val dmsDeferred = async { channelRepository.getDirectMessages(serverId).contentOrEmpty { it.directMessages } }
+                    val channelsDeferred = async { channelRepository.getChannels(serverId).contentOrEmpty { it.channels } }
+                    dmsDeferred.await() to channelsDeferred.await()
+                }
+            }
         // Never wait for the server member list here (the slowest source on a big server): DM
         // rows carry their own peer name/avatar; an already-loaded roster only refines them.
         val peerProfiles = cachedPeerProfiles(serverId)
@@ -518,8 +554,17 @@ class RealForwardMessageTargetRepository(
             searchIndex
                 ?.takeIf { it.serverId == serverId && now - searchIndexLoadedAtMillis < ForwardSearchIndexTtlMillis }
                 ?: run {
-                    val directMessages = channelRepository.getDirectMessages(serverId).contentOrEmpty { it.directMessages }
-                    val channels = channelRepository.getChannels(serverId).contentOrEmpty { it.channels }
+                    val cachedSnapshot = cachedHomeSnapshotProvider(serverId)
+                    val (directMessages, channels) =
+                        if (cachedSnapshot != null) {
+                            cachedSnapshot.directMessages to cachedSnapshot.channels
+                        } else {
+                            coroutineScope {
+                                val dmsDeferred = async { channelRepository.getDirectMessages(serverId).contentOrEmpty { it.directMessages } }
+                                val channelsDeferred = async { channelRepository.getChannels(serverId).contentOrEmpty { it.channels } }
+                                dmsDeferred.await() to channelsDeferred.await()
+                            }
+                        }
                     val targets =
                         fallbackForwardMessageTargets(
                             serverId = serverId,
@@ -575,8 +620,7 @@ class RealForwardMessageTargetRepository(
         val failureCode =
             try {
                 val response =
-                    networkClient.request(
-                        // A section of an open dialog, not the critical path (Recent renders without it).
+                    requestWithLifecycleRetry(
                         priority = DataRequestPriority.Visible,
                         path = ForwardConversationTargetsPath,
                         query =
@@ -609,6 +653,71 @@ class RealForwardMessageTargetRepository(
                 "durationMs=${nowMillis() - startedAt}"
         )
         return emptyList()
+    }
+
+    override suspend fun resolveConversationThreadParent(
+        serverId: ServerId,
+        threadChannelId: ChannelId
+    ): DataResult<ForwardThreadParentInfo> {
+        val session = currentSession() ?: return forwardAuthRequired()
+        if (!session.canAccessForwardServer(serverId)) {
+            return DataResult.Error(ScreenError(code = "forward_target_server_unauthorized", retryable = false))
+        }
+        val cleanId = threadChannelId.value.trim().takeIf { it.isNotBlank() }
+            ?: return DataResult.Error(ScreenError(code = "forward_target_missing_channel", retryable = false))
+        return try {
+            val response =
+                requestWithLifecycleRetry(
+                    priority = DataRequestPriority.Foreground,
+                    path = "channels/$cleanId",
+                    serverIdOverride = serverId
+                )
+            if (!response.isSuccessful) {
+                return response.toForwardTargetDataError()
+            }
+            val probe = parseRaftMessageLinkChannelProbe(response.bodyText)
+            val parentChannelId = probe?.parentChannelId
+            val parentMessageId = probe?.parentMessageId
+            if (probe == null || probe.id != cleanId || probe.type != "thread" || parentChannelId == null || parentMessageId == null) {
+                DataResult.Error(ScreenError(code = "external_share_thread_parent_missing", retryable = false))
+            } else {
+                DataResult.Content(
+                    ForwardThreadParentInfo(
+                        parentChannelId = ChannelId(parentChannelId),
+                        parentMessageId = MessageId(parentMessageId)
+                    )
+                )
+            }
+        } catch (cancellation: CancellationException) {
+            throw cancellation
+        } catch (_: Exception) {
+            DataResult.Error(ScreenError(code = "network_unavailable", retryable = true))
+        }
+    }
+
+    private suspend fun requestWithLifecycleRetry(
+        priority: DataRequestPriority,
+        path: String,
+        query: List<Pair<String, String>> = emptyList(),
+        serverIdOverride: ServerId? = null
+    ): HomeNetworkResponse {
+        var lastResponse: HomeNetworkResponse? = null
+        repeat(2) { attempt ->
+            val response =
+                networkClient.request(
+                    priority = priority,
+                    path = path,
+                    query = query,
+                    serverIdOverride = serverIdOverride
+                )
+            if (attempt == 0 && response.code == 0 && response.errorBodyText == ForwardLifecycleRetiredErrorBody) {
+                warningLogger("forward_target_request_retry reason=lifecycle_retired path=${path.substringBefore('/')}")
+                lastResponse = response
+                return@repeat
+            }
+            return response
+        }
+        return lastResponse!!
     }
 
     override suspend fun resolveTargetChannel(
@@ -795,19 +904,32 @@ class RealForwardMessageTargetRepository(
      * which goes to the server search, matching web.
      */
     private suspend fun localDirectoryTargets(serverId: ServerId): DataResult<List<ForwardMessageTarget>> {
-        val directMessages =
-            when (val result = channelRepository.getDirectMessages(serverId)) {
-                is DataResult.Content -> result.data.directMessages
-                is DataResult.Empty -> emptyList()
-                is DataResult.Error -> return DataResult.Error(result.error)
-                is DataResult.NoPermission -> return DataResult.NoPermission(result.blocker)
-            }
-        val channels =
-            when (val result = channelRepository.getChannels(serverId)) {
-                is DataResult.Content -> result.data.channels
-                is DataResult.Empty -> emptyList()
-                is DataResult.Error -> return DataResult.Error(result.error)
-                is DataResult.NoPermission -> return DataResult.NoPermission(result.blocker)
+        val cachedSnapshot = cachedHomeSnapshotProvider(serverId)
+        val (directMessages, channels) =
+            if (cachedSnapshot != null) {
+                cachedSnapshot.directMessages to cachedSnapshot.channels
+            } else {
+                val (dmResult, channelResult) =
+                    coroutineScope {
+                        val dmsDeferred = async { channelRepository.getDirectMessages(serverId) }
+                        val channelsDeferred = async { channelRepository.getChannels(serverId) }
+                        dmsDeferred.await() to channelsDeferred.await()
+                    }
+                val directMessages =
+                    when (dmResult) {
+                        is DataResult.Content -> dmResult.data.directMessages
+                        is DataResult.Empty -> emptyList()
+                        is DataResult.Error -> return DataResult.Error(dmResult.error)
+                        is DataResult.NoPermission -> return DataResult.NoPermission(dmResult.blocker)
+                    }
+                val channels =
+                    when (channelResult) {
+                        is DataResult.Content -> channelResult.data.channels
+                        is DataResult.Empty -> emptyList()
+                        is DataResult.Error -> return DataResult.Error(channelResult.error)
+                        is DataResult.NoPermission -> return DataResult.NoPermission(channelResult.blocker)
+                    }
+                directMessages to channels
             }
         val targets = fallbackForwardMessageTargets(
             serverId = serverId,
@@ -1191,6 +1313,7 @@ internal data class ForwardTargetSearchItemDto(
     val parentChannelId: String? = null,
     val parentChannelName: String? = null,
     val parentChannelType: String? = null,
+    val parentMessageId: String? = null,
     val taskNumber: Int? = null,
     val taskTitle: String? = null,
     val parentMessagePreview: String? = null,
@@ -1345,6 +1468,7 @@ private fun ForwardTargetSearchItemDto.toForwardConversationTarget(
         parentChannelId = parentChannelId?.trim()?.takeIf { it.isNotBlank() }?.let(::ChannelId),
         parentChannelName = parentChannelName?.trim()?.takeIf { it.isNotBlank() },
         parentChannelType = parentChannelType?.trim()?.lowercase()?.takeIf { it.isNotBlank() },
+        parentMessageId = parentMessageId?.trim()?.takeIf { !task && it.isNotBlank() }?.let(::MessageId),
         taskNumber = taskNumber.takeIf { task },
         taskTitle = taskTitle?.takeIf { task && it.isNotBlank() },
         parentMessagePreview = parentMessagePreview?.takeIf { !task && it.isNotBlank() },

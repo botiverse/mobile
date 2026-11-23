@@ -105,8 +105,10 @@ class RaftKmpRealtimeSocket internal constructor(
 
     @Volatile private var token: String = token
     @Volatile private var tokenUpdate: CompletableDeferred<String>? = null
+    @Volatile private var closed = false
     private val pendingIncomingAcks = linkedMapOf<Long, RaftSocketIncomingAck>()
     private val healthProbe = RaftRealtimeSocketHealthProbe(serverId, health)
+    private val drops = RaftRealtimeDropTracker(serverId)
 
     private val client =
         RaftSocketIoClient(
@@ -184,6 +186,7 @@ class RaftKmpRealtimeSocket internal constructor(
 
     /** Leaves the server and releases everything; the object is unusable afterwards. */
     fun close() {
+        closed = true
         socket.disconnect()
         client.close()
     }
@@ -191,6 +194,7 @@ class RaftKmpRealtimeSocket internal constructor(
     private inner class Listener : RaftSocketIoListener {
         override fun onConnected(connection: RaftSocketConnection) {
             pendingIncomingAcks.clear()
+            if (!closed) drops.onConnected(connection)
             listener.onConnected(connection.socketId, connection.reconnect)
         }
 
@@ -206,6 +210,7 @@ class RaftKmpRealtimeSocket internal constructor(
 
         override fun onDisconnected(connection: RaftSocketConnection, reason: RaftSocketDisconnectReason, detail: String) {
             pendingIncomingAcks.clear()
+            drops.onDisconnected(reason)
             listener.onDisconnected(reason.token)
         }
 

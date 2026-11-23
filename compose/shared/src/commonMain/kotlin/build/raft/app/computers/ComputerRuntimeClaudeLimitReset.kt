@@ -286,7 +286,11 @@ internal sealed interface ComputerRuntimeClaudeLimitResetsPhase {
     data class Choose(val usable: List<RuntimeLimitResetKindStatus.Available>) : ComputerRuntimeClaudeLimitResetsPhase
 
     /** [traceId]: the failed request's `X-Trace-Id`, when a server answer failed it. */
-    data class Failed(val message: ComputerRuntimeClaudeLimitResetText, val traceId: String? = null) : ComputerRuntimeClaudeLimitResetsPhase
+    data class Failed(
+        val message: ComputerRuntimeClaudeLimitResetText,
+        val traceId: String? = null,
+        val serverMessage: String? = null,
+    ) : ComputerRuntimeClaudeLimitResetsPhase
 }
 
 /** The open "Use a limit reset" read (and the choice, if any). */
@@ -319,6 +323,8 @@ internal data class ComputerRuntimeClaudeLimitResetConfirmState(
     val error: ComputerRuntimeClaudeLimitResetText? = null,
     /** The failed request's `X-Trace-Id`, shown under [error]. */
     val traceId: String? = null,
+    /** Scrubbed Tier 3 server refusal sentence for definite 4xx refusals without a Tier 2 code. */
+    val serverMessage: String? = null,
 )
 
 private const val CLAUDE_CODE_NAME = "Claude Code"
@@ -535,7 +541,7 @@ internal fun ComputerRuntimeClaudeLimitResetsDialog(
                 }
             }
             if (phase is ComputerRuntimeClaudeLimitResetsPhase.Failed) {
-                RaftBanner(description = phase.message.text(), status = RaftBannerStatus.Warning, size = RaftBannerSize.Sm)
+                RaftBanner(description = phase.serverMessage ?: phase.message.text(), status = RaftBannerStatus.Warning, size = RaftBannerSize.Sm)
                 RaftTraceIdNote(phase.traceId)
             }
             if (listed?.legacy == true) {
@@ -631,7 +637,7 @@ internal fun ComputerRuntimeClaudeLimitResetConfirmDialog(
                 RaftText(detail, style = RaftTheme.typography.footnote, color = RaftTheme.colors.foregroundMuted)
             }
             state.error?.let { error ->
-                RaftBanner(description = error.text(), status = RaftBannerStatus.Warning, size = RaftBannerSize.Sm)
+                RaftBanner(description = state.serverMessage ?: error.text(), status = RaftBannerStatus.Warning, size = RaftBannerSize.Sm)
                 RaftTraceIdNote(state.traceId)
             }
         }

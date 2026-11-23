@@ -59,6 +59,7 @@ import build.raft.app.data.RaftAppUpdateEvents
 import build.raft.app.data.RaftChatLayoutPreferenceEvents
 import build.raft.app.data.RaftRealtimeEvents
 import build.raft.app.data.RaftTimeFormatRuntime
+import build.raft.app.data.RaftTimeZoneRuntime
 import build.raft.app.data.RealtimeRoomLeaseOwner
 import build.raft.app.data.AppLocale
 import build.raft.app.data.MyMessageAlignmentPreference
@@ -174,6 +175,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.NonRestartableComposable
 import androidx.compose.runtime.collectAsState
+import build.raft.app.compat.ui.LocalRaftPageActive
 import build.raft.app.compat.ui.collectAsStateWhileStarted
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
@@ -981,11 +983,12 @@ private fun RaftAppShellReadyContent(
             )
         }
     val memberRepository =
-        remember(shellAuthStore, appShellNetworkClient) {
+        remember(shellAuthStore, appShellNetworkClient, appShellServerMembersStore) {
             RealMemberRepository(
                 sessionStore = shellAuthStore,
                 networkClient = appShellNetworkClient,
-                logger = raftLogger("SlockAppShell", "app_shell_member_repository")
+                logger = raftLogger("SlockAppShell", "app_shell_member_repository"),
+                cachedMembersProvider = appShellServerMembersStore::currentServerMembers
             )
         }
     val homeDataSource =
@@ -1271,6 +1274,7 @@ private fun RaftAppShellReadyContent(
                 },
                 serverNotificationLastKnownStore = sharedStores.settingsServerNotificationLastKnownStore,
                 onTimeFormatUpdated = RaftTimeFormatRuntime::update,
+                onTimeZoneUpdated = RaftTimeZoneRuntime::update,
             )
         }
     val myMessageAlignmentState = remember { mutableStateOf(MyMessageAlignmentPreference.Default) }
@@ -1312,8 +1316,12 @@ private fun RaftAppShellReadyContent(
     }
     val hostTimeFormat =
         RaftTimeFormatRuntime.observe(fallback = baseHostThreadTimeCapabilities?.timeFormat ?: RaftTimeFormat24Hour)
-    val hostThreadTimeCapabilities = remember(baseHostThreadTimeCapabilities, hostTimeFormat) {
-        baseHostThreadTimeCapabilities?.copy(timeFormat = hostTimeFormat)
+    val hostPreferredTimeZone = RaftTimeZoneRuntime.observe()
+    val hostThreadTimeCapabilities = remember(baseHostThreadTimeCapabilities, hostTimeFormat, hostPreferredTimeZone) {
+        baseHostThreadTimeCapabilities?.withRuntimePreferences(
+            timeFormat = hostTimeFormat,
+            preferredTimeZoneId = hostPreferredTimeZone,
+        )
     }
     val fallbackHostTimeContextProvider = currentRaftTimeContextProvider
     val ownHostThreadTimeContextProvider =
@@ -2153,7 +2161,7 @@ private fun RaftAppShellReadyContent(
                 readySession != null && authoritativeHomeStartAllowed
         }
     }
-    val activeAnnouncement by announcementStore.announcement.collectAsStateWhileStarted()
+    var announcementModalShown by remember { mutableStateOf(false) }
     val latestAnnouncementStore by rememberUpdatedState(announcementStore)
     AppShellAnnouncementEffects(
         announcementStore = announcementStore,
@@ -2251,12 +2259,14 @@ private fun RaftAppShellReadyContent(
         homeSurfaceVisible = homeSurfaceVisible,
     )
     val sessionTimeFormat = (readySession ?: homePreviewSession).appShellThreadTimeFormat()
+    val sessionPreferredTimezone = (readySession ?: homePreviewSession).appShellPreferredTimezone()
     val effectiveSessionTimeFormat =
         RaftTimeFormatRuntime.observe(fallback = sessionTimeFormat ?: RaftTimeFormat24Hour)
     val authRequired = authGateState is SharedAuthGateState.AuthRequired
-    LaunchedEffect(readySession?.user?.id, sessionTimeFormat, authRequired) {
+    LaunchedEffect(readySession?.user?.id, sessionTimeFormat, sessionPreferredTimezone, authRequired) {
         if (readySession != null || authRequired) {
             RaftTimeFormatRuntime.update(sessionTimeFormat)
+            RaftTimeZoneRuntime.update(sessionPreferredTimezone)
         }
     }
     // Subscribe only to low-frequency dateContext (updates on midnight, timezone/DST shift, or
@@ -3381,6 +3391,7 @@ private fun RaftAppShellReadyContent(
     }
 
     fun openCreateChannelDialog(external: Boolean = false) {
+        if (!latestPageVisible) return
         createChannelExternalChosen = external
         createChannelSession += 1
         createChannelDialogOpen = true
@@ -3392,29 +3403,79 @@ private fun RaftAppShellReadyContent(
     }
 
     // The External section's "+" ([externalCreateEntry], web useExternalLimitGate surface sidebar):
-    // Create Channel with External chosen; on a Free server whose one external channel is taken,
-    // the upgrade dialog instead.
+    // prefetches Free external-channel slot availability so opens are immediate when the slot is
+    // free, and re-reads + passes channel context when the slot appears taken.
     var externalCreateGateReading by remember { mutableStateOf(false) }
+    var prefetchedExternalFreeLimit by remember { mutableStateOf<Pair<String, Boolean>?>(null) }
+    val homeExternalSnapshot = (homeState.content as? SharedHomeContentState.Content)?.snapshot
+    val latestHomeExternalSnapshot by rememberUpdatedState(homeExternalSnapshot)
+    val homeExternalServerId = homeExternalSnapshot?.server?.id?.value
+    val homeExternalServerPlan = homeExternalSnapshot?.server?.plan
+    val homeCanCreateExternal = externalChannelCreateAccess(homeExternalSnapshot?.server?.role)
+    val homeExternalSlotKey =
+        remember(homeExternalSnapshot?.channels, homeExternalServerId) {
+            if (homeExternalSnapshot == null || homeExternalServerId == null) {
+                ""
+            } else {
+                externalSlotChannelsKey(homeExternalSnapshot.channels, homeExternalServerId)
+            }
+        }
+    LaunchedEffect(homeExternalServerId, homeExternalServerPlan, homeCanCreateExternal, homeExternalSlotKey) {
+        prefetchedExternalFreeLimit = null
+        val serverId = homeExternalServerId
+        if (serverId == null || homeExternalServerPlan != "free" || !homeCanCreateExternal) {
+            return@LaunchedEffect
+        }
+        val reached =
+            runCatchingPreservingCancellation {
+                RealCreateExternalChannelDataSource(appShellNetworkClient, channelRepository).freeLimitReached()
+            }.getOrNull()
+        if (reached != null) {
+            prefetchedExternalFreeLimit = serverId to reached
+        }
+    }
     fun openExternalCreateChannelGated() {
         if (externalCreateGateReading) return
-        val plan = (homeState.content as? SharedHomeContentState.Content)?.snapshot?.server?.plan
+        val snapshot = latestHomeExternalSnapshot
+        val serverId = snapshot?.server?.id?.value
+        val plan = snapshot?.server?.plan
+        if (plan != "free" || (serverId != null && prefetchedExternalFreeLimit == (serverId to false))) {
+            openCreateChannelDialog(external = true)
+            return
+        }
         externalCreateGateReading = true
         // Undispatched: a server that is not Free reads nothing, so Create Channel opens in this tap.
         appShellCoroutineScope.launch(start = CoroutineStart.UNDISPATCHED) {
-            val entry =
+            val reached =
                 try {
-                    externalCreateEntry(plan, RealCreateExternalChannelDataSource(appShellNetworkClient, channelRepository))
+                    runCatchingPreservingCancellation {
+                        RealCreateExternalChannelDataSource(appShellNetworkClient, channelRepository).freeLimitReached()
+                    }.getOrNull()
                 } finally {
                     externalCreateGateReading = false
                 }
-            when (entry) {
-                ExternalCreateEntry.CreateChannel -> openCreateChannelDialog(external = true)
-                ExternalCreateEntry.FreeLimit ->
-                    if (settingsBillingOffersUpgrade()) {
-                        pager.openRaftUpgradeDialog(RaftUpgradeGate.ExternalChannelFreeLimit, storeScope)
-                    } else {
-                        pager.openSettingsBillingPage(storeScope)
-                    }
+            val liveSnapshot = latestHomeExternalSnapshot ?: return@launch
+            if (serverId != null && liveSnapshot.server.id.value != serverId) return@launch
+            if (liveSnapshot.server.plan != "free") {
+                openCreateChannelDialog(external = true)
+                return@launch
+            }
+            if (serverId != null && reached != null) {
+                prefetchedExternalFreeLimit = serverId to reached
+            }
+            if (reached == true) {
+                if (settingsBillingOffersUpgrade()) {
+                    pager.openRaftUpgradeDialog(
+                        gate = RaftUpgradeGate.ExternalChannelFreeLimit,
+                        storeScope = storeScope,
+                        externalContext =
+                            externalSlotUpgradeContext(liveSnapshot.channels, liveSnapshot.server.id.value),
+                    )
+                } else {
+                    pager.openSettingsBillingPage(storeScope)
+                }
+            } else {
+                openCreateChannelDialog(external = true)
             }
         }
     }
@@ -4554,7 +4615,8 @@ private fun RaftAppShellReadyContent(
                 timeContext = threadTimeContext,
                 alignOwnMessagesRight = myMessageAlignment == MyMessageAlignmentPreference.Right,
                 compactConsecutiveMessages = compactConsecutiveMessages,
-                    onWarn = bridge::logWarn
+                originFallback = target.toExternalShareOriginFallbackOrNull(),
+                onWarn = bridge::logWarn
             ) ?: run {
                 bridge.toast(conversationUnavailableMessage)
                 return false
@@ -4812,7 +4874,12 @@ private fun RaftAppShellReadyContent(
     // A link to Raft's own web Settings (an announcement's "Choose a theme"): the in-app page, on
     // the server the link names, as the Settings rows open it; the Settings home for a tab the
     // app has no page of its own for.
-    fun openSettingsFromLink(link: RaftSettingsLink, target: RaftSettingsLinkTarget, source: String) {
+    fun openSettingsFromLink(
+        link: RaftSettingsLink,
+        target: RaftSettingsLinkTarget,
+        source: String,
+        anchorOverride: String? = null,
+    ) {
         serverMenuState.dismiss()
         target.switchToServerId?.let { serverId ->
             readySession
@@ -4822,14 +4889,16 @@ private fun RaftAppShellReadyContent(
             homeShellStore.dispatch(SharedHomeShellIntent.Home(SharedHomeIntent.SelectServer(serverId)))
         }
         val key = target.destinationKey
-        // A block the in-app page has (Account's `#two-step` / `#passkeys`): opened at it, located
-        // as a Settings search result is.
-        val anchor = link.inAppAnchor?.let { SettingsSearchAnchorRequest(it, ++settingsSearchOpenNonce) }
+        // A block the in-app page has (Account's `#two-step` / `#passkeys`, or an internal jump
+        // such as the background-kill notice opening Notifications at keep-alive): opened at it,
+        // located as a Settings search result is.
+        val anchor = (anchorOverride ?: link.inAppAnchor)?.let { SettingsSearchAnchorRequest(it, ++settingsSearchOpenNonce) }
         bridge.log(
             "settings_link_open source=$source tab=${link.webTab ?: "home"} page=${key ?: "home"} " +
                 "section=${link.section != null} anchor=${anchor?.id ?: "none"} switched=${target.switchToServerId != null}"
         )
         if (navRailActive) {
+            railInlineSecondaryDestination = null
             // The wide rail's Settings: the section beside the list, or a page over it.
             selectAppShellTab("settings", directChildSwitch = true, source = AppShellTabSwitchSource.User)
             retainedAppShellTabs = retainedAppShellTabs + "settings"
@@ -4962,10 +5031,12 @@ private fun RaftAppShellReadyContent(
         searchOverlayOpen = true
         bridge.log("app_shell_search_overlay_open from=$source")
     }
+    val shellPageActive = LocalRaftPageActive.current
+    val latestShellPageActive by rememberUpdatedState(shellPageActive)
     LaunchedEffect(searchShortcutTick) {
-        if (searchShortcutTick > 0) openSearchOverlay(source = "host_shortcut")
+        if (searchShortcutTick > 0 && latestPageVisible && latestShellPageActive) openSearchOverlay(source = "host_shortcut")
     }
-    if (searchOverlayOpen && navRailActive) {
+    if (searchOverlayOpen && navRailActive && pageVisible && shellPageActive) {
         val density = LocalDensity.current
         val fieldBounds = appShellTopBar.searchFieldBounds.takeIf { appShellTopBar.drawn }
         val visited = remember(wideNavHistory) { wideNavHistory.visitedThreadIds() }
@@ -5121,7 +5192,18 @@ private fun RaftAppShellReadyContent(
                 onAppShellTabSelected(key)
             },
             networkStatus = hostNetworkStatus,
-            topNoticeBanner = rememberRaftBackgroundKillNoticeBannerSlot(hostNetworkStatus),
+            topNoticeBanner =
+                rememberRaftBackgroundKillNoticeBannerSlot(
+                    networkStatus = hostNetworkStatus,
+                    onOpenNotificationSettings = {
+                        openSettingsFromLink(
+                            link = RaftBackgroundKillNoticeSettingsLink,
+                            target = RaftBackgroundKillNoticeSettingsTarget,
+                            source = "background_kill_notice",
+                            anchorOverride = SETTINGS_NOTIFICATIONS_BACKGROUND_KEEP_ALIVE_ANCHOR,
+                        )
+                    },
+                ),
             showBottomTabs = showAppShellBottomTabs,
             // artin 2026-10-10 (Hands 79db9fe6): the cached Home is usable at once while the
             // session and server list refresh in the background; a failed restore or an expired
@@ -5831,11 +5913,12 @@ private fun RaftAppShellReadyContent(
                                     authStore = shellAuthStore,
                                     tasksDataSource = tasksDataSource,
                                     tasksDataStore = sharedStores.tasksDataStore,
-                                    onFailedWithTrace = { code, traceId ->
-                                        when {
-                                            code.startsWith("tasks_status") -> bridge.errorToast(tasksUpdateFailedLabel, traceId)
-                                            code.startsWith("tasks_assign") -> bridge.errorToast(tasksAssignFailedLabel, traceId)
-                                        }
+                                    onOperationFailed = { event ->
+                                        bridge.showTaskOperationFailedToast(
+                                            event = event,
+                                            updateFailedLabel = tasksUpdateFailedLabel,
+                                            assignFailedLabel = tasksAssignFailedLabel,
+                                        )
                                     },
                                     log = { bridge.log(it) },
                                 ),
@@ -6009,7 +6092,7 @@ private fun RaftAppShellReadyContent(
                                     },
                                     openPage = { openedTask, conversationId -> openTaskPage(openedTask, conversationId) },
                                     onLoadError = { error -> bridge.errorToast(tasksOpenFailedLabel, error) },
-                                    onNoPermission = { traceId -> bridge.errorToast(tasksOpenFailedLabel, traceId) },
+                                    onNoPermission = { blocker -> bridge.errorToast(tasksOpenFailedLabel, blocker) },
                                     onNotFound = { bridge.toast(tasksOpenFailedLabel) },
                                     log = bridge::log,
                                 )
@@ -6944,7 +7027,13 @@ private fun RaftAppShellReadyContent(
                             createChannelDialogOpen = false
                             // Web openUpgradeDialog("external_channel_free_limit", { surface: "create_channel" }).
                             if (settingsBillingOffersUpgrade()) {
-                                pager.openRaftUpgradeDialog(RaftUpgradeGate.ExternalChannelFreeLimit, storeScope)
+                                val snapshot = (homeState.content as? SharedHomeContentState.Content)?.snapshot
+                                pager.openRaftUpgradeDialog(
+                                    gate = RaftUpgradeGate.ExternalChannelFreeLimit,
+                                    storeScope = storeScope,
+                                    externalContext =
+                                        snapshot?.let { externalSlotUpgradeContext(it.channels, it.server.id.value) },
+                                )
                             } else {
                                 pager.openSettingsBillingPage(storeScope)
                             }
@@ -6978,37 +7067,40 @@ private fun RaftAppShellReadyContent(
                         }
                     )
                 }
-                activeAnnouncement?.let { announcement ->
-                    val announcementWebBase = sharedStores.apiEnvironmentStore.current().webUrl.trimEnd('/')
-                    SharedAnnouncementModal(
-                        announcement = announcement,
-                        onDismiss = {
-                            if (announcementStore.dismiss(announcement.id)) {
-                                appShellCoroutineScope.launch {
-                                    announcementStore.persistDismissal(announcement.id)
-                                }
-                            }
-                        },
-                        onOpenUrl = { url ->
-                            if (announcementOwner == latestAnnouncementOwner) {
-                                when (
-                                    val action =
-                                        announcementLinkAction(
-                                            href = url,
-                                            webBaseUrl = announcementWebBase,
-                                            currentServerId = readyServerId,
-                                            servers = readySession?.servers.orEmpty(),
-                                        )
-                                ) {
-                                    is AnnouncementLinkAction.OpenSettings ->
-                                        openSettingsFromLink(action.link, action.target, source = "announcement")
-                                    is AnnouncementLinkAction.OpenUrl -> linkNavigator.open(action.url, action.openIntent)
-                                    null -> Unit
-                                }
+                AppShellAnnouncementModalHost(
+                    announcementStore = announcementStore,
+                    pageVisible = pageVisible,
+                    pageVisibleTick = pageVisibleTick,
+                    hostDidAppearTick = hostDidAppearTick,
+                    isOnline = hostNetworkStatus != RaftAppShellNetworkStatus.Offline,
+                    onModalShownChanged = { announcementModalShown = it },
+                    onDismissAnnouncement = { announcementId ->
+                        if (announcementStore.dismiss(announcementId)) {
+                            appShellCoroutineScope.launch {
+                                announcementStore.persistDismissal(announcementId)
                             }
                         }
-                    )
-                }
+                    },
+                    onOpenUrl = { url ->
+                        if (announcementOwner == latestAnnouncementOwner) {
+                            val announcementWebBase = sharedStores.apiEnvironmentStore.current().webUrl.trimEnd('/')
+                            when (
+                                val action =
+                                    announcementLinkAction(
+                                        href = url,
+                                        webBaseUrl = announcementWebBase,
+                                        currentServerId = readyServerId,
+                                        servers = readySession?.servers.orEmpty(),
+                                    )
+                            ) {
+                                is AnnouncementLinkAction.OpenSettings ->
+                                    openSettingsFromLink(action.link, action.target, source = "announcement")
+                                is AnnouncementLinkAction.OpenUrl -> linkNavigator.open(action.url, action.openIntent)
+                                null -> Unit
+                            }
+                        }
+                    },
+                )
             }
         }
         }
@@ -7029,7 +7121,7 @@ private fun RaftAppShellReadyContent(
                 modalGestureBlocked =
                     appShellModalHostState.entries.isNotEmpty() ||
                         createChannelDialogOpen ||
-                        activeAnnouncement != null,
+                        announcementModalShown,
                 dismissLabel = stringResource(Res.string.common_dismiss),
                 onServerClick = ::openServerDrawerHome,
                 onConversationClick = ::openServerDrawerConversation,
@@ -7055,6 +7147,10 @@ private fun RaftAppShellReadyContent(
         pager = pager,
         shellAuthStore = shellAuthStore,
         appShellNetworkClient = appShellNetworkClient,
+        shellInstanceId = storeScope.shellInstanceId,
+        channelRepository = channelRepository,
+        memberRepository = memberRepository,
+        homeStore = homeStore,
         openExternalShareComposerFn = ::openExternalShareComposer,
     )
 }
@@ -7324,6 +7420,10 @@ private fun AppShellBannerAndExternalShareHosts(
     pager: Pager,
     shellAuthStore: build.raft.app.data.RaftAuthSessionStore,
     appShellNetworkClient: build.raft.app.data.RaftNetworkClient,
+    shellInstanceId: String,
+    channelRepository: build.raft.app.data.ChannelRepository,
+    memberRepository: build.raft.app.data.MemberRepository,
+    homeStore: build.raft.app.data.SharedHomeStore,
     openExternalShareComposerFn: suspend (build.raft.app.data.ExternalShareComposerHandoff) -> Boolean,
 ) {
     fun openHomeMessageRequest(request: HomeMessageOpenRequest, source: String, fallbackAnchorMessageId: String? = null) =
@@ -7385,7 +7485,16 @@ private fun AppShellBannerAndExternalShareHosts(
                     )
                 },
             bridge = bridge,
-            onOpenComposer = ::openExternalShareComposer
+            onOpenComposer = ::openExternalShareComposer,
+            shellInstanceId = shellInstanceId,
+            channelRepository = channelRepository,
+            memberRepository = memberRepository,
+            cachedHomeSnapshotProvider = { serverId ->
+                (homeStore.state.value.content as? SharedHomeContentState.Content)
+                    ?.takeUnless { it.isDurableIdentityCache }
+                    ?.snapshot
+                    ?.takeIf { it.server.id == serverId }
+            },
         )
     }
 }

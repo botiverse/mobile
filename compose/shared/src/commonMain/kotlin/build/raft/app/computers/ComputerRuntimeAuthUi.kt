@@ -549,9 +549,15 @@ internal fun ComputerRuntimeAuthProblem.text(runtimeName: String): String =
 
 /** A stopped step's warning, with the failed request's trace id under it (AGENTS.md "Errors carry the trace ID"). */
 @Composable
-private fun ComputerRuntimeAuthFailureBanner(problem: ComputerRuntimeAuthProblem, traceId: String?, runtimeName: String, modifier: Modifier = Modifier) {
+private fun ComputerRuntimeAuthFailureBanner(
+    problem: ComputerRuntimeAuthProblem,
+    traceId: String?,
+    runtimeName: String,
+    modifier: Modifier = Modifier,
+    serverMessage: String? = null,
+) {
     Column(modifier.fillMaxWidth().testTag(COMPUTER_RUNTIME_AUTH_FAILURE_TAG), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        RaftBanner(description = problem.text(runtimeName), status = RaftBannerStatus.Warning, size = RaftBannerSize.Sm)
+        RaftBanner(description = serverMessage ?: problem.text(runtimeName), status = RaftBannerStatus.Warning, size = RaftBannerSize.Sm)
         RaftTraceIdNote(traceId)
     }
 }
@@ -699,7 +705,8 @@ internal fun ComputerRuntimeSignInBody(
                     RaftText(account, modifier = Modifier.testTag(COMPUTER_RUNTIME_SIGN_IN_ACCOUNT_TAG), style = typography.monoMeta, color = colors.foregroundMuted)
                 }
             }
-            state.failure != null -> ComputerRuntimeAuthFailureBanner(state.failure.problem, state.failure.traceId, runtimeName)
+            state.failure != null ->
+                ComputerRuntimeAuthFailureBanner(state.failure.problem, state.failure.traceId, runtimeName, serverMessage = state.failure.serverMessage)
             !state.started ->
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                     RaftSpinner()
@@ -928,7 +935,7 @@ internal fun ComputerRuntimeSignOutBody(
                 }
             }
         }
-        state.problem?.let { ComputerRuntimeAuthFailureBanner(it, state.traceId, name) }
+        state.problem?.let { ComputerRuntimeAuthFailureBanner(it, state.traceId, name, serverMessage = state.serverMessage) }
     }
 }
 
@@ -1021,7 +1028,8 @@ private fun ComputerRuntimePiBody(session: ComputerRuntimePiSession, runtimeName
                     RaftSpinner()
                     RaftText(stringResource(Res.string.settings_computers_runtime_auth_provider_loading, computerName), style = typography.subhead, color = colors.foregroundMuted)
                 }
-            list is ComputerRuntimePiProviderList.Failed -> ComputerRuntimeAuthFailureBanner(list.failure.problem, list.failure.traceId, runtimeName)
+            list is ComputerRuntimePiProviderList.Failed ->
+                ComputerRuntimeAuthFailureBanner(list.failure.problem, list.failure.traceId, runtimeName, serverMessage = list.failure.serverMessage)
             list is ComputerRuntimePiProviderList.Listed ->
                 if (session.step == ComputerRuntimePiStep.Key && session.chosen?.account == false) {
                     ComputerRuntimePiKeyForm(session, runtimeName, chosenLabel)
@@ -1161,7 +1169,7 @@ private fun ComputerRuntimePiKeyForm(session: ComputerRuntimePiSession, runtimeN
         )
     }
     RaftText(stringResource(Res.string.settings_computers_runtime_auth_pi_scope_note, runtimeName), style = RaftTheme.typography.caption, color = colors.foregroundHint)
-    session.failure?.let { ComputerRuntimeAuthFailureBanner(it.problem, it.traceId, providerLabel) }
+    session.failure?.let { ComputerRuntimeAuthFailureBanner(it.problem, it.traceId, providerLabel, serverMessage = it.serverMessage) }
 }
 
 internal const val COMPUTER_RUNTIME_AUTH_SIGN_IN_TAG = "runtime-auth-sign-in"

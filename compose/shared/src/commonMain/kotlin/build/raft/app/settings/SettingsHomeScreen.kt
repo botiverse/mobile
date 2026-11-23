@@ -352,8 +352,8 @@ internal fun SharedHomeScreen(
     val conversationUnavailableMessage = stringResource(Res.string.home_error_conversation_unavailable)
     val directMessageUnavailableMessage = stringResource(Res.string.home_error_direct_message_unavailable)
     val openDirectMessageFailedMessage = stringResource(Res.string.home_error_open_direct_message)
-    val openDirectMessageFailedPrefix = stringResource(Res.string.home_error_open_direct_message_failed_prefix)
     val openDirectMessagePermissionMessage = stringResource(Res.string.home_error_open_direct_message_permission)
+    val errorStrings = localizedErrorPresentationStrings()
     val pinnedMemberOpenScope = rememberCoroutineScope()
     val homeContentSummary = sharedHomeContentRenderSummary(state.content)
     val shouldStartHome = sharedHomeShouldStartOnActive(active, sessionReady, state)
@@ -916,8 +916,15 @@ internal fun SharedHomeScreen(
                                 }
                                 is DataResult.Empty -> bridge.toast(openDirectMessageFailedMessage)
                                 is DataResult.Error ->
-                                    bridge.errorToast(openDirectMessageFailedPrefix + result.error.code, result.error)
-                                is DataResult.NoPermission -> bridge.errorToast(openDirectMessagePermissionMessage, result.blocker.traceId)
+                                    bridge.errorToast(
+                                        homeDirectMessageOpenFailureMessage(
+                                            openDirectMessageFailedMessage,
+                                            result.error,
+                                            errorStrings,
+                                        ),
+                                        result.error.traceId,
+                                    )
+                                is DataResult.NoPermission -> bridge.errorToast(openDirectMessagePermissionMessage, result.blocker)
                             }
                         }
                     }

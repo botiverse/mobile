@@ -485,6 +485,23 @@ jobs:
           claimed_case=$(node -e 'const fs=require("fs"),v=JSON.parse(fs.readFileSync(process.argv[1],"utf8"));process.stdout.write(typeof v.case_id==="string"&&/^[a-z0-9][a-z0-9-]{0,63}$/.test(v.case_id)?v.case_id:"")' "$spec")
           echo "claimed_case=$claimed_case" >> "$GITHUB_OUTPUT"
 
+      # Checked attempts bind their frozen platform slice, rendered goal digest, and execution budget
+      # at claim time (#raft-mobile-reconcile:#257). Fail closed before execution if the workflow
+      # inputs disagree with the claimed attempt's frozen goal or budget.
+      - name: Verify claimed specification and budget binding
+        if: ${{ inputs.stamp_run_case_id != '' && inputs.login_mode != 'release-prelogin' }}
+        env:
+          STAMP_RUN_CASE_ID: ${{ inputs.stamp_run_case_id }}
+          QA_GOAL: ${{ inputs.goal || '' }}
+          QA_MAX_TURNS: ${{ inputs.max_turns || '30' }}
+          QA_MAX_MINUTES: ${{ inputs.max_minutes || '20' }}
+          QA_NO_PROGRESS_TURNS: ${{ inputs.no_progress_turns || '8' }}
+        run: |
+          node scripts/qa/claim_spec_binding.mjs verify \
+            --run-case-id "$STAMP_RUN_CASE_ID" \
+            --binding "$RUNNER_TEMP/stamp-claim-spec-${STAMP_RUN_CASE_ID}.json" \
+            --out "$RUNNER_TEMP/stamp-claim-spec-verified-${STAMP_RUN_CASE_ID}.json"
+
       # Fetch the assigned user and server after the claim, before comparing the GitHub account.
       - name: Fetch the login acceptance input from Testbed
         if: ${{ steps.stamp-claim.outputs.claimed_case == 'login-email-password' }}
@@ -734,6 +751,7 @@ jobs:
             mkdir -p qa-evidence
             if [ "${STAMP_BOOTSTRAP_REQUIRED:-false}" = "true" ]; then APK="$(find apks -name '*.apk' | head -1)"; node scripts/qa/mobile_login_bootstrap.mjs binding --apk "$APK" --output "$RUNNER_TEMP/stamp-bootstrap-device-binding.json"; bash scripts/qa/stamp_report.sh bootstrap-login "$RUNNER_TEMP/stamp-bootstrap-device-binding.json"; prep_rc=0; timeout --kill-after=10s 180s node scripts/qa/mobile_login_bootstrap.mjs prepare --response "$RUNNER_TEMP/stamp-bootstrap-login-${STAMP_RUN_CASE_ID}.json" --binding "$RUNNER_TEMP/stamp-bootstrap-device-binding.json" --run-case-id "$STAMP_RUN_CASE_ID" --ci-job-ref "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" --ready-output "$RUNNER_TEMP/stamp-bootstrap-ready.json" || prep_rc=$?; if [ "$prep_rc" = "0" ]; then bash scripts/qa/stamp_report.sh bootstrap-ready "$RUNNER_TEMP/stamp-bootstrap-ready.json" || prep_rc=$?; fi; if [ "$prep_rc" != "0" ]; then timeout --kill-after=5s 90s node scripts/qa/capture_bootstrap_diagnostics.mjs --out qa-evidence/bootstrap-diagnostics --label failure || true; if ! timeout --kill-after=10s 120s bash scripts/qa/stamp_report.sh bootstrap-failure-terminal "$RUNNER_TEMP/stamp-bootstrap-device-binding.json" "$RUNNER_TEMP/stamp-bootstrap-ready.json"; then PKG="$(cat qa-app-package.txt)"; timeout --kill-after=5s 20s adb shell am force-stop "$PKG" || true; timeout --kill-after=5s 20s adb shell pm clear "$PKG" || true; printf '%s\n' '{"contract":"qa-bootstrap-operator-recovery/v1","reason":"bounded failure-terminal did not confirm cleanup","product_verdict":"NOT_RUN"}' > qa-evidence/bootstrap-operator-recovery-required.json; fi; exit "$prep_rc"; fi; else sleep 8; fi
             cp "$(find apks -name build-info.json | head -1)" qa-evidence/build-info.json 2>/dev/null || true
+            if [ -n "${STAMP_RUN_CASE_ID:-}" ] && [ -s "$RUNNER_TEMP/stamp-claim-spec-verified-${STAMP_RUN_CASE_ID}.json" ]; then cp "$RUNNER_TEMP/stamp-claim-spec-verified-${STAMP_RUN_CASE_ID}.json" qa-evidence/claim-spec-binding.json; fi
             if [ "${STAMP_BOOTSTRAP_REQUIRED:-false}" = "true" ]; then cp "$RUNNER_TEMP/stamp-bootstrap-ready.json" qa-evidence/bootstrap-ready.json; fi
             # Bootstrap diagnostics bundle (redacted logcat + dumpsys activity top + screencap) for the
             # passing bootstrap too, saved BEFORE logcat is cleared so pass and fail runs can be compared.

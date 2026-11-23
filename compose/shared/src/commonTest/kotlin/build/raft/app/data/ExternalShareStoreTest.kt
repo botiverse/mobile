@@ -2,6 +2,7 @@ package build.raft.app.data
 
 import build.raft.app.model.ChannelId
 import build.raft.app.model.ConversationKind
+import build.raft.app.model.MessageId
 import build.raft.app.model.ServerId
 import build.raft.app.runPortableCoroutineTest
 import kotlinx.coroutines.CompletableDeferred
@@ -180,6 +181,139 @@ class ExternalShareStoreTest {
         assertEquals(listOf("server-abc"), latest.targets.map { it.id })
     }
 
+    @Test
+    fun conversationTargetsLoadInParallelWithoutBlockingRecentTargetsAndRefreshOnServerSwitch() = runPortableCoroutineTest {
+        val serverAGate = CompletableDeferred<List<ForwardMessageTarget>>()
+        val serverBGate = CompletableDeferred<List<ForwardMessageTarget>>()
+        val targets =
+            FakeTargetRepository(listOf(target("one"))).apply {
+                targetsByServer =
+                    mapOf(
+                        "server" to listOf(target("one", serverId = "server")),
+                        "server-b" to listOf(target("two", serverId = "server-b"))
+                    )
+                conversationTargetsLoader = { serverId ->
+                    if (serverId.value == "server") serverAGate.await() else serverBGate.await()
+                }
+            }
+        val store = store(FakeEnvelopeRepository(envelope()), FakeDraftRepository(), targets)
+
+        store.dispatch(
+            ExternalShareIntent.Load(
+                token = "opaque-token_1234567890",
+                accountId = "account",
+                serverId = "server",
+                serverOptions =
+                    listOf(
+                        ExternalShareServerOption("server", "Server A"),
+                        ExternalShareServerOption("server-b", "Server B")
+                    )
+            )
+        )
+
+        // Recent channels/DMs become interactive immediately even while conversationTargets is still in flight.
+        val beforeConversations = store.awaitState<ExternalShareState.SelectingTargets> { !it.loading && it.targets.isNotEmpty() }
+        assertEquals(listOf("one"), beforeConversations.targets.map { it.id })
+        assertEquals(emptyList(), beforeConversations.conversationTargets)
+
+        val threadA = threadTarget("thread-a", serverId = "server")
+        val taskA = taskTarget("task-a", serverId = "server")
+        serverAGate.complete(listOf(threadA, taskA))
+        val withConversations = store.awaitState<ExternalShareState.SelectingTargets> { it.conversationTargets.size == 2 }
+        assertEquals(listOf("thread-a", "task-a"), withConversations.conversationTargets.map { it.id })
+
+        // Switch server: old conversationTargets clear and refresh for the new server.
+        store.dispatch(ExternalShareIntent.SelectServer("server-b"))
+        val switched = store.awaitState<ExternalShareState.SelectingTargets> { it.serverId == "server-b" && !it.loading }
+        assertEquals(listOf("two"), switched.targets.map { it.id })
+        assertEquals(emptyList(), switched.conversationTargets)
+
+        val threadB = threadTarget("thread-b", serverId = "server-b")
+        serverBGate.complete(listOf(threadB))
+        val settledB = store.awaitState<ExternalShareState.SelectingTargets> { it.serverId == "server-b" && it.conversationTargets.size == 1 }
+        assertEquals(listOf("thread-b"), settledB.conversationTargets.map { it.id })
+    }
+
+    @Test
+    fun searchRetainsThreadAndTaskTargetsAndHandoffResolvesReplyThreadParent() = runPortableCoroutineTest {
+        val thread = threadTarget("thread-5", serverId = "server")
+        val task = taskTarget("task-7", serverId = "server")
+        val targets =
+            FakeTargetRepository(listOf(target("one"))).apply {
+                conversationTargetsLoader = { listOf(thread, task) }
+                customSearchResults = listOf(target("ch-hit"), thread, task)
+                threadParentResolver = { _, threadChannelId ->
+                    DataResult.Content(
+                        ForwardThreadParentInfo(
+                            parentChannelId = ChannelId("room-1"),
+                            parentMessageId = MessageId("parent-5")
+                        )
+                    )
+                }
+            }
+        val store = store(FakeEnvelopeRepository(envelope()), FakeDraftRepository(), targets)
+
+        store.dispatch(load())
+        store.awaitState<ExternalShareState.SelectingTargets> { !it.loading && it.conversationTargets.size == 2 }
+
+        // Search retains thread & task rows alongside channels.
+        store.dispatch(ExternalShareIntent.Search("topic"))
+        val searched = store.awaitState<ExternalShareState.SelectingTargets> { !it.loading && it.query == "topic" }
+        assertEquals(listOf("ch-hit", "thread-5", "task-7"), searched.targets.map { it.id })
+
+        // Return to empty query, select thread from conversationTargets, and continue: parentMessageId is resolved.
+        store.dispatch(ExternalShareIntent.Search(""))
+        store.awaitState<ExternalShareState.SelectingTargets> { !it.loading && it.query.isBlank() }
+        select(store, thread)
+        store.dispatch(ExternalShareIntent.Continue)
+
+        val ready = store.awaitState<ExternalShareState.ReadyForComposer>()
+        assertEquals(ChannelId("resolved-thread-5"), ready.handoff.target.channelId)
+        assertEquals(ConversationKind.Thread, ready.handoff.target.channelKind)
+        assertEquals(ChannelId("room-1"), ready.handoff.target.parentChannelId)
+        assertEquals(MessageId("parent-5"), ready.handoff.target.parentMessageId)
+        assertEquals(1, targets.threadParentResolveCalls)
+    }
+
+    @Test
+    fun selectingTaskConversationFromConversationTargetsHandsOffWithoutThreadParentProbe() = runPortableCoroutineTest {
+        val task = taskTarget("task-7", serverId = "server")
+        val targets =
+            FakeTargetRepository(listOf(target("one"))).apply {
+                conversationTargetsLoader = { listOf(task) }
+            }
+        val store = store(FakeEnvelopeRepository(envelope()), FakeDraftRepository(), targets)
+
+        store.dispatch(load())
+        store.awaitState<ExternalShareState.SelectingTargets> { !it.loading && it.conversationTargets.size == 1 }
+
+        select(store, task)
+        store.dispatch(ExternalShareIntent.Continue)
+
+        val ready = store.awaitState<ExternalShareState.ReadyForComposer>()
+        assertEquals(ChannelId("resolved-task-7"), ready.handoff.target.channelId)
+        assertEquals(ConversationKind.Task, ready.handoff.target.channelKind)
+        assertEquals(0, targets.threadParentResolveCalls)
+    }
+
+    @Test
+    fun conversationTargetsFailureDoesNotFailPickerLoad() = runPortableCoroutineTest {
+        val targets =
+            FakeTargetRepository(listOf(target("one"))).apply {
+                conversationTargetsLoader = { error("offline") }
+            }
+        val store = store(FakeEnvelopeRepository(envelope()), FakeDraftRepository(), targets)
+
+        store.dispatch(load())
+        val settled = store.awaitState<ExternalShareState.SelectingTargets> { !it.loading && it.targets.isNotEmpty() }
+        repeat(10) { yield() }
+
+        val finalState = assertIs<ExternalShareState.SelectingTargets>(store.state.value)
+        assertNull(finalState.errorCode)
+        assertEquals(listOf("one"), settled.targets.map { it.id })
+        assertEquals(emptyList(), finalState.conversationTargets)
+    }
+
     private fun CoroutineScope.store(
         native: FakeEnvelopeRepository,
         drafts: FakeDraftRepository,
@@ -237,14 +371,45 @@ class ExternalShareStoreTest {
             items = listOf(ExternalShareItem("private://one", "one.jpg", "image/jpeg", 10L))
         )
 
-    private fun target(id: String) =
+    private fun target(id: String, serverId: String = "server") =
         ForwardMessageTarget(
-            serverId = ServerId("server"),
+            serverId = ServerId(serverId),
             kind = ForwardMessageTargetKind.RecentChannel,
             id = id,
             title = id,
             channelId = ChannelId(id),
             channelKind = ConversationKind.Channel
+        )
+
+    private fun threadTarget(id: String, serverId: String = "server") =
+        ForwardMessageTarget(
+            serverId = ServerId(serverId),
+            kind = ForwardMessageTargetKind.ConversationThread,
+            id = id,
+            title = "#general › $id",
+            channelId = ChannelId(id),
+            channelKind = ConversationKind.Thread,
+            channelType = "thread",
+            parentChannelId = ChannelId("room-1"),
+            parentChannelName = "general",
+            parentChannelType = "channel",
+            parentMessagePreview = "topic preview"
+        )
+
+    private fun taskTarget(id: String, serverId: String = "server") =
+        ForwardMessageTarget(
+            serverId = ServerId(serverId),
+            kind = ForwardMessageTargetKind.ConversationTask,
+            id = id,
+            title = "#general:#7 $id",
+            channelId = ChannelId(id),
+            channelKind = ConversationKind.Task,
+            channelType = "task",
+            parentChannelId = ChannelId("room-1"),
+            parentChannelName = "general",
+            parentChannelType = "channel",
+            taskNumber = 7,
+            taskTitle = id
         )
 
     private class FakeEnvelopeRepository(
@@ -291,6 +456,13 @@ class ExternalShareStoreTest {
         private val values: List<ForwardMessageTarget>
     ) : ForwardMessageTargetRepository {
         var resolveCalls = 0
+        var threadParentResolveCalls = 0
+        var targetsByServer: Map<String, List<ForwardMessageTarget>>? = null
+        var conversationTargetsLoader: suspend (ServerId) -> List<ForwardMessageTarget> = { emptyList() }
+        var customSearchResults: List<ForwardMessageTarget>? = null
+        var threadParentResolver: suspend (ServerId, ChannelId) -> DataResult<ForwardThreadParentInfo> = { _, _ ->
+            DataResult.Error(ScreenError("forward_thread_parent_unavailable", retryable = false))
+        }
         var interimByQuery: (String) -> List<ForwardMessageTarget> = { emptyList() }
 
         /** When set, each search query waits for its own gate and answers `server-<query>`. */
@@ -303,14 +475,28 @@ class ExternalShareStoreTest {
         ): List<ForwardMessageTarget> = interimByQuery(query)
 
         override suspend fun recentTargets(serverId: ServerId, limit: Int): DataResult<List<ForwardMessageTarget>> =
-            DataResult.Content(values)
+            DataResult.Content(targetsByServer?.get(serverId.value) ?: values)
+
+        override suspend fun conversationTargets(
+            serverId: ServerId,
+            currentChannelId: ChannelId?
+        ): List<ForwardMessageTarget> = conversationTargetsLoader(serverId)
+
+        override suspend fun resolveConversationThreadParent(
+            serverId: ServerId,
+            threadChannelId: ChannelId
+        ): DataResult<ForwardThreadParentInfo> {
+            threadParentResolveCalls += 1
+            return threadParentResolver(serverId, threadChannelId)
+        }
 
         override suspend fun searchTargets(
             serverId: ServerId,
             query: String,
             limit: Int
         ): DataResult<List<ForwardMessageTarget>> {
-            val gates = serverGates ?: return DataResult.Content(values)
+            customSearchResults?.let { return DataResult.Content(it) }
+            val gates = serverGates ?: return DataResult.Content(targetsByServer?.get(serverId.value) ?: values)
             gates.getOrPut(query) { CompletableDeferred() }.await()
             return DataResult.Content(
                 listOf(

@@ -38,15 +38,17 @@ const val RaftTimeFormat24Hour = "24h"
 /**
  * Viewer local time formatting context carried through DI (`LocalRaftTimeContextProvider`).
  *
- * Note on DST: [localOffsetMinutes] represents the viewer's current local UTC offset (accurate for
- * live/today displays). IANA timezone / offset-at-instant resolution for cross-DST historical and
- * future timestamps is tracked for Phase 2B/2C (dm:@artin:#2).
+ * [localOffsetMinutes] represents the viewer's UTC offset at `nowEpochMillis` (in the account's
+ * `preferredTimezone` when set, else the device zone). When [timeZoneId] is populated (live IANA
+ * zone ID), callers in `:shared` can resolve exact per-instant DST offsets for past/future dates;
+ * when null (deterministic test/fixture contexts), [localOffsetMinutes] is used directly.
  */
 data class RaftTimeContext(
     val localOffsetMinutes: Int,
     val todayEpochDay: Long? = null,
     val nowEpochMillis: Long? = null,
-    val timeFormat: String = RaftTimeFormat24Hour
+    val timeFormat: String = RaftTimeFormat24Hour,
+    val timeZoneId: String? = null,
 ) {
     fun withTimeFormat(value: String?): RaftTimeContext =
         copy(timeFormat = normalizeRaftTimeFormatPreference(value ?: timeFormat))

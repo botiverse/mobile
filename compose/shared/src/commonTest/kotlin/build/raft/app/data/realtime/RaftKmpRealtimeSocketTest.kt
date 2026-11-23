@@ -3,6 +3,7 @@ package build.raft.app.data.realtime
 import build.raft.realtime.socket.RaftWebSocketConnector
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
@@ -45,13 +46,13 @@ class RaftKmpRealtimeSocketTest {
         }
     }
 
-    private class Harness(test: TestScope) {
+    private class Harness(test: TestScope, serverId: String) {
         val sessions = mutableListOf<RaftScriptedWebSocketSession>()
         val recorder = Recorder()
         val socket =
             RaftKmpRealtimeSocket(
                 socketUrl = "https://api.raft.build",
-                serverId = "server-1",
+                serverId = serverId,
                 token = "token-1",
                 clientKind = "mobile",
                 capabilities = listOf("agent_activity_subscriptions_v1"),
@@ -67,22 +68,74 @@ class RaftKmpRealtimeSocketTest {
             Json.parseToJsonElement(frames.last { it.startsWith("40") }.removePrefix("40")).jsonObject
     }
 
-    private fun TestScope.connected(): Pair<Harness, RaftScriptedWebSocketSession> {
-        val harness = Harness(this)
+    private fun TestScope.connected(serverId: String = "server-1"): Pair<Harness, RaftScriptedWebSocketSession> {
+        val harness = Harness(this, serverId)
         harness.socket.connect()
         runCurrent()
         val session = harness.sessions.single()
-        session.push("0{\"sid\":\"e\",\"upgrades\":[],\"pingInterval\":60000,\"pingTimeout\":60000,\"maxPayload\":1000000}")
+        session.push(OPEN_PACKET)
         runCurrent()
         val auth = harness.auth(session.sent())
         assertEquals("token-1", auth["token"]!!.jsonPrimitive.content)
-        assertEquals("server-1", auth["serverId"]!!.jsonPrimitive.content)
+        assertEquals(serverId, auth["serverId"]!!.jsonPrimitive.content)
         assertEquals("mobile", auth["clientKind"]!!.jsonPrimitive.content)
         assertEquals("agent_activity_subscriptions_v1", auth["capabilities"]!!.jsonArray.single().jsonPrimitive.content)
         session.push("40{\"sid\":\"s-1\"}")
         runCurrent()
         assertEquals("connected:s-1:false", harness.recorder.calls.last())
         return harness to session
+    }
+
+    /** Virtual time until the client has opened [count] WebSockets (each retry waits out its backoff). */
+    private fun TestScope.awaitSessions(harness: Harness, count: Int) {
+        repeat(600) {
+            if (harness.sessions.size >= count) return
+            testScheduler.advanceTimeBy(100)
+            runCurrent()
+        }
+        error("waited 60 s for $count WebSockets, the client opened ${harness.sessions.size}")
+    }
+
+    /** The server opens the Engine.IO session on [session] and accepts its CONNECT. */
+    private fun TestScope.serve(session: RaftScriptedWebSocketSession, sid: String) {
+        session.push(OPEN_PACKET)
+        runCurrent()
+        session.push("40{\"sid\":\"$sid\"}")
+        runCurrent()
+    }
+
+    @Test
+    fun onlyAConnectionTheSocketMadeItselfAfterTheServerOrNetworkEndedTheLastOneIsAfterADrop() = runTest {
+        val (harness, session) = connected(serverId = "server-drops")
+        assertFalse(RaftRealtimeConnectionCauses.connectedAfterDrop("server-drops"), "opened by the app")
+        // A deploy: the server closes the socket, which comes back by itself.
+        session.closeFromServer()
+        runCurrent()
+        awaitSessions(harness, 2)
+        serve(harness.sessions[1], "s-2")
+        assertEquals("connected:s-2:true", harness.recorder.calls.last())
+        assertTrue(RaftRealtimeConnectionCauses.connectedAfterDrop("server-drops"), "back by itself after the server closed it")
+        // The app's own forced reconnect comes back by itself too, but after no drop.
+        harness.socket.forceReconnect("test")
+        runCurrent()
+        awaitSessions(harness, 3)
+        serve(harness.sessions[2], "s-3")
+        assertEquals("connected:s-3:true", harness.recorder.calls.last())
+        assertFalse(RaftRealtimeConnectionCauses.connectedAfterDrop("server-drops"), "forced by the app")
+        // Dropped by the server's io server disconnect (41): retries on the same engine, still after a drop.
+        harness.sessions[2].push("41")
+        runCurrent()
+        testScheduler.advanceTimeBy(2_000)
+        runCurrent()
+        harness.sessions[2].push("40{\"sid\":\"s-4\"}")
+        runCurrent()
+        assertEquals("connected:s-4:true", harness.recorder.calls.last())
+        assertTrue(RaftRealtimeConnectionCauses.connectedAfterDrop("server-drops"), "back after io server disconnect")
+        // In the background the host closes the socket; back in front it opens a new one.
+        harness.socket.close()
+        runCurrent()
+        connected(serverId = "server-drops")
+        assertFalse(RaftRealtimeConnectionCauses.connectedAfterDrop("server-drops"), "the app's new socket")
     }
 
     @Test
@@ -162,5 +215,9 @@ class RaftKmpRealtimeSocketTest {
         harness.socket.updateToken("token-2")
         runCurrent()
         assertEquals("token-2", harness.auth(session.sent())["token"]!!.jsonPrimitive.content)
+    }
+
+    private companion object {
+        const val OPEN_PACKET = "0{\"sid\":\"e\",\"upgrades\":[],\"pingInterval\":60000,\"pingTimeout\":60000,\"maxPayload\":1000000}"
     }
 }

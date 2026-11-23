@@ -16,8 +16,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import build.raft.app.components.RaftDesignSystemTheme
 import build.raft.app.data.JOINT_CHANNEL_MAX_SERVERS
@@ -28,6 +31,8 @@ import build.raft.designsystem.components.RaftAvatarType
 import build.raft.designsystem.components.RaftBanner
 import build.raft.designsystem.components.RaftBannerSize
 import build.raft.designsystem.components.RaftBannerStatus
+import build.raft.designsystem.components.RaftButton
+import build.raft.designsystem.components.RaftButtonSize
 import build.raft.designsystem.components.RaftButtonVariant
 import build.raft.designsystem.components.RaftChoiceListItem
 import build.raft.designsystem.components.RaftDialogSheet
@@ -45,6 +50,8 @@ internal const val JointMemberConnectSheetTag = "joint-member-connect-sheet"
 internal const val JointMemberConnectErrorTag = "joint-member-connect-error"
 internal const val JointMemberConnectConsequenceTag = "joint-member-connect-consequence"
 internal const val JointMemberConnectGuestTag = "joint-member-connect-guest"
+internal const val JointMemberConnectUpgradeTag = "member-connect-upgrade"
+internal const val JointMemberConnectAskOwnerTag = "member-connect-ask-owner"
 
 /**
  * Web ConnectedServersMenu: the ⋯ at the end of Connected servers' heading with one item,
@@ -131,6 +138,8 @@ internal fun JointMemberConnectSheet(
     onDismiss: () -> Unit,
     onSelectionChange: (Set<String>) -> Unit,
     onSubmit: () -> Unit,
+    onUpgradeServer: (serverId: String) -> Unit = {},
+    offersUpgrade: Boolean = settingsBillingOffersUpgrade(),
 ) {
     val sheet = state.memberConnectSheet ?: return
     val rows = state.memberConnectRows
@@ -141,16 +150,24 @@ internal fun JointMemberConnectSheet(
     var query by remember { mutableStateOf("") }
     val selectedNames = sheet.selected.mapNotNull { nameOf[it] }
     val connectedNow = stringResource(Res.string.joint_member_connect_row_connected_now)
+    val atLimitLabel = stringResource(Res.string.joint_member_connect_row_at_limit)
     val owner = stringResource(Res.string.joint_member_connect_row_owner)
     val admin = stringResource(Res.string.joint_member_connect_row_admin)
     val alreadyConnected = stringResource(Res.string.joint_member_connect_row_already_connected)
     val notAdmin = stringResource(Res.string.joint_member_connect_row_not_admin)
+    val upgradeLabel = stringResource(Res.string.channel_external_invite_upgrade)
+    val askOwnerLabel = stringResource(Res.string.joint_member_connect_row_ask_owner)
+    val mono = RaftTheme.typography.monoMeta.toSpanStyle()
     val items =
         rows.map { row ->
             val server = row.server
+            val serverDisplayName = server.name.ifBlank { server.slug }
+            val limit = state.memberConnectLimit(row)
+            val atLimit = limit?.atLimit == true
             val reason =
                 when {
                     server.id in sheet.done -> connectedNow
+                    atLimit -> atLimitLabel
                     else ->
                         when (state.memberConnectRowState(row)) {
                             MemberConnectRowState.Eligible -> if (server.role == "owner") owner else admin
@@ -158,13 +175,47 @@ internal fun JointMemberConnectSheet(
                             MemberConnectRowState.NotAdmin -> notAdmin
                         }
                 }
+            val description =
+                buildAnnotatedString {
+                    if (server.slug.isNotBlank()) withStyle(mono) { append(server.slug) }
+                    if (reason.isNotBlank()) {
+                        if (length > 0) append(" · ")
+                        append(reason)
+                    }
+                }
+            val limitAction: (@Composable () -> Unit)? =
+                if (atLimit && offersUpgrade) {
+                    val canUpgrade = limit.canUpgrade
+                    val a11yLabel =
+                        if (canUpgrade) {
+                            stringResource(Res.string.external_invite_connect_upgrade_server, serverDisplayName)
+                        } else {
+                            stringResource(Res.string.joint_member_connect_row_ask_owner_server, serverDisplayName)
+                        }
+                    {
+                        RaftButton(
+                            text = if (canUpgrade) upgradeLabel else askOwnerLabel,
+                            onClick = { onUpgradeServer(server.id) },
+                            variant = RaftButtonVariant.Default,
+                            size = RaftButtonSize.Md,
+                            enabled = !sheet.busy,
+                            modifier =
+                                Modifier
+                                    .testTag(if (canUpgrade) JointMemberConnectUpgradeTag else JointMemberConnectAskOwnerTag)
+                                    .semantics { contentDescription = a11yLabel },
+                        )
+                    }
+                } else {
+                    null
+                }
             RaftChoiceListItem(
                 value = server.id,
-                label = server.name.ifBlank { server.slug },
-                descriptions = listOf(AnnotatedString(listOf(server.slug, reason).filter(String::isNotBlank).joinToString(" · "))),
+                label = serverDisplayName,
+                descriptions = listOf(description),
                 enabled = state.memberConnectRowSelectable(row),
                 searchText = "${server.name} ${server.slug}",
                 media = { JointMemberConnectServerAvatar(server) },
+                trailingAction = limitAction,
             )
         }
     val commitLabel =

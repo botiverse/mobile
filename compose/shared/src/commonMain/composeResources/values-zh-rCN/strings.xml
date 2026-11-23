@@ -224,6 +224,7 @@
     <string name="settings_step_up_passkeys_unavailable">通行密钥暂时不可用。请稍后再试。</string>
     <string name="settings_step_up_passkey_none_here">这台设备上没有 Raft 的通行密钥。请换一种方式。</string>
     <string name="settings_step_up_passkey_unsupported">这台设备无法在这里使用你的通行密钥。请换一种方式。</string>
+    <string name="settings_step_up_passkey_failed">通行密钥验证未能完成。请检查网络后重试，或换一种方式。</string>
     <string name="settings_step_up_failed">验证失败，请重试。</string>
     <string name="settings_step_up_lost_device_description">让丢失的设备退出登录并断开它批准的内容，需要重新验证一次，10 分钟内有效。</string>
     <string name="settings_step_up_lost_authenticator">装有验证器的设备丢了？</string>
@@ -2749,11 +2750,13 @@
     <string name="settings_notifications_battery_optimization_detail">为 Raft 关闭电池优化，避免系统中断后台连接。部分手机还需要在应用启动管理或后台活动设置中允许 Raft。</string>
     <string name="settings_notifications_battery_optimization_allowed">已允许</string>
     <string name="settings_notifications_battery_optimization_request">允许</string>
+    <string name="settings_notifications_vendor_background_title">自启动与后台管理</string>
+    <string name="settings_notifications_vendor_background_detail_huawei">在「应用启动管理」中关闭 Raft 的自动管理，并开启允许自启动、允许关联启动和允许后台活动。</string>
+    <string name="settings_notifications_vendor_background_detail_lenovo">在系统的自启动与后台管理设置中，允许 Raft 自启动并保持后台运行。</string>
+    <string name="settings_notifications_vendor_background_detail_vendor">在系统设置中允许 Raft 自启动并保持后台运行，避免被后台清理。</string>
+    <string name="settings_notifications_vendor_background_detail_app_details">在系统电池设置中将 Raft 设为无限制，避免在后台被系统停止。</string>
     <string name="background_kill_notice_title">Raft 在后台被系统停止</string>
-    <string name="background_kill_notice_body_huawei">系统在后台停止了 Raft，可能导致消息和通知延迟。请在「应用启动管理」中关闭 Raft 的自动管理，并开启允许自启动、允许关联启动和允许后台活动。</string>
-    <string name="background_kill_notice_body_lenovo">系统在后台停止了 Raft，可能导致消息和通知延迟。请在系统的自启动与后台管理设置中，允许 Raft 自启动并保持后台运行。</string>
-    <string name="background_kill_notice_body_vendor">系统在后台停止了 Raft，可能导致消息和通知延迟。请在系统设置中允许 Raft 自启动并保持后台运行，避免被后台清理。</string>
-    <string name="background_kill_notice_body_app_details">系统在后台停止了 Raft，可能导致消息和通知延迟。请打开应用信息，进入「电池」设置并将 Raft 设为无限制。</string>
+    <string name="background_kill_notice_body">系统在后台停止了 Raft，可能导致消息和通知延迟。前往通知设置允许 Raft 在后台运行。</string>
     <string name="background_kill_notice_action_open_settings">去设置</string>
     <string name="background_kill_notice_action_dont_show_again">不再提示</string>
     <string name="settings_notifications_offline_computers_title">计算机离线提醒</string>
@@ -4103,6 +4106,10 @@
     <string name="joint_member_connect_row_connected_by_you">由你连接</string>
     <string name="joint_member_connect_row_connected_now">刚刚连接</string>
     <string name="joint_member_connect_row_not_admin">只有所有者或管理员能连接它</string>
+    <string name="joint_member_connect_row_at_limit">免费版 · 已在另一个外部频道中</string>
+    <string name="joint_member_connect_row_ask_owner">请所有者升级</string>
+    <string name="joint_member_connect_row_ask_owner_server">请 %1$s 的所有者升级</string>
+    <string name="external_invite_connect_upgrade_server">升级 %1$s</string>
     <string name="joint_member_connect_row_owner">你是所有者</string>
     <string name="joint_member_connect_search">搜索服务器</string>
     <string name="joint_member_connect_title">连接你的服务器</string>
@@ -4870,6 +4877,7 @@
     <string name="upgrade_dialog_general_hint">升级到 Pro，免费版在消息历史、文件上传和外部频道上的限制都会解除。</string>
     <string name="upgrade_dialog_external_limit_title">与 %1$s 之外的人共享更多频道</string>
     <string name="upgrade_dialog_external_limit_hint">免费版包含 1 个外部频道，%1$s 已经有一个了。升级到 Pro 后，%1$s 需要多少就能共享多少。</string>
+    <string name="upgrade_dialog_external_limit_hint_channel">免费版包含 1 个外部频道，%1$s 的这个名额已用于 %2$s。升级到 Pro 后，%1$s 需要多少就能共享多少。</string>
     <string name="upgrade_dialog_external_frozen_title">恢复在外部频道中发言</string>
     <string name="upgrade_dialog_external_frozen_hint">免费版只能有 1 个外部频道。升级后即可在所有外部频道中恢复发言。</string>
     <string name="external_freeze_notice">此服务器使用免费版，且与外部的人共享了不止一个频道。从 %1$s 起，它将无法在这些频道中发消息。要继续发消息，请升级，或只保留其中一个这样的频道。</string>
@@ -4916,6 +4924,7 @@
     <string name="upgrade_dialog_limit_pro_theme">免费版不包含无聊灰主题。</string>
     <string name="upgrade_dialog_limit_general">%1$s 正在使用免费版。</string>
     <string name="upgrade_dialog_limit_external_limit">免费版包含 1 个外部频道，%1$s 已经有一个了。</string>
+    <string name="upgrade_dialog_limit_external_limit_channel">免费版包含 1 个外部频道，%1$s 的这个名额已用于 %2$s。</string>
     <string name="upgrade_dialog_limit_external_frozen">免费版只能有 1 个外部频道。</string>
     <string name="upgrade_dialog_limit_seats">%1$s 的席位已全部用完。</string>
     <string name="invite_human_view_billing">查看账单</string>

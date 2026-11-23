@@ -1,13 +1,13 @@
 package build.raft.app.shared
 
-import android.content.ActivityNotFoundException
+import android.Manifest
 import android.content.Context
 import android.content.Intent
-import android.net.Uri
+import android.content.pm.PackageManager
+import android.os.Build
 import android.os.PowerManager
-import android.provider.Settings
-import build.raft.app.core.data.diagnostics.RaftAppLog
 import build.raft.app.data.RaftBackgroundConnectionControls
+import build.raft.app.data.RaftBackgroundWhitelistGuide
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -17,15 +17,40 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
-/** Settings controls for the no-Play-services background connection (see [RaftBackgroundConnectionService]). */
+/**
+ * Unified Android Settings › Notifications host controls for background keep-alive (#proj-mobile:#325).
+ *
+ * Installed on every Android build (no-Play-services direct, GMS direct, and Google Play).
+ * All system/OEM intents route through [RaftAndroidVendorWhitelist]; the direct exemption prompt
+ * (`ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS`) is only ever invoked when this build's merged
+ * manifest declares [Manifest.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS] (stripped from the
+ * `play` build via `src/play/AndroidManifest.xml`).
+ */
 internal class RaftAndroidBackgroundConnectionControls(
     context: Context,
     private val refreshScope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.IO),
     private val batteryOptimizationExemptProvider: (Context) -> Boolean = ::readBatteryOptimizationExempt,
+    private val batteryOptimizationPermissionDeclaredProvider: (Context) -> Boolean = ::isBatteryOptimizationPermissionDeclared,
+    private val noPlayServicesFallbackProvider: (Context) -> Boolean = AndroidRealtimeKeepAliveController::noPlayServicesFallbackApplies,
+    private val vendorProvider: () -> AndroidOemVendor = { RaftAndroidVendorWhitelist.resolveVendor() },
+    private val intentLauncher: (Intent) -> Unit = { intent -> context.applicationContext.startActivity(intent) },
 ) : RaftBackgroundConnectionControls {
     private val appContext = context.applicationContext
 
-    override fun isOffered(): Boolean = AndroidRealtimeKeepAliveController.noPlayServicesFallbackApplies(appContext)
+    @Volatile
+    private var cachedBatteryOptimizationPermissionDeclared: Boolean? = null
+
+    override fun isOffered(): Boolean = noPlayServicesFallbackProvider(appContext)
+
+    override fun canRequestBatteryOptimizationExemption(): Boolean =
+        cachedBatteryOptimizationPermissionDeclared ?: runCatching {
+            batteryOptimizationPermissionDeclaredProvider(appContext)
+        }.getOrDefault(false).also { declared ->
+            cachedBatteryOptimizationPermissionDeclared = declared
+        }
+
+    override fun whitelistGuide(): RaftBackgroundWhitelistGuide =
+        RaftAndroidVendorWhitelist.guideFor(vendorProvider())
 
     override fun isBatteryOptimizationExempt(): Boolean =
         runCatching {
@@ -33,8 +58,8 @@ internal class RaftAndroidBackgroundConnectionControls(
         }.getOrDefault(false)
 
     // Avoid calling PowerManager.isIgnoringBatteryOptimizations() synchronously in the constructor
-    // on Main (especially on GMS devices where these controls are never offered). Initialized
-    // asynchronously on IO when the fallback applies, on resume, or on first observation.
+    // on Main. Initialized asynchronously on IO at startup (when the direct exemption prompt applies),
+    // on resume, or on first observation.
     private val exemptState = MutableStateFlow(false)
     private val exemptStateView = exemptState.asStateFlow()
     private val initialRefreshScheduled = AtomicBoolean(false)
@@ -47,46 +72,55 @@ internal class RaftAndroidBackgroundConnectionControls(
             return exemptStateView
         }
 
-    /** Called on activity resume (or cold-start IO when the no-Play-services fallback applies). */
+    /** Called on activity resume (or cold-start IO when direct battery exemption applies). */
     fun refreshBatteryOptimizationStatus() {
         initialRefreshScheduled.set(true)
         exemptState.value = isBatteryOptimizationExempt()
     }
 
     /**
-     * User-initiated only (the Settings switch or the battery row). Falls back to the system list of
-     * battery optimizations, then to the app's details page, when a ROM hides the direct prompt.
+     * User-initiated only (Settings › Notifications switch or "Allow running in background" row).
+     * When this build declares `REQUEST_IGNORE_BATTERY_OPTIMIZATIONS`, tries the direct exemption
+     * prompt first, then system battery optimization settings, then App Info. Otherwise (Play build)
+     * skips the direct prompt and opens system battery optimization settings -> App Info.
      */
     override fun requestBatteryOptimizationExemption() {
-        val packageUri = Uri.parse("package:${appContext.packageName}")
-        val candidates =
-            listOf(
-                Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, packageUri),
-                Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS),
-                Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, packageUri),
-            )
-        for (intent in candidates) {
-            val launched =
-                try {
-                    appContext.startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-                    true
-                } catch (_: ActivityNotFoundException) {
-                    false
-                } catch (_: SecurityException) {
-                    false
-                }
-            if (launched) {
-                RaftAppLog.i(LOG_TAG, "battery_optimization_request action=${intent.action}")
-                return
-            }
-        }
-        RaftAppLog.w(LOG_TAG, "battery_optimization_request_unavailable")
+        RaftAndroidVendorWhitelist.openBatteryOptimization(
+            context = appContext,
+            allowDirectPrompt = canRequestBatteryOptimizationExemption(),
+            launcher = intentLauncher,
+        )
     }
 
-    private companion object {
-        const val LOG_TAG = "RaftBackgroundConnection"
+    /**
+     * User-initiated only (Settings › Notifications OEM/background settings row).
+     * Tries OEM auto-start/background settings -> system battery optimization settings -> App Info.
+     * Never invokes `ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS` (safe on both direct and Play builds).
+     */
+    override fun openVendorBackgroundSettings() {
+        RaftAndroidVendorWhitelist.open(
+            context = appContext,
+            vendor = vendorProvider(),
+            launcher = intentLauncher,
+        )
     }
 }
+
+internal fun isBatteryOptimizationPermissionDeclared(context: Context): Boolean =
+    runCatching {
+        val packageInfo =
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                context.packageManager.getPackageInfo(
+                    context.packageName,
+                    PackageManager.PackageInfoFlags.of(PackageManager.GET_PERMISSIONS.toLong()),
+                )
+            } else {
+                @Suppress("DEPRECATION")
+                context.packageManager.getPackageInfo(context.packageName, PackageManager.GET_PERMISSIONS)
+            }
+        packageInfo.requestedPermissions
+            ?.contains(Manifest.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS) == true
+    }.getOrDefault(false)
 
 private fun readBatteryOptimizationExempt(context: Context): Boolean {
     val powerManager = context.getSystemService(Context.POWER_SERVICE) as PowerManager

@@ -224,6 +224,7 @@
     <string name="settings_step_up_passkeys_unavailable">現在、パスキーを利用できません。しばらくしてからもう一度お試しください。</string>
     <string name="settings_step_up_passkey_none_here">このデバイスには Raft のパスキーがありません。別の方法を使用してください。</string>
     <string name="settings_step_up_passkey_unsupported">このデバイスでは、ここでパスキーを使用できません。別の方法を使用してください。</string>
+    <string name="settings_step_up_passkey_failed">パスキーの確認を完了できませんでした。ネットワーク接続を確認してもう一度試すか、別の方法を使用してください。</string>
     <string name="settings_step_up_failed">確認できませんでした。もう一度お試しください。</string>
     <string name="settings_step_up_lost_device_description">なくしたデバイスをログアウトし、そのデバイスが承認したものを切断するには、改めて 2 段階目の認証が必要です。認証は 10 分間有効です。</string>
     <string name="settings_step_up_lost_authenticator">認証アプリの入ったデバイスをなくしましたか？</string>
@@ -2749,11 +2750,13 @@
     <string name="settings_notifications_battery_optimization_detail">Raft の電池の最適化をオフにして、システムがバックグラウンド接続を停止しないようにします。機種によっては、アプリ起動やバックグラウンド動作の設定で Raft を許可する必要もあります。</string>
     <string name="settings_notifications_battery_optimization_allowed">許可済み</string>
     <string name="settings_notifications_battery_optimization_request">許可</string>
+    <string name="settings_notifications_vendor_background_title">自動起動とバックグラウンド設定</string>
+    <string name="settings_notifications_vendor_background_detail_huawei">「アプリ起動」で Raft の自動管理をオフにし、自動起動・他のアプリによる起動・バックグラウンド実行を許可してください。</string>
+    <string name="settings_notifications_vendor_background_detail_lenovo">端末の自動起動・バックグラウンド管理設定で、Raft の自動起動とバックグラウンド実行を許可してください。</string>
+    <string name="settings_notifications_vendor_background_detail_vendor">システム設定で Raft の自動起動とバックグラウンド実行を許可してください。</string>
+    <string name="settings_notifications_vendor_background_detail_app_details">バックグラウンドで停止されないよう、システムのバッテリー設定で Raft を「制限なし」に設定してください。</string>
     <string name="background_kill_notice_title">Raft がバックグラウンドで停止されました</string>
-    <string name="background_kill_notice_body_huawei">バックグラウンド中に Raft がシステムによって停止されたため、メッセージや通知が遅れることがあります。「アプリ起動」で Raft の自動管理をオフにし、自動起動・他のアプリによる起動・バックグラウンド実行を許可してください。</string>
-    <string name="background_kill_notice_body_lenovo">バックグラウンド中に Raft がシステムによって停止されたため、メッセージや通知が遅れることがあります。端末の自動起動・バックグラウンド管理設定で、Raft の自動起動とバックグラウンド実行を許可してください。</string>
-    <string name="background_kill_notice_body_vendor">バックグラウンド中に Raft がシステムによって停止されたため、メッセージや通知が遅れることがあります。システム設定で Raft の自動起動とバックグラウンド実行を許可してください。</string>
-    <string name="background_kill_notice_body_app_details">バックグラウンド中に Raft がシステムによって停止されたため、メッセージや通知が遅れることがあります。アプリ情報から「バッテリー」を開き、Raft を「制限なし」に設定してください。</string>
+    <string name="background_kill_notice_body">バックグラウンド中に Raft がシステムによって停止されたため、メッセージや通知が遅れることがあります。通知設定を開き、Raft のバックグラウンド実行を許可してください。</string>
     <string name="background_kill_notice_action_open_settings">設定を開く</string>
     <string name="background_kill_notice_action_dont_show_again">今後表示しない</string>
     <string name="settings_notifications_offline_computers_title">オフラインのコンピューター通知</string>
@@ -4103,6 +4106,10 @@
     <string name="joint_member_connect_row_connected_by_you">あなたが接続</string>
     <string name="joint_member_connect_row_connected_now">たった今接続しました</string>
     <string name="joint_member_connect_row_not_admin">接続できるのはオーナーまたは管理者のみです</string>
+    <string name="joint_member_connect_row_at_limit">無料プラン · 別の外部チャンネルに参加中</string>
+    <string name="joint_member_connect_row_ask_owner">オーナーにアップグレードを依頼</string>
+    <string name="joint_member_connect_row_ask_owner_server">%1$s のオーナーにアップグレードを依頼</string>
+    <string name="external_invite_connect_upgrade_server">%1$s をアップグレード</string>
     <string name="joint_member_connect_row_owner">あなたはオーナーです</string>
     <string name="joint_member_connect_search">サーバーを検索</string>
     <string name="joint_member_connect_title">所属しているサーバーを接続</string>
@@ -4870,6 +4877,7 @@
     <string name="upgrade_dialog_general_hint">Pro にすると、メッセージ履歴、ファイルのアップロード、外部チャンネルに関する無料プランの制限がなくなります。</string>
     <string name="upgrade_dialog_external_limit_title">%1$s の外部の人とより多くのチャンネルを共有</string>
     <string name="upgrade_dialog_external_limit_hint">無料プランの外部チャンネルは 1 つまでで、%1$s はすでに 1 つ使っています。Pro なら、%1$s は必要なだけチャンネルを共有できます。</string>
+    <string name="upgrade_dialog_external_limit_hint_channel">無料プランの外部チャンネルは 1 つまでで、%1$s では %2$s がその 1 つです。Pro なら、%1$s は必要なだけチャンネルを共有できます。</string>
     <string name="upgrade_dialog_external_frozen_title">外部チャンネルへの投稿を再開</string>
     <string name="upgrade_dialog_external_frozen_hint">無料プランの外部チャンネルは 1 つまでです。アップグレードすると、すべての外部チャンネルに再び投稿できます。</string>
     <string name="external_freeze_notice">このサーバーは無料プランで、サーバーの外部の人と 2 つ以上のチャンネルを共有しています。%1$s以降、それらのチャンネルには投稿できなくなります。投稿を続けるには、アップグレードするか、それらのチャンネルを 1 つだけ残して退出してください。</string>
@@ -4916,6 +4924,7 @@
     <string name="upgrade_dialog_limit_pro_theme">退屈グレーは無料プランに含まれていません。</string>
     <string name="upgrade_dialog_limit_general">%1$s は無料プランです。</string>
     <string name="upgrade_dialog_limit_external_limit">無料プランの外部チャンネルは 1 つまでで、%1$s はすでに 1 つ使っています。</string>
+    <string name="upgrade_dialog_limit_external_limit_channel">無料プランの外部チャンネルは 1 つまでで、%1$s では %2$s がその 1 つです。</string>
     <string name="upgrade_dialog_limit_external_frozen">無料プランの外部チャンネルは 1 つまでです。</string>
     <string name="upgrade_dialog_limit_seats">%1$s のシートはすべて使用中です。</string>
     <string name="invite_human_view_billing">請求を表示</string>

@@ -9,6 +9,7 @@
 import { resolvePiModel } from "./pi_model.mjs";
 import { selectReviewScreenshots } from "./review_evidence_selection.mjs";
 import { scopeReviewReport, submitPanelVote } from "./review_attempt_scope.mjs";
+import { fetchAttemptSpecification, platformForAppSlug } from "./review_attempt_spec.mjs";
 import crypto from "node:crypto";
 import fs from "node:fs";
 
@@ -63,6 +64,23 @@ async function stamp(path, init = {}) {
   const text = await res.text();
   if (!res.ok) throw new Error(`Stamp ${res.status} ${path}: ${text.slice(0, 500)}`);
   return text ? JSON.parse(text) : {};
+}
+
+// Status-preserving GET for endpoints whose 409/404 codes carry contract
+// meaning (e.g. GET /api/runs/{run_id}/cases/{run_case_id}/spec).
+async function stampGetJson(path) {
+  const res = await fetch(`${stampUrl}${path}`, {
+    method: "GET",
+    headers: { authorization: `Bearer ${stampToken}` },
+  });
+  const text = await res.text();
+  let parsed;
+  try {
+    parsed = text ? JSON.parse(text) : {};
+  } catch {
+    parsed = { raw: text.slice(0, 500) };
+  }
+  return { status: res.status, body: parsed };
 }
 
 // Vote POST: returns the status instead of throwing so submitPanelVote can
@@ -198,34 +216,99 @@ async function main() {
 
   const yamlModule = await import(process.env.SLOCK_YAML_MODULE || "yaml");
   const parseYaml = yamlModule.parse || yamlModule.default?.parse;
-  const stringifyYaml = yamlModule.stringify || yamlModule.default?.stringify;
-  if (typeof parseYaml !== "function" || typeof stringifyYaml !== "function") throw new Error("YAML parser unavailable");
-  const platform = String(data.run.app_slug || "").includes("ios") ? "ios" : "android";
+  if (typeof parseYaml !== "function") throw new Error("YAML parser unavailable");
+  const defaultPlatform = platformForAppSlug(data.run.app_slug);
   const cases = [];
   for (const rc of data.cases || []) {
-    const current = await stamp(`/api/cases/${encodeURIComponent(rc.case_id)}`);
-    if (Number(current.revision) !== Number(rc.case_revision)) {
-      throw new Error(`case ${rc.case_id} revision drift: run=${rc.case_revision} current=${current.revision}; frozen-spec API required`);
+    const attemptSpec = await fetchAttemptSpecification({
+      getJson: stampGetJson,
+      runId,
+      runCase: rc,
+      admission: data.admission ?? null,
+      defaultPlatform,
+      parseYaml,
+    });
+    if (attemptSpec.status === "incomplete") {
+      cases.push({
+        run_case_id: attemptSpec.run_case_id,
+        case_id: attemptSpec.case_id,
+        title: rc.title,
+        platform: attemptSpec.platform,
+        frozen_revision: attemptSpec.frozen_revision,
+        attempt: attemptSpec.attempt,
+        binding_status: "incomplete",
+        incomplete_code: attemptSpec.code,
+        incomplete_http_status: attemptSpec.http_status,
+        assertion_ids: [],
+        // Read only for assertion-frame references; never shown to the model.
+        verdict_json: rc.verdict_json,
+      });
+      continue;
     }
-    const spec = parseYaml(current.spec_yaml || "");
-    const assertionIds = Array.isArray(spec?.assertions) ? spec.assertions.map((a) => a?.id).filter((id) => typeof id === "string" && id) : [];
-    if (!assertionIds.length) throw new Error(`case ${rc.case_id} has no stable assertion ids`);
-    const reviewSpec = { id: spec.id, title: spec.title, goal: spec.goal, tier: spec.tier, assertions: spec.assertions, [platform]: spec[platform] };
     cases.push({
-      run_case_id: rc.id,
-      case_id: rc.case_id,
+      run_case_id: attemptSpec.run_case_id,
+      case_id: attemptSpec.case_id,
       title: rc.title,
-      platform,
-      frozen_revision: rc.case_revision,
-      current_revision: current.revision,
-      spec_yaml: current.spec_yaml,
-      review_spec_yaml: stringifyYaml(reviewSpec),
-      spec_sha256: crypto.createHash("sha256").update(current.spec_yaml || "").digest("hex"),
-      assertion_ids: assertionIds,
+      platform: attemptSpec.platform,
+      frozen_revision: attemptSpec.frozen_revision,
+      attempt: attemptSpec.attempt,
+      contract_version: attemptSpec.contract_version,
+      binding_status: attemptSpec.binding_status,
+      spec_sha256: attemptSpec.spec_sha256,
+      full_yaml: attemptSpec.full_yaml,
+      full_yaml_sha256: attemptSpec.full_yaml_sha256,
+      platform_slice_yaml: attemptSpec.platform_slice_yaml,
+      platform_slice_sha256: attemptSpec.platform_slice_sha256,
+      rendered_goal: attemptSpec.rendered_goal,
+      rendered_goal_sha256: attemptSpec.rendered_goal_sha256,
+      execution_budget: attemptSpec.execution_budget,
+      assertion_ids: attemptSpec.assertion_ids,
       // Read only for assertion-frame references; never shown to the model.
       verdict_json: rc.verdict_json,
     });
   }
+  const incompleteAttemptSpecs = cases
+    .filter((c) => c.binding_status === "incomplete")
+    .map((c) => ({
+      run_id: runId,
+      run_case_id: c.run_case_id,
+      case_id: c.case_id,
+      case_revision: c.frozen_revision,
+      attempt: c.attempt,
+      platform: c.platform,
+      http_status: c.incomplete_http_status,
+      code: c.incomplete_code,
+    }));
+  const attemptSpecifications = cases.map((c) => (
+    c.binding_status === "verified"
+      ? {
+          contract_version: c.contract_version,
+          binding_status: c.binding_status,
+          run_id: runId,
+          run_case_id: c.run_case_id,
+          case_id: c.case_id,
+          case_revision: c.frozen_revision,
+          attempt: c.attempt,
+          platform: c.platform,
+          spec_sha256: c.spec_sha256,
+          full_yaml_sha256: c.full_yaml_sha256,
+          platform_slice_sha256: c.platform_slice_sha256,
+          rendered_goal_sha256: c.rendered_goal_sha256,
+          execution_budget: c.execution_budget,
+          assertion_ids: c.assertion_ids,
+        }
+      : {
+          binding_status: "incomplete",
+          run_id: runId,
+          run_case_id: c.run_case_id,
+          case_id: c.case_id,
+          case_revision: c.frozen_revision,
+          attempt: c.attempt,
+          platform: c.platform,
+          http_status: c.incomplete_http_status,
+          code: c.incomplete_code,
+        }
+  ));
 
   const excludedEvidence = (data.evidence || [])
     .filter((e) => !["screenshot", "ui_dump", "dump_layout", "logcat", "system_log"].includes(e.kind))
@@ -233,7 +316,9 @@ async function main() {
   // Assertion frames are always included (outside the 12-image cap) and
   // labelled; the cap only thins the remaining frames.
   const { shots: rawShots, assertionFrames, missingAssertionFrames, checksByEvidence } = selectReviewScreenshots(cases, data.evidence, 12);
-  if (!rawShots.length) throw new Error("no raw screenshot evidence; refusing to review annotated/self-reported evidence only");
+  if (!rawShots.length && !incompleteAttemptSpecs.length) {
+    throw new Error("no raw screenshot evidence; refusing to review annotated/self-reported evidence only");
+  }
 
   const rawDumps = (data.evidence || []).filter((e) => e.kind === "ui_dump" || e.kind === "dump_layout");
   const rawLogs = (data.evidence || []).filter((e) => e.kind === "logcat" || e.kind === "system_log");
@@ -261,7 +346,33 @@ async function main() {
     app_slug: data.run.app_slug,
     source_commit: data.run.source_commit || null,
     apk_sha256: data.run.apk_sha256 || null,
-    cases: cases.map((c) => ({ case_id: c.case_id, revision: c.frozen_revision, spec_sha256: c.spec_sha256, assertion_ids: c.assertion_ids })),
+    cases: cases.map((c) => (
+      c.binding_status === "verified"
+        ? {
+            run_case_id: c.run_case_id,
+            case_id: c.case_id,
+            revision: c.frozen_revision,
+            attempt: c.attempt,
+            platform: c.platform,
+            binding_status: c.binding_status,
+            spec_sha256: c.spec_sha256,
+            full_yaml_sha256: c.full_yaml_sha256,
+            platform_slice_sha256: c.platform_slice_sha256,
+            rendered_goal_sha256: c.rendered_goal_sha256,
+            execution_budget: c.execution_budget,
+            assertion_ids: c.assertion_ids,
+          }
+        : {
+            run_case_id: c.run_case_id,
+            case_id: c.case_id,
+            revision: c.frozen_revision,
+            attempt: c.attempt,
+            platform: c.platform,
+            binding_status: "incomplete",
+            incomplete_code: c.incomplete_code,
+            assertion_ids: [],
+          }
+    )),
     assertion_frames: assertionFrames.map((f) => ({ case_id: f.case_id, assertion_id: f.assertion_id, step: f.step, evidence_id: f.evidence_id })),
     evidence_manifest_sha256: evidenceManifestSha256,
   };
@@ -271,6 +382,8 @@ async function main() {
     evidence_manifest_sha256: evidenceManifestSha256,
     review_input_sha256: reviewInputSha256,
     review_input: reviewInput,
+    attempt_specifications: attemptSpecifications,
+    incomplete_attempt_specs: incompleteAttemptSpecs,
     evidence_manifest: evidenceManifest,
     included_evidence: reviewedEvidence.map((e) => ({ id: e.id, kind: e.kind })),
     excluded_evidence: excludedEvidence,
@@ -278,6 +391,34 @@ async function main() {
     assertion_frames: assertionFrames,
     missing_assertion_frames: missingAssertionFrames,
   });
+  // An attempt without a verified frozen specification (409 LEGACY_UNBOUND or
+  // 409 FROZEN_SPEC_UNAVAILABLE) has incomplete review provenance: record the
+  // reason and affected attempt ids locally, make zero model calls, and stop
+  // without submitting any new panel vote (preserving any existing vote).
+  if (incompleteAttemptSpecs.length) {
+    const specText = incompleteAttemptSpecs.map((s) => `${s.case_id}/${s.run_case_id} (${s.code})`);
+    const reason = `evidence incomplete: frozen attempt specification unavailable for ${specText.join(", ")}`.slice(0, 1000);
+    saveRecord({
+      stage: "evidence_incomplete",
+      evidence_incomplete: true,
+      vote_submitted: false,
+      incomplete_reason: reason,
+      incomplete_attempt_specs: incompleteAttemptSpecs,
+      existing_review: existingReview
+        ? {
+            id: existingReview.id,
+            reviewer: existingReview.reviewer,
+            verdict: existingReview.verdict,
+            created_at: existingReview.created_at,
+          }
+        : null,
+    });
+    console.log(JSON.stringify(record, null, 2));
+    console.error(`review_agent: ${reason}; stopped without voting`);
+    process.exitCode = 2;
+    return;
+  }
+
   if (existingReview) {
     const existingDetail = typeof existingReview.detail_json === "string" ? JSON.parse(existingReview.detail_json) : existingReview.detail_json;
     if (!plainObject(existingDetail) || existingDetail.review_input_sha256 !== reviewInputSha256) {
@@ -339,6 +480,7 @@ async function main() {
           assertions: incompleteVote.detail_json,
           anomalies: incompleteVote.anomalies,
           evidence_incomplete: true,
+          attempt_specifications: attemptSpecifications,
           missing_assertion_frames: missingAssertionFrames,
           assertion_frames: assertionFrames,
           evidence_manifest_sha256: evidenceManifestSha256,
@@ -369,10 +511,14 @@ async function main() {
     `Source: ${data.run.source_commit || "unknown"}`,
     `APK sha256: ${data.run.apk_sha256 || "unknown"}`,
     "",
-    "Frozen case requirements (YAML; review only the platform variant named above):",
+    "Frozen attempt specifications (verified against Testbed attempt-bound digests):",
     ...cases.flatMap((c) => [
-      `--- CASE ${c.case_id} (${c.title || ""}), platform=${c.platform}, frozen revision=${c.frozen_revision} ---`,
-      c.review_spec_yaml || "(spec unavailable)",
+      `--- CASE ${c.case_id} (${c.title || ""}), run_case_id=${c.run_case_id}, attempt=${c.attempt}, platform=${c.platform}, frozen revision=${c.frozen_revision}, budget=${JSON.stringify(c.execution_budget)} ---`,
+      `spec_sha256=${c.spec_sha256} full_yaml_sha256=${c.full_yaml_sha256} platform_slice_sha256=${c.platform_slice_sha256} rendered_goal_sha256=${c.rendered_goal_sha256}`,
+      "Platform slice YAML:",
+      c.platform_slice_yaml,
+      "Dispatched rendered goal:",
+      c.rendered_goal,
     ]),
     "",
     `Mechanical error scan (counts only; inspect screenshots too): ${JSON.stringify(logScans)}`,
@@ -453,6 +599,7 @@ async function main() {
   const detailJson = {
     assertions: vote.detail_json || {},
     anomalies: vote.anomalies || [],
+    attempt_specifications: attemptSpecifications,
     evidence_manifest_sha256: evidenceManifestSha256,
     review_input_sha256: reviewInputSha256,
     evidence_manifest: evidenceManifest,

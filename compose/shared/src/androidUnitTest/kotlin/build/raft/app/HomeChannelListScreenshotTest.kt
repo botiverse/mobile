@@ -8,6 +8,9 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.platform.ViewRootForTest
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.semantics.getAllSemanticsNodes
+import androidx.compose.ui.semantics.getOrNull
 import build.raft.app.compat.json.JSONObject
 import build.raft.app.compat.pager.LocalActivity
 import build.raft.app.compat.pager.PageData
@@ -18,6 +21,7 @@ import java.io.File
 import java.time.Duration
 import kotlin.test.Test
 import kotlin.test.assertNotNull
+import kotlin.test.assertTrue
 import org.junit.After
 import org.junit.Rule
 import org.junit.runner.RunWith
@@ -80,6 +84,17 @@ class HomeChannelListScreenshotTest {
         settle()
         val composeView = findComposeRoot(activity.window.decorView)
         assertNotNull(composeView, "no compose root")
+        // Verify the External section "+" button is actually rendered (its ~14dp glyph alone is
+        // smaller than Roborazzi's 0.1% pixel tolerance on a 390x844@3x capture, #wg-mobile-sync:#207).
+        val createExternalLabel = RaftHomeShellLabels().createExternalChannel
+        val hasExternalCreateButton =
+            (composeView as ViewRootForTest)
+                .semanticsOwner
+                .getAllSemanticsNodes(mergingEnabled = true)
+                .any { node ->
+                    node.config.getOrNull(SemanticsProperties.ContentDescription)?.contains(createExternalLabel) == true
+                }
+        assertTrue(hasExternalCreateButton, "External section '+' button ($createExternalLabel) must render for owner fixture")
         val bitmap = Bitmap.createBitmap(composeView.width, composeView.height, Bitmap.Config.ARGB_8888)
         composeView.draw(android.graphics.Canvas(bitmap))
         verifyOrRecord(name, bitmap)

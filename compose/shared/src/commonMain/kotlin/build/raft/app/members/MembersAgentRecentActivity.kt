@@ -22,9 +22,14 @@ import androidx.compose.ui.unit.constrainWidth
 import androidx.compose.ui.unit.dp
 import build.raft.app.data.AgentActivityOverviewStatus
 import build.raft.app.data.AgentActivityTurn
+import build.raft.app.data.offsetMinutesAt
 import build.raft.app.model.AgentStatus
 import build.raft.app.model.MemberId
+import build.raft.app.model.MillisPerDay
+import build.raft.app.model.MillisPerMinute
 import build.raft.app.model.RaftTimeContext
+import build.raft.app.model.floorDiv
+import build.raft.app.model.formatRaftLocalClock
 import build.raft.app.resources.*
 import build.raft.designsystem.components.RaftCard
 import build.raft.designsystem.components.RaftGlyph
@@ -213,19 +218,40 @@ internal fun MembersAgentNowCard(
     }
 }
 
-/** The rows' time labels and their texts, for tests. */
+/** The rows' time labels, texts, and badge rows, for tests. */
 internal const val MembersAgentRecentTurnTimeTag = "agent-now-row-time"
 internal const val MembersAgentRecentTurnTextTag = "agent-now-row"
+internal const val MembersAgentRecentTurnBadgesTag = "agent-now-row-badges"
+
+/**
+ * Web `AgentNowCard` `useTurnTime` (`packages/web/src/components/agent/AgentNowCard.tsx`):
+ * clock only today (`"15:53"` / `"03:53 PM"`), else localized short month/day and clock (web
+ * `formatShortDateTime`, e.g. `"Nov 21, 11:23"` / `"11月21日 11:23"`). "Today" and the turn's
+ * offset are evaluated in the viewer's [RaftTimeContext] (respecting account `preferredTimezone`
+ * and per-instant DST when `timeZoneId` is populated).
+ */
+@Composable
+internal fun membersAgentNowTurnTime(epochMillis: Long, timeContext: RaftTimeContext): String {
+    val context = currentRaftEffectiveDateTimeContext(timeContext)
+    val today = context.resolvedTodayEpochDay()
+    val offsetMinutes = context.offsetMinutesAt(epochMillis)
+    val turnDay = floorDiv(epochMillis + offsetMinutes.toLong() * MillisPerMinute, MillisPerDay)
+    return if (today == null || turnDay == today) {
+        formatRaftLocalClock(epochMillis, offsetMinutes, context.timeFormat)
+    } else {
+        raftLocalizedShortDateTime(epochMillis, context)
+    }
+}
 
 /**
  * Web AgentNowCard `RecentTurnRow`, one per turn: its time, who woke it, what it did, and its
  * compact badges. artin 2026-11-18 (#wg-mobile-sync:c1493fb5): on a phone the row wraps instead of
- * truncating, so nothing is cut to "…"; the badges move to the next line whole, aligned with the
- * text, not the clock (web slock #15377 does the same).
+ * truncating, so nothing is cut to "…"; the badges sit on their own line below the text, aligned
+ * with the text, not the clock (#wg-mobile-sync:#251).
  *
  * The rows share one time column, as wide as the widest label measured here (its font, the font
  * scale and the time format as they are), so every row's text starts at the same x when a turn of
- * another day carries its date ("11-20 23:57" above "00:18"). The web's row sizes each label on
+ * another day carries its date ("Nov 20, 23:57" above "00:18"). The web's row sizes each label on
  * its own (AgentNowCard.tsx `RecentTurnRow`, `shrink-0 whitespace-nowrap`); the labels stay left
  * aligned as there.
  */
@@ -280,7 +306,7 @@ private val MembersAgentRecentTurnRowGap = 6.dp
 @Composable
 private fun MembersAgentRecentTurnTime(turn: AgentActivityTurn, timeContext: RaftTimeContext) {
     RaftText(
-        text = membersActivityOverviewClock(turn.startedAtEpochMillis, timeContext),
+        text = membersAgentNowTurnTime(turn.startedAtEpochMillis, timeContext),
         style = RaftTheme.typography.monoMeta,
         color = RaftTheme.colors.foregroundHint,
         maxLines = 1,
@@ -296,20 +322,33 @@ private fun MembersAgentRecentTurnText(turn: AgentActivityTurn) {
     val colors = RaftTheme.colors
     val typography = RaftTheme.typography
     val trigger = membersActivityOverviewCompactTriggerText(turn.trigger)
-    FlowRow(
+    Column(
         modifier = Modifier.testTag(MembersAgentRecentTurnTextTag),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalArrangement = Arrangement.spacedBy(4.dp),
-        itemVerticalAlignment = Alignment.CenterVertically,
     ) {
-        if (trigger != null) {
-            RaftText(text = trigger, style = typography.callout, color = colors.foreground)
+        FlowRow(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+            itemVerticalAlignment = Alignment.CenterVertically,
+        ) {
+            if (trigger != null) {
+                RaftText(text = trigger, style = typography.callout, color = colors.foreground)
+            }
+            RaftText(
+                text = membersActivityOverviewActionsText(turn.actions, turn.messagesSent),
+                style = typography.callout,
+                color = colors.foregroundMuted,
+            )
         }
-        RaftText(
-            text = membersActivityOverviewActionsText(turn.actions, turn.messagesSent),
-            style = typography.callout,
-            color = colors.foregroundMuted,
-        )
-        MembersAgentActivityTurnBadges(turn, compact = true)
+        if (turn.hasFinishedTurnBadges()) {
+            FlowRow(
+                modifier = Modifier.testTag(MembersAgentRecentTurnBadgesTag),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp),
+                itemVerticalAlignment = Alignment.CenterVertically,
+            ) {
+                MembersAgentActivityTurnBadges(turn, compact = true)
+            }
+        }
     }
 }

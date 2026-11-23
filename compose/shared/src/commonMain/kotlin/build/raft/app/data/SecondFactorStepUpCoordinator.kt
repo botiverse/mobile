@@ -28,6 +28,8 @@ sealed interface SecondFactorStepUpBanner {
     data object PasskeyNoCredential : SecondFactorStepUpBanner
     /** This device can't use a passkey here: the dialog moved on to the other methods. */
     data object PasskeyUnsupported : SecondFactorStepUpBanner
+    /** The platform passkey prompt failed locally (for example, provider or network verification failed). */
+    data object PasskeyFailed : SecondFactorStepUpBanner
     /** Continue in browser: the web sheet was closed (or the page's Cancel) before it confirmed. */
     data object WebStepUpCancelled : SecondFactorStepUpBanner
     /** Continue in browser: the request or its code ran out (`error=expired`, 410). */
@@ -641,7 +643,7 @@ class SecondFactorStepUpCoordinator(
                 }
             }
             RaftNativePasskeyAssertionResult.Unsupported -> publish(shown.withoutPasskey(SecondFactorStepUpBanner.PasskeyUnsupported))
-            is RaftNativePasskeyAssertionResult.Error -> publish(shown.copy(banner = SecondFactorStepUpBanner.Failed(null)))
+            is RaftNativePasskeyAssertionResult.Error -> publish(shown.copy(banner = SecondFactorStepUpBanner.PasskeyFailed))
         }
     }
 

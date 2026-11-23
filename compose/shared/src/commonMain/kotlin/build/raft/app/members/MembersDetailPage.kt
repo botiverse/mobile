@@ -45,6 +45,7 @@ import build.raft.app.data.SharedAgentIssueReportRequest
 import build.raft.app.data.ProcessRaftDatetimeFoundationOwner
 import build.raft.app.data.RaftShellStoreScope
 import build.raft.app.data.RaftTimeFormatRuntime
+import build.raft.app.data.RaftTimeZoneRuntime
 import build.raft.app.data.defaultNowMillis
 import build.raft.app.data.toSharedConversationDirectoryState
 import build.raft.app.data.SharedConversationDirectoryState
@@ -1440,7 +1441,7 @@ internal fun MemberDetailPageContent(
                                                 bridge.errorToast(
                                                     tabOrderSaveErrorTemplate
                                                         .membersFormat(result.error.userFacingMessage(errorStrings)),
-                                                    result.error,
+                                                    result.error.traceId,
                                                 )
                                             }
                                             is DataResult.NoPermission -> {
@@ -2163,6 +2164,7 @@ internal fun rememberMemberDetailTimeContextProvider(
     val hasPinnedClock = payload.nowEpochMillis != null
     val inherited = currentRaftTimeContextProvider
     val runtimeTimeFormat = RaftTimeFormatRuntime.observe(fallback = payload.timeFormat ?: RaftTimeFormat24Hour)
+    val runtimeTimeZone = RaftTimeZoneRuntime.observe()
     val pinnedContext =
         remember(hasPinnedClock, payload) {
             if (hasPinnedClock) payload.toRaftTimeContext() else null
@@ -2173,16 +2175,21 @@ internal fun rememberMemberDetailTimeContextProvider(
         }
     val inheritedDateContext = inherited?.dateContext
     val inheritedMatchesRuntime =
-        inherited != null && inheritedDateContext?.timeFormat == runtimeTimeFormat
+        inherited != null &&
+            inheritedDateContext?.timeFormat == runtimeTimeFormat &&
+            (runtimeTimeZone == null || inheritedDateContext.timeZoneId == runtimeTimeZone)
     val needsFallback = !hasPinnedClock && !inheritedMatchesRuntime
     val fallbackCapabilities =
-        remember(needsFallback, payload.localOffsetMinutes, runtimeTimeFormat) {
+        remember(needsFallback, payload.localOffsetMinutes, runtimeTimeFormat, runtimeTimeZone) {
             if (needsFallback) {
                 RaftTimeCapabilities(
                     localOffsetMinutes =
                         payload.localOffsetMinutes
                             ?: ProcessRaftDatetimeFoundationOwner.localOffsetMinutesAt(defaultNowMillis(), 0),
                     timeFormat = runtimeTimeFormat,
+                ).withRuntimePreferences(
+                    timeFormat = runtimeTimeFormat,
+                    preferredTimeZoneId = runtimeTimeZone,
                 )
             } else {
                 null

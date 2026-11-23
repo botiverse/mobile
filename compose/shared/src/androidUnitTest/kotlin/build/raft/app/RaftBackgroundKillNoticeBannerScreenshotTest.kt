@@ -20,10 +20,9 @@ import org.robolectric.annotation.GraphicsMode
 
 /**
  * The Android background-kill notice ("Raft was stopped in the background") at the top of the
- * page as the phone shell draws it, on a 360dp phone with the Huawei / Honor guidance: Don't show
- * again and Dismiss (ghost) before Open settings, wrapping onto a second line where the three do
- * not fit on one. English and Simplified Chinese; verify / record as [RaftRobolectricScreenshot]
- * (the zh golden is CI's render).
+ * page as the phone shell draws it, on a 360dp phone directing the user to Notification settings:
+ * Don't show again and Dismiss (ghost) before Open settings, wrapping onto a second line where the
+ * three do not fit on one. Verify / record as [RaftRobolectricScreenshot].
  */
 @RunWith(RobolectricTestRunner::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)

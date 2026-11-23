@@ -224,6 +224,7 @@
     <string name="settings_step_up_passkeys_unavailable">지금은 패스키를 사용할 수 없어요. 잠시 후 다시 시도해 주세요.</string>
     <string name="settings_step_up_passkey_none_here">이 기기에는 Raft 패스키가 없어요. 다른 방법을 사용하세요.</string>
     <string name="settings_step_up_passkey_unsupported">이 기기에서는 여기서 패스키를 사용할 수 없어요. 다른 방법을 사용하세요.</string>
+    <string name="settings_step_up_passkey_failed">패스키 확인을 완료하지 못했어요. 네트워크 연결을 확인한 뒤 다시 시도하거나 다른 방법을 사용하세요.</string>
     <string name="settings_step_up_failed">확인하지 못했어요. 다시 시도해 주세요.</string>
     <string name="settings_step_up_lost_device_description">잃어버린 기기를 로그아웃하고 그 기기가 승인한 것의 연결을 끊으려면 2단계 인증을 다시 해야 해요. 인증은 10분 동안 유지돼요.</string>
     <string name="settings_step_up_lost_authenticator">인증 앱이 있는 기기를 잃어버렸나요?</string>
@@ -2746,11 +2747,13 @@
     <string name="settings_notifications_battery_optimization_detail">Raft의 배터리 최적화를 꺼서 시스템이 백그라운드 연결을 중단하지 않게 하세요. 일부 휴대폰에서는 앱 실행 관리나 백그라운드 활동 설정에서도 Raft를 허용해야 해요.</string>
     <string name="settings_notifications_battery_optimization_allowed">허용됨</string>
     <string name="settings_notifications_battery_optimization_request">허용</string>
+    <string name="settings_notifications_vendor_background_title">자동 실행 및 백그라운드 설정</string>
+    <string name="settings_notifications_vendor_background_detail_huawei">앱 실행 관리에서 Raft의 자동 관리를 끄고 자동 실행, 보조 실행, 백그라운드 실행을 허용해 주세요.</string>
+    <string name="settings_notifications_vendor_background_detail_lenovo">기기의 자동 실행 및 백그라운드 관리 설정에서 Raft의 자동 실행과 백그라운드 실행을 허용해 주세요.</string>
+    <string name="settings_notifications_vendor_background_detail_vendor">시스템 설정에서 Raft의 자동 실행과 제한 없는 백그라운드 실행을 허용해 주세요.</string>
+    <string name="settings_notifications_vendor_background_detail_app_details">백그라운드에서 종료되지 않도록 시스템 배터리 설정에서 Raft를 제한 없음으로 설정해 주세요.</string>
     <string name="background_kill_notice_title">Raft가 백그라운드에서 종료되었어요</string>
-    <string name="background_kill_notice_body_huawei">기기에서 백그라운드에 있던 Raft를 종료해 메시지와 알림이 지연될 수 있어요. 앱 실행 관리에서 Raft의 자동 관리를 끄고 자동 실행, 보조 실행, 백그라운드 실행을 허용해 주세요.</string>
-    <string name="background_kill_notice_body_lenovo">기기에서 백그라운드에 있던 Raft를 종료해 메시지와 알림이 지연될 수 있어요. 기기의 자동 실행 및 백그라운드 관리 설정에서 Raft의 자동 실행과 백그라운드 실행을 허용해 주세요.</string>
-    <string name="background_kill_notice_body_vendor">기기에서 백그라운드에 있던 Raft를 종료해 메시지와 알림이 지연될 수 있어요. 시스템 설정에서 Raft의 자동 실행과 제한 없는 백그라운드 실행을 허용해 주세요.</string>
-    <string name="background_kill_notice_body_app_details">기기에서 백그라운드에 있던 Raft를 종료해 메시지와 알림이 지연될 수 있어요. 앱 정보에서 배터리 설정을 열고 Raft를 제한 없음으로 변경해 주세요.</string>
+    <string name="background_kill_notice_body">기기에서 백그라운드에 있던 Raft를 종료해 메시지와 알림이 지연될 수 있어요. 알림 설정을 열어 Raft의 백그라운드 실행을 허용해 주세요.</string>
     <string name="background_kill_notice_action_open_settings">설정 열기</string>
     <string name="background_kill_notice_action_dont_show_again">다시 표시 안 함</string>
     <string name="settings_notifications_offline_computers_title">오프라인 컴퓨터 알림</string>
@@ -3924,6 +3927,10 @@
     <string name="joint_member_connect_row_connected_by_you">내가 연결함</string>
     <string name="joint_member_connect_row_connected_now">방금 연결됨</string>
     <string name="joint_member_connect_row_not_admin">소유자나 관리자만 연결할 수 있어요</string>
+    <string name="joint_member_connect_row_at_limit">무료 · 다른 외부 채널에 참여 중</string>
+    <string name="joint_member_connect_row_ask_owner">소유자에게 업그레이드 요청</string>
+    <string name="joint_member_connect_row_ask_owner_server">%1$s 서버 소유자에게 업그레이드 요청</string>
+    <string name="external_invite_connect_upgrade_server">%1$s 업그레이드</string>
     <string name="joint_member_connect_row_owner">소유자예요</string>
     <string name="joint_member_connect_search">서버 검색</string>
     <string name="joint_member_connect_title">내 서버 연결</string>
@@ -4676,6 +4683,7 @@
     <string name="upgrade_dialog_general_hint">Pro로 업그레이드하면 메시지 기록, 파일 업로드, 외부 채널에 대한 무료 요금제 제한이 풀려요.</string>
     <string name="upgrade_dialog_external_limit_title">%1$s 서버 외부 사람과 채널 더 공유하기</string>
     <string name="upgrade_dialog_external_limit_hint">무료 요금제에는 외부 채널이 1개 포함되는데, %1$s 서버는 이미 1개를 쓰고 있어요. Pro에서는 %1$s 서버가 필요한 만큼 채널을 공유할 수 있어요.</string>
+    <string name="upgrade_dialog_external_limit_hint_channel">무료 요금제에는 외부 채널이 1개 포함되는데, %1$s 서버에서는 %2$s 채널이 그 1개예요. Pro에서는 %1$s 서버가 필요한 만큼 채널을 공유할 수 있어요.</string>
     <string name="upgrade_dialog_external_frozen_title">외부 채널에서 다시 글 쓰기</string>
     <string name="upgrade_dialog_external_frozen_hint">무료 요금제에서는 외부 채널을 1개만 쓸 수 있어요. 업그레이드하면 모든 외부 채널에서 다시 글을 쓸 수 있어요.</string>
     <string name="external_freeze_notice">이 서버는 무료 요금제이고 외부 사람과 채널을 2개 이상 공유하고 있어요. %1$s부터 그 채널들에 글을 쓸 수 없어요. 계속 글을 쓰려면 업그레이드하거나, 그런 채널을 하나만 남기고 나가 주세요.</string>
@@ -4722,6 +4730,7 @@
     <string name="upgrade_dialog_limit_pro_theme">무료 요금제에는 심심한 회색 테마가 포함되지 않아요.</string>
     <string name="upgrade_dialog_limit_general">%1$s 서버는 무료 요금제를 사용 중이에요.</string>
     <string name="upgrade_dialog_limit_external_limit">무료 요금제에는 외부 채널이 1개 포함되는데, %1$s 서버는 이미 1개를 쓰고 있어요.</string>
+    <string name="upgrade_dialog_limit_external_limit_channel">무료 요금제에는 외부 채널이 1개 포함되는데, %1$s 서버에서는 %2$s 채널이 그 1개예요.</string>
     <string name="upgrade_dialog_limit_external_frozen">무료 요금제에서는 외부 채널을 1개만 쓸 수 있어요.</string>
     <string name="upgrade_dialog_limit_seats">%1$s 서버의 시트가 다 찼어요.</string>
     <string name="invite_human_view_billing">결제 정보 보기</string>

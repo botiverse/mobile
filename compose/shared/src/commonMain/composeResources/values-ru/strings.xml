@@ -224,6 +224,7 @@
     <string name="settings_step_up_passkeys_unavailable">Ключи доступа сейчас недоступны. Попробуйте позже.</string>
     <string name="settings_step_up_passkey_none_here">На этом устройстве нет ключа доступа для Raft. Выберите другой способ.</string>
     <string name="settings_step_up_passkey_unsupported">Это устройство не может использовать здесь ваш ключ доступа. Выберите другой способ.</string>
+    <string name="settings_step_up_passkey_failed">Не удалось завершить проверку ключа доступа. Проверьте подключение к сети и попробуйте ещё раз или выберите другой способ.</string>
     <string name="settings_step_up_failed">Не удалось подтвердить. Попробуйте ещё раз.</string>
     <string name="settings_step_up_lost_device_description">Чтобы выйти на потерянном устройстве и отключить то, что с него одобрено, нужно заново пройти второй шаг. Подтверждение действует 10 минут.</string>
     <string name="settings_step_up_lost_authenticator">Потеряли устройство с аутентификатором?</string>
@@ -2746,11 +2747,13 @@
     <string name="settings_notifications_battery_optimization_detail">Отключите для Raft оптимизацию батареи, чтобы система не прерывала фоновое подключение. На некоторых телефонах также нужно разрешить Raft в настройках автозапуска или фоновой активности.</string>
     <string name="settings_notifications_battery_optimization_allowed">Разрешено</string>
     <string name="settings_notifications_battery_optimization_request">Разрешить</string>
+    <string name="settings_notifications_vendor_background_title">Автозапуск и работа в фоне</string>
+    <string name="settings_notifications_vendor_background_detail_huawei">В разделе «Запуск приложений» переключите Raft на ручное управление и разрешите автозапуск, косвенный запуск и работу в фоновом режиме.</string>
+    <string name="settings_notifications_vendor_background_detail_lenovo">Разрешите автозапуск и фоновую работу Raft в системных настройках управления фоновой активностью.</string>
+    <string name="settings_notifications_vendor_background_detail_vendor">Разрешите Raft автозапуск и работу в фоне без ограничений в системных настройках.</string>
+    <string name="settings_notifications_vendor_background_detail_app_details">Разрешите Raft работу без ограничений батареи в системных настройках, чтобы система не останавливала приложение в фоне.</string>
     <string name="background_kill_notice_title">Raft был остановлен в фоновом режиме</string>
-    <string name="background_kill_notice_body_huawei">Устройство остановило Raft в фоне, из-за чего сообщения и уведомления могут приходить с задержкой. В разделе «Запуск приложений» переключите Raft на ручное управление и разрешите автозапуск, косвенный запуск и работу в фоновом режиме.</string>
-    <string name="background_kill_notice_body_lenovo">Устройство остановило Raft в фоне, из-за чего сообщения и уведомления могут приходить с задержкой. Разрешите автозапуск и фоновую работу Raft в системных настройках управления фоновой активностью.</string>
-    <string name="background_kill_notice_body_vendor">Устройство остановило Raft в фоне, из-за чего сообщения и уведомления могут приходить с задержкой. Разрешите Raft автозапуск и работу в фоне без ограничений в системных настройках.</string>
-    <string name="background_kill_notice_body_app_details">Устройство остановило Raft в фоне, из-за чего сообщения и уведомления могут приходить с задержкой. Откройте «О приложении», перейдите в раздел «Батарея» и выберите для Raft режим «Без ограничений».</string>
+    <string name="background_kill_notice_body">Устройство остановило Raft в фоне, из-за чего сообщения и уведомления могут приходить с задержкой. Откройте настройки уведомлений и разрешите Raft работу в фоне.</string>
     <string name="background_kill_notice_action_open_settings">Открыть настройки</string>
     <string name="background_kill_notice_action_dont_show_again">Больше не показывать</string>
     <string name="settings_notifications_offline_computers_title">Оповещения о компьютерах не в сети</string>
@@ -3924,6 +3927,10 @@
     <string name="joint_member_connect_row_connected_by_you">Подключён вами</string>
     <string name="joint_member_connect_row_connected_now">Только что подключён</string>
     <string name="joint_member_connect_row_not_admin">Подключить его может только владелец или администратор</string>
+    <string name="joint_member_connect_row_at_limit">Free · уже в другом внешнем канале</string>
+    <string name="joint_member_connect_row_ask_owner">Попросить владельца повысить тариф</string>
+    <string name="joint_member_connect_row_ask_owner_server">Попросить владельца сервера %1$s повысить тариф</string>
+    <string name="external_invite_connect_upgrade_server">Повысить тариф сервера %1$s</string>
     <string name="joint_member_connect_row_owner">Вы владелец</string>
     <string name="joint_member_connect_search">Поиск серверов</string>
     <string name="joint_member_connect_title">Подключить свои серверы</string>
@@ -4652,6 +4659,7 @@
     <string name="upgrade_dialog_general_hint">Pro снимает ограничения тарифа Free на историю сообщений, загрузку файлов и внешние каналы.</string>
     <string name="upgrade_dialog_external_limit_title">Больше каналов для людей вне сервера %1$s</string>
     <string name="upgrade_dialog_external_limit_hint">Тариф Free включает 1 внешний канал, и у сервера %1$s он уже есть. На Pro сервер %1$s может открыть для людей извне столько каналов, сколько нужно.</string>
+    <string name="upgrade_dialog_external_limit_hint_channel">Тариф Free включает 1 внешний канал, и у сервера %1$s это канал %2$s. На Pro сервер %1$s может открыть для людей извне столько каналов, сколько нужно.</string>
     <string name="upgrade_dialog_external_frozen_title">Вернуть возможность писать во внешних каналах</string>
     <string name="upgrade_dialog_external_frozen_hint">На тарифе Free может быть только 1 внешний канал. Повысьте тариф, чтобы снова писать во всех внешних каналах.</string>
     <string name="external_freeze_notice">Этот сервер на тарифе Free и делит больше одного канала с внешними участниками. С %1$s он не сможет писать в этих каналах. Чтобы продолжать писать, повысьте тариф или покиньте все такие каналы, кроме одного.</string>
@@ -4698,6 +4706,7 @@
     <string name="upgrade_dialog_limit_pro_theme">Тема «Скучный серый» не входит в тариф Free.</string>
     <string name="upgrade_dialog_limit_general">Сервер %1$s на тарифе Free.</string>
     <string name="upgrade_dialog_limit_external_limit">Тариф Free включает 1 внешний канал, и у сервера %1$s он уже есть.</string>
+    <string name="upgrade_dialog_limit_external_limit_channel">Тариф Free включает 1 внешний канал, и у сервера %1$s это канал %2$s.</string>
     <string name="upgrade_dialog_limit_external_frozen">На тарифе Free может быть только 1 внешний канал.</string>
     <string name="upgrade_dialog_limit_seats">Все места сервера %1$s заняты.</string>
     <string name="invite_human_view_billing">Открыть настройки оплаты</string>

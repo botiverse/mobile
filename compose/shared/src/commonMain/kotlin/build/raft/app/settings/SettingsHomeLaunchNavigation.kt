@@ -15,6 +15,7 @@ import build.raft.app.data.SearchPersonalizationEntityKind
 import build.raft.app.data.SearchTimeRange
 import build.raft.app.data.SharedConversationDirectoryState
 import build.raft.app.data.ScreenError
+import build.raft.app.data.normalizeValidIanaTimeZoneOrNull
 import build.raft.app.model.ConversationKind
 import build.raft.app.model.ConversationPermissions
 import build.raft.app.model.ChannelId
@@ -50,6 +51,10 @@ internal typealias AppShellThreadTimeContext = RaftTimeContext
 internal fun StoredAuthSession?.appShellThreadTimeFormat(): String? =
     listOf(this?.user?.preferredTimeFormat, this?.user?.timeFormat)
         .firstOrNull { it == "12h" || it == "24h" }
+
+internal fun StoredAuthSession?.appShellPreferredTimezone(): String? =
+    listOf(this?.user?.preferredTimezone, this?.user?.timezone)
+        .firstNotNullOfOrNull(::normalizeValidIanaTimeZoneOrNull)
 
 internal fun build.raft.app.compat.json.JSONObject.threadTimeCapabilities(): RaftTimeCapabilities? {
     val offset = optString("localOffsetMinutes").toIntOrNull() ?: return null

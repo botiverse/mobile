@@ -4,6 +4,7 @@ import build.raft.app.data.RaftBackgroundKillNotice
 import build.raft.app.data.RaftBackgroundWhitelistGuide
 import build.raft.app.data.RaftMinBuildGateDecision
 import kotlin.test.Test
+import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
@@ -73,5 +74,14 @@ class RaftBackgroundKillNoticeVisibilityTest {
                 dismissedMinBuildBannerThreshold = 12800000L,
             )
         )
+    }
+
+    @Test
+    fun bannerSettingsLinkRoutesToInAppNotificationsKeepAliveAnchor() {
+        assertEquals("notifications", RaftBackgroundKillNoticeSettingsLink.webTab)
+        assertEquals(SettingsNativeDetailPage.Notifications.key, RaftBackgroundKillNoticeSettingsLink.destinationKey)
+        assertEquals(SETTINGS_NOTIFICATIONS_BACKGROUND_KEEP_ALIVE_ANCHOR, RaftBackgroundKillNoticeSettingsLink.section)
+        assertEquals(SettingsNativeDetailPage.Notifications.key, RaftBackgroundKillNoticeSettingsTarget.destinationKey)
+        assertEquals(null, RaftBackgroundKillNoticeSettingsTarget.switchToServerId)
     }
 }

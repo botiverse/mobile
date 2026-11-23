@@ -230,7 +230,15 @@ class RuntimeAuthContractTest {
                     ),
             )
         val refused = assertIs<RuntimeAuthCall.Refused>(RaftComputersApiClient(api).startRuntimeLogin(ServerId("s1"), "m1", RuntimeAuthRuntime.Claude))
-        assertEquals(RuntimeAuthRequestError(409, "login_in_progress", "0123456789abcdef0123456789abcdef"), refused.error)
+        assertEquals(
+            RuntimeAuthRequestError(
+                409,
+                "login_in_progress",
+                "0123456789abcdef0123456789abcdef",
+                "A sign-in for this runtime is already running on this Computer.",
+            ),
+            refused.error,
+        )
         // A 200 without a login id that checks out is no login.
         val malformed = RaftComputersApiClient(RecordingRuntimeAuthApi(answer = HomeNetworkResponse(200, """{"loginId":"nope"}""")))
         assertEquals("malformed_response", assertIs<RuntimeAuthCall.Refused>(malformed.startRuntimeLogin(ServerId("s1"), "m1", RuntimeAuthRuntime.Claude)).error.code)

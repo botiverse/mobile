@@ -80,8 +80,18 @@ internal data class CreateExternalChannelState(
     val invite: ExternalInviteDialogState = ExternalInviteDialogState(),
     /** The channel the review's confirm created; the invite steps go on for it. */
     val created: CreateChannelResult? = null,
+    /** True once a post-create send failed and left the review open to retry for the created channel. */
+    val retryAfterCreate: Boolean = false,
     val effects: List<CreateExternalChannelEffect> = emptyList(),
 ) {
+    /**
+     * Web `ExternalInviteSteps`: Back stays visible (disabled while busy) during the initial commit
+     * until a post-create send failure leaves the review open in retry mode, after which Skip is
+     * shown instead.
+     */
+    val canReturnToStep2: Boolean
+        get() = created == null || (invite.busy && !retryAfterCreate)
+
     /**
      * Web `createdExternal && !externalCommitting` (slock #15136): "created, but the invites weren't
      * sent" only once a send after the create came back unsent and the review stayed open; not while
@@ -182,7 +192,7 @@ internal class CreateExternalChannelStore(
         when (intent) {
             CreateExternalChannelIntent.Start -> start()
             CreateExternalChannelIntent.LoadServers -> loadServers()
-            is CreateExternalChannelIntent.SetText -> updateInvite { it.copy(text = intent.text, failure = null) }
+            is CreateExternalChannelIntent.SetText -> updateInvite { if (it.busy) it else it.copy(text = intent.text, failure = null) }
             is CreateExternalChannelIntent.SetServers -> updateInvite { if (it.busy) it else it.copy(serverIds = intent.serverIds) }
             is CreateExternalChannelIntent.SetConnectInvite -> updateInvite { it.withConnectInvite(intent.email, intent.checked) }
             CreateExternalChannelIntent.Review -> review()
@@ -295,11 +305,21 @@ internal class CreateExternalChannelStore(
                     }
                     // The channel stays: the review says it was created, and a retry sends to it.
                     is ExternalInviteAnswer.Refused -> {
-                        updateInvite { it.copy(busy = false, failure = answer.refusal.toFailure()) }
+                        mutableState.update {
+                            it.copy(
+                                retryAfterCreate = true,
+                                invite = it.invite.copy(busy = false, failure = answer.refusal.toFailure()),
+                            )
+                        }
                         return@launch
                     }
                     null -> {
-                        updateInvite { it.copy(busy = false, failure = result.externalInviteFailureOf()) }
+                        mutableState.update {
+                            it.copy(
+                                retryAfterCreate = true,
+                                invite = it.invite.copy(busy = false, failure = result.externalInviteFailureOf()),
+                            )
+                        }
                         return@launch
                     }
                 }

@@ -115,6 +115,11 @@ class SecondFactorStepUpPasskeyUiTest {
         waitForIdle()
         assertEquals(1, asked.size)
         onNodeWithText("The passkey prompt was closed. Try again, or use another way.").assertExists()
+
+        // A local passkey/network verification failure gives an actionable fallback hint.
+        runOnIdle { state.value = passkeyFirst.copy(banner = SecondFactorStepUpBanner.PasskeyFailed) }
+        waitForIdle()
+        onNodeWithText("Passkey verification couldn't complete. Check your network connection and try again, or use another way.").assertExists()
     }
 
     @Test

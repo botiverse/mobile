@@ -1,10 +1,24 @@
 package build.raft.app
 
+import build.raft.app.base.BridgeModule
+import build.raft.app.cmp.RaftCmpToasts
+import build.raft.app.cmp.host.BridgeWireHostCapabilities
+import build.raft.app.cmp.host.HostBridgeTransport
+import build.raft.app.cmp.host.RaftCmpHost
+import build.raft.app.cmp.host.RaftCmpNavigator
+import build.raft.app.compat.json.JSONObject
+import build.raft.app.compat.module.Module
+import build.raft.app.compat.pager.PageData
+import build.raft.app.compat.pager.Pager
 import build.raft.app.data.DataRequestPriority
 import build.raft.app.data.HomeNetworkResponse
+import build.raft.app.data.PermissionBlocker
 import build.raft.app.data.RaftTasksApi
+import build.raft.app.data.ScreenError
 import build.raft.app.data.SharedTasksDataSource
 import build.raft.app.data.SharedTasksDataStore
+import build.raft.app.data.SharedTasksEvent
+import build.raft.app.data.SharedTasksOperation
 import build.raft.app.data.ThreadApiResult
 import build.raft.app.data.parseSharedServerTasksPayload
 import build.raft.app.model.ChannelId
@@ -14,9 +28,12 @@ import build.raft.app.model.TaskId
 import build.raft.app.model.TaskStatus
 import build.raft.app.model.TaskSummary
 import build.raft.app.model.raftEpochDayForDate
+import build.raft.designsystem.components.RaftToastHostState
+import build.raft.designsystem.components.RaftToastIntent
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
+import kotlinx.serialization.json.JsonObject
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -321,6 +338,197 @@ class TaskOpenSurfacesTest {
         advanceUntilIdle()
         assertEquals(1, loadErrors)
         assertTrue(openedSurfaces.isEmpty())
+
+        // 4. 403 forwards the full PermissionBlocker (serverMessage, serverCode, traceId) rather than only traceId.
+        clockMs = 8_000L
+        val traceId = "62ac7fa79a3785a6bee414a074f82634"
+        val blockers = mutableListOf<PermissionBlocker>()
+        nextTaskByNumberResponse =
+            HomeNetworkResponse(
+                code = 403,
+                bodyText = null,
+                errorBodyText = """{"error":"Private channel tasks require membership.","code":"channel_access_denied"}""",
+                responseHeaders = mapOf("X-Trace-Id" to listOf(traceId)),
+            )
+        launchTasksTabTaskOpen(
+            task = summaryOnly,
+            serverId = "server-1",
+            tasksDataStore = freshStore,
+            tasksDataSource = dataSource,
+            gate = gate,
+            scope = this,
+            isStillActive = { true },
+            openSurface = { openedSurfaces += it },
+            openPage = { opened, convId -> openedPages += opened to convId },
+            onLoadError = { loadErrors += 1 },
+            onNoPermission = { blockers += it },
+            onNotFound = { notFounds += 1 },
+            log = {},
+        )
+        advanceUntilIdle()
+        val blocker = blockers.single()
+        assertEquals("tasks_403", blocker.code)
+        assertEquals("Private channel tasks require membership.", blocker.serverMessage)
+        assertEquals("channel_access_denied", blocker.serverCode)
+        assertEquals(traceId, blocker.traceId)
+    }
+
+    @Test
+    fun showTaskOperationFailedToastRoutesStatusAndAssignHttpRefusalsAndRespectsAuthGate() {
+        val transport = HostBridgeTransport { _, _, _ -> }
+        val capabilities = BridgeWireHostCapabilities(transport)
+        val navigator =
+            object : RaftCmpNavigator {
+                override fun openPage(pageName: String, pageData: JsonObject) = Unit
+                override fun closePage() = Unit
+            }
+        fun newBridge(): BridgeModule {
+            val pager =
+                object : Pager() {
+                    override fun createExternalModules(): Map<String, Module> = mapOf(BridgeModule.MODULE_NAME to BridgeModule())
+                }
+            pager.pagerId = "task-open-surfaces-toast-test"
+            pager.pageData = PageData(JSONObject())
+            pager.host = RaftCmpHost(capabilities, navigator, bridgeTransport = transport)
+            return pager.acquireModule(BridgeModule.MODULE_NAME)
+        }
+        fun withWindow(block: (RaftToastHostState, BridgeModule) -> Unit) {
+            val hostState = RaftToastHostState()
+            val window =
+                RaftCmpToasts.attach(hostState).also {
+                    it.setLifecycle(visible = true, resumed = true)
+                    it.addOrigin(capabilities)
+                }
+            try {
+                block(hostState, newBridge())
+            } finally {
+                window.detach()
+            }
+        }
+        val traceId = "62ac7fa79a3785a6bee414a074f82634"
+        val recorded = mutableListOf<Pair<String, ScreenError>>()
+        val bridge = newBridge()
+
+        // HTTP 403 status refusal has code "tasks_403" (not "tasks_status_*") and must still toast with full ScreenError.
+        bridge.showTaskOperationFailedToast(
+            event =
+                SharedTasksEvent.OperationFailed(
+                    code = "tasks_403",
+                    traceId = traceId,
+                    serverMessage = "Channel is archived.",
+                    serverCode = "channel_archived",
+                    operation = SharedTasksOperation.UpdateStatus,
+                ),
+            updateFailedLabel = "Unable to update task",
+            assignFailedLabel = "Unable to update assignee",
+            onToast = { title, error -> recorded += title to error },
+        )
+        assertEquals(
+            "Unable to update task" to
+                ScreenError(
+                    code = "tasks_403",
+                    retryable = false,
+                    serverMessage = "Channel is archived.",
+                    serverCode = "channel_archived",
+                    traceId = traceId,
+                ),
+            recorded.removeAt(0),
+        )
+
+        // HTTP 400 assign refusal has code "tasks_400" (not "tasks_assign_*") and must still toast.
+        bridge.showTaskOperationFailedToast(
+            event =
+                SharedTasksEvent.OperationFailed(
+                    code = "tasks_400",
+                    traceId = traceId,
+                    serverMessage = "Assignee is not in channel.",
+                    serverCode = "assignee_not_in_channel",
+                    operation = SharedTasksOperation.AssignTask,
+                ),
+            updateFailedLabel = "Unable to update task",
+            assignFailedLabel = "Unable to update assignee",
+            onToast = { title, error -> recorded += title to error },
+        )
+        assertEquals(
+            "Unable to update assignee" to
+                ScreenError(
+                    code = "tasks_400",
+                    retryable = false,
+                    serverMessage = "Assignee is not in channel.",
+                    serverCode = "assignee_not_in_channel",
+                    traceId = traceId,
+                ),
+            recorded.removeAt(0),
+        )
+
+        // Plan/quota serverCode (e.g. "channel_read_only") on status mutation also toasts cleanly.
+        bridge.showTaskOperationFailedToast(
+            event =
+                SharedTasksEvent.OperationFailed(
+                    code = "channel_read_only",
+                    traceId = traceId,
+                    serverMessage = "Channel is read-only.",
+                    serverCode = "channel_read_only",
+                    operation = SharedTasksOperation.UpdateStatus,
+                ),
+            updateFailedLabel = "Unable to update task",
+            assignFailedLabel = "Unable to update assignee",
+            onToast = { title, error -> recorded += title to error },
+        )
+        assertEquals("Unable to update task", recorded.removeAt(0).first)
+
+        // Load and CreateTasks failures neither toast nor invoke routeAuthRequired.
+        var authChecks = 0
+        bridge.showTaskOperationFailedToast(
+            event = SharedTasksEvent.OperationFailed(code = "auth_required", operation = SharedTasksOperation.Load),
+            updateFailedLabel = "Unable to update task",
+            assignFailedLabel = "Unable to update assignee",
+            onToast = { title, error -> recorded += title to error },
+        ) {
+            authChecks += 1
+            true
+        }
+        bridge.showTaskOperationFailedToast(
+            event = SharedTasksEvent.OperationFailed(code = "tasks_403", operation = SharedTasksOperation.CreateTasks),
+            updateFailedLabel = "Unable to update task",
+            assignFailedLabel = "Unable to update assignee",
+            onToast = { title, error -> recorded += title to error },
+        ) {
+            authChecks += 1
+            false
+        }
+        assertEquals(0, authChecks)
+        assertTrue(recorded.isEmpty())
+
+        // Auth-routed mutation failures suppress the error toast.
+        bridge.showTaskOperationFailedToast(
+            event =
+                SharedTasksEvent.OperationFailed(
+                    code = "auth_required",
+                    operation = SharedTasksOperation.UpdateStatus,
+                ),
+            updateFailedLabel = "Unable to update task",
+            assignFailedLabel = "Unable to update assignee",
+            onToast = { title, error -> recorded += title to error },
+        ) { it == "auth_required" }
+        assertTrue(recorded.isEmpty())
+
+        // Default BridgeModule path posts an Error toast without resolving Compose string resources when traceId is null.
+        withWindow { state, liveBridge ->
+            liveBridge.showTaskOperationFailedToast(
+                event =
+                    SharedTasksEvent.OperationFailed(
+                        code = "tasks_local_projection_missing",
+                        traceId = null,
+                        operation = SharedTasksOperation.UpdateStatus,
+                    ),
+                updateFailedLabel = "Unable to update task",
+                assignFailedLabel = "Unable to update assignee",
+            )
+            val toast = state.visible.single()
+            assertEquals("Unable to update task", toast.title)
+            assertEquals(RaftToastIntent.Error, toast.intent)
+        }
     }
 
     @Test

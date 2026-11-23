@@ -513,6 +513,9 @@ internal fun RaftUnifiedDialog(
     commitLoading: Boolean = false,
     commitVariant: RaftButtonVariant = RaftButtonVariant.Primary,
     commitIcon: (@Composable () -> Unit)? = null,
+    // Called synchronously when another page covers the host page. Null falls back to synchronous
+    // [onDismiss] (bypassing sheet exit animation so the window unmounts before the push).
+    onPageCover: (() -> Unit)? = null,
     content: @Composable ColumnScope.() -> Unit
 ) {
     // raft-ui dialog titles keep the source case (never ALL CAPS).
@@ -555,6 +558,7 @@ internal fun RaftUnifiedDialog(
         Modal(
             onWillDismiss = { if (dismissEnabled) closeRelay.close(onDismiss) },
             platformTransition = modalPlatformTransition,
+            onPageCover = onPageCover ?: { if (dismissEnabled) onDismiss() },
         ) {
             CompositionLocalProvider(LocalRaftCopyHandler provides copyHandler) {
                 RaftUnifiedDialogSurface(

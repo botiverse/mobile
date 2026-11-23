@@ -1,6 +1,10 @@
 package build.raft.app.shared
 
 import androidx.lifecycle.Lifecycle
+import build.raft.app.AndroidExternalShareInbox
+import build.raft.app.AndroidExternalShareIntent
+import build.raft.app.AndroidExternalShareTokenKey
+import org.json.JSONObject
 
 /**
  * A host Activity that gets a new launch Intent rebuilds itself on it (`recreate()`). Android
@@ -33,6 +37,32 @@ internal fun shouldPreserveLiveAppShellOnNewIntent(
         !recreatePending &&
         currentPageName == RaftCmpActivity.PAGE_APP_SHELL &&
         incomingPageName == RaftCmpActivity.PAGE_APP_SHELL
+
+/**
+ * Extracts a validated opaque external-share token from an incoming app-shell `pageData` JSON
+ * string when a preserved `onNewIntent` delivers Share-to-Raft into an already-live shell.
+ * Rejects any forbidden content/auth fields, matching `ExternalShareLaunch.externalShareLaunchRequestOrNull`.
+ */
+internal fun externalShareTokenFromPageDataOrNull(pageDataText: String?): String? {
+    val raw = pageDataText?.trim()?.takeIf { it.isNotEmpty() } ?: return null
+    val json = runCatching { JSONObject(raw) }.getOrNull() ?: return null
+    if (json.optString("intent").trim() != AndroidExternalShareIntent) return null
+    if (ExternalShareForbiddenIncomingPageDataKeys.any(json::has)) return null
+    val token = json.optString(AndroidExternalShareTokenKey).trim()
+    return token.takeIf(AndroidExternalShareInbox::isSafeToken)
+}
+
+private val ExternalShareForbiddenIncomingPageDataKeys =
+    listOf(
+        "text",
+        "subject",
+        "items",
+        "attachments",
+        "targets",
+        "envelope",
+        "accessToken",
+        "refreshToken",
+    )
 
 /** Which way the shell window got to its first frame, for [raftNewWindowFirstFrameLine]. */
 internal enum class RaftNewWindowPath(val wireName: String) {

@@ -15,6 +15,7 @@ import build.raft.app.model.TaskStatus
 import build.raft.app.model.TaskSummary
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
@@ -876,6 +877,90 @@ class SharedTasksStoreTest {
         assertEquals(1, repository.assignCalls)
         assertEquals(MemberId("user-2"), repository.lastAssignee?.id)
         assertEquals(4L, repository.lastExpectedRevision)
+        runtimeScope.cancel()
+    }
+
+    @Test
+    fun statusAndAssignHttpRefusalsEmitOperationAndServerMessageWithoutSilentDrop() = runBlocking {
+        val runtimeScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val previousTask = task("task-1", TaskStatus.Todo, revision = 4L)
+        val assignee = MemberProfile(MemberId("user-2"), "Nathan Peer", "nathan", MemberKind.Human)
+        val traceId = "62ac7fa79a3785a6bee414a074f82634"
+        val authStore =
+            InMemoryRaftAuthSessionStore(
+                StoredAuthSession(
+                    user = StoredAuthUser(id = "user-1", email = "user@slock.ai"),
+                    accessToken = "token",
+                    refreshToken = "refresh",
+                    selectedServerId = "server-1"
+                )
+            )
+        val repository =
+            FakeTasksRepository(
+                updateResult =
+                    DataResult.NoPermission(
+                        PermissionBlocker(
+                            code = "tasks_403",
+                            serverMessage = "Channel is archived and tasks cannot be edited.",
+                            serverCode = "channel_archived",
+                            traceId = traceId,
+                        )
+                    ),
+                assignResult =
+                    DataResult.Error(
+                        ScreenError(
+                            code = "tasks_400",
+                            retryable = false,
+                            serverMessage = "Assignee is not a member of this channel.",
+                            serverCode = "assignee_not_in_channel",
+                            traceId = traceId,
+                        )
+                    ),
+            )
+        val viewModel =
+            SharedTasksViewModel(
+                authStore = authStore,
+                dataSource = noOpTasksDataSource(),
+                runtimeScopeOverride = runtimeScope,
+                useCase = SharedTasksUseCase(authStore = authStore, repository = repository)
+            )
+        viewModel.dispatch(
+            SharedTasksRouteIntent.SeedContent(
+                TaskSnapshot(tasks = listOf(previousTask), summaryCounts = mapOf(TaskStatus.Todo to 1))
+            )
+        )
+
+        val statusFailure = CompletableDeferred<SharedTasksEvent>()
+        val statusCollector = launch(start = CoroutineStart.UNDISPATCHED) { statusFailure.complete(viewModel.uiEvents.first()) }
+        viewModel.dispatch(SharedTasksRouteIntent.UpdateStatus(previousTask, TaskStatus.Done))
+        val statusEvent = assertIs<SharedTasksEvent.OperationFailed>(withTimeout(2_000L) { statusFailure.await() })
+        statusCollector.cancel()
+        assertEquals("tasks_403", statusEvent.code)
+        assertEquals(SharedTasksOperation.UpdateStatus, statusEvent.operation)
+        assertTrue(statusEvent.isStatusFailure())
+        assertFalse(statusEvent.isAssignFailure())
+        assertEquals("Channel is archived and tasks cannot be edited.", statusEvent.serverMessage)
+        assertEquals("channel_archived", statusEvent.serverCode)
+        assertEquals(traceId, statusEvent.traceId)
+
+        val assignFailure = CompletableDeferred<SharedTasksEvent>()
+        val assignCollector = launch(start = CoroutineStart.UNDISPATCHED) { assignFailure.complete(viewModel.uiEvents.first()) }
+        viewModel.dispatch(SharedTasksRouteIntent.AssignTask(previousTask, assignee))
+        val assignEvent = assertIs<SharedTasksEvent.OperationFailed>(withTimeout(2_000L) { assignFailure.await() })
+        assignCollector.cancel()
+        assertEquals("tasks_400", assignEvent.code)
+        assertEquals(SharedTasksOperation.AssignTask, assignEvent.operation)
+        assertTrue(assignEvent.isAssignFailure())
+        assertFalse(assignEvent.isStatusFailure())
+        assertEquals("Assignee is not a member of this channel.", assignEvent.serverMessage)
+        assertEquals("assignee_not_in_channel", assignEvent.serverCode)
+        assertEquals(traceId, assignEvent.traceId)
+        val screenError = assignEvent.toScreenError()
+        assertEquals("tasks_400", screenError.code)
+        assertEquals("Assignee is not a member of this channel.", screenError.serverMessage)
+        assertEquals("assignee_not_in_channel", screenError.serverCode)
+        assertEquals(traceId, screenError.traceId)
+
         runtimeScope.cancel()
     }
 

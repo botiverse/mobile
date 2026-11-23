@@ -208,7 +208,9 @@ class CreateExternalChannelStoreTest {
         runCurrent()
         assertNotNull(store.state.value.created)
         assertEquals(ExternalInviteError.DailyCap, store.state.value.invite.failure?.error)
-        // Back is gone once the channel exists.
+        // Back is gone once a post-create send failed and left the review open to retry.
+        assertFalse(store.state.value.canReturnToStep2)
+        assertTrue(store.state.value.retryAfterCreate)
         store.dispatch(CreateExternalChannelIntent.BackToPeople)
         assertNotNull(store.state.value.invite.preview)
 

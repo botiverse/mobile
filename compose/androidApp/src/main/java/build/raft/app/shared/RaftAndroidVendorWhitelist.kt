@@ -60,19 +60,44 @@ internal data class VendorWhitelistTarget(
 }
 
 /**
- * Manufacturer -> OEM auto-start / background whitelist settings launcher (#proj-mobile:#220).
+ * Unified Android background keep-alive & OEM whitelist settings launcher (#proj-mobile:#220, #325).
  *
- * Intentionally does NOT depend on `REQUEST_IGNORE_BATTERY_OPTIMIZATIONS`,
- * `RaftBackgroundConnectionService.isDeclared`, or `RaftPlayServicesAvailability.isFcmUnavailable`,
- * because the `play` build strips those permissions/services while OEM ROMs (e.g. Lenovo ZUI on
- * TB324ZC running the Play build) still aggressively kill Raft in the background.
+ * All Android background-settings entry points (Settings › Notifications battery-optimization row
+ * and OEM auto-start/background management row) route through this single target table and
+ * [launchFirstAvailable] fallback chain:
+ * - [batteryOptimizationTargets] (`allowDirectPrompt = true`, direct/non-Play builds only):
+ *   `ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS` -> `ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS`
+ *   -> `ACTION_APPLICATION_DETAILS_SETTINGS`.
+ * - [batteryOptimizationTargets] (`allowDirectPrompt = false`, Google Play builds):
+ *   `ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS` -> `ACTION_APPLICATION_DETAILS_SETTINGS`
+ *   (never invokes `ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS`).
+ * - [targetsFor] (OEM auto-start / background whitelist, safe on both direct and Play builds):
+ *   vendor-specific OEM intents -> `ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS` ->
+ *   `ACTION_APPLICATION_DETAILS_SETTINGS`.
  */
 internal object RaftAndroidVendorWhitelist {
     private const val LOG_TAG = "RaftVendorWhitelist"
 
+    internal const val TARGET_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS = "request_ignore_battery_optimizations"
+    internal const val TARGET_BATTERY_OPTIMIZATION_SETTINGS = "battery_optimization_settings"
+    internal const val TARGET_APP_DETAILS = "app_details"
+
+    private val requestBatteryOptimizationTarget =
+        VendorWhitelistTarget(
+            id = TARGET_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,
+            action = Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,
+            packageUri = true,
+        )
+
+    private val batteryOptimizationSettingsFallback =
+        VendorWhitelistTarget(
+            id = TARGET_BATTERY_OPTIMIZATION_SETTINGS,
+            action = Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS,
+        )
+
     private val appDetailsFallback =
         VendorWhitelistTarget(
-            id = "app_details",
+            id = TARGET_APP_DETAILS,
             action = Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
             packageUri = true,
         )
@@ -311,6 +336,20 @@ internal object RaftAndroidVendorWhitelist {
             AndroidOemVendor.Generic -> RaftBackgroundWhitelistGuide.AppDetails
         }
 
+    fun batteryOptimizationTargets(allowDirectPrompt: Boolean): List<VendorWhitelistTarget> =
+        if (allowDirectPrompt) {
+            listOf(
+                requestBatteryOptimizationTarget,
+                batteryOptimizationSettingsFallback,
+                appDetailsFallback,
+            )
+        } else {
+            listOf(
+                batteryOptimizationSettingsFallback,
+                appDetailsFallback,
+            )
+        }
+
     fun targetsFor(vendor: AndroidOemVendor): List<VendorWhitelistTarget> {
         val vendorSpecific =
             when (vendor) {
@@ -324,7 +363,7 @@ internal object RaftAndroidVendorWhitelist {
                 AndroidOemVendor.Zte -> zteTargets
                 AndroidOemVendor.Generic -> emptyList()
             }
-        return vendorSpecific + appDetailsFallback
+        return vendorSpecific + batteryOptimizationSettingsFallback + appDetailsFallback
     }
 
     fun targetsFor(
@@ -336,7 +375,8 @@ internal object RaftAndroidVendorWhitelist {
      * Tries each target directly without `resolveActivity()` (Android 11+ `<queries>` filters OEM
      * packages), falling through on any [RuntimeException] (including `ActivityNotFoundException`,
      * `SecurityException`, `IllegalArgumentException`, `IllegalStateException`, and OEM
-     * `AndroidRuntimeException`) so the `app_details` fallback is always reached.
+     * `AndroidRuntimeException`) so the system battery optimization settings and `app_details`
+     * fallbacks are always reached.
      */
     internal fun launchFirstAvailable(
         targets: List<VendorWhitelistTarget>,
@@ -357,13 +397,39 @@ internal object RaftAndroidVendorWhitelist {
         return null
     }
 
-    fun open(
+    fun openBatteryOptimization(
         context: Context,
-        manufacturer: String? = Build.MANUFACTURER,
-        brand: String? = Build.BRAND,
+        allowDirectPrompt: Boolean,
+        launcher: (Intent) -> Unit = { intent -> context.applicationContext.startActivity(intent) },
     ): String? {
         val appContext = context.applicationContext
-        val vendor = resolveVendor(manufacturer, brand)
+        val targets = batteryOptimizationTargets(allowDirectPrompt = allowDirectPrompt)
+        val launched =
+            launchFirstAvailable(
+                targets = targets,
+                onFailure = { target, error ->
+                    RaftAppLog.d(
+                        LOG_TAG,
+                        "battery_optimization_target_failed target=${target.id} allowDirect=$allowDirectPrompt class=${error.javaClass.simpleName}",
+                    )
+                },
+            ) { target ->
+                launcher(target.toIntent(appContext.packageName))
+            }
+        if (launched != null) {
+            RaftAppLog.i(LOG_TAG, "battery_optimization_opened target=$launched allowDirect=$allowDirectPrompt")
+        } else {
+            RaftAppLog.w(LOG_TAG, "battery_optimization_unavailable allowDirect=$allowDirectPrompt")
+        }
+        return launched
+    }
+
+    fun open(
+        context: Context,
+        vendor: AndroidOemVendor,
+        launcher: (Intent) -> Unit = { intent -> context.applicationContext.startActivity(intent) },
+    ): String? {
+        val appContext = context.applicationContext
         val targets = targetsFor(vendor)
         val appLabel =
             runCatching { appContext.applicationInfo.loadLabel(appContext.packageManager).toString() }
@@ -380,7 +446,7 @@ internal object RaftAndroidVendorWhitelist {
                     )
                 },
             ) { target ->
-                appContext.startActivity(target.toIntent(appContext.packageName, appLabel))
+                launcher(target.toIntent(appContext.packageName, appLabel))
             }
         if (launched != null) {
             RaftAppLog.i(LOG_TAG, "vendor_whitelist_opened vendor=${vendor.id} target=$launched")
@@ -389,4 +455,11 @@ internal object RaftAndroidVendorWhitelist {
         }
         return launched
     }
+
+    fun open(
+        context: Context,
+        manufacturer: String? = Build.MANUFACTURER,
+        brand: String? = Build.BRAND,
+        launcher: (Intent) -> Unit = { intent -> context.applicationContext.startActivity(intent) },
+    ): String? = open(context = context, vendor = resolveVendor(manufacturer, brand), launcher = launcher)
 }

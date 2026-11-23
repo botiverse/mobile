@@ -42,10 +42,10 @@ internal fun hasVendorCleanerDescription(description: String?): Boolean =
     !description.isNullOrBlank() && VendorCleanerDescriptionPattern.containsMatchIn(description)
 
 /**
- * Persisted dedup and cooldown state for the local background-kill whitelist notice.
+ * Persisted dedup and cooldown state for the local background-kill notice.
  *
  * [lastAcknowledgedExitTimestampMillis] is advanced ONLY on user action (`dismiss()`,
- * `dismissForever()` or `openVendorWhitelistSettings()`), NEVER during `Application.onCreate()`
+ * `dismissForever()` or `markSettingsOpened()`), NEVER during `Application.onCreate()`
  * evaluation, so a sticky-service restart never swallows a notice before the user opens the UI.
  *
  * [shownCount] counts the processes in which the banner was really on screen: `markShown()` adds
@@ -169,7 +169,6 @@ internal fun selectBackgroundKillForNotice(
 internal class RaftAndroidBackgroundKillNoticeController(
     private val store: BackgroundKillNoticeStore,
     private val nowMillis: () -> Long = { System.currentTimeMillis() },
-    private val openWhitelist: () -> String?,
     private val log: (String) -> Unit = {},
     private val persistAsync: (() -> Unit) -> Unit = { it() },
     private val mutableNotice: MutableStateFlow<RaftBackgroundKillNotice?> = MutableStateFlow(null),
@@ -314,35 +313,25 @@ internal class RaftAndroidBackgroundKillNoticeController(
         log("background_kill_notice action=dismiss_forever shownCount=${updatedState.shownCount} exitTimestampMillis=$dismissedExitAt")
     }
 
-    override fun openVendorWhitelistSettings() {
-        val target = runCatching { openWhitelist() }.getOrNull()
+    override fun markSettingsOpened() {
         val now = nowMillis()
-        var acknowledgedExitAt: Long? = null
-        var updatedState: BackgroundKillNoticePersistenceState? = null
-        if (target != null) {
-            synchronized(lock) {
-                val current = mutableNotice.value
-                acknowledgedExitAt = current?.exitTimestampMillis
-                if (current != null) {
-                    val state = cachedState ?: BackgroundKillNoticePersistenceState()
-                    updatedState =
-                        state.copy(
-                            lastAcknowledgedExitTimestampMillis =
-                                maxOf(state.lastAcknowledgedExitTimestampMillis, current.exitTimestampMillis),
-                            lastOpenedSettingsAtMillis = now,
-                        )
-                    cachedState = updatedState
-                    mutableNotice.value = null
-                }
-            }
-            updatedState?.let { nextState ->
-                persistAsync { runCatching { store.save(nextState) } }
-            }
+        val acknowledgedExitAt: Long
+        val updatedState: BackgroundKillNoticePersistenceState
+        synchronized(lock) {
+            val current = mutableNotice.value ?: return
+            val state = cachedState ?: BackgroundKillNoticePersistenceState()
+            acknowledgedExitAt = current.exitTimestampMillis
+            updatedState =
+                state.copy(
+                    lastAcknowledgedExitTimestampMillis =
+                        maxOf(state.lastAcknowledgedExitTimestampMillis, current.exitTimestampMillis),
+                    lastOpenedSettingsAtMillis = now,
+                )
+            cachedState = updatedState
+            mutableNotice.value = null
         }
-        log(
-            "background_kill_notice action=open_settings target=${target ?: "none"} " +
-                "exitTimestampMillis=${acknowledgedExitAt ?: -1L}"
-        )
+        persistAsync { runCatching { store.save(updatedState) } }
+        log("background_kill_notice action=open_in_app_settings exitTimestampMillis=$acknowledgedExitAt")
     }
 
     private fun mergePersistenceState(
@@ -441,8 +430,8 @@ internal object RaftAndroidBackgroundKillNoticeHost : RaftBackgroundKillNoticeHo
         }
     }
 
-    override fun openVendorWhitelistSettings() {
-        controller?.openVendorWhitelistSettings()
+    override fun markSettingsOpened() {
+        controller?.markSettingsOpened()
     }
 
     override fun dismiss() {
@@ -470,7 +459,6 @@ internal object RaftAndroidBackgroundKillNoticeHost : RaftBackgroundKillNoticeHo
         val created =
             RaftAndroidBackgroundKillNoticeController(
                 store = SharedPreferencesStore(prefs),
-                openWhitelist = { RaftAndroidVendorWhitelist.open(appContext) },
                 log = { line -> RaftAndroidLocalDiagnostics.recordLog("info", Tag, line) },
                 persistAsync = { task -> persistenceExecutor.execute(task) },
                 mutableNotice = hostNotice,

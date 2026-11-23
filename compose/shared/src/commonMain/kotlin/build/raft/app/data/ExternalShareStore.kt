@@ -1,9 +1,12 @@
 package build.raft.app.data
 
+import build.raft.app.model.ConversationKind
 import build.raft.app.model.ServerId
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
@@ -117,6 +120,7 @@ internal sealed interface ExternalShareState {
         val serverOptions: List<ExternalShareServerOption> = emptyList(),
         val query: String = "",
         val targets: List<ForwardMessageTarget> = emptyList(),
+        val conversationTargets: List<ForwardMessageTarget> = emptyList(),
         val selectedTargets: List<ForwardMessageTarget> = emptyList(),
         val loading: Boolean = false,
         val appending: Boolean = false,
@@ -181,9 +185,11 @@ internal class ExternalShareStore(
 
     private var loadGeneration = 0L
     private var targetGeneration = 0L
+    private var conversationGeneration = 0L
     private var handoffGeneration = 0L
     private var loadJob: Job? = null
     private var targetJob: Job? = null
+    private var conversationTargetsJob: Job? = null
     private var handoffJob: Job? = null
     private var draftWriteTail: Job? = null
     private var authorizedServerOptions: List<ExternalShareServerOption> = emptyList()
@@ -208,12 +214,15 @@ internal class ExternalShareStore(
         }
         loadGeneration += 1
         targetGeneration += 1
+        conversationGeneration += 1
         handoffGeneration += 1
         loadJob?.cancel()
         targetJob?.cancel()
+        conversationTargetsJob?.cancel()
         handoffJob?.cancel()
         loadJob = null
         targetJob = null
+        conversationTargetsJob = null
         handoffJob = null
         authorizedServerOptions = emptyList()
         _state.value = ExternalShareState.Idle
@@ -242,15 +251,39 @@ internal class ExternalShareStore(
         }
         authorizedServerOptions = serverOptions
         loadGeneration += 1
+        conversationGeneration += 1
         val generation = loadGeneration
         loadJob?.cancel()
         targetJob?.cancel()
+        conversationTargetsJob?.cancel()
         handoffJob?.cancel()
         _state.value = ExternalShareState.LoadingEnvelope(token)
         loadJob =
             scope.launch {
                 when (val draftResult = draftRepository.load(token)) {
-                    is DataResult.Content -> restoreDraft(draftResult.data, token, accountId, serverId, generation)
+                    is DataResult.Content -> {
+                        val existing = draftResult.data
+                        val shouldPrefetch =
+                            existing.stage == ExternalShareDraftStage.SelectingTargets &&
+                                !existing.envelopeConsumed &&
+                                existing.isValidFor(token, authorizedServerOptions.mapTo(linkedSetOf()) { it.id })
+                        if (shouldPrefetch) {
+                            val prefetchServerId = existing.serverId
+                            val dirPrefetch = startDirectoryPrefetch(token, prefetchServerId)
+                            val convPrefetch = startConversationTargetsPrefetch(prefetchServerId)
+                            restoreDraft(
+                                draft = existing,
+                                token = token,
+                                accountId = accountId,
+                                requestedServerId = serverId,
+                                generation = generation,
+                                prefetchedDirectory = dirPrefetch,
+                                prefetchedConversations = convPrefetch
+                            )
+                        } else {
+                            restoreDraft(existing, token, accountId, serverId, generation)
+                        }
+                    }
                     is DataResult.Empty -> loadFreshEnvelope(token, accountId, serverId, generation)
                     is DataResult.Error -> setLoadError(token, serverId, draftResult.error.code, draftResult.error.retryable, generation)
                     is DataResult.NoPermission -> setLoadError(token, serverId, draftResult.blocker.code, false, generation)
@@ -267,12 +300,37 @@ internal class ExternalShareStore(
                     setLoadError(token, serverId, "external_share_envelope_invalid", false, generation)
                     return
                 }
+                // Start loading targets + recent threads/tasks in parallel with durable draft/consume
+                // I/O so the picker opens immediately once the two-phase envelope claim settles.
+                val dirPrefetch = startDirectoryPrefetch(token, serverId)
+                val convPrefetch = startConversationTargetsPrefetch(serverId)
                 val draft = ExternalShareDraft(envelope, serverId, ExternalShareDraftStage.SelectingTargets)
                 when (val transfer = persistAndConsumeEnvelope(draft)) {
-                    is DataResult.Content -> restoreDraft(transfer.data, token, accountId, serverId, generation)
-                    is DataResult.Empty -> setLoadError(token, serverId, "external_share_draft_persist_empty", true, generation)
-                    is DataResult.Error -> setLoadError(token, serverId, transfer.error.code, transfer.error.retryable, generation)
-                    is DataResult.NoPermission -> setLoadError(token, serverId, transfer.blocker.code, false, generation)
+                    is DataResult.Content ->
+                        restoreDraft(
+                            draft = transfer.data,
+                            token = token,
+                            accountId = accountId,
+                            requestedServerId = serverId,
+                            generation = generation,
+                            prefetchedDirectory = dirPrefetch,
+                            prefetchedConversations = convPrefetch
+                        )
+                    is DataResult.Empty -> {
+                        dirPrefetch.cancel()
+                        convPrefetch.cancel()
+                        setLoadError(token, serverId, "external_share_draft_persist_empty", true, generation)
+                    }
+                    is DataResult.Error -> {
+                        dirPrefetch.cancel()
+                        convPrefetch.cancel()
+                        setLoadError(token, serverId, transfer.error.code, transfer.error.retryable, generation)
+                    }
+                    is DataResult.NoPermission -> {
+                        dirPrefetch.cancel()
+                        convPrefetch.cancel()
+                        setLoadError(token, serverId, transfer.blocker.code, false, generation)
+                    }
                 }
             }
             is DataResult.Empty -> setLoadError(token, serverId, "external_share_not_found", false, generation)
@@ -280,6 +338,33 @@ internal class ExternalShareStore(
             is DataResult.NoPermission -> setLoadError(token, serverId, result.blocker.code, false, generation)
         }
     }
+
+    private fun startDirectoryPrefetch(
+        token: String,
+        serverId: String
+    ): Deferred<DataResult<ForwardMessageTargetDirectoryPage>> =
+        scope.async {
+            targetRepository.directoryTargets(
+                serverId = ServerId(serverId),
+                sessionId = externalShareDirectorySessionId(token, serverId),
+                cursor = ForwardMessageTargetDirectoryCursor(),
+                pageSize = 40
+            )
+        }
+
+    private fun startConversationTargetsPrefetch(
+        serverId: String
+    ): Deferred<List<ForwardMessageTarget>> =
+        scope.async { loadConversationTargetsSafely(ServerId(serverId)) }
+
+    private suspend fun loadConversationTargetsSafely(serverId: ServerId): List<ForwardMessageTarget> =
+        try {
+            targetRepository.conversationTargets(serverId = serverId, currentChannelId = null)
+        } catch (cancellation: CancellationException) {
+            throw cancellation
+        } catch (_: Throwable) {
+            emptyList()
+        }
 
     private suspend fun persistAndConsumeEnvelope(draft: ExternalShareDraft): DataResult<ExternalShareDraft> {
         val initialSave = draftRepository.save(draft)
@@ -317,10 +402,18 @@ internal class ExternalShareStore(
         token: String,
         accountId: String,
         requestedServerId: String,
-        generation: Long
+        generation: Long,
+        prefetchedDirectory: Deferred<DataResult<ForwardMessageTargetDirectoryPage>>? = null,
+        prefetchedConversations: Deferred<List<ForwardMessageTarget>>? = null
     ) {
-        if (generation != loadGeneration) return
+        if (generation != loadGeneration) {
+            prefetchedDirectory?.cancel()
+            prefetchedConversations?.cancel()
+            return
+        }
         if (!draft.isValidFor(token, authorizedServerOptions.mapTo(linkedSetOf()) { it.id })) {
+            prefetchedDirectory?.cancel()
+            prefetchedConversations?.cancel()
             setLoadError(token, requestedServerId, "external_share_draft_invalid", false, generation)
             return
         }
@@ -331,20 +424,30 @@ internal class ExternalShareStore(
                 when (val transfer = persistAndConsumeEnvelope(draft)) {
                     is DataResult.Content -> transfer.data
                     is DataResult.Empty -> {
+                        prefetchedDirectory?.cancel()
+                        prefetchedConversations?.cancel()
                         setLoadError(token, requestedServerId, "external_share_draft_persist_empty", true, generation)
                         return
                     }
                     is DataResult.Error -> {
+                        prefetchedDirectory?.cancel()
+                        prefetchedConversations?.cancel()
                         setLoadError(token, requestedServerId, transfer.error.code, transfer.error.retryable, generation)
                         return
                     }
                     is DataResult.NoPermission -> {
+                        prefetchedDirectory?.cancel()
+                        prefetchedConversations?.cancel()
                         setLoadError(token, requestedServerId, transfer.blocker.code, false, generation)
                         return
                     }
                 }
             }
-        if (generation != loadGeneration) return
+        if (generation != loadGeneration) {
+            prefetchedDirectory?.cancel()
+            prefetchedConversations?.cancel()
+            return
+        }
         when (readyDraft.stage) {
             ExternalShareDraftStage.SelectingTargets -> {
                 _state.value =
@@ -355,10 +458,13 @@ internal class ExternalShareStore(
                         serverOptions = authorizedServerOptions,
                         selectedTargets = readyDraft.selectedTargets
                     )
-                search("")
+                search("", prefetchedDirectory = prefetchedDirectory)
+                loadConversationTargets(prefetchedConversations = prefetchedConversations)
             }
             ExternalShareDraftStage.ComposerHandoff,
             ExternalShareDraftStage.Confirming -> {
+                prefetchedDirectory?.cancel()
+                prefetchedConversations?.cancel()
                 if (readyDraft.selectedTargets.size != 1 || readyDraft.deliveries.isNotEmpty()) {
                     setLoadError(token, requestedServerId, "external_share_legacy_draft_unsupported", false, generation)
                     return
@@ -366,8 +472,11 @@ internal class ExternalShareStore(
                 val migrated = readyDraft.copy(stage = ExternalShareDraftStage.ComposerHandoff, comment = "")
                 resolveComposerHandoff(migrated, accountId, generation)
             }
-            ExternalShareDraftStage.Delivering ->
+            ExternalShareDraftStage.Delivering -> {
+                prefetchedDirectory?.cancel()
+                prefetchedConversations?.cancel()
                 setLoadError(token, requestedServerId, "external_share_legacy_delivery_not_replayed", false, generation)
+            }
         }
     }
 
@@ -392,7 +501,9 @@ internal class ExternalShareStore(
         }
         if (serverId == current.serverId || current.handoffInProgress) return
         targetGeneration += 1
+        conversationGeneration += 1
         targetJob?.cancel()
+        conversationTargetsJob?.cancel()
         targetRepository.releaseDirectorySnapshot(current.externalShareDirectorySessionId())
         _state.value =
             current.copy(
@@ -400,6 +511,7 @@ internal class ExternalShareStore(
                 serverOptions = authorizedServerOptions,
                 query = "",
                 targets = emptyList(),
+                conversationTargets = emptyList(),
                 selectedTargets = emptyList(),
                 loading = false,
                 appending = false,
@@ -410,13 +522,63 @@ internal class ExternalShareStore(
             )
         persistCurrentDraft()
         search("")
+        loadConversationTargets()
     }
 
-    private fun search(rawQuery: String, append: Boolean = false) {
-        val current = _state.value as? ExternalShareState.SelectingTargets ?: return
-        if (current.handoffInProgress) return
+    private fun loadConversationTargets(
+        prefetchedConversations: Deferred<List<ForwardMessageTarget>>? = null
+    ) {
+        val current = _state.value as? ExternalShareState.SelectingTargets ?: run {
+            prefetchedConversations?.cancel()
+            return
+        }
+        if (current.handoffInProgress) {
+            prefetchedConversations?.cancel()
+            return
+        }
+        conversationGeneration += 1
+        val generation = conversationGeneration
+        conversationTargetsJob?.cancel()
+        conversationTargetsJob =
+            scope.launch {
+                val rows =
+                    try {
+                        prefetchedConversations?.await() ?: loadConversationTargetsSafely(ServerId(current.serverId))
+                    } catch (cancellation: CancellationException) {
+                        prefetchedConversations?.cancel()
+                        throw cancellation
+                    }
+                if (generation != conversationGeneration) return@launch
+                val latest = _state.value as? ExternalShareState.SelectingTargets ?: return@launch
+                if (latest.envelope.token != current.envelope.token || latest.serverId != current.serverId) {
+                    return@launch
+                }
+                _state.value =
+                    latest.copy(
+                        conversationTargets =
+                            rows.externalShareTargets().distinctBy { it.externalShareSelectionKey() }
+                    )
+            }
+    }
+
+    private fun search(
+        rawQuery: String,
+        append: Boolean = false,
+        prefetchedDirectory: Deferred<DataResult<ForwardMessageTargetDirectoryPage>>? = null
+    ) {
+        val current = _state.value as? ExternalShareState.SelectingTargets ?: run {
+            prefetchedDirectory?.cancel()
+            return
+        }
+        if (current.handoffInProgress) {
+            prefetchedDirectory?.cancel()
+            return
+        }
         val query = rawQuery.trimStart()
-        if (append && (query.isNotBlank() || current.nextCursor == null || current.loading)) return
+        if (append && (query.isNotBlank() || current.nextCursor == null || current.loading)) {
+            prefetchedDirectory?.cancel()
+            return
+        }
         if (!append && current.query != query && current.query.isBlank()) {
             targetRepository.releaseDirectorySnapshot(current.externalShareDirectorySessionId())
         }
@@ -437,13 +599,24 @@ internal class ExternalShareStore(
             scope.launch {
                 val result =
                     if (query.isBlank()) {
-                        targetRepository.directoryTargets(
-                            serverId = ServerId(current.serverId),
-                            sessionId = current.externalShareDirectorySessionId(),
-                            cursor = if (append) current.nextCursor ?: ForwardMessageTargetDirectoryCursor() else ForwardMessageTargetDirectoryCursor(),
-                            pageSize = 40
-                        )
+                        if (!append && prefetchedDirectory != null) {
+                            try {
+                                prefetchedDirectory.await()
+                            } catch (cancellation: CancellationException) {
+                                prefetchedDirectory.cancel()
+                                throw cancellation
+                            }
+                        } else {
+                            prefetchedDirectory?.cancel()
+                            targetRepository.directoryTargets(
+                                serverId = ServerId(current.serverId),
+                                sessionId = current.externalShareDirectorySessionId(),
+                                cursor = if (append) current.nextCursor ?: ForwardMessageTargetDirectoryCursor() else ForwardMessageTargetDirectoryCursor(),
+                                pageSize = 40
+                            )
+                        }
                     } else {
+                        prefetchedDirectory?.cancel()
                         // The host already debounces typing; local DM/channel matches render at
                         // once (still loading, so not selectable) until the server's list lands.
                         // A newer keystroke cancels this job, and with it the server request.
@@ -521,7 +694,10 @@ internal class ExternalShareStore(
             return
         }
         val key = target.externalShareSelectionKey()
-        val liveTarget = current.targets.firstOrNull { it.externalShareSelectionKey() == key }
+        val liveTarget =
+            current.targets.firstOrNull { it.externalShareSelectionKey() == key }
+                ?: current.conversationTargets.takeIf { current.query.isBlank() }
+                    ?.firstOrNull { it.externalShareSelectionKey() == key }
         val selectedTarget = current.selectedTargets.singleOrNull()
         if (target != liveTarget && target != selectedTarget) return
         if (target.requiredAction == ForwardMessageTargetRequiredAction.JoinChannel && selectedTarget != target) {
@@ -546,7 +722,9 @@ internal class ExternalShareStore(
         }
         if (current.loading || current.handoffInProgress || current.errorCode != null) return
         targetGeneration += 1
+        conversationGeneration += 1
         targetJob?.cancel()
+        conversationTargetsJob?.cancel()
         targetRepository.releaseDirectorySnapshot(current.externalShareDirectorySessionId())
         _state.value = current.copy(handoffInProgress = true, selectionErrorCode = null)
         handoffGeneration += 1
@@ -589,13 +767,53 @@ internal class ExternalShareStore(
         when (resolution) {
             is DataResult.Content -> {
                 val destination = resolution.data
-                val resolvedTarget =
+                var resolvedTarget =
                     target.copy(
                         channelId = destination.channelId,
                         channelKind = destination.channelKind,
                         requiredAction = ForwardMessageTargetRequiredAction.None,
                         canForwardNow = true
                     )
+                if (
+                    resolvedTarget.channelKind == ConversationKind.Thread &&
+                    (resolvedTarget.parentChannelId == null || resolvedTarget.parentMessageId == null)
+                ) {
+                    val parentResolution =
+                        try {
+                            targetRepository.resolveConversationThreadParent(
+                                serverId = ServerId(draft.serverId),
+                                threadChannelId = destination.channelId
+                            )
+                        } catch (cancellation: CancellationException) {
+                            throw cancellation
+                        } catch (_: Throwable) {
+                            DataResult.Error(ScreenError("external_share_thread_parent_resolution_failed", true))
+                        }
+                    if (loadAtStart != loadGeneration) return
+                    when (parentResolution) {
+                        is DataResult.Content -> {
+                            val parentInfo = parentResolution.data
+                            resolvedTarget =
+                                resolvedTarget.copy(
+                                    parentChannelId = parentInfo.parentChannelId,
+                                    parentMessageId = parentInfo.parentMessageId,
+                                    parentChannelType = resolvedTarget.parentChannelType ?: parentInfo.parentChannelType
+                                )
+                        }
+                        is DataResult.Empty -> {
+                            setLoadError(draft.envelope.token, draft.serverId, "external_share_thread_parent_missing", true, loadAtStart)
+                            return
+                        }
+                        is DataResult.Error -> {
+                            setLoadError(draft.envelope.token, draft.serverId, parentResolution.error.code, parentResolution.error.retryable, loadAtStart)
+                            return
+                        }
+                        is DataResult.NoPermission -> {
+                            setLoadError(draft.envelope.token, draft.serverId, parentResolution.blocker.code, false, loadAtStart)
+                            return
+                        }
+                    }
+                }
                 val resolvedDraft = draft.copy(selectedTargets = listOf(resolvedTarget))
                 when (val save = draftRepository.save(resolvedDraft)) {
                     is DataResult.Content -> {
@@ -710,7 +928,10 @@ internal fun ForwardMessageTarget.externalShareSelectionKey(): String =
     "${serverId.value}:${kind.name}:$id"
 
 internal fun ExternalShareState.SelectingTargets.externalShareDirectorySessionId(): String =
-    "external-share:${envelope.token}:$serverId"
+    externalShareDirectorySessionId(envelope.token, serverId)
+
+internal fun externalShareDirectorySessionId(token: String, serverId: String): String =
+    "external-share:$token:$serverId"
 
 internal fun ExternalShareEnvelope.externalShareComposerText(): String =
     listOf(subject, text)
@@ -752,8 +973,8 @@ private fun List<ExternalShareServerOption>.normalizedExternalShareServerOptions
     }.distinctBy { it.id }
 
 /**
- * Share-to-Raft offers channels and DMs only: the server search's thread / task rows (slock #12620)
- * are left out, as web's Artifact "Send to conversation" host filters `!isConversationTarget`.
+ * Share-to-Raft aligns with message Forward (dm:@artin:#162): channels, DMs, people, and thread /
+ * task conversations are all retained (dropping only malformed conversation rows missing a channel id).
  */
 internal fun List<ForwardMessageTarget>.externalShareTargets(): List<ForwardMessageTarget> =
-    filterNot { it.isForwardConversationTarget() }
+    filter { !it.isForwardConversationTarget() || it.channelId != null }

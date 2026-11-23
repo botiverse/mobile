@@ -10,6 +10,7 @@ import android.content.Intent
 import android.os.Bundle
 import android.service.notification.StatusBarNotification
 import androidx.core.app.NotificationCompat
+import build.raft.app.R
 import build.raft.app.data.PushPreviewMode
 import build.raft.app.data.RaftConversationReadHost
 import build.raft.app.push.raftFcmUnreadNotificationRequest
@@ -186,6 +187,40 @@ class AndroidUnreadNotificationGroupingTest {
         listener.onConversationRead("server-1", "channel-1")
         runBackgroundTasks()
         assertTrue(manager.activeNotifications.isEmpty())
+    }
+
+    @Test
+    fun groupSummaryDisplaysServerNameAndUsesRaftSmallIconWithoutLeakingOnLockScreen() {
+        post(fcm(serverId = "server-1", channelId = "channel-1", messageId = "m-1", body = "Alice: hi", extra = mapOf("subtitle" to "Raft")))
+        post(fcm(serverId = "server-1", channelId = "dm-1", messageId = "m-2", title = "Bob", body = "yo", extra = mapOf("category" to "dm", "kind" to "dm", "subtitle" to "Raft")))
+
+        val summary = summaryOf("server-1")!!.notification
+        assertEquals("Raft", summary.extras.getCharSequence(Notification.EXTRA_TITLE).toString())
+        assertEquals("Raft", summary.extras.getCharSequence(Notification.EXTRA_TITLE_BIG).toString())
+        assertEquals("Raft · 2 new messages", summary.extras.getCharSequence(Notification.EXTRA_SUMMARY_TEXT).toString())
+        assertEquals("Raft", summary.extras.getString(AndroidUnreadNotificationGrouping.EXTRA_SERVER_NAME))
+        assertEquals(R.drawable.ic_stat_raft, summary.smallIcon.resId)
+
+        // Public (lock-screen) summary must stay redacted and also use the Raft small icon.
+        val publicSummary = summary.publicVersion!!
+        assertEquals("Raft", publicSummary.extras.getCharSequence(Notification.EXTRA_TITLE).toString())
+        assertEquals("2 new messages", publicSummary.extras.getCharSequence(Notification.EXTRA_TEXT).toString())
+        assertEquals(R.drawable.ic_stat_raft, publicSummary.smallIcon.resId)
+
+        // Conversation notifications and their lock-screen versions also use the Raft small icon.
+        for (conversation in conversations()) {
+            assertEquals(R.drawable.ic_stat_raft, conversation.notification.smallIcon.resId)
+            assertEquals(R.drawable.ic_stat_raft, conversation.notification.publicVersion!!.smallIcon.resId)
+        }
+
+        // Recounting after a dismiss preserves the server name from the remaining tray notification's extras.
+        now += 10_000L // past recentPosts fresh window so recount reads from tray extras
+        val dismissed = conversations().first { titleOf(it.notification) == "Bob" }
+        manager.cancel(dismissed.tag, dismissed.id)
+        AndroidUnreadNotificationPoster.onConversationDismissed(context, dismissed.id)
+        val updatedSummary = summaryOf("server-1")!!.notification
+        assertEquals("Raft · 1 new message", updatedSummary.extras.getCharSequence(Notification.EXTRA_SUMMARY_TEXT).toString())
+        assertEquals("Raft", updatedSummary.extras.getString(AndroidUnreadNotificationGrouping.EXTRA_SERVER_NAME))
     }
 
     private fun runBackgroundTasks() {

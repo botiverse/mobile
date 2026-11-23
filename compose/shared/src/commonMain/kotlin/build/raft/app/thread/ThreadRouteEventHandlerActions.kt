@@ -916,7 +916,7 @@ internal fun ThreadRouteEventHandler.handleJoinChannel(): Unit = run ThreadPageC
                                 is ThreadJoinChannelOutcome.Failed ->
                                     when (val result = outcome.result) {
                                         is DataResult.NoPermission ->
-                                            if (!routeAuthRequired(result)) bridge.errorToast(unableToJoinChannelLabel, result.blocker.traceId)
+                                            if (!routeAuthRequired(result)) bridge.errorToast(unableToJoinChannelLabel, result.blocker)
                                         is DataResult.Error -> bridge.errorToast(unableToJoinChannelLabel, result.error)
                                         else -> bridge.toast(unableToJoinChannelLabel)
                                     }

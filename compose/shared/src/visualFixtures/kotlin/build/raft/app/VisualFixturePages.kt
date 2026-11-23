@@ -246,7 +246,13 @@ internal class ComposeDirectMessageSettingsPanelVisualPage : BasePager() {
 internal class ComposeChannelAddMemberPanelVisualPage : BasePager() {
     override fun willInit() {
         super.willInit()
-        setContent { ChannelAddMemberPanelVisualScreen() }
+        setContent {
+            ChannelAddMemberPanelVisualScreen(
+                viewerRole = VisualFixtureData.Humans.Owner.ROLE,
+                serverName = VisualFixtureData.Server.NAME,
+                nowEpochMillis = VisualFixtureData.Locale.NOW_EPOCH_MILLIS,
+            )
+        }
     }
 }
 

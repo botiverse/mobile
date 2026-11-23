@@ -91,7 +91,16 @@ internal fun parseSharedRailTabOrderAccount(
 ): DataResult<List<String>?> {
     val responseTraceId = if (statusCode == 0) null else build.raft.app.network.raftValidTraceIdOrNull(traceId)
     if (statusCode !in 200..299) {
-        return DataResult.Error(ScreenError(code = "rail_tab_order_http_$statusCode", retryable = statusCode >= 500, traceId = responseTraceId))
+        val envelope = if (statusCode > 0) parseHttpErrorEnvelope(bodyText) else null
+        return DataResult.Error(
+            ScreenError(
+                code = "rail_tab_order_http_$statusCode",
+                retryable = statusCode >= 500,
+                serverMessage = envelope?.serverMessage,
+                serverCode = envelope?.serverCode,
+                traceId = responseTraceId,
+            )
+        )
     }
     val dto =
         bodyText?.takeIf { it.isNotBlank() }?.let { body ->
@@ -125,7 +134,7 @@ internal class NetworkRailTabOrderDataSource(private val networkClient: RaftNetw
             val response = call()
             parseSharedRailTabOrderAccount(
                 response.code,
-                response.bodyText?.takeIf { it.isNotBlank() } ?: response.errorBodyText,
+                if (response.isSuccessful) response.bodyText else response.errorBodyText?.takeIf { it.isNotBlank() } ?: response.bodyText,
                 traceId = response.traceId,
             )
         } catch (cancelled: CancellationException) {

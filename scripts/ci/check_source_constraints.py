@@ -1010,6 +1010,64 @@ def check_server_refusal_surface_invariants(sources: dict[str, str]) -> None:
             )
 
 
+DESKTOP_WRY_GATEWAY_FILE = (
+    "compose/shared/src/desktopMain/kotlin/build/raft/app/RaftDesktopWryGateway.kt"
+)
+DESKTOP_WRY_DIRECT_REF_RE = re.compile(
+    r"\b(?:WryWebViewPanel|io\.github\.kdroidfilter\.webview\.wry)\b"
+)
+# WryWebViewPanel's command methods bounce back onto the AWT EDT via SwingUtilities.invokeLater
+# before calling `_dispatch_sync_f` onto macOS Thread 0, and its query/eval methods block the
+# caller directly. Even inside RaftDesktopWryGateway.kt, call only top-level UniFFI functions
+# on the off-EDT worker thread, never these methods on `panel`.
+DESKTOP_WRY_PANEL_BLOCKING_CALL_RE = re.compile(
+    r"\bpanel\s*\??\.\s*(?:loadUrl|loadHtml|goBack|goForward|reload|stopLoading|"
+    r"requestWebViewFocus|openDevTools|closeDevTools|clearCookiesForUrl|clearAllCookies|"
+    r"setCookie|evaluateJavaScript|isLoading|getTitle|canGoBack|canGoForward|"
+    r"drainIpcMessages|getCurrentUrl)\s*\("
+)
+
+
+def check_desktop_wry_off_edt_gateway(sources: dict[str, str]) -> None:
+    """Incident: #wg-mobile-sync:bf308ade macOS Compose Desktop Chinese IME & live-resize freeze.
+
+    macOS Thread 0 synchronously waits on the AWT EDT during IME (`firstRectForCharacterRange`)
+    and window live-resize. Calling `WryWebViewPanel` or `io.github.kdroidfilter.webview.wry.*`
+    from the AWT EDT triggers `_dispatch_sync_f` onto macOS Thread 0 -> instant AB-BA deadlock.
+    All production Wry references must stay confined to `RaftDesktopWryGateway.kt`, which routes
+    blocking native calls onto a dedicated off-EDT worker and strips `WryWebViewPanel`'s built-in
+    EDT-blocking mouse focus listener.
+    """
+    if DESKTOP_WRY_GATEWAY_FILE not in sources:
+        raise Violation(
+            f"desktop Wry off-EDT gateway missing (fail-closed): {DESKTOP_WRY_GATEWAY_FILE}"
+        )
+    for name, text in sorted(sources.items()):
+        code = _kotlin_code_only(text)
+        if name == DESKTOP_WRY_GATEWAY_FILE:
+            for match in DESKTOP_WRY_PANEL_BLOCKING_CALL_RE.finditer(code):
+                line = code.count("\n", 0, match.start()) + 1
+                raise Violation(
+                    f"desktop Wry EDT-deadlock violation: {name}:{line} calls `{match.group(0).strip()}` "
+                    "on WryWebViewPanel (which runs or bounces `_dispatch_sync_f` onto AWT EDT); "
+                    "invoke the top-level UniFFI function on RaftDesktopWryWorker instead."
+                )
+            if "replaceBlockingFocusMouseListener" not in code:
+                raise Violation(
+                    f"desktop Wry EDT-deadlock violation: {name} must strip WryWebViewPanel's "
+                    "EDT-blocking mouse focus listener via replaceBlockingFocusMouseListener"
+                )
+            continue
+        match = DESKTOP_WRY_DIRECT_REF_RE.search(code)
+        if match:
+            line = code.count("\n", 0, match.start()) + 1
+            raise Violation(
+                f"desktop Wry off-EDT gateway violation: {name}:{line} references "
+                f"`{match.group(0)}` outside {DESKTOP_WRY_GATEWAY_FILE}; route all Wry native "
+                "calls through RaftDesktopWryGateway / RaftDesktopWryBridge."
+            )
+
+
 def run(root: Path) -> None:
     def read(rel: str) -> str:
         path = root / rel
@@ -1029,6 +1087,7 @@ def run(root: Path) -> None:
     prod_kotlin = _production_kotlin_sources(root)
     check_no_production_run_blocking(prod_kotlin)
     check_server_refusal_surface_invariants(prod_kotlin)
+    check_desktop_wry_off_edt_gateway(prod_kotlin)
     check_native_safe_test_names(_native_test_sources(root))
     check_no_top_level_or_object_snapshot_state(_top_level_snapshot_state_sources(root))
     check_date_time_di_invariants(_date_time_di_sources(root))
@@ -1387,6 +1446,37 @@ com.apple.SignInWithApple = {
         else:
             raise SystemExit(f"self-test: server-refusal checker accepted {bad_refusal!r}")
 
+    good_wry = {
+        DESKTOP_WRY_GATEWAY_FILE: (
+            "import io.github.kdroidfilter.webview.wry.WryWebViewPanel\n"
+            "val panel = WryWebViewPanel(initialUrl = \"about:blank\")\n"
+            "replaceBlockingFocusMouseListener(panel) {}\n"
+            "panel.addNavigateListener { true }\n"
+            "io.github.kdroidfilter.webview.wry.loadUrl(id, url)\n"
+        ),
+        "compose/shared/src/desktopMain/kotlin/build/raft/app/Other.kt": (
+            "// WryWebViewPanel and io.github.kdroidfilter.webview.wry in comments are fine\n"
+            "val bridge: RaftDesktopWryBridge = gateway\n"
+        ),
+    }
+    check_desktop_wry_off_edt_gateway(good_wry)
+    for bad_wry in (
+        {"other.kt": "val x = 1\n"},
+        {**good_wry, "other.kt": "import io.github.kdroidfilter.webview.wry.WryWebViewPanel\n"},
+        {**good_wry, "other.kt": "val p = WryWebViewPanel(\"about:blank\")\n"},
+        {**good_wry, "other.kt": "io.github.kdroidfilter.webview.wry.setBounds(1u, 0, 0, 1, 1)\n"},
+        {**good_wry, DESKTOP_WRY_GATEWAY_FILE: good_wry[DESKTOP_WRY_GATEWAY_FILE] + "panel.loadUrl(\"x\")\n"},
+        {**good_wry, DESKTOP_WRY_GATEWAY_FILE: good_wry[DESKTOP_WRY_GATEWAY_FILE] + "panel.evaluateJavaScript(\"1\") {}\n"},
+        {**good_wry, DESKTOP_WRY_GATEWAY_FILE: good_wry[DESKTOP_WRY_GATEWAY_FILE] + "panel.requestWebViewFocus()\n"},
+        {**good_wry, DESKTOP_WRY_GATEWAY_FILE: good_wry[DESKTOP_WRY_GATEWAY_FILE].replace("replaceBlockingFocusMouseListener", "noop")},
+    ):
+        try:
+            check_desktop_wry_off_edt_gateway(bad_wry)
+        except Violation:
+            pass
+        else:
+            raise SystemExit(f"self-test: desktop Wry off-EDT gateway checker accepted {bad_wry!r}")
+
     print("check_source_constraints self-test passed")
 
 
@@ -1406,7 +1496,8 @@ def main(argv: list[str]) -> int:
         "source constraints hold (1.15.0 conditional interaction state, task #82 native Apple, "
         "#3823 no production runBlocking, #3845 Native-safe test names, "
         "1.17.1 NSInvocation object return, #264 no top-level/object snapshot state, "
-        "dm:@artin:#2 date/time DI invariants, #proj-mobile:#319 server refusal invariants)"
+        "dm:@artin:#2 date/time DI invariants, #proj-mobile:#319 server refusal invariants, "
+        "#wg-mobile-sync:bf308ade desktop Wry off-EDT gateway)"
     )
     return 0
 

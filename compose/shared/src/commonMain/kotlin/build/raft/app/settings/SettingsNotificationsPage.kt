@@ -26,6 +26,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -45,6 +46,7 @@ import build.raft.app.data.NotificationPreferenceSnapshot
 import build.raft.app.data.PushPreviewMode
 import build.raft.app.data.RaftBackgroundConnectionControls
 import build.raft.app.data.RaftBackgroundConnectionControlsRegistry
+import build.raft.app.data.RaftBackgroundWhitelistGuide
 import build.raft.app.data.RaftNotificationAccountSettings
 import build.raft.app.data.RaftNotificationAccountSettingsPatch
 import build.raft.app.data.RaftNotificationAccountSettingsStore
@@ -354,33 +356,61 @@ private fun SettingsPushStatusCard(
                     onCheckedChange = onNotificationPreferenceChange
                 )
             }
-            val backgroundConnection = remember { RaftBackgroundConnectionControlsRegistry.offeredControls() }
-            if (backgroundConnection != null) {
-                // Android without Google Play services: the same preference keeps the realtime connection
-                // alive from a foreground service, the only notification path such a device has.
-                SettingsNotificationSwitchRow(
-                    title = stringResource(Res.string.settings_notifications_keep_connection_title),
-                    detail = stringResource(Res.string.settings_notifications_keep_connection_detail),
-                    checked = notificationPreferenceSnapshot.foregroundKeepAliveEnabled,
-                    enabled = !foregroundKeepAliveBusy,
-                    onCheckedChange = { enabled ->
-                        onForegroundKeepAlivePreferenceChange(enabled)
-                        if (enabled && !backgroundConnection.isBatteryOptimizationExempt()) {
-                            backgroundConnection.requestBatteryOptimizationExemption()
-                        }
-                    }
-                )
-                if (notificationPreferenceSnapshot.foregroundKeepAliveEnabled) {
-                    RaftBackgroundConnectionBatteryRow(backgroundConnection)
+            val backgroundControls = remember { RaftBackgroundConnectionControlsRegistry.installedControls() }
+            val backgroundPlan =
+                remember(backgroundControls) {
+                    settingsNotificationsBackgroundControlsPlan(
+                        controls = backgroundControls,
+                        platformSupportsBackgroundRealtime = raftPlatformSupportsBackgroundRealtime(),
+                    )
                 }
-            } else if (raftPlatformSupportsBackgroundRealtime()) {
-                SettingsNotificationSwitchRow(
-                    title = stringResource(Res.string.settings_notifications_background_realtime_title),
-                    detail = stringResource(Res.string.settings_notifications_background_realtime_detail, raftPlatformProductName()),
-                    checked = notificationPreferenceSnapshot.foregroundKeepAliveEnabled,
-                    enabled = !foregroundKeepAliveBusy,
-                    onCheckedChange = onForegroundKeepAlivePreferenceChange
-                )
+            if (backgroundPlan.mode != SettingsNotificationsBackgroundKeepAliveMode.None) {
+                Column(Modifier.fillMaxWidth().settingsSearchAnchor(SETTINGS_NOTIFICATIONS_BACKGROUND_KEEP_ALIVE_ANCHOR)) {
+                    when (backgroundPlan.mode) {
+                        SettingsNotificationsBackgroundKeepAliveMode.NoPlayServicesFallback -> {
+                            // Android without Google Play services: the same preference keeps the realtime connection
+                            // alive from a foreground service, the only notification path such a device has.
+                            SettingsNotificationSwitchRow(
+                                title = stringResource(Res.string.settings_notifications_keep_connection_title),
+                                detail = stringResource(Res.string.settings_notifications_keep_connection_detail),
+                                checked = notificationPreferenceSnapshot.foregroundKeepAliveEnabled,
+                                enabled = !foregroundKeepAliveBusy,
+                                onCheckedChange = { enabled ->
+                                    onForegroundKeepAlivePreferenceChange(enabled)
+                                    if (
+                                        enabled &&
+                                        backgroundControls != null &&
+                                        backgroundPlan.showBatteryExemptionRow &&
+                                        !backgroundControls.isBatteryOptimizationExempt()
+                                    ) {
+                                        backgroundControls.requestBatteryOptimizationExemption()
+                                    }
+                                }
+                            )
+                        }
+                        SettingsNotificationsBackgroundKeepAliveMode.AndroidWithPlayServices,
+                        SettingsNotificationsBackgroundKeepAliveMode.RealtimeSwitchOnly -> {
+                            SettingsNotificationSwitchRow(
+                                title = stringResource(Res.string.settings_notifications_background_realtime_title),
+                                detail = stringResource(Res.string.settings_notifications_background_realtime_detail, raftPlatformProductName()),
+                                checked = notificationPreferenceSnapshot.foregroundKeepAliveEnabled,
+                                enabled = !foregroundKeepAliveBusy,
+                                onCheckedChange = onForegroundKeepAlivePreferenceChange
+                            )
+                        }
+                        SettingsNotificationsBackgroundKeepAliveMode.None -> Unit
+                    }
+                    if (backgroundControls != null && backgroundPlan.showBatteryExemptionRow) {
+                        RaftBackgroundConnectionBatteryRow(backgroundControls)
+                    }
+                    if (backgroundControls != null && backgroundPlan.showVendorBackgroundRow) {
+                        RaftBackgroundVendorSettingsRow(
+                            controls = backgroundControls,
+                            guide = backgroundPlan.whitelistGuide,
+                            useUnifiedTitle = !backgroundPlan.showBatteryExemptionRow,
+                        )
+                    }
+                }
             }
             SettingsNotificationSwitchRow(
                 title = stringResource(Res.string.settings_foreground_banners_title),
@@ -666,7 +696,9 @@ private fun SettingsNotificationActionRow(
     detail: String,
     status: String?,
     enabled: Boolean,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    trailingIcon: RaftLucideIconName = RaftLucideIconName.Send,
 ) {
     RaftListRow(
         title = title,
@@ -677,17 +709,85 @@ private fun SettingsNotificationActionRow(
         divider = true,
         enabled = enabled,
         onClick = onClick,
+        modifier = modifier,
         trailing = {
             if (status != null) RaftListRowValue(status)
-            RaftLucideIcon(RaftLucideIconName.Send, modifier = Modifier.size(18.dp), color = raftArgbHex(RaftTheme.colors.foregroundHint))
+            RaftLucideIcon(trailingIcon, modifier = Modifier.size(18.dp), color = raftArgbHex(RaftTheme.colors.foregroundHint))
         }
     )
 }
 
+/** Anchor id used when jumping from the background-kill notice banner into Settings › Notifications. */
+internal const val SETTINGS_NOTIFICATIONS_BACKGROUND_KEEP_ALIVE_ANCHOR = "background-keep-alive"
+internal const val SETTINGS_NOTIFICATIONS_BATTERY_OPTIMIZATION_ROW_TAG = "settings_notifications_battery_optimization_row"
+internal const val SETTINGS_NOTIFICATIONS_VENDOR_BACKGROUND_ROW_TAG = "settings_notifications_vendor_background_row"
+
+internal enum class SettingsNotificationsBackgroundKeepAliveMode {
+    /** Non-Android hosts (iOS / desktop) with no background keep-alive controls. */
+    None,
+
+    /** Android test/fixture surface without installed host controls (switch only). */
+    RealtimeSwitchOnly,
+
+    /** Android without Google Play services: foreground-service keep-connection switch + keep-alive rows. */
+    NoPlayServicesFallback,
+
+    /** Android with Google Play services / GMS (direct or Play): background realtime switch + keep-alive rows. */
+    AndroidWithPlayServices,
+}
+
+internal data class SettingsNotificationsBackgroundControlsPlan(
+    val mode: SettingsNotificationsBackgroundKeepAliveMode,
+    /** Show the direct battery-optimization exemption row (direct/non-Play builds declaring the permission). */
+    val showBatteryExemptionRow: Boolean,
+    /**
+     * Show the OEM / system background settings row. On direct builds this appears alongside the
+     * battery exemption row when a device-specific OEM whitelist guide applies; on Play builds
+     * (where the direct battery prompt is removed) it serves as the single unified "Allow running
+     * in background" entry for every Android device.
+     */
+    val showVendorBackgroundRow: Boolean,
+    val whitelistGuide: RaftBackgroundWhitelistGuide,
+)
+
+internal fun settingsNotificationsBackgroundControlsPlan(
+    controls: RaftBackgroundConnectionControls?,
+    platformSupportsBackgroundRealtime: Boolean,
+): SettingsNotificationsBackgroundControlsPlan {
+    if (controls == null) {
+        return SettingsNotificationsBackgroundControlsPlan(
+            mode =
+                if (platformSupportsBackgroundRealtime) {
+                    SettingsNotificationsBackgroundKeepAliveMode.RealtimeSwitchOnly
+                } else {
+                    SettingsNotificationsBackgroundKeepAliveMode.None
+                },
+            showBatteryExemptionRow = false,
+            showVendorBackgroundRow = false,
+            whitelistGuide = RaftBackgroundWhitelistGuide.AppDetails,
+        )
+    }
+    val fallbackOffered = runCatching { controls.isOffered() }.getOrDefault(false)
+    val canRequestBattery = runCatching { controls.canRequestBatteryOptimizationExemption() }.getOrDefault(false)
+    val guide = runCatching { controls.whitelistGuide() }.getOrDefault(RaftBackgroundWhitelistGuide.AppDetails)
+    val hasOemWhitelist = guide != RaftBackgroundWhitelistGuide.AppDetails
+    return SettingsNotificationsBackgroundControlsPlan(
+        mode =
+            if (fallbackOffered) {
+                SettingsNotificationsBackgroundKeepAliveMode.NoPlayServicesFallback
+            } else {
+                SettingsNotificationsBackgroundKeepAliveMode.AndroidWithPlayServices
+            },
+        showBatteryExemptionRow = canRequestBattery,
+        showVendorBackgroundRow = if (canRequestBattery) hasOemWhitelist else true,
+        whitelistGuide = guide,
+    )
+}
+
 /**
- * Battery-optimization row for the Android no-Play-services background connection. The exemption is only
- * ever requested from a tap here or on the switch above; the host re-reads the status when the app resumes
- * (the system prompt returns without a callback), so nothing polls here.
+ * Direct battery-optimization row for Android builds that declare `REQUEST_IGNORE_BATTERY_OPTIMIZATIONS`.
+ * The exemption is only ever requested from a tap here or on the switch above; the host re-reads the status
+ * when the app resumes (the system prompt returns without a callback), so nothing polls here.
  */
 @Composable
 private fun RaftBackgroundConnectionBatteryRow(controls: RaftBackgroundConnectionControls) {
@@ -702,7 +802,48 @@ private fun RaftBackgroundConnectionBatteryRow(controls: RaftBackgroundConnectio
                 stringResource(Res.string.settings_notifications_battery_optimization_request)
             },
         enabled = !exempt,
-        onClick = { controls.requestBatteryOptimizationExemption() }
+        onClick = { controls.requestBatteryOptimizationExemption() },
+        modifier = Modifier.testTag(SETTINGS_NOTIFICATIONS_BATTERY_OPTIMIZATION_ROW_TAG),
+        trailingIcon = RaftLucideIconName.ChevronRight,
+    )
+}
+
+/**
+ * OEM / system background management row inside Settings › Notifications.
+ * Routes through the unified Android launcher (OEM auto-start -> system battery optimization
+ * settings -> App Info), safe on both direct and Google Play builds.
+ */
+@Composable
+private fun RaftBackgroundVendorSettingsRow(
+    controls: RaftBackgroundConnectionControls,
+    guide: RaftBackgroundWhitelistGuide,
+    useUnifiedTitle: Boolean,
+) {
+    val title =
+        if (useUnifiedTitle) {
+            stringResource(Res.string.settings_notifications_battery_optimization_title)
+        } else {
+            stringResource(Res.string.settings_notifications_vendor_background_title)
+        }
+    val detail =
+        when (guide) {
+            RaftBackgroundWhitelistGuide.HuaweiAppLaunch ->
+                stringResource(Res.string.settings_notifications_vendor_background_detail_huawei)
+            RaftBackgroundWhitelistGuide.LenovoZui ->
+                stringResource(Res.string.settings_notifications_vendor_background_detail_lenovo)
+            RaftBackgroundWhitelistGuide.VendorSettings ->
+                stringResource(Res.string.settings_notifications_vendor_background_detail_vendor)
+            RaftBackgroundWhitelistGuide.AppDetails ->
+                stringResource(Res.string.settings_notifications_vendor_background_detail_app_details)
+        }
+    SettingsNotificationActionRow(
+        title = title,
+        detail = detail,
+        status = stringResource(Res.string.common_open),
+        enabled = true,
+        onClick = { controls.openVendorBackgroundSettings() },
+        modifier = Modifier.testTag(SETTINGS_NOTIFICATIONS_VENDOR_BACKGROUND_ROW_TAG),
+        trailingIcon = RaftLucideIconName.ChevronRight,
     )
 }
 

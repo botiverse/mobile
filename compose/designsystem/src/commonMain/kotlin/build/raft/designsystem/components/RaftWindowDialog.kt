@@ -63,7 +63,9 @@ data class RaftWindowDialogProperties(
  *
  * Every window gets the same policy, so none of them can miss it:
  * - a right swipe does not pop the page underneath ([RaftBlockBackSwipe]);
- * - a page pushed over the page underneath asks it to close first ([RaftDismissOnPageCover]);
+ * - a page pushed over the page underneath asks it to close first ([RaftDismissOnPageCover], running
+ *   [onPageCover] when given so callers whose [onDismissRequest] commits a permanent server
+ *   dismissal can unmount cleanly on cover without dismissing, else [onDismissRequest]);
  * - the window is edge to edge and full size: [content] fills it and pads for the system bars,
  *   the cutout and the keyboard itself (`WindowInsets.safeDrawing`);
  * - no platform dim: the window draws the one scrim, [RaftTheme.scrim];
@@ -75,6 +77,7 @@ data class RaftWindowDialogProperties(
 fun RaftWindowDialog(
     onDismissRequest: () -> Unit,
     properties: RaftWindowDialogProperties = RaftWindowDialogProperties(),
+    onPageCover: (() -> Unit)? = null,
     content: @Composable () -> Unit,
 ) {
     // A right swipe must not pop the page underneath an open dialog.
@@ -84,7 +87,7 @@ fun RaftWindowDialog(
     val modalToken = remember { Any() }
     autofocusGuard.coordinator.HoldModal(modalToken)
     // A page pushed over this one closes the window first: the covered page stops composing.
-    RaftDismissOnPageCover(onDismissRequest)
+    RaftDismissOnPageCover(onPageCover ?: onDismissRequest)
     RaftPrepareDialogWindow(isDark = RaftTheme.isDark)
     // The host's window (read outside the dialog: its own layer may not have a size yet).
     val hostWindow = LocalWindowInfo.current

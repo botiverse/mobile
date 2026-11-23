@@ -384,15 +384,27 @@ private suspend fun <T> notificationRequest(
         val response = block()
         val body = response.bodyText
         when {
-            !response.isSuccessful ->
-                DataResult.Error(ScreenError(code = "notification_settings_http_${response.code}", retryable = response.code >= 500 || response.code == 0))
-            body.isNullOrBlank() -> DataResult.Error(ScreenError(code = contractCode, retryable = false))
-            else -> parse(body)?.let { DataResult.Content(it) } ?: DataResult.Error(ScreenError(code = contractCode, retryable = false))
+            !response.isSuccessful -> {
+                val envelope = response.parseHttpErrorEnvelope()
+                DataResult.Error(
+                    ScreenError(
+                        code = "notification_settings_http_${response.code}",
+                        retryable = response.code >= 500 || response.code == 0,
+                        serverMessage = envelope?.serverMessage,
+                        serverCode = envelope?.serverCode,
+                        traceId = response.traceId,
+                    )
+                )
+            }
+            body.isNullOrBlank() -> DataResult.Error(ScreenError(code = contractCode, retryable = false, traceId = response.traceId))
+            else ->
+                parse(body)?.let { DataResult.Content(it) }
+                    ?: DataResult.Error(ScreenError(code = contractCode, retryable = false, traceId = response.traceId))
         }
     } catch (cancellation: CancellationException) {
         throw cancellation
     } catch (_: Exception) {
-        DataResult.Error(ScreenError(code = "notification_settings_network_failed", retryable = true))
+        DataResult.Error(ScreenError(code = "notification_settings_network_failed", retryable = true, traceId = null))
     }
 
 /**

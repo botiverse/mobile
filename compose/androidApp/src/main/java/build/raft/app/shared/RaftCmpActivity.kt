@@ -1585,9 +1585,23 @@ internal open class RaftCmpActivity :
                 recreatePending = recreateOnResume,
             )
         ) {
+            val externalShareToken =
+                externalShareTokenFromPageDataOrNull(resolvedPageData(intent).text)
+            if (externalShareToken != null) {
+                nav3Stack?.let { stack ->
+                    if (stack.pages.size > 1) {
+                        raftAndroidNav3ClearForWindowReplace(stack, nav3Results)
+                    }
+                }
+                build.raft.app.RaftExternalShareLaunchIngress.submit(
+                    token = externalShareToken,
+                    targetShellInstanceId = androidShellLaunchTarget?.shellInstanceId,
+                )
+            }
             val line =
                 "host_new_intent page=${resolvedPageName(intent)} currentPage=${pageSpec?.pageName.orEmpty()} " +
-                    "state=${lifecycle.currentState} recreate=preserved"
+                    "state=${lifecycle.currentState} recreate=preserved" +
+                    if (externalShareToken != null) " externalShare=delivered" else ""
             RaftAppLog.record("SlockKuiklyActivity", line)
             RaftAndroidLocalDiagnostics.recordLog("info", "SlockKuiklyActivity", line)
             return
@@ -6200,7 +6214,7 @@ internal class RaftBridgeModule(
                                         // It also makes channel_blocked feedback meaningful for
                                         // the channel users actually care about.
                                         NotificationCompat.Builder(appContext, AndroidUnreadNotificationPoster.UNREAD_MENTION_NOTIFICATION_CHANNEL_ID)
-                                                .setSmallIcon(android.R.drawable.ic_dialog_info)
+                                                .setSmallIcon(R.drawable.ic_stat_raft)
                                                 .setContentTitle(appContext.getString(R.string.settings_notification_test_title))
                                                 .setContentText(appContext.getString(R.string.settings_notification_test_text))
                                                 .setStyle(

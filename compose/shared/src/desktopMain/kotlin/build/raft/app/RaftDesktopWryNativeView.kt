@@ -1,6 +1,6 @@
 package build.raft.app
 
-import io.github.kdroidfilter.webview.wry.WryWebViewPanel
+import java.awt.Component
 import java.awt.Container
 import java.awt.Dimension
 import java.awt.LayoutManager
@@ -8,8 +8,6 @@ import java.awt.event.ComponentAdapter
 import java.awt.event.ComponentEvent
 import java.awt.event.HierarchyBoundsAdapter
 import java.awt.event.HierarchyEvent
-import java.lang.reflect.Field
-import java.lang.reflect.Method
 import javax.swing.JPanel
 
 /**
@@ -27,10 +25,14 @@ import javax.swing.JPanel
  *   gets to destroy it; coming back (or [reveal]) puts it where the panel is.
  * - Every move or resize of the panel or an ancestor re-sends the native bounds.
  *
- * The panel's private bounds sync is reached by reflection ([RaftDesktopWryPanelAccess]); the jar is pinned by
- * checksum (desktopApp `verifyWryWebviewChecksum`) and a test checks the members exist.
+ * All Wry-specific native operations are injected by [RaftDesktopWryGateway] so this Swing view
+ * never calls Wry directly.
  */
-internal class RaftDesktopWryNativeView(val panel: WryWebViewPanel) : JPanel() {
+internal class RaftDesktopWryNativeView(
+    val content: Component,
+    private val onMoveOffScreen: (width: Int, height: Int) -> Unit,
+    private val onResyncBounds: () -> Unit,
+) : JPanel() {
     /** Set once the page is ready to be seen (the host's readiness check). */
     private var revealed = false
     private var attached = false
@@ -40,7 +42,7 @@ internal class RaftDesktopWryNativeView(val panel: WryWebViewPanel) : JPanel() {
     init {
         background = java.awt.Color.WHITE
         layout = OffscreenUntilShownLayout()
-        add(panel)
+        add(content)
         addComponentListener(
             object : ComponentAdapter() {
                 override fun componentMoved(e: ComponentEvent) = syncNative()
@@ -91,18 +93,18 @@ internal class RaftDesktopWryNativeView(val panel: WryWebViewPanel) : JPanel() {
             hideNative()
             return
         }
-        RaftDesktopWryPanelAccess.resyncBounds(panel)
+        onResyncBounds()
     }
 
     private fun hideNative() {
-        RaftDesktopWryPanelAccess.moveOffScreen(panel)
+        onMoveOffScreen(content.width.coerceAtLeast(1), content.height.coerceAtLeast(1))
     }
 
     /** Lays the panel out over this component on screen, or at the same size far left of the window. */
     private inner class OffscreenUntilShownLayout : LayoutManager {
-        override fun addLayoutComponent(name: String?, comp: java.awt.Component?) = Unit
+        override fun addLayoutComponent(name: String?, comp: Component?) = Unit
 
-        override fun removeLayoutComponent(comp: java.awt.Component?) = Unit
+        override fun removeLayoutComponent(comp: Component?) = Unit
 
         override fun preferredLayoutSize(parent: Container): Dimension = parent.size
 
@@ -112,50 +114,12 @@ internal class RaftDesktopWryNativeView(val panel: WryWebViewPanel) : JPanel() {
             val w = parent.width
             val h = parent.height
             val x = if (onScreen) 0 else -(w + OffscreenGap)
-            panel.setBounds(x, 0, w, h)
-            panel.doLayout()
+            content.setBounds(x, 0, w, h)
+            content.doLayout()
         }
     }
 
     private companion object {
         const val OffscreenGap = 20_000
     }
-}
-
-/** Reflection into [WryWebViewPanel]'s bounds sync (pinned artifact; see [RaftDesktopWryNativeView]). */
-object RaftDesktopWryPanelAccess {
-    private val webviewIdField: Field? = member { WryWebViewPanel::class.java.getDeclaredField("webviewId") }
-    private val lastBoundsField: Field? = member { WryWebViewPanel::class.java.getDeclaredField("lastBounds") }
-    private val updateBoundsMethod: Method? = member { WryWebViewPanel::class.java.getDeclaredMethod("updateBounds") }
-
-    /** Whether every member this needs is there (a test pins it to the shipped jar). */
-    val available: Boolean get() = webviewIdField != null && lastBoundsField != null && updateBoundsMethod != null
-
-    internal fun moveOffScreen(panel: WryWebViewPanel) {
-        val id = runCatching { webviewIdField?.get(panel) as? ULong }.getOrNull() ?: return
-        runCatching {
-            // Same size, far off the window: the page keeps its viewport (a 1px one would relayout it).
-            io.github.kdroidfilter.webview.wry.setBounds(
-                id,
-                -OffscreenOrigin,
-                -OffscreenOrigin,
-                panel.width.coerceAtLeast(1),
-                panel.height.coerceAtLeast(1),
-            )
-            // The panel's cache of what it last sent is stale now: the next sync must send again.
-            lastBoundsField?.set(panel, null)
-        }
-    }
-
-    internal fun resyncBounds(panel: WryWebViewPanel) {
-        runCatching {
-            lastBoundsField?.set(panel, null)
-            updateBoundsMethod?.invoke(panel)
-        }
-    }
-
-    private fun <T : java.lang.reflect.AccessibleObject> member(get: () -> T): T? =
-        runCatching { get().apply { isAccessible = true } }.getOrNull()
-
-    private const val OffscreenOrigin = 32_000
 }

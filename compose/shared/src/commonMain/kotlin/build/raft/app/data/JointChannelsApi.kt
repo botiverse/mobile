@@ -338,6 +338,10 @@ internal class RealJointChannelRepository(
     suspend fun connectMyServers(channelId: ChannelId, serverIds: List<String>): DataResult<MemberConnectResponse> =
         networkClient.connectMyServers(channelId, serverIds, warningLogger)
 
+    /** Free external-channel limit state for connectable servers (`GET channels/:id/connect-my-servers`). */
+    suspend fun listMemberConnectLimits(channelId: ChannelId): Map<String, MemberConnectServerLimit> =
+        networkClient.listMemberConnectLimits(channelId, warningLogger)
+
     suspend fun pendingInvites(serverId: ServerId, priority: DataRequestPriority): DataResult<List<PendingJointInvite>> =
         execute(
             "joint_pending_invites",
