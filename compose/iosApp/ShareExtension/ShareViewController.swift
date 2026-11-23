@@ -1,3 +1,4 @@
+import Intents
 import ObjectiveC
 import UIKit
 import UniformTypeIdentifiers
@@ -14,6 +15,7 @@ final class ShareViewController: UIViewController {
     private var handoffStarted = false
     private var didDisappearBeforeHandoff = false
     private var stagedToken: String?
+    private var preselectedTargetHint: String?
     private var temporaryFiles = Set<URL>()
     private var acceptingTemporaryFiles = false
 
@@ -63,6 +65,8 @@ final class ShareViewController: UIViewController {
         super.viewDidAppear(animated)
         guard !started else { return }
         started = true
+        let intentConversationId = (extensionContext?.intent as? INSendMessageIntent)?.conversationIdentifier
+        preselectedTargetHint = RaftExternalShareContract.canonicalizeTargetHint(intentConversationId)
         temporaryFileLock.lock()
         acceptingTemporaryFiles = true
         temporaryFileLock.unlock()
@@ -376,6 +380,7 @@ final class ShareViewController: UIViewController {
         switch result {
         case .success(let payload):
             let ownedTemporaryFiles = detachTemporaryFiles()
+            let capturedHint = preselectedTargetHint
             let scheme = Bundle(for: ShareViewController.self)
                 .object(forInfoDictionaryKey: "RaftHostLaunchScheme") as? String
             DispatchQueue.global(qos: .userInitiated).async { [weak self] in
@@ -389,7 +394,8 @@ final class ShareViewController: UIViewController {
                     let token = try RaftExternalShareEnvelopeStorage.shared.admit(
                         text: payload.0,
                         subject: "",
-                        candidates: payload.1
+                        candidates: payload.1,
+                        preselectedTargetHint: capturedHint
                     )
                     admittedToken = token
                     let url = try RaftExternalShareContract.hostLaunchURL(

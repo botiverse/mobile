@@ -205,6 +205,71 @@ class RaftIosExternalShareEnvelopeHostIosTest {
         }
     }
 
+    @Test
+    fun preselectedTargetHintRoundTripsCanonicalHintAndDropsMalformedHint() = runTest {
+        withTempInbox { inboxPath ->
+            val files = NSFileManager.defaultManager
+            val nowMillis = 1_700_000_000_000L
+            val host = createIosExternalShareEnvelopeHostForRoot(inboxPath) { nowMillis }
+
+            val validToken = "ios-share-hint-ok_123456"
+            val validDir = "$inboxPath/$validToken"
+            assertTrue(files.createDirectoryAtPath(validDir, withIntermediateDirectories = true, attributes = null, error = null))
+            writeText(
+                "$validDir/envelope.json",
+                """
+                {
+                  "token": "$validToken",
+                  "createdAtEpochMillis": $nowMillis,
+                  "sourcePlatform": "ios",
+                  "text": "hello direct share",
+                  "subject": "",
+                  "items": [],
+                  "preselectedTargetHint": "  raft_share:v1:srv-1:DM:dm-agent-1  "
+                }
+                """.trimIndent()
+            )
+            val validLoaded = assertIs<RaftExternalShareEnvelopeHostReadResult.Content>(host.load(validToken))
+            assertEquals("raft_share:v1:srv-1:dm:dm-agent-1", validLoaded.record.preselectedTargetHint)
+
+            val badHintToken = "ios-share-hint-bad_123456"
+            val badHintDir = "$inboxPath/$badHintToken"
+            assertTrue(files.createDirectoryAtPath(badHintDir, withIntermediateDirectories = true, attributes = null, error = null))
+            writeText(
+                "$badHintDir/envelope.json",
+                """
+                {
+                  "token": "$badHintToken",
+                  "createdAtEpochMillis": $nowMillis,
+                  "sourcePlatform": "ios",
+                  "text": "fallback to picker",
+                  "subject": "",
+                  "items": [],
+                  "preselectedTargetHint": "raft_share:v1:srv-1:channel:../escape"
+                }
+                """.trimIndent()
+            )
+            val badHintLoaded = assertIs<RaftExternalShareEnvelopeHostReadResult.Content>(host.load(badHintToken))
+            assertEquals(null, badHintLoaded.record.preselectedTargetHint)
+            assertEquals("fallback to picker", badHintLoaded.record.text)
+        }
+    }
+
+    @Test
+    fun iosSharePixelAvatarRgbaRendersBundledAndRandomAndRejectsNonPixelWire() {
+        val cat = raftIosRenderPixelAvatarRgba("pixel:cat")
+        assertTrue(cat != null)
+        assertTrue(cat.size >= 48)
+        assertEquals((cat.size * cat.size * 4).toULong(), cat.rgbaData.length)
+
+        val random = raftIosRenderPixelAvatarRgba("random:agent-seed")
+        assertTrue(random != null)
+        assertEquals((random.size * random.size * 4).toULong(), random.rgbaData.length)
+
+        assertEquals(null, raftIosRenderPixelAvatarRgba("https://example.com/avatar.png"))
+        assertEquals(null, raftIosRenderPixelAvatarRgba(""))
+    }
+
     private inline fun withTempInbox(block: (String) -> Unit) {
         val path = "${NSTemporaryDirectory().trimEnd('/')}/raft-ext-share-test-${NSUUID().UUIDString}"
         assertTrue(

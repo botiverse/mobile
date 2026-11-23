@@ -148,7 +148,9 @@ private class IosAppGroupExternalShareEnvelopeHost(
                     sourcePlatform = envelope.sourcePlatform,
                     text = envelope.text,
                     subject = envelope.subject,
-                    items = items
+                    items = items,
+                    preselectedTargetHint =
+                        RaftShareSuggestionContract.canonicalizeTargetHint(envelope.preselectedTargetHint)
                 )
             )
         }
@@ -252,7 +254,8 @@ private data class IosExternalShareEnvelope(
     val sourcePlatform: String,
     val text: String = "",
     val subject: String = "",
-    val items: List<IosExternalShareEnvelopeItem> = emptyList()
+    val items: List<IosExternalShareEnvelopeItem> = emptyList(),
+    val preselectedTargetHint: String? = null
 )
 
 private fun canonicalizeLocalPath(path: String): String {

@@ -15,6 +15,47 @@ enum RaftExternalShareContract {
     static let maximumTotalBytes: Int64 = 100 * 1024 * 1024
     static let maximumTextCharacters = 256 * 1024
     static let envelopeTtl: TimeInterval = 24 * 60 * 60
+    static let shareSuggestionHintPrefix = "raft_share:v1:"
+    static let maximumShareSuggestionHintLength = 256
+    static let maximumShareSuggestionSegmentLength = 120
+    private static let validShareSuggestionKinds = Set(["channel", "joint", "dm"])
+
+    static func canonicalizeTargetHint(_ raw: String?) -> String? {
+        guard let raw else { return nil }
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty,
+            trimmed.count <= maximumShareSuggestionHintLength,
+            trimmed.hasPrefix(shareSuggestionHintPrefix)
+        else { return nil }
+        let remainder = String(trimmed.dropFirst(shareSuggestionHintPrefix.count))
+        let parts = remainder.split(separator: ":", omittingEmptySubsequences: false).map(String.init)
+        guard parts.count == 3 else { return nil }
+        let serverId = parts[0]
+        let kind = parts[1].trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let channelId = parts[2]
+        guard isSafeTargetHintSegment(serverId),
+            validShareSuggestionKinds.contains(kind),
+            isSafeTargetHintSegment(channelId)
+        else { return nil }
+        let canonical = "\(shareSuggestionHintPrefix)\(serverId):\(kind):\(channelId)"
+        return canonical.count <= maximumShareSuggestionHintLength ? canonical : nil
+    }
+
+    private static func isSafeTargetHintSegment(_ segment: String) -> Bool {
+        guard !segment.isEmpty, segment.count <= maximumShareSuggestionSegmentLength else {
+            return false
+        }
+        return segment.unicodeScalars.allSatisfy { scalar in
+            let value = scalar.value
+            return (value >= 0x61 && value <= 0x7A)
+                || (value >= 0x41 && value <= 0x5A)
+                || (value >= 0x30 && value <= 0x39)
+                || value == 0x2D
+                || value == 0x5F
+                || value == 0x2E
+                || value == 0x7E
+        }
+    }
 
     static func hostLaunchURL(token: String, configuredScheme: String?) throws -> URL {
         guard RaftExternalShareEnvelopeStorage.isSafeToken(token) else {
@@ -145,6 +186,7 @@ private struct RaftExternalShareEnvelope: Codable {
     let text: String
     let subject: String
     let items: [RaftExternalShareEnvelopeItem]
+    let preselectedTargetHint: String?
 }
 
 private struct RaftExternalShareFailureReceipt: Codable {
@@ -235,9 +277,15 @@ final class RaftExternalShareEnvelopeStorage {
         self.tokenFactory = tokenFactory
     }
 
-    func admit(text: String, subject: String, candidates: [RaftExternalShareCandidate]) throws -> String {
+    func admit(
+        text: String,
+        subject: String,
+        candidates: [RaftExternalShareCandidate],
+        preselectedTargetHint: String? = nil
+    ) throws -> String {
         lock.lock()
         defer { lock.unlock() }
+        let normalizedHint = RaftExternalShareContract.canonicalizeTargetHint(preselectedTargetHint)
         let normalizedText = try boundedText(text)
         let normalizedSubject = try boundedText(subject)
         let hasTextContent = !normalizedText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
@@ -300,7 +348,8 @@ final class RaftExternalShareEnvelopeStorage {
                 sourcePlatform: "ios",
                 text: normalizedText,
                 subject: normalizedSubject,
-                items: items
+                items: items,
+                preselectedTargetHint: normalizedHint
             )
             let data = try JSONEncoder().encode(envelope)
             try data.write(
