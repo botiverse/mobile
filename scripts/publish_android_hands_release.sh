@@ -3,11 +3,14 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 HANDS_CLI="${HANDS_CLI:-hands}"
-HANDS_CLI_PACKAGE="${HANDS_CLI_PACKAGE:-@botiverse/hands-cli@0.5.35}"
+HANDS_CLI_PACKAGE="${HANDS_CLI_PACKAGE:-@botiverse/hands-cli@0.5.73}"
 APP_SLUG="${HANDS_APP_SLUG:-raft-android}"
 CHANNEL="${HANDS_CHANNEL:-${SLOCK_HANDS_CHANNEL:-main}}"
 VARIANT="${SLOCK_ANDROID_VARIANT:-release}"
-ARCH="${SLOCK_ANDROID_ARCH:-arm64-v8a}"
+# Universal APK carries both arm64-v8a and x86_64 native libs; Hands CLI >= 0.5.64
+# stores `--arch universal` with no arch so Hands serves it (and its delta patches)
+# to every Android ABI, including x86_64 update-E2E emulators (#proj-mobile-release:#29).
+ARCH="${SLOCK_ANDROID_ARCH:-universal}"
 VERSION_X="${SLOCK_ANDROID_VERSION_MAJOR:-1}"
 VERSION_Y="${SLOCK_ANDROID_VERSION_MINOR:-0}"
 VERSION_Z="${SLOCK_ANDROID_VERSION_PATCH:-0}"
@@ -107,7 +110,7 @@ Environment overrides:
   HANDS_API=https://hands.build
   HANDS_AUTH_TOKEN=<agent or CI bearer token>
   HANDS_CLI=hands
-  HANDS_CLI_PACKAGE=@botiverse/hands-cli@0.5.35
+  HANDS_CLI_PACKAGE=@botiverse/hands-cli@0.5.73
   SLOCK_ANDROID_VERSION_MAJOR=1
   SLOCK_ANDROID_VERSION_MINOR=0
   SLOCK_ANDROID_VERSION_PATCH=0
@@ -116,7 +119,7 @@ Environment overrides:
   SLOCK_ANDROID_VERSION_CODE=1000001
   SLOCK_ANDROID_VERSION_NAME=1.0.0-rc1
   SLOCK_ANDROID_VARIANT=release
-  SLOCK_ANDROID_ARCH=arm64-v8a
+  SLOCK_ANDROID_ARCH=universal
   SLOCK_SKIP_GRADLE_BUILD=1
   SLOCK_COLLECT_ANDROID_SYMBOLS=0
   SLOCK_REQUIRE_ANDROID_SYMBOLS=1

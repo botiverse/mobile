@@ -99,8 +99,8 @@ STEP_ALLOWLIST = {
         ("GH_TOKEN is github.token for `gh`; outputs are version and commit",
          "718ad690a3522aea41bfe0c251627b17eb18786c3cb267bc8b37eaf696fe26de"),
     ("android-update-e2e.yml", "plan", "id:p"):
-        ("HANDS_AUTH_TOKEN is used by the Hands CLI; outputs are build flags, source sha and the versionCode plan",
-         "8308184b7cd82d02f59084aeebd61dafc79f8c83200a03d755b6702343dfbb06"),
+        ("HANDS_AUTH_TOKEN is used by the Hands CLI; outputs are mode, preview_release_id, build flags, source sha and the versionCode plan (no credentials)",
+         "d1a267b2034dfa9b682d996907c9f012f9ced248fc57cc34e9d3abeedf338668"),
     ("android-release.yml", "build_android_release", "Sign + align APK"):
         ("signing secrets go to apksigner via files/env; outputs are paths, hashes, SDK levels and signer cert digests",
          "10a0ac8e034041a4ab456d71440aae31342677458c25fe99bd7cf82c5f68f9cf"),

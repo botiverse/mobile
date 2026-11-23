@@ -188,6 +188,12 @@ ruby -e '
 
   publish_script = File.read("scripts/publish_android_hands_release.sh")
   raise "Hands publisher can route the Play carrier" unless publish_script.include?("the Hands publisher cannot publish the Play carrier")
+  raise "Hands Android publisher no longer defaults to universal arch (#proj-mobile-release:#29)" unless publish_script.include?("ARCH=\"${SLOCK_ANDROID_ARCH:-universal}\"")
+  draft_steps = publish_job.fetch("steps")
+  install_cli = draft_steps.find { |step| step["name"] == "Install Hands CLI (npm)" }
+  raise "missing Hands CLI install step in create_hands_draft" unless install_cli
+  cli_ver = install_cli.fetch("run")[/hands-cli@(\d+\.\d+\.\d+)/, 1]
+  raise "create_hands_draft Hands CLI #{cli_ver.inspect} is older than 0.5.64 (needed for --arch universal + --generate-deltas)" unless cli_ver && Gem::Version.new(cli_ver) >= Gem::Version.new("0.5.64")
 
   release_copy = Dir["change-logs/**/*.md"].to_h { |path| [path, File.read(path)] }
   deprecated_zh_terms = {
