@@ -18,6 +18,7 @@ import build.raft.app.components.RaftDesignSystemTheme
 import build.raft.app.data.SharedServerMemberStatus
 import build.raft.app.model.AgentStatus
 import build.raft.app.model.MemberKind
+import build.raft.app.resources.desc
 import build.raft.designsystem.components.RaftPreviewCardSurface
 import kotlin.test.Test
 import org.junit.runner.RunWith
@@ -28,11 +29,11 @@ import org.robolectric.annotation.GraphicsMode
 /**
  * The @mention hover card's profile content (web `ProfilePreviewCardContent`) on the raft-ui
  * PreviewCard surface, light and dark, without the popup (the design system's
- * `preview_card_open_*` holds the card open over its trigger):
- *  - a person: avatar, name, @handle, the description under a hairline, View Profile and Message
- *    at the card's end (raft-design #939: the bordered Message last);
- *  - an agent: its status light and words after the name, @handle, "Not read yet", Runtime and
- *    Model under a hairline, the description;
+ * `preview_card_open_*` holds the card open over its trigger). No buttons, as on the web: the
+ * trigger's own click opens the profile.
+ *  - a person: avatar, name, @handle, the description under a hairline (two lines at most);
+ *  - an agent: its status light and words after the name, @handle, "Not read yet", Computer,
+ *    Runtime, Model and Reasoning under a hairline, the description cut at two lines;
  *  - someone from another server: the `info-soft` ribbon across the top (Peer Labs · Acme Corp's
  *    tiles and names, "External"), then the person as above.
  * Reports land in `build/reports/home-screenshots/`; verify / record as [RaftRobolectricScreenshot].
@@ -44,15 +45,15 @@ class ProfilePreviewCardScreenshotTest {
     @get:org.junit.Rule
     val activities = RobolectricComposeActivityRule()
 
-    @Test fun humanLight() = capture("profile-preview.human", RaftAppAppearance.Light) { Card(humanModel, actions = true) }
+    @Test fun humanLight() = capture("profile-preview.human", RaftAppAppearance.Light) { Card(humanModel) }
 
-    @Test fun humanDark() = capture("profile-preview.human.dark", RaftAppAppearance.Dark) { Card(humanModel, actions = true) }
+    @Test fun humanDark() = capture("profile-preview.human.dark", RaftAppAppearance.Dark) { Card(humanModel) }
 
-    @Test fun agentLight() = capture("profile-preview.agent", RaftAppAppearance.Light) { Card(agentModel, actions = false) }
+    @Test fun agentLight() = capture("profile-preview.agent", RaftAppAppearance.Light) { Card(agentModel) }
 
     // Member labels (web botiverse/slock #14535 ExternalOriginRibbon): someone from another server,
     // the ribbon across the card's top with their servers' tiles and names, and "External".
-    @Test fun externalLight() = capture("profile-preview.external", RaftAppAppearance.Light) { Card(externalModel, actions = true) }
+    @Test fun externalLight() = capture("profile-preview.external", RaftAppAppearance.Light) { Card(externalModel) }
 
     private fun capture(name: String, appearance: RaftAppAppearance, content: @Composable () -> Unit) =
         RaftRobolectricScreenshot.capture(name, appearance, reportDir = "build/reports/home-screenshots", activities = activities) {
@@ -66,13 +67,9 @@ class ProfilePreviewCardScreenshotTest {
 }
 
 @Composable
-private fun Card(model: RaftProfilePreviewCardModel, actions: Boolean) {
+private fun Card(model: RaftProfilePreviewCardModel) {
     RaftPreviewCardSurface {
-        RaftProfilePreviewCardContent(
-            model = model,
-            onMessage = if (actions) ({}) else null,
-            onViewProfile = if (actions) ({}) else null,
-        )
+        RaftProfilePreviewCardContent(model = model)
     }
 }
 
@@ -98,6 +95,7 @@ private val agentModel =
                 .toRaftAgentStatusIndicatorState(),
         runtimeLabel = "Claude Code",
         modelLabel = "Claude Opus",
+        reasoningLabel = "High".desc(),
         computer = RaftProfilePreviewComputer.Named("studio-mac"),
         readReceipt = RaftProfilePreviewReadReceipt.Unread,
     )

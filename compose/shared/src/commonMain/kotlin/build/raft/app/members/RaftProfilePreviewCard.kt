@@ -23,10 +23,7 @@ import build.raft.app.model.ServerId
 import build.raft.app.model.avatarWireValueForAvatarSlot
 import build.raft.app.data.runtimeCatalogDisplayName
 import build.raft.designsystem.components.RaftAvatarSize
-import build.raft.designsystem.components.RaftButton
-import build.raft.designsystem.components.RaftButtonVariant
 import build.raft.designsystem.components.RaftPreviewCard
-import build.raft.designsystem.components.RaftPreviewCardActions
 import build.raft.designsystem.components.RaftPreviewCardDescription
 import build.raft.designsystem.components.RaftPreviewCardHeader
 import build.raft.designsystem.components.RaftPreviewCardSeparator
@@ -34,6 +31,7 @@ import build.raft.designsystem.components.RaftPreviewCardTitle
 import build.raft.designsystem.components.RaftSeparator
 import build.raft.designsystem.components.RaftStatusDot
 import build.raft.designsystem.components.RaftStatusSize
+import build.raft.designsystem.components.RaftTooltip
 import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.RaftTheme
 import kotlinx.coroutines.flow.flowOf
@@ -57,7 +55,7 @@ internal data class RaftProfilePreviewCardModel(
     val handle: String? = null,
     val avatarWireValue: String? = null,
     val avatarLabel: String = displayName.toRaftAvatarLabel(),
-    /** One line under a hairline, truncated (raft-ui `PreviewCardDescription`). */
+    /** Under a hairline, two lines at most (web `line-clamp-2`), the whole of it in its tooltip. */
     val description: String? = null,
     /** An App Bot: the Bot badge after the name and "Managed by app"; no presence, no runtime. */
     val appBot: RaftAppBotIdentity? = null,
@@ -68,6 +66,8 @@ internal data class RaftProfilePreviewCardModel(
     /** The runtime behind [runtimeLabel]: its lifecycle status (" (deprecated)") is added when drawn. */
     val runtimeId: String? = null,
     val modelLabel: String? = null,
+    /** An agent's reasoning effort (web Reasoning row, after Model); null leaves the row out. */
+    val reasoningLabel: StringDesc? = null,
     /** Where an agent runs (web Computer row, above Runtime); null leaves the row out. */
     val computer: RaftProfilePreviewComputer? = null,
     val readReceipt: RaftProfilePreviewReadReceipt? = null,
@@ -132,6 +132,8 @@ internal fun raftProfilePreviewCardModel(
     // web `hideAgentServerFacts`: another server's agent comes with its identity only.
     val agentFacts = isAgent && appBot == null && !origin.external
     val runtimeId = (status?.runtime ?: profile.roleDescription)?.trim()?.takeIf { it.isNotBlank() }
+    // Web `runtimeConfig?.runtime ?? profileAgent.runtime`: the runtime the saved effort belongs to.
+    val reasoningRuntime = profile.agentReasoning?.runtime?.trim()?.takeIf { it.isNotBlank() } ?: runtimeId
     val displayName = appBot?.appName ?: profile.displayName.ifBlank { profile.handle }
     val resolvedServerId = profile.serverId?.value ?: viewerServerId
     return RaftProfilePreviewCardModel(
@@ -149,6 +151,8 @@ internal fun raftProfilePreviewCardModel(
         runtimeLabel = if (agentFacts) runtimeId?.let { runtimeIdentityDisplayName(it, resolvedServerId) } else null,
         runtimeId = if (agentFacts) runtimeId else null,
         modelLabel = if (agentFacts) profile.modelLabel(viewerServerId = resolvedServerId, catalog = modelLabelCatalog) else null,
+        // Web `reasoningEffortDisplayLabel`: a runtime that takes an effort shows it, "Default" when none is saved.
+        reasoningLabel = if (agentFacts) reasoningRuntime?.let { membersReasoningEffortDisplayLabel(it, profile.agentReasoning?.reasoningEffort) } else null,
         computer =
             when {
                 !agentFacts -> null
@@ -221,33 +225,29 @@ internal fun rememberRaftProfilePreviewCardModel(
  * - Someone from another server ([RaftProfilePreviewCardModel.external]): the ribbon across the
  *   card's top first ([RaftProfilePreviewExternalRibbon]: their servers and "External"); an agent
  *   then has no Computer / Runtime / Model or Managed by app rows.
- * - Header: the large avatar ([RaftAvatarSize.Lg], 51dp) and, 12dp beside it, the name
- *   (headline, one line); after it the Bot badge for an App Bot, or an agent's status light
- *   (`Status sm`) and its words (`text-callout` `foreground-hint`). Then the `@handle` in Space
- *   Mono `foreground-muted`, "Read" / "Not read yet" (caption `foreground-hint`) for an agent
- *   mention whose read state is known, and the facts: "Managed by app" for an App Bot; a hairline
- *   and Runtime / Model for an agent (labels caption `foreground-hint`, values mono `foreground-muted`).
- * - The description under a hairline, one line, truncated.
- * - [onMessage] / [onViewProfile]: Message and View Profile, Md buttons (raft-ui allows two;
- *   the web card has none, its mention is the link to the profile). Each should also dismiss
- *   the card. Neither given: no buttons.
+ * - Header: the large avatar ([RaftAvatarSize.Lg], 51dp, 2dp down: web `mt-0.5`) and, 12dp beside
+ *   it, the name (headline, one line); after it the Bot badge for an App Bot, or an agent's status
+ *   light (`Status sm`) and its words (`text-callout` `foreground-hint`). Then the `@handle` in
+ *   Space Mono `foreground-muted`, "Read" / "Not read yet" (caption `foreground-hint`) for an agent
+ *   mention whose read state is known, and the facts under a hairline: "Managed by app" for an App
+ *   Bot; Computer / Runtime / Model / Reasoning for an agent (labels caption `foreground-hint`,
+ *   values mono `foreground-muted`, one line each, the whole value in its tooltip).
+ * - The description under a hairline, two lines at most (web `line-clamp-2`), the whole of it in
+ *   its tooltip.
+ * - No buttons (web: the card has none). What opens the profile is the trigger's own click (the
+ *   message avatar, the @mention), which also closes the card.
  * - [RaftProfilePreviewCardModel.unavailable]: the handle (or Agent / Member) and "Profile
  *   unavailable" in footnote `foreground-muted`.
  *
  * ```
- * val state = rememberRaftPreviewCardState()
  * val model = rememberRaftProfilePreviewCardModel(memberId, MemberKind.Agent, serverMembersStore, serverId, fallbackHandle = "bugen")
- * RaftPreviewCard(card = { RaftProfilePreviewCardContent(model, onViewProfile = { state.dismiss(); openProfile(memberId) }) }, state = state) {
- *     mention()
+ * RaftPreviewCard(card = { RaftProfilePreviewCardContent(model) }) {
+ *     mention(onClick = { openProfile(memberId) })
  * }
  * ```
  */
 @Composable
-internal fun RaftProfilePreviewCardContent(
-    model: RaftProfilePreviewCardModel,
-    onMessage: (() -> Unit)? = null,
-    onViewProfile: (() -> Unit)? = null,
-) {
+internal fun RaftProfilePreviewCardContent(model: RaftProfilePreviewCardModel) {
     val colors = RaftTheme.colors
     val typography = RaftTheme.typography
     // Member labels (web #14535 ExternalOriginRibbon): someone from another server, a band across
@@ -268,7 +268,8 @@ internal fun RaftProfilePreviewCardContent(
         }
         return
     }
-    RaftPreviewCardHeader(leading = { ProfilePreviewAvatar(model) }) {
+    // Web `AvatarSlot className="mt-0.5 self-start"`: the face 2dp down, level with the name's capitals.
+    RaftPreviewCardHeader(leading = { ProfilePreviewAvatar(model, Modifier.padding(top = 2.dp)) }) {
         // Web `flex items-center gap-1.5`: the name, then the Bot badge or the status.
         Row(verticalAlignment = Alignment.CenterVertically) {
             RaftPreviewCardTitle(model.displayName, Modifier.weight(1f, fill = false))
@@ -311,6 +312,8 @@ internal fun RaftProfilePreviewCardContent(
         }
         val appBot = model.appBot
         if (appBot != null && !model.external) {
+            // Web `<Separator className="mt-2" />` then the dl, `pt-2`, as an agent's facts.
+            RaftSeparator(Modifier.padding(top = 8.dp))
             ProfilePreviewFacts(
                 listOf(stringResource(Res.string.profile_preview_managed_by_app) to (appBot.appName ?: stringResource(Res.string.profile_preview_unknown_app))),
                 Modifier.padding(top = 8.dp),
@@ -333,6 +336,7 @@ internal fun RaftProfilePreviewCardContent(
                             (model.runtimeId?.let { runtimeLabelWithStatus(it, model.runtimeServerId) } ?: label)
                     },
                     model.modelLabel?.let { stringResource(Res.string.member_label_model) to it },
+                    model.reasoningLabel?.let { stringResource(Res.string.member_label_reasoning) to it.localized() },
                 ),
                 Modifier.padding(top = 8.dp),
             )
@@ -340,13 +344,9 @@ internal fun RaftProfilePreviewCardContent(
     }
     model.description?.let { description ->
         RaftPreviewCardSeparator()
-        RaftPreviewCardDescription(description)
-    }
-    if (onMessage != null || onViewProfile != null) {
-        // At the card's end, as in a Popover (raft-design #939): the frameless one first, the bordered Message last.
-        RaftPreviewCardActions {
-            onViewProfile?.let { RaftButton(text = stringResource(Res.string.profile_preview_view_profile), onClick = it, variant = RaftButtonVariant.Ghost) }
-            onMessage?.let { RaftButton(text = stringResource(Res.string.member_label_message), onClick = it, variant = RaftButtonVariant.Default) }
+        // Web ProfileDescription: the box cuts it at two lines and its tooltip says all of it.
+        RaftTooltip(text = description) {
+            RaftPreviewCardDescription(description, maxLines = 2)
         }
     }
 }
@@ -357,12 +357,13 @@ internal fun RaftProfilePreviewCardContent(
  * `AvatarSlot type="agent"`, the robot; `humanPlaceholder`, the placeholder person).
  */
 @Composable
-private fun ProfilePreviewAvatar(model: RaftProfilePreviewCardModel) {
+private fun ProfilePreviewAvatar(model: RaftProfilePreviewCardModel, modifier: Modifier = Modifier) {
     RaftAppAvatarSticker(
         kind = raftAvatarKind(model.kind),
         avatarWireValue = model.avatarWireValue.takeUnless { model.unavailable },
         label = model.avatarLabel,
         size = RaftAvatarSize.Lg,
+        modifier = modifier,
         cacheSubject = raftMemberAvatarCacheSubject(model.kind, model.memberId).takeUnless { model.unavailable },
         cacheServerId = model.serverId,
     )
@@ -371,7 +372,8 @@ private fun ProfilePreviewAvatar(model: RaftProfilePreviewCardModel) {
 /**
  * Web `dl grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1`: the labels in a column as wide as
  * the widest (caption `foreground-hint`), each value 12dp after it on one line (Space Mono
- * `foreground-muted`, truncated), 4dp between rows.
+ * `foreground-muted`, truncated; web `<Tooltip content={value}>`: the whole value in its tooltip),
+ * 4dp between rows.
  */
 @Composable
 private fun ProfilePreviewFacts(facts: List<Pair<String, String>>, modifier: Modifier = Modifier) {
@@ -383,7 +385,9 @@ private fun ProfilePreviewFacts(facts: List<Pair<String, String>>, modifier: Mod
         content = {
             facts.forEach { (label, value) ->
                 RaftText(text = label, style = typography.caption, color = colors.foregroundHint, maxLines = 1)
-                RaftText(text = value, style = typography.monoMeta, color = colors.foregroundMuted, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                RaftTooltip(text = value) {
+                    RaftText(text = value, style = typography.monoMeta, color = colors.foregroundMuted, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
             }
         },
     ) { measurables, constraints ->
