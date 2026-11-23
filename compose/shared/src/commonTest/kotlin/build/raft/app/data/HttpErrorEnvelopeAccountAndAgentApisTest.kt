@@ -2,12 +2,17 @@ package build.raft.app.data
 
 import build.raft.app.model.ChannelId
 import build.raft.app.model.MemberId
+import build.raft.app.model.MemberKind
+import build.raft.app.model.MemberProfile
 import build.raft.app.model.ServerId
+import build.raft.app.model.ServerSummary
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 class HttpErrorEnvelopeAccountAndAgentApisTest {
     private val sampleTraceId = "62ac7fa79a3785a6bee414a074f82634"
@@ -118,10 +123,27 @@ class HttpErrorEnvelopeAccountAndAgentApisTest {
         assertEquals("owner_required", appRevoke.error.serverCode)
         assertEquals(sampleTraceId, appRevoke.error.traceId)
 
+        val invalid200Network =
+            FakeNetwork { _, _ ->
+                HomeNetworkResponse(code = 200, bodyText = "not-json", responseHeaders = traceHeaders)
+            }
+        val appInvalid200 = assertIs<DataResult.Error>(NetworkAppLoginsDataSource(invalid200Network).list())
+        assertEquals("app_logins_http_200", appInvalid200.error.code)
+        assertFalse(appInvalid200.error.retryable)
+        assertNull(appInvalid200.error.serverMessage)
+        assertNull(appInvalid200.error.serverCode)
+        assertEquals(sampleTraceId, appInvalid200.error.traceId)
+
         val archiveDs = NetworkServerArchiveDataSource(network)
         val archivedChannels = assertIs<DataResult.Error>(archiveDs.archivedChannels(ServerId("s1")))
         assertEquals("Only server owners can perform this action.", archivedChannels.error.serverMessage)
         assertEquals("owner_required", archivedChannels.error.serverCode)
+        assertEquals(sampleTraceId, archivedChannels.error.traceId)
+
+        val archivedAgents = assertIs<DataResult.Error>(archiveDs.archivedAgents(ServerId("s1")))
+        assertEquals("Only server owners can perform this action.", archivedAgents.error.serverMessage)
+        assertEquals("owner_required", archivedAgents.error.serverCode)
+        assertEquals(sampleTraceId, archivedAgents.error.traceId)
 
         val unarchive = assertIs<DataResult.Error>(archiveDs.unarchiveChannel(ServerId("s1"), "c1"))
         assertEquals("channel_unarchive_http_403", unarchive.error.code)
@@ -186,6 +208,7 @@ class HttpErrorEnvelopeAccountAndAgentApisTest {
             assertEquals("Route not enabled.", levelResult.error.serverMessage)
             assertEquals("feature_disabled", levelResult.error.serverCode)
             assertEquals(sampleTraceId, levelResult.error.traceId)
+            assertFalse(RaftNotificationCapability.isSupported("s1"))
         } finally {
             RaftNotificationLevelStore.apiProvider = previousApiProvider
             RaftNotificationLevelStore.clear()
@@ -228,5 +251,180 @@ class HttpErrorEnvelopeAccountAndAgentApisTest {
         assertEquals("agent_activity_forbidden", loungeUnarchive.blocker.serverCode)
         assertEquals("Private agent activity is restricted.", loungeUnarchive.blocker.serverMessage)
         assertEquals(sampleTraceId, loungeUnarchive.blocker.traceId)
+    }
+
+    @Test
+    fun agentIssueReportRepositoryPreservesEnvelopeAcrossMessagesUploadAndTicketAndGuardsCodeZero() = runTest {
+        val serverId = ServerId("s1")
+        val session =
+            StoredAuthSession(
+                user = StoredAuthUser(id = "u1", email = "u1@example.com", name = "u1", displayName = "U1"),
+                accessToken = "access",
+                refreshToken = "refresh",
+                selectedServerId = serverId.value,
+                servers = listOf(StoredAuthServer(id = serverId.value, name = "Acme", slug = "acme")),
+            )
+        val submission =
+            AgentIssueReportSubmission(
+                server = ServerSummary(id = serverId, name = "Acme", slug = "acme"),
+                member = MemberProfile(id = MemberId("a1"), displayName = "Agent", handle = "agent", kind = MemberKind.Agent),
+                detail =
+                    AgentDetailSnapshot(
+                        agentId = MemberId("a1"),
+                        summary = AgentDetailSummary(id = "a1", name = "agent", displayName = "Agent", status = "Idle"),
+                        directMessages = listOf(AgentDmSummary(id = "dm-1", peerId = "u1", peerName = "U1")),
+                        reminders = emptyList(),
+                        activity = emptyList(),
+                    ),
+                description = "Broken",
+                diagnostics = "diag",
+                includeRuntimeTranscript = false,
+                liveActivity = emptyList(),
+                title = "Report",
+                locale = "en",
+            )
+        val ticketRequest =
+            AgentIssueTicketRequest(
+                message = "Broken",
+                feedbackReportId = "r1",
+                submissionId = "sub-1",
+                locale = "en",
+            )
+
+        fun repo(
+            apiAnswer: (method: String, path: String) -> HomeNetworkResponse,
+            rawAnswer: (method: String, url: String) -> HomeNetworkResponse = { _, _ -> HomeNetworkResponse(404, null) },
+        ): AgentIssueReportRepository =
+            AgentIssueReportRepository(
+                sessionStore = InMemoryRaftAuthSessionStore(session),
+                selectedServerStore = SelectedServerStore(RaftShellStoreScope.create("http-envelope-issue-test", serverId.value)),
+                networkClient =
+                    object : RaftNetworkClient {
+                        override suspend fun request(
+                            priority: DataRequestPriority,
+                            path: String,
+                            method: String,
+                            query: List<Pair<String, String>>,
+                            serverIdOverride: ServerId?,
+                            bodyText: String?,
+                        ): HomeNetworkResponse = apiAnswer(method, path)
+
+                        override suspend fun requestWithHeaders(
+                            priority: DataRequestPriority,
+                            path: String,
+                            headers: Map<String, String>,
+                            method: String,
+                            query: List<Pair<String, String>>,
+                            serverIdOverride: ServerId?,
+                            bodyText: String?,
+                        ): HomeNetworkResponse = apiAnswer(method, path)
+
+                        override suspend fun requestRawAbsoluteUrl(
+                            priority: DataRequestPriority,
+                            url: String,
+                            method: String,
+                            headers: Map<String, String>,
+                            bodyText: String?,
+                        ): HomeNetworkResponse = rawAnswer(method, url)
+                    },
+                sha256Hex = { "a".repeat(64) },
+                feedbackBaseUrl = "https://feedback.example.test",
+                nowMillis = { 1234L },
+                newSubmissionId = { "sub-1" },
+                privacyMode = { RaftPrivacyMode.Off },
+            )
+
+        // 1. decode() path via fileTicket: 403 refusal preserves envelope + traceId; code == 0 guards envelope.
+        val ticketRefused =
+            assertIs<DataResult.Error>(
+                repo(
+                    apiAnswer = { _, _ ->
+                        HomeNetworkResponse(
+                            code = 403,
+                            bodyText = null,
+                            errorBodyText = """{"error":"Feedback quota exceeded.","code":"feedback_quota_exceeded"}""",
+                            responseHeaders = traceHeaders,
+                        )
+                    },
+                ).fileTicket(serverId, ticketRequest)
+            )
+        assertEquals("agent_issue_ticket_failed", ticketRefused.error.code)
+        assertFalse(ticketRefused.error.retryable)
+        assertEquals("Feedback quota exceeded.", ticketRefused.error.serverMessage)
+        assertEquals("feedback_quota_exceeded", ticketRefused.error.serverCode)
+        assertEquals(sampleTraceId, ticketRefused.error.traceId)
+
+        val ticketTransport =
+            assertIs<DataResult.Error>(
+                repo(
+                    apiAnswer = { _, _ ->
+                        HomeNetworkResponse(code = 0, bodyText = """{"error":"socket_closed"}""")
+                    },
+                ).fileTicket(serverId, ticketRequest)
+            )
+        assertEquals("agent_issue_ticket_failed", ticketTransport.error.code)
+        assertTrue(ticketTransport.error.retryable)
+        assertNull(ticketTransport.error.serverMessage)
+        assertNull(ticketTransport.error.serverCode)
+
+        // 2. collectRecentMessages() path via submit: 403 refusal preserves envelope + traceId.
+        val messagesRefused =
+            assertIs<DataResult.Error>(
+                repo(
+                    apiAnswer = { _, _ ->
+                        HomeNetworkResponse(
+                            code = 403,
+                            bodyText = null,
+                            errorBodyText = """{"message":"Direct message history is restricted.","errorCode":"dm_history_forbidden"}""",
+                            responseHeaders = traceHeaders,
+                        )
+                    },
+                ).submit(submission)
+            )
+        assertEquals("agent_issue_report_messages_failed", messagesRefused.error.code)
+        assertFalse(messagesRefused.error.retryable)
+        assertEquals("Direct message history is restricted.", messagesRefused.error.serverMessage)
+        assertEquals("dm_history_forbidden", messagesRefused.error.serverCode)
+        assertEquals(sampleTraceId, messagesRefused.error.traceId)
+
+        // 3. toUnitResult() path via submit -> uploadBundle: 403 refusal preserves envelope + traceId.
+        val uploadRefused =
+            assertIs<DataResult.Error>(
+                repo(
+                    apiAnswer = { _, path ->
+                        when {
+                            path == "messages/channel/dm-1" -> HomeNetworkResponse(200, """{"messages":[]}""")
+                            path.endsWith("/scope-attestation") ->
+                                HomeNetworkResponse(
+                                    200,
+                                    """{"attestation":"signed","scope":"feedback-report:create","expiresAt":"2026-10-27T00:05:00.000Z"}""",
+                                )
+                            else -> HomeNetworkResponse(404, null)
+                        }
+                    },
+                    rawAnswer = { method, url ->
+                        when {
+                            method == "POST" && url.endsWith("/api/reports") ->
+                                HomeNetworkResponse(
+                                    200,
+                                    """{"id":"r1","artifactId":"art-1","upload":{"method":"PUT","url":"https://feedback.example.test/api/reports/r1/object","headers":{}},"completeToken":"tok","expiresAt":"2026-10-27T00:15:00.000Z"}""",
+                                )
+                            method == "PUT" ->
+                                HomeNetworkResponse(
+                                    code = 403,
+                                    bodyText = null,
+                                    errorBodyText = """{"error":"Upload token expired.","code":"upload_token_expired"}""",
+                                    responseHeaders = traceHeaders,
+                                )
+                            else -> HomeNetworkResponse(404, null)
+                        }
+                    },
+                ).submit(submission)
+            )
+        assertEquals("agent_issue_report_upload_failed", uploadRefused.error.code)
+        assertFalse(uploadRefused.error.retryable)
+        assertEquals("Upload token expired.", uploadRefused.error.serverMessage)
+        assertEquals("upload_token_expired", uploadRefused.error.serverCode)
+        assertEquals(sampleTraceId, uploadRefused.error.traceId)
     }
 }
