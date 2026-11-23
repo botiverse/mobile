@@ -82,7 +82,8 @@ internal fun String.raftMarkdownSyntaxCandidateRanges(start: Int = 0, end: Int =
     while (cursor < boundedEnd) {
         val range = raftInlineRefRange(cursor, boundedEnd)?.takeIf { it.last < boundedEnd }
         // A `lounge:@…` token is claimed whole, ref or not (Web `createRaftMalformedLoungeRefRegex`):
-        // nothing inside it (`@ops` of `lounge:@ops.x`, `#8` of `lounge:@ops:#7:#8`) is another ref.
+        // nothing inside it (`@ops` of `lounge:@ops.x`, `#7` of `lounge:@ops:#7a`) is another ref. Like
+        // the Web's, the token ends at its second `:` (`lounge:@ops:#7` of `lounge:@ops:#7:#8`).
         val loungeEnd = raftLoungeTokenEnd(cursor)
         if (range != null) {
             result += range
