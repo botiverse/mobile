@@ -151,6 +151,15 @@ internal data class ThreadActionCard(
     val questionExpiresInMinutes: Int? = null,
     /** `question:ask`: the agent paged its questions (wire `action.pages` present); the server never places such a card inline. */
     val questionHasPages: Boolean = false,
+    /** `question:ask`: when a person closed the card without answering (wire `closedAt`, ISO UTC; slock #16473). */
+    val closedAt: String? = null,
+    /**
+     * `question:ask`: who closed the card without answering (wire `closedBy`, `{ userId, handle }`;
+     * slock #16473). A closed card is served as `state = "expired"` with `closedBy` for older
+     * clients, or `state = "closed"` directly; presence of [closedBy] tells a closed card apart
+     * from an expiry.
+     */
+    val closedBy: ThreadActionCardClosedBy? = null,
 ) {
     /**
      * The card described as data ([parseActionCardSpec]), or null: no `presentation.card`, or one
@@ -159,6 +168,9 @@ internal data class ThreadActionCard(
      * [sourceServerId] ([ActionCardSpecEntityRef.serverIdOr]). Not rendered yet (A2).
      */
     val presentationCard: ActionCardSpecCard? by lazy { presentationCardJson?.let(::cachedActionCardSpec) }
+
+    val isPrepared: Boolean
+        get() = state.equals("prepared", ignoreCase = true)
 
     val isExecuted: Boolean
         get() = state.equals("executed", ignoreCase = true)
@@ -171,18 +183,38 @@ internal data class ThreadActionCard(
     val needsReconfirmation: Boolean
         get() = state.equals("reconfirm_required", ignoreCase = true)
 
+    /**
+     * Wire `closed`, or wire `expired` with [closedBy] (shared `isClosedActionCard`, slock #16473):
+     * a person who could answer this question card closed it without answering.
+     */
+    val isClosed: Boolean
+        get() =
+            type.equals(QuestionAskActionCardType, ignoreCase = true) &&
+                (state.equals("closed", ignoreCase = true) || (state.equals("expired", ignoreCase = true) && closedBy != null))
+
     /** Wire `expired`: past its deadline without running (a 30-day card, a question, a seat request). */
     val isExpired: Boolean
-        get() = state.equals("expired", ignoreCase = true)
+        get() = state.equals("expired", ignoreCase = true) && !isClosed
 
     /** Wire `withdrawn`, a state only question cards reach (web `ActionCardSpecCard`): its agent took it back. */
     val isWithdrawn: Boolean
         get() = state.equals("withdrawn", ignoreCase = true) && type.equals(QuestionAskActionCardType, ignoreCase = true)
 
-    /** Ended without running ([isExpired], [isWithdrawn]): folded, no button changes it any more. */
+    /** Any wire state this build does not know: treated as ended and view-only (never open/Prepared). */
+    val isUnknownState: Boolean
+        get() = !isPrepared && !isExecuted && !isFrozen && !needsReconfirmation && !isExpired && !isWithdrawn && !isClosed
+
+    /** Ended without running ([isExpired], [isWithdrawn], [isClosed], or [isUnknownState]): folded, no button changes it any more. */
     val hasEnded: Boolean
-        get() = isExpired || isWithdrawn
+        get() = isExpired || isWithdrawn || isClosed || isUnknownState
 }
+
+/** Who closed a `question:ask` card without answering (wire `closedBy`, slock #16473). */
+@Serializable
+internal data class ThreadActionCardClosedBy(
+    val userId: String? = null,
+    val handle: String? = null,
+)
 
 internal const val QuestionAskActionCardType = "question:ask"
 
@@ -344,6 +376,10 @@ internal data class WireActionCardMetadata(
     val expiresAt: String? = null,
     /** A person's request: [ThreadActionCard.requesterUserId]. */
     val requesterUserId: String? = null,
+    /** `question:ask`: when a person closed it without answering (slock #16473). */
+    val closedAt: String? = null,
+    /** `question:ask`: who closed it without answering (`{ userId, handle }`), kept leniently as JSON. */
+    val closedBy: JsonElement? = null,
     /*
      * A channel announcement's change line (`kind: "channel-announcement"`, ChannelAnnouncementApi.kt):
      * kept as JSON so a field of a type this client doesn't expect fails only the notice
@@ -534,6 +570,14 @@ internal fun WireActionCardMetadata?.toThreadActionCard(): ThreadActionCard? {
         questions = actionObject.questionShapes(),
         questionHasPages = actionObject["pages"].let { it != null && it !is JsonNull },
         questionExpiresInMinutes = (actionObject["expiresInMinutes"] as? JsonPrimitive)?.takeIf { !it.isString }?.content?.toDoubleOrNull()?.toInt()?.takeIf { it > 0 },
+        closedAt = meta.closedAt?.takeIf { it.isNotBlank() },
+        closedBy =
+            (meta.closedBy as? JsonObject)?.let { closer ->
+                ThreadActionCardClosedBy(
+                    userId = closer.actionCardStringOrNull("userId"),
+                    handle = closer.actionCardStringOrNull("handle"),
+                )
+            },
     )
 }
 
@@ -626,6 +670,10 @@ internal fun ThreadActionCard.toMessageMetadata(): Map<String, String> =
         if (questions.isNotEmpty()) {
             put("${ActionCardMetadataPrefix}questions", threadActionCardJson.encodeToString(ListSerializer(ThreadActionCardQuestion.serializer()), questions))
         }
+        putString("closedAt", closedAt)
+        closedBy?.let {
+            put("${ActionCardMetadataPrefix}closedBy", threadActionCardJson.encodeToString(ThreadActionCardClosedBy.serializer(), it))
+        }
     }
 
 /** True when the projected message metadata carries an action card (any type). */
@@ -697,6 +745,11 @@ internal fun actionCardFromMessageMetadata(metadata: Map<String, String>): Threa
             metadata["${ActionCardMetadataPrefix}questions"]?.let { raw ->
                 runCatching { threadActionCardJson.decodeFromString(ListSerializer(ThreadActionCardQuestion.serializer()), raw) }.getOrNull()
             }.orEmpty(),
+        closedAt = metadata["${ActionCardMetadataPrefix}closedAt"]?.takeIf { it.isNotBlank() },
+        closedBy =
+            metadata["${ActionCardMetadataPrefix}closedBy"]?.let { raw ->
+                runCatching { threadActionCardJson.decodeFromString(ThreadActionCardClosedBy.serializer(), raw) }.getOrNull()
+            },
     )
 }
 

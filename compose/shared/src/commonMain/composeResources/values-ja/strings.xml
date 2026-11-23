@@ -1081,6 +1081,7 @@
     <string name="thread_action_card_status_reconfirm">再確認が必要</string>
     <string name="thread_action_card_status_expired">期限切れ</string>
     <string name="thread_action_card_status_withdrawn">取り下げ済み</string>
+    <string name="thread_action_card_status_closed">クローズ済み</string>
     <string name="thread_action_card_expired_line">%1$s に期限切れになりました。エージェントに新しいリクエストを送ってもらってください。</string>
     <string name="thread_action_card_expired_line_own">%1$s に期限切れになりました。新しいリクエストを送ってください。</string>
     <string name="thread_action_card_expired_line_from_person">%1$s に期限切れになりました。%2$s さんに新しいリクエストを送ってもらってください。</string>
@@ -4676,6 +4677,7 @@
     <string name="action_card_question_expired_line_anyone">%1$s 以内に誰も回答しませんでした。%2$s に伝えました。</string>
     <string name="action_card_question_withdrawn_line_one">%1$s が質問を取り下げました。</string>
     <string name="action_card_question_withdrawn_line_other">%1$s が質問を取り下げました。</string>
+    <string name="action_card_question_closed_line">%1$s が質問をクローズしました。</string>
     <string name="action_card_question_wait_days_one">%1$d 日</string>
     <string name="action_card_question_wait_days_other">%1$d 日</string>
     <string name="action_card_question_wait_hours_one">%1$d 時間</string>

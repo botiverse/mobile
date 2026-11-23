@@ -41,11 +41,17 @@ internal enum class RaftActionCardStatus {
     Expired,
 
     /** A question card its agent took back (wire `withdrawn`). */
-    Withdrawn;
+    Withdrawn,
+
+    /** A question card a person closed without answering (wire `closed`, or `expired` with `closedBy`). */
+    Closed,
+
+    /** Any wire state this build does not know: ended, folded, view-only, no changing buttons. */
+    Ended;
 
     /** Ended without running: folded, no Button that changes it. */
     val ended: Boolean
-        get() = this == Expired || this == Withdrawn
+        get() = this == Expired || this == Withdrawn || this == Closed || this == Ended
 }
 
 /**
@@ -225,11 +231,13 @@ internal fun RaftActionCardView(
                 },
             status =
                 when {
-                    // A slim question card says answered / expired / withdrawn in its status line, not a tag.
+                    // A slim question card says answered / expired / withdrawn / closed in its status line, not a tag.
                     slim != null && (executed || ended) -> null
                     executed -> stringResource(Res.string.common_done)
+                    state.status == RaftActionCardStatus.Closed -> stringResource(Res.string.thread_action_card_status_closed)
                     state.status == RaftActionCardStatus.Expired -> stringResource(Res.string.thread_action_card_status_expired)
                     state.status == RaftActionCardStatus.Withdrawn -> stringResource(Res.string.thread_action_card_status_withdrawn)
+                    state.status == RaftActionCardStatus.Ended -> stringResource(Res.string.thread_action_card_view_only)
                     state.status == RaftActionCardStatus.Frozen -> stringResource(Res.string.thread_action_card_frozen)
                     state.status == RaftActionCardStatus.ReconfirmRequired -> stringResource(Res.string.thread_action_card_status_reconfirm)
                     viewOnly && (slim == null || state.blockedReason != null) -> stringResource(Res.string.thread_action_card_view_only)

@@ -1081,6 +1081,7 @@
     <string name="thread_action_card_status_reconfirm">다시 확인 필요</string>
     <string name="thread_action_card_status_expired">만료됨</string>
     <string name="thread_action_card_status_withdrawn">철회됨</string>
+    <string name="thread_action_card_status_closed">닫힘</string>
     <string name="thread_action_card_expired_line">%1$s에 만료됐어요. 에이전트에게 새 요청을 보내 달라고 하세요.</string>
     <string name="thread_action_card_expired_line_own">%1$s에 만료됐어요. 새 요청을 보내 주세요.</string>
     <string name="thread_action_card_expired_line_from_person">%1$s에 만료됐어요. %2$s님에게 새 요청을 보내 달라고 하세요.</string>
@@ -4486,6 +4487,7 @@
     <string name="action_card_question_expired_line_anyone">%1$s 안에 아무도 답변하지 않았어요. %2$s에게 알렸어요.</string>
     <string name="action_card_question_withdrawn_line_one">%1$s이(가) 질문을 철회했어요.</string>
     <string name="action_card_question_withdrawn_line_other">%1$s이(가) 질문을 철회했어요.</string>
+    <string name="action_card_question_closed_line">%1$s 님이 질문을 닫았어요.</string>
     <string name="action_card_question_wait_days_one">%1$d일</string>
     <string name="action_card_question_wait_days_other">%1$d일</string>
     <string name="action_card_question_wait_hours_one">%1$d시간</string>

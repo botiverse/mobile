@@ -89,17 +89,20 @@ internal val LocalThreadActionCardSpecHost = compositionLocalOf { ThreadActionCa
 
 /**
  * The frame's status for a card's `state` (web `ActionCardSpecCard`). A state this build doesn't
- * know is drawn as Prepared, as before. Draw the card as of the client clock first
+ * know is drawn as [RaftActionCardStatus.Ended] (folded, view-only, no changing buttons), matching
+ * the protocol's additive-states contract. Draw the card as of the client clock first
  * ([build.raft.app.data.expiredAsOf]) so a prepared card past its `expiresAt` reads Expired.
  */
 internal fun ThreadActionCard.actionCardSpecStatus(): RaftActionCardStatus =
     when {
         isExecuted -> RaftActionCardStatus.Executed
+        isClosed -> RaftActionCardStatus.Closed
         isExpired -> RaftActionCardStatus.Expired
         isWithdrawn -> RaftActionCardStatus.Withdrawn
         isFrozen -> RaftActionCardStatus.Frozen
         needsReconfirmation -> RaftActionCardStatus.ReconfirmRequired
-        else -> RaftActionCardStatus.Prepared
+        isPrepared -> RaftActionCardStatus.Prepared
+        else -> RaftActionCardStatus.Ended
     }
 
 /**
@@ -432,8 +435,12 @@ private fun rememberQuestionCardWords(
     val waiting = card.actionCardSpecStatus() == RaftActionCardStatus.Prepared || card.isFrozen
     val answerer = card.executedByUserName?.takeIf { it.isNotBlank() } ?: addressee
     val answer = spec.questionAnswerText(displayLocale)
-    // Expired: the person asked by name; asked of anyone (or no addressee on the card), "Nobody answered".
-    val endedLine = card.questionEndedLine(asker, addressee.takeIf { card.questionAddresseeUserId != null }, count.coerceAtLeast(1))
+    val closer =
+        card.closedBy?.userId?.let { names.name(ThreadActionCardEntityKind.Human, it) }?.takeIf { it.isNotBlank() }
+            ?: card.closedBy?.handle?.trim()?.removePrefix("@")?.takeIf { it.isNotBlank() }
+            ?: someone
+    // Closed: who closed it; Expired: the person asked by name (or "Nobody answered" when asked of anyone).
+    val endedLine = card.questionEndedLine(asker, addressee.takeIf { card.questionAddresseeUserId != null }, count.coerceAtLeast(1), closer)
     return QuestionCardWords(
         asked = asked,
         single = single,
