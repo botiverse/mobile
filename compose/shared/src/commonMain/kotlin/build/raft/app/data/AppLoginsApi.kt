@@ -61,8 +61,20 @@ internal class NetworkAppLoginsDataSource(private val networkClient: RaftNetwork
         try {
             val response = networkClient.request(DataRequestPriority.Visible, APP_LOGINS_PATH)
             val logins = if (response.isSuccessful) parseSharedAppLogins(response.bodyText) else null
-            logins?.let { DataResult.Content(it) }
-                ?: DataResult.Error(ScreenError(code = "app_logins_http_${response.code}", traceId = response.traceId))
+            if (logins != null) {
+                DataResult.Content(logins)
+            } else {
+                val envelope = response.parseHttpErrorEnvelope()
+                DataResult.Error(
+                    ScreenError(
+                        code = "app_logins_http_${response.code}",
+                        retryable = response.code == 0 || response.code >= 500,
+                        serverMessage = envelope?.serverMessage,
+                        serverCode = envelope?.serverCode,
+                        traceId = response.traceId,
+                    )
+                )
+            }
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (_: Throwable) {
@@ -80,7 +92,16 @@ internal class NetworkAppLoginsDataSource(private val networkClient: RaftNetwork
             if (response.isSuccessful) {
                 DataResult.Content(Unit)
             } else {
-                DataResult.Error(ScreenError(code = "app_login_revoke_http_${response.code}", traceId = response.traceId))
+                val envelope = response.parseHttpErrorEnvelope()
+                DataResult.Error(
+                    ScreenError(
+                        code = "app_login_revoke_http_${response.code}",
+                        retryable = response.code == 0 || response.code >= 500,
+                        serverMessage = envelope?.serverMessage,
+                        serverCode = envelope?.serverCode,
+                        traceId = response.traceId,
+                    )
+                )
             }
         } catch (cancelled: CancellationException) {
             throw cancelled

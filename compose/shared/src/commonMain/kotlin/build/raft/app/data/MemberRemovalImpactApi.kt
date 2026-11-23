@@ -81,7 +81,7 @@ class NetworkMemberRemovalImpactRepository(
     override suspend fun removalImpact(serverId: ServerId, memberId: String): DataResult<MemberRemovalImpact> {
         val cleanMemberId = memberId.trim()
         if (serverId.value.isBlank() || cleanMemberId.isBlank()) {
-            return DataResult.Error(ScreenError(code = "member_removal_impact_unavailable", retryable = false))
+            return DataResult.Error(ScreenError(code = "member_removal_impact_unavailable", retryable = false, traceId = null))
         }
         val response =
             runCatchingPreservingCancellation {
@@ -93,13 +93,22 @@ class NetworkMemberRemovalImpactRepository(
                     )
                 }
             }.getOrNull()
-                ?: return DataResult.Error(ScreenError(code = "member_removal_impact_timeout", retryable = true))
+                ?: return DataResult.Error(ScreenError(code = "member_removal_impact_timeout", retryable = true, traceId = null))
         if (!response.isSuccessful) {
-            return DataResult.Error(ScreenError(code = "member_removal_impact_http_${response.code}", retryable = true))
+            val envelope = response.parseHttpErrorEnvelope()
+            return DataResult.Error(
+                ScreenError(
+                    code = "member_removal_impact_http_${response.code}",
+                    retryable = true,
+                    serverMessage = envelope?.serverMessage,
+                    serverCode = envelope?.serverCode,
+                    traceId = response.traceId,
+                )
+            )
         }
         val impact =
             parseMemberRemovalImpact(response.bodyText)
-                ?: return DataResult.Error(ScreenError(code = "member_removal_impact_contract_mismatch", retryable = false))
+                ?: return DataResult.Error(ScreenError(code = "member_removal_impact_contract_mismatch", retryable = false, traceId = response.traceId))
         return DataResult.Content(impact)
     }
 }

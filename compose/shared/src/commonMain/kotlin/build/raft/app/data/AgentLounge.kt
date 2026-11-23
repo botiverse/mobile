@@ -160,12 +160,6 @@ private data class AgentLoungeOpenWireDto(
     val canPost: Boolean? = null,
 )
 
-@Serializable
-private data class AgentLoungeErrorWireDto(
-    val error: String? = null,
-    val code: String? = null,
-)
-
 /** The server's refusal code for a Guest (`403 {code: "agent_lounge_guest"}`). */
 const val AGENT_LOUNGE_GUEST_ERROR_CODE: String = "agent_lounge_guest"
 
@@ -244,15 +238,22 @@ class AgentLoungeApi(private val networkClient: RaftNetworkClient) {
                 serverIdOverride = serverId,
             )
         if (!response.isSuccessful) {
+            val envelope = response.parseHttpErrorEnvelope()
             return DataResult.Error(
-                ScreenError(code = "http_${response.code}", retryable = response.code >= 500, traceId = response.traceId)
+                ScreenError(
+                    code = "http_${response.code}",
+                    retryable = response.code == 0 || response.code >= 500,
+                    serverMessage = envelope?.serverMessage,
+                    serverCode = envelope?.serverCode,
+                    traceId = response.traceId,
+                )
             )
         }
         val row =
             response.bodyText
                 ?.let(::parseSharedChannelRowResult)
                 ?.takeIf { it.channelId == channelId && !it.loungeAgentId.isNullOrBlank() }
-                ?: return DataResult.Error(ScreenError(code = "agent_lounge_load_contract_mismatch", retryable = false))
+                ?: return DataResult.Error(ScreenError(code = "agent_lounge_load_contract_mismatch", retryable = false, traceId = response.traceId))
         RaftAgentLounges.rememberRow(serverId.value, row)
         return DataResult.Content(row)
     }
@@ -270,13 +271,14 @@ class AgentLoungeApi(private val networkClient: RaftNetworkClient) {
                 serverIdOverride = serverId,
             )
         if (!response.isSuccessful) {
-            val wireError = response.agentLoungeWireErrorOrNull()
+            val envelope = response.parseHttpErrorEnvelope()
             if (response.code == 403) {
                 return DataResult.NoPermission(
                     PermissionBlocker(
-                        code = wireError?.code?.takeIf { it.isNotBlank() } ?: "http_403",
+                        code = envelope?.serverCode ?: "http_403",
                         requiredCapability = "archiveChannels",
-                        serverMessage = wireError?.error,
+                        serverMessage = envelope?.serverMessage,
+                        serverCode = envelope?.serverCode,
                         traceId = response.traceId,
                     )
                 )
@@ -284,15 +286,15 @@ class AgentLoungeApi(private val networkClient: RaftNetworkClient) {
             return DataResult.Error(
                 ScreenError(
                     code = "http_${response.code}",
-                    retryable = response.code >= 500,
-                    serverMessage = wireError?.error,
-                    serverCode = wireError?.code,
+                    retryable = response.code == 0 || response.code >= 500,
+                    serverMessage = envelope?.serverMessage,
+                    serverCode = envelope?.serverCode,
                     traceId = response.traceId,
                 )
             )
         }
         val row = response.bodyText?.let(::parseSharedChannelRowResult)?.takeIf { it.channelId == channelId }
-            ?: return DataResult.Error(ScreenError(code = "agent_lounge_unarchive_contract_mismatch", retryable = false))
+            ?: return DataResult.Error(ScreenError(code = "agent_lounge_unarchive_contract_mismatch", retryable = false, traceId = response.traceId))
         RaftAgentLounges.markArchived(serverId.value, channelId.value, archived = row.archived)
         return DataResult.Content(row)
     }
@@ -306,13 +308,14 @@ internal fun agentLoungeOpenResponse(response: HomeNetworkResponse, agentId: Str
         return parsed?.let { DataResult.Content(it) }
             ?: DataResult.Error(ScreenError(code = "agent_lounge_contract_mismatch", retryable = false, traceId = response.traceId))
     }
-    val wireError = response.agentLoungeWireErrorOrNull()
+    val envelope = response.parseHttpErrorEnvelope()
     return when (response.code) {
         403 ->
             DataResult.NoPermission(
                 PermissionBlocker(
-                    code = wireError?.code?.takeIf { it.isNotBlank() } ?: "http_403",
-                    serverMessage = wireError?.error,
+                    code = envelope?.serverCode ?: "http_403",
+                    serverMessage = envelope?.serverMessage,
+                    serverCode = envelope?.serverCode,
                     traceId = response.traceId,
                 )
             )
@@ -321,7 +324,8 @@ internal fun agentLoungeOpenResponse(response: HomeNetworkResponse, agentId: Str
                 ScreenError(
                     code = AGENT_LOUNGE_NOT_FOUND_ERROR_CODE,
                     retryable = false,
-                    serverMessage = wireError?.error,
+                    serverMessage = envelope?.serverMessage,
+                    serverCode = envelope?.serverCode,
                     traceId = response.traceId,
                 )
             )
@@ -329,23 +333,12 @@ internal fun agentLoungeOpenResponse(response: HomeNetworkResponse, agentId: Str
             DataResult.Error(
                 ScreenError(
                     code = "http_${response.code}",
-                    retryable = response.code >= 500,
-                    serverMessage = wireError?.error,
-                    serverCode = wireError?.code,
+                    retryable = response.code == 0 || response.code >= 500,
+                    serverMessage = envelope?.serverMessage,
+                    serverCode = envelope?.serverCode,
                     traceId = response.traceId,
                 )
             )
-    }
-}
-
-private fun HomeNetworkResponse.agentLoungeWireErrorOrNull(): AgentLoungeErrorWireDto? {
-    val body = (errorBodyText ?: bodyText)?.takeIf { it.isNotBlank() } ?: return null
-    return try {
-        agentLoungeJson.decodeFromString(AgentLoungeErrorWireDto.serializer(), body)
-    } catch (_: SerializationException) {
-        null
-    } catch (_: IllegalArgumentException) {
-        null
     }
 }
 

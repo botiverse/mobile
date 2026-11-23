@@ -55,7 +55,16 @@ internal fun buildSharedAssistantOtterVisibleUpdateBody(visible: Boolean): Strin
  */
 internal fun parseSharedAssistantOtterVisible(statusCode: Int, bodyText: String?, traceId: String? = null): DataResult<Boolean> {
     if (statusCode !in 200..299) {
-        return DataResult.Error(ScreenError(code = "assistant_otter_prefs_http_$statusCode", retryable = statusCode >= 500, traceId = traceId))
+        val envelope = if (statusCode > 0) parseHttpErrorEnvelope(bodyText) else null
+        return DataResult.Error(
+            ScreenError(
+                code = "assistant_otter_prefs_http_$statusCode",
+                retryable = statusCode >= 500,
+                serverMessage = envelope?.serverMessage,
+                serverCode = envelope?.serverCode,
+                traceId = traceId,
+            )
+        )
     }
     val dto =
         bodyText?.takeIf { it.isNotBlank() }?.let { body ->
@@ -86,7 +95,7 @@ internal class NetworkAssistantOtterPrefsDataSource(private val networkClient: R
             val response = call()
             parseSharedAssistantOtterVisible(
                 response.code,
-                response.bodyText?.takeIf { it.isNotBlank() } ?: response.errorBodyText,
+                if (response.isSuccessful) response.bodyText else response.errorBodyText?.takeIf { it.isNotBlank() } ?: response.bodyText,
                 response.traceId,
             )
         } catch (cancelled: CancellationException) {

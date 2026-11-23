@@ -152,16 +152,40 @@ internal class NetworkServerArchiveDataSource(private val networkClient: RaftNet
                     serverIdOverride = serverId,
                 )
             val channels = if (response.isSuccessful) parseSharedArchivedChannels(response.bodyText) else null
-            channels?.let { DataResult.Content(it) }
-                ?: DataResult.Error(ScreenError(code = "archived_channels_http_${response.code}", traceId = response.traceId))
+            if (channels != null) {
+                DataResult.Content(channels)
+            } else {
+                val envelope = response.parseHttpErrorEnvelope()
+                DataResult.Error(
+                    ScreenError(
+                        code = "archived_channels_http_${response.code}",
+                        retryable = response.code == 0 || response.code >= 500,
+                        serverMessage = envelope?.serverMessage,
+                        serverCode = envelope?.serverCode,
+                        traceId = response.traceId,
+                    )
+                )
+            }
         }
 
     override suspend fun archivedAgents(serverId: ServerId): DataResult<List<ArchivedAgent>> =
         guarded {
             val response = networkClient.request(DataRequestPriority.Visible, ARCHIVED_AGENTS_PATH, serverIdOverride = serverId)
             val agents = if (response.isSuccessful) parseSharedArchivedAgents(response.bodyText) else null
-            agents?.let { DataResult.Content(it) }
-                ?: DataResult.Error(ScreenError(code = "archived_agents_http_${response.code}", traceId = response.traceId))
+            if (agents != null) {
+                DataResult.Content(agents)
+            } else {
+                val envelope = response.parseHttpErrorEnvelope()
+                DataResult.Error(
+                    ScreenError(
+                        code = "archived_agents_http_${response.code}",
+                        retryable = response.code == 0 || response.code >= 500,
+                        serverMessage = envelope?.serverMessage,
+                        serverCode = envelope?.serverCode,
+                        traceId = response.traceId,
+                    )
+                )
+            }
         }
 
     override suspend fun unarchiveChannel(serverId: ServerId, channelId: String): DataResult<Unit> =
@@ -176,22 +200,19 @@ internal class NetworkServerArchiveDataSource(private val networkClient: RaftNet
             if (response.isSuccessful) {
                 DataResult.Content(Unit)
             } else {
-                val body = response.bodyText?.takeIf { it.isNotBlank() } ?: response.errorBodyText
-                val refusal = body?.let { runCatching { serverArchiveJson.decodeFromString(ServerArchiveRefusalDto.serializer(), it) }.getOrNull() }
+                val envelope = response.parseHttpErrorEnvelope()
                 DataResult.Error(
                     ScreenError(
                         code = "channel_unarchive_http_${response.code}",
-                        serverMessage = refusal?.error?.takeIf { it.isNotBlank() },
-                        serverCode = refusal?.code,
+                        retryable = response.code == 0 || response.code >= 500,
+                        serverMessage = envelope?.serverMessage,
+                        serverCode = envelope?.serverCode,
                         traceId = response.traceId,
                     )
                 )
             }
         }
 }
-
-@Serializable
-private data class ServerArchiveRefusalDto(val error: String? = null, val code: String? = null)
 
 internal data class SharedServerArchiveState(
     val serverId: String? = null,

@@ -59,8 +59,15 @@ fun parseSharedSecondFactorStatusResponse(
 ): DataResult<AccountLoginSecurity?> {
     if (statusCode == 404) return DataResult.Content(null)
     if (statusCode !in 200..299) {
+        val envelope = if (statusCode > 0) parseHttpErrorEnvelope(bodyText) else null
         return DataResult.Error(
-            ScreenError(code = "second_factor_status_http_$statusCode", retryable = statusCode >= 500, traceId = traceId)
+            ScreenError(
+                code = "second_factor_status_http_$statusCode",
+                retryable = statusCode >= 500,
+                serverMessage = envelope?.serverMessage,
+                serverCode = envelope?.serverCode,
+                traceId = traceId,
+            )
         )
     }
     val dto =
@@ -85,7 +92,7 @@ internal class NetworkAccountLoginSecurityDataSource(private val networkClient: 
             val response = networkClient.request(DataRequestPriority.Visible, SECOND_FACTOR_STATUS_PATH)
             parseSharedSecondFactorStatusResponse(
                 response.code,
-                response.bodyText?.takeIf { it.isNotBlank() } ?: response.errorBodyText,
+                if (response.isSuccessful) response.bodyText else response.errorBodyText?.takeIf { it.isNotBlank() } ?: response.bodyText,
                 response.traceId,
             )
         } catch (cancelled: CancellationException) {

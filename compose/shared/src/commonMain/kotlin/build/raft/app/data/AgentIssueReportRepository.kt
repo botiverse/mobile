@@ -300,17 +300,24 @@ internal class AgentIssueReportRepository(
                 serverIdOverride = submission.server.id
             )
         if (!response.isSuccessful) {
+            val envelope = response.parseHttpErrorEnvelope()
             return DataResult.Error(
-                ScreenError("agent_issue_report_messages_failed", retryable = response.code == 0 || response.code >= 500)
+                ScreenError(
+                    code = "agent_issue_report_messages_failed",
+                    retryable = response.code == 0 || response.code >= 500,
+                    serverMessage = envelope?.serverMessage,
+                    serverCode = envelope?.serverCode,
+                    traceId = response.traceId,
+                )
             )
         }
         val body = response.bodyText?.takeIf { it.isNotBlank() }
-            ?: return DataResult.Error(ScreenError("agent_issue_report_messages_failed", retryable = true))
+            ?: return DataResult.Error(ScreenError("agent_issue_report_messages_failed", retryable = true, traceId = response.traceId))
         return try {
             val messages = agentIssueReportJson.parseToJsonElement(body).jsonObject["messages"] as? JsonArray
             DataResult.Content(AgentIssueRecentMessages(dmChannelId = dmChannelId, messages = messages?.toList().orEmpty()))
         } catch (_: Throwable) {
-            DataResult.Error(ScreenError("agent_issue_report_messages_failed_decode", retryable = false))
+            DataResult.Error(ScreenError("agent_issue_report_messages_failed_decode", retryable = false, traceId = response.traceId))
         }
     }
 
@@ -821,16 +828,23 @@ private fun AgentIssueReportSubmission.bundleFilename(nowMillis: Long): String {
 
 private inline fun <reified T> HomeNetworkResponse.decode(errorCode: String): DataResult<T> {
     if (!isSuccessful) {
+        val envelope = parseHttpErrorEnvelope()
         return DataResult.Error(
-            ScreenError(errorCode, retryable = code == 0 || code >= 500, serverMessage = agentIssueErrorTextOrNull())
+            ScreenError(
+                code = errorCode,
+                retryable = code == 0 || code >= 500,
+                serverMessage = envelope?.serverMessage,
+                serverCode = envelope?.serverCode,
+                traceId = traceId,
+            )
         )
     }
     val body = bodyText?.takeIf { it.isNotBlank() }
-        ?: return DataResult.Error(ScreenError(errorCode, retryable = true))
+        ?: return DataResult.Error(ScreenError(errorCode, retryable = true, traceId = traceId))
     return try {
         DataResult.Content(agentIssueReportJson.decodeFromString<T>(body))
     } catch (_: Throwable) {
-        DataResult.Error(ScreenError("${errorCode}_decode", retryable = false))
+        DataResult.Error(ScreenError("${errorCode}_decode", retryable = false, traceId = traceId))
     }
 }
 
@@ -838,27 +852,17 @@ private fun HomeNetworkResponse.toUnitResult(errorCode: String): DataResult<Unit
     if (isSuccessful) {
         DataResult.Content(Unit)
     } else {
+        val envelope = parseHttpErrorEnvelope()
         DataResult.Error(
-            ScreenError(errorCode, retryable = code == 0 || code >= 500, serverMessage = agentIssueErrorTextOrNull())
+            ScreenError(
+                code = errorCode,
+                retryable = code == 0 || code >= 500,
+                serverMessage = envelope?.serverMessage,
+                serverCode = envelope?.serverCode,
+                traceId = traceId,
+            )
         )
     }
-
-/** The failed response's `error` / `message` text (web `readNestedErrorMessage`), shown after the step label. */
-@Serializable
-private data class AgentIssueErrorBody(
-    val error: String? = null,
-    val message: String? = null
-)
-
-private fun HomeNetworkResponse.agentIssueErrorTextOrNull(): String? {
-    val payload = (bodyText ?: errorBodyText)?.takeIf { it.isNotBlank() } ?: return null
-    return runCatching {
-        agentIssueReportJson.decodeFromString(AgentIssueErrorBody.serializer(), payload)
-            .let { body -> body.error ?: body.message }
-            ?.trim()
-            ?.takeIf { it.isNotEmpty() }
-    }.getOrNull()
-}
 
 private fun <T> DataResult<T>.toFailure(): DataResult<Nothing> =
     when (this) {
