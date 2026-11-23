@@ -3,6 +3,7 @@ type: improved
 area: settings
 platforms: [android, ios, desktop]
 rollout: full
+pull_request: 5552
 ---
 
 ## zh-CN
