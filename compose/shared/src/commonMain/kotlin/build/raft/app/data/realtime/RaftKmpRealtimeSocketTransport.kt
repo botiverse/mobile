@@ -176,6 +176,7 @@ class RaftKmpRealtimeSocketTransport(
         private val drops = RaftRealtimeDropTracker(context.serverId.value)
 
         fun close() {
+            drops.onClosed()
             socket?.disconnect()
             client.close()
         }

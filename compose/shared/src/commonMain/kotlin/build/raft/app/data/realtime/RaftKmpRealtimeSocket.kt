@@ -187,6 +187,7 @@ class RaftKmpRealtimeSocket internal constructor(
     /** Leaves the server and releases everything; the object is unusable afterwards. */
     fun close() {
         closed = true
+        drops.onClosed()
         socket.disconnect()
         client.close()
     }

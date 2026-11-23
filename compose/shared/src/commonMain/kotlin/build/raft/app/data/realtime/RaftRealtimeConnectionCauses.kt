@@ -27,36 +27,90 @@ import kotlinx.atomicfu.locks.synchronized
 object RaftRealtimeConnectionCauses {
     private val lock = SynchronizedObject()
     private val afterDrop = mutableSetOf<String>()
+    private var nextConnectionToken = 0L
+    private val liveTokens = mutableMapOf<String, Long>()
 
-    /** [serverId]'s socket connected; [afterDrop]: by itself, after a drop the app did not cause. */
-    internal fun onConnected(serverId: String, afterDrop: Boolean) {
+    /**
+     * [serverId]'s socket connected; [afterDrop]: by itself, after a drop the app did not cause.
+     * Returns the monotonic live connection token for this socket connection.
+     */
+    internal fun onConnected(serverId: String, afterDrop: Boolean): Long =
         synchronized(lock) {
             if (afterDrop) this.afterDrop += serverId else this.afterDrop -= serverId
+            val token = ++nextConnectionToken
+            liveTokens[serverId] = token
+            token
+        }
+
+    /**
+     * [serverId]'s connection [token] ended (disconnected or closed). Ignored if a newer socket
+     * connection has already replaced it.
+     */
+    internal fun onDisconnected(serverId: String, token: Long) {
+        if (token <= 0L) return
+        synchronized(lock) {
+            if (liveTokens[serverId] == token) {
+                liveTokens.remove(serverId)
+            }
         }
     }
 
     /** Whether [serverId]'s socket, as last connected, came back by itself after a drop the app did not cause. */
     fun connectedAfterDrop(serverId: String): Boolean = synchronized(lock) { serverId in afterDrop }
+
+    /**
+     * Monotonic token of [serverId]'s currently connected socket, or null when disconnected /
+     * never connected (#proj-mobile:#198, raft-design freshness.md: a foreground return while the
+     * same socket stayed continuously connected within 60 s of the last check skips a redundant read).
+     */
+    fun liveConnectionToken(serverId: String): Long? = synchronized(lock) { liveTokens[serverId] }
 }
 
 /**
  * One socket's side of [RaftRealtimeConnectionCauses]: remembers how its last connection ended, so the next
- * connection can say whether it follows a drop the app did not cause. Called on the socket's serial
- * dispatcher, one instance per socket.
+ * connection can say whether it follows a drop the app did not cause, and tracks its live token so callers
+ * can tell whether the socket stayed connected without dropping.
  */
 internal class RaftRealtimeDropTracker(private val serverId: String) {
+    private val lock = SynchronizedObject()
     private var lastEnd: RaftSocketDisconnectReason? = null
+    private var activeToken: Long = 0L
 
     fun onDisconnected(reason: RaftSocketDisconnectReason) {
-        lastEnd = reason
+        val ended =
+            synchronized(lock) {
+                lastEnd = reason
+                val token = activeToken
+                activeToken = 0L
+                token
+            }
+        RaftRealtimeConnectionCauses.onDisconnected(serverId, ended)
+    }
+
+    fun onClosed() {
+        val ended =
+            synchronized(lock) {
+                val token = activeToken
+                activeToken = 0L
+                token
+            }
+        RaftRealtimeConnectionCauses.onDisconnected(serverId, ended)
     }
 
     fun onConnected(connection: RaftSocketConnection) {
-        val end = lastEnd
-        lastEnd = null
-        RaftRealtimeConnectionCauses.onConnected(
-            serverId,
-            afterDrop = connection.reconnect && end?.realtimeHealthError() != null,
-        )
+        val end =
+            synchronized(lock) {
+                val previous = lastEnd
+                lastEnd = null
+                previous
+            }
+        val token =
+            RaftRealtimeConnectionCauses.onConnected(
+                serverId,
+                afterDrop = connection.reconnect && end?.realtimeHealthError() != null,
+            )
+        synchronized(lock) {
+            activeToken = token
+        }
     }
 }

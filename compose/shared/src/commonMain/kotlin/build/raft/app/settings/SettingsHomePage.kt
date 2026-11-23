@@ -2408,7 +2408,8 @@ private fun RaftAppShellReadyContent(
                 signal = signal,
                 appearanceGeneration = appearanceGeneration,
                 target = refreshTarget,
-                foregroundEpoch = foregroundEpoch
+                foregroundEpoch = foregroundEpoch,
+                serverId = latestReadySession?.currentServerId,
             )
         ) {
             bridge.log(
@@ -2444,6 +2445,41 @@ private fun RaftAppShellReadyContent(
         }
         return true
     }
+
+    AppShellHomeFreshnessCatchUpEffect(
+        serverId = readySession?.currentServerId,
+        visible = pageVisible && authoritativeHomeStartAllowed && readySession != null,
+        contentReady = homeState.content is SharedHomeContentState.Content,
+        selectedTab = selectedTab,
+        selectedHomeDestination = selectedHomeDestination,
+        visibleRefreshGate = visibleRefreshGate,
+        onCatchUp = { trigger ->
+            if (latestReadySession == null || !latestAuthoritativeHomeStartAllowed) return@AppShellHomeFreshnessCatchUpEffect
+            val tab = retainedAppShellSelectedTab(latestSelectedTab)
+            val destination = latestSelectedHomeDestination
+            val shouldRefreshHome =
+                when (tab) {
+                    "home" ->
+                        homeDestinationRefreshesOnLifecycleResume(destination) &&
+                            when (retainedHomeSecondaryDestination(destination)) {
+                                null, HomeDestinationActivity, HomeDestinationSaved, HomeDestinationSearch -> true
+                                else -> false
+                            }
+                    "dms", "activity" -> true
+                    else -> false
+                }
+            if (!shouldRefreshHome) return@AppShellHomeFreshnessCatchUpEffect
+            val refreshTarget = "$tab:${destination.orEmpty()}"
+            visibleRefreshGate.recordFreshCheck(
+                serverId = latestReadySession?.currentServerId,
+                target = refreshTarget,
+            )
+            bridge.log(
+                "app_shell_freshness_catch_up trigger=${trigger.wireName} tab=$tab homeDestination=${destination.orEmpty()}"
+            )
+            homeShellStore.dispatch(SharedHomeShellIntent.ForegroundRefresh)
+        },
+    )
 
     LaunchedEffect(visibleAppearanceGeneration) {
         if (

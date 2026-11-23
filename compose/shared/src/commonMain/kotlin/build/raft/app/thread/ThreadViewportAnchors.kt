@@ -1,7 +1,12 @@
 package build.raft.app
 
+import build.raft.app.data.RAFT_FRESHNESS_CONNECTED_FOREGROUND_SKIP_MILLIS
+import build.raft.app.data.raftForegroundGateNowMillis
+import build.raft.app.data.realtime.RaftRealtimeConnectionCauses
 import build.raft.app.model.formatRaftTimestampLabel
 import build.raft.app.model.RaftTimeContext
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -725,29 +730,89 @@ internal fun threadVisibleResumePlan(routeActive: Boolean): ThreadVisibleResumeP
         null
     }
 
-internal class ThreadVisibleResumeGate {
+internal class ThreadVisibleResumeGate(
+    private val nowMillis: () -> Long = ::raftForegroundGateNowMillis,
+    private val connectedForegroundSkipMillis: Long = RAFT_FRESHNESS_CONNECTED_FOREGROUND_SKIP_MILLIS,
+    private val liveConnectionToken: (serverId: String) -> Long? = RaftRealtimeConnectionCauses::liveConnectionToken,
+) {
     // Snapshot state: a pending resume must itself re-trigger the drain effect,
     // because the lifecycle listener can latch it after `active` already
     // became true (the listener reads a stale rememberUpdatedState snapshot).
     var pendingVisibleResume by mutableStateOf(false)
         private set
 
-    fun onLifecycleVisibleResume(routeActive: Boolean): ThreadVisibleResumePlan? {
+    private var lastCheckAtMillis: Long? = null
+    private var lastCheckServerId: String? = null
+    private var lastCheckConnectionToken: Long? = null
+
+    /** Records a completed fresh load or silent catch-up (initial content, reconnect, network restore). */
+    fun recordFreshCheck(serverId: String?) {
+        val normalizedServerId = serverId?.trim()?.takeIf { it.isNotEmpty() }
+        lastCheckAtMillis = nowMillis()
+        lastCheckServerId = normalizedServerId
+        lastCheckConnectionToken = normalizedServerId?.let(liveConnectionToken)
+    }
+
+    fun onLifecycleVisibleResume(routeActive: Boolean, serverId: String? = null): ThreadVisibleResumePlan? {
         if (!routeActive) {
             pendingVisibleResume = true
             return null
         }
         pendingVisibleResume = false
+        if (shouldSkipConnectedForeground(serverId)) return null
+        recordFreshCheck(serverId)
         return threadVisibleResumePlan(routeActive = true)
     }
 
-    fun onRouteBecameVisible(): ThreadVisibleResumePlan? {
+    fun onRouteBecameVisible(serverId: String? = null): ThreadVisibleResumePlan? {
         if (!pendingVisibleResume) return null
         pendingVisibleResume = false
+        if (shouldSkipConnectedForeground(serverId)) return null
+        recordFreshCheck(serverId)
         return ThreadVisibleResumePlan(
             refreshVisibleConversation = true,
             rejoinVisibleRooms = true
         )
+    }
+
+    private fun shouldSkipConnectedForeground(serverId: String?): Boolean {
+        if (connectedForegroundSkipMillis <= 0L) return false
+        val normalizedServerId = serverId?.trim()?.takeIf { it.isNotEmpty() } ?: return false
+        val lastAt = lastCheckAtMillis ?: return false
+        val now = nowMillis()
+        if (now < lastAt || now - lastAt >= connectedForegroundSkipMillis) return false
+        if (normalizedServerId != lastCheckServerId) return false
+        val currentToken = liveConnectionToken(normalizedServerId) ?: return false
+        return currentToken == lastCheckConnectionToken
+    }
+}
+
+/**
+ * Subscribes a conversation page to the process-wide [build.raft.app.data.RaftFreshnessSignal]
+ * (#proj-mobile:#198) for socket reconnect and network recovery while stamping [resumeGate] when
+ * initial content settles or a catch-up fires so an immediate unbroken-socket foreground return
+ * within 60 s skips a redundant refetch.
+ */
+@Composable
+internal fun ThreadConversationFreshnessCatchUpEffect(
+    serverId: String?,
+    active: Boolean,
+    contentReady: Boolean,
+    resumeGate: ThreadVisibleResumeGate,
+    onCatchUp: (RaftLiveCatchUpTrigger) -> Unit,
+) {
+    LaunchedEffect(resumeGate, serverId, contentReady) {
+        if (contentReady) {
+            resumeGate.recordFreshCheck(serverId)
+        }
+    }
+    RaftLiveCatchUpEffect(
+        serverId = serverId,
+        visible = active,
+        foreground = false,
+    ) { trigger ->
+        resumeGate.recordFreshCheck(serverId)
+        onCatchUp(trigger)
     }
 }
 

@@ -46,7 +46,7 @@ internal fun RaftLiveCatchUpEffect(
         }
     }
     LaunchedEffect(gate, visible) {
-        gate.onVisibilityChanged(visible)?.let { latestOnCatchUp(it) }
+        gate.onVisibilityChanged(visible, latestServerId)?.let { latestOnCatchUp(it) }
     }
 }
 

@@ -50,4 +50,37 @@ class ThreadPreviewOverlayLifecycleTest {
         thread.lifecycle(resume, THREAD_PAGE, epoch = 4)
         assertEquals(1, thread.refreshes)
     }
+
+    @Test
+    fun threadConnectedForegroundWithin60sSkipsUntilSocketDropsOrMinutePasses() {
+        var now = 5_000L
+        var liveToken: Long? = 1L
+        val gate =
+            ThreadVisibleResumeGate(
+                nowMillis = { now },
+                liveConnectionToken = { liveToken },
+            )
+        gate.recordFreshCheck("server-1")
+        now += 20_000L
+        assertEquals(
+            null,
+            gate.onLifecycleVisibleResume(routeActive = true, serverId = "server-1"),
+            "unbroken socket within 60 s skips redundant thread foreground refresh",
+        )
+        // Socket drops and reconnects: immediately refreshes inside 60 s.
+        now += 10_000L
+        liveToken = 2L
+        assertEquals(
+            true,
+            gate.onLifecycleVisibleResume(routeActive = true, serverId = "server-1")?.refreshVisibleConversation,
+            "socket drop inside 60 s refreshes visible thread on foreground",
+        )
+        // After 60 s on the same live token, foreground refreshes again.
+        now += 60_000L
+        assertEquals(
+            true,
+            gate.onLifecycleVisibleResume(routeActive = true, serverId = "server-1")?.refreshVisibleConversation,
+            "foreground refreshes visible thread again after 60 s",
+        )
+    }
 }

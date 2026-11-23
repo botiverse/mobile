@@ -117,6 +117,66 @@ class RaftAppShellTest {
     }
 
     @Test
+    fun appShellConnectedForegroundWithin60sSkipsUntilSocketDropsOrMinutePasses() {
+        var now = 10_000L
+        var liveToken: Long? = 100L
+        val gate =
+            AppShellVisibleRefreshGate(
+                nowEpochMillis = { now },
+                liveConnectionToken = { liveToken },
+            )
+        assertTrue(
+            gate.shouldRefresh(
+                AppShellVisibleRefreshSignal.Lifecycle,
+                appearanceGeneration = 1,
+                target = "home:",
+                foregroundEpoch = 1L,
+                serverId = "server-1",
+            )
+        )
+        gate.onLifecycleHidden(appearanceGeneration = 1, foregroundEpoch = 1L)
+        now += 15_000L
+        assertFalse(
+            gate.shouldRefresh(
+                AppShellVisibleRefreshSignal.Lifecycle,
+                appearanceGeneration = 1,
+                target = "home:",
+                foregroundEpoch = 2L,
+                serverId = "server-1",
+            ),
+            "unbroken socket within 60 s skips redundant foreground refresh",
+        )
+        assertEquals("connected_within_60s", gate.lastDecisionCause)
+        // Once the socket drops/reconnects with a new token, foreground refreshes immediately inside 60 s.
+        gate.onLifecycleHidden(appearanceGeneration = 1, foregroundEpoch = 2L)
+        now += 10_000L
+        liveToken = 101L
+        assertTrue(
+            gate.shouldRefresh(
+                AppShellVisibleRefreshSignal.Lifecycle,
+                appearanceGeneration = 1,
+                target = "home:",
+                foregroundEpoch = 3L,
+                serverId = "server-1",
+            ),
+            "socket drop inside 60 s refreshes on foreground",
+        )
+        // After 60 s on the same live token, foreground refreshes again.
+        gate.onLifecycleHidden(appearanceGeneration = 1, foregroundEpoch = 3L)
+        now += 60_000L
+        assertTrue(
+            gate.shouldRefresh(
+                AppShellVisibleRefreshSignal.Lifecycle,
+                appearanceGeneration = 1,
+                target = "home:",
+                foregroundEpoch = 4L,
+                serverId = "server-1",
+            ),
+            "foreground refreshes again after 60 s even if socket stayed connected",
+        )
+    }
+
+    @Test
     fun notificationLaunchWaitsForTargetServerHomeContentAfterServerSwitch() {
         fun content(snapshotServerId: String, sessionServerId: String): SharedHomeContentState.Content =
             SharedHomeContentState.Content(
