@@ -5,6 +5,7 @@ import build.raft.app.RaftDesktopMediaRoute
 import build.raft.app.RaftDesktopVideoController
 import build.raft.app.RaftDesktopVideoEngine
 import build.raft.app.RaftDesktopVideoKeyAction
+import build.raft.app.RaftDesktopVideoSnapshot
 import build.raft.app.RaftDesktopVideoSupport
 import build.raft.app.compat.ui.PlayState
 import build.raft.app.compat.ui.VideoPlayControl
@@ -19,6 +20,9 @@ import kotlin.test.assertTrue
 class RaftDesktopVideoTest {
     private class FakeEngine : RaftDesktopVideoEngine {
         val calls = mutableListOf<String>()
+
+        /** The volume whenever the player was playing: when it started, and each change meanwhile. */
+        val volumesWhilePlaying = mutableListOf<Float>()
         override var hasMedia = false
         override var isPlaying = false
         override var isLoading = false
@@ -27,6 +31,10 @@ class RaftDesktopVideoTest {
         override var positionSeconds = 0.0
         override var durationSeconds = 0.0
         override var volume = 1f
+            set(value) {
+                field = value
+                if (isPlaying) volumesWhilePlaying += value
+            }
         override var speed = 1f
 
         override fun open(uri: String, autoplay: Boolean) {
@@ -36,6 +44,7 @@ class RaftDesktopVideoTest {
         override fun play() {
             calls += "play"
             isPlaying = true
+            volumesWhilePlaying += volume
         }
 
         override fun pause() {
@@ -71,19 +80,71 @@ class RaftDesktopVideoTest {
         engine.durationSeconds = durationSeconds
     }
 
+    /** Polls as the desktop host does until the first frame is up; the fake's clock runs while it plays. */
+    private fun pollUntilFirstFrame(controller: RaftDesktopVideoController, engine: FakeEngine): List<RaftDesktopVideoSnapshot> {
+        val polls = mutableListOf<RaftDesktopVideoSnapshot>()
+        repeat(20) {
+            if (engine.isPlaying) engine.positionSeconds += 0.1
+            val snapshot = controller.poll()
+            polls += snapshot
+            if (snapshot.firstFrame) return polls
+        }
+        error("no first frame after ${polls.size} polls: calls=${engine.calls} polls=$polls")
+    }
+
+    // PREPLAY is what a message's inline video and the file preview ask for (ThreadInlineVideoSurface,
+    // RaftFilePreviewVideoPanel): the video's first frame, paused, as on the web, Android and iOS.
     @Test
-    fun preplayOpensPausedOnceAndPlayResumes() {
+    fun preplayShowsTheFirstFramePausedAtTheStartWithoutSound() {
         val engine = FakeEngine()
         val controller = RaftDesktopVideoController(src, engine)
         controller.applyPlayControl(VideoPlayControl.PREPLAY)
         controller.applyPlayControl(VideoPlayControl.PREPLAY)
         assertEquals(listOf("open($src,autoplay=false)"), engine.calls)
+        ready(engine, durationSeconds = 20.0)
+        // Loaded is not drawn (on macOS the player draws frames only while it plays): the page keeps
+        // its spinner instead of showing a black box.
+        assertFalse(controller.snapshot().firstFrame)
+        // The file preview mirrors PAUSED back as PAUSE; the frame still comes up.
+        controller.applyPlayControl(VideoPlayControl.PAUSE)
+
+        val polls = pollUntilFirstFrame(controller, engine)
+
+        // No autoplay as far as anyone can see or hear: paused at 0:00 throughout, played only silently.
+        assertTrue(polls.all { it.state == PlayState.PAUSED && it.currentMs == 0 && it.totalMs == 20_000 }, "$polls")
+        assertTrue(engine.volumesWhilePlaying.isNotEmpty(), "frames come from playback")
+        assertTrue(engine.volumesWhilePlaying.all { it == 0f }, "heard: ${engine.volumesWhilePlaying}")
+        // It rests paused at the start, with the volume back.
+        assertFalse(engine.isPlaying)
+        assertEquals(0.0, engine.positionSeconds)
+        assertEquals(1f, engine.volume)
+        assertFalse(controller.preparingFirstFrame)
+        // Play plays it from there, with sound.
+        controller.togglePlay()
+        assertEquals(PlayState.PLAYING, controller.poll().state)
+        assertEquals(1f, engine.volumesWhilePlaying.last())
+    }
+
+    @Test
+    fun playBeforeTheFirstFrameIsUpPlaysFromTheStartWithSound() {
+        val engine = FakeEngine()
+        val controller = RaftDesktopVideoController(src, engine)
+        controller.applyPlayControl(VideoPlayControl.PREPLAY)
         ready(engine)
-        assertEquals(PlayState.PAUSED, controller.snapshot().state)
-        assertTrue(controller.snapshot().firstFrame)
-        controller.applyPlayControl(VideoPlayControl.PLAY)
-        assertEquals("play", engine.calls.last())
-        assertEquals(PlayState.PLAYING, controller.snapshot().state)
+        repeat(5) { if (!engine.isPlaying) controller.poll() }
+        assertTrue(engine.isPlaying, "the silent warm-up should be playing: ${engine.calls}")
+        engine.positionSeconds = 0.1
+        // The controls still offer Play (not Pause), and the user clicks it.
+        assertFalse(controller.isPlaying)
+        controller.togglePlay()
+        assertEquals(listOf("seek(0.0)", "play"), engine.calls.takeLast(2))
+        assertEquals(1f, engine.volume)
+        val playing = controller.poll()
+        assertEquals(PlayState.PLAYING, playing.state)
+        assertEquals(0, playing.currentMs)
+        // The spinner goes once the picture moves.
+        engine.positionSeconds = 0.5
+        assertTrue(controller.poll().firstFrame)
     }
 
     @Test

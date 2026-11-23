@@ -72,6 +72,9 @@ import kotlinx.coroutines.isActive
  * mute and volume, full screen; Space toggles play once the video has focus, a click focuses it;
  * Escape is left to the page, which closes the preview, or to the full-screen window, which leaves
  * full screen). The shared minimal controls hide themselves via raftPlatformUsesNativeVideoController().
+ * A `PREPLAY` video (a message's inline video, the file preview) shows its first frame, paused and
+ * silent, as on the web, Android and iOS: the library draws frames only while it plays, so the
+ * controller warms it up silently first (RaftDesktopVideoController).
  *
  * Where the player cannot run ([RaftDesktopVideoSupport.available] false) video attachments are
  * download cards, so this falls back to a black box only if a page reaches it anyway.
@@ -113,7 +116,7 @@ internal actual fun RaftVideoPlayer(
             var lastTime = -1 to -1
             var firstFrameReported = false
             while (isActive) {
-                val snapshot = controller.snapshot()
+                val snapshot = controller.poll()
                 if (snapshot.state != lastState) {
                     lastState = snapshot.state
                     stateCallback(snapshot.state)
@@ -126,7 +129,7 @@ internal actual fun RaftVideoPlayer(
                     firstFrameReported = true
                     firstFrameCallback()
                 }
-                delay(RAFT_DESKTOP_VIDEO_TICK_MS)
+                delay(if (controller.preparingFirstFrame) RAFT_DESKTOP_VIDEO_WARM_UP_TICK_MS else RAFT_DESKTOP_VIDEO_TICK_MS)
             }
         }
         LaunchedEffect(controller, playControl) { controller.applyPlayControl(playControl) }
@@ -149,6 +152,12 @@ internal actual fun RaftVideoPlayer(
 }
 
 private const val RAFT_DESKTOP_VIDEO_TICK_MS = 250L
+
+/**
+ * The poll while a `PREPLAY` video is putting its first frame up: the warm-up
+ * (RaftDesktopVideoController) takes one step per poll, and the page shows a spinner meanwhile.
+ */
+private const val RAFT_DESKTOP_VIDEO_WARM_UP_TICK_MS = 50L
 
 /** How long the controls stay up after the pointer last moved while the video plays. */
 private const val RAFT_DESKTOP_VIDEO_CONTROLS_IDLE_MS = 2500L
