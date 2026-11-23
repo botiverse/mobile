@@ -6,6 +6,7 @@ platforms:
   - ios
   - desktop
 rollout: general
+pull_request: 5539
 ---
 
 ## zh-CN
