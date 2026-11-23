@@ -6,7 +6,6 @@ import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
-import android.graphics.Rect
 import android.graphics.Typeface
 import android.os.Build
 import androidx.core.app.Person
@@ -594,24 +593,50 @@ internal fun buildAndroidShareSuggestionIcon(
     return IconCompat.createWithAdaptiveBitmap(bitmap)
 }
 
+internal fun resolveAndroidShareSuggestionPixelRaster(
+    context: Context,
+    suggestion: RaftShareSuggestion
+): RaftPixelAvatarRaster? {
+    if (suggestion.kind != RaftShareSuggestionKind.DirectMessage) return null
+    val wire = suggestion.avatarWireValue?.trim().orEmpty()
+    if (!wire.startsWith("pixel:") && !wire.startsWith("random:") && !wire.startsWith("pixel-human:")) {
+        return null
+    }
+    // Isolate persisted runtime-table loading so bundled pixel art still renders if MMKV
+    // is unavailable (e.g. JVM Robolectric or storage error).
+    runCatching { raftApplyPersistedPixelAvatars(androidMMKVLocalPreferenceKeyValueStore(context)) }
+    return runCatching { raftPixelAvatarRaster(wire.toSharedPixelAvatarWireValue()) }.getOrNull()
+}
+
+internal fun renderAdaptivePixelAvatarArgb(
+    raster: RaftPixelAvatarRaster,
+    sizePx: Int = 108
+): IntArray {
+    val pixels = IntArray(sizePx * sizePx) { raster.backgroundArgb }
+    // Adaptive icons mask the outer 18% on each side; keep pixel art inside the 66% safe zone.
+    val inset = (sizePx * 0.17f).toInt()
+    val innerSize = (sizePx - inset * 2).coerceAtLeast(1)
+    val rawSize = raster.widgetPixelSize()
+    val rawPixels = raster.widgetPixelArgb(rawSize)
+    for (y in 0 until innerSize) {
+        val srcY = ((y * rawSize) / innerSize).coerceIn(0, rawSize - 1)
+        val dstRow = (inset + y) * sizePx + inset
+        val srcRow = srcY * rawSize
+        for (x in 0 until innerSize) {
+            val srcX = ((x * rawSize) / innerSize).coerceIn(0, rawSize - 1)
+            pixels[dstRow + x] = rawPixels[srcRow + srcX]
+        }
+    }
+    return pixels
+}
+
 internal fun renderAndroidShareSuggestionAvatarBitmap(
     context: Context,
     suggestion: RaftShareSuggestion,
     sizePx: Int = 108
 ): Bitmap {
-    if (suggestion.kind == RaftShareSuggestionKind.DirectMessage) {
-        val wire = suggestion.avatarWireValue?.trim().orEmpty()
-        if (wire.startsWith("pixel:") || wire.startsWith("random:") || wire.startsWith("pixel-human:")) {
-            // Isolate persisted runtime-table loading so bundled pixel art still renders if MMKV
-            // is unavailable (e.g. JVM Robolectric or storage error).
-            runCatching { raftApplyPersistedPixelAvatars(androidMMKVLocalPreferenceKeyValueStore(context)) }
-            val pixelBitmap =
-                runCatching {
-                    val raster = raftPixelAvatarRaster(wire.toSharedPixelAvatarWireValue())
-                    raster?.let { renderAdaptivePixelAvatarBitmap(it, sizePx) }
-                }.getOrNull()
-            if (pixelBitmap != null) return pixelBitmap
-        }
+    resolveAndroidShareSuggestionPixelRaster(context, suggestion)?.let { raster ->
+        return renderAdaptivePixelAvatarBitmap(raster, sizePx)
     }
     val glyph =
         if (suggestion.kind != RaftShareSuggestionKind.DirectMessage) {
@@ -643,23 +668,7 @@ internal fun renderAndroidShareSuggestionAvatarBitmap(
 private fun renderAdaptivePixelAvatarBitmap(
     raster: RaftPixelAvatarRaster,
     sizePx: Int
-): Bitmap {
-    val output = Bitmap.createBitmap(sizePx, sizePx, Bitmap.Config.ARGB_8888)
-    val canvas = Canvas(output)
-    canvas.drawColor(raster.backgroundArgb)
-    val rawSize = raster.widgetPixelSize()
-    val rawBitmap = Bitmap.createBitmap(raster.widgetPixelArgb(rawSize), rawSize, rawSize, Bitmap.Config.ARGB_8888)
-    try {
-        // Adaptive icons mask the outer 18% on each side; keep pixel art inside the 66% safe zone.
-        val inset = (sizePx * 0.17f).toInt()
-        val dest = Rect(inset, inset, sizePx - inset, sizePx - inset)
-        val paint = Paint().apply { isFilterBitmap = false }
-        canvas.drawBitmap(rawBitmap, null, dest, paint)
-    } finally {
-        rawBitmap.recycle()
-    }
-    return output
-}
+): Bitmap = Bitmap.createBitmap(renderAdaptivePixelAvatarArgb(raster, sizePx), sizePx, sizePx, Bitmap.Config.ARGB_8888)
 
 private fun renderAdaptiveGlyphBitmap(
     glyph: String,

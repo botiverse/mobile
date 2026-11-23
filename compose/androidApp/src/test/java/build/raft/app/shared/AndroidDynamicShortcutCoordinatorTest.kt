@@ -145,6 +145,7 @@ class AndroidDynamicShortcutCoordinatorTest {
             )
 
         engine.updatePinnedShortcuts(pinned)
+        backend.clearBatchLog()
         engine.publish("acc-1", "srv-1", shares)
 
         // Share targets are pushed first (reversed), then pinned shortcuts (reversed) so pinned sit on top.
@@ -290,6 +291,7 @@ class AndroidDynamicShortcutCoordinatorTest {
         val shares = (1..4).map { shareSuggestion("srv-1", RaftShareSuggestionKind.DirectMessage, "dm-$it", "User $it") }
 
         engine.updatePinnedShortcuts(pinned)
+        backend.clearBatchLog()
         engine.publish("acc-1", "srv-1", shares)
 
         assertEquals(
@@ -363,21 +365,24 @@ class AndroidDynamicShortcutCoordinatorTest {
         dmBitmap.recycle()
 
         val expectedRaster = requireNotNull(raftPixelAvatarRaster("pixel:cat"))
-        val pixelBitmap =
-            renderAndroidShareSuggestionAvatarBitmap(
-                context,
-                shareSuggestion(
-                    "srv-1",
-                    RaftShareSuggestionKind.DirectMessage,
-                    "dm-agent",
-                    "AirenaAgent",
-                    avatarWireValue = "pixel:cat"
-                )
+        val pixelSuggestion =
+            shareSuggestion(
+                "srv-1",
+                RaftShareSuggestionKind.DirectMessage,
+                "dm-agent",
+                "AirenaAgent",
+                avatarWireValue = "pixel:cat"
             )
+        val resolvedRaster = requireNotNull(resolveAndroidShareSuggestionPixelRaster(context, pixelSuggestion))
+        assertEquals(expectedRaster.backgroundArgb, resolvedRaster.backgroundArgb)
+        val pixels = renderAdaptivePixelAvatarArgb(resolvedRaster, sizePx = 108)
+        assertEquals(108 * 108, pixels.size)
+        // Outer adaptive-icon bleed corner must match the bundled pixel avatar background color.
+        assertEquals(expectedRaster.backgroundArgb, pixels[0])
+
+        val pixelBitmap = renderAndroidShareSuggestionAvatarBitmap(context, pixelSuggestion)
         assertEquals(108, pixelBitmap.width)
         assertEquals(108, pixelBitmap.height)
-        // Outer adaptive-icon bleed corner must match the bundled pixel avatar background color.
-        assertEquals(expectedRaster.backgroundArgb, pixelBitmap.getPixel(0, 0))
         pixelBitmap.recycle()
     }
 
