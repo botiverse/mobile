@@ -181,6 +181,27 @@ class RaftFitToolbarFilterRevealTest {
             assertInStrip("f2")
         }
 
+    @Test
+    fun appliedFilterWiderThanTheStripShowsItsStart() =
+        runComposeUiTest {
+            // Search's long sender name: the applied chip is wider than the strip, so it cannot be
+            // all in view; its start shows, rather than the strip scrolling to its end.
+            setContent {
+                Toolbar(
+                    width = 230.dp,
+                    filters =
+                        listOf(
+                            choice("f1", "Bartholomew Featherstonehaugh-Wolfeschlegelstein", applied = true),
+                            choice("f2", "Status", applied = false),
+                        ),
+                    clearAll = true,
+                )
+            }
+            waitForIdle()
+            assertTrue(bounds("f1").let { it.right - it.left } > strip().let { it.right - it.left }, "f1 is wider than the strip")
+            assertAtStart("f1")
+        }
+
     @Composable
     private fun Toolbar(
         width: Dp,
