@@ -1,6 +1,7 @@
 package build.raft.app.data
 
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 
@@ -166,19 +167,15 @@ internal fun parseAppWebStepUpComplete(statusCode: Int, bodyText: String?, trace
 
 /**
  * The two authenticated calls of the web step-up, through the shared network client (this
- * sign-in's bearer; user-blocking: Foreground).
+ * sign-in's bearer; user-blocking: Foreground). Made for a traced attempt
+ * ([AppWebStepUpRequestTrace] in the coroutine context), they carry its `traceparent` and note
+ * the answer's status and refusal code for its span.
  */
 internal class AppWebStepUpRepository(private val networkClient: RaftNetworkClient) {
     suspend fun start(body: AppWebStepUpStartBody): AppWebStepUpStartResult =
         try {
-            val response =
-                networkClient.request(
-                    priority = DataRequestPriority.Foreground,
-                    path = APP_WEB_STEP_UP_START_PATH,
-                    method = "POST",
-                    bodyText = buildAppWebStepUpStartBody(body),
-                )
-            parseAppWebStepUpStart(response.code, response.bodyText?.takeIf { it.isNotBlank() } ?: response.errorBodyText, response.traceId)
+            val response = post(APP_WEB_STEP_UP_START_PATH, buildAppWebStepUpStartBody(body))
+            parseAppWebStepUpStart(response.code, response.answerText(), response.traceId)
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (_: Throwable) {
@@ -187,17 +184,27 @@ internal class AppWebStepUpRepository(private val networkClient: RaftNetworkClie
 
     suspend fun complete(body: AppWebStepUpCompleteBody): AppWebStepUpCompleteResult =
         try {
-            val response =
-                networkClient.request(
-                    priority = DataRequestPriority.Foreground,
-                    path = APP_WEB_STEP_UP_COMPLETE_PATH,
-                    method = "POST",
-                    bodyText = buildAppWebStepUpCompleteBody(body),
-                )
-            parseAppWebStepUpComplete(response.code, response.bodyText?.takeIf { it.isNotBlank() } ?: response.errorBodyText, response.traceId)
+            val response = post(APP_WEB_STEP_UP_COMPLETE_PATH, buildAppWebStepUpCompleteBody(body))
+            parseAppWebStepUpComplete(response.code, response.answerText(), response.traceId)
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (_: Throwable) {
             AppWebStepUpCompleteResult.Failed(serverCode = "network")
         }
+
+    private suspend fun post(path: String, bodyText: String): HomeNetworkResponse {
+        val trace = currentCoroutineContext()[AppWebStepUpRequestTrace]
+        val response =
+            networkClient.requestWithHeaders(
+                priority = DataRequestPriority.Foreground,
+                path = path,
+                headers = trace?.headers().orEmpty(),
+                method = "POST",
+                bodyText = bodyText,
+            )
+        trace?.answered(response.code, parseAppWebStepUpRefusal(response.answerText())?.let { it.code ?: it.errorCode })
+        return response
+    }
+
+    private fun HomeNetworkResponse.answerText(): String? = bodyText?.takeIf { it.isNotBlank() } ?: errorBodyText
 }
