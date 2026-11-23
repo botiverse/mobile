@@ -18,7 +18,9 @@ import build.raft.designsystem.theme.RaftAppearance
 import build.raft.designsystem.theme.RaftPointerInput
 import build.raft.designsystem.theme.RaftScale
 import build.raft.designsystem.theme.RaftTheme
+import kotlin.math.ceil
 import kotlin.test.Test
+import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
@@ -36,6 +38,28 @@ class RaftToastRenderTest {
         val action = fetchSemanticsNode().config[SemanticsActions.GetTextLayoutResult].action
         assertTrue(action?.invoke(results) == true && results.isNotEmpty(), "expected text layout result")
         return results.first()
+    }
+
+    /**
+     * Assert every character of [expected] is visibly laid out without vertical overflow or
+     * ellipsis. Note: we intentionally avoid `TextLayoutResult.hasVisualOverflow` /
+     * `didOverflowWidth` on short single-line strings because Compose's semantics layout measures
+     * `multiParagraph.width` at max constraint width while `size.width` hugs the intrinsic text
+     * width (`size.width < multiParagraph.width` false-positives; see `SavedRowMetaLineUiTest`).
+     */
+    private fun assertRenderedWhole(label: String, expected: String, layout: TextLayoutResult) {
+        assertFalse(layout.didOverflowHeight, "expected $label not to overflow vertically")
+        val ellipsized = (0 until layout.lineCount).any { layout.isLineEllipsized(it) }
+        assertFalse(ellipsized, "expected $label not to be ellipsized")
+        val visibleEnd = layout.getLineEnd(layout.lineCount - 1, visibleEnd = true)
+        assertEquals(expected.length, visibleEnd, "expected all characters of $label to render visibly")
+        if (layout.lineCount == 1) {
+            val naturalWidth = ceil(layout.multiParagraph.intrinsics.maxIntrinsicWidth).toInt()
+            assertTrue(
+                layout.size.width >= naturalWidth,
+                "expected single-line $label to fit its natural width (${layout.size.width}px < ${naturalWidth}px)",
+            )
+        }
     }
 
     @Test
@@ -73,14 +97,14 @@ class RaftToastRenderTest {
 
             val titleLayout = titleNode.textLayoutResult()
             assertTrue(titleLayout.lineCount > 1, "expected long toast title to wrap across multiple lines, got ${titleLayout.lineCount}")
-            assertFalse(titleLayout.hasVisualOverflow, "expected toast title not to truncate or clip")
+            assertRenderedWhole("toast title", longTitle, titleLayout)
 
             val reasonLayout = reasonNode.textLayoutResult()
             assertTrue(reasonLayout.lineCount > 1, "expected refusal reason to wrap across multiple lines, got ${reasonLayout.lineCount}")
-            assertFalse(reasonLayout.hasVisualOverflow, "expected refusal reason not to truncate or clip")
+            assertRenderedWhole("refusal reason", reason, reasonLayout)
 
             val traceLayout = traceNode.textLayoutResult()
-            assertFalse(traceLayout.hasVisualOverflow, "expected Trace ID footnote not to clip")
+            assertRenderedWhole("Trace ID footnote", traceIdFootnote, traceLayout)
 
             val titleBounds = titleNode.getBoundsInRoot()
             val reasonBounds = reasonNode.getBoundsInRoot()
@@ -111,6 +135,6 @@ class RaftToastRenderTest {
             val titleNode = onNodeWithText(longTitle).assertIsDisplayed()
             val titleLayout = titleNode.textLayoutResult()
             assertTrue(titleLayout.lineCount > 1, "expected title-only toast to wrap across multiple lines, got ${titleLayout.lineCount}")
-            assertFalse(titleLayout.hasVisualOverflow, "expected title-only toast not to truncate or clip")
+            assertRenderedWhole("title-only toast", longTitle, titleLayout)
         }
 }
