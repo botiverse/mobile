@@ -14,6 +14,7 @@ JOB_REF="${GITHUB_SERVER_URL:-https://github.com}/${GITHUB_REPOSITORY:-}/actions
 JOB_HEADER="X-Stamp-CI-Job-Ref: $JOB_REF"
 CLAIM_TOKEN_FILE="${RUNNER_TEMP:-$EV}/stamp-claim-$STAMP_RUN_CASE_ID"
 BOOTSTRAP_SPEC_FILE="${RUNNER_TEMP:-$EV}/stamp-bootstrap-spec-$STAMP_RUN_CASE_ID.json"
+CLAIM_SPEC_BINDING_FILE="${RUNNER_TEMP:-$EV}/stamp-claim-spec-$STAMP_RUN_CASE_ID.json"
 BOOTSTRAP_LOGIN_RESPONSE_FILE="${RUNNER_TEMP:-$EV}/stamp-bootstrap-login-$STAMP_RUN_CASE_ID.json"
 # Non-secret record of the one issuance call: in_flight (written BEFORE the call) | issued | unknown (no client-side "rejected": every 4xx is unknown).
 BOOTSTRAP_LOGIN_OUTCOME_FILE="${RUNNER_TEMP:-$EV}/stamp-bootstrap-login-outcome-$STAMP_RUN_CASE_ID.json"
@@ -62,7 +63,8 @@ if [ "$PHASE" = "claim" ]; then
     ARTIFACT_SHA=${ARTIFACT_SHA%% *}
     ARTIFACT_SHA="$ARTIFACT_SHA" JOB_REF="$JOB_REF" node - "$CLAIM_PAYLOAD" <<'NODE' || exit 1
 const fs = require("node:fs");
-const { ARTIFACT_SHA, JOB_REF, GITHUB_SHA } = process.env;
+const crypto = require("node:crypto");
+const { ARTIFACT_SHA, JOB_REF, GITHUB_SHA, STAMP_SEND_RENDERED_GOAL_SHA256, QA_GOAL } = process.env;
 const info = JSON.parse(fs.readFileSync("apks/build-info.json", "utf8"));
 if (info.platform !== "android" || info.source_commit_verified !== false || info.apk_sha256 !== ARTIFACT_SHA) {
   throw new Error("direct APK does not match the download step's Android build record");
@@ -76,6 +78,9 @@ const claim = {
   app_version: info.app_version || null,
   version_code: Number.isSafeInteger(versionCode) && versionCode > 0 ? versionCode : null,
   package_id: info.package || null,
+  ...(STAMP_SEND_RENDERED_GOAL_SHA256 === "true" && QA_GOAL
+    ? { rendered_goal_sha256: crypto.createHash("sha256").update(Buffer.from(QA_GOAL, "utf8")).digest("hex") }
+    : {}),
 };
 fs.writeFileSync(process.argv[2], JSON.stringify(claim));
 NODE
@@ -97,14 +102,19 @@ NODE
     PACKAGE_ID="${STAMP_VERIFIED_PACKAGE_ID:-${BUNDLE_ID:-$PKG}}"
     SOURCE_COMMIT="$SOURCE_COMMIT" ARTIFACT_SHA="$ARTIFACT_SHA" APP_VERSION="$APP_VERSION" \
       VERSION_CODE="$VERSION_CODE" PACKAGE_ID="$PACKAGE_ID" JOB_REF="$JOB_REF" \
-      node -e 'const fs=require("fs"); const e=process.env; const code=e.VERSION_CODE===""?null:Number(e.VERSION_CODE); if(code!==null&&!Number.isInteger(code))process.exit(2); fs.writeFileSync(process.argv[1],JSON.stringify({ci_job_ref:e.JOB_REF,source_commit:e.SOURCE_COMMIT,apk_sha256:e.ARTIFACT_SHA,app_version:e.APP_VERSION,version_code:code,package_id:e.PACKAGE_ID}));' "$CLAIM_PAYLOAD" || exit 1
+      node -e 'const fs=require("fs"),crypto=require("crypto"); const e=process.env; const code=e.VERSION_CODE===""?null:Number(e.VERSION_CODE); if(code!==null&&!Number.isInteger(code))process.exit(2); const body={ci_job_ref:e.JOB_REF,source_commit:e.SOURCE_COMMIT,apk_sha256:e.ARTIFACT_SHA,app_version:e.APP_VERSION,version_code:code,package_id:e.PACKAGE_ID}; if(e.STAMP_SEND_RENDERED_GOAL_SHA256==="true"&&e.QA_GOAL){body.rendered_goal_sha256=crypto.createHash("sha256").update(Buffer.from(e.QA_GOAL,"utf8")).digest("hex");} fs.writeFileSync(process.argv[1],JSON.stringify(body));' "$CLAIM_PAYLOAD" || exit 1
   fi
   # The spec keeps the claim's auth bootstrap subset, its run case and its case_id (a well-formed
   # case id, else null): qa-acceptance.yml makes the login acceptance mandatory for login-email-password.
   if curl -sf -X POST "$BASE/claim" -H "$AUTH" -H 'content-type: application/json' \
     --data-binary @"$CLAIM_PAYLOAD" \
     -o "$CLAIM_RESPONSE"; then
-    node -e 'const fs=require("fs");const v=JSON.parse(fs.readFileSync(process.argv[1],"utf8"));if(!v.claim_token)process.exit(2);fs.writeFileSync(process.argv[2],v.claim_token,{mode:0o600});const b=v.auth_bootstrap&&typeof v.auth_bootstrap==="object"?v.auth_bootstrap:{required:false};fs.writeFileSync(process.argv[3],JSON.stringify({...b,required:b.required===true,run_case_id:v.run_case_id,case_id:typeof v.case_id==="string"&&/^[a-z0-9][a-z0-9-]{0,63}$/.test(v.case_id)?v.case_id:null},null,2),{mode:0o600})' "$CLAIM_RESPONSE" "$CLAIM_TOKEN_FILE" "$BOOTSTRAP_SPEC_FILE"
+    node -e 'const fs=require("fs");const v=JSON.parse(fs.readFileSync(process.argv[1],"utf8"));if(!v.claim_token)process.exit(2);fs.writeFileSync(process.argv[2],v.claim_token,{mode:0o600});const b=v.auth_bootstrap&&typeof v.auth_bootstrap==="object"?v.auth_bootstrap:{required:false};fs.writeFileSync(process.argv[3],JSON.stringify({...b,required:b.required===true,run_case_id:v.run_case_id,case_id:typeof v.case_id==="string"&&/^[a-z0-9][a-z0-9-]{0,63}$/.test(v.case_id)?v.case_id:null},null,2),{mode:0o600})' "$CLAIM_RESPONSE" "$CLAIM_TOKEN_FILE" "$BOOTSTRAP_SPEC_FILE" || { rm -f "$CLAIM_RESPONSE" "$CLAIM_PAYLOAD"; echo "stamp: claim response invalid" >&2; exit 1; }
+    if ! node "$SCRIPT_DIR/claim_spec_binding.mjs" record --response "$CLAIM_RESPONSE" --out "$CLAIM_SPEC_BINDING_FILE" --run-case-id "$STAMP_RUN_CASE_ID"; then
+      rm -f "$CLAIM_RESPONSE" "$CLAIM_PAYLOAD" "$CLAIM_SPEC_BINDING_FILE"
+      echo "stamp: claimed specification or budget binding mismatch (strict fail-closed)" >&2
+      exit 1
+    fi
     rm -f "$CLAIM_RESPONSE" "$CLAIM_PAYLOAD"
     echo "stamp: claimed (commit=${SOURCE_COMMIT:-?} artifact=${ARTIFACT_SHA:0:12})"
     exit 0
