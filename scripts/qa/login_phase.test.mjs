@@ -695,6 +695,69 @@ test("rule 3: a mode that never signs in but shows a sign-in signal, or evidence
   }
 });
 
+test("rule 3: secure_evidence scans verdict.json too (blocks password on both exits, redacts email, preserves clean pass)", () => {
+  const stamp = "11-21 10:00:00.000";
+  const makePassDir = (verdict) => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "gate-verdict-"));
+    const dir = path.join(root, "qa-evidence");
+    phase.writeRecord(dir, { mode: "password", status: "complete", login_end: stamp, reason: "app_login_complete result=app_shell reason=exchanged",
+      acceptance: { ...BINDING, verdict: "pass", reason: "signed_in_as_expected" } }, RUN);
+    fs.writeFileSync(path.join(dir, "step-00.png"), "PNG-clean-frame");
+    fs.writeFileSync(path.join(dir, "verdict.json"), JSON.stringify(verdict));
+    return { root, dir };
+  };
+  for (const creds of [
+    { QA_LOGIN_ACCEPTANCE_EMAIL: EMAIL, QA_LOGIN_ACCEPTANCE_PASSWORD: PASSWORD },
+    { QA_TEST_EMAIL: EMAIL, QA_TEST_PASSWORD: PASSWORD },
+  ]) {
+    // 1. Password inside verdict.json: gate fails, deletes evidence, overwrites verdict.json, and blocks Stamp upload too.
+    const leaked = makePassDir({ verdict: "pass", reason: `observed ${PASSWORD} on screen` });
+    try {
+      const res = gate.gate(leaked.dir, { ...RUN, ...creds });
+      assert.equal(res.ok, false);
+      assert.match(res.reason, /secret value in verdict\.json/);
+      assert.equal(fs.existsSync(path.join(leaked.dir, "step-00.png")), false);
+      const rewritten = fs.readFileSync(path.join(leaked.dir, "verdict.json"), "utf8");
+      assert.equal(JSON.parse(rewritten).verdict, "unknown");
+      assert.ok(!rewritten.includes(PASSWORD), "leaked password scrubbed from verdict.json");
+      assert.equal(fs.readFileSync(path.join(leaked.dir, "agent-rc.txt"), "utf8").trim(), "2");
+      // Stamp upload exit also refuses the failed gate (zero curl calls).
+      const bin = path.join(leaked.root, "bin");
+      fs.mkdirSync(bin);
+      const curlLog = path.join(leaked.root, "curl.log");
+      fs.writeFileSync(path.join(bin, "curl"), `#!/usr/bin/env bash\necho "$*" >> "${curlLog}"\nexit 0\n`, { mode: 0o755 });
+      fs.writeFileSync(path.join(leaked.root, "stamp-claim-rc-fake"), "fake-lease");
+      const stampRes = spawnSync("bash", [path.join(here, "stamp_report.sh"), "report-evidence", leaked.dir], {
+        cwd: leaked.root, encoding: "utf8",
+        env: { PATH: `${bin}:${path.dirname(process.execPath)}:/usr/bin:/bin`, ...RUN, ...creds, STAMP_RUN_CASE_ID: "rc-fake", STAMP_URL: "https://stamp.invalid", STAMP_TOKEN: "fake", RUNNER_TEMP: leaked.root },
+      });
+      assert.notEqual(stampRes.status, 0);
+      assert.equal(fs.existsSync(curlLog), false, "no Stamp upload after password in verdict.json");
+    } finally { fs.rmSync(leaked.root, { recursive: true, force: true }); }
+
+    // 2. Email inside verdict.json: redacted in place before upload and step summary, gate passes.
+    const withEmail = makePassDir({ verdict: "pass", reason: `signed in as ${EMAIL}` });
+    try {
+      const res = gate.gate(withEmail.dir, { ...RUN, ...creds });
+      assert.equal(res.ok, true);
+      const text = fs.readFileSync(path.join(withEmail.dir, "verdict.json"), "utf8");
+      assert.ok(!text.includes(EMAIL), "email redacted from verdict.json");
+      assert.deepEqual(JSON.parse(text), { verdict: "pass", reason: "signed in as ***" });
+      assert.equal(JSON.parse(fs.readFileSync(path.join(withEmail.dir, "evidence-gate.json"), "utf8")).secrets_checked, true);
+    } finally { fs.rmSync(withEmail.root, { recursive: true, force: true }); }
+
+    // 3. Clean control: passes untouched with secrets_checked: true.
+    const clean = makePassDir({ verdict: "pass", reason: "home visible" });
+    try {
+      const res = gate.gate(clean.dir, { ...RUN, ...creds });
+      assert.equal(res.ok, true);
+      assert.deepEqual(JSON.parse(fs.readFileSync(path.join(clean.dir, "verdict.json"), "utf8")), { verdict: "pass", reason: "home visible" });
+      assert.equal(fs.existsSync(path.join(clean.dir, "step-00.png")), true);
+      assert.equal(JSON.parse(fs.readFileSync(path.join(clean.dir, "evidence-gate.json"), "utf8")).secrets_checked, true);
+    } finally { fs.rmSync(clean.root, { recursive: true, force: true }); }
+  }
+});
+
 test("rule 3: Stamp gets no evidence and no pass for an UNKNOWN run", () => {
   const w = fakeWorld();
   const ev = path.join(w.root, "qa-evidence");
