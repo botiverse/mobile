@@ -19,12 +19,16 @@ enum class RaftFreshnessTrigger(val wireName: String) {
 
 /**
  * One "re-check what you show" moment. [serverId] and [transportEpoch] (the host's number for that
- * server's socket connection) are set for [RaftFreshnessTrigger.Reconnect] only.
+ * server's socket connection) are set for [RaftFreshnessTrigger.Reconnect] only, and so is [afterDrop]:
+ * the socket came back by itself after a drop the app did not cause (a deploy drops every client at
+ * once; data/realtime/RaftRealtimeConnectionCauses.kt), not a connection the app opened (back in the
+ * foreground after it closed the socket in the background).
  */
 data class RaftFreshnessEvent(
     val trigger: RaftFreshnessTrigger,
     val serverId: String? = null,
     val transportEpoch: Long? = null,
+    val afterDrop: Boolean = false,
 )
 
 /**
@@ -49,10 +53,13 @@ object RaftFreshnessSignal {
         mutableEvents.tryEmit(RaftFreshnessEvent(RaftFreshnessTrigger.Foreground))
     }
 
-    /** [transportEpoch]: the socket connection that came back; its `connected` and `rooms:joined` share it. */
-    fun onReconnected(serverId: String, transportEpoch: Long) {
+    /**
+     * [transportEpoch]: the socket connection that came back; its `connected` and `rooms:joined` share it.
+     * [afterDrop]: it came back by itself after a drop the app did not cause ([RaftFreshnessEvent.afterDrop]).
+     */
+    fun onReconnected(serverId: String, transportEpoch: Long, afterDrop: Boolean = false) {
         val id = serverId.trim().takeIf { it.isNotEmpty() } ?: return
-        mutableEvents.tryEmit(RaftFreshnessEvent(RaftFreshnessTrigger.Reconnect, id, transportEpoch.takeIf { it > 0L }))
+        mutableEvents.tryEmit(RaftFreshnessEvent(RaftFreshnessTrigger.Reconnect, id, transportEpoch.takeIf { it > 0L }, afterDrop))
     }
 
     fun onNetworkRestored() {

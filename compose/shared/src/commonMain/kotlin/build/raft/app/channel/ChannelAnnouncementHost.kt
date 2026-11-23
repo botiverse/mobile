@@ -25,6 +25,8 @@ import build.raft.app.data.ChannelAnnouncementPickerStore
 import build.raft.app.data.ChannelAnnouncementSlice
 import build.raft.app.data.NetworkRaftConversationArtifactsApi
 import build.raft.app.data.RaftChannelAnnouncement
+import build.raft.app.data.RaftFreshnessEvent
+import build.raft.app.data.RaftFreshnessGate
 import build.raft.app.data.RaftFreshnessSignal
 import build.raft.app.data.RaftFreshnessTrigger
 import build.raft.app.data.RaftSharedStoreProvider
@@ -35,6 +37,7 @@ import build.raft.app.data.SharedServerFeatureFlags
 import build.raft.app.data.answersFor
 import build.raft.app.data.artifactWebUrl
 import build.raft.app.data.channelTypeSupportsAnnouncement
+import build.raft.app.data.raftForegroundGateNowMillis
 import build.raft.app.data.rememberServerFeatureLatched
 import build.raft.app.model.ServerId
 import build.raft.app.resources.*
@@ -102,10 +105,7 @@ internal fun rememberChannelAnnouncementSlice(
         }
         onDispose {}
     }
-    val reconnects = remember { RaftFreshnessSignal.events.filter { it.trigger == RaftFreshnessTrigger.Reconnect } }
-    RaftLiveCatchUpEffect(serverId = key?.serverId, visible = key != null && active, foreground = false, events = reconnects) {
-        key?.let { store.dispatch(ChannelAnnouncementIntent.Reconnected(it)) }
-    }
+    ChannelAnnouncementReconnectEffect(store, key, active)
     if (key == null) return ChannelAnnouncementSlice.Unread
     val slice by remember(store, key) { store.slice(key) }.collectAsState(store.current(key))
     return slice
@@ -114,6 +114,41 @@ internal fun rememberChannelAnnouncementSlice(
 /** Whether the page has been out of front since it last showed the channel; nothing draws from it. */
 private class ChannelAnnouncementFront {
     var leftSinceShown = false
+}
+
+/**
+ * The socket of [key]'s server back (a new connection, RaftFreshnessSignal): the store reads [key] again
+ * (rule 12), after its jitter when the socket came back by itself after a drop the app did not cause
+ * ([RaftFreshnessEvent.afterDrop]). One that came while the page was not in front reads when it is, at
+ * once, as the web runs its held reconnect reload when the page shows again. A [RaftLiveCatchUpEffect]
+ * that keeps the event, not only its trigger.
+ */
+@Composable
+private fun ChannelAnnouncementReconnectEffect(
+    store: SharedChannelAnnouncementStore,
+    key: ChannelAnnouncementKey?,
+    active: Boolean,
+) {
+    val serverId = key?.serverId
+    val gate = remember(serverId) { RaftFreshnessGate(foreground = false, nowMillis = ::raftForegroundGateNowMillis) }
+    val latestKey by rememberUpdatedState(key)
+    val latestActive by rememberUpdatedState(active)
+    LaunchedEffect(gate, store) {
+        if (serverId == null) return@LaunchedEffect
+        // Collected on the composition's (main) dispatcher: the gate is confined to it.
+        RaftFreshnessSignal.events.filter { it.trigger == RaftFreshnessTrigger.Reconnect }.collect { event ->
+            val shown = latestKey ?: return@collect
+            if (shown.serverId != serverId) return@collect
+            gate.onEvent(event, serverId, latestActive)?.let {
+                store.dispatch(ChannelAnnouncementIntent.Reconnected(shown, afterDrop = event.afterDrop))
+            }
+        }
+    }
+    LaunchedEffect(gate, store, active) {
+        val shown = latestKey ?: return@LaunchedEffect
+        if (shown.serverId != serverId) return@LaunchedEffect
+        gate.onVisibilityChanged(active)?.let { store.dispatch(ChannelAnnouncementIntent.Reconnected(shown)) }
+    }
 }
 
 /**

@@ -2,6 +2,7 @@ package build.raft.app.core.data.realtime
 
 import build.raft.app.data.realtime.SocketIoRealtimeClient
 import build.raft.app.data.realtime.RaftKmpRealtimeSocketTransport
+import build.raft.app.data.realtime.RaftRealtimeConnectionCauses
 import build.raft.app.data.realtime.RealtimeAuth
 import build.raft.app.data.realtime.RealtimeConnectRequest
 import build.raft.app.data.realtime.RealtimeSyncHorizon
@@ -246,5 +247,27 @@ class SocketIoRealtimeClientOverKmpTransportTest {
         harness.dropAndReconnect()
         harness.receive("rooms:joined")
         assertEquals("800", harness.resumes().last().getString(RealtimeSyncHorizon.SinceHorizonKey))
+    }
+
+    /**
+     * Whether the socket is back after a drop the app did not cause (RaftRealtimeConnectionCauses): a
+     * reconnect after the network or the server dropped it (a deploy drops every client at once) is; the
+     * app's own connection after it closed the socket in the background is not.
+     */
+    @Test
+    fun aSocketBackAfterTheServerOrNetworkDroppedItIsAfterADropOneTheAppReopenedIsNot() = runTest {
+        val harness = Harness(this)
+        harness.connect(serverId = "server-drops")
+        assertFalse("opened by the app", RaftRealtimeConnectionCauses.connectedAfterDrop("server-drops"))
+
+        harness.dropAndReconnect()
+        assertTrue("back by itself after the drop", RaftRealtimeConnectionCauses.connectedAfterDrop("server-drops"))
+
+        // Background: the owner suspends reconnects, which closes the socket; foreground: it connects again.
+        harness.client.setReconnectAllowed(false)
+        harness.pump()
+        harness.client.setReconnectAllowed(true)
+        harness.connect(serverId = "server-drops")
+        assertFalse("the app's own connection", RaftRealtimeConnectionCauses.connectedAfterDrop("server-drops"))
     }
 }

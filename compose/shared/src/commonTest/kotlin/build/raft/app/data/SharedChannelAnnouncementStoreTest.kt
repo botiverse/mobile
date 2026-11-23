@@ -77,8 +77,18 @@ class SharedChannelAnnouncementStoreTest {
         }
     }
 
-    private fun TestScope.store(api: FakeApi, foreground: MutableStateFlow<Boolean> = MutableStateFlow(true)) =
-        SharedChannelAnnouncementStore(ChannelAnnouncementRepository(api), backgroundScope, foreground = foreground, nowMillis = { testScheduler.currentTime })
+    /** [jitter]: the wait after a drop the app did not cause; a store that never waits unless a test says so. */
+    private fun TestScope.store(
+        api: FakeApi,
+        foreground: MutableStateFlow<Boolean> = MutableStateFlow(true),
+        jitter: () -> Long = { error("only a reconnect after a drop the app did not cause waits") },
+    ) = SharedChannelAnnouncementStore(
+        ChannelAnnouncementRepository(api),
+        backgroundScope,
+        foreground = foreground,
+        nowMillis = { testScheduler.currentTime },
+        reconnectJitterMillis = jitter,
+    )
 
     private fun TestScope.open(store: SharedChannelAnnouncementStore) {
         store.dispatch(ChannelAnnouncementIntent.Open(key))
@@ -355,6 +365,111 @@ class SharedChannelAnnouncementStoreTest {
             store.dispatch(ChannelAnnouncementIntent.Close(key))
             trigger(store, ChannelAnnouncementIntent.Reconnected(key))
             assertEquals(3, api.reads)
+        }
+
+    @Test
+    fun row12AfterADropTheAppDidNotCauseTheReadWaitsARandomMomentFirst() =
+        runTest {
+            val api = FakeApi()
+            val store = store(api, jitter = { 7_000L })
+            open(store)
+            api.has = OTHER
+            trigger(store, ChannelAnnouncementIntent.Reconnected(key, afterDrop = true))
+            // Dropped again while it waits: still one read.
+            trigger(store, ChannelAnnouncementIntent.Reconnected(key, afterDrop = true))
+            advanceTimeBy(6_999L)
+            runCurrent()
+            assertEquals(1, api.reads, "waits its jitter")
+            advanceTimeBy(1L)
+            runCurrent()
+            assertEquals(2, api.reads)
+            assertEquals(OTHER, store.shows())
+            advanceTimeBy(CHANNEL_ANNOUNCEMENT_RECONNECT_JITTER_MILLIS)
+            runCurrent()
+            assertEquals(2, api.reads)
+        }
+
+    @Test
+    fun row12AReadAskedAfterTheSocketCameBackAndAnsweredMakesTheWaitingOneNeedless() =
+        runTest {
+            val api = FakeApi()
+            val store = store(api, jitter = { 10_000L })
+            open(store)
+            trigger(store, ChannelAnnouncementIntent.Reconnected(key, afterDrop = true))
+            // Its Artifact viewed meanwhile: that read is asked after the socket came back.
+            trigger(store, ChannelAnnouncementIntent.ArtifactViewed("srv-1", RULES))
+            advanceTimeBy(10_000L)
+            runCurrent()
+            assertEquals(2, api.reads, "no read after the wait")
+            // One that fails answers nothing: the wait still ends in a read.
+            trigger(store, ChannelAnnouncementIntent.Reconnected(key, afterDrop = true))
+            api.failing = true
+            trigger(store, ChannelAnnouncementIntent.ArtifactViewed("srv-1", RULES))
+            api.failing = false
+            advanceTimeBy(10_000L)
+            runCurrent()
+            assertEquals(4, api.reads)
+            // One asked before the drop and answered after it does not count either.
+            api.gated = true
+            trigger(store, ChannelAnnouncementIntent.Reconnected(key))
+            trigger(store, ChannelAnnouncementIntent.Reconnected(key, afterDrop = true))
+            api.release()
+            runCurrent()
+            api.gated = false
+            advanceTimeBy(10_000L)
+            runCurrent()
+            assertEquals(6, api.reads)
+            // A channel:updated naming another announcement meanwhile triggers a read that supersedes the wait.
+            trigger(store, ChannelAnnouncementIntent.Reconnected(key, afterDrop = true))
+            api.has = OTHER
+            deliver(store, channelUpdated(OTHER))
+            advanceTimeBy(10_000L)
+            runCurrent()
+            assertEquals(7, api.reads, "channel:updated read supersedes the waiting reconnect")
+            assertEquals(OTHER, store.shows())
+            // Our own change answered after the socket came back supersedes the wait too.
+            trigger(store, ChannelAnnouncementIntent.Reconnected(key, afterDrop = true))
+            trigger(store, ChannelAnnouncementIntent.Change(key, RULES))
+            api.updates.removeFirst().complete(
+                HomeNetworkResponse(
+                    code = 200,
+                    bodyText = """{ "id": "ch-ops", "name": "ops", "announcement": ${announcementBody(RULES).removePrefix("{ \"announcement\": ").removeSuffix(" }")} }""",
+                ),
+            )
+            runCurrent()
+            advanceTimeBy(10_000L)
+            runCurrent()
+            assertEquals(7, api.reads, "our own update supersedes the waiting reconnect")
+            assertEquals(RULES, store.shows())
+        }
+
+    @Test
+    fun row12TheWaitingReadEndsWithThePageOrAResetAndWaitsForTheAppInFront() =
+        runTest {
+            val api = FakeApi()
+            val foreground = MutableStateFlow(true)
+            val store = store(api, foreground, jitter = { 5_000L })
+            open(store)
+            trigger(store, ChannelAnnouncementIntent.Reconnected(key, afterDrop = true))
+            store.dispatch(ChannelAnnouncementIntent.Close(key))
+            advanceTimeBy(5_000L)
+            runCurrent()
+            assertEquals(1, api.reads, "no page shows it")
+            open(store)
+            trigger(store, ChannelAnnouncementIntent.Reconnected(key, afterDrop = true))
+            store.dispatch(ChannelAnnouncementIntent.Reset)
+            advanceTimeBy(5_000L)
+            runCurrent()
+            assertEquals(1, api.reads, "reset")
+            // The app in the background when the wait ends: it reads once the app is in front.
+            trigger(store, ChannelAnnouncementIntent.Reconnected(key, afterDrop = true))
+            foreground.value = false
+            advanceTimeBy(5_000L)
+            runCurrent()
+            assertEquals(1, api.reads, "in the background")
+            foreground.value = true
+            runCurrent()
+            assertEquals(2, api.reads)
         }
 
     @Test
