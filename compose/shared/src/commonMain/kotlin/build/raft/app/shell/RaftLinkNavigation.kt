@@ -9,6 +9,7 @@ import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.platform.UriHandler
 import build.raft.app.base.BridgeModule
 import build.raft.app.base.Utils
+import build.raft.app.cmp.RaftCmpRouter
 import build.raft.app.data.ArtifactLinkTarget
 import build.raft.app.data.KeyValueLinkOpenPreferenceStore
 import build.raft.app.data.LinkOpenMode
@@ -171,9 +172,12 @@ internal fun raftInAppBrowserDisplayUrl(rawUrl: String): String {
     return url.substring(0, end)
 }
 
+internal const val RAFT_IN_APP_BROWSER_APP_ENTRY_KEY = "appEntry"
+
 internal fun raftInAppBrowserPageData(
     rawUrl: String,
     replaceCurrentPage: Boolean = false,
+    appEntryToken: String? = null,
 ): JSONObject? {
     val decision = resolveRaftLinkOpenDecision(rawUrl, LinkOpenMode.InAppBrowser)
     if (decision.target != RaftLinkOpenTarget.InAppBrowser) return null
@@ -181,6 +185,7 @@ internal fun raftInAppBrowserPageData(
         put("pageName", RAFT_IN_APP_BROWSER_PAGE)
         put(RAFT_IN_APP_BROWSER_URL_KEY, decision.url)
         if (replaceCurrentPage) put(build.raft.app.nav.RAFT_REPLACE_CURRENT_PAGE, true)
+        appEntryToken?.trim()?.takeIf { it.isNotEmpty() }?.let { put(RAFT_IN_APP_BROWSER_APP_ENTRY_KEY, it) }
     }
 }
 
@@ -189,12 +194,21 @@ internal fun JSONObject.raftInAppBrowserUrlOrNull(): String? =
         ?.optString(RAFT_IN_APP_BROWSER_URL_KEY)
         ?.takeIf { it.isNotBlank() }
 
+internal fun JSONObject.raftInAppBrowserAppEntryTokenOrNull(): String? =
+    optString(RAFT_IN_APP_BROWSER_APP_ENTRY_KEY).trim().takeIf { it.isNotEmpty() }
+
 internal fun Pager.openRaftInAppBrowserPage(
     rawUrl: String,
     storeScopeOverride: RaftShellStoreScope? = null,
     replaceCurrentPage: Boolean = false,
+    appEntryToken: String? = null,
 ): Boolean {
-    val pageData = raftInAppBrowserPageData(rawUrl, replaceCurrentPage = replaceCurrentPage) ?: return false
+    val pageData =
+        raftInAppBrowserPageData(
+            rawUrl = rawUrl,
+            replaceCurrentPage = replaceCurrentPage,
+            appEntryToken = appEntryToken,
+        ) ?: return false
     return openRaftPage(
         pageName = RAFT_IN_APP_BROWSER_PAGE,
         pageData = pageData,
@@ -205,8 +219,14 @@ internal fun Pager.openRaftInAppBrowserPage(
 internal fun Pager.openUnscopedRaftInAppBrowserPage(
     rawUrl: String,
     replaceCurrentPage: Boolean = false,
+    appEntryToken: String? = null,
 ): Boolean {
-    val pageData = raftInAppBrowserPageData(rawUrl, replaceCurrentPage = replaceCurrentPage) ?: return false
+    val pageData =
+        raftInAppBrowserPageData(
+            rawUrl = rawUrl,
+            replaceCurrentPage = replaceCurrentPage,
+            appEntryToken = appEntryToken,
+        ) ?: return false
     acquireModule<RouterModule>(RouterModule.MODULE_NAME)
         .openPage(RAFT_IN_APP_BROWSER_PAGE, pageData)
     return true
@@ -255,7 +275,51 @@ internal class RaftLinkNavigator(
      * the navigation without opening any browser or purchase sheet.
      */
     private val openAppStoreRestrictedPurchaseUrl: (String) -> Boolean = { false },
+    /** Opens an App entry page with its single-use registry token (#proj-workspace:#356). */
+    private val openInAppBrowserWithEntry: (url: String, appEntryToken: String) -> Boolean = { url, _ -> openInAppBrowser(url) },
+    /** False on desktop, which has no in-app browser so entries stay ordinary opens. */
+    private val supportsInAppBrowser: () -> Boolean = ::raftPlatformSupportsInAppBrowser,
+    /** Raft's own hosts (env web + API + production + client config): never an App entry scope. */
+    private val raftHostsProvider: () -> Collection<String> = { emptySet() },
+    private val debugBuild: Boolean = RaftCmpRouter.isDebugBuild,
+    private val appEntryRegistry: RaftAppEntryRegistry = RaftAppEntryRegistry.process,
 ) {
+    /**
+     * Opens an App entry (#proj-workspace:#356): checks iOS 3.1.1 first, then validates [request]'s
+     * scope via [raftAppEntryScopeOrigin], mints a single-use token in [appEntryRegistry], and opens
+     * in-app regardless of [LinkOpenMode]. An invalid scope or a platform without an in-app browser
+     * falls back to ordinary [open].
+     */
+    fun openAppEntry(
+        rawUrl: String,
+        request: RaftAppEntryRequest,
+    ): RaftLinkOpenDecision {
+        val decision = resolveRaftLinkOpenDecision(rawUrl, LinkOpenMode.InAppBrowser)
+        if (decision.target == RaftLinkOpenTarget.Rejected) {
+            onRejected(requireNotNull(decision.rejectReason))
+            return decision
+        }
+        if (isAppStoreRestrictedPurchaseUrl(decision.url)) {
+            if (openAppStoreRestrictedPurchaseUrl(decision.url)) {
+                return RaftLinkOpenDecision(RaftLinkOpenTarget.InAppDestination, decision.url)
+            }
+            onRejected(RaftLinkRejectReason.RouteUnavailable)
+            return rejectedLink(RaftLinkRejectReason.RouteUnavailable)
+        }
+        if (!supportsInAppBrowser()) {
+            return open(decision.url)
+        }
+        val scopeOrigin = raftAppEntryScopeOrigin(request.scopeOrigin, decision.url, raftHostsProvider(), debugBuild)
+            ?: return open(decision.url)
+        val token = appEntryRegistry.register(decision.url, request.copy(scopeOrigin = scopeOrigin))
+        if (openInAppBrowserWithEntry(decision.url, token)) {
+            return RaftLinkOpenDecision(RaftLinkOpenTarget.InAppBrowser, decision.url)
+        }
+        appEntryRegistry.release(token, owner = "")
+        onRejected(RaftLinkRejectReason.RouteUnavailable)
+        return rejectedLink(RaftLinkRejectReason.RouteUnavailable)
+    }
+
     fun open(
         rawUrl: String,
         intent: RaftLinkOpenIntent = RaftLinkOpenIntent.Ordinary,
@@ -453,6 +517,18 @@ internal fun rememberRaftLinkNavigator(
                 } else {
                     false
                 }
+            },
+            openInAppBrowserWithEntry = { url, appEntryToken ->
+                when (routeScope) {
+                    RaftInAppBrowserRouteScope.InheritShell ->
+                        pager.openRaftInAppBrowserPage(url, storeScopeOverride = artifactStoreScope, appEntryToken = appEntryToken)
+                    RaftInAppBrowserRouteScope.Unscoped ->
+                        pager.openUnscopedRaftInAppBrowserPage(url, appEntryToken = appEntryToken)
+                }
+            },
+            raftHostsProvider = {
+                val env = RaftSharedStoreRegistry.get(bridge).apiEnvironmentStore.current()
+                raftBrowserRaftHosts(env.webUrl, env.apiBaseUrl)
             },
         )
     }

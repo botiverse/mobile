@@ -232,8 +232,28 @@ internal fun ThreadAppLinkPreviewScope(
         }
     }
     var asking by remember(messageId) { mutableStateOf<AppLinkResult.Consent?>(null) }
+    val openInSystemBrowser = rememberRaftSystemBrowserOpener()
+    val currentOnOpenLink by rememberUpdatedState(onOpenLink)
+    val linkNavigator = LocalRaftLinkNavigator.current
+    val openAppEntry: (String, RaftAppEntryRequest) -> Unit =
+        remember(linkNavigator, currentOnOpenLink) {
+            { address, request ->
+                if (linkNavigator != null) {
+                    linkNavigator.openAppEntry(address, request)
+                } else {
+                    currentOnOpenLink(address)
+                }
+            }
+        }
     // #proj-mobile: a chip whose App sent a card body opens its item card beside it.
-    val cards = rememberThreadAppLinkCards(messageId, onOpenLink)
+    val cards =
+        rememberThreadAppLinkCards(
+            messageId = messageId,
+            preferredServerId = host.serverId,
+            onOpenLink = currentOnOpenLink,
+            onOpenAppEntry = openAppEntry,
+            onOpenInSystemBrowser = openInSystemBrowser,
+        )
     // No card changes under the person: a card of this message open, or Raft's question open on it.
     ThreadAppLinkRowEngagementEffect(presence, cardActivity) { cards.opened != null || asking != null }
     val artifactWebBaseUrl = host.artifacts?.webBaseUrl.orEmpty()
@@ -242,7 +262,7 @@ internal fun ThreadAppLinkPreviewScope(
     val openArtifactWebPage = rememberRaftWebPageOpener()
     val artifactOpener = rememberRaftArtifactOpener { openArtifactWebPage(artifactWebUrl(artifactWebBaseUrl, it)) }
     val chipHost =
-        remember(view.results, cards, artifacts, artifactWebBaseUrl, artifactOpener) {
+        remember(view.results, cards, artifacts, artifactWebBaseUrl, artifactOpener, host.serverId, openAppEntry, openInSystemBrowser) {
             RaftAppLinkChipHost(
                 view.results,
                 onAsk = { asking = it },
@@ -264,12 +284,20 @@ internal fun ThreadAppLinkPreviewScope(
                 onOpenArtifactInPlace = { target, summary ->
                     artifactOpener.open(target, RaftArtifactViewerHeader.of(summary, target), "message_labelled_link")
                 },
+                onOpenAppLink = { card ->
+                    openThreadAppLinkAddress(
+                        address = card.url,
+                        card = card,
+                        preferredServerId = host.serverId,
+                        openLink = currentOnOpenLink,
+                        openAppEntry = openAppEntry,
+                        openInSystemBrowser = openInSystemBrowser,
+                    )
+                },
             )
         }
     // raft-design #1010: the block cards of this message, drawn after their paragraphs. Only the
     // message itself: quotes, forwards, search and Activity have no scope, so they show chips.
-    val openInSystemBrowser = rememberRaftSystemBrowserOpener()
-    val currentOnOpenLink by rememberUpdatedState(onOpenLink)
     val read = batch.read
     val actionHost =
         remember(host, messageId, body, read, cardActivity) {
@@ -290,7 +318,7 @@ internal fun ThreadAppLinkPreviewScope(
             }
         }
     val blockHost =
-        remember(view.results, openInSystemBrowser, actionHost) {
+        remember(view.results, host.serverId, openAppEntry, openInSystemBrowser, actionHost) {
             if (view.results.values.none { it is AppLinkResult.Card && it.block != null }) {
                 null
             } else {
@@ -298,7 +326,14 @@ internal fun ThreadAppLinkPreviewScope(
                     ThreadAppLinkBlockCard(
                         card,
                         openUri = { address ->
-                            openThreadAppLinkAddress(address, card.connectUrl, currentOnOpenLink, openInSystemBrowser)
+                            openThreadAppLinkAddress(
+                                address = address,
+                                card = card,
+                                preferredServerId = host.serverId,
+                                openLink = currentOnOpenLink,
+                                openAppEntry = openAppEntry,
+                                openInSystemBrowser = openInSystemBrowser,
+                            )
                         },
                         actions = actionHost,
                     )
@@ -422,16 +457,37 @@ internal fun String.isAppLinkMessageId(): Boolean =
  * button, Don't Allow the frameless one, neither pink nor orange.
  */
 /**
- * A card's address opens as a message link does; a connect_account card's connect URL goes to the
- * system browser, where the account's sign-in is.
+ * Routes an App link card's opened [address] (#proj-workspace:#356 Entry (b)):
+ * - A `connect_account` card's [AppLinkResult.Card.connectUrl] goes to the system browser.
+ * - A card without [AppLinkResult.Card.connectUrl] whose [address] is on `origin(card.url)` opens
+ *   as an App entry (`{scopeOrigin, card.app.name, preferredServerId}`).
+ * - Anything else opens via ordinary [openLink].
  */
 internal fun openThreadAppLinkAddress(
     address: String,
-    connectUrl: String?,
+    card: AppLinkResult.Card,
+    preferredServerId: String?,
     openLink: (String) -> Unit,
+    openAppEntry: (String, RaftAppEntryRequest) -> Unit,
     openInSystemBrowser: (String) -> Unit,
 ) {
-    if (address == connectUrl) openInSystemBrowser(address) else openLink(address)
+    if (address == card.connectUrl) {
+        openInSystemBrowser(address)
+        return
+    }
+    val cardOrigin = if (card.connectUrl == null) raftAppEntryOriginOf(card.url) else null
+    if (cardOrigin != null && raftAppEntryOriginOf(address) == cardOrigin) {
+        openAppEntry(
+            address,
+            RaftAppEntryRequest(
+                scopeOrigin = cardOrigin,
+                appName = card.app.name.trim().takeIf { it.isNotEmpty() },
+                preferredServerId = preferredServerId?.trim()?.takeIf { it.isNotEmpty() },
+            ),
+        )
+    } else {
+        openLink(address)
+    }
 }
 
 @Composable

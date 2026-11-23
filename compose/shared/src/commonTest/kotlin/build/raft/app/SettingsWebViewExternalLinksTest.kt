@@ -1,5 +1,6 @@
 package build.raft.app
 
+import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -160,5 +161,84 @@ class SettingsWebViewExternalLinksTest {
         assertEquals(SettingsWebViewHostOpenKind.External, second?.kind)
         assertEquals("https://stamp.build", second?.targetUrl)
         assertEquals("section=apps", second?.previousHash)
+    }
+
+    @Test
+    fun marketplaceOpenAppDispatchesEntryOnlyWhenInstalledAppOriginMatches() = runTest {
+        val opened = mutableListOf<String>()
+        val decision =
+            SettingsWebViewHostOpenExternalDecision(
+                targetUrl = "https://stamp.build/home",
+                previousHash = "",
+                requestPageUrl = "$webOrigin#host=open-app&to=https%3A%2F%2Fstamp.build%2Fhome",
+                kind = SettingsWebViewHostOpenKind.App,
+            )
+
+        // Marketplace + verified installed app -> opens as App entry with preferredServerId and appName.
+        val entryResult =
+            dispatchSettingsWebViewHostOpen(
+                decision = decision,
+                opensAppEntries = true,
+                currentServerId = "srv-1",
+                verifyInstalledAppOrigin = { serverId, origin ->
+                    assertEquals("srv-1", serverId)
+                    assertEquals("https://stamp.build", origin)
+                    RaftInstalledAppOriginMatch(origin = "https://stamp.build", appName = "Stamp")
+                },
+                openAppEntry = { url, req -> opened += "entry:$url|${req.scopeOrigin}|${req.appName}|${req.preferredServerId}" },
+                openExternal = { opened += "external:$it" },
+            )
+        assertEquals("entry", entryResult)
+
+        // Marketplace + unmatched/uninstalled app -> falls back to ordinary open-external (no header).
+        val unmatchedResult =
+            dispatchSettingsWebViewHostOpen(
+                decision = decision,
+                opensAppEntries = true,
+                currentServerId = "srv-1",
+                verifyInstalledAppOrigin = { _, _ -> null },
+                openAppEntry = { url, _ -> opened += "entry:$url" },
+                openExternal = { opened += "external:$it" },
+            )
+        assertEquals("fallback_external", unmatchedResult)
+
+        // Marketplace + verifier failure -> fails closed to ordinary open-external.
+        val failedResult =
+            dispatchSettingsWebViewHostOpen(
+                decision = decision,
+                opensAppEntries = true,
+                currentServerId = "srv-1",
+                verifyInstalledAppOrigin = { _, _ -> error("network down") },
+                openAppEntry = { url, _ -> opened += "entry:$url" },
+                openExternal = { opened += "external:$it" },
+            )
+        assertEquals("fallback_external", failedResult)
+
+        // Non-Marketplace surface (opensAppEntries = false) never promotes #host=open-app or calls verifier.
+        var verifierCalled = false
+        val nonMarketplaceResult =
+            dispatchSettingsWebViewHostOpen(
+                decision = decision,
+                opensAppEntries = false,
+                currentServerId = "srv-1",
+                verifyInstalledAppOrigin = { _, _ ->
+                    verifierCalled = true
+                    RaftInstalledAppOriginMatch(origin = "https://stamp.build", appName = "Stamp")
+                },
+                openAppEntry = { url, _ -> opened += "entry:$url" },
+                openExternal = { opened += "external:$it" },
+            )
+        assertEquals("open", nonMarketplaceResult)
+        assertFalse(verifierCalled)
+
+        assertEquals(
+            listOf(
+                "entry:https://stamp.build/home|https://stamp.build|Stamp|srv-1",
+                "external:https://stamp.build/home",
+                "external:https://stamp.build/home",
+                "external:https://stamp.build/home",
+            ),
+            opened,
+        )
     }
 }

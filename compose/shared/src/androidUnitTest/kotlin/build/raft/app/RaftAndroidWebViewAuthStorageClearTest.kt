@@ -94,4 +94,44 @@ class RaftAndroidWebViewAuthStorageClearTest {
             events,
         )
     }
+
+    @Test
+    fun emptyOriginsClearsEntireDefaultStoreIncludingAllCookies() = runTest {
+        val events = mutableListOf<String>()
+
+        clearAndroidWebViewAuthStorage(
+            origins = emptySet(),
+            dropKeepAlive = { events += "drop_keep_alive" },
+            webStorage =
+                object : RaftAndroidWebStorageClearTarget {
+                    override fun deleteAllData() {
+                        events += "webstorage:deleteAllData"
+                    }
+                },
+            cookies =
+                object : RaftAndroidCookieClearTarget {
+                    override suspend fun clearOrigin(origin: String) {
+                        events += "cookie:clearOrigin:$origin"
+                    }
+
+                    override suspend fun clearAll() {
+                        events += "cookie:clearAll"
+                    }
+
+                    override fun flush() {
+                        events += "cookie:flush"
+                    }
+                },
+        )
+
+        assertEquals(
+            listOf(
+                "drop_keep_alive",
+                "webstorage:deleteAllData",
+                "cookie:clearAll",
+                "cookie:flush",
+            ),
+            events,
+        )
+    }
 }
