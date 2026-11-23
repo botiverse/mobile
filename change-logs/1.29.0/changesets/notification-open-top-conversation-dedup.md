@@ -3,6 +3,7 @@ type: fixed
 area: notifications
 platforms: [android, ios]
 rollout: full
+pull_request: 5506
 ---
 
 ## zh-CN
