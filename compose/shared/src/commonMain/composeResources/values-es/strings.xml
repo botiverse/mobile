@@ -1929,11 +1929,11 @@
     <string name="file_preview_fallback_text_file">Archivo de texto</string>
     <string name="file_preview_image_placeholder">IMG</string>
     <string name="file_preview_no_preview">No hay vista previa disponible para este tipo de archivo.</string>
-    <string name="file_preview_download_to_open">Descarga este archivo o usa Abrir con para verlo en otra app.</string>
-    <string name="file_preview_no_preview_too_large_download">Este archivo es demasiado grande para la vista previa. Descárgalo o usa Abrir con para verlo en otra app.</string>
+    <string name="file_preview_download_to_open">Descarga este archivo o ábrelo en otra app.</string>
+    <string name="file_preview_no_preview_too_large_download">Este archivo es demasiado grande para la vista previa. Descárgalo o ábrelo en otra app.</string>
     <string name="file_preview_video_format_unplayable_ios">Este formato de video no se puede reproducir en el iPhone. Descárgalo o ábrelo en otra app.</string>
     <string name="file_preview_video_format_unplayable_mac">Este formato de video no se puede reproducir en el Mac. Descárgalo o ábrelo en otra app.</string>
-    <string name="file_preview_no_preview_temporarily_download">La vista previa de este archivo no está disponible temporalmente. Descárgalo o usa Abrir con para verlo en otra app.</string>
+    <string name="file_preview_no_preview_temporarily_download">La vista previa de este archivo no está disponible temporalmente. Descárgalo o ábrelo en otra app.</string>
     <string name="file_preview_error_image_unavailable">La vista previa de la imagen no está disponible.</string>
     <string name="file_preview_image_full_load_failed">No se pudo cargar la imagen completa</string>
     <string name="file_preview_error_load_generic">No se pudo cargar la vista previa de este archivo.</string>

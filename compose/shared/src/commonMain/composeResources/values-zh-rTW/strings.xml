@@ -1929,11 +1929,11 @@
     <string name="file_preview_fallback_text_file">文字檔</string>
     <string name="file_preview_image_placeholder">IMG</string>
     <string name="file_preview_no_preview">此檔案類型無法預覽。</string>
-    <string name="file_preview_download_to_open">你可以下載此檔案，或使用「開啟方式」在其他 App 中檢視。</string>
-    <string name="file_preview_no_preview_too_large_download">此檔案太大，無法預覽。你可以下載此檔案，或使用「開啟方式」在其他 App 中檢視。</string>
+    <string name="file_preview_download_to_open">你可以下載此檔案，或在其他 App 中開啟。</string>
+    <string name="file_preview_no_preview_too_large_download">此檔案太大，無法預覽。你可以下載此檔案，或在其他 App 中開啟。</string>
     <string name="file_preview_video_format_unplayable_ios">iPhone 無法直接播放這種影片格式，可以下載或用其他 App 開啟。</string>
     <string name="file_preview_video_format_unplayable_mac">Mac 無法直接播放這種影片格式，可以下載或用其他 App 開啟。</string>
-    <string name="file_preview_no_preview_temporarily_download">此檔案暫時無法預覽。你可以下載此檔案，或使用「開啟方式」在其他 App 中檢視。</string>
+    <string name="file_preview_no_preview_temporarily_download">此檔案暫時無法預覽。你可以下載此檔案，或在其他 App 中開啟。</string>
     <string name="file_preview_error_image_unavailable">無法預覽圖片。</string>
     <string name="file_preview_image_full_load_failed">無法載入完整圖片</string>
     <string name="file_preview_error_load_generic">無法載入此檔案的預覽。</string>

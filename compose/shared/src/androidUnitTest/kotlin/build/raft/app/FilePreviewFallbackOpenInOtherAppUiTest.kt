@@ -96,6 +96,7 @@ class FilePreviewFallbackOpenInOtherAppUiTest {
                 )
             showPreview(payload, calls, downloadState = RaftFilePreviewDownloadUiState.NotDownloaded)
 
+            onNodeWithText("Download this file, or open it in another app.").assertExists()
             onNodeWithText("Download").assertExists()
             onNodeWithText("Open in browser").assertDoesNotExist()
             onNodeWithText("Open in another app").assertExists().assertIsEnabled().performClick()
