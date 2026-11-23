@@ -11,7 +11,10 @@ import build.raft.app.data.InviteeAnswer
 import build.raft.app.data.InviteeRefusal
 import build.raft.app.data.NewServerConnectResult
 import build.raft.app.data.RaftNetworkClient
+import build.raft.app.data.ResolvedServerRefusal
 import build.raft.app.data.ServerConnectOutcome
+import build.raft.app.data.ServerRefusalInput
+import build.raft.app.data.resolveServerRefusal
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -97,6 +100,7 @@ internal enum class InviteeMessage {
     AlreadyMember,
     GuestElsewhere,
     ChannelFull,
+    DeploymentUserLimitReached,
     InvalidServer,
     ServerAdminRequired,
     ServerMembershipRequired,
@@ -133,14 +137,16 @@ private fun limitOwner(refusal: InviteeRefusal, target: InviteMyServer?, targetI
     return if (targetId != null && targetId == refusal.limitServerId) LimitOwner.Mine else LimitOwner.Host
 }
 
-/** Web `inviteeErrorMessage` (the text; the app offers no Upgrade on this page: see the PR notes). */
-internal fun inviteeErrorMessage(
+/** Known invitee refusal codes mapped to web-localized [InviteeMessage] values. */
+private fun inviteeKnownCodeMessage(
     refusal: InviteeRefusal,
+    normalizedCode: String?,
+    status: Int?,
     action: InviteeAction,
     target: InviteMyServer?,
-    targetId: String? = target?.id,
-): InviteeMessage {
-    when (refusal.code) {
+    targetId: String?,
+): InviteeMessage? {
+    when (normalizedCode) {
         "free_external_limit" ->
             return if (action == InviteeAction.Guest || action == InviteeAction.NewServer || limitOwner(refusal, target, targetId) != LimitOwner.Mine) {
                 InviteeMessage.HostLimit
@@ -156,11 +162,12 @@ internal fun inviteeErrorMessage(
             }
         }
     }
-    return when (refusal.code) {
+    return when (normalizedCode) {
         "guest_unavailable" -> InviteeMessage.GuestUnavailable
         "already_member" -> InviteeMessage.AlreadyMember
         "guest_elsewhere" -> InviteeMessage.GuestElsewhere
         "channel_full" -> InviteeMessage.ChannelFull
+        "deployment_user_limit_reached" -> InviteeMessage.DeploymentUserLimitReached
         "invalid_server" -> InviteeMessage.InvalidServer
         "server_admin_required" -> InviteeMessage.ServerAdminRequired
         "server_membership_required" -> InviteeMessage.ServerMembershipRequired
@@ -174,9 +181,39 @@ internal fun inviteeErrorMessage(
         "channel_archived" -> InviteeMessage.Archived
         "channel_name_taken" -> InviteeMessage.ChannelNameTaken
         "channel_conversion_in_progress", "channel_conversion_fence_conflict", "channel_conversion_ledger_conflict" -> InviteeMessage.Busy
-        else -> if (refusal.status == 429) InviteeMessage.TooManyAttempts else InviteeMessage.Generic
+        else -> if (status == 429) InviteeMessage.TooManyAttempts else null
     }
 }
+
+/**
+ * Single-exit resolution for invitee / connect refusals through [resolveServerRefusal]:
+ * Tier 1 (infrastructure/auth/edge_blocked) -> Tier 2 (web-localized code) -> Tier 3 (verbatim
+ * server sentence for unknown/dynamic codes) -> Tier 4 (generic fallback).
+ */
+internal fun resolveInviteeRefusal(
+    refusal: InviteeRefusal,
+    action: InviteeAction,
+    target: InviteMyServer?,
+    targetId: String? = target?.id,
+): Pair<InviteeMessage, String?> =
+    when (
+        val resolved =
+            resolveServerRefusal(
+                ServerRefusalInput(
+                    status = refusal.status.takeIf { it > 0 },
+                    code = refusal.code,
+                    serverMessage = refusal.error,
+                    traceId = refusal.traceId,
+                ),
+                knownCode = { normalizedCode, st -> inviteeKnownCodeMessage(refusal, normalizedCode, st, action, target, targetId) },
+            )
+    ) {
+        is ResolvedServerRefusal.KnownCode -> resolved.known to null
+        is ResolvedServerRefusal.ServerWords -> InviteeMessage.Generic to resolved.message
+        is ResolvedServerRefusal.Infrastructure,
+        is ResolvedServerRefusal.Generic,
+        -> InviteeMessage.Generic to null
+    }
 
 internal fun ServerConnectOutcome.Refused.asRefusal(): InviteeRefusal =
     InviteeRefusal(status = status, code = code, limitSide = limitSide, limitServerId = limitServerId, error = error)
@@ -187,13 +224,9 @@ internal data class InviteeError(
     val serverId: String? = null,
     val target: String? = null,
     val traceId: String? = null,
-    /** The server's own sentence for a channel conversion refusal with no sentence here (slock #15771), shown instead. */
+    /** The server's own sentence for an unknown or dynamic refusal code ([resolveServerRefusal]), shown instead. */
     val serverWords: String? = null,
 )
-
-/** [channelConversionServerWords] for an invitee refusal that read as [message]. */
-internal fun inviteeServerWords(refusal: InviteeRefusal, message: InviteeMessage): String? =
-    channelConversionServerWords(refusal.code, refusal.error, localFallback = message == InviteeMessage.Generic)
 
 /** New server name / slug problems (web `NewServerFieldErrors`). */
 internal enum class NewServerFieldError { NameRequired, SlugRequired, SlugTooShort, SlugPattern, SlugTaken }
@@ -577,8 +610,8 @@ internal class ExternalInviteStore(
             return
         }
         val state = mutableState.value
-        val message = inviteeErrorMessage(refusal, action, state.myServer(serverId), serverId)
-        mutableState.update { it.copy(error = InviteeError(message, serverId, target, refusal.traceId, inviteeServerWords(refusal, message))) }
+        val (message, serverWords) = resolveInviteeRefusal(refusal, action, state.myServer(serverId), serverId)
+        mutableState.update { it.copy(error = InviteeError(message, serverId, target, refusal.traceId, serverWords)) }
     }
 
     @Suppress("UNUSED_PARAMETER")
@@ -720,9 +753,10 @@ internal class ExternalInviteStore(
                             it.copy(
                                 keptServer = InviteKeptServer(keptId, name),
                                 error =
-                                    inviteeErrorMessage(refusal, InviteeAction.NewServer, InviteMyServer(keptId, name, slug, null), keptId).let { message ->
-                                        InviteeError(message, keptId, name, refusal.traceId, inviteeServerWords(refusal, message))
-                                    },
+                                    resolveInviteeRefusal(refusal, InviteeAction.NewServer, InviteMyServer(keptId, name, slug, null), keptId)
+                                        .let { (message, serverWords) ->
+                                            InviteeError(message, keptId, name, refusal.traceId, serverWords)
+                                        },
                             )
                         }
                         return@run

@@ -992,6 +992,24 @@ def _date_time_di_sources(root: Path) -> dict[str, str]:
     return sources
 
 
+PREFIX_GATED_REFUSAL_RE = re.compile(r"\bchannelConversionServerWords\b")
+
+
+def check_server_refusal_surface_invariants(sources: dict[str, str]) -> None:
+    """Enforce #proj-mobile:#319 PR1 refusal-surface invariant on production Kotlin sources:
+    Never reintroduce the prefix-gated `channelConversionServerWords` helper; route refusals
+    through `resolveServerRefusal`.
+    """
+    for name, text in sorted(sources.items()):
+        code = _kotlin_code_only(text)
+        for match in PREFIX_GATED_REFUSAL_RE.finditer(code):
+            line = code.count("\n", 0, match.start()) + 1
+            raise Violation(
+                f"server-refusal invariant violation (#proj-mobile:#319): {name}:{line} uses removed "
+                f"prefix-gated helper `{match.group(0)}`; route through `resolveServerRefusal` instead."
+            )
+
+
 def run(root: Path) -> None:
     def read(rel: str) -> str:
         path = root / rel
@@ -1008,7 +1026,9 @@ def run(root: Path) -> None:
         entitlements=read(IOS_ENTITLEMENTS),
         xcode_project=read(IOS_XCODE_PROJECT),
     )
-    check_no_production_run_blocking(_production_kotlin_sources(root))
+    prod_kotlin = _production_kotlin_sources(root)
+    check_no_production_run_blocking(prod_kotlin)
+    check_server_refusal_surface_invariants(prod_kotlin)
     check_native_safe_test_names(_native_test_sources(root))
     check_no_top_level_or_object_snapshot_state(_top_level_snapshot_state_sources(root))
     check_date_time_di_invariants(_date_time_di_sources(root))
@@ -1348,6 +1368,25 @@ com.apple.SignInWithApple = {
         else:
             raise SystemExit(f"self-test: date/time DI checker accepted {bad_sources!r}")
 
+    good_refusal = {
+        "a.kt": (
+            "// channelConversionServerWords in comments is fine\n"
+            'val note = "channelConversionServerWords"\n'
+            'val ok = code?.startsWith("channel_conversion_") == true\n'
+        ),
+    }
+    check_server_refusal_surface_invariants(good_refusal)
+    for bad_refusal in (
+        {"a.kt": "val msg = channelConversionServerWords(code, err, true)\n"},
+        {"a.kt": "internal fun channelConversionServerWords(): String? = null\n"},
+    ):
+        try:
+            check_server_refusal_surface_invariants(bad_refusal)
+        except Violation:
+            pass
+        else:
+            raise SystemExit(f"self-test: server-refusal checker accepted {bad_refusal!r}")
+
     print("check_source_constraints self-test passed")
 
 
@@ -1367,7 +1406,7 @@ def main(argv: list[str]) -> int:
         "source constraints hold (1.15.0 conditional interaction state, task #82 native Apple, "
         "#3823 no production runBlocking, #3845 Native-safe test names, "
         "1.17.1 NSInvocation object return, #264 no top-level/object snapshot state, "
-        "dm:@artin:#2 date/time DI invariants)"
+        "dm:@artin:#2 date/time DI invariants, #proj-mobile:#319 server refusal invariants)"
     )
     return 0
 

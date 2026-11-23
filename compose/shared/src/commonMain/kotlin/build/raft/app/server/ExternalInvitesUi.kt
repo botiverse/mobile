@@ -696,8 +696,8 @@ internal val ExternalInvitesEffect.traceId: String?
         }
 
 /**
- * A refused server's reason, the toast's second line (web `toastServerOutcomes`): values {target}
- * the server, {channel} with its #, {server} the host, {inviter} empty.
+ * A refused server's reason, placed in `RaftToast.description` (web `toastServerOutcomes`):
+ * values {target} the server, {channel} with its #, {server} the host, {inviter} empty.
  */
 internal fun externalInviteServerRefusalDesc(reason: ExternalInviteServerRefusal, target: String, channel: String, host: String): StringDesc =
     when (reason) {
@@ -707,6 +707,120 @@ internal fun externalInviteServerRefusalDesc(reason: ExternalInviteServerRefusal
             reason.serverWords?.let { RawStringDesc(it) }
                 ?: inviteeMessageDesc(reason.message, target = target, channel = channel, server = host, inviter = "")
     }
+
+/** One resolved toast to post via `BridgeModule.toast` or structured `BridgeModule.errorToast`. */
+internal data class ExternalInviteResolvedToast(
+    val title: String,
+    val reason: String? = null,
+    val isError: Boolean = false,
+    val traceId: String? = null,
+)
+
+/**
+ * Resolves a batch of [ExternalInvitesEffect] into display-ready toasts (`#proj-mobile:#319`):
+ * - Separates heading ([ExternalInviteResolvedToast.title]) and refusal explanation
+ *   ([ExternalInviteResolvedToast.reason]) so `BridgeModule.errorToast(title, reason, traceId)`
+ *   puts the reason in `RaftToast.description` and the trace ID on its own footnote row.
+ * - Combines multiple [ExternalInvitesEffect.ServerRefused] items in the same batch into one
+ *   toast so later refusals never overwrite earlier servers' refusal reasons (when every refused
+ *   server shares the same reason sentence — e.g. `channel_conversion_too_large` — the sentence
+ *   is shown once; distinct reasons are listed one per server).
+ * - Preserves whole-request [ExternalInvitesEffect.ServersNotConnected.failure] detail in [reason].
+ */
+internal fun buildExternalInviteToasts(
+    effects: List<ExternalInvitesEffect>,
+    joint: Boolean,
+    channel: String,
+    host: String,
+    resolveDesc: (StringDesc) -> String,
+): List<ExternalInviteResolvedToast> {
+    val result = mutableListOf<ExternalInviteResolvedToast>()
+    val refused = mutableListOf<ExternalInvitesEffect.ServerRefused>()
+    effects.forEach { effect ->
+        when (effect) {
+            ExternalInvitesEffect.FreeLimitUpgrade -> Unit
+            is ExternalInvitesEffect.ServerRefused -> refused += effect
+            is ExternalInvitesEffect.ServersNotConnected -> {
+                val title = resolveDesc(externalInviteEffectDesc(effect, joint))
+                val reason = effect.failure?.let { resolveDesc(externalInviteFailureDesc(it, joint)) }
+                result += ExternalInviteResolvedToast(title = title, reason = reason, isError = true, traceId = effect.traceId)
+            }
+            else -> {
+                result +=
+                    ExternalInviteResolvedToast(
+                        title = resolveDesc(externalInviteEffectDesc(effect, joint)),
+                        reason = null,
+                        isError = effect.isError,
+                        traceId = effect.traceId,
+                    )
+            }
+        }
+    }
+    if (refused.isNotEmpty()) {
+        val names = refused.map { it.serverName.trim() }.filter { it.isNotEmpty() }.distinct()
+        val title =
+            when (names.size) {
+                0 -> resolveDesc(Res.string.channel_external_invite_error_generic.desc())
+                1 -> resolveDesc(Res.string.channel_external_invite_server_refused.format(names.single()))
+                else -> resolveDesc(Res.string.channel_external_invite_servers_refused.format(names.joinToString(", ")))
+            }
+        val pairs =
+            refused.map { item ->
+                item.serverName to
+                    resolveDesc(
+                        externalInviteServerRefusalDesc(
+                            reason = item.reason,
+                            target = item.serverName,
+                            channel = channel,
+                            host = host,
+                        )
+                    ).trim()
+            }
+        val distinctReasons = pairs.map { it.second }.filter { it.isNotEmpty() }.distinct()
+        val combinedReason =
+            when {
+                distinctReasons.isEmpty() -> null
+                distinctReasons.size == 1 -> distinctReasons.single()
+                else ->
+                    pairs
+                        .filter { it.second.isNotEmpty() }
+                        .joinToString("\n") { (serverName, reasonText) ->
+                            if (serverName.isNotBlank()) "$serverName: $reasonText" else reasonText
+                        }
+            }
+        val traceId = refused.firstNotNullOfOrNull { it.traceId }
+        result += ExternalInviteResolvedToast(title = title, reason = combinedReason, isError = true, traceId = traceId)
+    }
+    return result
+}
+
+/**
+ * Posts resolved external-invite effects through [build.raft.app.base.BridgeModule], routing error
+ * effects to the structured 3-argument `errorToast(title, reason, traceId)` overload so `RaftToast`
+ * renders title, full wrapping reason, and Trace ID footnote separately.
+ */
+internal fun build.raft.app.base.BridgeModule.postExternalInviteToasts(
+    effects: List<ExternalInvitesEffect>,
+    joint: Boolean,
+    channel: String,
+    host: String,
+    resolveDesc: (StringDesc) -> String = { desc -> desc.resolve() },
+    traceStrings: () -> RaftTraceIdToastStrings = ::localizedRaftTraceIdToastStrings,
+) {
+    buildExternalInviteToasts(
+        effects = effects,
+        joint = joint,
+        channel = channel,
+        host = host,
+        resolveDesc = resolveDesc,
+    ).forEach { toast ->
+        if (toast.isError) {
+            errorToast(title = toast.title, reason = toast.reason, traceId = toast.traceId, strings = traceStrings)
+        } else {
+            toast(toast.title)
+        }
+    }
+}
 
 /**
  * What the members page shows of the channel's external invites: the Invited group and its load

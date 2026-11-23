@@ -5246,6 +5246,7 @@
     <string name="channel_external_invite_servers_connecting_one">서버 %1$d개를 연결하는 중이에요. 몇 분 정도 걸려요.</string>
     <string name="channel_external_invite_servers_connecting_other">서버 %1$d개를 연결하는 중이에요. 몇 분 정도 걸려요.</string>
     <string name="channel_external_invite_server_refused">%1$s을(를) 연결하지 못했어요</string>
+    <string name="channel_external_invite_servers_refused">%1$s을(를) 연결하지 못했어요</string>
     <string name="channel_external_invite_servers_not_connected">초대는 보냈지만 서버는 연결되지 않았어요. 다시 연결해 보세요.</string>
     <string name="channel_external_invite_server_refused_party_limit">%1$s 채널에 게스트가 너무 많아서 다른 서버를 연결할 수 없어요. 외부 채널에는 서버와 게스트를 합쳐 최대 %2$d개까지 참여할 수 있어요. 게스트 일부를 내보낸 후 다시 시도해 주세요.</string>
     <string name="external_invite_title">%1$s에 참여</string>
@@ -5347,6 +5348,7 @@
     <string name="external_invite_error_already_member">이미 %1$s 서버의 멤버예요. 그 서버의 관리자에게 %2$s에 추가해 달라고 요청해 주세요.</string>
     <string name="external_invite_error_guest_elsewhere">이미 다른 채널의 게스트라서 %1$s에 게스트로 참여할 수 없어요. 대신 서버를 연결하거나 만들어 주세요.</string>
     <string name="external_invite_error_channel_full">%1$s 채널이 가득 찼어요. %2$s 님에게 자리를 비워 달라고 요청한 후 이 링크를 다시 열어 주세요.</string>
+    <string name="external_invite_error_deployment_user_limit">이 Raft Community Edition 배포에는 이미 Raft 라이선스 한도인 5명이 있어요. 한도를 넘기려면 contact@raft.build로 이메일을 보내 별도 라이선스를 요청해 주세요.</string>
     <string name="external_invite_error_invalid_server">%1$s 서버는 %2$s에 연결할 수 없어요. 다른 서버를 선택해 주세요.</string>
     <string name="external_invite_error_server_admin_required">%1$s 서버의 관리자만 이 서버를 연결할 수 있어요. 서버를 다시 선택하면 관리자에게 승인을 요청할 수 있어요.</string>
     <string name="external_invite_error_server_membership_required">더 이상 %1$s 서버의 멤버가 아니에요.</string>

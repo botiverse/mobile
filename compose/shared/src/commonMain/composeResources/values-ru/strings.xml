@@ -5246,6 +5246,7 @@
     <string name="channel_external_invite_servers_connecting_one">Подключается %1$d сервер. Это займёт несколько минут.</string>
     <string name="channel_external_invite_servers_connecting_other">Подключаются %1$d сервера. Это займёт несколько минут.</string>
     <string name="channel_external_invite_server_refused">Сервер %1$s не подключён</string>
+    <string name="channel_external_invite_servers_refused">Серверы %1$s не подключены</string>
     <string name="channel_external_invite_servers_not_connected">Приглашения отправлены, но ваши серверы не подключены. Попробуйте подключить их ещё раз.</string>
     <string name="channel_external_invite_server_refused_party_limit">В канале %1$s слишком много гостей, чтобы к нему подключился ещё один сервер. Во внешнем канале серверов и гостей вместе может быть не больше %2$d. Удалите часть гостей и попробуйте ещё раз.</string>
     <string name="external_invite_title">Присоединиться к каналу %1$s</string>
@@ -5347,6 +5348,7 @@
     <string name="external_invite_error_already_member">Вы уже участник сервера %1$s. Попросите администратора этого сервера добавить вас в канал %2$s.</string>
     <string name="external_invite_error_guest_elsewhere">Так как вы уже гость в другом канале, присоединиться к каналу %1$s как гость нельзя. Вместо этого подключите или создайте сервер.</string>
     <string name="external_invite_error_channel_full">В канале %1$s не осталось мест. Попросите участника %2$s освободить место, а затем снова откройте эту ссылку.</string>
+    <string name="external_invite_error_deployment_user_limit">В этом развёртывании Raft Community Edition уже 5 человек — это лимит Raft License. Чтобы превысить его, напишите на contact@raft.build и запросите отдельную лицензию.</string>
     <string name="external_invite_error_invalid_server">Сервер %1$s нельзя подключить к каналу %2$s. Выберите другой сервер.</string>
     <string name="external_invite_error_server_admin_required">Подключить сервер %1$s может только его администратор. Выберите этот сервер ещё раз, чтобы запросить одобрение у администратора.</string>
     <string name="external_invite_error_server_membership_required">Вы больше не участник сервера %1$s.</string>

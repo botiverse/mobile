@@ -5429,6 +5429,7 @@
     <string name="channel_external_invite_servers_connecting_one">%1$d 個のサーバーを接続しています。数分かかります。</string>
     <string name="channel_external_invite_servers_connecting_other">%1$d 個のサーバーを接続しています。数分かかります。</string>
     <string name="channel_external_invite_server_refused">%1$s を接続できませんでした</string>
+    <string name="channel_external_invite_servers_refused">%1$s を接続できませんでした</string>
     <string name="channel_external_invite_servers_not_connected">招待は送信されましたが、サーバーは接続されませんでした。もう一度接続してください。</string>
     <string name="channel_external_invite_server_refused_party_limit">%1$s はゲストが多すぎるため、他のサーバーを接続できません。外部チャンネルに参加できるのは、サーバーとゲストを合わせて最大 %2$d までです。一部のゲストを削除してから、もう一度お試しください。</string>
     <string name="external_invite_title">%1$s に参加</string>
@@ -5530,6 +5531,7 @@
     <string name="external_invite_error_already_member">すでに %1$s のメンバーです。%1$s の管理者に、%2$s への追加を依頼してください。</string>
     <string name="external_invite_error_guest_elsewhere">すでに別のチャンネルのゲストであるため、ゲストとして %1$s に参加することはできません。代わりに、サーバーを接続するか作成してください。</string>
     <string name="external_invite_error_channel_full">%1$s は満員です。%2$s に枠を空けてもらってから、もう一度このリンクを開いてください。</string>
+    <string name="external_invite_error_deployment_user_limit">この Raft Community Edition の環境には、Raft ライセンスの上限である 5 人がすでに登録されています。上限を超えて利用するには、contact@raft.build までメールで別途ライセンスをお申し込みください。</string>
     <string name="external_invite_error_invalid_server">%1$s は %2$s に接続できません。別のサーバーを選んでください。</string>
     <string name="external_invite_error_server_admin_required">%1$s を接続できるのは、そのサーバーの管理者のみです。もう一度選択すると、管理者に承認を依頼できます。</string>
     <string name="external_invite_error_server_membership_required">%1$s のメンバーではなくなりました。</string>

@@ -48,8 +48,9 @@ object RaftCmpToasts {
      *
      * False when no window can show it (the app in the background, before the first frame):
      * the caller then uses the platform toast. A blank [message] shows nothing and is handled.
-     * [description], [intent] and the action ([actionLabel] + [onAction]) are the toast's
-     * ([RaftToastHostState.show]): an error's trace id line and its Copy action.
+     * [description], [footnote], [intent] and the action ([actionLabel] + [onAction]) are the
+     * toast's ([RaftToastHostState.show]): e.g. a refusal reason in [description], the trace ID
+     * line in [footnote], and its Copy action.
      */
     fun post(
         message: String,
@@ -60,10 +61,11 @@ object RaftCmpToasts {
         intent: RaftToastIntent? = null,
         actionLabel: String? = null,
         onAction: (() -> Unit)? = null,
+        footnote: String? = null,
     ): Boolean {
         if (message.isBlank()) return true
         val window = target(origin, foregroundOnly) ?: return false
-        window.state.show(message, description, intent, actionLabel, onAction, durationMillis)
+        window.state.show(message, description, intent, actionLabel, onAction, durationMillis, footnote = footnote)
         return true
     }
 

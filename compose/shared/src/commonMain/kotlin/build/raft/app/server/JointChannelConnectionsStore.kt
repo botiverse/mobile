@@ -482,10 +482,12 @@ internal class JointChannelConnectionsStore(
             val open = previous.memberConnectSheet ?: sheet
             val answer = (result as? DataResult.Content)?.data
             if (answer !is MemberConnectResponse.Answered) {
-                val refusal =
+                val (requestLine, closed) =
                     when (answer) {
-                        is MemberConnectResponse.Refused -> memberConnectRequestRefusal(answer.status, answer.code)
-                        else -> memberConnectRequestRefusal(status = null, code = null)
+                        is MemberConnectResponse.Refused ->
+                            resolveMemberConnectRequestLine(answer.status, answer.code, answer.error, answer.traceId)
+                        else ->
+                            resolveMemberConnectRequestLine(status = null, code = null, error = null, traceId = null)
                     }
                 val traceId =
                     when {
@@ -500,22 +502,9 @@ internal class JointChannelConnectionsStore(
                         memberConnectSheet =
                             open.copy(
                                 busy = false,
-                                lines =
-                                    listOf(
-                                        MemberConnectLine.Request(
-                                            refusal.message,
-                                            serverWords =
-                                                (answer as? MemberConnectResponse.Refused)?.let {
-                                                    channelConversionServerWords(
-                                                        it.code,
-                                                        it.error,
-                                                        localFallback = refusal.message == MemberConnectMessage.Generic,
-                                                    )
-                                                },
-                                        )
-                                    ),
+                                lines = listOf(requestLine),
                                 traceId = traceId,
-                                closed = open.closed || refusal.closed,
+                                closed = open.closed || closed,
                             ),
                     )
                 return@launchAction

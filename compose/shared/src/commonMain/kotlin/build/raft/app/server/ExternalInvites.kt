@@ -15,10 +15,14 @@ import build.raft.app.data.InviteConnectableServer
 import build.raft.app.data.OwnConnectableServers
 import build.raft.app.data.RealJointChannelRepository
 import build.raft.app.data.DataRequestPriority
+import build.raft.app.data.ResolvedServerRefusal
 import build.raft.app.data.ServerConnectOutcome
+import build.raft.app.data.ServerRefusalInput
 import build.raft.app.data.SendExternalInvitesResult
 import build.raft.app.data.SentExternalInvite
+import build.raft.app.data.failureTraceIdOrNull
 import build.raft.app.data.parseExternalInviteEmailEntries
+import build.raft.app.data.resolveServerRefusal
 import build.raft.app.model.ChannelId
 import kotlin.math.ceil
 import kotlin.math.max
@@ -111,24 +115,19 @@ internal data class ExternalInviteFailure(
     val upgrade: Boolean = false,
     val traceId: String? = null,
     /**
-     * The server's own sentence, shown instead of [error]'s when the refusal is a channel
-     * conversion's this flow has no sentence for ([channelConversionServerWords], slock #15771).
+     * The server's own sentence, shown instead of [error]'s when the refusal is an unknown or
+     * dynamic-parameter refusal resolved through [resolveServerRefusal] (`#proj-mobile:#319`).
      */
     val serverMessage: String? = null,
 )
 
 /**
- * slock #15771: a channel conversion's refusal (`channel_conversion_too_large` names how much the
- * channel holds and what to do; `channel_conversion_in_progress` and the other
- * `channel_conversion_*` codes) is worded by the server, which knows the numbers. Where a flow has
- * no sentence of its own for it ([localFallback]: the flow fell back to its generic text), the
- * server's `error` is shown as it is, not "Something went wrong". Null otherwise.
+ * Web `externalInviteErrorMessageId` (`packages/web/src/components/channel/externalInvites.ts`):
+ * explicit known codes from `ERROR_MESSAGE_IDS`, else HTTP status mapping (429 -> DailyCap,
+ * 404 -> NotFound, 403 -> Forbidden). Tier 1 of [resolveServerRefusal] already intercepts
+ * `edge_blocked` 403 before this runs.
  */
-internal fun channelConversionServerWords(code: String?, error: String?, localFallback: Boolean): String? =
-    error?.trim()?.takeIf { it.isNotEmpty() && localFallback && code?.startsWith("channel_conversion_") == true }
-
-/** Web `ERROR_MESSAGE_IDS` by the server's code, else by status. */
-internal fun externalInviteErrorFor(code: String?, status: Int): ExternalInviteError =
+internal fun externalInviteKnownCodeFor(code: String?, status: Int?): ExternalInviteError? =
     when (code) {
         "daily_cap" -> ExternalInviteError.DailyCap
         "free_external_limit" -> ExternalInviteError.FreeLimit
@@ -148,19 +147,57 @@ internal fun externalInviteErrorFor(code: String?, status: Int): ExternalInviteE
                 429 -> ExternalInviteError.DailyCap
                 404 -> ExternalInviteError.NotFound
                 403 -> ExternalInviteError.Forbidden
-                else -> ExternalInviteError.Generic
+                else -> null
             }
     }
 
-internal fun ExternalInviteRefusal.toFailure(): ExternalInviteFailure {
-    val mapped = externalInviteErrorFor(code, status)
-    return ExternalInviteFailure(
-        error = mapped,
-        upgrade = code == "free_external_limit",
-        traceId = traceId,
-        serverMessage = channelConversionServerWords(code, error, localFallback = mapped == ExternalInviteError.Generic),
-    )
-}
+private fun externalInviteFallbackErrorForStatus(status: Int?): ExternalInviteError =
+    when (status) {
+        429 -> ExternalInviteError.DailyCap
+        404 -> ExternalInviteError.NotFound
+        403 -> ExternalInviteError.Forbidden
+        else -> ExternalInviteError.Generic
+    }
+
+internal fun ExternalInviteRefusal.toFailure(): ExternalInviteFailure =
+    when (
+        val resolved =
+            resolveServerRefusal(
+                ServerRefusalInput(
+                    status = status,
+                    code = code,
+                    serverMessage = error,
+                    traceId = traceId,
+                ),
+                knownCode = ::externalInviteKnownCodeFor,
+            )
+    ) {
+        is ResolvedServerRefusal.KnownCode ->
+            ExternalInviteFailure(
+                error = resolved.known,
+                upgrade = resolved.known == ExternalInviteError.FreeLimit,
+                traceId = resolved.traceId,
+            )
+        is ResolvedServerRefusal.ServerWords ->
+            ExternalInviteFailure(
+                error = ExternalInviteError.Generic,
+                upgrade = false,
+                traceId = resolved.traceId,
+                serverMessage = resolved.message,
+            )
+        is ResolvedServerRefusal.Infrastructure ->
+            ExternalInviteFailure(
+                error = ExternalInviteError.Generic,
+                upgrade = false,
+                traceId = resolved.traceId,
+            )
+        is ResolvedServerRefusal.Generic ->
+            ExternalInviteFailure(
+                error = externalInviteFallbackErrorForStatus(status),
+                upgrade = false,
+                traceId = resolved.traceId,
+            )
+    }
 
 /** A failed [DataResult] (no answer, signed out): the generic text with whatever trace ID the error has. */
 private fun DataResult<*>.toFailure(): ExternalInviteFailure =
@@ -371,8 +408,11 @@ internal sealed interface ExternalInvitesEffect {
     /** One chosen server refused (web `serverRefused` with the reason as its description). */
     data class ServerRefused(val serverName: String, val reason: ExternalInviteServerRefusal, val traceId: String?) : ExternalInvitesEffect
 
-    /** Connecting the servers failed as a whole after the invites went out (web `serversFailed`): one toast. */
-    data class ServersNotConnected(val traceId: String?) : ExternalInvitesEffect
+    /** Connecting the servers failed as a whole after the invites went out (web `serversFailed`), carrying any refusal detail. */
+    data class ServersNotConnected(
+        val traceId: String?,
+        val failure: ExternalInviteFailure? = null,
+    ) : ExternalInvitesEffect
 
     /** The entry met the Free plan's one external channel, taken: the upgrade dialog, not the invite (web `openExternalLimitUpgrade`). */
     data object FreeLimitUpgrade : ExternalInvitesEffect
@@ -398,8 +438,8 @@ internal sealed interface ExternalInviteServerRefusal {
     data object PartyLimit : ExternalInviteServerRefusal
 
     /**
-     * The connecting server's own refusal (web `inviteeErrorMessage(..., "connect", { id })`);
-     * [serverWords]: the server's sentence for a channel conversion refusal (slock #15771), shown instead.
+     * The connecting server's own refusal ([resolveInviteeRefusal]);
+     * [serverWords]: the server's sentence from [resolveServerRefusal] for unknown/dynamic refusals, shown instead.
      */
     data class Invitee(val message: InviteeMessage, val serverWords: String? = null) : ExternalInviteServerRefusal
 }
@@ -411,9 +451,9 @@ internal fun externalInviteServerRefusal(outcome: ServerConnectOutcome.Refused):
         hostLimit -> ExternalInviteServerRefusal.HostFreeLimit
         outcome.code == "joint_party_limit" -> ExternalInviteServerRefusal.PartyLimit
         else -> {
-            val refusal = outcome.asRefusal()
-            val message = inviteeErrorMessage(refusal, InviteeAction.Connect, target = null, targetId = outcome.serverId)
-            ExternalInviteServerRefusal.Invitee(message, inviteeServerWords(refusal, message))
+            val (message, serverWords) =
+                resolveInviteeRefusal(outcome.asRefusal(), InviteeAction.Connect, target = null, targetId = outcome.serverId)
+            ExternalInviteServerRefusal.Invitee(message, serverWords)
         }
     }
 }
@@ -723,13 +763,23 @@ internal class ExternalInvitesStore(
                 if (chosen.isEmpty()) {
                     emptyList()
                 } else {
-                    // A failed connect never hides the send that went through: one toast says the
-                    // servers weren't connected.
                     val result = dataSource.connectOwnServers(chosen.map { it.id }, makePrivate)
                     when (val answer = (result as? DataResult.Content)?.data) {
                         is ExternalInviteAnswer.Ok -> externalInviteServerEffects(answer.value, chosen, answer.traceId)
-                        is ExternalInviteAnswer.Refused -> listOf(ExternalInvitesEffect.ServersNotConnected(answer.refusal.traceId))
-                        null -> listOf(ExternalInvitesEffect.ServersNotConnected((result as? DataResult.Error)?.error?.traceId))
+                        is ExternalInviteAnswer.Refused -> {
+                            // Web `sendInvitesAndConnectServers` / `ExternalInviteSteps`: a failed
+                            // connect closes the dialog and toasts ServersNotConnected (with the
+                            // specific refusal detail in description when present), even when no
+                            // emails were sent.
+                            val failure = answer.refusal.toFailure()
+                            val detail = failure.takeIf { it.error != ExternalInviteError.Generic || it.serverMessage != null }
+                            listOf(ExternalInvitesEffect.ServersNotConnected(answer.refusal.traceId, detail))
+                        }
+                        null -> {
+                            val failure = result.toFailure()
+                            val detail = failure.takeIf { it.error != ExternalInviteError.Generic || it.serverMessage != null }
+                            listOf(ExternalInvitesEffect.ServersNotConnected(result.failureTraceIdOrNull(), detail))
+                        }
                     }
                 }
             mutableState.update { it.copy(dialog = null) }

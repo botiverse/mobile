@@ -24,7 +24,6 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDecoration
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.LocalRaftContentColor
@@ -72,7 +71,11 @@ internal fun raftToastLook(surface: RaftToastSurface, colors: RaftUiThemeColors)
  *   the 20dp column, centred on the first line; never a status light.
  * - [icon]: raft-ui `leading`, a 20dp slot for who did it (an avatar); replaces the
  *   [intent]'s icon.
- * - [description]: more detail in the muted ink.
+ * - [description]: more detail in the muted ink, wrapping naturally across lines (e.g. a server
+ *   refusal reason).
+ * - [footnote]: optional third muted line in `footnote` typography on its own row under
+ *   [description], mirroring web `LocalizedToastProvider` (`ToastTitle` -> `ToastDescription` ->
+ *   `TraceIdNote`).
  * - [actionLabel] / [onAction]: one bold text action ("View", "Undo"), never a button;
  *   underlined only under a mouse or trackpad and while pressed (raft-ui
  *   `not-disabled:hover:underline`); it takes touches 44dp round it.
@@ -91,12 +94,14 @@ fun RaftToast(
     icon: (@Composable () -> Unit)? = null,
     actionLabel: String? = null,
     onAction: (() -> Unit)? = null,
+    footnote: String? = null,
 ) {
     val look = raftToastLook(surface, RaftTheme.colors)
     val typography = RaftTheme.typography
     val leading: (@Composable () -> Unit)? =
         icon ?: intent?.let { { RaftGlyphIcon(it.glyph, size = 16.dp, color = look.ink) } }
-    val titleOnly = leading == null && description == null && actionLabel == null
+    val hasDetail = description != null || footnote != null
+    val titleOnly = leading == null && !hasDetail && actionLabel == null
     CompositionLocalProvider(LocalRaftContentColor provides look.ink, LocalRaftSurfaceColor provides look.fill) {
         Row(
             modifier
@@ -107,22 +112,30 @@ fun RaftToast(
                 .semantics { liveRegion = if (intent == RaftToastIntent.Error) LiveRegionMode.Assertive else LiveRegionMode.Polite }
                 .padding(horizontal = 16.dp, vertical = 12.dp),
             horizontalArrangement = Arrangement.spacedBy(12.dp, if (titleOnly) Alignment.CenterHorizontally else Alignment.Start),
-            verticalAlignment = if (description != null) Alignment.Top else Alignment.CenterVertically,
+            verticalAlignment = if (hasDetail) Alignment.Top else Alignment.CenterVertically,
         ) {
             // `ToastIcon`: `w-5 h-lh`, on the first line however the title wraps.
             if (leading != null) Box(Modifier.size(20.dp).align(Alignment.Top), contentAlignment = Alignment.Center) { leading() }
             val hasAction = actionLabel != null && onAction != null
             // The text gives way to the action, but the toast still hugs its content.
             Column(if (hasAction) Modifier.weight(1f, fill = false) else Modifier) {
+                // Web `LocalizedToastProvider`: `ToastTitle className="whitespace-normal break-words"` (no line clamp).
                 RaftText(
                     title,
                     style = typography.callout,
                     color = look.ink,
-                    maxLines = if (description == null) 2 else 1,
-                    overflow = TextOverflow.Ellipsis,
+                    maxLines = Int.MAX_VALUE,
                     textAlign = if (titleOnly) TextAlign.Center else null,
                 )
                 if (description != null) RaftText(description, style = typography.callout, color = look.muted)
+                if (footnote != null) {
+                    RaftText(
+                        footnote,
+                        modifier = Modifier.padding(top = 2.dp),
+                        style = typography.footnote,
+                        color = look.muted,
+                    )
+                }
             }
             if (hasAction) {
                 val source = remember { MutableInteractionSource() }

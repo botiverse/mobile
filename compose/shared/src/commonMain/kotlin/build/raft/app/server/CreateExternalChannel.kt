@@ -11,6 +11,7 @@ import build.raft.app.data.InviteConnectableServer
 import build.raft.app.data.RaftNetworkClient
 import build.raft.app.data.SendExternalInvitesResult
 import build.raft.app.data.ServerConnectOutcome
+import build.raft.app.data.failureTraceIdOrNull
 import build.raft.app.model.ChannelId
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -310,8 +311,20 @@ internal class CreateExternalChannelStore(
                     val result = dataSource.connect(channelId, chosen.map { it.id })
                     when (val answer = (result as? DataResult.Content)?.data) {
                         is ExternalInviteAnswer.Ok -> externalInviteServerEffects(answer.value, chosen, answer.traceId)
-                        is ExternalInviteAnswer.Refused -> listOf(ExternalInvitesEffect.ServersNotConnected(answer.refusal.traceId))
-                        null -> listOf(ExternalInvitesEffect.ServersNotConnected((result as? DataResult.Error)?.error?.traceId))
+                        is ExternalInviteAnswer.Refused -> {
+                            // Web `sendInvitesAndConnectServers` / `ExternalInviteSteps`: a failed
+                            // connect finishes onto the created channel and toasts ServersNotConnected
+                            // (carrying refusal detail in description), rather than keeping the review
+                            // open with a misleading "invites weren't sent" banner.
+                            val failure = answer.refusal.toFailure()
+                            val detail = failure.takeIf { it.error != ExternalInviteError.Generic || it.serverMessage != null }
+                            listOf(ExternalInvitesEffect.ServersNotConnected(answer.refusal.traceId, detail))
+                        }
+                        null -> {
+                            val failure = result.externalInviteFailureOf()
+                            val detail = failure.takeIf { it.error != ExternalInviteError.Generic || it.serverMessage != null }
+                            listOf(ExternalInvitesEffect.ServersNotConnected(result.failureTraceIdOrNull(), detail))
+                        }
                     }
                 }
             val toasts =

@@ -222,6 +222,7 @@ private fun RaftToastHostItem(state: RaftToastHostState, toast: RaftToastData, a
     RaftToast(
         title = toast.title,
         description = toast.description,
+        footnote = toast.footnote,
         intent = toast.intent,
         actionLabel = toast.actionLabel,
         onAction =

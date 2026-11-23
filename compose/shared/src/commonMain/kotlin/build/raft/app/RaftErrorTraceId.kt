@@ -102,7 +102,7 @@ internal fun rememberRaftErrorToast(): (title: String, traceId: String?, intent:
             val id = raftValidTraceIdOrNull(rawTraceId)
             toastHost?.show(
                 title = title,
-                description = id?.let { traceIdFormat.replace("%s", raftShortTraceId(it)) },
+                footnote = id?.let { traceIdFormat.replace("%s", raftShortTraceId(it)) },
                 intent = intent,
                 actionLabel = if (id != null) copyLabel else null,
                 onAction =

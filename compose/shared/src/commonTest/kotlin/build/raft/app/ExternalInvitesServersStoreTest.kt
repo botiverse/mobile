@@ -124,6 +124,72 @@ class ExternalInvitesServersStoreTest {
     }
 
     @Test
+    fun emailsAndServersWholeRequestRefusalCarriesSpecificFailureOnServersNotConnected() = runTest {
+        val source = source(ownServer("s2", "Beta"))
+        val sentence = "This channel has 151 messages, which is more than can be moved to a shared channel right now."
+        source.connectAnswer =
+            DataResult.Content(
+                ExternalInviteAnswer.Refused(
+                    ExternalInviteRefusal(409, "channel_conversion_too_large", sentence, traceId = ConnectTraceId)
+                )
+            )
+        val store = opened(source)
+        store.dispatch(ExternalInvitesIntent.SetText("new@example.com"))
+        store.dispatch(ExternalInvitesIntent.SetServers(setOf("s2")))
+        store.dispatch(ExternalInvitesIntent.Next)
+        runCurrent()
+        store.dispatch(ExternalInvitesIntent.Send(makePrivate = false))
+        runCurrent()
+
+        assertNull(store.state.value.dialog)
+        val expectedFailure =
+            ExternalInviteFailure(
+                error = ExternalInviteError.Generic,
+                upgrade = false,
+                traceId = ConnectTraceId,
+                serverMessage = sentence,
+            )
+        assertEquals(
+            listOf(
+                ExternalInvitesEffect.Sent(1),
+                ExternalInvitesEffect.Added(1),
+                ExternalInvitesEffect.ServersNotConnected(ConnectTraceId, expectedFailure),
+            ),
+            store.state.value.effects,
+        )
+    }
+
+    @Test
+    fun serverOnlyWholeRequestRefusalClosesDialogAndEmitsServersNotConnected() = runTest {
+        val source = source(ownServer("s2", "Beta"))
+        source.connectAnswer =
+            DataResult.Content(
+                ExternalInviteAnswer.Refused(
+                    ExternalInviteRefusal(409, "free_external_limit", "Free plan limit reached.", traceId = ConnectTraceId)
+                )
+            )
+        val store = opened(source)
+        store.dispatch(ExternalInvitesIntent.SetServers(setOf("s2")))
+        store.dispatch(ExternalInvitesIntent.Next)
+        runCurrent()
+        store.dispatch(ExternalInvitesIntent.Send(makePrivate = true))
+        runCurrent()
+
+        assertNull(store.state.value.dialog, "server-only whole-request refusal must close the dialog like web")
+        val expectedFailure =
+            ExternalInviteFailure(
+                error = ExternalInviteError.FreeLimit,
+                upgrade = true,
+                traceId = ConnectTraceId,
+                serverMessage = null,
+            )
+        assertEquals(
+            listOf(ExternalInvitesEffect.ServersNotConnected(ConnectTraceId, expectedFailure)),
+            store.state.value.effects,
+        )
+    }
+
+    @Test
     fun aRefusedSendConnectsNothingAndStaysInTheDialog() = runTest {
         val source = source(ownServer("s2", "Beta"))
         source.sendAnswer = DataResult.Content(ExternalInviteAnswer.Refused(ExternalInviteRefusal(429, "daily_cap", "cap")))
