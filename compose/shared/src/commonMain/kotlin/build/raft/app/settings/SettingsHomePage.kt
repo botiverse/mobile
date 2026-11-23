@@ -5954,6 +5954,7 @@ private fun RaftAppShellReadyContent(
                             canWriteTaskChannel = tasksChannelWriteCheck,
                             detailsRepository = remember(appShellNetworkClient) { TaskConversationDetailsRepository(appShellNetworkClient) },
                             serverId = readyServerId,
+                            viewerUserId = readySession?.user?.id,
                             timeContext = threadTimeContext,
                             membersStore = appShellServerMembersStore,
                             // The conversation page's head writes: the same task channel store and gates.

@@ -123,6 +123,43 @@ class TaskHeadCompactUiTest {
             // Read after the creator's name, on the node a screen reader stops at.
             onNode(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "Created at Nov 8, 2026, 10:30"))
                 .assert(hasText("artin"))
+            // Web TaskProperties: Created by stays plain text with no avatar face.
+            onNodeWithTag(TaskHeadCreatorFaceTestTag, useUnmergedTree = true).assertDoesNotExist()
+        }
+
+    @Test
+    fun statusAndAssigneeSitOnOneRowWithAvatarYouAndSourceNotRecorded() =
+        runRobolectricComposeUiTest {
+            var openedProfile: TaskHeadPerson? = null
+            val assignedTask = task.copy(assignee = artin, sourceRecorded = false, sourceMessageId = null)
+            setContent {
+                Host {
+                    Head(
+                        task = assignedTask,
+                        scrollState = remember { TaskHeadScrollState() },
+                        viewerUserId = "user-artin",
+                        onOpenAssigneeProfile = { openedProfile = it },
+                    )
+                }
+            }
+
+            val statusBounds = onNodeWithTag(TaskHeadStatusTestTag, useUnmergedTree = true).getBoundsInRoot()
+            val assigneeBounds = onNodeWithTag(TaskHeadAssigneeTestTag, useUnmergedTree = true).getBoundsInRoot()
+            assertTrue(
+                kotlin.math.abs(statusBounds.top.value - assigneeBounds.top.value) < 12f,
+                "Status and Assignee should sit on one row on a 360dp phone: status=$statusBounds assignee=$assigneeBounds",
+            )
+            assertTrue(
+                assigneeBounds.left >= statusBounds.right,
+                "Assignee should follow Status on the same row: status=$statusBounds assignee=$assigneeBounds",
+            )
+            onNodeWithText("You").assertExists()
+            onNodeWithContentDescription("Open artin's profile").assertExists()
+            onNodeWithText("Source").assertExists()
+            onNodeWithText("Not recorded").assertExists()
+            onNodeWithTag(TaskHeadAssigneeAvatarTestTag, useUnmergedTree = true).assertExists().performClick()
+            waitForIdle()
+            assertEquals(TaskHeadPerson(MemberKind.Human, "user-artin"), openedProfile)
         }
 
     @Composable
@@ -133,7 +170,12 @@ class TaskHeadCompactUiTest {
 
     /** The head as the conversation page draws it (its first row), with the title and description editable. */
     @Composable
-    private fun Head(task: TaskSummary, scrollState: TaskHeadScrollState) {
+    private fun Head(
+        task: TaskSummary,
+        scrollState: TaskHeadScrollState,
+        viewerUserId: String? = null,
+        onOpenAssigneeProfile: ((TaskHeadPerson) -> Unit)? = null,
+    ) {
         Box(Modifier.fillMaxSize()) {
             TaskConversationHeadRoute(
                 task = task,
@@ -150,6 +192,8 @@ class TaskHeadCompactUiTest {
                 scrollState = scrollState,
                 placement = TaskHeadPlacement.FirstRow,
                 onAmend = { _, _ -> TaskAmendResult.Stale(currentRevision = null) },
+                viewerUserId = viewerUserId,
+                onOpenAssigneeProfile = onOpenAssigneeProfile,
             )
         }
     }

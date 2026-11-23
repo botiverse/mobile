@@ -879,6 +879,10 @@ private fun TaskPendingConversationRoute(pageVisible: Boolean) {
                 seed = seed,
             )
         val edits = channelTasks?.let { TaskHeadEdits(it::dispatch) }
+        val agentStatusResolver =
+            remember(serverMembersStore, resolvedServerId) {
+                raftScopedAgentStatusResolver(serverMembersStore, resolvedServerId)
+            }
 
         TaskPendingConversationPage(
             task = liveTask,
@@ -892,6 +896,8 @@ private fun TaskPendingConversationRoute(pageVisible: Boolean) {
             errorText = controller.errorText,
             errorTraceId = controller.errorTraceId,
             joined = access.joined,
+            viewerUserId = session?.user?.id,
+            agentStatusResolver = agentStatusResolver,
             draft = controller.draft(resolvedServerId, liveTask.id.value),
             onDraftChange = { controller.onDraftChange(resolvedServerId, liveTask.id.value, it) },
             onBack = { if (!controller.sending && !controller.handingOff) routerModule.closePage() },

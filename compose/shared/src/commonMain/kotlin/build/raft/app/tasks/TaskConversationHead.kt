@@ -29,7 +29,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
@@ -41,9 +40,13 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.ui.platform.LocalDensity
 import build.raft.app.model.parseRaftTimestampEpochMillisOrNull
 import androidx.compose.material3.minimumInteractiveComponentSize
-import androidx.compose.ui.layout.boundsInRoot
-import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.LayoutCoordinates
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.layout
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.unit.Constraints
+import androidx.compose.ui.unit.Dp
+import build.raft.designsystem.components.raftTouchTarget
 import androidx.compose.ui.composed
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
@@ -100,8 +103,9 @@ import build.raft.app.data.TaskHistoryDetail
 import build.raft.app.data.TaskHistoryField
 import build.raft.app.data.TaskHistoryKind
 import build.raft.app.data.TaskHistoryRow
+import build.raft.app.data.TaskHeadSourceDisplay
 import build.raft.app.data.earlierDiscussionVisible
-import build.raft.app.data.taskHeadSourceMessageId
+import build.raft.app.data.taskHeadSourceDisplay
 import build.raft.app.data.toTaskHistoryRows
 import build.raft.app.data.valueOrNull
 import build.raft.app.model.ConversationKind
@@ -130,8 +134,6 @@ import build.raft.designsystem.components.RaftGlyph
 import build.raft.designsystem.components.RaftGlyphIcon
 import build.raft.designsystem.components.RaftIconButton
 import build.raft.designsystem.components.RaftMenuItem
-import build.raft.designsystem.components.RaftPickerTriggerButton
-import build.raft.designsystem.components.RaftPickerTriggerSize
 import build.raft.designsystem.components.RaftSectionEyebrow
 import build.raft.designsystem.components.RaftSkeleton
 import build.raft.designsystem.components.RaftTaskStatusBadge
@@ -148,7 +150,7 @@ import build.raft.designsystem.theme.RaftTheme
 import build.raft.designsystem.theme.RaftScale
 import build.raft.designsystem.tokens.RaftRadius
 
-/** The Source row (web `TaskSourceProperty`): [preview] null = the message is not loaded (yet). */
+/** The Source row (web `TaskSourceProperty`): [preview] null = the message is not loaded (yet); [notRecorded] = `sourceRecorded == false`. */
 @Immutable
 internal data class TaskHeadSource(
     val authorName: String?,
@@ -158,9 +160,34 @@ internal data class TaskHeadSource(
     val preview: String?,
     val time: String?,
     val authorId: String? = null,
+    val notRecorded: Boolean = false,
+) {
+    companion object {
+        val NotRecorded =
+            TaskHeadSource(
+                authorName = null,
+                authorKind = null,
+                authorAvatarWireValue = null,
+                preview = null,
+                time = null,
+                authorId = null,
+                notRecorded = true,
+            )
+    }
+}
+
+/** Assignee in the head's inline facts (web `TaskProperties` with `assigneeAsPerson = true`). */
+@Immutable
+internal data class TaskHeadAssignee(
+    val kind: MemberKind,
+    val id: String,
+    val displayName: String,
+    val avatarWireValue: String? = null,
+    val isViewer: Boolean = false,
+    val isJointChannel: Boolean = false,
 )
 
-/** Created by: the creator's name, and who they are so the row can show their face. */
+/** A person referenced by the head (avatar/profile target). */
 @Immutable
 internal data class TaskHeadPerson(val kind: MemberKind, val id: String, val avatarWireValue: String? = null)
 
@@ -211,6 +238,8 @@ internal data class TaskConversationHeadModel(
     /** Null: no Earlier discussion row; [Int] the reply count, null inside = not known yet ("View"). */
     val earlierDiscussion: TaskHeadEarlierDiscussion?,
     val history: TaskHeadHistory,
+    /** Assigned person/agent for the inline Assignee fact (avatar + name / "You"); null when unassigned. */
+    val assignee: TaskHeadAssignee? = null,
 )
 
 @Immutable
@@ -232,10 +261,37 @@ internal fun TaskSummary.taskConversationHeadModel(
     serverId: String? = null,
     /** False: the reader may not write the task's channel ([build.raft.app.data.canWriteTasksInChannel]). */
     canWriteChannel: Boolean = true,
+    /** Signed-in user's id so self-assigned tasks display "You" (web `task.sidePanel.you`). */
+    viewerUserId: String? = null,
 ): TaskConversationHeadModel {
-    val sourceId = taskHeadSourceMessageId()
+    val sourceDisplay = taskHeadSourceDisplay()
+    val sourceId = (sourceDisplay as? TaskHeadSourceDisplay.Message)?.messageId
     val sourcePreview = details.source.valueOrNull?.takeIf { it.messageId == sourceId }
     val author = sourcePreview?.author
+    val normalizedViewerId = viewerUserId?.trim()?.takeIf { it.isNotEmpty() }
+    val isJointChannel = parseConversationKindOrNull(channelType) == ConversationKind.Joint
+    val assigneeHead =
+        assignee?.let { member ->
+            val resolvedName =
+                members.taskHeadDisplayName(member.kind, member.id.value)
+                    ?: member.displayName.trim().takeIf { it.isNotBlank() }
+            val id = member.id.value.trim()
+            if (id.isNotEmpty() && resolvedName != null) {
+                val channelMember = members.firstOrNull { it.kind == member.kind && it.id.value == member.id.value }
+                TaskHeadAssignee(
+                    kind = member.kind,
+                    id = id,
+                    displayName = resolvedName,
+                    avatarWireValue =
+                        channelMember?.avatar?.let { channelMember.avatarWireValueForRenderedAvatar() }
+                            ?: member.avatarWireValueForRenderedAvatar(),
+                    isViewer = member.kind == MemberKind.Human && normalizedViewerId != null && id == normalizedViewerId,
+                    isJointChannel = isJointChannel,
+                )
+            } else {
+                null
+            }
+        }
     val creatorName =
         creator?.let { member ->
             members.taskHeadDisplayName(member.kind, member.id.value)
@@ -260,30 +316,30 @@ internal fun TaskSummary.taskConversationHeadModel(
     return TaskConversationHeadModel(
         bar =
             taskConversationHeaderBarModel(state, statusUpdating, canWriteChannel).let { bar ->
-                if (editable) bar else bar.copy(statusOptions = emptyList(), assigneeEditable = false)
+                val resolvedBar = if (assigneeHead != null) bar.copy(assigneeName = assigneeHead.displayName) else bar
+                if (editable) resolvedBar else resolvedBar.copy(statusOptions = emptyList(), assigneeEditable = false)
             },
         title = title,
         description = description?.trim()?.takeIf { it.isNotBlank() },
         source =
-            sourceId?.let {
-                TaskHeadSource(
-                    authorName =
-                        author?.let { members.taskHeadDisplayName(it.kind, it.id.value) ?: it.displayName.trim().takeIf(String::isNotBlank) },
-                    authorKind = author?.kind,
-                    authorAvatarWireValue = author?.avatarWireValueForRenderedAvatar(),
-                    preview = sourcePreview?.firstLine,
-                    time = sourcePreview?.createdAt?.let { formatRaftTimestampLabel(it, timeContext).takeIf(String::isNotBlank) },
-                    authorId = author?.id?.value,
-                )
+            when (sourceDisplay) {
+                TaskHeadSourceDisplay.NotRecorded -> TaskHeadSource.NotRecorded
+                is TaskHeadSourceDisplay.Message ->
+                    TaskHeadSource(
+                        authorName =
+                            author?.let { members.taskHeadDisplayName(it.kind, it.id.value) ?: it.displayName.trim().takeIf(String::isNotBlank) },
+                        authorKind = author?.kind,
+                        authorAvatarWireValue = author?.avatarWireValueForRenderedAvatar(),
+                        preview = sourcePreview?.firstLine,
+                        time = sourcePreview?.createdAt?.let { formatRaftTimestampLabel(it, timeContext).takeIf(String::isNotBlank) },
+                        authorId = author?.id?.value,
+                    )
+                null -> null
             },
         createdBy = creatorName,
         creator =
             creator?.let { member ->
                 member.id.value.trim().takeIf { it.isNotEmpty() }?.let { id ->
-                    // The task DTO names the creator without a face, and the head reads faces from
-                    // the reader's current server directory: a joint channel's agent from another
-                    // workspace is not in it and fell back to the default robot. The channel's own
-                    // member row (joint members included) carries the avatar.
                     val channelMember = members.firstOrNull { it.kind == member.kind && it.id.value == member.id.value }
                     TaskHeadPerson(
                         member.kind,
@@ -297,6 +353,7 @@ internal fun TaskSummary.taskConversationHeadModel(
         createdAt = taskHeadDateTime(createdAt, timeContext),
         earlierDiscussion = earlier,
         history = history,
+        assignee = assigneeHead,
     )
 }
 
@@ -535,6 +592,10 @@ internal fun TaskHeadContent(
     editing: TaskHeadEditing? = null,
     /** Composed in the assignee chip's box: the assignee picker hanging from it (a wide window's popup). */
     assigneePicker: @Composable () -> Unit = {},
+    /** Resolves an agent assignee's live status dot beside its face (null: no dot). */
+    agentStatusResolver: RaftAgentStatusResolver? = null,
+    /** Opens the assignee's profile when tapping their avatar (null: avatar is non-interactive). */
+    onOpenAssigneeProfile: ((TaskHeadPerson) -> Unit)? = null,
 ) {
     val editingField = editing?.state?.field
     val buttons =
@@ -561,7 +622,16 @@ internal fun TaskHeadContent(
                         editing?.takeIf { buttons.editDescription },
                     )
             }
-            TaskHeadFacts(model, onSelectStatus, onOpenAssignee, onOpenSource, onOpenEarlierDiscussion, onOpenCreator, assigneePicker)
+            TaskHeadFacts(
+                model = model,
+                onSelectStatus = onSelectStatus,
+                onOpenAssignee = onOpenAssignee,
+                onOpenSource = onOpenSource,
+                onOpenEarlierDiscussion = onOpenEarlierDiscussion,
+                onOpenAssigneeProfile = onOpenAssigneeProfile,
+                agentStatusResolver = agentStatusResolver,
+                assigneePicker = assigneePicker,
+            )
             TaskHeadHistorySection(model.history, initiallyHistoryOpen, onRetryHistory)
         }
     }
@@ -640,13 +710,13 @@ private fun TaskHeadFacts(
     onOpenAssignee: () -> Unit,
     onOpenSource: (() -> Unit)?,
     onOpenEarlierDiscussion: (() -> Unit)?,
-    onOpenCreator: ((TaskHeadPerson) -> Unit)?,
+    onOpenAssigneeProfile: ((TaskHeadPerson) -> Unit)?,
+    agentStatusResolver: RaftAgentStatusResolver?,
     assigneePicker: @Composable () -> Unit,
 ) {
     val bar = model.bar
     val statusLabel = bar.status.localizedLabel()
     val statusFieldLabel = stringResource(Res.string.tasks_label_status)
-    val unassigned = stringResource(Res.string.tasks_assignee_unassigned)
     val unknown = stringResource(Res.string.task_head_unknown)
     var statusMenuOpen by remember { mutableStateOf(false) }
     RaftDescriptionList(direction = RaftDescriptionListDirection.Inline) {
@@ -658,8 +728,8 @@ private fun TaskHeadFacts(
                 RaftTaskStatusBadge(
                     status = bar.status.raftTaskStatus(),
                     text = statusLabel,
-                    // raft-ui inline: a leading chip hangs its padding outward (the text lines up).
-                    modifier = Modifier.offset(x = TaskHeadChipHang).testTag(TaskHeadStatusTestTag),
+                    // Web `-ml-[7px]`: hangs leading padding outward and reduces layout width so Status + Assignee stay on one row.
+                    modifier = Modifier.hangStart(TaskHeadChipHang).testTag(TaskHeadStatusTestTag),
                     onClick = if (bar.statusEditable) ({ statusMenuOpen = true }) else null,
                     enabled = !bar.statusUpdating,
                     contentDescription = "$statusFieldLabel: $statusLabel",
@@ -678,24 +748,17 @@ private fun TaskHeadFacts(
         }
         Item(stringResource(Res.string.task_head_assignee)) {
             TaskHeadFactValue {
-                // An assignee the reader may not change is a plain fact, not a disabled picker.
-                if (!bar.assigneeEditable) {
-                    RaftDescriptionValue(bar.assigneeName ?: unassigned, copyable = false, maxLines = 1)
-                } else {
-                    // The assignee by display name, as web's v2 dialog shows it (`assigneeAsPerson`).
-                    RaftPickerTriggerButton(
-                        text = bar.assigneeName ?: unassigned,
-                        onClick = onOpenAssignee,
-                        hasValue = bar.assigneeName != null,
-                        enabled = bar.assigneeEditable,
-                        showIndicator = bar.assigneeEditable,
-                        modifier = Modifier.offset(x = TaskHeadChipHang).widthIn(max = 200.dp).testTag(TaskHeadAssigneeTestTag),
-                        // The status badge's box (22dp chip): web InlineBadgeEditor draws both as the same chip.
-                        size = RaftPickerTriggerSize.Chip,
-                    )
-                    // In the chip's box, as the status menu is in its own: a popup in place anchors to it.
-                    assigneePicker()
-                }
+                TaskHeadAssigneeValue(
+                    assignee = model.assignee,
+                    fallbackName = bar.assigneeName,
+                    serverId = model.avatarServerId,
+                    editable = bar.assigneeEditable,
+                    agentStatusResolver = agentStatusResolver,
+                    onOpenAssignee = onOpenAssignee,
+                    onOpenAssigneeProfile = onOpenAssigneeProfile,
+                )
+                // In the assignee's box, as the status menu is in its own: a popup in place anchors to it.
+                if (bar.assigneeEditable) assigneePicker()
             }
         }
         model.source?.let { source ->
@@ -707,7 +770,7 @@ private fun TaskHeadFacts(
         val timeFormat = currentRaftEffectiveDateTimeContext().timeFormat
         val createdAt = model.createdAt?.let { stringResource(Res.string.task_head_created_at_value, it.localized(timeFormat)) }
         Item(stringResource(Res.string.task_head_created_by)) {
-            TaskHeadFactValue { TaskHeadCreatedByValue(model.createdBy ?: unknown, model.creator, model.avatarServerId, createdAt, onOpenCreator) }
+            TaskHeadFactValue { TaskHeadCreatedByValue(model.createdBy ?: unknown, createdAt) }
         }
         // Where it cannot open (the pending task page) it is a plain count, and hidden while unknown.
         model.earlierDiscussion?.takeIf { onOpenEarlierDiscussion != null || it.replyCount != null }?.let { earlier ->
@@ -732,6 +795,197 @@ private fun TaskHeadFacts(
 }
 
 /**
+ * Web `-ml-[7px]` / `-ml-1.5` on shaped inline fact controls: pulls the control's leading padding
+ * outward and shrinks its measured width by [hang] so the next fact on the same wrapping line (e.g.
+ * Assignee beside Status on a 360dp phone) reclaims that horizontal space.
+ *
+ * Does NOT query `placeable[FirstBaseline]` during `measure` (doing so inside a `LazyColumn`
+ * forces pre-placement of reused children and crashes Compose 1.12's `RectManager`, see
+ * `RaftDescriptionListReuseTest`): omitting `alignmentLines` lets Compose's
+ * `LayoutModifierNodeCoordinator` delegate `FirstBaseline` reads safely after placement.
+ */
+private fun Modifier.hangStart(hang: Dp): Modifier =
+    layout { measurable, constraints ->
+        val hangPx = hang.roundToPx().coerceAtLeast(0)
+        val childMaxWidth =
+            if (constraints.hasBoundedWidth) {
+                (constraints.maxWidth.toLong() + hangPx.toLong()).coerceAtMost(Int.MAX_VALUE.toLong()).toInt()
+            } else {
+                Constraints.Infinity
+            }
+        val childMinWidth =
+            if (constraints.minWidth > 0) {
+                (constraints.minWidth.toLong() + hangPx.toLong())
+                    .coerceAtMost(if (childMaxWidth == Constraints.Infinity) Int.MAX_VALUE.toLong() else childMaxWidth.toLong())
+                    .toInt()
+            } else {
+                0
+            }
+        val placeable = measurable.measure(constraints.copy(minWidth = childMinWidth, maxWidth = childMaxWidth))
+        val width = (placeable.width - hangPx).coerceIn(constraints.minWidth, constraints.maxWidth)
+        layout(width, placeable.height) {
+            placeable.placeRelative(x = -hangPx, y = 0)
+        }
+    }
+
+/**
+ * Assignee in the head's inline facts (web `TaskProperties` with `assigneeAsPerson = true` and
+ * `bg-transparent text-foreground`): shows the assignee's avatar (`19dp`) + display name (or
+ * semibold `"You"` when assigned to the signed-in reader) + chevron when editable, rather than a
+ * tinted pill chip.
+ */
+@Composable
+private fun TaskHeadAssigneeValue(
+    assignee: TaskHeadAssignee?,
+    fallbackName: String?,
+    serverId: String?,
+    editable: Boolean,
+    agentStatusResolver: RaftAgentStatusResolver?,
+    onOpenAssignee: () -> Unit,
+    onOpenAssigneeProfile: ((TaskHeadPerson) -> Unit)?,
+) {
+    val colors = RaftTheme.colors
+    val typography = RaftTheme.typography
+    val unassigned = stringResource(Res.string.tasks_assignee_unassigned)
+    val shape = RoundedCornerShape(RaftRadius.Control)
+    val triggerSource = remember { MutableInteractionSource() }
+    val triggerPressed by triggerSource.collectIsPressedAsState()
+    val avatarSource = remember { MutableInteractionSource() }
+    if (assignee == null) {
+        val text = fallbackName ?: unassigned
+        if (!editable) {
+            RaftDescriptionValue(text, copyable = false, maxLines = 1)
+            return
+        }
+        Row(
+            Modifier
+                .hangStart(6.dp)
+                .raftTouchTarget(enabled = true, interactionSource = triggerSource, onClick = onOpenAssignee)
+                .clip(shape)
+                .then(if (triggerPressed) Modifier.background(colors.fillMedium, shape) else Modifier)
+                .clickable(interactionSource = triggerSource, indication = null, role = Role.Button, onClick = onOpenAssignee)
+                .padding(horizontal = 6.dp, vertical = 1.dp)
+                .widthIn(max = 200.dp)
+                .testTag(TaskHeadAssigneeTestTag),
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            RaftText(
+                text = text,
+                modifier = Modifier.weight(1f, fill = false),
+                style = typography.callout,
+                color = colors.foreground,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            RaftGlyphIcon(RaftGlyph.ChevronDown, size = 12.dp, color = colors.foregroundMuted)
+        }
+        return
+    }
+    val jointSurface = assignee.isJointChannel || LocalRaftJointActorSurface.current
+    val avatarResolver = rememberRaftMemberAvatarResolver(serverId)
+    val jointAvatarResolver = remember(avatarResolver, jointSurface) { avatarResolver.forJointSurface(jointSurface) }
+    val jointActor =
+        rememberRaftJointActor(
+            memberAvatarResolver = jointAvatarResolver,
+            kind = assignee.kind,
+            memberId = assignee.id,
+            enabled = jointSurface && !assignee.isViewer,
+        )
+    val viewerLabel = stringResource(Res.string.thread_author_you)
+    val label =
+        threadMessageSourceTaskAssigneeName(
+            assigneeIsViewer = assignee.isViewer,
+            viewerLabel = viewerLabel,
+            assigneeName = assignee.displayName,
+            jointActor = jointActor,
+        )
+    // Web TaskProperties: profile button accessibility label always uses the person's display name,
+    // never "Open You's profile".
+    val profileName =
+        threadMessageSourceTaskAssigneeName(
+            assigneeIsViewer = false,
+            viewerLabel = "",
+            assigneeName = assignee.displayName,
+            jointActor = jointActor,
+        )
+    val agentStatus =
+        agentStatusResolver?.let { resolver ->
+            rememberRaftAgentStatusIndicatorState(
+                agentStatusResolver = resolver,
+                memberId = if (assignee.kind == MemberKind.Agent) assignee.id else null,
+            )
+        }
+    val nameStyle = if (assignee.isViewer) typography.callout.copy(fontWeight = FontWeight.SemiBold) else typography.callout
+    val openProfile = onOpenAssigneeProfile?.let { open -> { open(TaskHeadPerson(assignee.kind, assignee.id, assignee.avatarWireValue)) } }
+    val openProfileLabel = stringResource(Res.string.task_head_open_assignee_profile, profileName)
+    Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+        val avatarBoxModifier =
+            if (openProfile != null) {
+                Modifier
+                    .raftTouchTarget(enabled = true, interactionSource = avatarSource, onClick = openProfile)
+                    .raftClickable(onClick = openProfile, shape = shape, interactionSource = avatarSource)
+                    .semantics(mergeDescendants = true) { contentDescription = openProfileLabel }
+                    .testTag(TaskHeadAssigneeAvatarTestTag)
+            } else {
+                Modifier.testTag(TaskHeadAssigneeAvatarTestTag)
+            }
+        Box(avatarBoxModifier, contentAlignment = Alignment.Center) {
+            val face: @Composable () -> Unit = {
+                RaftMemberAvatar(
+                    identity = RaftMemberAvatarIdentity(assignee.kind, assignee.id, serverId),
+                    label = label,
+                    avatarSize = TaskHeadFactAvatarSize,
+                    carriedAvatarWireValue = assignee.avatarWireValue,
+                    resolver = jointAvatarResolver,
+                )
+            }
+            if (agentStatus != null) {
+                RaftAvatarWithStatus(
+                    statusColor = agentStatus.color,
+                    avatarSize = TaskHeadFactAvatarSize,
+                    cutoutColor = colors.layerCanvas,
+                ) { face() }
+            } else {
+                face()
+            }
+        }
+        if (editable) {
+            Row(
+                Modifier
+                    .raftTouchTarget(enabled = true, interactionSource = triggerSource, onClick = onOpenAssignee, expandStart = false)
+                    .clip(shape)
+                    .then(if (triggerPressed) Modifier.background(colors.fillMedium, shape) else Modifier)
+                    .clickable(interactionSource = triggerSource, indication = null, role = Role.Button, onClick = onOpenAssignee)
+                    .padding(vertical = 1.dp)
+                    .widthIn(max = 180.dp)
+                    .testTag(TaskHeadAssigneeTestTag),
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                RaftText(
+                    text = label,
+                    modifier = Modifier.weight(1f, fill = false),
+                    style = nameStyle,
+                    color = colors.foreground,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                RaftGlyphIcon(RaftGlyph.ChevronDown, size = 12.dp, color = colors.foregroundMuted)
+            }
+        } else {
+            RaftText(
+                text = label,
+                style = nameStyle,
+                color = colors.foreground,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+    }
+}
+
+/**
  * Every fact's value has one height, its content centred in it: the status and assignee chips
  * (22dp), a fact that leads somewhere ([TaskHeadLinkValue], its text line and 1dp above and
  * below), a face and name, a plain value. Facts of different kinds on one line of the wrapping
@@ -750,6 +1004,7 @@ private fun TaskHeadFactValue(content: @Composable () -> Unit) {
 
 internal const val TaskHeadStatusTestTag = "task-head-status"
 internal const val TaskHeadAssigneeTestTag = "task-head-assignee"
+internal const val TaskHeadAssigneeAvatarTestTag = "task-head-assignee-avatar"
 internal const val TaskBarSummaryTestTag = "task-bar-summary"
 internal val TaskHeadStatusMenuMinWidth = 200.dp
 
@@ -795,8 +1050,8 @@ private fun TaskHeadLinkValue(
         Modifier
             // No 48dp box: it would make this fact taller than the others on its line, so it sat
             // lower than them. The row keeps its size; the platform widens a small target's touch area.
-            // The padding hangs outward: the text starts where a plain fact's does.
-            .offset(x = (-6).dp)
+            // The padding hangs outward and shrinks layout width: the text starts where a plain fact's does.
+            .hangStart(6.dp)
             .clip(shape)
             .then(if (pressed) Modifier.background(colors.fillMedium, shape) else Modifier)
             .then(
@@ -823,6 +1078,16 @@ private fun TaskHeadLinkValue(
 private fun TaskHeadSourceValue(source: TaskHeadSource, serverId: String?, onOpenSource: (() -> Unit)?) {
     val colors = RaftTheme.colors
     val typography = RaftTheme.typography
+    if (source.notRecorded) {
+        RaftText(
+            stringResource(Res.string.task_head_source_not_recorded),
+            style = typography.callout,
+            color = colors.foregroundMuted,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+        return
+    }
     TaskHeadLinkValue(contentDescription = stringResource(Res.string.task_head_source_open), onClick = onOpenSource) {
         if (source.preview != null) {
             RaftMemberAvatar(
@@ -848,62 +1113,29 @@ private fun TaskHeadSourceValue(source: TaskHeadSource, serverId: String?, onOpe
     }
 }
 
-/** The faces in the facts (Source, Created by): web `AvatarSlot` `compact-list`. */
-private val TaskHeadFactAvatarSize = 18.dp
+/** The faces in the facts (Assignee, Source): web `AvatarSlot` `compact-list` (`19px`). */
+private val TaskHeadFactAvatarSize = RaftAvatarSize.Xs.edge
 
-/** Tests only: the Source and Created by faces, which must draw alike (see [TaskHeadCreatedByValue]). */
+/** Tests only: the Source face. */
 internal const val TaskHeadSourceFaceTestTag = "task-head-source-face"
 internal const val TaskHeadCreatorFaceTestTag = "task-head-creator-face"
 
 /**
- * Created by: the creator's face (as on the Source row) and name; just the name without a creator.
+ * Created by: plain text name, matching web `TaskProperties.tsx` (no avatar, no link button).
  *
  * [createdAt] ("Created at Oct 28, 2026, 09:14"; null: not known) rides on it, as on the web (slock
  * #15639): its tooltip under a mouse or trackpad pointer, and read after the name by screen readers
- * (web: an sr-only time in the name; here its state description, on the one node they stop at). A
- * touch has no hover, and this value has no long press of its own (a tap opens the creator's
- * profile), so there the time is History's first entry, Created, as on the web.
+ * (web: an sr-only time in the name; here its state description, on the one node they stop at).
  */
 @Composable
 private fun TaskHeadCreatedByValue(
     name: String,
-    creator: TaskHeadPerson?,
-    serverId: String?,
     createdAt: String?,
-    onOpenCreator: ((TaskHeadPerson) -> Unit)?,
 ) {
     // Screen readers: the time after the name, on the node they stop at.
     val time = if (createdAt != null) Modifier.semantics(mergeDescendants = true) { stateDescription = createdAt } else Modifier
-    if (creator == null) {
-        TaskHeadCreatedAtTooltip(createdAt) { RaftDescriptionValue(name, time, copyable = false) }
-        return
-    }
-    // The face and name open the creator's profile, as a message author's avatar does (artin,
-    // task #35). The row keeps its size: the platform widens a small target's touch area.
-    // Nothing clips the row: the face sits on its edge, and a rounded clip there (as the row had
-    // before #4814) cut the face's left corners, so it looked cropped beside Source's.
-    val open = onOpenCreator?.let { { it(creator) } }
     TaskHeadCreatedAtTooltip(createdAt) {
-        Row(
-            if (open != null) {
-                Modifier
-                    .raftClickable(onClick = open, shape = RoundedCornerShape(RaftRadius.Control))
-                    .semantics(mergeDescendants = true) { if (createdAt != null) stateDescription = createdAt }
-            } else {
-                time
-            },
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            RaftMemberAvatar(
-                identity = RaftMemberAvatarIdentity(creator.kind, creator.id, serverId),
-                label = name.removePrefix("@"),
-                avatarSize = TaskHeadFactAvatarSize,
-                modifier = Modifier.testTag(TaskHeadCreatorFaceTestTag),
-                carriedAvatarWireValue = creator.avatarWireValue,
-            )
-            RaftDescriptionValue(name, Modifier.weight(1f, fill = false), copyable = false, maxLines = 1)
-        }
+        RaftDescriptionValue(name, time, copyable = false, maxLines = 1)
     }
 }
 
@@ -988,8 +1220,8 @@ private fun TaskHeadToggleTarget(label: String, expanded: Boolean, onToggle: () 
     ) { content() }
 }
 
-/** raft-ui inline facts: a leading chip / picker trigger hangs 7dp outward. */
-private val TaskHeadChipHang = (-7).dp
+/** raft-ui inline facts: a leading chip hangs 7dp outward via [hangStart]. */
+private val TaskHeadChipHang = 7.dp
 
 @Composable
 private fun TaskHeadHistoryTimeline(rows: List<TaskHeadHistoryRow>) {
@@ -1114,6 +1346,12 @@ internal fun TaskConversationHeadRoute(
      * [build.raft.app.data.canWriteTasksInChannel]): status, assignee, title and description are plain.
      */
     canWriteChannel: Boolean = true,
+    /** Signed-in user's id so self-assigned tasks display "You". */
+    viewerUserId: String? = null,
+    /** Resolves an agent assignee's live status dot beside its face (null: no dot). */
+    agentStatusResolver: RaftAgentStatusResolver? = null,
+    /** Opens the assignee's profile when tapping their avatar (null: avatar is non-interactive). */
+    onOpenAssigneeProfile: ((TaskHeadPerson) -> Unit)? = null,
 ) {
     var assigneeSheetOpen by remember(task.id) { mutableStateOf(false) }
     var backlogReasonOpen by remember(task.id) { mutableStateOf(false) }
@@ -1126,7 +1364,18 @@ internal fun TaskConversationHeadRoute(
     }
     var assigneeQuery by remember(task.id) { mutableStateOf("") }
     val effectiveTimeContext = currentRaftDateTimeContext(timeContext)
-    val model = task.taskConversationHeadModel(state, details, statusUpdating, assigneeCandidates, effectiveTimeContext, editable, serverId, canWriteChannel)
+    val model =
+        task.taskConversationHeadModel(
+            state = state,
+            details = details,
+            statusUpdating = statusUpdating,
+            members = assigneeCandidates,
+            timeContext = effectiveTimeContext,
+            editable = editable,
+            serverId = serverId,
+            canWriteChannel = canWriteChannel,
+            viewerUserId = viewerUserId,
+        )
     // The pulled-down head closes when the keyboard comes up, so the text is edited in the head's
     // row, not there.
     val editing =
@@ -1180,6 +1429,8 @@ internal fun TaskConversationHeadRoute(
                 onRetryHistory = onRetryHistory,
                 editing = editing,
                 assigneePicker = { if (assigneeInPlace && assigneeOpen) assigneePicker() },
+                agentStatusResolver = agentStatusResolver,
+                onOpenAssigneeProfile = onOpenAssigneeProfile,
             )
         }
         when (placement) {
@@ -1310,6 +1561,7 @@ internal data class TaskConversationHeaderChrome(
     val assigneeKind: MemberKind? = null,
     val assigneeAvatarWireValue: String? = null,
     val assigneeId: String? = null,
+    val assigneeIsViewer: Boolean = false,
     /** The task's server: the assignee's face reads its member directory. */
     val avatarServerId: String? = null,
     /** Task lives in a joint channel (`task.channelType == "joint"`): remote assignees fall back to actors/resolve. */
@@ -1334,8 +1586,10 @@ internal fun TaskSummary.taskConversationHeaderChrome(
     onToggleFollow: (currentlyFollowed: Boolean) -> Unit,
     serverId: String? = null,
     onDeleteTask: (() -> Unit)? = null,
+    viewerUserId: String? = null,
 ): TaskConversationHeaderChrome {
     val followed = state.followed(conversationFollowed)
+    val normalizedViewerId = viewerUserId?.trim()?.takeIf { it.isNotEmpty() }
     return TaskConversationHeaderChrome(
         ref = taskNumber?.let { formatTaskConversationRef(it, channelName, parseConversationKindOrNull(channelType)) } ?: title,
         taskNumber = taskNumber,
@@ -1344,6 +1598,10 @@ internal fun TaskSummary.taskConversationHeaderChrome(
         assigneeKind = assignee?.kind,
         assigneeAvatarWireValue = assignee?.avatarWireValueForRenderedAvatar(),
         assigneeId = assignee?.id?.value,
+        assigneeIsViewer =
+            assignee?.kind == MemberKind.Human &&
+                normalizedViewerId != null &&
+                assignee.id.value.trim() == normalizedViewerId,
         avatarServerId = serverId?.trim()?.takeIf { it.isNotEmpty() },
         isJointChannel = parseConversationKindOrNull(channelType) == ConversationKind.Joint,
         summarized = summarized,
@@ -1426,10 +1684,11 @@ internal fun TaskConversationBarTitle(chrome: TaskConversationHeaderChrome, modi
                             memberId = chrome.assigneeId,
                             enabled = jointSurface,
                         )
+                    val viewerLabel = stringResource(Res.string.thread_author_you)
                     val assigneeLabel =
                         threadMessageSourceTaskAssigneeName(
-                            assigneeIsViewer = false,
-                            viewerLabel = "",
+                            assigneeIsViewer = chrome.assigneeIsViewer,
+                            viewerLabel = viewerLabel,
                             assigneeName = name,
                             jointActor = jointActor,
                         )

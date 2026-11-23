@@ -237,7 +237,11 @@ class TaskConversationHeadEditUiTest {
             Box(Modifier.weight(1f).fillMaxWidth()) {
                 Column(Modifier.fillMaxSize()) {
                     route(TaskHeadPlacement.Page)
-                    LazyColumn(Modifier.weight(1f).fillMaxWidth().nestedScroll(scrollState.connection), reverseLayout = true) {
+                    LazyColumn(
+                        Modifier.weight(1f).fillMaxWidth().nestedScroll(scrollState.connection),
+                        reverseLayout = true,
+                        verticalArrangement = androidx.compose.foundation.layout.Arrangement.Top,
+                    ) {
                         items(3) { index -> RaftText("Message $index", Modifier.padding(16.dp)) }
                         // Reversed: the last row is the top one, where the conversation begins.
                         item { TaskConversationHeadRowContent(headRow) }

@@ -1345,6 +1345,7 @@
     <string name="thread_offline_last_known_tip">Нет сети — данные могут быть устаревшими</string>
     <string name="thread_offline_older_unavailable">Без сети более ранние сообщения недоступны</string>
     <string name="thread_state_beginning_conversation">Начало чата</string>
+    <string name="thread_state_beginning_replies">Начало ответов</string>
     <string name="thread_date_divider_today">СЕГОДНЯ</string>
     <string name="thread_date_divider_yesterday">ВЧЕРА</string>
     <string name="thread_message_time_yesterday">Вчера</string>
@@ -2116,6 +2117,8 @@
     <string name="task_head_source">Источник</string>
     <string name="task_head_source_open">Открыть исходное сообщение</string>
     <string name="task_head_source_unloaded">Сообщение не загружено</string>
+    <string name="task_head_source_not_recorded">Не записан</string>
+    <string name="task_head_open_assignee_profile">Открыть профиль: %1$s</string>
     <string name="task_head_created_by">Автор</string>
     <string name="task_head_created_at_value">Создана %1$s</string>
     <string name="task_head_month_1">янв.</string>

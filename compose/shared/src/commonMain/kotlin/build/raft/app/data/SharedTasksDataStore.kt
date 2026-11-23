@@ -275,6 +275,7 @@ private fun TaskSummary.withViewerConversationFollow(incoming: TaskSummary, curr
     val known = listOf(this, incoming, current).firstOrNull { it?.sourceMessageReported == true }
     val source = known?.sourceMessageId ?: sourceMessageId
     val reported = known != null
+    val recorded = listOf(this, incoming, current).firstOrNull { it?.sourceRecorded != null }?.sourceRecorded
     // `sourceSenderType` / `sourceSenderId` are sent only on `detail=summary` rows; keep them when a
     // full row arrives so the Tasks board's `from_my_message` relation stays intact.
     val knownSourceSender = listOf(this, incoming, current).firstOrNull { it?.sourceSenderReported == true }
@@ -329,6 +330,7 @@ private fun TaskSummary.withViewerConversationFollow(incoming: TaskSummary, curr
         conversationFollowed == followed &&
         sourceMessageId == source &&
         sourceMessageReported == reported &&
+        sourceRecorded == recorded &&
         sourceSenderType == senderType &&
         sourceSenderId == senderId &&
         sourceSenderReported == senderReported &&
@@ -345,6 +347,7 @@ private fun TaskSummary.withViewerConversationFollow(incoming: TaskSummary, curr
             conversationFollowed = followed,
             sourceMessageId = source,
             sourceMessageReported = reported,
+            sourceRecorded = recorded,
             sourceSenderType = senderType,
             sourceSenderId = senderId,
             sourceSenderReported = senderReported,

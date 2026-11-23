@@ -1594,6 +1594,7 @@ internal data class TaskWireDto(
     // The message the task hangs under (`tasks.source_message_id`, falling back to the pre-v2 host
     // server-side). The default marks a DTO without the field; an explicit null decodes as null.
     val sourceMessageId: String? = TaskSourceMessageIdAbsent,
+    val sourceRecorded: Boolean? = null,
     // Absent on `GET /tasks/server?detail=summary` rows (slock `toServerTaskSummary`), where an
     // explicit `null` on a full row means "no conversation created yet" (web `isSummaryOnlyTask`).
     val conversationChannelId: String? = TaskConversationChannelIdAbsent,
@@ -1678,6 +1679,7 @@ internal fun TaskWireDto.toTaskSummary(
         hostMessageId = hostMessageId?.takeIf { it.isNotBlank() }?.let(::MessageId),
         sourceMessageId = sourceMessageId.reportedSourceMessageId(),
         sourceMessageReported = sourceMessageId != TaskSourceMessageIdAbsent,
+        sourceRecorded = sourceRecorded,
         conversationChannelId = resolvedConversationChannelId?.let(::ChannelId),
         conversationAnchored = taskV2,
         conversationReplyCount = conversationReplyCount?.coerceAtLeast(0) ?: 0,

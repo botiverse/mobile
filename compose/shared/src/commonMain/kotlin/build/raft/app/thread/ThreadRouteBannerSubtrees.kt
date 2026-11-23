@@ -137,6 +137,8 @@ internal fun ThreadRouteTaskHead(
     openTaskInChannel: (TaskSummary, MessageId?, String) -> Unit,
     onOpenTaskConversationTarget: (HomeMessageOpenRequest?, String) -> Unit,
     onTaskConversationDirectory: (TaskSummary) -> SharedConversationDirectoryState,
+    viewerUserId: String? = null,
+    agentStatusResolver: RaftAgentStatusResolver? = null,
 ) {
     // The route's names for these, so the moved code reads as it did there.
     fun openTaskConversationTarget(request: HomeMessageOpenRequest?, action: String) = onOpenTaskConversationTarget(request, action)
@@ -194,5 +196,14 @@ internal fun ThreadRouteTaskHead(
             taskConversationTasksViewModel.taskHeadDelete(taskConversationTask) {
                 taskConversationHeaderViewModel?.onTaskDeleted(taskConversationTask.id, null)
             },
+        viewerUserId = viewerUserId,
+        agentStatusResolver = agentStatusResolver,
+        onOpenAssigneeProfile = { person ->
+            onOpenMemberProfile(
+                renderedThread,
+                renderedTimelineSlice,
+                MemberDetailIdentity(MemberId(person.id), person.kind, currentServerId?.takeIf { it.isNotBlank() }?.let(::ServerId)),
+            )
+        },
     )
 }

@@ -58,9 +58,9 @@ import org.robolectric.annotation.GraphicsMode
 /**
  * Task v2: a task conversation page on a 360x800dp phone (web `TaskConversationDialog`,
  * `mobile-modal`) as it opens, light and dark. On a phone the head is the conversation's first row
- * (artin 2026-11-06, #proj-mobile:ec53b56a): a short conversation opens with it above the messages
- * (title, description folded with Show More, the inline facts, History), "Beginning of
- * conversation" under it, the messages bottom-anchored on the composer; the top bar is the task's
+ * (artin 2026-11-06, #proj-mobile:ec53b56a): a short conversation opens with it at the top above
+ * the messages (title, description folded with Show More, the inline facts, History), "Beginning of
+ * replies" under it; the top bar is the task's
  * ref over "Task #7". Then the same page while typing (the keyboard, stood in for by the
  * `fill-strong` block: the list keeps its newest message on the composer, the head goes up with
  * the rest), at 2x text, and with two short replies. Verify / record as [RaftRobolectricScreenshot].
@@ -193,14 +193,14 @@ private fun TaskPhonePage(
                     Modifier.weight(1f).fillMaxWidth(),
                     state = listState,
                     reverseLayout = true,
-                    verticalArrangement = Arrangement.Bottom,
+                    verticalArrangement = Arrangement.Top,
                 ) {
                     messages.reversed().forEach { item -> item(key = item.id) { MessageCard(item) } }
                     // Reversed: the last row is the top one, where the conversation begins.
                     item(key = HeadRowKey) {
                         Column(Modifier.fillMaxWidth()) {
                             TaskConversationHeadRowContent(headRow)
-                            ThreadHistoryStatusRow(requireNotNull(threadOlderMessagesStatusSpec(canLoadMoreBefore = false)))
+                            ThreadHistoryStatusRow(requireNotNull(threadOlderMessagesStatusSpec(canLoadMoreBefore = false, replyThread = true)))
                         }
                     }
                 }
@@ -380,6 +380,7 @@ private val HeadModel =
         avatarServerId = "server-1",
         createdAt = TaskHeadDateTime(2026, 10, 28, 9, 14),
         earlierDiscussion = TaskHeadEarlierDiscussion(replyCount = 4),
+        assignee = TaskHeadAssignee(kind = MemberKind.Agent, id = "agent-lagoon", displayName = "Lagoon"),
         history =
             TaskHeadHistory.Rows(
                 listOf(

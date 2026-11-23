@@ -1067,6 +1067,12 @@ data class TaskSummary(
      * message" and only a missing field as "fall back to the host message".
      */
     val sourceMessageReported: Boolean = false,
+    /**
+     * Task v2 (slock `taskService.ts` `sourceRecorded`): whether the server recorded a source
+     * message for this task. Non-null `false` renders "Not recorded" on the Source row instead of
+     * hiding it; `null` keeps legacy omission semantics for older servers / cached rows.
+     */
+    val sourceRecorded: Boolean? = null,
     /** Task v2: the task's CANONICAL conversation channel (`channels.type = 'task'`), when it exists. */
     val conversationChannelId: ChannelId? = null,
     /** Task v2: the discussion is the task's own conversation (exists, or is created on first use). */

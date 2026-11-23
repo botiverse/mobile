@@ -553,6 +553,12 @@ private fun ThreadMessagesListContent(
             timelineSlice.focusedMessageTargetSignature()
         }
     val renderPayload = timelineSlice
+    val taskHeadRow = LocalTaskConversationHeadRow.current
+    // Web VirtualMessageTimeline sparseAnchor: task conversations start at the top when shorter than
+    // the viewport so there is no blank space above the head, while still opening at the newest
+    // message once the conversation overflows the viewport.
+    val sparseTopAnchored = taskHeadRow != null || renderPayload.taskConversationSurface
+    val currentSparseTopAnchoredState = rememberUpdatedState(sparseTopAnchored)
     // Free plan: where the shown history starts, the history paywall replaces "Beginning of conversation".
     val listHiddenHistory = rememberThreadHiddenHistory(renderPayload.historyChannelId)
     val historyPaywall = listHiddenHistory?.takeIf { renderPayload.threadHistoryReachesStart() }
@@ -2347,7 +2353,7 @@ private fun ThreadMessagesListContent(
                 ThreadBottomAutoAnchorAvailabilityState(
                     currentAllow = allowBottomAutoAnchor,
                     isScrollInProgress = listState.isScrollInProgress,
-                    isAtRenderedBottom = listState.isLatestItemAtRenderedBottom(latestItemIndex),
+                    isAtRenderedBottom = listState.isLatestItemAtRenderedBottom(latestItemIndex, allowSparseTopFit = currentSparseTopAnchoredState.value),
                     focusedAnchorOwnsViewport =
                         focusedMessageAnchorOwnsViewport(
                             pendingIdentity = pendingFocusedMessageAnchorIdentityState.value,
@@ -2385,7 +2391,7 @@ private fun ThreadMessagesListContent(
                 ThreadBottomAnchorCorrectionState(
                     allowBottomAutoAnchor = allowBottomAutoAnchor,
                     isScrollInProgress = listState.isScrollInProgress,
-                    isAtRenderedBottom = listState.isLatestItemAtRenderedBottom(latestItemIndex),
+                    isAtRenderedBottom = listState.isLatestItemAtRenderedBottom(latestItemIndex, allowSparseTopFit = currentSparseTopAnchoredState.value),
                     focusedAnchorOwnsViewport =
                         focusedMessageAnchorOwnsViewport(
                             pendingIdentity = pendingFocusedMessageAnchorIdentityState.value,
@@ -2426,6 +2432,7 @@ private fun ThreadMessagesListContent(
         controllerState = currentViewportControllerState,
         placementSettled = readingAnchorPlacementSettledState,
         newerPagePending = renderPayload.canLoadMoreAfter || newerPageCycleActive,
+        allowSparseTopFit = sparseTopAnchored,
         dispatchViewportEvent = dispatchViewportEvent,
         diagnosticsLogger = diagnosticsLogger,
     )
@@ -2617,7 +2624,10 @@ private fun ThreadMessagesListContent(
                 targetAnchorKey = anchorKey,
                 startUserScrollGeneration = startUserScrollGeneration,
                 currentUserScrollGeneration = userScrollGeneration.value,
-                isAtRenderedBottom = listState.isLatestItemAtRenderedBottom(currentLatestItemIndexState.value),
+                isAtRenderedBottom = listState.isLatestItemAtRenderedBottom(
+                    latestItemIndex = currentLatestItemIndexState.value,
+                    allowSparseTopFit = currentSparseTopAnchoredState.value,
+                ),
                 isSendingAnchorVisible = currentPayloadState.value.hasSendingLocalSendAnchor(anchorKey),
                 attempt = attempt
             )
@@ -3128,7 +3138,8 @@ private fun ThreadMessagesListContent(
                 val anchored =
                     listState.isLatestItemAtRenderedBottom(
                         latestItemIndex = initialBottomAnchorTargetItemIndex,
-                        trailingPaddingSize = initialBottomAnchorTrailingPaddingPx
+                        trailingPaddingSize = initialBottomAnchorTrailingPaddingPx,
+                        allowSparseTopFit = currentSparseTopAnchoredState.value,
                     )
                 if (anchored) {
                     diagnosticsLogger(
@@ -3152,17 +3163,17 @@ private fun ThreadMessagesListContent(
             }
             return@LaunchedEffect
         }
-        if (!allowBottomAutoAnchor && !listState.isLatestItemAtRenderedBottom(latestItemIndex)) {
+        if (!allowBottomAutoAnchor && !listState.isLatestItemAtRenderedBottom(latestItemIndex, allowSparseTopFit = currentSparseTopAnchoredState.value)) {
             return@LaunchedEffect
         }
         listState.awaitThreadMessagesLayoutStability(latestItemIndex)
-        if (listState.isScrollInProgress && !listState.isLatestItemAtRenderedBottom(latestItemIndex)) {
+        if (listState.isScrollInProgress && !listState.isLatestItemAtRenderedBottom(latestItemIndex, allowSparseTopFit = currentSparseTopAnchoredState.value)) {
             if (allowBottomAutoAnchor) {
                 allowBottomAutoAnchor = false
             }
             return@LaunchedEffect
         }
-        if (!listState.isLatestItemAtRenderedBottom(latestItemIndex)) {
+        if (!listState.isLatestItemAtRenderedBottom(latestItemIndex, allowSparseTopFit = currentSparseTopAnchoredState.value)) {
             // task #990 kill-switch: on stop-loss platforms automatic
             // correction stays silent while the keyboard is open. Read live —
             // this coroutine awaited layout stability and can outlive the rise.
@@ -3505,7 +3516,7 @@ private fun ThreadMessagesListContent(
                 resolveThreadComposerInsetViewportAction(
                     reverseLayout = listState.reverse,
                     intent = viewportControllerState.intent,
-                    tailAtRenderedBottom = listState.isLatestItemAtRenderedBottom(latestItemIndex)
+                    tailAtRenderedBottom = listState.isLatestItemAtRenderedBottom(latestItemIndex, allowSparseTopFit = currentSparseTopAnchoredState.value)
                 )
             } else {
                 null
@@ -3634,7 +3645,7 @@ private fun ThreadMessagesListContent(
                         "fitViewportPx=${focusedTailFit.viewportHeightPx} tailSpanPx=${focusedTailFit.trailingSpanPx} " +
                         "measuredViewportPx=$measuredFocusedTailViewportHeightPx " +
                         "viewportEpochCoherent=$focusedTailViewportEpochCoherent " +
-                        "renderedBottom=${listState.isLatestItemAtRenderedBottom(latestMessageListItemIndex, initialBottomAnchorTrailingPaddingPx)} " +
+                        "renderedBottom=${listState.isLatestItemAtRenderedBottom(latestMessageListItemIndex, initialBottomAnchorTrailingPaddingPx, currentSparseTopAnchoredState.value)} " +
                         "latestItemOffBottom=${listState.shouldShowThreadBackToBottom(latestItemIndex)} " +
                         "viewportIntent=${viewportControllerState.intent.threadViewportIntentDiagnosticName()} " +
                         listState.threadViewportGeometryDiagnostics(focusedTargetItemIndex)
@@ -3755,7 +3766,6 @@ private fun ThreadMessagesListContent(
             // Task v2 (every width): the head is the list's first row, at the top of the history
             // boundary row (web `mobile-modal`: the parent row over the history boundary), so it
             // moves with the conversation; the top bar summarizes the task while it is out of view.
-            val taskHeadRow = LocalTaskConversationHeadRow.current
             if (taskHeadRow != null) {
                 LaunchedEffect(taskHeadRow, listState) {
                     snapshotFlow { listState.threadTaskHeadRowInView(taskHeadRow.scrollState.rowHeadHeightPx) }
@@ -3919,7 +3929,8 @@ private fun ThreadMessagesListContent(
                                         )
                                     val settledAtBottom =
                                         listState.isLatestItemAtRenderedBottom(
-                                            currentLatestItemIndexState.value
+                                            latestItemIndex = currentLatestItemIndexState.value,
+                                            allowSparseTopFit = currentSparseTopAnchoredState.value,
                                         )
                                     dispatchViewportEvent(
                                         LazyViewportEvent.PointerSettled(
@@ -3941,7 +3952,7 @@ private fun ThreadMessagesListContent(
                             revealLatestLocalSendBeforeInitialAnchor = revealLatestLocalSendBeforeInitialAnchor
                         )
                     ),
-                verticalArrangement = Arrangement.Bottom,
+                verticalArrangement = if (sparseTopAnchored) Arrangement.Top else Arrangement.Bottom,
                 contentPadding =
                     PaddingValues(
                         top =
@@ -5573,6 +5584,7 @@ private fun ThreadTypingLineEndEffect(
     controllerState: State<LazyViewportControllerState>,
     placementSettled: State<Boolean>,
     newerPagePending: Boolean,
+    allowSparseTopFit: Boolean = false,
     dispatchViewportEvent: (LazyViewportEvent) -> Unit,
     diagnosticsLogger: (String) -> Unit,
 ) {
@@ -5581,7 +5593,7 @@ private fun ThreadTypingLineEndEffect(
         if (seen.shown != lineShown) {
             seen.shown = lineShown
             val endInView = listState.listEndInView()
-            val restsOnEnd = listState.restsOnListEnd()
+            val restsOnEnd = listState.restsOnListEnd(allowSparseTopFit = allowSparseTopFit)
             val intent = controllerState.value.intent
             val follow =
                 threadTypingLineEndFollowsLatest(
@@ -5633,8 +5645,9 @@ private fun ThreadListViewport.threadViewportGeometryDiagnostics(targetIndex: In
 
 internal fun ThreadListViewport.isLatestItemAtRenderedBottom(
     latestItemIndex: Int,
-    trailingPaddingSize: Int = 0
-): Boolean = threadItemAtRenderedBottom(layoutInfo, latestItemIndex, trailingPaddingSize)
+    trailingPaddingSize: Int = 0,
+    allowSparseTopFit: Boolean = false,
+): Boolean = threadItemAtRenderedBottom(layoutInfo, latestItemIndex, trailingPaddingSize, allowSparseTopFit)
 
 /**
  * The list rests on its end in the last layout: the end row under the newest message is laid out
@@ -5642,10 +5655,16 @@ internal fun ThreadListViewport.isLatestItemAtRenderedBottom(
  * ([isLatestItemAtRenderedBottom]). Found by its key, so a row appended in the same composition (an
  * agent's reply landing as its typing line goes) does not hide it behind a stale index.
  */
-private fun ThreadListViewport.restsOnListEnd(): Boolean {
+private fun ThreadListViewport.restsOnListEnd(allowSparseTopFit: Boolean = false): Boolean {
     val info = layoutInfo
     val end = info.visibleItemsInfo.firstOrNull { it.key == ThreadBottomScrollPaddingListItemKey } ?: return false
-    return kotlin.math.abs(end.offset + end.size - info.viewportEndOffset) <= ThreadBackToBottomTolerancePx
+    val endBottom = end.offset + end.size
+    if (kotlin.math.abs(endBottom - info.viewportEndOffset) <= ThreadBackToBottomTolerancePx) return true
+    if (!allowSparseTopFit) return false
+    val firstVisible = info.visibleItemsInfo.firstOrNull() ?: return false
+    return firstVisible.index == 0 &&
+        firstVisible.offset >= 0 &&
+        endBottom <= info.viewportEndOffset + ThreadBackToBottomTolerancePx
 }
 
 /**
