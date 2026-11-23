@@ -200,9 +200,13 @@ private val ThreadComposerIconSize = 18.dp
 // raft-ui 0.59 `Composer`: `px-3 pt-3` round the text and `pb-[calc(var(--control-embedded-inset)-1px)]`
 // under the toolbar; `--control-embedded-inset` is how far the toolbar's buttons sit inside the
 // card's outer edge (raft-design Shape > Inside a frame). `ComposerInput` adds its own `px-0.5`.
-private val ThreadComposerCardPadding = 12.dp
+// The frame's `border-[1.5px]` sits outside that padding (CSS border-box), so the text and the
+// toolbar keep 12dp / the embedded inset from the border's inner edge; `raftControlSurface` draws
+// its border inside the box, so the padding adds the border's width.
+private val ThreadComposerCardBorder = RaftAppStroke.Control
+private val ThreadComposerCardPadding = 12.dp + ThreadComposerCardBorder
 private val ThreadComposerEmbeddedInset = 6.dp
-private val ThreadComposerCardPaddingBottom = ThreadComposerEmbeddedInset - 1.dp
+private val ThreadComposerCardPaddingBottom = ThreadComposerEmbeddedInset - 1.dp + ThreadComposerCardBorder
 private val ThreadComposerInputPaddingHorizontal = 2.dp
 // raft-ui `ComposerActions` / `ComposerMeta`: `gap-embedded-inset`. Buttons embedded in the frame
 // sit as far apart as they sit from its edge (raft-design #810, shape.md "The space is even on
