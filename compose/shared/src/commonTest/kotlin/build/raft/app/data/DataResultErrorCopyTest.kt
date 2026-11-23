@@ -139,6 +139,10 @@ class DataResultErrorCopyTest {
             "This item could not be found. It may have been moved or deleted.",
             ScreenError(code = "http_404", retryable = false).userFacingMessage(errorStrings)
         )
+        assertEquals(
+            "This item could not be found. It may have been moved or deleted.",
+            ScreenError(code = "tasks_amend_404", retryable = false).userFacingMessage(errorStrings)
+        )
     }
 
     @Test
@@ -178,6 +182,28 @@ class DataResultErrorCopyTest {
                 serverCode = "unauthenticated",
             ).userFacingMessage(errorStrings)
         )
+        assertEquals(
+            "Your session expired. Sign in again to continue.",
+            ScreenError(
+                code = "UNAUTHENTICATED",
+                retryable = false,
+                serverMessage = "Invalid JWT",
+            ).userFacingMessage(errorStrings)
+        )
+        assertEquals(
+            "Your session expired. Sign in again to continue.",
+            PermissionBlocker(
+                code = "unauthenticated",
+                serverMessage = "Invalid bearer token",
+            ).userFacingMessage(errorStrings)
+        )
+        assertEquals(
+            "Your session expired. Sign in again to continue.",
+            PermissionBlocker(
+                code = "AUTH_REQUIRED",
+                serverMessage = "Invalid bearer token",
+            ).userFacingMessage(errorStrings)
+        )
         // Real server refusal codes containing "host", "auth", "rate", or "mismatch" must never be
         // misclassified as local network/auth/parse/rate-limit errors.
         assertEquals(
@@ -207,15 +233,90 @@ class DataResultErrorCopyTest {
                 serverCode = "oauth_provider_disabled",
             ).userFacingMessage(errorStrings)
         )
+        assertEquals(
+            "Federated channels require Pro.",
+            PermissionBlocker(
+                code = "federated_channel_forbidden",
+                serverMessage = "Federated channels require Pro.",
+            ).userFacingMessage(errorStrings)
+        )
+        assertEquals(
+            "You do not have permission to view this page.",
+            PermissionBlocker(
+                code = "server_mismatch",
+                requiredCapability = "selected_server",
+            ).userFacingMessage(errorStrings)
+        )
     }
 
     @Test
     fun serverFaultsHtmlAndStackTracesNeverLeakThroughScreenErrorOrPermissionBlocker() {
+        val unavailable = "The server is unavailable right now. Please try again shortly."
         assertEquals(
-            "The server is temporarily unavailable. Please try again later.",
+            unavailable,
             ScreenError(
                 code = "http_500",
                 serverMessage = "SQLSTATE[42P01]: relation missing",
+            ).userFacingMessage(errorStrings)
+        )
+        assertEquals(
+            unavailable,
+            ScreenError(
+                code = "tasks_500",
+                serverMessage = "database deadlock",
+            ).userFacingMessage(errorStrings)
+        )
+        assertEquals(
+            unavailable,
+            ScreenError(
+                code = "tasks_amend_502",
+                serverMessage = "upstream bad gateway",
+            ).userFacingMessage(errorStrings)
+        )
+        assertEquals(
+            unavailable,
+            ScreenError(
+                code = "504",
+                serverMessage = "gateway timeout",
+            ).userFacingMessage(errorStrings)
+        )
+        assertEquals(
+            unavailable,
+            ScreenError(
+                code = "server_unavailable",
+                serverCode = "server_unavailable",
+                serverMessage = "upstream pool exhausted",
+            ).userFacingMessage(errorStrings)
+        )
+        assertEquals(
+            unavailable,
+            ScreenError(
+                code = "http_409",
+                serverCode = "server_unavailable",
+                serverMessage = "upstream pool exhausted",
+            ).userFacingMessage(errorStrings)
+        )
+        assertEquals(
+            unavailable,
+            PermissionBlocker(
+                code = "http_403",
+                serverCode = "server_unavailable",
+                serverMessage = "upstream pool exhausted",
+            ).userFacingMessage(errorStrings)
+        )
+        assertEquals(
+            unavailable,
+            PermissionBlocker(
+                code = "http_500",
+                serverMessage = "raw 500 body",
+            ).userFacingMessage(errorStrings)
+        )
+        assertEquals(
+            "Your session expired. Sign in again to continue.",
+            ScreenError(
+                code = "http_401",
+                serverCode = "internal_error",
+                serverMessage = "raw auth stack",
             ).userFacingMessage(errorStrings)
         )
         assertEquals(

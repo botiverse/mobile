@@ -206,37 +206,48 @@ internal fun ScreenError.errorPresentation(): ErrorPresentation {
         // localized network-blocked sentence always wins.
         return ErrorPresentation(
             key = ErrorPresentationKey.EdgeBlocked,
-            rawServerMessage = serverMessage,
-            rawServerMessagePriority = RawServerMessagePriority.LocalizedCopyFirst,
-            traceId = traceId,
-        )
-    }
-    val serverCodeKey = serverCode.serverCodePresentationKeyOrNull()
-    val codeKey =
-        if (!normalizedServerCode.isNullOrEmpty() && normalizedCode == normalizedServerCode) {
-            serverCodeKey
-        } else {
-            code.errorPresentationKeyOrNull()
-        }
-    val isServerFault =
-        normalizedServerCode == "internal_error" ||
-        normalizedCode == "internal_error" ||
-        serverCodeKey == ErrorPresentationKey.ServerUnavailable ||
-        codeKey == ErrorPresentationKey.ServerUnavailable
-    if (isServerFault) {
-        return ErrorPresentation(
-            key =
-                if (serverCodeKey == ErrorPresentationKey.ServerUnavailable || codeKey == ErrorPresentationKey.ServerUnavailable) {
-                    ErrorPresentationKey.ServerUnavailable
-                } else {
-                    ErrorPresentationKey.Generic
-                },
             rawServerMessage = null,
             rawServerMessagePriority = RawServerMessagePriority.LocalizedCopyFirst,
             traceId = traceId,
         )
     }
-    // Tier 1 (infrastructure/auth/network/parse/version): localized copy always wins.
+    val serverCodeKey = serverCode.serverCodePresentationKeyOrNull()
+    val codeExactKey = code.serverCodePresentationKeyOrNull()
+    val codeKey =
+        if (!normalizedServerCode.isNullOrEmpty() && normalizedCode == normalizedServerCode) {
+            serverCodeKey
+        } else {
+            codeExactKey ?: code.errorPresentationKeyOrNull()
+        }
+    // Tier 1a (401 / auth session): localized session-expired copy always wins (matches
+    // PermissionBlocker and ServerRefusalResolver ordering).
+    if (
+        serverCodeKey == ErrorPresentationKey.SessionExpired ||
+        codeKey == ErrorPresentationKey.SessionExpired ||
+        normalizedCode.isAuthSessionErrorCode() ||
+        normalizedServerCode.isAuthSessionErrorCode()
+    ) {
+        return ErrorPresentation(
+            key = ErrorPresentationKey.SessionExpired,
+            rawServerMessage = null,
+            rawServerMessagePriority = RawServerMessagePriority.LocalizedCopyFirst,
+            traceId = traceId,
+        )
+    }
+    // Tier 1b (5xx / server_unavailable / internal_error): never surface raw server text.
+    val isServerUnavailable =
+        serverCodeKey == ErrorPresentationKey.ServerUnavailable ||
+        codeKey == ErrorPresentationKey.ServerUnavailable ||
+        normalizedCode.isHttp5xxPresentationCode()
+    if (isServerUnavailable || normalizedServerCode == "internal_error" || normalizedCode == "internal_error") {
+        return ErrorPresentation(
+            key = if (isServerUnavailable) ErrorPresentationKey.ServerUnavailable else ErrorPresentationKey.Generic,
+            rawServerMessage = null,
+            rawServerMessagePriority = RawServerMessagePriority.LocalizedCopyFirst,
+            traceId = traceId,
+        )
+    }
+    // Tier 1c (network/dns/timeout/parse/version): localized copy always wins.
     val infraKey = listOfNotNull(codeKey, serverCodeKey).firstOrNull { it.isInfrastructureLocalizedOnly() }
     if (infraKey != null) {
         return ErrorPresentation(
@@ -278,7 +289,7 @@ internal fun PermissionBlocker.errorPresentation(): ErrorPresentation {
     ) {
         return ErrorPresentation(
             key = ErrorPresentationKey.EdgeBlocked,
-            rawServerMessage = serverMessage,
+            rawServerMessage = null,
             rawServerMessagePriority = RawServerMessagePriority.LocalizedCopyFirst,
             traceId = traceId,
         )
@@ -286,6 +297,7 @@ internal fun PermissionBlocker.errorPresentation(): ErrorPresentation {
     if (
         isAuthSessionBlocker() ||
         normalizedCode.isHttpStatusPresentationCode(401) ||
+        normalizedCode.isAuthSessionErrorCode() ||
         normalizedServerCode.isAuthSessionErrorCode()
     ) {
         return ErrorPresentation(
@@ -295,22 +307,23 @@ internal fun PermissionBlocker.errorPresentation(): ErrorPresentation {
             traceId = traceId,
         )
     }
-    if (normalizedServerCode == "internal_error" || normalizedCode == "internal_error") {
+    val serverCodeKey = serverCode.serverCodePresentationKeyOrNull()
+    val codeExactKey = code.serverCodePresentationKeyOrNull()
+    val isServerUnavailable =
+        serverCodeKey == ErrorPresentationKey.ServerUnavailable ||
+        codeExactKey == ErrorPresentationKey.ServerUnavailable ||
+        normalizedCode.isHttp5xxPresentationCode()
+    if (isServerUnavailable || normalizedServerCode == "internal_error" || normalizedCode == "internal_error") {
         return ErrorPresentation(
-            key = ErrorPresentationKey.Generic,
+            key = if (isServerUnavailable) ErrorPresentationKey.ServerUnavailable else ErrorPresentationKey.Generic,
             rawServerMessage = null,
             rawServerMessagePriority = RawServerMessagePriority.LocalizedCopyFirst,
             traceId = traceId,
         )
     }
-    val serverCodeKey = serverCode.serverCodePresentationKeyOrNull()
-    val codeKey =
-        if (!normalizedServerCode.isNullOrEmpty() && normalizedCode == normalizedServerCode) {
-            serverCodeKey
-        } else {
-            code.errorPresentationKeyOrNull()
-        }
-    val specificDomainKey = listOfNotNull(serverCodeKey, codeKey).firstOrNull { it.isSpecificLocalizedDomainCode() }
+    // Only exact wire-code matches override PermissionDenied (never substring heuristics such as
+    // `"rate"` or `"mismatch"` that would misclassify `federated_*` or `server_mismatch`).
+    val specificDomainKey = listOfNotNull(serverCodeKey, codeExactKey).firstOrNull { it.isSpecificLocalizedDomainCode() }
     if (specificDomainKey != null) {
         return ErrorPresentation(
             key = specificDomainKey,
@@ -367,6 +380,8 @@ internal fun String?.serverCodePresentationKeyOrNull(): ErrorPresentationKey? =
         "auth_required",
         "auth_session",
         "unauthenticated" -> ErrorPresentationKey.SessionExpired
+        "server_unavailable",
+        "service_unavailable" -> ErrorPresentationKey.ServerUnavailable
         "attachment_too_large",
         "upload_too_large" -> ErrorPresentationKey.AttachmentTooLarge
         "file_upload_quota_exceeded",
@@ -421,9 +436,9 @@ internal fun String?.errorPresentationKeyOrNull(): ErrorPresentationKey? {
             ErrorPresentationKey.RequestTimedOut
         "network" in lower || "socket" in lower || lower == "code_0" || lower == "0" ->
             ErrorPresentationKey.NetworkConnectionFailed
-        "server_unavailable" in lower || "http_5" in lower || lower.endsWith("_503") ->
+        "server_unavailable" in lower || "service_unavailable" in lower || lower.isHttp5xxPresentationCode() ->
             ErrorPresentationKey.ServerUnavailable
-        "not_found" in lower || "http_404" in lower ->
+        "not_found" in lower || lower.isHttpStatusPresentationCode(404) ->
             ErrorPresentationKey.ItemNotFound
         lower.isHttpStatusPresentationCode(403) || "permission" in lower || "forbidden" in lower ||
             "admin_required" in lower || "no_permission" in lower -> ErrorPresentationKey.PermissionDenied
@@ -448,8 +463,12 @@ internal fun String?.errorPresentationKeyOrNull(): ErrorPresentationKey? {
 private fun String.isHttpStatusPresentationCode(status: Int): Boolean =
     this == status.toString() || this == "http_$status" || endsWith("_$status")
 
+private fun String.isHttp5xxPresentationCode(): Boolean =
+    matches(Regex("(^|.*_)5\\d\\d$"))
+
 private fun String.looksLikeErrorCode(): Boolean =
     matches(Regex("[a-z0-9_]+")) ||
+        matches(Regex("[A-Z0-9_]+")) ||
         matches(Regex("[a-zA-Z]+_[a-zA-Z0-9_]+")) ||
         matches(Regex("http_\\d+")) ||
         matches(Regex("\\d+"))
