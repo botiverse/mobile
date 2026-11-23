@@ -203,4 +203,37 @@ class QuoteReplyParserTest {
         assertEquals("My own answer here.", stripLeadingQuoteReplyBlocks(reply))
         assertEquals(WholeMessageQuoteExcerpt(excerpt = "My own answer here.", truncated = false), buildWholeMessageQuoteExcerpt(reply))
     }
+
+    @Test
+    fun serializeInlineQuoteBlocksJoinsInterleavedQuotesAndTextCanonically() {
+        val wire =
+            serializeInlineQuoteBlocks(
+                listOf(
+                    InlineQuoteComposeSegment.Text("  Intro line  "),
+                    InlineQuoteComposeSegment.Quote("First point\r\nsecond line", "54A733DE-0001-4000-8000-000000000001"),
+                    InlineQuoteComposeSegment.Text("Answer 1"),
+                    InlineQuoteComposeSegment.Quote("Second point", "91C2B8AA-2222-4222-8222-222222222222"),
+                    InlineQuoteComposeSegment.Text(""),
+                    InlineQuoteComposeSegment.Quote("Third point", "DEADBEEF-3333-4333-8333-333333333333"),
+                    InlineQuoteComposeSegment.Text("Final answer"),
+                )
+            )
+        assertEquals(
+            "Intro line\n\n> First point\n> second line\n> msg=54a733de\n\nAnswer 1\n\n> Second point\n> msg=91c2b8aa\n\n> Third point\n> msg=deadbeef\n\nFinal answer",
+            wire,
+        )
+        val parsed = parseMessageQuoteSegments(wire).filterIsInstance<MessageQuoteSegment.QuoteBlock>()
+        assertEquals(listOf("54a733de", "91c2b8aa", "deadbeef"), parsed.map { it.refId })
+        assertEquals(listOf("First point\nsecond line", "Second point", "Third point"), parsed.map { it.excerpt })
+    }
+
+    @Test
+    fun quoteChipExcerptPrefixesPartialSelectionsWithoutDoublingEllipsis() {
+        assertEquals("…picked words", quoteChipExcerpt("  picked\n  words  ", isPartial = true))
+        assertEquals("…already prefixed", quoteChipExcerpt("…already prefixed", isPartial = true))
+        assertEquals("…...ascii ellipsis", quoteChipExcerpt("...ascii ellipsis", isPartial = true))
+        assertEquals("whole opening line", quoteChipExcerpt("whole\nopening\tline", isPartial = false))
+        assertEquals("", quoteChipExcerpt("   \n\t ", isPartial = true))
+        assertEquals("hello world", normalizeQuoteExcerptKey("  Hello\r\n   WORLD "))
+    }
 }

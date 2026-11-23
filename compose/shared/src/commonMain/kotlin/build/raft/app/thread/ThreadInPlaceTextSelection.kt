@@ -124,6 +124,12 @@ internal class ThreadInPlaceTextSelectionHost(
      */
     var quoteIntoComposer by mutableStateOf<((String) -> Unit)?>(null)
 
+    /**
+     * Structured quote-reply insertion (quote_reply_v0 multi-quote chips) with plain-blockquote
+     * fallback when the flag is off. Null when the page shows no composer.
+     */
+    var insertQuoteIntoComposer by mutableStateOf<((ThreadComposerQuoteInsert) -> Unit)?>(null)
+
     /** The thread list's visible viewport in window space; the bar never leaves it. */
     var viewportInWindow by mutableStateOf<Rect?>(null)
         private set
@@ -795,8 +801,10 @@ internal fun ThreadInPlaceSelectableBody(
         )
     if (toolbarKind != ThreadInPlaceSelectionToolbarKind.None) {
         val quoteIntoComposer = host.quoteIntoComposer
+        val insertQuoteIntoComposer = host.insertQuoteIntoComposer
+        val quoteReplyHost = LocalThreadQuoteReplyHost.current
         val request =
-            remember(controller, fullMessageText, wholeMessageText, host, quoteIntoComposer) {
+            remember(controller, fullMessageText, wholeMessageText, host, quoteIntoComposer, insertQuoteIntoComposer, quoteReplyHost) {
                 // The text Copy copies, and Quote quotes: the selection, or the whole message.
                 val selectionText = {
                     threadInPlaceSelectionCopyText(
@@ -833,17 +841,45 @@ internal fun ThreadInPlaceSelectableBody(
                         threadInPlaceSelectionCoversAll(controller.selectedTexts(), controller.selectableTexts())
                     },
                     quoteSelection =
-                        quoteIntoComposer?.let { quote ->
+                        if (insertQuoteIntoComposer != null || quoteIntoComposer != null) {
                             {
-                                // Select Text > Quote's formatter and composer append: a quote reply
-                                // of a sent message (web selection quote with its source message).
-                                val text = threadSelectionQuote(selectionText(), controller.messageId)
-                                diagnosticsLogger(
-                                    "thread_in_place_selection_quote messageId=${controller.messageId} chars=${text.length}"
-                                )
-                                if (text.isNotEmpty()) quote(text)
+                                val selected = selectionText()
+                                val coversAll =
+                                    threadInPlaceSelectionCoversAll(
+                                        controller.selectedTexts(),
+                                        controller.selectableTexts(),
+                                    )
+                                if (insertQuoteIntoComposer != null) {
+                                    val sourceMessage = quoteReplyHost.lookupMessage(controller.messageId)
+                                    val insert =
+                                        threadSelectionQuoteInsert(
+                                            selectedText = selected,
+                                            markdown = sourceMessage?.body ?: fullMessageText.orEmpty(),
+                                            message = sourceMessage,
+                                            quoteReplyEnabled = quoteReplyHost.enabled,
+                                            isPartialOverride = !coversAll,
+                                        )
+                                    diagnosticsLogger(
+                                        "thread_in_place_selection_quote messageId=${controller.messageId} " +
+                                            "structured=${insert.quote != null} chars=${(insert.quote?.excerpt ?: insert.fallbackMarkdown).length}"
+                                    )
+                                    insertQuoteIntoComposer(insert)
+                                } else {
+                                    val text =
+                                        if (quoteReplyHost.enabled) {
+                                            threadSelectionQuote(selected, controller.messageId)
+                                        } else {
+                                            formatThreadMessageQuote(selected)
+                                        }
+                                    diagnosticsLogger(
+                                        "thread_in_place_selection_quote messageId=${controller.messageId} chars=${text.length}"
+                                    )
+                                    if (text.isNotEmpty()) quoteIntoComposer?.invoke(text)
+                                }
                                 controller.clear()
                             }
+                        } else {
+                            null
                         }
                 )
             }

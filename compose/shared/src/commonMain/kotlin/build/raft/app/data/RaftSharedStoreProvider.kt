@@ -824,8 +824,9 @@ internal class RaftSharedStoreProvider private constructor(
                 if (artifactSummaryStoreLazy.isInitialized()) artifactSummaryStore.clearAll()
                 if (artifactScreenshotStoreLazy.isInitialized()) artifactScreenshotStore.clearAll()
                 artifactScreenshotDiskCache.clearAllAsync(threadSendScope)
-                // Quote replies' resolved quotes: per viewer, session only.
+                // Quote replies' resolved quotes and composer quote metadata: per viewer, session only.
                 if (resolvedQuotesStoreLazy.isInitialized()) resolvedQuotesStore.clearAll()
+                build.raft.app.ThreadComposerQuoteMetaCache.clear()
                 // The Artifact viewer's headers and its kept WebView (Tenny's cache rule 1).
                 build.raft.app.RaftArtifactViewerMemory.clear()
                 build.raft.app.raftWebViewKeepAliveClear()

@@ -295,6 +295,50 @@ internal fun serializeInlineQuoteReply(excerpt: String, targetMessageId: String,
     return if (body.isNotEmpty()) "$quoteLines\n> msg=$shortId\n\n$body" else "$quoteLines\n> msg=$shortId"
 }
 
+/** web `InlineQuoteComposeSegment` (botiverse/slock #16027): one text or quote piece of a multi-quote composer draft. */
+internal sealed interface InlineQuoteComposeSegment {
+    data class Text(val text: String) : InlineQuoteComposeSegment
+
+    data class Quote(val excerpt: String, val targetMessageId: String) : InlineQuoteComposeSegment
+}
+
+/**
+ * web `serializeInlineQuoteBlocks` (botiverse/slock #16027): serialize an ordered sequence of
+ * interleaved text and same-conversation quote blocks into the canonical Markdown wire format
+ * (`> <excerpt>\n> msg=<shortId>` separated by blank lines), isomorphic with Agent CLI messages.
+ */
+internal fun serializeInlineQuoteBlocks(segments: List<InlineQuoteComposeSegment>): String {
+    val parts = mutableListOf<String>()
+    for (seg in segments) {
+        when (seg) {
+            is InlineQuoteComposeSegment.Quote -> {
+                val serialized = serializeInlineQuoteReply(seg.excerpt, seg.targetMessageId, "")
+                if (serialized.isNotEmpty()) parts += serialized
+            }
+            is InlineQuoteComposeSegment.Text -> {
+                val trimmed = seg.text.jsTrim()
+                if (trimmed.isNotEmpty()) parts += trimmed
+            }
+        }
+    }
+    return parts.joinToString("\n\n")
+}
+
+/**
+ * web `quoteChipExcerpt` (botiverse/slock #16210, `quoteChipModel.ts`): single-line excerpt for a
+ * quote chip; a selected passage (`isPartial`) starts with `…` so it reads differently from a whole
+ * message.
+ */
+internal fun quoteChipExcerpt(excerpt: String, isPartial: Boolean): String {
+    val oneLine = excerpt.replace(JsWhitespaceRun, " ").jsTrim()
+    if (!isPartial || oneLine.isEmpty()) return oneLine
+    return if (oneLine.startsWith("…")) oneLine else "…$oneLine"
+}
+
+/** web `normalizeExcerptKey` (`composerQuoteModel.ts`): duplicate quote comparison key. */
+internal fun normalizeQuoteExcerptKey(excerpt: String): String =
+    excerpt.replace(JsWhitespaceRun, " ").jsTrim().lowercase()
+
 /** web `TRUNCATED_QUOTE_REF_LINE_RE`, matched against a whole trimmed quote line: a `msg=` ref a preview cut, ending in `…`. */
 private val TruncatedQuoteRefLine =
     Regex("msg=(?:[0-9a-f]{0,8}|[0-9a-f]{8}-[0-9a-f-]{0,28})…", RegexOption.IGNORE_CASE)

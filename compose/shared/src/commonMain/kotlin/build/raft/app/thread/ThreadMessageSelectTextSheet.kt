@@ -139,6 +139,7 @@ internal fun ThreadMessageSelectTextSheet(
     onCopy: (String) -> Unit,
     onQuote: ((String) -> Unit)?,
     quoteMessageId: String? = null,
+    onQuoteSelection: ((String) -> Unit)? = null,
 ) {
     RaftDesignSystemTheme {
         ThreadMessageSelectTextSheetContent(
@@ -151,6 +152,7 @@ internal fun ThreadMessageSelectTextSheet(
             onQuote = onQuote,
             inWindow = true,
             quoteMessageId = quoteMessageId,
+            onQuoteSelection = onQuoteSelection,
         )
     }
 }
@@ -168,6 +170,7 @@ internal fun ThreadMessageSelectTextSheetContent(
     inWindow: Boolean,
     modifier: Modifier = Modifier,
     quoteMessageId: String? = null,
+    onQuoteSelection: ((String) -> Unit)? = null,
 ) {
     val selection = remember { RaftNativeTextSelection() }
     val press = remember { ThreadSelectTextPressSelection() }
@@ -197,10 +200,17 @@ internal fun ThreadMessageSelectTextSheetContent(
             size = RaftButtonSize.Lg,
             leadingIcon = { RaftSlotIcon(RaftLucideIconName.Copy) },
         )
-        if (onQuote != null) {
+        if (onQuoteSelection != null || onQuote != null) {
             RaftButton(
                 text = stringResource(Res.string.thread_action_quote),
-                onClick = { onQuote(threadSelectTextSheetQuote(press.take(selection::selectedText), markdown, quoteMessageId)) },
+                onClick = {
+                    val picked = press.take(selection::selectedText)
+                    if (onQuoteSelection != null) {
+                        onQuoteSelection(picked)
+                    } else {
+                        onQuote?.invoke(threadSelectTextSheetQuote(picked, markdown, quoteMessageId))
+                    }
+                },
                 modifier = Modifier.weight(1f).threadSelectTextPressSnapshot(press, selection),
                 size = RaftButtonSize.Lg,
                 leadingIcon = { RaftSlotIcon(RaftLucideIconName.TextQuote) },

@@ -118,7 +118,9 @@ internal class ThreadRouteComposerActions(
             replaceAttachmentIdsByLocalId
         )
 
-    fun performComposerSend(): Boolean {
+    fun performComposerSend(
+        optimisticResolvedQuotes: Map<String, build.raft.app.model.ResolvedInlineQuote>? = null,
+    ): Boolean {
         val currentComposer = currentComposerPayload()
         val currentDraftState = composerDraftViewModel.state.value
         val composerInstanceId = currentComposer.instanceId.ifBlank { payload.instanceId }
@@ -211,7 +213,8 @@ internal class ThreadRouteComposerActions(
                 localMessageId = localMessageId,
                 context = pendingContext,
                 session = currentSession,
-                timestampLabel = localTimestampLabel
+                timestampLabel = localTimestampLabel,
+                resolvedQuotes = optimisticResolvedQuotes,
             )
         if (
             !threadViewModel.admitLocalSend(
@@ -329,7 +332,7 @@ internal class ThreadRouteComposerActions(
                     externalShareSendRequested = false
                     externalShareExpectedAuthority = null
                     if (stillCurrent) {
-                        performComposerSend()
+                        performComposerSend(request.optimisticResolvedQuotes)
                     } else {
                         bridge.logWarn(
                             "external_share_send_rejected reason=auth_generation_changed_before_send"
@@ -339,7 +342,7 @@ internal class ThreadRouteComposerActions(
             }
             return ThreadComposerSendAdmission.Deferred
         }
-        return if (performComposerSend()) {
+        return if (performComposerSend(request.optimisticResolvedQuotes)) {
             ThreadComposerSendAdmission.Started
         } else {
             ThreadComposerSendAdmission.Rejected

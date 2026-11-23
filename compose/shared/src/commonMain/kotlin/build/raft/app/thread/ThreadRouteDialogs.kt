@@ -63,6 +63,7 @@ internal fun ThreadRouteDialogs(
     data: SharedThreadRouteContentData,
     labels: ThreadRouteLabels,
     selectionQuoteTarget: ThreadSelectTextQuoteTarget,
+    quoteReplyHost: ThreadQuoteReplyHost,
     payload: RaftThreadScreenPayload,
     resolvedMessageBodyTextStyle: TextStyle,
     composerDraftViewModel: SharedThreadComposerDraftViewModel,
@@ -119,10 +120,11 @@ internal fun ThreadRouteDialogs(
         // Same time source as the message list: the live provider when there is one, else the payload's.
         val timeContext =
             currentRaftDateTimeContext(null) ?: payload.toRaftTimeCapabilities().staticContext()
+        val localizedSenderName = message.localizedAuthorName()
         key(message.id, message.body) {
             ThreadMessageSelectTextSheet(
                 markdown = message.body,
-                senderName = message.localizedAuthorName(),
+                senderName = localizedSenderName,
                 timeLabel = formatThreadCompactTimestampLabel(message.timestampLabel, timeContext),
                 textStyle = resolvedMessageBodyTextStyle,
                 onDismiss = { textSelectionMessage = null },
@@ -131,22 +133,31 @@ internal fun ThreadRouteDialogs(
                     bridge.copyToPasteboard(text)
                     bridge.briefToast(copiedLabel)
                 },
-                onQuote =
+                onQuote = null,
+                onQuoteSelection =
                     if (quoteTarget == ThreadSelectTextQuoteTarget.None) {
                         null
                     } else {
-                        { quote ->
+                        { selectedText ->
                             // Close first so the sheet's window gives the composer its focus back.
                             textSelectionMessage = null
+                            val insert =
+                                threadSelectionQuoteInsert(
+                                    selectedText = selectedText,
+                                    markdown = message.body,
+                                    message = message,
+                                    authorName = localizedSenderName,
+                                    quoteReplyEnabled = quoteReplyHost.enabled,
+                                )
                             bridge.log(
                                 "thread_select_text_quote messageId=${message.id} target=${quoteTarget.name} " +
-                                    "chars=${quote.length}"
+                                    "structured=${insert.quote != null} chars=${(insert.quote?.excerpt ?: insert.fallbackMarkdown).length}"
                             )
-                            composerDraftViewModel.dispatch(SharedThreadComposerDraftIntent.AppendQuote(quote))
+                            quoteReplyHost.requestInsertQuote(insert)
                         }
                     },
                 // A sent message's quote points at it (web MessageSelectTextDrawer `messageId`).
-                quoteMessageId = message.id.takeIf { message.canQuoteReply() }
+                quoteMessageId = message.id.takeIf { quoteReplyHost.enabled && message.canQuoteReply() }
             )
         }
     }

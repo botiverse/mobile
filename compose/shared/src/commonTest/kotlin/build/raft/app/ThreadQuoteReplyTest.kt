@@ -1,11 +1,19 @@
 package build.raft.app
 
 import build.raft.app.data.MessageQuoteSegment
+import build.raft.app.data.StoredAuthUser
 import build.raft.app.data.parseMessageQuoteSegments
+import build.raft.app.model.AvatarReference
+import build.raft.app.model.MemberId
+import build.raft.app.model.MemberKind
+import build.raft.app.model.MemberProfile
 import build.raft.app.model.ResolvedInlineQuote
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertNotNull
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 /**
  * Quote replies in the thread (web QuoteReplyBlocks, MessageItem's Quote, the selection quote): which
@@ -68,6 +76,134 @@ class ThreadQuoteReplyTest {
         assertEquals(
             "> Ship it.…\n> msg=91c2b8aa",
             threadSelectTextSheetQuote(selectedText = "", markdown = "Ship it.\nToday.", quoteMessageId = sentId),
+        )
+    }
+
+    @Test
+    fun structuredMenuAndSelectionQuotesRespectFlagAndWholeVsPartial() {
+        val message =
+            RaftThreadMessageItem(
+                id = sentId,
+                authorId = "agent-sage",
+                authorName = "Sage",
+                authorKind = "agent",
+                timestampLabel = "2026-11-22T09:00:00Z",
+                body = "First line.\nSecond line.",
+            )
+        val pending = threadMessageMenuPendingQuote(message)
+        assertNotNull(pending)
+        assertEquals(sentId, pending.messageId)
+        assertEquals("Sage", pending.authorName)
+        assertEquals("agent", pending.authorType)
+        assertEquals("First line.…", pending.excerpt)
+        assertFalse(pending.isPartial)
+
+        val partialInsert =
+            threadSelectionQuoteInsert(
+                selectedText = "First",
+                markdown = message.body,
+                message = message,
+                quoteReplyEnabled = true,
+            )
+        assertNotNull(partialInsert.quote)
+        assertEquals("First", partialInsert.quote?.excerpt)
+        assertTrue(partialInsert.quote?.isPartial == true)
+
+        val flagOffInsert =
+            threadSelectionQuoteInsert(
+                selectedText = "First",
+                markdown = message.body,
+                message = message,
+                quoteReplyEnabled = false,
+            )
+        assertNull(flagOffInsert.quote)
+        assertEquals("> First", flagOffInsert.fallbackMarkdown)
+    }
+
+    @Test
+    fun quoteChipAvatarResolutionMatchesLoadedMessageOrSingleUniqueNameAndNeverGuesses() {
+        val aliceOne = MemberProfile(id = MemberId("u-alice-1"), displayName = "Alice", handle = "alice1", kind = MemberKind.Human, avatar = AvatarReference.Url("https://cdn/a1.png"))
+        val aliceTwo = MemberProfile(id = MemberId("u-alice-2"), displayName = "Alice", handle = "alice2", kind = MemberKind.Human, avatar = AvatarReference.Url("https://cdn/a2.png"))
+        val bob = MemberProfile(id = MemberId("u-bob"), displayName = "Bob", handle = "bob", kind = MemberKind.Human, avatar = AvatarReference.Url("https://cdn/bob.png"))
+        val sage = MemberProfile(id = MemberId("a-sage"), displayName = "Sage", handle = "sage", kind = MemberKind.Agent, avatar = AvatarReference.Url("https://cdn/sage.png"))
+        val selfUser = StoredAuthUser(id = "u-bob", email = "bob@example.com", name = "Bob", avatarUrl = "https://cdn/bob-self.png")
+
+        // Ambiguous duplicate display name without loaded message -> null (never guess).
+        assertNull(
+            resolveQuoteAuthorAvatar(
+                messageId = "aaaaaaaa-0000-4000-8000-000000000001",
+                authorName = "Alice",
+                authorType = "user",
+                loadedMessages = emptyList(),
+                members = listOf(aliceOne, aliceTwo, bob, sage),
+                currentUser = selfUser,
+            )
+        )
+
+        // Loaded message disambiguates by messageId even when two people share the name "Alice".
+        val loadedAliceTwo =
+            RaftThreadMessageItem(
+                id = "aaaaaaaa-0000-4000-8000-000000000001",
+                authorId = "u-alice-2",
+                authorName = "Alice",
+                authorKind = "human",
+                avatarWireValue = "https://cdn/a2.png",
+                body = "Hi",
+            )
+        val resolvedFromLoaded =
+            resolveQuoteAuthorAvatar(
+                messageId = "aaaaaaaa-0000-4000-8000-000000000001",
+                authorName = "Alice",
+                authorType = "user",
+                loadedMessages = listOf(loadedAliceTwo),
+                members = listOf(aliceOne, aliceTwo, bob, sage),
+                currentUser = selfUser,
+            )
+        assertEquals(
+            QuoteChipAuthorAvatar(kind = RaftAvatarKind.Human, avatarWireValue = "https://cdn/a2.png", label = "Alice"),
+            resolvedFromLoaded,
+        )
+
+        // Unique name match works without a loaded message and prefers currentUser's own avatarUrl.
+        val resolvedSelf =
+            resolveQuoteAuthorAvatar(
+                messageId = "bbbbbbbb-0000-4000-8000-000000000002",
+                authorName = "Bob",
+                authorType = "user",
+                loadedMessages = emptyList(),
+                members = listOf(aliceOne, aliceTwo, bob, sage),
+                currentUser = selfUser,
+            )
+        assertEquals(
+            QuoteChipAuthorAvatar(kind = RaftAvatarKind.Human, avatarWireValue = "https://cdn/bob-self.png", label = "Bob"),
+            resolvedSelf,
+        )
+
+        // Agent lookup checks only agent members.
+        val resolvedAgent =
+            resolveQuoteAuthorAvatar(
+                messageId = "cccccccc-0000-4000-8000-000000000003",
+                authorName = "Sage",
+                authorType = "agent",
+                loadedMessages = emptyList(),
+                members = listOf(aliceOne, bob, sage),
+                currentUser = selfUser,
+            )
+        assertEquals(
+            QuoteChipAuthorAvatar(kind = RaftAvatarKind.Agent, avatarWireValue = "https://cdn/sage.png", label = "Sage"),
+            resolvedAgent,
+        )
+
+        // Unknown name -> null.
+        assertNull(
+            resolveQuoteAuthorAvatar(
+                messageId = "dddddddd-0000-4000-8000-000000000004",
+                authorName = "Ghost",
+                authorType = "user",
+                loadedMessages = emptyList(),
+                members = listOf(aliceOne, bob, sage),
+                currentUser = selfUser,
+            )
         )
     }
 }

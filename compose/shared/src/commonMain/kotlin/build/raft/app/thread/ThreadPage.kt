@@ -369,7 +369,8 @@ internal fun buildThreadPendingSendMessage(
     localMessageId: String,
     context: RaftThreadPendingSendContext,
     session: StoredAuthSession?,
-    timestampLabel: String = "Now"
+    timestampLabel: String = "Now",
+    resolvedQuotes: Map<String, build.raft.app.model.ResolvedInlineQuote>? = null,
 ): RaftThreadMessageItem {
     val user = session?.user
     val authorName = user?.bestDisplayName ?: "You"
@@ -405,6 +406,7 @@ internal fun buildThreadPendingSendMessage(
                 )
             },
         deliveryState = ThreadMessageDeliverySending,
+        resolvedQuotes = resolvedQuotes,
         localSendOrder = localMessageId.substringAfterLast('-').toLongOrNull(),
         pendingSendContext = context,
         pendingSendErrorCode = null,
@@ -5950,8 +5952,22 @@ private fun SharedThreadRouteContentContent(
             remember(messageAvatarResolver, taskConversationJointSurface) {
                 messageAvatarResolver.forJointSurface(taskConversationJointSurface)
             }
+        val quoteReplyHost =
+            rememberThreadQuoteReplyHost(
+                featureFlags = sharedStores.serverFeatureFlags,
+                serverId = currentServerId,
+                renderedThread = renderedThread,
+                timelineMessages = renderedTimelineSlice.messages,
+                serverMembersStore = serverMembersStore,
+                currentSession = currentSession,
+                memberAvatarResolver = effectiveMessageAvatarResolver,
+                composerDraftViewModel = composerDraftViewModel,
+                threadViewModel = threadViewModel,
+                bridge = bridge,
+            )
         val threadProvidedValues = raftMarkdownProvidedValuesWith(
             arrayOf(
+                LocalThreadQuoteReplyHost provides quoteReplyHost,
                 LocalRaftViewerServerLogos provides viewerServerLogos,
                 LocalRaftChannelJointServers provides channelJointServers,
                 // One channel-kind glyph per channel (forward targets, composer suggestions). Read
@@ -6736,12 +6752,20 @@ private fun SharedThreadRouteContentContent(
                     null
                 }
             }
-        SideEffect { inPlaceTextSelectionHost.quoteIntoComposer = inPlaceSelectionQuote }
+        val inPlaceSelectionQuoteInsert: ((ThreadComposerQuoteInsert) -> Unit)? =
+            remember(selectionQuoteAvailable, quoteReplyHost) {
+                if (selectionQuoteAvailable) quoteReplyHost::requestInsertQuote else null
+            }
+        SideEffect {
+            inPlaceTextSelectionHost.quoteIntoComposer = inPlaceSelectionQuote
+            inPlaceTextSelectionHost.insertQuoteIntoComposer = inPlaceSelectionQuoteInsert
+        }
         ThreadRouteDialogs(
             states = threadRouteDialogStates,
             data = data,
             labels = labels,
             selectionQuoteTarget = selectionQuoteTarget,
+            quoteReplyHost = quoteReplyHost,
             payload = payload,
             resolvedMessageBodyTextStyle = resolvedMessageBodyTextStyle,
             composerDraftViewModel = composerDraftViewModel,
