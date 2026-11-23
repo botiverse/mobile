@@ -1200,6 +1200,8 @@
     <string name="video_player_position">재생 위치</string>
     <string name="video_player_fullscreen">전체 화면</string>
     <string name="video_player_exit_fullscreen">전체 화면 종료</string>
+    <string name="video_player_speed">재생 속도</string>
+    <string name="video_player_replay">다시 재생</string>
     <string name="thread_audio_preview_loading">오디오 미리보기 불러오는 중</string>
     <string name="thread_audio_attachment_fallback_name">오디오 첨부 파일</string>
     <string name="thread_audio_file_label">오디오 파일</string>

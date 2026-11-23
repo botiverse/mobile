@@ -1200,6 +1200,8 @@
     <string name="video_player_position">Posición de reproducción</string>
     <string name="video_player_fullscreen">Pantalla completa</string>
     <string name="video_player_exit_fullscreen">Salir de pantalla completa</string>
+    <string name="video_player_speed">Velocidad de reproducción</string>
+    <string name="video_player_replay">Volver a reproducir</string>
     <string name="thread_audio_preview_loading">Cargando vista previa del audio</string>
     <string name="thread_audio_attachment_fallback_name">Audio adjunto</string>
     <string name="thread_audio_file_label">Archivo de audio</string>

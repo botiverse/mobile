@@ -1200,6 +1200,8 @@
     <string name="video_player_position">Позиция воспроизведения</string>
     <string name="video_player_fullscreen">Во весь экран</string>
     <string name="video_player_exit_fullscreen">Выйти из полноэкранного режима</string>
+    <string name="video_player_speed">Скорость воспроизведения</string>
+    <string name="video_player_replay">Воспроизвести снова</string>
     <string name="thread_audio_preview_loading">Загрузка предпросмотра аудио</string>
     <string name="thread_audio_attachment_fallback_name">Аудиовложение</string>
     <string name="thread_audio_file_label">Аудиофайл</string>

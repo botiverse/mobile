@@ -1200,6 +1200,8 @@
     <string name="video_player_position">播放進度</string>
     <string name="video_player_fullscreen">全螢幕</string>
     <string name="video_player_exit_fullscreen">結束全螢幕</string>
+    <string name="video_player_speed">播放速度</string>
+    <string name="video_player_replay">重新播放</string>
     <string name="thread_audio_preview_loading">正在載入音訊預覽</string>
     <string name="thread_audio_attachment_fallback_name">音訊附件</string>
     <string name="thread_audio_file_label">音訊檔案</string>
