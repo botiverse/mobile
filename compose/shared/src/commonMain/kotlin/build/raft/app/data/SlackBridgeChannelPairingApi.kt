@@ -189,7 +189,18 @@ internal class SlackBridgeChannelPairingRepository(
      * pick, save the whole set plus the new pair, run preflight (it must pass) and enable.
      */
     suspend fun apply(channelId: ChannelId, visibility: String, selectedSlackChannelId: String?): DataResult<ChannelSlackBridgeState?> {
-        var snapshot = (load() as? DataResult.Content)?.data ?: return failure("slack_bridge_load_failed")
+        var snapshot =
+            when (val loaded = load()) {
+                is DataResult.Content -> loaded.data
+                is DataResult.Error ->
+                    return DataResult.Error(
+                        loaded.error.copy(
+                            code = loaded.error.code.ifBlank { "slack_bridge_load_failed" },
+                        )
+                    )
+                is DataResult.NoPermission -> return loaded
+                is DataResult.Empty -> return failure("slack_bridge_load_failed")
+            }
         val currentPair = snapshot.channelPairs.firstOrNull { it.raftChannelId == channelId.value }
         if (currentPair?.slackChannelId == selectedSlackChannelId || (currentPair == null && selectedSlackChannelId == null)) {
             return DataResult.Content(snapshot.toChannelSlackBridgeState(channelId.value, visibility))
@@ -251,9 +262,46 @@ internal class SlackBridgeChannelPairingRepository(
                 )
             } ?: return failure("slack_bridge_network", retryable = true)
         if (!response.isSuccessful) {
-            return failure(slackBridgeErrorCode(response.bodyText ?: response.errorBodyText) ?: "slack_bridge_http_${response.code}")
+            if (response.code <= 0) {
+                return DataResult.Error(
+                    ScreenError(
+                        code = "slack_bridge_http_0",
+                        retryable = true,
+                        serverMessage = null,
+                        serverCode = null,
+                        traceId = null,
+                    )
+                )
+            }
+            val envelope = response.parseHttpErrorEnvelope()
+            val normalizedServerCode = envelope?.serverCode?.trim()?.lowercase()
+            val isAuthError =
+                response.code == 401 ||
+                    normalizedServerCode == "unauthorized" ||
+                    normalizedServerCode.isAuthSessionErrorCode()
+            val code =
+                when {
+                    isAuthError -> "auth_required"
+                    response.code >= 500 -> "slack_bridge_http_${response.code}"
+                    else -> envelope?.serverCode ?: "slack_bridge_http_${response.code}"
+                }
+            val serverMessage =
+                if (isAuthError || response.code >= 500) {
+                    null
+                } else {
+                    envelope?.serverMessage
+                }
+            return DataResult.Error(
+                ScreenError(
+                    code = code,
+                    retryable = response.code == 429 || response.code >= 500,
+                    serverMessage = serverMessage,
+                    serverCode = envelope?.serverCode,
+                    traceId = response.traceId,
+                )
+            )
         }
-        val snapshot = response.bodyText?.let(::parseSlackBridgeProvisioning) ?: return failure("network_parse_failed")
+        val snapshot = response.bodyText?.let(::parseSlackBridgeProvisioning) ?: return failure("network_parse_failed", traceId = response.traceId)
         return DataResult.Content(snapshot)
     }
 
@@ -266,8 +314,8 @@ internal class SlackBridgeChannelPairingRepository(
             null
         }
 
-    private fun <T> failure(code: String, retryable: Boolean = false): DataResult<T> =
-        DataResult.Error(ScreenError(code = code, retryable = retryable))
+    private fun <T> failure(code: String, retryable: Boolean = false, traceId: String? = null): DataResult<T> =
+        DataResult.Error(ScreenError(code = code, retryable = retryable, traceId = traceId))
 }
 
 private inline fun <T> DataResult<T>.contentOrReturn(onFailure: (DataResult<Nothing>) -> Nothing): T =
@@ -278,14 +326,6 @@ private inline fun <T> DataResult<T>.contentOrReturn(onFailure: (DataResult<Noth
         is DataResult.Empty -> onFailure(this)
     }
 
-@Serializable
-private data class SlackBridgeErrorBody(val ok: Boolean? = null, val code: String? = null)
-
-/** The control plane answers `{ ok: false, code }` (e.g. `slack_bridge_disabled`). */
+/** The control plane answers `{ ok: false, code, error? }` (e.g. `slack_bridge_disabled`). */
 internal fun slackBridgeErrorCode(bodyText: String?): String? =
-    bodyText?.let { text ->
-        runCatching { slackBridgeJson.decodeFromString(SlackBridgeErrorBody.serializer(), text).code }
-            .getOrNull()
-            ?.trim()
-            ?.takeIf(String::isNotBlank)
-    }
+    parseHttpErrorEnvelope(bodyText)?.serverCode

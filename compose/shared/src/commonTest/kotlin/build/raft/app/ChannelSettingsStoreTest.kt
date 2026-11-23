@@ -439,7 +439,16 @@ class ChannelSettingsStoreTest {
     @Test
     fun aFailedSlackStepKeepsTheSavedNameAndReportsThePartialFailure() = runTest {
         val dataSource = FakeChannelSettingsDataSource(loadResult = DataResult.Content(slackSnapshot()))
-        dataSource.slackResult = DataResult.Error(ScreenError(code = "slack_bridge_preflight_failed", retryable = false))
+        dataSource.slackResult =
+            DataResult.Error(
+                ScreenError(
+                    code = "slack_bridge_preflight_failed",
+                    retryable = false,
+                    serverMessage = "Slack Bridge preflight failed: missing channel permission.",
+                    serverCode = "slack_bridge_preflight_failed",
+                    traceId = "trace-slack-1",
+                )
+            )
         val store = store(dataSource)
         store.dispatch(ChannelSettingsIntent.Load)
         runCurrent()
@@ -451,7 +460,161 @@ class ChannelSettingsStoreTest {
         assertEquals("renamed", store.state.value.channel?.name)
         assertEquals(ChannelProfileUpdateStatus.Failed, store.state.value.profileStatus)
         assertEquals(CHANNEL_SETTINGS_SLACK_BRIDGE_PARTIAL_FAILURE, store.state.value.profileErrorCode)
+        assertEquals("slack_bridge_preflight_failed", store.state.value.profileErrorServerCode)
+        assertEquals("Slack Bridge preflight failed: missing channel permission.", store.state.value.profileErrorMessage)
+        assertEquals("trace-slack-1", store.state.value.profileErrorTraceId)
         assertNull(store.state.value.slackBridge?.pairedSlackChannelId)
+        store.clear()
+    }
+
+    @Test
+    fun failedSlack5xxAndEdgeBlockedStepsScrubRawBodyAndPreserveTier1Classification() = runTest {
+        val dataSource = FakeChannelSettingsDataSource(loadResult = DataResult.Content(slackSnapshot()))
+        dataSource.slackResult =
+            DataResult.Error(
+                ScreenError(
+                    code = "slack_bridge_http_500",
+                    retryable = true,
+                    serverMessage = "SQLSTATE crash",
+                    serverCode = "internal_error",
+                    traceId = "trace-slack-500",
+                )
+            )
+        val store = store(dataSource)
+        store.dispatch(ChannelSettingsIntent.Load)
+        runCurrent()
+
+        store.dispatch(ChannelSettingsIntent.UpdateProfile("canonical", "", ChannelSlackBridgeSelection("C1")))
+        runCurrent()
+
+        assertEquals(ChannelProfileUpdateStatus.Failed, store.state.value.profileStatus)
+        assertNull(store.state.value.profileErrorMessage)
+        assertEquals("server_unavailable", store.state.value.profileErrorServerCode)
+        assertEquals("trace-slack-500", store.state.value.profileErrorTraceId)
+
+        // KtorRaftHttpExecutor emits edge_blocked with serverCode == null: must stay classified as edge_blocked.
+        dataSource.slackResult =
+            DataResult.Error(
+                ScreenError(
+                    code = "http_403",
+                    retryable = false,
+                    serverMessage = "edge_blocked",
+                    serverCode = null,
+                    traceId = "trace-slack-edge",
+                )
+            )
+        store.dispatch(ChannelSettingsIntent.UpdateProfile("canonical", "", ChannelSlackBridgeSelection("C1")))
+        runCurrent()
+        assertNull(store.state.value.profileErrorMessage)
+        assertEquals("edge_blocked", store.state.value.profileErrorServerCode)
+        assertEquals("trace-slack-edge", store.state.value.profileErrorTraceId)
+        store.clear()
+    }
+
+    @Test
+    fun profileArchiveAndVisitorVisibleRefusalsPreserveServerMessageCodeAndTraceId() = runTest {
+        val capabilities = ChannelCapabilities(editChannelMetadata = true, manageVisitorAccess = true, archiveChannels = true)
+        val initial = snapshot().let { base -> base.copy(channel = base.channel.copy(channelCapabilities = capabilities)) }
+        val dataSource = FakeChannelSettingsDataSource(loadResult = DataResult.Content(initial))
+        dataSource.profileResult =
+            DataResult.Error(
+                ScreenError(
+                    code = "channel_name_reserved",
+                    retryable = false,
+                    serverMessage = "That channel name is reserved.",
+                    serverCode = "channel_name_reserved",
+                    traceId = "trace-prof-409",
+                )
+            )
+        dataSource.archiveResult =
+            DataResult.NoPermission(
+                PermissionBlocker(
+                    code = "archive_forbidden",
+                    serverMessage = "Only workspace owners can archive announcement channels.",
+                    serverCode = "archive_forbidden",
+                    traceId = "trace-arch-403",
+                )
+            )
+        dataSource.visitorVisibleFailure =
+            DataResult.Error(
+                ScreenError(
+                    code = "visitor_visible_external_conflict",
+                    retryable = false,
+                    serverMessage = "Channels with external guests cannot be made visible to visitors.",
+                    serverCode = "visitor_visible_external_conflict",
+                    traceId = "trace-vis-409",
+                )
+            )
+        val store = store(dataSource)
+        store.dispatch(ChannelSettingsIntent.Load)
+        runCurrent()
+
+        store.dispatch(ChannelSettingsIntent.UpdateProfile("announcements", ""))
+        runCurrent()
+        assertEquals("channel_name_reserved", store.state.value.profileErrorCode)
+        assertEquals("channel_name_reserved", store.state.value.profileErrorServerCode)
+        assertEquals("That channel name is reserved.", store.state.value.profileErrorMessage)
+        assertEquals("trace-prof-409", store.state.value.profileErrorTraceId)
+
+        store.dispatch(ChannelSettingsIntent.SetVisitorVisible(true))
+        runCurrent()
+        assertEquals("visitor_visible_external_conflict", store.state.value.visitorVisibleErrorCode)
+        assertEquals("visitor_visible_external_conflict", store.state.value.visitorVisibleErrorServerCode)
+        assertEquals("Channels with external guests cannot be made visible to visitors.", store.state.value.visitorVisibleErrorMessage)
+        assertEquals("trace-vis-409", store.state.value.visitorVisibleErrorTraceId)
+
+        store.dispatch(ChannelSettingsIntent.Archive)
+        runCurrent()
+        val archiveFailure = assertIs<ChannelSettingsEffect.Failure>(store.state.value.effect)
+        assertEquals(ChannelSettingsAction.Archive, archiveFailure.action)
+        assertEquals("archive_forbidden", archiveFailure.code)
+        assertEquals("archive_forbidden", archiveFailure.serverCode)
+        assertEquals("Only workspace owners can archive announcement channels.", archiveFailure.serverMessage)
+        assertEquals("trace-arch-403", archiveFailure.traceId)
+        store.clear()
+    }
+
+    @Test
+    fun unarchiveCollisionFailureScrubs5xxAndPreserves4xxRefusalReason() = runTest {
+        val dataSource = FakeChannelSettingsDataSource(loadResult = DataResult.Content(snapshot()))
+        dataSource.profileResult = collisionRefusal()
+        dataSource.unarchiveChannelResult =
+            DataResult.Error(
+                ScreenError(
+                    code = "http_500",
+                    retryable = true,
+                    serverMessage = "<html>500 Internal Server Error</html>",
+                    serverCode = "internal_error",
+                    traceId = "trace-unarch-500",
+                )
+            )
+        val store = store(dataSource)
+        store.dispatch(ChannelSettingsIntent.Load)
+        runCurrent()
+        store.dispatch(ChannelSettingsIntent.UpdateProfile("launch-room", ""))
+        runCurrent()
+
+        store.dispatch(ChannelSettingsIntent.UnarchiveArchivedCollision)
+        runCurrent()
+        assertEquals(CHANNEL_SETTINGS_ARCHIVED_UNARCHIVE_FAILED, store.state.value.profileErrorCode)
+        assertEquals("server_unavailable", store.state.value.profileErrorServerCode)
+        assertNull(store.state.value.profileErrorMessage)
+        assertEquals("trace-unarch-500", store.state.value.profileErrorTraceId)
+
+        dataSource.unarchiveChannelResult =
+            DataResult.NoPermission(
+                PermissionBlocker(
+                    code = "server_forbidden",
+                    serverMessage = "Only server admins can restore this archived channel.",
+                    serverCode = "forbidden",
+                    traceId = "trace-unarch-403",
+                )
+            )
+        store.dispatch(ChannelSettingsIntent.UnarchiveArchivedCollision)
+        runCurrent()
+        assertEquals("Only server admins can restore this archived channel.", store.state.value.profileErrorMessage)
+        assertEquals("forbidden", store.state.value.profileErrorServerCode)
+        assertEquals("trace-unarch-403", store.state.value.profileErrorTraceId)
         store.clear()
     }
 
@@ -756,9 +919,12 @@ private class FakeChannelSettingsDataSource(
         return DataResult.Content(Unit)
     }
 
+    var visitorVisibleFailure: DataResult<HomeChannelRow>? = null
+
     override suspend fun setVisitorVisible(visible: Boolean): DataResult<HomeChannelRow> {
         visitorVisibleRequests += visible
-        return visitorVisibleResult?.await()
+        return visitorVisibleFailure
+            ?: visitorVisibleResult?.await()
             ?: DataResult.Content(
                 HomeChannelRow(
                     threadId = ThreadId("channel-1"),
@@ -781,9 +947,11 @@ private class FakeChannelSettingsDataSource(
         )
     }
 
+    var archiveResult: DataResult<Unit>? = null
+
     override suspend fun archive(): DataResult<Unit> {
         archiveCalls += 1
-        return DataResult.Content(Unit)
+        return archiveResult ?: DataResult.Content(Unit)
     }
 
     override suspend fun delete(): DataResult<Unit> {

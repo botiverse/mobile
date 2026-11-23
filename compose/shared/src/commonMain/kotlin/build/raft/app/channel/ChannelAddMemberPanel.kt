@@ -35,7 +35,14 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import build.raft.app.data.ErrorPresentationKey
+import build.raft.app.data.PermissionBlocker
+import build.raft.app.data.RawServerMessagePriority
+import build.raft.app.data.ScreenError
+import build.raft.app.data.errorPresentation
+import build.raft.app.data.usableServerRefusalMessage
 import build.raft.app.model.MemberKind
+import build.raft.app.network.raftValidTraceIdOrNull
 import build.raft.app.components.RaftSlotIcon
 import build.raft.app.resources.*
 import build.raft.designsystem.components.RaftBadge
@@ -86,6 +93,9 @@ internal fun ThreadAddMemberPanel(
     memberAvatarResolver: RaftMemberAvatarResolver = EmptyRaftMemberAvatarResolver,
     addMemberStatus: String,
     addMemberErrorCode: String?,
+    addMemberErrorServerCode: String? = null,
+    addMemberErrorMessage: String? = null,
+    addMemberErrorTraceId: String? = null,
     localServerId: String? = null,
     bottomSafeArea: Dp = 0.dp,
     initialSelectedKeys: Set<String> = emptySet(),
@@ -96,6 +106,7 @@ internal fun ThreadAddMemberPanel(
     externalInviteEntry: (@Composable () -> Unit)? = null,
 ) {
     val userFacingErrorLabels = threadUserFacingErrorLabels()
+    val errorStrings = localizedErrorPresentationStrings()
     var query by remember { mutableStateOf("") }
     var selectedKeys by remember { mutableStateOf(initialSelectedKeys) }
     // The rows of the last batch the server refused; a row's warning goes once it is touched.
@@ -114,16 +125,26 @@ internal fun ThreadAddMemberPanel(
     val blocked = !canAddMembers || addMemberStatus == "no_permission"
     val adding = addMemberStatus == "adding"
     val addFailedLabel = stringResource(Res.string.thread_add_member_failed)
+    val noPermissionLabel = stringResource(Res.string.thread_add_member_no_permission)
     val genericErrorLabel = stringResource(Res.string.common_error)
     val errorText =
-        when {
-            blocked -> stringResource(Res.string.thread_add_member_no_permission)
-            addMemberStatus == "failed" ->
-                "$addFailedLabel: " +
-                    (userFacingErrorLabels.forErrorCode(addMemberErrorCode ?: "member_add_failed")
-                        ?: genericErrorLabel)
-            else -> null
-        }
+        threadAddMemberFailureMessage(
+            canAddMembers = canAddMembers,
+            addMemberStatus = addMemberStatus,
+            errorCode = addMemberErrorCode,
+            errorServerCode = addMemberErrorServerCode,
+            errorMessage = addMemberErrorMessage,
+            addFailedLabel = addFailedLabel,
+            noPermissionLabel = noPermissionLabel,
+            genericErrorLabel = genericErrorLabel,
+            userFacingErrorLabels = userFacingErrorLabels,
+            errorStrings = errorStrings,
+        )
+    val showErrorTrace =
+        canAddMembers &&
+            !errorText.isNullOrBlank() &&
+            (addMemberStatus == "failed" || addMemberStatus == "no_permission") &&
+            raftValidTraceIdOrNull(addMemberErrorTraceId) != null
     val failedLine = stringResource(Res.string.thread_add_member_row_failed)
     val warningInk = RaftTheme.colors.warningStrong
     val items =
@@ -171,8 +192,11 @@ internal fun ThreadAddMemberPanel(
                 description = errorText,
                 status = RaftBannerStatus.Warning,
                 size = RaftBannerSize.Sm,
-                modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp),
+                modifier = Modifier.fillMaxWidth().padding(bottom = if (showErrorTrace) 4.dp else 12.dp),
             )
+            if (showErrorTrace) {
+                RaftTraceIdNote(addMemberErrorTraceId, Modifier.padding(bottom = 12.dp))
+            }
         }
         if (selectedCandidates.isNotEmpty()) {
             FlowRow(
@@ -250,6 +274,67 @@ internal fun ThreadAddMemberPanel(
             variant = RaftButtonVariant.Primary,
             size = RaftButtonSize.Lg,
         )
+    }
+}
+
+/**
+ * Resolves the warning banner copy in [ThreadAddMemberPanel] using the 4-tier refusal policy:
+ * preserves server refusal sentences (e.g. `channel_full`, `guest_other_channel`,
+ * `users_not_in_server`) while scrubbing 401/5xx/`edge_blocked`/`internal_error`/HTML responses.
+ */
+internal fun threadAddMemberFailureMessage(
+    canAddMembers: Boolean,
+    addMemberStatus: String,
+    errorCode: String?,
+    errorServerCode: String? = null,
+    errorMessage: String? = null,
+    addFailedLabel: String,
+    noPermissionLabel: String,
+    genericErrorLabel: String,
+    userFacingErrorLabels: ThreadUserFacingErrorLabels,
+    errorStrings: ErrorPresentationStrings,
+): String? {
+    if (!canAddMembers) return noPermissionLabel
+    return when (addMemberStatus) {
+        "no_permission" -> {
+            val presentation =
+                PermissionBlocker(
+                    code = errorCode ?: "permission_denied",
+                    serverMessage = errorMessage,
+                    serverCode = errorServerCode,
+                ).errorPresentation()
+            val raw = usableServerRefusalMessage(presentation.rawServerMessage)
+            when {
+                presentation.rawServerMessagePriority == RawServerMessagePriority.ServerMessageFirst && raw != null -> raw
+                presentation.key != ErrorPresentationKey.PermissionDenied && presentation.key != ErrorPresentationKey.Generic ->
+                    errorStrings.value(presentation.key)
+                else -> noPermissionLabel
+            }
+        }
+        "failed" -> {
+            val presentation =
+                ScreenError(
+                    code = errorCode ?: "member_add_failed",
+                    retryable = false,
+                    serverMessage = errorMessage,
+                    serverCode = errorServerCode,
+                ).errorPresentation()
+            val raw = usableServerRefusalMessage(presentation.rawServerMessage)
+            when {
+                presentation.rawServerMessagePriority == RawServerMessagePriority.ServerMessageFirst && raw != null -> raw
+                presentation.key == ErrorPresentationKey.EdgeBlocked ||
+                    presentation.key == ErrorPresentationKey.SessionExpired ||
+                    presentation.key == ErrorPresentationKey.ChannelArchived ||
+                    presentation.key == ErrorPresentationKey.ChannelReadOnly ||
+                    presentation.key == ErrorPresentationKey.TooManyAttempts ->
+                    errorStrings.value(presentation.key)
+                else ->
+                    "$addFailedLabel: " +
+                        (userFacingErrorLabels.forErrorCode(errorCode ?: "member_add_failed")
+                            ?: genericErrorLabel)
+            }
+        }
+        else -> null
     }
 }
 

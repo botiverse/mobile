@@ -14,8 +14,12 @@ import build.raft.app.components.RaftDesignSystemTheme
 import build.raft.app.data.ARCHIVED_NAME_COLLISION
 import build.raft.app.data.ArchivedNameCollision
 import build.raft.app.data.DataRequestPriority
+import build.raft.app.data.ErrorPresentationKey
 import build.raft.app.data.HomeChannelRow
+import build.raft.app.data.RawServerMessagePriority
 import build.raft.app.data.ScreenError
+import build.raft.app.data.errorPresentation
+import build.raft.app.data.usableServerRefusalMessage
 import kotlinx.coroutines.launch
 import build.raft.designsystem.components.RaftTextFieldDefaults
 import build.raft.designsystem.components.RaftButton
@@ -435,15 +439,66 @@ internal fun channelSettingsOffersVisitorVisible(
     channelSettingsShowsVisitorVisible(channel, permissions) &&
         (channel.guestVisible || channelSettingsVisitorVisibleCanTurnOn(channel, serverPublicPageLive))
 
-/** Web `ChannelVisitorVisibleField` `REFUSAL_MESSAGE_IDS`: server refusal code to inline copy. */
-internal fun channelSettingsVisitorVisibleErrorRes(code: String): StringResource =
-    when (code) {
+/** Known `PATCH channels/:id { visitorVisible }` refusal codes with dedicated localized copy (Tier 2). */
+internal fun channelSettingsVisitorVisibleKnownErrorResOrNull(code: String?): StringResource? =
+    when (code?.trim()?.lowercase()) {
         "visitor_visibility_forbidden" -> Res.string.channel_settings_visitor_visible_forbidden
         "visitor_visibility_requires_public_server" -> Res.string.channel_settings_visitor_visible_requires_public_server
         "visitor_visibility_requires_public_channel" -> Res.string.channel_settings_visitor_visible_requires_public_channel
         "visitor_visibility_unsupported_channel" -> Res.string.channel_settings_visitor_visible_unsupported_channel
-        else -> Res.string.channel_settings_visitor_visible_save_failed
+        else -> null
     }
+
+/** Web `ChannelVisitorVisibleField` `REFUSAL_MESSAGE_IDS`: server refusal code to inline copy. */
+internal fun channelSettingsVisitorVisibleErrorRes(code: String): StringResource =
+    channelSettingsVisitorVisibleKnownErrorResOrNull(code)
+        ?: Res.string.channel_settings_visitor_visible_save_failed
+
+/**
+ * Resolves the inline failure message for `Visible to visitors` through the 4-tier refusal policy:
+ * Tier 1 (edge_blocked/401/5xx/network) -> localized app copy; Tier 2 (known 4 refusal codes) ->
+ * dedicated copy; Tier 3 (other 4xx refusal with server sentence) -> server sentence verbatim;
+ * Tier 4 -> generic save-failed fallback.
+ */
+internal fun channelSettingsVisitorVisibleFailureMessage(
+    errorCode: String?,
+    errorServerCode: String?,
+    errorMessage: String?,
+    strings: ErrorPresentationStrings,
+    knownCopy: (StringResource) -> String,
+    fallback: String,
+): String {
+    val presentation =
+        ScreenError(
+            code = errorCode.orEmpty(),
+            retryable = false,
+            serverMessage = errorMessage,
+            serverCode = errorServerCode,
+        ).errorPresentation()
+    if (
+        presentation.key == ErrorPresentationKey.EdgeBlocked ||
+        presentation.key == ErrorPresentationKey.SessionExpired ||
+        presentation.key == ErrorPresentationKey.ServerUnavailable ||
+        presentation.key == ErrorPresentationKey.ServerUnreachable ||
+        presentation.key == ErrorPresentationKey.RequestTimedOut ||
+        presentation.key == ErrorPresentationKey.NetworkConnectionFailed ||
+        presentation.key == ErrorPresentationKey.ResponseUnreadable ||
+        presentation.key == ErrorPresentationKey.ServerVersionIncompatible
+    ) {
+        return strings.value(presentation.key)
+    }
+    val knownRes =
+        channelSettingsVisitorVisibleKnownErrorResOrNull(errorServerCode)
+            ?: channelSettingsVisitorVisibleKnownErrorResOrNull(errorCode)
+    if (knownRes != null) return knownCopy(knownRes)
+    val raw = usableServerRefusalMessage(presentation.rawServerMessage)
+    return when {
+        presentation.rawServerMessagePriority == RawServerMessagePriority.ServerMessageFirst && raw != null -> raw
+        presentation.key != ErrorPresentationKey.Generic && presentation.key != ErrorPresentationKey.PermissionDenied ->
+            strings.value(presentation.key)
+        else -> fallback
+    }
+}
 
 /** Web `currentVisibility` for Slack channel privacy matching. */
 internal fun channelSettingsSlackVisibility(channel: HomeChannelRow): String =
@@ -750,6 +805,7 @@ private fun ChannelSettingsPageScreen() {
                                 actionInFlight = settingsState.actionInFlight,
                                 profileStatus = settingsState.profileStatus,
                                 profileErrorCode = settingsState.profileErrorCode,
+                                profileErrorServerCode = settingsState.profileErrorServerCode,
                                 profileErrorMessage = settingsState.profileErrorMessage,
                                 profileErrorTraceId = settingsState.profileErrorTraceId,
                                 profileCollision = settingsState.archivedCollisionFor(settingsStore),
@@ -760,6 +816,8 @@ private fun ChannelSettingsPageScreen() {
                                 serverPublicPageLive = serverPublicPageLive,
                                 visitorVisible = settingsState.displayVisitorVisible,
                                 visitorVisibleErrorCode = settingsState.visitorVisibleErrorCode,
+                                visitorVisibleErrorServerCode = settingsState.visitorVisibleErrorServerCode,
+                                visitorVisibleErrorMessage = settingsState.visitorVisibleErrorMessage,
                                 visitorVisibleErrorTraceId = settingsState.visitorVisibleErrorTraceId,
                             ),
                         longMessageCollapseSetting = longMessageCollapseSetting,
@@ -936,6 +994,7 @@ internal data class ChannelSettingsUiModel(
     val actionInFlight: ChannelSettingsAction? = null,
     val profileStatus: ChannelProfileUpdateStatus = ChannelProfileUpdateStatus.Idle,
     val profileErrorCode: String? = null,
+    val profileErrorServerCode: String? = null,
     val profileErrorMessage: String? = null,
     val profileErrorTraceId: String? = null,
     /** A rename refused for an archived channel's name (web `archivedCollision`); null hides the warning. */
@@ -957,6 +1016,8 @@ internal data class ChannelSettingsUiModel(
     val visitorVisible: Boolean = channel.guestVisible,
     /** Refusal code from `PATCH channels/:id { visitorVisible }`, rendered inline under the row's description. */
     val visitorVisibleErrorCode: String? = null,
+    val visitorVisibleErrorServerCode: String? = null,
+    val visitorVisibleErrorMessage: String? = null,
     /** Trace ID of the refused `visitorVisible` request, rendered under the row with a copy action. */
     val visitorVisibleErrorTraceId: String? = null,
 )
@@ -1035,11 +1096,76 @@ internal fun channelSettingsFailureMessage(
             ChannelSettingsAction.Disconnect -> labels.disconnect
             else -> labels.update
         }
-    return when (failure.action) {
-        ChannelSettingsAction.Disconnect,
-        ChannelSettingsAction.Visibility,
-        ChannelSettingsAction.Unarchive,
-        ChannelSettingsAction.Leave -> channelSettingsDisconnectFailureMessage(failure, strings, fallback)
+    return channelSettingsDisconnectFailureMessage(failure, strings, fallback)
+}
+
+internal fun channelSettingsProfileFailureMessage(
+    errorCode: String?,
+    errorServerCode: String?,
+    errorMessage: String?,
+    strings: ErrorPresentationStrings,
+    partialSlackLabel: String,
+    unarchiveFallback: String,
+    updateFallback: String,
+): String {
+    val presentation =
+        ScreenError(
+            code = errorCode.orEmpty(),
+            retryable = false,
+            serverMessage = errorMessage,
+            serverCode = errorServerCode,
+        ).errorPresentation()
+    val scrubbedReason =
+        if (presentation.rawServerMessagePriority == RawServerMessagePriority.ServerMessageFirst) {
+            usableServerRefusalMessage(presentation.rawServerMessage)
+        } else {
+            null
+        }
+    return when (errorCode) {
+        CHANNEL_SETTINGS_SLACK_BRIDGE_PARTIAL_FAILURE ->
+            if (scrubbedReason != null && !partialSlackLabel.contains(scrubbedReason, ignoreCase = true)) {
+                "$partialSlackLabel $scrubbedReason"
+            } else {
+                partialSlackLabel
+            }
+        CHANNEL_SETTINGS_ARCHIVED_UNARCHIVE_FAILED ->
+            when {
+                scrubbedReason != null -> scrubbedReason
+                presentation.key != ErrorPresentationKey.Generic -> strings.value(presentation.key)
+                else -> unarchiveFallback
+            }
+        else ->
+            when {
+                scrubbedReason != null -> scrubbedReason
+                presentation.key != ErrorPresentationKey.Generic -> strings.value(presentation.key)
+                else -> updateFallback
+            }
+    }
+}
+
+internal fun channelSettingsSlackDialogFailureMessage(
+    errorCode: String?,
+    errorServerCode: String?,
+    errorMessage: String?,
+    strings: ErrorPresentationStrings,
+    fallback: String,
+): String {
+    val presentation =
+        ScreenError(
+            code = errorCode.orEmpty(),
+            retryable = false,
+            serverMessage = errorMessage,
+            serverCode = errorServerCode,
+        ).errorPresentation()
+    val scrubbedReason =
+        if (presentation.rawServerMessagePriority == RawServerMessagePriority.ServerMessageFirst) {
+            usableServerRefusalMessage(presentation.rawServerMessage)
+        } else {
+            null
+        }
+    return when {
+        scrubbedReason != null -> scrubbedReason
+        presentation.key != ErrorPresentationKey.Generic -> strings.value(presentation.key)
         else -> fallback
     }
 }
@@ -1260,6 +1386,7 @@ private fun ChannelDetailsIdentitySection(model: ChannelSettingsUiModel, callbac
             enabled = model.writeActionsEnabled,
             status = model.profileStatus,
             errorCode = model.profileErrorCode,
+            errorServerCode = model.profileErrorServerCode,
             slackBridge = null,
             onSave = callbacks.onSaveProfile,
             onClearStatus = callbacks.onClearProfileStatus,
@@ -1548,7 +1675,9 @@ internal fun ChannelInfoForm(
     onDirtyChange: (Boolean) -> Unit = {},
     /** The rename's archived-name warning (web EditChannelDialog `archivedCollision`); null hides it. */
     archivedCollision: ChannelInfoArchivedCollision? = null,
-    /** The server's reason for a failed Unarchive from that warning, shown in the failure banner. */
+    /** Wire refusal code for [errorCode], preserved separately from HTTP/synthetic codes. */
+    errorServerCode: String? = null,
+    /** The server's reason for a failed profile save or Unarchive, shown in the failure banner. */
     errorMessage: String? = null,
     /** Server trace id of the failed profile save or unarchive request. */
     errorTraceId: String? = null,
@@ -1647,16 +1776,18 @@ internal fun ChannelInfoForm(
         // Web: the warning takes the place of the error for the refused rename.
         val namedByWarning = errorCode == ARCHIVED_NAME_COLLISION && archivedCollision != null
         if (status == ChannelProfileUpdateStatus.Failed && errorCode != "channel_name_invalid" && !namedByWarning) {
+            val errorStrings = localizedErrorPresentationStrings()
             RaftBanner(
                 description =
-                    when (errorCode) {
-                        CHANNEL_SETTINGS_SLACK_BRIDGE_PARTIAL_FAILURE ->
-                            stringResource(Res.string.channel_settings_slack_partial_failure)
-                        // Web ArchivedNameCollisionBanner `onError`: the server's reason, else its own line.
-                        CHANNEL_SETTINGS_ARCHIVED_UNARCHIVE_FAILED ->
-                            errorMessage ?: stringResource(Res.string.channel_create_failed_unarchive)
-                        else -> stringResource(Res.string.thread_settings_update_failed)
-                    },
+                    channelSettingsProfileFailureMessage(
+                        errorCode = errorCode,
+                        errorServerCode = errorServerCode,
+                        errorMessage = errorMessage,
+                        strings = errorStrings,
+                        partialSlackLabel = stringResource(Res.string.channel_settings_slack_partial_failure),
+                        unarchiveFallback = stringResource(Res.string.channel_create_failed_unarchive),
+                        updateFallback = stringResource(Res.string.thread_settings_update_failed),
+                    ),
                 status = RaftBannerStatus.Warning,
                 size = RaftBannerSize.Sm,
             )
@@ -1820,7 +1951,22 @@ private fun ChannelDetailsChannelSettingsSection(
         }
         if (showVisitorVisible) {
             val title = stringResource(Res.string.channel_settings_visitor_visible_title)
-            val failureMessage = model.visitorVisibleErrorCode?.let { stringResource(channelSettingsVisitorVisibleErrorRes(it)) }
+            val errorStrings = localizedErrorPresentationStrings()
+            val failureMessage =
+                model.visitorVisibleErrorCode?.let { errorCode ->
+                    val knownRes =
+                        channelSettingsVisitorVisibleKnownErrorResOrNull(model.visitorVisibleErrorServerCode)
+                            ?: channelSettingsVisitorVisibleKnownErrorResOrNull(errorCode)
+                    val knownText = knownRes?.let { stringResource(it) }
+                    channelSettingsVisitorVisibleFailureMessage(
+                        errorCode = errorCode,
+                        errorServerCode = model.visitorVisibleErrorServerCode,
+                        errorMessage = model.visitorVisibleErrorMessage,
+                        strings = errorStrings,
+                        knownCopy = { knownText ?: "" },
+                        fallback = stringResource(Res.string.channel_settings_visitor_visible_save_failed),
+                    )
+                }
             RaftListRow(
                 title = title,
                 modifier = Modifier.testTag("channel-settings-visitor-visible"),
@@ -1869,7 +2015,10 @@ private fun ChannelDetailsChannelSettingsSection(
                             stringResource(
                                 if (slack.pairedSlackChannelId == null) Res.string.channel_details_slack_connect else Res.string.channel_details_slack_change
                             ),
-                        onClick = { slackDialogOpen = true },
+                        onClick = {
+                            callbacks.onClearProfileStatus()
+                            slackDialogOpen = true
+                        },
                         size = RaftButtonSize.Md,
                         enabled = model.writeActionsEnabled && model.actionInFlight == null,
                     )
@@ -1883,6 +2032,10 @@ private fun ChannelDetailsChannelSettingsSection(
             state = slack,
             saving = model.profileStatus == ChannelProfileUpdateStatus.InFlight,
             failed = model.profileStatus == ChannelProfileUpdateStatus.Failed,
+            errorCode = model.profileErrorCode,
+            errorServerCode = model.profileErrorServerCode,
+            errorMessage = model.profileErrorMessage,
+            errorTraceId = model.profileErrorTraceId,
             enabled = model.writeActionsEnabled,
             onDismiss = {
                 if (model.profileStatus != ChannelProfileUpdateStatus.InFlight) {
@@ -1909,12 +2062,17 @@ private fun ChannelSlackBridgeDialog(
     state: ChannelSlackBridgeState,
     saving: Boolean,
     failed: Boolean,
+    errorCode: String? = null,
+    errorServerCode: String? = null,
+    errorMessage: String? = null,
+    errorTraceId: String? = null,
     enabled: Boolean,
     onDismiss: () -> Unit,
     onSubmit: (String?) -> Unit,
 ) {
     var pick by remember(state.pairedSlackChannelId) { mutableStateOf(state.pairedSlackChannelId) }
     val title = stringResource(Res.string.channel_details_slack_dialog_title, channel.name.removePrefix("#"))
+    val errorStrings = localizedErrorPresentationStrings()
     RaftDesignSystemTheme {
         RaftDialog(
             onDismissRequest = onDismiss,
@@ -1955,10 +2113,18 @@ private fun ChannelSlackBridgeDialog(
                 )
                 if (failed) {
                     RaftBanner(
-                        description = stringResource(Res.string.channel_details_slack_failed),
+                        description =
+                            channelSettingsSlackDialogFailureMessage(
+                                errorCode = errorCode,
+                                errorServerCode = errorServerCode,
+                                errorMessage = errorMessage,
+                                strings = errorStrings,
+                                fallback = stringResource(Res.string.channel_details_slack_failed),
+                            ),
                         status = RaftBannerStatus.Warning,
                         size = RaftBannerSize.Sm,
                     )
+                    RaftTraceIdNote(errorTraceId)
                 }
             }
         }
@@ -2393,21 +2559,35 @@ internal fun channelSettingsDisconnectGuestsPresentMessage(
     failure: ChannelSettingsEffect.Failure,
     channelName: String?,
 ): String? {
-    if (failure.action != ChannelSettingsAction.Disconnect || failure.code != "guests_present") return null
+    val isGuestsPresent =
+        failure.code.equals("guests_present", ignoreCase = true) ||
+            failure.serverCode.equals("guests_present", ignoreCase = true)
+    if (failure.action != ChannelSettingsAction.Disconnect || !isGuestsPresent) return null
     val channel = channelName?.trim()?.removePrefix("#")?.takeIf(String::isNotBlank) ?: return null
     return Res.string.joint_disconnect_guests_present.format("#$channel").resolve()
 }
 
-/** Disconnect failures keep the server's reason (web shows the route's `error`), via the app error pipeline. */
+/** Channel settings failures keep the server's reason (web shows the route's `error`), via the app error pipeline. */
 internal fun channelSettingsDisconnectFailureMessage(
     failure: ChannelSettingsEffect.Failure,
     strings: ErrorPresentationStrings,
     fallback: String,
-): String =
-    ScreenError(code = failure.code, retryable = false, serverMessage = failure.serverMessage)
-        .userFacingMessage(strings)
-        .takeIf(String::isNotBlank)
-        ?: fallback
+): String {
+    val presentation =
+        ScreenError(
+            code = failure.code,
+            retryable = false,
+            serverMessage = failure.serverMessage,
+            serverCode = failure.serverCode,
+            traceId = failure.traceId,
+        ).errorPresentation()
+    val raw = usableServerRefusalMessage(presentation.rawServerMessage)
+    return when {
+        presentation.rawServerMessagePriority == RawServerMessagePriority.ServerMessageFirst && raw != null -> raw
+        presentation.key != ErrorPresentationKey.Generic -> strings.value(presentation.key)
+        else -> fallback
+    }
+}
 
 internal fun channelSettingsManagementActions(
     showMakePrivate: Boolean,
