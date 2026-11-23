@@ -211,6 +211,23 @@ internal suspend fun openAgentLounge(
     return result
 }
 
+/**
+ * Find an agent's existing Lounge without creating one (GET /agents/:id/lounge) and remember it, for
+ * `lounge:@agent` refs; [openAgentLounge] (POST) stays the profile's Lounge button.
+ */
+internal suspend fun lookupAgentLounge(
+    networkClient: RaftNetworkClient,
+    serverId: String,
+    agentId: String,
+    agentName: String?,
+): DataResult<AgentLoungeOpenResult> {
+    val result = AgentLoungeApi(networkClient).lookupLounge(ServerId(serverId), agentId)
+    if (result is DataResult.Content) {
+        RaftAgentLounges.rememberRow(serverId, result.data.channel, canPost = result.data.canPost, agentName = agentName)
+    }
+    return result
+}
+
 /** The conversation identity a Lounge opens as: a plain channel conversation. */
 internal fun AgentLoungeOpenResult.conversationIdentity(): ThreadLaunchConversationIdentity =
     channel.toThreadLaunchConversationIdentity()
