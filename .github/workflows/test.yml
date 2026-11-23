@@ -1160,6 +1160,10 @@ jobs:
         run: |
           set -o pipefail
           log="$GITHUB_WORKSPACE/xcodebuild-ios.log"
+          # Actions runs this under `bash -e`: without `set +e` a failing xcodebuild ends the step
+          # here and the error extraction below never prints (run 45068037934: exit 65, no errors
+          # in the job log). The step still fails with xcodebuild's status via `exit "$status"`.
+          set +e
           xcodebuild \
             -workspace iosApp.xcworkspace \
             -scheme iosApp \
