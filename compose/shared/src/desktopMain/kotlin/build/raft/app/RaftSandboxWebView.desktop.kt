@@ -80,8 +80,9 @@ internal actual fun RaftSandboxWebViewHost(
                 frameHosts = config.frameHosts,
             )
         }
-    key(policy, config.ephemeral) {
-        val host = remember { RaftDesktopWryWebView(policy, bridgeFactory(policy, config.ephemeral), events) }
+    val effectiveEphemeral = config.effectiveStoragePartition != RaftWebViewStoragePartition.Default
+    key(policy, effectiveEphemeral) {
+        val host = remember { RaftDesktopWryWebView(policy, bridgeFactory(policy, effectiveEphemeral), events) }
         host.events = events
         SwingPanel(factory = { host.view }, modifier = modifier)
         DisposableEffect(controller) {
@@ -396,6 +397,13 @@ internal class RaftDesktopWryWebView(
             bridge.evaluateJavaScript(RaftWebViewContentProbeScript) { result ->
                 val answer = raftWebViewDecodeContentProbe(RaftDesktopWebViewPolicy.decodeEvaluatedString(result) ?: result)
                 if (!disposed) events.onContentProbe(answer)
+            }
+            return
+        }
+        if (command.startsWith(RaftWebViewController.COMMAND_LOAD_URL_PREFIX)) {
+            val target = command.removePrefix(RaftWebViewController.COMMAND_LOAD_URL_PREFIX).trim()
+            if (target.isNotEmpty() && policy.navigation(target) == RaftDesktopWebViewNavigation.Allow) {
+                bridge.loadUrl(target)
             }
             return
         }

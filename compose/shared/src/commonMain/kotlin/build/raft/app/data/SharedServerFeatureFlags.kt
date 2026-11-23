@@ -223,6 +223,13 @@ const val CLAUDE_LIMIT_RESET_FEATURE_FLAG_KEY: String = "claude_limit_reset_v2"
  */
 const val AGENT_USAGE_FEATURE_FLAG_KEY: String = "agent_usage_v0"
 
+/**
+ * Mobile in-app browser App entries (`Raft-Host`) and native "Log in with Raft" catch
+ * (#proj-workspace:#356): per server, default off, read live from server flags. Off (or unresolved),
+ * entries still open in-app with no `Raft-Host` header and no authorize catch.
+ */
+const val MOBILE_RAFT_SIGN_IN_FEATURE_FLAG_KEY: String = "mobile_raft_sign_in_v0"
+
 /** Web-shared product flags plus mobile-only runtime safety flags evaluated in the same prefetch batch. */
 val REGISTERED_SERVER_FEATURE_FLAG_KEYS: List<String> = listOf(
     SYNC_CORE_NOTIFICATION_PREFS_FEATURE_FLAG_KEY,
@@ -254,6 +261,8 @@ val REGISTERED_SERVER_FEATURE_FLAG_KEYS: List<String> = listOf(
     CLAUDE_LIMIT_RESET_FEATURE_FLAG_KEY,
     // Agent profile Usage tab (slock `agent_usage_v0`).
     AGENT_USAGE_FEATURE_FLAG_KEY,
+    // Mobile in-app browser App entries (`Raft-Host`) and native Log in with Raft (#proj-workspace:#356).
+    MOBILE_RAFT_SIGN_IN_FEATURE_FLAG_KEY,
     // Minimum supported build (RaftMinBuildGate): the threshold is the flag's variant.
     MOBILE_MIN_BUILD_ANDROID_V1_FEATURE_FLAG_KEY,
     MOBILE_MIN_BUILD_IOS_V1_FEATURE_FLAG_KEY,

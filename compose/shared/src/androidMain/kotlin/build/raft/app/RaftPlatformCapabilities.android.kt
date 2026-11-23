@@ -9,6 +9,7 @@ import java.util.Locale
 import java.util.concurrent.atomic.AtomicReference
 import androidx.compose.ui.platform.ClipEntry
 import androidx.lifecycle.Lifecycle
+import androidx.webkit.WebViewFeature
 import build.raft.app.components.RaftPullToRefreshStyle
 import build.raft.app.data.PlatformFile
 import build.raft.app.data.RaftAndroidSqlDatabaseContext
@@ -93,6 +94,9 @@ internal actual fun raftPlatformSupportsInAppBrowser(): Boolean = true
 internal actual fun raftPlatformSupportsEmbeddedOwnWebView(): Boolean = true
 
 internal actual fun raftPlatformUsesEphemeralAuthWebView(): Boolean = false
+
+internal actual fun raftPlatformSupportsIsolatedWebViewProfile(): Boolean =
+    runCatching { WebViewFeature.isFeatureSupported(WebViewFeature.MULTI_PROFILE) }.getOrDefault(false)
 
 internal actual fun raftPlatformClipboardHasAttachments(): Boolean = false
 

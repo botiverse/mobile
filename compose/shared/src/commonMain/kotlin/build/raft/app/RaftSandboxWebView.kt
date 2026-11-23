@@ -5,6 +5,40 @@ import androidx.compose.ui.Modifier
 import build.raft.app.compat.json.JSONObject
 
 /**
+ * Which WebView storage partition a host runs in (#proj-workspace:#397):
+ * - [Default]: the platform's default persistent store (Raft's own pages and Raft App entries).
+ * - [Ephemeral]: non-persistent storage (iOS `nonPersistentDataStore()`, Desktop incognito;
+ *   Android has no per-view ephemeral store).
+ * - [IsolatedThirdParty]: a dedicated third-party partition separate from [Default] (Android
+ *   `MULTI_PROFILE` profile `"raft_third_party"`, failing closed when unsupported; iOS 17+ named
+ *   persistent `WKWebsiteDataStore`, falling back to `nonPersistentDataStore()` on iOS 15–16).
+ */
+internal enum class RaftWebViewStoragePartition {
+    Default,
+    Ephemeral,
+    IsolatedThirdParty,
+}
+
+/** Load-failure reason when [RaftWebViewStoragePartition.IsolatedThirdParty] is unavailable on Android. */
+internal const val RAFT_WEBVIEW_ISOLATED_PROFILE_UNAVAILABLE_REASON = "isolated_profile_unavailable"
+
+/**
+ * Main-frame navigation context handed synchronously to [RaftWebViewEvents.catchesMainFrameNavigation]
+ * before routing, fencing, or `Raft-Host` re-issue (#proj-workspace:#356 §5). Carries the
+ * platform-observed fields needed to build [RaftSignInAsk].
+ */
+internal data class RaftWebViewMainFrameCatchAsk(
+    val url: String,
+    val starter: RaftSignInStarter,
+    /** Committed top-level document URL currently shown, or `""` before any document commits. */
+    val page: String,
+    /** Whether this WebView has committed any document yet. */
+    val committed: Boolean,
+    /** Prior URLs in the current navigation/redirect chain before [url], in order. */
+    val hops: List<String>,
+)
+
+/**
  * Attributes of the sandbox WebView (formerly the Kuikly `RaftSandboxWebView` view attrs).
  * [allowedNavigationSchemes] is already normalized (lower case, no trailing ':').
  */
@@ -72,7 +106,32 @@ internal data class RaftWebViewConfig(
      * surfaces (Settings, Billing, in-app browser) keep their existing zoom behavior.
      */
     val allowPinchZoom: Boolean = false,
-)
+    /**
+     * Explicit storage partition (#proj-workspace:#397), or null to derive from [ephemeral]
+     * ([RaftWebViewStoragePartition.Ephemeral] when `ephemeral == true`, else
+     * [RaftWebViewStoragePartition.Default]). Platform hosts read [effectiveStoragePartition].
+     */
+    val storagePartition: RaftWebViewStoragePartition? = null,
+    /**
+     * iOS: whether WKWebView handles left/right edge swipes as page back/forward
+     * (`WKWebView.allowsBackForwardNavigationGestures`, #proj-workspace:#397). Off by default so
+     * pushed pages keep the app's own edge-back gesture. Android and desktop ignore this.
+     */
+    val allowsBackForwardNavigationGestures: Boolean = false,
+    /**
+     * App entry `Raft-Host` header (#proj-workspace:#356): when set, main-frame GET navigations to
+     * [RaftHostHeader.origin] carry `Raft-Host: <value>`, and cross-origin GET redirects strip it.
+     */
+    val raftHost: RaftHostHeader? = null,
+) {
+    val effectiveStoragePartition: RaftWebViewStoragePartition
+        get() =
+            storagePartition ?: if (ephemeral) {
+                RaftWebViewStoragePartition.Ephemeral
+            } else {
+                RaftWebViewStoragePartition.Default
+            }
+}
 
 internal const val RAFT_WEBVIEW_SURFACE_DEFAULT = "web_view"
 
@@ -85,6 +144,12 @@ internal class RaftWebViewEvents {
     var onLoadSuccess: () -> Unit = {}
     var onLoadFailure: (String) -> Unit = {}
     var onNavigationBlocked: (String) -> Unit = {}
+    /**
+     * Synchronous main-frame navigation catch invoked before routing, fencing, and `Raft-Host`
+     * re-issue (#proj-workspace:#356 §5, e.g. catching Raft's OAuth authorize endpoint). Returning
+     * true cancels the navigation without firing [onNavigationBlocked] or [onLoadFailure].
+     */
+    var catchesMainFrameNavigation: ((RaftWebViewMainFrameCatchAsk) -> Boolean)? = null
     /**
      * A new top-level document navigation the page asked for that the host routes as a link instead
      * of loading it here (true): it goes to [onNavigationBlocked] and the page stays. Read on

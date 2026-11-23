@@ -70,6 +70,8 @@ class SharedServerFeatureFlagsTest {
         assertEquals("mobile_server_setup_v1", MOBILE_SERVER_SETUP_V1_FEATURE_FLAG_KEY)
         // botiverse/slock packages/shared/src/featureFlags.ts SERVER_LABS_UI_FEATURE_FLAG_KEY (default off).
         assertEquals("server_labs_ui_v0", SERVER_LABS_UI_FEATURE_FLAG_KEY)
+        // #proj-workspace:#356: mobile Login-with-Raft in-app browser catch (default off).
+        assertEquals("mobile_raft_sign_in_v0", MOBILE_RAFT_SIGN_IN_FEATURE_FLAG_KEY)
         for (
             key in listOf(
                 MOBILE_SERVER_SETUP_V1_FEATURE_FLAG_KEY,
@@ -77,6 +79,7 @@ class SharedServerFeatureFlagsTest {
                 PERSONAL_ASSISTANT_FEATURE_FLAG_KEY,
                 DRAFTS_SECTION_FEATURE_FLAG_KEY,
                 SERVER_LABS_UI_FEATURE_FLAG_KEY,
+                MOBILE_RAFT_SIGN_IN_FEATURE_FLAG_KEY,
             )
         ) {
             assertTrue(key in REGISTERED_SERVER_FEATURE_FLAG_KEYS, key)

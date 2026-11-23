@@ -48,6 +48,8 @@ internal actual fun raftPlatformSupportsEmbeddedOwnWebView(): Boolean =
 
 internal actual fun raftPlatformUsesEphemeralAuthWebView(): Boolean = true
 
+internal actual fun raftPlatformSupportsIsolatedWebViewProfile(): Boolean = false
+
 internal actual fun raftPlatformClipboardHasAttachments(): Boolean = RaftDesktopClipboardAttachments.available()
 
 internal actual fun raftPlatformReadClipboardAttachments(): List<PlatformFile> = RaftDesktopClipboardAttachments.read()
