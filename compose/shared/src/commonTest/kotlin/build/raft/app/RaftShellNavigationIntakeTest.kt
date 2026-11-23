@@ -226,7 +226,7 @@ class RaftShellNavigationIntakeTest {
                     "instanceId" to JsonPrimitive("reply-parent:channel-1:root-1"),
                     "payload" to
                         JsonPrimitive(
-                            """{"instanceId":"reply-parent:channel-1:root-1","surfaceKind":"reply_thread","threadId":"root-1","parentChannelId":"channel-1","parentMessageId":"root-1"}"""
+                            """{"instanceId":"reply-parent:channel-1:root-1","surfaceKind":"${RaftThreadSurfaceKind.ReplyThread}","parentChannelId":"channel-1","parentMessageId":"root-1","parentSurfaceKind":"${RaftThreadSurfaceKind.Channel}","parentChannelKind":"${RaftThreadSurfaceKind.Channel}"}"""
                         ),
                 ),
             )
@@ -234,12 +234,14 @@ class RaftShellNavigationIntakeTest {
         val replyNotificationRequest =
             HomeMessageOpenRequest(
                 conversationIdentity =
-                    ThreadLaunchConversationIdentity(
-                        threadId = build.raft.app.model.ThreadId("stream-99"),
-                        channelId = build.raft.app.model.ChannelId("stream-99"),
+                    buildThreadLaunchConversationIdentity(
                         kind = ConversationKind.Thread,
+                        channelId = build.raft.app.model.ChannelId("channel-1"),
+                        threadChannelId = build.raft.app.model.ChannelId("stream-99"),
                         parentChannelId = build.raft.app.model.ChannelId("channel-1"),
                         parentMessageId = build.raft.app.model.MessageId("root-1"),
+                        parentSurfaceKind = RaftThreadSurfaceKind.Channel,
+                        parentChannelKind = RaftThreadSurfaceKind.Channel,
                     ),
                 anchorMessageId = "reply-msg-1",
             )
