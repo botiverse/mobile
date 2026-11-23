@@ -273,7 +273,6 @@ internal fun StandaloneSettingsWebViewSpec.withSettingsSearchAnchor(anchor: Sett
 
 internal data class StandaloneSettingsWebViewSpec(
     val surface: SettingsWebViewSurface,
-    val includeLocaleQuery: Boolean = false,
     val headerFollowsDocumentTitle: Boolean = false,
     /**
      * When false, the native host admits only the original document URL (same
@@ -592,10 +591,12 @@ internal fun StandaloneSettingsWebViewContent(
     val currentOpenBlockedNavigation by rememberUpdatedState(onOpenBlockedNavigation ?: openExternalLink)
     val currentLogger by rememberUpdatedState(accessTokenSyncLogger)
     val session = authSnapshot.session
-    val localeTag = rememberStandaloneSettingsLocaleTag(spec.includeLocaleQuery)
+    // Every Raft web page the App embeds opens in the App's UI language (#proj-workspace:#388):
+    // `lang=` is added here, after the page's own builder, so no page can leave it out.
+    val localeTag = remember { raftEmbeddedWebLangTag() }
     val webUrl =
         remember(spec, session, webBaseUrl, localeTag) {
-            spec.buildWebUrl(webBaseUrl, session, localeTag)
+            raftWebUrlWithLang(spec.buildWebUrl(webBaseUrl, session, localeTag), localeTag)
         }
     val mainFrameOrigin =
         remember(spec.lockToWebOrigin, webUrl) {
@@ -1126,12 +1127,6 @@ internal fun settingsWebViewFrameIsReady(
 private const val SETTINGS_WEB_VIEW_HEADER_SETTLE_FRAMES = 1
 internal const val SETTINGS_WEB_VIEW_HEADER_Z_INDEX = 1f
 internal const val SETTINGS_WEB_VIEW_BODY_Z_INDEX = 0f
-
-@Composable
-private fun rememberStandaloneSettingsLocaleTag(enabled: Boolean): String =
-    remember(enabled) {
-        if (!enabled) AppLocale.Default.languageTag else readStandaloneSettingsLocaleTag()
-    }
 
 /** The in-app language's tag for a Settings web page's `lang` query (the default when unreadable). */
 internal fun readStandaloneSettingsLocaleTag(): String =

@@ -18,7 +18,6 @@ internal fun Pager.openSettingsImBridgesPage(storeScope: build.raft.app.data.Raf
 internal val settingsImBridgesWebViewSpec =
     StandaloneSettingsWebViewSpec(
         surface = SettingsWebViewSurface.ImBridges,
-        includeLocaleQuery = true,
         buildWebUrl = ::settingsImBridgesWebViewUrl,
     )
 
