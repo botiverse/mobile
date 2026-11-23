@@ -777,6 +777,9 @@ struct iOSApp: App {
         SDImageCodersManager.shared.addCoder(SDImageSVGCoder.shared)
         RaftIosAppScopeMMKV.install()
         RaftIosExternalShareEnvelopeHostKt.installRaftIosExternalShareEnvelopeHost()
+        RaftIosShareSuggestionsHost.install { level, message in
+            RaftIosDiagnosticsRecord(level, "RaftIosShareSuggestions", message)
+        }
         // WebM / MKV / ... attachments play in-app through MobileVLCKit (AVPlayer cannot demux them);
         // registered before the first page decides which attachments are previewable videos.
         RaftIosVlcVideo.install()

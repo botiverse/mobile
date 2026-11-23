@@ -104,6 +104,10 @@
             <key>UIImageName</key>
             <string>RaftLaunchLogo</string>
         </dict>
+        <key>NSUserActivityTypes</key>
+        <array>
+            <string>INSendMessageIntent</string>
+        </array>
         <key>ITSAppUsesNonExemptEncryption</key>
         <false/>
     </dict>

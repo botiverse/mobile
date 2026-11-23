@@ -1256,7 +1256,8 @@ jobs:
             RaftIosNotificationRetractionTests \
             RaftIosPageOpenGateTests \
             RaftShareControllerFailureReasonTests \
-            RaftExternalShareEnvelopeStorageTests
+            RaftExternalShareEnvelopeStorageTests \
+            RaftIosShareSuggestionsHostTests
 
       # compose/shared/src/iosTest used to be compiled only. Run the iOS-specific classes
       # (*IosTest / *IosSmokeTest) on a simulator; commonTest already runs on the JVM in the

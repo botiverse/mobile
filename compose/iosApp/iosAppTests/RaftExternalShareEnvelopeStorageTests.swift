@@ -348,6 +348,67 @@ final class RaftExternalShareEnvelopeStorageTests: XCTestCase {
         XCTAssertTrue(fence.acceptProvider(index: 1, generation: second))
     }
 
+    func testCanonicalizeTargetHintValidatesAllKindsAndRejectsMalformedOrForeignIds() {
+        XCTAssertEqual(
+            RaftExternalShareContract.canonicalizeTargetHint("raft_share:v1:srv-1:dm:dm-agent_1"),
+            "raft_share:v1:srv-1:dm:dm-agent_1"
+        )
+        XCTAssertEqual(
+            RaftExternalShareContract.canonicalizeTargetHint("  raft_share:v1:srv-1:CHANNEL:ch_1.a~b  "),
+            "raft_share:v1:srv-1:channel:ch_1.a~b"
+        )
+        XCTAssertEqual(
+            RaftExternalShareContract.canonicalizeTargetHint("raft_share:v1:srv-2:joint:joint-9"),
+            "raft_share:v1:srv-2:joint:joint-9"
+        )
+
+        let invalidHints: [String?] = [
+            nil,
+            "",
+            "   ",
+            "shortcut_srv-1_ch-1",
+            "raft_share:v2:srv-1:channel:ch-1",
+            "raft_share:v1:srv-1:thread:ch-1",
+            "raft_share:v1:srv-1:channel:ch-1:extra",
+            "raft_share:v1:srv-1:channel:../escape",
+            "raft_share:v1:srv-1:channel:ch/1",
+            "raft_share:v1:\(String(repeating: "a", count: 130)):channel:ch-1",
+        ]
+        for invalid in invalidHints {
+            XCTAssertNil(RaftExternalShareContract.canonicalizeTargetHint(invalid))
+        }
+    }
+
+    func testAdmitPersistsCanonicalPreselectedTargetHintAndDropsInvalidHint() throws {
+        let validStorage = makeStorage(token: "opaque-token_hint_valid123")
+        let hint = "raft_share:v1:srv-1:dm:dm-agent-1"
+        _ = try validStorage.admit(
+            text: "direct share hello",
+            subject: "",
+            candidates: [],
+            preselectedTargetHint: "  raft_share:v1:srv-1:DM:dm-agent-1  "
+        )
+        let inbox = root.appendingPathComponent(RaftExternalShareContract.rootDirectoryName)
+        let validJSON = try String(
+            contentsOf: inbox.appendingPathComponent("opaque-token_hint_valid123/envelope.json"),
+            encoding: .utf8
+        )
+        XCTAssertTrue(validJSON.contains("\"preselectedTargetHint\":\"\(hint)\""))
+
+        let invalidStorage = makeStorage(token: "opaque-token_hint_bad12345")
+        _ = try invalidStorage.admit(
+            text: "fallback share hello",
+            subject: "",
+            candidates: [],
+            preselectedTargetHint: "shortcut_srv-1_ch-1"
+        )
+        let invalidJSON = try String(
+            contentsOf: inbox.appendingPathComponent("opaque-token_hint_bad12345/envelope.json"),
+            encoding: .utf8
+        )
+        XCTAssertFalse(invalidJSON.contains("preselectedTargetHint"))
+    }
+
     private func makeStorage(token: String) -> RaftExternalShareEnvelopeStorage {
         RaftExternalShareEnvelopeStorage(
             appGroupRootOverride: root,
