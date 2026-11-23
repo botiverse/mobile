@@ -7,7 +7,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 WORKFLOW = ROOT / ".github/workflows/visual-android-testbox.yml"
-BEGIN_PIN = "22ff2ea5697369864347140857d218e42815b33c"
+BEGIN_PIN = "d5b883fecd6a7581c3f7467543b819abf8b80bbf"
 RUN_PIN = "9b976c32aa3bcbffb348889673585a5deee1b2f3"
 
 
