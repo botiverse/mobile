@@ -2450,7 +2450,8 @@ private fun ThreadMessagesListContent(
         snapshotFlow {
             listState.isThreadOlderAutoLoadThreshold(
                 boundaryIndex = boundaryIndex,
-                userScrollGeneration = userScrollGeneration.value,
+                // Observed (task #253): a scroll at the list's top changes no layout, only the count.
+                userScrollGeneration = userScrollGeneration.observed,
                 lastSettledUserScrollGeneration = olderPageSettledUserScrollGeneration
             )
         }

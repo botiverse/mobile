@@ -322,7 +322,6 @@ internal fun ThreadListViewport.isThreadOlderAutoLoadThreshold(
  * Whether the list asks for the older page now: the history row is within reach and the reader has
  * scrolled since the previous page settled (task #1303). [listScrolls]: the list is long enough to scroll.
  */
-@Suppress("UNUSED_PARAMETER")
 internal fun shouldThreadAutoLoadOlderMessages(
     boundaryIndex: Int,
     firstVisibleIndex: Int,
@@ -331,6 +330,10 @@ internal fun shouldThreadAutoLoadOlderMessages(
     listScrolls: Boolean = true,
 ): Boolean {
     if (boundaryIndex < 0 || firstVisibleIndex < 0) return false
+    // Task #253: in a list too short to scroll every row shows, the history row too, and no scroll can
+    // bring it any closer; waiting for one would leave "Loading older messages…" up for good. It asks on
+    // its own, as the web's timeline does after each page (VirtualMessageTimeline.tsx maybeLoadEdges).
+    if (!listScrolls) return firstVisibleIndex <= boundaryIndex
     if (userScrollGeneration <= lastSettledUserScrollGeneration) return false
     return firstVisibleIndex <= boundaryIndex + ThreadOlderAutoLoadVisibleItemThreshold
 }
