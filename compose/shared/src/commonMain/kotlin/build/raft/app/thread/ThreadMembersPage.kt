@@ -26,7 +26,13 @@ import build.raft.app.data.RemoveChannelMemberRequest
 import build.raft.app.data.ChangeChannelMemberRoleRequest
 import build.raft.app.data.DataRequestPriority
 import build.raft.app.data.DataResult
+import build.raft.app.data.ErrorPresentationKey
+import build.raft.app.data.PermissionBlocker
+import build.raft.app.data.RawServerMessagePriority
+import build.raft.app.data.ScreenError
+import build.raft.app.data.errorPresentation
 import build.raft.app.data.map
+import build.raft.app.data.usableServerRefusalMessage
 import build.raft.app.data.SharedAgentDetailIntent
 import build.raft.app.data.SharedHomeContentState
 import build.raft.app.data.SharedHomeIntent
@@ -60,6 +66,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -135,7 +142,10 @@ internal data class ThreadMemberRemovalGateState(
     val pending: ThreadMemberRemovalConfirmation? = null,
     val inFlight: Boolean = false,
     val failure: ThreadMemberRemovalFailure? = null,
-    val errorCode: String? = null
+    val errorCode: String? = null,
+    val serverMessage: String? = null,
+    val serverCode: String? = null,
+    val traceId: String? = null,
 )
 
 internal sealed interface ThreadMemberRemovalGateIntent {
@@ -148,7 +158,10 @@ internal sealed interface ThreadMemberRemovalGateIntent {
     data class CompleteFailure(
         val confirmation: ThreadMemberRemovalConfirmation,
         val failure: ThreadMemberRemovalFailure,
-        val errorCode: String
+        val errorCode: String,
+        val serverMessage: String? = null,
+        val serverCode: String? = null,
+        val traceId: String? = null,
     ) : ThreadMemberRemovalGateIntent
 
     data object Dismiss : ThreadMemberRemovalGateIntent
@@ -180,7 +193,15 @@ internal fun reduceThreadMemberRemovalGate(
                     ThreadMemberRemovalGateResult(ThreadMemberRemovalGateState())
                 else ->
                     ThreadMemberRemovalGateResult(
-                        state = state.copy(inFlight = true, failure = null, errorCode = null),
+                        state =
+                            state.copy(
+                                inFlight = true,
+                                failure = null,
+                                errorCode = null,
+                                serverMessage = null,
+                                serverCode = null,
+                                traceId = null,
+                            ),
                         execute = pending
                     )
             }
@@ -197,7 +218,10 @@ internal fun reduceThreadMemberRemovalGate(
                     state.copy(
                         inFlight = false,
                         failure = intent.failure,
-                        errorCode = intent.errorCode
+                        errorCode = intent.errorCode,
+                        serverMessage = intent.serverMessage,
+                        serverCode = intent.serverCode,
+                        traceId = intent.traceId,
                     )
                 )
             } else {
@@ -210,6 +234,52 @@ internal fun reduceThreadMemberRemovalGate(
                 ThreadMemberRemovalGateResult(ThreadMemberRemovalGateState())
             }
     }
+
+/**
+ * Resolves the user-facing refusal message for member removal failures across both the confirmation
+ * dialog and the roster banner using the 4-tier refusal policy.
+ */
+internal fun threadMemberRemovalFailureMessage(
+    state: ThreadMemberRemovalGateState,
+    noPermissionFallback: String,
+    genericFallback: String,
+    strings: ErrorPresentationStrings,
+): String? {
+    val failure = state.failure ?: return null
+    val fallback = if (failure == ThreadMemberRemovalFailure.NoPermission) noPermissionFallback else genericFallback
+    if (
+        state.errorCode.isNullOrBlank() &&
+        state.serverCode.isNullOrBlank() &&
+        state.serverMessage.isNullOrBlank()
+    ) {
+        return fallback
+    }
+    val presentation =
+        if (failure == ThreadMemberRemovalFailure.NoPermission) {
+            PermissionBlocker(
+                code = state.errorCode ?: "permission_denied",
+                serverMessage = state.serverMessage,
+                serverCode = state.serverCode,
+                traceId = state.traceId,
+            ).errorPresentation()
+        } else {
+            ScreenError(
+                code = state.errorCode ?: "member_remove_failed",
+                retryable = false,
+                serverMessage = state.serverMessage,
+                serverCode = state.serverCode,
+                traceId = state.traceId,
+            ).errorPresentation()
+        }
+    val raw = usableServerRefusalMessage(presentation.rawServerMessage)
+    return when {
+        presentation.rawServerMessagePriority == RawServerMessagePriority.ServerMessageFirst && raw != null -> raw
+        presentation.key != ErrorPresentationKey.Generic &&
+            !(failure == ThreadMemberRemovalFailure.NoPermission && presentation.key == ErrorPresentationKey.PermissionDenied) ->
+            strings.value(presentation.key)
+        else -> fallback
+    }
+}
 
 internal fun threadMembersRemovalChannelName(
     snapshot: HomeSnapshot?,
@@ -519,8 +589,28 @@ private fun ThreadMembersPageScreen() {
     var addDialogVisible by remember { mutableStateOf(false) }
     var addMemberStatus by remember { mutableStateOf("idle") }
     var addMemberErrorCode by remember { mutableStateOf<String?>(null) }
+    var addMemberErrorServerCode by remember { mutableStateOf<String?>(null) }
+    var addMemberErrorMessage by remember { mutableStateOf<String?>(null) }
+    var addMemberErrorTraceId by remember { mutableStateOf<String?>(null) }
     var removalGate by
         remember(route.serverId, route.channelId) { mutableStateOf(ThreadMemberRemovalGateState()) }
+    // Web `MemberRoleActions` / `useChannelMembers.changeMemberRole`: Make admin / Demote send at
+    // once (no confirmation), the roster reads again on success; a server owner / admin's Demote
+    // only explains. One change at a time; a failure shows the page's warning until the next try.
+    var roleChange by remember(route.serverId, route.channelId) { mutableStateOf(ChannelMemberRoleChangeState()) }
+    fun clearAddMemberErrorState() {
+        addMemberStatus = "idle"
+        addMemberErrorCode = null
+        addMemberErrorServerCode = null
+        addMemberErrorMessage = null
+        addMemberErrorTraceId = null
+    }
+    fun dismissAddMember() {
+        if (addMemberStatus == "adding") return
+        addDialogVisible = false
+        clearAddMemberErrorState()
+    }
+    val errorStrings = localizedErrorPresentationStrings()
     val unableToOpenProfileLabel = stringResource(Res.string.thread_error_open_profile)
     val memberRemovedLabel = stringResource(Res.string.thread_feedback_member_removed)
     val channelName =
@@ -633,9 +723,9 @@ private fun ThreadMembersPageScreen() {
     LaunchedEffect(liveOwner, routeOwner) {
         if (liveOwner != routeOwner) {
             addDialogVisible = false
-            addMemberStatus = "idle"
-            addMemberErrorCode = null
+            clearAddMemberErrorState()
             removalGate = ThreadMemberRemovalGateState()
+            roleChange = ChannelMemberRoleChangeState()
         }
     }
 
@@ -758,6 +848,9 @@ private fun ThreadMembersPageScreen() {
                                     confirmation = confirmation,
                                     failure = ThreadMemberRemovalFailure.NoPermission,
                                     errorCode = result.blocker.code,
+                                    serverMessage = result.blocker.serverMessage,
+                                    serverCode = result.blocker.serverCode,
+                                    traceId = result.blocker.traceId,
                                 ),
                         ).state
                 }
@@ -770,6 +863,9 @@ private fun ThreadMembersPageScreen() {
                                     confirmation = confirmation,
                                     failure = ThreadMemberRemovalFailure.Failed,
                                     errorCode = result.error.code,
+                                    serverMessage = result.error.serverMessage,
+                                    serverCode = result.error.serverCode,
+                                    traceId = result.error.traceId,
                                 ),
                         ).state
                 }
@@ -789,10 +885,6 @@ private fun ThreadMembersPageScreen() {
         }
     }
 
-    // Web `MemberRoleActions` / `useChannelMembers.changeMemberRole`: Make admin / Demote send at
-    // once (no confirmation), the roster reads again on success; a server owner / admin's Demote
-    // only explains. One change at a time; a failure shows the page's warning until the next try.
-    var roleChange by remember(route.serverId, route.channelId) { mutableStateOf(ChannelMemberRoleChangeState()) }
     fun requestRoleAction(member: RaftThreadMemberItem) {
         val action = member.roleAction ?: return
         if (authorityRejected || roleChange.changingKey != null) return
@@ -803,7 +895,16 @@ private fun ThreadMembersPageScreen() {
         }
         val kind = member.kind.parsedMemberKindOrNull() ?: return
         val key = member.memberKey
-        roleChange = roleChange.copy(changingKey = key, failed = false, failureTraceId = null)
+        roleChange =
+            roleChange.copy(
+                changingKey = key,
+                failed = false,
+                failureCode = null,
+                failureServerCode = null,
+                failureServerMessage = null,
+                failureTraceId = null,
+                failureIsNoPermission = false,
+            )
         bridge.log(
             "thread_member_role_change memberId=${member.id} kind=${kind.name} role=${nextRole.wireValue} " +
                 "channelId=${route.channelId.value}"
@@ -815,19 +916,50 @@ private fun ThreadMembersPageScreen() {
                     request = ChangeChannelMemberRoleRequest(route.channelId, MemberId(member.id), kind, nextRole),
                     priority = DataRequestPriority.Foreground,
                 )
-            val failureTraceId =
-                when (result) {
-                    is DataResult.Content -> null
-                    is DataResult.Error -> result.error.traceId
-                    is DataResult.NoPermission -> result.blocker.traceId
-                    is DataResult.Empty -> null
-                }
+            if (roleChange.changingKey != key) return@launch
             roleChange =
-                roleChange.copy(
-                    changingKey = roleChange.changingKey.takeUnless { it == key },
-                    failed = result !is DataResult.Content,
-                    failureTraceId = failureTraceId,
-                )
+                when (result) {
+                    is DataResult.Content ->
+                        roleChange.copy(
+                            changingKey = null,
+                            failed = false,
+                            failureCode = null,
+                            failureServerCode = null,
+                            failureServerMessage = null,
+                            failureTraceId = null,
+                            failureIsNoPermission = false,
+                        )
+                    is DataResult.Error ->
+                        roleChange.copy(
+                            changingKey = null,
+                            failed = true,
+                            failureCode = result.error.code,
+                            failureServerCode = result.error.serverCode,
+                            failureServerMessage = result.error.serverMessage,
+                            failureTraceId = result.error.traceId,
+                            failureIsNoPermission = false,
+                        )
+                    is DataResult.NoPermission ->
+                        roleChange.copy(
+                            changingKey = null,
+                            failed = true,
+                            failureCode = result.blocker.code,
+                            failureServerCode = result.blocker.serverCode,
+                            failureServerMessage = result.blocker.serverMessage,
+                            failureTraceId = result.blocker.traceId,
+                            failureIsNoPermission = true,
+                        )
+                    is DataResult.Empty ->
+                        roleChange.copy(
+                            changingKey = null,
+                            failed = true,
+                            failureCode = result.reason.name,
+                            failureServerCode = null,
+                            failureServerMessage = null,
+                            failureTraceId = null,
+                            failureIsNoPermission = false,
+                        )
+                }
         }
     }
 
@@ -850,8 +982,20 @@ private fun ThreadMembersPageScreen() {
             agentsExpanded = agentsExpanded, humansExpanded = humansExpanded, externalExpanded = externalExpanded,
             onAgentsExpandedChange = { agentsExpanded = it }, onHumansExpandedChange = { humansExpanded = it },
             onExternalExpandedChange = { externalExpanded = it },
-            addDialogVisible = addDialogVisible, onAddVisibleChange = { addDialogVisible = it },
-            addMemberStatus = addMemberStatus, addMemberErrorCode = addMemberErrorCode, removalGate = removalGate,
+            addDialogVisible = addDialogVisible,
+            onAddVisibleChange = { visible ->
+                if (visible) {
+                    clearAddMemberErrorState()
+                    addDialogVisible = true
+                } else {
+                    dismissAddMember()
+                }
+            },
+            addMemberStatus = addMemberStatus, addMemberErrorCode = addMemberErrorCode,
+            addMemberErrorServerCode = addMemberErrorServerCode,
+            addMemberErrorMessage = addMemberErrorMessage,
+            addMemberErrorTraceId = addMemberErrorTraceId,
+            removalGate = removalGate,
             membersFailed = membersFailed, membersLoading = membersLoading,
             refreshing = channelMembersSlice.status == SharedServerMembersLoadStatus.InFlight && members.isNotEmpty(),
             canAddMembers = canAddMembers, agentStatusResolver = agentStatusResolver, memberAvatarResolver = memberAvatarResolver,
@@ -906,43 +1050,54 @@ private fun ThreadMembersPageScreen() {
                 if (addMemberStatus == "adding") return@ThreadMembersPageContent
                 addMemberStatus = "adding"
                 addMemberErrorCode = null
+                addMemberErrorServerCode = null
+                addMemberErrorMessage = null
+                addMemberErrorTraceId = null
                 memberScope.launch {
-                    when (
-                        val result =
-                            serverMembersStore.addChannelMembersBatch(
-                                owner = routeOwner,
-                                request =
-                                    build.raft.app.data.AddChannelMembersBatchRequest(
-                                        channelId = route.channelId,
-                                        userIds = profiles.filter { it.kind != MemberKind.Agent }.map { it.id },
-                                        agentIds = profiles.filter { it.kind == MemberKind.Agent }.map { it.id }
-                                    ),
-                                priority = DataRequestPriority.Foreground
-                            )
-                    ) {
+                    val result =
+                        serverMembersStore.addChannelMembersBatch(
+                            owner = routeOwner,
+                            request =
+                                build.raft.app.data.AddChannelMembersBatchRequest(
+                                    channelId = route.channelId,
+                                    userIds = profiles.filter { it.kind != MemberKind.Agent }.map { it.id },
+                                    agentIds = profiles.filter { it.kind == MemberKind.Agent }.map { it.id }
+                                ),
+                            priority = DataRequestPriority.Foreground
+                        )
+                    if (addMemberStatus != "adding") return@launch
+                    when (result) {
                         is DataResult.Content -> {
-                            addMemberStatus = "idle"
-                            addMemberErrorCode = null
+                            clearAddMemberErrorState()
                             addDialogVisible = false
                         }
                         is DataResult.NoPermission -> {
                             addMemberStatus = "no_permission"
                             addMemberErrorCode = result.blocker.code
+                            addMemberErrorServerCode = result.blocker.serverCode
+                            addMemberErrorMessage = result.blocker.serverMessage
+                            addMemberErrorTraceId = result.blocker.traceId
                         }
                         is DataResult.Error -> {
                             addMemberStatus = "failed"
                             addMemberErrorCode = result.error.code
+                            addMemberErrorServerCode = result.error.serverCode
+                            addMemberErrorMessage = result.error.serverMessage
+                            addMemberErrorTraceId = result.error.traceId
                         }
                         is DataResult.Empty -> {
                             addMemberStatus = "failed"
                             addMemberErrorCode = result.reason.name
+                            addMemberErrorServerCode = null
+                            addMemberErrorMessage = null
+                            addMemberErrorTraceId = null
                         }
                     }
                 }
             }
         )
         RaftBackHandler(enabled = addDialogVisible && externalInvitesState.dialog == null, label = "thread_members_inline_add") {
-            if (addMemberStatus != "adding") addDialogVisible = false
+            dismissAddMember()
         }
         externalInvitesState.dialog?.let { dialog ->
             ExternalInviteSheet(
@@ -1028,12 +1183,13 @@ private fun ThreadMembersPageScreen() {
                 confirmation = confirmation,
                 removing = removalGate.inFlight,
                 errorMessage =
-                    when (removalGate.failure) {
-                        ThreadMemberRemovalFailure.NoPermission ->
-                            stringResource(Res.string.thread_members_remove_no_permission)
-                        ThreadMemberRemovalFailure.Failed -> stringResource(Res.string.thread_members_remove_failed)
-                        else -> null
-                    },
+                    threadMemberRemovalFailureMessage(
+                        state = removalGate,
+                        noPermissionFallback = stringResource(Res.string.thread_members_remove_no_permission),
+                        genericFallback = stringResource(Res.string.thread_members_remove_failed),
+                        strings = errorStrings,
+                    ),
+                errorTraceId = removalGate.traceId,
                 onDismiss = {
                     removalGate =
                         reduceThreadMemberRemovalGate(
@@ -1073,6 +1229,9 @@ internal fun ThreadMembersPageContent(
     onAddVisibleChange: (Boolean) -> Unit,
     addMemberStatus: String,
     addMemberErrorCode: String?,
+    addMemberErrorServerCode: String? = null,
+    addMemberErrorMessage: String? = null,
+    addMemberErrorTraceId: String? = null,
     removalGate: ThreadMemberRemovalGateState,
     membersFailed: Boolean,
     membersLoading: Boolean,
@@ -1139,7 +1298,11 @@ internal fun ThreadMembersPageContent(
                 localServerId = localServerId, channelName = channelName,
                 canAddMembers = canAddMembers, agentStatusResolver = agentStatusResolver,
                 memberAvatarResolver = memberAvatarResolver, addMemberStatus = addMemberStatus,
-                addMemberErrorCode = addMemberErrorCode, bottomSafeArea = bottomSafeArea,
+                addMemberErrorCode = addMemberErrorCode,
+                addMemberErrorServerCode = addMemberErrorServerCode,
+                addMemberErrorMessage = addMemberErrorMessage,
+                addMemberErrorTraceId = addMemberErrorTraceId,
+                bottomSafeArea = bottomSafeArea,
                 onSubmitBatch = onSubmit,
                 canCreateAgents = canCreateAgents, onCreateAgent = onCreateAgent,
                 externalInviteEntry =
@@ -1155,17 +1318,30 @@ internal fun ThreadMembersPageContent(
                     },
             )
         } else {
+        val errorStrings = localizedErrorPresentationStrings()
         ChannelMembersSearchBar(query = rosterQuery, onQueryChange = onQueryChange)
-        if (removalGate.failure != null) {
-            ChannelMembersWarning(
-                if (removalGate.failure == ThreadMemberRemovalFailure.NoPermission) {
-                    stringResource(Res.string.thread_members_remove_no_permission)
-                } else {
-                    stringResource(Res.string.thread_members_remove_failed)
-                }
+        val removalErrorMessage =
+            threadMemberRemovalFailureMessage(
+                state = removalGate,
+                noPermissionFallback = stringResource(Res.string.thread_members_remove_no_permission),
+                genericFallback = stringResource(Res.string.thread_members_remove_failed),
+                strings = errorStrings,
+            )
+        if (removalErrorMessage != null) {
+            ChannelMembersWarning(removalErrorMessage)
+            RaftTraceIdNote(removalGate.traceId, Modifier.padding(horizontal = 12.dp))
+        }
+        if (roleChange.failed) {
+            ChannelMemberRoleErrorBanner(
+                traceId = roleChange.failureTraceId,
+                message =
+                    channelMemberRoleFailureMessage(
+                        state = roleChange,
+                        fallback = stringResource(Res.string.channel_members_update_role_failed),
+                        strings = errorStrings,
+                    ),
             )
         }
-        if (roleChange.failed) ChannelMemberRoleErrorBanner(roleChange.failureTraceId)
         val showBottomActionBar = !membersLoading && (canAddMembers || externalInvites?.access == true)
         // Pull-to-refresh reloads the roster through the same path as the error state's Retry.
         RaftStorePullToRefreshBox(
@@ -1357,6 +1533,7 @@ private fun ThreadRemoveMemberConfirmationDialog(
     confirmation: ThreadMemberRemovalConfirmation,
     removing: Boolean,
     errorMessage: String?,
+    errorTraceId: String? = null,
     onDismiss: () -> Unit,
     onConfirm: () -> Unit
 ) {
@@ -1386,6 +1563,7 @@ private fun ThreadRemoveMemberConfirmationDialog(
                 style = RaftType.Caption.withRaftFontWeight(FontWeight.Bold).copy(color = RaftColor.AccentRed),
                 color = RaftColor.AccentRed
             )
+            RaftTraceIdNote(errorTraceId)
         }
         RaftDialogFooter {
             RaftButton(

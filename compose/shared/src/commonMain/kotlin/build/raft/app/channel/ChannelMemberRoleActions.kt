@@ -13,6 +13,12 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import build.raft.app.data.ChannelMemberRole
+import build.raft.app.data.ErrorPresentationKey
+import build.raft.app.data.PermissionBlocker
+import build.raft.app.data.RawServerMessagePriority
+import build.raft.app.data.ScreenError
+import build.raft.app.data.errorPresentation
+import build.raft.app.data.usableServerRefusalMessage
 import build.raft.app.model.MemberProfile
 import build.raft.app.resources.*
 import build.raft.designsystem.components.RaftButton
@@ -100,11 +106,61 @@ internal data class ChannelMemberRoleChangeState(
     val changingKey: String? = null,
     /** The last change failed: the page's warning banner (web `channel-member-role-error`). */
     val failed: Boolean = false,
+    /** Error code from the failed role change request, if any. */
+    val failureCode: String? = null,
+    /** Wire refusal code from the failed role change request, if any. */
+    val failureServerCode: String? = null,
+    /** Server refusal sentence from the failed role change request, if any. */
+    val failureServerMessage: String? = null,
     /** The failed request's trace id, under the banner. */
     val failureTraceId: String? = null,
+    /** Whether the role change failed with [build.raft.app.data.DataResult.NoPermission]. */
+    val failureIsNoPermission: Boolean = false,
     /** The name the cannot-demote dialog names (web `protectedDemoteTarget`); null while closed. */
     val protectedDemoteName: String? = null,
 )
+
+/**
+ * Resolves the warning copy for [ChannelMemberRoleErrorBanner] using the 4-tier refusal policy:
+ * Tier 3 non-5xx server refusal sentences render verbatim; Tier 1/2 infrastructure/domain errors
+ * use localized copy; blank/unknown failures preserve [fallback].
+ */
+internal fun channelMemberRoleFailureMessage(
+    state: ChannelMemberRoleChangeState,
+    fallback: String,
+    strings: ErrorPresentationStrings,
+): String {
+    if (
+        state.failureCode.isNullOrBlank() &&
+        state.failureServerCode.isNullOrBlank() &&
+        state.failureServerMessage.isNullOrBlank()
+    ) {
+        return fallback
+    }
+    val presentation =
+        if (state.failureIsNoPermission) {
+            PermissionBlocker(
+                code = state.failureCode ?: "permission_denied",
+                serverMessage = state.failureServerMessage,
+                serverCode = state.failureServerCode,
+                traceId = state.failureTraceId,
+            ).errorPresentation()
+        } else {
+            ScreenError(
+                code = state.failureCode.orEmpty(),
+                retryable = false,
+                serverMessage = state.failureServerMessage,
+                serverCode = state.failureServerCode,
+                traceId = state.failureTraceId,
+            ).errorPresentation()
+        }
+    val raw = usableServerRefusalMessage(presentation.rawServerMessage)
+    return when {
+        presentation.rawServerMessagePriority == RawServerMessagePriority.ServerMessageFirst && raw != null -> raw
+        presentation.key != ErrorPresentationKey.Generic -> strings.value(presentation.key)
+        else -> fallback
+    }
+}
 
 internal const val ChannelMemberRoleMenuTestTag = "channel-member-role-menu"
 internal const val ChannelMemberRoleActionTestTag = "channel-member-role-action"
@@ -215,7 +271,10 @@ internal fun ChannelMemberProtectedDemoteDialog(name: String, onDismiss: () -> U
 
 /** Web `channel-member-role-error`: the warning above the roster, with the request's trace id. */
 @Composable
-internal fun ChannelMemberRoleErrorBanner(traceId: String?) {
-    ChannelMembersWarning(stringResource(Res.string.channel_members_update_role_failed))
+internal fun ChannelMemberRoleErrorBanner(
+    traceId: String?,
+    message: String? = null,
+) {
+    ChannelMembersWarning(message ?: stringResource(Res.string.channel_members_update_role_failed))
     RaftTraceIdNote(traceId, Modifier.padding(horizontal = 12.dp).testTag("channel-member-role-error-trace"))
 }

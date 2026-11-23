@@ -407,6 +407,7 @@ internal fun <T> HomeNetworkResponse.toJointDataError(): DataResult<T> {
                     code = serverCode ?: "joint_forbidden",
                     requiredCapability = "federateChannels",
                     serverMessage = serverMessage,
+                    serverCode = serverCode,
                     traceId = traceId,
                 )
             )
@@ -416,6 +417,7 @@ internal fun <T> HomeNetworkResponse.toJointDataError(): DataResult<T> {
                     code = "server_unavailable",
                     retryable = true,
                     serverMessage = serverMessage,
+                    serverCode = serverCode,
                     traceId = traceId,
                 )
             )
@@ -425,6 +427,7 @@ internal fun <T> HomeNetworkResponse.toJointDataError(): DataResult<T> {
                     code = serverCode ?: "joint_http_$code",
                     retryable = false,
                     serverMessage = serverMessage,
+                    serverCode = serverCode,
                     traceId = traceId,
                 )
             )

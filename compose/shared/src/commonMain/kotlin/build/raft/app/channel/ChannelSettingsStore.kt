@@ -13,7 +13,12 @@ import build.raft.app.data.ChannelProfileUpdateResult
 import build.raft.app.data.ChannelVisibility
 import build.raft.app.data.DataRequestPriority
 import build.raft.app.data.DataResult
+import build.raft.app.data.ErrorPresentationKey
+import build.raft.app.data.RawServerMessagePriority
+import build.raft.app.data.errorPresentation
+import build.raft.app.data.failureServerCodeOrNull
 import build.raft.app.data.failureTraceIdOrNull
+import build.raft.app.data.usableServerRefusalMessage
 import build.raft.app.data.HomeChannelRow
 import build.raft.app.data.HomeSnapshot
 import build.raft.app.data.RealChannelRepository
@@ -105,6 +110,7 @@ internal sealed interface ChannelSettingsEffect {
         val code: String,
         val serverMessage: String? = null,
         val traceId: String? = null,
+        val serverCode: String? = null,
     ) : ChannelSettingsEffect
     data class Updated(val action: ChannelSettingsAction) : ChannelSettingsEffect
     data object ProfileSaved : ChannelSettingsEffect
@@ -301,11 +307,17 @@ internal data class ChannelSettingsState(
     val pendingVisitorVisible: Boolean? = null,
     /** Refusal code from `PATCH channels/:id { visitorVisible }`, shown inline under the row's description. */
     val visitorVisibleErrorCode: String? = null,
+    /** Wire refusal code from `PATCH channels/:id { visitorVisible }`, preserved separately from HTTP fallback codes. */
+    val visitorVisibleErrorServerCode: String? = null,
+    /** Server refusal sentence for a failed `visitorVisible` request. */
+    val visitorVisibleErrorMessage: String? = null,
     /** Server trace id of the refused `visitorVisible` request, shown under the row with a copy action. */
     val visitorVisibleErrorTraceId: String? = null,
     val profileStatus: ChannelProfileUpdateStatus = ChannelProfileUpdateStatus.Idle,
     val profileErrorCode: String? = null,
-    /** The server's reason for [profileErrorCode] where the form shows it (a failed Unarchive from the warning). */
+    /** Wire refusal code for [profileErrorCode] (profile save, Slack Bridge save, or archived-collision unarchive). */
+    val profileErrorServerCode: String? = null,
+    /** The server's reason for [profileErrorCode] (profile save, Slack Bridge save, or failed Unarchive from the warning). */
     val profileErrorMessage: String? = null,
     /** Server trace id of the failed profile save or archived-collision unarchive request. */
     val profileErrorTraceId: String? = null,
@@ -675,6 +687,8 @@ internal class ChannelSettingsStore(
                             copy(
                                 pendingVisitorVisible = intent.visible,
                                 visitorVisibleErrorCode = null,
+                                visitorVisibleErrorServerCode = null,
+                                visitorVisibleErrorMessage = null,
                                 visitorVisibleErrorTraceId = null,
                             )
                         },
@@ -721,6 +735,7 @@ internal class ChannelSettingsStore(
                     mutableState.value.copy(
                         profileStatus = ChannelProfileUpdateStatus.Idle,
                         profileErrorCode = null,
+                        profileErrorServerCode = null,
                         profileErrorMessage = null,
                         profileErrorTraceId = null,
                     )
@@ -936,6 +951,7 @@ internal class ChannelSettingsStore(
                 actionInFlight = ChannelSettingsAction.Profile,
                 profileStatus = ChannelProfileUpdateStatus.InFlight,
                 profileErrorCode = null,
+                profileErrorServerCode = null,
                 profileErrorMessage = null,
                 profileErrorTraceId = null,
                 // Web `saveChanges`: a new Save drops the last warning.
@@ -967,7 +983,15 @@ internal class ChannelSettingsStore(
                         DataResult.Content(ChannelSettingsSaveResult(profile, applied.data, slackBridgeApplied = true))
                     else -> {
                         partialProfile = profile.takeIf { profileChanged }
-                        DataResult.Error(ScreenError(code = CHANNEL_SETTINGS_SLACK_BRIDGE_PARTIAL_FAILURE, retryable = true))
+                        DataResult.Error(
+                            ScreenError(
+                                code = CHANNEL_SETTINGS_SLACK_BRIDGE_PARTIAL_FAILURE,
+                                retryable = true,
+                                serverMessage = applied.scrubbedServerRefusalReasonOrNull(),
+                                serverCode = applied.wrappedFailureServerCodeOrNull(),
+                                traceId = applied.failureTraceIdOrNull(),
+                            )
+                        )
                     }
                 }
             }
@@ -988,6 +1012,7 @@ internal class ChannelSettingsStore(
                 collisionUnarchiving = true,
                 profileStatus = ChannelProfileUpdateStatus.Idle,
                 profileErrorCode = null,
+                profileErrorServerCode = null,
                 profileErrorMessage = null,
                 profileErrorTraceId = null,
             )
@@ -1011,17 +1036,12 @@ internal class ChannelSettingsStore(
                             effect = ChannelSettingsEffect.OpenChannel(result.data.toThreadLaunchConversationIdentity(), unarchived = true),
                         )
                     else -> {
-                        val reason =
-                            when (result) {
-                                is DataResult.Error -> result.error.serverMessage
-                                is DataResult.NoPermission -> result.blocker.serverMessage
-                                else -> null
-                            }
                         latest.copy(
                             collisionUnarchiving = false,
                             profileStatus = ChannelProfileUpdateStatus.Failed,
                             profileErrorCode = CHANNEL_SETTINGS_ARCHIVED_UNARCHIVE_FAILED,
-                            profileErrorMessage = reason?.takeIf(String::isNotBlank),
+                            profileErrorServerCode = result.wrappedFailureServerCodeOrNull(),
+                            profileErrorMessage = result.scrubbedServerRefusalReasonOrNull(),
                             profileErrorTraceId = result.failureTraceIdOrNull(),
                         )
                     }
@@ -1072,6 +1092,7 @@ internal class ChannelSettingsStore(
                             result.error.code,
                             result.error.serverMessage,
                             traceId = result.error.traceId,
+                            serverCode = result.error.serverCode,
                             // Web EditChannelDialog: a rename onto an archived channel's name names it.
                             collision =
                                 result.error
@@ -1084,6 +1105,7 @@ internal class ChannelSettingsStore(
                             result.blocker.code,
                             result.blocker.serverMessage,
                             traceId = result.blocker.traceId,
+                            serverCode = result.blocker.serverCode,
                         )
                     is DataResult.Empty -> applyMutationFailure(action, result.reason.name)
                 }
@@ -1126,6 +1148,8 @@ internal class ChannelSettingsStore(
                         actionInFlight = null,
                         profileStatus = ChannelProfileUpdateStatus.Succeeded,
                         profileErrorCode = null,
+                        profileErrorServerCode = null,
+                        profileErrorMessage = null,
                         profileErrorTraceId = null,
                         effect = ChannelSettingsEffect.ProfileSaved,
                     )
@@ -1157,6 +1181,8 @@ internal class ChannelSettingsStore(
                         actionInFlight = null,
                         pendingVisitorVisible = null,
                         visitorVisibleErrorCode = null,
+                        visitorVisibleErrorServerCode = null,
+                        visitorVisibleErrorMessage = null,
                         visitorVisibleErrorTraceId = null,
                         effect = ChannelSettingsEffect.Updated(action),
                     )
@@ -1231,6 +1257,7 @@ internal class ChannelSettingsStore(
         code: String,
         serverMessage: String? = null,
         traceId: String? = null,
+        serverCode: String? = null,
         collision: ArchivedNameCollision? = null,
     ) {
         if (code == AUTHENTICATED_ROUTE_AUTHORITY_CHANGED) {
@@ -1241,6 +1268,8 @@ internal class ChannelSettingsStore(
         // Web: "The channel was saved, but its Slack bridge was not enabled" — keep the saved name.
         val saved = partialProfile.takeIf { action == ChannelSettingsAction.Profile }
         partialProfile = null
+        val isProfile = action == ChannelSettingsAction.Profile
+        val isVisitorVisible = action == ChannelSettingsAction.VisitorVisible
         mutableState.value =
             mutableState.value.copy(
                 channel =
@@ -1253,19 +1282,25 @@ internal class ChannelSettingsStore(
                 pendingPinned = null,
                 pendingVisitorVisible = null,
                 visitorVisibleErrorCode =
-                    if (action == ChannelSettingsAction.VisitorVisible) code else mutableState.value.visitorVisibleErrorCode,
+                    if (isVisitorVisible) code else mutableState.value.visitorVisibleErrorCode,
+                visitorVisibleErrorServerCode =
+                    if (isVisitorVisible) serverCode else mutableState.value.visitorVisibleErrorServerCode,
+                visitorVisibleErrorMessage =
+                    if (isVisitorVisible) serverMessage else mutableState.value.visitorVisibleErrorMessage,
                 visitorVisibleErrorTraceId =
-                    if (action == ChannelSettingsAction.VisitorVisible) traceId else mutableState.value.visitorVisibleErrorTraceId,
+                    if (isVisitorVisible) traceId else mutableState.value.visitorVisibleErrorTraceId,
                 profileStatus =
-                    if (action == ChannelSettingsAction.Profile) {
+                    if (isProfile) {
                         ChannelProfileUpdateStatus.Failed
                     } else {
                         mutableState.value.profileStatus
                     },
-                profileErrorCode = code.takeIf { action == ChannelSettingsAction.Profile },
-                profileErrorTraceId = if (action == ChannelSettingsAction.Profile) traceId else mutableState.value.profileErrorTraceId,
+                profileErrorCode = if (isProfile) code else mutableState.value.profileErrorCode,
+                profileErrorServerCode = if (isProfile) serverCode else mutableState.value.profileErrorServerCode,
+                profileErrorMessage = if (isProfile) serverMessage else mutableState.value.profileErrorMessage,
+                profileErrorTraceId = if (isProfile) traceId else mutableState.value.profileErrorTraceId,
                 profileCollision = collision ?: mutableState.value.profileCollision,
-                effect = ChannelSettingsEffect.Failure(action, code, serverMessage, traceId),
+                effect = ChannelSettingsEffect.Failure(action, code, serverMessage, traceId, serverCode),
             )
         // The profile part was confirmed (only the Slack Bridge step failed): it writes through.
         if (saved != null) writeThroughStored(ChannelSettingsAction.Profile, mutableState.value)
@@ -1302,6 +1337,48 @@ private suspend fun <T> runDataSourceCall(call: suspend () -> DataResult<T>): Da
     } catch (_: Throwable) {
         DataResult.Error(ScreenError(code = "channel_settings_network", retryable = true, traceId = null))
     }
+
+private fun DataResult<*>.scrubbedServerRefusalReasonOrNull(): String? {
+    val presentation =
+        when (this) {
+            is DataResult.Error -> error.errorPresentation()
+            is DataResult.NoPermission -> blocker.errorPresentation()
+            is DataResult.Content,
+            is DataResult.Empty -> return null
+        }
+    return if (presentation.rawServerMessagePriority == RawServerMessagePriority.ServerMessageFirst) {
+        usableServerRefusalMessage(presentation.rawServerMessage)
+    } else {
+        null
+    }
+}
+
+/**
+ * Preserves Tier 1 infrastructure classification when [ChannelSettingsStore] wraps an underlying
+ * failure into a synthetic `profileErrorCode` (`slack_bridge_partial_failure` or
+ * `archived_unarchive_failed`) so `EdgeBlocked`, `SessionExpired`, `ServerUnavailable`, and
+ * transport failures still resolve to their localized copy even when the wire response had no JSON `code`.
+ */
+private fun DataResult<*>.wrappedFailureServerCodeOrNull(): String? {
+    val presentation =
+        when (this) {
+            is DataResult.Error -> error.errorPresentation()
+            is DataResult.NoPermission -> blocker.errorPresentation()
+            is DataResult.Content,
+            is DataResult.Empty -> return null
+        }
+    return when (presentation.key) {
+        ErrorPresentationKey.EdgeBlocked -> "edge_blocked"
+        ErrorPresentationKey.SessionExpired -> "auth_required"
+        ErrorPresentationKey.ServerUnavailable -> "server_unavailable"
+        ErrorPresentationKey.ServerUnreachable -> "server_unreachable"
+        ErrorPresentationKey.RequestTimedOut -> "network_timeout"
+        ErrorPresentationKey.NetworkConnectionFailed -> "network_unavailable"
+        ErrorPresentationKey.ResponseUnreadable -> "network_parse_failed"
+        ErrorPresentationKey.ServerVersionIncompatible -> "server_version_incompatible"
+        else -> failureServerCodeOrNull()
+    }
+}
 
 private fun DataResult<build.raft.app.data.ChannelMemberSnapshot>.toChannelSettingsMemberSlice(
     route: ChannelSettingsRoute,

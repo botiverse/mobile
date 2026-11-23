@@ -149,9 +149,95 @@ class SlackBridgeChannelPairingApiTest {
         assertEquals(true, parseSlackBridgeFlagEnabled(flagOn))
     }
 
+    @Test
+    fun controlPlane4xxRefusalsPreserveServerMessageCodeAndTraceId() = runBlocking {
+        val traceId = "62ac7fa79a3785a6bee414a074f82634"
+        val network =
+            FakeNetwork(
+                mapOf("GET slack-bridge/provisioning" to provisioning()),
+                failures =
+                    mapOf(
+                        "PUT slack-bridge/provisioning/channel-pairs" to
+                            (409 to """{"ok":false,"code":"slack_channel_already_paired","error":"That Slack channel is already paired with #general."}"""),
+                    ),
+                traceId = traceId,
+            )
+
+        val result = SlackBridgeChannelPairingRepository(network, ServerId("server-1")).apply(ChannelId("raft-1"), "public", "C1")
+
+        val err = assertIs<DataResult.Error>(result).error
+        assertEquals("slack_channel_already_paired", err.code)
+        assertEquals("slack_channel_already_paired", err.serverCode)
+        assertEquals("That Slack channel is already paired with #general.", err.serverMessage)
+        assertEquals(traceId, err.traceId)
+        assertEquals(false, err.retryable)
+    }
+
+    @Test
+    fun initialLoadRefusalInsideApplyPreservesServerMessageAndTraceId() = runBlocking {
+        val traceId = "49a2bff61a2b3c4d5e6f708192a3b4c5"
+        val network =
+            FakeNetwork(
+                emptyMap(),
+                failures =
+                    mapOf(
+                        "GET slack-bridge/provisioning" to
+                            (403 to """{"ok":false,"code":"slack_bridge_admin_required","error":"Only server admins can manage Slack Bridge."}"""),
+                    ),
+                traceId = traceId,
+            )
+
+        val result = SlackBridgeChannelPairingRepository(network, ServerId("server-1")).apply(ChannelId("raft-1"), "public", "C1")
+
+        val err = assertIs<DataResult.Error>(result).error
+        assertEquals("slack_bridge_admin_required", err.code)
+        assertEquals("slack_bridge_admin_required", err.serverCode)
+        assertEquals("Only server admins can manage Slack Bridge.", err.serverMessage)
+        assertEquals(traceId, err.traceId)
+    }
+
+    @Test
+    fun controlPlaneScrubs401And5xxAndTransportErrorBodiesAndKeepsTier1Classification() = runBlocking {
+        val trace401 = "11111111111111111111111111111111"
+        val trace403Unauthorized = "22222222222222222222222222222222"
+        val trace500 = "33333333333333333333333333333333"
+        val traceZero = "44444444444444444444444444444444"
+        data class Case(
+            val status: Int,
+            val body: String,
+            val headerTraceId: String,
+            val expectedKey: ErrorPresentationKey,
+            val expectedRetryable: Boolean,
+            val expectedTraceId: String?,
+        )
+        val cases =
+            listOf(
+                Case(401, """{"ok":false,"code":"unauthorized","error":"jwt expired"}""", trace401, ErrorPresentationKey.SessionExpired, false, trace401),
+                Case(403, """{"ok":false,"code":"unauthorized","error":"jwt expired"}""", trace403Unauthorized, ErrorPresentationKey.SessionExpired, false, trace403Unauthorized),
+                Case(500, """{"ok":false,"code":"internal_error","error":"SQL panic"}""", trace500, ErrorPresentationKey.ServerUnavailable, true, trace500),
+                Case(0, """{"error":"synthetic transport"}""", traceZero, ErrorPresentationKey.NetworkConnectionFailed, true, null),
+            )
+        for (case in cases) {
+            val network =
+                FakeNetwork(
+                    mapOf("GET slack-bridge/provisioning" to provisioning()),
+                    failures = mapOf("PUT slack-bridge/provisioning/channel-pairs" to (case.status to case.body)),
+                    traceId = case.headerTraceId,
+                )
+            val result = SlackBridgeChannelPairingRepository(network, ServerId("server-1")).apply(ChannelId("raft-1"), "public", "C1")
+            val err = assertIs<DataResult.Error>(result).error
+            assertNull(err.serverMessage, "status=${case.status} must scrub serverMessage")
+            assertEquals(case.expectedRetryable, err.retryable, "status=${case.status} retryable")
+            assertEquals(case.expectedTraceId, err.traceId, "status=${case.status} traceId")
+            assertEquals(case.expectedKey, err.errorPresentation().key, "status=${case.status} presentation key")
+            assertNull(err.errorPresentation().rawServerMessage, "status=${case.status} rawServerMessage")
+        }
+    }
+
     private class FakeNetwork(
         private val responses: Map<String, String>,
         private val failures: Map<String, Pair<Int, String>> = emptyMap(),
+        private val traceId: String? = null,
     ) : RaftNetworkClient {
         val calls = mutableListOf<String>()
         val bodies = mutableListOf<String?>()
@@ -167,8 +253,11 @@ class SlackBridgeChannelPairingApiTest {
             val key = "$method ${path.trim('/')}"
             calls += key
             bodies += bodyText
-            failures[key]?.let { (code, body) -> return HomeNetworkResponse(code = code, bodyText = null, errorBodyText = body) }
-            return HomeNetworkResponse(code = 200, bodyText = responses[key] ?: error("unexpected $key"))
+            val headers = traceId?.let { mapOf("X-Trace-Id" to listOf(it)) }.orEmpty()
+            failures[key]?.let { (code, body) ->
+                return HomeNetworkResponse(code = code, bodyText = null, errorBodyText = body, responseHeaders = headers)
+            }
+            return HomeNetworkResponse(code = 200, bodyText = responses[key] ?: error("unexpected $key"), responseHeaders = headers)
         }
     }
 }

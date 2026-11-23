@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.app.data.ErrorPresentationKey
 import build.raft.app.data.HomeChannelRow
 import build.raft.app.data.SharedHomeIntent
 import build.raft.app.data.SharedServerChannelMembersSlice
@@ -286,5 +287,203 @@ class ChannelSettingsPageTest {
         assertEquals(Res.string.channel_settings_visitor_visible_save_failed, channelSettingsVisitorVisibleErrorRes("visitor_visible_invalid"))
         assertEquals(Res.string.channel_settings_visitor_visible_save_failed, channelSettingsVisitorVisibleErrorRes("visitor_visible_conflict"))
         assertEquals(Res.string.channel_settings_visitor_visible_save_failed, channelSettingsVisitorVisibleErrorRes("server_unavailable"))
+    }
+
+    @Test
+    fun channelSettingsFailureMessageSurfacesServerReasonForAllActionsAndScrubsInfra() {
+        val strings = ErrorPresentationStrings(ErrorPresentationKey.entries.associateWith { it.name })
+        val labels =
+            ChannelSettingsFailureLabels(
+                update = "Update failed",
+                visibility = "Visibility failed",
+                archive = "Archive failed",
+                unarchive = "Unarchive failed",
+                delete = "Delete failed",
+                disconnect = "Disconnect failed",
+            )
+
+        assertEquals(
+            "Only owners can archive announcement channels.",
+            channelSettingsFailureMessage(
+                ChannelSettingsEffect.Failure(
+                    action = ChannelSettingsAction.Archive,
+                    code = "http_403",
+                    serverMessage = "Only owners can archive announcement channels.",
+                    serverCode = "archive_forbidden",
+                ),
+                labels,
+                strings,
+            ),
+        )
+        assertEquals(
+            "Cannot delete the default #all channel.",
+            channelSettingsFailureMessage(
+                ChannelSettingsEffect.Failure(
+                    action = ChannelSettingsAction.Delete,
+                    code = "http_409",
+                    serverMessage = "Cannot delete the default #all channel.",
+                    serverCode = "default_channel_protected",
+                ),
+                labels,
+                strings,
+            ),
+        )
+        assertEquals(
+            "The host server cannot disconnect from a shared channel.",
+            channelSettingsFailureMessage(
+                ChannelSettingsEffect.Failure(
+                    action = ChannelSettingsAction.Disconnect,
+                    code = "host_cannot_disconnect",
+                    serverMessage = "The host server cannot disconnect from a shared channel.",
+                    serverCode = "host_cannot_disconnect",
+                ),
+                labels,
+                strings,
+            ),
+        )
+        assertEquals(
+            "Delete failed",
+            channelSettingsFailureMessage(
+                ChannelSettingsEffect.Failure(
+                    action = ChannelSettingsAction.Delete,
+                    code = "http_400",
+                    serverMessage = null,
+                ),
+                labels,
+                strings,
+            ),
+        )
+        assertEquals(
+            ErrorPresentationKey.ServerUnavailable.name,
+            channelSettingsFailureMessage(
+                ChannelSettingsEffect.Failure(
+                    action = ChannelSettingsAction.Archive,
+                    code = "http_500",
+                    serverMessage = "<html>500</html>",
+                    serverCode = "internal_error",
+                ),
+                labels,
+                strings,
+            ),
+        )
+        assertEquals(
+            ErrorPresentationKey.EdgeBlocked.name,
+            channelSettingsFailureMessage(
+                ChannelSettingsEffect.Failure(
+                    action = ChannelSettingsAction.Delete,
+                    code = "http_403",
+                    serverMessage = "edge_blocked",
+                    serverCode = "edge_blocked",
+                ),
+                labels,
+                strings,
+            ),
+        )
+    }
+
+    @Test
+    fun profileSlackAndVisitorVisibleFailureMessagesPreserveTiersAndScrubInfra() {
+        val strings = ErrorPresentationStrings(ErrorPresentationKey.entries.associateWith { it.name })
+
+        assertEquals(
+            "Saved channel, Slack failed. That Slack channel is already paired.",
+            channelSettingsProfileFailureMessage(
+                errorCode = CHANNEL_SETTINGS_SLACK_BRIDGE_PARTIAL_FAILURE,
+                errorServerCode = "slack_channel_already_paired",
+                errorMessage = "That Slack channel is already paired.",
+                strings = strings,
+                partialSlackLabel = "Saved channel, Slack failed.",
+                unarchiveFallback = "Unarchive failed",
+                updateFallback = "Update failed",
+            ),
+        )
+        assertEquals(
+            "Saved channel, Slack failed.",
+            channelSettingsProfileFailureMessage(
+                errorCode = CHANNEL_SETTINGS_SLACK_BRIDGE_PARTIAL_FAILURE,
+                errorServerCode = "internal_error",
+                errorMessage = "SQL crash",
+                strings = strings,
+                partialSlackLabel = "Saved channel, Slack failed.",
+                unarchiveFallback = "Unarchive failed",
+                updateFallback = "Update failed",
+            ),
+        )
+        assertEquals(
+            "That channel name is reserved.",
+            channelSettingsProfileFailureMessage(
+                errorCode = "http_409",
+                errorServerCode = "channel_name_reserved",
+                errorMessage = "That channel name is reserved.",
+                strings = strings,
+                partialSlackLabel = "Saved channel, Slack failed.",
+                unarchiveFallback = "Unarchive failed",
+                updateFallback = "Update failed",
+            ),
+        )
+        assertEquals(
+            "Slack Bridge is disabled for this server.",
+            channelSettingsSlackDialogFailureMessage(
+                errorCode = CHANNEL_SETTINGS_SLACK_BRIDGE_PARTIAL_FAILURE,
+                errorServerCode = "slack_bridge_disabled",
+                errorMessage = "Slack Bridge is disabled for this server.",
+                strings = strings,
+                fallback = "Slack failed",
+            ),
+        )
+        assertEquals(
+            "Slack failed",
+            channelSettingsSlackDialogFailureMessage(
+                errorCode = CHANNEL_SETTINGS_SLACK_BRIDGE_PARTIAL_FAILURE,
+                errorServerCode = "internal_error",
+                errorMessage = "SQL crash",
+                strings = strings,
+                fallback = "Slack failed",
+            ),
+        )
+        assertEquals(
+            "KNOWN:visitor_visibility_forbidden",
+            channelSettingsVisitorVisibleFailureMessage(
+                errorCode = "http_403",
+                errorServerCode = "visitor_visibility_forbidden",
+                errorMessage = "English server text",
+                strings = strings,
+                knownCopy = { "KNOWN:visitor_visibility_forbidden" },
+                fallback = "Save failed",
+            ),
+        )
+        assertEquals(
+            "Channels with external guests cannot be made visible to visitors.",
+            channelSettingsVisitorVisibleFailureMessage(
+                errorCode = "http_409",
+                errorServerCode = "visitor_visible_external_conflict",
+                errorMessage = "Channels with external guests cannot be made visible to visitors.",
+                strings = strings,
+                knownCopy = { "KNOWN" },
+                fallback = "Save failed",
+            ),
+        )
+        assertEquals(
+            ErrorPresentationKey.EdgeBlocked.name,
+            channelSettingsVisitorVisibleFailureMessage(
+                errorCode = "http_403",
+                errorServerCode = "edge_blocked",
+                errorMessage = "edge_blocked",
+                strings = strings,
+                knownCopy = { "KNOWN" },
+                fallback = "Save failed",
+            ),
+        )
+        assertEquals(
+            ErrorPresentationKey.ServerUnavailable.name,
+            channelSettingsVisitorVisibleFailureMessage(
+                errorCode = "http_500",
+                errorServerCode = "internal_error",
+                errorMessage = "panic",
+                strings = strings,
+                knownCopy = { "KNOWN" },
+                fallback = "Save failed",
+            ),
+        )
     }
 }
