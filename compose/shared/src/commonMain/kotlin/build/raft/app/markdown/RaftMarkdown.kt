@@ -1703,11 +1703,11 @@ private object RaftMarkdownTextProvider : TextProvider {
                 // from the text's layout) are in the popup's own coordinates.
                 Box(modifier, propagateMinConstraints = true) {
                     val withAppLinks: @Composable (Modifier) -> Unit = { textModifier -> text(textModifier.raftMarkdownAppLinkHover(appLinkCards)) }
-                    if (mentionCards == null) withAppLinks(Modifier) else RaftMarkdownMentionPreviewCardHost(mentionCards, resolvedText, Modifier, withAppLinks)
+                    if (mentionCards == null) withAppLinks(Modifier) else RaftMarkdownMentionPreviewCardHost(mentionCards, Modifier, withAppLinks)
                     appLinkCards.Popups(appLinkHost)
                 }
             mentionCards == null -> text(modifier)
-            else -> RaftMarkdownMentionPreviewCardHost(mentionCards, resolvedText, modifier, text)
+            else -> RaftMarkdownMentionPreviewCardHost(mentionCards, modifier, text)
         }
     }
 }

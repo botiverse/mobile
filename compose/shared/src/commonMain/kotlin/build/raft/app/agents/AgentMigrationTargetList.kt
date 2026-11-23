@@ -439,9 +439,9 @@ private val AgentMigrationAgentAvatarSize = RaftAvatarSize.Md
 private val AgentMigrationAgentAvatarGap = 8.dp
 
 /**
- * The computer's agents on one line: as many faces as fit, each with its live light; a tap opens
- * the agent's profile card (the @mention card, pinned) with View Profile. When they don't all fit,
- * the last place is a "+N" chip opening the whole list.
+ * The computer's agents on one line: as many faces as fit, each with its live light; a click or a
+ * tap opens the agent's profile, and a mouse resting on a face shows the agent's profile card (web
+ * AgentRackSlot). When they don't all fit, the last place is a "+N" chip opening the whole list.
  */
 @Composable
 private fun AgentMigrationAgentAvatarRow(agents: List<MemberProfile>, source: AgentMigrationComputerAgents, title: String) {
@@ -504,7 +504,11 @@ private fun AgentMigrationAgentFace(agent: MemberProfile, status: RaftAgentStatu
     }
 }
 
-/** One face of the row: a tap (any pointer) pins the agent's profile card; View Profile opens the profile. */
+/**
+ * One face of the row (web AgentRackSlot): a click or a tap opens the agent's profile; a mouse or
+ * trackpad pointer resting on it shows the agent's profile card (the @mention card, no buttons),
+ * which the click closes.
+ */
 @Composable
 private fun AgentMigrationAgentAvatar(agent: MemberProfile, source: AgentMigrationComputerAgents) {
     val status = rememberRaftAgentStatusIndicatorState(source.agentStatusResolver, agent.id.value)
@@ -516,7 +520,6 @@ private fun AgentMigrationAgentAvatar(agent: MemberProfile, source: AgentMigrati
     val runtimeCatalogs = build.raft.app.data.RaftRuntimeCatalogNames.observeCatalogs()
     RaftPreviewCard(
         state = state,
-        pinOnClick = true,
         card = {
             RaftProfilePreviewCardContent(
                 model =
@@ -528,17 +531,20 @@ private fun AgentMigrationAgentAvatar(agent: MemberProfile, source: AgentMigrati
                             modelLabelCatalog = modelLabelCatalog,
                         )
                     },
-                onViewProfile = {
-                    state.dismiss()
-                    source.onOpenProfile(agent)
-                }
             )
         }
     ) {
-        // A screen reader's activation has no pointer: it pins the card the same way.
+        // A screen reader's activation opens the profile as a click does.
         Row(
             Modifier
-                .raftClickable(onClick = { state.pin() }, onClickLabel = name, shape = RoundedCornerShape(4.dp))
+                .raftClickable(
+                    onClick = {
+                        state.dismiss()
+                        source.onOpenProfile(agent)
+                    },
+                    onClickLabel = name,
+                    shape = RoundedCornerShape(4.dp),
+                )
                 .semantics { contentDescription = name }
         ) {
             AgentMigrationAgentFace(agent, status)

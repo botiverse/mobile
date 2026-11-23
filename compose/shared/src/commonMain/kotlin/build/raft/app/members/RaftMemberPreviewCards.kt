@@ -14,7 +14,6 @@ import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.ui.input.pointer.PointerType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.AnnotatedString
-import androidx.compose.ui.text.LinkAnnotation
 import androidx.compose.ui.text.TextLayoutResult
 import build.raft.app.data.SharedServerMembersStore
 import build.raft.app.markdown.LocalRaftMarkdownMentionReadStates
@@ -67,29 +66,18 @@ internal val LocalRaftMemberPreviewCardSource = compositionLocalOf<RaftMemberPre
 
 /**
  * The profile card of [identity] for a [RaftPreviewCard][build.raft.designsystem.components.RaftPreviewCard]
- * or [RaftPreviewCardPopup]: [RaftProfilePreviewCardContent] with its View Profile button, which
- * closes the card and runs [onViewProfile] (the trigger's own click: open the profile).
+ * or [RaftPreviewCardPopup]: [RaftProfilePreviewCardContent]. It has no buttons (web
+ * ProfilePreviewCardContent): the trigger's own click (the avatar, the @mention) opens the profile
+ * and closes the card.
  */
 @Composable
 internal fun RaftMemberPreviewCardContent(
     source: RaftMemberPreviewCardSource,
     identity: MemberDetailIdentity,
-    state: RaftPreviewCardState,
     fallbackHandle: String?,
     readReceipt: RaftProfilePreviewReadReceipt? = null,
-    onViewProfile: (() -> Unit)?,
 ) {
-    val model = source.model(identity, fallbackHandle, readReceipt)
-    RaftProfilePreviewCardContent(
-        model = model,
-        onViewProfile =
-            onViewProfile?.let { open ->
-                {
-                    state.dismiss()
-                    open()
-                }
-            },
-    )
+    RaftProfilePreviewCardContent(model = source.model(identity, fallbackHandle, readReceipt))
 }
 
 /** String annotation over an @mention's words in rendered message text; the item is the mention's label as written. */
@@ -174,7 +162,7 @@ internal class RaftMarkdownMentionPreviewCards(
     }
 
     @Composable
-    fun Popups(source: RaftMemberPreviewCardSource, text: AnnotatedString) {
+    fun Popups(source: RaftMemberPreviewCardSource) {
         val readStates = LocalRaftMarkdownMentionReadStates.current
         spans.forEachIndexed { index, span ->
             val state = states[index]
@@ -187,7 +175,6 @@ internal class RaftMarkdownMentionPreviewCards(
                     RaftMemberPreviewCardContent(
                         source = source,
                         identity = identity,
-                        state = state,
                         fallbackHandle = span.label,
                         readReceipt =
                             if (identity.kind == MemberKind.Agent) {
@@ -197,8 +184,6 @@ internal class RaftMarkdownMentionPreviewCards(
                             } else {
                                 null
                             },
-                        // View Profile: the mention's own click.
-                        onViewProfile = text.mentionClick(span),
                     )
                 }
             }
@@ -212,16 +197,6 @@ private fun TextLayoutResult.mentionAnchor(span: RaftMarkdownMentionSpan, offset
     val from = maxOf(span.start, getLineStart(line))
     val to = minOf(span.end, getLineEnd(line, visibleEnd = true)).coerceAtLeast(from + 1)
     return getPathForRange(from, to).getBounds()
-}
-
-private fun AnnotatedString.mentionClick(span: RaftMarkdownMentionSpan): (() -> Unit)? {
-    val link =
-        getLinkAnnotations(span.start, span.end)
-            .firstOrNull { it.start <= span.start && span.end <= it.end && it.item is LinkAnnotation.Clickable }
-            ?.item as? LinkAnnotation.Clickable
-            ?: return null
-    val listener = link.linkInteractionListener ?: return null
-    return { listener.onClick(link) }
 }
 
 /**
@@ -259,20 +234,19 @@ internal fun Modifier.raftMarkdownMentionHover(cards: RaftMarkdownMentionPreview
     }
 
 /**
- * [text] with its @mentions' preview cards: the text in a box that holds the cards' popups, so a
+ * Text with its @mentions' preview [cards]: the text in a box that holds the cards' popups, so a
  * card's anchor (the mention's words, from the text's layout) is in the popup's own coordinates.
  * [modifier] goes on the box; [textContent] draws the text with the modifier it is given.
  */
 @Composable
 internal fun RaftMarkdownMentionPreviewCardHost(
     cards: RaftMarkdownMentionPreviewCards,
-    text: AnnotatedString,
     modifier: Modifier,
     textContent: @Composable (Modifier) -> Unit,
 ) {
     val source = LocalRaftMemberPreviewCardSource.current
     Box(modifier, propagateMinConstraints = true) {
         textContent(Modifier.raftMarkdownMentionHover(cards))
-        if (source != null) cards.Popups(source, text)
+        if (source != null) cards.Popups(source)
     }
 }

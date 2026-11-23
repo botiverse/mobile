@@ -400,7 +400,7 @@ class RaftMarkdownTest {
         assertEquals(listOf("@ada"), spans.map { it.label })
         val span = spans.single()
         assertEquals("@ada", annotated.text.substring(span.start, span.end))
-        // The mention's own click (the card's View Profile) covers the same words.
+        // The mention's own click (it opens the profile; the card has no button) covers the same words.
         assertTrue(
             annotated.getLinkAnnotations(span.start, span.end).any { link ->
                 link.item is LinkAnnotation.Clickable && link.start <= span.start && span.end <= link.end
