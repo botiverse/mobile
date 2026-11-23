@@ -45,6 +45,7 @@ class ChannelConversionStripModelTest {
                 Triple("prepare", 15, 0),
                 Triple("prepare_tasks", 25, 1),
                 Triple("move_parent_messages", 45, 1),
+                Triple("online_prepare_threads", 45, 1),
                 Triple("online_move", 45, 1),
                 Triple("online_cancel", 45, 1),
                 Triple("prepare_threads", 60, 1),

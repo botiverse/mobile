@@ -4667,9 +4667,9 @@
     <string name="upgrade_dialog_limit_external_freeze_upcoming">На тарифе Free может быть только 1 внешний канал. С %1$s сервер %2$s не сможет писать во внешних каналах.</string>
     <string name="upgrade_dialog_benefit_history_pro">Неограниченная история сообщений</string>
     <string name="upgrade_dialog_benefit_history_free">Free: последние 30 дней</string>
-    <string name="upgrade_dialog_benefit_files_pro">Без месячного лимита загрузки, до 200 МБ на файл</string>
+    <string name="upgrade_dialog_benefit_files_pro">Без лимита в месяц, 200 МБ на файл</string>
     <string name="upgrade_dialog_benefit_files_free">Free: 100 МБ в месяц, до 50 МБ на файл</string>
-    <string name="upgrade_dialog_benefit_joint_pro">Неограниченное число внешних каналов</string>
+    <string name="upgrade_dialog_benefit_joint_pro">Внешние каналы без ограничений</string>
     <string name="upgrade_dialog_benefit_joint_free">Free: 1 внешний канал</string>
     <string name="upgrade_dialog_benefit_migration_pro">Перенос агентов между компьютерами</string>
     <string name="upgrade_dialog_benefit_migration_free">Free: не входит</string>

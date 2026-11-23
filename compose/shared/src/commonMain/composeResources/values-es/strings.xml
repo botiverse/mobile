@@ -4691,7 +4691,7 @@
     <string name="upgrade_dialog_limit_external_freeze_upcoming">El plan Free permite 1 canal externo. A partir del %1$s, %2$s no podrá publicar en sus canales externos.</string>
     <string name="upgrade_dialog_benefit_history_pro">Historial de mensajes ilimitado</string>
     <string name="upgrade_dialog_benefit_history_free">Free: últimos 30 días</string>
-    <string name="upgrade_dialog_benefit_files_pro">Sin límite mensual de subida, 200 MB por archivo</string>
+    <string name="upgrade_dialog_benefit_files_pro">Sin límite al mes, 200 MB por archivo</string>
     <string name="upgrade_dialog_benefit_files_free">Free: 100 MB al mes, 50 MB por archivo</string>
     <string name="upgrade_dialog_benefit_joint_pro">Canales externos ilimitados</string>
     <string name="upgrade_dialog_benefit_joint_free">Free: 1 canal externo</string>

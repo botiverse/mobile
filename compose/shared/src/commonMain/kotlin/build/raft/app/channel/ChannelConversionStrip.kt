@@ -128,7 +128,8 @@ internal fun channelConversionStepIndex(phase: String): Int =
         "done" -> ChannelConversionStep.Done.ordinal
         "verify", "online_moved" -> ChannelConversionStep.Verify.ordinal
         "audience_cutover", "residual_cleanup", "online_switched", "finalize" -> ChannelConversionStep.Access.ordinal
-        "prepare_tasks", "move_parent_messages", "prepare_threads", "move_thread_messages", "online_move", "online_cancel" ->
+        "prepare_tasks", "move_parent_messages", "prepare_threads", "move_thread_messages", "online_prepare_threads", "online_move",
+        "online_cancel" ->
             ChannelConversionStep.Preserve.ordinal
         else -> ChannelConversionStep.Prepare.ordinal
     }
@@ -138,7 +139,7 @@ internal fun channelConversionPercent(phase: String): Int =
     when (phase) {
         "prepare" -> 15
         "prepare_tasks" -> 25
-        "move_parent_messages", "online_move", "online_cancel" -> 45
+        "move_parent_messages", "online_prepare_threads", "online_move", "online_cancel" -> 45
         "prepare_threads" -> 60
         "move_thread_messages" -> 72
         "verify", "online_moved" -> 82

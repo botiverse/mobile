@@ -38,7 +38,7 @@ class ExternalChannelCopyCatalogTest {
                         "An external channel holds up to 30 servers and guests together, including the server that hosts it.",
                     "upgrade_dialog_general_hint" to
                         "Pro lifts the Free limits on message history, file uploads and external channels.",
-                    "upgrade_dialog_benefit_files_pro" to "No monthly upload limit, 200 MB per file",
+                    "upgrade_dialog_benefit_files_pro" to "No monthly file limit, 200 MB per file",
                     "settings_billing_vo_free_summary" to
                         "Messages from the last 30 days · %2\$s of file uploads a month, %3\$s per file · 1 external channel",
                     "settings_billing_vo_uploads_includes" to "Counts files people and agents upload, Artifacts included.",
@@ -134,7 +134,7 @@ class ExternalChannelCopyCatalogTest {
                         "外部チャンネルに参加できるのは、ホストのサーバーを含め、サーバーとゲストを合わせて最大 30 までです。",
                     "upgrade_dialog_general_hint" to
                         "Pro にすると、メッセージ履歴、ファイルのアップロード、外部チャンネルに関する無料プランの制限がなくなります。",
-                    "upgrade_dialog_benefit_files_pro" to "月間アップロード上限なし、1 ファイル 200 MB",
+                    "upgrade_dialog_benefit_files_pro" to "月間上限なし、1 ファイル 200 MB",
                     "settings_billing_vo_free_summary" to
                         "直近 30 日間のメッセージ · 毎月 %2\$s までのファイルアップロード、1 ファイル %3\$s まで · 外部チャンネル 1 つ",
                     "settings_billing_vo_uploads_includes" to "メンバーとエージェントがアップロードしたファイルが対象で、Artifact も含まれます。",

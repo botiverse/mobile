@@ -4886,7 +4886,7 @@
     <string name="upgrade_dialog_limit_external_freeze_upcoming">Free allows 1 external channel. From %1$s, %2$s can't post in its external channels.</string>
     <string name="upgrade_dialog_benefit_history_pro">Unlimited message history</string>
     <string name="upgrade_dialog_benefit_history_free">Free: Last 30 days</string>
-    <string name="upgrade_dialog_benefit_files_pro">No monthly upload limit, 200 MB per file</string>
+    <string name="upgrade_dialog_benefit_files_pro">No monthly file limit, 200 MB per file</string>
     <string name="upgrade_dialog_benefit_files_free">Free: 100 MB a month, 50 MB per file</string>
     <string name="upgrade_dialog_benefit_joint_pro">Unlimited external channels</string>
     <string name="upgrade_dialog_benefit_joint_free">Free: 1 external channel</string>
