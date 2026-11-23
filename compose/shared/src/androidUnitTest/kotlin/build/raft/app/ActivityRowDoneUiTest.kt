@@ -27,6 +27,9 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.RuntimeEnvironment
 import org.robolectric.annotation.Config
+import androidx.compose.ui.test.assertHeightIsEqualTo
+import androidx.compose.ui.test.assertWidthIsEqualTo
+import androidx.compose.ui.unit.dp
 
 /**
  * The Activity row's trailing Mark as Done button (web InboxRowDone; raft-design components/inbox-item.md):
@@ -103,6 +106,8 @@ class ActivityRowDoneUiTest {
             onNodeWithTag(ActivityRowDoneTag).assertDoesNotExist()
             onNodeWithTag(ROW).performMouseInput { moveTo(center) }
             onNodeWithTag(ActivityRowDoneTag).assertExists().assert(look(ActivityRowDoneButton.Revealed))
+            // web InboxRowDone under a fine pointer: the 28px bar button (RaftIconButtonSize.Row).
+            onNodeWithTag(ActivityRowDoneTag).assertWidthIsEqualTo(28.dp).assertHeightIsEqualTo(28.dp)
             onNodeWithTag(ActivityRowDoneTag).performMouseInput { click(center) }
             mainClock.advanceTimeBy(1_000)
             assertEquals(1, calls.dones)
