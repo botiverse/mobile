@@ -208,7 +208,7 @@ class HttpErrorEnvelopeAccountAndAgentApisTest {
             assertEquals("Route not enabled.", levelResult.error.serverMessage)
             assertEquals("feature_disabled", levelResult.error.serverCode)
             assertEquals(sampleTraceId, levelResult.error.traceId)
-            assertFalse(RaftNotificationCapability.isSupported("s1"))
+            assertEquals(false, RaftNotificationCapability.isSupported("s1"))
         } finally {
             RaftNotificationLevelStore.apiProvider = previousApiProvider
             RaftNotificationLevelStore.clear()
