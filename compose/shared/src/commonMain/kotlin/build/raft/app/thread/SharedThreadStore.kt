@@ -316,7 +316,8 @@ internal class SharedThreadStore(
     private var visibleReadShown: Boolean = true
     // botiverse/slock #11687: the thread this page marked unread. Its visible reads are held while
     // the page shows it (web threadUnreadHold / autoReadHold), so the open page does not read it
-    // again at once; leaving the page (a new store) or showing another thread ends the hold.
+    // again at once; leaving the page (a new store) or showing another thread ends the hold, and so
+    // does sending in a channel or DM marked here (#16250, [endConversationUnreadHoldOnSend]).
     private var markedUnreadHoldChannelId: String? = null
     // #proj-mobile:#70: the thread whose Mark as Unread was answered 202 (admitted, result unknown). The
     // `read_state:updated` for it decides; it says so (the nothing toast) only while the hold is still on.
@@ -4400,6 +4401,21 @@ internal class SharedThreadStore(
     }
 
     /**
+     * botiverse/slock #16250 (web messageStore.sendMessage forgetManualUnread): a message the person
+     * sends from this page into the channel or DM they marked unread here ends that hold. It ends as
+     * the send starts, whatever its answer, as web forgets the mark before its request: their own
+     * message reads the conversation and later ones are read on sight again. A reply thread's hold
+     * stays, as web's thread hold (threadUnreadHold) is not ended by a reply.
+     */
+    private fun endConversationUnreadHoldOnSend(payload: RaftThreadScreenPayload) {
+        if (payload.surfaceKind == RaftThreadSurfaceKind.ReplyThread) return
+        val channelId = markedUnreadHoldChannelId?.takeIf { it == payload.cacheThreadId() } ?: return
+        markedUnreadHoldChannelId = null
+        pendingMarkUnreadChannelId = null
+        diagnosticsLogger?.invoke("thread_mark_unread_hold_end channelId=$channelId reason=sent")
+    }
+
+    /**
      * #proj-mobile:#70 (Tenny): the `read_state:updated` that answers a 202 Mark as Unread. Marked (a
      * count or the mark) keeps the hold; not marked reads as a 200 nothing to mark (the toast, the
      * hold ends), but only while the person is still on the thread (the hold is on). Once they left,
@@ -6029,6 +6045,7 @@ internal class SharedThreadStore(
                         ThreadPendingSendJournal.ConsumeResult.NotFound -> Unit
                     }
                 }
+                if (emitted) endConversationUnreadHoldOnSend(nextPayload)
                 emitted
             }
         } ?: false
