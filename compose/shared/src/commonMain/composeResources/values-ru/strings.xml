@@ -212,6 +212,7 @@
     <string name="settings_step_up_open_on_web">Открыть в веб-версии</string>
     <string name="settings_step_up_web_body">Ваш ключ доступа работает в браузере. Продолжите там, чтобы подтвердить, что это вы.</string>
     <string name="settings_step_up_web_continue">Продолжить в браузере</string>
+    <string name="settings_step_up_web_verify_with_passkey">Подтвердить ключом доступа в браузере</string>
     <string name="settings_step_up_web_waiting">Ожидаем завершения в браузере…</string>
     <string name="settings_step_up_web_cancelled">Браузер закрыт до подтверждения. Попробуйте ещё раз.</string>
     <string name="settings_step_up_web_expired">Срок действия запроса истёк. Попробуйте ещё раз.</string>
@@ -1199,6 +1200,8 @@
     <string name="video_player_position">Позиция воспроизведения</string>
     <string name="video_player_fullscreen">Во весь экран</string>
     <string name="video_player_exit_fullscreen">Выйти из полноэкранного режима</string>
+    <string name="video_player_speed">Скорость воспроизведения</string>
+    <string name="video_player_replay">Воспроизвести снова</string>
     <string name="thread_audio_preview_loading">Загрузка предпросмотра аудио</string>
     <string name="thread_audio_attachment_fallback_name">Аудиовложение</string>
     <string name="thread_audio_file_label">Аудиофайл</string>
@@ -1331,6 +1334,7 @@
     <string name="thread_state_beginning_conversation">Начало чата</string>
     <string name="thread_date_divider_today">СЕГОДНЯ</string>
     <string name="thread_date_divider_yesterday">ВЧЕРА</string>
+    <string name="thread_message_time_yesterday">Вчера</string>
     <string name="thread_date_divider_date">%1$s, %3$d %2$s</string>
     <string name="thread_date_divider_weekday_sunday">ВОСКРЕСЕНЬЕ</string>
     <string name="thread_date_divider_weekday_monday">ПОНЕДЕЛЬНИК</string>
@@ -3523,6 +3527,8 @@
     <string name="runtime_form_v2_load_failed">Не удалось загрузить форму среды выполнения (%1$s).</string>
     <string name="runtime_form_v2_unavailable">Конфигурация среды выполнения недоступна.</string>
     <string name="runtime_form_v2_source_refresh_failed">Не удалось обновить список. Показаны прежние варианты.</string>
+    <string name="runtime_form_v2_refresh_source_title">Загрузить этот список заново прямо сейчас</string>
+    <string name="runtime_form_v2_refresh_source_label">Обновить этот список</string>
     <string name="runtime_form_v2_source_status_fallback">Вместо этого показан стандартный список.</string>
     <string name="runtime_form_v2_source_status_stale">Этот компьютер не ответил вовремя, поэтому варианты могут быть устаревшими.</string>
     <string name="runtime_form_v2_source_status_probe_timeout">Этот компьютер слишком долго получал список вариантов.</string>

@@ -36,80 +36,80 @@ class DurablePartitionJdbcMigrationTest {
     )
 
     @Test
-    fun exactCheckedInV1MigratesToFreshV10WhilePreservingEveryNonCoreDefinitionAndOutboxByte() {
+    fun exactCheckedInV1MigratesToFreshV11WhilePreservingEveryNonCoreDefinitionAndOutboxByte() {
         val migratedPath = copyDatabaseResource("1.db")
-        val freshV10Path = Files.createTempFile("slock-fresh-v10-", ".db").also { it.deleteIfExists() }
+        val freshV11Path = Files.createTempFile("slock-fresh-v11-", ".db").also { it.deleteIfExists() }
         try {
             val before = JdbcSqliteDriver(url(migratedPath))
             val expectedOutbox = seedExactBaselineRows(before)
             val nonCoreBefore = before.masterDefinitions().filterNot { it.isCoreDefinition() }
-            migrateInOneTransaction(before, RaftDatabase.Schema, oldVersion = 1L, newVersion = 10L)
+            migrateInOneTransaction(before, RaftDatabase.Schema, oldVersion = 1L, newVersion = 11L)
 
             assertEquals(expectedOutbox, before.outboxRow())
             assertEquals(nonCoreBefore, before.masterDefinitions().filterNot { it.isCoreDefinition() })
-            assertV10Core(before)
+            assertV11Core(before)
             assertEquals(0L, before.scalarLong("SELECT COUNT(*) FROM messageEntity"), "legacy facts must not copy")
             assertEquals(0L, before.scalarLong("SELECT COUNT(*) FROM syncCursorEntity"), "legacy cursor must not seed")
 
-            val freshV10 = JdbcSqliteDriver(url(freshV10Path))
+            val freshV11 = JdbcSqliteDriver(url(freshV11Path))
             try {
-                RaftDatabase.Schema.create(freshV10).value
+                RaftDatabase.Schema.create(freshV11).value
                 assertEquals(
-                    freshV10.masterDefinitions().map { it.canonicalSchema() },
+                    freshV11.masterDefinitions().map { it.canonicalSchema() },
                     before.masterDefinitions().map { it.canonicalSchema() },
-                    "migrated v10 schema must equal fresh generated v10 after comment/whitespace canonicalization",
+                    "migrated v11 schema must equal fresh generated v11 after comment/whitespace canonicalization",
                 )
             } finally {
-                freshV10.close()
+                freshV11.close()
             }
             before.close()
         } finally {
             migratedPath.deleteIfExists()
-            freshV10Path.deleteIfExists()
+            freshV11Path.deleteIfExists()
         }
     }
 
     @Test
-    fun exactCheckedInV2MigratesToFreshV10WhileDroppingEnvironmentAmbiguousRows() {
+    fun exactCheckedInV2MigratesToFreshV11WhileDroppingEnvironmentAmbiguousRows() {
         val migratedPath = copyDatabaseResource("2.db")
-        val freshV10Path = Files.createTempFile("slock-fresh-v10-", ".db").also { it.deleteIfExists() }
+        val freshV11Path = Files.createTempFile("slock-fresh-v11-", ".db").also { it.deleteIfExists() }
         try {
             val migrated = JdbcSqliteDriver(url(migratedPath))
             val expectedOutbox = seedExactV2Rows(migrated)
             val nonCoreBefore = migrated.masterDefinitions().filterNot { it.isCoreDefinition() }
-            migrateInOneTransaction(migrated, RaftDatabase.Schema, oldVersion = 2L, newVersion = 10L)
+            migrateInOneTransaction(migrated, RaftDatabase.Schema, oldVersion = 2L, newVersion = 11L)
 
-            assertV10Core(migrated)
+            assertV11Core(migrated)
             assertEquals(0L, migrated.scalarLong("SELECT COUNT(*) FROM messageEntity"))
             assertEquals(0L, migrated.scalarLong("SELECT COUNT(*) FROM syncCursorEntity"))
             assertEquals(expectedOutbox, migrated.outboxRow())
             assertEquals(nonCoreBefore, migrated.masterDefinitions().filterNot { it.isCoreDefinition() })
 
-            val freshV10 = JdbcSqliteDriver(url(freshV10Path))
+            val freshV11 = JdbcSqliteDriver(url(freshV11Path))
             try {
-                RaftDatabase.Schema.create(freshV10).value
+                RaftDatabase.Schema.create(freshV11).value
                 assertEquals(
-                    freshV10.masterDefinitions().map { it.canonicalSchema() },
+                    freshV11.masterDefinitions().map { it.canonicalSchema() },
                     migrated.masterDefinitions().map { it.canonicalSchema() },
-                    "checked-in v2 migration must equal fresh generated v10",
+                    "checked-in v2 migration must equal fresh generated v11",
                 )
             } finally {
-                freshV10.close()
+                freshV11.close()
             }
             migrated.close()
         } finally {
             migratedPath.deleteIfExists()
-            freshV10Path.deleteIfExists()
+            freshV11Path.deleteIfExists()
         }
     }
 
     @Test
-    fun exactCheckedInV3MigratesToFreshV10WithIndependentReadStateTable() {
+    fun exactCheckedInV3MigratesToFreshV11WithIndependentReadStateTable() {
         val path = copyDatabaseResource("3.db")
         try {
             val driver = JdbcSqliteDriver(url(path))
-            migrateInOneTransaction(driver, RaftDatabase.Schema, oldVersion = 3L, newVersion = 10L)
-            assertV10Core(driver)
+            migrateInOneTransaction(driver, RaftDatabase.Schema, oldVersion = 3L, newVersion = 11L)
+            assertV11Core(driver)
             assertEquals(0L, driver.scalarLong("SELECT COUNT(*) FROM syncReadStateFactEntity"))
             driver.close()
         } finally {
@@ -118,7 +118,7 @@ class DurablePartitionJdbcMigrationTest {
     }
 
     @Test
-    fun v7SchemaWithoutPendingJournalMigratesToV10WithoutSynthesizingRows() {
+    fun v7SchemaWithoutPendingJournalMigratesToV11WithoutSynthesizingRows() {
         val path = copyDatabaseResource("1.db")
         try {
             val driver = JdbcSqliteDriver(url(path))
@@ -128,14 +128,14 @@ class DurablePartitionJdbcMigrationTest {
             migrateInOneTransaction(driver, RaftDatabase.Schema, oldVersion = 1L, newVersion = 7L)
             assertFalse(driver.hasMasterObject("table", "threadPendingSendEntity"))
 
-            migrateInOneTransaction(driver, RaftDatabase.Schema, oldVersion = 7L, newVersion = 10L)
+            migrateInOneTransaction(driver, RaftDatabase.Schema, oldVersion = 7L, newVersion = 11L)
 
-            assertV10Core(driver)
+            assertV11Core(driver)
             assertEquals(0L, driver.scalarLong("SELECT COUNT(*) FROM threadPendingSendEntity"))
             assertEquals(
                 expectedOutbox,
                 driver.outboxRow(),
-                "v7->v10 must preserve the legacy outbox without materializing a Thread pending row",
+                "v7->v11 must preserve the legacy outbox without materializing a Thread pending row",
             )
             driver.close()
         } finally {
@@ -144,7 +144,7 @@ class DurablePartitionJdbcMigrationTest {
     }
 
     @Test
-    fun v6AvatarValidatorRowMigratesToNullableV10IdentityAndForcesNoBackfill() {
+    fun v6AvatarValidatorRowMigratesToNullableV10IdentityAndThenV11DropsRetiredAvatarTables() {
         val path = copyDatabaseResource("1.db")
         try {
             val driver = JdbcSqliteDriver(url(path))
@@ -162,6 +162,23 @@ class DurablePartitionJdbcMigrationTest {
                         "commitGeneration IS NULL AND commitNonce IS NULL AND modelRevision IS NULL"
                 )
             )
+
+            val v10Master = driver.masterDefinitions()
+            for (failAt in 1..2) {
+                val failure = assertFailsWith<InjectedMigrationFailure>("v10->v11 fail-at-$failAt must abort") {
+                    migrateInOneTransaction(
+                        driver,
+                        FailAtMigrationStatementSchema(RaftDatabase.Schema, failAt),
+                        oldVersion = 10L,
+                        newVersion = 11L,
+                    )
+                }
+                assertEquals(failAt, failure.statementNumber)
+                assertEquals(v10Master, driver.masterDefinitions(), "v10->v11 fail-at-$failAt must roll back")
+            }
+
+            migrateInOneTransaction(driver, RaftDatabase.Schema, oldVersion = 10L, newVersion = 11L)
+            assertV11Core(driver)
             driver.close()
         } finally {
             path.deleteIfExists()
@@ -222,17 +239,17 @@ class DurablePartitionJdbcMigrationTest {
      * Message storage Phase 1: v9 -> v10 turns every stored V2 window into one identical `migrated` segment
      * ([0, 0] for an empty baseline), copies `updatedAtMs` into `lastUserAccessAtMs`, gives every fact
      * localRev 0, and leaves every other cursor (no window, an inverted window, a negative edge, another consumer) without a
-     * segment. The migrated schema equals a fresh v10 one.
+     * segment. The migrated v11 schema (with retired avatar tables dropped) equals a fresh v11 one.
      */
     @Test
-    fun exactCheckedInV9WindowsBecomeIdenticalSegmentsAndMatchFreshV10() {
+    fun exactCheckedInV9WindowsBecomeIdenticalSegmentsAndMatchFreshV11() {
         val path = copyDatabaseResource("9.db")
-        val freshPath = Files.createTempFile("slock-fresh-v10-", ".db").also { it.deleteIfExists() }
+        val freshPath = Files.createTempFile("slock-fresh-v11-", ".db").also { it.deleteIfExists() }
         try {
             val driver = JdbcSqliteDriver(url(path))
             seedV9Cursors(driver)
-            migrateInOneTransaction(driver, RaftDatabase.Schema, oldVersion = 9L, newVersion = 10L)
-            assertV10Core(driver)
+            migrateInOneTransaction(driver, RaftDatabase.Schema, oldVersion = 9L, newVersion = 11L)
+            assertV11Core(driver)
             assertEquals(
                 listOf(
                     "channel|window|5|20|0|1|100|migrated",
@@ -260,7 +277,7 @@ class DurablePartitionJdbcMigrationTest {
                 assertEquals(
                     fresh.masterDefinitions().map { it.canonicalSchema() },
                     driver.masterDefinitions().map { it.canonicalSchema() },
-                    "migrated v10 schema must equal fresh generated v10",
+                    "migrated v11 schema must equal fresh generated v11",
                 )
             } finally {
                 fresh.close()
@@ -421,6 +438,35 @@ class DurablePartitionJdbcMigrationTest {
     }
 
     private fun assertV10Core(driver: SqlDriver) {
+        assertCommonCoreTables(driver)
+        assertEquals(
+            listOf(
+                "environmentId", "accountId", "serverId",
+                "subjectKind", "subjectId", "memberKind",
+                "contentKind", "contentFingerprint", "eTag", "lastModified",
+                "fetchedAtMs", "validatedAtMs", "freshUntilMs", "staleUntilMs",
+                "sizeBytes", "contentType", "commitGeneration", "commitNonce", "modelRevision",
+            ),
+            driver.tableColumns("avatarCacheMetadataEntity"),
+        )
+        assertEquals(
+            listOf(
+                "environmentId", "accountId", "serverId",
+                "subjectKind", "subjectId", "memberKind",
+                "contentKind", "contentFingerprint", "failureKind",
+                "consecutiveCount", "failedAtMs", "retryAtMs",
+            ),
+            driver.tableColumns("avatarCacheFailureEntity"),
+        )
+    }
+
+    private fun assertV11Core(driver: SqlDriver) {
+        assertCommonCoreTables(driver)
+        assertFalse(driver.hasMasterObject("table", "avatarCacheMetadataEntity"))
+        assertFalse(driver.hasMasterObject("table", "avatarCacheFailureEntity"))
+    }
+
+    private fun assertCommonCoreTables(driver: SqlDriver) {
         assertEquals(
             listOf(
                 "environmentId",
@@ -473,25 +519,6 @@ class DurablePartitionJdbcMigrationTest {
         )
         assertFalse(driver.hasMasterObject("index", "messageEntity_channelSeqId"))
         assertTrue(driver.hasMasterObject("index", "messageEntity_partitionChannelSeqId"))
-        assertEquals(
-            listOf(
-                "environmentId", "accountId", "serverId",
-                "subjectKind", "subjectId", "memberKind",
-                "contentKind", "contentFingerprint", "eTag", "lastModified",
-                "fetchedAtMs", "validatedAtMs", "freshUntilMs", "staleUntilMs",
-                "sizeBytes", "contentType", "commitGeneration", "commitNonce", "modelRevision",
-            ),
-            driver.tableColumns("avatarCacheMetadataEntity"),
-        )
-        assertEquals(
-            listOf(
-                "environmentId", "accountId", "serverId",
-                "subjectKind", "subjectId", "memberKind",
-                "contentKind", "contentFingerprint", "failureKind",
-                "consecutiveCount", "failedAtMs", "retryAtMs",
-            ),
-            driver.tableColumns("avatarCacheFailureEntity"),
-        )
         assertTrue(driver.hasMasterObject("index", "syncCursorEntity_partitionUpdatedScope"))
         assertTrue(driver.hasMasterObject("table", "threadPendingSendEntity"))
         assertTrue(driver.hasMasterObject("index", "threadPendingSendEntity_identityRoute"))

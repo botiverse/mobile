@@ -1572,6 +1572,21 @@ internal open class RaftCmpActivity :
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         AndroidAppScopeRealtimeOwner.onActivityNewIntent(intent)
+        if (
+            shouldPreserveLiveAppShellOnNewIntent(
+                currentPageName = pageName,
+                incomingPageName = resolvedPageName(intent),
+                preserveRequested = intent.getBooleanExtra(KEY_PRESERVE_LIVE_SHELL_ON_NEW_INTENT, false),
+                recreatePending = recreateOnResume,
+            )
+        ) {
+            val line =
+                "host_new_intent page=${resolvedPageName(intent)} currentPage=${pageSpec?.pageName.orEmpty()} " +
+                    "state=${lifecycle.currentState} recreate=preserved"
+            RaftAppLog.record("SlockKuiklyActivity", line)
+            RaftAndroidLocalDiagnostics.recordLog("info", "SlockKuiklyActivity", line)
+            return
+        }
         AndroidLoginTransitionRouting.retireHost(this)
         if (pageName == PAGE_LOGIN && resolvedPageName(intent) != PAGE_LOGIN) {
             AndroidLoginTransitionRouting.onDestroyed(this, loginTransitionToken, changingConfigurations = false)
@@ -2294,6 +2309,10 @@ internal open class RaftCmpActivity :
             callback: RaftBridgeCallback?
     ) {
         runOnUiThread {
+            if (isFinishing || isDestroyed) {
+                callback?.invoke(AndroidAttachmentOpenResult.noApp(dispatch.source.durableCache).toBridgePayload())
+                return@runOnUiThread
+            }
             if (!ProcessAndroidAttachmentOwners.admit(dispatch.owner)) {
                 callback?.invoke(AndroidAttachmentOpenResult.cancelled().toBridgePayload())
                 return@runOnUiThread
@@ -3584,6 +3603,11 @@ internal open class RaftCmpActivity :
         internal const val KEY_APP_SHELL_INITIAL_TAB = "slockInitialTab"
         /** Set on the Intent an existing window was rebuilt on (onNewIntent), for its first-frame line. */
         private const val KEY_REBUILT_ON_NEW_INTENT = "build.raft.app.rebuiltOnNewIntent"
+        /**
+         * Set on external link reveal Intents so an already-live [PAGE_APP_SHELL] comes forward
+         * without recreating itself or dropping its Nav3 stack (#proj-mobile:#311).
+         */
+        internal const val KEY_PRESERVE_LIVE_SHELL_ON_NEW_INTENT = "build.raft.app.preserveLiveShellOnNewIntent"
         /** The tap a first-frame line was already written for (see pendingServerSwitchTapEpochMillis). */
         private const val KEY_SERVER_SWITCH_FIRST_FRAME_LOGGED_TAP = "build.raft.app.serverSwitchFirstFrameLoggedTap"
         private const val KEY_APP_SHELL_INITIAL_SETTINGS_DESTINATION = "slockInitialSettingsDestination"
@@ -3603,19 +3627,50 @@ internal open class RaftCmpActivity :
             loginTransitionToken: String? = null,
             /** False: no open transition ([KEY_OPEN_WITHOUT_ANIMATION]). */
             animated: Boolean = true,
+            /** True: reveal an already-live app shell without recreating it in onNewIntent. */
+            preserveLiveShell: Boolean = false,
         ) {
             RaftAdapters.init(context.applicationContext)
             raftLegacyAppShellTabRedirect(pageName, pageData)?.let { shellPageData ->
-                startAppShell(context, shellPageData, clearTask)
+                startAppShell(context, shellPageData, clearTask, preserveLiveShell = preserveLiveShell)
                 return
             }
+            val starter =
+                buildStartIntent(
+                    context = context,
+                    pageName = pageName,
+                    pageData = pageData,
+                    clearTask = clearTask,
+                    documentShellId = documentShellId,
+                    hostActivityClass = hostActivityClass,
+                    loginTransitionToken = loginTransitionToken,
+                    animated = animated,
+                    preserveLiveShell = preserveLiveShell,
+                )
+            context.startActivity(starter)
+        }
+
+        internal fun buildStartIntent(
+            context: Context,
+            pageName: String,
+            pageData: JSONObject = JSONObject(),
+            clearTask: Boolean = false,
+            documentShellId: String? = null,
+            hostActivityClass: Class<out Activity>? = null,
+            loginTransitionToken: String? = null,
+            animated: Boolean = true,
+            preserveLiveShell: Boolean = false,
+        ): Intent {
             val hostPageData = pageData.withAndroidHostPageData(pageName)
             val starter =
-                    Intent(context, hostActivityClass ?: raftHostActivityClass(pageName))
-                            .putExtra(KEY_PAGE_NAME, pageName)
-                            .putExtra(KEY_PAGE_DATA, RaftPageData.fromJson(hostPageData).text)
+                Intent(context, hostActivityClass ?: raftHostActivityClass(pageName))
+                    .putExtra(KEY_PAGE_NAME, pageName)
+                    .putExtra(KEY_PAGE_DATA, RaftPageData.fromJson(hostPageData).text)
             loginTransitionToken?.let {
                 starter.putExtra(AndroidLoginTransitionRouting.KEY_LOGIN_TRANSITION_TOKEN, it)
+            }
+            if (preserveLiveShell && pageName == PAGE_APP_SHELL && !clearTask) {
+                starter.putExtra(KEY_PRESERVE_LIVE_SHELL_ON_NEW_INTENT, true)
             }
             if (clearTask) {
                 starter.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
@@ -3630,13 +3685,14 @@ internal open class RaftCmpActivity :
                 )
             }
             if (!animated) starter.addFlags(Intent.FLAG_ACTIVITY_NO_ANIMATION)
-            context.startActivity(starter)
+            return starter
         }
 
         fun startAppShell(
             context: Context,
             pageData: JSONObject = JSONObject(),
             clearTask: Boolean = false,
+            preserveLiveShell: Boolean = false,
         ) {
             val multiShellHostEnabled =
                 runCatching {
@@ -3659,6 +3715,7 @@ internal open class RaftCmpActivity :
                         clearTask = taskClear,
                         documentShellId = documentShellId,
                         hostActivityClass = hostActivityClass,
+                        preserveLiveShell = preserveLiveShell,
                     )
                 },
             )
@@ -4047,7 +4104,6 @@ internal object RaftAdapters {
         installAndroidAppScopeEventBus(context)
         installAndroidThreadComposerTemporaryFileRetirement(context)
         RaftAndroidSqlDatabaseContext.init(context)
-        RaftAndroidAvatarCacheProcess.startAsync(context.applicationContext)
         SharedBinaryDownloader.setDiagnosticsLogger { tag, message ->
             // Transport failures must reach release-build feedback logs: avatar/image
             // downloads otherwise fail silently in production (Hands 39eec0a3/d208b2f2).
@@ -4061,7 +4117,20 @@ internal object RaftAdapters {
             return
         }
         initialized = true
+        // #proj-mobile:#294: one-time off-main-thread cleanup of the retired slock-avatar-render-v1
+        // durable avatar directory (image_cache/avatar_durable_v1); Coil owns avatar caching now.
+        val appContext = context.applicationContext
+        CoroutineScope(Dispatchers.IO).launch {
+            cleanupLegacyAndroidAvatarCacheDir(appContext.cacheDir)
+        }
     }
+}
+
+internal fun cleanupLegacyAndroidAvatarCacheDir(cacheDir: File?): Boolean {
+    val root = cacheDir ?: return false
+    val legacyDir = root.resolve(RAFT_ANDROID_IMAGE_CACHE_DIR_NAME).resolve("avatar_durable_v1")
+    if (!legacyDir.exists()) return false
+    return runCatching { legacyDir.deleteRecursively() }.getOrDefault(false)
 }
 
 private data class PendingThreadAttachmentUpload(
@@ -8050,9 +8119,10 @@ internal class RaftBridgeModule(
             when (dispatch) {
                 is AndroidAttachmentOpenDispatch.Complete -> callback?.invoke(dispatch.result.toBridgePayload())
                 is AndroidAttachmentOpenDispatch.SaveAs -> {
-                    val host = activity as? RaftHostActivity
-                    if (host == null) {
-                        callback?.invoke(AndroidAttachmentOpenResult.storageFailed().toBridgePayload())
+                    val hostActivity = activity
+                    val host = hostActivity as? RaftHostActivity
+                    if (host == null || hostActivity.isFinishing || hostActivity.isDestroyed) {
+                        callback?.invoke(AndroidAttachmentOpenResult.noApp(dispatch.source.durableCache).toBridgePayload())
                     } else {
                         host.requestAttachmentSaveAs(dispatch, callback)
                     }

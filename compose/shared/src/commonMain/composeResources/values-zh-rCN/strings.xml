@@ -212,6 +212,7 @@
     <string name="settings_step_up_open_on_web">在网页打开</string>
     <string name="settings_step_up_web_body">你的通行密钥可以在浏览器中使用。请在浏览器中继续，确认是你本人。</string>
     <string name="settings_step_up_web_continue">在浏览器中继续</string>
+    <string name="settings_step_up_web_verify_with_passkey">在浏览器中用通行密钥验证</string>
     <string name="settings_step_up_web_waiting">正在等待你在浏览器中完成…</string>
     <string name="settings_step_up_web_cancelled">浏览器在确认前已关闭。请再试一次。</string>
     <string name="settings_step_up_web_expired">此请求已过期。请再试一次。</string>
@@ -1199,6 +1200,8 @@
     <string name="video_player_position">播放进度</string>
     <string name="video_player_fullscreen">全屏</string>
     <string name="video_player_exit_fullscreen">退出全屏</string>
+    <string name="video_player_speed">播放速度</string>
+    <string name="video_player_replay">重新播放</string>
     <string name="thread_audio_preview_loading">正在加载音频预览</string>
     <string name="thread_audio_attachment_fallback_name">音频附件</string>
     <string name="thread_audio_file_label">音频文件</string>
@@ -1331,6 +1334,7 @@
     <string name="thread_state_beginning_conversation">对话开始</string>
     <string name="thread_date_divider_today">今天</string>
     <string name="thread_date_divider_yesterday">昨天</string>
+    <string name="thread_message_time_yesterday">昨天</string>
     <string name="thread_date_divider_date">%2$s%3$d日 %1$s</string>
     <string name="thread_date_divider_weekday_sunday">星期日</string>
     <string name="thread_date_divider_weekday_monday">星期一</string>
@@ -3702,6 +3706,8 @@
     <string name="runtime_form_v2_load_failed">运行时表单加载失败（%1$s）。</string>
     <string name="runtime_form_v2_unavailable">运行时配置不可用。</string>
     <string name="runtime_form_v2_source_refresh_failed">列表刷新失败，仍显示之前的选项。</string>
+    <string name="runtime_form_v2_refresh_source_title">立即重新获取这个列表</string>
+    <string name="runtime_form_v2_refresh_source_label">刷新此列表</string>
     <string name="runtime_form_v2_source_status_fallback">已改为显示标准列表。</string>
     <string name="runtime_form_v2_source_status_stale">此 Computer 未能及时响应，可选项可能不是最新的。</string>
     <string name="runtime_form_v2_source_status_probe_timeout">此 Computer 列出可选项超时。</string>

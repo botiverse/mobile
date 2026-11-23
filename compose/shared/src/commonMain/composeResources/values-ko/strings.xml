@@ -212,6 +212,7 @@
     <string name="settings_step_up_open_on_web">웹에서 열기</string>
     <string name="settings_step_up_web_body">패스키는 브라우저에서 사용할 수 있어요. 브라우저에서 계속해서 본인임을 확인해 주세요.</string>
     <string name="settings_step_up_web_continue">브라우저에서 계속</string>
+    <string name="settings_step_up_web_verify_with_passkey">브라우저에서 패스키로 인증</string>
     <string name="settings_step_up_web_waiting">브라우저에서 완료하기를 기다리는 중…</string>
     <string name="settings_step_up_web_cancelled">확인하기 전에 브라우저가 닫혔어요. 다시 시도해 주세요.</string>
     <string name="settings_step_up_web_expired">요청이 만료되었어요. 다시 시도해 주세요.</string>
@@ -1199,6 +1200,8 @@
     <string name="video_player_position">재생 위치</string>
     <string name="video_player_fullscreen">전체 화면</string>
     <string name="video_player_exit_fullscreen">전체 화면 종료</string>
+    <string name="video_player_speed">재생 속도</string>
+    <string name="video_player_replay">다시 재생</string>
     <string name="thread_audio_preview_loading">오디오 미리보기 불러오는 중</string>
     <string name="thread_audio_attachment_fallback_name">오디오 첨부 파일</string>
     <string name="thread_audio_file_label">오디오 파일</string>
@@ -1331,6 +1334,7 @@
     <string name="thread_state_beginning_conversation">대화의 시작</string>
     <string name="thread_date_divider_today">오늘</string>
     <string name="thread_date_divider_yesterday">어제</string>
+    <string name="thread_message_time_yesterday">어제</string>
     <string name="thread_date_divider_date">%2$s %3$d일 %1$s</string>
     <string name="thread_date_divider_weekday_sunday">일요일</string>
     <string name="thread_date_divider_weekday_monday">월요일</string>
@@ -3523,6 +3527,8 @@
     <string name="runtime_form_v2_load_failed">런타임 양식을 불러오지 못했어요(%1$s).</string>
     <string name="runtime_form_v2_unavailable">런타임 설정을 사용할 수 없어요.</string>
     <string name="runtime_form_v2_source_refresh_failed">이 목록을 새로고침하지 못했어요. 이전 옵션을 표시하고 있어요.</string>
+    <string name="runtime_form_v2_refresh_source_title">이 목록을 지금 다시 불러오기</string>
+    <string name="runtime_form_v2_refresh_source_label">이 목록 새로고침</string>
     <string name="runtime_form_v2_source_status_fallback">대신 표준 목록을 표시하고 있어요.</string>
     <string name="runtime_form_v2_source_status_stale">이 컴퓨터가 제시간에 응답하지 않아 옵션이 최신이 아닐 수 있어요.</string>
     <string name="runtime_form_v2_source_status_probe_timeout">이 컴퓨터에서 옵션 목록을 가져오는 데 시간이 너무 오래 걸렸어요.</string>

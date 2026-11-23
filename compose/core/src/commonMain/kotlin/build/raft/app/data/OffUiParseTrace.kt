@@ -1,6 +1,7 @@
 package build.raft.app.data
 
 import build.raft.app.RaftCoreInternalApi
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.withContext
 import kotlin.time.TimeSource
 
@@ -12,12 +13,18 @@ suspend inline fun <T> parseResponseBodyWithTrace(
     code: Int? = null,
     hasBody: Boolean = true,
     parseOnDefault: Boolean = true,
+    parseDispatcher: CoroutineDispatcher = RaftJsonParseDispatcher,
     diagnosticsLogger: (String) -> Unit = {},
     crossinline resultLabel: (T) -> String = { "content" },
     crossinline parser: () -> T
 ): T {
     val responseBytes = body.encodeToByteArray().size
-    val dispatcherLabel = if (parseOnDefault) RAFT_JSON_PARSE_DISPATCHER_LABEL else "caller"
+    val dispatcherLabel =
+        when {
+            !parseOnDefault -> "caller"
+            parseDispatcher === RaftJsonParseDispatcher -> RAFT_JSON_PARSE_DISPATCHER_LABEL
+            else -> "custom"
+        }
     diagnosticsLogger(
         "${markerPrefix}_network_body_received source=$source " +
             "code=${code ?: "unknown"} responseBytes=$responseBytes hasBody=$hasBody"
@@ -29,7 +36,7 @@ suspend inline fun <T> parseResponseBodyWithTrace(
     )
     val result =
         if (parseOnDefault) {
-            withContext(RaftJsonParseDispatcher) { parser() }
+            withContext(parseDispatcher) { parser() }
         } else {
             parser()
         }

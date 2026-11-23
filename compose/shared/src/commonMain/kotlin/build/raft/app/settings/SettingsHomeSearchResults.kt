@@ -396,10 +396,11 @@ internal fun sharedHomeSearchTimestampTextStyle() =
         letterSpacing = 0.sp
     )
 
-// raft-ui search-entity: a flat list-cell row, `py-3` (min 64dp) with its content 20dp in,
-// `gap-3` between a 27dp leading avatar / IconTile and the text; `text-body` semibold title with
-// at most one mark ([homeSearchEntityBadge]), `text-callout` `foreground-muted` description; 2dp
-// between rows, no line; pressed fills the cell shape. One tappable row, no Join: a channel the
+// raft-ui search-entity: a flat list-cell row, with a finger `pointer-coarse:py-2` (min 56dp, so
+// a title over its subtitle is the web's 62dp), under a mouse `py-3` (min 64dp), its content 20dp
+// in, `gap-3` between a 27dp leading avatar / IconTile and the text; `text-body` semibold title
+// with at most one mark ([homeSearchEntityBadge]), `text-callout` `foreground-muted` description;
+// 2dp between rows, no line; pressed fills the cell shape. One tappable row, no Join: a channel the
 // reader hasn't joined says "Not joined" and opens on its preview. An archived channel mutes its
 // title and description.
 @Composable
@@ -428,11 +429,12 @@ internal fun SharedHomeSearchEntityRow(
     val pressed by interactionSource.collectIsPressedAsState()
     val mutedArchived = result.archivedNow && result.type == SearchEntityType.Channel
     val typography = RaftTheme.typography
+    val pointer = RaftTheme.pointerInput
     Row(
         modifier =
             Modifier
                 .fillMaxWidth()
-                .heightIn(min = RaftSearchMetrics.EntityMinHeight)
+                .heightIn(min = RaftSearchMetrics.entityMinHeight(pointer))
                 .raftSearchRowGap(showSeparator)
                 .raftSearchRowPressed(pressed, RaftColor.FillPressed)
                 .raftCaptureLiveRootAnchor(contentAnchor)
@@ -460,7 +462,8 @@ internal fun SharedHomeSearchEntityRow(
                         )
                     }
                 }
-                .raftSafeAreaHorizontalPadding().padding(horizontal = RaftSearchMetrics.Inset, vertical = RaftSearchMetrics.RowPaddingVertical),
+                .raftSafeAreaHorizontalPadding()
+                .padding(horizontal = RaftSearchMetrics.Inset, vertical = RaftSearchMetrics.entityPaddingVertical(pointer)),
         horizontalArrangement = Arrangement.spacedBy(RaftSearchMetrics.EntityGap),
         verticalAlignment = Alignment.CenterVertically
     ) {

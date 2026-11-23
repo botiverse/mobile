@@ -2,6 +2,7 @@ package build.raft.app.data
 
 import build.raft.app.model.PerReceiverReadStateChanged
 import build.raft.app.model.ServerId
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.serialization.Serializable
 
 /**
@@ -50,14 +51,22 @@ internal const val HomeRowHintPreviewMaxChars = 280
 internal fun createSharedHomeRowHintPersistSlice(
     storage: HomeRowHintPersistStorage,
     diagnosticsLogger: (String) -> Unit = {},
-    failureLogger: (String) -> Unit = diagnosticsLogger
-): MviPersistSlice<SharedHomeState, SharedHomeIntent> =
-    MviPersistMiddleware(
-        storage = storage,
-        spec = SharedHomeRowHintPersistSpec,
-        diagnosticsLogger = diagnosticsLogger,
-        failureLogger = failureLogger
-    )
+    failureLogger: (String) -> Unit = diagnosticsLogger,
+    scrollDeferScope: CoroutineScope? = null,
+): MviPersistSlice<SharedHomeState, SharedHomeIntent> {
+    val middleware =
+        MviPersistMiddleware(
+            storage = storage,
+            spec = SharedHomeRowHintPersistSpec,
+            diagnosticsLogger = diagnosticsLogger,
+            failureLogger = failureLogger
+        )
+    return if (scrollDeferScope != null) {
+        ScrollDeferredMviPersistSlice(delegate = middleware, persistScope = scrollDeferScope)
+    } else {
+        middleware
+    }
+}
 
 /**
  * The row hints' storage: the last-known copy family (task #164 limits: 7 days, 5 servers per user,

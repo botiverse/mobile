@@ -46,11 +46,12 @@ object RaftDesktopRealtimeHost {
         val runtime: RaftRealtimeAppScopeRuntime,
     ) {
         var witness: RealtimeConnectionWitnessToken? = null
+        var accessToken: String? = null
         var connectJob: Job? = null
     }
 
-    /** The env / account binding; a token rotation on the same binding only re-auths. */
-    private data class Binding(val socketUrl: String, val environmentId: String, val principalId: String, val connectionFamilyId: String)
+    /** The env / account binding; a token/family rotation on the same binding reconnects in place. */
+    private data class Binding(val socketUrl: String, val environmentId: String, val principalId: String)
 
     private var session: Session? = null
 
@@ -112,7 +113,6 @@ object RaftDesktopRealtimeHost {
             accessToken = accessToken,
             socketUrl = params.str("socketUrl"),
             environmentId = params.str("environmentId"),
-            requestedLastSeq = session?.takeIf { it.serverId == serverId }?.runtime?.lastSeq ?: 0L,
             forceReconnect = params.bool("forceReconnect"),
             witness = witness,
         )
@@ -123,7 +123,6 @@ object RaftDesktopRealtimeHost {
         accessToken: String,
         socketUrl: String,
         environmentId: String,
-        requestedLastSeq: Long,
         forceReconnect: Boolean,
         witness: RealtimeConnectionWitnessToken,
     ) {
@@ -131,9 +130,10 @@ object RaftDesktopRealtimeHost {
         val environment = SharedApiEnvironmentStore(raftDesktopAppScopeKeyValueStore(SharedApiEnvironmentStore.Namespace))
         val resolvedSocketUrl = environment.resolveSocketUrl(socketUrl)
         val binding =
-            Binding(resolvedSocketUrl, environmentId.trim().trimEnd('/'), witness.principalId, witness.connectionFamilyId)
+            Binding(resolvedSocketUrl, environmentId.trim().trimEnd('/'), witness.principalId)
         val current = session
         if (current != null && (current.serverId != serverId || current.binding != binding)) closeSession("process_identity_replaced")
+        val requestedLastSeq = session?.takeIf { it.serverId == serverId }?.runtime?.lastSeq ?: 0L
         val target =
             session ?: run {
                 val context =
@@ -146,8 +146,20 @@ object RaftDesktopRealtimeHost {
                 val runtime = bootstrapRealtime(context).also { it.onAppShown() }
                 Session(serverId, binding, context, runtime).also { session = it }
             }
-        if (!forceReconnect && target.witness == witness && target.connectJob?.isActive == true) return
+        val credentialsChanged =
+            (target.witness != null && target.witness != witness) ||
+                (target.accessToken != null && target.accessToken != accessToken)
+        val effectiveForceReconnect = forceReconnect || credentialsChanged
+        if (
+            !effectiveForceReconnect &&
+            target.witness == witness &&
+            target.accessToken == accessToken &&
+            target.connectJob?.isActive == true
+        ) {
+            return
+        }
         target.witness = witness
+        target.accessToken = accessToken
         target.connectJob?.cancel()
         target.connectJob =
             scope.launch {
@@ -156,7 +168,7 @@ object RaftDesktopRealtimeHost {
                         serverId = serverId,
                         accessToken = accessToken,
                         requestedLastSeq = requestedLastSeq,
-                        forceReconnect = forceReconnect,
+                        forceReconnect = effectiveForceReconnect,
                         witness = witness,
                     )
                 RaftDesktopLog.i(TAG, "connect_result serverId=${serverId.value} result=${result::class.simpleName}")

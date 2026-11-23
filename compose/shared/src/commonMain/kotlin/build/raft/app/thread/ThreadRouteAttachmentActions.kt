@@ -10,6 +10,8 @@ import build.raft.app.data.ThreadAttachmentCommentItem
 import build.raft.app.data.ThreadAttachmentCommentsPage
 import build.raft.app.data.normalizedOrNull
 import build.raft.app.model.parseRaftTimestampEpochMillisOrNull
+import build.raft.app.resources.desc
+import build.raft.app.resources.resolve
 import build.raft.app.compat.pager.Pager
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -110,6 +112,7 @@ internal class ThreadRouteAttachmentActions(
     val unableToResolveCommentLabel = labels.unableToResolveCommentLabel
     val unableToOpenAttachmentLabel = labels.unableToOpenAttachmentLabel
     val unableToDownloadAttachmentLabel = labels.unableToDownloadAttachmentLabel
+    val openAttachmentActionLabel = labels.openAttachmentActionLabel
     val attachmentOpenResultTerms = labels.attachmentOpenResultTerms
     val attachmentSavedToDownloadsLabel = labels.attachmentSavedToDownloadsLabel
     val attachmentSavedToFilesLabel = labels.attachmentSavedToFilesLabel
@@ -636,7 +639,19 @@ internal class ThreadRouteAttachmentActions(
                     attachmentOpenStates = attachmentOpenStates - attachment.id
                     attachmentOperationTokens = attachmentOperationTokens - attachment.id
                     if (toast is ThreadAttachmentSaveToast.Info) {
-                        bridge.toast(toast.message)
+                        raftShowSavedDownloadToast(
+                            bridge = bridge,
+                            message = toast.message,
+                            openLabel = openAttachmentActionLabel,
+                            target =
+                                RaftSavedDownloadOpenTarget(
+                                    attachmentId = attachment.id,
+                                    fileName = attachment.name.ifBlank { "attachment-${attachment.id.take(8)}" },
+                                    owner = owner,
+                                    mimeType = attachment.mimeType.takeIf { it.isNotBlank() },
+                                ),
+                            openResultTerms = attachmentOpenResultTerms,
+                        )
                     }
                 }
                 "cancelled" -> {
@@ -665,6 +680,58 @@ internal class ThreadRouteAttachmentActions(
                         null -> Unit
                     }
                     attachmentOperationTokens = attachmentOperationTokens - attachment.id
+                }
+            }
+        }
+    }
+    /**
+     * The wide lightbox's Save to Photos, by touch (#305): the phone viewer's Save to Photos
+     * (RaftFilePreview) for one conversation image. Its own file goes into the photo library
+     * ([saveSharedThreadImageToPhotos]); then the viewer's words: "Saved to Photos", nothing when the
+     * save stopped, otherwise the Photos failure for the host's status ([raftAttachmentSaveFailure]).
+     * One operation at a time per attachment, as the other actions here.
+     */
+    fun saveImageToPhotos(attachment: RaftThreadAttachmentItem) {
+        if (attachment.id.isBlank() || attachmentOpenStates[attachment.id].threadAttachmentIsOpening()) return
+        val owner = attachmentOwner ?: return
+        nextAttachmentDownloadGeneration += 1L
+        val downloadId = attachment.threadAttachmentDownloadId(nextAttachmentDownloadGeneration)
+        val operation = AttachmentOperationToken(owner, downloadId, downloadId)
+        attachmentOperationTokens = attachmentOperationTokens + (attachment.id to operation)
+        attachmentOpenStates =
+            attachmentOpenStates +
+                (attachment.id to ThreadAttachmentOpenUiState(
+                    status = "downloading",
+                    downloadId = downloadId,
+                    progress = RaftFilePreviewInitialDownloadProgress.copy(downloadId = downloadId)
+                ))
+        coroutineScope.launch {
+            val result =
+                saveSharedThreadImageToPhotos(
+                    bridge = bridge,
+                    dataSource = dataSource,
+                    attachment = attachment,
+                    owner = owner,
+                    downloadId = downloadId
+                )
+            val token = attachmentOperationTokens[attachment.id]
+            if (token != operation || !attachmentOperationCommitAllowed(operation, token.operationId)) return@launch
+            attachmentOpenStates = attachmentOpenStates - attachment.id
+            attachmentOperationTokens = attachmentOperationTokens - attachment.id
+            when (result.status) {
+                "saved", "exported" -> bridge.toast(attachmentSavedToPhotosLabel)
+                "cancelled" -> Unit
+                else -> {
+                    val failure =
+                        raftAttachmentSaveFailure(result.status, RaftAttachmentSaveDestination.Photos)
+                            ?: RaftAttachmentSaveFailure.PhotosSaveFailed
+                    bridge.log(
+                        "thread_attachment_save_failed attachment=${attachment.id.take(8)} " +
+                            "status=${raftAttachmentOpenDiagnosticStatus(result.status)} " +
+                            "errorKind=${raftAttachmentOpenDiagnosticErrorKind(result.errorKind)} " +
+                            "failure=${failure.name} message=${raftAttachmentHostMessageForLog(result.message)}"
+                    )
+                    bridge.errorToast(failure.messageRes.desc().resolve(), result.traceId)
                 }
             }
         }

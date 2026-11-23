@@ -199,6 +199,33 @@ class AndroidAppScopeRealtimeOwnerTest {
         assertFalse(AndroidAppScopeRealtimeOwner.shouldDisposeRuntimeForSessionEnd("server_switch"))
     }
 
+    @Test
+    fun silentTokenAndConnectionFamilyRotationKeepsSameProcessBinding() {
+        val before =
+            AndroidAppScopeRealtimeOwner.MultiSessionIdentity(
+                environmentId = "https://api.raft.build/api",
+                socketUrl = "https://api.raft.build",
+                principalId = "user-1",
+                authGeneration = 3L,
+                connectionFamilyId = "proc:family:1",
+                accessToken = "token-old",
+            )
+        val afterSilentRefresh =
+            before.copy(
+                authGeneration = 4L,
+                connectionFamilyId = "proc:family:2",
+                accessToken = "token-new",
+            )
+
+        assertTrue(
+            "silent token refresh rotates authGeneration, connectionFamilyId, and accessToken on the same binding",
+            before.sameBindingAs(afterSilentRefresh),
+        )
+        assertFalse(before.sameBindingAs(before.copy(principalId = "user-2")))
+        assertFalse(before.sameBindingAs(before.copy(environmentId = "https://staging.raft.build/api")))
+        assertFalse(before.sameBindingAs(before.copy(socketUrl = "https://staging.raft.build")))
+    }
+
     private fun message(
         channelId: String? = null,
         threadChannelId: String? = null,

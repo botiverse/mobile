@@ -362,6 +362,29 @@ internal class BridgeModule : Module() {
         callNativeMethod("toast", methodArgs, null)
     }
 
+    /** [toast] with a single trailing action ([actionLabel] -> [onAction]); the native fallback has none. */
+    fun toastWithAction(
+        content: String,
+        actionLabel: String,
+        onAction: () -> Unit,
+        intent: RaftToastIntent? = null,
+    ) {
+        if (
+            RaftCmpToasts.post(
+                content,
+                origin = pager?.host?.capabilities,
+                intent = intent,
+                actionLabel = actionLabel,
+                onAction = onAction,
+            )
+        ) {
+            return
+        }
+        val methodArgs = JSONObject()
+        methodArgs.put("content", content)
+        callNativeMethod("toast", methodArgs, null)
+    }
+
     /**
      * [toast] for an error (AGENTS.md "Errors carry the trace ID"): with the failed request's
      * [traceId] the toast shows "Trace ID a1b2c3d4…" under [content] and a Copy action that copies
@@ -624,6 +647,11 @@ internal class BridgeModule : Module() {
          * launches nothing and answers `{status: "ready", path}` or a terminal failure status.
          */
         prepareOnly: Boolean = false,
+        /**
+         * Keep the native callback alive after the owning page detaches (for example when the user
+         * taps "Open" on a handed-off download-complete toast after leaving the preview or viewer).
+         */
+        retainAfterPageDestroyed: Boolean = false,
         onProgress: ((BridgeAttachmentDownloadProgress) -> Unit)? = null
     ): JSONObject? =
         suspendCancellableCoroutine { continuation ->
@@ -661,7 +689,8 @@ internal class BridgeModule : Module() {
                         callbackRef?.let { removeCallback(it) }
                         continuation.resume(payload)
                     },
-                    syncCall = false
+                    syncCall = false,
+                    retainAfterDetach = retainAfterPageDestroyed,
                 )
             callbackRef = result.callbackRef
             continuation.invokeOnCancellation {

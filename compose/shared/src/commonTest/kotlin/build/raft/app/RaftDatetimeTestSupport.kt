@@ -3,6 +3,10 @@ package build.raft.app
 import build.raft.app.data.RaftDatetimeFoundationOwner
 import build.raft.app.data.RaftEpochMillisSource
 import build.raft.app.data.RaftLocalOffsetMinutesSource
+import build.raft.app.format.RaftFormatLocale
+
+/** Message times as an English UI writes them (what `rememberRaftMessageTimeFormat` builds there). */
+internal val RaftEnglishMessageTime = RaftMessageTimeFormat(RaftFormatLocale.English, "Yesterday")
 
 internal fun raftTestDatetimeFoundationOwner(
     nowMillis: () -> Long = { 0L },

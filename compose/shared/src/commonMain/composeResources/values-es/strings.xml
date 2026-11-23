@@ -212,6 +212,7 @@
     <string name="settings_step_up_open_on_web">Abrir en la web</string>
     <string name="settings_step_up_web_body">Tu llave de acceso funciona en el navegador. Continúa allí para confirmar que eres tú.</string>
     <string name="settings_step_up_web_continue">Continuar en el navegador</string>
+    <string name="settings_step_up_web_verify_with_passkey">Verificar con tu llave de acceso en el navegador</string>
     <string name="settings_step_up_web_waiting">Esperando a que termines en el navegador…</string>
     <string name="settings_step_up_web_cancelled">Se cerró el navegador antes de confirmar. Inténtalo de nuevo.</string>
     <string name="settings_step_up_web_expired">Esta solicitud caducó. Inténtalo de nuevo.</string>
@@ -1199,6 +1200,8 @@
     <string name="video_player_position">Posición de reproducción</string>
     <string name="video_player_fullscreen">Pantalla completa</string>
     <string name="video_player_exit_fullscreen">Salir de pantalla completa</string>
+    <string name="video_player_speed">Velocidad de reproducción</string>
+    <string name="video_player_replay">Volver a reproducir</string>
     <string name="thread_audio_preview_loading">Cargando vista previa del audio</string>
     <string name="thread_audio_attachment_fallback_name">Audio adjunto</string>
     <string name="thread_audio_file_label">Archivo de audio</string>
@@ -1331,6 +1334,7 @@
     <string name="thread_state_beginning_conversation">Inicio de la conversación</string>
     <string name="thread_date_divider_today">HOY</string>
     <string name="thread_date_divider_yesterday">AYER</string>
+    <string name="thread_message_time_yesterday">Ayer</string>
     <string name="thread_date_divider_date">%1$s, %3$d DE %2$s</string>
     <string name="thread_date_divider_weekday_sunday">DOMINGO</string>
     <string name="thread_date_divider_weekday_monday">LUNES</string>
@@ -3523,6 +3527,8 @@
     <string name="runtime_form_v2_load_failed">No se pudo cargar el formulario del runtime (%1$s).</string>
     <string name="runtime_form_v2_unavailable">La configuración del runtime no está disponible.</string>
     <string name="runtime_form_v2_source_refresh_failed">No se pudo actualizar esta lista. Se muestran las opciones anteriores.</string>
+    <string name="runtime_form_v2_refresh_source_title">Volver a cargar esta lista ahora</string>
+    <string name="runtime_form_v2_refresh_source_label">Actualizar esta lista</string>
     <string name="runtime_form_v2_source_status_fallback">Se muestra la lista estándar en su lugar.</string>
     <string name="runtime_form_v2_source_status_stale">Esta computadora no respondió a tiempo, así que estas opciones pueden estar desactualizadas.</string>
     <string name="runtime_form_v2_source_status_probe_timeout">Esta computadora tardó demasiado en listar las opciones.</string>

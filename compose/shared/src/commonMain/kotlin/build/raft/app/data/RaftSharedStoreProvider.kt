@@ -528,6 +528,7 @@ internal class RaftSharedStoreProvider private constructor(
     private val accountBinding: StateFlow<RaftAccountBinding<ProcessPresenceAuthContext>>,
     private val memberPresenceRealtimeSink: (RealtimePresenceAdmission, MemberPresenceUpdated) -> Unit,
     val composerDraftPersistSlice: SharedThreadComposerDraftPersistSlice,
+    private val activityPersistStorage: SharedActivityPersistStorage,
     private val activityPersistSlice: MviPersistSlice<SharedActivityState, SharedActivityIntent>,
     val homeSavedStateCache: SharedHomeSavedStateCache,
     /**
@@ -581,7 +582,8 @@ internal class RaftSharedStoreProvider private constructor(
         createSharedHomeRowHintPersistSlice(
             storage = homeRowHintPersistStorage,
             diagnosticsLogger = sharedInfoLogger("SlockHomePersist", "shared_home_row_hints"),
-            failureLogger = sharedErrorLogger("SlockHomePersist", "shared_home_row_hints")
+            failureLogger = sharedErrorLogger("SlockHomePersist", "shared_home_row_hints"),
+            scrollDeferScope = threadSendScope,
         )
     private val selectedServerStores = RaftShellScopedStoreCache<SelectedServerStore>()
     private val selectedServerSelectionEpochStore =
@@ -622,6 +624,8 @@ internal class RaftSharedStoreProvider private constructor(
             diagnosticsLogger = sharedInfoLogger("SlockAppLinkPreviews", "shared_app_link_previews"),
             // As the server's read: Artifact links never take one of the first three App links.
             artifactHosts = { clientConfigStore.appHosts.value },
+            offlineResource = offlineResourceCache.resource(AppLinkPreviewResourceSpec),
+            currentAccountId = { currentAccountBindingOrNull()?.second ?: authStore.readCommittedSessionSnapshot()?.user?.id },
         )
     }
     val appLinkPreviewStore: SharedAppLinkPreviewStore by appLinkPreviewStoreLazy
@@ -653,13 +657,20 @@ internal class RaftSharedStoreProvider private constructor(
             scope = RaftStoreThreading.newScope(),
             nowMillis = { clock.elapsedNow().inWholeMilliseconds },
             diagnosticsLogger = sharedInfoLogger("SlockArtifacts", "artifact_summaries"),
+            offlineResource = offlineResourceCache.resource(ArtifactSummaryResourceSpec),
+            currentAccountId = { currentAccountBindingOrNull()?.second ?: authStore.readCommittedSessionSnapshot()?.user?.id },
         )
     }
     val artifactSummaryStore: SharedArtifactSummaryStore by artifactSummaryStoreLazy
 
+    private val artifactScreenshotDiskCache: CoilArtifactScreenshotDiskCache by lazy {
+        CoilArtifactScreenshotDiskCache(sharedPreferenceStore)
+    }
+
     /**
      * Workspace Artifacts: the publish check's screenshots on the Artifact cards on screen
-     * (`GET /api/objects/artifact/{id}/files/{fileId}`), in memory for this viewer.
+     * (`GET /api/objects/artifact/{id}/files/{fileId}`), with per-(env, account, server) disk cache
+     * backed by Coil's DiskCache (#proj-mobile:#294).
      */
     private val artifactScreenshotStoreLazy = lazy {
         val clock = kotlin.time.TimeSource.Monotonic.markNow()
@@ -667,6 +678,17 @@ internal class RaftSharedStoreProvider private constructor(
             fetcher = NetworkArtifactScreenshotFetcher(networkClient),
             scope = RaftStoreThreading.newScope(),
             nowMillis = { clock.elapsedNow().inWholeMilliseconds },
+            diskCache = artifactScreenshotDiskCache,
+            currentOwner = {
+                val binding = currentAccountBindingOrNull()
+                val env = binding?.first ?: apiEnvironmentStore.current().apiBaseUrl
+                val accountId = binding?.second ?: authStore.readCommittedSessionSnapshot()?.user?.id
+                if (env.isNotBlank() && !accountId.isNullOrBlank()) {
+                    ArtifactScreenshotDiskOwner(environmentId = env, accountId = accountId)
+                } else {
+                    null
+                }
+            },
         )
     }
     val artifactScreenshotStore: SharedArtifactScreenshotStore by artifactScreenshotStoreLazy
@@ -782,7 +804,7 @@ internal class RaftSharedStoreProvider private constructor(
             homeSavedStateCache = homeSavedStateCache,
             offlineResourceCache = offlineResourceCache,
             homeRowHints = homeRowHintPersistStorage,
-            activityFirstPages = SharedActivityPersistStorage(sharedPreferenceStore),
+            activityFirstPages = activityPersistStorage,
             notificationPreferences = settingsServerNotificationLastKnownStore,
             messageEngine = canonicalMessageV2GenerationEngine,
             memberAvatarRefStore = memberAvatarRefStore,
@@ -796,6 +818,7 @@ internal class RaftSharedStoreProvider private constructor(
                 if (appLinkPreviewStoreLazy.isInitialized()) appLinkPreviewStore.clearAll()
                 if (artifactSummaryStoreLazy.isInitialized()) artifactSummaryStore.clearAll()
                 if (artifactScreenshotStoreLazy.isInitialized()) artifactScreenshotStore.clearAll()
+                artifactScreenshotDiskCache.clearAllAsync(threadSendScope)
                 // Quote replies' resolved quotes: per viewer, session only.
                 if (resolvedQuotesStoreLazy.isInitialized()) resolvedQuotesStore.clearAll()
                 // The Artifact viewer's headers and its kept WebView (Tenny's cache rule 1).
@@ -1903,6 +1926,10 @@ internal class RaftSharedStoreProvider private constructor(
                 processAuthTerminalSource.runIfAuthSessionTerminalRevision(expectedGeneration) {
                     // Sign-out keeps the account's stored data (keyed by account; owner decision
                     // 2026-10-27) and resets every in-memory copy: see AccountLocalData.
+                    // Fence deferred persist writes first so no in-flight write lands after sign-out.
+                    (activityPersistSlice as? RaftScrollDeferredPersistControl)?.discardPending()
+                    (homeIdentityPersistSlice as? RaftScrollDeferredPersistControl)?.discardPending()
+                    (homeRowHintPersistSlice as? RaftScrollDeferredPersistControl)?.discardPending()
                     accountLocalData.onSignOut()
                     // The signed-out account's attachment uploads stop with it.
                     composerDraftUploads.cancelAll()
@@ -2010,8 +2037,27 @@ internal class RaftSharedStoreProvider private constructor(
                 syncRealtimePull.cancelWhere(reason = "server_access_lost") { it.serverId == grant.serverId }
                 // #45: that server's recent searches and frequent people / channels.
                 searchPersonalizationRepository.dropServer(grant.serverId, lostAccountId, nowMillis = defaultNowMillis())
+                // #294: drop lost-server Artifact summaries, App link previews, and persisted Artifact screenshots
+                // (using the shared disk cache instance so in-flight writes are fenced even before store init).
+                if (artifactSummaryStoreLazy.isInitialized()) {
+                    artifactSummaryStore.dropServer(grant.serverId)
+                }
+                if (appLinkPreviewStoreLazy.isInitialized()) {
+                    appLinkPreviewStore.dropServer(grant.serverId)
+                }
+                val lostEnvironmentId = replyCacheAuthContext.value?.environmentId ?: apiEnvironmentStore.current().apiBaseUrl
+                if (artifactScreenshotStoreLazy.isInitialized()) {
+                    artifactScreenshotStore.dropServer(grant.serverId, lostAccountId, lostEnvironmentId)
+                } else {
+                    artifactScreenshotDiskCache.clearServer(grant.serverId, lostAccountId, lostEnvironmentId)
+                }
                 // Offline resources, Home hints, Activity pages, notification preferences, reply windows
                 // and the stored messages of that server (they outlive sign-out, so they must go here).
+                // Fence deferred scroll-coalesced persist slices before deleting from disk so an
+                // in-flight or queued flush cannot resurrect the lost server (#wg-mobile-feedback:#271).
+                (activityPersistSlice as? RaftScrollDeferredPersistControl)?.dropServer(grant.serverId, lostAccountId)
+                (homeIdentityPersistSlice as? RaftScrollDeferredPersistControl)?.dropServer(grant.serverId, lostAccountId)
+                (homeRowHintPersistSlice as? RaftScrollDeferredPersistControl)?.dropServer(grant.serverId, lostAccountId)
                 accountLocalData.onServerAccessLost(
                     serverId = grant.serverId,
                     accountId = lostAccountId,
@@ -3633,12 +3679,9 @@ internal class RaftSharedStoreProvider private constructor(
                 "shared_network_file_resolver",
                 "storage_scope=${platformFileResolverBinding.scope}"
             )
-            // task #323: keep avatar metadata SQLite I/O off the Kuikly frame thread.
-            val avatarCacheMetadataStore =
-                DispatchingRaftAvatarCacheMetadataStore(
-                    delegate = SqlDelightRaftAvatarCacheMetadataStore(database),
-                    dispatcher = RaftAvatarDbDispatcher
-                )
+            // #proj-mobile:#294: slock-avatar-render-v1 tables and startup prewarm are retired;
+            // Coil's disk cache is the sole avatar byte/image cache.
+            val avatarCacheMetadataStore: RaftAvatarCacheMetadataStore = NoOpRaftAvatarCacheMetadataStore
             val avatarCacheCoordinator =
                 RaftAvatarCacheCoordinator(avatarCacheMetadataStore, ::defaultNowMillis)
             val avatarOwnerResolver: suspend (String?) -> RaftAvatarCacheOwner? = { requestedServerId ->
@@ -3668,25 +3711,16 @@ internal class RaftSharedStoreProvider private constructor(
                     mountedBinding = avatarMountedBinding,
                     logger = sharedWarnLogger("SlockAvatarCache", "avatar_cache_runtime")
                 )
-            // task #343: seed the mounted session from durable rows once the owner resolves, so a
-            // cold start paints cached avatars on the first frame instead of waiting per-row mounts.
-            // Re-attempted on auth changes (login, server/binding switch); one run per owner.
             CoroutineScope(SupervisorJob()).launch {
-                runCatchingPreservingCancellation {
-                    avatarMountedBinding.prewarmOwner(authStore.readSession()?.currentServerId)
-                }
                 authStore.authSessionEvents.collect { event ->
                     when (event) {
-                        is AuthSessionEvent.Authenticated,
-                        is AuthSessionEvent.BindingMetadataChanged ->
-                            runCatchingPreservingCancellation {
-                                avatarMountedBinding.prewarmOwner(authStore.readSession()?.currentServerId)
-                            }
                         // A later sign-in may open the account deletion page, or ask for SSO, again.
                         is AuthSessionEvent.Cleared -> {
                             RaftAccountDeletionPendingSignal.Process.reset()
                             RaftSsoRequiredSignal.Process.reset()
                         }
+                        is AuthSessionEvent.Authenticated,
+                        is AuthSessionEvent.BindingMetadataChanged,
                         is AuthSessionEvent.TokensRotated -> Unit
                     }
                 }
@@ -4244,6 +4278,7 @@ internal class RaftSharedStoreProvider private constructor(
                             }
                     }
             }
+            val sharedActivityPersistStorage = SharedActivityPersistStorage(sharedPreferenceStore)
             provider = RaftSharedStoreProvider(
                 host = host,
                 sqlDatabase = database,
@@ -4289,11 +4324,13 @@ internal class RaftSharedStoreProvider private constructor(
                 accountBinding = accountBinding,
                 memberPresenceRealtimeSink = memberPresenceRealtimeSink,
                 composerDraftPersistSlice = composerDraftPersistSlice,
+                activityPersistStorage = sharedActivityPersistStorage,
                 activityPersistSlice =
                     createSharedActivityPersistSlice(
-                        storage = SharedActivityPersistStorage(sharedPreferenceStore),
+                        storage = sharedActivityPersistStorage,
                         diagnosticsLogger = sharedInfoLogger("SlockActivityPersist", "shared_activity_persist"),
-                        failureLogger = sharedErrorLogger("SlockActivityPersist", "shared_activity_persist")
+                        failureLogger = sharedErrorLogger("SlockActivityPersist", "shared_activity_persist"),
+                        scrollDeferScope = threadSendScope,
                     ),
                 homeSavedStateCache = SharedHomeSavedStateCache(offlineResourceCache.resource(SavedListResourceSpec)),
                 offlineResourceCache = offlineResourceCache,
@@ -4302,7 +4339,8 @@ internal class RaftSharedStoreProvider private constructor(
                     createSharedHomeIdentityPersistSlice(
                         storage = SharedPreferencePersistStorage(sharedPreferenceStore),
                         diagnosticsLogger = sharedInfoLogger("SlockHomePersist", "shared_home_persist"),
-                        failureLogger = sharedErrorLogger("SlockHomePersist", "shared_home_persist")
+                        failureLogger = sharedErrorLogger("SlockHomePersist", "shared_home_persist"),
+                        scrollDeferScope = threadSendScope,
                     ),
                 apiEnvironmentStore = apiEnvironmentStore,
                 eventBus = eventBusRelay,

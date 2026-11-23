@@ -298,10 +298,14 @@ internal fun ThreadPageHeader(
     // The Tasks page's task column (RaftTasksTaskColumn.kt; web TaskConversationBar beside the
     // list): its Expand and Close end the head, also while the page is still loading.
     val taskColumnHead = LocalRaftTaskColumnHead.current
+    // The reply thread's column on the wide layout (a side pane, LocalRaftSidePanePage; web ThreadPanelHeader
+    // presentation "side"): Close ends the head and closes the column only, the channel staying; no Back, the
+    // column holds no page under the thread (raftSidePaneHeadButtons).
+    val paneCloses = LocalRaftSidePanePage.current != null
     // iPhone Duo (raft-design #859): beside the system's side column, Back and the page's actions
     // are the column's (Back first, two actions, the rest in its ⋯); the header keeps the title
     // and the subtitle, from the 16dp margin, without Back and without icon buttons.
-    val showsBack = threadHeaderShowsBack(showBack, headerDisplay.surfaceKind)
+    val showsBack = threadHeaderShowsBack(showBack, headerDisplay.surfaceKind) && raftSidePaneShowsBack()
     val controlsInColumn =
         raftSideColumnControls(
             back =
@@ -437,7 +441,7 @@ internal fun ThreadPageHeader(
         // The 3dp edge inset only mirrors Back when a trailing PanelAction sits at the end;
         // without one the title keeps the default end padding instead of running to the edge.
         contentEndPadding =
-            if ((showHeaderActions && !controlsInColumn) || taskColumnHead != null) ThreadHeaderEdgeInset else RaftTopPageHeaderContentEndPadding,
+            if ((showHeaderActions && !controlsInColumn) || taskColumnHead != null || paneCloses) ThreadHeaderEdgeInset else RaftTopPageHeaderContentEndPadding,
         contentSpacing = ThreadHeaderContentSpacing,
         titleLeadingContent = {
             // Back is the same 44dp frameless PanelAction as the trailing actions (not the shared
@@ -563,10 +567,10 @@ internal fun ThreadPageHeader(
             }
         },
         trailingContent =
-            if (showHeaderActions && controlsInColumn && taskColumnHead == null) {
+            if (showHeaderActions && controlsInColumn && taskColumnHead == null && !paneCloses) {
                 // The Agent followers are the task's facts, not a button: they stay in the header.
                 { agentFollowersHeader() }
-            } else if (showHeaderActions || taskColumnHead != null) {
+            } else if (showHeaderActions || taskColumnHead != null || paneCloses) {
                 {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
@@ -646,7 +650,8 @@ internal fun ThreadPageHeader(
                             leadOverheadDp = leadOverheadDp,
                             ownCount = ownActions.size,
                             actionSizeDp = actionSizeDp,
-                            fixedTrailingCount = if (toggleFocus != null) 1 else 0,
+                            // Expand and the side pane's Close never fold (web ThreadPanelHeader).
+                            fixedTrailingCount = (if (toggleFocus != null) 1 else 0) + (if (paneCloses) 1 else 0),
                             existingMenuItems = hasPanelMenu,
                         )
                     val visibleOwnActions = ownActions.take(shownOwnCount)
@@ -690,6 +695,8 @@ internal fun ThreadPageHeader(
                     toggleFocus?.let { ThreadHeaderFocusModeToggle(focused = focusModeActive, onToggle = it) }
                     }
                     taskColumnHead?.let { RaftTaskColumnHeadActions(it) }
+                    // web ThreadPanelHeader: Close after Expand, the head's last control, in the thread's column.
+                    if (paneCloses) RaftSidePaneCloseButton()
                 }
                 }
             } else {

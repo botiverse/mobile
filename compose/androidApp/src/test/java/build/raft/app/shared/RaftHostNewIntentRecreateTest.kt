@@ -24,4 +24,47 @@ class RaftHostNewIntentRecreateTest {
     fun aResumedHostRebuildsAtOnce() {
         assertTrue(raftHostRecreatesOnNewIntentNow(Lifecycle.State.RESUMED))
     }
+
+    @Test
+    fun externalLinkRevealPreservesOnlyAnAlreadyRunningAppShell() {
+        assertTrue(
+            shouldPreserveLiveAppShellOnNewIntent(
+                currentPageName = RaftCmpActivity.PAGE_APP_SHELL,
+                incomingPageName = RaftCmpActivity.PAGE_APP_SHELL,
+                preserveRequested = true,
+            )
+        )
+        // Normal onNewIntent (notification tap, server switch, explicit page data) still rebuilds.
+        assertFalse(
+            shouldPreserveLiveAppShellOnNewIntent(
+                currentPageName = RaftCmpActivity.PAGE_APP_SHELL,
+                incomingPageName = RaftCmpActivity.PAGE_APP_SHELL,
+                preserveRequested = false,
+            )
+        )
+        // Login or another non-shell host must still rebuild into the app shell.
+        assertFalse(
+            shouldPreserveLiveAppShellOnNewIntent(
+                currentPageName = RaftCmpActivity.PAGE_LOGIN,
+                incomingPageName = RaftCmpActivity.PAGE_APP_SHELL,
+                preserveRequested = true,
+            )
+        )
+        assertFalse(
+            shouldPreserveLiveAppShellOnNewIntent(
+                currentPageName = RaftCmpActivity.PAGE_APP_SHELL,
+                incomingPageName = RaftCmpActivity.PAGE_LOGIN,
+                preserveRequested = true,
+            )
+        )
+        // A prior non-preserve onNewIntent already queued a rebuild on resume: do not skip it.
+        assertFalse(
+            shouldPreserveLiveAppShellOnNewIntent(
+                currentPageName = RaftCmpActivity.PAGE_APP_SHELL,
+                incomingPageName = RaftCmpActivity.PAGE_APP_SHELL,
+                preserveRequested = true,
+                recreatePending = true,
+            )
+        )
+    }
 }

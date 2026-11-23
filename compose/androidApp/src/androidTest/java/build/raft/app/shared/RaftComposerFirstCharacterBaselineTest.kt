@@ -2,6 +2,8 @@ package build.raft.app.shared
 
 import android.content.Intent
 import android.os.Bundle
+import androidx.compose.runtime.Composer
+import androidx.compose.runtime.tooling.ComposeStackTraceMode
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
@@ -13,10 +15,13 @@ import androidx.compose.ui.text.TextLayoutResult
 import androidx.test.core.app.ActivityScenario
 import androidx.test.platform.app.InstrumentationRegistry
 import org.json.JSONObject
+import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
+import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
+import org.junit.rules.TestRule
 
 /**
  * The first committed character must already use the composer's configured line height and
@@ -25,8 +30,29 @@ import org.junit.Test
  * assertions read its TextLayoutResult through semantics instead of an EditText Layout.
  */
 class RaftComposerFirstCharacterBaselineTest {
-    @get:Rule
+    private val offMainSnapshotWrites = RaftOffMainSnapshotWriteLog()
+
+    // #310 crash diagnostics (RaftThreadDiagnosticsTestSupport.kt). Outermost rule, so a failure
+    // the compose rule raises while tearing down is dumped too.
+    @get:Rule(order = 0)
+    val threadDumpOnFailure: TestRule = RaftThreadDumpOnFailure(offMainSnapshotWrites)
+
+    @get:Rule(order = 1)
     val composeRule = createEmptyComposeRule()
+
+    @Before
+    fun startCrashDiagnostics() {
+        // Composition, measure and layout exceptions then carry the composable stack with source
+        // information. setDiagnosticStackTraceEnabled(true) does the same; runtime 1.12 deprecates it.
+        Composer.setDiagnosticStackTraceMode(ComposeStackTraceMode.SourceInformation)
+        offMainSnapshotWrites.register()
+    }
+
+    @After
+    fun stopCrashDiagnostics() {
+        offMainSnapshotWrites.dispose()
+        Composer.setDiagnosticStackTraceMode(ComposeStackTraceMode.None)
+    }
 
     @Test
     fun firstCharacterUsesConfiguredLineHeightBeforeSecondEdit() {
@@ -70,17 +96,17 @@ class RaftComposerFirstCharacterBaselineTest {
             editor.performTextInput("a")
             composeRule.waitUntil(timeoutMillis = 12_000L) { editor.editableText() == "a" }
             val first = editor.textLayout()
-            assertEquals("a", first.layoutInput.text.text)
-            val firstBaseline = first.getLineBaseline(0)
-            val firstLineHeight = first.getLineBottom(0) - first.getLineTop(0)
+            assertEquals("a", first.text)
+            val firstBaseline = first.firstLineBaseline
+            val firstLineHeight = first.firstLineHeight
             assertTrue("configured line height should produce a visible line", firstLineHeight > 0f)
 
             editor.performTextInput("f")
             composeRule.waitUntil(timeoutMillis = 12_000L) { editor.editableText() == "af" }
             val second = editor.textLayout()
-            assertEquals("af", second.layoutInput.text.text)
-            assertEquals(firstBaseline, second.getLineBaseline(0), 0.01f)
-            assertEquals(firstLineHeight, second.getLineBottom(0) - second.getLineTop(0), 0.01f)
+            assertEquals("af", second.text)
+            assertEquals(firstBaseline, second.firstLineBaseline, 0.01f)
+            assertEquals(firstLineHeight, second.firstLineHeight, 0.01f)
         }
     }
 
@@ -88,14 +114,35 @@ class RaftComposerFirstCharacterBaselineTest {
         composeRule.onAllNodes(hasSetTextAction(), useUnmergedTree = true)
             .fetchSemanticsNodes(atLeastOneRootRequired = false)
             .size
+
+    private class ComposerTextLayout(val text: String, val firstLineBaseline: Float, val firstLineHeight: Float)
+
+    /**
+     * The composer's laid-out text and its first line, read from the field's TextLayoutResult.
+     *
+     * fetchSemanticsNode() syncs with the UI, so it runs on the test thread. Invoking the field's
+     * GetTextLayoutResult action (it can lay the text out again) and reading the layout are
+     * Compose text layout, which is main-thread-only (AGENTS.md "Main-thread-only APIs"): both run
+     * on the UI thread (#310).
+     */
+    private fun SemanticsNodeInteraction.textLayout(): ComposerTextLayout {
+        val node = fetchSemanticsNode()
+        val layout =
+            composeRule.runOnUiThread {
+                val results = mutableListOf<TextLayoutResult>()
+                val action = node.config[SemanticsActions.GetTextLayoutResult].action
+                if (action?.invoke(results) != true) return@runOnUiThread null
+                val result = results.single()
+                ComposerTextLayout(
+                    text = result.layoutInput.text.text,
+                    firstLineBaseline = result.getLineBaseline(0),
+                    firstLineHeight = result.getLineBottom(0) - result.getLineTop(0),
+                )
+            }
+        assertTrue("composer must expose its text layout", layout != null)
+        return layout!!
+    }
 }
 
 private fun SemanticsNodeInteraction.editableText(): String? =
     fetchSemanticsNode().config.getOrNull(SemanticsProperties.EditableText)?.text
-
-private fun SemanticsNodeInteraction.textLayout(): TextLayoutResult {
-    val results = mutableListOf<TextLayoutResult>()
-    val action = fetchSemanticsNode().config[SemanticsActions.GetTextLayoutResult].action
-    assertTrue("composer must expose its text layout", action?.invoke(results) == true)
-    return results.single()
-}

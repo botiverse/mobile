@@ -317,6 +317,51 @@ internal suspend fun saveSharedThreadAttachment(
     return outcome.toThreadAttachmentSaveResult()
 }
 
+/**
+ * Saves a conversation image into the device's photo library (Android MediaStore Images, iOS
+ * PhotoKit) as the phone viewer's Save to Photos does (RaftFilePreview): the image's own file,
+ * `attachments/{id}/url` with disposition=attachment, handed to the host's `saveImageToPhotos`.
+ * For the wide lightbox's Save to Photos by touch (#305). A failed address request is `failed`
+ * with its trace ID; otherwise the host's status word (`saved`, `cancelled`, `permission_denied`,
+ * `unsupported_image`, ...), which [raftAttachmentSaveFailure] reads for Photos.
+ */
+internal suspend fun saveSharedThreadImageToPhotos(
+    bridge: build.raft.app.base.BridgeModule,
+    dataSource: SharedThreadDataSource,
+    attachment: RaftThreadAttachmentItem,
+    owner: AttachmentOwnerLease,
+    downloadId: String? = null,
+): ThreadAttachmentOpenResult {
+    val attachmentId = attachment.id.takeIf { it.isNotBlank() }
+        ?: return ThreadAttachmentOpenResult(status = "failed", message = "attachment_id_missing")
+    val url =
+        when (val response = dataSource.attachmentUrl(DataRequestPriority.Visible, attachmentId, disposition = "attachment")) {
+            is ThreadApiResult.Success ->
+                response.data.url.takeIf { it.isNotBlank() }
+                    ?: return ThreadAttachmentOpenResult(status = "failed", message = "attachment_url_empty")
+            is ThreadApiResult.Failure ->
+                return ThreadAttachmentOpenResult(
+                    status = "failed",
+                    message = "attachment_url_failed code=${response.code}",
+                    traceId = response.traceId,
+                )
+        }
+    val result =
+        bridge.saveImageToPhotos(
+            url = url,
+            attachmentId = attachmentId,
+            fileName = attachment.name.ifBlank { "attachment-${attachmentId.take(8)}" },
+            owner = owner,
+            mimeType = attachment.mimeType.takeIf { it.isNotBlank() },
+            downloadId = downloadId,
+        )
+    return ThreadAttachmentOpenResult(
+        status = result?.optString("status").orEmpty(),
+        message = result?.optString("message").orEmpty(),
+        errorKind = result?.optString("errorKind").orEmpty(),
+    )
+}
+
 internal sealed interface ThreadAttachmentSaveToast {
     data class Info(val message: String) : ThreadAttachmentSaveToast
 

@@ -24,6 +24,7 @@ import build.raft.app.data.AuthenticatedRouteOwner
 import build.raft.app.data.normalizedOrNull
 import build.raft.app.data.backFromDetail
 import build.raft.app.data.closeFromDetailPage
+import build.raft.app.data.closeSideThread
 import build.raft.app.data.backClosesSideThreadFirst
 import build.raft.app.data.sideThreadColumnAvailable
 import build.raft.app.data.visibleSideThread
@@ -5630,6 +5631,21 @@ private fun RaftAppShellReadyContent(
                                 // review): captured, a tab switched away and back could leave the column's page
                                 // inactive and blank. The column object stays the same; the page follows the state.
                                 val sideThreadActive by rememberUpdatedState(childActive)
+                                // The column is a side pane of one page (web layout-memory "Close and Back"): its head's
+                                // Close closes the column only, the channel staying; it never steps the detail back.
+                                val sideThreadShown by rememberUpdatedState<AdaptiveSideThread>(sideThread)
+                                val sideThreadShellId by rememberUpdatedState(workspace.shellInstanceId)
+                                val sideThreadPane =
+                                    remember {
+                                        RaftSidePanePage(depth = 1) {
+                                            val shellId = sideThreadShellId
+                                            if (shellId.isNotBlank()) {
+                                                val request = sideThreadShown.closeRequest(shellId)
+                                                adaptiveWorkspaceStore.update { current -> current.closeSideThread(request) }
+                                            }
+                                            bridge.log("wide_side_thread_close from=head")
+                                        }
+                                    }
                                 val sideThreadResizeLabel = stringResource(Res.string.thread_side_thread_resize)
                                 // Its tab where the row is short of 160 per column (#189 rule 4; web RowTabs "Thread").
                                 val sideThreadTabLabel = stringResource(Res.string.thread_reply_title)
@@ -5645,12 +5661,14 @@ private fun RaftAppShellReadyContent(
                                                         region = RaftFocusRegion.SideThread,
                                                         modifier = Modifier.fillMaxSize(),
                                                     ) {
-                                                        RaftChildPage(
-                                                            pageName = THREAD_PAGE,
-                                                            pageData = sideThreadPageData,
-                                                            modifier = Modifier.fillMaxSize(),
-                                                            active = sideThreadActive,
-                                                        )
+                                                        CompositionLocalProvider(LocalRaftSidePanePage provides sideThreadPane) {
+                                                            RaftChildPage(
+                                                                pageName = THREAD_PAGE,
+                                                                pageData = sideThreadPageData,
+                                                                modifier = Modifier.fillMaxSize(),
+                                                                active = sideThreadActive,
+                                                            )
+                                                        }
                                                     }
                                                 }
                                             ),
@@ -6048,12 +6066,13 @@ private fun RaftAppShellReadyContent(
                                 detailPane = detailPane,
                                 fillListWhenNothingPicked = fillListWhenNothingPicked,
                                 collapsed = collapseColumn != null && sidebarCollapse.isHidden(collapseColumn),
-                                // web `snap` "collapse": only where the rail's toggle can bring it back.
+                                // The handle's collapse (web `snap` "collapse"; by touch only on a deliberate release) and the
+                                // Expand sidebar strip where the list was: only where the rail's toggle can bring it back.
                                 onCollapsedChange =
                                     collapseColumn?.takeIf { it == collapsibleColumn }?.let { column ->
                                         { hidden ->
                                             sidebarCollapse.setHidden(column, hidden)
-                                            bridge.log("app_shell_sidebar_toggle column=$column hidden=$hidden from=handle")
+                                            bridge.log("app_shell_sidebar_toggle column=$column hidden=$hidden from=split")
                                         }
                                     },
                                 // Web: Activity's list with an item open is at most half the row, so the
@@ -6061,6 +6080,8 @@ private fun RaftAppShellReadyContent(
                                 maxShare = 0.5f.takeIf { collapseColumn == RaftCollapsibleColumn.ActivityList && selection != null },
                                 onResizingChange = { adaptiveListPaneResizing = it },
                                 log = { bridge.log(it) },
+                                // The head beside the collapsed strip pads the status bar only without the top bar (Duo).
+                                detailHeadTopInset = if (railWithoutTopBar) shellScope.topSafeArea else 0.dp,
                             )
                         } else {
                             listPane(active)
@@ -6555,7 +6576,7 @@ private fun RaftAppShellReadyContent(
                                     RaftCollapsibleColumn.Sidebar.takeIf { it == collapsibleColumn }?.let { column ->
                                         { hidden ->
                                             sidebarCollapse.setHidden(column, hidden)
-                                            bridge.log("app_shell_sidebar_toggle column=$column hidden=$hidden from=handle")
+                                            bridge.log("app_shell_sidebar_toggle column=$column hidden=$hidden from=split")
                                         }
                                     },
                                 onResizingChange = { adaptiveListPaneResizing = it },
@@ -6574,6 +6595,7 @@ private fun RaftAppShellReadyContent(
                                         )
                                     }
                                 },
+                                detailHeadTopInset = if (railWithoutTopBar) shellScope.topSafeArea else 0.dp,
                             )
                         } else {
                         val stackPageClose = LocalAppShellServerStackPageClose.current

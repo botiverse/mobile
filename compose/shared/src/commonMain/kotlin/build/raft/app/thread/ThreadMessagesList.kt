@@ -4237,6 +4237,7 @@ private fun ThreadMessagesListContent(
                     (shareSelectionActive || shareSelectionCaptureActive) &&
                         message.id in selectedShareMessageIds
                 val liveTodayEpochDay = currentRaftTimeContextProvider?.todayEpochDay
+                val messageTime = rememberRaftMessageTimeFormat()
                 val dateDividerDay =
                     remember(
                         previousMessage?.timestampLabel,
@@ -4480,7 +4481,8 @@ private fun ThreadMessagesListContent(
                                     actionCardExecutedTimeLabel =
                                         renderConfig.formatActionCardExecutedTimeLabel(
                                             message.threadActionCard()?.executedAt,
-                                            liveTodayEpochDay
+                                            liveTodayEpochDay,
+                                            messageTime
                                         ),
                                     onOpenAttachment = { onThreadEvent("openAttachment", null, it, null) },
                                     onDownloadAttachment = { onThreadEvent("downloadAttachment", null, it, null) },

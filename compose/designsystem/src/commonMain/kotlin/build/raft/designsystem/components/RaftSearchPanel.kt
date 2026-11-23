@@ -48,6 +48,7 @@ import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.LocalRaftContentColor
 import build.raft.designsystem.theme.LocalRaftStrings
 import build.raft.designsystem.theme.LocalRaftSurfaceColor
+import build.raft.designsystem.theme.RaftPointerInput
 import build.raft.designsystem.theme.RaftTheme
 import build.raft.designsystem.tokens.RaftRadius
 import build.raft.designsystem.tokens.RaftStroke
@@ -281,8 +282,18 @@ object RaftSearchRowDefaults {
     /** `--cell-pad-x`: the content's padding inside the shape. */
     val CellPadding: Dp = 12.dp
 
-    /** `py-3`. */
+    /** `py-3`: above and below the content under a mouse or trackpad. */
     val PaddingVertical: Dp = 12.dp
+
+    /** `pointer-coarse:py-2`: above and below the content with a finger. */
+    val TouchPaddingVertical: Dp = 8.dp
+
+    /**
+     * `pointer-coarse:min-h-14` (raft-ui 0.65 touch density): the least height with a finger.
+     * With [TouchPaddingVertical] a title over its description is 8 + 24 + 2 + 20 + 8 = 62dp and
+     * a title alone 56dp, as on the web (search-entity.recipe).
+     */
+    val TouchMinHeight: Dp = 56.dp
 
     /** `gap-3` between the leading slot and the text. */
     val Gap: Dp = 12.dp
@@ -290,6 +301,17 @@ object RaftSearchRowDefaults {
     /** `SearchEntityResultIcon`: a 27dp sticker-radius tile on `fill-muted`, 14dp glyph. */
     val IconTile: Dp = 27.dp
     val IconGlyph: Dp = 14.dp
+
+    /** The padding above and below a row's content under [pointer]: 8dp with a finger, else 12dp. */
+    fun paddingVertical(pointer: RaftPointerInput): Dp =
+        if (pointer == RaftPointerInput.Fine) PaddingVertical else TouchPaddingVertical
+
+    /**
+     * A [RaftSearchResultRow]'s least height under [pointer]: [TouchMinHeight] with a finger,
+     * [RaftSearchPanelDefaults.RowMinHeight] under a mouse or trackpad.
+     */
+    fun minHeight(pointer: RaftPointerInput): Dp =
+        if (pointer == RaftPointerInput.Fine) RaftSearchPanelDefaults.RowMinHeight else TouchMinHeight
 }
 
 /**
@@ -300,8 +322,10 @@ object RaftSearchRowDefaults {
  * [RaftKbd]). Its parts are slots, so a caller with highlighted text passes its own.
  *
  * - [selected]: the keyboard cursor is on it ([raftSearchRowSelected], the web's yellow row).
- * - A press lays `fill-cell-press` on the same shape. At least
- *   [RaftSearchPanelDefaults.RowMinHeight] tall, so a finger can hit it without a keyboard.
+ * - A press lays `fill-cell-press` on the same shape.
+ * - With a finger it is the web's touch row: 8dp above and below, at least 56dp
+ *   ([RaftSearchRowDefaults.TouchMinHeight]), 62dp with a description. Under a mouse or trackpad
+ *   it keeps 12dp and at least [RaftSearchPanelDefaults.RowMinHeight].
  */
 @Composable
 fun RaftSearchResultRow(
@@ -317,16 +341,17 @@ fun RaftSearchResultRow(
     val source = remember { MutableInteractionSource() }
     val pressed = raftIsPressed(source)
     val pressFill = RaftTheme.colors.fillCellPress
+    val pointer = RaftTheme.pointerInput
     Row(
         modifier
             .fillMaxWidth()
-            .heightIn(min = RaftSearchPanelDefaults.RowMinHeight)
+            .heightIn(min = RaftSearchRowDefaults.minHeight(pointer))
             .raftSearchRowSelected(selected)
             .then(if (pressed && !selected) Modifier.drawBehind { drawRaftListCellShape(pressFill) } else Modifier)
             .clickable(source, indication = null, role = Role.Button, onClick = onClick)
             .padding(
                 horizontal = RaftSearchRowDefaults.CellInset + RaftSearchRowDefaults.CellPadding,
-                vertical = RaftSearchRowDefaults.PaddingVertical,
+                vertical = RaftSearchRowDefaults.paddingVertical(pointer),
             ),
         horizontalArrangement = Arrangement.spacedBy(RaftSearchRowDefaults.Gap),
         verticalAlignment = Alignment.CenterVertically,

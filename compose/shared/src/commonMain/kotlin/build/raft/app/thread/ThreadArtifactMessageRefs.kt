@@ -353,8 +353,20 @@ internal fun rememberArtifactCardScreenshot(summary: ArtifactSummary): ArtifactC
     var failed by remember(reader, cardId, fileId) { mutableStateOf(false) }
     LaunchedEffect(reader, cardId, fileId) {
         if (bytes != null) return@LaunchedEffect
-        val read = reader.read(cardId, fileId)
-        if (read != null) bytes = read else failed = true
+        val read = reader.read(cardId, fileId) { cached ->
+            if (bytes == null || !bytes.contentEquals(cached)) {
+                bytes = cached
+            }
+        }
+        if (read != null) {
+            if (bytes == null || !bytes.contentEquals(read)) {
+                bytes = read
+            }
+            failed = false
+        } else {
+            bytes = null
+            failed = true
+        }
     }
     val shown = bytes
     return when {
@@ -386,7 +398,7 @@ internal fun ArtifactCardScreenshot(view: ArtifactCardScreenshotView) {
                     remember(view.cardId, view.fileId, view.bytes, context) {
                         ImageRequest.Builder(context)
                             .data(view.bytes)
-                            .memoryCacheKey("artifact-screenshot|${view.cardId}|${view.fileId}")
+                            .memoryCacheKey("artifact-screenshot|${view.cardId}|${view.fileId}|${view.bytes.size}|${view.bytes.contentHashCode()}")
                             .build()
                     }
                 Image(

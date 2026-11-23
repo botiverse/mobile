@@ -212,6 +212,7 @@
     <string name="settings_step_up_open_on_web">在網頁開啟</string>
     <string name="settings_step_up_web_body">你的通行密鑰可以在瀏覽器中使用。請在瀏覽器中繼續，確認是你本人。</string>
     <string name="settings_step_up_web_continue">在瀏覽器中繼續</string>
+    <string name="settings_step_up_web_verify_with_passkey">在瀏覽器中用通行密鑰驗證</string>
     <string name="settings_step_up_web_waiting">正在等待你在瀏覽器中完成…</string>
     <string name="settings_step_up_web_cancelled">瀏覽器在確認前已關閉。請再試一次。</string>
     <string name="settings_step_up_web_expired">此請求已過期。請再試一次。</string>
@@ -1199,6 +1200,8 @@
     <string name="video_player_position">播放進度</string>
     <string name="video_player_fullscreen">全螢幕</string>
     <string name="video_player_exit_fullscreen">結束全螢幕</string>
+    <string name="video_player_speed">播放速度</string>
+    <string name="video_player_replay">重新播放</string>
     <string name="thread_audio_preview_loading">正在載入音訊預覽</string>
     <string name="thread_audio_attachment_fallback_name">音訊附件</string>
     <string name="thread_audio_file_label">音訊檔案</string>
@@ -1331,6 +1334,7 @@
     <string name="thread_state_beginning_conversation">對話的開頭</string>
     <string name="thread_date_divider_today">今天</string>
     <string name="thread_date_divider_yesterday">昨天</string>
+    <string name="thread_message_time_yesterday">昨天</string>
     <string name="thread_date_divider_date">%2$s%3$d日 %1$s</string>
     <string name="thread_date_divider_weekday_sunday">星期日</string>
     <string name="thread_date_divider_weekday_monday">星期一</string>
@@ -3523,6 +3527,8 @@
     <string name="runtime_form_v2_load_failed">無法載入執行環境表單（%1$s）。</string>
     <string name="runtime_form_v2_unavailable">無法取得執行環境設定。</string>
     <string name="runtime_form_v2_source_refresh_failed">無法重新整理此清單，仍顯示先前的選項。</string>
+    <string name="runtime_form_v2_refresh_source_title">立即重新載入此清單</string>
+    <string name="runtime_form_v2_refresh_source_label">重新整理此清單</string>
     <string name="runtime_form_v2_source_status_fallback">已改為顯示標準清單。</string>
     <string name="runtime_form_v2_source_status_stale">這台電腦未能及時回應，選項可能不是最新的。</string>
     <string name="runtime_form_v2_source_status_probe_timeout">這台電腦列出選項的時間過長。</string>

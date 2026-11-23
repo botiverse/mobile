@@ -798,11 +798,13 @@ internal object AndroidAppScopeRealtimeOwner {
             )
         val previousIdentity = multiSessionIdentity
         val identityChanged = previousIdentity != null && previousIdentity != nextIdentity
-        // task #333: identity = the env/account binding (socketUrl, environmentId,
-        // principalId, connectionFamilyId). A silent token rotation bumps authGeneration
+        // task #333 / #proj-mobile:#312: binding = the durable env/account identity
+        // (socketUrl, environmentId, principalId). Silent token rotation bumps
+        // authGeneration, connectionFamilyId (rebuilt by RealtimeAuthorityRegistry.rebuildForAuth),
         // and accessToken on the SAME binding — a credential refresh, not an identity
         // replacement. Only a real binding change may disconnect-all with
-        // process_identity_replaced; a credential rotation just re-auths the socket.
+        // process_identity_replaced; a credential rotation just reconnects the live
+        // runtime with the new token and witness while keeping joined channel rooms.
         val bindingReplaced =
             previousIdentity != null && !previousIdentity.sameBindingAs(nextIdentity)
         if (bindingReplaced) {
@@ -1146,7 +1148,9 @@ internal object AndroidAppScopeRealtimeOwner {
                 authGeneration = witness.authGeneration,
                 connectionFamilyId = witness.connectionFamilyId,
             )
-        if (!forceReconnect && holder.requestedIdentity == requestedIdentity && holder.connectJob?.isActive == true) {
+        val witnessChanged = holder.witness != null && holder.witness != witness
+        val effectiveForceReconnect = forceReconnect || witnessChanged
+        if (!effectiveForceReconnect && holder.requestedIdentity == requestedIdentity && holder.connectJob?.isActive == true) {
             RaftAppLog.d(LOG_TAG, "multi_session_connect_skip reason=duplicate_in_flight serverId=${serverId.value}")
             return
         }
@@ -1161,7 +1165,7 @@ internal object AndroidAppScopeRealtimeOwner {
                             serverId = serverId,
                             accessToken = accessToken,
                             requestedLastSeq = requestedLastSeq,
-                            forceReconnect = forceReconnect,
+                            forceReconnect = effectiveForceReconnect,
                             witness = witness,
                         )
                     RaftAppLog.d(
@@ -1526,7 +1530,7 @@ internal object AndroidAppScopeRealtimeOwner {
         val connectionFamilyId: String,
     )
 
-    private data class MultiSessionIdentity(
+    internal data class MultiSessionIdentity(
         val environmentId: String,
         val socketUrl: String,
         val principalId: String,
@@ -1534,14 +1538,13 @@ internal object AndroidAppScopeRealtimeOwner {
         val connectionFamilyId: String,
         val accessToken: String,
     ) {
-        // task #333: binding = the durable env/account socket identity. authGeneration
-        // and accessToken are credential state that rotate on every silent token
-        // refresh on the SAME binding — they must not be treated as an identity swap.
+        // task #333 / #proj-mobile:#312: binding = the durable env/account socket identity.
+        // authGeneration, connectionFamilyId, and accessToken rotate on every silent token
+        // refresh on the SAME binding — they must not be treated as a binding swap.
         fun sameBindingAs(other: MultiSessionIdentity): Boolean =
             environmentId == other.environmentId &&
                 socketUrl == other.socketUrl &&
-                principalId == other.principalId &&
-                connectionFamilyId == other.connectionFamilyId
+                principalId == other.principalId
     }
 
     private val ProcessWideDisconnectReasons =

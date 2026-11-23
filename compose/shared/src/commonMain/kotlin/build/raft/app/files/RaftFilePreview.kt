@@ -159,6 +159,7 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import build.raft.app.compat.ui.raftLoadImageBitmap
 import build.raft.app.compat.ui.rememberAsyncImageBitmap
+import build.raft.app.compat.ui.rememberRaftDisplayImageDecodeEdgePx
 import androidx.compose.material3.Text
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -2568,6 +2569,10 @@ private fun RaftFilePreviewStandalonePageContent() {
             openAttachmentComments()
         }
     }
+    val previewImageDecodeTracker =
+        remember(payload.attachmentId, payload.imageUrl) {
+            RaftFilePreviewImageDecodeTracker()
+        }
     LaunchedEffect(payload.kind, payload.requestedKind, payload.attachmentId, payload.imageUrl) {
         if (payload.shouldRenderImagePreview()) {
             bridge.log(
@@ -2992,18 +2997,38 @@ private fun RaftFilePreviewStandalonePageContent() {
                 val savedToFolder =
                     result?.optString("uri")?.takeIf { it.isNotBlank() && !toPhotos }
                         ?.let { uri -> savedFileHost?.folderName(uri) }
-                if (savedToFolder == null) bridge.toast(
-                    raftFilePreviewSavedMessage(
-                        exportPrivateDownload = exportPrivateDownload,
-                        toPhotos = toPhotos,
-                        supportsPublicDownloadReadback = supportsPublicDownloadReadback,
-                        supportsPrivateAttachmentExport = supportsPrivateAttachmentExport,
-                        downloadSaved = downloadSaved,
-                        privateDownloadSaved = privateDownloadSaved,
-                        fileExportSaved = fileExportSaved,
-                        imageSavedToPhotos = imageSavedToPhotos
-                    )
-                )
+                if (savedToFolder == null) {
+                    val savedMessage =
+                        raftFilePreviewSavedMessage(
+                            exportPrivateDownload = exportPrivateDownload,
+                            toPhotos = toPhotos,
+                            supportsPublicDownloadReadback = supportsPublicDownloadReadback,
+                            supportsPrivateAttachmentExport = supportsPrivateAttachmentExport,
+                            downloadSaved = downloadSaved,
+                            privateDownloadSaved = privateDownloadSaved,
+                            fileExportSaved = fileExportSaved,
+                            imageSavedToPhotos = imageSavedToPhotos
+                        )
+                    if (toPhotos || exportPrivateDownload) {
+                        bridge.toast(savedMessage)
+                    } else {
+                        raftShowSavedDownloadToast(
+                            bridge = bridge,
+                            message = savedMessage,
+                            openLabel = actionTerms.open,
+                            target =
+                                raftSavedDownloadTargetFromResult(
+                                    attachmentId = currentPayload.attachmentCacheId(),
+                                    fallbackFileName = currentPayload.attachmentCacheFileName(),
+                                    owner = operation.owner,
+                                    mimeType = currentPayload.externalMimeType,
+                                    result = result,
+                                ),
+                            openResultTerms = attachmentOpenResultTerms,
+                            hasDesktopDownloadBar = savedFileHost != null,
+                        )
+                    }
+                }
                 null
             }
             "cancelled" -> {
@@ -4461,6 +4486,7 @@ private fun RaftFilePreviewStandalonePageContent() {
                 saving = composerImageEditSaving,
                 onCaptureRef = onComposerImageEditCaptureRef,
                 onDone = ::requestComposerImageEditSave,
+                onEditorTimingLog = { line -> bridge.log(line) },
                 modifier = Modifier.weight(1f).fillMaxWidth()
             )
         } else {
@@ -4537,6 +4563,9 @@ private fun RaftFilePreviewStandalonePageContent() {
                     onPdfRetry = ::retryPdf,
                     onImageRetry = ::retryFullImage,
                     onImageLoadError = ::onFullImageLoadError,
+                    onImageDecoded = { attachmentId, imageUrl ->
+                        previewImageDecodeTracker.onImageDecoded(attachmentId, imageUrl)?.let(bridge::log)
+                    },
                     onPdfOpenInOtherApp = if (canOpenWith) ({ requestExternalOpen() }) else null,
                     onRetryLoad =
                         if (payload.canRetryPreviewLoad()) {
@@ -4556,7 +4585,8 @@ private fun RaftFilePreviewStandalonePageContent() {
                     entries =
                         payload.imageGalleryKeepAliveEntries(
                             imageGalleryResolutionState.resolvedPayloadByAttachmentId
-                        )
+                        ),
+                    maxDecodeEdgePx = rememberRaftDisplayImageDecodeEdgePx(),
                 )
             }
             RaftFilePreviewComposerImageActionBar(
@@ -5041,6 +5071,62 @@ internal data class RaftComposerImageEditCaptureSlot(
         if (owner == this.owner) copy(ref = ref) else this
 }
 
+/**
+ * Per-editor-session monotonic timing tracker (#wg-mobile-feedback:#267): records once when the
+ * working bitmap finishes decoding, when the gesture-bearing canvas box is laid out and ready to
+ * accept input, and when the user's first edit gesture hits the canvas.
+ */
+internal class RaftComposerImageEditorTimingTracker(
+    private val timeSource: TimeSource = TimeSource.Monotonic,
+) {
+    private val enteredAt = timeSource.markNow()
+    private var decodedElapsedMs: Long? = null
+    private var canvasReadyElapsedMs: Long? = null
+    private var firstGestureLogged = false
+
+    fun onImageDecoded(imageWidth: Int, imageHeight: Int): String? {
+        if (imageWidth <= 0 || imageHeight <= 0 || decodedElapsedMs != null) return null
+        val elapsed = enteredAt.elapsedNow().inWholeMilliseconds.coerceAtLeast(0L)
+        decodedElapsedMs = elapsed
+        return "composer_image_editor_image_decoded elapsedMs=$elapsed imageWidth=$imageWidth imageHeight=$imageHeight"
+    }
+
+    fun onCanvasReady(canvasWidthPx: Int, canvasHeightPx: Int): String? {
+        val decodeMs = decodedElapsedMs ?: return null
+        if (canvasWidthPx <= 0 || canvasHeightPx <= 0 || canvasReadyElapsedMs != null) return null
+        val elapsed = enteredAt.elapsedNow().inWholeMilliseconds.coerceAtLeast(0L)
+        canvasReadyElapsedMs = elapsed
+        val layoutAfterDecodeMs = (elapsed - decodeMs).coerceAtLeast(0L)
+        return "composer_image_editor_canvas_ready elapsedMs=$elapsed decodeMs=$decodeMs " +
+            "layoutAfterDecodeMs=$layoutAfterDecodeMs canvasWidthPx=$canvasWidthPx canvasHeightPx=$canvasHeightPx"
+    }
+
+    fun onFirstGesture(tool: RaftComposerImageEditorTool, gesture: String): String? {
+        if (firstGestureLogged) return null
+        firstGestureLogged = true
+        val elapsed = enteredAt.elapsedNow().inWholeMilliseconds.coerceAtLeast(0L)
+        val sinceCanvasReadyMs = canvasReadyElapsedMs?.let { (elapsed - it).coerceAtLeast(0L) } ?: -1L
+        return "composer_image_editor_first_gesture elapsedMs=$elapsed sinceCanvasReadyMs=$sinceCanvasReadyMs " +
+            "tool=${tool.name.lowercase()} gesture=$gesture"
+    }
+}
+
+/** Per-preview-image monotonic decode tracker (#wg-mobile-feedback:#267). */
+internal class RaftFilePreviewImageDecodeTracker(
+    private val timeSource: TimeSource = TimeSource.Monotonic,
+) {
+    private val startedAt = timeSource.markNow()
+    private var logged = false
+
+    fun onImageDecoded(attachmentId: String, imageUrl: String): String? {
+        if (logged || imageUrl.isBlank()) return null
+        logged = true
+        val elapsed = startedAt.elapsedNow().inWholeMilliseconds.coerceAtLeast(0L)
+        return "file_preview_image_decoded attachment=${attachmentId.take(8).ifBlank { "none" }} elapsedMs=$elapsed " +
+            "source=${binaryDownloadUrlDiagnostics(imageUrl)}"
+    }
+}
+
 @Composable
 internal fun RaftFilePreviewComposerImageEditor(
     payload: RaftFilePreviewPayload,
@@ -5058,6 +5144,8 @@ internal fun RaftFilePreviewComposerImageEditor(
      * instead of the bottom bar, plus wheel zoom, Space-pan, Esc and Return. Null: the phone bar.
      */
     desktopChrome: RaftComposerImageEditorDesktopChrome? = null,
+    /** Diagnostic timing sink for editor decode/canvas-ready/first-gesture milestones (#wg-mobile-feedback:#267). */
+    onEditorTimingLog: ((String) -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val activeStrokePoints = remember(payload.imageUrl) { mutableListOf<Offset>() }
@@ -5097,6 +5185,24 @@ internal fun RaftFilePreviewComposerImageEditor(
     // The working picture: decoded no larger than the window (the export decodes the original once).
     val loadedImage = rememberAsyncImageBitmap(if (previewImage != null) null else payload.imageUrl)
     val mosaicImage = previewImage ?: loadedImage
+    val timingTracker =
+        remember(payload.composerImageActionId, payload.imageUrl) {
+            RaftComposerImageEditorTimingTracker()
+        }
+    val latestTimingTracker by rememberUpdatedState(timingTracker)
+    val latestTimingLog by rememberUpdatedState(onEditorTimingLog)
+    LaunchedEffect(timingTracker) {
+        latestTimingLog?.invoke(
+            "composer_image_editor_enter opensInEditor=${payload.composerImageOpensInEditor} " +
+                "gallery=${payload.imageGallery.size} " +
+                "source=${payload.imageUrl?.let(::binaryDownloadUrlDiagnostics) ?: "none"}"
+        )
+    }
+    LaunchedEffect(timingTracker, mosaicImage) {
+        mosaicImage?.let { image ->
+            timingTracker.onImageDecoded(image.width, image.height)?.let { latestTimingLog?.invoke(it) }
+        }
+    }
     val platformContext = LocalPlatformContext.current
     val textMeasurer = rememberTextMeasurer()
     val annotationTextStyle =
@@ -5579,6 +5685,13 @@ internal fun RaftFilePreviewComposerImageEditor(
                         turns = quarterTurns,
                     )
                 }
+            LaunchedEffect(timingTracker, mosaicImage, captureSize, editorCanvasSize) {
+                val image = mosaicImage ?: return@LaunchedEffect
+                if (captureSize != null && editorCanvasSize.width > 0 && editorCanvasSize.height > 0) {
+                    timingTracker.onImageDecoded(image.width, image.height)?.let { latestTimingLog?.invoke(it) }
+                    timingTracker.onCanvasReady(editorCanvasSize.width, editorCanvasSize.height)?.let { latestTimingLog?.invoke(it) }
+                }
+            }
             if (captureSize != null) {
                 Box(
                     modifier =
@@ -5600,6 +5713,7 @@ internal fun RaftFilePreviewComposerImageEditor(
                         if (tool == RaftComposerImageEditorTool.Crop || spaceHeld) return@pointerInput
                         detectTapGestures { position ->
                             if (saving || editorFinishing) return@detectTapGestures
+                            latestTimingTracker.onFirstGesture(tool, "tap")?.let { latestTimingLog?.invoke(it) }
                             when (tool) {
                                 RaftComposerImageEditorTool.Pencil ->
                                     if (pencilMode == RaftComposerImagePencilMode.Eraser) {
@@ -5637,6 +5751,7 @@ internal fun RaftFilePreviewComposerImageEditor(
                         detectDragGestures(
                             onDragStart = { start ->
                                 if (saving || editorFinishing) return@detectDragGestures
+                                latestTimingTracker.onFirstGesture(tool, "drag")?.let { latestTimingLog?.invoke(it) }
                                 when (tool) {
                                     RaftComposerImageEditorTool.Pencil ->
                                         if (pencilMode == RaftComposerImagePencilMode.Ink) {
@@ -9187,6 +9302,8 @@ internal fun RaftFilePreviewPayloadContent(
     onImageRetry: (() -> Unit)? = null,
     /** Primary full-res image URL failed in Coil (e.g. expired signed URL): evict cached URL and show Retry. */
     onImageLoadError: ((attachmentId: String, failedUrl: String) -> Unit)? = null,
+    /** Primary image URL finished decoding in Coil (#wg-mobile-feedback:#267). */
+    onImageDecoded: ((attachmentId: String, imageUrl: String) -> Unit)? = null,
     /**
      * Hand the file to another app (the Open with action): the PDF failure fallback, and the
      * download card of a video this platform cannot play.
@@ -9244,6 +9361,12 @@ internal fun RaftFilePreviewPayloadContent(
                                     null
                                 }
                             val primaryUrl = pagePayload.imageUrl?.trim()?.takeIf { it.isNotBlank() }
+                            var decodedPrimaryUrl by remember(primaryUrl) { mutableStateOf<String?>(null) }
+                            LaunchedEffect(selected, decodedPrimaryUrl, pagePayload.attachmentId, primaryUrl) {
+                                if (selected && primaryUrl != null && decodedPrimaryUrl == primaryUrl) {
+                                    onImageDecoded?.invoke(pagePayload.attachmentId, primaryUrl)
+                                }
+                            }
                             val fallbackUrl = pagePayload.currentImageThumbnailUrl()
                             val explicitThumbnail = pagePayload.currentExplicitImageThumbnailUrl()
                             val inlinePlaceholder = pagePayload.currentInlinePlaceholderUrl()
@@ -9271,7 +9394,17 @@ internal fun RaftFilePreviewPayloadContent(
                                 animationActive = selected,
                                 sourceCacheKey = originalCacheKey.takeIf { canKeyPrimaryAsOriginal },
                                 fallbackCacheKey = originalCacheKey.takeIf { fallbackIsInlineOriginal },
+                                maxDecodeEdgePx = rememberRaftDisplayImageDecodeEdgePx(),
                                 onImageStateChange = { state ->
+                                    if (
+                                        state is coil3.compose.AsyncImagePainter.State.Success &&
+                                        primaryUrl != null
+                                    ) {
+                                        val loadedData = state.result.request.data.toString().trim()
+                                        if (loadedData == primaryUrl) {
+                                            decodedPrimaryUrl = primaryUrl
+                                        }
+                                    }
                                     if (
                                         state is coil3.compose.AsyncImagePainter.State.Error &&
                                         pagePayload.source == RaftFilePreviewSourceThreadAttachment &&
@@ -9786,13 +9919,15 @@ private fun RaftFilePreviewImageGalleryPage(
 }
 
 /**
- * Kuikly's image cache is reference-counted: when the last painter for a source is forgotten,
- * the native memory-cache entry is cleared. The gallery renders one visible item at a time, so
- * keep tiny invisible painters for only the current item and its immediate neighbors.
+ * Keeps tiny invisible painters for immediate gallery neighbours (`currentIndex - 1` /
+ * `currentIndex + 1`) bounded to [maxDecodeEdgePx] so swiping to an adjacent photo hits Coil's
+ * memory cache. The visible page (`currentIndex`) is excluded because [RaftFilePreviewImagePanel]
+ * already renders and decodes it (#wg-mobile-feedback:#269).
  */
 @Composable
 private fun RaftFilePreviewImageGalleryCacheKeepAlive(
     entries: List<Pair<String, String?>>,
+    maxDecodeEdgePx: Int? = null,
     modifier: Modifier = Modifier
 ) {
     if (entries.isEmpty()) return
@@ -9809,6 +9944,7 @@ private fun RaftFilePreviewImageGalleryCacheKeepAlive(
                     source = source,
                     contentDescription = null,
                     cacheKey = cacheKey,
+                    maxDecodeEdgePx = maxDecodeEdgePx,
                     modifier = Modifier.fillMaxSize()
                 )
             }
@@ -10810,11 +10946,13 @@ private fun RaftFilePreviewPayload.imageGalleryResolutionFailurePayload(): RaftF
 internal fun RaftFilePreviewPayload.imageGalleryKeepAliveEntries(
     resolvedPayloadByAttachmentId: Map<String, RaftFilePreviewPayload> = emptyMap()
 ): List<Pair<String, String?>> {
-    if (imageGallery.isEmpty()) return emptyList()
+    if (imageGallery.size <= 1) return emptyList()
     val currentIndex = imageGalleryIndex.coerceIn(0, imageGallery.lastIndex)
+    // Skip currentIndex: RaftFilePreviewImagePanel already decodes and renders the visible page,
+    // so keeping a hidden 1dp painter for it fires a duplicate concurrent decode (#269).
     val retainedIndices =
         (currentIndex - 1..currentIndex + 1)
-            .filter(imageGallery.indices::contains)
+            .filter { it in imageGallery.indices && it != currentIndex }
     val seen = LinkedHashSet<Pair<String, String?>>()
     retainedIndices.forEach { index ->
         val galleryImage = imageGallery[index]
@@ -10831,57 +10969,8 @@ internal fun RaftFilePreviewPayload.imageGalleryKeepAliveEntries(
             ?.trim()
             ?.takeIf { it.isNotBlank() && it != thumb }
             ?.let { seen += it to originalCacheKey }
-        if (index == currentIndex) {
-            val primary = imageUrl?.trim()?.takeIf { it.isNotBlank() }
-            val explicitThumb = currentExplicitImageThumbnailUrl()
-            val inlinePlaceholder = currentInlinePlaceholderUrl()
-            if (primary != null) {
-                val canKeyOriginal =
-                    source == RaftFilePreviewSourceThreadAttachment &&
-                        !imageFullLoadFailed &&
-                        error.isNullOrBlank() &&
-                        primary != explicitThumb &&
-                        (kind == "image" || (kind == "loading" && inlinePlaceholder != null && primary == inlinePlaceholder))
-                val primaryKey = if (canKeyOriginal) originalCacheKey else null
-                seen += primary to primaryKey
-            }
-        }
     }
     return seen.sortedWith(compareBy<Pair<String, String?>>({ it.first }, { it.second.orEmpty() }))
-}
-
-internal fun RaftFilePreviewPayload.imageGalleryKeepAliveSources(
-    resolvedPayloadByAttachmentId: Map<String, RaftFilePreviewPayload> = emptyMap()
-): Set<String> {
-    if (imageGallery.isEmpty()) return emptySet()
-    val currentIndex = imageGalleryIndex.coerceIn(0, imageGallery.lastIndex)
-    val retainedIndices =
-        (currentIndex - 1..currentIndex + 1)
-            .filter(imageGallery.indices::contains)
-    return buildSet {
-        retainedIndices.forEach { index ->
-            val galleryImage = imageGallery[index]
-            galleryImage.thumbnailUrl
-                ?.trim()
-                ?.takeIf { it.isNotBlank() }
-                ?.let(::add)
-            resolvedPayloadByAttachmentId[galleryImage.attachmentId]
-                ?.imageUrl
-                ?.trim()
-                ?.takeIf { it.isNotBlank() }
-                ?.let(::add)
-            if (index == currentIndex) {
-                imageUrl
-                    ?.trim()
-                    ?.takeIf { it.isNotBlank() }
-                    ?.let(::add)
-                currentImageThumbnailUrl()
-                    ?.trim()
-                    ?.takeIf { it.isNotBlank() }
-                    ?.let(::add)
-            }
-        }
-    }
 }
 
 internal fun RaftFilePreviewPayload.withImageGalleryIndex(
@@ -12191,6 +12280,7 @@ internal fun RaftFilePreviewImagePanel(
     animationActive: Boolean = true,
     sourceCacheKey: String? = null,
     fallbackCacheKey: String? = null,
+    maxDecodeEdgePx: Int? = null,
     onImageStateChange: ((coil3.compose.AsyncImagePainter.State) -> Unit)? = null,
 ) {
     RaftAspectFitImagePreviewSurface(
@@ -12208,6 +12298,7 @@ internal fun RaftFilePreviewImagePanel(
         animationActive = animationActive,
         sourceCacheKey = sourceCacheKey,
         fallbackCacheKey = fallbackCacheKey,
+        maxDecodeEdgePx = maxDecodeEdgePx,
         onImageStateChange = onImageStateChange,
     )
 }

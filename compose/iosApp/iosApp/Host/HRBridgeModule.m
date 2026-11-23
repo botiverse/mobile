@@ -11,6 +11,7 @@
 #import "iosApp-Swift.h"
 #import <MMKV/MMKV.h>
 #import <mach/mach_time.h>
+#import <math.h>
 #import <os/lock.h>
 #import <pthread.h>
 #import <Photos/Photos.h>
@@ -18,6 +19,7 @@
 #import <PhotosUI/PhotosUI.h>
 #import <SDWebImage/SDImageCache.h>
 #import <stdatomic.h>
+#import <stdio.h>
 #import <string.h>
 #import <sys/stat.h>
 #import <time.h>
@@ -3554,6 +3556,9 @@ static NSDictionary *RaftFeedbackDiagnosticsWriteArchive(BOOL (^isCancelled)(voi
 @property(nonatomic, copy, nullable) NSString *raft_attachmentExportRequestId;
 @property(nonatomic, copy, nullable) NSString *raft_attachmentExportDownloadId;
 @property(nonatomic, copy, nullable) NSString *raft_attachmentExportOperationId;
+@property(nonatomic, copy, nullable) NSString *raft_attachmentExportOwnerKey;
+@property(nonatomic, copy, nullable) NSString *raft_attachmentExportAttachmentId;
+@property(nonatomic) BOOL raft_attachmentExportReusedCache;
 @property(nonatomic, strong, nullable) NSURL *raft_attachmentExportURL;
 @property(nonatomic, copy, nullable) NSString *raft_attachmentExportFileName;
 @property(nonatomic) BOOL raft_attachmentExportFileNameFromResponse;
@@ -3586,6 +3591,9 @@ static NSDictionary *RaftFeedbackDiagnosticsWriteArchive(BOOL (^isCancelled)(voi
 - (void)raft_presentCamera;
 - (void)raft_presentDocumentPicker;
 - (void)raft_processPhotoPickerResults:(NSArray<PHPickerResult *> *)results;
+- (void)raft_exportPhotoPickerResults:(NSArray<PHPickerResult *> *)results
+                      didFinishUptime:(NSTimeInterval)didFinishUptime
+                           completion:(void (^)(NSArray<NSDictionary *> *files, NSArray<NSDictionary *> *errors))completion;
 - (void)raft_processDocumentPickerURLs:(NSArray<NSURL *> *)urls;
 - (void)raft_finishAttachmentPickerFiles:(NSArray<NSDictionary *> *)files
                                     errors:(NSArray<NSDictionary *> *)errors;
@@ -4084,12 +4092,11 @@ NSString *const RaftBridgeCallbackKey = @"callback";
 }
 
 - (void)avatarCacheCapability:(NSDictionary *)args {
-    NSDictionary *params = RaftBridgeParams(args);
     RaftBridgeCallback callback = args[RaftBridgeCallbackKey];
     if (!callback) return;
-    [[RaftIosAvatarCacheHost shared] handleLegacyCommand:params completion:^(NSDictionary<NSString *, id> *result) {
-        callback(result);
-    }];
+    // #proj-mobile:#294: slock-avatar-render-v1 is retired; never lazily construct
+    // RaftIosAvatarCacheHost.shared (doing so would recreate Application Support/Raft/AvatarDurableV1).
+    callback(@{@"status" : @"unsupported"});
 }
 
 - (void)settingsCapability:(NSDictionary *)args {
@@ -4989,10 +4996,10 @@ static void RaftStorageRemoveStaleFeedbackDiagnosticsArchives(void) {
 static RaftStorageUsage RaftStorageMeasure(void) {
     RaftStorageUsage usage;
     usage.database = RaftStorageTreeBytes(RaftStorageDatabaseDirectoryPath());
-    // Avatars are counted here but cleared only by the shared avatar runtime (store.clearAll),
-    // which SharedSettingsDataSource.clearStorage runs before this host's imageCache clear.
-    usage.imageCache = (unsigned long long)[SDImageCache.sharedImageCache totalDiskSize] +
-        RaftStorageTreeBytes(RaftIosAvatarCacheHost.shared.rootPath);
+    // #proj-mobile:#294: slock-avatar-render-v1 is retired (Coil owns avatar disk caching).
+    // Never touch RaftIosAvatarCacheHost.shared here, as its lazy init would recreate
+    // Application Support/Raft/AvatarDurableV1 on disk.
+    usage.imageCache = (unsigned long long)[SDImageCache.sharedImageCache totalDiskSize];
     usage.attachmentDownloads = RaftStorageTreeBytes(RaftAttachmentStoreRoot()) +
         RaftStorageTreeBytes(RaftAttachmentExportRootPath());
     // Picked attachments and camera captures belong to composer drafts (retired through
@@ -5131,6 +5138,77 @@ NSString *RaftAttachmentReusableExportFileName(
     return usable.firstObject;
 }
 
+BOOL RaftPersistExportedAttachmentToCache(
+    NSString * _Nullable storeRoot,
+    NSString * _Nullable ownerKey,
+    NSString * _Nullable attachmentId,
+    NSString * _Nullable fileName,
+    NSURL * _Nullable sourceURL,
+    BOOL moveSource) {
+    NSString *safeStoreRoot = storeRoot ?: @"";
+    NSString *safeOwnerKey = ownerKey ?: @"";
+    NSString *safeAttachmentId = attachmentId ?: @"";
+    if (safeStoreRoot.length == 0 || safeAttachmentId.length == 0 || !sourceURL || !sourceURL.isFileURL) {
+        return NO;
+    }
+    NSURL *safeSourceURL = sourceURL;
+    NSString *sourcePath = safeSourceURL.path ?: @"";
+    if (sourcePath.length == 0) {
+        return NO;
+    }
+    NSString *key = RaftAttachmentCacheKey(safeOwnerKey, safeAttachmentId);
+    if (key.length == 0 || [key isEqualToString:@"."] || [key isEqualToString:@".."]) {
+        return NO;
+    }
+    NSFileManager *fileManager = NSFileManager.defaultManager;
+    NSDictionary<NSFileAttributeKey, id> *sourceAttrs = [fileManager attributesOfItemAtPath:sourcePath error:nil];
+    if (![sourceAttrs[NSFileType] isEqualToString:NSFileTypeRegular] ||
+        [sourceAttrs[NSFileSize] longLongValue] <= 0) {
+        return NO;
+    }
+    NSString *cachedDir = [safeStoreRoot stringByAppendingPathComponent:key];
+    if (![fileManager createDirectoryAtPath:cachedDir withIntermediateDirectories:YES attributes:nil error:nil]) {
+        return NO;
+    }
+    [[NSURL fileURLWithPath:safeStoreRoot isDirectory:YES] setResourceValue:@YES
+                                                                     forKey:NSURLIsExcludedFromBackupKey
+                                                                      error:nil];
+    NSString *leaf = RaftAttachmentSafeComponent(fileName ?: @"attachment");
+    if (leaf.length == 0 || [leaf isEqualToString:@"."] || [leaf isEqualToString:@".."]) {
+        leaf = @"attachment";
+    }
+    NSURL *cachedDirURL = [NSURL fileURLWithPath:cachedDir isDirectory:YES];
+    NSURL *destURL = [cachedDirURL URLByAppendingPathComponent:leaf isDirectory:NO];
+    if ([safeSourceURL.URLByStandardizingPath isEqual:destURL.URLByStandardizingPath]) {
+        return YES;
+    }
+    // Fixed-length temp name (42 bytes) so long display filenames near NAME_MAX still stage cleanly.
+    NSString *tempName = [NSString stringWithFormat:@".part-%@", NSUUID.UUID.UUIDString];
+    NSURL *tempURL = [cachedDirURL URLByAppendingPathComponent:tempName isDirectory:NO];
+    BOOL staged = NO;
+    if (moveSource) {
+        staged = [fileManager moveItemAtURL:safeSourceURL toURL:tempURL error:nil];
+    }
+    if (!staged) {
+        staged = [fileManager copyItemAtURL:safeSourceURL toURL:tempURL error:nil];
+    }
+    if (!staged) {
+        [fileManager removeItemAtURL:tempURL error:nil];
+        return NO;
+    }
+    if (rename(tempURL.fileSystemRepresentation, destURL.fileSystemRepresentation) != 0) {
+        [fileManager removeItemAtURL:tempURL error:nil];
+        return NO;
+    }
+    for (NSString *existingName in [fileManager contentsOfDirectoryAtPath:cachedDir error:nil] ?: @[]) {
+        if ([existingName isEqualToString:leaf] || [existingName containsString:@".part-"]) {
+            continue;
+        }
+        [fileManager removeItemAtPath:[cachedDir stringByAppendingPathComponent:existingName] error:nil];
+    }
+    return YES;
+}
+
 static NSDictionary *RaftAttachmentCacheStatusDict(NSString *directoryPath) {
     NSFileManager *fm = NSFileManager.defaultManager;
     NSArray<NSString *> *files = [fm contentsOfDirectoryAtPath:directoryPath error:nil];
@@ -5163,6 +5241,12 @@ static NSDictionary *RaftAttachmentCacheStatusDict(NSString *directoryPath) {
 }
 
 - (void)openAttachment:(NSDictionary *)args {
+    RaftBridgeRunOnMain(^{
+        [self raft_openAttachmentOnMain:args];
+    });
+}
+
+- (void)raft_openAttachmentOnMain:(NSDictionary *)args {
     RaftBridgeCallback callback = args[RaftBridgeCallbackKey];
     if (!callback) {
         return;
@@ -5428,6 +5512,9 @@ static NSDictionary *RaftAttachmentCacheStatusDict(NSString *directoryPath) {
     self.raft_attachmentExportCallback = callback;
     self.raft_attachmentExportDownloadId = RaftBridgeString(params[@"downloadId"]);
     self.raft_attachmentExportOperationId = operationId;
+    self.raft_attachmentExportOwnerKey = RaftBridgeString(params[@"ownerKey"] ?: params[@"owner"]);
+    self.raft_attachmentExportAttachmentId = RaftBridgeString(params[@"attachmentId"]);
+    self.raft_attachmentExportReusedCache = NO;
     self.raft_attachmentExportDestination = destination;
     self.raft_attachmentExportMimeType = genericBinaryMime && !savesToPhotos ? @"" : mimeType;
     self.raft_attachmentExportFileName = fileName;
@@ -5542,6 +5629,7 @@ static NSDictionary *RaftAttachmentCacheStatusDict(NSString *directoryPath) {
         [fileManager removeItemAtURL:directory error:nil];
         return NO;
     }
+    self.raft_attachmentExportReusedCache = YES;
     self.raft_attachmentExportURL = targetURL;
     [self raft_presentAttachmentExportWithURL:targetURL sizeBytes:sizeBytes];
     return YES;
@@ -5912,6 +6000,17 @@ static NSDictionary *RaftAttachmentCacheStatusDict(NSString *directoryPath) {
         [self raft_processDocumentPickerURLs:urls];
         return;
     }
+    if (!self.raft_attachmentExportReusedCache &&
+        [self.raft_attachmentExportDestination isEqualToString:RaftAttachmentExportDestinationFiles] &&
+        self.raft_attachmentExportURL) {
+        RaftPersistExportedAttachmentToCache(
+            RaftAttachmentStoreRoot(),
+            self.raft_attachmentExportOwnerKey,
+            self.raft_attachmentExportAttachmentId,
+            self.raft_attachmentExportFileName,
+            self.raft_attachmentExportURL,
+            YES);
+    }
     NSURL *savedURL = urls.firstObject;
     [self raft_finishAttachmentExport:@{
         @"status" : @"saved",
@@ -6025,68 +6124,236 @@ static NSDictionary *RaftAttachmentCacheStatusDict(NSString *directoryPath) {
     });
 }
 
+void RaftRunAfterPickerDismissAndWork(
+    void (^ _Nullable dismiss)(RaftPickerPhaseDone _Nonnull dismissCompleted),
+    void (^ _Nullable exportWork)(RaftPickerPhaseDone _Nonnull workCompleted),
+    dispatch_queue_t _Nullable completionQueue,
+    void (^ _Nonnull completion)(void)
+) {
+    dispatch_queue_t targetQueue = completionQueue ?: dispatch_get_main_queue();
+    dispatch_group_t group = dispatch_group_create();
+    RaftPickerPhaseDone leaveDismiss = nil;
+    RaftPickerPhaseDone leaveWork = nil;
+    if (dismiss) {
+        dispatch_group_enter(group);
+        NSObject *dismissLock = [NSObject new];
+        __block BOOL dismissLeft = NO;
+        leaveDismiss = ^{
+            BOOL shouldLeave = NO;
+            @synchronized (dismissLock) {
+                if (!dismissLeft) {
+                    dismissLeft = YES;
+                    shouldLeave = YES;
+                }
+            }
+            if (shouldLeave) {
+                dispatch_group_leave(group);
+            }
+        };
+    }
+    if (exportWork) {
+        dispatch_group_enter(group);
+        NSObject *workLock = [NSObject new];
+        __block BOOL workLeft = NO;
+        leaveWork = ^{
+            BOOL shouldLeave = NO;
+            @synchronized (workLock) {
+                if (!workLeft) {
+                    workLeft = YES;
+                    shouldLeave = YES;
+                }
+            }
+            if (shouldLeave) {
+                dispatch_group_leave(group);
+            }
+        };
+    }
+    if (dismiss) {
+        dismiss(leaveDismiss);
+    }
+    if (exportWork) {
+        exportWork(leaveWork);
+    }
+    if (completion) {
+        dispatch_group_notify(group, targetQueue, completion);
+    }
+}
+
+static void RaftDismissPickerViewController(
+    UIViewController * _Nullable picker,
+    NSTimeInterval startUptime,
+    void (^ _Nullable completion)(void)
+) {
+    void (^recordAndFinish)(NSString *) = ^(NSString *mode) {
+        long long dismissMs = (long long)llround(fmax(0.0, (NSProcessInfo.processInfo.systemUptime - startUptime) * 1000.0));
+        RaftDiagnosticsRecord(
+            @"info",
+            @"SlockKuiklyAttachment",
+            [NSString stringWithFormat:@"picker_dismiss_complete mode=%@ dismissMs=%lld", mode, dismissMs]
+        );
+        if (completion) {
+            completion();
+        }
+    };
+    RaftBridgeRunOnMain(^{
+        UIViewController *presenter = picker.presentingViewController;
+        if (!picker || !presenter) {
+            recordAndFinish(@"already_dismissed");
+            return;
+        }
+        if (picker.isBeingPresented) {
+            id<UIViewControllerTransitionCoordinator> coordinator =
+                picker.transitionCoordinator ?: presenter.transitionCoordinator;
+            if (coordinator) {
+                [coordinator animateAlongsideTransition:nil
+                                             completion:^(__unused id<UIViewControllerTransitionCoordinatorContext> context) {
+                    dispatch_async(dispatch_get_main_queue(), ^{
+                        RaftDismissPickerViewController(picker, startUptime, completion);
+                    });
+                }];
+                return;
+            }
+        }
+        if (picker.isBeingDismissed) {
+            id<UIViewControllerTransitionCoordinator> coordinator =
+                picker.transitionCoordinator ?: presenter.transitionCoordinator;
+            if (coordinator) {
+                [coordinator animateAlongsideTransition:nil
+                                             completion:^(id<UIViewControllerTransitionCoordinatorContext> context) {
+                    if (context.isCancelled && picker.presentingViewController != nil) {
+                        dispatch_async(dispatch_get_main_queue(), ^{
+                            RaftDismissPickerViewController(picker, startUptime, completion);
+                        });
+                        return;
+                    }
+                    recordAndFinish(@"in_flight_coordinator");
+                }];
+            } else {
+                recordAndFinish(@"being_dismissed_no_coordinator");
+            }
+            return;
+        }
+        [presenter dismissViewControllerAnimated:YES completion:^{
+            recordAndFinish(@"animated");
+        }];
+    });
+}
+
 - (void)imagePickerControllerDidCancel:(UIImagePickerController *)picker {
-    [picker dismissViewControllerAnimated:YES completion:nil];
-    [self raft_finishAttachmentPicker:@{ @"code" : @204, @"bodyText" : @"" }];
+    NSTimeInterval cancelUptime = NSProcessInfo.processInfo.systemUptime;
+    __weak typeof(self) weakSelf = self;
+    RaftRunAfterPickerDismissAndWork(
+        ^(void (^dismissCompleted)(void)) {
+            RaftDismissPickerViewController(picker, cancelUptime, dismissCompleted);
+        },
+        nil,
+        dispatch_get_main_queue(),
+        ^{
+            [weakSelf raft_finishAttachmentPicker:@{ @"code" : @204, @"bodyText" : @"" }];
+        }
+    );
 }
 
 - (void)imagePickerController:(UIImagePickerController *)picker
 didFinishPickingMediaWithInfo:(NSDictionary<UIImagePickerControllerInfoKey, id> *)info {
+    NSTimeInterval didFinishUptime = NSProcessInfo.processInfo.systemUptime;
     UIImage *image = info[UIImagePickerControllerOriginalImage];
-    [picker dismissViewControllerAnimated:YES completion:nil];
+    __weak typeof(self) weakSelf = self;
     if (!image) {
-        [self raft_finishAttachmentPicker:@{
-            @"code" : @400,
-            @"bodyText" : @"",
-            @"errorCode" : @"attachment_read_failed",
-            @"errorBodyText" : @"Captured image is unavailable"
-        }];
+        RaftRunAfterPickerDismissAndWork(
+            ^(void (^dismissCompleted)(void)) {
+                RaftDismissPickerViewController(picker, didFinishUptime, dismissCompleted);
+            },
+            nil,
+            dispatch_get_main_queue(),
+            ^{
+                [weakSelf raft_finishAttachmentPicker:@{
+                    @"code" : @400,
+                    @"bodyText" : @"",
+                    @"errorCode" : @"attachment_read_failed",
+                    @"errorBodyText" : @"Captured image is unavailable"
+                }];
+            }
+        );
         return;
     }
     BOOL compressImages = self.raft_attachmentPickerCompressImages;
-    dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
-        NSURL *temporaryURL = [[NSURL fileURLWithPath:NSTemporaryDirectory() isDirectory:YES]
-            URLByAppendingPathComponent:[NSUUID.UUID.UUIDString stringByAppendingPathExtension:RaftCameraCaptureFileExtension]
-                         isDirectory:NO];
-        NSError *error = nil;
-        BOOL encoded = compressImages
-            ? RaftWriteCompressedCameraImage(image, temporaryURL, &error)
-            : [UIImageJPEGRepresentation(image, 0.92) writeToURL:temporaryURL
-                                                          options:NSDataWritingAtomic
-                                                            error:&error];
-        if (!encoded) {
-            [NSFileManager.defaultManager removeItemAtURL:temporaryURL error:nil];
-            [self raft_finishAttachmentPicker:@{
-                @"code" : @400,
-                @"bodyText" : @"",
-                @"errorCode" : compressImages
-                    ? @"attachment_image_compression_failed" : @"attachment_read_failed",
-                @"errorBodyText" : error.localizedDescription ?: @"Captured image could not be encoded"
-            }];
-            return;
+    __block NSDictionary *capturedFileResult = nil;
+    __block NSDictionary *failurePayload = nil;
+    RaftRunAfterPickerDismissAndWork(
+        ^(void (^dismissCompleted)(void)) {
+            RaftDismissPickerViewController(picker, didFinishUptime, dismissCompleted);
+        },
+        ^(void (^workCompleted)(void)) {
+            dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
+                __strong typeof(weakSelf) strongSelf = weakSelf;
+                if (!strongSelf) {
+                    workCompleted();
+                    return;
+                }
+                NSURL *temporaryURL = [[NSURL fileURLWithPath:NSTemporaryDirectory() isDirectory:YES]
+                    URLByAppendingPathComponent:[NSUUID.UUID.UUIDString stringByAppendingPathExtension:RaftCameraCaptureFileExtension]
+                                 isDirectory:NO];
+                NSError *error = nil;
+                BOOL encoded = compressImages
+                    ? RaftWriteCompressedCameraImage(image, temporaryURL, &error)
+                    : [UIImageJPEGRepresentation(image, 0.92) writeToURL:temporaryURL
+                                                                  options:NSDataWritingAtomic
+                                                                    error:&error];
+                if (!encoded) {
+                    [NSFileManager.defaultManager removeItemAtURL:temporaryURL error:nil];
+                    failurePayload = @{
+                        @"code" : @400,
+                        @"bodyText" : @"",
+                        @"errorCode" : compressImages
+                            ? @"attachment_image_compression_failed" : @"attachment_read_failed",
+                        @"errorBodyText" : error.localizedDescription ?: @"Captured image could not be encoded"
+                    };
+                    workCompleted();
+                    return;
+                }
+                NSDictionary *file = [strongSelf raft_cachePickedAttachmentURL:temporaryURL
+                                                                 suggestedName:@"camera.jpg"
+                                                                      mimeType:@"image/jpeg"
+                                                                 compressImages:NO
+                                                                          error:&error];
+                [NSFileManager.defaultManager removeItemAtURL:temporaryURL error:nil];
+                if (!file) {
+                    failurePayload = @{
+                        @"code" : @400,
+                        @"bodyText" : @"",
+                        @"errorCode" : compressImages &&
+                            RaftIsThreadAttachmentImageCompressionError(error)
+                            ? @"attachment_image_compression_failed" : @"attachment_read_failed",
+                        @"errorBodyText" : error.localizedDescription ?: @"Captured image could not be cached"
+                    };
+                    workCompleted();
+                    return;
+                }
+                NSMutableDictionary *capturedFile = [file mutableCopy];
+                capturedFile[@"source"] = @"platform_camera";
+                capturedFileResult = [capturedFile copy];
+                workCompleted();
+            });
+        },
+        dispatch_get_main_queue(),
+        ^{
+            __strong typeof(weakSelf) strongSelf = weakSelf;
+            if (!strongSelf) {
+                return;
+            }
+            if (capturedFileResult) {
+                [strongSelf raft_finishAttachmentPickerFiles:@[ capturedFileResult ] errors:@[]];
+            } else {
+                [strongSelf raft_finishAttachmentPicker:failurePayload ?: @{
+                    @"code" : @400,
+                    @"bodyText" : @"",
+                    @"errorCode" : @"attachment_read_failed",
+                    @"errorBodyText" : @"Captured image could not be cached"
+                }];
+            }
         }
-        NSDictionary *file = nil;
-        file = [self raft_cachePickedAttachmentURL:temporaryURL
-                                      suggestedName:@"camera.jpg"
-                                           mimeType:@"image/jpeg"
-                                      compressImages:NO
-                                               error:&error];
-        [NSFileManager.defaultManager removeItemAtURL:temporaryURL error:nil];
-        if (!file) {
-            [self raft_finishAttachmentPicker:@{
-                @"code" : @400,
-                @"bodyText" : @"",
-                @"errorCode" : compressImages &&
-                    RaftIsThreadAttachmentImageCompressionError(error)
-                    ? @"attachment_image_compression_failed" : @"attachment_read_failed",
-                @"errorBodyText" : error.localizedDescription ?: @"Captured image could not be cached"
-            }];
-            return;
-        }
-        NSMutableDictionary *capturedFile = [file mutableCopy];
-        capturedFile[@"source"] = @"platform_camera";
-        [self raft_finishAttachmentPickerFiles:@[ capturedFile ] errors:@[]];
-    });
+    );
 }
 
 - (void)raft_presentDocumentPicker {
@@ -6110,20 +6377,78 @@ didFinishPickingMediaWithInfo:(NSDictionary<UIImagePickerControllerInfoKey, id> 
 }
 
 - (void)picker:(PHPickerViewController *)picker didFinishPicking:(NSArray<PHPickerResult *> *)results {
-    [picker dismissViewControllerAnimated:YES completion:nil];
+    NSTimeInterval didFinishUptime = NSProcessInfo.processInfo.systemUptime;
+    RaftDiagnosticsRecord(
+        @"info",
+        @"SlockKuiklyAttachment",
+        [NSString stringWithFormat:@"picker_did_finish count=%lu compress=%@",
+                                   (unsigned long)results.count,
+                                   self.raft_attachmentPickerCompressImages ? @"true" : @"false"]
+    );
+    __weak typeof(self) weakSelf = self;
     if (results.count == 0) {
-        [self raft_finishAttachmentPicker:@{ @"code" : @204, @"bodyText" : @"" }];
+        RaftRunAfterPickerDismissAndWork(
+            ^(void (^dismissCompleted)(void)) {
+                RaftDismissPickerViewController(picker, didFinishUptime, dismissCompleted);
+            },
+            nil,
+            dispatch_get_main_queue(),
+            ^{
+                [weakSelf raft_finishAttachmentPicker:@{ @"code" : @204, @"bodyText" : @"" }];
+            }
+        );
         return;
     }
-    [self raft_processPhotoPickerResults:results];
+    __block NSArray<NSDictionary *> *exportedFiles = @[];
+    __block NSArray<NSDictionary *> *exportErrors = @[];
+    // #wg-mobile-feedback:#268: run PHPicker dismissal and item export/cache in parallel, and only
+    // deliver the picker result after both finish so compose_file_preview opens directly instead
+    // of hitting RaftIosPageOpenGate `open_queued` behind the still-running sheet dismissal.
+    RaftRunAfterPickerDismissAndWork(
+        ^(void (^dismissCompleted)(void)) {
+            RaftDismissPickerViewController(picker, didFinishUptime, dismissCompleted);
+        },
+        ^(void (^workCompleted)(void)) {
+            __strong typeof(weakSelf) strongSelf = weakSelf;
+            if (!strongSelf) {
+                workCompleted();
+                return;
+            }
+            [strongSelf raft_exportPhotoPickerResults:results
+                                      didFinishUptime:didFinishUptime
+                                           completion:^(NSArray<NSDictionary *> *files, NSArray<NSDictionary *> *errors) {
+                exportedFiles = files ?: @[];
+                exportErrors = errors ?: @[];
+                workCompleted();
+            }];
+        },
+        dispatch_get_main_queue(),
+        ^{
+            [weakSelf raft_finishAttachmentPickerFiles:exportedFiles errors:exportErrors];
+        }
+    );
 }
 
 - (void)raft_processPhotoPickerResults:(NSArray<PHPickerResult *> *)results {
+    __weak typeof(self) weakSelf = self;
+    [self raft_exportPhotoPickerResults:results
+                        didFinishUptime:NSProcessInfo.processInfo.systemUptime
+                             completion:^(NSArray<NSDictionary *> *files, NSArray<NSDictionary *> *errors) {
+        [weakSelf raft_finishAttachmentPickerFiles:files errors:errors];
+    }];
+}
+
+- (void)raft_exportPhotoPickerResults:(NSArray<PHPickerResult *> *)results
+                      didFinishUptime:(NSTimeInterval)didFinishUptime
+                           completion:(void (^)(NSArray<NSDictionary *> *files, NSArray<NSDictionary *> *errors))completion {
     BOOL compressImages = self.raft_attachmentPickerCompressImages;
     dispatch_queue_t worker = dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0);
     dispatch_group_t group = dispatch_group_create();
     NSMutableArray *orderedFiles = [NSMutableArray arrayWithCapacity:results.count];
     NSMutableArray<NSDictionary *> *errors = [NSMutableArray array];
+    NSObject *timingLock = [NSObject new];
+    __block long long maxExportMs = 0;
+    __block long long maxCacheMs = 0;
     for (NSUInteger index = 0; index < results.count; index++) {
         [orderedFiles addObject:NSNull.null];
     }
@@ -6135,24 +6460,52 @@ didFinishPickingMediaWithInfo:(NSDictionary<UIImagePickerControllerInfoKey, id> 
             @synchronized (errors) {
                 [errors addObject:@{ @"index" : @(index), @"errorCode" : @"attachment_read_failed" }];
             }
+            RaftDiagnosticsRecord(
+                @"info",
+                @"SlockKuiklyAttachment",
+                [NSString stringWithFormat:@"picker_item_ready index=%lu exportMs=0 cacheMs=0 sizeBytes=0 compressed=false ok=false",
+                                           (unsigned long)index]
+            );
             return;
         }
+        BOOL willCompress = compressImages && [mediaType conformsToType:UTTypeImage];
+        NSTimeInterval loadStart = NSProcessInfo.processInfo.systemUptime;
         dispatch_group_enter(group);
         [provider loadFileRepresentationForTypeIdentifier:typeIdentifier completionHandler:^(NSURL *url, NSError *loadError) {
+            NSTimeInterval loadEnd = NSProcessInfo.processInfo.systemUptime;
+            long long exportMs = (long long)llround(fmax(0.0, (loadEnd - loadStart) * 1000.0));
             // PHPicker's file-representation URL is temporary and is only valid
             // for the lifetime of this completion handler. Cache it before the
             // handler returns; dispatching the copy to another queue leaves that
             // queue racing the provider's cleanup and produces ENOENT.
             NSError *cacheError = loadError;
             NSDictionary *file = nil;
+            long long cacheMs = 0;
             if (url && !cacheError) {
+                NSTimeInterval cacheStart = NSProcessInfo.processInfo.systemUptime;
                 file = [self raft_cachePickedAttachmentURL:url
                                              suggestedName:provider.suggestedName
                                                   mimeType:mediaType.preferredMIMEType
-                                             compressImages:compressImages &&
-                                                 [mediaType conformsToType:UTTypeImage]
+                                             compressImages:willCompress
                                                      error:&cacheError];
+                cacheMs = (long long)llround(fmax(0.0, (NSProcessInfo.processInfo.systemUptime - cacheStart) * 1000.0));
             }
+            @synchronized (timingLock) {
+                if (exportMs > maxExportMs) maxExportMs = exportMs;
+                if (cacheMs > maxCacheMs) maxCacheMs = cacheMs;
+            }
+            BOOL attemptedCompression = (url != nil && loadError == nil && willCompress);
+            RaftDiagnosticsRecord(
+                @"info",
+                @"SlockKuiklyAttachment",
+                [NSString stringWithFormat:@"picker_item_ready index=%lu exportMs=%lld cacheMs=%lld sizeBytes=%@ compressed=%@ ok=%@",
+                                           (unsigned long)index,
+                                           exportMs,
+                                           cacheMs,
+                                           file[@"sizeBytes"] ?: @0,
+                                           attemptedCompression ? @"true" : @"false",
+                                           file != nil ? @"true" : @"false"]
+            );
             if (file) {
                 @synchronized (orderedFiles) {
                     orderedFiles[index] = file;
@@ -6182,7 +6535,27 @@ didFinishPickingMediaWithInfo:(NSDictionary<UIImagePickerControllerInfoKey, id> 
                 }
             }
         }
-        [self raft_finishAttachmentPickerFiles:files errors:errors];
+        long long totalMs = (long long)llround(fmax(0.0, (NSProcessInfo.processInfo.systemUptime - didFinishUptime) * 1000.0));
+        long long summaryMaxExportMs = 0;
+        long long summaryMaxCacheMs = 0;
+        @synchronized (timingLock) {
+            summaryMaxExportMs = maxExportMs;
+            summaryMaxCacheMs = maxCacheMs;
+        }
+        RaftDiagnosticsRecord(
+            @"info",
+            @"SlockKuiklyAttachment",
+            [NSString stringWithFormat:@"picker_export_summary count=%lu files=%lu errors=%lu totalMs=%lld maxExportMs=%lld maxCacheMs=%lld",
+                                       (unsigned long)results.count,
+                                       (unsigned long)files.count,
+                                       (unsigned long)errors.count,
+                                       totalMs,
+                                       summaryMaxExportMs,
+                                       summaryMaxCacheMs]
+        );
+        if (completion) {
+            completion(files, errors);
+        }
     });
 }
 
@@ -6360,6 +6733,9 @@ didFinishPickingMediaWithInfo:(NSDictionary<UIImagePickerControllerInfoKey, id> 
     self.raft_attachmentExportRequestId = nil;
     self.raft_attachmentExportDownloadId = nil;
     self.raft_attachmentExportOperationId = nil;
+    self.raft_attachmentExportOwnerKey = nil;
+    self.raft_attachmentExportAttachmentId = nil;
+    self.raft_attachmentExportReusedCache = NO;
     self.raft_attachmentExportURL = nil;
     self.raft_attachmentExportFileName = nil;
     self.raft_attachmentExportSizeBytes = nil;
@@ -6870,6 +7246,24 @@ didFinishPickingMediaWithInfo:(NSDictionary<UIImagePickerControllerInfoKey, id> 
         [self raft_showToast:SharedRaftHostStrings.shared.shareOpenFailed];
         return;
     }
+    UIViewController *dismissing = controller.presentedViewController;
+    if (dismissing && dismissing.isBeingDismissed && attempt < 3) {
+        // Strongly capture self in this bounded one-shot retry so a popped page's bridge module
+        // stays alive until the dismissing picker/sheet finishes and UIActivityViewController presents.
+        id<UIViewControllerTransitionCoordinator> coordinator = dismissing.transitionCoordinator;
+        if (coordinator) {
+            [coordinator animateAlongsideTransition:nil completion:^(__unused id<UIViewControllerTransitionCoordinatorContext> ctx) {
+                dispatch_async(dispatch_get_main_queue(), ^{
+                    [self raft_presentShareItems:items attempt:attempt + 1];
+                });
+            }];
+        } else {
+            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.15 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+                [self raft_presentShareItems:items attempt:attempt + 1];
+            });
+        }
+        return;
+    }
     UIActivityViewController *activityController = [[UIActivityViewController alloc] initWithActivityItems:items applicationActivities:nil];
     UIPopoverPresentationController *popover = activityController.popoverPresentationController;
     if (popover) {
@@ -6914,7 +7308,8 @@ NSString *RaftShareControllerFailureReason(BOOL hasRootViewWindow,
 
 - (UIViewController *)raft_currentViewController {
     UIViewController *controller = self.raftHostController;
-    if (!controller) {
+    if (!controller || controller.viewIfLoaded.window == nil ||
+        controller.isBeingDismissed || controller.isMovingFromParentViewController) {
         controller = [self raft_keyWindow].rootViewController;
     }
     return [self raft_topViewControllerFrom:controller] ?: controller;
@@ -6927,8 +7322,9 @@ NSString *RaftShareControllerFailureReason(BOOL hasRootViewWindow,
     if ([controller isKindOfClass:UITabBarController.class]) {
         return [self raft_topViewControllerFrom:((UITabBarController *)controller).selectedViewController];
     }
-    if (controller.presentedViewController) {
-        return [self raft_topViewControllerFrom:controller.presentedViewController];
+    UIViewController *presented = controller.presentedViewController;
+    if (presented && !presented.isBeingDismissed) {
+        return [self raft_topViewControllerFrom:presented];
     }
     return controller;
 }

@@ -237,6 +237,30 @@ internal class RaftOfflineResourceCache(
         }
     }
 
+    /**
+     * Deletes [rowId] as the negative answer of a fetch started at [startedAt], under the same
+     * wipe/mutation/supersede fences as [write]: an older fetch's empty/unavailable answer cannot
+     * delete a newer fetch's stored row, and does not stamp [rowChangedAt] so newer fetches still write.
+     */
+    internal suspend fun deleteIfNotSuperseded(rowId: String, mintedAt: Long, startedAt: Long): Boolean =
+        mutex.withLock {
+            drainWipes()
+            val parts = RaftOfflineRowId.parts(rowId) ?: return@withLock false
+            if (wipedSince(parts, mintedAt)) {
+                logger("offline_resource_delete result=fenced")
+                return@withLock false
+            }
+            if (changedSince(rowId, startedAt) || synchronized(fenceLock) { (rowAnswerStartedAt[rowId] ?: NeverTick) > startedAt }) {
+                logger("offline_resource_delete result=superseded")
+                return@withLock false
+            }
+            val deleted = runLogged("delete") { rows.delete(listOf(rowId)) }
+            if (deleted) {
+                synchronized(fenceLock) { rowAnswerStartedAt[rowId] = startedAt }
+            }
+            deleted
+        }
+
     private suspend fun readLocked(rowId: String, maxAgeMillis: Long?): String? {
         val row =
             try {
@@ -347,15 +371,16 @@ internal class RaftOfflineResourceCache(
         synchronized(fenceLock) { rowChangedAt[rowId] = ++clock }
     }
 
-    private suspend fun runLogged(operation: String, block: suspend () -> Unit) {
+    private suspend fun runLogged(operation: String, block: suspend () -> Unit): Boolean =
         try {
             block()
+            true
         } catch (cancellation: CancellationException) {
             throw cancellation
         } catch (error: Throwable) {
             logger("offline_resource_$operation result=failure type=${error::class.simpleName}")
+            false
         }
-    }
 
     private sealed interface Wipe {
         data object All : Wipe
@@ -539,6 +564,15 @@ internal class RaftOfflineResource<P : Any, T : Any>(
     suspend fun remove(key: RaftOfflineResourceKey<P>) {
         val rowId = rowId(key) ?: return
         cache.delete(rowId, confirmed = true)
+    }
+
+    /**
+     * Drops the stored value as a negative fetch answer (e.g. `unavailable` / empty cards) started
+     * at [startedAt]: fenced against wipes and newer fetches/mutations, without blocking newer fetches.
+     */
+    suspend fun removeIfNotSuperseded(key: RaftOfflineResourceKey<P>, startedAt: Long = key.mintedAt): Boolean {
+        val rowId = rowId(key) ?: return false
+        return cache.deleteIfNotSuperseded(rowId, key.mintedAt, startedAt)
     }
 
     /** A Store5 store whose fetcher is [fetch] and whose source of truth is this resource's rows. */

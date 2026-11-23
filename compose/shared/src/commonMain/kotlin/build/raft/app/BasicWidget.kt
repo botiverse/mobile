@@ -26,7 +26,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import build.raft.app.data.parseRaftAvatarMountedRenderModel
 import coil3.compose.AsyncImagePainter
-import build.raft.app.compat.ui.rememberAsyncImageBitmap
+import build.raft.app.compat.ui.raftBoundedImageRequest
 import build.raft.app.compat.ui.keyboardHeightChange
 import build.raft.app.compat.ui.LocalRaftHostImeInsets
 import coil3.compose.rememberAsyncImagePainter
@@ -148,66 +148,9 @@ internal data class RaftImagePreviewLoadingPresentation(
     val showLoadingOverlay: Boolean
 )
 
-internal data class RaftImagePreviewRenderIdentity(
-    val source: String,
-    val decodedWidth: Int,
-    val decodedHeight: Int
-)
-
-internal fun raftImagePreviewRenderIdentity(
-    source: String,
-    decodedWidth: Int,
-    decodedHeight: Int
-): RaftImagePreviewRenderIdentity =
-    RaftImagePreviewRenderIdentity(
-        source = source,
-        decodedWidth = decodedWidth.coerceAtLeast(0),
-        decodedHeight = decodedHeight.coerceAtLeast(0)
-    )
-
-internal fun resolveRaftImagePreviewRenderIdentity(
-    currentIdentity: RaftImagePreviewRenderIdentity?,
-    source: String,
-    decodedWidth: Int,
-    decodedHeight: Int,
-    activeSucceeded: Boolean
-): RaftImagePreviewRenderIdentity {
-    val normalizedSource = source.trim()
-    if (currentIdentity != null && currentIdentity.source == normalizedSource) {
-        if (activeSucceeded) {
-            return currentIdentity
-        }
-        if (currentIdentity.decodedWidth > 0 && currentIdentity.decodedHeight > 0) {
-            return currentIdentity
-        }
-    }
-    return raftImagePreviewRenderIdentity(
-        source = normalizedSource,
-        decodedWidth = decodedWidth,
-        decodedHeight = decodedHeight
-    )
-}
-
-/** Decode bound of the dimensions-only read in the image preview (render identity). */
-internal const val RaftImagePreviewIdentityDecodeEdgePx = 64
-
-private class RaftImagePreviewIdentityHolder(
-    var identity: RaftImagePreviewRenderIdentity
-)
-
 private class RaftImagePreviewSourceOutcome(
     var failed: Boolean = false
 )
-
-@Composable
-internal fun RaftImagePreviewRenderSlot(
-    identity: RaftImagePreviewRenderIdentity,
-    content: @Composable () -> Unit
-) {
-    key(identity) {
-        content()
-    }
-}
 
 private fun AsyncImagePainter.State.raftImagePreviewDiagnosticsPhase(): String =
     when (this) {
@@ -262,36 +205,54 @@ fun RaftCachedImage(
     contentScale: ContentScale = ContentScale.Fit,
     colorFilter: ColorFilter? = null,
     /**
-     * Ask for animated decoding (GIF / animated WebP; the image viewer only). False keeps the
-     * plain static request, byte-for-byte today's path.
+     * Ask for animated decoding (GIF / animated WebP: the image viewer, a message thumbnail, an
+     * announcement image). False keeps the plain static request, byte-for-byte today's path.
      */
     animated: Boolean = false,
-    /** With [animated]: whether it plays now (the selected pager page); it also pauses in the background. */
+    /**
+     * With [animated]: whether it plays now (the selected pager page, a message thumbnail on
+     * screen); it also pauses in the background.
+     */
     animationActive: Boolean = true,
     /**
      * Optional stable memory/disk cache key (#proj-mobile:#293: original attachment images key on
      * attachment id instead of the 5-minute presigned URL).
      */
     cacheKey: String? = null,
+    /**
+     * Optional display decode bound (longer edge in px). When set, builds a bounded Coil request
+     * via [raftBoundedImageRequest] so full-screen previews and the image editor share one decoded
+     * memory-cache entry without re-decoding (#wg-mobile-feedback:#269).
+     */
+    maxDecodeEdgePx: Int? = null,
     onImageStateChange: ((AsyncImagePainter.State) -> Unit)? = null
 ) {
     val platformContext = LocalPlatformContext.current
     val normalizedCacheKey = cacheKey?.trim()?.takeIf { it.isNotEmpty() }
     val model: Any? =
-        remember(source, animated, normalizedCacheKey, platformContext) {
-            if (source != null && (animated || normalizedCacheKey != null)) {
-                ImageRequest.Builder(platformContext)
-                    .data(source)
-                    .apply {
-                        if (animated) raftAnimatedImage()
-                        if (normalizedCacheKey != null) {
-                            memoryCacheKey(normalizedCacheKey)
-                            diskCacheKey(normalizedCacheKey)
+        remember(source, animated, normalizedCacheKey, maxDecodeEdgePx, platformContext) {
+            when {
+                source != null && maxDecodeEdgePx != null ->
+                    raftBoundedImageRequest(
+                        context = platformContext,
+                        source = source,
+                        maxDecodeEdgePx = maxDecodeEdgePx,
+                        memoryCacheKey = normalizedCacheKey,
+                        diskCacheKey = normalizedCacheKey,
+                        configure = if (animated) ({ raftAnimatedImage() }) else null,
+                    )
+                source != null && (animated || normalizedCacheKey != null) ->
+                    ImageRequest.Builder(platformContext)
+                        .data(source)
+                        .apply {
+                            if (animated) raftAnimatedImage()
+                            if (normalizedCacheKey != null) {
+                                memoryCacheKey(normalizedCacheKey)
+                                diskCacheKey(normalizedCacheKey)
+                            }
                         }
-                    }
-                    .build()
-            } else {
-                source
+                        .build()
+                else -> source
             }
         }
     val painter = rememberAsyncImagePainter(model)
@@ -336,12 +297,14 @@ internal fun RaftAspectFitImagePreviewSurface(
     showLoadingIndicator: Boolean = false,
     /** Play [source] if it is an animated GIF / WebP (never the fallback / underlay thumbnail). */
     animateSource: Boolean = false,
-    /** With [animateSource]: whether the animation runs now (the selected pager page). */
+    /** With [animateSource]: whether the animation runs now (the selected pager page, a tile on screen). */
     animationActive: Boolean = true,
     /** Optional stable cache key for [source] (e.g. `raftAttachmentOriginalImageCacheKey`). */
     sourceCacheKey: String? = null,
     /** Optional stable cache key for [fallbackSource] (never applied to a low-res thumbnail). */
     fallbackCacheKey: String? = null,
+    /** Optional display decode bound (longer edge in px) forwarded to [RaftCachedImage]. */
+    maxDecodeEdgePx: Int? = null,
     onImageStateChange: ((AsyncImagePainter.State) -> Unit)? = null
 ) {
     val normalizedSource = source?.trim()?.takeIf { it.isNotBlank() }
@@ -405,34 +368,7 @@ internal fun RaftAspectFitImagePreviewSurface(
         contentAlignment = Alignment.Center
     ) {
         if (activeSource != null) {
-            // Only the decoded dimensions are read (render identity), so decode a small,
-            // subsampled copy instead of the full-resolution image per thumbnail.
-            // TODO(cmp-switch): read the dimensions from the image header without decoding.
-            val activeBitmap =
-                rememberAsyncImageBitmap(
-                    model = activeSource,
-                    maxDecodeEdgePx = RaftImagePreviewIdentityDecodeEdgePx,
-                    diskCacheKey = activeCacheKey
-                )
-            val currentSource = activeSource.orEmpty()
             val activeSucceeded = imageState is AsyncImagePainter.State.Success
-            val identityHolder = remember(activeSource) {
-                RaftImagePreviewIdentityHolder(
-                    raftImagePreviewRenderIdentity(
-                        source = currentSource,
-                        decodedWidth = activeBitmap?.width ?: 0,
-                        decodedHeight = activeBitmap?.height ?: 0
-                    )
-                )
-            }
-            val renderIdentity =
-                resolveRaftImagePreviewRenderIdentity(
-                    currentIdentity = identityHolder.identity,
-                    source = currentSource,
-                    decodedWidth = activeBitmap?.width ?: 0,
-                    decodedHeight = activeBitmap?.height ?: 0,
-                    activeSucceeded = activeSucceeded
-                ).also { identityHolder.identity = it }
             val loadingPresentation =
                 raftImagePreviewLoadingPresentation(
                     activeSource = activeSource,
@@ -460,6 +396,7 @@ internal fun RaftAspectFitImagePreviewSurface(
                     contentDescription = contentDescription,
                     contentScale = contentScale,
                     cacheKey = underlayCacheKey,
+                    maxDecodeEdgePx = maxDecodeEdgePx,
                     modifier =
                         Modifier
                             .fillMaxSize()
@@ -467,7 +404,9 @@ internal fun RaftAspectFitImagePreviewSurface(
                 )
             }
             val animateActive = animateSource && activeSource == normalizedSource
-            RaftImagePreviewRenderSlot(renderIdentity) {
+            // Key only by activeSource so thumbnail -> full swaps get a clean painter without
+            // tearing down and restarting an in-flight decode when dimensions arrive (#269).
+            key(activeSource) {
                 if (zoomable) {
                     RaftZoomableCachedImage(
                         source = activeSource.orEmpty(),
@@ -477,6 +416,7 @@ internal fun RaftAspectFitImagePreviewSurface(
                         animated = animateActive,
                         animationActive = animationActive,
                         cacheKey = activeCacheKey,
+                        maxDecodeEdgePx = maxDecodeEdgePx,
                         onImageStateChange = { state ->
                             imageState = state
                             onImageStateChange?.invoke(state)
@@ -501,6 +441,7 @@ internal fun RaftAspectFitImagePreviewSurface(
                         animated = animateActive,
                         animationActive = animationActive,
                         cacheKey = activeCacheKey,
+                        maxDecodeEdgePx = maxDecodeEdgePx,
                         onImageStateChange = { state ->
                             imageState = state
                             onImageStateChange?.invoke(state)
@@ -570,6 +511,7 @@ private fun RaftZoomableCachedImage(
     animated: Boolean = false,
     animationActive: Boolean = true,
     cacheKey: String? = null,
+    maxDecodeEdgePx: Int? = null,
     onImageStateChange: ((AsyncImagePainter.State) -> Unit)? = null
 ) {
     // Hoisted state survives the render slot re-keying on a source swap (thumbnail -> full size).
@@ -598,6 +540,7 @@ private fun RaftZoomableCachedImage(
             animated = animated,
             animationActive = animationActive,
             cacheKey = cacheKey,
+            maxDecodeEdgePx = maxDecodeEdgePx,
             onImageStateChange = { imageState ->
                 // Pan is bounded by the image as fitted into the viewport, so it needs the image size.
                 // The thumbnail and the full-size image share an aspect ratio, so either one will do.
