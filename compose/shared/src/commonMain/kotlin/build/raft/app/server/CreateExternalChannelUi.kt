@@ -54,7 +54,7 @@ internal fun SharedCreateExternalChannelReview(
             closeLabel = stringResource(Res.string.common_close),
             cancelLabel = stringResource(Res.string.channel_create_external_skip),
             closeEnabled = !invite.busy,
-            onBack = if (created == null && !invite.busy) onBack else null,
+            onBack = if (state.canReturnToStep2) onBack else null,
             backLabel = stringResource(Res.string.channel_external_invite_back),
             modifier = Modifier.testTag(CreateExternalChannelReviewTag),
         ) {

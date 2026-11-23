@@ -56,6 +56,8 @@ import build.raft.designsystem.components.RaftIconTile
 import build.raft.designsystem.components.RaftIconTileSize
 import build.raft.designsystem.components.RaftListRow
 import build.raft.designsystem.components.RaftListRowText
+import build.raft.designsystem.components.RaftSpinner
+import build.raft.designsystem.components.RaftSpinnerSize
 import build.raft.designsystem.components.RaftTextarea
 import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.RaftTheme
@@ -65,6 +67,7 @@ import build.raft.designsystem.components.RaftHoverTier
 import build.raft.designsystem.components.raftClickable
 
 internal const val ExternalInviteEntryTag = "add-member-external-entry"
+internal const val ExternalInviteMembersPageButtonTag = "member-page-invite-outside"
 internal const val ExternalInviteSheetTag = "external-invite-sheet"
 internal const val ExternalInviteEmailsTag = "external-invite-emails"
 internal const val ExternalInviteErrorTag = "external-invite-error"
@@ -141,15 +144,21 @@ private fun ExternalInviteIcon(name: RaftLucideIconName, size: androidx.compose.
  * admins only ([externalInviteAccess]).
  */
 @Composable
-internal fun ExternalInviteEntryRow(serverName: String, enabled: Boolean, onClick: () -> Unit) {
+internal fun ExternalInviteEntryRow(
+    serverName: String,
+    enabled: Boolean,
+    onClick: () -> Unit,
+    loading: Boolean = false,
+) {
     val colors = RaftTheme.colors
     val typography = RaftTheme.typography
     val chipShape = RoundedCornerShape(RaftRadius.Chip)
+    val interactive = enabled && !loading
     Row(
         Modifier
             .fillMaxWidth()
             .testTag(ExternalInviteEntryTag)
-            .raftClickable(onClick = onClick, enabled = enabled, shape = chipShape, tier = RaftHoverTier.Subtle)
+            .raftClickable(onClick = onClick, enabled = interactive, shape = chipShape, tier = RaftHoverTier.Subtle)
             .padding(horizontal = 10.dp, vertical = 8.dp),
         horizontalArrangement = Arrangement.spacedBy(10.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -175,7 +184,7 @@ internal fun ExternalInviteEntryRow(serverName: String, enabled: Boolean, onClic
             RaftText(
                 stringResource(Res.string.channel_external_invite_title, serverName),
                 style = typography.callout.copy(fontWeight = FontWeight.SemiBold),
-                color = if (enabled) colors.foreground else colors.foregroundDisabled,
+                color = if (interactive) colors.foreground else colors.foregroundDisabled,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
@@ -186,6 +195,9 @@ internal fun ExternalInviteEntryRow(serverName: String, enabled: Boolean, onClic
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
+        }
+        if (loading) {
+            RaftSpinner(size = RaftSpinnerSize.Sm)
         }
     }
 }
@@ -381,7 +393,8 @@ internal fun ExternalInviteSheet(
             closeLabel = stringResource(Res.string.common_close),
             cancelLabel = stringResource(Res.string.common_cancel),
             closeEnabled = !dialog.busy,
-            onBack = if (preview != null && !dialog.busy) onBack else null,
+            // Web ExternalInviteSteps: keep Back visible and disabled while busy (never morph to Cancel/×).
+            onBack = if (preview != null) onBack else null,
             backLabel = stringResource(Res.string.channel_external_invite_back),
             modifier = Modifier.testTag(ExternalInviteSheetTag),
         ) {

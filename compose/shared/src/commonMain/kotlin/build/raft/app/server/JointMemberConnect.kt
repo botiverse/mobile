@@ -3,6 +3,7 @@ package build.raft.app
 import build.raft.app.data.JointChannelConnections
 import build.raft.app.data.JointChannelRole
 import build.raft.app.data.JointChannelServer
+import build.raft.app.data.MemberConnectServerLimit
 import build.raft.app.data.ResolvedServerRefusal
 import build.raft.app.data.ServerConnectOutcome
 import build.raft.app.data.ServerRefusalInput
@@ -339,6 +340,8 @@ internal data class MemberConnectSheet(
     val traceId: String? = null,
     /** The route refused the viewer as a whole: nothing more can be chosen. */
     val closed: Boolean = false,
+    /** Per-server Free external-channel limit state from `GET channels/:id/connect-my-servers`. */
+    val limits: Map<String, MemberConnectServerLimit> = emptyMap(),
 )
 
 /**

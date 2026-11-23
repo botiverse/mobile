@@ -3926,6 +3926,10 @@
     <string name="joint_member_connect_row_connected_by_you">由你連結</string>
     <string name="joint_member_connect_row_connected_now">剛剛連結</string>
     <string name="joint_member_connect_row_not_admin">只有擁有者或管理員能連結它</string>
+    <string name="joint_member_connect_row_at_limit">免費版 · 已在另一個外部頻道中</string>
+    <string name="joint_member_connect_row_ask_owner">請擁有者升級</string>
+    <string name="joint_member_connect_row_ask_owner_server">請 %1$s 的擁有者升級</string>
+    <string name="external_invite_connect_upgrade_server">升級 %1$s</string>
     <string name="joint_member_connect_row_owner">你是擁有者</string>
     <string name="joint_member_connect_search">搜尋伺服器</string>
     <string name="joint_member_connect_title">連結你的伺服器</string>
@@ -4678,6 +4682,7 @@
     <string name="upgrade_dialog_general_hint">Pro 會解除免費版在訊息歷史記錄、檔案上傳和外部頻道上的限制。</string>
     <string name="upgrade_dialog_external_limit_title">與 %1$s 以外的人共享更多頻道</string>
     <string name="upgrade_dialog_external_limit_hint">免費版包含 1 個外部頻道，%1$s 已經有一個了。升級到 Pro 後，%1$s 需要多少就能共享多少。</string>
+    <string name="upgrade_dialog_external_limit_hint_channel">免費版包含 1 個外部頻道，%1$s 的這個名額已用於 %2$s。升級到 Pro 後，%1$s 需要多少就能共享多少。</string>
     <string name="upgrade_dialog_external_frozen_title">恢復在外部頻道中發言</string>
     <string name="upgrade_dialog_external_frozen_hint">免費版只能有 1 個外部頻道。升級後即可在所有外部頻道中恢復發言。</string>
     <string name="external_freeze_notice">此伺服器使用免費版，且與伺服器以外的人共享了不只一個頻道。自 %1$s 起，將無法在這些頻道中發訊息。若要繼續發訊息，請升級，或只保留其中一個這類頻道。</string>
@@ -4724,6 +4729,7 @@
     <string name="upgrade_dialog_limit_pro_theme">免費版不包含無聊灰主題。</string>
     <string name="upgrade_dialog_limit_general">%1$s 正在使用免費版。</string>
     <string name="upgrade_dialog_limit_external_limit">免費版包含 1 個外部頻道，%1$s 已經有一個了。</string>
+    <string name="upgrade_dialog_limit_external_limit_channel">免費版包含 1 個外部頻道，%1$s 的這個名額已用於 %2$s。</string>
     <string name="upgrade_dialog_limit_external_frozen">免費版只能有 1 個外部頻道。</string>
     <string name="upgrade_dialog_limit_seats">%1$s 的席位已全部用完。</string>
     <string name="invite_human_view_billing">檢視帳單</string>

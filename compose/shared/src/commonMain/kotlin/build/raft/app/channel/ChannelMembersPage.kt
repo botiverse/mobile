@@ -280,27 +280,50 @@ internal fun ChannelMembersWarning(message: String) {
 }
 
 /**
- * Web bottom-pinned `＋ Add Member`: a seam above, `p-3`, a full-width `lg` outline button
- * (design-system [RaftButtonVariant.Default]).
+ * Web bottom-pinned members action bar (`ChannelMembers.tsx`): a seam above, `p-3`, `Add Member`
+ * and (when external invite access is on) `Invite people outside {server}` stacked with 8dp spacing.
  */
 @Composable
 internal fun ChannelMembersAddBar(
     enabled: Boolean,
     bottomSafeArea: Dp,
     onClick: () -> Unit,
+    showAddMember: Boolean = true,
+    inviteOutsideServerName: String? = null,
+    inviteOutsideLoading: Boolean = false,
+    onInviteOutside: (() -> Unit)? = null,
 ) {
     Column(Modifier.fillMaxWidth()) {
         Box(Modifier.fillMaxWidth().height(RaftAppStroke.Thin).background(RaftTheme.colors.lineSeam))
-        Box(Modifier.fillMaxWidth().padding(start = 12.dp, top = 12.dp, end = 12.dp, bottom = 12.dp + bottomSafeArea)) {
-            RaftButton(
-                text = stringResource(Res.string.thread_action_add_member),
-                onClick = onClick,
-                modifier = Modifier.fillMaxWidth(),
-                variant = RaftButtonVariant.Default,
-                size = RaftButtonSize.Lg,
-                enabled = enabled,
-                leadingIcon = { ChannelMembersIcon(RaftLucideIconName.Plus, size = 14.dp) },
-            )
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .padding(start = 12.dp, top = 12.dp, end = 12.dp, bottom = 12.dp + bottomSafeArea),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            if (showAddMember) {
+                RaftButton(
+                    text = stringResource(Res.string.thread_action_add_member),
+                    onClick = onClick,
+                    modifier = Modifier.fillMaxWidth(),
+                    variant = RaftButtonVariant.Default,
+                    size = RaftButtonSize.Lg,
+                    enabled = enabled,
+                    leadingIcon = { ChannelMembersIcon(RaftLucideIconName.Plus, size = 14.dp) },
+                )
+            }
+            if (inviteOutsideServerName != null && onInviteOutside != null) {
+                RaftButton(
+                    text = stringResource(Res.string.channel_external_invite_title, inviteOutsideServerName),
+                    onClick = onInviteOutside,
+                    modifier = Modifier.fillMaxWidth().testTag(ExternalInviteMembersPageButtonTag),
+                    variant = RaftButtonVariant.Default,
+                    size = RaftButtonSize.Lg,
+                    enabled = !inviteOutsideLoading,
+                    loading = inviteOutsideLoading,
+                    leadingIcon = { ChannelMembersIcon(RaftLucideIconName.Mail, size = 14.dp) },
+                )
+            }
         }
     }
 }

@@ -3926,6 +3926,10 @@
     <string name="joint_member_connect_row_connected_by_you">Conectado por você</string>
     <string name="joint_member_connect_row_connected_now">Conectado agora</string>
     <string name="joint_member_connect_row_not_admin">Só um proprietário ou administrador pode conectá-lo</string>
+    <string name="joint_member_connect_row_at_limit">Gratuito · já está em outro canal externo</string>
+    <string name="joint_member_connect_row_ask_owner">Pedir upgrade a um proprietário</string>
+    <string name="joint_member_connect_row_ask_owner_server">Pedir a um proprietário de %1$s para fazer upgrade</string>
+    <string name="external_invite_connect_upgrade_server">Fazer upgrade de %1$s</string>
     <string name="joint_member_connect_row_owner">Você é o proprietário</string>
     <string name="joint_member_connect_search">Pesquisar servidores</string>
     <string name="joint_member_connect_title">Conectar seus servidores</string>
@@ -4678,6 +4682,7 @@
     <string name="upgrade_dialog_general_hint">O Pro remove os limites do Free em mensagens, arquivos e canais externos.</string>
     <string name="upgrade_dialog_external_limit_title">Compartilhar mais canais fora de %1$s</string>
     <string name="upgrade_dialog_external_limit_hint">O plano gratuito inclui 1 canal externo, e %1$s já tem um. No Pro, %1$s pode compartilhar quantos precisar.</string>
+    <string name="upgrade_dialog_external_limit_hint_channel">O plano gratuito inclui 1 canal externo, e o de %1$s é %2$s. No Pro, %1$s pode compartilhar quantos precisar.</string>
     <string name="upgrade_dialog_external_frozen_title">Voltar a publicar nos seus canais externos</string>
     <string name="upgrade_dialog_external_frozen_hint">O plano gratuito permite 1 canal externo. Faça upgrade para voltar a publicar em todos eles.</string>
     <string name="external_freeze_notice">Este servidor está no plano gratuito e compartilha mais de um canal com pessoas de fora. A partir de %1$s, ele não poderá publicar neles. Para continuar publicando, faça upgrade ou saia de todos esses canais, exceto um.</string>
@@ -4724,6 +4729,7 @@
     <string name="upgrade_dialog_limit_pro_theme">O tema Cinza sem graça não está incluído no plano gratuito.</string>
     <string name="upgrade_dialog_limit_general">%1$s está no plano gratuito.</string>
     <string name="upgrade_dialog_limit_external_limit">O plano gratuito inclui 1 canal externo, e %1$s já tem um.</string>
+    <string name="upgrade_dialog_limit_external_limit_channel">O plano gratuito inclui 1 canal externo, e o de %1$s é %2$s.</string>
     <string name="upgrade_dialog_limit_external_frozen">O plano gratuito permite 1 canal externo.</string>
     <string name="upgrade_dialog_limit_seats">Todas as licenças de %1$s estão em uso.</string>
     <string name="invite_human_view_billing">Ver cobrança</string>

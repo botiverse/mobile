@@ -1,18 +1,30 @@
 package build.raft.app
 
 import androidx.compose.foundation.layout.Column
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.test.ComposeUiTest
 import androidx.compose.ui.test.ExperimentalTestApi
+import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.text.input.TextFieldValue
+import build.raft.app.compat.json.JSONObject
+import build.raft.app.compat.pager.LocalActivity
+import build.raft.app.compat.pager.PageData
+import build.raft.app.compat.pager.Pager
+import build.raft.app.compat.pager.RaftPageActivity
 import build.raft.app.components.RaftDesignSystemTheme
 import build.raft.app.data.ChannelExternalInviteList
 import build.raft.app.data.DataResult
 import build.raft.app.data.ExternalInviteAnswer
+import build.raft.app.data.ExternalInvitePreview
+import build.raft.designsystem.components.LocalRaftSpinnerStillStep
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -123,5 +135,101 @@ class ExternalInvitesUiTest {
         onNodeWithTag(ExternalInviteResendTag, useUnmergedTree = true).performClick()
         waitForIdle()
         assertEquals(listOf("i1"), source.resendCalls)
+    }
+
+    @Test
+    fun reviewBackStaysVisibleAndDisabledWhileBusy() = runRobolectricComposeUiTest {
+        setContent {
+            CompositionLocalProvider(LocalRaftSpinnerStillStep provides 0) {
+                RaftDesignSystemTheme {
+                    ExternalInviteSheet(
+                        dialog =
+                            ExternalInviteDialogState(
+                                text = "new@example.com",
+                                preview = ExternalInvitePreview(valid = listOf("new@example.com"), slotsLeft = 10),
+                                busy = true,
+                            ),
+                        serverName = "Acme",
+                        willBecomePrivate = false,
+                        joint = false,
+                        channelSlotsLeft = 10,
+                        onDismiss = {},
+                        onTextChange = {},
+                        onNext = {},
+                        onBack = {},
+                        onSend = {},
+                        onUpgrade = {},
+                    )
+                }
+            }
+        }
+        waitForIdle()
+        // Phone layout draws Back as an IconButton with contentDescription="Back", never morphing to Close ("Close").
+        val backNode = onAllNodes(hasContentDescription("Back"), useUnmergedTree = true)
+        assertTrue(backNode.fetchSemanticsNodes().isNotEmpty(), "Back control must remain present during busy")
+        backNode[0].assertIsNotEnabled()
+        assertEquals(0, onAllNodes(hasContentDescription("Close"), useUnmergedTree = true).fetchSemanticsNodes().size)
+    }
+
+    @Test
+    fun membersPageDirectInviteButtonAndSearchMatchesOpenInvites() = runRobolectricComposeUiTest {
+        var inviteOutsideClicks = 0
+        val invite = externalTestInvite("i-lena", "lena@contoso.com", expiresAt = "2025-12-01T00:00:00.000Z")
+        setContent {
+            val pager = remember { object : Pager() {}.apply { pageData = PageData(JSONObject().apply { put("slockVisualZeroSafeArea", true) }) } }
+            CompositionLocalProvider(LocalActivity provides RaftPageActivity(pager)) {
+                RaftDesignSystemTheme {
+                    ThreadMembersPageContent(
+                        members = listOf(RaftThreadMemberItem("u1", "Artin", handle = "artin")),
+                        filteredMembers = emptyList(),
+                        filteredExternal = emptyList(),
+                        externalMemberCount = 0,
+                        candidates = emptyList(),
+                        rosterQuery = TextFieldValue("lena@contoso.com"),
+                        onQueryChange = {},
+                        agentsExpanded = true,
+                        humansExpanded = true,
+                        externalExpanded = true,
+                        onAgentsExpandedChange = {},
+                        onHumansExpandedChange = {},
+                        onExternalExpandedChange = {},
+                        addDialogVisible = false,
+                        onAddVisibleChange = {},
+                        addMemberStatus = "idle",
+                        addMemberErrorCode = null,
+                        removalGate = ThreadMemberRemovalGateState(),
+                        membersFailed = false,
+                        membersLoading = false,
+                        refreshing = false,
+                        canAddMembers = true,
+                        agentStatusResolver = { kotlinx.coroutines.flow.flowOf(null) },
+                        memberAvatarResolver = EmptyRaftMemberAvatarResolver,
+                        onBack = {},
+                        onRefresh = {},
+                        onOpenMember = {},
+                        onRemoveMember = {},
+                        onSubmit = {},
+                        externalInvites =
+                            ExternalInvitesSection(
+                                state = ExternalInvitesState(invites = listOf(invite), loaded = true),
+                                access = true,
+                                management = true,
+                                serverName = "Acme",
+                                nowEpochMillis = now,
+                                onOpenInvite = { inviteOutsideClicks += 1 },
+                            ),
+                    )
+                }
+            }
+        }
+        waitForIdle()
+        // Searching an invited email shows the open invite row instead of "No matches".
+        assertEquals(1, count(ExternalInviteRowTag))
+        assertTrue(shown("lena@contoso.com"))
+        // Direct Members-page "Invite people outside Acme" button is rendered and clickable.
+        assertEquals(1, count(ExternalInviteMembersPageButtonTag))
+        onNodeWithTag(ExternalInviteMembersPageButtonTag, useUnmergedTree = true).performClick()
+        waitForIdle()
+        assertEquals(1, inviteOutsideClicks)
     }
 }

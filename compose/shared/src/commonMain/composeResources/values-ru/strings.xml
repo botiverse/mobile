@@ -3926,6 +3926,10 @@
     <string name="joint_member_connect_row_connected_by_you">Подключён вами</string>
     <string name="joint_member_connect_row_connected_now">Только что подключён</string>
     <string name="joint_member_connect_row_not_admin">Подключить его может только владелец или администратор</string>
+    <string name="joint_member_connect_row_at_limit">Free · уже в другом внешнем канале</string>
+    <string name="joint_member_connect_row_ask_owner">Попросить владельца повысить тариф</string>
+    <string name="joint_member_connect_row_ask_owner_server">Попросить владельца сервера %1$s повысить тариф</string>
+    <string name="external_invite_connect_upgrade_server">Повысить тариф сервера %1$s</string>
     <string name="joint_member_connect_row_owner">Вы владелец</string>
     <string name="joint_member_connect_search">Поиск серверов</string>
     <string name="joint_member_connect_title">Подключить свои серверы</string>
@@ -4654,6 +4658,7 @@
     <string name="upgrade_dialog_general_hint">Pro снимает ограничения тарифа Free на историю сообщений, загрузку файлов и внешние каналы.</string>
     <string name="upgrade_dialog_external_limit_title">Больше каналов для людей вне сервера %1$s</string>
     <string name="upgrade_dialog_external_limit_hint">Тариф Free включает 1 внешний канал, и у сервера %1$s он уже есть. На Pro сервер %1$s может открыть для людей извне столько каналов, сколько нужно.</string>
+    <string name="upgrade_dialog_external_limit_hint_channel">Тариф Free включает 1 внешний канал, и у сервера %1$s это канал %2$s. На Pro сервер %1$s может открыть для людей извне столько каналов, сколько нужно.</string>
     <string name="upgrade_dialog_external_frozen_title">Вернуть возможность писать во внешних каналах</string>
     <string name="upgrade_dialog_external_frozen_hint">На тарифе Free может быть только 1 внешний канал. Повысьте тариф, чтобы снова писать во всех внешних каналах.</string>
     <string name="external_freeze_notice">Этот сервер на тарифе Free и делит больше одного канала с внешними участниками. С %1$s он не сможет писать в этих каналах. Чтобы продолжать писать, повысьте тариф или покиньте все такие каналы, кроме одного.</string>
@@ -4700,6 +4705,7 @@
     <string name="upgrade_dialog_limit_pro_theme">Тема «Скучный серый» не входит в тариф Free.</string>
     <string name="upgrade_dialog_limit_general">Сервер %1$s на тарифе Free.</string>
     <string name="upgrade_dialog_limit_external_limit">Тариф Free включает 1 внешний канал, и у сервера %1$s он уже есть.</string>
+    <string name="upgrade_dialog_limit_external_limit_channel">Тариф Free включает 1 внешний канал, и у сервера %1$s это канал %2$s.</string>
     <string name="upgrade_dialog_limit_external_frozen">На тарифе Free может быть только 1 внешний канал.</string>
     <string name="upgrade_dialog_limit_seats">Все места сервера %1$s заняты.</string>
     <string name="invite_human_view_billing">Открыть настройки оплаты</string>

@@ -114,6 +114,40 @@ class JointMemberConnectApiTest {
         assertEquals("auth_required", result.blocker.code)
     }
 
+    @Test
+    fun memberConnectLimitsParseOwnersDropBlankIdsAndDegradeQuietlyOnErrors() = runTest {
+        val body =
+            """
+            {"servers":[
+              {"id":"srv-free","name":"Free Co","slug":"free-co","canConnectDirectly":true,"atLimit":true,"canUpgrade":true,
+               "owners":[{"id":"u1","name":"Alice","avatarUrl":"https://cdn/a.png"},{"id":" ","name":"Blank"}]},
+              {"id":"srv-admin","name":"Admin Co","slug":"admin-co","canConnectDirectly":true,"atLimit":true,"canUpgrade":false,"owners":[]},
+              {"id":" ","atLimit":true,"canUpgrade":true}
+            ]}
+            """.trimIndent()
+        val okClient = RecordingJointNetworkClient { _, _ -> HomeNetworkResponse(200, body) }
+        val limits = okClient.listMemberConnectLimits(ChannelId("ch-1"))
+        assertEquals(setOf("srv-free", "srv-admin"), limits.keys)
+        assertEquals(
+            MemberConnectServerLimit(
+                serverId = "srv-free",
+                atLimit = true,
+                canUpgrade = true,
+                owners = listOf(MemberConnectOwnerRef(id = "u1", name = "Alice", avatarUrl = "https://cdn/a.png")),
+            ),
+            limits["srv-free"],
+        )
+        assertEquals(MemberConnectServerLimit(serverId = "srv-admin", atLimit = true, canUpgrade = false), limits["srv-admin"])
+        val call = okClient.calls.single()
+        assertEquals("GET", call.method)
+        assertEquals("channels/ch-1/connect-my-servers", call.path)
+        assertEquals(DataRequestPriority.Visible, call.priority)
+
+        val notFoundClient = RecordingJointNetworkClient { _, _ -> HomeNetworkResponse(404, """{"error":"Not found"}""") }
+        assertEquals(emptyMap(), notFoundClient.listMemberConnectLimits(ChannelId("ch-1")))
+        assertNull(parseSharedMemberConnectLimits("""{"notServers":[]}"""))
+    }
+
     private companion object {
         const val TRACE = "0123456789abcdef0123456789abcdef"
 

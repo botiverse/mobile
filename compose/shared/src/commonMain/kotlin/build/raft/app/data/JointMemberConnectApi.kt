@@ -62,6 +62,102 @@ private data class WireMemberConnectResponse(val servers: List<WireServerConnect
 @Serializable
 private data class WireMemberConnectErrorBody(val error: String? = null, val code: String? = null)
 
+@Serializable
+private data class WireMemberConnectOwnerRef(
+    val id: String = "",
+    val name: String = "",
+    val avatarUrl: String? = null,
+)
+
+@Serializable
+private data class WireMemberConnectableServer(
+    val id: String = "",
+    val atLimit: Boolean = false,
+    val canUpgrade: Boolean = false,
+    val owners: List<WireMemberConnectOwnerRef> = emptyList(),
+)
+
+@Serializable
+private data class WireMemberConnectableServersResponse(
+    val servers: List<WireMemberConnectableServer>,
+)
+
+/** Billing owner of an at-limit server returned by `GET channels/:id/connect-my-servers`. */
+data class MemberConnectOwnerRef(
+    val id: String,
+    val name: String = "",
+    val avatarUrl: String? = null,
+)
+
+/** Per-server Free external-channel limit status from `GET channels/:id/connect-my-servers`. */
+data class MemberConnectServerLimit(
+    val serverId: String,
+    val atLimit: Boolean,
+    val canUpgrade: Boolean,
+    val owners: List<MemberConnectOwnerRef> = emptyList(),
+)
+
+/**
+ * Parses `GET channels/:id/connect-my-servers` (`{ servers: [{ id, atLimit, canUpgrade, owners }] }`),
+ * returning null on malformed payloads and dropping entries with blank server IDs.
+ */
+internal fun parseSharedMemberConnectLimits(bodyText: String): Map<String, MemberConnectServerLimit>? =
+    runCatching {
+        val parsed = memberConnectJson.decodeFromString(WireMemberConnectableServersResponse.serializer(), bodyText)
+        buildMap {
+            parsed.servers.forEach { row ->
+                val id = row.id.trim().takeIf(String::isNotBlank) ?: return@forEach
+                val owners =
+                    row.owners.mapNotNull { owner ->
+                        val ownerId = owner.id.trim().takeIf(String::isNotBlank) ?: return@mapNotNull null
+                        MemberConnectOwnerRef(
+                            id = ownerId,
+                            name = owner.name.trim(),
+                            avatarUrl = owner.avatarUrl?.trim()?.takeIf(String::isNotBlank),
+                        )
+                    }
+                put(
+                    id,
+                    MemberConnectServerLimit(
+                        serverId = id,
+                        atLimit = row.atLimit,
+                        canUpgrade = row.canUpgrade,
+                        owners = owners,
+                    ),
+                )
+            }
+        }
+    }.getOrNull()
+
+/**
+ * Web `useMemberConnectLimits`: `GET channels/:id/connect-my-servers` to discover which eligible
+ * servers are already at Free's 1-external-channel limit. Older servers may return 404; any
+ * non-2xx or parse/transport error silently degrades to an empty map (Connect still handles
+ * server-side limit refusals).
+ */
+internal suspend fun RaftNetworkClient.listMemberConnectLimits(
+    channelId: ChannelId,
+    warningLogger: (String) -> Unit = {},
+): Map<String, MemberConnectServerLimit> {
+    val response =
+        try {
+            request(
+                priority = DataRequestPriority.Visible,
+                path = "channels/${channelId.value}/connect-my-servers",
+                method = "GET",
+            )
+        } catch (cancellation: CancellationException) {
+            throw cancellation
+        } catch (exception: Exception) {
+            warningLogger("request_failed source=member_connect_limits exception=${exception::class.simpleName}")
+            return emptyMap()
+        }
+    if (!response.isSuccessful) return emptyMap()
+    return parseSharedMemberConnectLimits(response.bodyText.orEmpty()).also { parsed ->
+        if (parsed == null) warningLogger("parse_failed source=member_connect_limits status=${response.code}")
+    }.orEmpty()
+}
+
 /** One chosen server's answer (web `ServerConnectOutcome`). */
 sealed interface ServerConnectOutcome {
     val serverId: String
