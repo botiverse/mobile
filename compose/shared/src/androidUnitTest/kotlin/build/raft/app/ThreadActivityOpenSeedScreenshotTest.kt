@@ -143,7 +143,7 @@ private fun TruncatedPreviewRows() {
 private fun StandInLoadingRows() {
     val payload =
         RaftThreadScreenPayload(sourceThreadId = "channel-1", status = "loading").withActivityOpenSeed(listOf(humanSeed))
-    ThreadHistoryStatusRow(threadOlderMessagesStatusSpec(payload), loadingRevealDelayMs = 0L, spinnerStillStep = 0)
+    ThreadHistoryStatusRow(requireNotNull(threadOlderMessagesStatusSpec(payload)), loadingRevealDelayMs = 0L, spinnerStillStep = 0)
     SeedMessageRow(humanSeed)
 }
 

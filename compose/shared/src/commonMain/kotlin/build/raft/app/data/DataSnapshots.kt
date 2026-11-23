@@ -725,6 +725,12 @@ data class ThreadSnapshot(
     @Transient
     val rawMessagePage: RawMessagePageWitness = RawMessagePageWitness.None,
     /**
+     * Raw server row count in `messages` before row-level decode drops (`AGENTS.md` No silent drops).
+     * Paging compares this count with the requested limit, never `messages.size`.
+     */
+    @Transient
+    val rawMessageCount: Int = messages.size,
+    /**
      * A reply thread's total reply count as its own load reported it: `replyCount` of the
      * `POST /channels/:id/threads` answer (server `getThreadInfoForChannel`) that opens the thread.
      * `null` on every other load. The thread page counts from this, not from what its opener knew.

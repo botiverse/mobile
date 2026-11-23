@@ -41,6 +41,11 @@ internal data class SharedThreadPageFetchResult(
     val payload: RaftThreadScreenPayload,
     val requestedPageSize: Int,
     /**
+     * Task #259 (AGENTS.md No silent drops): raw server row count in `messages` before row-level
+     * decode drops, thread-ownership filtering, or dedup against the loaded timeline.
+     */
+    val rawServerRowCount: Int = payload.messages.size,
+    /**
      * Task #168: the raw server page plus the identity that fetched it, for the durable window
      * extender. Present only for repository-backed older / newer pages; never read for rendering.
      */

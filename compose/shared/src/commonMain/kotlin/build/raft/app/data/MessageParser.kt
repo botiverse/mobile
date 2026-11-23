@@ -292,9 +292,12 @@ data class SharedMessagesPayload(
 /** Thrown by repository mappers for a page whose envelope did not decode, so it becomes an error state. */
 internal class MessagesPageDecodeException(source: String) : IllegalStateException("messages_page_decode_failed source=$source")
 
-/** This page, or a [MessagesPageDecodeException] when its envelope did not decode (an error, not empty). */
+/**
+ * This page, or a [MessagesPageDecodeException] when its envelope did not decode or when the server
+ * sent rows and none of them decoded (`AGENTS.md`: error state, never "no messages").
+ */
 internal fun SharedMessagesPayload.requireReadable(source: String): SharedMessagesPayload =
-    if (decodeFailed) throw MessagesPageDecodeException(source) else this
+    if (decodeFailed || (rawMessageCount > 0 && messages.isEmpty())) throw MessagesPageDecodeException(source) else this
 
 private fun messagesPageDecodeFailed(
     source: String,

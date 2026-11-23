@@ -1329,6 +1329,7 @@
     <string name="thread_retry_new">새 메시지 다시 불러오기</string>
     <string name="thread_load_new">새 메시지 불러오기</string>
     <string name="thread_state_loading_older">이전 메시지 불러오는 중…</string>
+    <string name="thread_state_loading_older_replies">이전 답글 불러오는 중…</string>
     <string name="thread_state_loading_new">새 메시지를 불러오는 중…</string>
     <string name="thread_offline_last_known_tip">오프라인 콘텐츠예요. 최신 내용이 아닐 수 있어요.</string>
     <string name="thread_offline_older_unavailable">오프라인 상태에서는 이전 메시지를 볼 수 없어요</string>

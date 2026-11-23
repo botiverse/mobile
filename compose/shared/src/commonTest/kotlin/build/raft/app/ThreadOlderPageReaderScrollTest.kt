@@ -3,8 +3,11 @@ package build.raft.app
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.snapshots.Snapshot
 import androidx.compose.ui.input.pointer.PointerEventType
+import build.raft.app.resources.*
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
@@ -65,5 +68,46 @@ class ThreadOlderPageReaderScrollTest {
                 listScrolls = false,
             )
         )
+    }
+
+    @Test
+    fun loadingOlderStatusShowsOnlyWhileLoadingAndUsesRepliesCopyInThreads() {
+        val channelIdle =
+            RaftThreadScreenPayload(
+                surfaceKind = RaftThreadSurfaceKind.Channel,
+                canLoadMoreBefore = true,
+                olderMessagesStatus = "idle",
+            )
+        val threadIdle =
+            RaftThreadScreenPayload(
+                surfaceKind = RaftThreadSurfaceKind.ReplyThread,
+                canLoadMoreBefore = true,
+                olderMessagesStatus = "idle",
+            )
+        assertNull(threadOlderMessagesStatusSpec(channelIdle), "idle channel with more older history shows no loading row")
+        assertNull(threadOlderMessagesStatusSpec(threadIdle), "idle reply thread with more older history shows no loading row")
+
+        val channelLoading = assertNotNull(threadOlderMessagesStatusSpec(channelIdle.copy(olderMessagesStatus = "loading")))
+        assertEquals(Res.string.thread_state_loading_older.desc(), channelLoading.label)
+        assertTrue(channelLoading.loading)
+
+        val threadLoading = assertNotNull(threadOlderMessagesStatusSpec(threadIdle.copy(olderMessagesStatus = "loading")))
+        assertEquals(Res.string.thread_state_loading_older_replies.desc(), threadLoading.label)
+        assertTrue(threadLoading.loading)
+
+        val threadStandInLoading =
+            assertNotNull(
+                threadOlderMessagesStatusSpec(
+                    RaftThreadScreenPayload(
+                        surfaceKind = RaftThreadSurfaceKind.ReplyThread,
+                        canLoadMoreBefore = false,
+                        durableLastKnown = true,
+                        durableReachedOldest = false,
+                        mainLoadFailed = false,
+                    )
+                )
+            )
+        assertEquals(Res.string.thread_state_loading_older_replies.desc(), threadStandInLoading.label)
+        assertTrue(threadStandInLoading.loading)
     }
 }

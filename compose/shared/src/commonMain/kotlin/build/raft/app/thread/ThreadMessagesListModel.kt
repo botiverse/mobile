@@ -59,12 +59,14 @@ internal data class ThreadHistoryStatusSpec(
 internal fun ThreadTimelineSlice.threadHistoryReachesStart(): Boolean =
     !canLoadMoreBefore && !(durableLastKnown && !durableReachedOldest)
 
-internal fun threadOlderMessagesStatusSpec(payload: RaftThreadScreenPayload): ThreadHistoryStatusSpec =
+internal fun threadOlderMessagesStatusSpec(payload: RaftThreadScreenPayload): ThreadHistoryStatusSpec? =
     threadOlderMessagesStatusSpec(payload.toThreadTimelineSlice())
 
-internal fun threadOlderMessagesStatusSpec(timelineSlice: ThreadTimelineSlice): ThreadHistoryStatusSpec =
+internal fun threadOlderMessagesStatusSpec(timelineSlice: ThreadTimelineSlice): ThreadHistoryStatusSpec? =
     threadOlderMessagesStatusSpec(
         canLoadMoreBefore = timelineSlice.canLoadMoreBefore,
+        olderMessagesStatus = timelineSlice.olderMessagesStatus,
+        replyThread = timelineSlice.replyThreadSurface,
         secondaryLabel = timelineSlice.beginningReplyCountLabel,
         secondaryReplyCount = timelineSlice.beginningReplyCount,
         durableLastKnown = timelineSlice.durableLastKnown,
@@ -74,25 +76,40 @@ internal fun threadOlderMessagesStatusSpec(timelineSlice: ThreadTimelineSlice): 
 
 internal fun threadOlderMessagesStatusSpec(
     canLoadMoreBefore: Boolean,
+    olderMessagesStatus: String = "idle",
+    replyThread: Boolean = false,
     secondaryLabel: String? = null,
     secondaryReplyCount: Int? = null,
     durableLastKnown: Boolean = false,
     durableReachedOldest: Boolean = false,
     mainLoadFailed: Boolean = false
-): ThreadHistoryStatusSpec =
-    when {
-        // Task #168 step 2b: a stand-in whose stored window still has older pages pages like any frame.
-        canLoadMoreBefore -> ThreadHistoryStatusSpec(label = Res.string.thread_state_loading_older.desc())
+): ThreadHistoryStatusSpec? {
+    val loadingOlderLabel =
+        if (replyThread) {
+            Res.string.thread_state_loading_older_replies.desc()
+        } else {
+            Res.string.thread_state_loading_older.desc()
+        }
+    return when {
+        // Task #258 (web HistoryTopState): while older pages remain, show "Loading older…" only
+        // while a page fetch is actively running, never while idle.
+        canLoadMoreBefore ->
+            if (olderMessagesStatus == "loading") {
+                ThreadHistoryStatusSpec(label = loadingOlderLabel, loading = true)
+            } else {
+                null
+            }
         // Task #80 (artin): a stand-in (the Activity seed, a stored frame) while its first load is still
         // running has the rest of the conversation on the way: say so, with the spinner, as the web's
         // list top does while it loads. "Not available offline" is only true once that load failed,
         // the same gate as the offline tip (Hands e0a5248d).
         durableLastKnown && !durableReachedOldest && !mainLoadFailed ->
-            ThreadHistoryStatusSpec(label = Res.string.thread_state_loading_older.desc(), loading = true)
+            ThreadHistoryStatusSpec(label = loadingOlderLabel, loading = true)
         // Task #1125: an offline stand-in frame with paging closed is NOT the beginning of the
         // conversation. Say what is true instead of claiming a boundary the frame cannot prove —
         // unless the stored window itself reaches the start (task #168): then it is the beginning.
-        durableLastKnown && !durableReachedOldest -> ThreadHistoryStatusSpec(label = Res.string.thread_offline_older_unavailable.desc())
+        durableLastKnown && !durableReachedOldest ->
+            ThreadHistoryStatusSpec(label = Res.string.thread_offline_older_unavailable.desc())
         else ->
             ThreadHistoryStatusSpec(
                 label = Res.string.thread_state_beginning_conversation.desc(),
@@ -100,6 +117,7 @@ internal fun threadOlderMessagesStatusSpec(
                 secondaryReplyCount = secondaryReplyCount
             )
     }
+}
 
 /**
  * Task #1125: chrome around a durable last-known (offline stand-in) frame.

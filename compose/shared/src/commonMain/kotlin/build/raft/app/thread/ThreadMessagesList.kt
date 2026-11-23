@@ -2090,7 +2090,6 @@ private fun ThreadMessagesListContent(
     val newerGestureDemandTracker =
         remember(threadInstanceKey) { ThreadNewerGestureDemandTracker() }
     var newerPointerGestureActive by remember(threadInstanceKey) { mutableStateOf(false) }
-    var newerDemandGeneration by remember(threadInstanceKey) { mutableStateOf(0) }
     var lastSettledNewerDemandGeneration by remember(threadInstanceKey) { mutableStateOf(0) }
     var nextNewerPageCycleId by remember(threadInstanceKey) { mutableStateOf(0L) }
     var newerPageCycle by remember(threadInstanceKey) { mutableStateOf<ThreadNewerPageCycle?>(null) }
@@ -2182,7 +2181,7 @@ private fun ThreadMessagesListContent(
                     "activeAnchor=${newerPageCycle?.anchor}"
             )
             if (settlementResult == ThreadNewerViewportSettlementResult.Reject) {
-                lastSettledNewerDemandGeneration = newerDemandGeneration
+                lastSettledNewerDemandGeneration = newerGestureDemandTracker.generation
                 newerPageCycle = null
                 return
             }
@@ -2213,10 +2212,10 @@ private fun ThreadMessagesListContent(
                 awaitViewportCommandSettlement(settlementCommandId)
             }
         }
-        // Consume every newer-directed gesture observed through this request,
-        // including a second gesture while the page was in flight. Only a
-        // fresh Down -> upward Move after settlement may authorize another page.
-        lastSettledNewerDemandGeneration = newerDemandGeneration
+        // Consume every newer-directed gesture or wheel scroll observed through this request,
+        // including a second gesture while the page was in flight. Only a fresh gesture or
+        // wheel scroll after settlement may authorize another page.
+        lastSettledNewerDemandGeneration = newerGestureDemandTracker.generation
         newerPageCycle = null
     }
     val requestNewerPage: (String) -> Unit = request@{ event ->
@@ -2241,7 +2240,7 @@ private fun ThreadMessagesListContent(
         allowBottomAutoAnchor = false
         diagnosticsLogger(
             "thread_newer_page_cycle result=requested event=$event " +
-                "demandGeneration=$newerDemandGeneration " +
+                "demandGeneration=${newerGestureDemandTracker.generation} " +
                 "viewportIntent=${viewportControllerState.intent} " +
                 "viewportEpoch=${viewportControllerState.epoch} anchor=$anchor " +
                 "userScrollGeneration=${userScrollGeneration.value}"
@@ -2552,7 +2551,6 @@ private fun ThreadMessagesListContent(
         renderPayload.canLoadMoreAfter,
         renderPayload.newerMessagesStatus,
         newerPageCycleActive,
-        newerDemandGeneration,
         lastSettledNewerDemandGeneration,
         latestMessageListItemIndex
     ) {
@@ -2566,8 +2564,10 @@ private fun ThreadMessagesListContent(
                 newerPageCycleActive = newerPageCycleActive,
                 lastVisibleIndex = lastVisibleIndex,
                 latestMessageListItemIndex = latestMessageListItemIndex,
-                newerDemandGeneration = newerDemandGeneration,
-                lastSettledNewerDemandGeneration = lastSettledNewerDemandGeneration
+                // Observed (task #258): a wheel/trackpad scroll at the bottom changes no layout, only the count.
+                newerDemandGeneration = newerGestureDemandTracker.observedGeneration,
+                lastSettledNewerDemandGeneration = lastSettledNewerDemandGeneration,
+                listScrolls = listState.canScrollForward || listState.canScrollBackward,
             )
         }
             .distinctUntilChanged()
@@ -3849,15 +3849,14 @@ private fun ThreadMessagesListContent(
                     .keyboardDismissModeInteractiveIOS()
                     .dismissInputFocusOnScrollableChrome()
                     // A mouse wheel or trackpad scrolls without a touch: the touch listener below
-                    // never sees it (task #253).
-                    .threadListWheelScroll(userScrollGeneration)
+                    // never sees it (task #253 / #258).
+                    .threadListWheelScroll(userScrollGeneration, newerGestureDemandTracker)
                     .touchListenerWithConfiguration { type, position, touchSlop ->
-                        newerDemandGeneration =
-                            newerGestureDemandTracker.onTouch(
-                                type = type,
-                                pointerY = position.y,
-                                touchSlop = touchSlop
-                            )
+                        newerGestureDemandTracker.onTouch(
+                            type = type,
+                            pointerY = position.y,
+                            touchSlop = touchSlop
+                        )
                         when (type) {
                             TouchType.Down -> {
                                 newerPointerGestureActive = true
@@ -4071,7 +4070,9 @@ private fun ThreadMessagesListContent(
                                 onClick = { onThreadEvent("retryLoadOlder", null, null, null) }
                             )
                         renderPayload.canLoadMoreBefore ->
-                            ThreadHistoryStatusRow(threadOlderMessagesStatusSpec(renderPayload))
+                            threadOlderMessagesStatusSpec(renderPayload)?.let { spec ->
+                                ThreadHistoryStatusRow(spec, loadingRevealDelayMs = 0L)
+                            }
                         historyPaywall != null ->
                             ThreadHistoryPaywall(
                                 scope = renderPayload.historyPaywallScope(),
@@ -4081,7 +4082,9 @@ private fun ThreadMessagesListContent(
                                 onUpgrade = { onThreadEvent(ThreadOpenPlanBillingEvent, null, null, null) }
                             )
                         else ->
-                            ThreadHistoryStatusRow(threadOlderMessagesStatusSpec(renderPayload))
+                            threadOlderMessagesStatusSpec(renderPayload)?.let { spec ->
+                                ThreadHistoryStatusRow(spec)
+                            }
                     }
                     }
                 }
@@ -4302,7 +4305,8 @@ private fun ThreadMessagesListContent(
                             mainLoadFailed = renderPayload.mainLoadFailed,
                             onFillGap = { target ->
                                 onThreadEvent(ThreadFillTimelineGapAction, target.key, null, null)
-                            }
+                            },
+                            replyThread = renderPayload.replyThreadSurface,
                         )
                     }
                     dateDividerDay?.let { day ->

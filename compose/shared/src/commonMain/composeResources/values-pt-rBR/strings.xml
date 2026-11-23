@@ -1329,6 +1329,7 @@
     <string name="thread_retry_new">Tentar carregar mensagens novas novamente</string>
     <string name="thread_load_new">Carregar mensagens novas</string>
     <string name="thread_state_loading_older">Carregando mensagens anteriores…</string>
+    <string name="thread_state_loading_older_replies">Carregando respostas anteriores…</string>
     <string name="thread_state_loading_new">Carregando mensagens novas…</string>
     <string name="thread_offline_last_known_tip">Conteúdo offline: pode estar desatualizado</string>
     <string name="thread_offline_older_unavailable">As mensagens anteriores não estão disponíveis offline</string>

@@ -1329,6 +1329,7 @@
     <string name="thread_retry_new">Повторить загрузку новых сообщений</string>
     <string name="thread_load_new">Загрузить новые сообщения</string>
     <string name="thread_state_loading_older">Загрузка более ранних сообщений…</string>
+    <string name="thread_state_loading_older_replies">Загрузка более ранних ответов…</string>
     <string name="thread_state_loading_new">Загрузка новых сообщений…</string>
     <string name="thread_offline_last_known_tip">Нет сети — данные могут быть устаревшими</string>
     <string name="thread_offline_older_unavailable">Без сети более ранние сообщения недоступны</string>

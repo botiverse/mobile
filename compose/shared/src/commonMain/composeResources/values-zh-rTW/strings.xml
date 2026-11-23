@@ -1329,6 +1329,7 @@
     <string name="thread_retry_new">重新載入較新的訊息</string>
     <string name="thread_load_new">載入新訊息</string>
     <string name="thread_state_loading_older">正在載入較早的訊息…</string>
+    <string name="thread_state_loading_older_replies">正在載入較早的回覆…</string>
     <string name="thread_state_loading_new">正在載入較新的訊息…</string>
     <string name="thread_offline_last_known_tip">目前為離線內容，可能不是最新版本</string>
     <string name="thread_offline_older_unavailable">離線時無法載入較早的訊息</string>

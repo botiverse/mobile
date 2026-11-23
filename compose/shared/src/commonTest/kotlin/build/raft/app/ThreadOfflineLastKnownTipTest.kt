@@ -45,18 +45,18 @@ class ThreadOfflineLastKnownTipTest {
         // Positive control: the ordinary closed-paging label.
         assertEquals(
             Res.string.thread_state_beginning_conversation.desc(),
-            threadOlderMessagesStatusSpec(canLoadMoreBefore = false, durableLastKnown = false).label
+            threadOlderMessagesStatusSpec(canLoadMoreBefore = false, durableLastKnown = false)?.label
         )
         // Stand-in frame whose load failed: paging is closed too, but the frame is not the beginning.
         // (While that load still runs, the row says older messages are loading: task #80.)
         assertEquals(
             Res.string.thread_offline_older_unavailable.desc(),
-            threadOlderMessagesStatusSpec(canLoadMoreBefore = false, durableLastKnown = true, mainLoadFailed = true).label
+            threadOlderMessagesStatusSpec(canLoadMoreBefore = false, durableLastKnown = true, mainLoadFailed = true)?.label
         )
         // Task #168: a stand-in whose stored window reaches the conversation's first message IS the beginning.
         assertEquals(
             Res.string.thread_state_beginning_conversation.desc(),
-            threadOlderMessagesStatusSpec(canLoadMoreBefore = false, durableLastKnown = true, durableReachedOldest = true).label
+            threadOlderMessagesStatusSpec(canLoadMoreBefore = false, durableLastKnown = true, durableReachedOldest = true)?.label
         )
         // The slice-level overload reads the flag from the slice.
         val slice =
@@ -70,7 +70,7 @@ class ThreadOfflineLastKnownTipTest {
                 canLoadMoreBefore = false,
                 messages = listOf(RaftThreadMessageItem(id = "m1", authorId = "u-a", authorName = "Owner A", body = "durable body"))
             ).toThreadTimelineSlice()
-        assertEquals(Res.string.thread_offline_older_unavailable.desc(), threadOlderMessagesStatusSpec(slice).label)
+        assertEquals(Res.string.thread_offline_older_unavailable.desc(), threadOlderMessagesStatusSpec(slice)?.label)
     }
 
     @Test
