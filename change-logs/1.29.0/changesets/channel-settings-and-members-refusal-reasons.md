@@ -3,6 +3,7 @@ type: fixed
 area: channels
 platforms: [android, ios, desktop]
 rollout: full
+pull_request: 5513
 ---
 
 ## zh-CN
