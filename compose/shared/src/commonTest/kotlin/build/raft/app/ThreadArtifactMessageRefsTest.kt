@@ -1,5 +1,11 @@
 package build.raft.app
 
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.pointer.PointerType
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.IntSize
 import build.raft.app.data.ArtifactDeletedShown
 import build.raft.app.data.ArtifactFacts
 import build.raft.app.data.ArtifactHome
@@ -7,10 +13,14 @@ import build.raft.app.data.ArtifactKind
 import build.raft.app.data.ArtifactLinkTarget
 import build.raft.app.data.ArtifactSummary
 import build.raft.app.data.ArtifactSummaryAnswer
+import build.raft.app.data.artifactWebUrl
 import build.raft.app.links.planRaftMessageLinks
+import build.raft.app.resources.*
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertIs
+import kotlin.test.assertTrue
 
 /**
  * The cards under a message (web `ArtifactMessageRefs.tsx` `artifactLinkOf` + the default export,
@@ -85,5 +95,71 @@ class ThreadArtifactMessageRefsTest {
         )
         assertEquals(listOf(ArtifactFactPart.LatestIs(5)), artifactCardFactParts(summary(version = 3, pinned = true, latestVersion = 5)))
         assertEquals(emptyList(), artifactCardFactParts(summary(version = 3, pinned = false, latestVersion = 5)), "unpinned shows the latest")
+    }
+
+    @Test
+    fun artifactCardMenuItemsMatchMobileOrderIconsAndSeparatorWithoutSettle() {
+        val items = artifactCardMenuItems()
+        assertEquals(
+            listOf(
+                ArtifactCardMenuItemSpec(
+                    action = ArtifactCardMenuAction.Open,
+                    label = Res.string.common_open,
+                    icon = RaftLucideIconName.PanelRightOpen,
+                    testTag = ArtifactCardMenuTags.Open,
+                    dividerBefore = false,
+                ),
+                ArtifactCardMenuItemSpec(
+                    action = ArtifactCardMenuAction.CopyLink,
+                    label = Res.string.artifacts_menu_copy_link,
+                    icon = RaftLucideIconName.Link,
+                    testTag = ArtifactCardMenuTags.CopyLink,
+                    dividerBefore = true,
+                ),
+            ),
+            items,
+        )
+    }
+
+    @Test
+    fun artifactCardContextMenuPointerAndKeyboardGatesFollowWebRules() {
+        assertTrue(artifactCardOpensContextMenuForPointer(PointerType.Mouse, secondaryButtonPressed = true, pressStarted = true, menuEnabled = true))
+        assertTrue(artifactCardOpensContextMenuForPointer(PointerType.Stylus, secondaryButtonPressed = true, pressStarted = true, menuEnabled = true))
+        assertFalse(artifactCardOpensContextMenuForPointer(PointerType.Touch, secondaryButtonPressed = true, pressStarted = true, menuEnabled = true))
+        assertFalse(artifactCardOpensContextMenuForPointer(PointerType.Mouse, secondaryButtonPressed = false, pressStarted = true, menuEnabled = true))
+        assertFalse(artifactCardOpensContextMenuForPointer(PointerType.Mouse, secondaryButtonPressed = true, pressStarted = false, menuEnabled = true))
+        assertFalse(artifactCardOpensContextMenuForPointer(PointerType.Mouse, secondaryButtonPressed = true, pressStarted = true, menuEnabled = false))
+        assertFalse(
+            artifactCardOpensContextMenuForPointer(
+                PointerType.Mouse,
+                secondaryButtonPressed = true,
+                pressStarted = true,
+                menuEnabled = true,
+                hasTextSelectionInCard = true,
+            ),
+        )
+
+        assertTrue(artifactCardOpensContextMenuForKey(KeyEventType.KeyDown, Key.Menu, shiftPressed = false, menuEnabled = true))
+        assertTrue(artifactCardOpensContextMenuForKey(KeyEventType.KeyDown, Key.F10, shiftPressed = true, menuEnabled = true))
+        assertFalse(artifactCardOpensContextMenuForKey(KeyEventType.KeyDown, Key.F10, shiftPressed = false, menuEnabled = true))
+        assertFalse(artifactCardOpensContextMenuForKey(KeyEventType.KeyUp, Key.Menu, shiftPressed = false, menuEnabled = true))
+        assertFalse(artifactCardOpensContextMenuForKey(KeyEventType.KeyDown, Key.Menu, shiftPressed = false, menuEnabled = false))
+    }
+
+    @Test
+    fun artifactCardMenuAnchorsClampInsideCardAndCopyLinkFollowsPinnedTarget() {
+        assertEquals(IntOffset(12, 34), artifactCardPointerMenuAnchorPx(Offset(12.2f, 33.8f), IntSize(200, 100)))
+        assertEquals(IntOffset(199, 0), artifactCardPointerMenuAnchorPx(Offset(250f, -10f), IntSize(200, 100)))
+        assertEquals(IntOffset(24, 24), artifactCardKeyboardMenuAnchorPx(IntSize(200, 100), insetPx = 24))
+        assertEquals(IntOffset(10, 8), artifactCardKeyboardMenuAnchorPx(IntSize(20, 16), insetPx = 24))
+
+        assertEquals(
+            "https://staging.raft.build/artifacts/$a",
+            artifactWebUrl("https://staging.raft.build", summary(version = 4, pinned = false).openTarget()),
+        )
+        assertEquals(
+            "https://staging.raft.build/artifacts/$a/v/2",
+            artifactWebUrl("https://staging.raft.build", summary(version = 2, pinned = true).openTarget()),
+        )
     }
 }

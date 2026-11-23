@@ -29,20 +29,19 @@ import build.raft.designsystem.components.raftPaneGridNoFade
 
 /**
  * The viewer's own ⋮: only what the web page's ⋯ cannot offer (owner decision 2026-11-10, "two
- * bars"): Desktop Mode (where offered; null: not offered) and Open in Browser. Everything else
- * (where it lives, presence, Comments, Find, the version history, Copy link, Follow, Send to
- * conversation, Who can see, Rename, Files, Download, Delete, …) is the page's own toolbar, under
- * this bar, so nothing shows twice.
+ * bars"; #proj-workspace:#395 removed Open in Browser): Desktop Mode (where offered; null: not
+ * offered). Everything else (where it lives, presence, Comments, Find, the version history, Copy
+ * link, Follow, Send to conversation, Who can see, Rename, Files, Download, Delete, …) is the
+ * page's own toolbar, under this bar, so nothing shows twice.
  */
 internal class RaftArtifactViewerBarActions(
     val onToggleDesktopMode: (() -> Unit)? = null,
-    val onOpenInBrowser: (() -> Unit)? = null,
 )
 
 /**
- * The viewer's page: the App's title bar (Back, the title, ⋮ with Desktop Mode and Open in Browser)
+ * The viewer's page: the App's title bar (Back, the title, and ⋮ with Desktop Mode when offered)
  * over [content], the web page with its own toolbar and ⋯ menu. [desktopMode]: on or off, null
- * where it is not offered (no ⋮ item). The menu is a window on a device; screenshots draw
+ * where it is not offered (hiding ⋮). The menu is a window on a device; screenshots draw
  * [RaftArtifactViewerMenuItems] themselves.
  *
  * [pageDrawsBar] (artin, "双栏"): the page said its toolbar is the only bar (Back, the title, and
@@ -67,7 +66,7 @@ internal fun RaftArtifactViewerFrame(
     content: @Composable () -> Unit,
 ) {
     var menuOpen by remember { mutableStateOf(false) }
-    val hasMenu = actions.onOpenInBrowser != null || (desktopMode != null && actions.onToggleDesktopMode != null)
+    val hasMenu = desktopMode != null && actions.onToggleDesktopMode != null
     Column(modifier = Modifier.fillMaxSize().background(RaftColor.SurfaceWhite)) {
         if (pageDrawsBar) {
             // No head here: the host's own bar (iOS native navigation) is hidden too. In a column the page's toolbar
@@ -112,7 +111,7 @@ internal fun RaftArtifactViewerFrame(
 
 /**
  * The ⋮ menu's items: Desktop Mode (where offered: a check mark while on, the label constant as in
- * the HTML attachment preview), then Open in Browser.
+ * the HTML attachment preview).
  */
 @Composable
 internal fun ColumnScope.RaftArtifactViewerMenuItems(
@@ -129,16 +128,6 @@ internal fun ColumnScope.RaftArtifactViewerMenuItems(
             onClick = {
                 onDone()
                 toggleDesktopMode()
-            },
-        )
-    }
-    actions.onOpenInBrowser?.let { open ->
-        RaftMenuItem(
-            text = stringResource(Res.string.artifacts_viewer_open_in_browser),
-            leadingIcon = { RaftSlotIcon(RaftLucideIconName.ArrowUpRight) },
-            onClick = {
-                onDone()
-                open()
             },
         )
     }

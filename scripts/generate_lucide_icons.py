@@ -252,6 +252,7 @@ LUCIDE_ICONS = [
     "panel-bottom-open",
     "panel-left-close",
     "panel-left-open",
+    "panel-right-open",
     "pause",
     "pencil",
     "pin",

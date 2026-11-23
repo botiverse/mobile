@@ -1028,6 +1028,19 @@ private fun ThreadMessageCardContent(
         } else {
             null
         }
+    // web ArtifactCardMenu (#16110): live Artifact cards in this row own right-clicks over their
+    // bounds, while touch long-press on a card forwards to this row's message menu.
+    val childContextMenus = remember(message.id) { ThreadMessageChildContextMenus() }
+    val artifactChildLongPressHandler =
+        remember(message.id, longPressGestureOwner) {
+            ThreadMessageChildLongPressHandler { source, position ->
+                longPressGestureOwner.showActionsForChild(source, position, childRole = "artifact_card")
+            }
+        }
+    val childLongPress =
+        artifactChildLongPressHandler.takeIf {
+            !message.isRetracted && threadMessageUsesFullRowLongPressActions(shareSelectionActive)
+        }
     // raft-ui MessageItem `not-data-located:hover:[--mi-row-fill:var(--fill-subtle)]`: a mouse or
     // trackpad over the row lays the subtle tier; a finger never does. A row that already has a
     // fill (checked, its menu open, the current search match, located) keeps it.
@@ -1050,13 +1063,10 @@ private fun ThreadMessageCardContent(
                 .background(RaftColor.Canvas)
                 .raftPointerHover(rowHoverSource)
                 .raftPointerHoverPosition(enabled = hoverToolbar != null) { rowPointerOver = it != null }
-                .then(
-                    if (inPlaceSelection != null) {
-                        Modifier.onGloballyPositioned { inPlaceSelection.rowCoordinates = it }
-                    } else {
-                        Modifier
-                    }
-                )
+                .onGloballyPositioned { coordinates ->
+                    childContextMenus.rowCoordinates = coordinates
+                    inPlaceSelection?.rowCoordinates = coordinates
+                }
                 .then(
                     if (rowAccessibilityActions.isNotEmpty()) {
                         Modifier.semantics { customActions = rowAccessibilityActions }
@@ -1115,6 +1125,7 @@ private fun ThreadMessageCardContent(
                                 )
                                 onShowActions(anchor)
                             },
+                            deferContextClickAt = { offset -> childContextMenus.containsRowOffset(offset) },
                             onInputReady = onLongPressInputReady,
                             deferLongPressAt =
                                 inPlaceSelection?.let { selection ->
@@ -1745,12 +1756,18 @@ private fun ThreadMessageCardContent(
                                 // the text links to, right under the body (web `mt-2`: 8dp, the
                                 // column adds 4); viewer-only, so a share image has none.
                                 if (richContentEnabled) {
-                                    ThreadArtifactMessageRefs(
-                                        messageId = message.id,
-                                        body = message.body,
-                                        enabled = message.pendingSendContext == null,
-                                        modifier = Modifier.padding(top = RaftAppSpacing.Xs)
-                                    )
+                                    CompositionLocalProvider(
+                                        LocalThreadMessageChildContextMenus provides childContextMenus,
+                                        LocalThreadMessageChildLongPress provides childLongPress,
+                                    ) {
+                                        ThreadArtifactMessageRefs(
+                                            messageId = message.id,
+                                            body = message.body,
+                                            enabled = message.pendingSendContext == null,
+                                            contextMenuEnabled = !shareSelectionActive,
+                                            modifier = Modifier.padding(top = RaftAppSpacing.Xs),
+                                        )
+                                    }
                                 }
                                 // A share image is public: the quoted message is viewer-only, so
                                 // capture mode drops the whole preview (and its margin); the link

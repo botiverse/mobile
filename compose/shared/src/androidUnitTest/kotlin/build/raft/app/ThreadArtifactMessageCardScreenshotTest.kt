@@ -43,7 +43,7 @@ import org.robolectric.annotation.GraphicsMode
  * The Artifact cards under a message (web `ArtifactMessageRefs.tsx` / `ArtifactMessageCard.tsx`,
  * botiverse/slock staging 84e41d9be), light and dark, on a fixed clock:
  *  1. an HTML card: the code glyph with its HTML badge, title and v4, the description (2 lines: HTML
- *     has no fact line), ↗, and the footer: `# proj-workspace`, "Lagoon updated 2 hours ago", 3 comments;
+ *     has no fact line), and the footer: `# proj-workspace`, "Lagoon updated 2 hours ago", 3 comments;
  *  2. a PDF pinned at v2 of 5: "Latest is v5 · 6 pages", the description cut at one line, the whole
  *     server, no comments;
  *  3. a deleted one: gray and dimmed, its title and "Deleted by Martin 1 day ago".
@@ -123,7 +123,7 @@ class ThreadArtifactMessageCardScreenshotTest {
             ) {
                 RaftDesignSystemTheme {
                     Column(Modifier.fillMaxSize().background(RaftColor.Canvas).padding(16.dp)) {
-                        ThreadArtifactMessageRefsContent(view = view, onOpen = {}, onOpenInNewPage = {})
+                        ThreadArtifactMessageRefsContent(view = view, onOpen = {})
                     }
                 }
             }
@@ -175,7 +175,7 @@ class ThreadArtifactMessageCardScreenshotTest {
             CompositionLocalProvider(LocalRaftTimeContextProvider provides RaftTimeContextProvider(timeContext)) {
                 RaftDesignSystemTheme {
                     Column(Modifier.fillMaxSize().background(RaftColor.Canvas).padding(16.dp)) {
-                        ThreadArtifactMessageRefsContent(view = view, onOpen = {}, onOpenInNewPage = {})
+                        ThreadArtifactMessageRefsContent(view = view, onOpen = {})
                     }
                 }
             }

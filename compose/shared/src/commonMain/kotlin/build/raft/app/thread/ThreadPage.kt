@@ -5829,6 +5829,7 @@ private fun SharedThreadRouteContentContent(
                         toast = { message -> bridge.toast(message) },
                         toastWithIntent = { message, intent -> bridge.toastWithIntent(message, intent) },
                         errorToast = { message, traceId -> bridge.errorToast(message, traceId) },
+                        copyText = { text -> bridge.copyToPasteboard(text) },
                         // Workspace Artifacts links (behind workspace_artifacts_v0, read per message).
                         artifacts =
                             ThreadArtifactLinkHost(

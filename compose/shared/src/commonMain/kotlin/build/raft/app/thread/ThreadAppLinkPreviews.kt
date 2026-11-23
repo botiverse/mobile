@@ -89,6 +89,8 @@ internal data class ThreadAppLinkPreviewHost(
     val toastWithIntent: (String, RaftToastIntent?) -> Unit = { text, _ -> toast(text) },
     /** Failed prepare/execute toast carrying the failed response's `X-Trace-Id` when present. */
     val errorToast: (String, String?) -> Unit = { text, _ -> toast(text) },
+    /** Copies plain text to the clipboard (Artifact card menu's Copy link); no-op in fixtures without one. */
+    val copyText: (String) -> Unit = {},
     /** Workspace Artifacts links; null where they aren't read (fixtures, no provider). */
     val artifacts: ThreadArtifactLinkHost? = null,
     /** The batched link-card read (App link cards v2); false: always the GET (fixtures). */

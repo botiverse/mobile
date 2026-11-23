@@ -64,7 +64,7 @@ class ArtifactSettledTagUiTest {
         setContent {
             CompositionLocalProvider(LocalRaftTimeContextProvider provides RaftTimeContextProvider(timeContext)) {
                 RaftDesignSystemTheme {
-                    Box(Modifier.width(360.dp)) { ArtifactMessageCard(summary, onOpen = {}, onOpenInNewPage = {}, readerId = "u1") }
+                    Box(Modifier.width(360.dp)) { ArtifactMessageCard(summary, onOpen = {}, readerId = "u1") }
                 }
             }
         }

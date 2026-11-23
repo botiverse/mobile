@@ -4447,7 +4447,8 @@
     <string name="message_card_waiting_for_someone">等待其他人處理</string>
     <string name="message_card_declined">你已關閉 %1$s。</string>
     <string name="message_card_allow_app">允許 %1$s</string>
-    <string name="artifacts_card_open_in_new_page">在新頁面開啟</string>
+    <string name="artifacts_menu_copy_link">複製連結</string>
+    <string name="artifacts_menu_link_copied">已複製連結。</string>
     <string name="artifacts_card_comments_one">1 則留言</string>
     <string name="artifacts_card_comments_many">%1$d 則留言</string>
     <string name="artifacts_card_loading">正在載入 Artifact</string>
@@ -4496,7 +4497,6 @@
     <string name="artifacts_column_title">Artifact</string>
     <string name="artifacts_viewer_unavailable_title">打不開這個 Artifact</string>
     <string name="artifacts_viewer_unavailable_body">它不存在，或者你沒有權限查看。</string>
-    <string name="artifacts_viewer_open_in_browser">在瀏覽器中開啟</string>
     <string name="activity_list_object_home">· %1$s</string>
     <string name="activity_action_unfollow_artifact">取消追蹤</string>
     <string name="activity_unfollowed_artifact">已取消追蹤 %1$s</string>

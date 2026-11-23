@@ -21,12 +21,11 @@ import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 
 /**
- * The in-app Artifact viewer's title bar ("two bars", owner decision 2026-11-10): Back, the title
- * and a ⋮ with only Desktop Mode (where offered) and Open in Browser, over the web page, which draws
- * its own toolbar and ⋯ menu. States: the bar; its ⋮ menu open; the ⋮ menu where Desktop Mode is
- * offered (checked); and the state a 403/404 puts in place of the page. The menu is a window on a
- * device, so its surface is drawn here over the page as the window places it. Verify / record as
- * [RaftRobolectricScreenshot].
+ * The in-app Artifact viewer's title bar ("two bars", owner decision 2026-11-10; #proj-workspace:#395
+ * removed Open in Browser): Back, the title, and a ⋮ with Desktop Mode (when offered) over the web
+ * page, which draws its own toolbar and ⋯ menu. States: the bar (phone width with Desktop Mode
+ * offered -> ⋮ visible), the one-bar page toolbar, and the state a 403/404 puts in place of the page
+ * (Desktop Mode not offered -> ⋮ hidden). Verify / record as [RaftRobolectricScreenshot].
  */
 @RunWith(RobolectricTestRunner::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
@@ -52,10 +51,10 @@ class RaftArtifactViewerScreenshotTest {
 
 private const val Title = "q4-launch-plan.html"
 
-private val Actions = RaftArtifactViewerBarActions(onToggleDesktopMode = {}, onOpenInBrowser = {})
+private val Actions = RaftArtifactViewerBarActions(onToggleDesktopMode = {})
 
 @Composable
-private fun Viewer(desktopMode: Boolean? = null, pageDrawsBar: Boolean = false, overlay: (@Composable () -> Unit)? = null) {
+private fun Viewer(desktopMode: Boolean? = false, pageDrawsBar: Boolean = false, overlay: (@Composable () -> Unit)? = null) {
     Box(Modifier.fillMaxSize()) {
         RaftArtifactViewerFrame(
             title = Title,
@@ -73,11 +72,11 @@ private fun Viewer(desktopMode: Boolean? = null, pageDrawsBar: Boolean = false, 
 
 @Composable
 private fun Unavailable() {
-    // As the page draws it after a 403/404: the ⋮ keeps Open in Browser.
+    // As the page draws it after a 403/404: Desktop Mode is not offered, so ⋮ is hidden.
     RaftArtifactViewerFrame(
         title = Title,
         onBack = {},
-        actions = RaftArtifactViewerBarActions(onOpenInBrowser = {}),
+        actions = RaftArtifactViewerBarActions(),
         topSafeAreaOverride = 0.dp,
     ) {
         RaftArtifactViewerUnavailable(onClose = {})

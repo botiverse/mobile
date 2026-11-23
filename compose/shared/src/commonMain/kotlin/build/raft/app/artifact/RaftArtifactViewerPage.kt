@@ -537,8 +537,8 @@ private fun RaftArtifactViewerScreen() {
     // The conversation it was opened from (`hostConversation`): the page's title then lists the Artifacts
     // recently opened there, and picking one moves the page in place ([raftArtifactViewerSwitchesInPlace]).
     val conversationId = remember(params.toString()) { params.raftArtifactViewerConversationOrNull() }
-    // The Artifact shown: the one opened, then the one the page moved to in place (its title, Open in
-    // Browser, the summary read). The WebView's document is not reloaded for it ([bodyTarget]).
+    // The Artifact shown: the one opened, then the one the page moved to in place (its title, Copy
+    // link, the summary read). The WebView's document is not reloaded for it ([bodyTarget]).
     var shown by remember(params.toString()) { mutableStateOf<ArtifactLinkTarget>(target) }
     // Leaving it, it is seen: a channel shown whose announcement it is reads at once (#16289 row 7).
     ChannelAnnouncementViewedEffect(host.sharedStores, host.storeScope, scope?.serverId, shown.canonicalId)
@@ -548,7 +548,7 @@ private fun RaftArtifactViewerScreen() {
             raftArtifactViewerOpenLogLine(target, scopeKnown = scope != null, webBaseUrl = webBaseUrl),
         )
     }
-    // Open in browser: the page as the web shows it. The WebView: the same page under this title bar.
+    // Fallback URL when scope == null: the page as the web shows it.
     val pageUrl = remember(webBaseUrl, shown) { raftArtifactViewerPageUrl(webBaseUrl, shown) }
     // Desktop Mode's state for the page's own ⋯ (`hostDesktop`; null: not offered here).
     val hostDesktop: Boolean? = desktopMode.takeIf { desktopModeOffered }
@@ -560,8 +560,7 @@ private fun RaftArtifactViewerScreen() {
     var header by remember(params.toString()) { mutableStateOf(RaftArtifactViewerMemory.cache.header(scope, target.canonicalId)) }
     LaunchedEffect(Unit) { if (header != null) RaftArtifactOpenTrace.mark("header_painted", "from=card_or_cache") }
     var bodyState by remember(params.toString()) { mutableStateOf<RaftArtifactViewerBodyState>(RaftArtifactViewerBodyState.Viewing) }
-    // The version the page shows, from its address (a version picked in the page's ⋯, Back to
-    // Latest): Open in Browser opens that one.
+    // The version the page shows, from its address (a version picked in the page's ⋯, Back to Latest).
     var addressed by remember(params.toString()) { mutableStateOf<RaftArtifactViewerNavigation.Stay?>(null) }
     // Moves when the page goes from a pinned version to the latest (View latest, Back to Latest):
     // the latest may be newer than the one read on open, so it is read again.
@@ -682,10 +681,6 @@ private fun RaftArtifactViewerScreen() {
     val controller = rememberRaftWebViewController()
 
     val untitled = stringResource(Res.string.artifacts_activity_untitled)
-    // The link of what is shown (web `useCopyArtifactLink`: this deployment's origin, `/v/<n>` only
-    // when pinned), opened in the browser.
-    val shownLink = ArtifactLinkTarget(shown.id, if (addressed != null) addressed?.version else shown.version)
-    val shownUrl = remember(webBaseUrl, shownLink) { raftArtifactViewerPageUrl(webBaseUrl, shownLink) }
     val downloadSaved = stringResource(Res.string.file_preview_private_download_saved)
     val downloadSavedToDownloads = stringResource(Res.string.file_preview_download_saved)
     val downloadAlreadySaved = stringResource(Res.string.file_preview_download_already_saved)
@@ -706,10 +701,6 @@ private fun RaftArtifactViewerScreen() {
         desktopModeChosen = !desktopModeChosen
         desktopModePreference?.write(desktopModeChosen)
         host.bridge.log("artifact_viewer_desktop_mode on=$desktopModeChosen from=$from")
-    }
-    fun openInBrowser(from: String, url: String = shownUrl) {
-        host.bridge.log("artifact_viewer_open_in_browser from=$from")
-        host.bridge.openUrl(url, inBrowser = true)
     }
     val copiedMessage = stringResource(Res.string.common_copied)
     fun copyLink(url: String) {
@@ -732,7 +723,6 @@ private fun RaftArtifactViewerScreen() {
         actions =
             RaftArtifactViewerBarActions(
                 onToggleDesktopMode = { toggleDesktopMode("bar") },
-                onOpenInBrowser = { openInBrowser("bar") },
             ),
     ) {
         when (bodyState) {
@@ -811,9 +801,6 @@ private fun RaftArtifactViewerScreen() {
                             onHostAction = { action, version ->
                                 when (action) {
                                     RaftArtifactViewerHostAction.DesktopMode -> if (desktopModeOffered) toggleDesktopMode("page")
-                                    // The version the page shows, from the address that asked (the web sends no payload).
-                                    RaftArtifactViewerHostAction.OpenInBrowser ->
-                                        openInBrowser("page", raftArtifactViewerPageUrl(webBaseUrl, ArtifactLinkTarget(shown.id, version)))
                                     // Copied by the App: the link built from this Artifact's id and the address's
                                     // version on the viewer's own web base (never anything the page sends).
                                     RaftArtifactViewerHostAction.CopyLink ->

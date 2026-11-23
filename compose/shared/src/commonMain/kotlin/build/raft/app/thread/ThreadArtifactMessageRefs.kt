@@ -9,24 +9,34 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.input.key.isShiftPressed
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.layout.layout
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.semantics
@@ -35,6 +45,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import build.raft.app.components.RaftDesignSystemTheme
 import build.raft.app.data.ArtifactDeletedShown
@@ -56,18 +68,17 @@ import build.raft.app.resources.*
 import build.raft.designsystem.components.RaftBadge
 import build.raft.designsystem.components.RaftBadgeAppearance
 import build.raft.designsystem.components.RaftBadgeVariant
-import build.raft.designsystem.components.RaftButtonVariant
 import build.raft.designsystem.components.RaftConversationKindGlyph
 import build.raft.designsystem.components.RaftConversationKindIcon
 import build.raft.designsystem.components.RaftFilePreview
 import build.raft.designsystem.components.RaftFilePreviewKind
-import build.raft.designsystem.components.RaftIconButton
 import build.raft.designsystem.components.RaftMessageEmbed
 import build.raft.designsystem.components.RaftMessageEmbedContent
 import build.raft.designsystem.components.RaftMessageEmbedFooter
 import build.raft.designsystem.components.RaftMessageEmbedHeader
 import build.raft.designsystem.components.RaftSkeleton
 import build.raft.designsystem.components.RaftSkeletonVariant
+import build.raft.designsystem.components.RaftToastIntent
 import build.raft.designsystem.components.RaftTooltip
 import build.raft.designsystem.components.raftGrayscale
 import build.raft.designsystem.text.RaftText
@@ -244,6 +255,7 @@ internal fun ThreadArtifactMessageRefs(
     body: String,
     enabled: Boolean,
     modifier: Modifier = Modifier,
+    contextMenuEnabled: Boolean = true,
 ) {
     val host = LocalThreadAppLinkPreviewHost.current ?: return
     val artifacts = host.artifacts ?: return
@@ -256,6 +268,7 @@ internal fun ThreadArtifactMessageRefs(
     // A plain tap opens it in place (the in-app viewer); the browser only when no page can open.
     val opener = rememberRaftArtifactOpener { openArtifactWebPage(artifactWebUrl(webBaseUrl, it)) }
     val screenshots = remember(artifacts.screenshots, host.serverId) { artifacts.screenshots?.reader(host.serverId) }
+    val linkCopiedMessage = stringResource(Res.string.artifacts_menu_link_copied)
     RaftDesignSystemTheme {
         CompositionLocalProvider(LocalArtifactScreenshotReader provides screenshots) {
             ThreadArtifactMessageRefsContent(
@@ -264,9 +277,13 @@ internal fun ThreadArtifactMessageRefs(
                     val target = summary.openTarget()
                     opener.open(target, RaftArtifactViewerHeader.of(summary, target), "message_card")
                 },
-                onOpenInNewPage = { summary -> openArtifactWebPage(artifactWebUrl(webBaseUrl, summary.openTarget())) },
+                onCopyLink = { summary ->
+                    host.copyText(artifactWebUrl(webBaseUrl, summary.openTarget()))
+                    host.toastWithIntent(linkCopiedMessage, RaftToastIntent.Success)
+                },
                 modifier = modifier,
                 readerId = artifacts.readerId,
+                contextMenuEnabled = contextMenuEnabled,
             )
         }
     }
@@ -277,10 +294,11 @@ internal fun ThreadArtifactMessageRefs(
 internal fun ThreadArtifactMessageRefsContent(
     view: ThreadArtifactMessageRefsView,
     onOpen: (ArtifactSummary) -> Unit,
-    onOpenInNewPage: (ArtifactSummary) -> Unit,
     modifier: Modifier = Modifier,
     skeletonAnimated: Boolean = true,
     readerId: String? = null,
+    onCopyLink: (ArtifactSummary) -> Unit = {},
+    contextMenuEnabled: Boolean = true,
 ) {
     Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         when (view) {
@@ -294,8 +312,9 @@ internal fun ThreadArtifactMessageRefsContent(
                                 ArtifactMessageCard(
                                     ref.summary,
                                     onOpen = { onOpen(ref.summary) },
-                                    onOpenInNewPage = { onOpenInNewPage(ref.summary) },
                                     readerId = readerId,
+                                    onCopyLink = { onCopyLink(ref.summary) },
+                                    contextMenuEnabled = contextMenuEnabled,
                                 )
                             is ThreadArtifactMessageRef.Deleted -> ArtifactDeletedCard(ref.deleted)
                         }
@@ -434,11 +453,11 @@ private fun ArtifactKind.filePreviewKind(): RaftFilePreviewKind =
  * web `ArtifactMessageCard` `OkCard` (F12, F37, F31 A), interactive as a whole (a tap opens it in
  * place). Header: the kind's glyph and badge; the title (`subhead` bold, 2 lines) with its version
  * Badge; the fact line (`footnote` muted, 1 line); the description (`callout` muted, 1 line under
- * a fact line, else 2) or the start of its text (2 lines); ↗ opens its own page. Footer: where it
- * lives, who updated it when (Space Mono hint), and its comment count. Above them, the publish
- * check's screenshot when the card has one ([ArtifactCardScreenshot]), else a Markdown version's
- * excerpt ([ArtifactCardExcerpt], web #13445 / #13472), which then is not repeated as the
- * description; no publisher cover yet.
+ * a fact line, else 2) or the start of its text (2 lines). Footer: where it lives, who updated it
+ * when (Space Mono hint), and its comment count. Above them, the publish check's screenshot when
+ * the card has one ([ArtifactCardScreenshot]), else a Markdown version's excerpt
+ * ([ArtifactCardExcerpt], web #13445 / #13472), which then is not repeated as the description; no
+ * publisher cover yet.
  *
  * Settled (botiverse/slock #15654, `artifact_settled_v0`): while the Artifact is settled now, the
  * Settled tag after the version tag ([ArtifactSettledTag]; [readerId] names the reader's own settle
@@ -449,9 +468,11 @@ private fun ArtifactKind.filePreviewKind(): RaftFilePreviewKind =
 internal fun ArtifactMessageCard(
     summary: ArtifactSummary,
     onOpen: () -> Unit,
-    onOpenInNewPage: () -> Unit,
     modifier: Modifier = Modifier,
     readerId: String? = null,
+    onCopyLink: () -> Unit = {},
+    contextMenuEnabled: Boolean = true,
+    preview: Boolean = false,
 ) {
     val colors = RaftTheme.colors
     val typography = RaftTheme.typography
@@ -467,103 +488,167 @@ internal fun ArtifactMessageCard(
     // web `useArtifactCardPicture`: a screenshot, else a Markdown version's excerpt (one kind at a
     // time from the server, so an excerpt never waits for or replaces a picture).
     val excerpt = summary.excerpt.takeIf { screenshot == ArtifactCardScreenshotView.None }
-    RaftMessageEmbed(modifier = modifier, onClick = onOpen, onClickLabel = summary.title) {
-        if (screenshot != ArtifactCardScreenshotView.None) {
-            ArtifactCardScreenshot(screenshot)
-        } else if (excerpt != null) {
-            RaftMessageEmbedContent { ArtifactCardExcerpt(excerpt) }
+    // web `ArtifactCardMenu.tsx` (botiverse/slock #16110): right-click or Shift+F10/ContextMenu on
+    // a live card opens the Artifact's own menu; preview cards and select mode leave it off.
+    val effectiveMenuEnabled = contextMenuEnabled && !preview
+    val childContextMenus = LocalThreadMessageChildContextMenus.current
+    val childLongPress = LocalThreadMessageChildLongPress.current.takeIf { !preview }
+    val regionKey = remember { Any() }
+    val cardBounds = remember { ArtifactCardBoundsHolder() }
+    val tooltipRegions = remember { ArtifactCardTooltipRegions() }
+    val cardFocusRequester = remember { FocusRequester() }
+    var menuAnchor by remember { mutableStateOf<IntOffset?>(null) }
+    val density = LocalDensity.current
+    val currentMenuEnabled by rememberUpdatedState(effectiveMenuEnabled)
+    DisposableEffect(childContextMenus, regionKey, effectiveMenuEnabled) {
+        if (effectiveMenuEnabled) {
+            cardBounds.coordinates?.takeIf { it.isAttached }?.let { childContextMenus?.register(regionKey, it) }
+        } else {
+            childContextMenus?.unregister(regionKey)
         }
-        RaftMessageEmbedHeader {
-            RaftFilePreview(summary.kind.filePreviewKind(), badge = summary.kind.badge)
-            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                val title: @Composable (Modifier) -> Unit = { titleModifier ->
-                    RaftText(
-                        summary.title,
-                        modifier = titleModifier,
-                        style = typography.subhead.copy(fontWeight = FontWeight.Bold),
-                        color = colors.foreground,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                }
-                val version: @Composable (Modifier) -> Unit = { versionModifier ->
-                    RaftBadge(
-                        text = stringResource(Res.string.artifacts_card_version, summary.version),
-                        modifier = versionModifier,
-                        appearance = RaftBadgeAppearance.Outline,
-                        variant = RaftBadgeVariant.Muted,
-                    )
-                }
-                val settled = summary.settled
-                if (settled == null) {
-                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.Top) {
-                        title(Modifier.weight(1f, fill = false))
-                        version(Modifier.padding(top = 1.dp))
-                    }
+        onDispose { childContextMenus?.unregister(regionKey) }
+    }
+    LaunchedEffect(effectiveMenuEnabled) {
+        if (!effectiveMenuEnabled && menuAnchor != null) menuAnchor = null
+    }
+    if (summary.settled == null) tooltipRegions.settledTag = null
+    val cardModifier =
+        Modifier
+            .testTag(ArtifactCardMenuTags.Card)
+            .focusRequester(cardFocusRequester)
+            .onGloballyPositioned { coords ->
+                cardBounds.coordinates = coords
+                if (currentMenuEnabled) childContextMenus?.register(regionKey, coords)
+            }
+            .onPreviewKeyEvent { event ->
+                if (
+                    menuAnchor == null &&
+                    artifactCardOpensContextMenuForKey(event.type, event.key, event.isShiftPressed, currentMenuEnabled)
+                ) {
+                    val size = cardBounds.coordinates?.size ?: IntSize.Zero
+                    menuAnchor = artifactCardKeyboardMenuAnchorPx(size, with(density) { ArtifactCardKeyboardMenuInset.roundToPx() })
+                    true
                 } else {
-                    ArtifactCardTitleLine(
-                        title = { title(Modifier) },
-                        // web: the version tag, then the Settled tag (`gap-1 pt-px`).
-                        tags = {
-                            Row(Modifier.padding(top = 1.dp), horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
-                                version(Modifier)
-                                ArtifactSettledTag(settled, readerId)
-                            }
-                        },
-                    )
+                    false
                 }
-                facts?.let {
-                    RaftText(it, style = typography.footnote, color = colors.foregroundMuted, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+            .artifactCardGestures(
+                menuEnabled = effectiveMenuEnabled,
+                tooltipRegions = tooltipRegions,
+                cardCoordinates = { cardBounds.coordinates },
+                childLongPress = childLongPress,
+                onOpenContextMenu = { position ->
+                    val size = cardBounds.coordinates?.size ?: IntSize.Zero
+                    menuAnchor = artifactCardPointerMenuAnchorPx(position, size)
+                },
+            )
+    Box(modifier) {
+        RaftMessageEmbed(
+            modifier = cardModifier,
+            onClick = if (preview) null else onOpen,
+            onClickLabel = if (preview) null else summary.title,
+        ) {
+            if (screenshot != ArtifactCardScreenshotView.None) {
+                ArtifactCardScreenshot(screenshot)
+            } else if (excerpt != null) {
+                RaftMessageEmbedContent { ArtifactCardExcerpt(excerpt) }
+            }
+            RaftMessageEmbedHeader {
+                RaftFilePreview(summary.kind.filePreviewKind(), badge = summary.kind.badge)
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    val title: @Composable (Modifier) -> Unit = { titleModifier ->
+                        RaftText(
+                            summary.title,
+                            modifier = titleModifier,
+                            style = typography.subhead.copy(fontWeight = FontWeight.Bold),
+                            color = colors.foreground,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                    val version: @Composable (Modifier) -> Unit = { versionModifier ->
+                        RaftBadge(
+                            text = stringResource(Res.string.artifacts_card_version, summary.version),
+                            modifier = versionModifier,
+                            appearance = RaftBadgeAppearance.Outline,
+                            variant = RaftBadgeVariant.Muted,
+                        )
+                    }
+                    val settled = summary.settled
+                    if (settled == null) {
+                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.Top) {
+                            title(Modifier.weight(1f, fill = false))
+                            version(Modifier.padding(top = 1.dp))
+                        }
+                    } else {
+                        ArtifactCardTitleLine(
+                            title = { title(Modifier) },
+                            // web: the version tag, then the Settled tag (`gap-1 pt-px`).
+                            tags = {
+                                Row(Modifier.padding(top = 1.dp), horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
+                                    version(Modifier)
+                                    ArtifactSettledTag(
+                                        settled,
+                                        readerId,
+                                        modifier = Modifier.onGloballyPositioned { tooltipRegions.settledTag = it },
+                                    )
+                                }
+                            },
+                        )
+                    }
+                    facts?.let {
+                        RaftText(it, style = typography.footnote, color = colors.foregroundMuted, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    }
+                    // The card's own description only once its excerpt is drawn above (web: `card.description`).
+                    summary.description?.takeUnless { excerpt != null && summary.descriptionIsExcerpt }?.let {
+                        RaftText(
+                            it,
+                            style = typography.callout,
+                            color = colors.foregroundMuted,
+                            maxLines = if (!summary.descriptionIsExcerpt && hasKindFacts) 1 else 2,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
                 }
-                // The card's own description only once its excerpt is drawn above (web: `card.description`).
-                summary.description?.takeUnless { excerpt != null && summary.descriptionIsExcerpt }?.let {
+            }
+            RaftMessageEmbedFooter {
+                ArtifactCardScopeLabel(summary.home)
+                meta?.let {
                     RaftText(
                         it,
-                        style = typography.callout,
-                        color = colors.foregroundMuted,
-                        maxLines = if (!summary.descriptionIsExcerpt && hasKindFacts) 1 else 2,
+                        modifier = Modifier.weight(1f, fill = false),
+                        style = typography.monoMeta,
+                        color = colors.foregroundHint,
+                        maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
                 }
-            }
-            // PanelAction `-mt-1 -mr-1`: its own control, above the card's tap.
-            RaftIconButton(
-                onClick = onOpenInNewPage,
-                tooltip = stringResource(Res.string.artifacts_card_open_in_new_page),
-                modifier = Modifier.offset(x = 4.dp, y = (-4).dp),
-                variant = RaftButtonVariant.Ghost,
-            ) {
-                RaftLucideIcon(RaftLucideIconName.ArrowUpRight, Modifier.size(16.dp), color = raftArgbHex(colors.foregroundMuted))
-            }
-        }
-        RaftMessageEmbedFooter {
-            ArtifactCardScopeLabel(summary.home)
-            meta?.let {
-                RaftText(
-                    it,
-                    modifier = Modifier.weight(1f, fill = false),
-                    style = typography.monoMeta,
-                    color = colors.foregroundHint,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
-            if (summary.commentCount > 0) {
-                val label =
-                    if (summary.commentCount == 1) {
-                        stringResource(Res.string.artifacts_card_comments_one)
-                    } else {
-                        stringResource(Res.string.artifacts_card_comments_many, summary.commentCount)
+                if (summary.commentCount > 0) {
+                    val label =
+                        if (summary.commentCount == 1) {
+                            stringResource(Res.string.artifacts_card_comments_one)
+                        } else {
+                            stringResource(Res.string.artifacts_card_comments_many, summary.commentCount)
+                        }
+                    Row(
+                        Modifier.semantics(mergeDescendants = true) { contentDescription = label },
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        RaftLucideIcon(RaftLucideIconName.MessageSquare, Modifier.size(12.dp), color = raftArgbHex(colors.foregroundHint))
+                        RaftText(summary.commentCount.toString(), style = typography.monoMeta, color = colors.foregroundHint, maxLines = 1)
                     }
-                Row(
-                    Modifier.semantics(mergeDescendants = true) { contentDescription = label },
-                    horizontalArrangement = Arrangement.spacedBy(4.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    RaftLucideIcon(RaftLucideIconName.MessageSquare, Modifier.size(12.dp), color = raftArgbHex(colors.foregroundHint))
-                    RaftText(summary.commentCount.toString(), style = typography.monoMeta, color = colors.foregroundHint, maxLines = 1)
                 }
             }
+        }
+        if (!preview) {
+            ArtifactCardContextMenuAnchor(
+                anchor = menuAnchor,
+                returnFocusTo = cardFocusRequester,
+                onDismiss = { menuAnchor = null },
+                onOpen = onOpen,
+                onCopyLink = onCopyLink,
+            )
         }
     }
 }
@@ -712,7 +797,7 @@ internal fun ArtifactDeletedCard(deleted: ArtifactDeletedShown, modifier: Modifi
             time != null -> stringResource(Res.string.artifacts_card_deleted_at, time)
             else -> stringResource(Res.string.artifacts_card_deleted)
         }
-    RaftMessageEmbed(modifier = modifier.raftGrayscale(RaftOpacity.Dimmed)) {
+    RaftMessageEmbed(modifier = modifier.testTag(ArtifactCardMenuTags.DeletedCard).raftGrayscale(RaftOpacity.Dimmed)) {
         RaftMessageEmbedHeader {
             RaftFilePreview(RaftFilePreviewKind.Document)
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
