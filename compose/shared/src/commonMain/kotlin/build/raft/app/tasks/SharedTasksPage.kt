@@ -1,6 +1,7 @@
 package build.raft.app
 
 import build.raft.designsystem.components.raftSafeAreaHorizontalPadding
+import build.raft.designsystem.components.raftSlot
 import build.raft.app.resources.*
 import build.raft.designsystem.components.RaftButton
 import build.raft.designsystem.components.RaftPickerTriggerButton
@@ -1506,6 +1507,7 @@ private fun SharedTasksToolbar(
                 .background(RaftColor.SurfaceWhite)
                 .raftSafeAreaHorizontalPadding()
                 .testTag(SharedTasksToolbarTags.Toolbar)
+                .raftSlot("tasks-panel-toolbar")
     ) {
         RaftFitToolbar(
             filters = filters,
@@ -1659,6 +1661,7 @@ internal fun BoardSectionHeader(
         modifier =
             modifier
                 .fillMaxWidth()
+                .raftSlot("task-section-trigger")
                 .raftClickable(onClick = onClick, tier = RaftHoverTier.Subtle)
                 .height(32.dp)
                 .padding(horizontal = 8.dp),
@@ -1755,6 +1758,7 @@ private fun SharedTaskCard(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
+                .raftSlot("task-card")
                 .clip(RoundedCornerShape(RaftAppRadius.Container))
                 .raftCardSurface(fill = if (current) RaftTheme.colors.fillCellSelected else RaftColor.Card)
                 .raftGesturePointerInput(gestureOwner) { owner ->
