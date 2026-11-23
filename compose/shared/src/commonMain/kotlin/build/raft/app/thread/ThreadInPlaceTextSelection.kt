@@ -368,8 +368,10 @@ internal val LocalThreadInPlaceTextSelectionHost =
     staticCompositionLocalOf<ThreadInPlaceTextSelectionHost?> { null }
 
 /**
- * The text the Select Text sheet offers for a message (`ThreadMessageSelectTextSheet` binds
- * `message.body`) and the menu's Copy action copies. A whole-message in-place copy must match it.
+ * The message's Markdown as written: what the menu's Copy action copies (web `handleCopyMarkdown`)
+ * and what the Select Text sheet is given (`ThreadMessageSelectTextSheet` binds `message.body`, and
+ * shows and copies it without a quote reply's `msg=` lines, as the web's drawer does). A
+ * whole-message in-place copy must match the menu's Copy.
  */
 internal fun threadMessageSelectionSourceText(message: RaftThreadMessageItem): String = message.body
 
@@ -386,7 +388,7 @@ internal fun threadInPlaceSelectionCoversAll(
  * Copy payload for an in-place selection. Compose returns one entry per selectable text node
  * (paragraph, list item, code block…), so partial selections are joined with "\n" to keep the
  * block boundaries; a selection covering every node copies [fullMessageText], i.e. exactly what
- * the Select Text page and the menu's Copy action produce.
+ * the menu's Copy action produces.
  */
 internal fun threadInPlaceSelectionCopyText(
     selectedTexts: List<String>,
