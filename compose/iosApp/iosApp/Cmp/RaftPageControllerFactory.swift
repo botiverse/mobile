@@ -171,6 +171,22 @@ private final class RaftCmpPageNavigator: NSObject, RaftCmpIosNavigator {
         }
     }
 
+    func topPage() -> RaftCmpIosTopPage? {
+        guard Thread.isMainThread else { return nil }
+        guard let nav = controller?.navigationController, let top = nav.topViewController else {
+            return nil
+        }
+        guard let page = top as? RaftPageViewController else {
+            // A non-Raft controller sits on top of the stack: report a non-thread top page so
+            // Kotlin does not fall back to a covered conversation's visibleRouteIdentity.
+            return RaftCmpIosTopPage(pageName: "", pageDataJson: "{}")
+        }
+        return RaftCmpIosTopPage(
+            pageName: page.raftPageName,
+            pageDataJson: RaftPageControllerFactory.jsonText(page.raftPageData)
+        )
+    }
+
     private func onMain(_ work: @escaping () -> Void) {
         if Thread.isMainThread {
             work()

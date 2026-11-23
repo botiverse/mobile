@@ -270,9 +270,15 @@ internal fun AppShellExternalLinkNavigationEffects(
             )
         }
     }
-    // Phone layout: the conversation page on top of the shell, so a link to it is not pushed twice.
+    // Phone layout: the conversation page on top of the shell, so a notification or link to it is
+    // not pushed twice (preferring the host's authoritative navigation stack over Compose visibility,
+    // which clears when the app enters the background).
     val latestNavigationTopPageRoute by rememberUpdatedState {
-        if (desktopModeOnLargeScreen) null else foregroundBannerStore.visibleRouteIdentity()
+        raftResolveNavigationTopPageRoute(
+            desktopModeOnLargeScreen = desktopModeOnLargeScreen,
+            hostTopPage = pager.host?.navigator?.topPage(),
+            fallbackVisibleRoute = foregroundBannerStore::visibleRouteIdentity,
+        )
     }
     LaunchedEffect(navigationIntake) {
         navigationIntake.run(

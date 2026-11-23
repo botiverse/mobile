@@ -2,6 +2,7 @@ package build.raft.app.shared
 
 import android.os.Handler
 import android.os.Looper
+import build.raft.app.cmp.host.RaftCmpPageArgs
 import build.raft.app.cmp.host.RaftNativePageOpenGate
 import build.raft.app.cmp.host.RaftNativePageOpenOutcome
 import build.raft.app.core.data.diagnostics.RaftAppLog
@@ -27,7 +28,12 @@ internal class RaftActivityPageOpens<P : Any>(
     private val leaving: (P) -> Boolean = { false },
     private val log: (String) -> Unit = {},
 ) {
-    private class Page<P>(val host: P, val route: Any)
+    private class Page<P>(
+        val host: P,
+        val pageName: String,
+        val pageData: JsonObject,
+        val route: Any,
+    )
 
     private inner class Task {
         val pages = mutableListOf<Page<P>>()
@@ -43,6 +49,13 @@ internal class RaftActivityPageOpens<P : Any>(
 
     /** The route identity of a page (what [open] compares with the task's top page). */
     fun routeOf(pageName: String, pageData: JsonObject): Any = identities.routeOf(pageName, pageData)
+
+    /** The top non-leaving Activity host of [taskId], or null when none is tracked. */
+    fun topHost(taskId: Int): P? = tasks[taskId]?.pages?.lastOrNull { !leaving(it.host) }?.host
+
+    /** Authoritative top non-leaving page of [taskId], or null when none is tracked. */
+    fun topPage(taskId: Int): RaftCmpPageArgs? =
+        tasks[taskId]?.pages?.lastOrNull { !leaving(it.host) }?.let { RaftCmpPageArgs(it.pageName, it.pageData) }
 
     /**
      * Pushes [pageName] in [taskId] through [start], or drops / queues it. [pageData] is what the
@@ -68,7 +81,20 @@ internal class RaftActivityPageOpens<P : Any>(
     fun created(host: P, taskId: Int, pageName: String, pageData: JsonObject) {
         val task = task(taskId)
         task.pages.removeAll { it.host == host }
-        task.pages += Page(host, routeOf(pageName, pageData))
+        task.pages += Page(host, pageName, pageData, routeOf(pageName, pageData))
+    }
+
+    /**
+     * [host] was brought to the front of [taskId] (`onNewIntent` with `FLAG_ACTIVITY_CLEAR_TOP`
+     * or `onResume`): drop any entries still recorded above it whose deferred `onDestroy` has not
+     * run yet so [topPage] sees [host] synchronously.
+     */
+    fun broughtToFront(host: P, taskId: Int) {
+        val task = tasks[taskId] ?: return
+        val index = task.pages.indexOfLast { it.host == host }
+        if (index < 0 || index == task.pages.lastIndex) return
+        task.pages.subList(index + 1, task.pages.size).clear()
+        task.gate.transitionEnded()
     }
 
     /** [host]'s enter animation completed: a push into its task has ended. */
