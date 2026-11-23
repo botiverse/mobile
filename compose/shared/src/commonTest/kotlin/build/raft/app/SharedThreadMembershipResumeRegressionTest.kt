@@ -318,26 +318,25 @@ class SharedThreadMembershipResumeRegressionTest {
     fun staleNegativeHomeCandidateOnKeptResolvedAccessDoesNotFlashJoin() = runTest {
         val route = basePayload()
         val channelId = requireNotNull(route.sourceThreadId)
-        val releaseCanonical = CompletableDeferred<Unit>()
+        val homeStarted = CompletableDeferred<Unit>()
         val releaseHome = CompletableDeferred<Unit>()
+        val lookupDeadline = CompletableDeferred<Unit>()
         val repository =
             FakeConversationRepository(
                 threadResult =
                     DataResult.Content(
                         threadSnapshot(
                             threadId = channelId,
-                            body = "fresh body",
+                            body = "unknown-access body",
                             conversation =
                                 conversationSummary(channelId).copy(
-                                    joined = true,
-                                    membershipKnown = true,
-                                    permissions = ConversationPermissions(canSend = true, canAttach = true, canCreateTask = true),
+                                    joined = false,
+                                    membershipKnown = false,
+                                    permissions = ConversationPermissions(canSend = false, canAttach = false, canCreateTask = false),
                                 ),
                         )
                     )
-            ).apply {
-                releaseGetThread = releaseCanonical
-            }
+            )
         val dataSource =
             testSharedThreadDataSource(
                 storeScope = backgroundScope,
@@ -348,43 +347,35 @@ class SharedThreadMembershipResumeRegressionTest {
                 channelRepository =
                     FakeChannelRepository(
                         homeResult = {
+                            homeStarted.complete(Unit)
                             releaseHome.await()
                             DataResult.Content(unjoinedHomeSnapshot())
                         },
                     ),
             )
-        // Warm a read-only cached joined frame AND remembered resolved access so reopening starts in
-        // keptResolvedAccess (accessResolution=Resolved, canonicalAccessResolved=false, writeActionsEnabled=false)
-        // and refreshOnce launches initial access resolution via retryingReadOnlyParentAccess.
-        dataSource.cachePayloadForTest(
-            contentPayloadForRoute(route, "cached body").copy(
-                joined = true,
-                canSend = false,
-                composer = route.composer.copy(enabled = false),
-            )
-        )
-        val resolvedProvenance = assertNotNull(dataSource.captureReplyCacheProducerContext()?.provenance)
-        dataSource.rememberResolvedThreadAccess(channelId, resolvedProvenance, resolved = true)
 
         val scope = CoroutineScope(SupervisorJob() + StandardTestDispatcher(testScheduler))
-        val store = SharedThreadStore(dataSource = dataSource, scope = scope)
+        val store =
+            SharedThreadStore(
+                dataSource = dataSource,
+                scope = scope,
+                initialAccessLookupDeadline = { lookupDeadline.await() },
+            )
         store.dispatch(SharedThreadIntent.Start(route))
-        runCurrent()
-
-        // Before refreshOnce launches initial access resolution, keptResolvedAccess holds Resolved + joined=true.
-        val keptState = store.state.value
-        assertEquals(ThreadAccessResolution.Resolved, keptState.accessResolution, "expected keptResolvedAccess=Resolved; state=$keptState")
-        assertFalse(keptState.canonicalAccessResolved, "expected canonicalAccessResolved=false; state=$keptState")
-        assertTrue(keptState.payload.joined, "expected cached joined=true before Home lookup; state=$keptState")
-        assertFalse(keptState.writeActionsEnabled, "expected read-only writeActionsEnabled=false before refresh; state=$keptState")
-
-        // Advance past SharedThreadFirstFrameDelayMillis (16ms) so refreshOnce launches initial
-        // access resolution (retryingReadOnlyParentAccess), without hitting the 1000ms lookup timeout.
         advanceTimeBy(50)
         runCurrent()
 
-        // Home lookup returns a stale unjoined row while canonical fetch is still in flight:
-        // must NOT keep Resolved with joined=false (which would flash Join).
+        // First canonical load returned renderable content without attested membership
+        // (canonicalAccessKnown=false): accessResolution=Resolved, canonicalAccessResolved=false,
+        // writeActionsEnabled=false, while the initial Home lookup is still in flight.
+        assertTrue(homeStarted.isCompleted, "expected initial Home access lookup to be in flight")
+        val unresolvedState = store.state.value
+        assertEquals(ThreadAccessResolution.Resolved, unresolvedState.accessResolution, "state=$unresolvedState")
+        assertFalse(unresolvedState.canonicalAccessResolved, "state=$unresolvedState")
+        assertFalse(unresolvedState.writeActionsEnabled, "state=$unresolvedState")
+
+        // Home lookup returns a stale unjoined row while canonical membership is still unattested:
+        // must transition to Loading instead of keeping Resolved with joined=false (which would flash Join).
         releaseHome.complete(Unit)
         runCurrent()
         val waitingState = store.state.value
@@ -402,8 +393,21 @@ class SharedThreadMembershipResumeRegressionTest {
             "expected Home lookup to complete before asserting Loading; state=$waitingState",
         )
 
-        // Canonical fetch confirms membership -> composer mounts cleanly.
-        releaseCanonical.complete(Unit)
+        // Subsequent canonical refresh attests membership -> composer mounts cleanly.
+        repository.threadResult =
+            DataResult.Content(
+                threadSnapshot(
+                    threadId = channelId,
+                    body = "fresh body",
+                    conversation =
+                        conversationSummary(channelId).copy(
+                            joined = true,
+                            membershipKnown = true,
+                            permissions = ConversationPermissions(canSend = true, canAttach = true, canCreateTask = true),
+                        ),
+                )
+            )
+        store.dispatch(SharedThreadIntent.Refresh)
         advanceTimeBy(500)
         runCurrent()
         val resolvedState = store.state.value
