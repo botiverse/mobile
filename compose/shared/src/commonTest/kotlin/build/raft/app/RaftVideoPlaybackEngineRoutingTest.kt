@@ -85,6 +85,13 @@ class RaftVideoPlaybackEngineRoutingTest {
             Res.string.file_preview_video_format_unplayable_ios.desc(),
             raftFilePreviewUnsupportedFileMessage(webm, downloadable = true, videoProfile = ios)
         )
-        assertTrue(raftFilePreviewUnplayableVideoOffersOpenInOtherApp(webm, RaftFilePreviewDownloadUiState.NotDownloaded, ios))
+        assertTrue(
+            raftFilePreviewFallbackOffersOpenInOtherApp(
+                hasOpenInOtherApp = true,
+                hasPrimaryDownloadAction = true,
+                downloadState = RaftFilePreviewDownloadUiState.NotDownloaded,
+                hasSavedFileActions = false
+            )
+        )
     }
 }

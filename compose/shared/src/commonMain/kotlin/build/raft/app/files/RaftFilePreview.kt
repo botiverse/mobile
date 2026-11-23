@@ -3082,36 +3082,6 @@ private fun RaftFilePreviewStandalonePageContent() {
             }
         }
     }
-    /** task #360: hand the short-lived disposition=attachment URL to the system browser, so
-     * very large files (or files the in-app exporter cannot materialize) can still be fetched
-     * outside the app. Read-only: no download state, MediaStore write, or upload-chain change. */
-    fun requestExternalBrowserOpen() {
-        if (exportInProgress || !raftFilePreviewCanStartExternalOperation(downloadStatus)) return
-        val requestPayload = payload
-        externalOperation = "open_browser"
-        downloadMessage = ""
-        coroutineScope.launch(start = CoroutineStart.LAZY) {
-            val url =
-                try {
-                    resolveRemoteExternalUrl(requestPayload)
-                } catch (cancellation: CancellationException) {
-                    throw cancellation
-                } catch (_: Throwable) {
-                    null
-                }
-            if (url.isNullOrBlank()) {
-                downloadStatus = "failed"
-                downloadMessage = downloadFailed
-                externalOperation = ""
-            } else {
-                bridge.openUrl(url)
-                downloadStatus = "idle"
-                downloadMessage = ""
-                externalOperation = ""
-            }
-        }.start()
-    }
-
     // PDF preview: download the file into the attachment cache (the same private copy Open uses),
     // with progress, then hand the local path to the platform viewer. Leaving the page cancels
     // the download through the bridge call's cancellation.
@@ -4525,15 +4495,6 @@ private fun RaftFilePreviewStandalonePageContent() {
                         } else {
                             null
                         },
-                    onExternalBrowserOpen =
-                        if (
-                            payload.source == RaftFilePreviewSourceThreadAttachment &&
-                            payload.attachmentId.isNotBlank()
-                        ) {
-                            ::requestExternalBrowserOpen
-                        } else {
-                            null
-                        },
                     downloadStatusLabel =
                         when (shownDownloadStatus) {
                             "downloading", "paused" ->
@@ -4582,7 +4543,7 @@ private fun RaftFilePreviewStandalonePageContent() {
                     onImageDecoded = { attachmentId, imageUrl ->
                         previewImageDecodeTracker.onImageDecoded(attachmentId, imageUrl)?.let(bridge::log)
                     },
-                    onPdfOpenInOtherApp = if (canOpenWith) ({ requestExternalOpen() }) else null,
+                    onOpenInOtherApp = if (canOpenWith) ({ requestExternalOpen() }) else null,
                     onRetryLoad =
                         if (payload.canRetryPreviewLoad()) {
                             { payload = payload.withPreviewReload() }
@@ -8399,7 +8360,7 @@ internal fun raftFilePreviewRawFallbackShowsDownload(
 ): Boolean =
     serverAnswer is RaftFilePreviewServerAnswer.Unsupported && !raftFilePreviewRawFetchIsLoadError(httpCode)
 
-/** The file page's no-preview card (Download, Open in browser), as web downloads instead. */
+/** The file page's no-preview card (Download, Open in another app), as web downloads instead. */
 internal fun RaftFilePreviewPayload.withNoPreviewDownload(
     reason: String = RaftFilePreviewNoPreviewReasonUnsupported
 ): RaftFilePreviewPayload =
@@ -9299,7 +9260,6 @@ internal fun RaftFilePreviewPayloadContent(
     onResumeDownload: (() -> Unit)? = null,
     onStopDownload: (() -> Unit)? = null,
     onImageGalleryIndexChange: ((Int) -> Unit)? = null,
-    onExternalBrowserOpen: (() -> Unit)? = null,
     /** Share the downloaded file (system share sheet); offered on the file page once downloaded. */
     onShare: (() -> Unit)? = null,
     /**
@@ -9321,10 +9281,10 @@ internal fun RaftFilePreviewPayloadContent(
     /** Primary image URL finished decoding in Coil (#wg-mobile-feedback:#267). */
     onImageDecoded: ((attachmentId: String, imageUrl: String) -> Unit)? = null,
     /**
-     * Hand the file to another app (the Open with action): the PDF failure fallback, and the
-     * download card of a video this platform cannot play.
+     * Hand the file to another app via the native open-with / share sheet: the PDF failure
+     * fallback and the fallback cards when no in-app preview is shown.
      */
-    onPdfOpenInOtherApp: (() -> Unit)? = null,
+    onOpenInOtherApp: (() -> Unit)? = null,
     /** A load error (network, expired link, file gone): Retry loads the preview again. */
     onRetryLoad: (() -> Unit)? = null,
     /** The player profile whose unplayable videos get a note on the download card (tests pin it). */
@@ -9443,7 +9403,15 @@ internal fun RaftFilePreviewPayloadContent(
                             }
                         }
                     }
-                pagePayload.kind == "image" ->
+                pagePayload.kind == "image" -> {
+                    val offersOpenInOtherApp =
+                        selected &&
+                            raftFilePreviewFallbackOffersOpenInOtherApp(
+                                hasOpenInOtherApp = onOpenInOtherApp != null,
+                                hasPrimaryDownloadAction = onDownload != null,
+                                downloadState = downloadState,
+                                hasSavedFileActions = false
+                            )
                     RaftFilePreviewGenericCard(
                         iconName = RaftLucideIconName.Image,
                         name = pagePayload.name.ifBlank { pagePayload.path },
@@ -9456,12 +9424,14 @@ internal fun RaftFilePreviewPayloadContent(
                         showProgress = selected && downloadInProgress,
                         downloadView = downloadView,
                         secondaryActionLabel =
-                            onExternalBrowserOpen
-                                ?.takeIf { selected }
-                                ?.let { stringResource(Res.string.file_preview_action_open_in_browser) },
+                            if (offersOpenInOtherApp) {
+                                stringResource(Res.string.file_preview_action_open_in_other_app)
+                            } else {
+                                null
+                            },
                         secondaryActionIcon = RaftLucideIconName.ExternalLink,
-                        secondaryActionEnabled = !downloadInProgress,
-                        onSecondaryAction = onExternalBrowserOpen?.takeIf { selected },
+                        secondaryActionEnabled = !downloadInProgress && primaryActionEnabled,
+                        onSecondaryAction = onOpenInOtherApp.takeIf { offersOpenInOtherApp },
                         actionLabel =
                             onDownload
                                 ?.takeIf { selected && !downloadInProgress }
@@ -9479,6 +9449,7 @@ internal fun RaftFilePreviewPayloadContent(
                         onStopDownload = onStopDownload,
                         modifier = Modifier.fillMaxSize().padding(RaftAppSpacing.Md)
                     )
+                }
                 else ->
                     RaftFilePreviewDownloadStatusOverlay(
                         statusLabel = downloadStatusLabel.takeIf { selected },
@@ -9553,16 +9524,27 @@ internal fun RaftFilePreviewPayloadContent(
                 if (csvCarrier != null) {
                     RaftFilePreviewCsvPanel(csv = csvCarrier, modifier = Modifier.fillMaxSize())
                 } else {
+                    val offersOpenInOtherApp =
+                        raftFilePreviewFallbackOffersOpenInOtherApp(
+                            hasOpenInOtherApp = onOpenInOtherApp != null,
+                            hasPrimaryDownloadAction = false,
+                            downloadState = downloadState,
+                            hasSavedFileActions = false
+                        )
                     RaftFilePreviewGenericCard(
                         iconName = RaftLucideIconName.FileSpreadsheet,
                         name = payload.name.ifBlank { payload.path },
                         meta = payload.meta,
                         message = payload.localizedMessage().ifBlank { stringResource(Res.string.file_preview_no_preview) },
                         secondaryActionLabel =
-                            onExternalBrowserOpen?.let { stringResource(Res.string.file_preview_action_open_in_browser) },
+                            if (offersOpenInOtherApp) {
+                                stringResource(Res.string.file_preview_action_open_in_other_app)
+                            } else {
+                                null
+                            },
                         secondaryActionIcon = RaftLucideIconName.ExternalLink,
-                        secondaryActionEnabled = !downloadInProgress,
-                        onSecondaryAction = onExternalBrowserOpen,
+                        secondaryActionEnabled = !downloadInProgress && primaryActionEnabled,
+                        onSecondaryAction = onOpenInOtherApp.takeIf { offersOpenInOtherApp },
                         modifier = Modifier.fillMaxSize()
                     )
                 }
@@ -9588,16 +9570,27 @@ internal fun RaftFilePreviewPayloadContent(
                         modifier = Modifier.fillMaxSize()
                     )
                 } else {
+                    val offersOpenInOtherApp =
+                        raftFilePreviewFallbackOffersOpenInOtherApp(
+                            hasOpenInOtherApp = onOpenInOtherApp != null,
+                            hasPrimaryDownloadAction = false,
+                            downloadState = downloadState,
+                            hasSavedFileActions = false
+                        )
                     RaftFilePreviewGenericCard(
                         iconName = RaftLucideIconName.FileSpreadsheet,
                         name = payload.name.ifBlank { payload.path },
                         meta = payload.meta,
                         message = payload.localizedMessage().ifBlank { stringResource(Res.string.file_preview_no_preview) },
                         secondaryActionLabel =
-                            onExternalBrowserOpen?.let { stringResource(Res.string.file_preview_action_open_in_browser) },
+                            if (offersOpenInOtherApp) {
+                                stringResource(Res.string.file_preview_action_open_in_other_app)
+                            } else {
+                                null
+                            },
                         secondaryActionIcon = RaftLucideIconName.ExternalLink,
-                        secondaryActionEnabled = !downloadInProgress,
-                        onSecondaryAction = onExternalBrowserOpen,
+                        secondaryActionEnabled = !downloadInProgress && primaryActionEnabled,
+                        onSecondaryAction = onOpenInOtherApp.takeIf { offersOpenInOtherApp },
                         modifier = Modifier.fillMaxSize()
                     )
                 }
@@ -9696,7 +9689,7 @@ internal fun RaftFilePreviewPayloadContent(
                     state = pdfState,
                     onRenderError = onPdfRenderError,
                     onRetry = onPdfRetry,
-                    onOpenInOtherApp = onPdfOpenInOtherApp,
+                    onOpenInOtherApp = onOpenInOtherApp,
                     openInOtherAppEnabled = primaryActionEnabled,
                     modifier = Modifier.fillMaxSize()
                 )
@@ -9725,12 +9718,13 @@ internal fun RaftFilePreviewPayloadContent(
                 )
             }
         else -> {
-            // An unplayable video (WebM on iPhone) offers Download and Open in another app (the
-            // system share sheet / open-in), not Open in browser: the browser cannot play it either.
-            val opensUnplayableVideoInOtherApp =
-                onPdfOpenInOtherApp != null &&
-                    savedFileActions == null &&
-                    raftFilePreviewUnplayableVideoOffersOpenInOtherApp(payload, downloadState, videoProfile)
+            val offersOpenInOtherApp =
+                raftFilePreviewFallbackOffersOpenInOtherApp(
+                    hasOpenInOtherApp = onOpenInOtherApp != null,
+                    hasPrimaryDownloadAction = onDownload != null,
+                    downloadState = downloadState,
+                    hasSavedFileActions = savedFileActions != null
+                )
             RaftFilePreviewGenericCard(
                 iconName = raftFilePreviewFileIconName(payload),
                 name = payload.name.ifBlank { payload.path.ifBlank { fallbackFile } },
@@ -9749,14 +9743,14 @@ internal fun RaftFilePreviewPayloadContent(
                 showProgress = downloadInProgress,
                 downloadView = downloadView,
                 secondaryActionLabel =
-                    if (opensUnplayableVideoInOtherApp) {
+                    if (offersOpenInOtherApp) {
                         stringResource(Res.string.file_preview_action_open_in_other_app)
                     } else {
-                        onExternalBrowserOpen?.let { stringResource(Res.string.file_preview_action_open_in_browser) }
+                        null
                     },
                 secondaryActionIcon = RaftLucideIconName.ExternalLink,
-                secondaryActionEnabled = !downloadInProgress && (!opensUnplayableVideoInOtherApp || primaryActionEnabled),
-                onSecondaryAction = if (opensUnplayableVideoInOtherApp) onPdfOpenInOtherApp else onExternalBrowserOpen,
+                secondaryActionEnabled = !downloadInProgress && primaryActionEnabled,
+                onSecondaryAction = onOpenInOtherApp.takeIf { offersOpenInOtherApp },
                 actionLabel =
                     savedFileActions?.revealLabel?.takeIf { !downloadInProgress }
                         ?: onDownload
@@ -11580,16 +11574,29 @@ internal fun raftFilePreviewUnplayableVideoNote(
 }
 
 /**
- * Whether the download card of an unplayable video offers Open in another app next to Download.
- * Once the file is downloaded the card's own Open and Share take over.
+ * Whether a file-preview fallback card offers a secondary "Open in another app" button.
+ *
+ * Suppresses a duplicate button when the card already exposes an equivalent open action:
+ * - [hasSavedFileActions] (Desktop saved copy already shows Reveal + Open)
+ * - [hasPrimaryDownloadAction] when [downloadState] is [RaftFilePreviewDownloadUiState.Downloaded]
+ *   (the primary button is already Open / Install calling the same external-open path) or null
+ *   (public download state is still being probed, matching the hidden primary action).
  */
-internal fun raftFilePreviewUnplayableVideoOffersOpenInOtherApp(
-    payload: RaftFilePreviewPayload,
+internal fun raftFilePreviewFallbackOffersOpenInOtherApp(
+    hasOpenInOtherApp: Boolean,
+    hasPrimaryDownloadAction: Boolean,
     downloadState: RaftFilePreviewDownloadUiState?,
-    profile: RaftVideoPlayerFormatProfile? = raftPlatformVideoPlayerFormatProfile()
-): Boolean =
-    downloadState != RaftFilePreviewDownloadUiState.Downloaded &&
-        raftFilePreviewUnplayableVideoNote(payload, profile) != null
+    hasSavedFileActions: Boolean = false
+): Boolean {
+    if (!hasOpenInOtherApp || hasSavedFileActions) return false
+    if (
+        hasPrimaryDownloadAction &&
+        (downloadState == null || downloadState == RaftFilePreviewDownloadUiState.Downloaded)
+    ) {
+        return false
+    }
+    return true
+}
 
 internal fun raftFilePreviewUnsupportedFileMessage(
     payload: RaftFilePreviewPayload,

@@ -20,9 +20,9 @@ import org.robolectric.annotation.GraphicsMode
 /**
  * The file page an attachment without an in-app preview opens to (task #75: a tap on an apk in
  * the conversation opens this page; the download runs here). Three states, light and dark:
- * idle (Download), downloading (progress card with percent, bytes, speed, Pause / Cancel) and
- * done (Install for an apk, Share, Open in browser); and on Compose 版 once saved (Show in Finder,
- * Open, Open in browser). Rendered through the page's own scaffold
+ * idle (Download, Open in another app), downloading (progress card with percent, bytes, speed,
+ * Pause / Cancel) and done (Install for an apk, Share); and on Compose 版 once saved (Show in
+ * Finder, Open). Rendered through the page's own scaffold
  * and [RaftFilePreviewPayloadContent]; verify / record as [RaftRobolectricScreenshot].
  */
 @RunWith(RobolectricTestRunner::class)
@@ -121,7 +121,7 @@ private fun FileDetailPage(state: FileDetailState) {
             onPauseDownload = {},
             onResumeDownload = {},
             onStopDownload = {},
-            onExternalBrowserOpen = {},
+            onOpenInOtherApp = {},
             onShare =
                 if (raftFilePreviewShowsShareAction(canOpenWith = true, downloadState = downloadState)) ({}) else null,
             modifier = Modifier.fillMaxSize()

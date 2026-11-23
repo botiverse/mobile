@@ -38,24 +38,67 @@ class RaftFilePreviewUnplayableVideoNoteTest {
     }
 
     @Test
-    fun anUnplayableVideoOffersOpenInAnotherAppUntilItIsDownloaded() {
-        val webm = attachment("screen-recording.webm", "video/webm")
-        val ios = RaftVideoPlayerFormatProfile.IosAvPlayer
-
-        assertTrue(raftFilePreviewUnplayableVideoOffersOpenInOtherApp(webm, RaftFilePreviewDownloadUiState.NotDownloaded, ios))
-        assertTrue(raftFilePreviewUnplayableVideoOffersOpenInOtherApp(webm, RaftFilePreviewDownloadUiState.Downloading, ios))
-        // Downloaded: the card's own Open and Share take over.
-        assertFalse(raftFilePreviewUnplayableVideoOffersOpenInOtherApp(webm, RaftFilePreviewDownloadUiState.Downloaded, ios))
-        // Android plays it; a playable MP4 never reaches the card.
+    fun fallbackCardOffersOpenInAnotherAppWithoutDuplicatingExistingOpenActions() {
+        assertTrue(
+            raftFilePreviewFallbackOffersOpenInOtherApp(
+                hasOpenInOtherApp = true,
+                hasPrimaryDownloadAction = true,
+                downloadState = RaftFilePreviewDownloadUiState.NotDownloaded
+            )
+        )
+        assertTrue(
+            raftFilePreviewFallbackOffersOpenInOtherApp(
+                hasOpenInOtherApp = true,
+                hasPrimaryDownloadAction = true,
+                downloadState = RaftFilePreviewDownloadUiState.Downloading
+            )
+        )
+        // Downloaded or probing: primary Open/Install takes over (or is still probing), so hide duplicate.
         assertFalse(
-            raftFilePreviewUnplayableVideoOffersOpenInOtherApp(
-                webm,
-                RaftFilePreviewDownloadUiState.NotDownloaded,
-                RaftVideoPlayerFormatProfile.AndroidMedia3
+            raftFilePreviewFallbackOffersOpenInOtherApp(
+                hasOpenInOtherApp = true,
+                hasPrimaryDownloadAction = true,
+                downloadState = RaftFilePreviewDownloadUiState.Downloaded
             )
         )
         assertFalse(
-            raftFilePreviewUnplayableVideoOffersOpenInOtherApp(attachment("clip.mp4", "video/mp4"), RaftFilePreviewDownloadUiState.NotDownloaded, ios)
+            raftFilePreviewFallbackOffersOpenInOtherApp(
+                hasOpenInOtherApp = true,
+                hasPrimaryDownloadAction = true,
+                downloadState = null
+            )
+        )
+        // Desktop saved-file card already shows Show in Finder / Open.
+        assertFalse(
+            raftFilePreviewFallbackOffersOpenInOtherApp(
+                hasOpenInOtherApp = true,
+                hasPrimaryDownloadAction = true,
+                downloadState = RaftFilePreviewDownloadUiState.NotDownloaded,
+                hasSavedFileActions = true
+            )
+        )
+        // No open-with handler available.
+        assertFalse(
+            raftFilePreviewFallbackOffersOpenInOtherApp(
+                hasOpenInOtherApp = false,
+                hasPrimaryDownloadAction = true,
+                downloadState = RaftFilePreviewDownloadUiState.NotDownloaded
+            )
+        )
+        // Cards without a primary download/open button (e.g. CSV / XLSX fallback) still offer Open in another app.
+        assertTrue(
+            raftFilePreviewFallbackOffersOpenInOtherApp(
+                hasOpenInOtherApp = true,
+                hasPrimaryDownloadAction = false,
+                downloadState = RaftFilePreviewDownloadUiState.Downloaded
+            )
+        )
+        assertFalse(
+            raftFilePreviewFallbackOffersOpenInOtherApp(
+                hasOpenInOtherApp = false,
+                hasPrimaryDownloadAction = false,
+                downloadState = RaftFilePreviewDownloadUiState.NotDownloaded
+            )
         )
     }
 }
