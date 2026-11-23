@@ -654,6 +654,282 @@ class ComputersLiveRefreshCoordinatorTest {
             listStore.clear()
         }
 
+    @Test
+    fun afterDropReconnectDelaysMachinesRefreshByJitterAndCoalescesPendingBursts() =
+        runTest {
+            val api = ScriptedMachinesApi()
+            api.statusByServer["server-1"] = "offline"
+            val computersStore =
+                SharedComputersStore(
+                    computersApiClient = RaftComputersApiClient(api),
+                    scope = backgroundScope,
+                )
+            val sessionStore = InMemoryRaftAuthSessionStore(settingsStoreSampleSession())
+            val listStore =
+                SharedSettingsStore(
+                    dataSource = SharedSettingsDataSource(sessionStore, computersSource = computersStore),
+                    scope = backgroundScope,
+                    standaloneNavigation = true,
+                )
+            listStore.accept(SharedSettingsIntent.LoadPageContent(SharedSettingsDestination.Computers))
+            runCurrent()
+            assertFalse(listComputer(listStore).online)
+
+            var clock = 1_000_000L
+            val timeSource = TestTimeSource()
+            val coalescer = RaftRecentServerRefreshCoalescer(scope = backgroundScope, timeSource = timeSource)
+            val freshness = MutableSharedFlow<RaftFreshnessEvent>(extraBufferCapacity = 8)
+            var jitterDraws = 0
+            val coordinator =
+                ComputersLiveRefreshCoordinator(
+                    scope = backgroundScope,
+                    loadedOrObservedServerIds = { computersStore.loadedOrObservedServerIds() },
+                    hasLoadedOrObservedServer = computersStore::hasLoadedOrObservedServer,
+                    hasActiveObservers = computersStore::hasActiveObservers,
+                    refreshMachines = { serverId, reason, window, boundary ->
+                        coalescer.runOrCoalesceWithResult(
+                            serverId = serverId,
+                            reason = reason,
+                            coalesceFreshWithin = window,
+                            notStartedBefore = boundary,
+                        ) {
+                            computersStore.reloadMachinesForSyncSucceeded(serverId)
+                        }.succeeded
+                    },
+                    syncChangesPullAllowed = { false },
+                    nowMillis = { clock },
+                    timeSource = timeSource,
+                    reconnectJitterMillis = {
+                        jitterDraws += 1
+                        12_000L
+                    },
+                )
+            val freshnessJob = coordinator.startFreshness(freshness)
+            runCurrent()
+
+            api.statusByServer["server-1"] = "online"
+            val callsBeforeReconnect = api.calls.count { it == "server-1" }
+            freshness.tryEmit(
+                RaftFreshnessEvent(
+                    trigger = RaftFreshnessTrigger.Reconnect,
+                    serverId = "server-1",
+                    afterDrop = true,
+                ),
+            )
+            runCurrent()
+            assertEquals(callsBeforeReconnect, api.calls.count { it == "server-1" }, "afterDrop reconnect must wait for jitter")
+            assertEquals(1, jitterDraws)
+
+            // Halfway through the jitter window, a second afterDrop reconnect coalesces into the same timer.
+            advanceTimeBy(6_000L)
+            clock += 6_000L
+            timeSource += 6_000.milliseconds
+            runCurrent()
+            freshness.tryEmit(
+                RaftFreshnessEvent(
+                    trigger = RaftFreshnessTrigger.Reconnect,
+                    serverId = "server-1",
+                    afterDrop = true,
+                ),
+            )
+            runCurrent()
+            assertEquals(callsBeforeReconnect, api.calls.count { it == "server-1" })
+            assertEquals(1, jitterDraws, "coalesced afterDrop reconnect must reuse pending jitter timer")
+
+            // Once the 12 s jitter elapses, exactly one /machines fetch runs and flips the list Online.
+            advanceTimeBy(6_000L)
+            clock += 6_000L
+            timeSource += 6_000.milliseconds
+            runCurrent()
+            assertEquals(callsBeforeReconnect + 1, api.calls.count { it == "server-1" })
+            assertTrue(listComputer(listStore).online)
+
+            freshnessJob.cancel()
+            listStore.clear()
+        }
+
+    @Test
+    fun afterDropReconnectCancelsPendingJitterOnImmediateTriggerOrExternalForeground() =
+        runTest {
+            val api = ScriptedMachinesApi()
+            api.statusByServer["server-1"] = "offline"
+            val computersStore =
+                SharedComputersStore(
+                    computersApiClient = RaftComputersApiClient(api),
+                    scope = backgroundScope,
+                )
+            val sessionStore = InMemoryRaftAuthSessionStore(settingsStoreSampleSession())
+            val listStore =
+                SharedSettingsStore(
+                    dataSource = SharedSettingsDataSource(sessionStore, computersSource = computersStore),
+                    scope = backgroundScope,
+                    standaloneNavigation = true,
+                )
+            listStore.accept(SharedSettingsIntent.LoadPageContent(SharedSettingsDestination.Computers))
+            runCurrent()
+
+            var clock = 1_000_000L
+            val timeSource = TestTimeSource()
+            val freshness = MutableSharedFlow<RaftFreshnessEvent>(extraBufferCapacity = 8)
+            val refreshReasons = mutableListOf<String>()
+            val coordinator =
+                ComputersLiveRefreshCoordinator(
+                    scope = backgroundScope,
+                    loadedOrObservedServerIds = { computersStore.loadedOrObservedServerIds() },
+                    hasLoadedOrObservedServer = computersStore::hasLoadedOrObservedServer,
+                    hasActiveObservers = computersStore::hasActiveObservers,
+                    refreshMachines = { _, reason, _, _ ->
+                        refreshReasons += reason
+                        true
+                    },
+                    syncChangesPullAllowed = { false },
+                    nowMillis = { clock },
+                    timeSource = timeSource,
+                    reconnectJitterMillis = { 15_000L },
+                )
+            val freshnessJob = coordinator.startFreshness(freshness)
+            runCurrent()
+
+            // 1. Immediate NetworkRestored cancels pending afterDrop reconnect and runs right away.
+            freshness.tryEmit(
+                RaftFreshnessEvent(
+                    trigger = RaftFreshnessTrigger.Reconnect,
+                    serverId = "server-1",
+                    afterDrop = true,
+                ),
+            )
+            runCurrent()
+            assertEquals(emptyList(), refreshReasons)
+
+            freshness.tryEmit(RaftFreshnessEvent(RaftFreshnessTrigger.NetworkRestored))
+            runCurrent()
+            assertEquals(listOf("freshness_network"), refreshReasons)
+
+            // Advancing past the original 15 s jitter must NOT fire a second delayed reconnect.
+            advanceTimeBy(20_000L)
+            clock += 20_000L
+            timeSource += 20_000.milliseconds
+            runCurrent()
+            assertEquals(listOf("freshness_network"), refreshReasons)
+
+            // 2. Non-afterDrop Reconnect runs immediately with no jitter wait.
+            freshness.tryEmit(
+                RaftFreshnessEvent(
+                    trigger = RaftFreshnessTrigger.Reconnect,
+                    serverId = "server-1",
+                    afterDrop = false,
+                ),
+            )
+            runCurrent()
+            assertEquals(listOf("freshness_network", "freshness_reconnect"), refreshReasons)
+
+            // 3. External foreground refresh cancels a pending afterDrop reconnect jitter.
+            clock += RAFT_FRESHNESS_COALESCE_MILLIS + 1
+            timeSource += (RAFT_FRESHNESS_COALESCE_MILLIS + 1).milliseconds
+            freshness.tryEmit(
+                RaftFreshnessEvent(
+                    trigger = RaftFreshnessTrigger.Reconnect,
+                    serverId = "server-1",
+                    afterDrop = true,
+                ),
+            )
+            runCurrent()
+            val token = coordinator.onExternalForegroundRefreshStarted("server-1")
+            coordinator.onExternalForegroundRefreshCompleted("server-1", token, succeeded = true)
+            advanceTimeBy(20_000L)
+            clock += 20_000L
+            timeSource += 20_000.milliseconds
+            runCurrent()
+            assertEquals(
+                listOf("freshness_network", "freshness_reconnect"),
+                refreshReasons,
+                "external foreground refresh must cancel pending afterDrop reconnect jitter",
+            )
+
+            freshnessJob.cancel()
+            listStore.clear()
+        }
+
+    @Test
+    fun afterDropReconnectSkipsFetchWhenObserverLeavesOrCoordinatorCancelsDuringJitter() =
+        runTest {
+            val api = ScriptedMachinesApi()
+            val computersStore =
+                SharedComputersStore(
+                    computersApiClient = RaftComputersApiClient(api),
+                    scope = backgroundScope,
+                )
+            val sessionStore = InMemoryRaftAuthSessionStore(settingsStoreSampleSession())
+            val listStore =
+                SharedSettingsStore(
+                    dataSource = SharedSettingsDataSource(sessionStore, computersSource = computersStore),
+                    scope = backgroundScope,
+                    standaloneNavigation = true,
+                )
+            listStore.accept(SharedSettingsIntent.LoadPageContent(SharedSettingsDestination.Computers))
+            runCurrent()
+
+            val freshness = MutableSharedFlow<RaftFreshnessEvent>(extraBufferCapacity = 8)
+            var refreshCalls = 0
+            val coordinator =
+                ComputersLiveRefreshCoordinator(
+                    scope = backgroundScope,
+                    loadedOrObservedServerIds = { computersStore.loadedOrObservedServerIds() },
+                    hasLoadedOrObservedServer = computersStore::hasLoadedOrObservedServer,
+                    hasActiveObservers = computersStore::hasActiveObservers,
+                    refreshMachines = { _, _, _, _ ->
+                        refreshCalls += 1
+                        true
+                    },
+                    syncChangesPullAllowed = { false },
+                    reconnectJitterMillis = { 10_000L },
+                )
+            val freshnessJob = coordinator.startFreshness(freshness)
+            runCurrent()
+
+            // Leave Computers page while jitter is pending -> no /machines fetch after delay.
+            freshness.tryEmit(
+                RaftFreshnessEvent(
+                    trigger = RaftFreshnessTrigger.Reconnect,
+                    serverId = "server-1",
+                    afterDrop = true,
+                ),
+            )
+            runCurrent()
+            listStore.clear()
+            runCurrent()
+            assertFalse(computersStore.hasActiveObservers("server-1"))
+
+            advanceTimeBy(15_000L)
+            runCurrent()
+            assertEquals(0, refreshCalls, "must skip /machines if Computers observer left during jitter")
+
+            // Re-open Computers page, schedule afterDrop jitter, then cancel(serverId) during jitter.
+            val listStore2 =
+                SharedSettingsStore(
+                    dataSource = SharedSettingsDataSource(sessionStore, computersSource = computersStore),
+                    scope = backgroundScope,
+                    standaloneNavigation = true,
+                )
+            listStore2.accept(SharedSettingsIntent.LoadPageContent(SharedSettingsDestination.Computers))
+            runCurrent()
+            freshness.tryEmit(
+                RaftFreshnessEvent(
+                    trigger = RaftFreshnessTrigger.Reconnect,
+                    serverId = "server-1",
+                    afterDrop = true,
+                ),
+            )
+            runCurrent()
+            coordinator.cancel("server-1")
+            advanceTimeBy(15_000L)
+            runCurrent()
+            assertEquals(0, refreshCalls, "cancel(serverId) must cancel pending afterDrop reconnect jitter")
+
+            freshnessJob.cancel()
+            listStore2.clear()
+        }
+
     private class SwitchingAuthSessionStore(
         initial: StoredAuthSession,
         private val inner: InMemoryRaftAuthSessionStore = InMemoryRaftAuthSessionStore(initial),

@@ -11,6 +11,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.launch
+import kotlin.random.Random
 import kotlin.time.ComparableTimeMark
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.milliseconds
@@ -61,6 +62,13 @@ internal class ComputersLiveRefreshCoordinator(
     private val freshnessCoalesceWithin: Duration = RAFT_FRESHNESS_COALESCE_MILLIS.milliseconds,
     private val nowMillis: () -> Long = ::raftForegroundGateNowMillis,
     private val timeSource: TimeSource.WithComparableMarks = TimeSource.Monotonic,
+    /**
+     * Random wait applied before an active-observer `/machines` refresh triggered by an automatic
+     * post-drop reconnect ([RaftFreshnessEvent.afterDrop]) when incremental sync is off, spreading
+     * deploy-reconnect bursts over 0–20 s like [RaftReconnectRefetchJitter] and
+     * [SharedChannelAnnouncementStore].
+     */
+    private val reconnectJitterMillis: () -> Long = { reconnectRefetchJitterMillis(Random.Default) },
     private val logger: (String) -> Unit = {},
 ) {
     private val lock = SynchronizedObject()
@@ -73,6 +81,7 @@ internal class ComputersLiveRefreshCoordinator(
     // Freshness gates + active freshness jobs + external foreground flight tokens per server.
     private val freshnessGates = mutableMapOf<String, RaftFreshnessGate>()
     private val activeFreshness = mutableMapOf<String, Job>()
+    private val pendingAfterDropReconnects = mutableMapOf<String, PendingAfterDropReconnect>()
     private val activeExternalTokens = mutableMapOf<String, MutableSet<Any>>()
     private val lastForegroundBoundaryByServerId = mutableMapOf<String, ComparableTimeMark>()
     private val pendingBoundaryByServerId = mutableMapOf<String, ComparableTimeMark>()
@@ -80,6 +89,12 @@ internal class ComputersLiveRefreshCoordinator(
     private data class PendingRealtime(
         val reason: String,
         val eventAt: ComparableTimeMark,
+    )
+
+    private class PendingAfterDropReconnect(
+        var event: RaftFreshnessEvent,
+        var eventAt: ComparableTimeMark,
+        var job: Job? = null,
     )
 
     fun startFreshness(freshness: Flow<RaftFreshnessEvent>): Job =
@@ -179,13 +194,16 @@ internal class ComputersLiveRefreshCoordinator(
         val normalizedServerId = serverId.trim().takeIf { it.isNotBlank() } ?: return null
         if (!hasLoadedOrObservedServer(normalizedServerId)) return null
         val token = Any()
-        synchronized(lock) {
-            lastForegroundBoundaryByServerId[normalizedServerId] = returnBoundary ?: timeSource.markNow()
-            activeExternalTokens.getOrPut(normalizedServerId) { mutableSetOf() }.add(token)
-            if (activeFreshness[normalizedServerId]?.isPendingOrActive() != true) {
-                gateForLocked(normalizedServerId).onExternalCatchUpStarted()
+        val cancelledJitter =
+            synchronized(lock) {
+                lastForegroundBoundaryByServerId[normalizedServerId] = returnBoundary ?: timeSource.markNow()
+                activeExternalTokens.getOrPut(normalizedServerId) { mutableSetOf() }.add(token)
+                if (activeFreshness[normalizedServerId]?.isPendingOrActive() != true) {
+                    gateForLocked(normalizedServerId).onExternalCatchUpStarted()
+                }
+                pendingAfterDropReconnects.remove(normalizedServerId)?.job
             }
-        }
+        cancelledJitter?.cancel()
         return token
     }
 
@@ -256,35 +274,125 @@ internal class ComputersLiveRefreshCoordinator(
             // NetworkRestored still runs through the outcome-tracked gate to recover a failed
             // foreground refresh immediately.
             if (syncOn && event.trigger != RaftFreshnessTrigger.NetworkRestored) return@forEach
-            val toStart =
-                synchronized(lock) {
-                    val gate = gateForLocked(serverId)
-                    val beforeSeq = gate.acceptedEventCount()
-                    val wasInFlight = gate.isInFlight()
-                    val trigger = gate.onEvent(event, serverId, visible = true)
-                    val accepted = gate.acceptedEventCount() != beforeSeq
-                    if (accepted && event.trigger == RaftFreshnessTrigger.Foreground) {
-                        lastForegroundBoundaryByServerId[serverId] = eventAt
-                    }
-                    val eventBoundary =
-                        when (event.trigger) {
-                            RaftFreshnessTrigger.Foreground,
-                            RaftFreshnessTrigger.Reconnect -> eventAt
-                            RaftFreshnessTrigger.NetworkRestored ->
-                                lastForegroundBoundaryByServerId[serverId] ?: eventAt
+            if (event.trigger == RaftFreshnessTrigger.Reconnect && event.afterDrop) {
+                scheduleAfterDropReconnect(serverId, event, eventAt)
+                return@forEach
+            }
+            dispatchFreshnessEventForServer(serverId, event, eventAt)
+        }
+    }
+
+    private fun scheduleAfterDropReconnect(
+        serverId: String,
+        event: RaftFreshnessEvent,
+        eventAt: ComparableTimeMark,
+    ) {
+        val coalesced =
+            synchronized(lock) {
+                val existing = pendingAfterDropReconnects[serverId]
+                if (existing != null && existing.job?.isPendingOrActive() == true) {
+                    existing.event = event
+                    existing.eventAt = eventAt
+                    true
+                } else {
+                    false
+                }
+            }
+        if (coalesced) return
+        val waitMillis = reconnectJitterMillis().coerceIn(0L, RECONNECT_REFETCH_JITTER_MAX_MILLIS)
+        if (waitMillis <= 0L) {
+            dispatchFreshnessEventForServer(serverId, event.copy(afterDrop = false), eventAt)
+            return
+        }
+        val toStart =
+            synchronized(lock) {
+                val existing = pendingAfterDropReconnects[serverId]
+                if (existing != null && existing.job?.isPendingOrActive() == true) {
+                    existing.event = event
+                    existing.eventAt = eventAt
+                    null
+                } else {
+                    val pending = PendingAfterDropReconnect(event = event, eventAt = eventAt)
+                    lateinit var job: Job
+                    job =
+                        scope.launch(start = CoroutineStart.LAZY) {
+                            try {
+                                delay(waitMillis)
+                                val ready =
+                                    synchronized(lock) {
+                                        if (pendingAfterDropReconnects[serverId] === pending) {
+                                            pendingAfterDropReconnects.remove(serverId)
+                                            pending.event to pending.eventAt
+                                        } else {
+                                            null
+                                        }
+                                    } ?: return@launch
+                                coroutineContext.ensureActive()
+                                if (!hasActiveObservers(serverId) || syncChangesPullAllowed(serverId)) return@launch
+                                dispatchFreshnessEventForServer(
+                                    serverId = serverId,
+                                    event = ready.first.copy(afterDrop = false),
+                                    eventAt = ready.second,
+                                )
+                            } finally {
+                                synchronized(lock) {
+                                    if (pendingAfterDropReconnects[serverId] === pending) {
+                                        pendingAfterDropReconnects.remove(serverId)
+                                    }
+                                }
+                            }
                         }
-                    if (accepted && trigger == null && wasInFlight) {
-                        pendingBoundaryByServerId[serverId] = eventBoundary
-                    }
-                    if (trigger == null) {
-                        null
+                    if (job.isPendingOrActive()) {
+                        pending.job = job
+                        pendingAfterDropReconnects[serverId] = pending
+                        job
                     } else {
-                        pendingBoundaryByServerId.remove(serverId)
-                        launchFreshnessLoopLocked(serverId, trigger, eventBoundary)
+                        null
                     }
                 }
-            toStart?.start()
+            }
+        if (toStart != null) {
+            logger("computers_freshness_reconnect_jitter serverId=$serverId delayMs=$waitMillis")
+            toStart.start()
         }
+    }
+
+    private fun dispatchFreshnessEventForServer(
+        serverId: String,
+        event: RaftFreshnessEvent,
+        eventAt: ComparableTimeMark,
+    ) {
+        var cancelledJitter: Job? = null
+        val toStart =
+            synchronized(lock) {
+                cancelledJitter = pendingAfterDropReconnects.remove(serverId)?.job
+                val gate = gateForLocked(serverId)
+                val beforeSeq = gate.acceptedEventCount()
+                val wasInFlight = gate.isInFlight()
+                val trigger = gate.onEvent(event, serverId, visible = true)
+                val accepted = gate.acceptedEventCount() != beforeSeq
+                if (accepted && event.trigger == RaftFreshnessTrigger.Foreground) {
+                    lastForegroundBoundaryByServerId[serverId] = eventAt
+                }
+                val eventBoundary =
+                    when (event.trigger) {
+                        RaftFreshnessTrigger.Foreground,
+                        RaftFreshnessTrigger.Reconnect -> eventAt
+                        RaftFreshnessTrigger.NetworkRestored ->
+                            lastForegroundBoundaryByServerId[serverId] ?: eventAt
+                    }
+                if (accepted && trigger == null && wasInFlight) {
+                    pendingBoundaryByServerId[serverId] = eventBoundary
+                }
+                if (trigger == null) {
+                    null
+                } else {
+                    pendingBoundaryByServerId.remove(serverId)
+                    launchFreshnessLoopLocked(serverId, trigger, eventBoundary)
+                }
+            }
+        cancelledJitter?.cancel()
+        toStart?.start()
     }
 
     private fun resolveFollowUpBoundaryLocked(
@@ -424,6 +532,7 @@ internal class ComputersLiveRefreshCoordinator(
                     pendingRealtime.remove(normalizedServerId)?.let(::add)
                     activeRealtime.remove(normalizedServerId)?.let(::addAll)
                     activeFreshness.remove(normalizedServerId)?.let(::add)
+                    pendingAfterDropReconnects.remove(normalizedServerId)?.job?.let(::add)
                 }
             }
         jobsToCancel.forEach { it.cancel() }
@@ -445,6 +554,8 @@ internal class ComputersLiveRefreshCoordinator(
                     activeRealtime.clear()
                     addAll(activeFreshness.values)
                     activeFreshness.clear()
+                    pendingAfterDropReconnects.values.mapNotNullTo(this) { it.job }
+                    pendingAfterDropReconnects.clear()
                 }
             }
         jobsToCancel.forEach { it.cancel() }
