@@ -118,7 +118,7 @@ class RaftCloseButtonRulesTest {
                 "ds/components/RaftSelectionToolbar.kt" to Allowed(1, "SelectionToolbarClose ends a selection, not a head"),
                 "ds/components/RaftTextField.kt" to Allowed(1, "a field's Clear, $Clear"),
                 // App controls that are not heads.
-                "app/InAppBrowserPage.kt" to Allowed(2, "Stop loading in the browser's toolbar; $TextButton"),
+                "app/InAppBrowserPage.kt" to Allowed(1, TextButton),
                 "app/agents/AgentMigrationSection.kt" to Allowed(1, "a failed move's dismiss, $Dismiss"),
                 "app/agents/SharedCreateAgentDialog.kt" to Allowed(1, "an environment variable row's remove, $Remove"),
                 "app/artifact/ArtifactsHomeScreen.kt" to Allowed(1, "Clear filters on a phone, $Clear"),

@@ -6019,4 +6019,9 @@
     <string name="settings_appearance_send_key_title">发送消息的按键</string>
     <string name="settings_appearance_send_key_save_failed">没能保存发送方式，请重试。</string>
     <string name="composer_send_key_hint">按 %1$s 发送</string>
+    <string name="mobile_web_panel_signed_in_as">已登录为 %1$s</string>
+    <string name="mobile_web_panel_page_still_open">%1$s · 页面仍打开</string>
+    <string name="mobile_web_panel_return_to_conversation">回到对话</string>
+    <string name="mobile_web_panel_return_to_page">返回</string>
+    <string name="mobile_web_panel_apps_source">应用</string>
 </resources>

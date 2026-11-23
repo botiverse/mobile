@@ -6020,4 +6020,9 @@
     <string name="settings_appearance_send_key_title">Send messages with</string>
     <string name="settings_appearance_send_key_save_failed">Couldn’t change how messages send. Try again.</string>
     <string name="composer_send_key_hint">%1$s to send</string>
+    <string name="mobile_web_panel_signed_in_as">Signed in as %1$s</string>
+    <string name="mobile_web_panel_page_still_open">%1$s · Page still open</string>
+    <string name="mobile_web_panel_return_to_conversation">Return to conversation</string>
+    <string name="mobile_web_panel_return_to_page">Return</string>
+    <string name="mobile_web_panel_apps_source">Apps</string>
 </resources>

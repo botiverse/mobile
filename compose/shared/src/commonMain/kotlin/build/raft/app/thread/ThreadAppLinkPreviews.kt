@@ -235,9 +235,12 @@ internal fun ThreadAppLinkPreviewScope(
     val openInSystemBrowser = rememberRaftSystemBrowserOpener()
     val currentOnOpenLink by rememberUpdatedState(onOpenLink)
     val linkNavigator = LocalRaftLinkNavigator.current
+    val webPanelHost = LocalRaftMobileWebPanelHost.current
+    val currentWebPanelSource by rememberUpdatedState(LocalRaftMobileWebPanelMessageSource.current)
     val openAppEntry: (String, RaftAppEntryRequest) -> Unit =
-        remember(linkNavigator, currentOnOpenLink) {
+        remember(linkNavigator, currentOnOpenLink, webPanelHost) {
             { address, request ->
+                webPanelHost?.setPendingSource(currentWebPanelSource)
                 if (linkNavigator != null) {
                     linkNavigator.openAppEntry(address, request)
                 } else {
@@ -483,6 +486,7 @@ internal fun openThreadAppLinkAddress(
                 scopeOrigin = cardOrigin,
                 appName = card.app.name.trim().takeIf { it.isNotEmpty() },
                 preferredServerId = preferredServerId?.trim()?.takeIf { it.isNotEmpty() },
+                appLogoUrl = card.app.icon?.trim()?.takeIf { it.isNotEmpty() },
             ),
         )
     } else {

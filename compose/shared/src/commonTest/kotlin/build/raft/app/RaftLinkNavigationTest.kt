@@ -271,4 +271,53 @@ class RaftLinkNavigationTest {
             ),
         )
     }
+
+    @Test
+    fun thirdPartyInAppLinkFailsClosedToExternalBrowserWhenIsolatedProfileUnsupported() {
+        val opened = mutableListOf<String>()
+        val registry = RaftAppEntryRegistry(newToken = { "tok-pre119" })
+        fun makeNavigator(supportsIsolated: Boolean) =
+            RaftLinkNavigator(
+                modeProvider = { LinkOpenMode.InAppBrowser },
+                openInAppBrowser = { opened += "in_app:$it"; true },
+                openExternalBrowser = { opened += "external:$it" },
+                onRejected = { opened += "rejected:$it" },
+                openInAppBrowserWithEntry = { url, token ->
+                    opened += "entry:$url|$token"
+                    true
+                },
+                supportsInAppBrowser = { true },
+                supportsIsolatedWebViewProfile = { supportsIsolated },
+                raftHostsProvider = { setOf("app.raft.build", "api.raft.build") },
+                debugBuild = false,
+                appEntryRegistry = registry,
+            )
+
+        // Pre-Chromium 119 Android (no MULTI_PROFILE): third-party link fails closed to system browser.
+        assertEquals(
+            RaftLinkOpenDecision(RaftLinkOpenTarget.ExternalBrowser, "https://docs.example.com/push"),
+            makeNavigator(supportsIsolated = false).open("https://docs.example.com/push"),
+        )
+        // Layer 2 Raft App entry uses Default profile and still opens in-app even without MULTI_PROFILE.
+        assertEquals(
+            RaftLinkOpenDecision(RaftLinkOpenTarget.InAppBrowser, "https://stamp.build/pulls/9"),
+            makeNavigator(supportsIsolated = false).openAppEntry(
+                "https://stamp.build/pulls/9",
+                RaftAppEntryRequest(scopeOrigin = "https://stamp.build", appName = "Stamp"),
+            ),
+        )
+        // Chromium 119+ Android / iOS: third-party link opens in the mobile web panel.
+        assertEquals(
+            RaftLinkOpenDecision(RaftLinkOpenTarget.InAppBrowser, "https://docs.example.com/push"),
+            makeNavigator(supportsIsolated = true).open("https://docs.example.com/push"),
+        )
+        assertEquals(
+            listOf(
+                "external:https://docs.example.com/push",
+                "entry:https://stamp.build/pulls/9|tok-pre119",
+                "in_app:https://docs.example.com/push",
+            ),
+            opened,
+        )
+    }
 }

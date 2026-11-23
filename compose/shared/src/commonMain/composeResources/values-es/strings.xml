@@ -6018,4 +6018,9 @@
     <string name="settings_appearance_send_key_title">Enviar mensajes con</string>
     <string name="settings_appearance_send_key_save_failed">No se pudo cambiar cómo se envían los mensajes. Inténtalo de nuevo.</string>
     <string name="composer_send_key_hint">%1$s para enviar</string>
+    <string name="mobile_web_panel_signed_in_as">Sesión iniciada como %1$s</string>
+    <string name="mobile_web_panel_page_still_open">%1$s · Página abierta</string>
+    <string name="mobile_web_panel_return_to_conversation">Volver a la conversación</string>
+    <string name="mobile_web_panel_return_to_page">Volver</string>
+    <string name="mobile_web_panel_apps_source">Apps</string>
 </resources>

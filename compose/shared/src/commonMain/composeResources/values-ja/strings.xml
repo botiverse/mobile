@@ -6019,4 +6019,9 @@
     <string name="settings_appearance_send_key_title">メッセージの送信キー</string>
     <string name="settings_appearance_send_key_save_failed">送信キーを変更できませんでした。もう一度お試しください。</string>
     <string name="composer_send_key_hint">%1$s で送信</string>
+    <string name="mobile_web_panel_signed_in_as">%1$s としてログイン中</string>
+    <string name="mobile_web_panel_page_still_open">%1$s · ページを開いたまま</string>
+    <string name="mobile_web_panel_return_to_conversation">会話に戻る</string>
+    <string name="mobile_web_panel_return_to_page">戻る</string>
+    <string name="mobile_web_panel_apps_source">アプリ</string>
 </resources>
