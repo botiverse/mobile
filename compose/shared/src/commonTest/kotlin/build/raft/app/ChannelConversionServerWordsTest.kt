@@ -7,6 +7,8 @@ import build.raft.app.data.ServerConnectOutcome
 import build.raft.app.data.ServerRefusalInput
 import build.raft.app.data.resolveServerRefusal
 import build.raft.app.resources.RawStringDesc
+import build.raft.app.resources.ResourceFormattedStringDesc
+import build.raft.app.resources.ResourceStringDesc
 import build.raft.app.resources.StringDesc
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -216,8 +218,9 @@ class ChannelConversionServerWordsTest {
         val traceId = "62ac7fa79a3785a6bee414a074f82634"
         val stubResolve: (StringDesc) -> String = { desc ->
             when (desc) {
+                is ResourceStringDesc -> desc.stringRes.key
+                is ResourceFormattedStringDesc -> desc.stringRes.key + desc.args.joinToString(prefix = "(", postfix = ")")
                 is RawStringDesc -> desc.string
-                else -> desc.toString()
             }
         }
 
@@ -237,10 +240,7 @@ class ChannelConversionServerWordsTest {
                 host = "Host",
                 resolveDesc = stubResolve,
             ).single()
-        assertTrue(
-            singleRefused.title.contains("channel_external_invite_server_refused"),
-            "single server should use singular string resource: ${singleRefused.title}",
-        )
+        assertEquals("channel_external_invite_server_refused(Alpha)", singleRefused.title)
         assertEquals(fencedTooLarge, singleRefused.reason)
 
         // Two servers refused with the SAME conversion sentence -> single toast with plural resource, sentence shown once, no \n in title.
@@ -265,10 +265,7 @@ class ChannelConversionServerWordsTest {
                 resolveDesc = stubResolve,
             )
         val mergedSame = sameReasonToasts.single()
-        assertTrue(
-            mergedSame.title.contains("channel_external_invite_servers_refused"),
-            "multiple servers should use plural string resource: ${mergedSame.title}",
-        )
+        assertEquals("channel_external_invite_servers_refused(Alpha, Beta)", mergedSame.title)
         assertTrue(!mergedSame.title.contains("\n"), "toast title must never contain newline: ${mergedSame.title}")
         assertEquals(fencedTooLarge, mergedSame.reason)
         assertEquals(traceId, mergedSame.traceId)
