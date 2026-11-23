@@ -320,12 +320,13 @@ internal class RaftComputersNetworkApi(
         networkClient.requestWithHeaders(
             priority = DataRequestPriority.Foreground,
             path = "servers/${serverId.value}/machines/${machineId.trim()}/runtime-options",
-            // Opt in to the `runtimeFormV2` marker on each row (slock runtimeAdmissionService): only a
-            // client that asks gets it, because released apps up to 1.13 decoded the rows strictly.
-            // The server marks a row when the runtime has a v2 form and is available for new use or
-            // current; a reply with no marked row at all is read as "unknown", not "no forms"
+            // Opt in to the `runtimeFormV2` marker and `raftCapabilities` on each row (slock
+            // runtimeAdmissionService, #16178): only a client that asks gets them, because
+            // released apps up to 1.13 decoded the rows strictly. The server marks a row when
+            // the runtime has a v2 form and is available for new use or current; a reply with
+            // no marked row at all is read as "unknown", not "no forms"
             // (runtimeFormV2Availability), so a dropped header cannot disable create.
-            headers = mapOf(RUNTIME_FORM_V2_MARKER_HEADER to "1"),
+            headers = RUNTIME_OPTIONS_REQUEST_HEADERS,
             serverIdOverride = serverId
         )
 
@@ -333,8 +334,8 @@ internal class RaftComputersNetworkApi(
         networkClient.requestWithHeaders(
             priority = DataRequestPriority.Visible,
             path = "agents/${agentId.trim()}/runtime-options",
-            // Same opt-in as the computer's rows: the `runtimeFormV2` marker on each row.
-            headers = mapOf(RUNTIME_FORM_V2_MARKER_HEADER to "1"),
+            // Same opt-in as the computer's rows: `runtimeFormV2` and `raftCapabilities`.
+            headers = RUNTIME_OPTIONS_REQUEST_HEADERS,
             serverIdOverride = serverId
         )
 
@@ -1914,7 +1915,10 @@ private data class ComputerRuntimeSelectionOptionDto(
     val availableForNew: Boolean,
     val manageableForCurrentAgent: Boolean,
     val canSelectInThisContext: Boolean,
-    val runtimeFormV2: RuntimeFormV2MarkerDto? = null
+    val runtimeFormV2: RuntimeFormV2MarkerDto? = null,
+    // Kept raw and decoded leniently ([decodeResolvedRuntimeRaftCapabilities]) so an unexpected
+    // shape inside `raftCapabilities` falls back to bundled defaults instead of dropping the row.
+    val raftCapabilities: JsonElement? = null
 )
 
 @Serializable
@@ -1923,9 +1927,14 @@ private data class RuntimeFormV2MarkerDto(val protocolVersion: Int)
 /** Request header asking the runtime-options rows to carry the `runtimeFormV2` marker. */
 internal const val RUNTIME_FORM_V2_MARKER_HEADER = "X-Raft-Runtime-Form-V2"
 
+/** slock `RUNTIME_OPTIONS_CAPABILITIES_CLIENT_CAPABILITY` (#16178): this build reads `option.raftCapabilities`. */
+internal const val RUNTIME_OPTIONS_CAPABILITIES_CLIENT_CAPABILITY = "runtime-options-capabilities@1"
+
 /**
  * slock `RAFT_CLIENT_CAPABILITIES_HEADER` (comma-separated tokens) on every request that answers
- * with a usage snapshot (the read, the refresh, the limit reset):
+ * with a usage snapshot (the read, the refresh, the limit reset) or runtime-options rows:
+ * - `RUNTIME_OPTIONS_CAPABILITIES_CLIENT_CAPABILITY` (#16178): the server attaches per-Computer
+ *   `option.raftCapabilities` only to `/runtime-options` requests that declare it.
  * - `RUNTIME_USAGE_WINDOW_SCOPE_CLIENT_CAPABILITY` (#14605, #14667): the server sends a usage
  *   window's `scope` (every kind, `models` too) only to a request that declares it reads it.
  * - `RUNTIME_USAGE_CREDITS_CLIENT_CAPABILITY` (#15374): likewise an account's `credits`.
@@ -1933,6 +1942,11 @@ internal const val RUNTIME_FORM_V2_MARKER_HEADER = "X-Raft-Runtime-Form-V2"
  * This app's parser reads them all; a server that predates a token ignores it.
  */
 internal const val RAFT_CLIENT_CAPABILITIES_HEADER = "X-Raft-Client-Capabilities"
+internal val RUNTIME_OPTIONS_REQUEST_HEADERS: Map<String, String> =
+    mapOf(
+        RUNTIME_FORM_V2_MARKER_HEADER to "1",
+        RAFT_CLIENT_CAPABILITIES_HEADER to RUNTIME_OPTIONS_CAPABILITIES_CLIENT_CAPABILITY,
+    )
 internal const val RUNTIME_USAGE_WINDOW_SCOPE_CLIENT_CAPABILITY = "runtime-usage-window-scope@2"
 internal const val RUNTIME_USAGE_CREDITS_CLIENT_CAPABILITY = "runtime-usage-credits@1"
 /** slock `RUNTIME_USAGE_ACCOUNT_FOLDERS_CLIENT_CAPABILITY` (#15348): this build reads an account's `agentIds`. */
@@ -2014,7 +2028,8 @@ private fun ComputerRuntimeSelectionOptionDto.toDomain(): SharedCreateAgentRunti
         availableForNew = availableForNew,
         manageableForCurrentAgent = manageableForCurrentAgent,
         canSelectInThisContext = canSelectInThisContext,
-        runtimeFormV2 = runtimeFormV2?.protocolVersion == 2
+        runtimeFormV2 = runtimeFormV2?.protocolVersion == 2,
+        raftCapabilities = decodeResolvedRuntimeRaftCapabilities(raftCapabilities)
     )
 }
 

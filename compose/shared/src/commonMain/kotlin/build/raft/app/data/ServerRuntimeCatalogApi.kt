@@ -4,6 +4,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.key
 import androidx.compose.runtime.remember
+import build.raft.app.ResolvedRuntimeRaftCapabilities
 import build.raft.app.model.RUNTIMES
 import build.raft.app.model.RUNTIME_MODELS
 import build.raft.app.model.RuntimeInfo
@@ -80,7 +81,9 @@ private data class ServerRuntimeCatalogEntryWire(
     val models: List<JsonElement> = emptyList(),
     // A string, not an enum: a future source must read as Unknown, not fail the row.
     val modelsSource: String? = null,
-    val forms: List<JsonElement> = emptyList()
+    val forms: List<JsonElement> = emptyList(),
+    // Additive in catalogVersion >= 2 (slock #16178): server-default Raft capabilities (`source: "default"`).
+    val raftCapabilities: JsonElement? = null
 )
 
 @Serializable
@@ -123,7 +126,13 @@ internal data class RuntimeCatalogEntry(
     val oarOnly: Boolean = false,
     val models: List<RuntimeModelInfo> = emptyList(),
     val modelsSource: RuntimeCatalogModelsSource = RuntimeCatalogModelsSource.Fallback,
-    val forms: List<RuntimeCatalogForm> = emptyList()
+    val forms: List<RuntimeCatalogForm> = emptyList(),
+    /**
+     * Server-default Raft capabilities resolved from this server's host-route switches
+     * (`GET /api/servers/:id/runtimes`, catalogVersion >= 2, `source: "default"`, slock #16178);
+     * null on older servers (`catalogVersion == 1`) or the bundled table.
+     */
+    val raftCapabilities: ResolvedRuntimeRaftCapabilities? = null
 )
 
 /** Where a [ServerRuntimeCatalog] came from: the server now, its last answer on disk, or the bundled table. */
@@ -192,7 +201,8 @@ private fun ServerRuntimeCatalogEntryWire.toDomain(): RuntimeCatalogEntry {
                 "fallback" -> RuntimeCatalogModelsSource.Fallback
                 else -> RuntimeCatalogModelsSource.Unknown
             },
-        forms = forms.mapNotNull { it.decodeOrNull(ServerRuntimeCatalogFormWire.serializer())?.toDomain() }
+        forms = forms.mapNotNull { it.decodeOrNull(ServerRuntimeCatalogFormWire.serializer())?.toDomain() },
+        raftCapabilities = decodeResolvedRuntimeRaftCapabilities(raftCapabilities)
     )
 }
 

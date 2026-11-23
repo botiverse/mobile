@@ -19,6 +19,34 @@ internal data class RuntimeRaftCapabilities(
     val compactionReported: Boolean
 )
 
+/** Whether resolved capabilities came from the Computer's own report or the server default table (slock `RuntimeCapabilitySource`). */
+internal enum class RuntimeCapabilitySource {
+    Machine,
+    Default,
+    /** A future source value this app does not know; treated like [Default] (never triggers Recommended hints). */
+    Unknown
+}
+
+/**
+ * Server/Computer-resolved Raft capabilities (slock `ResolvedRuntimeRaftCapabilities`, #16178):
+ * the 3 user-facing picker flags plus [source] (`Machine` when the Computer reported them in
+ * `ready.runtimeCapabilities`, `Default` when resolved from the server's host-route default table).
+ * Internal operational capabilities (`internal`) are ignored here and never shown as picker hints.
+ */
+internal data class ResolvedRuntimeRaftCapabilities(
+    val midTurnSteering: Boolean,
+    val subagents: Boolean,
+    val compactionReported: Boolean,
+    val source: RuntimeCapabilitySource
+) {
+    fun toRuntimeRaftCapabilities(): RuntimeRaftCapabilities =
+        RuntimeRaftCapabilities(
+            midTurnSteering = midTurnSteering,
+            subagents = subagents,
+            compactionReported = compactionReported
+        )
+}
+
 /**
  * slock `RUNTIME_RAFT_CAPABILITIES` and `RECOMMENDED_RUNTIME_IDS`
  * (packages/shared/src/runtimeCatalog.ts) at [SLOCK_SHA]. The vendored copy
@@ -76,10 +104,23 @@ internal fun missingRuntimeCapabilities(capabilities: RuntimeRaftCapabilities): 
         "compaction".takeUnless { capabilities.compactionReported }
     ).joinToString("+")
 
-/** [runtimeId]'s hint, or null when it has every capability, Raft doesn't know it, or no copy exists for its combination. */
-internal fun runtimeCapabilityHint(runtimeId: String): RuntimeCapabilityHint? {
-    val capabilities = RuntimeRaftCapabilityTable.capabilities[runtimeId] ?: return null
-    val missing = missingRuntimeCapabilities(capabilities)
+private fun resolveCapabilities(
+    runtimeId: String,
+    capabilities: ResolvedRuntimeRaftCapabilities?
+): RuntimeRaftCapabilities? =
+    capabilities?.toRuntimeRaftCapabilities() ?: RuntimeRaftCapabilityTable.capabilities[runtimeId]
+
+/**
+ * [runtimeId]'s hint, or null when it has every capability, Raft doesn't know it, or no copy exists
+ * for its combination. Prefers server/Computer-reported [capabilities], falling back to the bundled
+ * [RuntimeRaftCapabilityTable] only when absent (web `runtimeCapabilityHintId`, slock #16178).
+ */
+internal fun runtimeCapabilityHint(
+    runtimeId: String,
+    capabilities: ResolvedRuntimeRaftCapabilities? = null
+): RuntimeCapabilityHint? {
+    val resolved = resolveCapabilities(runtimeId, capabilities) ?: return null
+    val missing = missingRuntimeCapabilities(resolved)
     return RuntimeCapabilityHint.entries.firstOrNull { it.missing == missing }
 }
 
@@ -88,14 +129,29 @@ internal fun isRecommendedRuntime(runtimeId: String): Boolean = runtimeId in Run
 
 /**
  * Limited: [runtimeId] can't take new messages while it works (no mid-turn steering; web
- * `isLimitedRuntime`, cindyz #triage:#524). From the table, not a list; an unknown runtime is not limited.
+ * `isLimitedRuntime`, cindyz #triage:#524, slock #16178). From live [capabilities] (or bundled
+ * fallback when absent), not a list; an unknown runtime is not limited.
  */
-internal fun isLimitedRuntime(runtimeId: String): Boolean = RuntimeRaftCapabilityTable.capabilities[runtimeId]?.midTurnSteering == false
+internal fun isLimitedRuntime(
+    runtimeId: String,
+    capabilities: ResolvedRuntimeRaftCapabilities? = null
+): Boolean = resolveCapabilities(runtimeId, capabilities)?.midTurnSteering == false
 
 /**
- * A runtime picker row's guidance (web `runtimePickerGuidance`): [recommended] and [limited] are
- * badges after the name in the list only; [hint] is said under the field once the runtime is
- * chosen. A recommended runtime has neither of the others; a [deprecated] one has none.
+ * Whether a Recommended runtime still shows a limitation hint: only when a Computer explicitly
+ * reported a missing capability ([RuntimeCapabilitySource.Machine]). Default-table fallbacks
+ * ([RuntimeCapabilitySource.Default] or absent) keep Recommended runtimes hint-free (web
+ * `isMachineReportedCapabilities`, slock #16178).
+ */
+internal fun isMachineReportedCapabilities(capabilities: ResolvedRuntimeRaftCapabilities?): Boolean =
+    capabilities?.source == RuntimeCapabilitySource.Machine
+
+/**
+ * A runtime picker row's guidance (web `runtimePickerGuidance`, slock #16178): [recommended] and
+ * [limited] are badges after the name in the list only; [hint] is said under the field once the
+ * runtime is chosen. Recommended runtimes always keep their Recommended badge and show a hint only
+ * when a Computer explicitly reported missing capabilities (`source == Machine`); a [deprecated]
+ * runtime keeps its deprecated label alone.
  */
 internal data class RuntimePickerGuidance(
     val recommended: Boolean = false,
@@ -103,12 +159,24 @@ internal data class RuntimePickerGuidance(
     val hint: RuntimeCapabilityHint? = null
 )
 
-internal fun runtimePickerGuidance(runtimeId: String, deprecated: Boolean): RuntimePickerGuidance =
-    when {
-        deprecated -> RuntimePickerGuidance()
-        isRecommendedRuntime(runtimeId) -> RuntimePickerGuidance(recommended = true)
-        else -> RuntimePickerGuidance(limited = isLimitedRuntime(runtimeId), hint = runtimeCapabilityHint(runtimeId))
+internal fun runtimePickerGuidance(
+    runtimeId: String,
+    deprecated: Boolean,
+    capabilities: ResolvedRuntimeRaftCapabilities? = null
+): RuntimePickerGuidance {
+    if (deprecated) return RuntimePickerGuidance()
+    val hint = runtimeCapabilityHint(runtimeId, capabilities)
+    if (isRecommendedRuntime(runtimeId)) {
+        return RuntimePickerGuidance(
+            recommended = true,
+            hint = hint.takeIf { isMachineReportedCapabilities(capabilities) }
+        )
     }
+    return RuntimePickerGuidance(
+        limited = isLimitedRuntime(runtimeId, capabilities),
+        hint = hint
+    )
+}
 
 /** The hint of [runtimeId] when it is one of these rows (the field's chosen value); none otherwise. */
 internal fun RuntimePickerRows.selectedCapabilityHint(runtimeId: String): RuntimeCapabilityHint? =

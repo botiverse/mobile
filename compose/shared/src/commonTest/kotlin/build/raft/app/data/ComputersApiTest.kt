@@ -1,5 +1,7 @@
 package build.raft.app.data
 
+import build.raft.app.ResolvedRuntimeRaftCapabilities
+import build.raft.app.RuntimeCapabilitySource
 import build.raft.app.runPortableCoroutineTest
 import build.raft.app.model.ServerId
 import kotlin.test.Test
@@ -488,6 +490,58 @@ class ComputersApiTest {
             assertIs<DataResult.Error>(
                 RaftComputersApiClient(RecordingComputersApi(agentRuntimeOptionsBody = wrongContext)).agentRuntimeOptions(ServerId("server-1"), "agent-1")
             ).error.code
+        )
+    }
+
+    @Test
+    fun runtimeOptionsDecodePerComputerRaftCapabilitiesLeniently() = runPortableCoroutineTest {
+        // slock #16178 (`docs/contracts/runtime-capabilities.md`): `option.raftCapabilities` carries
+        // the 3 picker flags, `source` ("machine" | "default"), and optional `internal` diagnostics.
+        // Absent or malformed `raftCapabilities` returns null without dropping the runtime row.
+        val newAgentBody =
+            """{"context":"new_agent","machineId":"machine-1","options":[""" +
+                """{"runtimeId":"opencode","capabilityStatus":"available","admissionStatus":"available_for_new","admissionReason":null,"current":false,"availableForNew":true,"manageableForCurrentAgent":false,"canSelectInThisContext":true,"runtimeFormV2":{"protocolVersion":2},"raftCapabilities":{"midTurnSteering":true,"subagents":false,"compactionReported":false,"internal":{"turnTokensReported":false,"quotaDetection":"structured"},"source":"machine"}},""" +
+                """{"runtimeId":"codex","capabilityStatus":"available","admissionStatus":"available_for_new","admissionReason":null,"current":false,"availableForNew":true,"manageableForCurrentAgent":false,"canSelectInThisContext":true,"runtimeFormV2":{"protocolVersion":2},"raftCapabilities":{"midTurnSteering":true,"subagents":true,"compactionReported":true,"source":"default"}},""" +
+                """{"runtimeId":"grok","capabilityStatus":"available","admissionStatus":"available_for_new","admissionReason":null,"current":false,"availableForNew":true,"manageableForCurrentAgent":false,"canSelectInThisContext":true,"raftCapabilities":{"midTurnSteering":true,"subagents":true,"compactionReported":false,"source":"probed"}},""" +
+                """{"runtimeId":"pi","capabilityStatus":"available","admissionStatus":"available_for_new","admissionReason":null,"current":false,"availableForNew":true,"manageableForCurrentAgent":false,"canSelectInThisContext":true},""" +
+                """{"runtimeId":"cursor","capabilityStatus":"available","admissionStatus":"available_for_new","admissionReason":null,"current":false,"availableForNew":true,"manageableForCurrentAgent":false,"canSelectInThisContext":true,"raftCapabilities":{"midTurnSteering":"true","subagents":false,"compactionReported":true,"source":"machine"}},""" +
+                """{"runtimeId":"qwen","capabilityStatus":"available","admissionStatus":"available_for_new","admissionReason":null,"current":false,"availableForNew":true,"manageableForCurrentAgent":false,"canSelectInThisContext":true,"raftCapabilities":"unexpected"}""" +
+                """]}"""
+        val catalog =
+            assertIs<DataResult.Content<SharedCreateAgentRuntimeCatalog>>(
+                RaftComputersApiClient(RecordingComputersApi(runtimeOptionsBody = newAgentBody))
+                    .runtimeOptions(ServerId("server-1"), "machine-1")
+            ).data
+        val byId = catalog.options.associateBy { it.runtimeId }
+        assertEquals(setOf("opencode", "codex", "grok", "pi", "cursor", "qwen"), byId.keys)
+        assertEquals(
+            ResolvedRuntimeRaftCapabilities(true, false, false, RuntimeCapabilitySource.Machine),
+            byId.getValue("opencode").raftCapabilities
+        )
+        assertEquals(
+            ResolvedRuntimeRaftCapabilities(true, true, true, RuntimeCapabilitySource.Default),
+            byId.getValue("codex").raftCapabilities
+        )
+        assertEquals(
+            ResolvedRuntimeRaftCapabilities(true, true, false, RuntimeCapabilitySource.Unknown),
+            byId.getValue("grok").raftCapabilities
+        )
+        assertNull(byId.getValue("pi").raftCapabilities)
+        assertNull(byId.getValue("cursor").raftCapabilities, "string boolean must be rejected leniently without dropping row")
+        assertNull(byId.getValue("qwen").raftCapabilities, "non-object raftCapabilities must not drop row")
+
+        val existingBody =
+            """{"context":"existing_agent","machineId":"machine-1","options":[""" +
+                """{"runtimeId":"opencode","capabilityStatus":"available","admissionStatus":"available_for_new","admissionReason":null,"current":true,"availableForNew":true,"manageableForCurrentAgent":true,"canSelectInThisContext":true,"runtimeFormV2":{"protocolVersion":2},"raftCapabilities":{"midTurnSteering":true,"subagents":false,"compactionReported":false,"source":"machine"}}""" +
+                """]}"""
+        val existing =
+            assertIs<DataResult.Content<ExistingAgentRuntimeOptions>>(
+                RaftComputersApiClient(RecordingComputersApi(agentRuntimeOptionsBody = existingBody))
+                    .agentRuntimeOptions(ServerId("server-1"), "agent-1")
+            ).data
+        assertEquals(
+            ResolvedRuntimeRaftCapabilities(true, false, false, RuntimeCapabilitySource.Machine),
+            existing.options.single().raftCapabilities
         )
     }
 

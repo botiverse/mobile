@@ -580,7 +580,18 @@ internal fun SharedCreateAgentDialog(
     var runtimeCatalog by remember(createAgentFormStore, cleanCreateAgentServerId, availableSelectedMachineId, skipsComputer) {
         mutableStateOf<SharedCreateAgentRuntimeCatalog?>(null)
     }
-    LaunchedEffect(createAgentFormStore, cleanCreateAgentServerId, availableSelectedMachineId, skipsComputer, runtimeCatalogAttempt) {
+    val selectedMachineRuntimesKey =
+        remember(machines, availableSelectedMachineId) {
+            machines.firstOrNull { it.id == availableSelectedMachineId }?.runtimes.orEmpty().sorted()
+        }
+    LaunchedEffect(
+        createAgentFormStore,
+        cleanCreateAgentServerId,
+        availableSelectedMachineId,
+        skipsComputer,
+        runtimeCatalogAttempt,
+        selectedMachineRuntimesKey
+    ) {
         val formStore = createAgentFormStore ?: return@LaunchedEffect
         val machineId = availableSelectedMachineId ?: return@LaunchedEffect
         if (skipsComputer || cleanCreateAgentServerId.isBlank()) return@LaunchedEffect

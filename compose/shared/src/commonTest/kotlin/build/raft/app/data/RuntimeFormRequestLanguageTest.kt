@@ -118,20 +118,32 @@ class RuntimeFormRequestLanguageTest {
     }
 
     @Test
-    fun runtimeOptionsAskForTheRuntimeFormV2MarkerOnTheWire() = runBlocking {
-        // slock runtimeAdmissionService sends the `runtimeFormV2` row marker only to a client that asks
-        // (`X-Raft-Runtime-Form-V2: 1`); without it every runtime would read as having no v2 form.
+    fun runtimeOptionsAskForTheRuntimeFormV2MarkerAndCapabilitiesOnTheWire() = runBlocking {
+        // slock runtimeAdmissionService (#16178) sends `runtimeFormV2` and `raftCapabilities` only
+        // to clients that opt in (`X-Raft-Runtime-Form-V2: 1` and
+        // `X-Raft-Client-Capabilities: runtime-options-capabilities@1`).
         val executor = RecordingExecutor()
         val client = SharedRaftNetworkClient(
             sessionStore = authenticatedSessionStore(),
             baseUrlProvider = { SharedApiEnvironmentStore.Production.apiBaseUrl },
             executor = executor,
         )
-        RaftComputersNetworkApi(client) { null }.runtimeOptions(ServerId("server-1"), "machine-1")
-        val (url, headers) = executor.calls.single()
-        assertTrue(url.endsWith("/machines/machine-1/runtime-options"), url)
-        assertEquals("1", headers["X-Raft-Runtime-Form-V2"])
-        assertEquals("Bearer access-token", headers["Authorization"])
+        val computers = RaftComputersNetworkApi(client) { null }
+        computers.runtimeOptions(ServerId("server-1"), "machine-1")
+        computers.agentRuntimeOptions(ServerId("server-1"), "agent-1")
+
+        assertEquals(2, executor.calls.size)
+        val (machineUrl, machineHeaders) = executor.calls[0]
+        assertTrue(machineUrl.endsWith("/machines/machine-1/runtime-options"), machineUrl)
+        assertEquals("1", machineHeaders[RUNTIME_FORM_V2_MARKER_HEADER])
+        assertEquals(RUNTIME_OPTIONS_CAPABILITIES_CLIENT_CAPABILITY, machineHeaders[RAFT_CLIENT_CAPABILITIES_HEADER])
+        assertEquals("Bearer access-token", machineHeaders["Authorization"])
+
+        val (agentUrl, agentHeaders) = executor.calls[1]
+        assertTrue(agentUrl.endsWith("/agents/agent-1/runtime-options"), agentUrl)
+        assertEquals("1", agentHeaders[RUNTIME_FORM_V2_MARKER_HEADER])
+        assertEquals(RUNTIME_OPTIONS_CAPABILITIES_CLIENT_CAPABILITY, agentHeaders[RAFT_CLIENT_CAPABILITIES_HEADER])
+        assertEquals("Bearer access-token", agentHeaders["Authorization"])
     }
 
     @Test

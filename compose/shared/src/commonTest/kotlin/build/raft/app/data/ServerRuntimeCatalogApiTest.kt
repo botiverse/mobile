@@ -1,6 +1,8 @@
 package build.raft.app.data
 
 import androidx.compose.runtime.snapshots.Snapshot
+import build.raft.app.ResolvedRuntimeRaftCapabilities
+import build.raft.app.RuntimeCapabilitySource
 import build.raft.app.model.ServerId
 import build.raft.app.model.RuntimeModelInfo
 import kotlinx.coroutines.CompletableDeferred
@@ -36,6 +38,42 @@ class ServerRuntimeCatalogApiTest {
         assertEquals(listOf(RuntimeModelInfo("...", "...")), kimi.models)
         assertEquals(RuntimeCatalogModelsSource.Fallback, kimi.modelsSource)
         assertEquals(listOf(RuntimeCatalogForm.V1("kimi-sdk.create.v1"), RuntimeCatalogForm.V2), kimi.forms)
+        assertNull(kimi.raftCapabilities)
+    }
+
+    @Test
+    fun decodesCatalogVersion2RaftCapabilitiesAndIgnoresMalformedValues() {
+        val body =
+            """
+            {
+              "catalogVersion": 2,
+              "runtimes": [
+                {
+                  "id": "opencode", "displayName": "OpenCode", "abbreviation": "OC",
+                  "binary": "opencode", "supported": true, "experimental": false, "deprecated": false,
+                  "oarOnly": false, "models": [], "modelsSource": "fallback",
+                  "forms": [{ "kind": "v2" }],
+                  "raftCapabilities": {
+                    "midTurnSteering": true, "subagents": false, "compactionReported": false,
+                    "internal": { "turnTokensReported": false, "modelListSync": "live" },
+                    "source": "default"
+                  }
+                },
+                {
+                  "id": "cursor", "displayName": "Cursor CLI", "supported": true,
+                  "forms": [{ "kind": "v2" }],
+                  "raftCapabilities": { "midTurnSteering": true }
+                }
+              ]
+            }
+            """.trimIndent()
+        val catalog = assertNotNull(decodeServerRuntimeCatalog(body, RuntimeCatalogSource.Server))
+        assertEquals(2, catalog.catalogVersion)
+        assertEquals(
+            ResolvedRuntimeRaftCapabilities(true, false, false, RuntimeCapabilitySource.Default),
+            catalog.entry("opencode")?.raftCapabilities
+        )
+        assertNull(catalog.entry("cursor")?.raftCapabilities, "incomplete raftCapabilities falls back to null without dropping the entry")
     }
 
     @Test

@@ -96,13 +96,128 @@ class RuntimeServerVerdictTest {
         assertTrue(runtimeDeprecatedForAgent("copilot", null, serverId = null, catalogDeprecated = { it == "copilot" }))
     }
 
+    @Test
+    fun pickerRowsUsePerComputerCapabilitiesFromOptionsAndFallBackToCatalogOrBundledTable() {
+        val opencodeOar =
+            ResolvedRuntimeRaftCapabilities(
+                midTurnSteering = true,
+                subagents = false,
+                compactionReported = false,
+                source = RuntimeCapabilitySource.Machine
+            )
+        val codexMachineGap =
+            ResolvedRuntimeRaftCapabilities(
+                midTurnSteering = true,
+                subagents = true,
+                compactionReported = false,
+                source = RuntimeCapabilitySource.Machine
+            )
+        val codexDefaultGap = codexMachineGap.copy(source = RuntimeCapabilitySource.Default)
+        val copy =
+            RuntimePickerCopy(
+                groupCurrent = "Current",
+                groupReady = "Ready",
+                groupNotAvailable = "Not available",
+                groupNeedsComputerUpdate = "Update",
+                groupNeedsAppUpdate = "App update",
+                groupNotInstalled = "Not installed",
+                suffixNotInstalled = " (not installed)",
+                suffixUpdateComputer = " (update)",
+                suffixComingSoon = " (coming soon)",
+                suffixDeprecated = " (deprecated)",
+                needsAppUpdate = "Update app",
+                recommended = "Recommended",
+                limited = "Limited"
+            )
+
+        // 1. Machine-reported capabilities on runtime-options rows clear OpenCode's Limited badge
+        //    and show Codex's machine-reported hint while keeping Recommended; absent capabilities
+        //    on Cursor fall back to the bundled table (Limited + NoSteeringNoSubagents).
+        val rows =
+            listOf(
+                newRow("codex", installed = true, raftCapabilities = codexMachineGap),
+                newRow("opencode", installed = true, raftCapabilities = opencodeOar),
+                newRow("cursor", installed = true, raftCapabilities = null)
+            )
+        val picker =
+            runtimePickerRows(
+                catalog = BundledRuntimeCatalog,
+                machineRuntimeIds = listOf("codex", "opencode", "cursor"),
+                selectedRuntimeId = "opencode",
+                showAll = false,
+                options = rows
+            )
+        val comboboxOptions = runtimePickerOptions(picker.rows, copy).associateBy { it.value }
+        assertEquals("Recommended", comboboxOptions.getValue("codex").badge)
+        assertEquals(RuntimeCapabilityHint.CompactionUnreported, picker.selectedCapabilityHint("codex"))
+        assertEquals(null, comboboxOptions.getValue("opencode").badge)
+        assertEquals(RuntimeCapabilityHint.NoSubagentsCompactionUnreported, picker.selectedCapabilityHint("opencode"))
+        assertEquals("Limited", comboboxOptions.getValue("cursor").badge)
+        assertEquals(RuntimeCapabilityHint.NoSteeringNoSubagents, picker.selectedCapabilityHint("cursor"))
+
+        // 2. Default-source gap on Recommended stays hint-free.
+        val defaultCodexPicker =
+            runtimePickerRows(
+                catalog = BundledRuntimeCatalog,
+                machineRuntimeIds = listOf("codex"),
+                selectedRuntimeId = "codex",
+                showAll = false,
+                options = listOf(newRow("codex", installed = true, raftCapabilities = codexDefaultGap))
+            )
+        assertEquals("Recommended", runtimePickerOptions(defaultCodexPicker.rows, copy).single().badge)
+        assertEquals(null, defaultCodexPicker.selectedCapabilityHint("codex"))
+
+        // 3. When runtime-options rows have not loaded (options == null), server catalog v2
+        //    `entry.raftCapabilities` drives the fallback before the bundled table.
+        val serverCatalogV2 =
+            BundledRuntimeCatalog.copy(
+                catalogVersion = 2,
+                runtimes =
+                    BundledRuntimeCatalog.runtimes.map { entry ->
+                        when (entry.id) {
+                            "opencode" ->
+                                entry.copy(
+                                    raftCapabilities =
+                                        ResolvedRuntimeRaftCapabilities(
+                                            midTurnSteering = true,
+                                            subagents = false,
+                                            compactionReported = false,
+                                            source = RuntimeCapabilitySource.Default
+                                        )
+                                )
+                            "codex" -> entry.copy(raftCapabilities = codexDefaultGap)
+                            else -> entry
+                        }
+                    },
+                source = RuntimeCatalogSource.Server
+            )
+        val catalogFallback =
+            runtimePickerRows(
+                catalog = serverCatalogV2,
+                machineRuntimeIds = listOf("codex", "opencode", "cursor"),
+                selectedRuntimeId = "opencode",
+                showAll = false,
+                options = null
+            )
+        val fallbackOptions = runtimePickerOptions(catalogFallback.rows, copy).associateBy { it.value }
+        assertEquals(null, fallbackOptions.getValue("opencode").badge)
+        assertEquals(RuntimeCapabilityHint.NoSubagentsCompactionUnreported, catalogFallback.selectedCapabilityHint("opencode"))
+        assertEquals("Recommended", fallbackOptions.getValue("codex").badge)
+        assertEquals(null, catalogFallback.selectedCapabilityHint("codex"))
+        assertEquals("Limited", fallbackOptions.getValue("cursor").badge)
+    }
+
     private val newAgentRuntimeIds = listOf("builtin", "claude", "codex", "cursor", "grok", "kimi-sdk", "opencode", "pi", "qoder", "qwen")
 
     /** `projectNewAgentRuntimeOptions`: today's creatable runtimes, plus [extra] (a revived one). */
     private fun newAgentRows(installed: Set<String>, extra: List<SharedCreateAgentRuntimeOption> = emptyList()) =
         newAgentRuntimeIds.map { newRow(it, installed = it in installed) } + extra
 
-    private fun newRow(runtimeId: String, installed: Boolean) =
+    private fun newRow(
+        runtimeId: String,
+        installed: Boolean,
+        raftCapabilities: ResolvedRuntimeRaftCapabilities? = null
+    ) =
         SharedCreateAgentRuntimeOption(
             runtimeId = runtimeId,
             capabilityStatus = if (installed) "available" else if (runtimeId == "builtin") "update_required" else "not_installed",
@@ -112,7 +227,8 @@ class RuntimeServerVerdictTest {
             availableForNew = true,
             manageableForCurrentAgent = false,
             canSelectInThisContext = installed,
-            runtimeFormV2 = true
+            runtimeFormV2 = true,
+            raftCapabilities = raftCapabilities
         )
 
     /**
