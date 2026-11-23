@@ -1451,6 +1451,8 @@ fun Modal(
     keepsHostKeyboard: Boolean = false,
     /** False when the modal content slides itself (phone sheet / side drawer) so iOS doesn't stack its zoom transition. */
     platformTransition: Boolean = true,
+    /** Called instead of [onWillDismiss] when another page covers the host page. Null falls back to [onWillDismiss]. */
+    onPageCover: (() -> Unit)? = null,
     content: (@Composable () -> Unit)
 ) {
     // The page window's horizontal safe area (what the page shells around this call know), read
@@ -1465,7 +1467,8 @@ fun Modal(
     // RaftModalDismissBarrier and pad for keyboardHeightChange themselves.
     RaftWindowDialog(
         onDismissRequest = { onWillDismiss?.invoke("") },
-        properties = raftModalWindowDialogProperties(keepsHostKeyboard = keepsHostKeyboard, platformTransition = platformTransition)
+        properties = raftModalWindowDialogProperties(keepsHostKeyboard = keepsHostKeyboard, platformTransition = platformTransition),
+        onPageCover = onPageCover,
     ) {
         // The dialog is its own window with its own keyboard animation; the host's IME report
         // describes the activity window underneath (RaftHostImeInsets).
