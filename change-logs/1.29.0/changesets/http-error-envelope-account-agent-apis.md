@@ -3,6 +3,7 @@ type: fixed
 area: errors
 platforms: [android, ios, desktop]
 rollout: full
+pull_request: 5499
 ---
 
 ## zh-CN
