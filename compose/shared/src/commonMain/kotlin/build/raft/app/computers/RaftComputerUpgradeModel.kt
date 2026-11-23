@@ -1,11 +1,14 @@
 package build.raft.app
 
+import build.raft.app.data.ResolvedServerRefusal
+import build.raft.app.data.ServerRefusalInput
 import build.raft.app.data.SettingsComputerAcceptedUpgrade
 import build.raft.app.data.SettingsComputerControlState
 import build.raft.app.data.SettingsComputerReleaseNotesSnapshot
 import build.raft.app.data.SettingsComputerSnapshot
 import build.raft.app.data.SettingsComputerUpgradeFailureHintSnapshot
 import build.raft.app.data.SettingsComputerUpgradeRequestSnapshot
+import build.raft.app.data.resolveServerRefusal
 import build.raft.app.data.settingsComputerUpgradeAvailabilityKey
 import build.raft.app.model.parseRaftTimestampEpochMillisOrNull
 
@@ -233,6 +236,44 @@ internal fun raftComputerUpgradeRefusal(code: String?): RaftComputerUpgradeRefus
         else -> RaftComputerUpgradeRefusal.Unknown
     }
 
+/**
+ * Scrubs an unrecognized Computer control (upgrade / restart) refusal's server words through the
+ * shared 4-tier resolver while blocking synthetic non-4xx local error codes without running
+ * substring heuristics over legitimate 4xx wire codes.
+ */
+internal fun computerControlRefusalServerMessageOrNull(
+    code: String?,
+    serverMessage: String?,
+    traceId: String?,
+): String? {
+    val normalized = code?.trim()?.lowercase()?.takeIf { it.isNotEmpty() } ?: return null
+    val isSynthetic5xx = normalized.startsWith("http_5") && normalized.length == 8 && normalized.substring(5).all(Char::isDigit)
+    if (
+        normalized == "http_0" ||
+        normalized.startsWith("http_-") ||
+        normalized == "http_401" ||
+        isSynthetic5xx ||
+        normalized == "auth_required" ||
+        normalized == "server_unavailable" ||
+        normalized == "machine_offline" ||
+        normalized == "machine_offline_replay" ||
+        normalized == "settings_unavailable" ||
+        normalized == "malformed_response"
+    ) {
+        return null
+    }
+    val resolved =
+        resolveServerRefusal(
+            ServerRefusalInput(
+                status = null,
+                code = normalized,
+                serverMessage = serverMessage,
+                traceId = traceId,
+            ),
+        ) { _, _ -> null }
+    return (resolved as? ResolvedServerRefusal.ServerWords)?.message
+}
+
 /** The Computer card's one state: a status sentence and exactly one next step (web `cardState`). */
 internal sealed interface RaftComputerCardState {
     data object Reinstall : RaftComputerCardState
@@ -260,6 +301,8 @@ internal data class RaftComputerUpgradeModel(
     val tier: RaftComputerVersionTier,
     val card: RaftComputerCardState,
     val refusal: RaftComputerUpgradeRefusal?,
+    val refusalMessage: String? = null,
+    val refusalTraceId: String? = null,
     val reconnect: RaftComputerUpgradeReconnect,
     /** The last web upgrade failed or got no answer, and the Computer is still below its target. */
     val requestOutcome: SettingsComputerUpgradeRequestSnapshot?,
@@ -291,10 +334,21 @@ internal fun raftComputerUpgradeModel(
     val fact = raftComputerVersionFact(computer)
     val tier = raftComputerVersionTier(computer)
     val reconnect = raftComputerUpgradeReconnect(computer, control.upgradeAccepted, nowMillis)
-    val refusal =
+    val activeRefusal =
         control.upgradeRefusal
             ?.takeIf { it.machineId == computer.id && it.availabilityKey == settingsComputerUpgradeAvailabilityKey(computer) }
-            ?.let { raftComputerUpgradeRefusal(it.code) }
+    val refusal = activeRefusal?.let { raftComputerUpgradeRefusal(it.code) }
+    val refusalMessage =
+        if (refusal == RaftComputerUpgradeRefusal.Unknown) {
+            computerControlRefusalServerMessageOrNull(
+                code = activeRefusal.code,
+                serverMessage = activeRefusal.serverMessage,
+                traceId = activeRefusal.traceId,
+            )
+        } else {
+            null
+        }
+    val refusalTraceId = activeRefusal?.traceId
     val submittingVersion = control.upgradeSubmitting?.takeIf { it.machineId == computer.id }?.targetVersion
     val remoteUpgradeSupported = (computer.remoteUpgradeSupported ?: raftIsRemoteUpgradeSupported(computer.computerVersion)) == true
     val policy = computer.broadcastPolicy
@@ -369,6 +423,8 @@ internal fun raftComputerUpgradeModel(
         tier = tier,
         card = card,
         refusal = refusal,
+        refusalMessage = refusalMessage,
+        refusalTraceId = refusalTraceId,
         reconnect = reconnect,
         requestOutcome = requestOutcome,
         webUpgradeOn = webUpgradeOn,

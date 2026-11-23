@@ -405,7 +405,9 @@ data class SettingsComputerRestartProgress(
     val requestId: String? = null,
     val done: Boolean = false,
     /** A machine-readable failure: a route `code`, `restart_timed_out`, or the Computer's own error. */
-    val errorCode: String? = null
+    val errorCode: String? = null,
+    val serverMessage: String? = null,
+    val traceId: String? = null,
 ) {
     val failed: Boolean get() = done && errorCode != null
 }
@@ -420,7 +422,9 @@ data class SettingsComputerUpgradeRefusal(
     val machineId: String,
     val availabilityKey: String,
     /** The route's `code` (`remote_upgrade_disabled`, `computer_remote_upgrade_unsupported`, …). */
-    val code: String?
+    val code: String?,
+    val serverMessage: String? = null,
+    val traceId: String? = null,
 )
 
 /**
@@ -3665,17 +3669,25 @@ class SharedSettingsStore(
                     updateComputerControl { copy(restart = progress.copy(requestId = result.data.requestId)) }
                 }
             }
-            is DataResult.Error -> failComputerRestart(generation, result.error.code)
-            is DataResult.NoPermission -> failComputerRestart(generation, result.blocker.code)
+            is DataResult.Error -> failComputerRestart(generation, result.error.code, result.error.serverMessage, result.error.traceId)
+            is DataResult.NoPermission -> failComputerRestart(generation, result.blocker.code, result.blocker.serverMessage, result.blocker.traceId)
             is DataResult.Empty -> failComputerRestart(generation, "settings_unavailable")
         }
     }
 
-    private fun failComputerRestart(generation: Long, code: String) {
+    private fun failComputerRestart(
+        generation: Long,
+        code: String,
+        serverMessage: String? = null,
+        traceId: String? = null,
+    ) {
         val progress = _state.value.computerControl.restart ?: return
         if (generation != computerRestartGeneration || progress.done) return
         diagnosticsLogger("settings_computer_restart_failed machineId=${progress.machineId} code=$code")
-        finishComputerRestart(generation, progress.copy(done = true, errorCode = code))
+        finishComputerRestart(
+            generation,
+            progress.copy(done = true, errorCode = code, serverMessage = serverMessage, traceId = traceId),
+        )
     }
 
     /** Shows the finished restart, then drops it so the buttons come back (web: 3 s done, 4 s error). */
@@ -3747,9 +3759,32 @@ class SharedSettingsStore(
                         is DataResult.NoPermission -> result.blocker.code
                         else -> null
                     }
+                val serverMessage =
+                    when (result) {
+                        is DataResult.Error -> result.error.serverMessage
+                        is DataResult.NoPermission -> result.blocker.serverMessage
+                        else -> null
+                    }
+                val traceId =
+                    when (result) {
+                        is DataResult.Error -> result.error.traceId
+                        is DataResult.NoPermission -> result.blocker.traceId
+                        else -> null
+                    }
                 diagnosticsLogger("settings_computer_upgrade_refused machineId=$id code=${code ?: "none"}")
                 if (availabilityKey != null) {
-                    updateComputerControl { copy(upgradeRefusal = SettingsComputerUpgradeRefusal(id, availabilityKey, code)) }
+                    updateComputerControl {
+                        copy(
+                            upgradeRefusal =
+                                SettingsComputerUpgradeRefusal(
+                                    machineId = id,
+                                    availabilityKey = availabilityKey,
+                                    code = code,
+                                    serverMessage = serverMessage,
+                                    traceId = traceId,
+                                )
+                        )
+                    }
                 }
             }
         }

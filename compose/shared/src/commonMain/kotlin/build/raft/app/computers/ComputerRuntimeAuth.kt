@@ -3,6 +3,7 @@ package build.raft.app
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import build.raft.app.data.ResolvedServerRefusal
 import build.raft.app.data.RuntimeAuthCall
 import build.raft.app.data.RuntimeAuthLoginRegion
 import build.raft.app.data.RuntimeAuthLogoutResult
@@ -19,12 +20,14 @@ import build.raft.app.data.RuntimeAuthUnavailableReason
 import build.raft.app.data.RuntimeAuthView
 import build.raft.app.data.RuntimeUpdateCheck
 import build.raft.app.data.RuntimeUpgradeResult
+import build.raft.app.data.ServerRefusalInput
 import build.raft.app.data.SharedComputersOwner
 import build.raft.app.data.SharedRealtimeDomainEventOwner
 import build.raft.app.data.SharedRuntimeAccountUsageStore
 import build.raft.app.data.defaultNowMillis
 import build.raft.app.data.oauthMethods
 import build.raft.app.data.isRuntimeAuthPastedCode
+import build.raft.app.data.resolveServerRefusal
 import build.raft.app.model.RealtimeEvent
 import build.raft.app.model.RuntimeAuthAccountLabel
 import build.raft.app.model.RuntimeAuthLoginEventPushed
@@ -188,27 +191,48 @@ internal enum class ComputerRuntimeAuthProblem {
     ProviderBusy,
 }
 
-/** A stopped step: what to say, whether starting over can help, and the failed request's trace id. */
+/** A stopped step: what to say, whether starting over can help, the failed request's trace id, and any scrubbed Tier 3 server message. */
 internal data class ComputerRuntimeAuthFailure(
     val problem: ComputerRuntimeAuthProblem,
     val retryable: Boolean,
     val traceId: String? = null,
+    val serverMessage: String? = null,
 )
+
+private fun RuntimeAuthRequestError.usableServerWordsOrNull(): String? {
+    if (code == "malformed_response") return null
+    val httpStatus = status?.takeIf { it > 0 } ?: return null
+    val resolved =
+        resolveServerRefusal(
+            ServerRefusalInput(
+                status = httpStatus,
+                code = code,
+                serverMessage = serverMessage,
+                traceId = traceId,
+            ),
+        ) { _, _ -> null }
+    return (resolved as? ResolvedServerRefusal.ServerWords)?.message
+}
 
 /** Web `startFailure`: the start request was refused. */
 internal fun RuntimeAuthRequestError.signInStartFailure(runtime: RuntimeAuthRuntime): ComputerRuntimeAuthFailure {
-    val (problem, retryable) =
+    val (problem, retryable, knownCode) =
         when {
-            code == "computer_offline" -> ComputerRuntimeAuthProblem.ComputerOffline to true
-            code == "computer_upgrade_required" -> ComputerRuntimeAuthProblem.UpgradeRequired to false
-            code == "computer_not_attached" -> ComputerRuntimeAuthProblem.NotAttached to false
-            code == "login_in_progress" -> runtime.busyProblem() to true
-            code == "rate_limited" || status == 429 -> ComputerRuntimeAuthProblem.RateLimited to true
-            status == 403 -> ComputerRuntimeAuthProblem.Forbidden to false
-            status == 404 -> ComputerRuntimeAuthProblem.NotFound to false
-            else -> ComputerRuntimeAuthProblem.StartFailed to true
+            code == "computer_offline" -> Triple(ComputerRuntimeAuthProblem.ComputerOffline, true, true)
+            code == "computer_upgrade_required" -> Triple(ComputerRuntimeAuthProblem.UpgradeRequired, false, true)
+            code == "computer_not_attached" -> Triple(ComputerRuntimeAuthProblem.NotAttached, false, true)
+            code == "login_in_progress" -> Triple(runtime.busyProblem(), true, true)
+            code == "rate_limited" || status == 429 -> Triple(ComputerRuntimeAuthProblem.RateLimited, true, true)
+            status == 403 -> Triple(ComputerRuntimeAuthProblem.Forbidden, false, false)
+            status == 404 -> Triple(ComputerRuntimeAuthProblem.NotFound, false, false)
+            else -> Triple(ComputerRuntimeAuthProblem.StartFailed, true, false)
         }
-    return ComputerRuntimeAuthFailure(problem, retryable, traceId)
+    return ComputerRuntimeAuthFailure(
+        problem = problem,
+        retryable = retryable,
+        traceId = traceId,
+        serverMessage = if (knownCode) null else usableServerWordsOrNull(),
+    )
 }
 
 /** Web `resultFailure`: the Computer ended the login without signing in. */
@@ -277,23 +301,43 @@ internal fun RuntimeAuthRequestError.signOutProblem(): ComputerRuntimeAuthProble
         else -> ComputerRuntimeAuthProblem.SignOutFailed
     }
 
+/** Scrubbed Tier 3 server refusal words for a sign-out request without a Tier 2 localized code. */
+internal fun RuntimeAuthRequestError.signOutServerMessageOrNull(): String? =
+    when {
+        code == "computer_offline" ||
+            code == "computer_upgrade_required" ||
+            code == "computer_not_attached" ||
+            code == "computer_timeout" ||
+            status == 504 -> null
+        else -> usableServerWordsOrNull()
+    }
+
 /** Web `providerRequestFailure`: null for a refused API key (the field says so instead). */
 internal fun RuntimeAuthRequestError.providerFailure(connect: Boolean): ComputerRuntimeAuthFailure? {
-    val (problem, retryable) =
+    val (problem, retryable, knownCode) =
         when {
             code == "invalid_api_key" -> return null
-            code == "computer_offline" -> ComputerRuntimeAuthProblem.ComputerOffline to true
-            code == "computer_upgrade_required" -> ComputerRuntimeAuthProblem.ProviderUpgradeRequired to false
-            code == "computer_not_attached" -> ComputerRuntimeAuthProblem.ProviderNotAttached to false
+            code == "computer_offline" -> Triple(ComputerRuntimeAuthProblem.ComputerOffline, true, true)
+            code == "computer_upgrade_required" -> Triple(ComputerRuntimeAuthProblem.ProviderUpgradeRequired, false, true)
+            code == "computer_not_attached" -> Triple(ComputerRuntimeAuthProblem.ProviderNotAttached, false, true)
             code == "computer_timeout" || status == 504 ->
-                (if (connect) ComputerRuntimeAuthProblem.ProviderConnectTimedOut else ComputerRuntimeAuthProblem.ProviderComputerTimeout) to true
-            code == "rate_limited" || status == 429 -> ComputerRuntimeAuthProblem.ProviderRateLimited to true
-            status == 400 -> ComputerRuntimeAuthProblem.ProviderInvalidInput to true
-            status == 403 -> ComputerRuntimeAuthProblem.ProviderForbidden to false
-            status == 404 -> ComputerRuntimeAuthProblem.NotFound to false
-            else -> ComputerRuntimeAuthProblem.ProviderRequestFailed to true
+                Triple(
+                    if (connect) ComputerRuntimeAuthProblem.ProviderConnectTimedOut else ComputerRuntimeAuthProblem.ProviderComputerTimeout,
+                    true,
+                    true,
+                )
+            code == "rate_limited" || status == 429 -> Triple(ComputerRuntimeAuthProblem.ProviderRateLimited, true, true)
+            status == 400 -> Triple(ComputerRuntimeAuthProblem.ProviderInvalidInput, true, false)
+            status == 403 -> Triple(ComputerRuntimeAuthProblem.ProviderForbidden, false, false)
+            status == 404 -> Triple(ComputerRuntimeAuthProblem.NotFound, false, false)
+            else -> Triple(ComputerRuntimeAuthProblem.ProviderRequestFailed, true, false)
         }
-    return ComputerRuntimeAuthFailure(problem, retryable, traceId)
+    return ComputerRuntimeAuthFailure(
+        problem = problem,
+        retryable = retryable,
+        traceId = traceId,
+        serverMessage = if (knownCode) null else usableServerWordsOrNull(),
+    )
 }
 
 /** Web `providerResultFailure`: the Computer answered without a list or a save. */
@@ -587,6 +631,7 @@ internal data class ComputerRuntimeSignOutState(
     val submitting: Boolean = false,
     val problem: ComputerRuntimeAuthProblem? = null,
     val traceId: String? = null,
+    val serverMessage: String? = null,
 )
 
 /** Web `PiSignInDialog`'s list. */
@@ -834,8 +879,10 @@ internal class ComputerRuntimeAuthController(
             log("computer_runtime_upgrade runtime=${runtime.wire} result=${result.operationLabel()}")
             when (result) {
                 is RuntimeAuthCall.Done -> upgrade = ComputerRuntimeUpgradeState.Done(result.value)
-                is RuntimeAuthCall.Refused ->
-                    upgrade = ComputerRuntimeUpgradeState.Refused(computerRuntimeOperationRefusal(result.error.code), result.error.traceId)
+                is RuntimeAuthCall.Refused -> {
+                    val (reason, serverMessage) = result.error.toOperationRefusal()
+                    upgrade = ComputerRuntimeUpgradeState.Refused(reason, result.error.traceId, serverMessage)
+                }
                 RuntimeAuthCall.Superseded -> {
                     upgrade = ComputerRuntimeUpgradeState.Idle
                     superseded()
@@ -930,7 +977,7 @@ internal class ComputerRuntimeAuthController(
     fun confirmSignOut() {
         val open = dialog as? ComputerRuntimeAuthDialog.SignOut ?: return
         if (open.state.submitting) return
-        dialog = open.copy(state = open.state.copy(submitting = true, problem = null, traceId = null))
+        dialog = open.copy(state = open.state.copy(submitting = true, problem = null, traceId = null, serverMessage = null))
         scope.launch {
             val result = ops.logout(runtime, open.state.provider?.id)
             log("computer_runtime_sign_out runtime=${runtime.wire} result=${result.diagnosticsLabel()}")
@@ -940,7 +987,16 @@ internal class ComputerRuntimeAuthController(
                 RuntimeAuthCall.Superseded -> superseded()
                 is RuntimeAuthCall.Refused ->
                     if (current != null) {
-                        dialog = current.copy(state = current.state.copy(submitting = false, problem = result.error.signOutProblem(), traceId = result.error.traceId))
+                        dialog =
+                            current.copy(
+                                state =
+                                    current.state.copy(
+                                        submitting = false,
+                                        problem = result.error.signOutProblem(),
+                                        traceId = result.error.traceId,
+                                        serverMessage = result.error.signOutServerMessageOrNull(),
+                                    )
+                            )
                     }
                 is RuntimeAuthCall.Done -> {
                     val problem = result.value.signOutProblem(runtime)
@@ -948,7 +1004,7 @@ internal class ComputerRuntimeAuthController(
                         when {
                             current == null -> dialog
                             problem == null -> null
-                            else -> current.copy(state = current.state.copy(submitting = false, problem = problem))
+                            else -> current.copy(state = current.state.copy(submitting = false, problem = problem, serverMessage = null))
                         }
                 }
             }

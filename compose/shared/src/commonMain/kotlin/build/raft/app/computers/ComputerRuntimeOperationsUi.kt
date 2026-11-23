@@ -72,7 +72,7 @@ internal fun ComputerRuntimeOperationOutcome(copy: ComputerRuntimeOperationCopy?
     if (copy == null) return
     Column(modifier.fillMaxWidth().testTag(COMPUTER_RUNTIME_OPERATION_OUTCOME_TAG), verticalArrangement = Arrangement.spacedBy(2.dp)) {
         RaftText(
-            stringResource(copy.message, runtimeName, *copy.args.toTypedArray()),
+            copy.serverMessage ?: stringResource(copy.message, runtimeName, *copy.args.toTypedArray()),
             style = RaftTheme.typography.caption,
             color = if (copy.success) RaftTheme.colors.foreground else RaftTheme.colors.warningStrong,
         )
