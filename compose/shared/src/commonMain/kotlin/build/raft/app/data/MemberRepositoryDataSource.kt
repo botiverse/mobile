@@ -1538,9 +1538,6 @@ private fun AddChannelMemberRequest.toBodyText(): String =
 
 private data class SharedNetworkServerContext(val session: StoredAuthSession, val server: ServerSummary)
 
-@Serializable
-private data class MemberErrorBody(val error: String? = null, val code: String? = null)
-
 private fun StoredAuthSession.toNetworkServerContext(serverId: ServerId): SharedNetworkServerContext? {
     val requestedId = serverId.value.trim().takeIf { it.isNotBlank() } ?: return null
     val server = servers.firstOrNull { it.id.trim() == requestedId }
@@ -1553,34 +1550,55 @@ private fun StoredAuthSession.toNetworkServerContext(serverId: ServerId): Shared
 private fun authRequired(): DataResult.NoPermission =
     authSessionRequiredResult()
 
-private fun authRequired(serverMessage: String?): DataResult.NoPermission =
-    authSessionRequiredResult(serverMessage)
-
 private fun <T> HomeNetworkResponse.toDataError(): DataResult<T> {
-    val serverMessage = memberServerErrorTextOrNull()
+    val envelope = parseHttpErrorEnvelope()
+    val serverMessage = envelope?.serverMessage
+    val serverCode = envelope?.serverCode
     // botiverse/slock #13604: the agent's Computer lost its access, so its workspace cannot be
     // read; it never comes back by itself, so it is not retryable.
-    if (code == 409 && memberServerErrorCodeOrNull() == ComputerAccessRevokedErrorCode) {
+    if (code == 409 && serverCode == ComputerAccessRevokedErrorCode) {
         return DataResult.Error(
-            ScreenError(code = ComputerAccessRevokedErrorCode, retryable = false, serverMessage = serverMessage)
+            ScreenError(
+                code = ComputerAccessRevokedErrorCode,
+                retryable = false,
+                serverMessage = serverMessage,
+                serverCode = serverCode,
+                traceId = traceId,
+            )
         )
     }
     return when (code) {
-        401 -> authRequired(serverMessage)
+        401 -> toAuthSessionRequiredResult(envelope)
         403 ->
-            DataResult.NoPermission(
-                PermissionBlocker(
-                    code = "server_forbidden",
-                    requiredCapability = "server_access",
-                    serverMessage = serverMessage
+            if (isNonPermissionPlanOrQuota403Code(serverCode)) {
+                DataResult.Error(
+                    ScreenError(
+                        code = requireNotNull(serverCode),
+                        retryable = false,
+                        serverMessage = serverMessage,
+                        serverCode = serverCode,
+                        traceId = traceId,
+                    )
                 )
-            )
+            } else {
+                DataResult.NoPermission(
+                    PermissionBlocker(
+                        code = "server_forbidden",
+                        requiredCapability = "server_access",
+                        serverMessage = serverMessage,
+                        serverCode = serverCode,
+                        traceId = traceId,
+                    )
+                )
+            }
         in 500..599 ->
             DataResult.Error(
                 ScreenError(
                     code = "server_unavailable",
                     retryable = true,
-                    serverMessage = serverMessage
+                    serverMessage = serverMessage,
+                    serverCode = serverCode,
+                    traceId = traceId,
                 )
             )
         else ->
@@ -1590,27 +1608,13 @@ private fun <T> HomeNetworkResponse.toDataError(): DataResult<T> {
                     retryable = code != 404,
                     serverMessage = serverMessage,
                     // The refusal's own code (400 `profile_description_invalid`...), for the editor to name.
-                    serverCode = memberServerErrorCodeOrNull(),
-                    formFieldKeys = runtimeFormV2ServerError(bodyText ?: errorBodyText)?.fieldKeys.orEmpty()
+                    serverCode = serverCode,
+                    formFieldKeys =
+                        runtimeFormV2ServerError(errorBodyText?.takeIf { it.isNotBlank() } ?: bodyText)?.fieldKeys.orEmpty(),
+                    traceId = traceId,
                 )
             )
     }
-}
-
-private fun HomeNetworkResponse.memberServerErrorCodeOrNull(): String? {
-    val payload = (bodyText ?: errorBodyText)?.takeIf { it.isNotBlank() } ?: return null
-    return runCatching {
-        memberRepositoryJson.decodeFromString(MemberErrorBody.serializer(), payload).code?.trim()?.takeIf { it.isNotEmpty() }
-    }.getOrNull()
-}
-
-private fun HomeNetworkResponse.memberServerErrorTextOrNull(): String? {
-    val payload = (bodyText ?: errorBodyText)?.takeIf { it.isNotBlank() } ?: return null
-    return runCatching {
-        memberRepositoryJson.decodeFromString(MemberErrorBody.serializer(), payload)
-            .error
-            ?.takeIf { it.isNotBlank() }
-    }.getOrNull()
 }
 
 private fun DataResult<AgentCommandResult>.toLifecycleActionResult(

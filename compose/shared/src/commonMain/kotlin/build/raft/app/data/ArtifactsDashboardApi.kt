@@ -274,19 +274,24 @@ fun parseArtifactsHomeConversations(bodyText: String?): List<ArtifactsHomeConver
         }
 
 /** The refusal's `code` (top level, as `webCommon.ts` `refuse` writes it). */
-internal fun HomeNetworkResponse.artifactsErrorCodeOrNull(): String? {
-    val text = errorBodyText ?: bodyText ?: return null
-    val root = runCatching { artifactsDashboardJson.parseToJsonElement(text) }.getOrNull() as? JsonObject ?: return null
-    return (root["code"] as? JsonPrimitive)?.takeIf { it.isString }?.content
-}
+internal fun HomeNetworkResponse.artifactsErrorCodeOrNull(): String? =
+    parseHttpErrorEnvelope()?.serverCode
 
 private fun <T> HomeNetworkResponse.toArtifactsHomeLoad(parse: (String?) -> T?): ArtifactsHomeLoad<T> {
     if (isSuccessful) {
         return parse(bodyText)?.let { ArtifactsHomeLoad.Ok(it) }
             ?: ArtifactsHomeLoad.Failed(ScreenError("artifacts_home_unreadable", retryable = true, traceId = traceId))
     }
-    val code = artifactsErrorCodeOrNull()
-    val error = ScreenError("artifacts_home_http_${this.code}", retryable = true, serverCode = code, traceId = traceId)
+    val envelope = parseHttpErrorEnvelope()
+    val code = envelope?.serverCode
+    val error =
+        ScreenError(
+            code = "artifacts_home_http_${this.code}",
+            retryable = true,
+            serverMessage = envelope?.serverMessage,
+            serverCode = code,
+            traceId = traceId,
+        )
     return when {
         this.code == 403 && code == "ARTIFACTS_NOT_ENABLED" -> ArtifactsHomeLoad.Off
         this.code == 404 -> ArtifactsHomeLoad.Missing(error)

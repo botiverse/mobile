@@ -102,10 +102,13 @@ internal class NetworkRaftThreadFindApi(
                 )
             }
         if (!response.isSuccessful) {
+            val envelope = response.parseHttpErrorEnvelope()
             return ThreadFindPageLoad.Failed(
                 ScreenError(
                     code = if (response.code in 500..599) "server_unavailable" else "thread_find_http_${response.code}",
                     retryable = response.code in 500..599 || response.code == 429,
+                    serverMessage = envelope?.serverMessage,
+                    serverCode = envelope?.serverCode,
                     traceId = response.traceId,
                 )
             )

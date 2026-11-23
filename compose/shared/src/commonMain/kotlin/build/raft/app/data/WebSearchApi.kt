@@ -246,13 +246,6 @@ internal class NetworkRaftWebSearchApi(private val networkClient: RaftNetworkCli
         )
 }
 
-/** The refusal's `code` (top level: `{ error, code }`). */
-private fun HomeNetworkResponse.webSearchErrorCodeOrNull(): String? {
-    val text = errorBodyText ?: bodyText ?: return null
-    val root = runCatching { webSearchJson.parseToJsonElement(text) }.getOrNull() as? JsonObject ?: return null
-    return (root["code"] as? JsonPrimitive)?.takeIf { it.isString }?.content
-}
-
 internal fun HomeNetworkResponse.toWebSearchArtifactsLoad(): WebSearchArtifactsLoad {
     if (isSuccessful) {
         val answer =
@@ -274,8 +267,15 @@ internal fun HomeNetworkResponse.toWebSearchArtifactsLoad(): WebSearchArtifactsL
         }
     }
     if (code == 400 || code == 404) return WebSearchArtifactsLoad.NoGroup
+    val envelope = parseHttpErrorEnvelope()
     return WebSearchArtifactsLoad.Failed(
-        ScreenError("web_search_http_$code", retryable = true, serverCode = webSearchErrorCodeOrNull(), traceId = traceId),
+        ScreenError(
+            code = "web_search_http_$code",
+            retryable = true,
+            serverMessage = envelope?.serverMessage,
+            serverCode = envelope?.serverCode,
+            traceId = traceId,
+        ),
     )
 }
 

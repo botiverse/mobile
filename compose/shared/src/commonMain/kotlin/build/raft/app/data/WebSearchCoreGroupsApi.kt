@@ -239,13 +239,6 @@ private fun String?.toSearchRequiredAction(source: String): SearchRequiredAction
     }
 }
 
-/** The refusal's `code` (top level: `{ error, code }`). */
-private fun HomeNetworkResponse.webSearchCoreErrorCodeOrNull(): String? {
-    val text = errorBodyText ?: bodyText ?: return null
-    val root = runCatching { webSearchCoreJson.parseToJsonElement(text) }.getOrNull() as? JsonObject ?: return null
-    return (root["code"] as? JsonPrimitive)?.takeIf { it.isString }?.content
-}
-
 internal fun <T> HomeNetworkResponse.toWebSearchCoreGroupLoad(
     group: SearchCoreGroup,
     readItem: (JsonElement, Int) -> T?,
@@ -257,10 +250,17 @@ internal fun <T> HomeNetworkResponse.toWebSearchCoreGroupLoad(
             else -> load
         }
     }
-    val serverCode = webSearchCoreErrorCodeOrNull()
+    val envelope = parseHttpErrorEnvelope()
+    val serverCode = envelope?.serverCode
     if (code == 404 && serverCode == "APP_NOT_FOUND") return WebSearchCoreGroupLoad.Unsupported
     return WebSearchCoreGroupLoad.Failed(
-        ScreenError("web_search_http_$code", retryable = true, serverCode = serverCode, traceId = traceId),
+        ScreenError(
+            code = "web_search_http_$code",
+            retryable = true,
+            serverMessage = envelope?.serverMessage,
+            serverCode = serverCode,
+            traceId = traceId,
+        ),
     )
 }
 

@@ -601,35 +601,53 @@ private fun StoredAuthSession.toChannelServerContext(serverId: ServerId): Shared
 private fun authRequired(): DataResult.NoPermission =
     authSessionRequiredResult()
 
-private fun authRequired(serverMessage: String?): DataResult.NoPermission =
-    authSessionRequiredResult(serverMessage)
-
 private fun <T> HomeNetworkResponse.toChannelDataError(): DataResult<T> {
-    val serverMessage = channelServerErrorTextOrNull()
+    val envelope = parseHttpErrorEnvelope()
+    val serverMessage = envelope?.serverMessage
+    val serverCode = envelope?.serverCode
     return when (code) {
-        401 -> authRequired(serverMessage)
-        403 -> DataResult.NoPermission(
-            PermissionBlocker(
-                code = channelErrorCode("server_forbidden"),
-                requiredCapability = "server_access",
-                serverMessage = serverMessage
-            )
-        )
+        401 -> toAuthSessionRequiredResult(envelope)
+        403 ->
+            if (isNonPermissionPlanOrQuota403Code(serverCode)) {
+                DataResult.Error(
+                    ScreenError(
+                        code = requireNotNull(serverCode),
+                        retryable = false,
+                        serverMessage = serverMessage,
+                        serverCode = serverCode,
+                        traceId = traceId,
+                    )
+                )
+            } else {
+                DataResult.NoPermission(
+                    PermissionBlocker(
+                        code = channelErrorCode("server_forbidden", envelope),
+                        requiredCapability = "server_access",
+                        serverMessage = serverMessage,
+                        serverCode = serverCode,
+                        traceId = traceId,
+                    )
+                )
+            }
         in 500..599 ->
             DataResult.Error(
                 ScreenError(
                     code = "server_unavailable",
                     retryable = true,
-                    serverMessage = serverMessage
+                    serverMessage = serverMessage,
+                    serverCode = serverCode,
+                    traceId = traceId,
                 )
             )
         else ->
             DataResult.Error(
                 ScreenError(
-                    code = channelErrorCode("http_$code"),
+                    code = channelErrorCode("http_$code", envelope),
                     retryable = false,
                     serverMessage = serverMessage,
-                    serverFields = channelErrorServerFields()
+                    serverCode = serverCode,
+                    serverFields = channelErrorServerFields(),
+                    traceId = traceId,
                 )
             )
     }
@@ -641,7 +659,7 @@ private fun <T> HomeNetworkResponse.toChannelDataError(): DataResult<T> {
  * [archivedNameCollisionOrNull]). Empty for every other refusal.
  */
 private fun HomeNetworkResponse.channelErrorServerFields(): Map<String, String> {
-    val payload = bodyText ?: errorBodyText ?: return emptyMap()
+    val payload = errorBodyText?.takeIf { it.isNotBlank() } ?: bodyText?.takeIf { it.isNotBlank() } ?: return emptyMap()
     val body =
         runCatching { channelRepositoryJson.decodeFromString(ChannelErrorBody.serializer(), payload) }.getOrNull()
             ?: return emptyMap()
@@ -654,25 +672,10 @@ private fun HomeNetworkResponse.channelErrorServerFields(): Map<String, String> 
     }
 }
 
-private fun HomeNetworkResponse.channelErrorCode(fallback: String): String {
-    val payload = bodyText ?: errorBodyText ?: return fallback
-    return runCatching {
-        val errorBody = channelRepositoryJson.decodeFromString(ChannelErrorBody.serializer(), payload)
-        errorBody.code
-            ?.trim()
-            ?.takeIf { it.isNotBlank() }
-            ?: errorBody.error.toChannelValidationErrorCode()
-    }.getOrNull() ?: fallback
-}
-
-private fun HomeNetworkResponse.channelServerErrorTextOrNull(): String? {
-    val payload = (bodyText ?: errorBodyText)?.takeIf { it.isNotBlank() } ?: return null
-    return runCatching {
-        channelRepositoryJson.decodeFromString(ChannelErrorBody.serializer(), payload)
-            .error
-            ?.takeIf { it.isNotBlank() }
-    }.getOrNull()
-}
+private fun channelErrorCode(fallback: String, envelope: HttpErrorEnvelope?): String =
+    envelope?.serverCode
+        ?: envelope?.serverMessage.toChannelValidationErrorCode()
+        ?: fallback
 
 private fun String?.toChannelValidationErrorCode(): String? {
     val normalized = this?.trim()?.lowercase().orEmpty()
