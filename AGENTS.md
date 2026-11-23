@@ -146,7 +146,7 @@ test -d "$SLOCK_SOURCE_REPO/packages/shared"
   presentation where one exists, such as a generic channel row or a generic notice. Where
   nothing can be shown, the drop is explicit. Either way, call
   `reportUnknownTypeDropped(source, field, value, fallback = …)` from
-  `StrictProjectionParsers.kt`. It writes a `projection_value_unknown` line that reaches the
+  `core/StrictProjectionParsers.kt`. It writes a `projection_value_unknown` line that reaches the
   local diagnostics ring on Android and iOS.
 - Lists decode row by row: an unreadable row is skipped and logged
   (`reportProjectionRowDropped`). If the server sent rows and none of them decode, the
@@ -810,9 +810,12 @@ or helper scripts as a workaround for branch protection.
   so moving a file needs no import changes). The older folders (`data/`, `network/`,
   `base/`, `nav/`, `model/`, `markdown/`, `assistant/`, ...) declare their own
   subpackage; `assistant/AssistantPage.kt` is the one `build.raft.app` file among
-  them. Check a file's `package` line, not its folder. The top level
-  holds only cross-cutting app infrastructure (theme, platform, avatars, icons, web
-  view, diagnostics). Put a new file in its feature folder, not at the top level.
+  them. Check a file's `package` line, not its folder. `core/` holds the
+  `build.raft.app` files that `data/` and `network/` depend on (logging, diagnostics,
+  strict projection parsers, avatar labels); it is the first step towards a separate
+  core module, so a file in `core/` must not use anything from a feature folder. The
+  top level holds the remaining cross-cutting app infrastructure (theme, platform,
+  avatars, icons, web view). Put a new file in its feature folder, not at the top level.
   Reusable, product-agnostic UI goes to `compose/designsystem`, not into a feature
   folder (see Shared UI Component Discipline). When you move a file, update every
   hard-coded path to it (workflow path filters, `scripts/` baselines and allowlists,
