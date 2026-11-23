@@ -74,6 +74,16 @@ import kotlinx.coroutines.launch
  */
 
 /** Test tags (the web's `data-testid`s where there is one). */
+/**
+ * The Lounge's mark wherever the app draws one (web `AgentLoungeIcon` in agentLounge.ts): lucide Sofa,
+ * so it no longer reads as Members (huxijin, #proj-chat msg=5dedad9c). [AgentLoungeSystemSymbol] is the
+ * iOS native bar's counterpart.
+ */
+internal val AgentLoungeIcon = RaftLucideIconName.Sofa
+
+/** SF Symbol for the Lounge in the iOS native navigation bar (pairs with [AgentLoungeIcon]). */
+internal const val AgentLoungeSystemSymbol = "sofa"
+
 internal object AgentLoungeTestTags {
     const val SidebarRow = "home-sidebar-lounge-row"
     const val SidebarUnread = "sidebar-lounge-unread"
@@ -267,7 +277,7 @@ internal fun AgentLoungeConversationTabStrip(
                     modifier = segmentModifier.testTag(AgentLoungeTestTags.TabLounge),
                     count = loungeBadge,
                     enabled = !switch.switching || switch.activeSide == AgentLoungeConversationSide.Lounge,
-                    icon = { RaftContentLucideIcon(RaftLucideIconName.Users, size = 16.dp) },
+                    icon = { RaftContentLucideIcon(AgentLoungeIcon, size = 16.dp) },
                 )
                 RaftSegment(
                     text = privateLabel,
@@ -374,7 +384,7 @@ internal fun RaftLoungeAvatar(
                     .testTag(AgentLoungeTestTags.AvatarBadge),
             contentAlignment = Alignment.Center,
         ) {
-            RaftContentLucideIcon(RaftLucideIconName.Users, size = glyphSize)
+            RaftContentLucideIcon(AgentLoungeIcon, size = glyphSize)
         }
     }
 }

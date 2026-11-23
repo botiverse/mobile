@@ -1467,7 +1467,7 @@ internal fun ActivityConversationLeading(
                 RaftInboxItemLeadingBadge {
                     if (model.lounge != null) {
                         // Agent Lounge v0: a thread in a Lounge wears the Lounge mark as its place badge.
-                        RaftContentLucideIcon(RaftLucideIconName.Users, size = RaftInboxItemLeadingDefaults.BadgeIcon)
+                        RaftContentLucideIcon(AgentLoungeIcon, size = RaftInboxItemLeadingDefaults.BadgeIcon)
                     } else {
                         HomeSidebarChannelGlyph(model.channelSymbol, size = RaftInboxItemLeadingDefaults.BadgeIcon)
                     }
