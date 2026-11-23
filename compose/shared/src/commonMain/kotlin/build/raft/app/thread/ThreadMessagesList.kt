@@ -37,6 +37,8 @@ import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.MutableState
+import androidx.compose.runtime.NonRestartableComposable
+import androidx.compose.runtime.State
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
@@ -557,6 +559,11 @@ private fun ThreadMessagesListContent(
     val peerReadReceipts = LocalThreadPeerReadReceipts.current
     val dmReadStatusMessageId = renderPayload.dmReadStatusMessageId(peerReadReceipts)
     val agentTyping = LocalThreadAgentTyping.current
+    // The typing / working line over the list's end, and the room the end makes for it: the one
+    // condition for both (web AgentTypingLine and AgentTypingListEnd). Also while Search in this
+    // thread is open: its bar sits at the list's top (web ThreadSearchBar). Not while "Generate
+    // image" captures the list.
+    val agentTypingLineShown = agentTyping != null && !shareSelectionCaptureActive
     // Task #1125: offline stand-in chrome (top inset + tip overlay), see threadOfflineLastKnownChrome.
     val offlineLastKnownChrome =
         threadOfflineLastKnownChrome(
@@ -606,9 +613,9 @@ private fun ThreadMessagesListContent(
         )
     val threadDensity = LocalDensity.current
     // Resolved once per composition, for the spacer row's height and for the scroll owners' trailing
-    // padding below: both read this value, never the conversation's flags themselves.
+    // padding below: both read this value, never the line's state themselves.
     val bottomSpacerAndAnchorTrailingHeight =
-        threadBottomSpacerAndAnchorTrailingHeight(typingLineSlot = renderPayload.agentTypingLineSlot)
+        threadBottomSpacerAndAnchorTrailingHeight(typingLineShown = agentTypingLineShown)
     val initialBottomAnchorTrailingPaddingPx =
         if (latestMessageListItemIndex >= 0) {
             with(threadDensity) {
@@ -2410,6 +2417,19 @@ private fun ThreadMessagesListContent(
                 }
             }
     }
+    // The typing / working line came or went (#proj-mobile:#271, web AgentTypingListEnd): the list's
+    // end grows or shrinks by the line's slot in the layout after this composition; see
+    // ThreadTypingLineEndEffect for who owns the viewport then.
+    ThreadTypingLineEndEffect(
+        threadInstanceKey = threadInstanceKey,
+        lineShown = agentTypingLineShown,
+        listState = listState,
+        controllerState = currentViewportControllerState,
+        placementSettled = readingAnchorPlacementSettledState,
+        newerPagePending = renderPayload.canLoadMoreAfter || newerPageCycleActive,
+        dispatchViewportEvent = dispatchViewportEvent,
+        diagnosticsLogger = diagnosticsLogger,
+    )
     LaunchedEffect(
         threadInstanceKey,
         renderPayload.canLoadMoreBefore,
@@ -4568,11 +4588,13 @@ private fun ThreadMessagesListContent(
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(
-                            // The full end, the typing line's slot included where this
-                            // conversation can show the line, whether or not the line shows: the
-                            // row never changes height when the line comes or goes, so nothing
-                            // moves and the reading anchor has nothing to put back. The scroll
-                            // owners read the same value.
+                            // The list's end, and the typing line's slot only while the line
+                            // shows (web AgentTypingListEnd). The bottom-up list keeps this row's
+                            // bottom where it is, so a reader resting on the end rides up and down
+                            // with it and one scrolled into the history never sees it change (the
+                            // typing line's SideEffect keeps the viewport's intent in step,
+                            // threadTypingLineEndFollowsLatest). The scroll owners read the same
+                            // value.
                             bottomSpacerAndAnchorTrailingHeight +
                                 (if (shareSelectionCaptureTailPaddingActive) {
                                     ThreadShareCaptureBottomScrollPaddingHeight
@@ -4806,8 +4828,6 @@ private fun ThreadMessagesListContent(
             )
         }
         val nextUnreadThread = unreadThreadJump?.takeIf { it.direction == ThreadUnreadThreadJumpDirection.Next }
-        // Also while Search in this thread is open: its bar sits at the list's top (web ThreadSearchBar).
-        val agentTypingLineShown = agentTyping != null && !shareSelectionCaptureActive
         // Select to here (ThreadSelectToHere.kt, web useSelectToHere): in select mode, while the
         // anchor is out of view. Only reads the viewport; a tap changes the selection, never the
         // scroll position, so no viewport intent is taken here.
@@ -5455,12 +5475,18 @@ private const val ThreadReplyEmptyListItemKey = "thread-page:reply-empty"
 private const val ThreadReplyLoadingListItemKey = "thread-page:reply-loading"
 private const val ThreadBottomScrollPaddingListItemKey = "thread-page:bottom-scroll-padding"
 /**
- * The blank end of the list under the newest message: the list's own 16dp end or, in a
- * conversation that can show the typing / working line ([typingLineSlot],
- * [ThreadTimelineSlice.agentTypingLineSlot]), the slot the line floats over
- * ([ThreadAgentTypingListEndHeight]) in its place: one line's height, not the slot on top of the
- * 16dp end (artin 11-22: 46dp left too much blank under the newest message while nobody works). The
- * slot is there whether or not the line shows; it follows the conversation, never agent activity.
+ * The blank end of the list under the newest message: the list's own 16dp end and, only while the
+ * typing / working line shows ([typingLineShown]), the line's slot on top of it
+ * ([ThreadAgentTypingListEndHeight]), as the web's AgentTypingListEnd adds its height to the
+ * timeline's end. While nobody types or works here the end is the plain end, with no slot
+ * (#proj-mobile:#271; 1.28 held the slot in every conversation that could show the line).
+ *
+ * The line coming or going moves no message a reader is looking at: the list is laid out bottom-up,
+ * so a reader resting on the end stays there (the rows ride up by the slot, the newest message
+ * clear of the line, and come back when it goes) and a reader scrolled into the history does not
+ * see the end change. A non-following intent resting on the end is retired to following first
+ * ([threadTypingLineEndFollowsLatest]), so the reading anchor keeper does not put the old position
+ * back under the line.
  *
  * The one source for both sides of "the newest message at the bottom": the height of the list's
  * last (spacer) row, and the trailing padding every scroll owner uses for it
@@ -5468,8 +5494,8 @@ private const val ThreadBottomScrollPaddingListItemKey = "thread-page:bottom-scr
  * RenderedBottom anchor). They must stay the same number: a spacer taller than the anchors' padding
  * parks the newest message under the line (Android 1.27.0, #proj-mobile #227).
  */
-internal fun threadBottomSpacerAndAnchorTrailingHeight(typingLineSlot: Boolean): androidx.compose.ui.unit.Dp =
-    if (typingLineSlot) ThreadAgentTypingListEndHeight else 16.dp
+internal fun threadBottomSpacerAndAnchorTrailingHeight(typingLineShown: Boolean): androidx.compose.ui.unit.Dp =
+    if (typingLineShown) 16.dp + ThreadAgentTypingListEndHeight else 16.dp
 private val ThreadShareCaptureBottomScrollPaddingHeight = 1200.dp
 /** The list's top inset for the find bar until the bar is measured (its usual height). */
 private val ThreadInlineSearchBarTopInset = 58.dp
@@ -5493,6 +5519,74 @@ private data class ThreadNewerPageCycle(
 private class ThreadUserScrollGeneration(
     var value: Int = 0
 )
+
+/** Whether the typing line showed in the last applied composition (written only from its SideEffect). */
+private class ThreadTypingLineEndSeen(
+    var shown: Boolean
+)
+
+/**
+ * The typing / working line came or went ([lineShown] flipped; #proj-mobile:#271, web
+ * AgentTypingListEnd): the layout after this composition grows or shrinks the list's end by the
+ * line's slot ([threadBottomSpacerAndAnchorTrailingHeight]).
+ *
+ * The bottom-up list keeps a reader resting on the end there by itself (the rows ride with it) and
+ * one scrolled into the history never sees the end change, so nothing scrolls for either. A reader
+ * at the end under another intent (opened on the newest message, a focused tail, a drag let go
+ * just above the end) is retired to FollowingLatest here, after the composition and before that
+ * layout, as the keyboard correction retires a parked tail: the reading anchor keeper owns only
+ * while not following, so it does not put the old position back under the line, and later replays
+ * of the intent pin the end instead of an offset taken before it changed.
+ *
+ * Owner: the end the reader is at. Fence ([threadTypingLineEndFollowsLatest]), from the last
+ * layout: the end row in view when the line comes ([listEndInView]), resting on the end when it
+ * goes ([restsOnListEnd]); no scroll in progress, a settled placement, the live tail loaded, never
+ * over a drag. Decided synchronously once per change of the line, no delayed job; the Latest
+ * command it emits goes through the controller's executor and closes what is left of the gap to
+ * the end (nothing when the reader rested on it).
+ * Non-restartable, like [ThreadMessagesListOverlays]: it runs whenever the list's content runs.
+ */
+@Composable
+@NonRestartableComposable
+private fun ThreadTypingLineEndEffect(
+    threadInstanceKey: String,
+    lineShown: Boolean,
+    listState: ThreadListViewport,
+    controllerState: State<LazyViewportControllerState>,
+    placementSettled: State<Boolean>,
+    newerPagePending: Boolean,
+    dispatchViewportEvent: (LazyViewportEvent) -> Unit,
+    diagnosticsLogger: (String) -> Unit,
+) {
+    val seen = remember(threadInstanceKey) { ThreadTypingLineEndSeen(lineShown) }
+    SideEffect {
+        if (seen.shown != lineShown) {
+            seen.shown = lineShown
+            val endInView = listState.listEndInView()
+            val restsOnEnd = listState.restsOnListEnd()
+            val intent = controllerState.value.intent
+            val follow =
+                threadTypingLineEndFollowsLatest(
+                    reverseLayout = listState.reverse,
+                    lineShown = lineShown,
+                    intent = intent,
+                    listEndInView = endInView,
+                    restsOnListEnd = restsOnEnd,
+                    scrollInProgress = listState.isScrollInProgress,
+                    placementSettled = placementSettled.value,
+                    newerPagePending = newerPagePending,
+                )
+            diagnosticsLogger(
+                "thread_typing_line_end key=$threadInstanceKey shown=$lineShown endInView=$endInView " +
+                    "restsOnEnd=$restsOnEnd intent=${intent.logTag()} action=${if (follow) "follow_latest" else "none"}"
+            )
+            if (follow) {
+                listState.noteDispatchOwner(ThreadViewportOwnerTag.TypingLineEnd)
+                dispatchViewportEvent(LazyViewportEvent.FollowLatest(canOverrideUserDragging = false))
+            }
+        }
+    }
+}
 
 private fun ThreadListViewport.isThreadItemVisible(index: Int): Boolean {
     if (index < 0) return false
@@ -5523,6 +5617,28 @@ internal fun ThreadListViewport.isLatestItemAtRenderedBottom(
     latestItemIndex: Int,
     trailingPaddingSize: Int = 0
 ): Boolean = threadItemAtRenderedBottom(layoutInfo, latestItemIndex, trailingPaddingSize)
+
+/**
+ * The list rests on its end in the last layout: the end row under the newest message is laid out
+ * with its bottom on the rendered bottom, within the tolerance a settled drag counts as following
+ * ([isLatestItemAtRenderedBottom]). Found by its key, so a row appended in the same composition (an
+ * agent's reply landing as its typing line goes) does not hide it behind a stale index.
+ */
+private fun ThreadListViewport.restsOnListEnd(): Boolean {
+    val info = layoutInfo
+    val end = info.visibleItemsInfo.firstOrNull { it.key == ThreadBottomScrollPaddingListItemKey } ?: return false
+    return kotlin.math.abs(end.offset + end.size - info.viewportEndOffset) <= ThreadBackToBottomTolerancePx
+}
+
+/**
+ * Some of the end row under the newest message shows in the last layout: the newest message is
+ * whole on screen, above it. Found by its key, as [restsOnListEnd].
+ */
+private fun ThreadListViewport.listEndInView(): Boolean {
+    val info = layoutInfo
+    val end = info.visibleItemsInfo.firstOrNull { it.key == ThreadBottomScrollPaddingListItemKey } ?: return false
+    return end.offset < info.viewportEndOffset
+}
 
 private const val ThreadBackToBottomReleaseGuardMillis = 64L
 
