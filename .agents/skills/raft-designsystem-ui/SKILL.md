@@ -37,7 +37,10 @@ Discipline".
 - Metrics (control heights, 44dp icon-button target, radii, strokes) come from
   `tokens/RaftDimensions.kt`, not page literals. raft-ui controls cast no
   shadow (stickers keep the hard offset).
-- Back/close controls: `RaftBackButton`.
+- Back: `RaftBackButton` (always the arrow, at the head's start). A head's ×:
+  `RaftCloseButton`, the head's last control at its end (a phone sheet's first);
+  a panel that covers the page has Back instead. Never draw an × of your own:
+  `RaftCloseButtonRulesTest` fails on one.
 - The `RaftBrutal*` layer is removed; do not recreate it. Do NOT add new usages
   of helpers under `compose/shared/src/commonMain/kotlin/build/raft/app/components/`.
   When you touch UI that uses them, replace them with the design-system

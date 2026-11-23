@@ -43,6 +43,8 @@ import build.raft.app.model.MemberKind
 import build.raft.app.model.formatRaftTimestampLabel
 import build.raft.designsystem.components.RaftAvatarSize
 import build.raft.designsystem.components.RaftButtonVariant
+import build.raft.designsystem.components.RaftCloseButton
+import build.raft.designsystem.components.RaftCloseButtonSize
 import build.raft.designsystem.components.RaftIconButton
 import build.raft.designsystem.components.RaftIconButtonSize
 import build.raft.designsystem.components.RaftSpinner
@@ -140,19 +142,8 @@ private fun AttachmentCommentsHeader(filename: String, onClose: (() -> Unit)?) {
                 modifier = Modifier.weight(1f)
             )
             if (onClose != null) {
-                val closeLabel = stringResource(Res.string.common_close)
-                RaftIconButton(
-                    onClick = onClose,
-                    tooltip = closeLabel,
-                    variant = RaftButtonVariant.Ghost,
-                    size = RaftIconButtonSize.Md
-                ) {
-                    RaftLucideIcon(
-                        RaftLucideIconName.X,
-                        modifier = Modifier.size(16.dp),
-                        color = raftArgbHex(colors.foreground)
-                    )
-                }
+                // The compact head's × at its end: the 32dp one, as a sheet's.
+                RaftCloseButton(onClick = onClose, label = stringResource(Res.string.common_close), size = RaftCloseButtonSize.Dialog)
             }
         }
         Box(Modifier.fillMaxWidth().heightIn(min = RaftStroke.Hairline, max = RaftStroke.Hairline).background(colors.lineSeam.compositeOver(colors.layerCanvas)))
