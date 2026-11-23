@@ -239,8 +239,9 @@ fun RaftMessageItemToolbar(
  * ring. 28dp everywhere: the toolbar keeps its size on the desktop scale.
  *
  * [label] names the action in Title Case ("Add Reaction", "Reply in Thread", "Forward", "Save",
- * "More Actions") for screen readers. Like the web's, the button shows no tooltip: the hover
- * already lays its fill, and a tooltip would cover the message under the toolbar.
+ * "More Actions") for screen readers, and is its tooltip while a mouse or trackpad hovers it
+ * (raft-ui 0.102.20), with [shortcut] after it. [tooltip] replaces that text; [showTooltip] =
+ * false leaves it out (a caller with its own [RaftTooltip]). A tap shows none.
  * Disabled, the icon greys and nothing hovers.
  */
 @Composable
@@ -252,11 +253,36 @@ fun RaftMessageItemToolbarButton(
     open: Boolean = false,
     enabled: Boolean = true,
     interactionSource: MutableInteractionSource? = null,
+    tooltip: String = label,
+    showTooltip: Boolean = true,
+    shortcut: String? = null,
     icon: @Composable () -> Unit,
 ) {
     val colors = RaftTheme.colors
     val misuse = LocalRaftMisuse.current
     if (label.isBlank()) misuse("RaftMessageItemToolbarButton needs a label")
+    if (showTooltip) {
+        // Hover only: the long press stays the message's (its menu).
+        RaftTooltip(text = tooltip, modifier = modifier, openOnLongPress = false, shortcut = shortcut) {
+            RaftMessageItemToolbarButtonBox(onClick, label, Modifier, active, open, enabled, interactionSource, icon)
+        }
+    } else {
+        RaftMessageItemToolbarButtonBox(onClick, label, modifier, active, open, enabled, interactionSource, icon)
+    }
+}
+
+@Composable
+private fun RaftMessageItemToolbarButtonBox(
+    onClick: () -> Unit,
+    label: String,
+    modifier: Modifier,
+    active: Boolean,
+    open: Boolean,
+    enabled: Boolean,
+    interactionSource: MutableInteractionSource?,
+    icon: @Composable () -> Unit,
+) {
+    val colors = RaftTheme.colors
     val look =
         RaftButtonLook(
             fill = Color.Transparent,
