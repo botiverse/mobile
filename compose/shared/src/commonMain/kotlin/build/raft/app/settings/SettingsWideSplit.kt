@@ -19,11 +19,12 @@ import build.raft.app.compat.json.JSONObject
 import build.raft.app.data.RaftListPaneKind
 import build.raft.app.data.RaftShellStoreScope
 import build.raft.designsystem.theme.LocalRaftContentColor
+import build.raft.designsystem.theme.RaftPointerInput
+import build.raft.designsystem.theme.RaftTheme
 import build.raft.designsystem.components.RaftSidebarGroupLabel
 import build.raft.designsystem.components.RaftSidebarItem
 import build.raft.designsystem.components.RaftStatusDot
 import build.raft.designsystem.components.RaftStatusVariant
-import build.raft.designsystem.components.raftSidebarItemIconSize
 import androidx.compose.foundation.layout.size
 
 /*
@@ -229,6 +230,10 @@ internal fun SettingsWideSidebarList(
 ) {
     val groups = payload.items.groupConsecutiveBy { it.section }
     val searchResults = search?.let { rememberSettingsSearchResults(it, payload) }
+    // Web SettingsSidebarList (`py-2 md:pointer-fine:pt-1`): 4dp top on fine pointer, 8dp top on touch,
+    // and 8dp bottom, counting RaftSidebarItem's own 1dp vertical margin on each side.
+    val groupTopGap = if (RaftTheme.pointerInput == RaftPointerInput.Fine) 3.dp else 7.dp
+    val groupBottomGap = 7.dp
     Column(Modifier.fillMaxSize().background(RaftColor.SurfaceWhite)) {
         if (search != null) {
             // web: the field at the top of the sidebar, `px-2 pt-2 pb-1`, pinned as the list scrolls.
@@ -250,7 +255,7 @@ internal fun SettingsWideSidebarList(
                 if (section != null) {
                     item(key = "section:$section") { RaftSidebarGroupLabel(section) }
                 }
-                item(key = "gap-top:${rows.first().key}") { Spacer(Modifier.height(RaftAppSpacing.Xs)) }
+                item(key = "gap-top:${rows.first().key}") { Spacer(Modifier.height(groupTopGap)) }
                 items(rows, key = { it.key }) { row ->
                     RaftSidebarItem(
                         title = row.title,
@@ -266,7 +271,7 @@ internal fun SettingsWideSidebarList(
                                     if (row.opensExternally) {
                                         RaftLucideIcon(
                                             RaftLucideIconName.ArrowUpRight,
-                                            Modifier.size(raftSidebarItemIconSize()),
+                                            Modifier.size(14.dp),
                                             color = raftArgbHex(LocalRaftContentColor.current),
                                         )
                                     }
@@ -276,7 +281,7 @@ internal fun SettingsWideSidebarList(
                             },
                     )
                 }
-                item(key = "gap-bottom:${rows.first().key}") { Spacer(Modifier.height(RaftAppSpacing.Xs)) }
+                item(key = "gap-bottom:${rows.first().key}") { Spacer(Modifier.height(groupBottomGap)) }
             }
             item(key = "bottom") { Spacer(Modifier.height(bottomContentPadding)) }
         }

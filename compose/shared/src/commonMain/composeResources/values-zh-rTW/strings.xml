@@ -166,6 +166,7 @@
     <string name="settings_account_profile_save_failed">個人檔案儲存失敗：%1$s</string>
     <string name="settings_account_change_password">變更密碼</string>
     <string name="settings_account_change_password_detail">儲存新密碼前需要輸入目前的密碼</string>
+    <string name="settings_account_device_login_notice">變更密碼會讓你在所有裝置上登出。透過裝置登入（Raft Computer、raft CLI）設定的電腦連線和 Agent 憑證也會失效，需要在這些地方重新登入。</string>
     <string name="settings_account_current_password">目前的密碼</string>
     <string name="settings_account_new_password">新密碼</string>
     <string name="settings_account_confirm_password">確認密碼</string>
@@ -356,6 +357,7 @@
     <string name="settings_keyboard_shortcuts_previous_match">上一個符合項目</string>
     <string name="settings_keyboard_shortcuts_previous_match_where">討論串搜尋框中，Enter 是下一個</string>
     <string name="settings_usage_data_title">分享使用資料</string>
+    <string name="settings_usage_data_section_title">產品分析</string>
     <string name="settings_account_login_security_title">登入與安全</string>
     <string name="settings_account_two_step_title">兩步驟驗證</string>
     <string name="settings_account_two_step_on">已開啟</string>

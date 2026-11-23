@@ -98,6 +98,7 @@ class SettingsAccountPasswordSetupUiTest {
             onNodeWithText("Set a password").assertExists()
             onNodeWithText("Add an email and password sign-in method before removing your final connected account.").assertExists()
             onNodeWithText("Change Password").assertDoesNotExist()
+            onNodeWithText("Change password").assertDoesNotExist()
 
             onNodeWithTag(SettingsAccountSetPasswordButtonTag).performClick()
             waitForIdle()

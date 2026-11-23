@@ -166,6 +166,7 @@
     <string name="settings_account_profile_save_failed">Profile save failed: %1$s</string>
     <string name="settings_account_change_password">Change password</string>
     <string name="settings_account_change_password_detail">Requires current password before saving a new one</string>
+    <string name="settings_account_device_login_notice">Changing your password signs you out everywhere. Computers and agent credentials set up through a device login (Raft Computer, the raft CLI) stop working too, so you'll need to log in on them again.</string>
     <string name="settings_account_current_password">Current password</string>
     <string name="settings_account_new_password">New password</string>
     <string name="settings_account_confirm_password">Confirm password</string>
@@ -356,6 +357,7 @@
     <string name="settings_keyboard_shortcuts_previous_match">Previous match</string>
     <string name="settings_keyboard_shortcuts_previous_match_where">In thread search; Enter goes to the next</string>
     <string name="settings_usage_data_title">Share usage data</string>
+    <string name="settings_usage_data_section_title">Product analytics</string>
     <string name="settings_account_login_security_title">Login &amp; security</string>
     <string name="settings_account_two_step_title">Two-step verification</string>
     <string name="settings_account_two_step_on">On</string>
