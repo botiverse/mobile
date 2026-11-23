@@ -1,6 +1,7 @@
 package build.raft.app
 
 import build.raft.app.data.ArtifactLinkTarget
+import build.raft.app.nav.RAFT_REPLACE_CURRENT_PAGE
 import build.raft.app.nav.RaftPageStack
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
@@ -194,6 +195,55 @@ class RaftShellNavigationIntakeTest {
         assertTrue(intake.enqueue(notificationIntent(channelId = "channel-1", messageId = "message-7")))
         advanceUntilIdle()
         assertEquals(2, host.performed.size)
+
+        // Direct message (Hands iOS 5e33271a): consecutive background notifications for the top DM skip cleanly.
+        val dmId = "dm-f0a32ee2"
+        val dmPageData =
+            JsonObject(
+                mapOf(
+                    "instanceId" to JsonPrimitive("dm:$dmId"),
+                    "payload" to
+                        JsonPrimitive("""{"instanceId":"dm:$dmId","surfaceKind":"dm","threadId":"$dmId","streamChannelId":"$dmId"}"""),
+                ),
+            )
+        stack.open(THREAD_PAGE, dmPageData, from = shell)
+        val dmRequest =
+            HomeMessageOpenRequest(
+                conversationIdentity =
+                    ThreadLaunchConversationIdentity(
+                        threadId = build.raft.app.model.ThreadId(dmId),
+                        channelId = build.raft.app.model.ChannelId(dmId),
+                        kind = ConversationKind.DirectMessage,
+                    ),
+                anchorMessageId = "dm-msg-2",
+            )
+        assertTrue(raftWindowNavigationTargetIsTopPage(dmRequest, host.topPageRoute()))
+
+        // Unresolved 0-reply ReplyThread on top still matches a notification carrying the newly created streamChannelId.
+        val replyPageData =
+            JsonObject(
+                mapOf(
+                    "instanceId" to JsonPrimitive("reply-parent:channel-1:root-1"),
+                    "payload" to
+                        JsonPrimitive(
+                            """{"instanceId":"reply-parent:channel-1:root-1","surfaceKind":"reply_thread","threadId":"root-1","parentChannelId":"channel-1","parentMessageId":"root-1"}"""
+                        ),
+                ),
+            )
+        stack.open(THREAD_PAGE, replyPageData, from = stack.pages.last())
+        val replyNotificationRequest =
+            HomeMessageOpenRequest(
+                conversationIdentity =
+                    ThreadLaunchConversationIdentity(
+                        threadId = build.raft.app.model.ThreadId("stream-99"),
+                        channelId = build.raft.app.model.ChannelId("stream-99"),
+                        kind = ConversationKind.Thread,
+                        parentChannelId = build.raft.app.model.ChannelId("channel-1"),
+                        parentMessageId = build.raft.app.model.MessageId("root-1"),
+                    ),
+                anchorMessageId = "reply-msg-1",
+            )
+        assertTrue(raftWindowNavigationTargetIsTopPage(replyNotificationRequest, host.topPageRoute()))
     }
 
     @Test

@@ -94,6 +94,7 @@ internal class RaftActivityPageOpens<P : Any>(
         val index = task.pages.indexOfLast { it.host == host }
         if (index < 0 || index == task.pages.lastIndex) return
         task.pages.subList(index + 1, task.pages.size).clear()
+        task.gate.cancelPending()
         task.gate.transitionEnded()
     }
 

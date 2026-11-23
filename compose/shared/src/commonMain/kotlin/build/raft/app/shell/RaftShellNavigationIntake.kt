@@ -201,7 +201,11 @@ internal fun raftWindowNavigationTargetIsTopPage(request: HomeMessageOpenRequest
     val target = request.conversationIdentity.resolveThreadRouteIdentity()
     if (target.instanceKey.isNotBlank() && target.instanceKey == top.instanceKey) return true
     val timeline = target.timelineChannelId
-    return timeline != null && timeline == top.timelineChannelId
+    if (timeline != null && timeline == top.timelineChannelId) return true
+    return target.surfaceKind == RaftThreadSurfaceKind.ReplyThread &&
+        top.surfaceKind == RaftThreadSurfaceKind.ReplyThread &&
+        !target.parentKey.isNullOrBlank() &&
+        target.parentKey == top.parentKey
 }
 
 /**

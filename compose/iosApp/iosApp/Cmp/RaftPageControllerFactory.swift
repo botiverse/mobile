@@ -171,7 +171,7 @@ private final class RaftCmpPageNavigator: NSObject, RaftCmpIosNavigator {
         }
     }
 
-    func topPage() -> RaftCmpIosTopPage? {
+    func currentTopPage() -> RaftCmpIosTopPage? {
         guard Thread.isMainThread else { return nil }
         guard let nav = controller?.navigationController, let top = nav.topViewController else {
             return nil

@@ -84,8 +84,13 @@ interface RaftCmpIosNavigator {
 
     fun closePage()
 
-    /** Authoritative top page on the window's navigation stack, or null when detached. */
-    fun topPage(): RaftCmpIosTopPage?
+    /**
+     * Authoritative top page on the window's navigation stack, or null when detached.
+     * Distinct name + `@ObjCName` avoids colliding with `RaftCmpNavigator.topPage` in Objective-C.
+     */
+    @OptIn(ExperimentalObjCName::class)
+    @ObjCName("currentTopPage")
+    fun currentTopPage(): RaftCmpIosTopPage?
 }
 
 /** Implemented by the iOS page container (`RaftPageViewController`): page -> host notifications. */
@@ -332,5 +337,5 @@ private class IosNavigator(private val navigator: RaftCmpIosNavigator) : RaftCmp
     override fun closePage() = navigator.closePage()
 
     override fun topPage(): RaftCmpPageArgs? =
-        navigator.topPage()?.let { RaftCmpPageArgs.fromJsonText(it.pageName, it.pageDataJson) }
+        navigator.currentTopPage()?.let { RaftCmpPageArgs.fromJsonText(it.pageName, it.pageDataJson) }
 }
