@@ -82,6 +82,8 @@ class SharedThreadStoreTest {
         val releaseChannelMessagesByThreadId: MutableMap<String, CompletableDeferred<Unit>> = mutableMapOf()
         var channelMessagesStarted: CompletableDeferred<Unit>? = null
         var releaseChannelMessages: CompletableDeferred<Unit>? = null
+        var beforeMessagesStarted: CompletableDeferred<Unit>? = null
+        var releaseBeforeMessages: CompletableDeferred<Unit>? = null
         var afterMessagesStarted: CompletableDeferred<Unit>? = null
         var releaseAfterMessages: CompletableDeferred<Unit>? = null
         var catchUpStarted: CompletableDeferred<Unit>? = null
@@ -112,6 +114,8 @@ class SharedThreadStoreTest {
             return when {
                 beforeSeq != null -> {
                     beforeSeqs += beforeSeq
+                    beforeMessagesStarted?.complete(Unit)
+                    releaseBeforeMessages?.await()
                     HomeNetworkResponse(code = 200, bodyText = olderBodyText)
                 }
                 afterSeq != null -> {

@@ -200,7 +200,7 @@ private fun TaskPhonePage(
                     item(key = HeadRowKey) {
                         Column(Modifier.fillMaxWidth()) {
                             TaskConversationHeadRowContent(headRow)
-                            ThreadHistoryStatusRow(threadOlderMessagesStatusSpec(canLoadMoreBefore = false))
+                            ThreadHistoryStatusRow(requireNotNull(threadOlderMessagesStatusSpec(canLoadMoreBefore = false)))
                         }
                     }
                 }

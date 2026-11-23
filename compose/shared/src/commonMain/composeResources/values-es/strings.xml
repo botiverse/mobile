@@ -1328,6 +1328,7 @@
     <string name="thread_retry_new">Reintentar mensajes nuevos</string>
     <string name="thread_load_new">Cargar mensajes nuevos</string>
     <string name="thread_state_loading_older">Cargando mensajes anteriores…</string>
+    <string name="thread_state_loading_older_replies">Cargando respuestas anteriores…</string>
     <string name="thread_state_loading_new">Cargando mensajes nuevos…</string>
     <string name="thread_offline_last_known_tip">Contenido sin conexión: puede no estar actualizado</string>
     <string name="thread_offline_older_unavailable">Los mensajes anteriores no están disponibles sin conexión</string>

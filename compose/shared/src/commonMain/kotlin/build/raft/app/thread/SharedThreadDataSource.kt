@@ -4422,6 +4422,7 @@ internal class SharedThreadDataSource(
             "thread_page_size source=$source server=${session.currentServerId.orEmpty()} pageSize=$pageSize"
         )
         var rawPage = RawMessagePageWitness.None
+        var rawServerRowCount = 0
         // Phase 3b: read before the request (with the identity): a horizonReset during it voids the page's head claim.
         val headEpochAtRequest = durableHeadEpochOrNull(resolutionScope.provenance)
         val revAtRequest = durableLocalRevOrNull(resolutionScope.provenance)
@@ -4434,6 +4435,7 @@ internal class SharedThreadDataSource(
                     call = { repository -> repositoryCall(repository, ThreadId(threadId), pageSize) },
                     transform = { snapshot ->
                         rawPage = snapshot.rawMessagePage
+                        rawServerRowCount = snapshot.rawMessagePage.page?.messages?.size ?: snapshot.rawMessageCount
                         snapshot.toRaftThreadPayload(basePayload, session.user.id)
                     }
                 )
@@ -4452,6 +4454,7 @@ internal class SharedThreadDataSource(
                         is ThreadApiResult.Failure ->
                             return response.toThreadDataError("thread_${source}_network")
                     }
+                rawServerRowCount = page.messages.size
                 DataResult.Content(
                     buildSharedThreadPayloadFromMessagesPage(
                         basePayload = basePayload,
@@ -4468,6 +4471,7 @@ internal class SharedThreadDataSource(
                     SharedThreadPageFetchResult(
                         payload = result.data,
                         requestedPageSize = pageSize,
+                        rawServerRowCount = rawServerRowCount,
                         durablePage =
                             rawPage.page?.let { page ->
                                 SharedThreadDurablePage(

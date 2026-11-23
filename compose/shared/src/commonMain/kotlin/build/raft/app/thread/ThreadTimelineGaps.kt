@@ -12,6 +12,7 @@ import build.raft.app.resources.desc
 import build.raft.app.resources.thread_offline_older_unavailable
 import build.raft.app.resources.thread_retry_older
 import build.raft.app.resources.thread_state_loading_older
+import build.raft.app.resources.thread_state_loading_older_replies
 import kotlinx.serialization.Serializable
 import org.jetbrains.compose.resources.stringResource
 
@@ -118,11 +119,12 @@ internal fun reconcileThreadTimelineGapsAfterFill(
     fetchedPageMessages: List<RaftThreadMessageItem>,
     requestedPageSize: Int,
     mergedMessages: List<RaftThreadMessageItem>,
+    rawServerRowCount: Int = fetchedPageMessages.size,
 ): List<ThreadTimelineGap> {
     val resolvedPageSize = SharedThreadPaging.resolve(requestedPageSize)
     val fetchedSeqs = fetchedPageMessages.mapNotNull { it.seq }
     val minFetchedSeq = fetchedSeqs.minOrNull()
-    val provedToStart = fetchedSeqs.isEmpty() || fetchedPageMessages.size < resolvedPageSize
+    val provedToStart = fetchedSeqs.isEmpty() || rawServerRowCount < resolvedPageSize
     val updatedGaps =
         if (provedToStart) {
             existingGaps.filter { gap -> gap.afterSeq >= filledBeforeSeq }
@@ -201,6 +203,7 @@ internal fun ThreadTimelineGapRow(
     durableLastKnown: Boolean,
     mainLoadFailed: Boolean,
     onFillGap: (ThreadTimelineGap) -> Unit,
+    replyThread: Boolean = false,
 ) {
     val onlineAutoFill = !durableLastKnown && !mainLoadFailed
     if (onlineAutoFill && gap.status == "idle") {
@@ -212,7 +215,12 @@ internal fun ThreadTimelineGapRow(
         gap.status == "loading" || (onlineAutoFill && gap.status == "idle") || (durableLastKnown && !mainLoadFailed) ->
             ThreadHistoryStatusRow(
                 ThreadHistoryStatusSpec(
-                    label = Res.string.thread_state_loading_older.desc(),
+                    label =
+                        if (replyThread) {
+                            Res.string.thread_state_loading_older_replies.desc()
+                        } else {
+                            Res.string.thread_state_loading_older.desc()
+                        },
                     loading = true,
                 )
             )

@@ -1,5 +1,9 @@
 package build.raft.app
 
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.snapshots.Snapshot
+import androidx.compose.ui.input.pointer.PointerEventType
+
 internal const val ThreadNewerAutoLoadVisibleItemThreshold = 8
 
 internal sealed interface ThreadNewerPageLoadOutcome {
@@ -59,13 +63,20 @@ internal fun resolveThreadNewerViewportSettlement(
 }
 
 /**
- * Converts direct pointer gestures into one-shot demand for a newer page.
+ * Converts direct pointer gestures and vertical wheel/trackpad scrolls into one-shot demand for a
+ * newer page.
  *
- * The general Thread user-scroll generation intentionally counts every direct
- * move because it owns viewport arbitration. Newer pagination needs a narrower
- * signal: only an upward finger move beyond platform touch slop (toward
- * higher/newer list indices) may authorize a page, and one continuous gesture
- * may authorize at most one page.
+ * The general Thread user-scroll generation intentionally counts every direct move because it owns
+ * viewport arbitration. Newer pagination needs a narrower signal:
+ * - Touch ([onTouch]): only an upward finger move beyond platform touch slop (toward higher/newer
+ *   list indices) may authorize a page, and one continuous gesture may authorize at most one page.
+ * - Mouse wheel / trackpad ([onListPointerEvent], task #258): only a downward vertical scroll
+ *   ([PointerEventType.Scroll] with positive `scrollDeltaY`, moving the viewport toward higher/newer
+ *   indices) authorizes a page; hover, sideways swipes (`0f`), and upward scrolls (`< 0f`) do not.
+ *
+ * Snapshot-backed like [ThreadUserScrollGeneration]: [observedGeneration] wakes the newer-page
+ * `snapshotFlow` even when the list is already at its bottom and no layout changes; [generation]
+ * reads without subscribing so composition and settlement do not recompose on every scroll event.
  */
 internal class ThreadNewerGestureDemandTracker(
     initialGeneration: Int = 0
@@ -74,15 +85,22 @@ internal class ThreadNewerGestureDemandTracker(
         require(initialGeneration >= 0) { "initialGeneration must be non-negative" }
     }
 
-    var generation: Int = initialGeneration
-        private set
+    private val count = mutableIntStateOf(initialGeneration)
+
+    /** Current demand generation, read without subscribing. */
+    val generation: Int
+        get() = Snapshot.withoutReadObservation { count.intValue }
+
+    /** Current demand generation, read so a snapshotFlow re-runs when the reader scrolls toward newer rows. */
+    val observedGeneration: Int
+        get() = count.intValue
 
     private var gestureActive: Boolean = false
     private var emittedForGesture: Boolean = false
     private var gestureStartPointerY: Float? = null
 
     /**
-     * Records a pointer event and returns the current newer-demand generation.
+     * Records a touch pointer event and returns the current newer-demand generation.
      * A Y smaller than the gesture's Down point by more than [touchSlop] is a
      * deliberate net upward finger move. Comparing against Down prevents taps,
      * long presses, and mostly downward/away gestures from authorizing a page
@@ -109,7 +127,7 @@ internal class ThreadNewerGestureDemandTracker(
                     startY != null &&
                     startY - pointerY > minimumDistance
                 ) {
-                    generation += 1
+                    count.intValue = generation + 1
                     emittedForGesture = true
                 }
             }
@@ -122,6 +140,22 @@ internal class ThreadNewerGestureDemandTracker(
         }
         return generation
     }
+
+    /**
+     * Records a wheel or trackpad pointer event over the list ([threadListWheelScroll], task #258).
+     * Positive [scrollDeltaY] scrolls the viewport downward toward newer messages on macOS, Linux,
+     * Windows, Android, and iOS; negative [scrollDeltaY] scrolls upward toward older messages and
+     * must not authorize a newer page.
+     */
+    fun onListPointerEvent(
+        eventType: PointerEventType,
+        scrollDeltaY: Float
+    ): Int {
+        if (eventType == PointerEventType.Scroll && scrollDeltaY.isFinite() && scrollDeltaY > 0f) {
+            count.intValue = generation + 1
+        }
+        return generation
+    }
 }
 
 /**
@@ -130,7 +164,8 @@ internal class ThreadNewerGestureDemandTracker(
  * The caller consumes all demand observed through an active page cycle by
  * advancing [lastSettledNewerDemandGeneration] to the current demand
  * generation when that cycle settles. This prevents append settlement from
- * cascading into another page without a fresh gesture.
+ * cascading into another page without a fresh gesture. [listScrolls]: the list
+ * is long enough to scroll.
  */
 internal fun shouldThreadAutoLoadNewerMessages(
     initialBottomAnchorReady: Boolean,
@@ -141,12 +176,17 @@ internal fun shouldThreadAutoLoadNewerMessages(
     latestMessageListItemIndex: Int,
     newerDemandGeneration: Int,
     lastSettledNewerDemandGeneration: Int,
-    thresholdItems: Int = ThreadNewerAutoLoadVisibleItemThreshold
+    thresholdItems: Int = ThreadNewerAutoLoadVisibleItemThreshold,
+    listScrolls: Boolean = true,
 ): Boolean {
     if (!initialBottomAnchorReady || !canLoadMoreAfter) return false
     if (newerMessagesStatus != "idle" || newerPageCycleActive) return false
-    if (newerDemandGeneration <= lastSettledNewerDemandGeneration) return false
     if (lastVisibleIndex < 0 || latestMessageListItemIndex < 0 || thresholdItems < 0) return false
+    // Task #258 (symmetric to #253): in a list too short to scroll after opening at an anchor,
+    // every loaded row fits and no scroll can bring the bottom edge closer; load newer on its own,
+    // matching the web timeline (VirtualMessageTimeline.tsx maybeLoadEdges).
+    if (!listScrolls) return lastVisibleIndex >= latestMessageListItemIndex
+    if (newerDemandGeneration <= lastSettledNewerDemandGeneration) return false
     return lastVisibleIndex >= latestMessageListItemIndex - thresholdItems
 }
 

@@ -44,22 +44,31 @@ internal class ThreadUserScrollGeneration {
      * wide code block or table), which moves no row of the list.
      */
     fun onListPointerEvent(eventType: PointerEventType, scrollDeltaY: Float) {
-        if (eventType == PointerEventType.Scroll && scrollDeltaY != 0f) value += 1
+        if (eventType == PointerEventType.Scroll && scrollDeltaY.isFinite() && scrollDeltaY != 0f) value += 1
     }
 }
 
 /**
- * Feeds every pointer event over the thread list to [ThreadUserScrollGeneration.onListPointerEvent],
- * without consuming it: the list scrolls by the same event.
+ * Feeds every pointer event over the thread list to [ThreadUserScrollGeneration.onListPointerEvent]
+ * and (when provided) [ThreadNewerGestureDemandTracker.onListPointerEvent], without consuming it:
+ * the list scrolls by the same event.
  */
-internal fun Modifier.threadListWheelScroll(userScrollGeneration: ThreadUserScrollGeneration): Modifier =
-    pointerInput(userScrollGeneration) {
+internal fun Modifier.threadListWheelScroll(
+    userScrollGeneration: ThreadUserScrollGeneration,
+    newerGestureDemandTracker: ThreadNewerGestureDemandTracker? = null,
+): Modifier =
+    pointerInput(userScrollGeneration, newerGestureDemandTracker) {
         awaitPointerEventScope {
             while (true) {
                 val event = awaitPointerEvent()
+                val scrollDeltaY = event.changes.fold(0f) { acc, change -> acc + change.scrollDelta.y }
                 userScrollGeneration.onListPointerEvent(
                     eventType = event.type,
-                    scrollDeltaY = event.changes.firstOrNull()?.scrollDelta?.y ?: 0f,
+                    scrollDeltaY = scrollDeltaY,
+                )
+                newerGestureDemandTracker?.onListPointerEvent(
+                    eventType = event.type,
+                    scrollDeltaY = scrollDeltaY,
                 )
             }
         }

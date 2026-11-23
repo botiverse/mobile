@@ -1652,7 +1652,8 @@ class RealConversationRepository private constructor(
                     hasNewer = (messagesResult as? DataResult.Content)?.data?.hasNewer ?: false,
                     // The server answers for the thread's root channel: a thread in an archived
                     // channel is archived too (channelService.getChannelArchiveState).
-                    channelArchived = (messagesResult as? DataResult.Content)?.data?.channelArchived ?: false
+                    channelArchived = (messagesResult as? DataResult.Content)?.data?.channelArchived ?: false,
+                    rawMessageCount = serverRowCount,
                 ),
                 threadId = ThreadId(resolvedThreadChannelId.value),
                 canLoadMoreBefore = serverRowCount >= messageLimit,
@@ -2215,7 +2216,8 @@ private fun buildSharedThreadSnapshot(
         canLoadMoreBefore = canLoadMoreBefore,
         canLoadMoreAfter = canLoadMoreAfter,
         historyLimited = payload.historyLimited,
-        highlightedMessageId = highlightedMessageId
+        highlightedMessageId = highlightedMessageId,
+        rawMessageCount = payload.rawMessageCount,
     ).withReplySummaries(
         threads = payload.threadSummaries.threads,
         followedThreadKeys = payload.threadSummaries.followedThreadKeys,

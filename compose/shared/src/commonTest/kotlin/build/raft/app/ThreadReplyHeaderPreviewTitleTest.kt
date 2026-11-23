@@ -70,7 +70,7 @@ class ThreadReplyHeaderPreviewTitleTest {
             val slice = payload.toThreadTimelineSlice()
             val header = threadHeaderReplyCount(slice, payload.toThreadReplyMetadataMap())
             assertEquals(expected, header, payload.status)
-            assertEquals(header, threadOlderMessagesStatusSpec(slice).secondaryReplyCount, payload.status)
+            assertEquals(header, threadOlderMessagesStatusSpec(slice)?.secondaryReplyCount, payload.status)
         }
         // Not a reply thread (no origin): no count under the row.
         assertNull(replyThread(status = "content", messages = replies).threadBeginningReplyCount())

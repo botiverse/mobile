@@ -277,7 +277,8 @@ internal const val SharedThreadGapCatchUpPageLimit: Int = 200
 internal fun RaftThreadScreenPayload.mergePagedMessages(
     pageMessages: List<RaftThreadMessageItem>,
     before: Boolean,
-    pageSize: Int
+    pageSize: Int,
+    rawServerRowCount: Int? = null,
 ): RaftThreadScreenPayload {
     // RFC 077: the loaded copy stays, but the page's explicit `delegatedBy` (newer) fills or
     // replaces its label; a page copy without one never clears a known label.
@@ -298,7 +299,10 @@ internal fun RaftThreadScreenPayload.mergePagedMessages(
         } else {
             (baseMessages + incoming).distinctBy { it.id }
         }.sortedByThreadTimeline()
-    val hasMore = incoming.size >= SharedThreadPaging.resolve(pageSize)
+    // Task #259 (AGENTS.md No silent drops): compare the raw server row count against the requested
+    // limit, never the deduped/filtered kept count (a dropped row or an overlap must not end paging).
+    val serverRowCount = rawServerRowCount ?: pageMessages.size
+    val hasMore = serverRowCount >= SharedThreadPaging.resolve(pageSize)
     return copy(
         status = "content",
         errorCode = null,

@@ -75,26 +75,26 @@ class ThreadActivityOpenSeedIdentityTest {
 
     @Test
     fun aStandInWhoseLoadIsRunningSaysOlderMessagesAreLoading() {
-        val loading = threadOlderMessagesStatusSpec(canLoadMoreBefore = false, durableLastKnown = true, mainLoadFailed = false)
+        val loading = requireNotNull(threadOlderMessagesStatusSpec(canLoadMoreBefore = false, durableLastKnown = true, mainLoadFailed = false))
         assertEquals(Res.string.thread_state_loading_older.desc(), loading.label)
         assertTrue(loading.loading)
         // Only a failed load makes "not available offline" true.
-        val offline = threadOlderMessagesStatusSpec(canLoadMoreBefore = false, durableLastKnown = true, mainLoadFailed = true)
+        val offline = requireNotNull(threadOlderMessagesStatusSpec(canLoadMoreBefore = false, durableLastKnown = true, mainLoadFailed = true))
         assertEquals(Res.string.thread_offline_older_unavailable.desc(), offline.label)
         assertFalse(offline.loading)
         // A canonical frame, and a stand-in that reaches the start, are unchanged.
-        assertFalse(threadOlderMessagesStatusSpec(canLoadMoreBefore = false).loading)
+        assertFalse(requireNotNull(threadOlderMessagesStatusSpec(canLoadMoreBefore = false)).loading)
         assertEquals(
             Res.string.thread_state_beginning_conversation.desc(),
-            threadOlderMessagesStatusSpec(canLoadMoreBefore = false, durableLastKnown = true, durableReachedOldest = true).label,
+            threadOlderMessagesStatusSpec(canLoadMoreBefore = false, durableLastKnown = true, durableReachedOldest = true)?.label,
         )
         // The seeded first frame itself (the Activity row's message, its load running).
         val seeded =
             channelRoute().copy(status = "loading").withActivityOpenSeed(
                 listOf(RaftThreadMessageItem(id = "m1", authorId = "u1", authorName = "Artin", body = "hi", timestampLabel = "2026-10-24T07:13:00Z"))
             )
-        assertTrue(threadOlderMessagesStatusSpec(seeded).loading)
-        assertFalse(threadOlderMessagesStatusSpec(seeded.copy(mainLoadFailed = true)).loading)
+        assertTrue(requireNotNull(threadOlderMessagesStatusSpec(seeded)).loading)
+        assertFalse(requireNotNull(threadOlderMessagesStatusSpec(seeded.copy(mainLoadFailed = true))).loading)
     }
 
     @Test

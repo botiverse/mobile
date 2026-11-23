@@ -27,6 +27,7 @@ import kotlinx.coroutines.withTimeout
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /**
@@ -67,7 +68,11 @@ class SharedThreadStoreDurableOlderPagingTest {
             assertEquals("idle", paged.olderMessagesStatus)
         }
         assertFalse(standIn.durableReachedOldest)
-        assertEquals(Res.string.thread_state_loading_older.desc(), threadOlderMessagesStatusSpec(standIn).label)
+        assertNull(threadOlderMessagesStatusSpec(standIn), "idle older-paging stand-in hides the loading row")
+        assertEquals(
+            Res.string.thread_state_loading_older.desc(),
+            threadOlderMessagesStatusSpec(standIn.copy(olderMessagesStatus = "loading"))?.label,
+        )
         store.accept(SharedThreadIntent.LoadOlder)
         val last = store.state.value.payload
         assertEquals((1..120).map { "body $it" }, last.messages.map { it.body })
@@ -75,7 +80,7 @@ class SharedThreadStoreDurableOlderPagingTest {
         assertTrue(last.durableReachedOldest, "the stored window reaches the conversation's first message")
         assertEquals(
             Res.string.thread_state_beginning_conversation.desc(),
-            threadOlderMessagesStatusSpec(last).label,
+            threadOlderMessagesStatusSpec(last)?.label,
             "the real beginning is labelled as such, not as an offline cut",
         )
         assertEquals(1, api.channelMessageCalls, "no older page went to the network")

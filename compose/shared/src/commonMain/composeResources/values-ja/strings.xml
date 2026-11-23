@@ -1328,6 +1328,7 @@
     <string name="thread_retry_new">新しいメッセージを再試行</string>
     <string name="thread_load_new">新しいメッセージを読み込む</string>
     <string name="thread_state_loading_older">以前のメッセージを読み込み中…</string>
+    <string name="thread_state_loading_older_replies">以前の返信を読み込み中…</string>
     <string name="thread_state_loading_new">新しいメッセージを読み込み中…</string>
     <string name="thread_offline_last_known_tip">オフラインの内容です。最新ではない可能性があります。</string>
     <string name="thread_offline_older_unavailable">オフラインでは以前のメッセージを読み込めません</string>
