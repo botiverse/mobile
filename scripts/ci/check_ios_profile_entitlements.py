@@ -34,6 +34,7 @@ CAPABILITIES = {
     "com.apple.developer.associated-domains": "Associated Domains",
     "com.apple.developer.applesignin": "Sign In with Apple",
     "aps-environment": "Push Notifications",
+    "com.apple.security.application-groups": "App Groups",
 }
 
 SECRET_NAME = "SLOCK_IOS_PROVISIONING_PROFILE_BASE64"
@@ -75,7 +76,12 @@ def _bundle_id(profile: dict) -> str:
     return app_id.split(".", 1)[1] if "." in app_id else app_id
 
 
-def describe_profile_problems(profile: dict, problems: list[tuple[str, list]], entitlements_path: str) -> list[str]:
+def describe_profile_problems(
+    profile: dict,
+    problems: list[tuple[str, list]],
+    entitlements_path: str,
+    secret_name: str = SECRET_NAME,
+) -> list[str]:
     name = profile.get("Name", "?")
     uuid = profile.get("UUID", "?")
     bundle_id = _bundle_id(profile) or "build.raft.app"
@@ -95,7 +101,7 @@ def describe_profile_problems(profile: dict, problems: list[tuple[str, list]], e
         "Fix: Apple Developer portal > Certificates, Identifiers & Profiles > Identifiers > "
         f"{bundle_id} > enable {', '.join(capabilities)} > Save; then Profiles > '{name}' > "
         "Edit > Save (the old profile is invalidated by the capability change) > Download; then "
-        f"`base64 -i <profile>.mobileprovision | gh secret set {SECRET_NAME} -R botiverse/mobile` "
+        f"`base64 -i <profile>.mobileprovision | gh secret set {secret_name} -R botiverse/mobile` "
         "and re-run ios-release.yml. Do not remove the entitlement from the app to get past this."
     )
     return lines
@@ -109,7 +115,7 @@ def _load(path: str) -> dict:
     return data
 
 
-def run(mode: str, granted_path: str, entitlements_path: str) -> int:
+def run(mode: str, granted_path: str, entitlements_path: str, secret_name: str = SECRET_NAME) -> int:
     requested = _load(entitlements_path)
     granted_doc = _load(granted_path)
     if mode == "profile":
@@ -119,7 +125,7 @@ def run(mode: str, granted_path: str, entitlements_path: str) -> int:
             return 1
         problems = missing_entitlements(granted, requested)
         if problems:
-            for line in describe_profile_problems(granted_doc, problems, entitlements_path):
+            for line in describe_profile_problems(granted_doc, problems, entitlements_path, secret_name=secret_name):
                 print(f"::error::{line}")
             return 1
         print(
@@ -145,12 +151,14 @@ def self_test() -> int:
         "aps-environment": "$(APS_ENVIRONMENT)",
         "com.apple.developer.associated-domains": ["applinks:app.raft.build", "applinks:open.raft.build"],
         "com.apple.developer.applesignin": ["Default"],
+        "com.apple.security.application-groups": ["group.build.raft.app.external-share"],
     }
     full = {
         "application-identifier": "TEAMID.build.raft.app",
         "aps-environment": "production",
         "com.apple.developer.associated-domains": "*",
         "com.apple.developer.applesignin": ["Default"],
+        "com.apple.security.application-groups": ["group.build.raft.app.external-share"],
     }
     assert missing_entitlements(full, source) == []
     explicit = dict(full, **{"com.apple.developer.associated-domains": ["applinks:app.raft.build", "applinks:open.raft.build"]})
@@ -163,11 +171,23 @@ def self_test() -> int:
     assert missing_entitlements(without, source) == [("com.apple.developer.associated-domains", [])]
     no_push = {k: v for k, v in full.items() if k != "aps-environment"}
     assert missing_entitlements(no_push, source) == [("aps-environment", [])]
+    no_group = {k: v for k, v in full.items() if k != "com.apple.security.application-groups"}
+    assert missing_entitlements(no_group, source) == [("com.apple.security.application-groups", [])]
 
     profile = {"Name": "Raft App Store build.raft.app", "UUID": "u-1", "Entitlements": without}
     text = "\n".join(describe_profile_problems(profile, missing_entitlements(without, source), "iosApp.entitlements"))
     assert "Associated Domains" in text and "Raft App Store build.raft.app" in text and SECRET_NAME in text
     assert "TEAMID" not in text, text
+    share_profile = {"Name": "Raft Share Extension", "UUID": "u-2", "Entitlements": no_group}
+    share_text = "\n".join(
+        describe_profile_problems(
+            share_profile,
+            missing_entitlements(no_group, {"com.apple.security.application-groups": ["group.build.raft.app.external-share"]}),
+            "ShareExtension.entitlements",
+            secret_name="SLOCK_IOS_SHARE_EXTENSION_PROFILE_BASE64",
+        )
+    )
+    assert "App Groups" in share_text and "SLOCK_IOS_SHARE_EXTENSION_PROFILE_BASE64" in share_text
 
     with tempfile.TemporaryDirectory() as tmp:
         ent = Path(tmp, "app.entitlements")
@@ -189,12 +209,18 @@ def self_test() -> int:
             assert run("signed", str(signed_bad), str(ent)) == 1
         assert "::error::Provisioning profile 'Raft App Store build.raft.app'" in out.getvalue()
 
-    # The real app entitlements still declare the domains this check exists for.
-    repo_ent = Path(__file__).resolve().parents[2] / "compose/iosApp/iosApp/iosApp.entitlements"
-    domains = _load(str(repo_ent)).get("com.apple.developer.associated-domains", [])
+    # The real app & share extension entitlements declare the domains and App Group this check exists for.
+    repo_root = Path(__file__).resolve().parents[2]
+    repo_ent = _load(str(repo_root / "compose/iosApp/iosApp/iosApp.entitlements"))
+    domains = repo_ent.get("com.apple.developer.associated-domains", [])
     assert "applinks:app.raft.build" in domains and "applinks:open.raft.build" in domains, domains
     # Native passkeys (RaftNativePasskeyAssertion.ios.kt, the current RP ID app.raft.build).
     assert "webcredentials:app.raft.build" in domains, domains
+    groups = repo_ent.get("com.apple.security.application-groups", [])
+    assert "group.build.raft.app.external-share" in groups, groups
+    share_ent = _load(str(repo_root / "compose/iosApp/ShareExtension/ShareExtension.entitlements"))
+    share_groups = share_ent.get("com.apple.security.application-groups", [])
+    assert "group.build.raft.app.external-share" in share_groups, share_groups
     print("check_ios_profile_entitlements self-test: OK")
     return 0
 
@@ -202,10 +228,15 @@ def self_test() -> int:
 def main(argv: list[str]) -> int:
     if argv[1:] == ["--self-test"]:
         return self_test()
-    if len(argv) != 4:
-        print(__doc__, file=sys.stderr)
-        return 2
-    return run(argv[1], argv[2], argv[3])
+    secret_name = SECRET_NAME
+    args = argv[1:]
+    if len(args) == 5 and args[1] == "--secret-name":
+        mode, _, secret_name, granted_path, entitlements_path = args
+        return run(mode, granted_path, entitlements_path, secret_name=secret_name)
+    if len(args) == 3:
+        return run(args[0], args[1], args[2], secret_name=secret_name)
+    print(__doc__, file=sys.stderr)
+    return 2
 
 
 if __name__ == "__main__":

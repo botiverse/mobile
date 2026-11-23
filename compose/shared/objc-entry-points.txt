@@ -2,6 +2,8 @@
 // Kotlin/Native exports only these callables to Objective-C (-Xbinary=objcExportEntryPointsPath).
 callable build.raft.app.RaftAppAppearance.*
 callable build.raft.app.RaftAppAppearance.Companion.*
+callable build.raft.app.RaftExternalShareLaunchIngress.*
+callable build.raft.app.RaftExternalShareLaunchIngress.Companion.*
 callable build.raft.app.RaftHostStrings.*
 callable build.raft.app.RaftHostStrings.Companion.*
 function build.raft.app.RaftIosComposerEditorFocusListener.composerEditorFocusChanged
@@ -330,6 +332,7 @@ callable build.raft.app.raftPrefillNativeNavBar
 callable build.raft.app.raftSystemNotificationTargetsVisibleConversation
 callable build.raft.app.releaseRaftShellStoreScope
 callable build.raft.app.setRaftEnvironmentIndicatorHiddenForCapture
+callable build.raft.app.data.installRaftIosExternalShareEnvelopeHost
 callable build.raft.app.data.raftClearLegacyFontPreference
 callable build.raft.app.data.updateRaftHostVisibility
 callable build.raft.app.nav.raftIosNativeNavLaunchDecision

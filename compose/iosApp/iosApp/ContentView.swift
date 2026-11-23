@@ -147,6 +147,9 @@ private struct ShellHostView: View {
                 )
             }
             .onAppear {
+                RaftIosExternalShareLaunch.resumePendingIfNeeded(
+                    shellInstanceId: shellContext.shellInstanceId
+                )
                 RaftIosMobileOAuthHost.shared.resumeDeferredCallbackIfNeeded()
             }
     }

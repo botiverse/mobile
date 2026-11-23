@@ -1,0 +1,8 @@
+"share_extension.preparing" = "正在准备分享到 Raft…";
+"share_extension.saved_open_raft" = "已为 Raft 准备好分享内容，请打开 Raft 选择会话并发送。";
+"share_extension.done" = "完成";
+"share_extension.cancel" = "取消";
+"share_extension.failed" = "无法准备此次分享，请打开 Raft 重试。";
+"share_extension.too_many_items" = "一次最多可分享 9 个项目。";
+"share_extension.file_too_large" = "文件过大，无法分享到 Raft。";
+"share_extension.unsupported" = "暂不支持将此类型内容分享到 Raft。";

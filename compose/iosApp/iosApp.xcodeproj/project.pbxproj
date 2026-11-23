@@ -88,9 +88,25 @@
 		RCB100010000000000000001 /* RaftCmpBridgeSelectorTests.m in Sources */ = {isa = PBXBuildFile; fileRef = RCB100020000000000000001 /* RaftCmpBridgeSelectorTests.m */; };
 		J0NY00030000000000000001 /* RaftIosOpenAttachmentTests.m in Sources */ = {isa = PBXBuildFile; fileRef = J0NY00040000000000000001 /* RaftIosOpenAttachmentTests.m */; };
 		DU0R00010000000000000001 /* RaftIosDuoRuntimeTests.m in Sources */ = {isa = PBXBuildFile; fileRef = DU0R00020000000000000001 /* RaftIosDuoRuntimeTests.m */; };
+		E36000010000000000000001 /* RaftExternalShareEnvelopeStorage.swift in Sources */ = {isa = PBXBuildFile; fileRef = E36000020000000000000001 /* RaftExternalShareEnvelopeStorage.swift */; };
+		E36000010000000000000002 /* RaftIosExternalShareLaunch.swift in Sources */ = {isa = PBXBuildFile; fileRef = E36000020000000000000002 /* RaftIosExternalShareLaunch.swift */; };
+		E36000010000000000000003 /* RaftExternalShareEnvelopeStorage.swift in Sources */ = {isa = PBXBuildFile; fileRef = E36000020000000000000001 /* RaftExternalShareEnvelopeStorage.swift */; };
+		E36000010000000000000004 /* ShareViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = E36000020000000000000003 /* ShareViewController.swift */; };
+		E36000010000000000000005 /* RaftShareExtension.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = E36000020000000000000006 /* RaftShareExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		E36000010000000000000006 /* RaftExternalShareEnvelopeStorage.swift in Sources */ = {isa = PBXBuildFile; fileRef = E36000020000000000000001 /* RaftExternalShareEnvelopeStorage.swift */; };
+		E36000010000000000000007 /* RaftExternalShareEnvelopeStorageTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E36000020000000000000007 /* RaftExternalShareEnvelopeStorageTests.swift */; };
+		E36000010000000000000008 /* InfoPlist.strings in Resources */ = {isa = PBXBuildFile; fileRef = E360000E0000000000000001 /* InfoPlist.strings */; };
+		E36000010000000000000009 /* Localizable.strings in Resources */ = {isa = PBXBuildFile; fileRef = E360000E0000000000000002 /* Localizable.strings */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
+		E36000030000000000000001 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 7555FF73242A565900829871 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = E36000040000000000000001;
+			remoteInfo = RaftShareExtension;
+		};
 		A12900080000000000000001 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
 			containerPortal = 7555FF73242A565900829871 /* Project object */;
@@ -106,6 +122,20 @@
 			remoteInfo = iosApp;
 		};
 /* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		E36000050000000000000001 /* Embed App Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				E36000010000000000000005 /* RaftShareExtension.appex in Embed App Extensions */,
+			);
+			name = "Embed App Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
 		N0CE00020000000000000001 /* RaftIosPageOpenGate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RaftIosPageOpenGate.swift; sourceTree = "<group>"; };
@@ -215,9 +245,39 @@
 		RCB100020000000000000001 /* RaftCmpBridgeSelectorTests.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = RaftCmpBridgeSelectorTests.m; sourceTree = "<group>"; };
 		J0NY00040000000000000001 /* RaftIosOpenAttachmentTests.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = RaftIosOpenAttachmentTests.m; sourceTree = "<group>"; };
 		DU0R00020000000000000001 /* RaftIosDuoRuntimeTests.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = RaftIosDuoRuntimeTests.m; sourceTree = "<group>"; };
+		E36000020000000000000001 /* RaftExternalShareEnvelopeStorage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RaftExternalShareEnvelopeStorage.swift; sourceTree = "<group>"; };
+		E36000020000000000000002 /* RaftIosExternalShareLaunch.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RaftIosExternalShareLaunch.swift; sourceTree = "<group>"; };
+		E36000020000000000000003 /* ShareViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShareViewController.swift; sourceTree = "<group>"; };
+		E36000020000000000000004 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		E36000020000000000000005 /* ShareExtension.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = ShareExtension.entitlements; sourceTree = "<group>"; };
+		E36000020000000000000006 /* RaftShareExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = RaftShareExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		E36000020000000000000007 /* RaftExternalShareEnvelopeStorageTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RaftExternalShareEnvelopeStorageTests.swift; sourceTree = "<group>"; };
+		E360000F0000000000000001 /* en */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = en; path = en.lproj/InfoPlist.strings; sourceTree = "<group>"; };
+		E360000F0000000000000002 /* zh-Hans */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "zh-Hans"; path = "zh-Hans.lproj/InfoPlist.strings"; sourceTree = "<group>"; };
+		E360000F0000000000000003 /* ja */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = ja; path = ja.lproj/InfoPlist.strings; sourceTree = "<group>"; };
+		E360000F0000000000000004 /* es */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = es; path = es.lproj/InfoPlist.strings; sourceTree = "<group>"; };
+		E360000F0000000000000005 /* pt-BR */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "pt-BR"; path = "pt-BR.lproj/InfoPlist.strings"; sourceTree = "<group>"; };
+		E360000F0000000000000006 /* ko */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = ko; path = ko.lproj/InfoPlist.strings; sourceTree = "<group>"; };
+		E360000F0000000000000007 /* zh-Hant */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "zh-Hant"; path = "zh-Hant.lproj/InfoPlist.strings"; sourceTree = "<group>"; };
+		E360000F0000000000000008 /* ru */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = ru; path = ru.lproj/InfoPlist.strings; sourceTree = "<group>"; };
+		E36000100000000000000001 /* en */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = en; path = en.lproj/Localizable.strings; sourceTree = "<group>"; };
+		E36000100000000000000002 /* zh-Hans */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "zh-Hans"; path = "zh-Hans.lproj/Localizable.strings"; sourceTree = "<group>"; };
+		E36000100000000000000003 /* ja */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = ja; path = ja.lproj/Localizable.strings; sourceTree = "<group>"; };
+		E36000100000000000000004 /* es */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = es; path = es.lproj/Localizable.strings; sourceTree = "<group>"; };
+		E36000100000000000000005 /* pt-BR */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "pt-BR"; path = "pt-BR.lproj/Localizable.strings"; sourceTree = "<group>"; };
+		E36000100000000000000006 /* ko */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = ko; path = ko.lproj/Localizable.strings; sourceTree = "<group>"; };
+		E36000100000000000000007 /* zh-Hant */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "zh-Hant"; path = "zh-Hant.lproj/Localizable.strings"; sourceTree = "<group>"; };
+		E36000100000000000000008 /* ru */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = ru; path = ru.lproj/Localizable.strings; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
+		E360000B0000000000000001 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		412082966DD7AFE0B53032CB /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
@@ -326,12 +386,34 @@
 			children = (
 				FF6B714C29A2A45D009349F1 /* iosApp-Bridging-Header.h */,
 				7555FF7D242A565900829871 /* iosApp */,
+				E36000060000000000000001 /* ExternalShareShared */,
+				E36000070000000000000001 /* ShareExtension */,
 				7555FF7C242A565900829871 /* Products */,
 				FDF972C7159D4191183C9089 /* Pods */,
 				254BBAA1096EC0C0491EF8C3 /* Frameworks */,
 				A0C1056F00055DC2789CB933 /* iosAppUITests */,
 				A12900030000000000000001 /* iosAppTests */,
 			);
+			sourceTree = "<group>";
+		};
+		E36000060000000000000001 /* ExternalShareShared */ = {
+			isa = PBXGroup;
+			children = (
+				E36000020000000000000001 /* RaftExternalShareEnvelopeStorage.swift */,
+			);
+			path = ExternalShareShared;
+			sourceTree = "<group>";
+		};
+		E36000070000000000000001 /* ShareExtension */ = {
+			isa = PBXGroup;
+			children = (
+				E36000020000000000000004 /* Info.plist */,
+				E36000020000000000000005 /* ShareExtension.entitlements */,
+				E36000020000000000000003 /* ShareViewController.swift */,
+				E360000E0000000000000001 /* InfoPlist.strings */,
+				E360000E0000000000000002 /* Localizable.strings */,
+			);
+			path = ShareExtension;
 			sourceTree = "<group>";
 		};
 		7555FF7C242A565900829871 /* Products */ = {
@@ -341,6 +423,7 @@
 				1DAE3769BAE68C43F5D78324 /* iosAppUITests.xctest */,
 				A12900020000000000000003 /* iosAppTests.xctest */,
 				674A0D166AA25A29DEFF1F7C /* AdaptiveEditorTests.xctest */,
+				E36000020000000000000006 /* RaftShareExtension.appex */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -382,6 +465,7 @@
 				A53100020000000000000099 /* RaftIosTopBandDiagnostics.swift */,
 				A54100020000000000000001 /* RaftIosComposeScrollEdgeEffects.swift */,
 				A53100020000000000000002 /* RaftIosTabBarItemMapping.swift */,
+				E36000020000000000000002 /* RaftIosExternalShareLaunch.swift */,
 				058557D7273AAEEB004C7B11 /* Preview Content */,
 			);
 			path = iosApp;
@@ -416,6 +500,7 @@
 				J0NY00040000000000000001 /* RaftIosOpenAttachmentTests.m */,
 				DU0R00020000000000000001 /* RaftIosDuoRuntimeTests.m */,
 				N0CE00020000000000000002 /* RaftIosPageOpenGateTests.swift */,
+				E36000020000000000000007 /* RaftExternalShareEnvelopeStorageTests.swift */,
 			);
 			path = iosAppTests;
 			sourceTree = "<group>";
@@ -490,10 +575,12 @@
 				6715C2D1184DF4DA5556ABE1 /* [CP] Embed Pods Frameworks */,
 				70E4183CF2B3FF25AA2B7C8F /* [CP] Copy Pods Resources */,
 				037D30FF99587FF5BDE98C71 /* [CP-User] Copy Compose resources to app */,
+				E36000050000000000000001 /* Embed App Extensions */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				E36000080000000000000001 /* PBXTargetDependency */,
 			);
 			name = iosApp;
 			productName = iosApp;
@@ -539,6 +626,23 @@
 			productReference = A12900020000000000000003 /* iosAppTests.xctest */;
 			productType = "com.apple.product-type.bundle.unit-test";
 		};
+		E36000040000000000000001 /* RaftShareExtension */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = E36000090000000000000001 /* Build configuration list for PBXNativeTarget "RaftShareExtension" */;
+			buildPhases = (
+				E360000A0000000000000001 /* Sources */,
+				E360000B0000000000000001 /* Frameworks */,
+				E360000D0000000000000001 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = RaftShareExtension;
+			productName = RaftShareExtension;
+			productReference = E36000020000000000000006 /* RaftShareExtension.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -552,6 +656,9 @@
 					7555FF7A242A565900829871 = {
 						CreatedOnToolsVersion = 11.3.1;
 						SystemCapabilities = {
+							com.apple.ApplicationGroups.iOS = {
+								enabled = 1;
+							};
 							com.apple.Push = {
 								enabled = 1;
 							};
@@ -565,6 +672,14 @@
 					};
 					A12900040000000000000001 = {
 						CreatedOnToolsVersion = 16.0;
+					};
+					E36000040000000000000001 = {
+						CreatedOnToolsVersion = 16.0;
+						SystemCapabilities = {
+							com.apple.ApplicationGroups.iOS = {
+								enabled = 1;
+							};
+						};
 					};
 				};
 			};
@@ -592,11 +707,21 @@
 				88BC1E863A7604D85563C5C6 /* iosAppUITests */,
 				A12900040000000000000001 /* iosAppTests */,
 				58446DBDE2D1CA2C2AFC79B7 /* AdaptiveEditorTests */,
+				E36000040000000000000001 /* RaftShareExtension */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
+		E360000D0000000000000001 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				E36000010000000000000008 /* InfoPlist.strings in Resources */,
+				E36000010000000000000009 /* Localizable.strings in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		74AFCD01D0D9286C1691CC6E /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -852,6 +977,8 @@
 				B7A1E0010000000000000210 /* RaftIosQaSessionBootstrapContract.swift in Sources */,
 				B7A1E0010000000000000211 /* RaftIosQaSessionBootstrapHost.swift in Sources */,
 				A47200010000000000000001 /* RaftIosShellWindowContract.swift in Sources */,
+				E36000010000000000000001 /* RaftExternalShareEnvelopeStorage.swift in Sources */,
+				E36000010000000000000002 /* RaftIosExternalShareLaunch.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -893,6 +1020,17 @@
 				DU0R00010000000000000001 /* RaftIosDuoRuntimeTests.m in Sources */,
 				N0CE00010000000000000002 /* RaftIosPageOpenGate.swift in Sources */,
 				N0CE00010000000000000003 /* RaftIosPageOpenGateTests.swift in Sources */,
+				E36000010000000000000006 /* RaftExternalShareEnvelopeStorage.swift in Sources */,
+				E36000010000000000000007 /* RaftExternalShareEnvelopeStorageTests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		E360000A0000000000000001 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				E36000010000000000000003 /* RaftExternalShareEnvelopeStorage.swift in Sources */,
+				E36000010000000000000004 /* ShareViewController.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -905,6 +1043,12 @@
 			target = 7555FF7A242A565900829871 /* iosApp */;
 			targetProxy = A12900080000000000000001 /* PBXContainerItemProxy */;
 		};
+		E36000080000000000000001 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			name = RaftShareExtension;
+			target = E36000040000000000000001 /* RaftShareExtension */;
+			targetProxy = E36000030000000000000001 /* PBXContainerItemProxy */;
+		};
 		EAE537CA3D22BBF5D067B254 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
 			name = iosApp;
@@ -914,6 +1058,36 @@
 /* End PBXTargetDependency section */
 
 /* Begin PBXVariantGroup section */
+		E360000E0000000000000001 /* InfoPlist.strings */ = {
+			isa = PBXVariantGroup;
+			children = (
+				E360000F0000000000000001 /* en */,
+				E360000F0000000000000002 /* zh-Hans */,
+				E360000F0000000000000003 /* ja */,
+				E360000F0000000000000004 /* es */,
+				E360000F0000000000000005 /* pt-BR */,
+				E360000F0000000000000006 /* ko */,
+				E360000F0000000000000007 /* zh-Hant */,
+				E360000F0000000000000008 /* ru */,
+			);
+			name = InfoPlist.strings;
+			sourceTree = "<group>";
+		};
+		E360000E0000000000000002 /* Localizable.strings */ = {
+			isa = PBXVariantGroup;
+			children = (
+				E36000100000000000000001 /* en */,
+				E36000100000000000000002 /* zh-Hans */,
+				E36000100000000000000003 /* ja */,
+				E36000100000000000000004 /* es */,
+				E36000100000000000000005 /* pt-BR */,
+				E36000100000000000000006 /* ko */,
+				E36000100000000000000007 /* zh-Hant */,
+				E36000100000000000000008 /* ru */,
+			);
+			name = Localizable.strings;
+			sourceTree = "<group>";
+		};
 		A39600020000000000000001 /* InfoPlist.strings */ = {
 			isa = PBXVariantGroup;
 			children = (
@@ -1103,6 +1277,7 @@
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = build.raft.app;
 				PRODUCT_NAME = "$(TARGET_NAME)";
+				PROVISIONING_PROFILE_SPECIFIER = "$(RAFT_APP_PROFILE_SPECIFIER)";
 				SLOCK_OAUTH_CALLBACK_SCHEME = "raft-debug";
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "$(inherited) RAFT_QA_SESSION_BOOTSTRAP";
 				SWIFT_OBJC_BRIDGING_HEADER = "iosApp-Bridging-Header.h";
@@ -1134,6 +1309,7 @@
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = build.raft.app;
 				PRODUCT_NAME = "$(TARGET_NAME)";
+				PROVISIONING_PROFILE_SPECIFIER = "$(RAFT_APP_PROFILE_SPECIFIER)";
 				SLOCK_OAUTH_CALLBACK_SCHEME = raft;
 				SWIFT_OBJC_BRIDGING_HEADER = "iosApp-Bridging-Header.h";
 				SWIFT_VERSION = 5.0;
@@ -1241,6 +1417,57 @@
 			};
 			name = Release;
 		};
+		E360000C0000000000000001 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CODE_SIGN_ENTITLEMENTS = ShareExtension/ShareExtension.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				INFOPLIST_FILE = ShareExtension/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = build.raft.app.share;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				PROVISIONING_PROFILE_SPECIFIER = "$(RAFT_SHARE_EXTENSION_PROFILE_SPECIFIER)";
+				RAFT_HOST_LAUNCH_SCHEME = "raft-debug";
+				SKIP_INSTALL = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		E360000C0000000000000002 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CODE_SIGN_ENTITLEMENTS = ShareExtension/ShareExtension.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				INFOPLIST_FILE = ShareExtension/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = build.raft.app.share;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				PROVISIONING_PROFILE_SPECIFIER = "$(RAFT_SHARE_EXTENSION_PROFILE_SPECIFIER)";
+				RAFT_HOST_LAUNCH_SCHEME = raft;
+				SKIP_INSTALL = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -1285,6 +1512,15 @@
 			buildConfigurations = (
 				E97F715CAEAB601A18AB097B /* Release */,
 				06E45923CD5DFD4EE77E737A /* Debug */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		E36000090000000000000001 /* Build configuration list for PBXNativeTarget "RaftShareExtension" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				E360000C0000000000000001 /* Debug */,
+				E360000C0000000000000002 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

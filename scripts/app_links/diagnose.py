@@ -73,11 +73,37 @@ def ios_entitled_hosts(root: Path = ROOT) -> list[str]:
 
 def ios_bundle_id(root: Path = ROOT) -> str:
     text = (root / "compose/iosApp/iosApp.xcodeproj/project.pbxproj").read_text(encoding="utf-8")
-    ids = {
-        m.strip('"')
-        for m in re.findall(r"PRODUCT_BUNDLE_IDENTIFIER = ([^;]+);", text)
-        if "test" not in m.lower()
-    }
+    # Scope to the main application target's build configurations so app extensions
+    # (such as RaftShareExtension / build.raft.app.share) and test bundles do not collide.
+    app_config_lists = re.findall(
+        r"isa = PBXNativeTarget;[^}]*?buildConfigurationList = ([A-F0-9]+)\b[^}]*?productType = \"com\.apple\.product-type\.application\";",
+        text,
+        re.S,
+    )
+    if len(app_config_lists) != 1:
+        raise SystemExit(
+            f"expected one application target in project.pbxproj, found {len(app_config_lists)}"
+        )
+    list_match = re.search(
+        rf"\b{re.escape(app_config_lists[0])}\b[^=]*=\s*\{{[^}}]*?buildConfigurations\s*=\s*\(([^)]*)\);",
+        text,
+        re.S,
+    )
+    if not list_match:
+        raise SystemExit(f"buildConfigurationList {app_config_lists[0]} not found in project.pbxproj")
+    config_ids = re.findall(r"\b([A-F0-9]{24})\b", list_match.group(1))
+    ids: set[str] = set()
+    for cid in config_ids:
+        block_match = re.search(
+            rf"\b{re.escape(cid)}\b[^=]*=\s*\{{(.*?)\n\t\t\}};",
+            text,
+            re.S,
+        )
+        if not block_match:
+            continue
+        cfg_match = re.search(r"PRODUCT_BUNDLE_IDENTIFIER\s*=\s*([^;]+);", block_match.group(1))
+        if cfg_match:
+            ids.add(cfg_match.group(1).strip('"'))
     if len(ids) != 1:
         raise SystemExit(f"expected one app bundle id in project.pbxproj, found {sorted(ids)}")
     return ids.pop()
