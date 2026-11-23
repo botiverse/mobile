@@ -1,5 +1,5 @@
 [versions]
-agp = "9.5.1"
+agp = "9.5.2"
 kotlin = "2.4.21"
 ksp = "2.3.12"
 composePlugin = "1.12.2"
@@ -23,7 +23,7 @@ coreSplashscreen = "1.2.0"
 webkit = "1.18.0"
 credentials = "1.6.0"
 junit = "4.13.2"
-robolectric = "4.17"
+robolectric = "4.18.1"
 junitVersion = "1.3.0"
 espressoCore = "3.7.0"
 lifecycleRuntimeKtx = "2.11.0"
@@ -31,7 +31,7 @@ window = "1.5.1"
 metricsPerformance = "1.0.0"
 activityCompose = "1.13.0"
 fragment = "1.9.1"
-composeBom = "2026.09.00"
+composeBom = "2026.11.01"
 recyclerview = "1.4.0"
 # The app's only OkHttp version: under the Ktor HTTP transport (ktor-client-okhttp 3.6.0 is built against
 # 5.5.0), and it wins resolution over the transitive OkHttp 4.12 (Hands SDK).
@@ -51,7 +51,7 @@ wrywebview = "1.0.0-beta-02"
 # FileKit (MIT): the system open / save panels on desktop (macOS NSOpenPanel / NSSavePanel through
 # JNA). :desktopApp only; built against Kotlin 2.4.21 / coroutines 1.11.0 like the app.
 # Jar SHA-256s pinned in desktopApp/build.gradle.kts (verifyPinnedDesktopJars): bump both together.
-filekit = "0.17.0"
+filekit = "0.17.1"
 # JetBrains Runtime API (Apache-2.0): the macOS custom title bar (RaftDesktopTitleBar). :desktopApp
 # only; jar SHA-256 pinned in desktopApp/build.gradle.kts (verifyPinnedDesktopJars).
 jbrApi = "1.12.0"
@@ -66,7 +66,7 @@ coil = "3.6.3"
 # built against CMP 1.12.1 / Kotlin 2.4.20; Android, iOS and desktop artifacts.
 zoomable = "2.16.0"
 # huarangmeng/latex: message math (task #775). Pure Kotlin, MIT.
-hrmLatex = "1.7.2"
+hrmLatex = "1.7.6"
 # dev.snipme:highlights: message code block syntax colours (artin task #20 lane K). Pure Kotlin
 # Multiplatform (jvm + iosArm64/iosSimulatorArm64 klibs), Apache-2.0.
 snipmeHighlights = "1.2.0"
