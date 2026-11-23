@@ -188,7 +188,22 @@ internal fun TaskConversationHeaderState.reduce(intent: TaskConversationHeaderIn
     }
 
 internal sealed interface TaskConversationHeaderEvent {
-    data class FollowFailed(val follow: Boolean, val code: String, val traceId: String? = null) : TaskConversationHeaderEvent
+    data class FollowFailed(
+        val follow: Boolean,
+        val code: String,
+        val traceId: String? = null,
+        val serverMessage: String? = null,
+        val serverCode: String? = null,
+    ) : TaskConversationHeaderEvent {
+        fun toScreenError(): ScreenError =
+            ScreenError(
+                code = code,
+                retryable = false,
+                serverMessage = serverMessage,
+                serverCode = serverCode,
+                traceId = traceId,
+            )
+    }
 }
 
 /**
@@ -273,6 +288,8 @@ internal class TaskConversationHeaderViewModel(
                         follow = next,
                         code = result.failureCodeOrNull() ?: "task_conversation_follow_failed",
                         traceId = result.failureTraceIdOrNull(),
+                        serverMessage = result.failureServerMessageOrNull(),
+                        serverCode = result.failureServerCodeOrNull(),
                     )
                 )
             }

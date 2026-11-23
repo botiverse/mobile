@@ -548,3 +548,17 @@ fun DataResult<*>.failureTraceIdOrNull(): String? =
         is DataResult.NoPermission -> blocker.traceId
         else -> null
     }
+
+fun DataResult<*>.failureServerMessageOrNull(): String? =
+    when (this) {
+        is DataResult.Error -> error.serverMessage
+        is DataResult.NoPermission -> blocker.serverMessage
+        else -> null
+    }
+
+fun DataResult<*>.failureServerCodeOrNull(): String? =
+    when (this) {
+        is DataResult.Error -> error.serverCode
+        is DataResult.NoPermission -> blocker.serverCode
+        else -> null
+    }

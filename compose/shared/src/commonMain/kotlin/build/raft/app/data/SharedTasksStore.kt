@@ -325,9 +325,37 @@ sealed interface SharedTasksRouteIntent {
     ) : SharedTasksRouteIntent
 }
 
-sealed interface SharedTasksEvent {
-    data class OperationFailed(val code: String, val traceId: String? = null) : SharedTasksEvent
+enum class SharedTasksOperation {
+    Load,
+    UpdateStatus,
+    AssignTask,
+    CreateTasks,
 }
+
+sealed interface SharedTasksEvent {
+    data class OperationFailed(
+        val code: String,
+        val traceId: String? = null,
+        val serverMessage: String? = null,
+        val serverCode: String? = null,
+        val operation: SharedTasksOperation? = null,
+    ) : SharedTasksEvent
+}
+
+internal fun SharedTasksEvent.OperationFailed.toScreenError(): ScreenError =
+    ScreenError(
+        code = code,
+        retryable = false,
+        serverMessage = serverMessage,
+        serverCode = serverCode,
+        traceId = traceId,
+    )
+
+internal fun SharedTasksEvent.OperationFailed.isStatusFailure(): Boolean =
+    operation == SharedTasksOperation.UpdateStatus || (operation == null && code.startsWith("tasks_status"))
+
+internal fun SharedTasksEvent.OperationFailed.isAssignFailure(): Boolean =
+    operation == SharedTasksOperation.AssignTask || (operation == null && code.startsWith("tasks_assign"))
 
 sealed interface TasksPresentationIntent {
     data class SetChannelSelectorExpanded(val expanded: Boolean) : TasksPresentationIntent
@@ -1046,7 +1074,17 @@ internal class SharedTasksViewModel(
                 }
             } else {
                 dropStoredList(result, selectedFilter)
-                result.failureCodeOrNull()?.let { events.emit(SharedTasksEvent.OperationFailed(it, result.failureTraceIdOrNull())) }
+                result.failureCodeOrNull()?.let {
+                    events.emit(
+                        SharedTasksEvent.OperationFailed(
+                            code = it,
+                            traceId = result.failureTraceIdOrNull(),
+                            serverMessage = result.failureServerMessageOrNull(),
+                            serverCode = result.failureServerCodeOrNull(),
+                            operation = SharedTasksOperation.Load,
+                        )
+                    )
+                }
                 store.accept(
                     if (mergeResult || state.value.loadState is ScreenLoadState.Content) {
                         SharedTasksIntent.MergeRefreshResult(result, selectedFilter)
@@ -1059,7 +1097,7 @@ internal class SharedTasksViewModel(
             throw cancellation
         } catch (_: Throwable) {
             diagnosticsLogger("tasks_refresh_result reason=$reason result=exception code=tasks_network")
-            events.emit(SharedTasksEvent.OperationFailed("tasks_network"))
+            events.emit(SharedTasksEvent.OperationFailed("tasks_network", operation = SharedTasksOperation.Load))
             store.accept(SharedTasksIntent.RefreshFailed("tasks_network"))
         }
     }
@@ -1174,7 +1212,12 @@ internal class SharedTasksViewModel(
                 "tasks_status_update_reject reason=missing_local_projection taskId=${task.id.value} " +
                     "revision=${task.revision ?: -1L}"
             )
-            events.emit(SharedTasksEvent.OperationFailed("tasks_local_projection_missing"))
+            events.emit(
+                SharedTasksEvent.OperationFailed(
+                    code = "tasks_local_projection_missing",
+                    operation = SharedTasksOperation.UpdateStatus,
+                )
+            )
             return
         }
         store.accept(SharedTasksIntent.UpdateTaskStatus(task.id.value, status))
@@ -1242,7 +1285,15 @@ internal class SharedTasksViewModel(
                                 mutationPermit?.let { permit -> sharedStore.rollbackStatusMutation(permit) }
                             }
                         if (restoredTask != null) {
-                            events.emit(SharedTasksEvent.OperationFailed(errorCode, result.failureTraceIdOrNull()))
+                            events.emit(
+                                SharedTasksEvent.OperationFailed(
+                                    code = errorCode,
+                                    traceId = result.failureTraceIdOrNull(),
+                                    serverMessage = result.failureServerMessageOrNull(),
+                                    serverCode = result.failureServerCodeOrNull(),
+                                    operation = SharedTasksOperation.UpdateStatus,
+                                )
+                            )
                             store.accept(
                                 SharedTasksIntent.TaskStatusUpdateFailed(
                                     previousTask = restoredTask,
@@ -1273,7 +1324,7 @@ internal class SharedTasksViewModel(
                     mutationPermit?.let { permit -> sharedStore.rollbackStatusMutation(permit) }
                 }
             if (restoredTask != null) {
-                events.emit(SharedTasksEvent.OperationFailed("tasks_status_network"))
+                events.emit(SharedTasksEvent.OperationFailed("tasks_status_network", operation = SharedTasksOperation.UpdateStatus))
                 store.accept(SharedTasksIntent.TaskStatusUpdateFailed(restoredTask, "tasks_status_network"))
             } else {
                 diagnosticsLogger(
@@ -1310,7 +1361,12 @@ internal class SharedTasksViewModel(
                 "tasks_assign_reject reason=missing_local_projection taskId=${task.id.value} " +
                     "revision=${task.revision ?: -1L}"
             )
-            events.emit(SharedTasksEvent.OperationFailed("tasks_local_projection_missing"))
+            events.emit(
+                SharedTasksEvent.OperationFailed(
+                    code = "tasks_local_projection_missing",
+                    operation = SharedTasksOperation.AssignTask,
+                )
+            )
             return
         }
         store.accept(SharedTasksIntent.TaskAssignStarted(mutationTask.id.value, assignee))
@@ -1351,7 +1407,15 @@ internal class SharedTasksViewModel(
                             mutationPermit?.let { permit -> sharedStore.rollbackStatusMutation(permit) }
                         }
                     if (restoredTask != null) {
-                        events.emit(SharedTasksEvent.OperationFailed(errorCode, result.failureTraceIdOrNull()))
+                        events.emit(
+                            SharedTasksEvent.OperationFailed(
+                                code = errorCode,
+                                traceId = result.failureTraceIdOrNull(),
+                                serverMessage = result.failureServerMessageOrNull(),
+                                serverCode = result.failureServerCodeOrNull(),
+                                operation = SharedTasksOperation.AssignTask,
+                            )
+                        )
                         store.accept(SharedTasksIntent.TaskAssignFailed(restoredTask, errorCode))
                     } else {
                         diagnosticsLogger(
@@ -1381,7 +1445,7 @@ internal class SharedTasksViewModel(
                     mutationPermit?.let { permit -> sharedStore.rollbackStatusMutation(permit) }
                 }
             if (restoredTask != null) {
-                events.emit(SharedTasksEvent.OperationFailed("tasks_assign_network"))
+                events.emit(SharedTasksEvent.OperationFailed("tasks_assign_network", operation = SharedTasksOperation.AssignTask))
                 store.accept(SharedTasksIntent.TaskAssignFailed(restoredTask, "tasks_assign_network"))
             } else {
                 diagnosticsLogger(
@@ -1462,6 +1526,7 @@ internal class SharedTasksViewModel(
                         code = result.blocker.code,
                         retryable = false,
                         serverMessage = result.blocker.serverMessage,
+                        serverCode = result.blocker.serverCode,
                         traceId = result.blocker.traceId,
                     )
             }
@@ -1489,7 +1554,7 @@ internal class SharedTasksViewModel(
                 "tasks_create_reject reason=missing_local_projection channelId=${operation.channelId.value}"
             )
             if (store.accept(SharedTasksIntent.CreateTasksFailed(operation, errorCode))) {
-                events.emit(SharedTasksEvent.OperationFailed(errorCode))
+                events.emit(SharedTasksEvent.OperationFailed(errorCode, operation = SharedTasksOperation.CreateTasks))
             }
             return
         }
@@ -1514,7 +1579,15 @@ internal class SharedTasksViewModel(
                 else -> {
                     val errorCode = result.failureCodeOrNull() ?: "tasks_create_unknown"
                     if (store.accept(SharedTasksIntent.CreateTasksFailed(operation, errorCode))) {
-                        events.emit(SharedTasksEvent.OperationFailed(errorCode, result.failureTraceIdOrNull()))
+                        events.emit(
+                            SharedTasksEvent.OperationFailed(
+                                code = errorCode,
+                                traceId = result.failureTraceIdOrNull(),
+                                serverMessage = result.failureServerMessageOrNull(),
+                                serverCode = result.failureServerCodeOrNull(),
+                                operation = SharedTasksOperation.CreateTasks,
+                            )
+                        )
                     }
                 }
             }
@@ -1523,7 +1596,7 @@ internal class SharedTasksViewModel(
         } catch (_: Throwable) {
             val errorCode = "tasks_create_network"
             if (store.accept(SharedTasksIntent.CreateTasksFailed(operation, errorCode))) {
-                events.emit(SharedTasksEvent.OperationFailed(errorCode))
+                events.emit(SharedTasksEvent.OperationFailed(errorCode, operation = SharedTasksOperation.CreateTasks))
             }
         }
     }

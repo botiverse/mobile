@@ -1726,7 +1726,7 @@ private fun rememberThreadTaskConversationState(
     LaunchedEffect(taskConversationHeaderViewModel) {
         taskConversationHeaderViewModel?.events?.collect { event ->
             when (event) {
-                is TaskConversationHeaderEvent.FollowFailed -> bridge.errorToast(latestFollowFailedLabel, event.traceId)
+                is TaskConversationHeaderEvent.FollowFailed -> bridge.errorToast(latestFollowFailedLabel, event.toScreenError())
             }
         }
     }
@@ -4011,14 +4011,9 @@ private fun SharedThreadRouteContentContent(
 
     LaunchedEffect(taskConversation.tasksViewModel, unableToUpdateTaskLabel) {
         taskConversation.tasksViewModel?.uiEvents?.collect { event ->
-            when (event) {
-                is SharedTasksEvent.OperationFailed -> {
-                    when {
-                        event.code.startsWith("tasks_status") && !routeAuthRequired(event.code) ->
-                            bridge.errorToast(unableToUpdateTaskLabel, event.traceId)
-                        event.code.startsWith("tasks_assign") && !routeAuthRequired(event.code) ->
-                            bridge.errorToast(unableToUpdateAssigneeLabel, event.traceId)
-                    }
+            if (event is SharedTasksEvent.OperationFailed) {
+                bridge.showTaskOperationFailedToast(event, unableToUpdateTaskLabel, unableToUpdateAssigneeLabel) {
+                    routeAuthRequired(it)
                 }
             }
         }
@@ -4026,14 +4021,9 @@ private fun SharedThreadRouteContentContent(
 
     LaunchedEffect(tasksViewModel, unableToUpdateTaskLabel) {
         tasksViewModel?.uiEvents?.collect { event ->
-            when (event) {
-                is SharedTasksEvent.OperationFailed -> {
-                    when {
-                        event.code.startsWith("tasks_status") && !routeAuthRequired(event.code) ->
-                            bridge.errorToast(unableToUpdateTaskLabel, event.traceId)
-                        event.code.startsWith("tasks_assign") && !routeAuthRequired(event.code) ->
-                            bridge.errorToast(unableToUpdateAssigneeLabel, event.traceId)
-                    }
+            if (event is SharedTasksEvent.OperationFailed) {
+                bridge.showTaskOperationFailedToast(event, unableToUpdateTaskLabel, unableToUpdateAssigneeLabel) {
+                    routeAuthRequired(it)
                 }
             }
         }
@@ -5465,10 +5455,9 @@ private fun SharedThreadRouteContentContent(
                     authStore = authStore,
                     tasksDataSource = tasksDataSource,
                     tasksDataStore = tasksDataStore,
-                    onFailedWithTrace = { code, traceId ->
-                        when {
-                            code.startsWith("tasks_status") && !routeAuthRequired(code) -> bridge.errorToast(unableToUpdateTaskLabel, traceId)
-                            code.startsWith("tasks_assign") && !routeAuthRequired(code) -> bridge.errorToast(unableToUpdateAssigneeLabel, traceId)
+                    onOperationFailed = { event ->
+                        bridge.showTaskOperationFailedToast(event, unableToUpdateTaskLabel, unableToUpdateAssigneeLabel) {
+                            routeAuthRequired(it)
                         }
                     },
                     log = { bridge.log(it) },
@@ -5513,7 +5502,7 @@ private fun SharedThreadRouteContentContent(
                                     bridge.toast(joinedChannelLabel)
                                 }
                                 is DataResult.NoPermission ->
-                                    if (!routeAuthRequired(result)) bridge.errorToast(unableToJoinChannelLabel, result.blocker.traceId)
+                                    if (!routeAuthRequired(result)) bridge.errorToast(unableToJoinChannelLabel, result.blocker)
                                 is DataResult.Error -> bridge.errorToast(unableToJoinChannelLabel, result.error)
                                 else -> bridge.toast(unableToJoinChannelLabel)
                             }

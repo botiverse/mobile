@@ -634,10 +634,11 @@ private fun TaskPendingConversationRoute(pageVisible: Boolean) {
     LaunchedEffect(channelTasks) {
         channelTasks?.uiEvents?.collect { event ->
             if (event is SharedTasksEvent.OperationFailed) {
-                when {
-                    event.code.startsWith("tasks_status") -> bridge.errorToast(updateTaskFailedLabel, event.traceId)
-                    event.code.startsWith("tasks_assign") -> bridge.errorToast(updateAssigneeFailedLabel, event.traceId)
-                }
+                bridge.showTaskOperationFailedToast(
+                    event = event,
+                    updateFailedLabel = updateTaskFailedLabel,
+                    assignFailedLabel = updateAssigneeFailedLabel,
+                )
             }
         }
     }
@@ -947,7 +948,7 @@ private fun TaskPendingConversationRoute(pageVisible: Boolean) {
                                     bridge.toast(joinedChannelLabel)
                                 }
                                 is DataResult.NoPermission ->
-                                    bridge.errorToast(unableToJoinChannelLabel, result.blocker.traceId)
+                                    bridge.errorToast(unableToJoinChannelLabel, result.blocker)
                                 is DataResult.Error ->
                                     bridge.errorToast(unableToJoinChannelLabel, result.error)
                                 else -> bridge.toast(unableToJoinChannelLabel)
