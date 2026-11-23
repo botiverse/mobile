@@ -547,6 +547,8 @@ internal fun ThreadMessageActionMenu(
     onMarkConversationUnread: () -> Unit = {},
     onCopySelection: (() -> Unit)? = null,
     onDownloadVideo: (() -> Unit)? = null,
+    /** Quote was chosen (the menu quotes the message into the composer itself), for its `message_action_selected`. */
+    onQuoteChosen: () -> Unit = {},
     /** A long press on a link opened the menu: that link's section on top (ThreadMessageLinkMenu.kt). */
     link: ThreadMessageLinkMenuSection? = null,
     diagnosticsLogger: (String) -> Unit = {}
@@ -596,6 +598,7 @@ internal fun ThreadMessageActionMenu(
             link != null,
             menuQuote,
             quoteIntoComposer,
+            onQuoteChosen,
             onDismiss
         ) {
             threadMessageMenuActions(
@@ -638,6 +641,7 @@ internal fun ThreadMessageActionMenu(
                 showQuoteAction = menuQuote != null && quoteIntoComposer != null,
                 onQuote = {
                     if (menuQuote != null && quoteIntoComposer != null) {
+                        onQuoteChosen()
                         onDismiss()
                         quoteIntoComposer(menuQuote)
                     }

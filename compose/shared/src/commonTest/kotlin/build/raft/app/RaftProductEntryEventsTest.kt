@@ -26,7 +26,8 @@ class RaftProductEntryEventsTest {
                 ThreadNewMessageMenuTool.CopyLink to RaftMessageAction.CopyLink,
                 ThreadNewMessageMenuTool.FollowThread to RaftMessageAction.FollowThread,
                 ThreadNewMessageMenuTool.TaskStatus to RaftMessageAction.TaskDone,
-                ThreadNewMessageMenuTool.ConvertToTask to RaftMessageAction.ConvertToTask,
+                // Task v2's Create Task from Message: web sends `create_task` for it.
+                ThreadNewMessageMenuTool.ConvertToTask to RaftMessageAction.CreateTask,
                 ThreadNewMessageMenuTool.SelectText to RaftMessageAction.SelectText,
             )
         cases.forEach { (tool, action) -> assertEquals(action, tool.action(), tool.name) }
