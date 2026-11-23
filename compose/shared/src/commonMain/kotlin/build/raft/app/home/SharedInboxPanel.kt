@@ -1451,7 +1451,8 @@ internal fun SharedActivityFilterBar(
     // Its sides are the list column's margin (web `px-(--column-margin)`): 20, and 16 only on the
     // wide layout under a mouse or trackpad.
     val edge = activityColumnMargin(RaftTheme.scale, RaftTheme.pointerInput)
-    BoxWithConstraints(modifier = Modifier.fillMaxWidth().height(toolbarHeight).background(RaftColor.SurfaceWhite)) {
+    // Test tags are the web's data-testid, so the visual comparison pairs the two by name.
+    BoxWithConstraints(modifier = Modifier.fillMaxWidth().height(toolbarHeight).background(RaftColor.SurfaceWhite).testTag("inbox-toolbar")) {
         val markAllReadIconOnly = activityMarkAllReadIconOnly(maxWidth, edge)
         Row(
             modifier =
@@ -1470,7 +1471,7 @@ internal fun SharedActivityFilterBar(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                Box {
+                Box(Modifier.testTag("inbox-filter-button")) {
                     RaftPickerTriggerButton(
                         text = stringResource(Res.string.activity_filter_button),
                         onClick = { onMenuExpandedChange(!menuExpanded) },
@@ -2510,6 +2511,7 @@ internal fun SharedActivityList(
                                     onExitCollapsed = { completePendingRowExit(item.key) },
                                     onInFlightExitDisposed = { completePendingRowExit(item.key) },
                                     layout = rowLayout,
+                                    modifier = Modifier.testTag("inbox-row"),
                                 )
                             }
                         }

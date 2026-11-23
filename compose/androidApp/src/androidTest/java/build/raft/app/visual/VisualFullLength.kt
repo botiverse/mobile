@@ -7,6 +7,8 @@ import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsNode
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
+import org.json.JSONArray
+import org.json.JSONObject
 
 /**
  * Full-length ("long screenshot") capture, opt-in per case through slock's
@@ -67,6 +69,30 @@ internal object VisualFullLength {
         }
         composeRoots(windowRoots).forEach { walk(it.semanticsOwner.unmergedRootSemanticsNode) }
         return nodes
+    }
+
+    /**
+     * Every node with a test tag (the web's `data-testid` / raft-ui `data-slot` names), in dp
+     * relative to the capture's top-left corner, for the component-level comparison.
+     */
+    fun componentBoxes(windowRoots: List<View>, density: Float, leftDp: Int, topDp: Int): JSONArray {
+        val out = JSONArray()
+        fun dp(px: Float) = Math.round(px / density * 100) / 100.0
+        allNodes(windowRoots).forEach { node ->
+            val tag = node.config.getOrNull(SemanticsProperties.TestTag) ?: return@forEach
+            val bounds = node.boundsInWindow
+            if (bounds.width <= 0f || bounds.height <= 0f) return@forEach
+            out.put(
+                JSONObject()
+                    .put("name", tag)
+                    .put("x", dp(bounds.left) - leftDp)
+                    .put("y", dp(bounds.top) - topDp)
+                    .put("width", dp(bounds.width))
+                    .put("height", dp(bounds.height))
+                    .put("text", node.config.getOrNull(SemanticsProperties.Text)?.joinToString(" ")?.take(40).orEmpty())
+            )
+        }
+        return out
     }
 
     private fun findNode(windowRoots: List<View>, nodeId: Int): SemanticsNode? =
