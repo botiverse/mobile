@@ -32,6 +32,8 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.input.pointer.PointerIcon
+import androidx.compose.ui.input.pointer.pointerHoverIcon
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
@@ -262,6 +264,30 @@ fun Modifier.raftSearchRowSelected(selected: Boolean): Modifier {
         .drawBehind { drawRaftListCellShape(fill) }
 }
 
+/**
+ * raft-ui list cell's hover (`hover:before:bg-fill-cell-hover`, lib/list-cell.ts) on a search row:
+ * while a mouse, trackpad or pen is over it, `fill-cell-hover` on the same cell shape as
+ * [raftSearchRowSelected], and the web's pointing hand (web index.css: every enabled button). A
+ * finger never hovers ([raftPointerHover]), so touch is unchanged. The pointer only marks the row it
+ * is on: it never moves the keyboard cursor (web: only ↑ / ↓ and a click do), and a [selected] row
+ * (the cursor, or a selection the caller draws) or a [pressed] one keeps its own fill (raft-design
+ * states.md: selected items don't answer hover). Attaches [raftPointerHover] on [interactionSource]:
+ * pass the row's own source, the one its press comes from.
+ */
+@Composable
+fun Modifier.raftSearchRowHover(
+    interactionSource: MutableInteractionSource,
+    selected: Boolean = false,
+    pressed: Boolean = false,
+): Modifier {
+    val hovered = raftIsHovered(interactionSource)
+    val fill = RaftTheme.colors.fillCellHover
+    return this
+        .then(if (hovered && !selected && !pressed) Modifier.drawBehind { drawRaftListCellShape(fill) } else Modifier)
+        .raftPointerHover(interactionSource)
+        .pointerHoverIcon(PointerIcon.Hand)
+}
+
 /** The list cell's shape (8dp in from each side, the control radius) in [color]. */
 internal fun DrawScope.drawRaftListCellShape(color: Color) {
     val inset = RaftSearchRowDefaults.CellInset.toPx()
@@ -322,7 +348,8 @@ object RaftSearchRowDefaults {
  * [RaftKbd]). Its parts are slots, so a caller with highlighted text passes its own.
  *
  * - [selected]: the keyboard cursor is on it ([raftSearchRowSelected], the web's yellow row).
- * - A press lays `fill-cell-press` on the same shape.
+ * - A press lays `fill-cell-press` on the same shape; a mouse or trackpad over it
+ *   `fill-cell-hover` ([raftSearchRowHover]), never on the cursor's row.
  * - With a finger it is the web's touch row: 8dp above and below, at least 56dp
  *   ([RaftSearchRowDefaults.TouchMinHeight]), 62dp with a description. Under a mouse or trackpad
  *   it keeps 12dp and at least [RaftSearchPanelDefaults.RowMinHeight].
@@ -348,6 +375,7 @@ fun RaftSearchResultRow(
             .heightIn(min = RaftSearchRowDefaults.minHeight(pointer))
             .raftSearchRowSelected(selected)
             .then(if (pressed && !selected) Modifier.drawBehind { drawRaftListCellShape(pressFill) } else Modifier)
+            .raftSearchRowHover(source, selected = selected, pressed = pressed)
             .clickable(source, indication = null, role = Role.Button, onClick = onClick)
             .padding(
                 horizontal = RaftSearchRowDefaults.CellInset + RaftSearchRowDefaults.CellPadding,

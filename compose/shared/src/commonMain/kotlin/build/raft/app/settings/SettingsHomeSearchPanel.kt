@@ -885,15 +885,17 @@ internal fun SharedHomeSearchPanel(
                                 key = { index -> "frequent:${frequentEntityResults[index].key}" },
                             ) { index ->
                                 val frequentKey = "frequent:${frequentEntityResults[index].key}"
+                                val selected = inlineListSelection?.selectedRowKey == frequentKey
                                 Box(
                                     Modifier
-                                        .raftInlineListSelected(inlineListSelection?.selectedRowKey == frequentKey)
+                                        .raftInlineListSelected(selected)
                                         .homeSearchReturnHighlight(returnHighlight, frequentKey)
                                 ) {
                                 SharedHomeSearchEntityRow(
                                     result = frequentEntityResults[index],
                                     query = "",
                                     showSeparator = index > 0,
+                                    selected = selected,
                                     agentStatusResolver = agentStatusResolver,
                                     memberAvatarResolver = memberAvatarResolver,
                                     isPinned = frequentEntityResults[index].isPinnedBy(pinnedItems),
@@ -936,15 +938,17 @@ internal fun SharedHomeSearchPanel(
                             }
                         }
                         items(shownEntityResults.size, key = { index -> shownEntityResults[index].key }) { index ->
+                            val selected = inlineListSelection?.selectedRowKey == shownEntityResults[index].key
                             Box(
                                 Modifier
-                                    .raftInlineListSelected(inlineListSelection?.selectedRowKey == shownEntityResults[index].key)
+                                    .raftInlineListSelected(selected)
                                     .homeSearchReturnHighlight(returnHighlight, shownEntityResults[index].key)
                             ) {
                             SharedHomeSearchEntityRow(
                                 result = shownEntityResults[index],
                                 query = state.query,
                                 showSeparator = index > 0,
+                                selected = selected,
                                 agentStatusResolver = agentStatusResolver,
                                 memberAvatarResolver = memberAvatarResolver,
                                 isPinned = shownEntityResults[index].isPinnedBy(pinnedItems),
@@ -1022,15 +1026,17 @@ internal fun SharedHomeSearchPanel(
                         when (group) {
                             is HomeSearchResultGroup.Message -> {
                                 item(key = group.item.key) {
+                                    val selected = inlineListSelection?.selectedRowKey == group.item.key
                                     Box(
                                         Modifier
-                                            .raftInlineListSelected(inlineListSelection?.selectedRowKey == group.item.key)
+                                            .raftInlineListSelected(selected)
                                             .homeSearchReturnHighlight(returnHighlight, group.item.key)
                                     ) {
                                     SharedHomeSearchMessageResultRow(
                                         item = group.item,
                                         query = state.query,
                                         showSeparator = groupIndex > 0,
+                                        selected = selected,
                                         cacheServerId = cacheServerId,
                                         memberAvatarResolver = memberAvatarResolver,
                                         timeContext = timeContext,
@@ -1045,15 +1051,17 @@ internal fun SharedHomeSearchPanel(
                             }
                             is HomeSearchResultGroup.Thread -> {
                                 item(key = group.key) {
+                                    val selected = inlineListSelection?.selectedRowKey == group.key
                                     Box(
                                         Modifier
-                                            .raftInlineListSelected(inlineListSelection?.selectedRowKey == group.key)
+                                            .raftInlineListSelected(selected)
                                             .homeSearchReturnHighlight(returnHighlight, group.key)
                                     ) {
                                     SharedHomeThreadResultGroup(
                                         group = group,
                                         query = state.query,
                                         showSeparator = groupIndex > 0,
+                                        selected = selected,
                                         cacheServerId = cacheServerId,
                                         memberAvatarResolver = memberAvatarResolver,
                                         timeContext = timeContext,
