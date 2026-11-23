@@ -97,9 +97,7 @@ import build.raft.app.compat.json.JSONObject
 import build.raft.app.compat.pager.Pager
 import build.raft.designsystem.components.raftClickable
 import build.raft.designsystem.components.RaftHoverTier
-import build.raft.designsystem.components.RaftBackButton
 import build.raft.designsystem.components.RaftBadgeVariant
-import build.raft.designsystem.components.RaftGlyph
 import build.raft.designsystem.components.RaftIconTile
 import build.raft.designsystem.components.RaftIconTileSize
 import build.raft.designsystem.components.LocalRaftListRowIconSize
@@ -1021,8 +1019,9 @@ internal fun channelSettingsFailureMessage(
  * The details' frame (raft-design channel.md, "The channel details"): on a phone a pushed page
  * whose head is Back and Details (the channel's name is the page's first line, so the head doesn't
  * repeat it); on the wide layout the first page of the profile column's details cell, beside the
- * conversation in its row, whose head is Details and Close (×), with no Expand. The panel head is 44 under a
- * mouse or trackpad and 56 with a finger ([RaftPanelBackHeader]), over the canvas.
+ * conversation in its row, whose head is Details and the side pane's Close (×; [RaftPanelBackHeader] in a
+ * [LocalRaftSidePanePage]), with no Expand. The panel head is 44 under a mouse or trackpad and 56 with a finger,
+ * over the canvas.
  */
 @Composable
 internal fun ChannelSettingsScaffold(
@@ -1032,27 +1031,13 @@ internal fun ChannelSettingsScaffold(
 ) {
     RaftDesignSystemTheme {
         Column(modifier = Modifier.fillMaxSize().background(RaftTheme.colors.layerCanvas)) {
-            val title = stringResource(Res.string.channel_details_title)
-            if (LocalRaftPaneBackCloses.current) {
-                RaftPanelBackHeader(
-                    title = title,
-                    subtitle = null,
-                    onBack = null,
-                    topSafeArea = raftTopSafeAreaPadding(),
-                    refreshing = refreshing,
-                    trailingContent = {
-                        RaftBackButton(onClick = onBack, label = stringResource(Res.string.common_close), glyph = RaftGlyph.X)
-                    },
-                )
-            } else {
-                RaftPanelBackHeader(
-                    title = title,
-                    subtitle = null,
-                    onBack = onBack,
-                    topSafeArea = raftTopSafeAreaPadding(),
-                    refreshing = refreshing,
-                )
-            }
+            RaftPanelBackHeader(
+                title = stringResource(Res.string.channel_details_title),
+                subtitle = null,
+                onBack = onBack,
+                topSafeArea = raftTopSafeAreaPadding(),
+                refreshing = refreshing,
+            )
             Box(modifier = Modifier.weight(1f).fillMaxWidth()) { content() }
         }
     }

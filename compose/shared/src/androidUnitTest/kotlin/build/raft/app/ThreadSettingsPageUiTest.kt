@@ -15,6 +15,7 @@ import build.raft.app.compat.pager.RaftPageActivity
 import build.raft.app.components.RaftDesignSystemTheme
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.fail
 import org.junit.Rule
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -23,7 +24,9 @@ import org.robolectric.annotation.Config
 /**
  * On a phone a conversation's settings are a pushed page: Back at the start of the head, named
  * Back for screen readers, closes it; there is no × (artin 2026-11-04: a single page is a push).
- * The channel details in the wide column have Close at the end of the head instead.
+ * The channel details in the wide column (a side pane, web layout-memory.md "Close and Back") have
+ * the pane's Close at the end of the head instead, and a page pushed over them in the column (the
+ * member list) has Back too.
  */
 @OptIn(ExperimentalTestApi::class)
 @RunWith(RobolectricTestRunner::class)
@@ -66,8 +69,9 @@ class ThreadSettingsPageUiTest {
             var closed = 0
             setContent {
                 Host {
-                    CompositionLocalProvider(LocalRaftPaneBackCloses provides true) {
-                        ChannelSettingsScaffold(refreshing = false, onBack = { closed += 1 }) {}
+                    val pane = remember { RaftSidePanePage(depth = 1) { closed += 1 } }
+                    CompositionLocalProvider(LocalRaftSidePanePage provides pane) {
+                        ChannelSettingsScaffold(refreshing = false, onBack = { fail("the column's only page has no Back") }) {}
                     }
                 }
             }
@@ -75,6 +79,26 @@ class ThreadSettingsPageUiTest {
             onNodeWithContentDescription("Back").assertDoesNotExist()
             onNodeWithContentDescription("Close").assertIsDisplayed().performClick()
             runOnIdle { assertEquals(1, closed) }
+        }
+
+    // The member list pushed over the details in the column: Back goes back to them, Close closes the column.
+    @Test
+    fun aPagePushedInTheColumnHasBackAndClose() =
+        runRobolectricComposeUiTest {
+            var backs = 0
+            var closed = 0
+            setContent {
+                Host {
+                    val pane = remember { RaftSidePanePage(depth = 2) { closed += 1 } }
+                    CompositionLocalProvider(LocalRaftSidePanePage provides pane) {
+                        ChannelMembersPageHeader(title = "Members", count = 3, refreshing = false, onBack = { backs += 1 })
+                    }
+                }
+            }
+            onNodeWithContentDescription("Back").assertIsDisplayed().performClick()
+            runOnIdle { assertEquals(1 to 0, backs to closed, "Back goes back one page") }
+            onNodeWithContentDescription("Close").assertIsDisplayed().performClick()
+            runOnIdle { assertEquals(1 to 1, backs to closed, "Close closes the column") }
         }
 }
 

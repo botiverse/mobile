@@ -60,7 +60,8 @@ import org.robolectric.annotation.Config
  * toggle (as ThreadPage's, through [LocalRaftProfileColumn]) and a member avatar, both opening pages through the
  * host navigator as the pages do ([RaftPaneHost] routes them by role):
  * - the channel details and a member's profile open into the column, the profile over the details; the Settings
- *   toggle opens and closes the details; a page's Close closes its cell;
+ *   toggle opens and closes the details; a page's Close closes its cell only, and a page pushed in a cell has Back
+ *   too (web layout-memory.md "Close and Back");
  * - Back closes the column's last page first, then the other cell's, before the page's own Back;
  * - the conversation and the thread give way to it by the row plan (in proportion, then the thread folds) instead
  *   of it covering them;
@@ -212,13 +213,17 @@ class RaftProfileColumnUiTest {
         }
     }
 
-    /** A page in the column, opening and closing through its host as the real pages do; its first page shows Close. */
+    /**
+     * A page in the column, opening and closing through its host as the real pages do; its head's buttons as a side
+     * pane's ([raftSidePaneHeadButtons]): Back (its own `closePage`) over a page of the cell's stack, Close (the cell's).
+     */
     @Composable
     private fun FixturePage(entry: RaftPaneEntry) {
         val navigator = LocalRaftHost.current.navigator
-        val closes = LocalRaftPaneBackCloses.current
+        val pane = LocalRaftSidePanePage.current
         Column(Modifier.fillMaxSize().testTag("page:${entry.pageName}")) {
-            Button(if (closes) "close:${entry.pageName}" else "back:${entry.pageName}") { navigator.closePage() }
+            if (raftSidePaneShowsBack()) Button("back:${entry.pageName}") { navigator.closePage() }
+            if (pane != null) Button("close:${entry.pageName}") { pane.close() }
             when (entry.pageName) {
                 CHANNEL_SETTINGS_PAGE -> Button("members") { navigator.openPage(THREAD_MEMBERS_PAGE, data) }
                 THREAD_MEMBERS_PAGE -> Button("pick") { navigator.openPage(MEMBER_DETAIL_PAGE, data) }
@@ -285,6 +290,43 @@ class RaftProfileColumnUiTest {
             near(1280f, widthDp(RAFT_PANE_GRID_MAIN_TEST_TAG), "the conversation takes the row back")
             assertSettled()
             assertTrue(platformOpened.isEmpty(), "nothing opened as a window: $platformOpened")
+        }
+
+    /**
+     * web layout-memory.md "Close and Back": each cell is a side pane. Its first page has Close only; a page pushed in
+     * it (the details' member list) has Back too, which goes back one page in the cell. Close closes that cell only:
+     * the other cell and the conversation stay, nothing opens elsewhere.
+     */
+    @Test
+    fun aCellsCloseClosesOnlyThatCellAndBackShowsOnlyOverAPagePushedInIt() =
+        runRobolectricComposeUiTest {
+            rowWidth = 1280f
+            showWorkspace()
+            click("gear")
+            click("avatar")
+            assertEquals(listOf(RaftProfileColumnCell.Profile, RaftProfileColumnCell.Details), panes.cells)
+            // Each cell's only page: Close, no Back.
+            for (page in listOf(CHANNEL_SETTINGS_PAGE, MEMBER_DETAIL_PAGE)) {
+                onNodeWithTag("close:$page", useUnmergedTree = true).assertExists()
+                onNodeWithTag("back:$page", useUnmergedTree = true).assertDoesNotExist()
+            }
+            // The member list pushed over the details (two pages in the cell): Back and Close.
+            click("members")
+            assertEquals(listOf(CHANNEL_SETTINGS_PAGE, THREAD_MEMBERS_PAGE), panes.details.entries.map { it.pageName })
+            onNodeWithTag("back:$THREAD_MEMBERS_PAGE", useUnmergedTree = true).assertExists()
+            onNodeWithTag("close:$THREAD_MEMBERS_PAGE", useUnmergedTree = true).assertExists()
+            // Back goes back one page in the cell.
+            click("back:$THREAD_MEMBERS_PAGE")
+            assertEquals(listOf(CHANNEL_SETTINGS_PAGE), panes.details.entries.map { it.pageName })
+            // Close on the pushed page closes the whole cell, and only it.
+            click("members")
+            click("close:$THREAD_MEMBERS_PAGE")
+            assertFalse(panes.details.isOpen, "the details cell closed")
+            assertEquals(listOf(MEMBER_DETAIL_PAGE), panes.profile.entries.map { it.pageName }, "the profile cell stays")
+            onNodeWithTag("page:$MEMBER_DETAIL_PAGE", useUnmergedTree = true).assertExists()
+            onNodeWithTag("conversation", useUnmergedTree = true).assertExists()
+            assertTrue(platformOpened.isEmpty(), "nothing opened as a window: $platformOpened")
+            assertSettled()
         }
 
     private companion object {

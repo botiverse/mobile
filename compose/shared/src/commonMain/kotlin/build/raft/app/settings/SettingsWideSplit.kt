@@ -150,8 +150,11 @@ private fun settingsWideWebPage(surface: SettingsWebViewSurface, storeScope: Raf
  * The wide Settings tab: the Settings list in the sidebar column ([RaftListPaneKind.Sidebar], the
  * Home sidebar's width) with the [selectedKey] row highlighted, and [detailPane] beside it. Back
  * while a non-default section shows returns to the default one ([settingsWideBackReturnsToDefault]).
- * [collapsed]: the rail's Collapse Sidebar hid the list, so the section takes the whole width;
- * [onCollapsedChange] lets the list's handle collapse it too (a drag past its minimum, Enter).
+ * [collapsed]: the rail's Collapse Sidebar hid the list, so the section takes the width beside the
+ * strip that keeps Expand sidebar where the list was; [onCollapsedChange] lets that strip bring it
+ * back and the list's handle collapse it too (a drag past its minimum: with a mouse or trackpad
+ * at once, by touch only let go near the rail; Enter). [detailHeadTopInset]: the top safe area the
+ * section's head pads, for that strip ([RaftAdaptiveListDetailSplit]).
  */
 @Composable
 internal fun SettingsWideListDetail(
@@ -169,6 +172,7 @@ internal fun SettingsWideListDetail(
     onResizingChange: (Boolean) -> Unit = {},
     /** Search settings at the top of the list (the results stay there, the open one selected). */
     search: SettingsSearchHost? = null,
+    detailHeadTopInset: Dp = 0.dp,
 ) {
     val rowKeys = payload.items.map { it.key }
     val showing = settingsWideDetailKey(picked, rowKeys)
@@ -206,6 +210,7 @@ internal fun SettingsWideListDetail(
         collapsed = collapsed,
         onCollapsedChange = onCollapsedChange,
         onResizingChange = onResizingChange,
+        detailHeadTopInset = detailHeadTopInset,
     )
 }
 

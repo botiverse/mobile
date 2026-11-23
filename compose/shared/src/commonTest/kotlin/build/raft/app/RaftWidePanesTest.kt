@@ -74,6 +74,18 @@ class RaftWidePanesTest {
         assertEquals(RaftChannelSideSection.Artifact.wire, RAFT_ARTIFACT_COLUMN_CELL, "the cell is the side layout's section")
     }
 
+    // web layout-memory.md "Close and Back": a side pane's head always has Close (the pane's), Back only over a page of
+    // the pane's own stack (RaftPaneStack.entries.size > 1 for its top page).
+    @Test
+    fun aSidePaneHeadHasCloseAndBackOnlyOverAPageOfItsStack() {
+        assertEquals(setOf(RaftSidePaneHeadButton.Close), raftSidePaneHeadButtons(depth = 1), "the pane's only page: Close alone")
+        assertEquals(
+            setOf(RaftSidePaneHeadButton.Back, RaftSidePaneHeadButton.Close),
+            raftSidePaneHeadButtons(depth = 2),
+            "a page pushed in the pane: Back and Close",
+        )
+    }
+
     // PR #4666 review: Back goes in the order things were opened across both columns, not by one flag.
     @Test
     fun backClosesInTheOrderThingsWereOpenedAcrossBothColumns() {
