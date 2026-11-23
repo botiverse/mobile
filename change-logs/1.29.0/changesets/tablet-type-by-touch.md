@@ -1,6 +1,6 @@
 ---
 type: improved
-area: layout
+area: ui
 platforms:
   - android
   - ios
