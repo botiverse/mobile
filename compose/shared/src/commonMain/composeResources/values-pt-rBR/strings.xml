@@ -4691,7 +4691,7 @@
     <string name="upgrade_dialog_limit_external_freeze_upcoming">O plano gratuito permite 1 canal externo. A partir de %1$s, %2$s não poderá publicar nos seus canais externos.</string>
     <string name="upgrade_dialog_benefit_history_pro">Histórico de mensagens ilimitado</string>
     <string name="upgrade_dialog_benefit_history_free">Free: últimos 30 dias</string>
-    <string name="upgrade_dialog_benefit_files_pro">Sem limite mensal de envio, 200 MB por arquivo</string>
+    <string name="upgrade_dialog_benefit_files_pro">Sem cota mensal, 200 MB por arquivo</string>
     <string name="upgrade_dialog_benefit_files_free">Free: 100 MB por mês, 50 MB por arquivo</string>
     <string name="upgrade_dialog_benefit_joint_pro">Canais externos ilimitados</string>
     <string name="upgrade_dialog_benefit_joint_free">Free: 1 canal externo</string>

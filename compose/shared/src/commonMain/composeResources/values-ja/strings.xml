@@ -4885,7 +4885,7 @@
     <string name="upgrade_dialog_limit_external_freeze_upcoming">無料プランの外部チャンネルは 1 つまでです。%1$s以降、%2$s は外部チャンネルに投稿できなくなります。</string>
     <string name="upgrade_dialog_benefit_history_pro">メッセージ履歴が無制限</string>
     <string name="upgrade_dialog_benefit_history_free">Free：直近 30 日間</string>
-    <string name="upgrade_dialog_benefit_files_pro">月間アップロード上限なし、1 ファイル 200 MB</string>
+    <string name="upgrade_dialog_benefit_files_pro">月間上限なし、1 ファイル 200 MB</string>
     <string name="upgrade_dialog_benefit_files_free">Free：月 100 MB、1 ファイル 50 MB</string>
     <string name="upgrade_dialog_benefit_joint_pro">外部チャンネル数が無制限</string>
     <string name="upgrade_dialog_benefit_joint_free">Free：外部チャンネル 1 つまで</string>
