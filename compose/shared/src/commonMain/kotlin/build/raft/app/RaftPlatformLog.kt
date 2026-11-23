@@ -8,7 +8,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.yield
 
 internal enum class RaftLogLevel(
     val wireValue: String
@@ -67,10 +66,7 @@ private object RaftPlatformLogSinkRegistry {
 }
 
 private sealed interface RaftPlatformLogQueueItem {
-    val sequence: Long
-
     data class Entry(
-        override val sequence: Long,
         val level: RaftLogLevel,
         val tag: String,
         val message: String,
@@ -79,7 +75,6 @@ private sealed interface RaftPlatformLogQueueItem {
     ) : RaftPlatformLogQueueItem
 
     data class Flush(
-        override val sequence: Long,
         val timestampMillis: Long,
         val completion: CompletableDeferred<Unit>
     ) : RaftPlatformLogQueueItem
@@ -88,8 +83,9 @@ private sealed interface RaftPlatformLogQueueItem {
 internal class RaftPlatformLogQueue(
     scope: CoroutineScope,
     private val recordSink: ((RaftPlatformLogRecord) -> Unit)? = null,
-    // Lets tests admit records between individual channel reads without timing or threads.
-    private val afterLanePoll: ((RaftPlatformLogHint) -> Unit)? = null,
+    // Runs in [enqueue] after the line took its place in its lane and before it is published: lets
+    // tests log another line at that point, as a second thread can, without timing or threads.
+    private val duringAdmission: ((RaftPlatformLogHint) -> Unit)? = null,
     // null: every line persists (no summaries, no verbose gating).
     private val volumePolicy: RaftDiagnosticsVolumePolicy? = RaftDiagnosticsVolumePolicy(),
     private val verboseDiagnostics: () -> Boolean = { RaftVerboseDiagnostics.enabled }
@@ -97,57 +93,35 @@ internal class RaftPlatformLogQueue(
     private companion object {
         const val NormalCapacity = 496
         const val AuthCriticalCapacity = 16
-        const val ControlCapacity = 1
         const val QueueTag = "SlockPlatformLog"
     }
 
-    private val normalQueue = Channel<RaftPlatformLogQueueItem.Entry>(capacity = NormalCapacity)
-    private val authCriticalQueue = Channel<RaftPlatformLogQueueItem.Entry>(capacity = AuthCriticalCapacity)
-    private val controlQueue = Channel<RaftPlatformLogQueueItem.Flush>(capacity = ControlCapacity)
-    private val wakeups = Channel<Unit>(capacity = Channel.CONFLATED)
-    private val admissionBusy = atomic(false)
-    private var nextAcceptedSequence = 1L
+    /**
+     * Every admitted line and flush marker, in admission order: the consumer delivers them in that
+     * order, and a flush completes once every line admitted before it has been delivered. Unlimited
+     * and lock-free, so a line never waits for another thread's admission and is never lost to one.
+     * Up to 1.28 a line that found another admission in progress was dropped (`admissionBusy=`):
+     * Hands cf580bb9 lost about 2 lines a minute, request finish lines among them. Each lane's bound
+     * is its count below.
+     */
+    private val items = Channel<RaftPlatformLogQueueItem>(capacity = Channel.UNLIMITED)
+
+    // Lines admitted and not yet taken by the consumer, per lane. A full lane drops the new line,
+    // counted and then reported in a `slock_platform_log_queue_dropped` line; routine lines never
+    // take the auth-critical lane's room.
+    private val normalWaiting = atomic(0)
+    private val authCriticalWaiting = atomic(0)
     private val normalOverflowDropped = atomic(0L)
-    private val normalAdmissionDropped = atomic(0L)
     private val authCriticalOverflowDropped = atomic(0L)
-    private val authCriticalAdmissionDropped = atomic(0L)
 
     init {
         scope.launch {
-            var normalHead: RaftPlatformLogQueueItem.Entry? = null
-            var authCriticalHead: RaftPlatformLogQueueItem.Entry? = null
-            var controlHead: RaftPlatformLogQueueItem.Flush? = null
-            while (true) {
-                if (normalHead == null) normalHead = normalQueue.tryReceive().getOrNull()
-                afterLanePoll?.invoke(RaftPlatformLogHint.None)
-                if (authCriticalHead == null) authCriticalHead = authCriticalQueue.tryReceive().getOrNull()
-                afterLanePoll?.invoke(RaftPlatformLogHint.AuthCritical)
-                if (controlHead == null) controlHead = controlQueue.tryReceive().getOrNull()
-                if (normalHead != null || authCriticalHead != null || controlHead != null) {
-                    // The first pass is not an atomic snapshot: a previously empty lane
-                    // may receive an entry before a later lane exposes a Flush or Entry.
-                    // Admission serializes sequence assignment and publication, so every
-                    // item preceding an observed candidate is already enqueued. Refill
-                    // missing heads after observing that candidate before choosing the
-                    // minimum. Keep observed heads: later admissions cannot precede them.
-                    if (normalHead == null) normalHead = normalQueue.tryReceive().getOrNull()
-                    if (authCriticalHead == null) authCriticalHead = authCriticalQueue.tryReceive().getOrNull()
-                    if (controlHead == null) controlHead = controlQueue.tryReceive().getOrNull()
-                }
-                val item = earliest(normalHead, authCriticalHead, controlHead)
-                if (item == null) {
-                    wakeups.receive()
-                    continue
-                }
+            for (item in items) {
                 when (item) {
                     is RaftPlatformLogQueueItem.Entry -> {
+                        leaveLane(item.hint)
                         dispatchPendingDropMarkers(item.timestampMillis)
                         dispatchAdmitted(item)
-                        if (item === normalHead) {
-                            normalHead = null
-                        } else {
-                            authCriticalHead = null
-                        }
                     }
                     is RaftPlatformLogQueueItem.Flush -> {
                         dispatchPendingDropMarkers(item.timestampMillis)
@@ -155,7 +129,6 @@ internal class RaftPlatformLogQueue(
                         volumePolicy?.drain(item.timestampMillis)?.forEach { summary ->
                             dispatchSummary(summary, item.timestampMillis)
                         }
-                        controlHead = null
                         item.completion.complete(Unit)
                     }
                 }
@@ -163,81 +136,71 @@ internal class RaftPlatformLogQueue(
         }
     }
 
+    /** Never blocks or waits for another thread. False only when the line's lane is full. */
     fun enqueue(
         level: RaftLogLevel,
         tag: String,
         message: String,
         hint: RaftPlatformLogHint
     ): Boolean {
-        if (!admissionBusy.compareAndSet(expect = false, update = true)) {
-            recordAdmissionDrop(hint)
+        if (!enterLane(hint)) {
+            recordOverflowDrop(hint)
             return false
         }
-        val accepted =
-            try {
-                val entry =
-                    RaftPlatformLogQueueItem.Entry(
-                        sequence = nextAcceptedSequence,
-                        level = level,
-                        tag = tag.take(RaftLogTagMaxChars * 2),
-                        message = message.take(RaftLogMessageMaxChars * 2),
-                        timestampMillis = defaultNowMillis(),
-                        hint = hint
-                    )
-                val result = queueFor(hint).trySend(entry)
-                if (result.isSuccess) {
-                    nextAcceptedSequence += 1L
-                    true
-                } else {
-                    recordOverflowDrop(hint)
-                    false
-                }
-            } finally {
-                admissionBusy.value = false
-            }
-        if (accepted) {
-            wakeups.trySend(Unit)
-        }
-        return accepted
+        duringAdmission?.invoke(hint)
+        val entry =
+            RaftPlatformLogQueueItem.Entry(
+                level = level,
+                tag = tag.take(RaftLogTagMaxChars * 2),
+                message = message.take(RaftLogMessageMaxChars * 2),
+                timestampMillis = defaultNowMillis(),
+                hint = hint
+            )
+        if (items.trySend(entry).isSuccess) return true
+        // Only a closed channel refuses a line, and nothing closes this one.
+        leaveLane(hint)
+        return false
     }
 
     suspend fun flush() {
         val completion = CompletableDeferred<Unit>()
-        while (true) {
-            if (!admissionBusy.compareAndSet(expect = false, update = true)) {
-                yield()
-                continue
-            }
-            val accepted =
-                try {
-                    val marker =
-                        RaftPlatformLogQueueItem.Flush(
-                            sequence = nextAcceptedSequence,
-                            timestampMillis = defaultNowMillis(),
-                            completion = completion
-                        )
-                    if (controlQueue.trySend(marker).isSuccess) {
-                        nextAcceptedSequence += 1L
-                        true
-                    } else {
-                        false
-                    }
-                } finally {
-                    admissionBusy.value = false
-                }
-            if (accepted) {
-                wakeups.trySend(Unit)
-                break
-            }
-            yield()
-        }
-        completion.await()
+        val marker = RaftPlatformLogQueueItem.Flush(timestampMillis = defaultNowMillis(), completion = completion)
+        if (items.trySend(marker).isSuccess) completion.await()
     }
 
-    private fun queueFor(hint: RaftPlatformLogHint): Channel<RaftPlatformLogQueueItem.Entry> =
+    /**
+     * Takes a place in [hint]'s lane unless the lane is full. A failed compare-and-set means another
+     * admission or the consumer changed the count meanwhile: read it again and retry, never wait.
+     */
+    private fun enterLane(hint: RaftPlatformLogHint): Boolean {
+        val capacity = capacityOf(hint)
+        while (true) {
+            val waiting =
+                when (hint) {
+                    RaftPlatformLogHint.None -> normalWaiting.value
+                    RaftPlatformLogHint.AuthCritical -> authCriticalWaiting.value
+                }
+            if (waiting >= capacity) return false
+            val entered =
+                when (hint) {
+                    RaftPlatformLogHint.None -> normalWaiting.compareAndSet(waiting, waiting + 1)
+                    RaftPlatformLogHint.AuthCritical -> authCriticalWaiting.compareAndSet(waiting, waiting + 1)
+                }
+            if (entered) return true
+        }
+    }
+
+    private fun leaveLane(hint: RaftPlatformLogHint) {
         when (hint) {
-            RaftPlatformLogHint.None -> normalQueue
-            RaftPlatformLogHint.AuthCritical -> authCriticalQueue
+            RaftPlatformLogHint.None -> normalWaiting.decrementAndGet()
+            RaftPlatformLogHint.AuthCritical -> authCriticalWaiting.decrementAndGet()
+        }
+    }
+
+    private fun capacityOf(hint: RaftPlatformLogHint): Int =
+        when (hint) {
+            RaftPlatformLogHint.None -> NormalCapacity
+            RaftPlatformLogHint.AuthCritical -> AuthCriticalCapacity
         }
 
     private fun recordOverflowDrop(hint: RaftPlatformLogHint) {
@@ -247,42 +210,18 @@ internal class RaftPlatformLogQueue(
         }
     }
 
-    private fun recordAdmissionDrop(hint: RaftPlatformLogHint) {
-        when (hint) {
-            RaftPlatformLogHint.None -> normalAdmissionDropped.incrementAndGet()
-            RaftPlatformLogHint.AuthCritical -> authCriticalAdmissionDropped.incrementAndGet()
-        }
-    }
-
-    private fun earliest(
-        normal: RaftPlatformLogQueueItem.Entry?,
-        authCritical: RaftPlatformLogQueueItem.Entry?,
-        control: RaftPlatformLogQueueItem.Flush?
-    ): RaftPlatformLogQueueItem? {
-        var earliest: RaftPlatformLogQueueItem? = normal
-        if (authCritical != null && (earliest == null || authCritical.sequence < earliest.sequence)) {
-            earliest = authCritical
-        }
-        if (control != null && (earliest == null || control.sequence < earliest.sequence)) {
-            earliest = control
-        }
-        return earliest
-    }
-
     private fun dispatchPendingDropMarkers(timestampMillis: Long) {
         dispatchDropMarker(
             lane = "normal",
             capacity = NormalCapacity,
-            overflow = normalOverflowDropped.getAndSet(0L),
-            admission = normalAdmissionDropped.getAndSet(0L),
+            dropped = normalOverflowDropped.getAndSet(0L),
             timestampMillis = timestampMillis,
             hint = RaftPlatformLogHint.None
         )
         dispatchDropMarker(
             lane = "auth_critical",
             capacity = AuthCriticalCapacity,
-            overflow = authCriticalOverflowDropped.getAndSet(0L),
-            admission = authCriticalAdmissionDropped.getAndSet(0L),
+            dropped = authCriticalOverflowDropped.getAndSet(0L),
             timestampMillis = timestampMillis,
             hint = RaftPlatformLogHint.AuthCritical
         )
@@ -291,19 +230,18 @@ internal class RaftPlatformLogQueue(
     private fun dispatchDropMarker(
         lane: String,
         capacity: Int,
-        overflow: Long,
-        admission: Long,
+        dropped: Long,
         timestampMillis: Long,
         hint: RaftPlatformLogHint
     ) {
-        val dropped = overflow + admission
         if (dropped <= 0L) return
         dispatch(
             level = RaftLogLevel.Warn,
             tag = QueueTag,
+            // A full lane is the only way a line is dropped now: `overflow` is all of `count`.
             message =
                 "slock_platform_log_queue_dropped lane=$lane count=$dropped " +
-                    "overflow=$overflow admissionBusy=$admission capacity=$capacity",
+                    "overflow=$dropped capacity=$capacity",
             timestampMillis = timestampMillis,
             hint = hint
         )

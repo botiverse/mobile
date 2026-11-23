@@ -1601,12 +1601,12 @@ private class ActualHostRun(
             sequence += 1
             if (!terminal) phaseHashes += hash
             // task #58 follow-up: trace evidence must not ride the lossy
-            // shared log queue — RaftPlatformLogQueue can drop an admission
-            // under admissionBusy, which previously produced a
-            // contiguous-sequence gap (seq 23 missing at run 37321478598).
-            // Write straight to the platform sink (Android: android.util.Log)
-            // inside the lock so the emitted line order always matches the
-            // assigned sequence numbers.
+            // shared log queue — RaftPlatformLogQueue drops a line when full,
+            // and up to 1.28 also dropped an admission under admissionBusy,
+            // which produced a contiguous-sequence gap (seq 23 missing at
+            // run 37321478598). Write straight to the platform sink (Android:
+            // android.util.Log) inside the lock so the emitted line order
+            // always matches the assigned sequence numbers.
             raftPlatformLog(
                 RaftLogLevel.Info,
                 ActualHostLogTag,
