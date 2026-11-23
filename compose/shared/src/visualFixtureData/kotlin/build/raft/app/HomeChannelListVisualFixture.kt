@@ -118,6 +118,9 @@ internal fun HomeChannelListVisualContent(
         searchAndActivityOnShellNav = true,
         serverSwitcherInTopBar = serverSwitcherInTopBar,
         outerPadding = 0.dp,
+        // Web primeHomeChannelListStores seeds role = "owner" (`externalChannelCreateAccess`),
+        // so the External section header shows its "+" create button like the web capture (#wg-mobile-sync:#207).
+        onCreateJointChannelClick = ({}).takeIf { externalChannelCreateAccess(VisualFixtureData.Humans.Owner.ROLE) },
         onChannelClick = onChannelClick
     )
 }
