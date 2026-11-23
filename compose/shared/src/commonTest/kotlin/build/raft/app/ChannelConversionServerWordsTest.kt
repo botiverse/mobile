@@ -202,7 +202,7 @@ class ChannelConversionServerWordsTest {
         val traceId = "62ac7fa79a3785a6bee414a074f82634"
         val stubResolve: (StringDesc) -> String = { desc ->
             when (desc) {
-                is RawStringDesc -> desc.value
+                is RawStringDesc -> desc.string
                 else -> desc.toString()
             }
         }
