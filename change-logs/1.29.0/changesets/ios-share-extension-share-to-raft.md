@@ -3,7 +3,7 @@ type: added
 area: share
 platforms: [ios]
 rollout: full
-pull_request: TBD
+pull_request: 5520
 ---
 
 ## zh-CN
