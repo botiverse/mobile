@@ -858,9 +858,63 @@ test("rule 3: secure_evidence scans verdict.json via Testbed OIDC runtime creden
       } finally { fs.rmSync(box.root, { recursive: true, force: true }); }
     }
 
-    // 8. Legacy password path (no acceptance block) still uses QA_TEST_* env directly.
+    // 8. Truncated/unparseable structured evidence (e.g. session.jsonl without secrets) fails closed for login-email-password
+    // with secrets_checked=false and blocks BOTH exits; a valid session.jsonl control passes and uploads cleanly.
+    mode = "ok";
+    const truncated = makePassDir({ verdict: "pass", reason: "home visible" });
+    try {
+      fs.writeFileSync(path.join(truncated.dir, "session.jsonl"), '{"turn":1,"note":"ok"}\n{"turn":2,"truncated":');
+      const env = oidcEnv(truncated.root);
+      const res = await gate.runGate(truncated.dir, env, { retryDelaysMs: [0, 0] });
+      assert.equal(res.ok, false);
+      assert.match(res.reason, /unparseable structured evidence in session\.jsonl/);
+      assert.equal(fs.existsSync(path.join(truncated.dir, "session.jsonl")), false, "truncated session.jsonl deleted");
+      assert.equal(fs.existsSync(path.join(truncated.dir, "step-00.png")), false, "evidence deleted on structured parse failure");
+      assert.equal(JSON.parse(fs.readFileSync(path.join(truncated.dir, "verdict.json"), "utf8")).verdict, "unknown");
+      assert.equal(JSON.parse(fs.readFileSync(path.join(truncated.dir, "evidence-gate.json"), "utf8")).secrets_checked, false);
+      const bin = path.join(truncated.root, "bin");
+      fs.mkdirSync(bin);
+      const curlLog = path.join(truncated.root, "curl.log");
+      fs.writeFileSync(path.join(bin, "curl"), `#!/usr/bin/env bash\necho "$*" >> "${curlLog}"\nexit 0\n`, { mode: 0o755 });
+      const stampRes = spawnSync("bash", [path.join(here, "stamp_report.sh"), "report-evidence", truncated.dir], {
+        cwd: truncated.root, encoding: "utf8",
+        env: { PATH: `${bin}:${path.dirname(process.execPath)}:/usr/bin:/bin`, ...env },
+      });
+      assert.notEqual(stampRes.status, 0);
+      assert.equal(fs.existsSync(curlLog), false, "no Stamp upload after truncated session.jsonl");
+    } finally { fs.rmSync(truncated.root, { recursive: true, force: true }); }
+
+    const validJsonl = makePassDir({ verdict: "pass", reason: "home visible" });
+    try {
+      fs.writeFileSync(path.join(validJsonl.dir, "session.jsonl"), '{"turn":1,"note":"ok"}\n{"turn":2,"note":"done"}\n');
+      const env = oidcEnv(validJsonl.root);
+      const res = await gate.runGate(validJsonl.dir, env, { retryDelaysMs: [0, 0] });
+      assert.equal(res.ok, true);
+      assert.equal(JSON.parse(fs.readFileSync(path.join(validJsonl.dir, "evidence-gate.json"), "utf8")).secrets_checked, true);
+      assert.equal(fs.existsSync(path.join(validJsonl.dir, "session.jsonl")), true);
+      const bin = path.join(validJsonl.root, "bin");
+      fs.mkdirSync(bin);
+      const curlLog = path.join(validJsonl.root, "curl.log");
+      fs.writeFileSync(path.join(bin, "curl"), `#!/usr/bin/env bash\necho "$*" >> "${curlLog}"\nexit 0\n`, { mode: 0o755 });
+      // Must be async spawn (not spawnSync) so this process's loopback fake Testbed server can answer OIDC + input requests.
+      const stampRes = await new Promise((resolve) => {
+        const child = spawn("bash", [path.join(here, "stamp_report.sh"), "report-evidence", validJsonl.dir], {
+          cwd: validJsonl.root,
+          env: { PATH: `${bin}:${path.dirname(process.execPath)}:/usr/bin:/bin`, ...env },
+        });
+        let stdout = "", stderr = "";
+        child.stdout.on("data", (d) => { stdout += d; });
+        child.stderr.on("data", (d) => { stderr += d; });
+        child.on("close", (status) => resolve({ status, stdout, stderr }));
+      });
+      assert.equal(stampRes.status, 0, stampRes.stdout + stampRes.stderr);
+      assert.match(fs.readFileSync(curlLog, "utf8"), /\/evidence\?kind=session_log/, "valid session.jsonl uploads cleanly");
+    } finally { fs.rmSync(validJsonl.root, { recursive: true, force: true }); }
+
+    // 9. Legacy password path (no acceptance block) still uses QA_TEST_* env directly and keeps existing lenient JSONL behavior.
     const legacy = makePassDir({ verdict: "pass", reason: `signed in as ${EMAIL}` }, { withAcceptance: false });
     try {
+      fs.writeFileSync(path.join(legacy.dir, "session.jsonl"), '{"turn":1}\n{"partial":');
       const res = gate.gate(legacy.dir, { ...RUN, QA_TEST_EMAIL: EMAIL, QA_TEST_PASSWORD: PASSWORD });
       assert.equal(res.ok, true);
       assert.deepEqual(JSON.parse(fs.readFileSync(path.join(legacy.dir, "verdict.json"), "utf8")), { verdict: "pass", reason: "signed in as ***" });

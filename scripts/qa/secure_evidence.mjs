@@ -13,8 +13,10 @@
 // from Testbed via OIDC (never written to disk) — the password anywhere (including short passwords and
 // JSON-escaped values in .json/.jsonl/.ndjson such as verdict.json) is UNKNOWN and the email is
 // redacted from text files. For login-email-password, BOTH the email and the password must be present
-// and scannable; if either is unavailable or uncheckable, the gate fails closed (UNKNOWN,
-// secrets_checked: false) rather than uploading unscanned evidence.
+// and scannable, and every structured evidence file (.json/.jsonl/.ndjson) must parse completely; if
+// a credential field is unavailable/uncheckable or any structured file fails to parse (e.g. a
+// truncated session.jsonl line), the gate fails closed (UNKNOWN, secrets_checked: false) rather than
+// uploading partially scanned evidence.
 // Anything else (missing, {}, malformed, foreign or unknown record) is UNKNOWN: everything
 // except verdict.json, agent-rc.txt, the record and this gate's own record is deleted,
 // verdict.json says "unknown", agent-rc.txt says 2, and the gate exits 1.
@@ -98,36 +100,50 @@ function redactJsonTree(value, needles) {
 }
 
 /**
- * Checks whether `bytes` of file `filePath` contain any password — raw, JSON-escaped (`\"`, `\\`,
- * etc.), or decoded from parsed JSON / JSONL (including `\uXXXX` unicode escapes in `verdict.json`).
+ * Scans `bytes` of `filePath` for passwords — raw, JSON-escaped (`\"`, `\\`, etc.), and decoded
+ * from parsed JSON / JSONL (including `\uXXXX` unicode escapes in `verdict.json`).
+ * When `strictStructured` is true (login-email-password), any unparseable `.json`/`.jsonl`/`.ndjson`
+ * returns `{ secretFound: false, parseError: true }` so the caller fails closed with
+ * `secrets_checked: false`.
  */
-function fileContainsPassword(filePath, bytes, passwords) {
-  if (passwords.length === 0) return false;
+function scanFileForPasswords(filePath, bytes, passwords, { strictStructured = false } = {}) {
   for (const password of passwords) {
-    if (bytes.includes(password)) return true;
+    if (bytes.includes(password)) return { secretFound: true, parseError: false };
     const escaped = jsonLiteralInterior(password);
-    if (escaped !== password && bytes.includes(escaped)) return true;
+    if (escaped !== password && bytes.includes(escaped)) return { secretFound: true, parseError: false };
   }
   if (JSON_FILE.test(filePath)) {
     try {
       const parsed = JSON.parse(bytes.toString("utf8"));
-      if (jsonTreeContainsAny(parsed, passwords)) return true;
-    } catch { /* Malformed JSON still checked by raw + escaped scans above. */ }
+      if (passwords.length > 0 && jsonTreeContainsAny(parsed, passwords)) {
+        return { secretFound: true, parseError: false };
+      }
+    } catch {
+      if (strictStructured) return { secretFound: false, parseError: true };
+    }
   } else if (JSON_LINES_FILE.test(filePath)) {
     for (const line of bytes.toString("utf8").split("\n")) {
       const trimmed = line.trim();
       if (!trimmed) continue;
       try {
-        if (jsonTreeContainsAny(JSON.parse(trimmed), passwords)) return true;
-      } catch { /* Malformed line still checked by raw + escaped scans above. */ }
+        const parsed = JSON.parse(trimmed);
+        if (passwords.length > 0 && jsonTreeContainsAny(parsed, passwords)) {
+          return { secretFound: true, parseError: false };
+        }
+      } catch {
+        if (strictStructured) return { secretFound: false, parseError: true };
+      }
     }
   }
-  return false;
+  return { secretFound: false, parseError: false };
 }
 
-/** Redacts every email from a text file (raw, JSON-literal-escaped, and parsed JSON/JSONL escapes). */
-function redactEmailsInTextFile(filePath, bytes, emails) {
-  if (emails.length === 0 || !TEXT_FILE.test(filePath)) return;
+/**
+ * Redacts every email from a text file (raw, JSON-literal-escaped, and parsed JSON/JSONL escapes).
+ * When `strictStructured` is true, returns `{ parseError: true }` if a structured file fails to parse.
+ */
+function redactEmailsInTextFile(filePath, bytes, emails, { strictStructured = false } = {}) {
+  if (emails.length === 0 || !TEXT_FILE.test(filePath)) return { parseError: false };
   let text = null;
   for (const email of emails) {
     for (const form of new Set([email, jsonLiteralInterior(email)])) {
@@ -142,26 +158,37 @@ function redactEmailsInTextFile(filePath, bytes, emails) {
       const parsed = JSON.parse(current);
       const { changed, result } = redactJsonTree(parsed, emails);
       if (changed) text = `${JSON.stringify(result, null, 2)}\n`;
-    } catch { /* Keep raw text redaction if JSON is malformed. */ }
+    } catch {
+      if (strictStructured) return { parseError: true };
+    }
   } else if (JSON_LINES_FILE.test(filePath)) {
     const lines = current.split("\n");
     let anyChanged = false;
-    const rewritten = lines.map((line) => {
+    const rewritten = [];
+    for (const line of lines) {
       const trimmed = line.trim();
-      if (!trimmed) return line;
+      if (!trimmed) {
+        rewritten.push(line);
+        continue;
+      }
       try {
         const parsed = JSON.parse(trimmed);
         const { changed, result } = redactJsonTree(parsed, emails);
         if (changed) {
           anyChanged = true;
-          return JSON.stringify(result);
+          rewritten.push(JSON.stringify(result));
+        } else {
+          rewritten.push(line);
         }
-      } catch { /* Leave non-JSON lines as raw-redacted. */ }
-      return line;
-    });
+      } catch {
+        if (strictStructured) return { parseError: true };
+        rewritten.push(line);
+      }
+    }
     if (anyChanged) text = rewritten.join("\n");
   }
   if (text !== null) fs.writeFileSync(filePath, text);
+  return { parseError: false };
 }
 
 export function gate(dir, env = process.env, { credentials = null } = {}) {
@@ -211,11 +238,15 @@ export function gate(dir, env = process.env, { credentials = null } = {}) {
     ...(acceptanceEmail ? [acceptanceEmail] : []),
   ];
   const scanRan = !why;
+  let structuredParseFailed = false;
   for (const f of scanRan ? publishableFiles() : []) {
     if (!fs.statSync(f).isFile()) continue;
     const bytes = fs.readFileSync(f);
-    if (fileContainsPassword(f, bytes, passwords)) { why = `secret value in ${path.basename(f)}`; break; }
-    redactEmailsInTextFile(f, bytes, emails);
+    const pwScan = scanFileForPasswords(f, bytes, passwords, { strictStructured: requiresAcceptanceCred });
+    if (pwScan.secretFound) { why = `secret value in ${path.basename(f)}`; break; }
+    if (pwScan.parseError) { structuredParseFailed = true; why = `unparseable structured evidence in ${path.basename(f)}`; break; }
+    const emailScan = redactEmailsInTextFile(f, bytes, emails, { strictStructured: requiresAcceptanceCred });
+    if (emailScan.parseError) { structuredParseFailed = true; why = `unparseable structured evidence in ${path.basename(f)}`; break; }
   }
   if (why) {
     if (ok) markUnknown(dir, why, env);
@@ -224,7 +255,7 @@ export function gate(dir, env = process.env, { credentials = null } = {}) {
     fs.writeFileSync(path.join(dir, "agent-rc.txt"), "2\n");
   }
   const secretsChecked = requiresAcceptanceCred
-    ? (scanRan && acceptanceCredComplete)
+    ? (scanRan && acceptanceCredComplete && !structuredParseFailed)
     : (passwords.length > 0 || emails.length > 0);
   fs.writeFileSync(path.join(dir, GATE), `${JSON.stringify({ ok: !why, run: runId(env), reason: why, secrets_checked: secretsChecked }, null, 2)}\n`);
   return { ok: !why, reason: why };
