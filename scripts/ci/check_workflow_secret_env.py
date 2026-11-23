@@ -137,10 +137,16 @@ LEGACY_IF = "${{ inputs.stamp_run_case_id == '' || steps.stamp-claim.outputs.boo
 RECEIPT_IF = "${{ inputs.stamp_run_case_id != '' && steps.stamp-claim.outputs.bootstrap_required != 'true' }}"
 # Android qa-acceptance.yml: the Testbed release settings lane (login_mode=release-prelogin) gets the
 # QA account ONLY as QA_RELEASE_LOGIN_* on the emulator step (scripts/qa/release_settings_login.sh);
-# every legacy password step is off in that lane.
+# every legacy password step is off in that lane. The claimed Testbed case login-email-password (#216)
+# uses dedicated QA_LOGIN_ACCEPTANCE_* secrets in preflight and the emulator step with zero fallback
+# to QA_TEST_* and skips legacy receipt freeze and media fixture seeding.
 NOT_RELEASE = "inputs.login_mode != 'release-prelogin'"
+NOT_LOGIN_ACCEPTANCE = "steps.stamp-claim.outputs.claimed_case != 'login-email-password'"
+IS_LOGIN_ACCEPTANCE = "steps.stamp-claim.outputs.claimed_case == 'login-email-password'"
 ANDROID_LEGACY_IF = "${{ %s && %s }}" % (NOT_RELEASE, LEGACY)
-ANDROID_RECEIPT_IF = "${{ inputs.stamp_run_case_id != '' && %s && steps.stamp-claim.outputs.bootstrap_required != 'true' }}" % NOT_RELEASE
+ANDROID_SEED_IF = "${{ %s && %s && %s }}" % (NOT_RELEASE, LEGACY, NOT_LOGIN_ACCEPTANCE)
+ANDROID_LOGIN_ACCEPTANCE_IF = "${{ %s && %s && %s }}" % (NOT_RELEASE, LEGACY, IS_LOGIN_ACCEPTANCE)
+ANDROID_RECEIPT_IF = "${{ inputs.stamp_run_case_id != '' && %s && steps.stamp-claim.outputs.bootstrap_required != 'true' && %s }}" % (NOT_RELEASE, NOT_LOGIN_ACCEPTANCE)
 
 
 def _plain(*keys: str) -> dict[str, str]:
@@ -151,9 +157,22 @@ def _legacy(*keys: str) -> dict[str, str]:
     return {k: "${{ %s && secrets.%s || '' }}" % (LEGACY, k) for k in keys}
 
 
+def _android_preflight_env() -> dict[str, str]:
+    return {
+        **{k: "${{ %s && secrets.%s || '' }}" % (NOT_LOGIN_ACCEPTANCE, k) for k in ("QA_TEST_EMAIL", "QA_TEST_PASSWORD")},
+        **{k: "${{ %s && secrets.%s || '' }}" % (IS_LOGIN_ACCEPTANCE, k) for k in ("QA_LOGIN_ACCEPTANCE_EMAIL", "QA_LOGIN_ACCEPTANCE_PASSWORD")},
+    }
+
+
 def _android_agent_env() -> dict[str, str]:
     # The release lane gets nothing here: its account goes through "Stage release login credential".
-    return {k: "${{ %s && %s && secrets.%s || '' }}" % (NOT_RELEASE, LEGACY, k) for k in ("QA_TEST_EMAIL", "QA_TEST_PASSWORD")}
+    # login-email-password (#216) also gets nothing here: its dedicated account goes through
+    # "Stage login acceptance credential" (0600 file consumed by login_phase.mjs only).
+    return {k: "${{ %s && %s && %s && secrets.%s || '' }}" % (NOT_RELEASE, LEGACY, NOT_LOGIN_ACCEPTANCE, k) for k in ("QA_TEST_EMAIL", "QA_TEST_PASSWORD")}
+
+
+def _android_evidence_gate_env() -> dict[str, str]:
+    return {k: "${{ %s && secrets.%s || '' }}" % (IS_LOGIN_ACCEPTANCE, k) for k in ("QA_LOGIN_ACCEPTANCE_EMAIL", "QA_LOGIN_ACCEPTANCE_PASSWORD")}
 
 
 def _env_pair(selector: str) -> dict[str, str]:
@@ -178,13 +197,18 @@ QA_SECRET_STEPS: dict[str, dict[str, dict[str, dict]]] = {
         "Run update e2e on the emulator": {"if": None, "env": _plain("QA_TEST_EMAIL", "QA_TEST_PASSWORD")},
     }},
     "qa-acceptance.yml": {"acceptance": {
-        PREFLIGHT: {"if": ANDROID_LEGACY_IF, "env": _plain("QA_TEST_EMAIL", "QA_TEST_PASSWORD")},
+        PREFLIGHT: {"if": ANDROID_LEGACY_IF, "env": _android_preflight_env()},
         "Freeze legacy credential identity receipt": {"if": ANDROID_RECEIPT_IF, "env": _plain("QA_TEST_EMAIL")},
-        "Seed media fixtures (image + workspace)": {"if": ANDROID_LEGACY_IF, "env": _plain("QA_TEST_EMAIL", "QA_TEST_PASSWORD")},
+        "Seed media fixtures (image + workspace)": {"if": ANDROID_SEED_IF, "env": _plain("QA_TEST_EMAIL", "QA_TEST_PASSWORD")},
         "Run acceptance agent": {"if": None, "env": _android_agent_env()},
         # Release settings lane: one 0600 file read (and removed) by release_auto_login.mjs only.
         "Stage release login credential": {"if": "${{ inputs.stamp_run_case_id != '' && inputs.login_mode == 'release-prelogin' }}",
                                            "env": _plain("QA_TEST_EMAIL", "QA_TEST_PASSWORD")},
+        # Login acceptance (#216): one 0600 file read (and removed) by login_phase.mjs only.
+        "Stage login acceptance credential": {"if": ANDROID_LOGIN_ACCEPTANCE_IF,
+                                              "env": _plain("QA_LOGIN_ACCEPTANCE_EMAIL", "QA_LOGIN_ACCEPTANCE_PASSWORD")},
+        # Dedicated post-emulator evidence gate for login-email-password (emulator step has no QA_LOGIN_ACCEPTANCE_*).
+        "Secure evidence gate": {"if": "always()", "env": _android_evidence_gate_env()},
     }},
     "qa-acceptance-ios.yml": {"acceptance": {
         PREFLIGHT: {"if": LEGACY_IF, "env": _plain("QA_TEST_EMAIL", "QA_TEST_PASSWORD")},
@@ -610,7 +634,8 @@ def real_tree_mutants() -> list[tuple[str, str, str, str]]:
     """(name, file, old, new) mutants of the real workflows; each must turn a clean scan red."""
     qa, ios, ral = ".github/workflows/qa-acceptance.yml", ".github/workflows/qa-acceptance-ios.yml", ".github/workflows/release-auto-login.yml"
     kvm = "      - name: Enable KVM\n"
-    gate = f"{LEGACY} && secrets.QA_TEST_PASSWORD || ''"
+    gate = f"{LEGACY} && {NOT_LOGIN_ACCEPTANCE} && secrets.QA_TEST_PASSWORD || ''"
+    ios_gate = f"{LEGACY} && secrets.QA_TEST_PASSWORD || ''"
     preflight_gate = ("re:" + r"(^      - name: " + re.escape(PREFLIGHT) +
                       r"\n(?:        #[^\n]*\n|\n)*)        if: " + re.escape(ANDROID_LEGACY_IF) + r"\n")
     out = []
@@ -620,6 +645,18 @@ def real_tree_mutants() -> list[tuple[str, str, str, str]]:
         ("extra alias in an allowed step", qa, "QA_TEST_PASSWORD: ${{ secrets.QA_TEST_PASSWORD }}",
          "QA_TEST_PASSWORD: ${{ secrets.QA_TEST_PASSWORD }}\n          EXTRA_ALIAS: ${{ secrets.QA_TEST_PASSWORD }}"),
         ("acceptance runner no longer gated on bootstrap", qa, gate, "secrets.QA_TEST_PASSWORD"),
+        ("login acceptance preflight falls back to QA_TEST_PASSWORD", qa,
+         f"QA_LOGIN_ACCEPTANCE_PASSWORD: ${{{{ {IS_LOGIN_ACCEPTANCE} && secrets.QA_LOGIN_ACCEPTANCE_PASSWORD || '' }}}}",
+         f"QA_LOGIN_ACCEPTANCE_PASSWORD: ${{{{ {IS_LOGIN_ACCEPTANCE} && secrets.QA_LOGIN_ACCEPTANCE_PASSWORD || secrets.QA_TEST_PASSWORD }}}}"),
+        ("emulator step gets login acceptance account step-wide", qa,
+         "          QA_RELEASE_PRELOGIN: ",
+         "          QA_LOGIN_ACCEPTANCE_PASSWORD: ${{ secrets.QA_LOGIN_ACCEPTANCE_PASSWORD }}\n          QA_RELEASE_PRELOGIN: "),
+        ("login acceptance credential staged outside login-email-password", qa,
+         f"        if: {ANDROID_LOGIN_ACCEPTANCE_IF}\n        env:\n          QA_LOGIN_ACCEPTANCE_EMAIL",
+         f"        if: {ANDROID_LEGACY_IF}\n        env:\n          QA_LOGIN_ACCEPTANCE_EMAIL"),
+        ("evidence gate drops login-email-password gate", qa,
+         "      - name: Secure evidence gate\n        id: evidence-gate\n        if: always()\n        env:\n          QA_LOGIN_ACCEPTANCE_EMAIL: ${{ steps.stamp-claim.outputs.claimed_case == 'login-email-password' && secrets.QA_LOGIN_ACCEPTANCE_EMAIL || '' }}\n          QA_LOGIN_ACCEPTANCE_PASSWORD: ${{ steps.stamp-claim.outputs.claimed_case == 'login-email-password' && secrets.QA_LOGIN_ACCEPTANCE_PASSWORD || '' }}",
+         "      - name: Secure evidence gate\n        id: evidence-gate\n        if: always()\n        env:\n          QA_LOGIN_ACCEPTANCE_EMAIL: ${{ secrets.QA_LOGIN_ACCEPTANCE_EMAIL }}\n          QA_LOGIN_ACCEPTANCE_PASSWORD: ${{ secrets.QA_LOGIN_ACCEPTANCE_PASSWORD }}"),
         ("release credential staged outside the release lane", qa,
          "        if: ${{ inputs.stamp_run_case_id != '' && inputs.login_mode == 'release-prelogin' }}\n        env:\n          QA_TEST_EMAIL",
          "        if: ${{ inputs.stamp_run_case_id != '' }}\n        env:\n          QA_TEST_EMAIL"),
@@ -628,9 +665,9 @@ def real_tree_mutants() -> list[tuple[str, str, str, str]]:
         ("legacy preflight runs in the release lane", qa, f"        if: {ANDROID_LEGACY_IF}\n", f"        if: {LEGACY_IF}\n"),
         # #222: neither iOS step may get the account back, gated or not.
         ("iOS deterministic repro gets the QA password back", ios, "        # Never signs in, so no QA credentials (#222).\n",
-         f"        env:\n          QA_TEST_PASSWORD: ${{{{ {gate} }}}}\n"),
+         f"        env:\n          QA_TEST_PASSWORD: ${{{{ {ios_gate} }}}}\n"),
         ("iOS acceptance agent gets the QA password back", ios, "          QA_PASSWORD_LOGIN: ",
-         f"          QA_TEST_PASSWORD: ${{{{ {gate} }}}}\n          QA_PASSWORD_LOGIN: "),
+         f"          QA_TEST_PASSWORD: ${{{{ {ios_gate} }}}}\n          QA_PASSWORD_LOGIN: "),
         ("preflight gate -> true", qa, preflight_gate, r"\g<1>        if: ${{ true }}\n"),
         ("preflight gate -> false", qa, preflight_gate, r"\g<1>        if: ${{ false }}\n"),
         ("preflight gate removed", qa, preflight_gate, r"\g<1>"),

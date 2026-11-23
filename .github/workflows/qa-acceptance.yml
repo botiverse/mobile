@@ -649,6 +649,24 @@ jobs:
           [ -n "$QA_TEST_EMAIL" ] && [ -n "$QA_TEST_PASSWORD" ] || { echo "::error::QA account secrets are missing"; exit 1; }
           printf '%s\n%s\n' "$QA_TEST_EMAIL" "$QA_TEST_PASSWORD" > "$dir/account"
 
+      # Login acceptance (#216): the dedicated QA account goes to one 0600 file in a 0700 runner-temp
+      # directory, never to the emulator step's env (so APK install, perf collection, logcat, the
+      # agent and other child processes never inherit it). Only login_phase.mjs reads it and removes
+      # it on read (--consume-credential-file); the emulator login line and the always() cleanup step
+      # below remove it too.
+      - name: Stage login acceptance credential
+        if: ${{ inputs.login_mode != 'release-prelogin' && (inputs.stamp_run_case_id == '' || steps.stamp-claim.outputs.bootstrap_required != 'true') && steps.stamp-claim.outputs.claimed_case == 'login-email-password' }}
+        env:
+          QA_LOGIN_ACCEPTANCE_EMAIL: ${{ secrets.QA_LOGIN_ACCEPTANCE_EMAIL }}
+          QA_LOGIN_ACCEPTANCE_PASSWORD: ${{ secrets.QA_LOGIN_ACCEPTANCE_PASSWORD }}
+        run: |
+          umask 077
+          dir="$RUNNER_TEMP/login-acceptance-credential"
+          mkdir -p "$dir"
+          chmod 700 "$dir"
+          [ -n "$QA_LOGIN_ACCEPTANCE_EMAIL" ] && [ -n "$QA_LOGIN_ACCEPTANCE_PASSWORD" ] || { echo "::error::login-email-password requires repository secrets QA_LOGIN_ACCEPTANCE_EMAIL and QA_LOGIN_ACCEPTANCE_PASSWORD"; exit 1; }
+          printf '%s\n%s\n' "$QA_LOGIN_ACCEPTANCE_EMAIL" "$QA_LOGIN_ACCEPTANCE_PASSWORD" > "$dir/account"
+
       # Login acceptance (#216), only for the claimed Testbed case login-email-password. login_phase.mjs checks the app's signing certificate with apksig
       # (AppIdentityApkSigner.java on build-tools 36.0.0, as the release lane), so it needs the JDK and
       # build-tools here. The preflight has already checked the protected input.
@@ -676,8 +694,6 @@ jobs:
           SLOCK_PI_AI_MODULE: ${{ runner.temp }}/m3/node_modules/@earendil-works/pi-ai/dist/providers/all.js
           QA_TEST_EMAIL: ${{ inputs.login_mode != 'release-prelogin' && (inputs.stamp_run_case_id == '' || steps.stamp-claim.outputs.bootstrap_required != 'true') && steps.stamp-claim.outputs.claimed_case != 'login-email-password' && secrets.QA_TEST_EMAIL || '' }}
           QA_TEST_PASSWORD: ${{ inputs.login_mode != 'release-prelogin' && (inputs.stamp_run_case_id == '' || steps.stamp-claim.outputs.bootstrap_required != 'true') && steps.stamp-claim.outputs.claimed_case != 'login-email-password' && secrets.QA_TEST_PASSWORD || '' }}
-          QA_LOGIN_ACCEPTANCE_EMAIL: ${{ inputs.login_mode != 'release-prelogin' && (inputs.stamp_run_case_id == '' || steps.stamp-claim.outputs.bootstrap_required != 'true') && steps.stamp-claim.outputs.claimed_case == 'login-email-password' && secrets.QA_LOGIN_ACCEPTANCE_EMAIL || '' }}
-          QA_LOGIN_ACCEPTANCE_PASSWORD: ${{ inputs.login_mode != 'release-prelogin' && (inputs.stamp_run_case_id == '' || steps.stamp-claim.outputs.bootstrap_required != 'true') && steps.stamp-claim.outputs.claimed_case == 'login-email-password' && secrets.QA_LOGIN_ACCEPTANCE_PASSWORD || '' }}
           QA_RELEASE_PRELOGIN: ${{ inputs.login_mode == 'release-prelogin' }}
           QA_GOAL: ${{ inputs.goal || '' }}
           QA_MAX_TURNS: ${{ inputs.max_turns || '30' }}
@@ -727,7 +743,7 @@ jobs:
             # Release settings lane: release_settings_login.sh marks qa-release-lane and runs the whole case (recorder, agent, post-run reads) inside release_auto_login.mjs after Testbed's matched, in the matched app process; the lines marked "[ -f qa-release-lane ] && exit 0" are skipped there.
             # Failures publish a structural UI summary; bootstrap runs record "no login". Only a complete record of this run creates qa-login-ok.
             # The claimed Testbed case login-email-password (#216) adds its fetched input and --require-acceptance: no input, or anything the identity reads cannot prove, ends unknown, never the ordinary login. Every other case runs the unchanged command.
-            if [ "${QA_RELEASE_PRELOGIN:-false}" = "true" ]; then bash scripts/qa/release_settings_login.sh || true; else rm -f qa-login-ok; PW=true; [ "${STAMP_BOOTSTRAP_REQUIRED:-false}" = "true" ] && PW=false; if [ "${STAMP_CLAIMED_CASE:-}" = "login-email-password" ]; then node scripts/qa/login_phase.mjs login --platform android --password-login "$PW" --package "$(cat qa-app-package.txt 2>/dev/null || echo build.raft.app)" --out qa-evidence --testbed-input "$RUNNER_TEMP/testbed-login-acceptance/input.json" --require-acceptance login-email-password && touch qa-login-ok || echo "::error::login acceptance did not pass: see the login acceptance line above; acceptance evidence withheld"; else node scripts/qa/login_phase.mjs login --platform android --password-login "$PW" --package "$(cat qa-app-package.txt 2>/dev/null || echo build.raft.app)" --out qa-evidence && touch qa-login-ok || echo "::error::login phase UNKNOWN: see the protected login UI summary; acceptance evidence withheld"; fi; fi
+            if [ "${QA_RELEASE_PRELOGIN:-false}" = "true" ]; then bash scripts/qa/release_settings_login.sh || true; else rm -f qa-login-ok; PW=true; [ "${STAMP_BOOTSTRAP_REQUIRED:-false}" = "true" ] && PW=false; if [ "${STAMP_CLAIMED_CASE:-}" = "login-email-password" ]; then node scripts/qa/login_phase.mjs login --platform android --password-login "$PW" --package "$(cat qa-app-package.txt 2>/dev/null || echo build.raft.app)" --out qa-evidence --testbed-input "$RUNNER_TEMP/testbed-login-acceptance/input.json" --require-acceptance login-email-password --credential-file "$RUNNER_TEMP/login-acceptance-credential/account" --consume-credential-file && touch qa-login-ok || echo "::error::login acceptance did not pass: see the login acceptance line above; acceptance evidence withheld"; rm -f "$RUNNER_TEMP/login-acceptance-credential/account"; else node scripts/qa/login_phase.mjs login --platform android --password-login "$PW" --package "$(cat qa-app-package.txt 2>/dev/null || echo build.raft.app)" --out qa-evidence && touch qa-login-ok || echo "::error::login phase UNKNOWN: see the protected login UI summary; acceptance evidence withheld"; fi; fi
             [ -f qa-release-lane ] && exit 0; adb logcat -c
             # task #14 perf v1: reset gfxinfo counters and stamp the capture
             # window start before the agent drives the app (record-only,
@@ -744,8 +760,8 @@ jobs:
             [ -f qa-release-lane ] && exit 0; adb shell pkill -INT screenrecord 2>/dev/null || true
             sleep 3
             [ -f qa-release-lane ] && exit 0; adb shell ls /sdcard/qa-rec-*.mp4 2>/dev/null | tr -d '\r' | while read f; do adb pull "$f" qa-evidence/ || true; done
-            node scripts/qa/secure_evidence.mjs --dir qa-evidence || true
-            evidence_rc=0; bash scripts/qa/stamp_report.sh report-evidence qa-evidence || evidence_rc=$?; echo "$evidence_rc" > qa-evidence/stamp-evidence.rc
+            [ "${STAMP_CLAIMED_CASE:-}" = "login-email-password" ] && exit 0; node scripts/qa/secure_evidence.mjs --dir qa-evidence || true
+            [ "${STAMP_CLAIMED_CASE:-}" = "login-email-password" ] && exit 0; evidence_rc=0; bash scripts/qa/stamp_report.sh report-evidence qa-evidence || evidence_rc=$?; echo "$evidence_rc" > qa-evidence/stamp-evidence.rc
             if [ "${STAMP_BOOTSTRAP_REQUIRED:-false}" = "true" ]; then cleanup_rc=0; node scripts/qa/mobile_login_bootstrap.mjs cleanup --response "$RUNNER_TEMP/stamp-bootstrap-login-${STAMP_RUN_CASE_ID}.json" --binding "$RUNNER_TEMP/stamp-bootstrap-device-binding.json" --ready "$RUNNER_TEMP/stamp-bootstrap-ready.json" --outcome completed --output "$RUNNER_TEMP/stamp-bootstrap-cleanup.json" --run-case-id "$STAMP_RUN_CASE_ID" --ci-job-ref "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" || cleanup_rc=$?; rc="$cleanup_rc"; if [ "$cleanup_rc" = "0" ]; then cp "$RUNNER_TEMP/stamp-bootstrap-cleanup.json" qa-evidence/bootstrap-cleanup.json; bash scripts/qa/stamp_report.sh bootstrap-terminal completed "$RUNNER_TEMP/stamp-bootstrap-cleanup.json" || rc=$?; else PKG="$(cat qa-app-package.txt)"; adb shell am force-stop "$PKG" || true; adb shell pm clear "$PKG" || true; rm -f "$RUNNER_TEMP/stamp-bootstrap-login-${STAMP_RUN_CASE_ID}.json" "$RUNNER_TEMP/stamp-bootstrap-ready-${STAMP_RUN_CASE_ID}.json"; fi; echo "$rc" > qa-evidence/bootstrap-terminal.rc; fi
 
       # Required-marker gate: when the case declares production markers that
@@ -755,6 +771,11 @@ jobs:
       - name: Remove release login credential
         if: ${{ always() && inputs.login_mode == 'release-prelogin' }}
         run: rm -rf "$RUNNER_TEMP/release-login-credential"
+
+      # login_phase.mjs deletes the staged file as it reads it; this also covers any early exit before login.
+      - name: Remove login acceptance credential
+        if: ${{ always() && steps.stamp-claim.outputs.claimed_case == 'login-email-password' }}
+        run: rm -rf "$RUNNER_TEMP/login-acceptance-credential"
 
       # The login phase deletes the input as it reads it; this also covers a job that never reached it.
       - name: Remove the login acceptance input
@@ -798,9 +819,15 @@ jobs:
           echo '```' >> "$GITHUB_STEP_SUMMARY"
 
       # The artifact is the second exit of qa-evidence: same gate as the Stamp upload (secure_evidence.mjs).
+      # For login-email-password (#216), the emulator step never receives QA_LOGIN_ACCEPTANCE_* in env;
+      # this dedicated gate step checks and redacts qa-evidence with the dedicated pair before both the
+      # artifact upload and the Stamp evidence upload below.
       - name: Secure evidence gate
         id: evidence-gate
         if: always()
+        env:
+          QA_LOGIN_ACCEPTANCE_EMAIL: ${{ steps.stamp-claim.outputs.claimed_case == 'login-email-password' && secrets.QA_LOGIN_ACCEPTANCE_EMAIL || '' }}
+          QA_LOGIN_ACCEPTANCE_PASSWORD: ${{ steps.stamp-claim.outputs.claimed_case == 'login-email-password' && secrets.QA_LOGIN_ACCEPTANCE_PASSWORD || '' }}
         run: node scripts/qa/secure_evidence.mjs --dir qa-evidence
 
       - name: Upload evidence
@@ -810,6 +837,23 @@ jobs:
           name: qa-acceptance-evidence
           path: qa-evidence
           if-no-files-found: warn
+
+      # For login-email-password (#216), Stamp evidence upload runs only after Secure evidence gate
+      # has scanned and scrubbed qa-evidence with the dedicated acceptance credentials.
+      - name: Report login acceptance evidence to Stamp
+        if: ${{ always() && steps.stamp-claim.outputs.claimed_case == 'login-email-password' }}
+        env:
+          STAMP_RUN_CASE_ID: ${{ inputs.stamp_run_case_id }}
+          STAMP_URL: ${{ secrets.STAMP_URL }}
+          STAMP_TOKEN: ${{ secrets.STAMP_TOKEN }}
+        run: |
+          if [ "${{ steps.evidence-gate.outcome }}" != "success" ]; then
+            echo 1 > qa-evidence/stamp-evidence.rc
+            exit 0
+          fi
+          evidence_rc=0
+          bash scripts/qa/stamp_report.sh report-evidence qa-evidence || evidence_rc=$?
+          echo "$evidence_rc" > qa-evidence/stamp-evidence.rc
 
       - name: Report verdict
         # Infrastructure/setup failures are owned exclusively by the final

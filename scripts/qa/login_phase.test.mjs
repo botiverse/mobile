@@ -543,7 +543,11 @@ test("rule 2: the workflow starts the recorder, the agent and every post-run rea
   assert.match(step("Collect harness log + system log + crashes + xcresult"), /login_phase\.mjs check --out qa-evidence \|\| exit 0\n/);
   for (const file of ["qa-acceptance.yml", "qa-acceptance-ios.yml"]) {
     const src = fs.readFileSync(path.join(here, "../../.github/workflows", file), "utf8");
-    assert.match(src, /- name: Secure evidence gate\n\s+id: evidence-gate\n\s+if: always\(\)\n\s+run: node scripts\/qa\/secure_evidence\.mjs --dir qa-evidence/, file);
+    if (file === "qa-acceptance.yml") {
+      assert.match(src, /- name: Secure evidence gate\n\s+id: evidence-gate\n\s+if: always\(\)\n\s+env:\n\s+QA_LOGIN_ACCEPTANCE_EMAIL: \$\{\{ steps\.stamp-claim\.outputs\.claimed_case == 'login-email-password' && secrets\.QA_LOGIN_ACCEPTANCE_EMAIL \|\| '' \}\}\n\s+QA_LOGIN_ACCEPTANCE_PASSWORD: \$\{\{ steps\.stamp-claim\.outputs\.claimed_case == 'login-email-password' && secrets\.QA_LOGIN_ACCEPTANCE_PASSWORD \|\| '' \}\}\n\s+run: node scripts\/qa\/secure_evidence\.mjs --dir qa-evidence/, file);
+    } else {
+      assert.match(src, /- name: Secure evidence gate\n\s+id: evidence-gate\n\s+if: always\(\)\n\s+run: node scripts\/qa\/secure_evidence\.mjs --dir qa-evidence/, file);
+    }
     assert.match(src, /- name: Upload evidence\n\s+if: \$\{\{ always\(\) && steps\.evidence-gate\.outcome == 'success' \}\}/, file);
   }
 });
@@ -996,6 +1000,56 @@ test("#216 --require-acceptance: no usable input ends unknown before any device 
   }
 });
 
+test("#216 --credential-file reads a 0600 staged file, removes it immediately (including on errors/early exits), and never falls back to QA_TEST_*", async () => {
+  const w = identityWorld({ chooserAfterLogin: true, displayName: "Fixture Person", servers: [{ name: "Fixture team", ...FIXTURE_SERVER }] });
+  try {
+    const credFile = path.join(w.root, "account");
+    fs.writeFileSync(credFile, `${EMAIL}\n${PASSWORD}\n`, { mode: 0o600 });
+    fs.chmodSync(credFile, 0o600);
+    const input = writeTestbedInput(w.root);
+    const ev = path.join(w.root, "ev-staged");
+    const r = await runAsync(w, [path.join(here, "login_phase.mjs"), "login", "--platform", "android", "--password-login", "true", "--device", "emulator-5554",
+      "--out", ev, "--testbed-input", input, "--require-acceptance", "login-email-password", "--credential-file", credFile, "--consume-credential-file"],
+      { QA_TEST_EMAIL: "wrong.legacy@example.test", QA_TEST_PASSWORD: "wrong-legacy-pw", STAMP_RUN_CASE_ID: RUN_CASE_ID });
+    assert.equal(r.status, 0, r.stdout + r.stderr);
+    assert.equal(fs.existsSync(credFile), false, "staged credential file removed on read");
+    assert.match(r.stdout, /^login acceptance: pass \(signed_in_as_expected\)$/m);
+    for (const value of [EMAIL, PASSWORD, ...PRIVATE]) assert.ok(!r.stdout.includes(value) && !r.stderr.includes(value), value);
+
+    // Unprotected, symlink, malformed or missing staged files all fail closed before any device call and delete the file.
+    for (const [name, setup, problem] of [
+      ["missing file", (p) => p, "credential_file_missing"],
+      ["group-readable file", (p) => { fs.writeFileSync(p, `${EMAIL}\n${PASSWORD}\n`, { mode: 0o640 }); fs.chmodSync(p, 0o640); return p; }, "credential_file_unprotected"],
+      ["symlink", (p) => { const t = path.join(w.root, "real-target"); fs.writeFileSync(t, `${EMAIL}\n${PASSWORD}\n`, { mode: 0o600 }); fs.symlinkSync(t, p); return p; }, "credential_file_unreadable"],
+      ["malformed file", (p) => { fs.writeFileSync(p, "not-an-email\n", { mode: 0o600 }); fs.chmodSync(p, 0o600); return p; }, "credential_file_invalid"],
+    ]) {
+      const p = path.join(w.root, `bad-${problem}`);
+      setup(p);
+      const read = phase.readCredentialFile(p, { consume: true });
+      assert.equal(read.problem, problem, name);
+      assert.equal(fs.existsSync(p), false, `${name}: file removed`);
+      const w2 = identityWorld();
+      try {
+        const acceptance = phase.readTestbedInput(writeTestbedInput(w2.root), { ...w2.env, STAMP_RUN_CASE_ID: RUN_CASE_ID }, { required: true });
+        const res = await phase.androidPasswordLogin({ out: path.join(w2.root, "ev"), env: { ...w2.env, QA_TEST_EMAIL: EMAIL, QA_TEST_PASSWORD: PASSWORD }, pollMs: 5, chooserTimeoutMs: 100, acceptance, credentials: read });
+        assert.equal(res.ok, false, name);
+        assert.match(res.reason, new RegExp(problem), name);
+        assert.equal(fs.readFileSync(w2.files.argv, "utf8"), "", `${name}: no device call`);
+      } finally { w2.close(); }
+    }
+
+    // Even when the mode exits early (--password-login false), --consume-credential-file still deletes the file.
+    const earlyCred = path.join(w.root, "early-account");
+    fs.writeFileSync(earlyCred, `${EMAIL}\n${PASSWORD}\n`, { mode: 0o600 });
+    fs.chmodSync(earlyCred, 0o600);
+    const early = await runAsync(w, [path.join(here, "login_phase.mjs"), "login", "--platform", "android", "--password-login", "false",
+      "--out", path.join(w.root, "ev-early"), "--testbed-input", writeTestbedInput(w.root), "--require-acceptance", "login-email-password",
+      "--credential-file", earlyCred, "--consume-credential-file"], { STAMP_RUN_CASE_ID: RUN_CASE_ID });
+    assert.equal(early.status, 1);
+    assert.equal(fs.existsSync(earlyCred), false, "staged credential file removed even on early unsupported-mode exit");
+  } finally { w.close(); }
+});
+
 test("#216 missing dedicated acceptance secrets fail closed before any device call without falling back to QA_TEST_*", async () => {
   for (const [name, creds] of [
     ["both missing with legacy set", { QA_TEST_EMAIL: EMAIL, QA_TEST_PASSWORD: PASSWORD }],
@@ -1075,8 +1129,14 @@ test("#216 qa-acceptance requires the login acceptance only for the claimed case
   assert.match(fetchStep, /continue-on-error: true\n/);
   assert.match(fetchStep.split("\n      #")[0].trimEnd(), /run: node scripts\/qa\/testbed_login_acceptance_input\.mjs$/);
   assert.deepEqual([...fetchStep.matchAll(/^ {10}([A-Z_]+):/gm)].map((m) => m[1]), ["STAMP_RUN_CASE_ID", "STAMP_URL", "STAMP_TOKEN"], "no QA account in the fetch step");
+  assert.ok(step("Remove login acceptance credential").includes("if: ${{ always() && steps.stamp-claim.outputs.claimed_case == 'login-email-password' }}"));
   assert.ok(step("Remove the login acceptance input").includes("if: ${{ always() && steps.stamp-claim.outputs.claimed_case == 'login-email-password' }}"));
+  assert.match(step("Stage login acceptance credential"), /umask 077[\s\S]*RUNNER_TEMP\/login-acceptance-credential[\s\S]*QA_LOGIN_ACCEPTANCE_EMAIL[\s\S]*QA_LOGIN_ACCEPTANCE_PASSWORD/);
+  assert.doesNotMatch(step("Run acceptance agent"), /QA_LOGIN_ACCEPTANCE_EMAIL:|\bQA_LOGIN_ACCEPTANCE_PASSWORD:/, "emulator step env never carries login acceptance secrets");
   assert.match(step("Run acceptance agent"), /STAMP_CLAIMED_CASE: \$\{\{ steps\.stamp-claim\.outputs\.claimed_case \|\| '' \}\}/);
+  assert.match(step("Report login acceptance evidence to Stamp"), /steps\.evidence-gate\.outcome/);
+  assert.ok(source.indexOf("- name: Secure evidence gate") < source.indexOf("- name: Report login acceptance evidence to Stamp") &&
+    source.indexOf("- name: Report login acceptance evidence to Stamp") < source.indexOf("- name: Report verdict"));
 
   // The login line itself, run as the emulator action runs it (sh -c), with a stand-in for node.
   const line = source.split("\n").find((l) => /login_phase\.mjs login --platform android/.test(l)).trim();
@@ -1094,7 +1154,11 @@ test("#216 qa-acceptance requires the login acceptance only for the claimed case
     for (const claimed of [undefined, "", "send-message-in-channel"]) {
       assert.deepEqual(run(claimed === undefined ? {} : { STAMP_CLAIMED_CASE: claimed }), { argv: today, ok: true }, `claimed ${claimed}: the unchanged command`);
     }
-    assert.deepEqual(run({ STAMP_CLAIMED_CASE: "login-email-password" }), { argv: [...today, "--testbed-input", "/runner-temp/testbed-login-acceptance/input.json", "--require-acceptance", "login-email-password"], ok: true });
+    assert.deepEqual(run({ STAMP_CLAIMED_CASE: "login-email-password" }), {
+      argv: [...today, "--testbed-input", "/runner-temp/testbed-login-acceptance/input.json", "--require-acceptance", "login-email-password",
+        "--credential-file", "/runner-temp/login-acceptance-credential/account", "--consume-credential-file"],
+      ok: true,
+    });
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }
