@@ -68,9 +68,9 @@ class JointChannelConnectionsStoreTest {
         assertEquals("host", jointChannelFailureText(JointChannelFailure.Blocked(PermissionBlocker(JOINT_CHANNEL_PLAN_LIMIT_REACHED)), copy, pipeline))
         assertEquals("pipeline:joint_http_409", jointChannelFailureText(JointChannelFailure.Error(ScreenError("joint_http_409")), copy, pipeline))
         assertEquals("fallback", jointChannelFailureText(JointChannelFailure.Error(ScreenError("x")), copy) { "" })
-        // Non-accept surface (acceptRefusals == null) does not show invite-accept copy for channel_archived.
+        // Non-accept surface (acceptRefusals == null) delegates channel_archived to localized app copy instead of invite-accept wording.
         assertEquals(
-            "Channel is archived",
+            "pipeline:$JOINT_INVITE_CHANNEL_ARCHIVED",
             jointChannelFailureText(
                 JointChannelFailure.Error(ScreenError(JOINT_INVITE_CHANNEL_ARCHIVED, serverMessage = "Channel is archived")),
                 copy,
@@ -95,7 +95,13 @@ class JointChannelConnectionsStoreTest {
                         archived = "localized_archived",
                     ),
             )
-        val pipeline: (JointChannelFailure) -> String = { "pipeline:${it.code}" }
+        val errorStrings = englishErrorPresentationStringsForTest()
+        val realPipeline: (JointChannelFailure) -> String = { value ->
+            when (value) {
+                is JointChannelFailure.Error -> value.error.userFacingMessage(errorStrings)
+                is JointChannelFailure.Blocked -> value.blocker.userFacingMessage(errorStrings)
+            }
+        }
 
         // 404 joint_invite_not_found -> localized web copy, not server English.
         assertEquals(
@@ -103,7 +109,7 @@ class JointChannelConnectionsStoreTest {
             jointChannelFailureText(
                 JointChannelFailure.Error(ScreenError(JOINT_INVITE_NOT_FOUND, serverMessage = "Joint channel invite not found")),
                 acceptCopy,
-                pipeline,
+                realPipeline,
             ),
         )
         // 403 joint_invite_accept_forbidden -> localized web copy, not server English.
@@ -112,7 +118,7 @@ class JointChannelConnectionsStoreTest {
             jointChannelFailureText(
                 JointChannelFailure.Blocked(PermissionBlocker(JOINT_INVITE_ACCEPT_FORBIDDEN, serverMessage = "Only server admins can accept this invite")),
                 acceptCopy,
-                pipeline,
+                realPipeline,
             ),
         )
         // 409 joint_invite_not_acceptable -> localized web copy, not server English.
@@ -121,7 +127,7 @@ class JointChannelConnectionsStoreTest {
             jointChannelFailureText(
                 JointChannelFailure.Error(ScreenError(JOINT_INVITE_NOT_ACCEPTABLE, serverMessage = "This invite can no longer be accepted")),
                 acceptCopy,
-                pipeline,
+                realPipeline,
             ),
         )
         // 409 channel_archived -> localized web copy, not server English.
@@ -130,32 +136,66 @@ class JointChannelConnectionsStoreTest {
             jointChannelFailureText(
                 JointChannelFailure.Error(ScreenError(JOINT_INVITE_CHANNEL_ARCHIVED, serverMessage = "Channel is archived")),
                 acceptCopy,
-                pipeline,
+                realPipeline,
             ),
         )
-        // Unknown non-5xx refusal keeps server's explanation (Tier 3), while 5xx and edge_blocked suppress raw body (Tiers 1 & 4).
+        // Unknown non-5xx refusal keeps server's explanation (Tier 3).
         assertEquals(
             "Policy refusal from server.",
             jointChannelFailureText(
                 JointChannelFailure.Error(ScreenError("custom_policy", serverMessage = "Policy refusal from server.")),
                 acceptCopy,
-                pipeline,
+                realPipeline,
             ),
         )
+        // Tiers 1 & 4 scrub raw serverMessage before delegating to the real presentation pipeline:
+        // 5xx, internal_error, edge_blocked, auth errors, HTML error pages, and stack traces never leak.
         assertEquals(
-            "pipeline:server_unavailable",
+            "The server is unavailable right now. Please try again shortly.",
             jointChannelFailureText(
                 JointChannelFailure.Error(ScreenError("server_unavailable", serverMessage = "Internal SQL error")),
                 acceptCopy,
-                pipeline,
+                realPipeline,
             ),
         )
         assertEquals(
-            "pipeline:edge_blocked",
+            "Something went wrong. Please try again.",
+            jointChannelFailureText(
+                JointChannelFailure.Error(ScreenError("internal_error", serverMessage = "Internal SQL error")),
+                acceptCopy,
+                realPipeline,
+            ),
+        )
+        assertEquals(
+            "This request was blocked by the network.",
             jointChannelFailureText(
                 JointChannelFailure.Blocked(PermissionBlocker("edge_blocked", serverMessage = "<html>403</html>")),
                 acceptCopy,
-                pipeline,
+                realPipeline,
+            ),
+        )
+        assertEquals(
+            "Your session expired. Sign in again to continue.",
+            jointChannelFailureText(
+                JointChannelFailure.Blocked(PermissionBlocker("unauthenticated", serverMessage = "raw auth body")),
+                acceptCopy,
+                realPipeline,
+            ),
+        )
+        assertEquals(
+            "You do not have permission to view this page.",
+            jointChannelFailureText(
+                JointChannelFailure.Blocked(PermissionBlocker("joint_forbidden", serverMessage = "<html>403 Forbidden</html>")),
+                acceptCopy,
+                realPipeline,
+            ),
+        )
+        assertEquals(
+            "Something went wrong. Please try again.",
+            jointChannelFailureText(
+                JointChannelFailure.Error(ScreenError("joint_http_409", serverMessage = "Error\n    at handler.ts:10")),
+                acceptCopy,
+                realPipeline,
             ),
         )
     }

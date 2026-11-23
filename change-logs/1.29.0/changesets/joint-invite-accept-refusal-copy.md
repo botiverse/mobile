@@ -1,7 +1,7 @@
 ---
 type: improved
 area: external-invites
-platforms: [android, ios]
+platforms: [android, ios, desktop]
 rollout: full
 ---
 

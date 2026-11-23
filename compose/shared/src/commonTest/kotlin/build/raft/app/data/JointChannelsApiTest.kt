@@ -205,7 +205,7 @@ class JointChannelsApiTest {
     @Test
     fun acceptInviteRefusalsPreserveSlock16117CodesAndTraceId() = runTest {
         data class Case(val status: Int, val code: String, val error: String, val expectBlocked: Boolean)
-        val traceId = "trace-joint-accept-16117"
+        val traceId = "4bf92f3577b34da6a3ce929d0e0e4736"
         listOf(
             Case(404, JOINT_INVITE_NOT_FOUND, "Joint channel invite not found", expectBlocked = false),
             Case(403, JOINT_INVITE_ACCEPT_FORBIDDEN, "Only server admins can accept this invite", expectBlocked = true),

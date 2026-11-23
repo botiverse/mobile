@@ -27,9 +27,13 @@ import build.raft.app.data.JOINT_INVITE_NOT_ACCEPTABLE
 import build.raft.app.data.JOINT_INVITE_NOT_FOUND
 import build.raft.app.data.JOINT_SERVER_LIMIT
 import build.raft.app.data.JointChannelServer
+import build.raft.app.data.PermissionBlocker
 import build.raft.app.data.RaftShellStoreScope
 import build.raft.app.data.ResolvedServerRefusal
+import build.raft.app.data.ScreenError
 import build.raft.app.data.ServerRefusalInput
+import build.raft.app.data.isAuthSessionErrorCode
+import build.raft.app.data.isEdgeBlockedMarker
 import build.raft.app.data.resolveServerRefusal
 import build.raft.app.data.runCatchingPreservingCancellation
 import build.raft.designsystem.components.RaftBadge
@@ -448,6 +452,7 @@ private enum class KnownJointFailureCode {
     InviteForbidden,
     InviteNotAcceptable,
     InviteArchived,
+    NonAcceptArchived,
 }
 
 private fun JointChannelFailure.toServerRefusalInput(): ServerRefusalInput =
@@ -461,7 +466,7 @@ private fun JointChannelFailure.toServerRefusalInput(): ServerRefusalInput =
                 }
             ServerRefusalInput(
                 status = status,
-                code = error.code,
+                code = if (status == 0) null else error.code,
                 serverMessage = error.serverMessage,
                 traceId = error.traceId,
             )
@@ -475,13 +480,41 @@ private fun JointChannelFailure.toServerRefusalInput(): ServerRefusalInput =
             )
     }
 
+private fun JointChannelFailure.withoutServerMessage(): JointChannelFailure =
+    when (this) {
+        is JointChannelFailure.Error -> JointChannelFailure.Error(error.copy(serverMessage = null))
+        is JointChannelFailure.Blocked -> JointChannelFailure.Blocked(blocker.copy(serverMessage = null))
+    }
+
+private fun JointChannelFailure.scrubbedForInfrastructure(resolved: ResolvedServerRefusal.Infrastructure): JointChannelFailure {
+    val rawServerMessage =
+        when (this) {
+            is JointChannelFailure.Error -> error.serverMessage
+            is JointChannelFailure.Blocked -> blocker.serverMessage
+        }
+    return when {
+        resolved.code == "edge_blocked" || rawServerMessage.isEdgeBlockedMarker() ->
+            JointChannelFailure.Error(ScreenError(code = "edge_blocked", serverMessage = "edge_blocked", traceId = resolved.traceId))
+        resolved.status == 401 || resolved.code.isAuthSessionErrorCode() ->
+            JointChannelFailure.Blocked(
+                PermissionBlocker(
+                    code = "auth_required",
+                    requiredCapability = "auth_session",
+                    serverMessage = null,
+                    traceId = resolved.traceId,
+                )
+            )
+        else -> withoutServerMessage()
+    }
+}
+
 /**
  * Web `jointInviteAcceptErrorMessage` routed through [resolveServerRefusal]:
- * - Tier 1 (infrastructure/auth/edge) falls back to [pipeline] / [JointFailureCopy.fallback].
+ * - Tier 1 (infrastructure/auth/edge) scrubs raw body and falls back to [pipeline] / [JointFailureCopy.fallback].
  * - Tier 2 maps known limit and (when [JointFailureCopy.acceptRefusals] is supplied) joint-invite
  *   accept refusal codes (`#16117`) to localized web copy.
  * - Tier 3 preserves usable server-worded refusal explanations for unknown non-5xx codes.
- * - Tier 4 falls back to [pipeline] / [JointFailureCopy.fallback] (suppressing 5xx internals).
+ * - Tier 4 strips rejected/5xx raw server text and falls back to [pipeline] / [JointFailureCopy.fallback].
  */
 internal fun jointChannelFailureText(
     failure: JointChannelFailure,
@@ -498,7 +531,8 @@ internal fun jointChannelFailureText(
                 JOINT_INVITE_NOT_FOUND -> KnownJointFailureCode.InviteNotFound.takeIf { acceptCopy != null }
                 JOINT_INVITE_ACCEPT_FORBIDDEN -> KnownJointFailureCode.InviteForbidden.takeIf { acceptCopy != null }
                 JOINT_INVITE_NOT_ACCEPTABLE -> KnownJointFailureCode.InviteNotAcceptable.takeIf { acceptCopy != null }
-                JOINT_INVITE_CHANNEL_ARCHIVED -> KnownJointFailureCode.InviteArchived.takeIf { acceptCopy != null }
+                JOINT_INVITE_CHANNEL_ARCHIVED ->
+                    if (acceptCopy != null) KnownJointFailureCode.InviteArchived else KnownJointFailureCode.NonAcceptArchived
                 else -> null
             }
         }
@@ -512,10 +546,14 @@ internal fun jointChannelFailureText(
                 KnownJointFailureCode.InviteForbidden -> acceptCopy!!.forbidden
                 KnownJointFailureCode.InviteNotAcceptable -> acceptCopy!!.notAcceptable
                 KnownJointFailureCode.InviteArchived -> acceptCopy!!.archived
+                KnownJointFailureCode.NonAcceptArchived ->
+                    pipeline(failure.withoutServerMessage()).takeIf(String::isNotBlank) ?: copy.fallback
             }
         is ResolvedServerRefusal.ServerWords -> resolved.message
-        is ResolvedServerRefusal.Infrastructure,
-        is ResolvedServerRefusal.Generic -> pipeline(failure).takeIf(String::isNotBlank) ?: copy.fallback
+        is ResolvedServerRefusal.Infrastructure ->
+            pipeline(failure.scrubbedForInfrastructure(resolved)).takeIf(String::isNotBlank) ?: copy.fallback
+        is ResolvedServerRefusal.Generic ->
+            pipeline(failure.withoutServerMessage()).takeIf(String::isNotBlank) ?: copy.fallback
     }
 }
 
