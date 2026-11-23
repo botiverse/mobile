@@ -169,7 +169,8 @@ data class SystemUnreadNotificationRequest(
      * poster strips it), and the localization keys of title / subtitle / body.
      */
     val subtitle: String? = null,
-    val localization: RaftNotificationLocalization? = null
+    val localization: RaftNotificationLocalization? = null,
+    val serverName: String? = null
 )
 
 data class SystemUnreadNotificationServerGateResult(
@@ -336,7 +337,8 @@ fun buildSystemUnreadNotificationRequestFromPush(
         silent = push.silent == true,
         routeJson = push.routeJson,
         subtitle = push.subtitle,
-        localization = push.localization
+        localization = push.localization,
+        serverName = push.serverName?.trim()?.takeIf { it.isNotEmpty() }
     )
 }
 

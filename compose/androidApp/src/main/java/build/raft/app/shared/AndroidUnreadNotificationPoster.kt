@@ -375,7 +375,12 @@ internal object AndroidUnreadNotificationPoster {
                     title = notification.extras.getString(AndroidUnreadNotificationGrouping.EXTRA_TITLE).orEmpty(),
                     latestLine = history.lines.lastOrNull().orEmpty(),
                     count = history.count,
-                    postedAtMillis = whenMillis
+                    postedAtMillis = whenMillis,
+                    serverName =
+                        notification.extras
+                            .getString(AndroidUnreadNotificationGrouping.EXTRA_SERVER_NAME)
+                            ?.trim()
+                            ?.takeIf { it.isNotEmpty() }
                 )
         )
         refreshServerSummary(appContext, serverId, SummaryRefresh.AfterPost)
@@ -447,7 +452,16 @@ internal object AndroidUnreadNotificationPoster {
                 val posted =
                     activeUnreadNotifications(context)
                         .firstOrNull { it.tag == AndroidUnreadNotificationGrouping.SUMMARY_TAG && it.id == summaryId }
-                if (posted != null && posted.notification.number == summaryNumber(serverId, entries)) {
+                val postedServerName =
+                    posted?.notification?.extras
+                        ?.getString(AndroidUnreadNotificationGrouping.EXTRA_SERVER_NAME)
+                        ?.trim()
+                        ?.takeIf { it.isNotEmpty() }
+                if (
+                    posted != null &&
+                        posted.notification.number == summaryNumber(serverId, entries) &&
+                        postedServerName == summaryServerName(entries)
+                ) {
                     postedSummaryConversations[serverId] = conversations
                     return
                 }
@@ -548,7 +562,12 @@ internal object AndroidUnreadNotificationPoster {
                             title = extras.getString(AndroidUnreadNotificationGrouping.EXTRA_TITLE).orEmpty(),
                             latestLine = history.lines.lastOrNull().orEmpty(),
                             count = history.count.coerceAtLeast(1),
-                            postedAtMillis = posted.notification.`when`
+                            postedAtMillis = posted.notification.`when`,
+                            serverName =
+                                extras
+                                    .getString(AndroidUnreadNotificationGrouping.EXTRA_SERVER_NAME)
+                                    ?.trim()
+                                    ?.takeIf { it.isNotEmpty() }
                         )
                 }
         return (fromTray + recentPosts.entries(serverId)).values.sortedByDescending { it.postedAtMillis }
@@ -605,19 +624,28 @@ internal object AndroidUnreadNotificationPoster {
         // Lock screen: "Raft · 1 new message", nothing about the conversation (contract §1.5 Android row).
         val publicVersion =
             NotificationCompat.Builder(appContext, channelId)
-                .setSmallIcon(android.R.drawable.ic_dialog_info)
+                .setSmallIcon(R.drawable.ic_stat_raft)
                 .setContentTitle(text.publicTitle)
                 .setContentText(countText)
                 .setCategory(NotificationCompat.CATEGORY_MESSAGE)
                 .setWhen(whenMillis)
                 .setShowWhen(true)
                 .build()
+        val directMessage = isDirectMessage(request, request.optString("category").trim())
+        // Android 12+ ConversationLayout ignores setSubText on MessagingStyle notifications, so a
+        // standalone channel/thread card in a multi-server account would otherwise hide its server.
+        val messagingConversationTitle =
+            if (!directMessage && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && !text.subtitle.isNullOrBlank()) {
+                "${text.title} · ${text.subtitle}"
+            } else {
+                text.title
+            }
         val style: NotificationCompat.Style =
             if (history.senders.any { it.isNotBlank() }) {
                 unreadMessagingStyle(
                     selfName = appContext.getString(R.string.app_name),
-                    conversationTitle = text.title,
-                    directMessage = isDirectMessage(request, request.optString("category").trim()),
+                    conversationTitle = messagingConversationTitle,
+                    directMessage = directMessage,
                     history = history,
                     fallbackMillis = whenMillis
                 )
@@ -632,6 +660,7 @@ internal object AndroidUnreadNotificationPoster {
         val extras =
             Bundle().apply {
                 putString(AndroidUnreadNotificationGrouping.EXTRA_SERVER_ID, serverId)
+                text.serverName?.let { putString(AndroidUnreadNotificationGrouping.EXTRA_SERVER_NAME, it) }
                 putString(AndroidUnreadNotificationGrouping.EXTRA_CONVERSATION_KEY, AndroidUnreadNotificationGrouping.conversationKey(request))
                 putString(AndroidUnreadNotificationGrouping.EXTRA_GROUP_KEY, AndroidUnreadNotificationGrouping.retractionGroupKey(request))
                 parseRaftPushSeq(request.optString("seq"))?.let { putLong(AndroidUnreadNotificationGrouping.EXTRA_SEQ, it) }
@@ -641,7 +670,7 @@ internal object AndroidUnreadNotificationPoster {
         val highPriority =
             channelId == UNREAD_DM_NOTIFICATION_CHANNEL_ID || channelId == UNREAD_MENTION_NOTIFICATION_CHANNEL_ID
         return NotificationCompat.Builder(appContext, channelId)
-            .setSmallIcon(android.R.drawable.ic_dialog_info)
+            .setSmallIcon(R.drawable.ic_stat_raft)
             .setContentTitle(text.title)
             .setContentText(text.body)
             // The context line (server label for a receiver of 2+ servers), in the header.
@@ -722,6 +751,9 @@ internal object AndroidUnreadNotificationPoster {
      * unread message across them. It never alerts (`GROUP_ALERT_CHILDREN`): the conversation that
      * changed already did. [channelId] is one of its conversations' channels ([summaryChannelId]).
      */
+    internal fun summaryServerName(entries: List<UnreadSummaryEntry>): String? =
+        entries.firstNotNullOfOrNull { it.serverName?.trim()?.takeIf { name -> name.isNotEmpty() } }
+
     internal fun buildUnreadGroupSummary(
         context: Context,
         serverId: String,
@@ -736,22 +768,25 @@ internal object AndroidUnreadNotificationPoster {
         val countText =
             appContext.resources.getQuantityString(R.plurals.notification_unread_message_count, total, total)
         val appName = appContext.getString(R.string.app_name)
+        val serverName = summaryServerName(entries)
+        val summaryTitle = serverName ?: appName
+        val summaryHeaderText = listOfNotNull(serverName, countText).joinToString(" · ")
         val inbox =
             NotificationCompat.InboxStyle()
-                .setBigContentTitle(appName)
-                .setSummaryText(countText)
+                .setBigContentTitle(summaryTitle)
+                .setSummaryText(summaryHeaderText)
         entries.take(AndroidUnreadNotificationGrouping.MAX_LINES).forEach { entry ->
             inbox.addLine(listOf(entry.title, entry.latestLine).filter { it.isNotBlank() }.joinToString(": "))
         }
         val publicVersion =
             NotificationCompat.Builder(appContext, channelId)
-                .setSmallIcon(android.R.drawable.ic_dialog_info)
+                .setSmallIcon(R.drawable.ic_stat_raft)
                 .setContentTitle(appName)
                 .setContentText(countText)
                 .build()
         return NotificationCompat.Builder(appContext, channelId)
-            .setSmallIcon(android.R.drawable.ic_dialog_info)
-            .setContentTitle(appName)
+            .setSmallIcon(R.drawable.ic_stat_raft)
+            .setContentTitle(summaryTitle)
             .setContentText(countText)
             .setStyle(inbox)
             .setNumber(number)
@@ -767,7 +802,12 @@ internal object AndroidUnreadNotificationPoster {
             .setShowWhen(true)
             .setContentIntent(contentIntent)
             .setAutoCancel(true)
-            .addExtras(Bundle().apply { putString(AndroidUnreadNotificationGrouping.EXTRA_SERVER_ID, serverId) })
+            .addExtras(
+                Bundle().apply {
+                    putString(AndroidUnreadNotificationGrouping.EXTRA_SERVER_ID, serverId)
+                    serverName?.let { putString(AndroidUnreadNotificationGrouping.EXTRA_SERVER_NAME, it) }
+                }
+            )
             .build()
     }
 
@@ -1004,6 +1044,7 @@ internal object AndroidUnreadNotificationPoster {
     internal fun SystemUnreadNotificationRequest.toJson(): JSONObject =
         JSONObject()
             .put("serverId", serverId)
+            .put("serverName", serverName.orEmpty())
             .put("messageId", messageId)
             .put("threadId", threadId)
             .put("channelId", channelId.orEmpty())

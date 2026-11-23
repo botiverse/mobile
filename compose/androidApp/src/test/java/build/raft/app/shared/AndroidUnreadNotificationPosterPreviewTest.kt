@@ -104,10 +104,11 @@ class AndroidUnreadNotificationPosterPreviewTest {
         val title: String,
         val text: String,
         val bigText: String,
+        val serverName: String?,
         val publicTitle: String,
         val publicText: String
     ) {
-        val all get() = listOf(title, text, bigText)
+        val all get() = listOfNotNull(title, text, bigText, serverName)
         val public get() = listOf(publicTitle, publicText)
     }
 
@@ -136,6 +137,7 @@ class AndroidUnreadNotificationPosterPreviewTest {
                 messaging?.messages?.joinToString("\n") { message ->
                     if (messaging.isGroupConversation) "${message.person?.name}: ${message.text}" else message.text.toString()
                 } ?: notification.extras.getCharSequence(Notification.EXTRA_BIG_TEXT).toString(),
+            serverName = notification.extras.getString(AndroidUnreadNotificationGrouping.EXTRA_SERVER_NAME),
             publicTitle = publicVersion.extras.getCharSequence(Notification.EXTRA_TITLE).toString(),
             publicText = publicVersion.extras.getCharSequence(Notification.EXTRA_TEXT).toString()
         )

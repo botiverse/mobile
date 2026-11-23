@@ -6180,7 +6180,7 @@ internal class RaftBridgeModule(
                                         // It also makes channel_blocked feedback meaningful for
                                         // the channel users actually care about.
                                         NotificationCompat.Builder(appContext, AndroidUnreadNotificationPoster.UNREAD_MENTION_NOTIFICATION_CHANNEL_ID)
-                                                .setSmallIcon(android.R.drawable.ic_dialog_info)
+                                                .setSmallIcon(R.drawable.ic_stat_raft)
                                                 .setContentTitle(appContext.getString(R.string.settings_notification_test_title))
                                                 .setContentText(appContext.getString(R.string.settings_notification_test_text))
                                                 .setStyle(

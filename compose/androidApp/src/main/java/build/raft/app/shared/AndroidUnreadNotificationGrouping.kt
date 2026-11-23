@@ -35,6 +35,7 @@ internal object AndroidUnreadNotificationGrouping {
     const val MAX_LINES = 6
 
     internal const val EXTRA_SERVER_ID = "build.raft.app.unread.serverId"
+    internal const val EXTRA_SERVER_NAME = "build.raft.app.unread.serverName"
     internal const val EXTRA_CONVERSATION_KEY = "build.raft.app.unread.conversationKey"
     internal const val EXTRA_MESSAGE_IDS = "build.raft.app.unread.messageIds"
     internal const val EXTRA_LINES = "build.raft.app.unread.lines"
@@ -185,7 +186,8 @@ internal data class UnreadSummaryEntry(
     val title: String,
     val latestLine: String,
     val count: Int,
-    val postedAtMillis: Long
+    val postedAtMillis: Long,
+    val serverName: String? = null
 )
 
 /**
