@@ -2746,11 +2746,13 @@
     <string name="settings_notifications_battery_optimization_detail">為 Raft 關閉電池最佳化，避免系統中斷背景連線。部分手機還需要在應用程式啟動管理或背景活動設定中允許 Raft。</string>
     <string name="settings_notifications_battery_optimization_allowed">已允許</string>
     <string name="settings_notifications_battery_optimization_request">允許</string>
+    <string name="settings_notifications_vendor_background_title">自動啟動與背景管理</string>
+    <string name="settings_notifications_vendor_background_detail_huawei">在「應用程式啟動管理」中關閉 Raft 的自動管理，並開啟允許自動啟動、允許關聯啟動與允許背景活動。</string>
+    <string name="settings_notifications_vendor_background_detail_lenovo">在系統的自動啟動與背景管理設定中，允許 Raft 自動啟動並保持背景執行。</string>
+    <string name="settings_notifications_vendor_background_detail_vendor">在系統設定中允許 Raft 自動啟動並保持背景執行，避免被系統清理。</string>
+    <string name="settings_notifications_vendor_background_detail_app_details">在系統電池設定中將 Raft 設為不受限制，避免在背景被系統停止。</string>
     <string name="background_kill_notice_title">Raft 在背景被系統停止</string>
-    <string name="background_kill_notice_body_huawei">系統在背景停止了 Raft，可能導致訊息和通知延遲。請在「應用程式啟動管理」中關閉 Raft 的自動管理，並開啟允許自動啟動、允許關聯啟動與允許背景活動。</string>
-    <string name="background_kill_notice_body_lenovo">系統在背景停止了 Raft，可能導致訊息和通知延遲。請在系統的自動啟動與背景管理設定中，允許 Raft 自動啟動並保持背景執行。</string>
-    <string name="background_kill_notice_body_vendor">系統在背景停止了 Raft，可能導致訊息和通知延遲。請在系統設定中允許 Raft 自動啟動並保持背景執行，避免被系統清理。</string>
-    <string name="background_kill_notice_body_app_details">系統在背景停止了 Raft，可能導致訊息和通知延遲。請開啟應用程式資訊，進入「電池」設定並將 Raft 設為不受限制。</string>
+    <string name="background_kill_notice_body">系統在背景停止了 Raft，可能導致訊息和通知延遲。請前往通知設定允許 Raft 在背景執行。</string>
     <string name="background_kill_notice_action_open_settings">前往設定</string>
     <string name="background_kill_notice_action_dont_show_again">不再提示</string>
     <string name="settings_notifications_offline_computers_title">電腦離線提醒</string>

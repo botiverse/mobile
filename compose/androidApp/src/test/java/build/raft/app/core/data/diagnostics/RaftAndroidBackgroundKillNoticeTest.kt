@@ -91,7 +91,6 @@ class RaftAndroidBackgroundKillNoticeTest {
     ) = RaftAndroidBackgroundKillNoticeController(
         store = store,
         nowMillis = { at },
-        openWhitelist = { "huawei_startup_normal" },
         persistAsync = persistAsync,
     )
 
@@ -116,7 +115,6 @@ class RaftAndroidBackgroundKillNoticeTest {
             RaftAndroidBackgroundKillNoticeController(
                 store = store,
                 nowMillis = { now },
-                openWhitelist = { "huawei_startup_normal" },
             )
 
         val notice =
@@ -230,7 +228,6 @@ class RaftAndroidBackgroundKillNoticeTest {
             RaftAndroidBackgroundKillNoticeController(
                 store = store,
                 nowMillis = { stickyRestartAt },
-                openWhitelist = { "huawei_startup_normal" },
             )
         val duringSticky =
             stickyProcessController.evaluate(
@@ -250,7 +247,6 @@ class RaftAndroidBackgroundKillNoticeTest {
             RaftAndroidBackgroundKillNoticeController(
                 store = store,
                 nowMillis = { userLaunchAt },
-                openWhitelist = { "huawei_startup_normal" },
             )
         val onUserLaunch =
             userLaunchController.evaluate(
@@ -270,15 +266,10 @@ class RaftAndroidBackgroundKillNoticeTest {
     fun dismissAndOpenSettingsEnforceCooldownsAndRequireStrictlyNewerExit() {
         var now = installedAt + hour
         val store = InMemoryNoticeStore()
-        var openedCount = 0
         val controller =
             RaftAndroidBackgroundKillNoticeController(
                 store = store,
                 nowMillis = { now },
-                openWhitelist = {
-                    openedCount += 1
-                    "zui_startup_list"
-                },
             )
 
         fun eval(exits: List<SystemKillExit>) =
@@ -330,12 +321,12 @@ class RaftAndroidBackgroundKillNoticeTest {
         val exit3 = exit(pid = 5, at = now - 500L, importance = IMPORTANCE_SERVICE)
         assertEquals(exit3.timestampMillis, eval(listOf(exit3))?.exitTimestampMillis)
 
-        // User opens vendor whitelist settings -> 24-hour cooldown and invokes opener.
+        // User opens in-app Notification settings -> 24-hour cooldown and clears notice.
         val openedAt = now
-        controller.openVendorWhitelistSettings()
-        assertEquals(1, openedCount)
+        controller.markSettingsOpened()
         assertNull(controller.notice.value)
         assertEquals(exit3.timestampMillis, store.state.lastAcknowledgedExitTimestampMillis)
+        assertEquals(openedAt, store.state.lastOpenedSettingsAtMillis)
 
         // New exit 23 hours later: suppressed.
         now = openedAt + 23 * hour

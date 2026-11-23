@@ -2746,11 +2746,13 @@
     <string name="settings_notifications_battery_optimization_detail">Raft의 배터리 최적화를 꺼서 시스템이 백그라운드 연결을 중단하지 않게 하세요. 일부 휴대폰에서는 앱 실행 관리나 백그라운드 활동 설정에서도 Raft를 허용해야 해요.</string>
     <string name="settings_notifications_battery_optimization_allowed">허용됨</string>
     <string name="settings_notifications_battery_optimization_request">허용</string>
+    <string name="settings_notifications_vendor_background_title">자동 실행 및 백그라운드 설정</string>
+    <string name="settings_notifications_vendor_background_detail_huawei">앱 실행 관리에서 Raft의 자동 관리를 끄고 자동 실행, 보조 실행, 백그라운드 실행을 허용해 주세요.</string>
+    <string name="settings_notifications_vendor_background_detail_lenovo">기기의 자동 실행 및 백그라운드 관리 설정에서 Raft의 자동 실행과 백그라운드 실행을 허용해 주세요.</string>
+    <string name="settings_notifications_vendor_background_detail_vendor">시스템 설정에서 Raft의 자동 실행과 제한 없는 백그라운드 실행을 허용해 주세요.</string>
+    <string name="settings_notifications_vendor_background_detail_app_details">백그라운드에서 종료되지 않도록 시스템 배터리 설정에서 Raft를 제한 없음으로 설정해 주세요.</string>
     <string name="background_kill_notice_title">Raft가 백그라운드에서 종료되었어요</string>
-    <string name="background_kill_notice_body_huawei">기기에서 백그라운드에 있던 Raft를 종료해 메시지와 알림이 지연될 수 있어요. 앱 실행 관리에서 Raft의 자동 관리를 끄고 자동 실행, 보조 실행, 백그라운드 실행을 허용해 주세요.</string>
-    <string name="background_kill_notice_body_lenovo">기기에서 백그라운드에 있던 Raft를 종료해 메시지와 알림이 지연될 수 있어요. 기기의 자동 실행 및 백그라운드 관리 설정에서 Raft의 자동 실행과 백그라운드 실행을 허용해 주세요.</string>
-    <string name="background_kill_notice_body_vendor">기기에서 백그라운드에 있던 Raft를 종료해 메시지와 알림이 지연될 수 있어요. 시스템 설정에서 Raft의 자동 실행과 제한 없는 백그라운드 실행을 허용해 주세요.</string>
-    <string name="background_kill_notice_body_app_details">기기에서 백그라운드에 있던 Raft를 종료해 메시지와 알림이 지연될 수 있어요. 앱 정보에서 배터리 설정을 열고 Raft를 제한 없음으로 변경해 주세요.</string>
+    <string name="background_kill_notice_body">기기에서 백그라운드에 있던 Raft를 종료해 메시지와 알림이 지연될 수 있어요. 알림 설정을 열어 Raft의 백그라운드 실행을 허용해 주세요.</string>
     <string name="background_kill_notice_action_open_settings">설정 열기</string>
     <string name="background_kill_notice_action_dont_show_again">다시 표시 안 함</string>
     <string name="settings_notifications_offline_computers_title">오프라인 컴퓨터 알림</string>

@@ -2746,11 +2746,13 @@
     <string name="settings_notifications_battery_optimization_detail">Desactiva la optimización de batería para Raft para que el sistema no detenga la conexión en segundo plano. En algunos teléfonos también hay que permitir Raft en la configuración de inicio de apps o de actividad en segundo plano.</string>
     <string name="settings_notifications_battery_optimization_allowed">Permitidas</string>
     <string name="settings_notifications_battery_optimization_request">Permitir</string>
+    <string name="settings_notifications_vendor_background_title">Inicio automático y segundo plano</string>
+    <string name="settings_notifications_vendor_background_detail_huawei">En Inicio de aplicaciones, cambia Raft a Gestión manual y permite Inicio automático, Inicio secundario y Ejecución en segundo plano.</string>
+    <string name="settings_notifications_vendor_background_detail_lenovo">Permite que Raft se inicie automáticamente y siga ejecutándose en segundo plano en la configuración de gestión en segundo plano del dispositivo.</string>
+    <string name="settings_notifications_vendor_background_detail_vendor">Permite que Raft se inicie automáticamente y se ejecute sin restricciones en segundo plano en los ajustes del sistema.</string>
+    <string name="settings_notifications_vendor_background_detail_app_details">Permite que Raft se ejecute sin restricciones de batería en los ajustes del sistema para que no se detenga en segundo plano.</string>
     <string name="background_kill_notice_title">Raft se detuvo en segundo plano</string>
-    <string name="background_kill_notice_body_huawei">Tu dispositivo detuvo Raft mientras estaba en segundo plano, lo que puede retrasar mensajes y notificaciones. En Inicio de aplicaciones, cambia Raft a Gestión manual y permite Inicio automático, Inicio secundario y Ejecución en segundo plano.</string>
-    <string name="background_kill_notice_body_lenovo">Tu dispositivo detuvo Raft mientras estaba en segundo plano, lo que puede retrasar mensajes y notificaciones. Permite que Raft se inicie automáticamente y siga ejecutándose en segundo plano en la configuración de gestión en segundo plano del dispositivo.</string>
-    <string name="background_kill_notice_body_vendor">Tu dispositivo detuvo Raft mientras estaba en segundo plano, lo que puede retrasar mensajes y notificaciones. Permite que Raft se inicie automáticamente y se ejecute sin restricciones en segundo plano en los ajustes del sistema.</string>
-    <string name="background_kill_notice_body_app_details">Tu dispositivo detuvo Raft mientras estaba en segundo plano, lo que puede retrasar mensajes y notificaciones. Abre Información de la aplicación, ve a Batería y establece Raft en Sin restricciones.</string>
+    <string name="background_kill_notice_body">Tu dispositivo detuvo Raft mientras estaba en segundo plano, lo que puede retrasar mensajes y notificaciones. Abre los ajustes de notificaciones para permitir que Raft se ejecute en segundo plano.</string>
     <string name="background_kill_notice_action_open_settings">Abrir ajustes</string>
     <string name="background_kill_notice_action_dont_show_again">No volver a mostrar</string>
     <string name="settings_notifications_offline_computers_title">Alertas de computadoras sin conexión</string>
