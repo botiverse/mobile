@@ -3172,6 +3172,81 @@ class SharedHomeStoreTest {
     }
 
     @Test
+    fun moveOrRemoveAgentDirectMessageCleansLegacyChannelAliasPlacement() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val sec1 = SettingsServerSidebarCustomSection(id = "sec-1", name = "One", sortMode = "manual")
+        val sec2 = SettingsServerSidebarCustomSection(id = "sec-2", name = "Two", sortMode = "manual")
+        val initial =
+            SettingsServerSidebarOrderSnapshot(
+                customSections = listOf(sec1, sec2),
+                sectionOrder = SIDEBAR_SYSTEM_SECTION_IDS + listOf("sec-1", "sec-2"),
+                sectionPlacements =
+                    listOf(
+                        SettingsServerSidebarSectionPlacement(kind = "channel", id = "dm-agent-1", sectionId = "sec-1", position = 0),
+                        SettingsServerSidebarSectionPlacement(kind = "agent", id = "agent-1", sectionId = "sec-1", position = 1)
+                    ),
+                sectionsVersion = 2
+            )
+        val home =
+            sampleHome(ServerId("server-1")).copy(
+                directMessages =
+                    listOf(
+                        directMessage("dm-agent-1", "Agent One", "agent-1", Presence.Active)
+                            .copy(directMessagePeerType = "agent")
+                    ),
+                sidebarOrder = initial
+            )
+        val moveUpdates = mutableListOf<SettingsServerSidebarOrderUpdateRequest>()
+        val moveStore = SharedHomeStore(
+            authStore = InMemoryRaftAuthSessionStore(sampleSession()),
+            dataSource = sourceWithSnapshot(home),
+            scope = scope,
+            loadSidebarOrder = { _ -> DataResult.Content(initial) },
+            updateSidebarOrder = { request ->
+                moveUpdates += request
+                DataResult.Content(
+                    initial.copy(
+                        sectionPlacements = request.sectionPlacements.orEmpty(),
+                        sectionsVersion = 3
+                    )
+                )
+            }
+        )
+
+        moveStore.accept(SharedHomeIntent.Start)
+        // Moving to sec-2 must drop the legacy `channel:dm-agent-1` alias and write only `agent:agent-1`.
+        moveStore.accept(SharedHomeIntent.MoveConversationToSection(conversationId = "dm-agent-1", sectionId = "sec-2"))
+        assertEquals(1, moveUpdates.size)
+        assertEquals(
+            listOf(SettingsServerSidebarSectionPlacement(kind = "agent", id = "agent-1", sectionId = "sec-2", position = 0)),
+            moveUpdates.single().sectionPlacements
+        )
+
+        // Removing back to Home must clear both canonical `agent:` and legacy `channel:` placements.
+        val removeUpdates = mutableListOf<SettingsServerSidebarOrderUpdateRequest>()
+        val removeStore = SharedHomeStore(
+            authStore = InMemoryRaftAuthSessionStore(sampleSession()),
+            dataSource = sourceWithSnapshot(home),
+            scope = scope,
+            loadSidebarOrder = { _ -> DataResult.Content(initial) },
+            updateSidebarOrder = { request ->
+                removeUpdates += request
+                DataResult.Content(
+                    initial.copy(
+                        sectionPlacements = request.sectionPlacements.orEmpty(),
+                        sectionsVersion = 3
+                    )
+                )
+            }
+        )
+        removeStore.accept(SharedHomeIntent.Start)
+        removeStore.accept(SharedHomeIntent.MoveConversationToSection(conversationId = "dm-agent-1", sectionId = null))
+        assertEquals(1, removeUpdates.size)
+        assertEquals(emptyList(), removeUpdates.single().sectionPlacements)
+        scope.cancel()
+    }
+
+    @Test
     fun reorderChannelsPersistsManualChannelOrderAndPreservesJointIds() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val home =

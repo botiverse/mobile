@@ -414,23 +414,21 @@ internal fun channelSettingsSectionPlacement(
     directMessagePeerId: String? = null,
     directMessage: Boolean = false,
 ): ChannelSectionPlacement {
-    val (placementKind, placementId) =
-        if (directMessage) {
-            build.raft.app.data.sidebarSectionPlacementKindId(
-                peerType = directMessagePeerKind,
-                presenceMemberId = directMessagePeerId,
+    val customSections = sidebarOrder?.customSections.orEmpty()
+    val placementSectionId =
+        sidebarOrder?.sectionPlacements?.let { placements ->
+            build.raft.app.data.resolveSidebarPlacementSectionId(
+                placements = placements,
+                peerType = if (directMessage) directMessagePeerKind else null,
+                presenceMemberId = if (directMessage) directMessagePeerId else null,
                 conversationId = channelId,
+                validSectionIds = customSections.mapTo(HashSet()) { it.id },
             )
-        } else {
-            build.raft.app.data.SIDEBAR_SECTION_ITEM_KIND_CHANNEL to channelId
         }
     return ChannelSectionPlacement(
-        customSections = sidebarOrder?.customSections.orEmpty(),
+        customSections = customSections,
         pinned = pinned,
-        placementSectionId =
-            sidebarOrder?.sectionPlacements
-                ?.firstOrNull { it.kind == placementKind && it.id == placementId }
-                ?.sectionId,
+        placementSectionId = placementSectionId,
         canPin = canPin,
         joint = joint && !directMessage,
         directMessage = directMessage,

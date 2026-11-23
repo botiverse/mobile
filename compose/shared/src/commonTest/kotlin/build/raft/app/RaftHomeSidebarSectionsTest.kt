@@ -17,6 +17,16 @@ class RaftHomeSidebarSectionsTest {
     private fun channel(id: String, name: String, lastMessageAt: String? = null): RaftHomeConversationItem =
         RaftHomeConversationItem(id = id, name = name, kind = "channel", lastMessageAt = lastMessageAt)
 
+    private fun agentDm(id: String, name: String, memberId: String, lastMessageAt: String? = null): RaftHomeConversationItem =
+        RaftHomeConversationItem(
+            id = id,
+            name = name,
+            kind = "dm",
+            peerType = "agent",
+            presenceMemberId = memberId,
+            lastMessageAt = lastMessageAt
+        )
+
     private fun section(id: String, name: String, sortMode: String = "manual", emoji: String? = null) =
         SettingsServerSidebarCustomSection(id = id, name = name, emoji = emoji, sortMode = sortMode)
 
@@ -191,6 +201,157 @@ class RaftHomeSidebarSectionsTest {
             )
         assertEquals(listOf("alpha", "zeta"), rows[0].items.map { it.name })
         assertEquals(listOf("new", "old"), rows[1].items.map { it.name })
+    }
+
+    @Test
+    fun customSectionRowsDeduplicatesDualChannelAndAgentPlacementsForSameAgentDm() {
+        // Hands 699b6e0b / f1378334 / 02d751c7: server can return both a legacy
+        // `channel:<dmId>` placement and a canonical `agent:<memberId>` placement
+        // in the same custom section. Both resolve to the same conversation id,
+        // which used to crash LazyColumn with a duplicate `custom:` key.
+        val dm = agentDm(id = "5f948044-6bb2-4ad9-aab6-456c92432605", name = "Bot", memberId = "agent-1")
+        val other = channel("c-other", "other")
+        val rows =
+            sidebarCustomSectionRows(
+                channels = listOf(other),
+                directMessages = listOf(dm),
+                customSections = listOf(section("4aacdafb-d77d-49e0-a370-43900bee9b7c", "Custom")),
+                sectionOrder = listOf("4aacdafb-d77d-49e0-a370-43900bee9b7c"),
+                sectionPlacements =
+                    listOf(
+                        placement("channel", dm.id, "4aacdafb-d77d-49e0-a370-43900bee9b7c", 0),
+                        placement("channel", other.id, "4aacdafb-d77d-49e0-a370-43900bee9b7c", 1),
+                        placement("agent", "agent-1", "4aacdafb-d77d-49e0-a370-43900bee9b7c", 2)
+                    ),
+                pinnedConversationIds = emptySet()
+            )
+        // Canonical `agent:` placement keeps its manual position (after `other`), emitted once.
+        assertEquals(listOf(other.id, dm.id), rows.single().items.map { it.id })
+    }
+
+    @Test
+    fun customSectionRowsPrefersCanonicalAgentPlacementAcrossDifferentCustomSections() {
+        val dm = agentDm(id = "dm-agent-1", name = "Bot", memberId = "agent-1")
+        val rows =
+            sidebarCustomSectionRows(
+                channels = emptyList(),
+                directMessages = listOf(dm),
+                customSections = listOf(section("sec-old", "Old"), section("sec-new", "New")),
+                sectionOrder = listOf("sec-old", "sec-new"),
+                sectionPlacements =
+                    listOf(
+                        placement("channel", dm.id, "sec-old", 0),
+                        placement("agent", "agent-1", "sec-new", 0)
+                    ),
+                pinnedConversationIds = emptySet()
+            )
+        assertEquals(emptyList(), rows[0].items.map { it.id })
+        assertEquals(listOf(dm.id), rows[1].items.map { it.id })
+    }
+
+    @Test
+    fun customSectionRowsKeepsLegacyChannelPlacementWhenNoCanonicalAgentPlacementExists() {
+        val dm = agentDm(id = "dm-agent-1", name = "Bot", memberId = "agent-1")
+        val rows =
+            sidebarCustomSectionRows(
+                channels = emptyList(),
+                directMessages = listOf(dm),
+                customSections = listOf(section("sec-1", "Agents")),
+                sectionOrder = listOf("sec-1"),
+                sectionPlacements = listOf(placement("channel", dm.id, "sec-1", 0)),
+                pinnedConversationIds = emptySet()
+            )
+        assertEquals(listOf(dm.id), rows.single().items.map { it.id })
+    }
+
+    @Test
+    fun customSectionRowsDeduplicatesRepeatedIdenticalPlacements() {
+        val c1 = channel("c-1", "one")
+        val rows =
+            sidebarCustomSectionRows(
+                channels = listOf(c1),
+                directMessages = emptyList(),
+                customSections = listOf(section("sec-1", "One"), section("sec-2", "Two")),
+                sectionOrder = listOf("sec-1", "sec-2"),
+                sectionPlacements =
+                    listOf(
+                        placement("channel", "c-1", "sec-1", 0),
+                        placement("channel", "c-1", "sec-1", 1),
+                        placement("channel", "c-1", "sec-2", 0)
+                    ),
+                pinnedConversationIds = emptySet()
+            )
+        assertEquals(listOf("c-1"), rows[0].items.map { it.id })
+        assertEquals(emptyList(), rows[1].items.map { it.id })
+    }
+
+    @Test
+    fun customSectionRowsSkipsPinnedAgentDmByMemberIdUnderDualAndLegacyPlacements() {
+        val dm = agentDm(id = "dm-agent-1", name = "Bot", memberId = "agent-1")
+        val sec = section("sec-1", "Agents")
+        val dualRows =
+            sidebarCustomSectionRows(
+                channels = emptyList(),
+                directMessages = listOf(dm),
+                customSections = listOf(sec),
+                sectionOrder = listOf("sec-1"),
+                sectionPlacements =
+                    listOf(
+                        placement("channel", dm.id, "sec-1", 0),
+                        placement("agent", "agent-1", "sec-1", 1)
+                    ),
+                pinnedConversationIds = setOf("agent-1")
+            )
+        assertEquals(emptyList(), dualRows.single().items)
+        val legacyOnlyRows =
+            sidebarCustomSectionRows(
+                channels = emptyList(),
+                directMessages = listOf(dm),
+                customSections = listOf(sec),
+                sectionOrder = listOf("sec-1"),
+                sectionPlacements = listOf(placement("channel", dm.id, "sec-1", 0)),
+                pinnedConversationIds = setOf("agent-1")
+            )
+        assertEquals(emptyList(), legacyOnlyRows.single().items)
+    }
+
+    @Test
+    fun sidebarCustomShownConversationIdsOnlyHidesConversationsRenderedInLiveSections() {
+        val c1 = channel("c-1", "live")
+        val c2 = channel("c-2", "orphaned")
+        val rows =
+            sidebarCustomSectionRows(
+                channels = listOf(c1, c2),
+                directMessages = emptyList(),
+                customSections = listOf(section("sec-1", "Live")),
+                sectionOrder = listOf("sec-1"),
+                sectionPlacements =
+                    listOf(
+                        placement("channel", "c-1", "sec-1", 0),
+                        placement("channel", "c-2", "deleted-section", 0)
+                    ),
+                pinnedConversationIds = emptySet()
+            )
+        assertEquals(setOf("c-1"), rows.sidebarCustomShownConversationIds())
+    }
+
+    @Test
+    fun homeSidebarLazyKeyRegistryProducesUniqueKeysEvenWhenIdentitiesRepeat() {
+        val registry = HomeSidebarLazyKeyRegistry()
+        val firstPass = registry.keysFor(serverId = "s-1", section = "channel", identities = listOf("a", "b", "a"))
+        assertEquals(firstPass.size, firstPass.toSet().size)
+        val secondPass = registry.keysFor(serverId = "s-1", section = "channel", identities = listOf("a", "b", "a", "c", "c"))
+        assertEquals(secondPass.size, secondPass.toSet().size)
+        // Keys must stay stable across subsequent recompositions without growing `#dup-N` suffixes.
+        val thirdPass = registry.keysFor(serverId = "s-1", section = "channel", identities = listOf("a", "b", "a", "c", "c"))
+        assertEquals(secondPass, thirdPass)
+    }
+
+    @Test
+    fun orderedBySidebarIdsDeduplicatesWhenOrderIsEmpty() {
+        val items = listOf(channel("c-1", "first"), channel("c-2", "second"), channel("c-1", "dup"))
+        assertEquals(listOf("c-1", "c-2"), items.orderedBySidebarIds(emptyList()).map { it.id })
+        assertEquals(listOf("c-2", "c-1"), items.orderedBySidebarIds(emptyList(), pinnedFirstId = "c-2").map { it.id })
     }
 
     @Test

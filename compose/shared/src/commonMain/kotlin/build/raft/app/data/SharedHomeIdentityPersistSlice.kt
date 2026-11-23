@@ -124,6 +124,15 @@ internal fun HomeSnapshot.pruneForHomeIdentityPersist(): HomeSnapshot =
     copy(
         channels = channels.map { it.pruneForHomeIdentityPersist() },
         directMessages = directMessages.map { it.pruneForHomeIdentityPersist() },
+        sidebarOrder =
+            sidebarOrder?.let { order ->
+                val normalizedSections = normalizeSidebarCustomSections(order.customSections)
+                order.copy(
+                    customSections = normalizedSections,
+                    sectionOrder = normalizeSidebarSectionOrder(order.sectionOrder, normalizedSections),
+                    sectionPlacements = normalizeSidebarSectionPlacements(order.sectionPlacements)
+                )
+            },
         unreadTotal = 0,
         unreadSource = AppBadgeSource.UNKNOWN,
         serverUnreadCounts = emptyMap(),

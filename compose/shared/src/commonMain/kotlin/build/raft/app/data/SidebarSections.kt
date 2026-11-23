@@ -19,32 +19,37 @@ const val SIDEBAR_SECTION_ITEM_KIND_AGENT = "agent"
 val SIDEBAR_SECTION_SORT_MODES: Set<String> = setOf("manual", "recent", "az")
 
 /**
- * Keep only well-formed custom sections (non-blank id/name, known sort mode).
- * Mirrors web `normalizeSidebarCustomSections`.
+ * Keep only well-formed custom sections (non-blank id/name, known sort mode),
+ * deduplicated by id (first wins). Mirrors web `normalizeSidebarCustomSections`.
  */
 fun normalizeSidebarCustomSections(
     sections: List<SettingsServerSidebarCustomSection>
 ): List<SettingsServerSidebarCustomSection> =
-    sections.filter { section ->
-        section.id.isNotBlank() &&
-            section.name.isNotBlank() &&
-            section.sortMode in SIDEBAR_SECTION_SORT_MODES
-    }
+    sections
+        .filter { section ->
+            section.id.isNotBlank() &&
+                section.name.isNotBlank() &&
+                section.sortMode in SIDEBAR_SECTION_SORT_MODES
+        }
+        .distinctBy { it.id }
 
 /**
- * Keep only well-formed placements (known kind, non-blank ids, sane position).
+ * Keep only well-formed placements (known kind, non-blank ids, sane position),
+ * deduplicated by `kind:id` (first wins, matching server canonicalization).
  * Mirrors web `normalizeSidebarSectionPlacements`.
  */
 fun normalizeSidebarSectionPlacements(
     placements: List<SettingsServerSidebarSectionPlacement>
 ): List<SettingsServerSidebarSectionPlacement> =
-    placements.filter { placement ->
-        (placement.kind == SIDEBAR_SECTION_ITEM_KIND_CHANNEL ||
-            placement.kind == SIDEBAR_SECTION_ITEM_KIND_AGENT) &&
-            placement.id.isNotBlank() &&
-            placement.sectionId.isNotBlank() &&
-            placement.position >= 0
-    }
+    placements
+        .filter { placement ->
+            (placement.kind == SIDEBAR_SECTION_ITEM_KIND_CHANNEL ||
+                placement.kind == SIDEBAR_SECTION_ITEM_KIND_AGENT) &&
+                placement.id.isNotBlank() &&
+                placement.sectionId.isNotBlank() &&
+                placement.position >= 0
+        }
+        .distinctBy { sidebarSectionItemKey(it.kind, it.id) }
 
 /**
  * Dedupe [order] to known section ids (system + custom), then append any
@@ -96,6 +101,48 @@ fun sidebarSectionPlacementKindId(
     } else {
         SIDEBAR_SECTION_ITEM_KIND_CHANNEL to conversationId
     }
+
+/**
+ * Find the custom section id currently placing [conversationId], preferring
+ * its canonical placement key (`agent:<memberId>` for an agent DM, else
+ * `channel:<conversationId>`), then falling back to a legacy
+ * `channel:<conversationId>` entry for an agent DM when no canonical `agent:`
+ * placement exists. When [validSectionIds] is provided, placements targeting a
+ * live custom section take priority over orphaned ones (which are still
+ * returned if no live placement matches, so "Home" can clear them).
+ */
+fun resolveSidebarPlacementSectionId(
+    placements: List<SettingsServerSidebarSectionPlacement>,
+    peerType: String?,
+    presenceMemberId: String?,
+    conversationId: String,
+    validSectionIds: Set<String>? = null
+): String? {
+    val (canonicalKind, canonicalId) =
+        sidebarSectionPlacementKindId(
+            peerType = peerType,
+            presenceMemberId = presenceMemberId,
+            conversationId = conversationId
+        )
+    fun firstMatch(kind: String, id: String, onlyValid: Boolean): String? =
+        placements.firstOrNull { placement ->
+            placement.kind == kind &&
+                placement.id == id &&
+                (!onlyValid || validSectionIds == null || placement.sectionId in validSectionIds)
+        }?.sectionId
+
+    if (validSectionIds != null) {
+        firstMatch(canonicalKind, canonicalId, onlyValid = true)?.let { return it }
+        if (canonicalKind == SIDEBAR_SECTION_ITEM_KIND_AGENT) {
+            firstMatch(SIDEBAR_SECTION_ITEM_KIND_CHANNEL, conversationId, onlyValid = true)?.let { return it }
+        }
+    }
+    firstMatch(canonicalKind, canonicalId, onlyValid = false)?.let { return it }
+    if (canonicalKind == SIDEBAR_SECTION_ITEM_KIND_AGENT) {
+        return firstMatch(SIDEBAR_SECTION_ITEM_KIND_CHANNEL, conversationId, onlyValid = false)
+    }
+    return null
+}
 
 /**
  * New custom-section id. Web uses `crypto.randomUUID()`; commonMain has no
