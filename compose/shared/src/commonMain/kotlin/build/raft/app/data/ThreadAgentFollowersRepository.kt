@@ -41,8 +41,6 @@ internal data class ThreadAgentFollowerRemoval(val ok: Boolean, val removed: Boo
 private data class ThreadAgentFollowerRestore(val ok: Boolean, val restored: Boolean)
 @Serializable
 private data class ThreadAgentFollowerRestoreBody(val undoToken: String)
-@Serializable
-private data class ThreadAgentFollowerError(val code: String? = null)
 
 internal fun parseSharedThreadAgentFollowers(body: String, threadId: String): ThreadAgentFollowerRoster? =
     runCatching {
@@ -99,7 +97,7 @@ internal class RealThreadAgentFollowersRepository(
     ): DataResult<T> {
         val session = auth.readSession() ?: return authSessionRequiredResult()
         if (session.user.id != accountId || session.currentServerId != serverId || currentEnvironment() != environmentId) {
-            return DataResult.Error(ScreenError("thread_followers_scope_changed", retryable = false))
+            return DataResult.Error(ScreenError("thread_followers_scope_changed", retryable = false, traceId = null))
         }
         return try {
             val bound = network.boundTo(RaftExpectedAuthBinding(
@@ -108,21 +106,29 @@ internal class RealThreadAgentFollowersRepository(
             val response = bound.request(priority, path, method, query, ServerId(serverId), body)
             val after = auth.readSession()
             if (after?.user?.id != accountId || after?.currentServerId != serverId || currentEnvironment() != environmentId) {
-                return DataResult.Error(ScreenError("thread_followers_scope_changed", retryable = false))
+                return DataResult.Error(ScreenError("thread_followers_scope_changed", retryable = false, traceId = null))
             }
-            val code = runCatching {
-                followerJson.decodeFromString<ThreadAgentFollowerError>(response.errorBodyText ?: response.bodyText.orEmpty()).code
-            }.getOrNull()
-            when {
-                response.code == 401 -> authSessionRequiredResult()
-                !response.isSuccessful -> DataResult.Error(ScreenError(code ?: "http_${response.code}"))
-                else -> parse(response.bodyText.orEmpty())?.let { DataResult.Content(it) }
-                    ?: DataResult.Error(ScreenError("thread_followers_contract_mismatch"))
+            if (!response.isSuccessful) {
+                val envelope = response.parseHttpErrorEnvelope()
+                if (response.code == 401) {
+                    return response.toAuthSessionRequiredResult(envelope)
+                }
+                return DataResult.Error(
+                    ScreenError(
+                        code = envelope?.serverCode ?: "http_${response.code}",
+                        retryable = response.code >= 500,
+                        serverMessage = envelope?.serverMessage,
+                        serverCode = envelope?.serverCode,
+                        traceId = response.traceId,
+                    )
+                )
             }
+            parse(response.bodyText.orEmpty())?.let { DataResult.Content(it) }
+                ?: DataResult.Error(ScreenError("thread_followers_contract_mismatch", traceId = response.traceId))
         } catch (error: CancellationException) {
             throw error
         } catch (_: Exception) {
-            DataResult.Error(ScreenError("thread_followers_network_error"))
+            DataResult.Error(ScreenError("thread_followers_network_error", traceId = null))
         }
     }
 }

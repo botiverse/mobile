@@ -1347,10 +1347,13 @@ class RealConversationRepository private constructor(
                 return DataResult.Error(ScreenError(code = "task_conversation_ref_network", retryable = true, traceId = null))
             }
         if (!response.isSuccessful) {
+            val envelope = response.parseHttpErrorEnvelope()
             return DataResult.Error(
                 ScreenError(
                     code = "task_conversation_ref_${response.code}",
                     retryable = response.code >= 500,
+                    serverMessage = envelope?.serverMessage,
+                    serverCode = envelope?.serverCode,
                     traceId = response.traceId,
                 )
             )

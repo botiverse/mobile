@@ -847,19 +847,8 @@ internal data class TaskConversationOpenWireDto(
 internal fun HomeNetworkResponse.toTaskConversationOpenResult(
     diagnostics: (String) -> Unit = strictProjectionDiagnosticsLogger,
 ): DataResult<TaskConversationOpenResult> {
-    if (code == 401 || code == 403) {
-        return DataResult.NoPermission(
-            PermissionBlocker(code = "tasks_conversation_$code", serverMessage = tasksServerErrorTextOrNull())
-        )
-    }
     if (!isSuccessful) {
-        return DataResult.Error(
-            ScreenError(
-                code = "tasks_conversation_$code",
-                retryable = code >= 500,
-                serverMessage = tasksServerErrorTextOrNull()
-            )
-        )
+        return toTasksHttpFailure(codePrefix = "tasks_conversation", retryable = code >= 500)
     }
     val wire =
         bodyText?.takeIf { it.isNotBlank() }?.let { body ->
@@ -1216,12 +1205,8 @@ internal fun HomeNetworkResponse.toTasksResult(
     source: String = "tasks",
     diagnostics: (String) -> Unit = strictProjectionDiagnosticsLogger,
 ): DataResult<TaskSnapshot> {
-    val serverMessage = if (isSuccessful) null else tasksServerErrorTextOrNull()
-    if (code == 401 || code == 403) {
-        return DataResult.NoPermission(PermissionBlocker(code = "tasks_$code", serverMessage = serverMessage))
-    }
     if (!isSuccessful) {
-        return DataResult.Error(ScreenError(code = "tasks_$code", retryable = true, serverMessage = serverMessage))
+        return toTasksHttpFailure(codePrefix = "tasks", retryable = true)
     }
     val body = bodyText
         ?: return DataResult.Error(ScreenError(code = "${source}_contract_mismatch", retryable = false))
@@ -1319,15 +1304,22 @@ internal fun HomeNetworkResponse.toTaskActionResult(
     diagnostics: (String) -> Unit = strictProjectionDiagnosticsLogger,
     requestedStatus: TaskStatus? = null,
 ): DataResult<TaskActionResult> {
-    val serverMessage = if (isSuccessful) null else tasksServerErrorTextOrNull()
-    if (code == 401 || code == 403) {
-        return DataResult.NoPermission(PermissionBlocker(code = "tasks_$code", serverMessage = serverMessage))
-    }
     if (!isSuccessful) {
-        taskStatusAlreadyAppliedErrorCode(requestedStatus)?.let { errorCode ->
-            return DataResult.Error(ScreenError(code = errorCode, retryable = false))
+        val envelope = parseHttpErrorEnvelope(trimMessage = false)
+        if (code != 401 && code != 403) {
+            taskStatusAlreadyAppliedErrorCode(requestedStatus)?.let { errorCode ->
+                return DataResult.Error(
+                    ScreenError(
+                        code = errorCode,
+                        retryable = false,
+                        serverMessage = envelope?.serverMessage,
+                        serverCode = envelope?.serverCode,
+                        traceId = traceId,
+                    )
+                )
+            }
         }
-        return DataResult.Error(ScreenError(code = "tasks_$code", retryable = true, serverMessage = serverMessage))
+        return toTasksHttpFailure(codePrefix = "tasks", retryable = true, envelope = envelope)
     }
     val body = bodyText
         ?: return requestedStatus.taskStatusAppliedWithoutProjectionResult(source)
@@ -1351,18 +1343,21 @@ internal fun HomeNetworkResponse.toTaskAssignActionResult(
     source: String = "tasks_assign",
     diagnostics: (String) -> Unit = strictProjectionDiagnosticsLogger,
 ): DataResult<TaskActionResult> {
-    val serverMessage = if (isSuccessful) null else tasksServerErrorTextOrNull()
-    if (code == 401 || code == 403) {
-        return DataResult.NoPermission(PermissionBlocker(code = "tasks_$code", serverMessage = serverMessage))
-    }
     if (!isSuccessful) {
+        val envelope = parseHttpErrorEnvelope(trimMessage = false)
         val conflictPayload = errorBodyText?.takeIf { it.isNotBlank() } ?: bodyText
         if (code == 409 && taskAssignConflictErrorCode(conflictPayload)) {
             return DataResult.Error(
-                ScreenError(code = TASKS_ASSIGN_CONFLICT, retryable = true, serverMessage = serverMessage)
+                ScreenError(
+                    code = TASKS_ASSIGN_CONFLICT,
+                    retryable = true,
+                    serverMessage = envelope?.serverMessage,
+                    serverCode = envelope?.serverCode,
+                    traceId = traceId,
+                )
             )
         }
-        return DataResult.Error(ScreenError(code = "tasks_$code", retryable = true, serverMessage = serverMessage))
+        return toTasksHttpFailure(codePrefix = "tasks", retryable = true, envelope = envelope)
     }
     val body = bodyText
         ?: return DataResult.Error(ScreenError(code = "${source}_contract_mismatch", retryable = false))
@@ -1415,12 +1410,8 @@ internal fun HomeNetworkResponse.toTaskConvertResult(
     source: String = "tasks_convert_message",
     diagnostics: (String) -> Unit = strictProjectionDiagnosticsLogger,
 ): DataResult<TaskConvertResult> {
-    val serverMessage = if (isSuccessful) null else tasksServerErrorTextOrNull()
-    if (code == 401 || code == 403) {
-        return DataResult.NoPermission(PermissionBlocker(code = "tasks_$code", serverMessage = serverMessage))
-    }
     if (!isSuccessful) {
-        return DataResult.Error(ScreenError(code = "tasks_$code", retryable = true, serverMessage = serverMessage))
+        return toTasksHttpFailure(codePrefix = "tasks", retryable = true)
     }
     val body = bodyText?.trim().orEmpty()
     if (body.isEmpty()) {
@@ -1435,12 +1426,8 @@ internal fun HomeNetworkResponse.toTaskConvertResult(
 }
 
 internal fun HomeNetworkResponse.toTaskDeleteResult(): DataResult<Unit> {
-    val serverMessage = if (isSuccessful) null else tasksServerErrorTextOrNull()
-    if (code == 401 || code == 403) {
-        return DataResult.NoPermission(PermissionBlocker(code = "tasks_$code", serverMessage = serverMessage))
-    }
     if (!isSuccessful) {
-        return DataResult.Error(ScreenError(code = "tasks_$code", retryable = true, serverMessage = serverMessage))
+        return toTasksHttpFailure(codePrefix = "tasks", retryable = true)
     }
     val body = bodyText
         ?: return DataResult.Error(ScreenError(code = "tasks_delete_contract_mismatch", retryable = false))
@@ -1517,16 +1504,47 @@ internal data class TaskAssignErrorEnvelope(
     val currentRevision: Long? = null,
 )
 
-private fun HomeNetworkResponse.tasksServerErrorTextOrNull(): String? {
-    val payload = bodyText?.takeIf { it.isNotBlank() }
-        ?: errorBodyText?.takeIf { it.isNotBlank() }
-        ?: return null
-    return runCatching {
-        tasksJson.decodeFromString(TaskActionErrorEnvelope.serializer(), payload)
-            .error
-            ?.takeIf { it.isNotBlank() }
-    }.getOrNull()
+private fun <T> HomeNetworkResponse.toTasksHttpFailure(
+    codePrefix: String,
+    retryable: Boolean,
+    envelope: HttpErrorEnvelope? = parseHttpErrorEnvelope(trimMessage = false),
+): DataResult<T> {
+    val serverMessage = envelope?.serverMessage
+    val serverCode = envelope?.serverCode
+    if (code == 403 && isNonPermissionPlanOrQuota403Code(serverCode)) {
+        return DataResult.Error(
+            ScreenError(
+                code = requireNotNull(serverCode),
+                retryable = false,
+                serverMessage = serverMessage,
+                serverCode = serverCode,
+                traceId = traceId,
+            )
+        )
+    }
+    if (code == 401 || code == 403) {
+        return DataResult.NoPermission(
+            PermissionBlocker(
+                code = "${codePrefix}_$code",
+                serverMessage = serverMessage,
+                serverCode = serverCode,
+                traceId = traceId,
+            )
+        )
+    }
+    return DataResult.Error(
+        ScreenError(
+            code = "${codePrefix}_$code",
+            retryable = retryable,
+            serverMessage = serverMessage,
+            serverCode = serverCode,
+            traceId = traceId,
+        )
+    )
 }
+
+private fun HomeNetworkResponse.tasksServerErrorTextOrNull(): String? =
+    parseHttpErrorEnvelope(trimMessage = false)?.serverMessage
 
 /** Mirror of React `TaskInfo` (packages/shared/src/index.ts). */
 @Serializable
