@@ -117,6 +117,8 @@ internal class RaftAndroidSandboxWebView(
     private var allowNavigation: Boolean = false
     private var domStorageEnabled: Boolean = false
     private var useWideViewPort: Boolean = false
+    /** #proj-workspace:#360: pinch-to-zoom stays enabled even while [useWideViewPort] is off. */
+    private var allowPinchZoom: Boolean = false
     /** task #188: true once a desktop-mode initial scale has been applied, so it can be cleared. */
     private var desktopModeScaleApplied: Boolean = false
     /** task #188: guards the one retry used when the scale prop arrives before layout. */
@@ -192,6 +194,7 @@ internal class RaftAndroidSandboxWebView(
         // Before the wide-viewport switch, which reloads: the reloaded document gets the new script
         // (the Artifact viewer's Desktop Mode changes both at once).
         updateInjectedJavaScript(config.injectedJavaScript)
+        updateAllowPinchZoom(config.allowPinchZoom)
         updateUseWideViewPort(config.useWideViewPort)
         updateAllowedNavigationSchemes(config.allowedNavigationSchemes)
         updateHostEventsEnabled(config.hostEventsEnabled)
@@ -331,9 +334,12 @@ internal class RaftAndroidSandboxWebView(
             // sides qualified on purpose: inside settings.apply a bare name binds to WebSettings.
             useWideViewPort = this@RaftAndroidSandboxWebView.useWideViewPort
             loadWithOverviewMode = this@RaftAndroidSandboxWebView.useWideViewPort
-            // A page laid out wider than the screen is fitted, so it has to be zoomable (pinch):
-            // Android WebView pinch-zooms only with the built-in zoom on (its +/- buttons stay hidden).
-            builtInZoomControls = this@RaftAndroidSandboxWebView.useWideViewPort
+            // Pinch-to-zoom is on in Desktop Mode (a wide layout fitted to the screen) and on
+            // surfaces that opt in (#proj-workspace:#360, the Artifact viewer). Android WebView
+            // pinch-zooms only with supportZoom + builtInZoomControls on (its +/- buttons stay hidden).
+            setSupportZoom(true)
+            builtInZoomControls =
+                this@RaftAndroidSandboxWebView.useWideViewPort || this@RaftAndroidSandboxWebView.allowPinchZoom
             displayZoomControls = false
             @Suppress("DEPRECATION")
             databaseEnabled = false
@@ -639,6 +645,18 @@ internal class RaftAndroidSandboxWebView(
         webView.settings.domStorageEnabled = next
     }
 
+    private fun applyZoomSettings() {
+        webView.settings.setSupportZoom(true)
+        webView.settings.builtInZoomControls = useWideViewPort || allowPinchZoom
+        webView.settings.displayZoomControls = false
+    }
+
+    private fun updateAllowPinchZoom(next: Boolean) {
+        if (allowPinchZoom == next) return
+        allowPinchZoom = next
+        applyZoomSettings()
+    }
+
     private fun updateUseWideViewPort(next: Boolean) {
         if (useWideViewPort == next) return
         useWideViewPort = next
@@ -646,7 +664,7 @@ internal class RaftAndroidSandboxWebView(
         // starts fitted, and reload here (not from shared) so setting + document are one step.
         webView.settings.useWideViewPort = next
         webView.settings.loadWithOverviewMode = next
-        webView.settings.builtInZoomControls = next
+        applyZoomSettings()
         applyDesktopModeScale(webView)
         if (webView.url != null) webView.reload()
     }

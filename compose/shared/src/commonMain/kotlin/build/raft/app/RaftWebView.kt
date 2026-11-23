@@ -163,6 +163,8 @@ internal fun RaftSandboxWebView(
     diagnosticsSurface: String = RAFT_WEBVIEW_SURFACE_DEFAULT,
     /** [RaftWebViewConfig.showsFormAccessoryBar]. */
     showsFormAccessoryBar: Boolean = false,
+    /** [RaftWebViewConfig.allowPinchZoom]. */
+    allowPinchZoom: Boolean = false,
 ) {
     val events = remember { RaftWebViewEvents() }
     events.routesMainFrameNavigation = routesMainFrameNavigation
@@ -199,7 +201,8 @@ internal fun RaftSandboxWebView(
             keepAliveKey,
             backgroundArgb,
             diagnosticsSurface,
-            showsFormAccessoryBar
+            showsFormAccessoryBar,
+            allowPinchZoom
         ) {
             RaftWebViewConfig(
                 url = url,
@@ -218,7 +221,8 @@ internal fun RaftSandboxWebView(
                 keepAliveKey = keepAliveKey,
                 backgroundArgb = backgroundArgb,
                 diagnosticsSurface = diagnosticsSurface,
-                showsFormAccessoryBar = showsFormAccessoryBar
+                showsFormAccessoryBar = showsFormAccessoryBar,
+                allowPinchZoom = allowPinchZoom
             )
         }
     // Full-bleed: in a clipped pane of the wide row (the Artifact column) the page is cut hard at the pane's edge, never
