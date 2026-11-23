@@ -108,13 +108,18 @@ class RaftKmpRealtimeSocketTest {
     fun onlyAConnectionTheSocketMadeItselfAfterTheServerOrNetworkEndedTheLastOneIsAfterADrop() = runTest {
         val (harness, session) = connected(serverId = "server-drops")
         assertFalse(RaftRealtimeConnectionCauses.connectedAfterDrop("server-drops"), "opened by the app")
+        val initialToken = RaftRealtimeConnectionCauses.liveConnectionToken("server-drops")
+        assertTrue(initialToken != null && initialToken > 0L, "connected socket carries a live token")
         // A deploy: the server closes the socket, which comes back by itself.
         session.closeFromServer()
         runCurrent()
+        assertEquals(null, RaftRealtimeConnectionCauses.liveConnectionToken("server-drops"), "disconnected socket clears live token")
         awaitSessions(harness, 2)
         serve(harness.sessions[1], "s-2")
         assertEquals("connected:s-2:true", harness.recorder.calls.last())
         assertTrue(RaftRealtimeConnectionCauses.connectedAfterDrop("server-drops"), "back by itself after the server closed it")
+        val reconnectedToken = RaftRealtimeConnectionCauses.liveConnectionToken("server-drops")
+        assertTrue(reconnectedToken != null && reconnectedToken != initialToken, "reconnected socket gets a fresh token")
         // The app's own forced reconnect comes back by itself too, but after no drop.
         harness.socket.forceReconnect("test")
         runCurrent()
@@ -134,6 +139,7 @@ class RaftKmpRealtimeSocketTest {
         // In the background the host closes the socket; back in front it opens a new one.
         harness.socket.close()
         runCurrent()
+        assertEquals(null, RaftRealtimeConnectionCauses.liveConnectionToken("server-drops"), "closed socket clears live token")
         connected(serverId = "server-drops")
         assertFalse(RaftRealtimeConnectionCauses.connectedAfterDrop("server-drops"), "the app's new socket")
     }

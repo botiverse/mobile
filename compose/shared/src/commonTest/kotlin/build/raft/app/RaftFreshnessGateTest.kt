@@ -1,6 +1,7 @@
 package build.raft.app
 
 import build.raft.app.data.RAFT_FRESHNESS_COALESCE_MILLIS
+import build.raft.app.data.RAFT_FRESHNESS_CONNECTED_FOREGROUND_SKIP_MILLIS
 import build.raft.app.data.RaftFreshnessEvent
 import build.raft.app.data.RaftFreshnessGate
 import build.raft.app.data.RaftFreshnessTrigger
@@ -131,6 +132,74 @@ class RaftFreshnessGateTest {
             RaftFreshnessTrigger.Reconnect,
             gate.onCatchUpCompleted(succeeded = true, visible = true),
             "a new socket connection arriving mid-flight still triggers a post-reconnect catch-up",
+        )
+    }
+
+    @Test
+    fun connectedForegroundWithin60sSkipsUntilMinutePassesOrSocketDrops() {
+        val clock = Clock()
+        var liveToken: Long? = 42L
+        val gate = RaftFreshnessGate(nowMillis = { clock.now }, liveConnectionToken = { liveToken })
+
+        assertEquals(RaftFreshnessTrigger.Foreground, gate.onEvent(foreground, "server-1", visible = true))
+        // Past the 10 s return coalesce, still < 60 s on the exact same unbroken connection: skip.
+        clock.now += 25_000
+        assertNull(
+            gate.onEvent(foreground, "server-1", visible = true),
+            "unbroken socket within 60 s skips redundant foreground check",
+        )
+        // Once 60 s has elapsed, foreground checks again even if the socket stayed connected.
+        clock.now += RAFT_FRESHNESS_CONNECTED_FOREGROUND_SKIP_MILLIS - 25_000
+        assertEquals(
+            RaftFreshnessTrigger.Foreground,
+            gate.onEvent(foreground, "server-1", visible = true),
+            "foreground checks again once 60 s has elapsed",
+        )
+        // If the socket dropped (new token or null), a foreground return inside 60 s (past 10 s coalesce) catches up.
+        clock.now += 20_000
+        liveToken = 43L
+        assertEquals(
+            RaftFreshnessTrigger.Foreground,
+            gate.onEvent(foreground, "server-1", visible = true),
+            "a foreground return after a socket drop inside 60 s still catches up",
+        )
+    }
+
+    @Test
+    fun networkRestoredAndReconnectStillFireInside60sConnectedWindow() {
+        val clock = Clock()
+        val liveToken = 9L
+        val gate = RaftFreshnessGate(nowMillis = { clock.now }, liveConnectionToken = { liveToken })
+
+        assertEquals(RaftFreshnessTrigger.Foreground, gate.onEvent(foreground, "server-1", visible = true))
+        clock.now += 15_000
+        assertEquals(
+            RaftFreshnessTrigger.NetworkRestored,
+            gate.onEvent(network, "server-1", visible = true),
+            "NetworkRestored is not suppressed by the 60 s unbroken-socket foreground skip",
+        )
+        clock.now += 5_000
+        assertEquals(
+            RaftFreshnessTrigger.Reconnect,
+            gate.onEvent(reconnect("server-1", epoch = 2), "server-1", visible = true),
+            "new Reconnect epoch still forces a catch-up",
+        )
+    }
+
+    @Test
+    fun trackedOutcomeFailureClearsConnectedSkipToken() {
+        val clock = Clock()
+        val liveToken = 7L
+        val gate = RaftFreshnessGate(nowMillis = { clock.now }, trackOutcome = true, liveConnectionToken = { liveToken })
+
+        assertEquals(RaftFreshnessTrigger.Foreground, gate.onEvent(foreground, "server-1", visible = true))
+        clock.now += 500
+        assertNull(gate.onCatchUpCompleted(succeeded = false, visible = true))
+        clock.now += 15_000
+        assertEquals(
+            RaftFreshnessTrigger.Foreground,
+            gate.onEvent(foreground, "server-1", visible = true),
+            "a failed catch-up must never activate the 60 s unbroken-socket skip",
         )
     }
 }

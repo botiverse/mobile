@@ -2590,7 +2590,7 @@ private fun SharedThreadRouteContentContent(
 
     LaunchedEffect(active, threadVisibleResumeGate, threadVisibleResumeGate.pendingVisibleResume) {
         if (active) {
-            threadVisibleResumeGate.onRouteBecameVisible()
+            threadVisibleResumeGate.onRouteBecameVisible(latestCurrentSession?.currentServerId)
                 ?.let {
                     bridge.log(
                         "thread_lifecycle_resume_drained refresh=${it.refreshVisibleConversation} " +
@@ -2600,6 +2600,22 @@ private fun SharedThreadRouteContentContent(
                 }
         }
     }
+    ThreadConversationFreshnessCatchUpEffect(
+        serverId = currentSession?.currentServerId,
+        active = active,
+        contentReady = payload.status == "content" && !payload.mainLoadFailed,
+        resumeGate = threadVisibleResumeGate,
+        onCatchUp = { trigger ->
+            val serverId = latestCurrentSession?.currentServerId
+            bridge.log(
+                "thread_freshness_catch_up trigger=${trigger.wireName} shell=${storeScope.shellInstanceId}"
+            )
+            threadViewModel.dispatch(SharedThreadIntent.RefreshLatestAfterVisibleMaxSeq)
+            if (trigger == build.raft.app.data.RaftFreshnessTrigger.Reconnect) {
+                realtimeEvents.rejoinChannels(latestForegroundRejoinRoomIds, serverId)
+            }
+        },
+    )
 
     // Pager lifecycle notifications remain mounted with the route core. A
     // loading -> resolved transition must not reset foreground reconciliation.
@@ -2657,11 +2673,15 @@ private fun SharedThreadRouteContentContent(
                         // network may have returned while the app was backgrounded.
                         threadViewModel.triggerPendingSendDrain("foreground_$event")
                         val resumePlan =
-                            threadVisibleResumeGate.onLifecycleVisibleResume(latestRouteActive)
+                            threadVisibleResumeGate.onLifecycleVisibleResume(
+                                routeActive = latestRouteActive,
+                                serverId = latestCurrentSession?.currentServerId,
+                            )
                         if (resumePlan == null) {
                             bridge.log(
-                                "thread_lifecycle_resume_latched event=$event " +
-                                    "routeActive=$latestRouteActive shell=${storeScope.shellInstanceId}"
+                                "thread_lifecycle_resume_latched_or_skipped event=$event " +
+                                    "routeActive=$latestRouteActive pending=${threadVisibleResumeGate.pendingVisibleResume} " +
+                                    "shell=${storeScope.shellInstanceId}"
                             )
                         } else {
                             bridge.log(

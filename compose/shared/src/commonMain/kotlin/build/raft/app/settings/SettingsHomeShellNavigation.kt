@@ -1,13 +1,17 @@
 package build.raft.app
 
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.input.key.key
 import build.raft.app.data.SharedAuthGateIntent
 import build.raft.app.data.SharedAuthReadyPhase
 import build.raft.app.data.SharedAuthGateState
 import build.raft.app.data.SharedHomeContentState
 import build.raft.app.data.SharedHomeState
+import build.raft.app.data.RAFT_FRESHNESS_CONNECTED_FOREGROUND_SKIP_MILLIS
 import build.raft.app.data.RaftShellStoreScope
 import build.raft.app.data.StoredAuthSession
+import build.raft.app.data.realtime.RaftRealtimeConnectionCauses
 import build.raft.app.data.realtime.RaftRealtimeNotifyContract
 import androidx.compose.runtime.key
 import androidx.compose.foundation.layout.size
@@ -519,9 +523,14 @@ internal const val AppShellResumeStaleRefreshMillis: Long = 60_000L
 
 internal class AppShellVisibleRefreshGate(
     private val nowEpochMillis: () -> Long = { Clock.System.now().toEpochMilliseconds() },
-    private val staleRefreshMillis: Long = AppShellResumeStaleRefreshMillis
+    private val staleRefreshMillis: Long = AppShellResumeStaleRefreshMillis,
+    private val connectedForegroundSkipMillis: Long = RAFT_FRESHNESS_CONNECTED_FOREGROUND_SKIP_MILLIS,
+    private val liveConnectionToken: (serverId: String) -> Long? = RaftRealtimeConnectionCauses::liveConnectionToken,
 ) {
     private var lastRefreshAtMillis: Long? = null
+    private var lastRefreshServerId: String? = null
+    private var lastRefreshTarget: String? = null
+    private var lastRefreshConnectionToken: Long? = null
 
     /** Why the last [shouldRefresh] refreshed or skipped, for the shell's diagnostics line. */
     var lastDecisionCause: String = "none"
@@ -543,6 +552,15 @@ internal class AppShellVisibleRefreshGate(
             maxOf(latestProcessForegroundEpoch ?: Long.MIN_VALUE, foregroundEpoch)
     }
 
+    /** Records an out-of-band silent catch-up (e.g. RaftFreshnessSignal Reconnect/NetworkRestored) for [target]. */
+    fun recordFreshCheck(serverId: String?, target: String) {
+        val normalizedServerId = serverId?.trim()?.takeIf { it.isNotEmpty() }
+        lastRefreshAtMillis = nowEpochMillis()
+        lastRefreshServerId = normalizedServerId
+        lastRefreshTarget = target
+        lastRefreshConnectionToken = normalizedServerId?.let(liveConnectionToken)
+    }
+
     fun onLifecycleHidden(
         appearanceGeneration: Int,
         foregroundEpoch: Long? = null
@@ -559,7 +577,8 @@ internal class AppShellVisibleRefreshGate(
         signal: AppShellVisibleRefreshSignal,
         appearanceGeneration: Int,
         target: String,
-        foregroundEpoch: Long? = null
+        foregroundEpoch: Long? = null,
+        serverId: String? = null,
     ): Boolean {
         foregroundEpoch?.let(::observeLifecycleForegroundEpoch)
         val effectiveForegroundEpoch = latestProcessForegroundEpoch
@@ -571,14 +590,39 @@ internal class AppShellVisibleRefreshGate(
             lastDecisionCause = "same_foreground_epoch"
             return false
         }
+        val normalizedServerId = serverId?.trim()?.takeIf { it.isNotEmpty() }
+        val now = nowEpochMillis()
+        val lastRefreshAt = lastRefreshAtMillis
+        // raft-design freshness.md (#1411, #proj-mobile:#198): a foreground return while the server's
+        // realtime socket stayed continuously connected, < 60 s after the last check, needs none.
+        if (
+            signal == AppShellVisibleRefreshSignal.Lifecycle &&
+            connectedForegroundSkipMillis > 0L &&
+            normalizedServerId != null &&
+            normalizedServerId == lastRefreshServerId &&
+            target == lastRefreshTarget &&
+            lastRefreshAt != null &&
+            now >= lastRefreshAt &&
+            now - lastRefreshAt < connectedForegroundSkipMillis
+        ) {
+            val currentToken = liveConnectionToken(normalizedServerId)
+            if (currentToken != null && currentToken == lastRefreshConnectionToken) {
+                if (effectiveForegroundEpoch != null) {
+                    refreshedProcessForegroundEpoch = effectiveForegroundEpoch
+                }
+                lastDecisionCause = "connected_within_60s"
+                return false
+            }
+        }
         // A lifecycle signal past the check above carries a process foreground not refreshed yet.
         val newProcessForeground =
             signal == AppShellVisibleRefreshSignal.Lifecycle && foregroundEpoch != null && effectiveForegroundEpoch != null
         val refresh = shouldRefreshForAppearance(signal, appearanceGeneration, target, effectiveForegroundEpoch, newProcessForeground)
-        val now = nowEpochMillis()
-        val lastRefreshAt = lastRefreshAtMillis
         if (refresh) {
             lastRefreshAtMillis = now
+            lastRefreshServerId = normalizedServerId
+            lastRefreshTarget = target
+            lastRefreshConnectionToken = normalizedServerId?.let(liveConnectionToken)
             return true
         }
         if (newProcessForeground && (lastRefreshAt == null || now - lastRefreshAt >= staleRefreshMillis)) {
@@ -586,6 +630,9 @@ internal class AppShellVisibleRefreshGate(
             // was last refreshed long ago (an app suspended for 1h44m stayed on old Activity rows).
             refreshedProcessForegroundEpoch = effectiveForegroundEpoch
             lastRefreshAtMillis = now
+            lastRefreshServerId = normalizedServerId
+            lastRefreshTarget = target
+            lastRefreshConnectionToken = normalizedServerId?.let(liveConnectionToken)
             lastDecisionCause = "stale_since_last_refresh"
             return true
         }
@@ -852,3 +899,34 @@ internal fun sharedHomeHeaderRefreshing(state: SharedHomeState): Boolean =
 
 internal fun homeSurfaceVisibilityDispatchDelayMs(visible: Boolean): Long =
     if (visible) HomeSurfaceVisibleResumeDelayMs else 0L
+
+/**
+ * Subscribes the Home / DMs / Activity shell routes to the process-wide
+ * [build.raft.app.data.RaftFreshnessSignal] (#proj-mobile:#198) for socket reconnect and network
+ * recovery (the Tasks tab keeps its own [RaftLiveCatchUpEffect]), and stamps [visibleRefreshGate]
+ * so an immediate unbroken-socket foreground return within 60 s skips a redundant refetch.
+ */
+@Composable
+internal fun AppShellHomeFreshnessCatchUpEffect(
+    serverId: String?,
+    visible: Boolean,
+    contentReady: Boolean,
+    selectedTab: String,
+    selectedHomeDestination: String?,
+    visibleRefreshGate: AppShellVisibleRefreshGate,
+    onCatchUp: (RaftLiveCatchUpTrigger) -> Unit,
+) {
+    val refreshTarget = "${retainedAppShellSelectedTab(selectedTab)}:${selectedHomeDestination.orEmpty()}"
+    LaunchedEffect(visibleRefreshGate, serverId, refreshTarget, contentReady) {
+        if (contentReady) {
+            visibleRefreshGate.recordFreshCheck(serverId = serverId, target = refreshTarget)
+        }
+    }
+    RaftLiveCatchUpEffect(
+        serverId = serverId,
+        visible = visible,
+        foreground = false,
+    ) { trigger ->
+        onCatchUp(trigger)
+    }
+}
