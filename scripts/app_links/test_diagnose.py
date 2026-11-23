@@ -23,6 +23,11 @@ class RepoReadersTest(unittest.TestCase):
         self.assertEqual(["app.raft.build", "open.raft.build"], d.ios_entitled_hosts())
         self.assertEqual("build.raft.app", d.ios_bundle_id())
 
+    def test_ios_bundle_id_ignores_app_extension_targets(self):
+        pbx = (d.ROOT / "compose/iosApp/iosApp.xcodeproj/project.pbxproj").read_text(encoding="utf-8")
+        self.assertIn("PRODUCT_BUNDLE_IDENTIFIER = build.raft.app.share;", pbx)
+        self.assertEqual("build.raft.app", d.ios_bundle_id())
+
     def test_upload_key_fingerprints_come_from_the_signing_verifier(self):
         fps = d.android_upload_fingerprints()
         self.assertEqual(2, len(fps))

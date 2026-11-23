@@ -1,0 +1,8 @@
+"share_extension.preparing" = "Preparando para compartilhar no Raft…";
+"share_extension.saved_open_raft" = "Salvo para o Raft. Abra o Raft para escolher uma conversa e enviar.";
+"share_extension.done" = "Concluir";
+"share_extension.cancel" = "Cancelar";
+"share_extension.failed" = "Não foi possível preparar o compartilhamento. Abra o Raft e tente novamente.";
+"share_extension.too_many_items" = "Você pode compartilhar até 9 itens por vez.";
+"share_extension.file_too_large" = "Este arquivo é grande demais para compartilhar no Raft.";
+"share_extension.unsupported" = "Este tipo de item não pode ser compartilhado no Raft.";

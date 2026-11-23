@@ -209,8 +209,10 @@ jobs:
       SLOCK_IOS_DISTRIBUTION_CERTIFICATE_BASE64: ${{ secrets.SLOCK_IOS_DISTRIBUTION_CERTIFICATE_BASE64 }}
       SLOCK_IOS_DISTRIBUTION_CERTIFICATE_PASSWORD: ${{ secrets.SLOCK_IOS_DISTRIBUTION_CERTIFICATE_PASSWORD }}
       SLOCK_IOS_PROVISIONING_PROFILE_BASE64: ${{ secrets.SLOCK_IOS_PROVISIONING_PROFILE_BASE64 }}
+      SLOCK_IOS_SHARE_EXTENSION_PROFILE_BASE64: ${{ secrets.SLOCK_IOS_SHARE_EXTENSION_PROFILE_BASE64 }}
       SLOCK_IOS_APPLE_TEAM_ID: ${{ secrets.SLOCK_IOS_APPLE_TEAM_ID }}
       SLOCK_IOS_PROVISIONING_PROFILE_SPECIFIER: ${{ secrets.SLOCK_IOS_PROVISIONING_PROFILE_SPECIFIER }}
+      SLOCK_IOS_SHARE_EXTENSION_PROFILE_SPECIFIER: ${{ secrets.SLOCK_IOS_SHARE_EXTENSION_PROFILE_SPECIFIER }}
       SLOCK_IOS_CODE_SIGN_IDENTITY: ${{ secrets.SLOCK_IOS_CODE_SIGN_IDENTITY }}
       SLOCK_IOS_EXPORT_OPTIONS_PLIST_BASE64: ${{ secrets.SLOCK_IOS_EXPORT_OPTIONS_PLIST_BASE64 }}
     steps:
@@ -246,6 +248,23 @@ jobs:
           security cms -D -i "${PREFLIGHT_DIR}/profile.mobileprovision" > "${PREFLIGHT_DIR}/profile.plist"
           python3 -I scripts/ci/check_ios_profile_entitlements.py profile \
             "${PREFLIGHT_DIR}/profile.plist" compose/iosApp/iosApp/iosApp.entitlements
+          if [ -n "${SLOCK_IOS_SHARE_EXTENSION_PROFILE_BASE64:-}" ]; then
+            if ! printf '%s' "${SLOCK_IOS_SHARE_EXTENSION_PROFILE_BASE64}" | tr -d '[:space:]' | base64 --decode > "${PREFLIGHT_DIR}/share-profile.mobileprovision" 2>/dev/null \
+              || [ ! -s "${PREFLIGHT_DIR}/share-profile.mobileprovision" ]; then
+              echo "::error::SLOCK_IOS_SHARE_EXTENSION_PROFILE_BASE64 is empty or not valid base64. Re-create it from the raw file, e.g. \`base64 -i <file> | pbcopy\` then \`gh secret set SLOCK_IOS_SHARE_EXTENSION_PROFILE_BASE64\` — do not store the raw binary."
+              exit 1
+            fi
+            security cms -D -i "${PREFLIGHT_DIR}/share-profile.mobileprovision" > "${PREFLIGHT_DIR}/share-profile.plist"
+            APP_TEAM="$(/usr/libexec/PlistBuddy -c 'Print :TeamIdentifier:0' "${PREFLIGHT_DIR}/profile.plist")"
+            SHARE_TEAM="$(/usr/libexec/PlistBuddy -c 'Print :TeamIdentifier:0' "${PREFLIGHT_DIR}/share-profile.plist")"
+            [ "${SHARE_TEAM}" = "${APP_TEAM}" ] || { echo "::error::App and Share Extension profiles use different teams"; exit 1; }
+            SHARE_APP_ID="$(/usr/libexec/PlistBuddy -c 'Print :Entitlements:application-identifier' "${PREFLIGHT_DIR}/share-profile.plist")"
+            [ "${SHARE_APP_ID}" = "${SHARE_TEAM}.build.raft.app.share" ] || { echo "::error::SLOCK_IOS_SHARE_EXTENSION_PROFILE_BASE64 is for '${SHARE_APP_ID}', expected App ID ${SHARE_TEAM}.build.raft.app.share"; exit 1; }
+            python3 -I scripts/ci/check_ios_profile_entitlements.py profile --secret-name SLOCK_IOS_SHARE_EXTENSION_PROFILE_BASE64 \
+              "${PREFLIGHT_DIR}/share-profile.plist" compose/iosApp/ShareExtension/ShareExtension.entitlements
+          else
+            echo "::notice::SLOCK_IOS_SHARE_EXTENSION_PROFILE_BASE64 is not configured; release IPA will omit RaftShareExtension.appex."
+          fi
           rm -rf "${PREFLIGHT_DIR}"
 
       - name: Pin Xcode
@@ -402,6 +421,38 @@ jobs:
           echo "profile_team=${PROFILE_TEAM}" >> "$GITHUB_OUTPUT"
           echo "keychain_path=${KEYCHAIN_PATH}" >> "$GITHUB_OUTPUT"
 
+      - name: Configure Share Extension signing
+        id: share_signing
+        shell: bash
+        env:
+          APP_PROFILE_TEAM: ${{ steps.signing.outputs.profile_team }}
+        run: |
+          set -euo pipefail
+          if [ -z "${SLOCK_IOS_SHARE_EXTENSION_PROFILE_BASE64:-}" ]; then
+            echo "::notice::SLOCK_IOS_SHARE_EXTENSION_PROFILE_BASE64 not configured; stripping RaftShareExtension embedding for this archive."
+            python3 -I scripts/ci/configure_ios_share_extension.py strip compose/iosApp/iosApp.xcodeproj/project.pbxproj
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "profile_name=" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          SHARE_PROFILE_PATH="${RUNNER_TEMP}/slock-ios-share-extension.mobileprovision"
+          SHARE_PROFILE_PLIST="${RUNNER_TEMP}/slock-ios-share-extension-profile.plist"
+          if ! printf '%s' "${SLOCK_IOS_SHARE_EXTENSION_PROFILE_BASE64}" | tr -d '[:space:]' | base64 --decode > "${SHARE_PROFILE_PATH}" 2>/dev/null \
+            || [ ! -s "${SHARE_PROFILE_PATH}" ]; then
+            echo "::error::SLOCK_IOS_SHARE_EXTENSION_PROFILE_BASE64 is empty or not valid base64."
+            exit 1
+          fi
+          security cms -D -i "${SHARE_PROFILE_PATH}" > "${SHARE_PROFILE_PLIST}"
+          SHARE_PROFILE_UUID="$(/usr/libexec/PlistBuddy -c 'Print :UUID' "${SHARE_PROFILE_PLIST}")"
+          SHARE_PROFILE_NAME="$(/usr/libexec/PlistBuddy -c 'Print :Name' "${SHARE_PROFILE_PLIST}")"
+          SHARE_PROFILE_TEAM="$(/usr/libexec/PlistBuddy -c 'Print :TeamIdentifier:0' "${SHARE_PROFILE_PLIST}")"
+          [ "${SHARE_PROFILE_TEAM}" = "${APP_PROFILE_TEAM}" ] || { echo "::error::App and Share Extension profiles use different teams"; exit 1; }
+          mkdir -p "${HOME}/Library/MobileDevice/Provisioning Profiles"
+          cp "${SHARE_PROFILE_PATH}" "${HOME}/Library/MobileDevice/Provisioning Profiles/${SHARE_PROFILE_UUID}.mobileprovision"
+          echo "enabled=true" >> "$GITHUB_OUTPUT"
+          echo "profile_name=${SHARE_PROFILE_NAME}" >> "$GITHUB_OUTPUT"
+
       - name: Test diagnostics path admission
         shell: bash
         run: compose/iosApp/scripts/test_diagnostics_path_admission.sh
@@ -445,12 +496,15 @@ jobs:
         env:
           PROFILE_NAME: ${{ steps.signing.outputs.profile_name }}
           PROFILE_TEAM: ${{ steps.signing.outputs.profile_team }}
+          SHARE_EXTENSION_ENABLED: ${{ steps.share_signing.outputs.enabled }}
+          SHARE_PROFILE_NAME: ${{ steps.share_signing.outputs.profile_name }}
         run: |
           set -euo pipefail
           mkdir -p "${RUNNER_TEMP}/ios-release"
           ARCHIVE_PATH="${RUNNER_TEMP}/ios-release/iosApp.xcarchive"
           TEAM_ID="${SLOCK_IOS_APPLE_TEAM_ID:-${PROFILE_TEAM}}"
           PROFILE_SPECIFIER="${SLOCK_IOS_PROVISIONING_PROFILE_SPECIFIER:-${PROFILE_NAME}}"
+          SHARE_PROFILE_SPECIFIER="${SLOCK_IOS_SHARE_EXTENSION_PROFILE_SPECIFIER:-${SHARE_PROFILE_NAME}}"
           CODE_SIGN_IDENTITY="${SLOCK_IOS_CODE_SIGN_IDENTITY:-Apple Distribution}"
           BUILD_SETTINGS=(
             "MARKETING_VERSION=${RAFT_IOS_VERSION_NAME}"
@@ -461,7 +515,7 @@ jobs:
             "CODE_SIGN_STYLE=Manual"
             "DEVELOPMENT_TEAM=${TEAM_ID}"
             "CODE_SIGN_IDENTITY=${CODE_SIGN_IDENTITY}"
-            "PROVISIONING_PROFILE_SPECIFIER=${PROFILE_SPECIFIER}"
+            "RAFT_APP_PROFILE_SPECIFIER=${PROFILE_SPECIFIER}"
             # Device archive is arm64-only (the framework step links iosArm64).
             "ARCHS=arm64"
             # The framework was linked by the previous step: skip the CocoaPods
@@ -470,6 +524,9 @@ jobs:
             "OVERRIDE_KOTLIN_BUILD_IDE_SUPPORTED=YES"
             "RAFT_IOS_REUSE_LINKED_FRAMEWORK=YES"
           )
+          if [ "${SHARE_EXTENSION_ENABLED}" = "true" ]; then
+            BUILD_SETTINGS+=("RAFT_SHARE_EXTENSION_PROFILE_SPECIFIER=${SHARE_PROFILE_SPECIFIER}")
+          fi
           set -o pipefail
           ARCHIVE_LOG="${RUNNER_TEMP}/ios-release/xcodebuild-archive.log"
           xcodebuild \
@@ -492,13 +549,22 @@ jobs:
         env:
           PROFILE_NAME: ${{ steps.signing.outputs.profile_name }}
           PROFILE_TEAM: ${{ steps.signing.outputs.profile_team }}
+          SHARE_EXTENSION_ENABLED: ${{ steps.share_signing.outputs.enabled }}
+          SHARE_PROFILE_NAME: ${{ steps.share_signing.outputs.profile_name }}
         run: |
           set -euo pipefail
           EXPORT_DIR="${RUNNER_TEMP}/ios-release/export"
           EXPORT_OPTIONS="${RUNNER_TEMP}/ios-release/ExportOptions.plist"
           mkdir -p "${EXPORT_DIR}"
+          SHARE_PROFILE_SPECIFIER="${SLOCK_IOS_SHARE_EXTENSION_PROFILE_SPECIFIER:-${SHARE_PROFILE_NAME}}"
           if [ -n "${SLOCK_IOS_EXPORT_OPTIONS_PLIST_BASE64:-}" ]; then
             echo "${SLOCK_IOS_EXPORT_OPTIONS_PLIST_BASE64}" | base64 --decode > "${EXPORT_OPTIONS}"
+            if [ "${SHARE_EXTENSION_ENABLED}" = "true" ]; then
+              /usr/libexec/PlistBuddy -c "Print :provisioningProfiles" "${EXPORT_OPTIONS}" >/dev/null 2>&1 \
+                || /usr/libexec/PlistBuddy -c "Add :provisioningProfiles dict" "${EXPORT_OPTIONS}"
+              /usr/libexec/PlistBuddy -c "Set :provisioningProfiles:build.raft.app.share ${SHARE_PROFILE_SPECIFIER}" "${EXPORT_OPTIONS}" 2>/dev/null \
+                || /usr/libexec/PlistBuddy -c "Add :provisioningProfiles:build.raft.app.share string ${SHARE_PROFILE_SPECIFIER}" "${EXPORT_OPTIONS}"
+            fi
           else
             TEAM_ID="${SLOCK_IOS_APPLE_TEAM_ID:-${PROFILE_TEAM}}"
             PROFILE_SPECIFIER="${SLOCK_IOS_PROVISIONING_PROFILE_SPECIFIER:-${PROFILE_NAME}}"
@@ -510,6 +576,9 @@ jobs:
             /usr/libexec/PlistBuddy -c "Add :uploadSymbols bool true" "${EXPORT_OPTIONS}"
             /usr/libexec/PlistBuddy -c "Add :provisioningProfiles dict" "${EXPORT_OPTIONS}"
             /usr/libexec/PlistBuddy -c "Add :provisioningProfiles:build.raft.app string ${PROFILE_SPECIFIER}" "${EXPORT_OPTIONS}"
+            if [ "${SHARE_EXTENSION_ENABLED}" = "true" ]; then
+              /usr/libexec/PlistBuddy -c "Add :provisioningProfiles:build.raft.app.share string ${SHARE_PROFILE_SPECIFIER}" "${EXPORT_OPTIONS}"
+            fi
           fi
           xcodebuild \
             -exportArchive \
@@ -530,6 +599,8 @@ jobs:
       - name: Validate IPA + dSYM boundary
         id: validate
         shell: bash
+        env:
+          SHARE_EXTENSION_ENABLED: ${{ steps.share_signing.outputs.enabled }}
         run: |
           set -euo pipefail
           TMP_DIR="$(mktemp -d)"
@@ -548,10 +619,25 @@ jobs:
           [ "${VERSION_CODE}" != "1" ] || { echo "CFBundleVersion must not be the project default 1" >&2; exit 1; }
           [ -f "${APP_PATH}/embedded.mobileprovision" ] || { echo "embedded.mobileprovision missing" >&2; exit 1; }
           # The signed app must carry every capability the source declares (Universal Links:
-          # applinks:app.raft.build / open.raft.build), never a silently reduced set.
+          # applinks:app.raft.build / open.raft.build, App Groups, Sign In with Apple, Push),
+          # never a silently reduced set.
           codesign -d --entitlements - --xml "${APP_PATH}" > "${TMP_DIR}/signed-entitlements.plist"
           python3 -I scripts/ci/check_ios_profile_entitlements.py signed \
             "${TMP_DIR}/signed-entitlements.plist" compose/iosApp/iosApp/iosApp.entitlements
+          SHARE_APP_PATH="${APP_PATH}/PlugIns/RaftShareExtension.appex"
+          if [ "${SHARE_EXTENSION_ENABLED}" = "true" ]; then
+            [ -d "${SHARE_APP_PATH}" ] || { echo "Raft Share Extension missing" >&2; exit 1; }
+            [ -f "${SHARE_APP_PATH}/embedded.mobileprovision" ] || { echo "Share Extension embedded.mobileprovision missing" >&2; exit 1; }
+            SHARE_BUNDLE_ID="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "${SHARE_APP_PATH}/Info.plist")"
+            [ "${SHARE_BUNDLE_ID}" = "build.raft.app.share" ] || { echo "Unexpected Share Extension bundle id: ${SHARE_BUNDLE_ID}" >&2; exit 1; }
+            [ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "${SHARE_APP_PATH}/Info.plist")" = "${RAFT_IOS_VERSION_NAME}" ] || { echo "Share Extension marketing version mismatch" >&2; exit 1; }
+            [ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "${SHARE_APP_PATH}/Info.plist")" = "${RAFT_IOS_VERSION_CODE}" ] || { echo "Share Extension build version mismatch" >&2; exit 1; }
+            codesign -d --entitlements - --xml "${SHARE_APP_PATH}" > "${TMP_DIR}/share-signed-entitlements.plist"
+            python3 -I scripts/ci/check_ios_profile_entitlements.py signed \
+              "${TMP_DIR}/share-signed-entitlements.plist" compose/iosApp/ShareExtension/ShareExtension.entitlements
+          else
+            [ ! -d "${SHARE_APP_PATH}" ] || { echo "Unexpected RaftShareExtension.appex embedded while share signing is disabled" >&2; exit 1; }
+          fi
           # App strings and bundled files are Compose Multiplatform resources, copied by the
           # "[CP-User] Copy Compose resources to app" phase (:ui-cmp:syncComposeResourcesForXcodeApp).
           APP_RES="${APP_PATH}/compose-resources/composeResources/build.raft.app.resources"
@@ -630,6 +716,7 @@ jobs:
             echo "| **Hands channel target** | \`${{ needs.resolve.outputs.hands_channel }}\` |"
             echo "| **Runner** | \`${{ inputs.macos_runner || 'xcode-27-xlarge' }}\` |"
             echo "| **Xcode / iPhoneOS SDK** | \`${{ steps.toolchain.outputs.xcode_version || '?' }}\` / \`${{ steps.toolchain.outputs.ios_sdk_version || '?' }}\` (${{ needs.resolve.outputs.xcode_app_path }}, lane ${{ steps.toolchain.outputs.xcode_lane || '?' }}) |"
+            echo "| **iOS Share Extension** | \`${{ steps.share_signing.outputs.enabled == 'true' && 'included (build.raft.app.share)' || (steps.share_signing.outputs.enabled == 'false' && 'skipped (SLOCK_IOS_SHARE_EXTENSION_PROFILE_BASE64 not configured)' || '(did not run)') }}\` |"
             echo "| **Create Hands draft** | \`true\` |"
           } >> "$GITHUB_STEP_SUMMARY"
 

@@ -1,0 +1,8 @@
+"share_extension.preparing" = "Raftへの共有を準備しています…";
+"share_extension.saved_open_raft" = "共有内容を保存しました。Raftを開いて送信先を選び、送信してください。";
+"share_extension.done" = "完了";
+"share_extension.cancel" = "キャンセル";
+"share_extension.failed" = "共有の準備に失敗しました。Raftを開いてもう一度お試しください。";
+"share_extension.too_many_items" = "一度に共有できるのは最大9件です。";
+"share_extension.file_too_large" = "ファイルが大きすぎるため、Raftに共有できません。";
+"share_extension.unsupported" = "この形式の項目はRaftに共有できません。";

@@ -776,6 +776,7 @@ struct iOSApp: App {
         // task #436: register the SVG coder with SDWebImage for any remaining native SVG decode.
         SDImageCodersManager.shared.addCoder(SDImageSVGCoder.shared)
         RaftIosAppScopeMMKV.install()
+        RaftIosExternalShareEnvelopeHostKt.installRaftIosExternalShareEnvelopeHost()
         // WebM / MKV / ... attachments play in-app through MobileVLCKit (AVPlayer cannot demux them);
         // registered before the first page decides which attachments are previewable videos.
         RaftIosVlcVideo.install()

@@ -118,6 +118,12 @@ final class RaftIosSceneDelegate: UIResponder, UIWindowSceneDelegate {
         }
     }
 
+    func sceneWillEnterForeground(_ scene: UIScene) {
+        RaftIosExternalShareLaunch.resumePendingIfNeeded(
+            shellInstanceId: shellInstanceId(for: scene)
+        )
+    }
+
     func scene(_ scene: UIScene, continue userActivity: NSUserActivity) {
         if userActivity.activityType == NSUserActivityTypeBrowsingWeb {
             acceptBrowsingWebActivity(userActivity, source: "scene_continue")
@@ -261,6 +267,9 @@ extension UIColor {
 /// environment's web link and queues like a Universal Link. Anything else is ignored, as before.
 enum RaftIosOpenURL {
     static func accept(_ url: URL, shellInstanceId: String? = nil, source: String) {
+        if RaftIosExternalShareLaunch.accept(url, shellInstanceId: shellInstanceId, source: source) {
+            return
+        }
         if RaftIosMobileOAuthHost.shared.acceptCallbackURL(url, shellInstanceId: shellInstanceId, source: source) {
             return
         }

@@ -1,0 +1,8 @@
+"share_extension.preparing" = "Подготовка к отправке в Raft…";
+"share_extension.saved_open_raft" = "Сохранено для Raft. Откройте Raft, выберите чат и отправьте.";
+"share_extension.done" = "Готово";
+"share_extension.cancel" = "Отмена";
+"share_extension.failed" = "Не удалось подготовить отправку. Откройте Raft и попробуйте снова.";
+"share_extension.too_many_items" = "За один раз можно поделиться не более чем 9 элементами.";
+"share_extension.file_too_large" = "Файл слишком большой для отправки в Raft.";
+"share_extension.unsupported" = "Этим типом файла нельзя поделиться в Raft.";

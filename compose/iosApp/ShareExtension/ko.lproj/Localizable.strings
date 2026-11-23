@@ -1,0 +1,8 @@
+"share_extension.preparing" = "Raft로 공유할 항목을 준비하는 중…";
+"share_extension.saved_open_raft" = "공유할 항목을 저장했습니다. Raft를 열어 대화를 선택하고 보내세요.";
+"share_extension.done" = "완료";
+"share_extension.cancel" = "취소";
+"share_extension.failed" = "공유를 준비하지 못했습니다. Raft를 열어 다시 시도해 주세요.";
+"share_extension.too_many_items" = "한 번에 최대 9개 항목까지 공유할 수 있습니다.";
+"share_extension.file_too_large" = "파일 크기가 너무 커서 Raft로 공유할 수 없습니다.";
+"share_extension.unsupported" = "이 유형의 항목은 Raft로 공유할 수 없습니다.";

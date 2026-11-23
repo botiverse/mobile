@@ -412,6 +412,61 @@ class ExternalShareStoreTest {
             taskTitle = id
         )
 
+    @Test
+    fun iosZipEnvelopeHandsOffArchiveItemToComposerWithoutMimeRestriction() = runPortableCoroutineTest {
+        val zipEnvelope =
+            ExternalShareEnvelope(
+                token = "ios-wechat-zip-token-123456",
+                createdAtEpochMillis = 1_700_000_000_000L,
+                sourcePlatform = "ios",
+                text = "",
+                subject = "",
+                items =
+                    listOf(
+                        ExternalShareItem(
+                            localRef = "file:///private/var/mobile/Containers/Shared/AppGroup/test/ExternalShareInbox/ios-wechat-zip-token-123456/item-1-ChatHistory.zip",
+                            displayName = "微信聊天记录.zip",
+                            mimeType = "application/zip",
+                            sizeBytes = 4_096L
+                        )
+                    )
+            )
+        val dmTarget =
+            ForwardMessageTarget(
+                serverId = ServerId("srv-private"),
+                kind = ForwardMessageTargetKind.AgentDirectMessageCandidate,
+                id = "agent-1",
+                title = "AirenaAgent",
+                channelId = ChannelId("dm-agent-1"),
+                channelKind = ConversationKind.Dm
+            )
+        val envelopes = FakeEnvelopeRepository(zipEnvelope)
+        val drafts = FakeDraftRepository()
+        val targets = FakeTargetRepository(listOf(dmTarget))
+        val store = store(envelopes, drafts, targets)
+
+        store.dispatch(
+            ExternalShareIntent.Load(
+                token = zipEnvelope.token,
+                accountId = "acct-private",
+                serverId = "srv-private"
+            )
+        )
+
+        val selecting = store.awaitState<ExternalShareState.SelectingTargets> { !it.loading && it.targets.isNotEmpty() }
+        assertEquals(1, selecting.envelope.items.size)
+        assertEquals("application/zip", selecting.envelope.items.single().mimeType)
+        assertEquals("微信聊天记录.zip", selecting.envelope.items.single().displayName)
+
+        select(store, dmTarget)
+        store.dispatch(ExternalShareIntent.Continue)
+
+        val handoff = store.awaitState<ExternalShareState.ReadyForComposer>().handoff
+        assertEquals("srv-private", handoff.serverId)
+        assertEquals("resolved-agent-1", handoff.target.channelId?.value)
+        assertEquals("application/zip", handoff.envelope.items.single().mimeType)
+    }
+
     private class FakeEnvelopeRepository(
         private val value: ExternalShareEnvelope
     ) : ExternalShareEnvelopeRepository {
