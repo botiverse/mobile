@@ -5,7 +5,7 @@ platforms:
   - android
   - ios
 rollout: flag
-pull_request: TBD
+pull_request: 5527
 ---
 
 ## zh-CN
