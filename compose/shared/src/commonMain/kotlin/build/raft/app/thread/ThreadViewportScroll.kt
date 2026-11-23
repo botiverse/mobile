@@ -685,12 +685,13 @@ internal fun ThreadNewMessagesBelowEffect(
 
 internal fun ThreadListViewport.shouldShowThreadBackToBottom(latestItemIndex: Int): Boolean {
     if (latestItemIndex <= 0) return false
+    if (virtualState?.isJumpSettling == true) return false
     if (!canScrollForward) return false
     val layoutInfo = layoutInfo
     if (layoutInfo.totalItemsCount <= latestItemIndex) return false
     val latestItem = layoutInfo.visibleItemsInfo.firstOrNull { it.index == latestItemIndex }
     val latestBottom = latestItem?.let { it.offset + it.size } ?: return true
-    return latestBottom < layoutInfo.viewportEndOffset - ThreadBackToBottomTolerancePx
+    return latestBottom > layoutInfo.viewportEndOffset + ThreadBackToBottomTolerancePx
 }
 
 /**

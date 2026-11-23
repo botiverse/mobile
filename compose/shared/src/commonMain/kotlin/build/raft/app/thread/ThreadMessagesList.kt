@@ -763,6 +763,23 @@ private fun ThreadMessagesListContent(
     if (useVirtualTimeline && virtualProjection != null && virtualObserver != null) {
         SideEffect { virtualObserver(virtualTimelineState, virtualProjection) }
     }
+    val diagnosticsLoggerHolder = remember { ThreadDiagnosticsLoggerHolder(diagnosticsLogger) }
+    SideEffect { diagnosticsLoggerHolder.current = diagnosticsLogger }
+    if (useVirtualTimeline) {
+        DisposableEffect(virtualTimelineState) {
+            virtualTimelineState.onStabilityEvent = { event ->
+                diagnosticsLoggerHolder.current(event.toDiagnosticsLine())
+            }
+            onDispose {
+                diagnosticsLoggerHolder.current(
+                    virtualTimelineState.stabilityTracer
+                        .summary(virtualTimelineState.maxJumpAlignmentErrorPx)
+                        .toDiagnosticsLine()
+                )
+                virtualTimelineState.onStabilityEvent = null
+            }
+        }
+    }
     var allowBottomAutoAnchor by remember(threadInstanceKey) {
         mutableStateOf(initialFocusedItemIndex < 0)
     }
@@ -2823,6 +2840,7 @@ private fun ThreadMessagesListContent(
                 scrollInterruptedIdentity = scrollInterruptedFocusedMessageAnchorIdentity
             )
         ) {
+            if (!initialBottomAnchorReady) initialBottomAnchorReady = true
             return@LaunchedEffect
         }
         val targetIndex = focusedListItemIndexFor(renderPayload)
@@ -2837,11 +2855,11 @@ private fun ThreadMessagesListContent(
         // programmatic scrollToItem would cancel the gesture (task #554).
         if (listState.isScrollInProgress) {
             scrollInterruptedFocusedMessageAnchorIdentity = targetIdentity
+            initialBottomAnchorReady = true
             return@LaunchedEffect
         }
         activeFocusedMessageId = targetMessageId
         allowBottomAutoAnchor = false
-        initialBottomAnchorReady = true
         // task #990 kill-switch: on stop-loss platforms, a focus request
         // arriving after the keyboard is already open never sees a 0->open
         // transition, so the rise-cancel can never fire for it — the initial
@@ -2859,6 +2877,7 @@ private fun ThreadMessagesListContent(
             )
         ) {
             activeFocusedMessageId = null
+            initialBottomAnchorReady = true
             return@LaunchedEffect
         }
         if (
@@ -2894,6 +2913,7 @@ private fun ThreadMessagesListContent(
         if (focusCommandId != null) {
             awaitViewportCommandSettlement(focusCommandId)
         }
+        initialBottomAnchorReady = true
         val didFocus = listState.focusedAnchorTargetOffset(targetIndex) != null
         if (!didFocus) {
             diagnosticsLogger(
@@ -3167,6 +3187,7 @@ private fun ThreadMessagesListContent(
     }
     LaunchedEffect(
         threadInstanceKey,
+        renderPayload.status,
         renderPayload.focusedMessageId,
         renderPayload.focusedMessageRequestNonce,
         focusedMessageTargetSignature,
@@ -3178,6 +3199,7 @@ private fun ThreadMessagesListContent(
         newerPageCycleActive
     ) {
         if (shareSelectionCaptureActive || latestItemIndex < 0) return@LaunchedEffect
+        if (renderPayload.status == "loading" && renderPayload.messages.isEmpty()) return@LaunchedEffect
         if (newerPageCycleActive) {
             allowBottomAutoAnchor = false
             return@LaunchedEffect
@@ -4865,11 +4887,12 @@ private fun ThreadMessagesListContent(
         // Read through a derived state: this scope is huge, and reading canScrollForward /
         // layoutInfo here directly recomposed all of it on every scroll frame while scrolled up.
         // It now recomposes only when one of the two booleans flips.
+        val virtualJumpSettling = useVirtualTimeline && virtualTimelineState.isJumpSettling
         val backToBottomViewportSignals by rememberThreadBackToBottomViewportSignals(listState, latestItemIndex)
         val shouldShowBackToBottomButton =
             shouldShowThreadBackToBottomButton(
                 ThreadBackToBottomButtonState(
-                    initialBottomAnchorReady = initialBottomAnchorReady,
+                    initialBottomAnchorReady = initialBottomAnchorReady && !virtualJumpSettling,
                     pendingKeyboardBottomAnchor = pendingKeyboardBottomAnchor,
                     bottomAutoAnchorOwnsViewport = allowBottomAutoAnchor,
                     canScrollTowardBottom = backToBottomViewportSignals.canScrollTowardBottom,
@@ -4877,7 +4900,9 @@ private fun ThreadMessagesListContent(
                     latestItemOffBottom = backToBottomViewportSignals.latestItemOffBottom
                 )
             )
-        RaftScrollFrameSignalEffect(list = "thread") { listState.isScrollInProgress }
+        RaftScrollFrameSignalEffect(list = if (useVirtualTimeline) "thread_virtual" else "thread") {
+            listState.isScrollInProgress
+        }
         // One line whenever an input of the "Back to bottom" pill changes (not on every scroll frame),
         // with the raw list position at that moment: reversed lists left the pill on after a local send
         // (HuaTuo, #raft-mobile-reconcile:6dbbf8b9) and the pill's inputs were not logged anywhere.
@@ -5024,6 +5049,8 @@ private fun ThreadMessagesListContent(
         )
         val unreadThreadJumpActive =
             jumpInputs.unreadThreadPillEnabled &&
+                initialBottomAnchorReady &&
+                !virtualJumpSettling &&
                 routeActive &&
                 hostForeground &&
                 !inlineSearchVisible &&
@@ -5756,6 +5783,10 @@ private data class ThreadNewerPageCycle(
 
 private class ThreadUserScrollGeneration(
     var value: Int = 0
+)
+
+private class ThreadDiagnosticsLoggerHolder(
+    var current: (String) -> Unit
 )
 
 private fun ThreadListViewport.isThreadItemVisible(index: Int): Boolean {

@@ -11,6 +11,7 @@ import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshots.Snapshot
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
@@ -68,6 +69,7 @@ import build.raft.app.thread.experiment.LocalThreadViewportObserver
 import build.raft.app.thread.experiment.LocalThreadVirtualTimelineObserver
 import build.raft.app.thread.experiment.ThreadVirtualRowProjection
 import build.raft.app.thread.experiment.VirtualMessageTimelineState
+import build.raft.app.thread.experiment.VirtualTimelineTransitionCause
 import build.raft.designsystem.components.RaftToastHostState
 import kotlin.math.abs
 import kotlin.test.AfterTest
@@ -159,6 +161,8 @@ class ThreadVirtualTimelineE2eComparisonUiTest {
         initialViewportHeightDp: Dp? = null,
         val timeRevealAvailable: Boolean = false,
         val headerOriginalState: ThreadHeaderOriginalState? = null,
+        initialJumpInputs: ThreadJumpInputs = ThreadJumpInputs(),
+        initialReplyMetadataByParentId: Map<String, ThreadReplyMetadata> = emptyMap(),
     ) {
         var threadInstanceKey by mutableStateOf(initialPayload.instanceId)
         var payload by mutableStateOf(initialPayload)
@@ -166,6 +170,8 @@ class ThreadVirtualTimelineE2eComparisonUiTest {
         var composerKeyboardInsetDp by mutableFloatStateOf(0f)
         var viewportHeightDp by mutableStateOf(initialViewportHeightDp)
         var headerScrollToTopRequest by mutableIntStateOf(0)
+        var jumpInputs by mutableStateOf(initialJumpInputs)
+        var replyMetadataByParentId by mutableStateOf(initialReplyMetadataByParentId)
         var lastVisibleReadTailIndex: Int? = null
         var viewport: ThreadListViewport? = null
         var virtualState: VirtualMessageTimelineState? = null
@@ -202,8 +208,9 @@ class ThreadVirtualTimelineE2eComparisonUiTest {
                             renderConfig = payload.toThreadTimelineRenderConfig(),
                             messageBodyTextStyle = TextStyle.Default,
                             timelineSlice = payload.toThreadTimelineSlice(),
-                            replyMetadataByParentId = emptyMap(),
+                            replyMetadataByParentId = harness.replyMetadataByParentId,
                             activeReplyDraftParentMessageIds = emptySet(),
+                            jumpInputs = harness.jumpInputs,
                             composerKeyboardInsetDp = harness.composerKeyboardInsetDp,
                             linkedTasksProjection = ThreadLinkedTasksProjection(authoritative = true, lookup = emptyMap()),
                             highlightedMentions = emptySet(),
@@ -1107,6 +1114,314 @@ class ThreadVirtualTimelineE2eComparisonUiTest {
             | ${virtual.engine.padEnd(23)} | ${virtual.originOutOfViewAtBottom.toString().padStart(17)} | ${virtual.originBackInViewAfterTopJump.toString().padStart(18)} | ${virtual.timeRevealShownOnSwipe.toString().padStart(15)} | ${virtual.timeRevealClearedAfterRelease.toString().padStart(15)}
             """.trimMargin()
         )
+    }
+
+    // ---------------------------------------------------------------------------------------------
+    // E2E-8: Zero bottom-pill flash on cold open + full runtime state-change jump audit
+    // ---------------------------------------------------------------------------------------------
+
+    @Test
+    fun e2e08_noBackToBottomPillFlashOnOpenAndStateChangeJumpAudit() {
+        // Sub-case A: Cold open from loading (empty) -> 40 messages with unread thread at tail.
+        // Inspect EVERY individual frame so a 1-frame white capsule flash cannot slip past settle().
+        var loadingOpenFlashFrames = 0
+        runRobolectricComposeUiTest {
+            val messages = (1..40).map { chatMessage(it, "Loading-to-content message #$it") }
+            val harness =
+                PayloadHarness(
+                    initialPayload =
+                        RaftThreadScreenPayload(
+                            instanceId = "e2e8-loading-open",
+                            sourceThreadId = "channel-1",
+                            streamChannelId = "channel-1",
+                            status = "loading",
+                            messages = emptyList(),
+                            canLoadMoreBefore = true,
+                            canLoadMoreAfter = false,
+                            canSend = true,
+                        ),
+                    useVirtual = true,
+                    initialJumpInputs =
+                        ThreadJumpInputs(
+                            channelId = "channel-1",
+                            unreadThreadPillEnabled = true,
+                        ),
+                    initialReplyMetadataByParentId =
+                        mapOf(
+                            "m40" to
+                                ThreadReplyMetadata(
+                                    parentMessageId = "m40",
+                                    threadChannelId = "thread-40",
+                                    replyCount = 3,
+                                    unreadReplyCount = 2,
+                                    firstUnreadReplyMessageId = "r1",
+                                    isThreadFollowed = true,
+                                )
+                        ),
+                )
+            mainClock.autoAdvance = false
+            hostPayload(harness, settleAfterMount = false)
+            repeat(4) {
+                mainClock.advanceTimeByFrame()
+                if (
+                    onAllNodesWithText("Back to bottom", substring = true, ignoreCase = true).fetchSemanticsNodes().isNotEmpty() ||
+                    onAllNodesWithText("unread thread", substring = true, ignoreCase = true).fetchSemanticsNodes().isNotEmpty()
+                ) {
+                    loadingOpenFlashFrames += 1
+                }
+            }
+            var sawTailDuringManualFrames = false
+            runOnUiThread {
+                harness.payload = harness.payload.copy(status = "content", messages = messages)
+                Snapshot.sendApplyNotifications()
+            }
+            repeat(12) {
+                mainClock.advanceTimeByFrame()
+                if (
+                    onAllNodesWithText("Back to bottom", substring = true, ignoreCase = true).fetchSemanticsNodes().isNotEmpty() ||
+                    onAllNodesWithText("unread thread", substring = true, ignoreCase = true).fetchSemanticsNodes().isNotEmpty()
+                ) {
+                    loadingOpenFlashFrames += 1
+                }
+                if (boundsForText("Loading-to-content message #40") != null) {
+                    sawTailDuringManualFrames = true
+                }
+            }
+            mainClock.autoAdvance = true
+            settle()
+            assertEquals(0, loadingOpenFlashFrames, "Bottom jump capsule flashed on loading->content open")
+            assertTrue(sawTailDuringManualFrames, "Expected tail message #40 to appear during manual loading->content frames")
+            assertNotNull(boundsForText("Loading-to-content message #40"))
+        }
+
+        // Sub-case A2: Reply-thread cold open with originStatus="loading" & empty messages -> loaded replies.
+        // Directly exercises the status=="loading" && messages.isEmpty() guard when the list is already mounted.
+        var replyThreadLoadingFlashFrames = 0
+        runRobolectricComposeUiTest {
+            val origin =
+                RaftThreadMessageItem(
+                    id = "origin-root-e2e8",
+                    authorId = "u1",
+                    authorName = "Artin",
+                    seq = 1L,
+                    body = "Reply thread origin root",
+                    timestampLabel = "2026-07-29T10:00:00Z",
+                )
+            val replies = (2..35).map { chatMessage(it, "Reply thread loaded #$it") }
+            val harness =
+                PayloadHarness(
+                    initialPayload =
+                        RaftThreadScreenPayload(
+                            instanceId = "e2e8-reply-loading-open",
+                            surfaceKind = RaftThreadSurfaceKind.ReplyThread,
+                            sourceThreadId = "thread-root-e2e8",
+                            streamChannelId = "channel-1",
+                            parentMessageId = origin.id,
+                            originStatus = "loading",
+                            originMessage = null,
+                            status = "loading",
+                            messages = emptyList(),
+                            canLoadMoreBefore = false,
+                            canLoadMoreAfter = false,
+                            canSend = true,
+                        ),
+                    useVirtual = true,
+                )
+            mainClock.autoAdvance = false
+            hostPayload(harness, settleAfterMount = false)
+            repeat(4) {
+                mainClock.advanceTimeByFrame()
+                if (onAllNodesWithText("Back to bottom", substring = true, ignoreCase = true).fetchSemanticsNodes().isNotEmpty()) {
+                    replyThreadLoadingFlashFrames += 1
+                }
+            }
+            var sawReplyTailDuringManualFrames = false
+            runOnUiThread {
+                harness.payload =
+                    harness.payload.copy(
+                        originStatus = "ready",
+                        originMessage = origin,
+                        status = "content",
+                        messages = replies,
+                    )
+                Snapshot.sendApplyNotifications()
+            }
+            repeat(12) {
+                mainClock.advanceTimeByFrame()
+                if (onAllNodesWithText("Back to bottom", substring = true, ignoreCase = true).fetchSemanticsNodes().isNotEmpty()) {
+                    replyThreadLoadingFlashFrames += 1
+                }
+                if (boundsForText("Reply thread loaded #35") != null) {
+                    sawReplyTailDuringManualFrames = true
+                }
+            }
+            mainClock.autoAdvance = true
+            settle()
+            assertEquals(0, replyThreadLoadingFlashFrames, "Back to bottom capsule flashed during reply-thread loading->content open")
+            assertTrue(sawReplyTailDuringManualFrames, "Expected reply #35 to appear during manual reply-thread frames")
+            assertNotNull(boundsForText("Reply thread loaded #35"))
+        }
+
+        // Sub-case B: Cold focused open on a message right at the bottom (m39 of 40) must NEVER
+        // flash the "Back to bottom" pill before or after the focus jump settles.
+        var focusedBottomFlashFrames = 0
+        runRobolectricComposeUiTest {
+            val messages = (1..40).map { chatMessage(it, "Near-tail focused message #$it") }
+            val harness =
+                PayloadHarness(
+                    initialPayload =
+                        RaftThreadScreenPayload(
+                            instanceId = "e2e8-focused-tail",
+                            sourceThreadId = "channel-1",
+                            streamChannelId = "channel-1",
+                            status = "content",
+                            messages = messages,
+                            focusedMessageId = "m39",
+                            focusedMessageRequestNonce = 1,
+                            canLoadMoreBefore = true,
+                            canLoadMoreAfter = false,
+                            canSend = true,
+                        ),
+                    useVirtual = true,
+                )
+            mainClock.autoAdvance = false
+            hostPayload(harness, settleAfterMount = false)
+            repeat(15) {
+                mainClock.advanceTimeByFrame()
+                if (onAllNodesWithText("Back to bottom", substring = true, ignoreCase = true).fetchSemanticsNodes().isNotEmpty()) {
+                    focusedBottomFlashFrames += 1
+                }
+            }
+            mainClock.autoAdvance = true
+            settle()
+            assertEquals(0, focusedBottomFlashFrames, "Back to bottom capsule flashed during near-tail focused open")
+        }
+
+        // Sub-case C: Full runtime state-change jump audit on VirtualMessageTimeline.
+        runRobolectricComposeUiTest {
+            val baseMessages = (20..59).map { chatMessage(it, "Audit timeline message #$it") }
+            val harness =
+                PayloadHarness(
+                    initialPayload =
+                        RaftThreadScreenPayload(
+                            instanceId = "e2e8-stability-audit",
+                            sourceThreadId = "channel-1",
+                            streamChannelId = "channel-1",
+                            status = "content",
+                            messages = baseMessages,
+                            canLoadMoreBefore = true,
+                            canLoadMoreAfter = false,
+                            canSend = true,
+                        ),
+                    useVirtual = true,
+                    initialViewportHeightDp = 700.dp,
+                )
+            hostPayload(harness)
+
+            // 1. Typing indicator toggle while following bottom.
+            runOnIdle {
+                harness.typing = ThreadAgentTypingUi(serverId = "srv-1", agents = listOf(ThreadTypingAgent("a1", "Niko", null)))
+            }
+            settle()
+            runOnIdle { harness.typing = null }
+            settle()
+
+            // 2. Realtime appends while following bottom.
+            var current = baseMessages
+            for (seq in 60..62) {
+                current = current + chatMessage(seq, "Realtime audit append #$seq")
+                runOnIdle { harness.payload = harness.payload.copy(messages = current) }
+                settle()
+            }
+
+            // 3. IME shrink & restore while following bottom.
+            runOnIdle {
+                harness.composerKeyboardInsetDp = 300f
+                harness.viewportHeightDp = 400.dp
+            }
+            settle()
+            runOnIdle {
+                harness.composerKeyboardInsetDp = 0f
+                harness.viewportHeightDp = 700.dp
+            }
+            settle()
+
+            // 4. Jump to mid-history (m35) -> Back to bottom pill must now appear cleanly.
+            runOnIdle {
+                harness.payload = harness.payload.copy(focusedMessageId = "m35", focusedMessageRequestNonce = 1)
+            }
+            settle()
+            assertTrue(
+                onAllNodesWithText("Back to bottom", substring = true, ignoreCase = true).fetchSemanticsNodes().isNotEmpty(),
+                "Back to bottom pill should show when scrolled up to mid-history m35",
+            )
+
+            // 5. Older-page prepend while reading mid-history m35.
+            val older = (5..19).map { seq ->
+                chatMessage(seq, "Prepended history #$seq\nExtra line #$seq")
+                    .copy(timestampLabel = "2026-07-29T22:00:${(seq % 60).toString().padStart(2, '0')}Z")
+            }
+            runOnIdle { harness.payload = harness.payload.copy(olderMessagesStatus = "loading") }
+            settle()
+            current = older + current
+            runOnIdle { harness.payload = harness.payload.copy(messages = current, olderMessagesStatus = "idle") }
+            settle()
+
+            // 6. In-place row height growth above anchor (m34 expands to multi-paragraph text) while at m35.
+            val edited =
+                current.map { msg ->
+                    if (msg.id == "m34") {
+                        msg.copy(body = "Expanded audit row #34\n" + "Line of async edited content\n".repeat(6))
+                    } else {
+                        msg
+                    }
+                }
+            runOnIdle { harness.payload = harness.payload.copy(messages = edited) }
+            settle()
+
+            // 7. IME shrink while reading mid-history m35.
+            runOnIdle {
+                harness.composerKeyboardInsetDp = 300f
+                harness.viewportHeightDp = 400.dp
+            }
+            settle()
+
+            val virtualState = assertNotNull(harness.virtualState)
+            val summary = virtualState.stabilityTracer.summary(virtualState.maxJumpAlignmentErrorPx)
+            assertEquals(
+                0,
+                summary.unexpectedJumpCount,
+                "Unexpected visual jump detected during state transitions: ${virtualState.stabilityTracer.recentEvents().filter { it.unexpectedJump }}",
+            )
+            assertTrue(summary.maxAnchorDriftPx <= 1, "maxAnchorDriftPx exceeded 1px: ${summary.maxAnchorDriftPx}")
+            assertTrue(summary.maxTailDriftPx <= 1, "maxTailDriftPx exceeded 1px: ${summary.maxTailDriftPx}")
+            assertTrue(
+                (summary.countsByCause[VirtualTimelineTransitionCause.Prepend] ?: 0) > 0,
+                "Expected Prepend transitions in stability summary: ${summary.countsByCause}",
+            )
+            assertTrue(
+                (summary.countsByCause[VirtualTimelineTransitionCause.Append] ?: 0) > 0,
+                "Expected Append transitions in stability summary: ${summary.countsByCause}",
+            )
+            assertTrue(
+                (summary.countsByCause[VirtualTimelineTransitionCause.ViewportResize] ?: 0) > 0,
+                "Expected ViewportResize transitions in stability summary: ${summary.countsByCause}",
+            )
+            assertTrue(
+                (summary.countsByCause[VirtualTimelineTransitionCause.RowHeightChange] ?: 0) > 0,
+                "Expected RowHeightChange transitions in stability summary: ${summary.countsByCause}",
+            )
+            assertTrue(harness.log.any { it.startsWith("vtl_stability ") }, "Expected vtl_stability diagnostics lines")
+            assertTrue(harness.log.none { "vtl_stability status=JUMP" in it }, "Unexpected JUMP log: ${harness.log.filter { "status=JUMP" in it }}")
+
+            recordComparisonTable(
+                """
+                |=== [E2E-8] VirtualMessageTimeline: Zero Open Pill Flash + Runtime State-Change Jump Audit ===
+                | LoadingOpenFlashFrames=$loadingOpenFlashFrames ReplyLoadingFlashFrames=$replyThreadLoadingFlashFrames FocusedTailFlashFrames=$focusedBottomFlashFrames
+                | ${summary.toDiagnosticsLine()}
+                """.trimMargin()
+            )
+        }
     }
 
     private companion object {

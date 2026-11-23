@@ -28,6 +28,8 @@ import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
+import build.raft.app.markdown.traceBegin
+import build.raft.app.markdown.traceEnd
 import build.raft.app.topVisibleItem
 import kotlin.math.abs
 import kotlin.math.max
@@ -226,6 +228,8 @@ internal class VirtualMessageTimelineState(
         get() = topVisibleItem(layoutInfo)?.let { (-it.offset).coerceAtLeast(0) } ?: 0
 
     // Diagnostics & comparison instrumentation (plain fields: never invalidate composition).
+    val stabilityTracer: VirtualTimelineStabilityTracer = VirtualTimelineStabilityTracer()
+    var onStabilityEvent: ((VirtualTimelineStabilityEvent) -> Unit)? = null
     var measurePassCount: Int = 0
         private set
     var totalItemMeasureCalls: Int = 0
@@ -235,6 +239,8 @@ internal class VirtualMessageTimelineState(
     var lastPinnedOffViewportCount: Int = 0
         private set
     var lastJumpAlignmentErrorPx: Int = 0
+        private set
+    var maxJumpAlignmentErrorPx: Int = 0
         private set
     var lastJumpConvergencePasses: Int = 0
         private set
@@ -291,69 +297,91 @@ internal class VirtualMessageTimelineState(
         preserveAnchorOnPrepend: Boolean = true,
         triggerMeasure: Boolean = true,
     ) {
-        val shouldPreserveAnchor =
-            preserveAnchorOnPrepend && pendingJump == null && !followBottom && lastVisibleItems.isNotEmpty()
-        val previousVisible = if (shouldPreserveAnchor) lastVisibleItems else emptyList()
-        val changed = heightIndex.syncKeys(keys)
-        if (!changed) return
+        traceBegin("vtl.sync_keys")
+        try {
+            val shouldPreserveAnchor =
+                preserveAnchorOnPrepend && pendingJump == null && !followBottom && lastVisibleItems.isNotEmpty()
+            val previousVisible = if (shouldPreserveAnchor) lastVisibleItems else emptyList()
+            val oldCount = heightIndex.itemCount
+            val oldFirstKey = if (oldCount > 0) heightIndex.keyAt(0) else null
+            val trackedKey = stabilityTracer.trackedAnchorKey
+            val trackedOldIndex = trackedKey?.let { heightIndex.indexOfKey(it) } ?: -1
+            val changed = heightIndex.syncKeys(keys)
+            if (!changed) return
 
-        if (followBottom && pendingJump == null) {
-            transientAnchorKey = null
-            scrollOffsetPx = maxScrollOffsetPx.toFloat()
-        } else if (shouldPreserveAnchor) {
-            val preferred = pinnedReadingAnchorKey
-            val preferredCandidate =
-                if (preferred != null) {
-                    previousVisible.firstOrNull { item ->
-                        !item.isPinnedOffViewport &&
-                            item.key == preferred &&
-                            heightIndex.indexOfKey(item.key) >= 0
+            if (oldCount > 0 && heightIndex.itemCount > 0) {
+                val trackedNewIndex = trackedKey?.let { heightIndex.indexOfKey(it) } ?: -1
+                val oldFirstNewIndex = oldFirstKey?.let { heightIndex.indexOfKey(it) } ?: -1
+                val changeCause =
+                    when {
+                        trackedOldIndex >= 0 && trackedNewIndex > trackedOldIndex -> VirtualTimelineTransitionCause.Prepend
+                        heightIndex.itemCount > oldCount && oldFirstNewIndex > 0 -> VirtualTimelineTransitionCause.Prepend
+                        heightIndex.itemCount > oldCount && oldFirstNewIndex == 0 -> VirtualTimelineTransitionCause.Append
+                        else -> VirtualTimelineTransitionCause.KeyListChange
                     }
-                } else {
-                    null
-                }
-            val chosen =
-                preferredCandidate
-                    ?: previousVisible.firstOrNull { item ->
-                        !item.isPinnedOffViewport &&
-                            item.anchorable &&
-                            item.offsetPx >= 0 &&
-                            heightIndex.indexOfKey(item.key) >= 0
-                    }
-                    ?: previousVisible.firstOrNull { item ->
-                        !item.isPinnedOffViewport &&
-                            item.anchorable &&
-                            item.offsetPx + item.sizePx > 0 &&
-                            heightIndex.indexOfKey(item.key) >= 0
-                    }
-                    ?: previousVisible.firstOrNull { item ->
-                        !item.isPinnedOffViewport &&
-                            item.offsetPx >= 0 &&
-                            heightIndex.indexOfKey(item.key) >= 0
-                    }
-                    ?: previousVisible.firstOrNull { item ->
-                        !item.isPinnedOffViewport &&
-                            item.offsetPx + item.sizePx > 0 &&
-                            heightIndex.indexOfKey(item.key) >= 0
-                    }
-            if (chosen != null) {
-                val newIndex = heightIndex.indexOfKey(chosen.key)
-                if (newIndex >= 0) {
-                    val restoredScroll =
-                        (heightIndex.offsetOf(newIndex) - chosen.offsetPx)
-                            .coerceIn(0, maxScrollOffsetPx)
-                    scrollOffsetPx = restoredScroll.toFloat()
-                    transientAnchorKey = chosen.key
-                    transientAnchorViewportTopPx = chosen.offsetPx
-                }
+                stabilityTracer.noteKeyListChange(changeCause)
             }
-        } else if (pendingJump == null) {
-            transientAnchorKey = null
-            scrollOffsetPx = scrollOffsetPx.coerceIn(0f, maxScrollOffsetPx.toFloat())
-        }
-        if (triggerMeasure) {
-            updateScrollBoundsFlags()
-            invalidateMeasureSafe()
+
+            if (followBottom && pendingJump == null) {
+                transientAnchorKey = null
+                scrollOffsetPx = maxScrollOffsetPx.toFloat()
+            } else if (shouldPreserveAnchor) {
+                val preferred = pinnedReadingAnchorKey
+                val preferredCandidate =
+                    if (preferred != null) {
+                        previousVisible.firstOrNull { item ->
+                            !item.isPinnedOffViewport &&
+                                item.key == preferred &&
+                                heightIndex.indexOfKey(item.key) >= 0
+                        }
+                    } else {
+                        null
+                    }
+                val chosen =
+                    preferredCandidate
+                        ?: previousVisible.firstOrNull { item ->
+                            !item.isPinnedOffViewport &&
+                                item.anchorable &&
+                                item.offsetPx >= 0 &&
+                                heightIndex.indexOfKey(item.key) >= 0
+                        }
+                        ?: previousVisible.firstOrNull { item ->
+                            !item.isPinnedOffViewport &&
+                                item.anchorable &&
+                                item.offsetPx + item.sizePx > 0 &&
+                                heightIndex.indexOfKey(item.key) >= 0
+                        }
+                        ?: previousVisible.firstOrNull { item ->
+                            !item.isPinnedOffViewport &&
+                                item.offsetPx >= 0 &&
+                                heightIndex.indexOfKey(item.key) >= 0
+                        }
+                        ?: previousVisible.firstOrNull { item ->
+                            !item.isPinnedOffViewport &&
+                                item.offsetPx + item.sizePx > 0 &&
+                                heightIndex.indexOfKey(item.key) >= 0
+                        }
+                if (chosen != null) {
+                    val newIndex = heightIndex.indexOfKey(chosen.key)
+                    if (newIndex >= 0) {
+                        val restoredScroll =
+                            (heightIndex.offsetOf(newIndex) - chosen.offsetPx)
+                                .coerceIn(0, maxScrollOffsetPx)
+                        scrollOffsetPx = restoredScroll.toFloat()
+                        transientAnchorKey = chosen.key
+                        transientAnchorViewportTopPx = chosen.offsetPx
+                    }
+                }
+            } else if (pendingJump == null) {
+                transientAnchorKey = null
+                scrollOffsetPx = scrollOffsetPx.coerceIn(0f, maxScrollOffsetPx.toFloat())
+            }
+            if (triggerMeasure) {
+                updateScrollBoundsFlags()
+                invalidateMeasureSafe()
+            }
+        } finally {
+            traceEnd()
         }
     }
 
@@ -392,31 +420,44 @@ internal class VirtualMessageTimelineState(
         reserveBottomPx: Int = 0,
         suppressAutoLoad: Boolean = true,
     ) {
-        followBottom = false
-        pinnedReadingAnchorKey = null
-        transientAnchorKey = null
-        pendingJump =
-            PendingJumpRequest.ByKey(
-                key = key,
-                align = align,
-                reserveBottomPx = reserveBottomPx.coerceAtLeast(0),
-                remainingSettlePasses = MaxJumpSettlePasses,
-            )
-        isJumpSettling = true
-        lastJumpConvergencePasses = 0
-        if (suppressAutoLoad) {
-            isAutoLoadSuppressed = true
+        traceBegin("vtl.jump")
+        try {
+            followBottom = false
+            pinnedReadingAnchorKey = null
+            transientAnchorKey = null
+            pendingJump =
+                PendingJumpRequest.ByKey(
+                    key = key,
+                    align = align,
+                    reserveBottomPx = reserveBottomPx.coerceAtLeast(0),
+                    remainingSettlePasses = MaxJumpSettlePasses,
+                )
+            isJumpSettling = true
+            lastJumpConvergencePasses = 0
+            if (suppressAutoLoad) {
+                isAutoLoadSuppressed = true
+            }
+            val index = heightIndex.indexOfKey(key)
+            if (index >= 0 && viewportHeightPx > 0) {
+                val estimatedTop = heightIndex.offsetOf(index)
+                val estimatedHeight = heightIndex.heightOf(index)
+                val availableHeight = (viewportHeightPx - topPaddingPx).coerceAtLeast(1)
+                val desiredTop = desiredViewportTopPx(estimatedHeight, availableHeight, align, reserveBottomPx.coerceAtLeast(0))
+                scrollOffsetPx = (estimatedTop - desiredTop).coerceIn(0, maxScrollOffsetPx).toFloat()
+                updateScrollBoundsFlags()
+            }
+            // When the target key is not yet in heightIndex (e.g. caller just mutated snapshot
+            // state to hydrate a context window or expand a folded group), invalidate measurement
+            // instead of calling synchronous forceRemeasure() against the stale itemProvider so
+            // recomposition + syncKeys deliver the new key before measure() resolves pendingJump.
+            if (index >= 0) {
+                requestMeasure()
+            } else {
+                invalidateMeasureSafe()
+            }
+        } finally {
+            traceEnd()
         }
-        val index = heightIndex.indexOfKey(key)
-        if (index >= 0 && viewportHeightPx > 0) {
-            val estimatedTop = heightIndex.offsetOf(index)
-            val estimatedHeight = heightIndex.heightOf(index)
-            val availableHeight = (viewportHeightPx - topPaddingPx).coerceAtLeast(1)
-            val desiredTop = desiredViewportTopPx(estimatedHeight, availableHeight, align, reserveBottomPx.coerceAtLeast(0))
-            scrollOffsetPx = (estimatedTop - desiredTop).coerceIn(0, maxScrollOffsetPx).toFloat()
-            updateScrollBoundsFlags()
-        }
-        requestMeasure()
     }
 
     fun jumpToIndex(
@@ -445,27 +486,32 @@ internal class VirtualMessageTimelineState(
         suppressAutoLoad: Boolean = false,
     ) {
         if (heightIndex.itemCount == 0) return
-        val clampedIndex = index.coerceIn(0, heightIndex.itemCount - 1)
-        followBottom = false
-        pinnedReadingAnchorKey = null
-        transientAnchorKey = null
-        pendingJump =
-            PendingJumpRequest.ByIndexOffset(
-                index = clampedIndex,
-                scrollOffsetPx = scrollOffsetPx,
-                remainingSettlePasses = MaxJumpSettlePasses,
-            )
-        isJumpSettling = true
-        lastJumpConvergencePasses = 0
-        if (suppressAutoLoad) {
-            isAutoLoadSuppressed = true
+        traceBegin("vtl.jump")
+        try {
+            val clampedIndex = index.coerceIn(0, heightIndex.itemCount - 1)
+            followBottom = false
+            pinnedReadingAnchorKey = null
+            transientAnchorKey = null
+            pendingJump =
+                PendingJumpRequest.ByIndexOffset(
+                    index = clampedIndex,
+                    scrollOffsetPx = scrollOffsetPx,
+                    remainingSettlePasses = MaxJumpSettlePasses,
+                )
+            isJumpSettling = true
+            lastJumpConvergencePasses = 0
+            if (suppressAutoLoad) {
+                isAutoLoadSuppressed = true
+            }
+            if (viewportHeightPx > 0) {
+                val estimatedTop = heightIndex.offsetOf(clampedIndex)
+                this.scrollOffsetPx = (estimatedTop + scrollOffsetPx).coerceIn(0, maxScrollOffsetPx).toFloat()
+                updateScrollBoundsFlags()
+            }
+            requestMeasure()
+        } finally {
+            traceEnd()
         }
-        if (viewportHeightPx > 0) {
-            val estimatedTop = heightIndex.offsetOf(clampedIndex)
-            this.scrollOffsetPx = (estimatedTop + scrollOffsetPx).coerceIn(0, maxScrollOffsetPx).toFloat()
-            updateScrollBoundsFlags()
-        }
-        requestMeasure()
     }
 
     fun scrollToTop(suppressAutoLoad: Boolean = false) {
@@ -474,20 +520,25 @@ internal class VirtualMessageTimelineState(
     }
 
     fun scrollToBottom(suppressAutoLoad: Boolean = false) {
-        pinnedReadingAnchorKey = null
-        transientAnchorKey = null
-        followBottom = true
-        pendingJump = PendingJumpRequest.ToBottom(remainingSettlePasses = MaxJumpSettlePasses)
-        isJumpSettling = true
-        lastJumpConvergencePasses = 0
-        if (suppressAutoLoad) {
-            isAutoLoadSuppressed = true
+        traceBegin("vtl.jump")
+        try {
+            pinnedReadingAnchorKey = null
+            transientAnchorKey = null
+            followBottom = true
+            pendingJump = PendingJumpRequest.ToBottom(remainingSettlePasses = MaxJumpSettlePasses)
+            isJumpSettling = true
+            lastJumpConvergencePasses = 0
+            if (suppressAutoLoad) {
+                isAutoLoadSuppressed = true
+            }
+            if (viewportHeightPx > 0) {
+                scrollOffsetPx = maxScrollOffsetPx.toFloat()
+                updateScrollBoundsFlags()
+            }
+            requestMeasure()
+        } finally {
+            traceEnd()
         }
-        if (viewportHeightPx > 0) {
-            scrollOffsetPx = maxScrollOffsetPx.toFloat()
-            updateScrollBoundsFlags()
-        }
-        requestMeasure()
     }
 
     fun clearAutoLoadSuppression() {
@@ -567,6 +618,7 @@ internal class VirtualMessageTimelineState(
         }
         scrollOffsetPx = next
         if (programmaticScrollDepth == 0) {
+            stabilityTracer.noteUserScrollDelta()
             pinnedReadingAnchorKey = null
             transientAnchorKey = null
             if (delta < 0f) {
@@ -580,6 +632,8 @@ internal class VirtualMessageTimelineState(
             if (isAutoLoadSuppressed) {
                 isAutoLoadSuppressed = false
             }
+        } else {
+            stabilityTracer.noteProgrammaticScrollDelta()
         }
         updateScrollBoundsFlags()
         requestMeasure()
@@ -621,453 +675,570 @@ internal class VirtualMessageTimelineState(
         onNearEndEdge: (() -> Unit)?,
         edgeLoadThresholdPx: Int,
     ): MeasureResult {
-        // Subscribe this measure pass (NOT composition) to jump/pin invalidations.
-        @Suppress("UNUSED_VARIABLE")
-        val invalidationToken = measurementInvalidator
+        traceBegin("vtl.measure")
+        try {
+            // Subscribe this measure pass (NOT composition) to jump/pin invalidations.
+            @Suppress("UNUSED_VARIABLE")
+            val invalidationToken = measurementInvalidator
 
-        measurePassCount += 1
-        passPlaceables.clear()
-        passMeasuredHeights.clear()
-        placedRowsScratch.clear()
-        pinnedIndicesScratch.clear()
+            measurePassCount += 1
+            passPlaceables.clear()
+            passMeasuredHeights.clear()
+            placedRowsScratch.clear()
+            pinnedIndicesScratch.clear()
+            var anyMeasuredRowHeightChanged = false
 
-        val safeTopPadding = topPaddingPx.coerceAtLeast(0)
-        val safeBottomPadding = bottomPaddingPx.coerceAtLeast(0)
-        val safeStartPadding = startPaddingPx.coerceAtLeast(0)
-        val safeEndPadding = endPaddingPx.coerceAtLeast(0)
-        this.topPaddingPx = safeTopPadding
-        this.bottomPaddingPx = safeBottomPadding
+            val safeTopPadding = topPaddingPx.coerceAtLeast(0)
+            val safeBottomPadding = bottomPaddingPx.coerceAtLeast(0)
+            val safeStartPadding = startPaddingPx.coerceAtLeast(0)
+            val safeEndPadding = endPaddingPx.coerceAtLeast(0)
+            this.topPaddingPx = safeTopPadding
+            this.bottomPaddingPx = safeBottomPadding
 
-        val count = itemProvider.itemCount
-        val viewportWidth =
-            if (constraints.hasBoundedWidth) {
-                constraints.maxWidth
-            } else {
-                constraints.minWidth
+            val count = itemProvider.itemCount
+            val viewportWidth =
+                if (constraints.hasBoundedWidth) {
+                    constraints.maxWidth
+                } else {
+                    constraints.minWidth
+                }
+            val viewportHeight =
+                if (constraints.hasBoundedHeight) {
+                    constraints.maxHeight
+                } else {
+                    (safeTopPadding + heightIndex.totalHeightPx + safeBottomPadding)
+                        .coerceIn(constraints.minHeight, constraints.maxHeight)
+                }
+            viewportHeightPx = viewportHeight
+
+            if (count == 0 || viewportHeight <= 0) {
+                scrollOffsetPx = 0f
+                lastMeasuredItemCount = 0
+                lastPinnedOffViewportCount = 0
+                lastVisibleItems = emptyList()
+                updateScrollBoundsFlags()
+                layoutInfo =
+                    VirtualTimelineLayoutInfo(
+                        visibleItemsInfo = emptyList(),
+                        viewportStartOffset = -safeTopPadding,
+                        viewportEndOffset = viewportHeight - safeTopPadding,
+                        totalItemsCount = 0,
+                        viewportSize = IntSize(viewportWidth, viewportHeight),
+                        beforeContentPadding = safeTopPadding,
+                        afterContentPadding = safeBottomPadding,
+                    )
+                stabilityTracer.onMeasureFinished(
+                    passNumber = measurePassCount,
+                    count = 0,
+                    viewportHeightPx = viewportHeight,
+                    topPaddingPx = safeTopPadding,
+                    bottomPaddingPx = safeBottomPadding,
+                    finalScrollInt = 0,
+                    finalMaxScroll = 0,
+                    sparseAnchorBottom = sparseAnchorBottom,
+                    followBottom = followBottom,
+                    isScrollInProgress = isScrollInProgress,
+                    wasProgrammaticJump = false,
+                    anyMeasuredRowHeightChanged = false,
+                    measuredItemCount = 0,
+                    pinnedReadingAnchorKey = pinnedReadingAnchorKey,
+                    visibleSnapshot = emptyList(),
+                    onEvent = onStabilityEvent,
+                )
+                return scope.layout(viewportWidth, viewportHeight) {}
             }
-        val viewportHeight =
-            if (constraints.hasBoundedHeight) {
-                constraints.maxHeight
-            } else {
-                (safeTopPadding + heightIndex.totalHeightPx + safeBottomPadding)
-                    .coerceIn(constraints.minHeight, constraints.maxHeight)
-            }
-        viewportHeightPx = viewportHeight
 
-        if (count == 0 || viewportHeight <= 0) {
-            scrollOffsetPx = 0f
-            lastMeasuredItemCount = 0
-            lastPinnedOffViewportCount = 0
-            lastVisibleItems = emptyList()
+            val itemWidth = (viewportWidth - safeStartPadding - safeEndPadding).coerceAtLeast(0)
+            val itemConstraints =
+                Constraints(
+                    minWidth = itemWidth,
+                    maxWidth = itemWidth,
+                    minHeight = 0,
+                    maxHeight = Constraints.Infinity,
+                )
+            val availableViewportHeight = (viewportHeight - safeTopPadding).coerceAtLeast(1)
+
+            fun currentMaxScroll(): Int =
+                (safeTopPadding + heightIndex.totalHeightPx + safeBottomPadding - viewportHeight).coerceAtLeast(0)
+
+            fun measureItemOnce(index: Int): Int {
+                passMeasuredHeights[index]?.let { return it }
+                traceBegin("vtl.subcompose_row")
+                return try {
+                    val measurables = scope.compose(index)
+                    val placeables =
+                        if (measurables.size == 1) {
+                            listOf(measurables[0].measure(itemConstraints))
+                        } else {
+                            measurables.map { measurable -> measurable.measure(itemConstraints) }
+                        }
+                    var measuredHeight = 0
+                    for (i in placeables.indices) {
+                        measuredHeight += placeables[i].height
+                    }
+                    passPlaceables[index] = placeables
+                    passMeasuredHeights[index] = measuredHeight
+                    totalItemMeasureCalls += 1
+                    val itemKey = itemProvider.getKey(index)
+                    val hadMeasured = heightIndex.hasMeasuredHeight(itemKey)
+                    val previousMeasuredHeight = if (hadMeasured) heightIndex.heightOf(index) else -1
+                    heightIndex.recordMeasuredHeight(index, itemKey, measuredHeight)
+                    if (hadMeasured && previousMeasuredHeight != measuredHeight) {
+                        anyMeasuredRowHeightChanged = true
+                    }
+                    measuredHeight
+                } finally {
+                    traceEnd()
+                }
+            }
+
+            val activeJump = pendingJump
+            val activeJumpIndex: Int =
+                when (activeJump) {
+                    is PendingJumpRequest.ByKey -> itemProvider.getIndex(activeJump.key)
+                    is PendingJumpRequest.ByIndexOffset -> activeJump.index.takeIf { it in 0 until count } ?: -1
+                    is PendingJumpRequest.ToBottom -> count - 1
+                    null -> -1
+                }
+            val wasProgrammaticJump =
+                activeJump is PendingJumpRequest.ToBottom || (activeJump != null && activeJumpIndex in 0 until count)
+
+            var firstMountedIndex: Int
+            var lastMountedIndex: Int
+
+            if (activeJump is PendingJumpRequest.ToBottom || (activeJump == null && followBottom && !isScrollInProgress)) {
+                // Bottom-up tail convergence: measures from newest row upward so cold opens, realtime
+                // appends, async image growth, and IME viewport shrinks all stay pinned flush to the
+                // bottom in a single measure pass before draw.
+                lastMountedIndex = count - 1
+                var filled = safeBottomPadding
+                val fillLimit = viewportHeight + overscanPx
+                var cursorUp = count - 1
+                while (cursorUp >= 0 && filled < fillLimit) {
+                    filled += measureItemOnce(cursorUp)
+                    cursorUp -= 1
+                }
+                firstMountedIndex = (cursorUp + 1).coerceIn(0, lastMountedIndex)
+
+                collectPinnedOffViewportIndices(
+                    itemProvider = itemProvider,
+                    firstMounted = firstMountedIndex,
+                    lastMounted = lastMountedIndex,
+                    count = count,
+                )
+                for (i in 0 until pinnedIndicesScratch.size) {
+                    measureItemOnce(pinnedIndicesScratch[i])
+                }
+
+                scrollOffsetPx = currentMaxScroll().toFloat()
+                if (activeJump is PendingJumpRequest.ToBottom) {
+                    lastJumpAlignmentErrorPx = 0
+                    lastJumpConvergencePasses += 1
+                    pendingJump = null
+                    isJumpSettling = false
+                }
+            } else if (activeJump != null && activeJumpIndex in 0 until count) {
+                // Single-pass exact convergence: measure target + neighbors around desired alignment,
+                // updating the Fenwick tree in-place so target lands within < 2px before draw.
+                val targetHeight = measureItemOnce(activeJumpIndex)
+                val desiredTop =
+                    when (activeJump) {
+                        is PendingJumpRequest.ByKey ->
+                            desiredViewportTopPx(
+                                itemHeightPx = targetHeight,
+                                viewportHeightPx = availableViewportHeight,
+                                align = activeJump.align,
+                                reserveBottomPx = activeJump.reserveBottomPx,
+                            )
+                        is PendingJumpRequest.ByIndexOffset -> -activeJump.scrollOffsetPx
+                        is PendingJumpRequest.ToBottom -> 0
+                    }
+
+                var aboveFill = 0
+                val aboveLimit = (desiredTop + safeTopPadding).coerceAtLeast(0) + overscanPx
+                var cursorUp = activeJumpIndex - 1
+                while (cursorUp >= 0 && aboveFill < aboveLimit) {
+                    aboveFill += measureItemOnce(cursorUp)
+                    cursorUp -= 1
+                }
+                firstMountedIndex = cursorUp + 1
+
+                var belowFill = 0
+                val belowLimit = (availableViewportHeight - desiredTop - targetHeight).coerceAtLeast(0) + overscanPx
+                var cursorDown = activeJumpIndex + 1
+                while (cursorDown < count && belowFill < belowLimit) {
+                    belowFill += measureItemOnce(cursorDown)
+                    cursorDown += 1
+                }
+                lastMountedIndex = cursorDown - 1
+
+                var resolvedScroll =
+                    (heightIndex.offsetOf(activeJumpIndex) - desiredTop).coerceIn(0, currentMaxScroll())
+
+                if (resolvedScroll == 0 && firstMountedIndex > 0) {
+                    while (firstMountedIndex > 0) {
+                        firstMountedIndex -= 1
+                        measureItemOnce(firstMountedIndex)
+                    }
+                    resolvedScroll =
+                        (heightIndex.offsetOf(activeJumpIndex) - desiredTop).coerceIn(0, currentMaxScroll())
+                }
+                var contentEndOfMounted =
+                    heightIndex.offsetOf(lastMountedIndex) + heightIndex.heightOf(lastMountedIndex)
+                while (lastMountedIndex + 1 < count && contentEndOfMounted < resolvedScroll + availableViewportHeight + overscanPx) {
+                    lastMountedIndex += 1
+                    measureItemOnce(lastMountedIndex)
+                    resolvedScroll =
+                        (heightIndex.offsetOf(activeJumpIndex) - desiredTop).coerceIn(0, currentMaxScroll())
+                    contentEndOfMounted =
+                        heightIndex.offsetOf(lastMountedIndex) + heightIndex.heightOf(lastMountedIndex)
+                }
+                var contentStartOfMounted = heightIndex.offsetOf(firstMountedIndex)
+                while (firstMountedIndex > 0 && contentStartOfMounted > resolvedScroll - safeTopPadding - overscanPx) {
+                    firstMountedIndex -= 1
+                    measureItemOnce(firstMountedIndex)
+                    resolvedScroll =
+                        (heightIndex.offsetOf(activeJumpIndex) - desiredTop).coerceIn(0, currentMaxScroll())
+                    contentStartOfMounted = heightIndex.offsetOf(firstMountedIndex)
+                }
+                // If upward measurement dropped resolvedScroll (e.g. near bottom/top edge), ensure bottom stays filled.
+                contentEndOfMounted =
+                    heightIndex.offsetOf(lastMountedIndex) + heightIndex.heightOf(lastMountedIndex)
+                while (lastMountedIndex + 1 < count && contentEndOfMounted < resolvedScroll + availableViewportHeight + overscanPx) {
+                    lastMountedIndex += 1
+                    measureItemOnce(lastMountedIndex)
+                    resolvedScroll =
+                        (heightIndex.offsetOf(activeJumpIndex) - desiredTop).coerceIn(0, currentMaxScroll())
+                    contentEndOfMounted =
+                        heightIndex.offsetOf(lastMountedIndex) + heightIndex.heightOf(lastMountedIndex)
+                }
+
+                collectPinnedOffViewportIndices(
+                    itemProvider = itemProvider,
+                    firstMounted = firstMountedIndex,
+                    lastMounted = lastMountedIndex,
+                    count = count,
+                )
+                for (i in 0 until pinnedIndicesScratch.size) {
+                    measureItemOnce(pinnedIndicesScratch[i])
+                }
+
+                val targetContentTop = heightIndex.offsetOf(activeJumpIndex)
+                val maxScroll = currentMaxScroll()
+                resolvedScroll = (targetContentTop - desiredTop).coerceIn(0, maxScroll)
+                scrollOffsetPx = resolvedScroll.toFloat()
+
+                val expectedClampedTop =
+                    targetContentTop - (targetContentTop - desiredTop).coerceIn(0, maxScroll)
+                val actualTop = targetContentTop - resolvedScroll
+                val errorPx = abs(actualTop - expectedClampedTop)
+                lastJumpAlignmentErrorPx = errorPx
+                maxJumpAlignmentErrorPx = max(maxJumpAlignmentErrorPx, errorPx)
+                lastJumpConvergencePasses += 1
+                pendingJump = null
+                isJumpSettling = false
+            } else {
+                // Retire an unresolved jump against a populated list so isJumpSettling never stays
+                // stuck suppressing jump pills when a target key or index is missing.
+                if (activeJump != null && activeJump !is PendingJumpRequest.ToBottom && activeJumpIndex !in 0 until count) {
+                    pendingJump = null
+                    isJumpSettling = false
+                }
+                // Normal scroll / layout pass: O(log N) zero-allocation visible range lookup with
+                // in-pass above-anchor height compensation (including one-shot prepend anchor).
+                val pendingPrependAnchorKey = transientAnchorKey
+                val pendingPrependAnchorTopPx = transientAnchorViewportTopPx
+                transientAnchorKey = null
+
+                val currentScrollInt = scrollOffsetPx.roundToInt().coerceIn(0, currentMaxScroll())
+                val prependAnchorIdx =
+                    pendingPrependAnchorKey?.let { key ->
+                        val idx = heightIndex.indexOfKey(key)
+                        if (idx in 0 until count) idx else -1
+                    } ?: -1
+                val preferredAnchor =
+                    pinnedReadingAnchorKey?.let { key ->
+                        val idx = heightIndex.indexOfKey(key)
+                        if (idx in 0 until count) idx else -1
+                    } ?: -1
+                val anchorIndex =
+                    when {
+                        prependAnchorIdx >= 0 -> prependAnchorIdx
+                        preferredAnchor >= 0 -> preferredAnchor
+                        else -> {
+                            // Align with syncKeys and stabilityTracer.selectReferenceAnchor: prefer the
+                            // first fully-in-view anchorable row (top >= currentScrollInt) so height
+                            // growth in a partially clipped top row compensates upward rather than
+                            // pushing the reader's visible rows downward.
+                            val firstInView = heightIndex.indexAtOffset(currentScrollInt)
+                            val viewportBottomOffset = currentScrollInt + availableViewportHeight
+                            var firstAnchorableFull = -1
+                            var firstAnchorablePartial = -1
+                            var firstAnyFull = -1
+                            var scan = firstInView
+                            while (scan in 0 until count) {
+                                val top = heightIndex.offsetOf(scan)
+                                if (top >= viewportBottomOffset) break
+                                val height = heightIndex.heightOf(scan)
+                                val anchorable = isAnchorable(scan)
+                                if (anchorable && top >= currentScrollInt) {
+                                    firstAnchorableFull = scan
+                                    break
+                                }
+                                if (anchorable && firstAnchorablePartial < 0 && top + height > currentScrollInt) {
+                                    firstAnchorablePartial = scan
+                                }
+                                if (firstAnyFull < 0 && top >= currentScrollInt) {
+                                    firstAnyFull = scan
+                                }
+                                scan += 1
+                            }
+                            when {
+                                firstAnchorableFull >= 0 -> firstAnchorableFull
+                                firstAnchorablePartial >= 0 -> firstAnchorablePartial
+                                firstAnyFull >= 0 -> firstAnyFull
+                                else -> firstInView
+                            }
+                        }
+                    }
+                val anchorContentTopBefore = if (anchorIndex >= 0) heightIndex.offsetOf(anchorIndex) else 0
+                val anchorViewportTopBefore =
+                    if (prependAnchorIdx >= 0) {
+                        pendingPrependAnchorTopPx
+                    } else {
+                        anchorContentTopBefore - currentScrollInt
+                    }
+                val shouldCompensateAboveAnchor =
+                    (currentScrollInt > 0 || prependAnchorIdx >= 0 || preferredAnchor >= 0) && anchorIndex in 0 until count
+
+                val windowTop = (currentScrollInt - safeTopPadding - overscanPx).coerceAtLeast(0)
+                val windowBottom = currentScrollInt + availableViewportHeight + overscanPx
+                heightIndex.visibleRange(windowTop, windowBottom, scratchVisibleRange)
+                firstMountedIndex = scratchVisibleRange[0].coerceIn(0, count - 1)
+                lastMountedIndex = scratchVisibleRange[1].coerceIn(firstMountedIndex, count - 1)
+
+                var index = firstMountedIndex
+                while (index <= lastMountedIndex) {
+                    val measuredHeight = measureItemOnce(index)
+                    // Stop early once measured items past the anchor already fill viewport + overscan,
+                    // preventing cold estimated ranges from over-composing far-below rows that would
+                    // be immediately disposed on the next scroll step.
+                    if (index >= anchorIndex) {
+                        val liveScroll =
+                            if (shouldCompensateAboveAnchor) {
+                                (heightIndex.offsetOf(anchorIndex) - anchorViewportTopBefore).coerceIn(0, currentMaxScroll())
+                            } else {
+                                currentScrollInt
+                            }
+                        if (heightIndex.offsetOf(index) + measuredHeight >= liveScroll + availableViewportHeight + overscanPx) {
+                            lastMountedIndex = index
+                            break
+                        }
+                    }
+                    index += 1
+                }
+
+                collectPinnedOffViewportIndices(
+                    itemProvider = itemProvider,
+                    firstMounted = firstMountedIndex,
+                    lastMounted = lastMountedIndex,
+                    count = count,
+                )
+                for (i in 0 until pinnedIndicesScratch.size) {
+                    measureItemOnce(pinnedIndicesScratch[i])
+                }
+
+                // Compensate scrollOffsetPx for real-height deltas strictly above the viewport anchor
+                // (or above the explicitly pinned / prepended reading-anchor row) so async image decodes,
+                // older-page prepends, reactions, and edits never jump the reader's screen.
+                if (shouldCompensateAboveAnchor) {
+                    val anchorContentTopAfter = heightIndex.offsetOf(anchorIndex)
+                    val compensated =
+                        (anchorContentTopAfter - anchorViewportTopBefore)
+                            .coerceIn(0, currentMaxScroll())
+                    if (compensated != currentScrollInt) {
+                        scrollOffsetPx = compensated.toFloat()
+                    }
+                }
+
+                while (lastMountedIndex + 1 < count) {
+                    val currentAdjusted = scrollOffsetPx.roundToInt().coerceIn(0, currentMaxScroll())
+                    val bottomOfLast =
+                        heightIndex.offsetOf(lastMountedIndex) + heightIndex.heightOf(lastMountedIndex)
+                    if (bottomOfLast >= currentAdjusted + availableViewportHeight + overscanPx) break
+                    lastMountedIndex += 1
+                    measureItemOnce(lastMountedIndex)
+                }
+                while (firstMountedIndex > 0) {
+                    val currentAdjusted = scrollOffsetPx.roundToInt().coerceIn(0, currentMaxScroll())
+                    val topOfFirst = heightIndex.offsetOf(firstMountedIndex)
+                    if (topOfFirst <= currentAdjusted - safeTopPadding - overscanPx) break
+                    firstMountedIndex -= 1
+                    val prevBefore = if (anchorIndex in 0 until count) heightIndex.offsetOf(anchorIndex) else 0
+                    measureItemOnce(firstMountedIndex)
+                    if (shouldCompensateAboveAnchor && firstMountedIndex < anchorIndex) {
+                        val deltaAbove = heightIndex.offsetOf(anchorIndex) - prevBefore
+                        if (deltaAbove != 0) {
+                            scrollOffsetPx = (scrollOffsetPx + deltaAbove).coerceIn(0f, currentMaxScroll().toFloat())
+                        }
+                    }
+                }
+                collectPinnedOffViewportIndices(
+                    itemProvider = itemProvider,
+                    firstMounted = firstMountedIndex,
+                    lastMounted = lastMountedIndex,
+                    count = count,
+                )
+                scrollOffsetPx = scrollOffsetPx.coerceIn(0f, currentMaxScroll().toFloat())
+            }
+
+            val totalScrollableHeight = safeTopPadding + heightIndex.totalHeightPx + safeBottomPadding
+            val finalMaxScroll = (totalScrollableHeight - viewportHeight).coerceAtLeast(0)
+            scrollOffsetPx = scrollOffsetPx.coerceIn(0f, finalMaxScroll.toFloat())
+            val finalScrollInt = scrollOffsetPx.roundToInt()
+            val sparseBottomOffset =
+                if (sparseAnchorBottom && totalScrollableHeight < viewportHeight) {
+                    viewportHeight - totalScrollableHeight
+                } else {
+                    0
+                }
             updateScrollBoundsFlags()
+
+            val capacity = lastMountedIndex - firstMountedIndex + 1 + pinnedIndicesScratch.size
+            val visibleSnapshot = ArrayList<VirtualTimelineVisibleItem>(capacity)
+            val lazyVisibleItems = ArrayList<LazyListItemInfo>(lastMountedIndex - firstMountedIndex + 1)
+
+            for (i in firstMountedIndex..lastMountedIndex) {
+                val placeables = passPlaceables[i] ?: continue
+                val itemHeight = passMeasuredHeights[i] ?: 0
+                val contentOffset = sparseBottomOffset + heightIndex.offsetOf(i) - finalScrollInt
+                val screenY = safeTopPadding + contentOffset
+                placedRowsScratch.add(PlacedRowEntry(index = i, placeables = placeables, yOffsetPx = screenY))
+                if (screenY + itemHeight > 0 && screenY < viewportHeight) {
+                    val key = itemProvider.getKey(i)
+                    visibleSnapshot.add(
+                        VirtualTimelineVisibleItem(
+                            index = i,
+                            key = key,
+                            offsetPx = contentOffset,
+                            sizePx = itemHeight,
+                            isPinnedOffViewport = false,
+                            anchorable = isAnchorable(i),
+                        )
+                    )
+                    lazyVisibleItems.add(
+                        VirtualTimelineLazyItemInfo(
+                            index = i,
+                            key = key,
+                            offset = contentOffset,
+                            size = itemHeight,
+                            contentType = itemProvider.getContentType(i),
+                        )
+                    )
+                }
+            }
+
+            for (p in 0 until pinnedIndicesScratch.size) {
+                val pinnedIndex = pinnedIndicesScratch[p]
+                val placeables = passPlaceables[pinnedIndex] ?: continue
+                val itemHeight = passMeasuredHeights[pinnedIndex] ?: 0
+                val rawScreenY = safeTopPadding + sparseBottomOffset + heightIndex.offsetOf(pinnedIndex) - finalScrollInt
+                val clampedOffViewportY =
+                    if (pinnedIndex < firstMountedIndex) {
+                        min(rawScreenY, -itemHeight - 1)
+                    } else {
+                        max(rawScreenY, viewportHeight + 1)
+                    }
+                placedRowsScratch.add(PlacedRowEntry(index = pinnedIndex, placeables = placeables, yOffsetPx = clampedOffViewportY))
+                visibleSnapshot.add(
+                    VirtualTimelineVisibleItem(
+                        index = pinnedIndex,
+                        key = itemProvider.getKey(pinnedIndex),
+                        offsetPx = clampedOffViewportY - safeTopPadding,
+                        sizePx = itemHeight,
+                        isPinnedOffViewport = true,
+                    )
+                )
+            }
+
+            lastMeasuredItemCount = passPlaceables.size
+            lastPinnedOffViewportCount = pinnedIndicesScratch.size
+            lastVisibleItems = visibleSnapshot
             layoutInfo =
                 VirtualTimelineLayoutInfo(
-                    visibleItemsInfo = emptyList(),
+                    visibleItemsInfo = lazyVisibleItems,
                     viewportStartOffset = -safeTopPadding,
                     viewportEndOffset = viewportHeight - safeTopPadding,
-                    totalItemsCount = 0,
+                    totalItemsCount = count,
                     viewportSize = IntSize(viewportWidth, viewportHeight),
                     beforeContentPadding = safeTopPadding,
                     afterContentPadding = safeBottomPadding,
                 )
-            return scope.layout(viewportWidth, viewportHeight) {}
-        }
 
-        val itemWidth = (viewportWidth - safeStartPadding - safeEndPadding).coerceAtLeast(0)
-        val itemConstraints =
-            Constraints(
-                minWidth = itemWidth,
-                maxWidth = itemWidth,
-                minHeight = 0,
-                maxHeight = Constraints.Infinity,
-            )
-        val availableViewportHeight = (viewportHeight - safeTopPadding).coerceAtLeast(1)
-
-        fun currentMaxScroll(): Int =
-            (safeTopPadding + heightIndex.totalHeightPx + safeBottomPadding - viewportHeight).coerceAtLeast(0)
-
-        fun measureItemOnce(index: Int): Int {
-            passMeasuredHeights[index]?.let { return it }
-            val measurables = scope.compose(index)
-            val placeables =
-                if (measurables.size == 1) {
-                    listOf(measurables[0].measure(itemConstraints))
-                } else {
-                    measurables.map { measurable -> measurable.measure(itemConstraints) }
-                }
-            var measuredHeight = 0
-            for (i in placeables.indices) {
-                measuredHeight += placeables[i].height
-            }
-            passPlaceables[index] = placeables
-            passMeasuredHeights[index] = measuredHeight
-            totalItemMeasureCalls += 1
-            val itemKey = itemProvider.getKey(index)
-            heightIndex.recordMeasuredHeight(index, itemKey, measuredHeight)
-            return measuredHeight
-        }
-
-        val activeJump = pendingJump
-        val activeJumpIndex: Int =
-            when (activeJump) {
-                is PendingJumpRequest.ByKey -> itemProvider.getIndex(activeJump.key)
-                is PendingJumpRequest.ByIndexOffset -> activeJump.index.takeIf { it in 0 until count } ?: -1
-                is PendingJumpRequest.ToBottom -> count - 1
-                null -> -1
-            }
-
-        var firstMountedIndex: Int
-        var lastMountedIndex: Int
-
-        if (activeJump is PendingJumpRequest.ToBottom || (activeJump == null && followBottom && !isScrollInProgress)) {
-            // Bottom-up tail convergence: measures from newest row upward so cold opens, realtime
-            // appends, async image growth, and IME viewport shrinks all stay pinned flush to the
-            // bottom in a single measure pass before draw.
-            lastMountedIndex = count - 1
-            var filled = safeBottomPadding
-            val fillLimit = viewportHeight + overscanPx
-            var cursorUp = count - 1
-            while (cursorUp >= 0 && filled < fillLimit) {
-                filled += measureItemOnce(cursorUp)
-                cursorUp -= 1
-            }
-            firstMountedIndex = (cursorUp + 1).coerceIn(0, lastMountedIndex)
-
-            collectPinnedOffViewportIndices(
-                itemProvider = itemProvider,
-                firstMounted = firstMountedIndex,
-                lastMounted = lastMountedIndex,
-                count = count,
-            )
-            for (i in 0 until pinnedIndicesScratch.size) {
-                measureItemOnce(pinnedIndicesScratch[i])
-            }
-
-            scrollOffsetPx = currentMaxScroll().toFloat()
-            if (activeJump is PendingJumpRequest.ToBottom) {
-                lastJumpAlignmentErrorPx = 0
-                lastJumpConvergencePasses += 1
-                pendingJump = null
-                isJumpSettling = false
-            }
-        } else if (activeJump != null && activeJumpIndex in 0 until count) {
-            // Single-pass exact convergence: measure target + neighbors around desired alignment,
-            // updating the Fenwick tree in-place so target lands within < 2px before draw.
-            val targetHeight = measureItemOnce(activeJumpIndex)
-            val desiredTop =
-                when (activeJump) {
-                    is PendingJumpRequest.ByKey ->
-                        desiredViewportTopPx(
-                            itemHeightPx = targetHeight,
-                            viewportHeightPx = availableViewportHeight,
-                            align = activeJump.align,
-                            reserveBottomPx = activeJump.reserveBottomPx,
-                        )
-                    is PendingJumpRequest.ByIndexOffset -> -activeJump.scrollOffsetPx
-                    is PendingJumpRequest.ToBottom -> 0
-                }
-
-            var aboveFill = 0
-            val aboveLimit = (desiredTop + safeTopPadding).coerceAtLeast(0) + overscanPx
-            var cursorUp = activeJumpIndex - 1
-            while (cursorUp >= 0 && aboveFill < aboveLimit) {
-                aboveFill += measureItemOnce(cursorUp)
-                cursorUp -= 1
-            }
-            firstMountedIndex = cursorUp + 1
-
-            var belowFill = 0
-            val belowLimit = (availableViewportHeight - desiredTop - targetHeight).coerceAtLeast(0) + overscanPx
-            var cursorDown = activeJumpIndex + 1
-            while (cursorDown < count && belowFill < belowLimit) {
-                belowFill += measureItemOnce(cursorDown)
-                cursorDown += 1
-            }
-            lastMountedIndex = cursorDown - 1
-
-            var resolvedScroll =
-                (heightIndex.offsetOf(activeJumpIndex) - desiredTop).coerceIn(0, currentMaxScroll())
-
-            if (resolvedScroll == 0 && firstMountedIndex > 0) {
-                while (firstMountedIndex > 0) {
-                    firstMountedIndex -= 1
-                    measureItemOnce(firstMountedIndex)
-                }
-                resolvedScroll =
-                    (heightIndex.offsetOf(activeJumpIndex) - desiredTop).coerceIn(0, currentMaxScroll())
-            }
-            var contentEndOfMounted =
-                heightIndex.offsetOf(lastMountedIndex) + heightIndex.heightOf(lastMountedIndex)
-            while (lastMountedIndex + 1 < count && contentEndOfMounted < resolvedScroll + availableViewportHeight + overscanPx) {
-                lastMountedIndex += 1
-                measureItemOnce(lastMountedIndex)
-                resolvedScroll =
-                    (heightIndex.offsetOf(activeJumpIndex) - desiredTop).coerceIn(0, currentMaxScroll())
-                contentEndOfMounted =
-                    heightIndex.offsetOf(lastMountedIndex) + heightIndex.heightOf(lastMountedIndex)
-            }
-            var contentStartOfMounted = heightIndex.offsetOf(firstMountedIndex)
-            while (firstMountedIndex > 0 && contentStartOfMounted > resolvedScroll - safeTopPadding - overscanPx) {
-                firstMountedIndex -= 1
-                measureItemOnce(firstMountedIndex)
-                resolvedScroll =
-                    (heightIndex.offsetOf(activeJumpIndex) - desiredTop).coerceIn(0, currentMaxScroll())
-                contentStartOfMounted = heightIndex.offsetOf(firstMountedIndex)
-            }
-            // If upward measurement dropped resolvedScroll (e.g. near bottom/top edge), ensure bottom stays filled.
-            contentEndOfMounted =
-                heightIndex.offsetOf(lastMountedIndex) + heightIndex.heightOf(lastMountedIndex)
-            while (lastMountedIndex + 1 < count && contentEndOfMounted < resolvedScroll + availableViewportHeight + overscanPx) {
-                lastMountedIndex += 1
-                measureItemOnce(lastMountedIndex)
-                resolvedScroll =
-                    (heightIndex.offsetOf(activeJumpIndex) - desiredTop).coerceIn(0, currentMaxScroll())
-                contentEndOfMounted =
-                    heightIndex.offsetOf(lastMountedIndex) + heightIndex.heightOf(lastMountedIndex)
-            }
-
-            collectPinnedOffViewportIndices(
-                itemProvider = itemProvider,
-                firstMounted = firstMountedIndex,
-                lastMounted = lastMountedIndex,
-                count = count,
-            )
-            for (i in 0 until pinnedIndicesScratch.size) {
-                measureItemOnce(pinnedIndicesScratch[i])
-            }
-
-            val targetContentTop = heightIndex.offsetOf(activeJumpIndex)
-            val maxScroll = currentMaxScroll()
-            resolvedScroll = (targetContentTop - desiredTop).coerceIn(0, maxScroll)
-            scrollOffsetPx = resolvedScroll.toFloat()
-
-            val expectedClampedTop =
-                targetContentTop - (targetContentTop - desiredTop).coerceIn(0, maxScroll)
-            val actualTop = targetContentTop - resolvedScroll
-            val errorPx = abs(actualTop - expectedClampedTop)
-            lastJumpAlignmentErrorPx = errorPx
-            lastJumpConvergencePasses += 1
-            pendingJump = null
-            isJumpSettling = false
-        } else {
-            // Normal scroll / layout pass: O(log N) zero-allocation visible range lookup with
-            // in-pass above-anchor height compensation (including one-shot prepend anchor).
-            val pendingPrependAnchorKey = transientAnchorKey
-            val pendingPrependAnchorTopPx = transientAnchorViewportTopPx
-            transientAnchorKey = null
-
-            val currentScrollInt = scrollOffsetPx.roundToInt().coerceIn(0, currentMaxScroll())
-            val prependAnchorIdx =
-                pendingPrependAnchorKey?.let { key ->
-                    val idx = heightIndex.indexOfKey(key)
-                    if (idx in 0 until count) idx else -1
-                } ?: -1
-            val preferredAnchor =
-                pinnedReadingAnchorKey?.let { key ->
-                    val idx = heightIndex.indexOfKey(key)
-                    if (idx in 0 until count) idx else -1
-                } ?: -1
-            val anchorIndex =
-                when {
-                    prependAnchorIdx >= 0 -> prependAnchorIdx
-                    preferredAnchor >= 0 -> preferredAnchor
-                    else -> heightIndex.indexAtOffset(currentScrollInt)
-                }
-            val anchorContentTopBefore = if (anchorIndex >= 0) heightIndex.offsetOf(anchorIndex) else 0
-            val anchorViewportTopBefore =
-                if (prependAnchorIdx >= 0) {
-                    pendingPrependAnchorTopPx
-                } else {
-                    anchorContentTopBefore - currentScrollInt
-                }
-            val shouldCompensateAboveAnchor =
-                (currentScrollInt > 0 || prependAnchorIdx >= 0 || preferredAnchor >= 0) && anchorIndex in 0 until count
-
-            val windowTop = (currentScrollInt - safeTopPadding - overscanPx).coerceAtLeast(0)
-            val windowBottom = currentScrollInt + availableViewportHeight + overscanPx
-            heightIndex.visibleRange(windowTop, windowBottom, scratchVisibleRange)
-            firstMountedIndex = scratchVisibleRange[0].coerceIn(0, count - 1)
-            lastMountedIndex = scratchVisibleRange[1].coerceIn(firstMountedIndex, count - 1)
-
-            var index = firstMountedIndex
-            while (index <= lastMountedIndex) {
-                val measuredHeight = measureItemOnce(index)
-                // Stop early once measured items past the anchor already fill viewport + overscan,
-                // preventing cold estimated ranges from over-composing far-below rows that would
-                // be immediately disposed on the next scroll step.
-                if (index >= anchorIndex) {
-                    val liveScroll =
-                        if (shouldCompensateAboveAnchor) {
-                            (heightIndex.offsetOf(anchorIndex) - anchorViewportTopBefore).coerceIn(0, currentMaxScroll())
-                        } else {
-                            currentScrollInt
-                        }
-                    if (heightIndex.offsetOf(index) + measuredHeight >= liveScroll + availableViewportHeight + overscanPx) {
-                        lastMountedIndex = index
-                        break
+            val trackedAnchorKey = stabilityTracer.trackedAnchorKey
+            val trackedAnchorFallbackOffsetPx: Int? =
+                if (trackedAnchorKey != null) {
+                    val trackedIdx = heightIndex.indexOfKey(trackedAnchorKey)
+                    if (trackedIdx in 0 until count) {
+                        sparseBottomOffset + heightIndex.offsetOf(trackedIdx) - finalScrollInt
+                    } else {
+                        null
                     }
+                } else {
+                    null
                 }
-                index += 1
-            }
+            val tailFallbackBottomPx: Int? =
+                if (count > 0) {
+                    sparseBottomOffset + heightIndex.offsetOf(count - 1) + heightIndex.heightOf(count - 1) - finalScrollInt
+                } else {
+                    null
+                }
 
-            collectPinnedOffViewportIndices(
-                itemProvider = itemProvider,
-                firstMounted = firstMountedIndex,
-                lastMounted = lastMountedIndex,
+            stabilityTracer.onMeasureFinished(
+                passNumber = measurePassCount,
                 count = count,
+                viewportHeightPx = viewportHeight,
+                topPaddingPx = safeTopPadding,
+                bottomPaddingPx = safeBottomPadding,
+                finalScrollInt = finalScrollInt,
+                finalMaxScroll = finalMaxScroll,
+                sparseAnchorBottom = sparseAnchorBottom,
+                followBottom = followBottom,
+                isScrollInProgress = isScrollInProgress,
+                wasProgrammaticJump = wasProgrammaticJump,
+                anyMeasuredRowHeightChanged = anyMeasuredRowHeightChanged,
+                measuredItemCount = lastMeasuredItemCount,
+                pinnedReadingAnchorKey = pinnedReadingAnchorKey,
+                visibleSnapshot = visibleSnapshot,
+                trackedAnchorFallbackOffsetPx = trackedAnchorFallbackOffsetPx,
+                tailFallbackBottomPx = tailFallbackBottomPx,
+                onEvent = onStabilityEvent,
             )
-            for (i in 0 until pinnedIndicesScratch.size) {
-                measureItemOnce(pinnedIndicesScratch[i])
-            }
 
-            // Compensate scrollOffsetPx for real-height deltas strictly above the viewport anchor
-            // (or above the explicitly pinned / prepended reading-anchor row) so async image decodes,
-            // older-page prepends, reactions, and edits never jump the reader's screen.
-            if (shouldCompensateAboveAnchor) {
-                val anchorContentTopAfter = heightIndex.offsetOf(anchorIndex)
-                val compensated =
-                    (anchorContentTopAfter - anchorViewportTopBefore)
-                        .coerceIn(0, currentMaxScroll())
-                if (compensated != currentScrollInt) {
-                    scrollOffsetPx = compensated.toFloat()
+            // Edge auto-load callbacks stay suppressed during jump settling and until user scroll.
+            if (!isAutoLoadSuppressed && !isJumpSettling) {
+                if (onNearStartEdge != null && finalScrollInt <= edgeLoadThresholdPx) {
+                    onNearStartEdge()
+                }
+                if (onNearEndEdge != null && (finalMaxScroll - finalScrollInt) <= edgeLoadThresholdPx) {
+                    onNearEndEdge()
                 }
             }
 
-            while (lastMountedIndex + 1 < count) {
-                val currentAdjusted = scrollOffsetPx.roundToInt().coerceIn(0, currentMaxScroll())
-                val bottomOfLast =
-                    heightIndex.offsetOf(lastMountedIndex) + heightIndex.heightOf(lastMountedIndex)
-                if (bottomOfLast >= currentAdjusted + availableViewportHeight + overscanPx) break
-                lastMountedIndex += 1
-                measureItemOnce(lastMountedIndex)
-            }
-            while (firstMountedIndex > 0) {
-                val currentAdjusted = scrollOffsetPx.roundToInt().coerceIn(0, currentMaxScroll())
-                val topOfFirst = heightIndex.offsetOf(firstMountedIndex)
-                if (topOfFirst <= currentAdjusted - safeTopPadding - overscanPx) break
-                firstMountedIndex -= 1
-                val prevBefore = if (anchorIndex in 0 until count) heightIndex.offsetOf(anchorIndex) else 0
-                measureItemOnce(firstMountedIndex)
-                if (shouldCompensateAboveAnchor && firstMountedIndex < anchorIndex) {
-                    val deltaAbove = heightIndex.offsetOf(anchorIndex) - prevBefore
-                    if (deltaAbove != 0) {
-                        scrollOffsetPx = (scrollOffsetPx + deltaAbove).coerceIn(0f, currentMaxScroll().toFloat())
+            return scope.layout(viewportWidth, viewportHeight) {
+                for (r in 0 until placedRowsScratch.size) {
+                    val entry = placedRowsScratch[r]
+                    var childY = entry.yOffsetPx
+                    val placeables = entry.placeables
+                    for (p in 0 until placeables.size) {
+                        val placeable = placeables[p]
+                        placeable.place(x = safeStartPadding, y = childY)
+                        childY += placeable.height
                     }
                 }
             }
-            collectPinnedOffViewportIndices(
-                itemProvider = itemProvider,
-                firstMounted = firstMountedIndex,
-                lastMounted = lastMountedIndex,
-                count = count,
-            )
-            scrollOffsetPx = scrollOffsetPx.coerceIn(0f, currentMaxScroll().toFloat())
-        }
-
-        val totalScrollableHeight = safeTopPadding + heightIndex.totalHeightPx + safeBottomPadding
-        val finalMaxScroll = (totalScrollableHeight - viewportHeight).coerceAtLeast(0)
-        scrollOffsetPx = scrollOffsetPx.coerceIn(0f, finalMaxScroll.toFloat())
-        val finalScrollInt = scrollOffsetPx.roundToInt()
-        val sparseBottomOffset =
-            if (sparseAnchorBottom && totalScrollableHeight < viewportHeight) {
-                viewportHeight - totalScrollableHeight
-            } else {
-                0
-            }
-        updateScrollBoundsFlags()
-
-        val capacity = lastMountedIndex - firstMountedIndex + 1 + pinnedIndicesScratch.size
-        val visibleSnapshot = ArrayList<VirtualTimelineVisibleItem>(capacity)
-        val lazyVisibleItems = ArrayList<LazyListItemInfo>(lastMountedIndex - firstMountedIndex + 1)
-
-        for (i in firstMountedIndex..lastMountedIndex) {
-            val placeables = passPlaceables[i] ?: continue
-            val itemHeight = passMeasuredHeights[i] ?: 0
-            val contentOffset = sparseBottomOffset + heightIndex.offsetOf(i) - finalScrollInt
-            val screenY = safeTopPadding + contentOffset
-            placedRowsScratch.add(PlacedRowEntry(index = i, placeables = placeables, yOffsetPx = screenY))
-            if (screenY + itemHeight > 0 && screenY < viewportHeight) {
-                val key = itemProvider.getKey(i)
-                visibleSnapshot.add(
-                    VirtualTimelineVisibleItem(
-                        index = i,
-                        key = key,
-                        offsetPx = contentOffset,
-                        sizePx = itemHeight,
-                        isPinnedOffViewport = false,
-                        anchorable = isAnchorable(i),
-                    )
-                )
-                lazyVisibleItems.add(
-                    VirtualTimelineLazyItemInfo(
-                        index = i,
-                        key = key,
-                        offset = contentOffset,
-                        size = itemHeight,
-                        contentType = itemProvider.getContentType(i),
-                    )
-                )
-            }
-        }
-
-        for (p in 0 until pinnedIndicesScratch.size) {
-            val pinnedIndex = pinnedIndicesScratch[p]
-            val placeables = passPlaceables[pinnedIndex] ?: continue
-            val itemHeight = passMeasuredHeights[pinnedIndex] ?: 0
-            val rawScreenY = safeTopPadding + sparseBottomOffset + heightIndex.offsetOf(pinnedIndex) - finalScrollInt
-            val clampedOffViewportY =
-                if (pinnedIndex < firstMountedIndex) {
-                    min(rawScreenY, -itemHeight - 1)
-                } else {
-                    max(rawScreenY, viewportHeight + 1)
-                }
-            placedRowsScratch.add(PlacedRowEntry(index = pinnedIndex, placeables = placeables, yOffsetPx = clampedOffViewportY))
-            visibleSnapshot.add(
-                VirtualTimelineVisibleItem(
-                    index = pinnedIndex,
-                    key = itemProvider.getKey(pinnedIndex),
-                    offsetPx = clampedOffViewportY - safeTopPadding,
-                    sizePx = itemHeight,
-                    isPinnedOffViewport = true,
-                )
-            )
-        }
-
-        lastMeasuredItemCount = passPlaceables.size
-        lastPinnedOffViewportCount = pinnedIndicesScratch.size
-        lastVisibleItems = visibleSnapshot
-        layoutInfo =
-            VirtualTimelineLayoutInfo(
-                visibleItemsInfo = lazyVisibleItems,
-                viewportStartOffset = -safeTopPadding,
-                viewportEndOffset = viewportHeight - safeTopPadding,
-                totalItemsCount = count,
-                viewportSize = IntSize(viewportWidth, viewportHeight),
-                beforeContentPadding = safeTopPadding,
-                afterContentPadding = safeBottomPadding,
-            )
-
-        // Edge auto-load callbacks stay suppressed during jump settling and until user scroll.
-        if (!isAutoLoadSuppressed && !isJumpSettling) {
-            if (onNearStartEdge != null && finalScrollInt <= edgeLoadThresholdPx) {
-                onNearStartEdge()
-            }
-            if (onNearEndEdge != null && (finalMaxScroll - finalScrollInt) <= edgeLoadThresholdPx) {
-                onNearEndEdge()
-            }
-        }
-
-        return scope.layout(viewportWidth, viewportHeight) {
-            for (r in 0 until placedRowsScratch.size) {
-                val entry = placedRowsScratch[r]
-                var childY = entry.yOffsetPx
-                val placeables = entry.placeables
-                for (p in 0 until placeables.size) {
-                    val placeable = placeables[p]
-                    placeable.place(x = safeStartPadding, y = childY)
-                    childY += placeable.height
-                }
-            }
+        } finally {
+            traceEnd()
         }
     }
 
