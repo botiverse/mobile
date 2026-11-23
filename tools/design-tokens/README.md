@@ -9,6 +9,7 @@ Web palette change becomes a reviewable diff here instead of silent drift (task 
 | `source/` | Vendored copies of those files (raft-ui and Tailwind are MIT) |
 | `gen_tokens.py` | Resolves the CSS cascade per theme and writes the same tokens twice: `compose/shared/src/commonMain/kotlin/build/raft/app/designtokens/RaftUiColorTokens.g.kt` (Kuikly Compose `Color`, `internal`) and `compose/designsystem/src/commonMain/kotlin/build/raft/designsystem/tokens/RaftUiColorTokens.g.kt` (official Compose Multiplatform `androidx.compose.ui.graphics.Color`, public). The targets are listed in `TARGETS` |
 | `gen_theme_decor.py` | Extracts each theme's decor (the `--theme-decor-top` 190x48 and `--theme-decor-rail` 48x112 inline SVGs in `themes.css`, light and the `.dark[data-theme]` repaint) into `compose/designsystem/src/commonMain/kotlin/build/raft/designsystem/tokens/RaftThemeDecorArt.g.kt`: every SVG path as one layer of rectangles, group transforms applied. Fails on anything but unit-rectangle pixel art |
+| `gen_dimensions.py` | Resolves every root length custom property of raft-ui and the Web (`--control-height`, `--column-margin`, `--radius-chip`, `--text-body`...) in the Web's three contexts (a phone; 48rem and up by touch; 48rem and up with a mouse or trackpad) and writes `compose/designsystem/src/commonMain/kotlin/build/raft/designsystem/tokens/RaftUiDimensionTokens.g.kt` (`Compact`, `Wide`, `Fine`). Sizes written in a page's or a component's own classes (not custom properties) are not covered |
 | `chrome-oracle.json` | The same tokens as painted by Chromium; `--check` requires every generated colour to match within 1/255 per channel |
 | `capture_chrome_oracle.mjs` | Regenerates the oracle (local, needs Playwright) |
 
@@ -26,7 +27,7 @@ The theme list and the Pro flag are not in the raft-ui package (its `themes.json
 
 Any token a theme overrides becomes theme-dependent and leaves `RaftUiPalette`: read it from the current theme colours (`RaftTheme.colors`, `RaftAppThemeState.colors`). Raft yellow that must not follow the theme has its own unthemed tokens (`selected`, `you`).
 
-Only colours are emitted. Names in Tailwind's non-colour namespaces (`--spacing-*`, `--radius-*`, `--text-*`, `--font-*`, `--shadow-*`... see `NON_COLOUR_NAMESPACES`) are skipped without being resolved, and any other value that is not a colour (a length, a shadow) is dropped. A colour that cannot be resolved (undefined `var()`, unsupported syntax) still fails the run.
+`gen_tokens.py` emits only colours (lengths come from `gen_dimensions.py`). Names in Tailwind's non-colour namespaces (`--spacing-*`, `--radius-*`, `--text-*`, `--font-*`, `--shadow-*`... see `NON_COLOUR_NAMESPACES`) are skipped without being resolved, and any other value that is not a colour (a length, a shadow) is dropped. A colour that cannot be resolved (undefined `var()`, unsupported syntax) still fails the run.
 
 Names drop the leading `--` and `color-` and are camel-cased (`--foreground-muted` → `foregroundMuted`).
 
@@ -38,6 +39,8 @@ python3 tools/design-tokens/gen_tokens.py --check      # CI: sources match manif
 python3 tools/design-tokens/gen_tokens.py --self-test  # local: colour maths, cascade, fail-closed parsing
 python3 tools/design-tokens/gen_theme_decor.py         # regenerate the theme decor art
 python3 tools/design-tokens/gen_theme_decor.py --check # CI: the decor art matches themes.css
+python3 tools/design-tokens/gen_dimensions.py          # regenerate the dimension tokens
+python3 tools/design-tokens/gen_dimensions.py --check  # CI: the dimension tokens match the sources
 ```
 
 ## Bumping to a newer Web
