@@ -2746,11 +2746,13 @@
     <string name="settings_notifications_battery_optimization_detail">Desative a otimização de bateria para o Raft para que o sistema não interrompa a conexão em segundo plano. Em alguns celulares, também é preciso permitir o Raft nas configurações de inicialização de apps ou de atividade em segundo plano.</string>
     <string name="settings_notifications_battery_optimization_allowed">Permitidos</string>
     <string name="settings_notifications_battery_optimization_request">Permitir</string>
+    <string name="settings_notifications_vendor_background_title">Início automático e segundo plano</string>
+    <string name="settings_notifications_vendor_background_detail_huawei">Em Inicialização de apps, mude o Raft para Gerenciar manualmente e permita Início automático, Início secundário e Executar em segundo plano.</string>
+    <string name="settings_notifications_vendor_background_detail_lenovo">Permita que o Raft inicie automaticamente e continue em execução nas configurações de gerenciamento em segundo plano do dispositivo.</string>
+    <string name="settings_notifications_vendor_background_detail_vendor">Permita que o Raft inicie automaticamente e funcione sem restrições em segundo plano nas configurações do sistema.</string>
+    <string name="settings_notifications_vendor_background_detail_app_details">Permita que o Raft funcione sem restrições de bateria nas configurações do sistema para que não seja encerrado em segundo plano.</string>
     <string name="background_kill_notice_title">O Raft foi encerrado em segundo plano</string>
-    <string name="background_kill_notice_body_huawei">Seu dispositivo encerrou o Raft enquanto ele estava em segundo plano, o que pode atrasar mensagens e notificações. Em Inicialização de apps, mude o Raft para Gerenciar manualmente e permita Início automático, Início secundário e Executar em segundo plano.</string>
-    <string name="background_kill_notice_body_lenovo">Seu dispositivo encerrou o Raft enquanto ele estava em segundo plano, o que pode atrasar mensagens e notificações. Permita que o Raft inicie automaticamente e continue em execução nas configurações de gerenciamento em segundo plano do dispositivo.</string>
-    <string name="background_kill_notice_body_vendor">Seu dispositivo encerrou o Raft enquanto ele estava em segundo plano, o que pode atrasar mensagens e notificações. Permita que o Raft inicie automaticamente e funcione sem restrições em segundo plano nas configurações do sistema.</string>
-    <string name="background_kill_notice_body_app_details">Seu dispositivo encerrou o Raft enquanto ele estava em segundo plano, o que pode atrasar mensagens e notificações. Abra Informações do app, acesse Bateria e defina o Raft como Sem restrições.</string>
+    <string name="background_kill_notice_body">Seu dispositivo encerrou o Raft enquanto ele estava em segundo plano, o que pode atrasar mensagens e notificações. Abra as configurações de notificações para permitir que o Raft seja executado em segundo plano.</string>
     <string name="background_kill_notice_action_open_settings">Abrir configurações</string>
     <string name="background_kill_notice_action_dont_show_again">Não mostrar novamente</string>
     <string name="settings_notifications_offline_computers_title">Alertas de computadores offline</string>

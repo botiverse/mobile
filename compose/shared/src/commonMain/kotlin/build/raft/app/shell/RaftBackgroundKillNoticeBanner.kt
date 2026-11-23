@@ -19,7 +19,6 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.AnnotatedString
 import build.raft.app.data.RaftBackgroundKillNotice
 import build.raft.app.data.RaftBackgroundKillNoticeHostRegistry
-import build.raft.app.data.RaftBackgroundWhitelistGuide
 import build.raft.app.data.RaftMinBuildGate
 import build.raft.app.data.RaftMinBuildGateDecision
 import build.raft.app.resources.*
@@ -35,8 +34,22 @@ internal const val RAFT_BACKGROUND_KILL_NOTICE_DISMISS_TAG = "raft_background_ki
 internal const val RAFT_BACKGROUND_KILL_NOTICE_DISMISS_FOREVER_TAG = "raft_background_kill_notice_dismiss_forever"
 internal const val RAFT_BACKGROUND_KILL_NOTICE_SETTINGS_TAG = "raft_background_kill_notice_open_settings"
 
+internal val RaftBackgroundKillNoticeSettingsLink =
+    RaftSettingsLink(
+        serverSlug = null,
+        webTab = "notifications",
+        destinationKey = SettingsNativeDetailPage.Notifications.key,
+        section = SETTINGS_NOTIFICATIONS_BACKGROUND_KEEP_ALIVE_ANCHOR,
+    )
+
+internal val RaftBackgroundKillNoticeSettingsTarget =
+    RaftSettingsLinkTarget(
+        switchToServerId = null,
+        destinationKey = SettingsNativeDetailPage.Notifications.key,
+    )
+
 /**
- * Pure visibility predicate: show the background-kill whitelist notice only when a notice is active,
+ * Pure visibility predicate: show the background-kill notice only when a notice is active,
  * the shell is online, and no minimum-build gate banner/block is currently visible ("at most one
  * banner in one place").
  */
@@ -57,12 +70,13 @@ internal fun shouldShowBackgroundKillNotice(
 }
 
 /**
- * Signed-in app-shell slot for the Android background-kill whitelist notice.
+ * Signed-in app-shell slot for the Android background-kill notice.
  * Kept out of [RaftAppShellReadyContent] to preserve JVM method size headroom.
  */
 @Composable
 internal fun rememberRaftBackgroundKillNoticeBannerSlot(
     networkStatus: RaftAppShellNetworkStatus,
+    onOpenNotificationSettings: () -> Unit,
 ): (@Composable () -> Unit)? {
     val host = RaftBackgroundKillNoticeHostRegistry.host ?: return null
     val notice by host.notice.collectAsState()
@@ -70,11 +84,15 @@ internal fun rememberRaftBackgroundKillNoticeBannerSlot(
     val dismissedMinBuildBanner by RaftMinBuildGate.dismissedBanner.collectAsState()
     if (!shouldShowBackgroundKillNotice(notice, networkStatus, minBuildDecision, dismissedMinBuildBanner)) return null
     val activeNotice = notice ?: return null
+    val currentOpenNotificationSettings by rememberUpdatedState(onOpenNotificationSettings)
     return remember(activeNotice, host) {
         {
             RaftBackgroundKillNoticeBanner(
                 notice = activeNotice,
-                onOpenSettings = { host.openVendorWhitelistSettings() },
+                onOpenSettings = {
+                    host.markSettingsOpened()
+                    currentOpenNotificationSettings()
+                },
                 onDismiss = { host.dismiss() },
                 onDismissForever = { host.dismissForever() },
                 onShown = { host.markShown() },
@@ -96,13 +114,7 @@ internal fun RaftBackgroundKillNoticeBanner(
     // push, a widget, the keep-alive service) only selected the notice; the host counts once per process.
     val currentOnShown by rememberUpdatedState(onShown)
     LaunchedEffect(notice.exitTimestampMillis) { currentOnShown() }
-    val description =
-        when (notice.guide) {
-            RaftBackgroundWhitelistGuide.HuaweiAppLaunch -> stringResource(Res.string.background_kill_notice_body_huawei)
-            RaftBackgroundWhitelistGuide.LenovoZui -> stringResource(Res.string.background_kill_notice_body_lenovo)
-            RaftBackgroundWhitelistGuide.VendorSettings -> stringResource(Res.string.background_kill_notice_body_vendor)
-            RaftBackgroundWhitelistGuide.AppDetails -> stringResource(Res.string.background_kill_notice_body_app_details)
-        }
+    val description = stringResource(Res.string.background_kill_notice_body)
     Box(
         modifier =
             modifier

@@ -2749,11 +2749,13 @@
     <string name="settings_notifications_battery_optimization_detail">为 Raft 关闭电池优化，避免系统中断后台连接。部分手机还需要在应用启动管理或后台活动设置中允许 Raft。</string>
     <string name="settings_notifications_battery_optimization_allowed">已允许</string>
     <string name="settings_notifications_battery_optimization_request">允许</string>
+    <string name="settings_notifications_vendor_background_title">自启动与后台管理</string>
+    <string name="settings_notifications_vendor_background_detail_huawei">在「应用启动管理」中关闭 Raft 的自动管理，并开启允许自启动、允许关联启动和允许后台活动。</string>
+    <string name="settings_notifications_vendor_background_detail_lenovo">在系统的自启动与后台管理设置中，允许 Raft 自启动并保持后台运行。</string>
+    <string name="settings_notifications_vendor_background_detail_vendor">在系统设置中允许 Raft 自启动并保持后台运行，避免被后台清理。</string>
+    <string name="settings_notifications_vendor_background_detail_app_details">在系统电池设置中将 Raft 设为无限制，避免在后台被系统停止。</string>
     <string name="background_kill_notice_title">Raft 在后台被系统停止</string>
-    <string name="background_kill_notice_body_huawei">系统在后台停止了 Raft，可能导致消息和通知延迟。请在「应用启动管理」中关闭 Raft 的自动管理，并开启允许自启动、允许关联启动和允许后台活动。</string>
-    <string name="background_kill_notice_body_lenovo">系统在后台停止了 Raft，可能导致消息和通知延迟。请在系统的自启动与后台管理设置中，允许 Raft 自启动并保持后台运行。</string>
-    <string name="background_kill_notice_body_vendor">系统在后台停止了 Raft，可能导致消息和通知延迟。请在系统设置中允许 Raft 自启动并保持后台运行，避免被后台清理。</string>
-    <string name="background_kill_notice_body_app_details">系统在后台停止了 Raft，可能导致消息和通知延迟。请打开应用信息，进入「电池」设置并将 Raft 设为无限制。</string>
+    <string name="background_kill_notice_body">系统在后台停止了 Raft，可能导致消息和通知延迟。前往通知设置允许 Raft 在后台运行。</string>
     <string name="background_kill_notice_action_open_settings">去设置</string>
     <string name="background_kill_notice_action_dont_show_again">不再提示</string>
     <string name="settings_notifications_offline_computers_title">计算机离线提醒</string>

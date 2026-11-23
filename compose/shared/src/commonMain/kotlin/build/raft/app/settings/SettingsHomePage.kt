@@ -4812,7 +4812,12 @@ private fun RaftAppShellReadyContent(
     // A link to Raft's own web Settings (an announcement's "Choose a theme"): the in-app page, on
     // the server the link names, as the Settings rows open it; the Settings home for a tab the
     // app has no page of its own for.
-    fun openSettingsFromLink(link: RaftSettingsLink, target: RaftSettingsLinkTarget, source: String) {
+    fun openSettingsFromLink(
+        link: RaftSettingsLink,
+        target: RaftSettingsLinkTarget,
+        source: String,
+        anchorOverride: String? = null,
+    ) {
         serverMenuState.dismiss()
         target.switchToServerId?.let { serverId ->
             readySession
@@ -4822,14 +4827,16 @@ private fun RaftAppShellReadyContent(
             homeShellStore.dispatch(SharedHomeShellIntent.Home(SharedHomeIntent.SelectServer(serverId)))
         }
         val key = target.destinationKey
-        // A block the in-app page has (Account's `#two-step` / `#passkeys`): opened at it, located
-        // as a Settings search result is.
-        val anchor = link.inAppAnchor?.let { SettingsSearchAnchorRequest(it, ++settingsSearchOpenNonce) }
+        // A block the in-app page has (Account's `#two-step` / `#passkeys`, or an internal jump
+        // such as the background-kill notice opening Notifications at keep-alive): opened at it,
+        // located as a Settings search result is.
+        val anchor = (anchorOverride ?: link.inAppAnchor)?.let { SettingsSearchAnchorRequest(it, ++settingsSearchOpenNonce) }
         bridge.log(
             "settings_link_open source=$source tab=${link.webTab ?: "home"} page=${key ?: "home"} " +
                 "section=${link.section != null} anchor=${anchor?.id ?: "none"} switched=${target.switchToServerId != null}"
         )
         if (navRailActive) {
+            railInlineSecondaryDestination = null
             // The wide rail's Settings: the section beside the list, or a page over it.
             selectAppShellTab("settings", directChildSwitch = true, source = AppShellTabSwitchSource.User)
             retainedAppShellTabs = retainedAppShellTabs + "settings"
@@ -5121,7 +5128,18 @@ private fun RaftAppShellReadyContent(
                 onAppShellTabSelected(key)
             },
             networkStatus = hostNetworkStatus,
-            topNoticeBanner = rememberRaftBackgroundKillNoticeBannerSlot(hostNetworkStatus),
+            topNoticeBanner =
+                rememberRaftBackgroundKillNoticeBannerSlot(
+                    networkStatus = hostNetworkStatus,
+                    onOpenNotificationSettings = {
+                        openSettingsFromLink(
+                            link = RaftBackgroundKillNoticeSettingsLink,
+                            target = RaftBackgroundKillNoticeSettingsTarget,
+                            source = "background_kill_notice",
+                            anchorOverride = SETTINGS_NOTIFICATIONS_BACKGROUND_KEEP_ALIVE_ANCHOR,
+                        )
+                    },
+                ),
             showBottomTabs = showAppShellBottomTabs,
             // artin 2026-10-10 (Hands 79db9fe6): the cached Home is usable at once while the
             // session and server list refresh in the background; a failed restore or an expired
