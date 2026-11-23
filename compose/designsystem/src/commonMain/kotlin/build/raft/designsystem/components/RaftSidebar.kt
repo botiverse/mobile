@@ -220,7 +220,7 @@ fun RaftSidebarItem(
         titleText = { textModifier, style, ink ->
             RaftText(title, modifier = textModifier, style = style, color = ink, maxLines = 1, overflow = TextOverflow.Ellipsis)
         },
-        modifier = modifier,
+        modifier = modifier.raftSlot("sidebar-item"),
         onClick = onClick,
         selected = selected,
         tone = tone,
@@ -262,7 +262,7 @@ fun RaftSidebarItem(
         titleText = { textModifier, style, ink ->
             RaftText(title, modifier = textModifier, style = style, color = ink, maxLines = 1, overflow = TextOverflow.Ellipsis)
         },
-        modifier = modifier,
+        modifier = modifier.raftSlot("sidebar-item"),
         onClick = onClick,
         selected = selected,
         tone = tone,
@@ -606,7 +606,7 @@ fun RaftSidebarChannelItem(
         titleText = { textModifier, style, ink ->
             RaftText(name, modifier = textModifier, style = style, color = ink, maxLines = 1, overflow = TextOverflow.Ellipsis)
         },
-        modifier = modifier,
+        modifier = modifier.raftSlot("sidebar-item"),
         onClick = onClick,
         selected = selected,
         tone = tone,
@@ -648,7 +648,7 @@ fun RaftSidebarChannelItem(
         titleText = { textModifier, style, ink ->
             RaftText(name, modifier = textModifier, style = style, color = ink, maxLines = 1, overflow = TextOverflow.Ellipsis)
         },
-        modifier = modifier,
+        modifier = modifier.raftSlot("sidebar-item"),
         onClick = onClick,
         selected = selected,
         tone = tone,
@@ -821,7 +821,7 @@ fun RaftSidebarItemMeta(text: String, modifier: Modifier = Modifier, overflow: T
 fun RaftSidebarGroupLabel(title: String, modifier: Modifier = Modifier) {
     // With a mouse or trackpad on the glyph axis (`md:pointer-fine:px-(--sidebar-glyph-axis)`).
     val inset = if (RaftTheme.pointerInput == RaftPointerInput.Fine) RaftSidebarPointerGlyphInset else 12.dp
-    RaftSectionEyebrow(title, modifier.fillMaxWidth().raftSafeAreaHorizontalPadding().padding(start = inset, end = inset, top = 16.dp))
+    RaftSectionEyebrow(title, modifier.raftSlot("sidebar-group-label").fillMaxWidth().raftSafeAreaHorizontalPadding().padding(start = inset, end = inset, top = 16.dp))
 }
 
 /**
@@ -913,7 +913,7 @@ fun RaftSidebarSectionHeader(
     // sections, still part of the target but never painted (artin, 2026-11-04: lit from the
     // top of the gap, the words sat low in the fill).
     Row(
-        modifier
+        modifier.raftSlot("sidebar-section-header")
             .fillMaxWidth()
             .raftSafeAreaHorizontalPadding()
             .raftPointerHover(hoverSource)

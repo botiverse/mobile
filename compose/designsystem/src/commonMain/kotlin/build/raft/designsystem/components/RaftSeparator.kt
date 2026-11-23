@@ -36,8 +36,8 @@ fun RaftSeparator(
 ) {
     val sized =
         when (orientation) {
-            RaftSeparatorOrientation.Horizontal -> modifier.fillMaxWidth().height(RaftStroke.Hairline)
-            RaftSeparatorOrientation.Vertical -> modifier.fillMaxHeight().width(RaftStroke.Hairline)
+            RaftSeparatorOrientation.Horizontal -> modifier.raftSlot("separator").fillMaxWidth().height(RaftStroke.Hairline)
+            RaftSeparatorOrientation.Vertical -> modifier.raftSlot("separator").fillMaxHeight().width(RaftStroke.Hairline)
         }
     Box(sized.background(RaftTheme.colors.lineHairline))
 }

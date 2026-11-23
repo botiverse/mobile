@@ -99,7 +99,7 @@ fun RaftTabs(
 ) {
     CompositionLocalProvider(LocalRaftTabsVariant provides variant) {
         Row(
-            modifier.selectableGroup(),
+            modifier.raftSlot("tabs-list").selectableGroup(),
             horizontalArrangement = Arrangement.spacedBy(if (variant == RaftTabsVariant.Default) 2.dp else 20.dp),
             verticalAlignment = Alignment.CenterVertically,
             content = content,
@@ -523,14 +523,14 @@ fun RaftSegmentedControl(
     content: @Composable RowScope.() -> Unit,
 ) {
     if (iconsOnly) {
-        RaftSegmentedTrack(modifier, iconsOnly = true, selectionPosition, content)
+        RaftSegmentedTrack(modifier.raftSlot("segmented-control"), iconsOnly = true, selectionPosition, content)
         return
     }
     if (!iconsOnlyWhenLabelsDontFit) {
-        RaftSegmentedTrack(modifier, iconsOnly = false, selectionPosition, content)
+        RaftSegmentedTrack(modifier.raftSlot("segmented-control"), iconsOnly = false, selectionPosition, content)
         return
     }
-    SubcomposeLayout(modifier) { constraints ->
+    SubcomposeLayout(modifier.raftSlot("segmented-control")) { constraints ->
         // The labelled track, composed only to measure its width: never placed, and with no
         // semantics, so nothing reads or finds it twice.
         val labelledWidth =

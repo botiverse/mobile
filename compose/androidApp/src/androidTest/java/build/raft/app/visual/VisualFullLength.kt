@@ -7,6 +7,7 @@ import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsNode
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
+import build.raft.designsystem.components.RaftSlotKey
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -79,7 +80,8 @@ internal object VisualFullLength {
         val out = JSONArray()
         fun dp(px: Float) = Math.round(px / density * 100) / 100.0
         allNodes(windowRoots).forEach { node ->
-            val tag = node.config.getOrNull(SemanticsProperties.TestTag) ?: return@forEach
+            // An app test tag (`data-testid`) or a design-system slot (`data-slot`, RaftSlotKey).
+            val tag = node.config.getOrNull(SemanticsProperties.TestTag) ?: node.config.getOrNull(RaftSlotKey) ?: return@forEach
             val bounds = node.boundsInWindow
             if (bounds.width <= 0f || bounds.height <= 0f) return@forEach
             out.put(
