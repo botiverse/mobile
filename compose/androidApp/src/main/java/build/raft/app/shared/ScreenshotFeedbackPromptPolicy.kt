@@ -1,22 +1,168 @@
 package build.raft.app.shared
 
 import android.app.Activity
+import android.graphics.Bitmap
+import android.net.Uri
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
+import android.view.PixelCopy
 import androidx.annotation.RequiresApi
 import build.raft.app.core.data.diagnostics.RaftAppLog
+import build.raft.app.data.PlatformFile
+import build.raft.app.data.RaftPrivacyMode
+import java.io.File
+import java.io.FileOutputStream
+import java.util.UUID
 import java.util.concurrent.Executor
+import kotlin.coroutines.resume
+import kotlin.math.max
+import kotlin.math.roundToInt
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 
 internal const val SCREENSHOT_FEEDBACK_MINIMUM_INTERVAL_MILLIS = 1_500L
-internal const val SCREENSHOT_FEEDBACK_VISIBLE_MILLIS = 9_000L
+internal const val SCREENSHOT_FEEDBACK_MAX_DIMENSION_PX = 1_600
+internal const val SCREENSHOT_FEEDBACK_JPEG_QUALITY = 85
+internal const val SCREENSHOT_FEEDBACK_CACHE_DIR_NAME = "screenshot-feedback"
+private const val SCREENSHOT_FEEDBACK_PIXEL_COPY_TIMEOUT_MILLIS = 2_000L
 
+/**
+ * Android screenshot feedback eligibility gate (#wg-mobile-feedback:#276).
+ *
+ * Activates only when:
+ * `(serverFlagEnabled || buildAlphaEnabled) && signedIn && privacyMode == Off`
+ * on API 34+ (`Activity.ScreenCaptureCallback`, zero storage/Photos permissions).
+ */
 internal fun shouldEnableScreenshotFeedback(
-    buildEnabled: Boolean,
-    runtimeEnabled: Boolean,
+    serverFlagEnabled: Boolean,
+    buildAlphaEnabled: Boolean,
+    signedIn: Boolean,
+    privacyMode: RaftPrivacyMode,
     sdkInt: Int,
 ): Boolean =
-    buildEnabled &&
-        runtimeEnabled &&
+    (serverFlagEnabled || buildAlphaEnabled) &&
+        signedIn &&
+        privacyMode == RaftPrivacyMode.Off &&
         sdkInt >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE
+
+/**
+ * Captures the current [activity] window via `PixelCopy.request(window, bitmap, ...)`, downscales
+ * to at most [maxDimensionPx] along the longest edge, and compresses JPEG off the main thread into
+ * app-private `<cacheDir>/screenshot-feedback/<uuid>.jpg`. Returns null gracefully on any failure.
+ */
+internal suspend fun captureWindowScreenshotFeedbackFile(
+    activity: Activity,
+    cacheDir: File,
+    maxDimensionPx: Int = SCREENSHOT_FEEDBACK_MAX_DIMENSION_PX,
+    jpegQuality: Int = SCREENSHOT_FEEDBACK_JPEG_QUALITY,
+): PlatformFile? {
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return null
+    val window = activity.window ?: return null
+    val decorView = window.decorView ?: return null
+    val width = decorView.width
+    val height = decorView.height
+    if (width <= 0 || height <= 0 || activity.isFinishing || activity.isDestroyed) return null
+
+    val capturedBitmap: Bitmap =
+        try {
+            val rawBitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+            val copyResult =
+                withTimeoutOrNull(SCREENSHOT_FEEDBACK_PIXEL_COPY_TIMEOUT_MILLIS) {
+                    suspendCancellableCoroutine<Int> { continuation ->
+                        try {
+                            PixelCopy.request(
+                                window,
+                                rawBitmap,
+                                { resultCode ->
+                                    if (continuation.isActive) continuation.resume(resultCode)
+                                },
+                                Handler(Looper.getMainLooper()),
+                            )
+                        } catch (_: Throwable) {
+                            if (continuation.isActive) continuation.resume(PixelCopy.ERROR_UNKNOWN)
+                        }
+                    }
+                }
+            if (copyResult != PixelCopy.SUCCESS) {
+                rawBitmap.recycleSafely()
+                RaftAppLog.record("SlockScreenshotFeedback", "pixel_copy_failed result=${copyResult ?: "timeout"}")
+                return null
+            }
+            rawBitmap
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (throwable: Throwable) {
+            RaftAppLog.record("SlockScreenshotFeedback", "pixel_copy_exception error=${throwable.javaClass.simpleName}")
+            return null
+        }
+
+    return withContext(Dispatchers.IO) {
+        var scaledBitmap: Bitmap? = null
+        val uuid = UUID.randomUUID().toString()
+        val outputDir = File(cacheDir, SCREENSHOT_FEEDBACK_CACHE_DIR_NAME)
+        val outputFile = File(outputDir, "$uuid.jpg")
+        val partFile = File(outputDir, "$uuid.jpg.part")
+        var committed = false
+        try {
+            if (!outputDir.exists() && !outputDir.mkdirs()) return@withContext null
+            val longestEdge = max(capturedBitmap.width, capturedBitmap.height)
+            val targetBitmap =
+                if (longestEdge > maxDimensionPx && maxDimensionPx > 0) {
+                    val scale = maxDimensionPx.toFloat() / longestEdge.toFloat()
+                    val targetWidth = (capturedBitmap.width * scale).roundToInt().coerceAtLeast(1)
+                    val targetHeight = (capturedBitmap.height * scale).roundToInt().coerceAtLeast(1)
+                    Bitmap.createScaledBitmap(capturedBitmap, targetWidth, targetHeight, true).also {
+                        scaledBitmap = it
+                    }
+                } else {
+                    capturedBitmap
+                }
+            FileOutputStream(partFile).use { stream ->
+                if (!targetBitmap.compress(Bitmap.CompressFormat.JPEG, jpegQuality, stream)) {
+                    return@withContext null
+                }
+            }
+            if (!partFile.isFile || partFile.length() <= 0L) return@withContext null
+            if (!partFile.renameTo(outputFile)) return@withContext null
+            committed = true
+            val sizeBytes = outputFile.length().takeIf { it > 0L } ?: return@withContext null
+            val fileUri = Uri.fromFile(outputFile).toString()
+            PlatformFile(
+                id = "screenshot-$uuid",
+                fileName = "screenshot-${uuid.take(8)}.jpg",
+                mimeType = "image/jpeg",
+                sizeBytes = sizeBytes,
+                previewUri = fileUri,
+                fileRef = fileUri,
+                source = "screenshot_feedback",
+            )
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (throwable: Throwable) {
+            RaftAppLog.record("SlockScreenshotFeedback", "screenshot_encode_failed error=${throwable.javaClass.simpleName}")
+            null
+        } finally {
+            if (!committed) {
+                runCatching { partFile.delete() }
+                runCatching { outputFile.delete() }
+            }
+            if (scaledBitmap != null && scaledBitmap !== capturedBitmap) {
+                scaledBitmap?.recycleSafely()
+            }
+            capturedBitmap.recycleSafely()
+        }
+    }
+}
+
+private fun Bitmap.recycleSafely() {
+    runCatching {
+        if (!isRecycled) recycle()
+    }
+}
 
 internal class ScreenshotFeedbackEventGate(
     private val minimumIntervalMillis: Long,

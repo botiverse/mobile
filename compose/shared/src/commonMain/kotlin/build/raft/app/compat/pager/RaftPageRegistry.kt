@@ -42,8 +42,10 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.ViewModelStore
 import androidx.lifecycle.ViewModelStoreOwner
 import androidx.lifecycle.viewmodel.compose.LocalViewModelStoreOwner
+import build.raft.app.cmp.RaftOverlayProvider
 import build.raft.app.cmp.RaftPageProvider
 import build.raft.app.cmp.RaftCmpRouter
+import build.raft.app.RaftScreenshotFeedbackRootOverlay
 import build.raft.app.cmp.host.LocalRaftHost
 import build.raft.app.cmp.host.LocalRaftPageArgs
 import build.raft.app.cmp.host.RaftCmpPageArgs
@@ -102,6 +104,7 @@ object RaftPageRegistry {
     fun install() {
         raftInstallImageLoader()
         RaftCmpRouter.installPageProvider(RaftPageProvider { pageName -> content(pageName) })
+        RaftCmpRouter.installOverlayProvider(RaftOverlayProvider { RaftScreenshotFeedbackRootOverlay() })
         RaftPageRouteIdentities.install(RaftPageRouteIdentity(::raftPageRouteIdentity)) { line -> raftLogInfo("RaftPageOpenGuard", line) }
     }
 }

@@ -26,6 +26,9 @@ import android.graphics.drawable.ColorDrawable
 import androidx.compose.ui.graphics.toArgb
 import build.raft.app.data.RaftAppAppearanceRuntime
 import build.raft.app.data.RaftServicesPrivacyGate
+import build.raft.app.data.RaftTelemetryPrivacy
+import build.raft.app.RaftScreenshotFeedbackRuntime
+import build.raft.app.extractScreenshotFeedbackPageContext
 import build.raft.app.RaftWindowFocusScope
 import build.raft.app.RaftDatabaseLaunchReadiness
 import build.raft.designsystem.focus.RaftFocusCoordinator
@@ -959,10 +962,10 @@ internal open class RaftCmpActivity :
     private val screenshotFeedbackEventGate =
             ScreenshotFeedbackEventGate(SCREENSHOT_FEEDBACK_MINIMUM_INTERVAL_MILLIS)
     private val screenshotFeedbackListeningGate = ScreenshotFeedbackListeningGate()
-    private val screenshotFeedbackHideRunnable = Runnable { hideScreenshotFeedbackAction() }
     private var screenCaptureObserver: ScreenCaptureObserver? = null
-    private var screenshotFeedbackActionView: View? = null
-    private var screenshotFeedbackSubmissionActive = false
+    private var screenCaptureObserverStarted = false
+    private var screenshotFeedbackPolicyJob: Job? = null
+    private var screenshotFeedbackCaptureJob: Job? = null
     private val pageName: String
         get() = resolvedPageName(intent)
 
@@ -1049,7 +1052,7 @@ internal open class RaftCmpActivity :
         RaftAppAppearanceRuntime.ensureLoaded()
         setContentView(R.layout.activity_raft)
         applyHostCanvasColor(hostWindowBackgroundColor())
-        prepareScreenshotFeedbackObserver()
+        RaftScreenshotFeedbackRuntime.buildConfigAlphaEnabled = BuildConfig.SCREENSHOT_FEEDBACK_ENABLED
         registerAndroidShellWindow(intent)
         // task #151: this page is the top of its task now (Activity-path push rules, RaftActivityPageOpens).
         RaftActivityPageOpens.Process.created(this, taskId, pageName, activityRoutePageData(resolvedPageData(intent).text))
@@ -1720,10 +1723,12 @@ internal open class RaftCmpActivity :
         AndroidLoginTransitionRouting.onDestroyed(
             this, loginTransitionToken, isChangingConfigurations,
         )
-        screenshotFeedbackListeningGate.stop()
-        screenCaptureObserver?.stop()
+        screenshotFeedbackPolicyJob?.cancel()
+        screenshotFeedbackPolicyJob = null
+        screenshotFeedbackCaptureJob?.cancel()
+        screenshotFeedbackCaptureJob = null
+        stopScreenCaptureObserver()
         screenCaptureObserver = null
-        hideScreenshotFeedbackAction()
         removeHomeColdStartFirstDrawListener()
         removeHomeColdStartNativeHold(reason = "destroy")
         removeCmpFirstFrameListener()
@@ -1778,165 +1783,119 @@ internal open class RaftCmpActivity :
 
     override fun onStart() {
         super.onStart()
-        screenCaptureObserver?.start(screenshotFeedbackListeningGate.start())
+        startScreenshotFeedbackEligibilityObserver()
     }
 
     override fun onStop() {
         RaftRecentsTaskColor.recordStop(this, pageName, hostCanvasArgb, recentsTaskColor.appliedArgb)
-        screenshotFeedbackListeningGate.stop()
-        screenCaptureObserver?.stop()
-        hideScreenshotFeedbackAction()
+        screenshotFeedbackPolicyJob?.cancel()
+        screenshotFeedbackPolicyJob = null
+        screenshotFeedbackCaptureJob?.cancel()
+        screenshotFeedbackCaptureJob = null
+        stopScreenCaptureObserver()
         super.onStop()
     }
 
-    private fun prepareScreenshotFeedbackObserver() {
-        val runtimeEnabled = resources.getBoolean(R.bool.raft_screenshot_feedback_runtime_enabled)
-        if (
-            !shouldEnableScreenshotFeedback(
-                buildEnabled = BuildConfig.SCREENSHOT_FEEDBACK_ENABLED,
-                runtimeEnabled = runtimeEnabled,
-                sdkInt = Build.VERSION.SDK_INT,
-            )
-        ) {
-            return
-        }
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-            screenCaptureObserver =
-                    Android14ScreenCaptureObserver(
-                        activity = this,
-                        executor = ContextCompat.getMainExecutor(this),
-                        onScreenCaptured = ::handleSystemScreenCaptured,
-                    )
-        }
+    private fun startScreenshotFeedbackEligibilityObserver() {
+        screenshotFeedbackPolicyJob?.cancel()
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.UPSIDE_DOWN_CAKE) return
+        screenshotFeedbackPolicyJob =
+            lifecycleScope.launch {
+                RaftScreenshotFeedbackRuntime
+                    .observeEligibility(buildAlphaEnabled = BuildConfig.SCREENSHOT_FEEDBACK_ENABLED)
+                    .collect { eligible ->
+                        val shouldListen =
+                            shouldEnableScreenshotFeedback(
+                                serverFlagEnabled = eligible,
+                                buildAlphaEnabled = false,
+                                signedIn = eligible,
+                                privacyMode = RaftTelemetryPrivacy.state.value,
+                                sdkInt = Build.VERSION.SDK_INT,
+                            )
+                        if (shouldListen) {
+                            ensureScreenCaptureObserverStarted()
+                        } else {
+                            stopScreenCaptureObserver()
+                        }
+                    }
+            }
+    }
+
+    private fun ensureScreenCaptureObserverStarted() {
+        if (screenCaptureObserverStarted) return
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.UPSIDE_DOWN_CAKE) return
+        val observer =
+            screenCaptureObserver
+                ?: Android14ScreenCaptureObserver(
+                    activity = this,
+                    executor = ContextCompat.getMainExecutor(this),
+                    onScreenCaptured = ::handleSystemScreenCaptured,
+                ).also { screenCaptureObserver = it }
+        screenCaptureObserverStarted = true
+        observer.start(screenshotFeedbackListeningGate.start())
+    }
+
+    private fun stopScreenCaptureObserver() {
+        screenCaptureObserverStarted = false
+        screenshotFeedbackListeningGate.stop()
+        screenCaptureObserver?.stop()
     }
 
     private fun handleSystemScreenCaptured(generation: Long) {
         if (!screenshotFeedbackListeningGate.accepts(generation)) return
-        if (screenshotFeedbackSubmissionActive || isFinishing || isDestroyed) return
+        if (isFinishing || isDestroyed) return
         if (!screenshotFeedbackEventGate.accept(SystemClock.elapsedRealtime())) return
-        RaftAppLog.record(
-            "SlockScreenshotFeedback",
-            "screenshot_detected route=$pageName contentCaptured=false",
-        )
-        showScreenshotFeedbackAction()
-    }
-
-    private fun showScreenshotFeedbackAction() {
-        val root = findViewById<android.widget.FrameLayout?>(R.id.raft_root) ?: return
-        val actionView =
-                screenshotFeedbackActionView
-                    ?: android.widget.TextView(this).apply {
-                        text = getString(R.string.screenshot_feedback_action)
-                        contentDescription =
-                                getString(R.string.screenshot_feedback_content_description)
-                        textSize = 14f
-                        typeface = Typeface.DEFAULT_BOLD
-                        gravity = android.view.Gravity.CENTER
-                        setTextColor(Color.BLACK)
-                        minWidth = screenshotFeedbackDp(112)
-                        setPadding(
-                            screenshotFeedbackDp(18),
-                            0,
-                            screenshotFeedbackDp(18),
-                            0,
-                        )
-                        background =
-                                android.graphics.drawable.GradientDrawable().apply {
-                                    shape = android.graphics.drawable.GradientDrawable.RECTANGLE
-                                    cornerRadius = screenshotFeedbackDp(6).toFloat()
-                                    setColor(ContextCompat.getColor(context, R.color.raft_accent_pink))
-                                    setStroke(screenshotFeedbackDp(2), Color.BLACK)
-                                }
-                        elevation = screenshotFeedbackDp(6).toFloat()
-                        isClickable = true
-                        isFocusable = true
-                        setOnClickListener { openScreenshotFeedbackPrompt() }
-                    }.also { view ->
-                        screenshotFeedbackActionView = view
-                        root.addView(
-                            view,
-                            android.widget.FrameLayout.LayoutParams(
-                                ViewGroup.LayoutParams.WRAP_CONTENT,
-                                screenshotFeedbackDp(48),
-                            ).apply {
-                                gravity = android.view.Gravity.END or android.view.Gravity.CENTER_VERTICAL
-                                marginEnd = screenshotFeedbackDp(16)
-                            },
-                        )
-                    }
-        actionView.visibility = View.VISIBLE
-        actionView.removeCallbacks(screenshotFeedbackHideRunnable)
-        actionView.postDelayed(
-            screenshotFeedbackHideRunnable,
-            SCREENSHOT_FEEDBACK_VISIBLE_MILLIS,
-        )
-    }
-
-    private fun hideScreenshotFeedbackAction() {
-        screenshotFeedbackActionView?.let { view ->
-            view.removeCallbacks(screenshotFeedbackHideRunnable)
-            view.visibility = View.GONE
+        if (
+            !RaftScreenshotFeedbackRuntime.isCurrentlyEligible(
+                buildAlphaEnabled = BuildConfig.SCREENSHOT_FEEDBACK_ENABLED,
+            )
+        ) {
+            return
         }
-    }
-
-    private fun openScreenshotFeedbackPrompt() {
-        if (screenshotFeedbackSubmissionActive) return
-        screenshotFeedbackSubmissionActive = true
-        hideScreenshotFeedbackAction()
+        val activeArgs =
+            nav3Stack?.pages?.lastOrNull()?.args
+                ?: RaftScreenshotFeedbackRuntime.currentActivePageArgs()
+                ?: RaftCmpPageArgs.fromJsonText(pageName, resolvedPageData(intent).text)
+        val decorView = window?.decorView
+        val viewportWidthPx = decorView?.width?.takeIf { it > 0 } ?: resources.displayMetrics.widthPixels
+        val viewportHeightPx = decorView?.height?.takeIf { it > 0 } ?: resources.displayMetrics.heightPixels
+        val fallbackServerId =
+            runCatching {
+                KeyValueAuthSessionStore(androidMMKVAuthKeyValueStore(applicationContext))
+                    .readCommittedSessionSnapshot()
+                    ?.currentServerId
+            }.getOrNull()
+        val pageContext =
+            extractScreenshotFeedbackPageContext(
+                pageName = activeArgs.pageName,
+                pageData = activeArgs.pageData,
+                activeTab = RaftScreenshotFeedbackRuntime.currentActiveShellTab(),
+                fallbackServerId = fallbackServerId,
+                viewportWidthPx = viewportWidthPx,
+                viewportHeightPx = viewportHeightPx,
+                appVersion = BuildConfig.VERSION_NAME,
+                buildNumber = BuildConfig.VERSION_CODE.toString(),
+                platform = "android",
+            )
         RaftAppLog.record(
             "SlockScreenshotFeedback",
-            "feedback_action_opened route=$pageName screenshotAttached=false",
+            "screenshot_detected route=${pageContext.pageName} tab=${pageContext.activeTab.orEmpty()}",
         )
-        lifecycleScope.launch {
-            try {
-                val description = promptScreenshotFeedbackDescription() ?: return@launch
-                RaftBridgeModule(applicationContext).submitNativeFeedback(
-                    JSONObject().put("message", description)
+        screenshotFeedbackCaptureJob?.cancel()
+        screenshotFeedbackCaptureJob =
+            lifecycleScope.launch {
+                val screenshotFile =
+                    captureWindowScreenshotFeedbackFile(
+                        activity = this@RaftCmpActivity,
+                        cacheDir = applicationContext.cacheDir,
+                    )
+                RaftScreenshotFeedbackRuntime.onScreenshotCaptured(
+                    screenshot = screenshotFile,
+                    pageContext = pageContext,
+                    buildAlphaEnabled = BuildConfig.SCREENSHOT_FEEDBACK_ENABLED,
                 )
-            } finally {
-                screenshotFeedbackSubmissionActive = false
             }
-        }
     }
-
-    private suspend fun promptScreenshotFeedbackDescription(): String? =
-            withContext(Dispatchers.Main) {
-                suspendCancellableCoroutine { continuation ->
-                    val input = EditText(this@RaftCmpActivity).apply {
-                        hint = RaftHostStrings.feedbackPromptPlaceholder()
-                        minLines = 3
-                        setPadding(
-                            screenshotFeedbackDp(16),
-                            screenshotFeedbackDp(12),
-                            screenshotFeedbackDp(16),
-                            screenshotFeedbackDp(12),
-                        )
-                    }
-                    val dialog =
-                            AlertDialog.Builder(this@RaftCmpActivity)
-                                .setTitle(RaftHostStrings.feedbackPromptTitle())
-                                .setMessage(RaftHostStrings.feedbackPromptMessage())
-                                .setView(input)
-                                .setPositiveButton(RaftHostStrings.feedbackSend()) { _, _ ->
-                                    val text = input.text?.toString()?.trim().orEmpty()
-                                    if (continuation.isActive) {
-                                        continuation.resume(text.ifBlank { null })
-                                    }
-                                }
-                                .setNegativeButton(RaftHostStrings.feedbackCancel()) { _, _ ->
-                                    if (continuation.isActive) continuation.resume(null)
-                                }
-                                .setOnCancelListener {
-                                    if (continuation.isActive) continuation.resume(null)
-                                }
-                                .create()
-                    continuation.invokeOnCancellation { runCatching { dialog.dismiss() } }
-                    dialog.show()
-                }
-            }
-
-    private fun screenshotFeedbackDp(value: Int): Int =
-            (value * resources.displayMetrics.density).roundToInt()
 
     private fun registerAndroidShellWindow(intent: Intent?) {
         if (resolvedPageName(intent) != PAGE_APP_SHELL) return

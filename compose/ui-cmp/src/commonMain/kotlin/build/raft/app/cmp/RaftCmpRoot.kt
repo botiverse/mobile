@@ -203,6 +203,7 @@ private fun RaftCmpPage(
                         CompositionLocalProvider(LocalRaftFocusInteractionObserverInstalled provides true) {
                             val content = RaftCmpRouter.content(args.pageName)
                             if (content != null) content() else UnknownCmpPage(args.pageName)
+                            RaftCmpRouter.OverlayContent()
                         }
                     }
                 }

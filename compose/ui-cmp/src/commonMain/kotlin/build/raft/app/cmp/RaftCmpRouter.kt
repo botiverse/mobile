@@ -40,6 +40,16 @@ fun interface RaftPageProvider {
 }
 
 /**
+ * Global overlay rendered inside every [RaftCmpRoot] above page content (inside
+ * [RaftCmpToastLayer] and [RaftTheme]), e.g. the screenshot -> quick feedback prompt and sheet.
+ * :ui-cmp cannot depend on :shared, so :shared installs its overlay here during startup.
+ */
+fun interface RaftOverlayProvider {
+    @Composable
+    fun Content()
+}
+
+/**
  * Decides what a CMP host renders for a page name. Since the CMP switch every page renders on CMP:
  * the registered set is the :ui-cmp pages admitted in this build plus everything the installed
  * [RaftPageProvider] knows. There is no per-page rollback any more (there is no Kuikly host left
@@ -52,9 +62,23 @@ object RaftCmpRouter {
     @Volatile
     private var pageProvider: RaftPageProvider? = null
 
+    @Volatile
+    private var overlayProvider: RaftOverlayProvider? = null
+
     /** Installs the :shared page registry (`RaftPageRegistry.install()`, called by each host at startup). */
     fun installPageProvider(provider: RaftPageProvider) {
         pageProvider = provider
+    }
+
+    /** Installs the :shared global root overlay (`RaftPageRegistry.install()`). */
+    fun installOverlayProvider(provider: RaftOverlayProvider?) {
+        overlayProvider = provider
+    }
+
+    /** Global root overlay from the installed [RaftOverlayProvider], if any. */
+    @Composable
+    internal fun OverlayContent() {
+        overlayProvider?.Content()
     }
 
     /** Body of [pageName] from the installed [RaftPageProvider], if any. */
