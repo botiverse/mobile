@@ -1,10 +1,11 @@
 package build.raft.app.markdown
 
 /**
- * A message named in message text (Web `RaftRefTarget` `kind: "message"` / `"dm-message"`,
- * `raftRefs.ts`): `#channel msg=ID`, `#channel:short msg=ID`, `dm:@peer msg=ID` or
- * `dm:@peer:short msg=ID`. Exactly one of [channelName] / [directMessagePeerName] is set;
- * [threadShortId] is the thread the message is in, and [messageId] may be a short id or a full uuid.
+ * A message named in message text (Web `RaftRefTarget` `kind: "message"` / `"dm-message"` /
+ * `"lounge-message"`, `raftRefs.ts`): `#channel msg=ID`, `#channel:short msg=ID`, `dm:@peer msg=ID`,
+ * `dm:@peer:short msg=ID`, `lounge:@agent msg=ID` or `lounge:@agent:short msg=ID`. Exactly one of
+ * [channelName] / [directMessagePeerName] / [loungeAgentName] is set; [threadShortId] is the thread
+ * the message is in, and [messageId] may be a short id or a full uuid.
  */
 internal data class RaftMarkdownMessageRef(
     val messageId: String,
@@ -12,16 +13,22 @@ internal data class RaftMarkdownMessageRef(
     val channelName: String? = null,
     /** The DM peer as written, with its optional `~agent` / `~human` kind. */
     val directMessagePeerName: String? = null,
+    /** The agent whose Lounge the message is in, as written (slock #16279). */
+    val loungeAgentName: String? = null,
 ) {
-    /** The conversation as the app's conversation resolver reads it: a channel or DM peer name. */
+    /** The conversation as the app's conversation resolver reads it: a channel or DM peer name, or `lounge:@agent`. */
     val conversationLabel: String
-        get() = channelName ?: directMessagePeerName.orEmpty()
+        get() = channelName ?: directMessagePeerName ?: loungeAgentName?.let { "$RaftLoungeRefPrefix$it" }.orEmpty()
 
     /** The target with a single space before `msg=` (Web `formatRaftRefTarget`): what the chip shows. */
     val label: String
         get() =
             buildString {
-                if (channelName != null) append('#').append(channelName) else append("dm:@").append(directMessagePeerName)
+                when {
+                    channelName != null -> append('#').append(channelName)
+                    loungeAgentName != null -> append(RaftLoungeRefPrefix).append(loungeAgentName)
+                    else -> append("dm:@").append(directMessagePeerName)
+                }
                 if (threadShortId != null) append(':').append(threadShortId)
                 append(" msg=").append(messageId)
             }
@@ -36,6 +43,10 @@ private const val RaftMarkdownDirectMessagePrefix = "dm:@"
  */
 internal fun parseRaftMarkdownMessageRefLabel(label: String): RaftMarkdownMessageRef? {
     val text = label.trim()
+    if (text.startsWith(RaftLoungeRefPrefix, ignoreCase = true)) {
+        val lounge = parseRaftLoungeRef(text) as? RaftLoungeRef.Message ?: return null
+        return RaftMarkdownMessageRef(lounge.messageId, lounge.threadParentShortId, loungeAgentName = lounge.agentName)
+    }
     val keyIndex = text.lastIndexOf(RaftMarkdownMessageRefKey, ignoreCase = true)
     if (keyIndex <= 0 || !text[keyIndex - 1].isWhitespace()) return null
     val messageId = text.substring(keyIndex + RaftMarkdownMessageRefKey.length)

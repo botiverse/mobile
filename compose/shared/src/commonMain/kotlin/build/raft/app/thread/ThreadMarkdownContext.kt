@@ -11,6 +11,8 @@ import build.raft.app.data.SharedTaskReferenceResolutionSource
 import build.raft.app.data.resolveSharedTaskReference
 import build.raft.app.markdown.defaultRaftMarkdownTagValidity
 import build.raft.app.markdown.formatRaftDirectMessagePeerRef
+import build.raft.app.markdown.RaftLoungeRefAgent
+import build.raft.app.markdown.resolveRaftLoungeRefAgent
 import build.raft.app.markdown.ThreadMarkdownTag
 import build.raft.app.markdown.ThreadMarkdownTagKind
 import build.raft.app.markdown.preparedRaftMarkdownFullRendererContentOrNull
@@ -127,6 +129,21 @@ internal fun RaftThreadScreenPayload.toKnownMarkdownDirectMessagePeerNameSet(): 
     return names
 }
 
+/**
+ * The agents a `lounge:@agent…` ref in this page may name (slock #16279): the viewed server's agents
+ * the page knows, the channel's members and the server directory, by their current name (handle).
+ * Another server's agent (a joint channel's) is none of them: the server resolves a Lounge ref in its
+ * own server only.
+ */
+internal fun RaftThreadScreenPayload.toMarkdownLoungeRefAgents(): List<RaftLoungeRefAgent> =
+    (members + memberCandidates)
+        .filter { member -> member.kind.equals("agent", ignoreCase = true) && member.originServers.isEmpty() }
+        .mapNotNull { member ->
+            val name = member.handle.trim().removePrefix("@").takeIf { it.isNotEmpty() } ?: return@mapNotNull null
+            RaftLoungeRefAgent(id = member.id, name = name, displayName = member.displayName.trim().takeIf { it.isNotEmpty() })
+        }
+        .distinctBy { it.id }
+
 internal fun RaftThreadScreenPayload.toKnownMarkdownTaskNumberSetOrNull(): Set<Int>? =
     knownMarkdownTaskNumbers.takeIf { it.isNotEmpty() }
         ?.filterTo(mutableSetOf()) { it > 0 }
@@ -136,13 +153,16 @@ internal fun threadMarkdownTagContextSignature(
     knownChannelNames: Set<String>,
     knownMentionNames: Set<String>,
     knownDirectMessagePeerNames: Set<String>,
-    knownTaskNumbers: Set<Int>?
+    knownTaskNumbers: Set<Int>?,
+    loungeAgents: List<RaftLoungeRefAgent> = emptyList()
 ): String =
     "highlighted=${highlightedMentions.size}:${highlightedMentions.hashCode().toString(16)} " +
         "channels=${knownChannelNames.size}:${knownChannelNames.hashCode().toString(16)} " +
         "mentions=${knownMentionNames.size}:${knownMentionNames.hashCode().toString(16)} " +
         "dmPeers=${knownDirectMessagePeerNames.size}:${knownDirectMessagePeerNames.hashCode().toString(16)} " +
-        "tasks=${knownTaskNumbers?.size ?: -1}:${knownTaskNumbers?.hashCode()?.toString(16) ?: "all"}"
+        "tasks=${knownTaskNumbers?.size ?: -1}:${knownTaskNumbers?.hashCode()?.toString(16) ?: "all"}" +
+        // Only a page that knows Lounge agents says so: every other signature stays as it was.
+        if (loungeAgents.isEmpty()) "" else " lounges=${loungeAgents.size}:${loungeAgents.hashCode().toString(16)}"
 
 private fun MutableSet<String>.addKnownThreadMentionValues(member: RaftThreadMemberItem) {
     addKnownThreadMentionValue(member.id)
@@ -165,16 +185,22 @@ internal fun ThreadMarkdownTag.isKnownThreadMarkdownTag(
     knownChannelNames: Set<String>,
     knownMentionNames: Set<String>,
     knownDirectMessagePeerNames: Set<String>,
-    knownTaskNumbers: Set<Int>? = null
+    knownTaskNumbers: Set<Int>? = null,
+    /**
+     * The agents a `lounge:@agent…` ref may name ([toMarkdownLoungeRefAgents]); empty where Lounges are
+     * off for the reader (the flag, a Guest), so such a ref stays plain text there.
+     */
+    loungeAgents: List<RaftLoungeRefAgent> = emptyList()
 ): Boolean =
     when (kind) {
-        // `#proj:#7` / `dm:@peer:#7` chip when the reader knows the conversation (Web: a channel the
-        // reader cannot resolve keeps the ref as plain text); the task itself is resolved on open.
-        // A bare `#7` chips only when it is a known task of the conversation being read (Web
-        // MessageItem `createRaftBareTaskRefRegex`); any other `#4442` is plain text. No task list
+        // `#proj:#7` / `dm:@peer:#7` / `lounge:@agent:#7` chip when the reader knows the conversation
+        // (Web: a channel the reader cannot resolve keeps the ref as plain text); the task itself is
+        // resolved on open. A bare `#7` chips only when it is a known task of the conversation being read
+        // (Web MessageItem `createRaftBareTaskRefRegex`); any other `#4442` is plain text. No task list
         // ([knownTaskNumbers] null) knows no task.
         ThreadMarkdownTagKind.Task ->
             when {
+                loungeAgentName != null -> resolveRaftLoungeRefAgent(loungeAgentName, loungeAgents) != null
                 channelName != null -> channelName.trim().lowercase().let { it.isNotBlank() && it in knownChannelNames }
                 directMessagePeerName != null ->
                     directMessagePeerName.normalizedThreadMentionLookupKey() in knownDirectMessagePeerNames
@@ -183,7 +209,9 @@ internal fun ThreadMarkdownTag.isKnownThreadMarkdownTag(
         ThreadMarkdownTagKind.UserMention -> label.normalizedThreadMentionLookupKey() in knownMentionNames
         // A channel or DM the reader cannot resolve keeps the ref as plain text (Web MessageItem).
         ThreadMarkdownTagKind.Message ->
-            if (directMessagePeerName != null) {
+            if (loungeAgentName != null) {
+                resolveRaftLoungeRefAgent(loungeAgentName, loungeAgents) != null
+            } else if (directMessagePeerName != null) {
                 directMessagePeerName.normalizedThreadMentionLookupKey() in knownDirectMessagePeerNames
             } else {
                 channelName.orEmpty().trim().lowercase().let { it.isNotBlank() && it in knownChannelNames }
@@ -201,6 +229,11 @@ internal fun ThreadMarkdownTag.isKnownThreadMarkdownTag(
                     .lowercase()
             key.isNotBlank() && key in knownChannelNames
         }
+        // `lounge:@agent[:short]` (slock #16279): a chip only when the name names one of this server's
+        // agents by the server's rule; a name that names none (or two) is plain text, never `@agent`.
+        ThreadMarkdownTagKind.Lounge,
+        ThreadMarkdownTagKind.LoungeThread ->
+            loungeAgentName?.let { resolveRaftLoungeRefAgent(it, loungeAgents) } != null
     }
 
 /** No tag context: no tag is known, so a bare `#N` is plain text ([defaultRaftMarkdownTagValidity]). */

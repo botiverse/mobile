@@ -5,28 +5,43 @@ import build.raft.app.model.TaskStatus
 /**
  * A task named in message text (Web `RaftRefTarget` `kind: "task"`, `raftRefs.ts`):
  * the bare `#7` (a task of the conversation being read), `#channel:#7` (task 7 of
- * `#channel`) or `dm:@peer:#7` / `dm:@peer~agent:#7` (task 7 of the DM with `peer`).
- * At most one of [channelName] / [directMessagePeerName] is set.
+ * `#channel`), `dm:@peer:#7` / `dm:@peer~agent:#7` (task 7 of the DM with `peer`) or
+ * `lounge:@agent:#7` (task 7 of `agent`'s Lounge, slock #16279).
+ * At most one of [channelName] / [directMessagePeerName] / [loungeAgentName] is set.
  */
 internal data class RaftMarkdownTaskRef(
     val taskNumber: Int,
     val channelName: String? = null,
     /** The DM peer as written, with its optional `~agent` / `~human` kind. */
     val directMessagePeerName: String? = null,
+    /** The agent whose Lounge the task is in, as written. */
+    val loungeAgentName: String? = null,
 ) {
     val qualified: Boolean
-        get() = channelName != null || directMessagePeerName != null
+        get() = channelName != null || directMessagePeerName != null || loungeAgentName != null
+
+    /**
+     * The conversation a qualified ref names, as the app's conversation resolver reads it (Web
+     * `taskRefConversationTarget` without the `#` / `dm:@`): the channel name, the DM peer, or
+     * `lounge:@agent`. Null for the bare `#7`.
+     */
+    val conversationLabel: String?
+        get() = channelName ?: directMessagePeerName ?: loungeAgentName?.let { "$RaftLoungeRefPrefix$it" }
 }
 
 private const val RaftMarkdownTaskRefSeparator = ":#"
 
 /**
  * Parses a task-ref token as the Markdown dialect claims it (`RaftMarkdownDialect`): `#7`,
- * `#channel:#7`, `dm:@peer:#7`. Anything else (a channel, a thread ref, a malformed number such as
- * `#07`) is null.
+ * `#channel:#7`, `dm:@peer:#7`, `lounge:@agent:#7`. Anything else (a channel, a thread ref, a
+ * malformed number such as `#07`) is null.
  */
 internal fun parseRaftMarkdownTaskRefLabel(label: String): RaftMarkdownTaskRef? {
     val text = label.trim()
+    if (text.startsWith(RaftLoungeRefPrefix, ignoreCase = true)) {
+        val lounge = parseRaftLoungeRef(text) as? RaftLoungeRef.Task ?: return null
+        return RaftMarkdownTaskRef(lounge.taskNumber, loungeAgentName = lounge.agentName)
+    }
     val separator = text.lastIndexOf(RaftMarkdownTaskRefSeparator)
     if (separator < 0) {
         if (!text.startsWith('#')) return null

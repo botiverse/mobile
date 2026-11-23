@@ -491,6 +491,8 @@ class RaftMarkdownTest {
                             .lowercase()
                     key.isNotBlank() && key in channelKeys
                 }
+                ThreadMarkdownTagKind.Lounge,
+                ThreadMarkdownTagKind.LoungeThread -> false
             }
         }
     }

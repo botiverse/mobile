@@ -284,6 +284,8 @@ internal class ThreadPageLounge(
      * the Lounge's, because the route's page lambda is at the JVM's capture limit.
      */
     val archivedChannel: ThreadPageArchivedChannel? = null,
+    /** Lounges are on for this reader (the server's flag, not a Guest): `lounge:@agent…` refs may chip. */
+    val loungesEnabled: Boolean = false,
 ) {
     val agentName: String
         get() = lounge?.displayAgentName.orEmpty()
@@ -391,6 +393,7 @@ internal fun rememberThreadPageLounge(
         }
     return ThreadPageLounge(
         archivedChannel = archivedChannel,
+        loungesEnabled = enabled,
         lounge = lounge,
         agentAvatarWireValue = avatar,
         cacheServerId = serverId,

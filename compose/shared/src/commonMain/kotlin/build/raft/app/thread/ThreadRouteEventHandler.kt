@@ -421,10 +421,16 @@ internal class ThreadRouteEventHandler(
                 action == "openMarkdownTag" && !itemId.isNullOrBlank() -> {
                     handleOpenMarkdownTag(itemId)
                 }
-                (action == "openMarkdownChannel" || action == "openMarkdownDirectMessage") && !itemId.isNullOrBlank() -> {
+                (action == "openMarkdownChannel" || action == "openMarkdownDirectMessage" || action == "openMarkdownLounge") &&
+                    !itemId.isNullOrBlank() -> {
                     handleOpenMarkdownChannel(action, itemId, markdownActionId)
                 }
-                (action == "openMarkdownThreadRef" || action == "openMarkdownDirectMessageThreadRef" || action == "openMarkdownMessageRef") &&
+                (
+                    action == "openMarkdownThreadRef" ||
+                        action == "openMarkdownDirectMessageThreadRef" ||
+                        action == "openMarkdownMessageRef" ||
+                        action == "openMarkdownLoungeThreadRef"
+                ) &&
                     !itemId.isNullOrBlank() -> {
                     handleOpenMarkdownRef(action, itemId, tab, markdownActionId)
                 }

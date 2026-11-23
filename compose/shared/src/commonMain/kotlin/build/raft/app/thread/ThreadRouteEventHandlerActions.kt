@@ -313,7 +313,7 @@ internal fun ThreadRouteEventHandler.handleOpenTask(itemId: String, markdownActi
 internal fun ThreadRouteEventHandler.handleOpenMarkdownTaskNumber(itemId: String, markdownActionId: String?): Unit = run ThreadPageContent@{
                     val markdownPendingToken = markdownActionId?.let(::beginMarkdownReferencePending)
                     if (markdownActionId != null && markdownPendingToken == null) return@ThreadPageContent
-                    // `#7`, or a conversation-qualified `#proj:#7` / `dm:@peer:#7` (Web task refs).
+                    // `#7`, or a conversation-qualified `#proj:#7` / `dm:@peer:#7` / `lounge:@agent:#7` (Web task refs).
                     val qualifiedTaskRef = parseRaftMarkdownTaskRefLabel(itemId)?.takeIf { it.qualified }
                     val taskNumber = qualifiedTaskRef?.taskNumber ?: itemId.removePrefix("#").trim().toIntOrNull()
                     if (taskNumber == null || currentServerId.isNullOrBlank()) {
@@ -333,11 +333,12 @@ internal fun ThreadRouteEventHandler.handleOpenMarkdownTaskNumber(itemId: String
                                 if (qualifiedTaskRef == null) {
                                     markdownTaskContextChannelId
                                 } else {
+                                    val conversationLabel = qualifiedTaskRef.conversationLabel.orEmpty()
+                                    prepareMarkdownRefLounge(conversationLabel)
                                     dataSource.markdownTaskRefChannelId(
                                         actionId = markdownActionId,
                                         currentPayload = renderedThread,
-                                        conversationLabel =
-                                            qualifiedTaskRef.channelName ?: qualifiedTaskRef.directMessagePeerName.orEmpty(),
+                                        conversationLabel = conversationLabel,
                                         requiredKind =
                                             if (qualifiedTaskRef.directMessagePeerName != null) {
                                                 ConversationKind.DirectMessage
@@ -506,8 +507,11 @@ internal fun ThreadRouteEventHandler.handleOpenMarkdownChannel(action: String, i
                     val markdownPendingToken = markdownActionId?.let(::beginMarkdownReferencePending)
                     if (markdownActionId != null && markdownPendingToken == null) return@ThreadPageContent
                     val openDirectMessage = action == "openMarkdownDirectMessage"
+                    // `lounge:@agent` (slock #16279): [itemId] is that conversation.
+                    val openLounge = action == "openMarkdownLounge"
                     coroutineScope.launch {
                         try {
+                            if (openLounge) prepareMarkdownRefLounge(itemId)
                             val loadingPayload =
                                 dataSource.markdownChannelLaunchPayload(
                                     currentPayload = renderedThread,
@@ -522,10 +526,10 @@ internal fun ThreadRouteEventHandler.handleOpenMarkdownChannel(action: String, i
                             if (loadingPayload == null) {
                                 bridge.errorToast(
                                     localizedUnableToOpenTarget(
-                                        if (openDirectMessage) {
-                                            "dm:@${itemId.take(28)}"
-                                        } else {
-                                            "#${itemId.removePrefix("#").take(31)}"
+                                        when {
+                                            openDirectMessage -> "dm:@${itemId.take(28)}"
+                                            openLounge -> itemId.take(32)
+                                            else -> "#${itemId.removePrefix("#").take(31)}"
                                         }
                                     )
                                 )
@@ -554,13 +558,15 @@ internal fun ThreadRouteEventHandler.handleOpenMarkdownChannel(action: String, i
 
 internal fun ThreadRouteEventHandler.handleOpenMarkdownRef(action: String, itemId: String, tab: String?, markdownActionId: String?): Unit = run ThreadPageContent@{
                     val openMessageRef = action == "openMarkdownMessageRef"
+                    // `lounge:@agent:<short>` (slock #16279): [itemId] is the Lounge, `lounge:@agent`.
+                    val openLoungeThreadRef = action == "openMarkdownLoungeThreadRef"
                     val unableToOpenRefLabel =
                         if (openMessageRef) localizedUnableToOpenTarget(itemId.take(32)) else unableToOpenThreadRefLabel
                     val refToastTarget =
-                        if (openMessageRef || tab.isNullOrBlank()) {
-                            itemId.take(32)
-                        } else {
-                            "#${itemId.removePrefix("#").take(31)}:${tab.take(12)}"
+                        when {
+                            openMessageRef || tab.isNullOrBlank() -> itemId.take(32)
+                            openLoungeThreadRef -> "${itemId.take(32)}:${tab.take(12)}"
+                            else -> "#${itemId.removePrefix("#").take(31)}:${tab.take(12)}"
                         }
                     val markdownPendingToken = markdownActionId?.let(::beginMarkdownReferencePending)
                     if (markdownActionId != null && markdownPendingToken == null) return@ThreadPageContent
@@ -571,6 +577,10 @@ internal fun ThreadRouteEventHandler.handleOpenMarkdownRef(action: String, itemI
                     bridge.log("thread_markdown_ref_resolve result=start label=${itemId.take(32)}")
                     coroutineScope.launch {
                         try {
+                            // A ref into a Lounge opens once this client knows that Lounge.
+                            prepareMarkdownRefLounge(
+                                if (openMessageRef) parseRaftMarkdownMessageRefLabel(itemId)?.conversationLabel.orEmpty() else itemId
+                            )
                             val provenance =
                                 dataSource.replyCacheProvenanceState.value
                                     .currentRevisionForReplyCacheOwner(replyCacheProvenanceOwner)

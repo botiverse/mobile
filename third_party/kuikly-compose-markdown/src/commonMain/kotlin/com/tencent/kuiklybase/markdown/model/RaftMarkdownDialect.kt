@@ -18,7 +18,9 @@ data class RaftMarkdownInlineRef(
  * Raft's GFM extension for `@member`, `#channel`, `#channel:thread`,
  * `dm:@peer:thread`, numeric `#task`, and conversation-qualified task
  * (`#channel:#7`, `dm:@peer:#7`) and message (`#channel msg=id`,
- * `#channel:thread msg=id`, `dm:@peer msg=id`, `dm:@peer:thread msg=id`) references.
+ * `#channel:thread msg=id`, `dm:@peer msg=id`, `dm:@peer:thread msg=id`) references,
+ * and an agent's Lounge (`lounge:@agent`, `lounge:@agent:thread`, `lounge:@agent:#7`,
+ * `lounge:@agent msg=id`, `lounge:@agent:thread msg=id`).
  *
  * GFM parses first and therefore owns nesting. Raft recognition runs only on
  * source ranges not claimed by Markdown links/definitions, images, code,
@@ -79,9 +81,14 @@ internal fun String.raftMarkdownSyntaxCandidateRanges(start: Int = 0, end: Int =
     val boundedEnd = end.coerceAtMost(length)
     while (cursor < boundedEnd) {
         val range = raftInlineRefRange(cursor, boundedEnd)?.takeIf { it.last < boundedEnd }
+        // A `lounge:@…` token is claimed whole, ref or not (Web `createRaftMalformedLoungeRefRegex`):
+        // nothing inside it (`@ops` of `lounge:@ops.x`, `#8` of `lounge:@ops:#7:#8`) is another ref.
+        val loungeEnd = raftLoungeTokenEnd(cursor)
         if (range != null) {
             result += range
-            cursor = range.last + 1
+            cursor = maxOf(range.last + 1, loungeEnd)
+        } else if (loungeEnd > cursor) {
+            cursor = loungeEnd
         } else {
             cursor++
         }
@@ -94,9 +101,11 @@ internal fun String.raftMarkdownSyntaxCandidateRanges(start: Int = 0, end: Int =
  * `#channel msg=id` whose tail the lexer gave to something else.
  */
 internal fun String.raftInlineRefRange(start: Int, boundedEnd: Int = length, messageRefs: Boolean = true): IntRange? {
-    if (start >= length || (this[start] != '#' && this[start] != '@' && !startsWith("dm:@", start, ignoreCase = true))) {
-        return null
-    }
+    if (start >= length) return null
+    // `lounge:@agent…` (Web `raftRefs.ts`: the lounge passes run before `dm:@` and mentions). A
+    // backslash escapes only punctuation in Markdown, so `\lounge:@ops` is still the ref.
+    if (isRaftLoungeTokenStart(start)) return raftLoungeRange(start, boundedEnd, messageRefs)
+    if (this[start] != '#' && this[start] != '@' && !startsWith("dm:@", start, ignoreCase = true)) return null
     if (isRaftMarkdownEscaped(start)) return null
     return when {
         startsWith("dm:@", start, ignoreCase = true) -> raftDirectMessageRange(start, boundedEnd, messageRefs)
@@ -173,6 +182,59 @@ private fun String.raftMalformedDirectMessageKindRange(start: Int, tildeIndex: I
         if (shortEnd - shortStart >= 6) end = shortEnd
     }
     return start until end
+}
+
+/** The address family of an agent's Lounge (Web `RAFT_LOUNGE_TARGET_PREFIX`), in any case. */
+private const val RaftLoungeRefPrefix = "lounge:@"
+
+private fun String.isRaftLoungeTokenStart(index: Int): Boolean =
+    index < length && (this[index] == 'l' || this[index] == 'L') && startsWith(RaftLoungeRefPrefix, index, ignoreCase = true)
+
+/**
+ * The `lounge:@agent…` ref at [start], or the whole token as one plain-text claim when it is no ref.
+ * Mirrors Web `raftRefs.ts` (slock #16279) in its pass order: the agent's name
+ * (`[\p{L}\p{N}_-]+`) must end the token, so `lounge:@ops.x`, `lounge:@ops~agent` and a bare
+ * `lounge:@` are no ref; then `lounge:@agent:#7` (`createRaftLoungeTaskRefRegex`), the thread
+ * `lounge:@agent:<6-8 hex>` (`createRaftLoungeThreadRefRegex`), else `lounge:@agent`
+ * (`createRaftLoungeRefRegex`). `lounge:@agent[:thread] msg=id` is a message, as `dm:@peer msg=id`
+ * is here (the Web reads it as a whole target).
+ */
+private fun String.raftLoungeRange(start: Int, boundedEnd: Int, messageRefs: Boolean): IntRange {
+    val nameStart = start + RaftLoungeRefPrefix.length
+    var nameEnd = nameStart
+    while (nameEnd < length && this[nameEnd].isRaftChannelPart()) nameEnd++
+    if (nameEnd == nameStart || (nameEnd < length && (this[nameEnd] == '.' || this[nameEnd] == '~'))) {
+        return start until raftLoungeTokenEnd(start)
+    }
+    if (messageRefs) raftMessageRefTailEnd(nameEnd, boundedEnd)?.let { end -> return start until end }
+    raftTaskRefEnd(nameEnd)?.let { taskEnd -> return start until taskEnd }
+    if (nameEnd < length && this[nameEnd] == ':') {
+        val shortStart = nameEnd + 1
+        var shortEnd = shortStart
+        while (shortEnd < length && this[shortEnd].isRaftShortIdPart()) shortEnd++
+        // The short id ends the token: no letter, digit, `_` or `-` may follow it.
+        if (shortEnd - shortStart in 6..8 && (shortEnd >= length || !this[shortEnd].isRaftChannelPart())) {
+            if (messageRefs) raftMessageRefTailEnd(shortEnd, boundedEnd)?.let { end -> return start until end }
+            return start until shortEnd
+        }
+    }
+    return start until nameEnd
+}
+
+/**
+ * End of the `lounge:@…` token at [start] (Web `createRaftMalformedLoungeRefRegex`,
+ * `lounge:@[\p{L}\p{N}_.~-]*(?::[\p{L}\p{N}_#-]*)?`), or [start] when none starts there. All of it
+ * is the Lounge ref's or plain text: it never degrades into a link to someone else (`@ops`).
+ */
+private fun String.raftLoungeTokenEnd(start: Int): Int {
+    if (!isRaftLoungeTokenStart(start)) return start
+    var end = start + RaftLoungeRefPrefix.length
+    while (end < length && (this[end].isRaftChannelPart() || this[end] == '.' || this[end] == '~')) end++
+    if (end < length && this[end] == ':') {
+        end++
+        while (end < length && (this[end].isRaftChannelPart() || this[end] == '#')) end++
+    }
+    return end
 }
 
 private fun String.raftMentionRange(start: Int): IntRange? {

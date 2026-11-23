@@ -107,4 +107,6 @@ private fun isMarkdownRerenderTagValid(tag: ThreadMarkdownTag): Boolean =
                     .lowercase()
             channelKey in MarkdownRerenderKnownChannelNames
         }
+        ThreadMarkdownTagKind.Lounge,
+        ThreadMarkdownTagKind.LoungeThread -> false
     }
