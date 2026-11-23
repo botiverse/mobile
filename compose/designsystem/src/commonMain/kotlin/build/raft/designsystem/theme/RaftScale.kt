@@ -196,7 +196,7 @@ data class RaftControlMetrics(
                 ctaHeight = 40.dp,
                 iconSize = 18.dp,
                 hitInset = 5.dp,
-                embeddedSize = 20.dp,
+                embeddedSize = 22.dp,
                 controlRadius = 8.dp,
                 rowHeight = 34.dp,
                 headHeight = 44.dp,
@@ -289,6 +289,13 @@ fun Modifier.raftTrackPointerInput(): Modifier =
  * re-measures against a smaller window than the one the page is in.
  */
 internal val LocalRaftScale = staticCompositionLocalOf<RaftScale?> { null }
+
+/** The type scale of the enclosing [RaftTheme] ([RaftTheme.typeScale]), null outside any. */
+internal val LocalRaftTypeScale = staticCompositionLocalOf<RaftScale?> { null }
+
+/** raft-ui's desktop type applies on a wide window with a mouse or trackpad only (raft-design #601). */
+fun raftTypeScale(scale: RaftScale, pointerInput: RaftPointerInput): RaftScale =
+    if (scale == RaftScale.Wide && pointerInput == RaftPointerInput.Fine) RaftScale.Wide else RaftScale.Compact
 
 /** The pointer input of the enclosing [RaftTheme], null outside any; inherited as [LocalRaftScale]. */
 internal val LocalRaftPointerInput = staticCompositionLocalOf<RaftPointerInput?> { null }

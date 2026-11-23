@@ -15,7 +15,7 @@ internal fun raftMessageBodyTextStyle(preferenceKey: String?): TextStyle =
 // across a light/dark switch kept painting message bodies in the old theme's text colour. The key
 // is the resolved colours (mode and server theme), so a server theme switch rebuilds it as well.
 // It is keyed on the type scale for the same reason: the body size (and every tier, which sits
-// relative to it) changes when the window crosses the wide width.
+// relative to it) changes when the window crosses the wide width with a mouse, or the input changes there.
 @Composable
 internal fun rememberRaftMessageBodyTextStyle(preferenceKey: String?): TextStyle {
     val themeColors = RaftAppThemeState.colors
@@ -26,7 +26,7 @@ internal fun rememberRaftMessageBodyTextStyle(preferenceKey: String?): TextStyle
 // Web appearanceStore (MESSAGE_BODY_FONT_SIZE_VALUES): the tiers are relative to `text-body`, so
 // one stored choice reads right at both scales. Medium is the body size; Small and Large sit 2sp
 // either side of it, with the line 4sp shorter / taller. Phone (body 16/24): 14/20, 16/24, 18/28.
-// Wide (body 14/22, the window-width type scale): 12/18, 14/22, 16/26.
+// Wide (body 14/22, the desktop type scale: a wide window with a mouse): 12/18, 14/22, 16/26.
 private val MessageBodyTierFontStep = 2.sp
 private val MessageBodyTierLineStep = 4.sp
 

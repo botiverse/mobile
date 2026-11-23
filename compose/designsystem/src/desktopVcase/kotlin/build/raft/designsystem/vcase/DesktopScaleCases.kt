@@ -27,14 +27,14 @@ import build.raft.designsystem.theme.RaftTheme
 import dev.vcase.VCase
 
 /**
- * The wide type scale (raft-ui 0.54 styles.css "Desktop type", from the app's wide breakpoint),
- * on the `wide` viewport (RaftScale.Wide): the type roles that change (headline 16/24; body,
- * subhead, callout 14/22; footnote, caption, mono-meta 12/18) and the controls that follow
- * `--control-*`, under each input:
+ * The wide viewport (RaftScale.Wide) under each input. raft-ui's desktop type (styles.css
+ * "Desktop type", raft-design #601) applies with a mouse or trackpad only: headline 16/24; body,
+ * subhead, callout 14/22; footnote, caption, mono-meta 12/18. A finger keeps the phone's type.
+ * The controls follow `--control-*`:
  * - `fine`, a mouse or trackpad (the Mac at that width): buttons at `md` and `lg` (34dp,
  *   sizing v12; `md` in `text-control` 14/22) and `xl` (40dp), an `icon-lg` button (34dp, 18dp
- *   icon), a field (34dp, 14/22, a 20dp embedded clear), a select trigger and a list row.
- * - `touch`, a finger (a tablet at that width): the same type, the controls at 44 / 52 with a
+ *   icon), a field (34dp, 14/22, a 22dp embedded clear), a select trigger and a list row.
+ * - `touch`, a finger (a tablet at that width): the phone's type, the controls at 44 / 52 with a
  *   22dp icon and a 32dp embedded clear.
  * Replaces DesktopScaleScreenshotTest (desktop-scale_light/_dark for fine,
  * wide-touch-scale_light/_dark for touch).
