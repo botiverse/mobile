@@ -177,6 +177,9 @@ class RaftScrollIntoViewGroup internal constructor(private val scroll: ScrollSta
         // How far the content has to move left to bring the item in (negative: right).
         val shift =
             when {
+                // Wider than the strip: line up its start (the start of a long name is what reads),
+                // never its end, as before the clearance cap.
+                box.width >= width -> if (rtl) box.right - width else box.left
                 box.left - clearance < 0f -> box.left - clearance
                 box.right + clearance > width -> box.right + clearance - width
                 else -> 0f
