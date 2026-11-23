@@ -760,6 +760,11 @@ internal fun MembersDetailContent(
             stripShown = member.kind == MemberKind.Agent && agentPanelTabOrderReady
         )
     if (pinnedSelectedTab != selectedTabOverride) selectedTabOverride = pinnedSelectedTab
+    // In the profile column beside a conversation, the tab shown is remembered with the profile (beside memory).
+    val reportAgentTab = LocalRaftProfileAgentTabReport.current
+    if (member.kind == MemberKind.Agent && reportAgentTab != null) {
+        LaunchedEffect(selectedTab, reportAgentTab) { reportAgentTab(selectedTab.serverOrderKey) }
+    }
     var visitedAgentTabs by remember(member.id.value) {
         mutableStateOf(setOf(selectedTab))
     }

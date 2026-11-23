@@ -4020,7 +4020,7 @@ private fun RaftAppShellReadyContent(
         )
     // The wide layout's profile and Artifact columns (RaftWideSideColumns.kt, #189 steps 3-4): they belong to the
     // conversation picked, and reopen as pages when the window leaves the wide layout.
-    val sideColumns = rememberRaftWideSideColumns(adaptiveWorkspaceState?.selection?.identity?.key, navRailActive, tab = selectedTab)
+    val sideColumns = rememberRaftWideSideColumns(adaptiveWorkspaceState?.selection?.identity, navRailActive, tab = selectedTab)
     // stdrc 2026-10-21: Settings is the More tab's root on the phone bar and the pinned rail entry
     // on the wide layout; a selection made for the other layout moves to this layout's root.
     LaunchedEffect(selectedTab, navRailActive) {
@@ -4082,6 +4082,21 @@ private fun RaftAppShellReadyContent(
             serverLastConversationOwnerKey = serverLastConversationOwnerKey,
         )
     val railSelectionOpenedOn = rememberRaftSelectionOpenedOn(adaptiveWorkspaceState?.selection, wideNavShowing?.surface)
+    // What was open beside each conversation (AppShellBesideMemoryEffects.kt): remembered, and restored on entering it.
+    AppShellBesideMemoryEffect(
+        wideNavShowing = wideNavShowing,
+        accountId = readySession?.user?.id,
+        columns = sideColumns,
+        adaptiveWorkspaceStore = adaptiveWorkspaceStore,
+        desktopModeOnLargeScreen = desktopModeOnLargeScreen,
+        navigationStoreScope = navigationStoreScope,
+        sharedStores = sharedStores,
+        serverMembersStore = appShellServerMembersStore,
+        memberRepository = memberRepository,
+        conversationRepository = conversationRepository,
+        agentsApiClient = agentsApiClient,
+        bridge = bridge,
+    )
     val wideNavHistory = wideNavHistories.of(readyServerId)
     AppShellWideNavRestoreEffect(
         bridge = bridge,
