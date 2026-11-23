@@ -238,6 +238,8 @@ class BridgeModuleToastTest {
                 ScreenError(code = "http_401", serverMessage = "jwt expired", traceId = traceId),
                 ScreenError(code = "http_403", serverMessage = "edge_blocked", traceId = traceId),
                 ScreenError(code = "network_timeout", serverMessage = "network_timeout", traceId = null),
+                ScreenError(code = "http_0", serverMessage = "Connection reset by peer", traceId = null),
+                ScreenError(code = "tasks_http_0", serverMessage = "EOF while reading socket", traceId = null),
                 ScreenError(code = "parse_error", serverMessage = "unexpected token <", traceId = null),
                 ScreenError(code = "http_403", serverMessage = "<html><body>Access Denied</body></html>", traceId = traceId),
                 ScreenError(code = "http_400", serverMessage = "boom\n    at foo.js:12", traceId = traceId),
@@ -268,6 +270,22 @@ class BridgeModuleToastTest {
         assertEquals("Unable to open direct message: Direct messages are disabled in this server.", dedupToast.title)
         assertNull(dedupToast.description)
         assertEquals("Trace ID 62ac7fa7…", dedupToast.footnote)
+        dedupWindow.detach()
+
+        val punctuationDedupWindow = window(visible = true)
+        punctuationDedupWindow.addOrigin(capabilities)
+        bridge().errorToast(
+            "Permission denied",
+            ScreenError(
+                code = "http_403",
+                serverMessage = "Permission denied.",
+                traceId = traceId,
+            ),
+        ) { RaftTraceIdToastStrings({ "Trace ID $it" }, "Copy", "Trace ID copied") }
+        val punctuationDedupToast = punctuationDedupWindow.state.visible.single()
+        assertEquals("Permission denied", punctuationDedupToast.title)
+        assertNull(punctuationDedupToast.description)
+        assertEquals("Trace ID 62ac7fa7…", punctuationDedupToast.footnote)
     }
 
     @Test

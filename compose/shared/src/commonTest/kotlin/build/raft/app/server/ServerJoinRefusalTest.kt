@@ -3,6 +3,7 @@ package build.raft.app
 import build.raft.app.data.ServerJoinAgreement
 import build.raft.app.data.ServerJoinInviteInfo
 import build.raft.app.data.ServerJoinRefusal
+import build.raft.app.data.parseSharedServerJoinRefusal
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
@@ -133,6 +134,7 @@ class ServerJoinRefusalTest {
                 ServerJoinRefusal(status = 500, error = "database connection pool exhausted", traceId = sampleTraceId),
                 ServerJoinRefusal(status = 400, code = "internal_error", error = "panic", traceId = sampleTraceId),
                 ServerJoinRefusal(status = 403, error = "<!DOCTYPE html><html>Denied</html>", traceId = sampleTraceId),
+                ServerJoinRefusal(status = 0, error = "Connection reset by peer", traceId = sampleTraceId),
             )
         for (refusal in scrubbed) {
             val acceptView = resolveServerJoinAcceptRefusal(sampleInfo, refusal) as ServerJoinView.Failed
@@ -170,6 +172,21 @@ class ServerJoinRefusalTest {
                     traceId = sampleTraceId,
                 ),
             ),
+        )
+    }
+
+    @Test
+    fun parseSharedServerJoinRefusalFallsBackToErrorCodeWhenCodeIsAbsent() {
+        val refusal =
+            parseSharedServerJoinRefusal(
+                status = 403,
+                bodyText = """{"error":"Deployment user limit reached.","errorCode":"deployment_user_limit_reached"}""",
+                traceId = sampleTraceId,
+            )
+        assertEquals("deployment_user_limit_reached", refusal.code)
+        assertEquals(
+            ServerJoinView.Failed(ServerJoinFailure.DeploymentUserLimit, message = null, traceId = sampleTraceId),
+            resolveServerJoinAcceptRefusal(sampleInfo, refusal),
         )
     }
 }

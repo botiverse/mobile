@@ -66,6 +66,7 @@ private data class ServerJoinTokenBody(val token: String)
 private data class WireServerJoinErrorBody(
     val error: String? = null,
     val code: String? = null,
+    val errorCode: String? = null,
     val agreement: ServerJoinAgreement? = null,
 )
 
@@ -102,7 +103,7 @@ internal fun parseSharedServerJoinRefusal(status: Int, bodyText: String?, traceI
     return ServerJoinRefusal(
         status = status,
         error = error,
-        code = body?.code?.trim()?.takeIf(String::isNotBlank),
+        code = body?.code?.trim()?.takeIf(String::isNotBlank) ?: body?.errorCode?.trim()?.takeIf(String::isNotBlank),
         agreement = agreement,
         traceId = traceId,
     )

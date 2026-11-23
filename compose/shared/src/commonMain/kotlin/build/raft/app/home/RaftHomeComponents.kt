@@ -1007,7 +1007,7 @@ private fun RaftHomePageContent(routeVisibleTick: Int = 0) {
                                 result.error,
                                 errorStrings
                             ),
-                            result.error
+                            result.error.traceId
                         )
                     is DataResult.NoPermission -> bridge.errorToast(noDirectMessagePermission, result.blocker)
                 }

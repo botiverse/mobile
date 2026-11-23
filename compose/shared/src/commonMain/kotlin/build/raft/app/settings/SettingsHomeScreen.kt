@@ -922,7 +922,7 @@ internal fun SharedHomeScreen(
                                             result.error,
                                             errorStrings,
                                         ),
-                                        result.error,
+                                        result.error.traceId,
                                     )
                                 is DataResult.NoPermission -> bridge.errorToast(openDirectMessagePermissionMessage, result.blocker)
                             }

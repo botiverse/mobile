@@ -133,8 +133,9 @@ internal fun usableServerRefusalReasonForToast(title: String, result: DataResult
 
 private fun nonRedundantToastReason(title: String, candidate: String?): String? {
     val reason = usableServerRefusalMessage(candidate) ?: return null
-    val normalizedTitle = title.trim()
-    if (normalizedTitle.equals(reason, ignoreCase = true) || normalizedTitle.contains(reason, ignoreCase = true)) {
+    val normalizedTitle = title.trim().trimEnd('.', '。', '!', '！')
+    val normalizedReason = reason.trimEnd('.', '。', '!', '！')
+    if (normalizedReason.isEmpty() || normalizedTitle.contains(normalizedReason, ignoreCase = true)) {
         return null
     }
     return reason

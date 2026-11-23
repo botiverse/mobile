@@ -120,8 +120,11 @@ internal enum class ServerJoinFailure {
     DeploymentUserLimit,
 }
 
-internal fun resolveServerJoinInfoRefusal(refusal: ServerJoinRefusal): ServerJoinView.Failed =
-    when (
+internal fun resolveServerJoinInfoRefusal(refusal: ServerJoinRefusal): ServerJoinView.Failed {
+    if (refusal.status <= 0) {
+        return ServerJoinView.Failed(ServerJoinFailure.FailedToLoad, traceId = refusal.traceId)
+    }
+    return when (
         val resolved =
             resolveServerRefusal(
                 ServerRefusalInput(
@@ -149,6 +152,7 @@ internal fun resolveServerJoinInfoRefusal(refusal: ServerJoinRefusal): ServerJoi
         is ResolvedServerRefusal.Generic ->
             ServerJoinView.Failed(ServerJoinFailure.FailedToLoad, traceId = resolved.traceId)
     }
+}
 
 internal fun resolveServerJoinAcceptRefusal(
     info: ServerJoinInviteInfo,
@@ -157,6 +161,9 @@ internal fun resolveServerJoinAcceptRefusal(
     // A new or changed agreement: show it, then Agree & join (web).
     if (refusal.agreement != null) {
         return ServerJoinView.Ready(info.copy(agreement = refusal.agreement))
+    }
+    if (refusal.status <= 0) {
+        return ServerJoinView.Failed(ServerJoinFailure.FailedToAccept, traceId = refusal.traceId)
     }
     return when (
         val resolved =
