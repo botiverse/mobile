@@ -669,7 +669,7 @@ internal fun StandaloneSettingsWebViewContent(
             retryClearWhenSettled &&
             pendingHostOpenExternal == null &&
             hostOpenExternalDeduper.awaitingHashClear &&
-            settingsWebViewAsksHostOpenExternal(candidateUrl, webUrl)
+            settingsWebViewAsksHostOpen(candidateUrl, webUrl)
         ) {
             // If an earlier replaceState was queued or overwritten while the document was still loading,
             // retry clearing the stuck hash once loading settles without re-opening the external link.

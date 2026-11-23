@@ -33,12 +33,22 @@ internal object RaftAndroidWebViewKeepAlive {
     private val expire = Runnable { drop("expired") }
 
     /** The view parked under [key] (now owned by the caller), or null. A view under another key is destroyed. */
-    fun take(key: String, hostContext: Context, events: RaftWebViewEvents): RaftAndroidSandboxWebView? {
+    fun take(
+        key: String,
+        hostContext: Context,
+        events: RaftWebViewEvents,
+        storagePartition: RaftWebViewStoragePartition = RaftWebViewStoragePartition.Default,
+    ): RaftAndroidSandboxWebView? {
+        if (storagePartition == RaftWebViewStoragePartition.IsolatedThirdParty) return null
         dropIfOtherThemeMode()
         val view = parked ?: return null
         handler.removeCallbacks(expire)
         parked = null
-        if (view.isDestroyed || view.keepAliveKey != key) {
+        if (
+            view.isDestroyed ||
+            view.keepAliveKey != key ||
+            view.storagePartition == RaftWebViewStoragePartition.IsolatedThirdParty
+        ) {
             view.destroy()
             raftLogInfo(LOG_TAG, "keep_alive result=dropped reason=other_key")
             return null
@@ -50,7 +60,13 @@ internal object RaftAndroidWebViewKeepAlive {
 
     /** Parks [view] when it has a key; false when the caller must destroy it. */
     fun park(view: RaftAndroidSandboxWebView): Boolean {
-        if (view.isDestroyed || view.keepAliveKey == null) return false
+        if (
+            view.isDestroyed ||
+            view.keepAliveKey == null ||
+            view.storagePartition == RaftWebViewStoragePartition.IsolatedThirdParty
+        ) {
+            return false
+        }
         val previous = parked
         if (previous != null && previous !== view) previous.destroy()
         view.detachForKeepAlive()
@@ -63,13 +79,19 @@ internal object RaftAndroidWebViewKeepAlive {
 
     fun prewarm(context: Context, config: RaftWebViewConfig) {
         val key = config.keepAliveKey ?: return
+        if (config.effectiveStoragePartition == RaftWebViewStoragePartition.IsolatedThirdParty) return
         dropIfOtherThemeMode()
         val current = parked
         if (current != null && !current.isDestroyed && current.keepAliveKey == key) return
         // Built on the page's (Activity) context, whose theme carries the app's light/dark mode
         // (the application context's does not on API 29-30); park() switches it to the
         // application context at once, so no Activity is held.
-        val view = RaftAndroidSandboxWebView(MutableContextWrapper(context), RaftWebViewEvents())
+        val view =
+            RaftAndroidSandboxWebView(
+                MutableContextWrapper(context),
+                RaftWebViewEvents(),
+                initialStoragePartition = config.effectiveStoragePartition,
+            )
         view.applyConfig(config)
         park(view)
         raftLogInfo(LOG_TAG, "keep_alive result=prewarmed")

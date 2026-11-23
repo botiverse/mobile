@@ -69,11 +69,17 @@ internal actual fun RaftSandboxWebViewHost(
 ) {
     AndroidView(
         factory = { context ->
-            val kept = config.keepAliveKey?.let { key -> RaftAndroidWebViewKeepAlive.take(key, context, events) }
+            val partition = config.effectiveStoragePartition
+            val kept =
+                if (partition == RaftWebViewStoragePartition.IsolatedThirdParty) {
+                    null
+                } else {
+                    config.keepAliveKey?.let { key -> RaftAndroidWebViewKeepAlive.take(key, context, events, partition) }
+                }
             if (config.keepAliveKey != null) {
                 raftLogInfo(RAFT_WEBVIEW_DIAGNOSTICS_TAG, "webview_attach source=${if (kept != null) "keep_alive" else "new"}")
             }
-            kept ?: RaftAndroidSandboxWebView(MutableContextWrapper(context), events)
+            kept ?: RaftAndroidSandboxWebView(MutableContextWrapper(context), events, initialStoragePartition = partition)
         },
         modifier = modifier,
         update = { view ->
@@ -96,6 +102,9 @@ private fun unwrapRaftFileChooserHost(context: Context): RaftWebViewFileChooserH
     return null
 }
 
+/** Dedicated Android Chromium WebView profile name for third-party web pages (#proj-workspace:#397). */
+internal const val RAFT_ANDROID_THIRD_PARTY_PROFILE_NAME = "raft_third_party"
+
 /**
  * Port of the Kuikly host's `SlockSandboxWebViewRenderView` (androidApp): same settings, sandbox
  * navigation fence, document-start auth script, `raftHostPort` bridge, desktop scale and renderer
@@ -106,9 +115,16 @@ private fun unwrapRaftFileChooserHost(context: Context): RaftWebViewFileChooserH
 internal class RaftAndroidSandboxWebView(
     context: Context,
     var events: RaftWebViewEvents,
+    initialStoragePartition: RaftWebViewStoragePartition = RaftWebViewStoragePartition.Default,
+    private val supportsMultiProfile: () -> Boolean = ::raftPlatformSupportsIsolatedWebViewProfile,
+    private val applyProfile: (WebView, String) -> Unit = { view, name -> WebViewCompat.setProfile(view, name) },
 ) : FrameLayout(context) {
     private var webView = WebView(context)
     private var destroyed: Boolean = false
+    internal var storagePartition: RaftWebViewStoragePartition = initialStoragePartition
+        private set
+    /** True when [RaftWebViewStoragePartition.IsolatedThirdParty] was requested without MULTI_PROFILE: fail closed. */
+    private var isolatedProfileUnavailable: Boolean = false
     private var src: String = ""
     private var loadedSrc: String = ""
     private var lastSuccessfulUrl: String = ""
@@ -131,6 +147,20 @@ internal class RaftAndroidSandboxWebView(
     private var hostEventsEnabled: Boolean = false
     /** [RaftWebViewConfig.mainFrameOrigin]: every top-level document stays on it. */
     private var mainFrameOrigin: String? = null
+    /** [RaftWebViewConfig.raftHost]: `Raft-Host` header attached to scoped main-frame GET navigations. */
+    private var raftHost: RaftHostHeader? = null
+    /** Top-level document URL last committed on this WebView, or `""` before any commit. */
+    private var committedDocumentUrl: String = ""
+    /** Whether any top-level document has committed on this WebView yet. */
+    private var hasCommittedDocument: Boolean = false
+    /** Current in-flight navigation chain carried `Raft-Host` and has not committed since. */
+    private var navChainCarriesRaftHost: Boolean = false
+    /** Remaining `Raft-Host` re-issues in the current navigation chain. */
+    private var navChainReissueBudget: Int = RAFT_HOST_REISSUE_BUDGET
+    /** Who started the current in-flight navigation chain (for [RaftWebViewMainFrameCatchAsk]). */
+    private var navChainStarter: RaftSignInStarter = RaftSignInStarter.Other
+    /** Prior URLs visited by the current navigation chain before the active candidate. */
+    private val navChainHops = mutableListOf<String>()
     /** [RaftWebViewConfig.keepAliveKey]: parked past its page instead of destroyed. */
     internal var keepAliveKey: String? = null
         private set
@@ -179,6 +209,7 @@ internal class RaftAndroidSandboxWebView(
 
     init {
         RaftAndroidWebViewProvider.logOnce(context)
+        prepareWebViewProfile(webView)
         addView(webView, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
         configureWebView()
     }
@@ -186,6 +217,7 @@ internal class RaftAndroidSandboxWebView(
     /** Applies the attrs in the Kuikly node's order (src last). Each setter is a no-op when unchanged. */
     fun applyConfig(config: RaftWebViewConfig) {
         if (destroyed) return
+        updateStoragePartition(config.effectiveStoragePartition)
         updateAllowScripts(config.allowScripts)
         updateAllowNavigation(config.allowNavigation)
         updateDomStorageEnabled(config.domStorageEnabled)
@@ -199,10 +231,69 @@ internal class RaftAndroidSandboxWebView(
         updateAllowedNavigationSchemes(config.allowedNavigationSchemes)
         updateHostEventsEnabled(config.hostEventsEnabled)
         mainFrameOrigin = config.mainFrameOrigin?.let(::raftDocumentStartScriptOriginRule)
-        keepAliveKey = config.keepAliveKey
+        raftHost = config.raftHost
+        keepAliveKey =
+            if (storagePartition == RaftWebViewStoragePartition.IsolatedThirdParty) null else config.keepAliveKey
         diagnosticsSurface = config.diagnosticsSurface
         updatePlaceholderBackground(config.backgroundArgb)
         updateSrc(config.url)
+    }
+
+    /**
+     * Binds [target] to [RAFT_ANDROID_THIRD_PARTY_PROFILE_NAME] immediately after construction and
+     * before any setting/load when [storagePartition] is [RaftWebViewStoragePartition.IsolatedThirdParty].
+     * Fails closed ([isolatedProfileUnavailable] = true) if `MULTI_PROFILE` is unsupported or throws.
+     */
+    private fun prepareWebViewProfile(target: WebView) {
+        if (storagePartition != RaftWebViewStoragePartition.IsolatedThirdParty) {
+            isolatedProfileUnavailable = false
+            return
+        }
+        if (!supportsMultiProfile()) {
+            isolatedProfileUnavailable = true
+            diagnosticsWarn("isolated_profile_unavailable reason=multi_profile_unsupported", always = true)
+            return
+        }
+        val applied =
+            runCatching {
+                applyProfile(target, RAFT_ANDROID_THIRD_PARTY_PROFILE_NAME)
+                true
+            }.getOrElse { error ->
+                diagnosticsWarn(
+                    "isolated_profile_unavailable reason=set_profile_failed errorType=${error::class.simpleName ?: "unknown"}",
+                    always = true,
+                )
+                false
+            }
+        isolatedProfileUnavailable = !applied
+    }
+
+    private fun updateStoragePartition(next: RaftWebViewStoragePartition) {
+        if (storagePartition == next) return
+        val isolatedChanged =
+            (storagePartition == RaftWebViewStoragePartition.IsolatedThirdParty) !=
+                (next == RaftWebViewStoragePartition.IsolatedThirdParty)
+        storagePartition = next
+        if (!isolatedChanged) return
+        if (next == RaftWebViewStoragePartition.IsolatedThirdParty && !supportsMultiProfile()) {
+            isolatedProfileUnavailable = true
+            diagnosticsWarn("isolated_profile_unavailable reason=multi_profile_unsupported", always = true)
+            webView.stopLoading()
+            currentIsLoading = false
+            return
+        }
+        // Chromium profiles must be attached right after WebView construction, before any load.
+        removeHostMessageListener()
+        removeDownloadSupport()
+        removeDocumentStartScript()
+        runCatching {
+            webView.stopLoading()
+            webView.webChromeClient = null
+            webView.webViewClient = WebViewClient()
+            removeView(webView)
+            webView.destroy()
+        }
+        recreateWebView(restoreCurrentDocument = false)
     }
 
     /**
@@ -301,7 +392,11 @@ internal class RaftAndroidSandboxWebView(
         lastNavigationStateKey = ""
         lastLoadFailureReason = ""
         pendingRuntimeJavaScript = ""
+        committedDocumentUrl = ""
+        hasCommittedDocument = false
+        resetNavigationChain()
         webView = WebView(context)
+        prepareWebViewProfile(webView)
         builtDark = RaftAppThemeState.isDark
         pagePainted = false
         webView.setBackgroundColor(raftWebViewBackgroundArgb(placeholderBackground, painted = false))
@@ -312,6 +407,12 @@ internal class RaftAndroidSandboxWebView(
     }
 
     private fun restoreCurrentDocumentAfterRecreation(restoreUrl: String) {
+        if (isolatedProfileUnavailable) {
+            currentIsLoading = false
+            notifyNavigationState(force = true)
+            if (src.isNotBlank()) notifyLoadFailure(RAFT_WEBVIEW_ISOLATED_PROFILE_UNAVAILABLE_REASON)
+            return
+        }
         if (src.isBlank()) {
             webView.loadUrl(ABOUT_BLANK_URL)
             notifyNavigationState(force = true)
@@ -503,6 +604,7 @@ internal class RaftAndroidSandboxWebView(
                         currentIsLoading = false
                         evaluateInjectedJavaScript(url)
                         if (bootstrapNavigationFence.mayUncover(url)) {
+                            markDocumentCommitted(target)
                             onPagePainted()
                             notifyLoadSuccess(url, "finished", beforeCallback = ::flushPendingRuntimeJavaScript)
                         }
@@ -522,6 +624,7 @@ internal class RaftAndroidSandboxWebView(
                         notifyUrlChange(target)
                         notifyNavigationState()
                         if (bootstrapNavigationFence.mayUncover(url)) {
+                            markDocumentCommitted(target)
                             onPagePainted()
                             notifyLoadSuccess(url, "commit_visible")
                         }
@@ -538,7 +641,7 @@ internal class RaftAndroidSandboxWebView(
                     if (destroyed) return true
                     val target = request?.url?.toString()
                     return if (request?.isForMainFrame == true) {
-                        shouldRouteMainFrameNavigation(target) || shouldBlockMainFrameNavigation(target)
+                        handleMainFrameShouldOverrideUrlLoading(view, request, target)
                     } else {
                         shouldSilentlyBlockSubframeNavigation(target)
                     }
@@ -584,6 +687,7 @@ internal class RaftAndroidSandboxWebView(
                         val errorCode = if (modern) error?.errorCode ?: 0 else 0
                         currentUrl = request.url?.toString().orEmpty().ifBlank { currentUrl }
                         currentIsLoading = false
+                        resetNavigationChain()
                         diagnosticsWarn("page_error code=$errorCode url=${currentUrl.formatUrlForLog()} ${loadElapsedField()}")
                         notifyNavigationState()
                         notifyLoadFailure(reason)
@@ -595,6 +699,7 @@ internal class RaftAndroidSandboxWebView(
                     if (destroyed) return
                     currentUrl = error?.url.orEmpty().ifBlank { currentUrl }
                     currentIsLoading = false
+                    resetNavigationChain()
                     val reason = "ssl_error_${error?.primaryError ?: -1}"
                     diagnosticsWarn("page_error reason=$reason url=${currentUrl.formatUrlForLog()} ${loadElapsedField()}")
                     notifyNavigationState()
@@ -666,7 +771,7 @@ internal class RaftAndroidSandboxWebView(
         webView.settings.loadWithOverviewMode = next
         applyZoomSettings()
         applyDesktopModeScale(webView)
-        if (webView.url != null) webView.reload()
+        if (!isolatedProfileUnavailable && webView.url != null) webView.reload()
     }
 
     /**
@@ -753,10 +858,20 @@ internal class RaftAndroidSandboxWebView(
             probeDocumentContent()
             return
         }
+        if (next.startsWith(RaftWebViewController.COMMAND_LOAD_URL_PREFIX)) {
+            loadControllerUrl(next.removePrefix(RaftWebViewController.COMMAND_LOAD_URL_PREFIX))
+            return
+        }
         when (next.trim()) {
             RaftWebViewController.COMMAND_GO_BACK -> if (webView.canGoBack()) webView.goBack()
             RaftWebViewController.COMMAND_GO_FORWARD -> if (webView.canGoForward()) webView.goForward()
             RaftWebViewController.COMMAND_RELOAD -> {
+                if (isolatedProfileUnavailable) {
+                    currentIsLoading = false
+                    notifyNavigationState(force = true)
+                    notifyLoadFailure(RAFT_WEBVIEW_ISOLATED_PROFILE_UNAVAILABLE_REASON)
+                    return
+                }
                 lastSuccessfulUrl = ""
                 lastLoadFailureReason = ""
                 currentProgress = 0
@@ -828,13 +943,25 @@ internal class RaftAndroidSandboxWebView(
 
     private fun updateSrc(next: String) {
         val normalized = next.trim()
-        if (src == normalized && (normalized.isBlank() || loadedSrc == normalized)) return
+        if (src == normalized && (normalized.isBlank() || loadedSrc == normalized || isolatedProfileUnavailable)) return
         pendingRuntimeJavaScript = ""
         src = normalized
         loadedSrc = ""
         lastSuccessfulUrl = ""
         lastLoadFailureReason = ""
+        committedDocumentUrl = ""
+        hasCommittedDocument = false
+        resetNavigationChain()
         allowedUri = normalized.takeIf { it.isNotBlank() }?.let { runCatching { Uri.parse(it) }.getOrNull() }
+        if (isolatedProfileUnavailable) {
+            currentUrl = normalized
+            currentTitle = ""
+            currentProgress = 0
+            currentIsLoading = false
+            notifyNavigationState(force = true)
+            if (normalized.isNotBlank()) notifyLoadFailure(RAFT_WEBVIEW_ISOLATED_PROFILE_UNAVAILABLE_REASON)
+            return
+        }
         if (normalized.isBlank()) {
             currentUrl = ""
             currentTitle = ""
@@ -862,6 +989,12 @@ internal class RaftAndroidSandboxWebView(
      * The src stays [loadedSrc], so the host's unchanged config does not load it over that page.
      */
     private fun loadAllowedSrc(normalized: String, documentUrl: String = normalized) {
+        if (isolatedProfileUnavailable) {
+            currentIsLoading = false
+            notifyNavigationState(force = true)
+            notifyLoadFailure(RAFT_WEBVIEW_ISOLATED_PROFILE_UNAVAILABLE_REASON)
+            return
+        }
         loadedSrc = normalized
         currentUrl = documentUrl
         currentIsLoading = true
@@ -884,7 +1017,165 @@ internal class RaftAndroidSandboxWebView(
         } else {
             bootstrapNavigationFence.reset()
             diagnosticsInfo("load_src bootstrap=false url=${documentUrl.formatUrlForLog()}")
-            webView.loadUrl(documentUrl)
+            startHostNavigationChain(documentUrl)
+            loadUrlWithRaftHost(documentUrl, includeHeader = true)
+        }
+    }
+
+    /** Non-queued [RaftWebViewController.loadUrl]: loads [rawUrl] once with optional `Raft-Host`, without mutating [src]. */
+    private fun loadControllerUrl(rawUrl: String) {
+        if (destroyed) return
+        if (isolatedProfileUnavailable) {
+            currentIsLoading = false
+            notifyNavigationState(force = true)
+            notifyLoadFailure(RAFT_WEBVIEW_ISOLATED_PROFILE_UNAVAILABLE_REASON)
+            return
+        }
+        val target = rawUrl.trim()
+        if (target.isEmpty()) return
+        if (wouldBlockMainFrameNavigation(target)) {
+            handleBlockedMainFrameNavigation(target)
+            return
+        }
+        lastSuccessfulUrl = ""
+        lastLoadFailureReason = ""
+        currentUrl = target
+        currentProgress = 0
+        currentIsLoading = true
+        notifyNavigationState(force = true)
+        startHostNavigationChain(target)
+        loadUrlWithRaftHost(target, includeHeader = true)
+    }
+
+    private fun startHostNavigationChain(targetUrl: String) {
+        navChainCarriesRaftHost = false
+        navChainReissueBudget = RAFT_HOST_REISSUE_BUDGET
+        navChainStarter = if (hasCommittedDocument) RaftSignInStarter.Page else RaftSignInStarter.Launch
+        navChainHops.clear()
+        recordNavChainHop(targetUrl)
+    }
+
+    private fun resetNavigationChain() {
+        navChainCarriesRaftHost = false
+        navChainReissueBudget = RAFT_HOST_REISSUE_BUDGET
+        navChainStarter = RaftSignInStarter.Other
+        navChainHops.clear()
+    }
+
+    private fun markDocumentCommitted(url: String) {
+        committedDocumentUrl = url
+        hasCommittedDocument = true
+        navChainCarriesRaftHost = false
+        navChainReissueBudget = RAFT_HOST_REISSUE_BUDGET
+        navChainStarter = RaftSignInStarter.Page
+        navChainHops.clear()
+    }
+
+    private fun recordNavChainHop(url: String) {
+        if (url.isNotEmpty() && navChainHops.size < MAX_NAV_CHAIN_HOPS) {
+            navChainHops += url
+        }
+    }
+
+    private fun loadUrlWithRaftHost(targetUrl: String, includeHeader: Boolean) {
+        val headerValue = if (includeHeader) raftHostHeaderValueFor(targetUrl, raftHost) else null
+        navChainCarriesRaftHost = headerValue != null
+        if (headerValue != null) {
+            webView.loadUrl(targetUrl, mapOf(RAFT_HOST_HEADER to headerValue))
+        } else {
+            webView.loadUrl(targetUrl)
+        }
+    }
+
+    private fun postReissueLoad(targetView: WebView?, targetUrl: String, includeHeader: Boolean) {
+        val view = targetView ?: webView
+        shareMainHandler.post {
+            if (!destroyed && !isolatedProfileUnavailable && view === webView) {
+                loadUrlWithRaftHost(targetUrl, includeHeader = includeHeader)
+            }
+        }
+    }
+
+    /**
+     * Main-frame `shouldOverrideUrlLoading` order (#356 §3/§5):
+     * 1. [RaftWebViewEvents.catchesMainFrameNavigation] (e.g. Raft OAuth authorize catch);
+     * 2. existing link routing and navigation fence;
+     * 3. [raftHostNavigationDecision] (re-issue same-origin GET with `Raft-Host`, or cross-origin
+     *    GET without it, bounded by [RAFT_HOST_REISSUE_BUDGET]).
+     */
+    private fun handleMainFrameShouldOverrideUrlLoading(
+        view: WebView?,
+        request: WebResourceRequest,
+        target: String?,
+    ): Boolean {
+        val isRedirect = request.isRedirect
+        val method = request.method?.takeIf { it.isNotBlank() } ?: "GET"
+        if (!isRedirect) {
+            navChainCarriesRaftHost = false
+            navChainReissueBudget = RAFT_HOST_REISSUE_BUDGET
+            navChainStarter = if (hasCommittedDocument) RaftSignInStarter.Page else RaftSignInStarter.Other
+            navChainHops.clear()
+        }
+        if (target != null) {
+            val catchAsk =
+                RaftWebViewMainFrameCatchAsk(
+                    url = target,
+                    starter = navChainStarter,
+                    page = committedDocumentUrl,
+                    committed = hasCommittedDocument,
+                    hops = navChainHops.toList(),
+                )
+            if (events.catchesMainFrameNavigation?.invoke(catchAsk) == true) {
+                currentIsLoading = false
+                notifyNavigationState()
+                return true
+            }
+        }
+        if (shouldRouteMainFrameNavigation(target) || shouldBlockMainFrameNavigation(target)) {
+            return true
+        }
+        if (target == null) return false
+        val requestHasHeader =
+            request.requestHeaders?.entries?.any { (name, value) ->
+                name.equals(RAFT_HOST_HEADER, ignoreCase = true) && value.isNotBlank()
+            } == true
+        val onScope = raftHostHeaderValueFor(target, raftHost) != null
+        val carriesHeader =
+            if (onScope) {
+                // Android loadUrl headers do not survive redirects; a same-origin redirect lacks the
+                // header unless the request explicitly reports it.
+                requestHasHeader
+            } else {
+                // Off-origin redirect from a header-bearing chain: conservatively strip by re-issuing.
+                requestHasHeader || (isRedirect && navChainCarriesRaftHost)
+            }
+        val kind = if (isRedirect) RaftHostNavigationKind.Redirect else RaftHostNavigationKind.Page
+        val decision =
+            raftHostNavigationDecision(
+                url = target,
+                method = method,
+                kind = kind,
+                carriesHeader = carriesHeader,
+                host = raftHost,
+                budgetLeft = navChainReissueBudget,
+            )
+        recordNavChainHop(target)
+        return when (decision) {
+            RaftHostNavigationDecision.Allow -> {
+                if (!isRedirect) navChainCarriesRaftHost = requestHasHeader
+                false
+            }
+            RaftHostNavigationDecision.ReissueWithHeader -> {
+                navChainReissueBudget = (navChainReissueBudget - 1).coerceAtLeast(0)
+                navChainCarriesRaftHost = true
+                postReissueLoad(view, target, includeHeader = true)
+                true
+            }
+            RaftHostNavigationDecision.ReissueWithoutHeader -> {
+                navChainCarriesRaftHost = false
+                postReissueLoad(view, target, includeHeader = false)
+                true
+            }
         }
     }
 
@@ -1493,6 +1784,7 @@ internal class RaftAndroidSandboxWebView(
         const val LOG_MESSAGE_LIMIT = 500
         const val PERSISTED_CONSOLE_ERROR_LIMIT = 5
         const val PERSISTED_CONSOLE_MESSAGE_CHARS = 160
+        const val MAX_NAV_CHAIN_HOPS = 32
         const val ABOUT_BLANK_URL = "about:blank"
         const val HOST_BRIDGE_SCRIPT = """
             (function(){'use strict';

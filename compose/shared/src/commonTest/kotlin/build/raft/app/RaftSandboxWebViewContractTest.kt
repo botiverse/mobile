@@ -66,6 +66,55 @@ class RaftSandboxWebViewContractTest {
     }
 
     @Test
+    fun controllerLoadUrlDispatchesImmediatelyWhenAttachedAndNeverQueuesAcrossDetach() {
+        val controller = RaftWebViewController()
+        val delivered = mutableListOf<String>()
+
+        assertFalse(controller.loadUrl("https://app.example/before-attach"))
+        assertFalse(controller.loadUrl("   "))
+
+        val owner = Any()
+        controller.bindCommandDispatcher(owner, delivered::add)
+        assertEquals(emptyList(), delivered)
+
+        assertEquals(true, controller.loadUrl("  https://app.example/callback?code=1  "))
+        assertEquals(
+            RaftWebViewController.COMMAND_LOAD_URL_PREFIX + "https://app.example/callback?code=1",
+            delivered.single(),
+        )
+        assertFalse(controller.loadUrl(" "))
+
+        controller.unbindCommandDispatcher(owner)
+        assertFalse(controller.loadUrl("https://app.example/after-detach"))
+        controller.bindCommandDispatcher(Any(), delivered::add)
+        assertEquals(1, delivered.size)
+    }
+
+    @Test
+    fun storagePartitionDefaultsFromEphemeralAndAllowsExplicitOverride() {
+        val defaultCfg =
+            RaftWebViewConfig(
+                url = "https://example.test",
+                allowScripts = true,
+                allowNavigation = true,
+                domStorageEnabled = true,
+                useWideViewPort = false,
+                cacheEnabled = true,
+                ephemeral = false,
+                injectedJavaScript = "",
+                allowedNavigationSchemes = setOf("https"),
+                hostEventsEnabled = false,
+            )
+        assertEquals(RaftWebViewStoragePartition.Default, defaultCfg.effectiveStoragePartition)
+
+        val ephemeralCopy = defaultCfg.copy(ephemeral = true)
+        assertEquals(RaftWebViewStoragePartition.Ephemeral, ephemeralCopy.effectiveStoragePartition)
+
+        val isolated = defaultCfg.copy(storagePartition = RaftWebViewStoragePartition.IsolatedThirdParty)
+        assertEquals(RaftWebViewStoragePartition.IsolatedThirdParty, isolated.effectiveStoragePartition)
+    }
+
+    @Test
     fun allowedNavigationSchemesAreNormalizedAndStable() {
         assertEquals(
             "http,https",

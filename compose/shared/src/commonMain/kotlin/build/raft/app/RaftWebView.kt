@@ -81,6 +81,19 @@ internal class RaftWebViewController {
         return true
     }
 
+    /**
+     * Loads [url] in the currently attached renderer (e.g. an OAuth answer or denial URL in the
+     * in-app browser, #proj-workspace:#356 §5). Never queued across detach/recreate so a one-time
+     * credential URL can never replay into a replacement WebView. Returns whether it was sent.
+     */
+    fun loadUrl(url: String): Boolean {
+        val target = url.trim()
+        if (target.isEmpty() || flushingCommands) return false
+        val binding = commandBinding ?: return false
+        binding.dispatch(COMMAND_LOAD_URL_PREFIX + target)
+        return true
+    }
+
     private fun issueCommand(command: String) {
         val binding = commandBinding
         if (binding == null || flushingCommands) {
@@ -121,6 +134,7 @@ internal class RaftWebViewController {
         internal const val COMMAND_STOP = "stop"
         internal const val COMMAND_PROBE_DOCUMENT_CONTENT = "probeDocumentContent"
         internal const val COMMAND_EVALUATE_JAVA_SCRIPT_PREFIX = "evaluateJavaScript:"
+        internal const val COMMAND_LOAD_URL_PREFIX = "loadUrl:"
     }
 }
 
@@ -165,8 +179,17 @@ internal fun RaftSandboxWebView(
     showsFormAccessoryBar: Boolean = false,
     /** [RaftWebViewConfig.allowPinchZoom]. */
     allowPinchZoom: Boolean = false,
+    /** [RaftWebViewConfig.storagePartition]; null derives from [ephemeral]. */
+    storagePartition: RaftWebViewStoragePartition? = null,
+    /** [RaftWebViewConfig.allowsBackForwardNavigationGestures]. */
+    allowsBackForwardNavigationGestures: Boolean = false,
+    /** [RaftWebViewConfig.raftHost]. */
+    raftHost: RaftHostHeader? = null,
+    /** [RaftWebViewEvents.catchesMainFrameNavigation]. */
+    catchesMainFrameNavigation: ((RaftWebViewMainFrameCatchAsk) -> Boolean)? = null,
 ) {
     val events = remember { RaftWebViewEvents() }
+    events.catchesMainFrameNavigation = catchesMainFrameNavigation
     events.routesMainFrameNavigation = routesMainFrameNavigation
     events.onLoadCommit = onLoadCommit
     events.onLoadSuccess =
@@ -202,7 +225,10 @@ internal fun RaftSandboxWebView(
             backgroundArgb,
             diagnosticsSurface,
             showsFormAccessoryBar,
-            allowPinchZoom
+            allowPinchZoom,
+            storagePartition,
+            allowsBackForwardNavigationGestures,
+            raftHost,
         ) {
             RaftWebViewConfig(
                 url = url,
@@ -222,7 +248,10 @@ internal fun RaftSandboxWebView(
                 backgroundArgb = backgroundArgb,
                 diagnosticsSurface = diagnosticsSurface,
                 showsFormAccessoryBar = showsFormAccessoryBar,
-                allowPinchZoom = allowPinchZoom
+                allowPinchZoom = allowPinchZoom,
+                storagePartition = storagePartition,
+                allowsBackForwardNavigationGestures = allowsBackForwardNavigationGestures,
+                raftHost = raftHost,
             )
         }
     // Full-bleed: in a clipped pane of the wide row (the Artifact column) the page is cut hard at the pane's edge, never
@@ -305,6 +334,14 @@ internal fun RaftWebView(
     diagnosticsSurface: String = RAFT_WEBVIEW_SURFACE_DEFAULT,
     /** [RaftWebViewConfig.showsFormAccessoryBar]. */
     showsFormAccessoryBar: Boolean = false,
+    /** [RaftWebViewConfig.storagePartition]; null derives from [ephemeral]. */
+    storagePartition: RaftWebViewStoragePartition? = null,
+    /** [RaftWebViewConfig.allowsBackForwardNavigationGestures]. */
+    allowsBackForwardNavigationGestures: Boolean = false,
+    /** [RaftWebViewConfig.raftHost]. */
+    raftHost: RaftHostHeader? = null,
+    /** [RaftWebViewEvents.catchesMainFrameNavigation]. */
+    catchesMainFrameNavigation: ((RaftWebViewMainFrameCatchAsk) -> Boolean)? = null,
 ) {
     RaftSandboxWebView(
         url = url,
@@ -330,7 +367,11 @@ internal fun RaftWebView(
         onHostMessage = onHostMessage,
         routesMainFrameNavigation = routesMainFrameNavigation,
         diagnosticsSurface = diagnosticsSurface,
-        showsFormAccessoryBar = showsFormAccessoryBar
+        showsFormAccessoryBar = showsFormAccessoryBar,
+        storagePartition = storagePartition,
+        allowsBackForwardNavigationGestures = allowsBackForwardNavigationGestures,
+        raftHost = raftHost,
+        catchesMainFrameNavigation = catchesMainFrameNavigation,
     )
 }
 

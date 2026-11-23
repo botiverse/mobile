@@ -100,6 +100,15 @@ internal expect fun raftPlatformSupportsEmbeddedOwnWebView(): Boolean
 internal expect fun raftPlatformUsesEphemeralAuthWebView(): Boolean
 
 /**
+ * Whether this platform can isolate third-party WebView content into a storage partition separate
+ * from the default profile ([RaftWebViewStoragePartition.IsolatedThirdParty], #proj-workspace:#397).
+ * Android requires Chromium WebView `MULTI_PROFILE`; iOS always isolates (named persistent
+ * `WKWebsiteDataStore` on iOS 17+, `nonPersistentDataStore()` on iOS 15–16); desktop has no
+ * in-app browser and returns false.
+ */
+internal expect fun raftPlatformSupportsIsolatedWebViewProfile(): Boolean
+
+/**
  * Paste into the composer (web MessageInput `handlePaste`): whether the system clipboard holds
  * files or an image, and those as attachments. Desktop: files or an image; iOS: images; Android
  * pastes text only (false / empty).

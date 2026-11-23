@@ -6,8 +6,16 @@ import kotlinx.serialization.json.Json
 
 private const val SETTINGS_HOST_OPEN_EXTERNAL_NAME = "host=open-external"
 private const val SETTINGS_HOST_OPEN_EXTERNAL_PREFIX = "host=open-external&to="
+private const val SETTINGS_HOST_OPEN_APP_NAME = "host=open-app"
+private const val SETTINGS_HOST_OPEN_APP_PREFIX = "host=open-app&to="
 
-/** Minimum time before an identical `#host=open-external&to=…` tap is handled again after clearing. */
+/** Whether an embedded Settings page asked with `#host=open-external` or `#host=open-app` (`slock` #16090). */
+internal enum class SettingsWebViewHostOpenKind {
+    External,
+    App,
+}
+
+/** Minimum time before an identical `#host=open-external&to=…` or `#host=open-app&to=…` tap is handled again after clearing. */
 internal const val SETTINGS_HOST_OPEN_EXTERNAL_REPEAT_MS = 500L
 
 /**
@@ -36,22 +44,52 @@ internal fun settingsWebViewSchemeForLog(rawUrl: String): String =
         .ifEmpty { "none" }
 
 /**
+ * Which `#host=open-*` command [pageUrl] carries on [webOrigin], or null when absent or off-origin:
+ * - [SettingsWebViewHostOpenKind.External]: `#host=open-external` (`botiverse/slock#16053`)
+ * - [SettingsWebViewHostOpenKind.App]: `#host=open-app` (`botiverse/slock#16090`, App homepage)
+ *
+ * Requests on any other origin return null so third-party documents in unlocked Settings WebViews
+ * can never trigger host link actions.
+ */
+internal fun settingsWebViewHostOpenKind(
+    pageUrl: String,
+    webOrigin: String,
+): SettingsWebViewHostOpenKind? {
+    val expectedOrigin = raftWebOriginOf(webOrigin) ?: return null
+    if (raftWebOriginOf(pageUrl) != expectedOrigin) return null
+    val fragment = pageUrl.substringAfter('#', "")
+    return when {
+        fragment == SETTINGS_HOST_OPEN_EXTERNAL_NAME ||
+            fragment.startsWith("$SETTINGS_HOST_OPEN_EXTERNAL_NAME&") -> SettingsWebViewHostOpenKind.External
+        fragment == SETTINGS_HOST_OPEN_APP_NAME ||
+            fragment.startsWith("$SETTINGS_HOST_OPEN_APP_NAME&") -> SettingsWebViewHostOpenKind.App
+        else -> null
+    }
+}
+
+/**
  * Whether [pageUrl] is on [webOrigin] and carries a `#host=open-external` request fragment
  * (`botiverse/slock#16053`: `#host=open-external&to=<encodeURIComponent(http(s) url)>`).
- *
- * Requests on any other origin return false so third-party documents in unlocked Settings WebViews
- * can never trigger host link actions.
  */
 internal fun settingsWebViewAsksHostOpenExternal(
     pageUrl: String,
     webOrigin: String,
-): Boolean {
-    val expectedOrigin = raftWebOriginOf(webOrigin) ?: return false
-    if (raftWebOriginOf(pageUrl) != expectedOrigin) return false
-    val fragment = pageUrl.substringAfter('#', "")
-    return fragment == SETTINGS_HOST_OPEN_EXTERNAL_NAME ||
-        fragment.startsWith("$SETTINGS_HOST_OPEN_EXTERNAL_NAME&")
-}
+): Boolean = settingsWebViewHostOpenKind(pageUrl, webOrigin) == SettingsWebViewHostOpenKind.External
+
+/**
+ * Whether [pageUrl] is on [webOrigin] and carries a `#host=open-app` request fragment
+ * (`botiverse/slock#16090`: `#host=open-app&to=<encodeURIComponent(https url)>`).
+ */
+internal fun settingsWebViewAsksHostOpenApp(
+    pageUrl: String,
+    webOrigin: String,
+): Boolean = settingsWebViewHostOpenKind(pageUrl, webOrigin) == SettingsWebViewHostOpenKind.App
+
+/** Whether [pageUrl] on [webOrigin] carries either `#host=open-external` or `#host=open-app`. */
+internal fun settingsWebViewAsksHostOpen(
+    pageUrl: String,
+    webOrigin: String,
+): Boolean = settingsWebViewHostOpenKind(pageUrl, webOrigin) != null
 
 /**
  * Extracts and validates the external http(s) URL from a `#host=open-external&to=…` fragment on
@@ -63,9 +101,37 @@ internal fun settingsWebViewHostOpenExternalUrl(
     webOrigin: String,
 ): String? {
     if (!settingsWebViewAsksHostOpenExternal(pageUrl, webOrigin)) return null
-    val fragment = pageUrl.substringAfter('#', "")
-    if (!fragment.startsWith(SETTINGS_HOST_OPEN_EXTERNAL_PREFIX)) return null
-    val encoded = fragment.removePrefix(SETTINGS_HOST_OPEN_EXTERNAL_PREFIX)
+    return parseSettingsHostOpenToUrl(
+        fragment = pageUrl.substringAfter('#', ""),
+        prefix = SETTINGS_HOST_OPEN_EXTERNAL_PREFIX,
+        allowedSchemes = setOf("http", "https"),
+    )
+}
+
+/**
+ * Extracts and validates the `https` URL from a `#host=open-app&to=…` fragment on [webOrigin]
+ * (`botiverse/slock#16090`, no other parameters), or returns null when absent, off-origin,
+ * malformed, or not an `https` URL.
+ */
+internal fun settingsWebViewHostOpenAppUrl(
+    pageUrl: String,
+    webOrigin: String,
+): String? {
+    if (!settingsWebViewAsksHostOpenApp(pageUrl, webOrigin)) return null
+    return parseSettingsHostOpenToUrl(
+        fragment = pageUrl.substringAfter('#', ""),
+        prefix = SETTINGS_HOST_OPEN_APP_PREFIX,
+        allowedSchemes = setOf("https"),
+    )
+}
+
+private fun parseSettingsHostOpenToUrl(
+    fragment: String,
+    prefix: String,
+    allowedSchemes: Set<String>,
+): String? {
+    if (!fragment.startsWith(prefix)) return null
+    val encoded = fragment.removePrefix(prefix)
     // Single-pass `encodeURIComponent(url)` leaves no `&`, `/`, `?`, `#`, `+`, whitespace, or control chars.
     if (
         encoded.isEmpty() ||
@@ -78,7 +144,7 @@ internal fun settingsWebViewHostOpenExternalUrl(
         return null
     }
     val scheme = decoded.substringBefore(':', missingDelimiterValue = "").lowercase()
-    if (scheme != "http" && scheme != "https") return null
+    if (scheme !in allowedSchemes) return null
     val decision = resolveRaftLinkOpenDecision(decoded, LinkOpenMode.SystemBrowser)
     if (decision.target != RaftLinkOpenTarget.ExternalBrowser) return null
     return decision.url
@@ -159,9 +225,10 @@ private fun hexDigitOrMinusOne(ch: Char): Int =
     }
 
 /**
- * Strips a handled `#host=open-external…` request off the page's document URL via
- * `history.replaceState` (restoring [previousHash] when non-empty and not another `#host=` command).
- * Guarded to top-level documents on [webOrigin]; fails closed to empty string without a valid origin.
+ * Strips a handled `#host=open-external…` or `#host=open-app…` request off the page's document URL
+ * via `history.replaceState` (restoring [previousHash] when non-empty and not another `#host=`
+ * command). Guarded to top-level documents on [webOrigin]; fails closed to empty string without a
+ * valid origin.
  */
 internal fun settingsWebViewHostOpenExternalTakenScript(
     webOrigin: String,
@@ -179,7 +246,7 @@ internal fun settingsWebViewHostOpenExternalTakenScript(
         (function() {
           try {
             if (window.top !== window || window.location.origin !== $encodedOrigin) return;
-            if (/^#host=open-external(?:&|$)/.test(window.location.hash)) {
+            if (/^#host=open-(?:external|app)(?:&|$)/.test(window.location.hash)) {
               var url = new URL(window.location.href);
               url.hash = $encodedHash;
               window.history.replaceState(window.history.state, '', url.href);
@@ -190,18 +257,21 @@ internal fun settingsWebViewHostOpenExternalTakenScript(
 }
 
 internal data class SettingsWebViewHostOpenExternalDecision(
-    /** Validated `http`/`https` destination to open, or null if the request should be dropped and logged. */
+    /** Validated destination to open, or null if the request should be dropped and logged. */
     val targetUrl: String?,
     /** Non-`#host=` fragment the document had before the request, restored when clearing the hash. */
     val previousHash: String,
     /** Raw page URL carrying the request (used as key/identity for deferred cleanup). */
     val requestPageUrl: String,
+    /** Whether the page asked with `#host=open-external` or `#host=open-app` (#proj-workspace:#356). */
+    val kind: SettingsWebViewHostOpenKind = SettingsWebViewHostOpenKind.External,
 )
 
 /**
- * Deduplicates `#host=open-external&to=…` observations across `onUrlChange` and
- * `onNavigationStateChange` (including iOS/Desktop URL polls) so a single tap opens once while
- * still allowing deliberate repeat taps once the page actually returns to a non-request URL.
+ * Deduplicates `#host=open-external&to=…` and `#host=open-app&to=…` observations across
+ * `onUrlChange` and `onNavigationStateChange` (including iOS/Desktop URL polls) so a single tap
+ * opens once while still allowing deliberate repeat taps once the page actually returns to a
+ * non-request URL.
  */
 internal class SettingsWebViewHostOpenExternalDeduper(
     private val repeatWindowMs: Long = SETTINGS_HOST_OPEN_EXTERNAL_REPEAT_MS,
@@ -211,7 +281,7 @@ internal class SettingsWebViewHostOpenExternalDeduper(
     private var clearedSinceHandled: Boolean = true
     private var hashBeforeRequest: String = ""
 
-    /** True while the last handled `#host=open-external` URL has not yet been observed cleared. */
+    /** True while the last handled `#host=open-*` URL has not yet been observed cleared. */
     val awaitingHashClear: Boolean
         get() = !clearedSinceHandled && lastHandledUrl != null
 
@@ -224,7 +294,8 @@ internal class SettingsWebViewHostOpenExternalDeduper(
         webOrigin: String,
         nowMs: Long,
     ): SettingsWebViewHostOpenExternalDecision? {
-        if (!settingsWebViewAsksHostOpenExternal(pageUrl, webOrigin)) {
+        val kind = settingsWebViewHostOpenKind(pageUrl, webOrigin)
+        if (kind == null) {
             clearedSinceHandled = true
             val expectedOrigin = raftWebOriginOf(webOrigin)
             if (expectedOrigin != null && raftWebOriginOf(pageUrl) == expectedOrigin) {
@@ -243,10 +314,16 @@ internal class SettingsWebViewHostOpenExternalDeduper(
         lastHandledUrl = pageUrl
         lastHandledAtMs = nowMs
         clearedSinceHandled = false
+        val targetUrl =
+            when (kind) {
+                SettingsWebViewHostOpenKind.External -> settingsWebViewHostOpenExternalUrl(pageUrl, webOrigin)
+                SettingsWebViewHostOpenKind.App -> settingsWebViewHostOpenAppUrl(pageUrl, webOrigin)
+            }
         return SettingsWebViewHostOpenExternalDecision(
-            targetUrl = settingsWebViewHostOpenExternalUrl(pageUrl, webOrigin),
+            targetUrl = targetUrl,
             previousHash = hashBeforeRequest,
             requestPageUrl = pageUrl,
+            kind = kind,
         )
     }
 }
