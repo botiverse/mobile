@@ -16,10 +16,6 @@ import build.raft.app.compat.pager.LocalActivity
 import build.raft.app.compat.pager.PageData
 import build.raft.app.compat.pager.Pager
 import build.raft.app.compat.pager.RaftPageActivity
-import build.raft.app.resources.Res
-import build.raft.app.resources.desc
-import build.raft.app.resources.home_section_create_external_channel
-import build.raft.app.resources.resolve
 import build.raft.designsystem.tokens.RaftThemeId
 import java.io.File
 import java.time.Duration
@@ -90,7 +86,7 @@ class HomeChannelListScreenshotTest {
         assertNotNull(composeView, "no compose root")
         // Verify the External section "+" button is actually rendered (its ~14dp glyph alone is
         // smaller than Roborazzi's 0.1% pixel tolerance on a 390x844@3x capture, #wg-mobile-sync:#207).
-        val createExternalLabel = Res.string.home_section_create_external_channel.desc().resolve()
+        val createExternalLabel = RaftHomeShellLabels().createExternalChannel
         val hasExternalCreateButton =
             (composeView as ViewRootForTest)
                 .semanticsOwner
