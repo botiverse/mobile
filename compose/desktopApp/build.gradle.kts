@@ -72,8 +72,8 @@ tasks.withType<Test>().configureEach {
 //   nucleus-application / decorated-window-tao.
 val pinnedDesktopJarSha256 =
     mapOf(
-        "io.github.vinceglb:filekit-dialogs-jvm" to "1c2afa8001a9cc5f136c25a53856573c65334cdd7d2352a6c8da8bd91a983557",
-        "io.github.vinceglb:filekit-core-jvm" to "d35a1c44b47b6566712e8f6e7340778c3bb6f49b61496152d9bc64125387e992",
+        "io.github.vinceglb:filekit-dialogs-jvm" to "0d499d8d9c5b1de84942547615e4edeca9293e9c88288f5a8b672b58cafa231d",
+        "io.github.vinceglb:filekit-core-jvm" to "2ca385693dbb5960fb80e2c5e67f83e79aa8ca9f2d49263976f3026ebf34f916",
         "io.github.kdroidfilter:composemediaplayer-jvm" to "ef8f7ab9a6fcb8a56052453f217432b978477ae15db03cccdc271354deaf5c24",
         "dev.nucleusframework:composewebview-jvm" to "abddd6bdfa5561a12a9af8aced16ce5d90ffced472e0e7f36b96ac7dff0070b2",
         "dev.nucleusframework:nucleus.decorated-window-tao" to "762357b549391fe08220dafb79f103a1f6700f175bd6b419e4f51166acb3c5fe",
