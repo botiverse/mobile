@@ -259,6 +259,20 @@ internal fun raftOwnWebLinkPath(
     )
 }
 
+/**
+ * The raw query string (after `?`, before `#`) of [url] when it is on an origin
+ * [parseRaftMessageLink] trusts; null for any other URL.
+ */
+internal fun raftOwnWebLinkRawQueryOrNull(
+    url: String,
+    configuredWebUrl: String? = null,
+    appHosts: Set<String> = RaftClientConfigAppHosts.current,
+): String? {
+    val parsed = url.toRaftLinkUrl() ?: return null
+    if (!parsed.isAllowedMessageLinkOrigin(configuredWebUrl?.toRaftLinkUrl(), appHosts)) return null
+    return parsed.rawQuery
+}
+
 internal fun isRaftLinkIdentifier(value: String): Boolean =
     value.length in 1..128 && value.all { it in 'a'..'z' || it in 'A'..'Z' || it in '0'..'9' || it == '-' || it == '_' }
 
@@ -543,6 +557,17 @@ object RaftMessageLinkIngress {
     /** [configuredWebUrl] is the Developer environment's web URL; null reads the app-scope one. */
     fun accept(url: String, source: String, configuredWebUrl: String? = null): Boolean {
         val webUrl = configuredWebUrl ?: appScopeWebUrlOrNull()
+        val sendPrompt =
+            parseRaftSendPromptLink(url, webUrl, allowRelative = false)
+                ?: raftSchemeLinkToWebLink(url, webUrl)?.let { parseRaftSendPromptLink(it, webUrl, allowRelative = false) }
+        if (sendPrompt != null) {
+            val pending = RaftSendPromptLinkInbox.Process.submit(sendPrompt, source.raftLinkLogToken())
+            raftLogInfo(
+                RaftMessageLinkLogTag,
+                "send_prompt_link_ingress result=pending id=${pending.id} source=${pending.source}"
+            )
+            return true
+        }
         val link =
             parseRaftMessageLink(url, webUrl)
                 ?: raftSchemeLinkToWebLink(url, webUrl)?.let { parseRaftMessageLink(it, webUrl) }

@@ -109,6 +109,7 @@ internal fun raftLinkHoverLabel(
                     is RaftOwnLinkRoute.Artifact,
                     is RaftOwnLinkRoute.ServerJoin,
                     is RaftOwnLinkRoute.ExternalInvite,
+                    is RaftOwnLinkRoute.SendPrompt,
                     -> true
                     is RaftOwnLinkRoute.WebPage,
                     null,

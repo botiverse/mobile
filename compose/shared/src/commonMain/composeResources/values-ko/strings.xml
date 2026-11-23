@@ -6023,4 +6023,13 @@
     <string name="mobile_web_panel_return_to_conversation">대화로 돌아가기</string>
     <string name="mobile_web_panel_return_to_page">돌아가기</string>
     <string name="mobile_web_panel_apps_source">앱</string>
+    <string name="send_prompt_heading">에이전트에게 보내기</string>
+    <string name="send_prompt_description">메시지를 확인하고 원하면 고친 뒤 보내세요. 보내면 에이전트와의 DM으로 이동해 어떻게 하는지 볼 수 있어요.</string>
+    <string name="send_prompt_to">받는 에이전트</string>
+    <string name="send_prompt_preview_label">최근 메시지</string>
+    <string name="send_prompt_first_message">이 에이전트에게 보내는 첫 메시지예요.</string>
+    <string name="send_prompt_message_label">메시지</string>
+    <string name="send_prompt_send">보내기</string>
+    <string name="send_prompt_failed">보내지 못했어요. 다시 시도해 주세요.</string>
+    <string name="send_prompt_no_agents">이 서버에는 아직 메시지를 보낼 수 있는 에이전트가 없어요.</string>
 </resources>

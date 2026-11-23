@@ -2165,6 +2165,7 @@ private fun RaftAppShellReadyContent(
         }
     }
     var announcementModalShown by remember { mutableStateOf(false) }
+    val sendPromptHostState = remember { AppShellSendPromptHostState() }
     val latestAnnouncementStore by rememberUpdatedState(announcementStore)
     AppShellAnnouncementEffects(
         announcementStore = announcementStore,
@@ -3052,6 +3053,7 @@ private fun RaftAppShellReadyContent(
         messageLinkSessionReady = messageLinkSessionReady,
         latestMessageLinkSessionReadyState = latestMessageLinkSessionReadyState,
         latestResolveMessageLinkState = latestResolveMessageLinkState,
+        sendPromptHostState = sendPromptHostState,
     )
 
     // Wide Home default landing runs AFTER AppShellChatLayoutEffect & AppShellExternalLinkNavigationEffects
@@ -7121,6 +7123,7 @@ private fun RaftAppShellReadyContent(
                     hostDidAppearTick = hostDidAppearTick,
                     isOnline = hostNetworkStatus != RaftAppShellNetworkStatus.Offline,
                     onModalShownChanged = { announcementModalShown = it },
+                    suppressedBySiblingDialog = sendPromptHostState.activeRequest != null,
                     onDismissAnnouncement = { announcementId ->
                         if (announcementStore.dismiss(announcementId)) {
                             appShellCoroutineScope.launch {
@@ -7142,11 +7145,30 @@ private fun RaftAppShellReadyContent(
                             ) {
                                 is AnnouncementLinkAction.OpenSettings ->
                                     openSettingsFromLink(action.link, action.target, source = "announcement")
+                                is AnnouncementLinkAction.SendPrompt ->
+                                    sendPromptHostState.open(readyServerId, action.link.prompt)
                                 is AnnouncementLinkAction.OpenUrl -> linkNavigator.open(action.url, action.openIntent)
                                 null -> Unit
                             }
                         }
                     },
+                )
+                AppShellSendPromptHost(
+                    hostState = sendPromptHostState,
+                    readySession = readySession,
+                    readyServerId = readyServerId,
+                    homeState = homeState,
+                    homeStore = homeStore,
+                    serverMembersStore = appShellServerMembersStore,
+                    channelRepository = channelRepository,
+                    conversationRepository = conversationRepository,
+                    onOpenDirectMessage = { conversation ->
+                        openHomeMessageRequest(
+                            request = HomeMessageOpenRequest(conversation, anchorMessageId = null),
+                            source = "send_prompt",
+                        )
+                    },
+                    onLog = bridge::log,
                 )
             }
         }
@@ -7168,7 +7190,8 @@ private fun RaftAppShellReadyContent(
                 modalGestureBlocked =
                     appShellModalHostState.entries.isNotEmpty() ||
                         createChannelDialogOpen ||
-                        announcementModalShown,
+                        announcementModalShown ||
+                        sendPromptHostState.activeRequest != null,
                 dismissLabel = stringResource(Res.string.common_dismiss),
                 onServerClick = ::openServerDrawerHome,
                 onConversationClick = ::openServerDrawerConversation,

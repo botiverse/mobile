@@ -752,7 +752,8 @@ internal fun raftArtifactViewerBlockedNavigationTarget(
         return when (val route = raftOwnLinkRoute(url, webOrigin, appHosts)) {
             is RaftOwnLinkRoute.Conversation,
             is RaftOwnLinkRoute.ServerJoin,
-            is RaftOwnLinkRoute.ExternalInvite -> RaftArtifactViewerBlockedTarget.OpenMessage(url)
+            is RaftOwnLinkRoute.ExternalInvite,
+            is RaftOwnLinkRoute.SendPrompt -> RaftArtifactViewerBlockedTarget.OpenMessage(url)
             is RaftOwnLinkRoute.Artifact ->
                 if (artifactCanonicalId(route.target.id) == artifactCanonicalId(artifactId)) {
                     RaftArtifactViewerBlockedTarget.Ignore
