@@ -77,9 +77,9 @@ internal fun raftDesktopHistoryRoute(
 
 /**
  * A mouse's side buttons: back (button 4) and forward (button 5). TODO(desktop, Tao): they never
- * arrive for now. Nucleus 2.5.18's Tao window reports every button past the middle one as
- * [PointerButton.Primary] (AbstractTaoComposeSceneHost.mapButton), so only the keyboard shortcuts
- * step through the history until it passes the button number on.
+ * arrive for now. Nucleus 2.5.18's Tao window does not tell them apart (one code for every button
+ * past the middle one), so the window drops them ([RaftDesktopSideButtons]) and only the keyboard
+ * shortcuts step through the history until Tao passes the button number on.
  */
 internal fun raftDesktopHistoryMouseButton(button: PointerButton?): RaftDesktopHistoryDirection? =
     when (button) {

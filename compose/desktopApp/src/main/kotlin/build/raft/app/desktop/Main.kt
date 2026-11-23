@@ -137,6 +137,7 @@ private fun NucleusDecoratedWindowScope.RaftDesktopWindowContent(
 ) {
     RaftDesktopInUseTracker(focused = state.isActive)
     RaftDesktopEscapeBackRegistration(escapeBack)
+    RaftDesktopDropSideButtons()
     val body: @Composable () -> Unit = {
         RaftWindowFocusScope(modifier = Modifier.fillMaxSize().raftDesktopInUseInput(), coordinator = windowFocusCoordinator) {
             RaftDesktopHostLifecycle(focused = state.isActive, minimized = state.isMinimized) {

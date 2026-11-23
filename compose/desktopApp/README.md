@@ -96,5 +96,6 @@ linking), notifications, the app menu bar (Nucleus `menu-macos`), the dock badge
 (`.icns`) are not implemented yet; they show a notice or do nothing. Video plays on macOS 14+ only
 (ComposeMediaPlayer's AVFoundation bridge), without full screen (the library's full screen is an AWT
 window); elsewhere video attachments stay download cards. Audio-only media does not play yet and
-keeps the "not available" notice. A mouse's side buttons do not step through the history (the Tao
-window reports them as the main button); ⌘[ / ⌘] do.
+keeps the "not available" notice. A mouse's side buttons do nothing (the Tao window gives back and
+forward one code, so `RaftDesktopSideButtons` drops them instead of letting them click); ⌘[ / ⌘] step
+through the history.
