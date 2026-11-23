@@ -1195,6 +1195,8 @@ jobs:
           # into XCTest's lines (run 44830456744). xcodebuild refuses a bundle path that exists.
           bundle="$RUNNER_TEMP/adaptive-editor-tests.xcresult"
           rm -rf "$bundle"
+          # Retries once, after rebooting the simulator, only when the test runner never connected.
+          bash "$GITHUB_WORKSPACE/compose/iosApp/scripts/xctest_retry_on_runner_hang.sh" "$log" "$bundle" "$device_id" -- \
           xcodebuild \
             -workspace iosApp.xcworkspace \
             -scheme AdaptiveEditorTests \
@@ -1207,7 +1209,7 @@ jobs:
             ARCHS=arm64 CODE_SIGNING_ALLOWED=NO \
             OVERRIDE_KOTLIN_BUILD_IDE_SUPPORTED=YES \
             RAFT_IOS_REUSE_LINKED_FRAMEWORK=YES \
-            test > "$log" 2>&1 || { python3 "$GITHUB_WORKSPACE/compose/iosApp/scripts/print_xctest_failures.py" "$log"; tail -200 "$log"; exit 1; }
+            test || { python3 "$GITHUB_WORKSPACE/compose/iosApp/scripts/print_xctest_failures.py" "$log"; tail -200 "$log"; exit 1; }
           tail -60 "$log"
           python3 "$GITHUB_WORKSPACE/compose/iosApp/scripts/assert_xctest_ran.py" --xcresult "$bundle" "$log" RaftAdaptiveEditorSnapshotTests
 
@@ -1221,6 +1223,8 @@ jobs:
           # The result bundle is what assert_xctest_ran.py reads (see the adaptive editor step).
           bundle="$RUNNER_TEMP/ios-app-tests.xcresult"
           rm -rf "$bundle"
+          # Retries once, after rebooting the simulator, only when the test runner never connected.
+          bash "$GITHUB_WORKSPACE/compose/iosApp/scripts/xctest_retry_on_runner_hang.sh" "$log" "$bundle" "$device_id" -- \
           xcodebuild \
             -workspace iosApp.xcworkspace \
             -scheme iosAppTests \
@@ -1233,7 +1237,7 @@ jobs:
             ARCHS=arm64 CODE_SIGNING_ALLOWED=NO \
             OVERRIDE_KOTLIN_BUILD_IDE_SUPPORTED=YES \
             RAFT_IOS_REUSE_LINKED_FRAMEWORK=YES \
-            test > "$log" 2>&1 || { python3 "$GITHUB_WORKSPACE/compose/iosApp/scripts/print_xctest_failures.py" "$log"; tail -200 "$log"; exit 1; }
+            test || { python3 "$GITHUB_WORKSPACE/compose/iosApp/scripts/print_xctest_failures.py" "$log"; tail -200 "$log"; exit 1; }
           tail -60 "$log"
           # Every class in the bundle must have run at least one case; xcodebuild itself
           # reports success when a selector matches nothing.
