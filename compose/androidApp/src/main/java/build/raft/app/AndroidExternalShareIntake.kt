@@ -320,8 +320,9 @@ internal class AndroidExternalShareInbox(
                 )
             }
             if (isConsumed(token)) return@withContext RaftExternalShareEnvelopeHostReadResult.Missing
-            val file = liveEnvelopeFile(token, clock()) ?: return@withContext RaftExternalShareEnvelopeHostReadResult.Missing
-            runCatching { decodeEnvelope(token, file) }
+            val envelopeText = liveEnvelopeTextOrNull(token, clock())
+                ?: return@withContext RaftExternalShareEnvelopeHostReadResult.Missing
+            runCatching { decodeEnvelope(token, envelopeText) }
                 .getOrElse {
                     RaftExternalShareEnvelopeHostReadResult.Failure(
                         "external_share_envelope_decode_failed",
@@ -385,8 +386,8 @@ internal class AndroidExternalShareInbox(
         }
     }
 
-    private fun decodeEnvelope(token: String, file: File): RaftExternalShareEnvelopeHostReadResult {
-        val json = JSONObject(atomicReader(file))
+    private fun decodeEnvelope(token: String, envelopeText: String): RaftExternalShareEnvelopeHostReadResult {
+        val json = JSONObject(envelopeText)
         if (json.optString("token") != token) error("token mismatch")
         val itemsJson = json.optJSONArray("items") ?: JSONArray()
         if (itemsJson.length() > limits.maxItems) error("too many items")
@@ -464,7 +465,6 @@ internal class AndroidExternalShareInbox(
                     if (bytesBefore + copied > limits.maxTotalBytes) reject("external_share_total_too_large")
                     output.write(buffer, 0, read)
                 }
-                output.fd.sync()
             }
         }
         if (copied <= 0L) reject("external_share_item_empty")
@@ -477,21 +477,24 @@ internal class AndroidExternalShareInbox(
                 .getOrNull()
                 ?.takeIf(::isSafeToken)
                 ?: return null
-        val envelope = liveEnvelopeFile(token, now) ?: return null
-        if (now - envelope.lastModified() > RedeliveryWindowMillis || isConsumed(token)) return null
+        if (isConsumed(token)) return null
+        val envelope = envelopeFile(token)
+        val text = liveEnvelopeTextOrNull(token, now) ?: return null
+        if (now - envelope.lastModified() > RedeliveryWindowMillis) return null
         val matches =
-            runCatching { JSONObject(atomicReader(envelope)).optString("fingerprint") == fingerprint }
+            runCatching { JSONObject(text).optString("fingerprint") == fingerprint }
                 .getOrDefault(false)
         return token.takeIf { matches }
     }
 
     private fun prune(now: Long) {
         if (!root.exists()) root.mkdirs()
-        runCatching { atomicReader(pendingFile()) }
         root.listFiles().orEmpty().forEach { candidate ->
             if (candidate == pendingFile()) return@forEach
             val envelope = File(candidate, EnvelopeFileName)
-            if (candidate.isDirectory) runCatching { atomicReader(envelope) }
+            if (candidate.isDirectory && !envelope.isFile) {
+                runCatching { atomicReader(envelope) }
+            }
             if (
                 !candidate.isDirectory ||
                     !envelope.isFile ||
@@ -500,7 +503,6 @@ internal class AndroidExternalShareInbox(
                 candidate.deleteRecursively()
             }
         }
-        pendingLaunchOrNull()
     }
 
     private fun writePendingToken(token: String) {
@@ -538,10 +540,15 @@ internal class AndroidExternalShareInbox(
 
     private fun liveEnvelopeFile(token: String, now: Long): File? =
         envelopeFile(token).takeIf { file ->
-            runCatching { atomicReader(file) }.isSuccess &&
-                file.isFile &&
-                now - file.lastModified() in 0..limits.envelopeTtlMillis
+            if (!file.isFile) runCatching { atomicReader(file) }
+            file.isFile && now - file.lastModified() in 0..limits.envelopeTtlMillis
         }
+
+    private fun liveEnvelopeTextOrNull(token: String, now: Long): String? {
+        val file = envelopeFile(token)
+        val text = runCatching { atomicReader(file) }.getOrNull() ?: return null
+        return text.takeIf { file.isFile && now - file.lastModified() in 0..limits.envelopeTtlMillis }
+    }
 
     private fun isConsumed(token: String): Boolean =
         consumedFile(token).let { marker ->
@@ -742,7 +749,7 @@ private fun writeAtomic(file: File, bytes: ByteArray) {
     try {
         output = atomicFile.startWrite()
         output.write(bytes)
-        output.fd.sync()
+        // AtomicFile.finishWrite syncs the descriptor before renaming into place.
         atomicFile.finishWrite(output)
     } catch (failure: Throwable) {
         output?.let(atomicFile::failWrite)

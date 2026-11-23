@@ -4,6 +4,11 @@ import build.raft.app.data.ExternalShareIntent
 import build.raft.app.data.ExternalShareServerOption
 import build.raft.app.data.externalShareOpaqueTokenOrNull
 import build.raft.app.compat.json.JSONObject
+import kotlinx.atomicfu.locks.SynchronizedObject
+import kotlinx.atomicfu.locks.synchronized
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 
 internal const val ExternalShareLaunchIntent = "open_share_to_raft"
 internal const val ExternalShareLaunchIntentKey = "intent"
@@ -108,5 +113,67 @@ internal class ExternalShareLaunchCoordinator(
             )
         )
         return ExternalShareLaunchDecision.Dispatched
+    }
+}
+
+internal data class RaftPendingExternalShareLaunch(
+    val id: Long,
+    val request: ExternalShareLaunchRequest,
+    val targetShellInstanceId: String? = null,
+)
+
+/**
+ * Process-local single slot delivering an external share token into an already-live app shell
+ * without tearing down or recreating its host Activity. Newest share wins; taken once by the
+ * matching mounted shell once its session is ready.
+ */
+internal class RaftExternalShareLaunchInbox {
+    private val lock = SynchronizedObject()
+    private var nextId = 1L
+    private val mutablePending = MutableStateFlow<RaftPendingExternalShareLaunch?>(null)
+    val pending: StateFlow<RaftPendingExternalShareLaunch?> = mutablePending.asStateFlow()
+
+    fun submit(
+        request: ExternalShareLaunchRequest,
+        targetShellInstanceId: String? = null,
+    ): RaftPendingExternalShareLaunch = synchronized(lock) {
+        RaftPendingExternalShareLaunch(
+            id = nextId++,
+            request = request,
+            targetShellInstanceId = targetShellInstanceId?.trim()?.takeIf(String::isNotBlank),
+        ).also { mutablePending.value = it }
+    }
+
+    fun take(id: Long, shellInstanceId: String? = null): RaftPendingExternalShareLaunch? = synchronized(lock) {
+        val current = mutablePending.value?.takeIf { it.id == id } ?: return null
+        val target = current.targetShellInstanceId
+        if (target != null && target != shellInstanceId?.trim()?.takeIf(String::isNotBlank)) return null
+        mutablePending.value = null
+        current
+    }
+
+    fun clear() = synchronized(lock) { mutablePending.value = null }
+
+    companion object {
+        val Process: RaftExternalShareLaunchInbox = RaftExternalShareLaunchInbox()
+    }
+}
+
+/**
+ * Platform entry point for handing an admitted external share token directly to a live app shell
+ * without Activity recreation.
+ */
+object RaftExternalShareLaunchIngress {
+    fun submit(token: String, targetShellInstanceId: String? = null): Boolean {
+        val normalized = token.externalShareOpaqueTokenOrNull() ?: return false
+        RaftExternalShareLaunchInbox.Process.submit(
+            request = ExternalShareLaunchRequest(normalized),
+            targetShellInstanceId = targetShellInstanceId,
+        )
+        return true
+    }
+
+    internal fun clearForTests() {
+        RaftExternalShareLaunchInbox.Process.clear()
     }
 }

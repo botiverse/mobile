@@ -69,6 +69,7 @@ internal fun ExternalShareState.SelectingTargets.toExternalSharePickerSurface(
     queryOverride: String = query
 ): ExternalSharePickerSurface {
     val items = targets.map { it.toRaftForwardTargetPickerItem() }
+    val conversationItems = conversationTargets.map { it.toRaftForwardTargetPickerItem() }
     val selected = selectedTargets.map { it.toRaftForwardTargetPickerItem() }
     val queryPending = queryOverride != query
     return ExternalSharePickerSurface(
@@ -94,7 +95,8 @@ internal fun ExternalShareState.SelectingTargets.toExternalSharePickerSurface(
                 appending = appending,
                 interactive = !queryPending && !loading && !handoffInProgress && errorCode == null,
                 dismissEnabled = true,
-                requestGeneration = requestGeneration
+                requestGeneration = requestGeneration,
+                conversationItems = conversationItems
             ),
         selectionErrorCode = selectionErrorCode
     )
@@ -130,7 +132,10 @@ internal fun ExternalShareState.SelectingTargets.toExternalShareIntent(
             if (loading || handoffInProgress || errorCode != null || intent.renderGeneration != requestGeneration) {
                 null
             } else {
-                val live = targets.firstOrNull { it.externalShareSelectionKey() == intent.item.stableKey }
+                val live =
+                    targets.firstOrNull { it.externalShareSelectionKey() == intent.item.stableKey }
+                        ?: conversationTargets.takeIf { query.isBlank() }
+                            ?.firstOrNull { it.externalShareSelectionKey() == intent.item.stableKey }
                 if (live == intent.item.payload) {
                     ExternalShareIntent.ToggleTarget(
                         target = live,

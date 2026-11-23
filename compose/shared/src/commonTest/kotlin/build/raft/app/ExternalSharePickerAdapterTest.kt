@@ -6,12 +6,16 @@ import build.raft.app.data.ExternalShareState
 import build.raft.app.data.ForwardMessageTarget
 import build.raft.app.data.ForwardMessageTargetKind
 import build.raft.app.model.ChannelId
+import build.raft.app.model.ConversationKind
+import build.raft.app.model.MessageId
 import build.raft.app.model.ServerId
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
+import kotlin.test.assertNotNull
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 class ExternalSharePickerAdapterTest {
     @Test
@@ -61,8 +65,125 @@ class ExternalSharePickerAdapterTest {
         assertEquals(destination.channelKind, identity.kind)
     }
 
+    @Test
+    fun conversationTargetsExposePickerGroupAndAcceptSelectionOnlyWhenQueryBlank() {
+        val channel = target("channel-a")
+        val thread = threadTarget("thread-5", parentMessageId = MessageId("parent-5"))
+        val task = taskTarget("task-7")
+        val selecting = state(targets = listOf(channel), conversationTargets = listOf(thread, task), generation = 4)
+
+        val surface = selecting.toExternalSharePickerSurface()
+        assertEquals(listOf("thread-5", "task-7"), surface.picker.conversationItems.map { it.payload.id })
+        assertEquals(listOf("thread-5", "task-7"), surface.picker.visibleConversationItems.map { it.payload.id })
+
+        val threadItem = thread.toRaftForwardTargetPickerItem()
+        val taskItem = task.toRaftForwardTargetPickerItem()
+        val selectedThread =
+            assertIs<ExternalShareIntent.ToggleTarget>(
+                selecting.toExternalShareIntent(RaftForwardTargetPickerIntent.TargetSelected(threadItem, renderGeneration = 4))
+            )
+        assertEquals(thread, selectedThread.target)
+        val selectedTask =
+            assertIs<ExternalShareIntent.ToggleTarget>(
+                selecting.toExternalShareIntent(RaftForwardTargetPickerIntent.TargetSelected(taskItem, renderGeneration = 4))
+            )
+        assertEquals(task, selectedTask.target)
+
+        // During search mode, conversationItems are hidden and stale taps against conversationTargets fail closed.
+        val searching = selecting.copy(query = "abc", targets = listOf(channel))
+        assertEquals(emptyList(), searching.toExternalSharePickerSurface().picker.visibleConversationItems)
+        assertNull(searching.toExternalShareIntent(RaftForwardTargetPickerIntent.TargetSelected(threadItem, renderGeneration = 4)))
+    }
+
+    @Test
+    fun replyThreadAndTaskConversationBuildValidComposerLaunchPayloadsAndDraftKeys() {
+        val dm =
+            ForwardMessageTarget(
+                serverId = ServerId("server"),
+                kind = ForwardMessageTargetKind.RecentDirectMessage,
+                id = "dm-1",
+                title = "Alice",
+                channelId = ChannelId("dm-1"),
+                channelKind = ConversationKind.DirectMessage,
+                channelType = "dm"
+            )
+        val dmIdentity = assertNotNull(dm.toExternalShareConversationIdentityOrNull())
+        val dmPayload = assertNotNull(buildStandaloneConversationThreadLaunchPayload(dmIdentity, timeContext = null))
+        assertEquals(RaftThreadSurfaceKind.DirectMessage, dmPayload.surfaceKind)
+        assertEquals("dm-1", dmPayload.streamChannelId)
+        assertTrue(!dmPayload.threadComposerDraftKey().isNullOrBlank())
+
+        val task = taskTarget("task-conv-7")
+        val taskIdentity = assertNotNull(task.toExternalShareConversationIdentityOrNull())
+        val taskPayload = assertNotNull(buildStandaloneConversationThreadLaunchPayload(taskIdentity, timeContext = null))
+        assertEquals(ConversationKind.Task, taskIdentity.kind)
+        assertEquals(RaftThreadSurfaceKind.Channel, taskPayload.surfaceKind)
+        assertEquals(RaftTaskConversationChannelKind, taskPayload.channelKind)
+        assertEquals("task-conv-7", taskPayload.streamChannelId)
+        assertEquals("send=task-conv-7|parent=_|mention=task-conv-7", taskPayload.threadComposerDraftKey())
+
+        // Reply thread in a private channel.
+        val privateThread =
+            threadTarget(
+                id = "thread-5",
+                parentChannelType = "private",
+                parentMessageId = MessageId("parent-5")
+            )
+        val threadIdentity = assertNotNull(privateThread.toExternalShareConversationIdentityOrNull())
+        val threadPayload =
+            assertNotNull(
+                buildStandaloneConversationThreadLaunchPayload(
+                    conversation = threadIdentity,
+                    timeContext = null,
+                    originFallback = privateThread.toExternalShareOriginFallbackOrNull()
+                )
+            )
+        assertEquals(ConversationKind.Thread, threadIdentity.kind)
+        assertEquals(RaftThreadSurfaceKind.ReplyThread, threadPayload.surfaceKind)
+        assertEquals("thread-5", threadPayload.streamChannelId)
+        assertEquals("room-1", threadPayload.parentChannelId)
+        assertEquals("parent-5", threadPayload.parentMessageId)
+        assertEquals(RaftThreadSurfaceKind.Channel, threadPayload.parentSurfaceKind)
+        assertEquals("private", threadPayload.parentChannelKind)
+        assertEquals("topic preview", threadPayload.originFallbackPreview)
+        assertEquals("send=thread-5|parent=parent-5|mention=room-1", threadPayload.threadComposerDraftKey())
+        // Verify the staged draft key matches the exact key ThreadPage computes once loaded.
+        val loadedThreadPayload = threadPayload.toInitialPayload(threadPayload.instanceId).copy(status = "ready")
+        val loadedThreadAuxId = loadedThreadPayload.resolvedAuxiliaryThreadId()
+        assertEquals(
+            threadPayload.threadComposerDraftKey(),
+            loadedThreadPayload
+                .resolveThreadComposer()
+                .copy(streamChannelId = loadedThreadAuxId)
+                .toThreadComposerSurface(
+                    channelId = loadedThreadAuxId.orEmpty(),
+                    parentChannelId = loadedThreadPayload.parentChannelId
+                )
+                .threadComposerDraftKey()
+        )
+
+        // Reply thread in a DM preserves DM parent surface & channel kind.
+        val dmThread =
+            threadTarget(
+                id = "dm-thread-9",
+                parentChannelId = ChannelId("dm-1"),
+                parentChannelType = "dm",
+                parentMessageId = MessageId("parent-9")
+            )
+        val dmThreadIdentity = assertNotNull(dmThread.toExternalShareConversationIdentityOrNull())
+        val dmThreadPayload = assertNotNull(buildStandaloneConversationThreadLaunchPayload(dmThreadIdentity, timeContext = null))
+        assertEquals(RaftThreadSurfaceKind.ReplyThread, dmThreadPayload.surfaceKind)
+        assertEquals(RaftThreadSurfaceKind.DirectMessage, dmThreadPayload.parentSurfaceKind)
+        assertEquals(RaftThreadSurfaceKind.DirectMessage, dmThreadPayload.parentChannelKind)
+        assertEquals("send=dm-thread-9|parent=parent-9|mention=dm-1", dmThreadPayload.threadComposerDraftKey())
+
+        // Reply thread missing parentMessageId fails closed.
+        assertNull(threadTarget("thread-incomplete", parentMessageId = null).toExternalShareConversationIdentityOrNull())
+    }
+
     private fun state(
         targets: List<ForwardMessageTarget>,
+        conversationTargets: List<ForwardMessageTarget> = emptyList(),
         selected: List<ForwardMessageTarget> = emptyList(),
         generation: Int
     ): ExternalShareState.SelectingTargets =
@@ -71,6 +192,7 @@ class ExternalSharePickerAdapterTest {
             accountId = "account",
             serverId = "server",
             targets = targets,
+            conversationTargets = conversationTargets,
             selectedTargets = selected,
             requestGeneration = generation
         )
@@ -82,5 +204,42 @@ class ExternalSharePickerAdapterTest {
             id = id,
             title = id,
             channelId = ChannelId(id)
+        )
+
+    private fun threadTarget(
+        id: String,
+        parentChannelId: ChannelId = ChannelId("room-1"),
+        parentChannelType: String = "channel",
+        parentMessageId: MessageId? = null
+    ) =
+        ForwardMessageTarget(
+            serverId = ServerId("server"),
+            kind = ForwardMessageTargetKind.ConversationThread,
+            id = id,
+            title = "#general › $id",
+            channelId = ChannelId(id),
+            channelKind = ConversationKind.Thread,
+            channelType = "thread",
+            parentChannelId = parentChannelId,
+            parentChannelName = "general",
+            parentChannelType = parentChannelType,
+            parentMessageId = parentMessageId,
+            parentMessagePreview = "topic preview"
+        )
+
+    private fun taskTarget(id: String) =
+        ForwardMessageTarget(
+            serverId = ServerId("server"),
+            kind = ForwardMessageTargetKind.ConversationTask,
+            id = id,
+            title = "#general:#7 $id",
+            channelId = ChannelId(id),
+            channelKind = ConversationKind.Task,
+            channelType = "task",
+            parentChannelId = ChannelId("room-1"),
+            parentChannelName = "general",
+            parentChannelType = "channel",
+            taskNumber = 7,
+            taskTitle = id
         )
 }

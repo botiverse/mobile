@@ -981,11 +981,12 @@ private fun RaftAppShellReadyContent(
             )
         }
     val memberRepository =
-        remember(shellAuthStore, appShellNetworkClient) {
+        remember(shellAuthStore, appShellNetworkClient, appShellServerMembersStore) {
             RealMemberRepository(
                 sessionStore = shellAuthStore,
                 networkClient = appShellNetworkClient,
-                logger = raftLogger("SlockAppShell", "app_shell_member_repository")
+                logger = raftLogger("SlockAppShell", "app_shell_member_repository"),
+                cachedMembersProvider = appShellServerMembersStore::currentServerMembers
             )
         }
     val homeDataSource =
@@ -4554,7 +4555,8 @@ private fun RaftAppShellReadyContent(
                 timeContext = threadTimeContext,
                 alignOwnMessagesRight = myMessageAlignment == MyMessageAlignmentPreference.Right,
                 compactConsecutiveMessages = compactConsecutiveMessages,
-                    onWarn = bridge::logWarn
+                originFallback = target.toExternalShareOriginFallbackOrNull(),
+                onWarn = bridge::logWarn
             ) ?: run {
                 bridge.toast(conversationUnavailableMessage)
                 return false
@@ -7055,6 +7057,10 @@ private fun RaftAppShellReadyContent(
         pager = pager,
         shellAuthStore = shellAuthStore,
         appShellNetworkClient = appShellNetworkClient,
+        shellInstanceId = storeScope.shellInstanceId,
+        channelRepository = channelRepository,
+        memberRepository = memberRepository,
+        homeStore = homeStore,
         openExternalShareComposerFn = ::openExternalShareComposer,
     )
 }
@@ -7324,6 +7330,10 @@ private fun AppShellBannerAndExternalShareHosts(
     pager: Pager,
     shellAuthStore: build.raft.app.data.RaftAuthSessionStore,
     appShellNetworkClient: build.raft.app.data.RaftNetworkClient,
+    shellInstanceId: String,
+    channelRepository: build.raft.app.data.ChannelRepository,
+    memberRepository: build.raft.app.data.MemberRepository,
+    homeStore: build.raft.app.data.SharedHomeStore,
     openExternalShareComposerFn: suspend (build.raft.app.data.ExternalShareComposerHandoff) -> Boolean,
 ) {
     fun openHomeMessageRequest(request: HomeMessageOpenRequest, source: String, fallbackAnchorMessageId: String? = null) =
@@ -7385,7 +7395,16 @@ private fun AppShellBannerAndExternalShareHosts(
                     )
                 },
             bridge = bridge,
-            onOpenComposer = ::openExternalShareComposer
+            onOpenComposer = ::openExternalShareComposer,
+            shellInstanceId = shellInstanceId,
+            channelRepository = channelRepository,
+            memberRepository = memberRepository,
+            cachedHomeSnapshotProvider = { serverId ->
+                (homeStore.state.value.content as? SharedHomeContentState.Content)
+                    ?.takeUnless { it.isDurableIdentityCache }
+                    ?.snapshot
+                    ?.takeIf { it.server.id == serverId }
+            },
         )
     }
 }

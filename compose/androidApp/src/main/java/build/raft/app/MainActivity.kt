@@ -102,10 +102,10 @@ class MainActivity : ComponentActivity() {
                         if (durablePending == null) {
                             handleLaunchIntent(launchIntent)
                         } else {
-                            val clearLaunch =
-                                if (launchedFromHistory) Intent(this@MainActivity, MainActivity::class.java).also(::setIntent)
-                                else launchIntent
-                            openSharedShellPageData(androidExternalSharePageData(durablePending), clearLaunch)
+                            if (launchedFromHistory) {
+                                setIntent(Intent(this@MainActivity, MainActivity::class.java))
+                            }
+                            openExternalShareInSharedShell(durablePending)
                         }
                     }
             }
@@ -171,7 +171,7 @@ class MainActivity : ComponentActivity() {
         pendingExternalShareLookupJob = null
         when (result) {
             is AndroidExternalShareIntakeResult.Admitted ->
-                openSharedShellPageData(androidExternalSharePageData(result.launch))
+                openExternalShareInSharedShell(result.launch)
             is AndroidExternalShareIntakeResult.Rejected -> {
                 RaftAppLog.w("SlockBoot", "external_share_rejected code=${result.code}")
                 Toast.makeText(
@@ -179,10 +179,27 @@ class MainActivity : ComponentActivity() {
                     getString(R.string.external_share_import_failed_toast),
                     Toast.LENGTH_LONG
                 ).show()
-                openSharedShell(Intent(this, MainActivity::class.java))
+                revealOrStartShellForLink(logEvent = "external_share_rejected_reveal")
+                finish()
             }
         }
         externalShareAdmissionOwner.acknowledge(generation)
+    }
+
+    /**
+     * Opens the Share-to-Raft picker in the app shell without clearing the task or recreating an
+     * already-live [RaftCmpActivity]: on warm return `onNewIntent` delivers the share token
+     * directly to the live shell's `ExternalShareLaunchHost`; on cold start `onCreate` consumes
+     * it from `pageData`.
+     */
+    private fun openExternalShareInSharedShell(launch: AndroidExternalShareLaunch) {
+        RaftCmpActivity.startAppShell(
+            applicationContext,
+            pageData = androidExternalSharePageData(launch),
+            clearTask = false,
+            preserveLiveShell = true,
+        )
+        finish()
     }
 
     /**

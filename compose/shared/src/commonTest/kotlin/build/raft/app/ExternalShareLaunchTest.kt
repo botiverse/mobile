@@ -119,4 +119,23 @@ class ExternalShareLaunchTest {
             loads
         )
     }
+
+    @Test
+    fun liveShellLaunchInboxTargetsMatchingShellAndDeliversOnce() {
+        val inbox = RaftExternalShareLaunchInbox()
+        val first = inbox.submit(ExternalShareLaunchRequest("opaque-token_1111111111"), targetShellInstanceId = "shell-a")
+
+        // Another window must not steal a share targeted at shell-a.
+        assertNull(inbox.take(first.id, shellInstanceId = "shell-b"))
+        assertNull(inbox.take(first.id, shellInstanceId = null))
+
+        // Newer share supersedes the pending slot.
+        val second = inbox.submit(ExternalShareLaunchRequest("opaque-token_2222222222"), targetShellInstanceId = "shell-a")
+        assertNull(inbox.take(first.id, shellInstanceId = "shell-a"))
+
+        val taken = inbox.take(second.id, shellInstanceId = "shell-a")
+        assertEquals(ExternalShareLaunchRequest("opaque-token_2222222222"), taken?.request)
+        // Consumed once.
+        assertNull(inbox.take(second.id, shellInstanceId = "shell-a"))
+    }
 }
