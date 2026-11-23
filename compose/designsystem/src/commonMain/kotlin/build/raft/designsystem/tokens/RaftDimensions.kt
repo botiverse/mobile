@@ -106,7 +106,8 @@ object RaftFade {
  * 60%. (A drag origin stays 40%; the app has no drag.)
  */
 object RaftOpacity {
-    val Dimmed = RaftUiComponentTokens.Touch.opacityDimmed
+    // A const for const callers; RaftOpacityTokenTest holds it to `opacity.dimmed`.
+    const val Dimmed = 0.6f
 }
 
 object RaftSize {
