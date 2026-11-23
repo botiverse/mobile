@@ -2,6 +2,7 @@
 type: fixed
 area: messages
 platforms: [android, ios, desktop]
+pull_request: 5408
 rollout: full
 ---
 

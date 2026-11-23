@@ -3,6 +3,7 @@ type: improved
 area: settings
 platforms:
   - android
+pull_request: 5492
 rollout: full
 ---
 

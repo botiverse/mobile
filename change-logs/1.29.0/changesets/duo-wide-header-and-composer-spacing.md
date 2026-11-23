@@ -5,7 +5,7 @@ platforms:
   - android
   - ios
   - desktop
-rollout: general
+rollout: full
 pull_request: 5537
 ---
 
