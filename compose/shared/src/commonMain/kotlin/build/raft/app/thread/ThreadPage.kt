@@ -4379,7 +4379,14 @@ private fun SharedThreadRouteContentContent(
                         null
                     },
                 onOpenWith = { attachment -> openAttachmentExternally(attachment) },
-                onEdit = { attachment -> viewerImageEditAttachment = attachment }
+                onEdit = { attachment -> viewerImageEditAttachment = attachment },
+                // The phone viewer's Save to Photos, on the bar wherever there is a photo library.
+                onSaveToPhotos =
+                    if (raftPlatformSupportsSaveImageToPhotos()) {
+                        { attachment -> threadRouteAttachmentActions.saveImageToPhotos(attachment) }
+                    } else {
+                        null
+                    }
             )
         }
     }
