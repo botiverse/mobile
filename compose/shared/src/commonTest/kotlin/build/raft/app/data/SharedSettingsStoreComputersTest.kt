@@ -325,6 +325,33 @@ class SharedSettingsStoreComputersTest {
         assertEquals(settingsComputerUpgradeAvailabilityKey(machine("m-1", "Studio")), refusal?.availabilityKey)
     }
 
+    @Test
+    fun catchUpComputersArrivingWhileLoadIsInFlightLatchesTrailingFollowUp() = runTest {
+        val repository =
+            FakeSettingsRepository(
+                computersResult = DataResult.Content(computers(machine("m-1", "Studio").copy(online = false)))
+            )
+        val store = store(repository, standalone = true)
+        val block = BlockingCall()
+        repository.computersBlock = block
+
+        store.dispatch(SharedSettingsIntent.LoadPageContent(SharedSettingsDestination.Computers))
+        runCurrent()
+        // A CatchUpComputers arrives while the initial load is still in flight; it must latch
+        // instead of dropping silently.
+        store.dispatch(SharedSettingsIntent.CatchUpComputers)
+        runCurrent()
+
+        repository.computersBlock = null
+        repository.computersResult = DataResult.Content(computers(machine("m-1", "Studio").copy(online = true)))
+        block.release()
+        runCurrent()
+
+        val loaded = assertIs<ScreenLoadState.Content<SettingsComputersSnapshot>>(store.state.value.computers).data
+        assertTrue(loaded.computers.single().online, "trailing catch-up ran after in-flight load and updated status")
+        assertEquals(2, repository.calls.count { it == "computers" })
+    }
+
     private fun detailRepository() =
         FakeSettingsRepository(
             computerDetailResult =

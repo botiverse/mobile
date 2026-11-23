@@ -14,6 +14,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -91,6 +92,20 @@ internal data class SharedComputersState(
     val serverSlices: Map<String, SharedComputersServerSlice> = emptyMap()
 )
 
+/**
+ * Reactive snapshot emitted by [SharedSettingsComputersSource.observeSettingsComputersForServer]
+ * whenever the canonical server slice changes (foreground catch-up, reconnect, realtime
+ * `machine:*`, incremental sync `machine` rows, or explicit refresh).
+ */
+data class SettingsComputersLiveUpdate(
+    val serverId: String,
+    val snapshot: SettingsComputersSnapshot?,
+    val hasSnapshot: Boolean,
+    val seededFromDurable: Boolean,
+    val refreshing: Boolean = false,
+    val error: ScreenError? = null,
+)
+
 interface SharedSettingsComputersSource {
     suspend fun loadSettingsComputersForServer(
         serverId: String,
@@ -108,6 +123,15 @@ interface SharedSettingsComputersSource {
      * [serverId] without any network call, or null when nothing is cached for this account.
      */
     suspend fun cachedSettingsComputersForServer(serverId: String): DataResult<SettingsComputersSnapshot>? = null
+
+    /**
+     * Reactive stream of canonical computer snapshots for [serverId] (#wg-mobile-feedback:#273).
+     * Null for test doubles that do not maintain a reactive store.
+     */
+    fun observeSettingsComputersForServer(serverId: String): Flow<SettingsComputersLiveUpdate>? = null
+
+    /** Synchronous latest in-memory machine snapshot for [machineId] on [serverId], or null. */
+    fun currentSettingsComputerSnapshot(serverId: String, machineId: String): SettingsComputerSnapshot? = null
 
     /** Remembers the Add Computer gate so the next first frame starts with the right action. */
     fun recordAddComputerGate(serverId: String, canAddComputer: Boolean) = Unit
@@ -171,9 +195,22 @@ class SharedComputersStore internal constructor(
     private val mutex = Mutex()
     private val _state = MutableStateFlow(SharedComputersState())
     internal val state: StateFlow<SharedComputersState> = _state.asStateFlow()
-    private val loads = mutableMapOf<String, Deferred<DataResult<ComputerListSummary>>>()
+    private val loads = mutableMapOf<String, InFlightLoad>()
     private val generations = mutableMapOf<String, Long>()
+    private val lastPublishedSucceeded = mutableMapOf<String, Boolean>()
     private val serverRecency = mutableListOf<String>()
+    private val observerLock = SynchronizedObject()
+    private val activeObservers = mutableMapOf<String, Int>()
+
+    private class InFlightLoad(
+        val generation: Long,
+        val deferred: Deferred<DataResult<ComputerListSummary>>,
+    )
+
+    private data class EnsureLoadOutcome(
+        val result: DataResult<ComputerListSummary>?,
+        val publishedSucceeded: Boolean,
+    )
 
     /**
      * Servers whose machine list answered "no permission" (a guest's non-auth 403) for this owner.
@@ -226,6 +263,67 @@ class SharedComputersStore internal constructor(
                 }
             }
             .distinctUntilChanged()
+
+    override fun observeSettingsComputersForServer(serverId: String): Flow<SettingsComputersLiveUpdate>? {
+        val normalizedServerId = serverId.normalizedComputerServerId() ?: return null
+        return flow {
+            addObserver(normalizedServerId)
+            try {
+                state
+                    .map { it.toSettingsComputersLiveUpdate(normalizedServerId) }
+                    .distinctUntilChanged()
+                    .collect(::emit)
+            } finally {
+                removeObserver(normalizedServerId)
+            }
+        }
+    }
+
+    override fun currentSettingsComputerSnapshot(serverId: String, machineId: String): SettingsComputerSnapshot? {
+        val normalizedServerId = serverId.normalizedComputerServerId() ?: return null
+        val normalizedMachineId = machineId.trim().takeIf { it.isNotBlank() } ?: return null
+        return (_state.value.selectComputerServerSlice(normalizedServerId)
+            .takeIf { it.hasSnapshot }
+            ?.toSettingsComputerSnapshotResult(normalizedMachineId) as? DataResult.Content)
+            ?.data
+    }
+
+    internal fun hasActiveObservers(serverId: String): Boolean {
+        val key = serverId.normalizedComputerServerId() ?: return false
+        return synchronized(observerLock) { (activeObservers[key] ?: 0) > 0 }
+    }
+
+    internal fun hasLoadedOrObservedServer(serverId: String): Boolean {
+        val key = serverId.normalizedComputerServerId() ?: return false
+        if (hasActiveObservers(key)) return true
+        return _state.value.selectComputerServerSlice(key).hasSnapshot
+    }
+
+    internal fun loadedOrObservedServerIds(): Set<String> {
+        val observed = synchronized(observerLock) { activeObservers.keys.toSet() }
+        val loaded =
+            _state.value.serverSlices.entries.mapNotNullTo(LinkedHashSet()) { (id, slice) ->
+                id.takeIf { slice.hasSnapshot }
+            }
+        return observed + loaded
+    }
+
+    private fun addObserver(serverId: String) {
+        synchronized(observerLock) {
+            activeObservers[serverId] = (activeObservers[serverId] ?: 0) + 1
+        }
+    }
+
+    private fun removeObserver(serverId: String) {
+        synchronized(observerLock) {
+            val next = (activeObservers[serverId] ?: 0) - 1
+            if (next <= 0) {
+                activeObservers.remove(serverId)
+            } else {
+                activeObservers[serverId] = next
+            }
+        }
+    }
 
     internal fun dispatch(intent: SharedComputersIntent) {
         when (intent) {
@@ -308,14 +406,28 @@ class SharedComputersStore internal constructor(
     private suspend fun ensureComputersForServer(
         serverId: String,
         force: Boolean,
-        priority: DataRequestPriority
-    ): DataResult<ComputerListSummary>? {
+        priority: DataRequestPriority,
+        supersedeInFlight: Boolean = false,
+    ): DataResult<ComputerListSummary>? =
+        ensureComputersForServerOutcome(
+            serverId = serverId,
+            force = force,
+            priority = priority,
+            supersedeInFlight = supersedeInFlight,
+        ).result
+
+    private suspend fun ensureComputersForServerOutcome(
+        serverId: String,
+        force: Boolean,
+        priority: DataRequestPriority,
+        supersedeInFlight: Boolean = false,
+    ): EnsureLoadOutcome {
         val startedAt = TimeSource.Monotonic.markNow()
         val normalizedServerId = serverId.normalizedComputerServerId()
         if (normalizedServerId == null) {
             logger("shared_computers_skip reason=server_id_missing")
             logger("store_load domain=computers serverId= result=skip reason=server_id_missing durationMs=${startedAt.elapsedNow().inWholeMilliseconds}")
-            return null
+            return EnsureLoadOutcome(result = null, publishedSucceeded = false)
         }
         val owner =
             when (val binding = readOwnerBinding()) {
@@ -323,19 +435,19 @@ class SharedComputersStore internal constructor(
                 RaftAccountBinding.SignedOut -> {
                     clearForMissingOwner()
                     logger("store_load domain=computers serverId=$normalizedServerId result=skip reason=owner_missing")
-                    return null
+                    return EnsureLoadOutcome(result = null, publishedSucceeded = false)
                 }
                 RaftAccountBinding.Unknown, is RaftAccountBinding.Corrupt -> {
                     logger(
                         "store_load domain=computers serverId=$normalizedServerId result=skip " +
                             "reason=owner_unknown cause=${binding.unknownReason()}"
                     )
-                    return null
+                    return EnsureLoadOutcome(result = null, publishedSucceeded = false)
                 }
             }
         hydrateFromDurable(owner, normalizedServerId)
         val durableEpoch = durableStore?.epoch ?: 0L
-        val deferred = mutex.withLock {
+        val initialFlight = mutex.withLock {
             installOwnerLocked(owner)
             val current = _state.value.selectComputerServerSlice(normalizedServerId)
             if (!force && normalizedServerId in deniedServers) {
@@ -351,9 +463,16 @@ class SharedComputersStore internal constructor(
                 )
                 return@withLock null
             }
-            loads[normalizedServerId]?.let { active ->
-                logger("shared_computers_join serverId=$normalizedServerId reason=inflight priority=${priority.name}")
-                return@withLock active
+            if (supersedeInFlight) {
+                // Retire the older in-flight load and install its replacement atomically under the
+                // same lock so callers waiting on the superseded load always find the replacement
+                // instead of falling back to a stale pre-background _state (#wg-mobile-feedback:#273).
+                supersedeLoadLocked(normalizedServerId)
+            } else {
+                loads[normalizedServerId]?.let { active ->
+                    logger("shared_computers_join serverId=$normalizedServerId reason=inflight priority=${priority.name}")
+                    return@withLock active
+                }
             }
             val generation = ++nextGeneration
             generations[normalizedServerId] = generation
@@ -371,39 +490,68 @@ class SharedComputersStore internal constructor(
                         error = null
                     )
             )
-            scope.async(start = CoroutineStart.LAZY) {
-                val result =
-                    runCatchingPreservingCancellation {
-                        computersApiClient.machines(ServerId(normalizedServerId), priority)
-                    }.getOrElse { throwable ->
-                        logger(
-                            "shared_computers_result serverId=$normalizedServerId result=exception " +
-                                "message=${throwable.message.orEmpty()}"
-                        )
-                        DataResult.Error(
-                            ScreenError(
-                                code = "computers_exception",
-                                retryable = true,
-                                serverMessage = throwable.message?.takeIf { it.isNotBlank() }
+            val deferred =
+                scope.async(start = CoroutineStart.LAZY) {
+                    val result =
+                        runCatchingPreservingCancellation {
+                            computersApiClient.machines(ServerId(normalizedServerId), priority)
+                        }.getOrElse { throwable ->
+                            logger(
+                                "shared_computers_result serverId=$normalizedServerId result=exception " +
+                                    "message=${throwable.message.orEmpty()}"
                             )
-                        )
-                    }
-                publishResult(
-                    owner = owner,
-                    serverId = normalizedServerId,
-                    generation = generation,
-                    result = result,
-                    durableEpoch = durableEpoch
-                )
-                logger(
-                    "store_load domain=computers serverId=$normalizedServerId result=${result.logOutcome()} " +
-                        "priority=${priority.name} force=$force durationMs=${startedAt.elapsedNow().inWholeMilliseconds}"
-                )
-                result
-            }.also { loads[normalizedServerId] = it }
+                            DataResult.Error(
+                                ScreenError(
+                                    code = "computers_exception",
+                                    retryable = true,
+                                    serverMessage = throwable.message?.takeIf { it.isNotBlank() }
+                                )
+                            )
+                        }
+                    publishResult(
+                        owner = owner,
+                        serverId = normalizedServerId,
+                        generation = generation,
+                        result = result,
+                        durableEpoch = durableEpoch
+                    )
+                    logger(
+                        "store_load domain=computers serverId=$normalizedServerId result=${result.logOutcome()} " +
+                            "priority=${priority.name} force=$force durationMs=${startedAt.elapsedNow().inWholeMilliseconds}"
+                    )
+                    result
+                }
+            InFlightLoad(generation = generation, deferred = deferred).also {
+                loads[normalizedServerId] = it
+            }
         }
-        deferred?.start()
-        return deferred?.await()
+        var flight = initialFlight ?: return EnsureLoadOutcome(result = null, publishedSucceeded = false)
+        while (true) {
+            flight.deferred.start()
+            val result = flight.deferred.await()
+            val next =
+                mutex.withLock {
+                    if (currentOwner != owner) return@withLock null to false
+                    if (generations[normalizedServerId] == flight.generation) {
+                        val ownSucceeded = result is DataResult.Content || result is DataResult.Empty
+                        return@withLock null to ownSucceeded
+                    }
+                    val replacement = loads[normalizedServerId]
+                    if (replacement != null && replacement !== flight) {
+                        replacement to false
+                    } else {
+                        // A newer generation already finished and published while this superseded
+                        // flight was still in flight: report the winning generation's outcome,
+                        // never the dropped flight's outcome.
+                        null to (lastPublishedSucceeded[normalizedServerId] ?: false)
+                    }
+                }
+            val replacement = next.first
+            if (replacement == null) {
+                return EnsureLoadOutcome(result = result, publishedSucceeded = next.second)
+            }
+            flight = replacement
+        }
     }
 
     private suspend fun publishResult(
@@ -430,7 +578,9 @@ class SharedComputersStore internal constructor(
                 logger("shared_computers_drop serverId=$serverId reason=owner_changed generation=$generation")
                 return@withLock null
             }
-            loads.remove(serverId)
+            if (loads[serverId]?.generation == generation) {
+                loads.remove(serverId)
+            }
             val current = _state.value.selectComputerServerSlice(serverId)
             if (result is DataResult.NoPermission && result.isConversationAccessLost()) {
                 deniedServers += serverId
@@ -441,6 +591,7 @@ class SharedComputersStore internal constructor(
                 // Tenny rule 2: the account lost the server's machine list (non-auth 403 / 404).
                 // Nothing cached may paint again; the page shows the terminal state.
                 removeServerLocked(serverId)
+                lastPublishedSucceeded[serverId] = false
                 setServerSliceLocked(
                     serverId,
                     SharedComputersServerSlice().withComputersFailure(result.toComputersScreenError())
@@ -470,6 +621,7 @@ class SharedComputersStore internal constructor(
                     is DataResult.Error -> current.withComputersFailure(result.error)
                     is DataResult.NoPermission -> current.withComputersFailure(result.toComputersScreenError())
                 }
+            lastPublishedSucceeded[serverId] = result is DataResult.Content || result is DataResult.Empty
             setServerSliceLocked(serverId, next)
             if (next.hasSnapshot && (result is DataResult.Content || result is DataResult.Empty)) {
                 ComputersDurableWrite.Write(next.toDurableRecord())
@@ -508,7 +660,7 @@ class SharedComputersStore internal constructor(
                 if (currentOwner != owner) return@withLock null
                 val current = _state.value.selectComputerServerSlice(key)
                 if (!current.hasSnapshot) {
-                    firstLoadInFlight = loads[key]
+                    firstLoadInFlight = loads[key]?.deferred
                     return@withLock null
                 }
                 val releaseNotes = current.machines.firstNotNullOfOrNull { it.latestComputerReleaseNotes }
@@ -541,6 +693,7 @@ class SharedComputersStore internal constructor(
                         refreshing = if (superseded) false else current.refreshing
                     )
                 setServerSliceLocked(key, next)
+                lastPublishedSucceeded[key] = true
                 logger("shared_computers_sync_apply serverId=$key upserts=${incoming.size} deletes=${deletes.size}")
                 next.toDurableRecord()
             }
@@ -568,8 +721,14 @@ class SharedComputersStore internal constructor(
      */
     internal suspend fun reloadMachinesForSync(serverId: String): DataResult<SettingsComputersSnapshot> {
         val key = serverId.normalizedComputerServerId() ?: return DataResult.Empty(EmptyReason.NoSettingsAvailable)
-        mutex.withLock { supersedeLoadLocked(key) }
-        return loadSettingsComputersForServer(key, force = true)
+        ensureComputersForServer(
+            serverId = key,
+            force = true,
+            priority = DataRequestPriority.Visible,
+            supersedeInFlight = true,
+        )
+        val state = _state.value
+        return state.selectComputerServerSlice(key).toSettingsComputersResult(state.owner?.accountId)
     }
 
     /**
@@ -578,9 +737,12 @@ class SharedComputersStore internal constructor(
      */
     internal suspend fun reloadMachinesForSyncSucceeded(serverId: String): Boolean {
         val key = serverId.normalizedComputerServerId() ?: return false
-        mutex.withLock { supersedeLoadLocked(key) }
-        val result = ensureComputersForServer(serverId = key, force = true, priority = DataRequestPriority.Visible)
-        return result is DataResult.Content || result is DataResult.Empty
+        return ensureComputersForServerOutcome(
+            serverId = key,
+            force = true,
+            priority = DataRequestPriority.Visible,
+            supersedeInFlight = true,
+        ).publishedSucceeded
     }
 
     /** Retires [serverId]'s in-flight load, if any: true when there was one. */
@@ -705,6 +867,7 @@ class SharedComputersStore internal constructor(
         synchronizedDetail { detailCache.keys.removeAll { it.first == serverId } }
         loads.remove(serverId)
         generations.remove(serverId)
+        lastPublishedSucceeded.remove(serverId)
         serverRecency.remove(serverId)
         if (serverId in _state.value.serverSlices) {
             _state.value = _state.value.copy(serverSlices = _state.value.serverSlices - serverId)
@@ -729,6 +892,7 @@ class SharedComputersStore internal constructor(
         deniedServers.clear()
         loads.clear()
         generations.clear()
+        lastPublishedSucceeded.clear()
         serverRecency.clear()
         _state.value = SharedComputersState(owner = owner)
     }
@@ -738,6 +902,7 @@ class SharedComputersStore internal constructor(
         deniedServers.clear()
         loads.clear()
         generations.clear()
+        lastPublishedSucceeded.clear()
         serverRecency.clear()
         _state.value = SharedComputersState()
     }
@@ -759,6 +924,7 @@ class SharedComputersStore internal constructor(
             val victim = serverRecency.firstOrNull { it != serverId && it !in loads } ?: break
             serverRecency.remove(victim)
             generations.remove(victim)
+            lastPublishedSucceeded.remove(victim)
             slices = slices - victim
         }
         _state.value = _state.value.copy(serverSlices = slices)
@@ -981,6 +1147,30 @@ private fun List<ComputerSummary>.toCreateAgentMachineOptions(userId: String?): 
             mine = machine.isMyComputer(userId)
         )
     }
+
+private fun SharedComputersState.toSettingsComputersLiveUpdate(serverId: String): SettingsComputersLiveUpdate {
+    val slice = selectComputerServerSlice(serverId)
+    val snapshot =
+        if (slice.hasSnapshot) {
+            (slice.toSettingsComputersResult(owner?.accountId) as? DataResult.Content)?.data?.let { raw ->
+                val canAdd = slice.canAddComputer ?: false
+                raw.copy(
+                    canAddComputer = canAdd,
+                    addComputerUnavailableReason = if (canAdd) null else "server_admin_required"
+                )
+            }
+        } else {
+            null
+        }
+    return SettingsComputersLiveUpdate(
+        serverId = serverId,
+        snapshot = snapshot,
+        hasSnapshot = slice.hasSnapshot,
+        seededFromDurable = slice.seededFromDurable,
+        refreshing = slice.refreshing,
+        error = slice.error,
+    )
+}
 
 private fun SharedComputersServerSlice.toSettingsComputersResult(userId: String?): DataResult<SettingsComputersSnapshot> =
     if (hasSnapshot) {

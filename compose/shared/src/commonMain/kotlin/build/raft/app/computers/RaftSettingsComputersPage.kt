@@ -164,6 +164,7 @@ import build.raft.designsystem.components.RaftListRowValue
 import build.raft.designsystem.components.RaftListRowMeta
 import build.raft.app.data.ComputersRackView
 import build.raft.app.data.ComputersRackSortKey
+import build.raft.app.model.ComputerRestartDone
 import build.raft.app.model.RaftRelativeTimeLabel
 import build.raft.app.model.RaftRelativeTimeUnit
 import androidx.compose.ui.text.TextStyle
@@ -216,12 +217,12 @@ const val SETTINGS_COMPUTERS_PAGE = "compose_settings_computers"
 internal class RaftSettingsComputersPage : AuthenticatedProductPager(AuthenticatedProductRoute.SettingsComputers) {
     override fun willInit() {
         super.willInit()
-        setAuthenticatedContent { RaftSettingsComputersRoute(raftPageVisibleResumeTick, raftPageVisible) }
+        setAuthenticatedContent { RaftSettingsComputersRoute(raftPageVisible) }
     }
 }
 
 @Composable
-internal fun RaftSettingsComputersRoute(pageVisibleResumeTick: Int = 0, pageVisible: Boolean = true) {
+internal fun RaftSettingsComputersRoute(pageVisible: Boolean = true) {
     val pager = LocalActivity.current.getPager() as Pager
     val target =
         remember(pager.pageData.params.toString()) {
@@ -233,7 +234,7 @@ internal fun RaftSettingsComputersRoute(pageVisibleResumeTick: Int = 0, pageVisi
             }
         }
     if (target == null) {
-        RaftSettingsComputersScreen(pager, pageVisibleResumeTick, pageVisible)
+        RaftSettingsComputersScreen(pager, pageVisible)
     } else {
         RaftSettingsComputerDetailScreen(pager, target, pageVisible)
     }
@@ -307,12 +308,13 @@ private fun rememberRaftComputersSession(
     }
 
 /**
- * Routes Machines-scope realtime events of [serverId] into the page's settings store while the page
- * is visible: status dots, renames, deletes and upgrade flags follow the server without a manual
- * refresh. The store coalesces bursts into one in-flight reload.
+ * Routes `computer:restart:done` for [serverId] into the page's settings store while the page is
+ * visible so the local restart progress indicator completes immediately. Machine list/detail
+ * status updates flow from `SharedComputersStore` through the provider-level realtime and sync
+ * owners (#wg-mobile-feedback:#273).
  */
 @Composable
-private fun RaftComputersRealtimeEffect(
+private fun RaftComputerRestartDoneEffect(
     pager: Pager,
     storeScope: RaftShellStoreScope,
     serverId: String?,
@@ -327,7 +329,7 @@ private fun RaftComputersRealtimeEffect(
         if (subscribedServerId == null) return@DisposableEffect onDispose {}
         val sink =
             RealtimeGuardedActiveThreadSink { eventServerId, event ->
-                if (eventServerId == subscribedServerId && raftComputersRealtimeEventApplies(event, subscribedServerId)) {
+                if (eventServerId == subscribedServerId && event is ComputerRestartDone && event.machineId.isNotBlank()) {
                     latestDispatch(SharedSettingsIntent.ApplyRealtimeEvent(subscribedServerId, event))
                 }
             }
@@ -339,7 +341,7 @@ private fun RaftComputersRealtimeEffect(
 // region List
 
 @Composable
-private fun RaftSettingsComputersScreen(pager: Pager, pageVisibleResumeTick: Int, pageVisible: Boolean) {
+private fun RaftSettingsComputersScreen(pager: Pager, pageVisible: Boolean) {
     val bridge = Utils.bridgeModule(pager.pagerId)
     val environment = rememberStandaloneSettingsEnvironment(pager, bridge)
     val settingsViewModel: SharedSettingsViewModel =
@@ -355,13 +357,6 @@ private fun RaftSettingsComputersScreen(pager: Pager, pageVisibleResumeTick: Int
     LaunchedEffect(Unit) {
         bridge.log("settings_computers_open target=list")
         settingsViewModel.dispatch(SharedSettingsIntent.LoadPageContent(SharedSettingsDestination.Computers))
-    }
-    // The detail page runs its own store; coming back from it (delete, rename) reloads the list.
-    LaunchedEffect(pageVisibleResumeTick) {
-        if (pageVisibleResumeTick > 0) {
-            bridge.log("settings_computers_resume_refresh tick=$pageVisibleResumeTick")
-            settingsViewModel.dispatch(SharedSettingsIntent.RefreshComputers)
-        }
     }
     val session by rememberRaftComputersSession(environment.authStore, firstFrame.serverId)
     val currentServerId = (session as? RaftComputersSessionRead.Read)?.currentServerId
@@ -408,11 +403,7 @@ private fun RaftSettingsComputersScreen(pager: Pager, pageVisibleResumeTick: Int
                 }.getOrNull()
             }
     }
-    RaftComputersRealtimeEffect(pager, environment.storeScope, currentServerId, pageVisible, settingsViewModel::dispatch)
-    // Machine pushes stop in the background and while the socket is down: catch up on return.
-    RaftLiveCatchUpEffect(serverId = currentServerId, visible = pageVisible) {
-        settingsViewModel.dispatch(SharedSettingsIntent.CatchUpComputers)
-    }
+    RaftComputerRestartDoneEffect(pager, environment.storeScope, currentServerId, pageVisible, settingsViewModel::dispatch)
     StandaloneSettingsEffectHandler(pager, environment, settingsState, settingsViewModel::dispatch)
     LaunchedEffect(settingsState.effect) {
         // A finished Add Computer dialog lands on the new machine, as the web dialog does.
@@ -2731,7 +2722,7 @@ private fun RaftSettingsComputerDetailScreen(pager: Pager, target: RaftComputerP
     val procJobsServerId = currentServerId?.takeIf { target.serverId == null || target.serverId == it }
     val procJobsScope = rememberCoroutineScope()
     var procJobsRefreshTick by remember(target.machineId) { mutableStateOf(0) }
-    RaftComputersRealtimeEffect(
+    RaftComputerRestartDoneEffect(
         pager = pager,
         storeScope = environment.storeScope,
         // Only the machine's own server: a target on another server renders Unavailable anyway.
@@ -2739,12 +2730,6 @@ private fun RaftSettingsComputerDetailScreen(pager: Pager, target: RaftComputerP
         visible = pageVisible,
         dispatch = settingsViewModel::dispatch,
     )
-    RaftLiveCatchUpEffect(
-        serverId = procJobsServerId,
-        visible = pageVisible,
-    ) {
-        settingsViewModel.dispatch(SharedSettingsIntent.CatchUpComputers)
-    }
     val refreshing = settingsState.isRefreshing(SharedSettingsDestination.ComputerDetail)
     val refreshErrorCode =
         raftComputersRefreshErrorCode(

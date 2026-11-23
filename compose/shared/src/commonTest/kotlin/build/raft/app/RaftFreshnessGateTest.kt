@@ -74,4 +74,63 @@ class RaftFreshnessGateTest {
         assertEquals(RaftFreshnessTrigger.Reconnect, gate.onVisibilityChanged(visible = true), "the first missed event")
         assertNull(gate.onVisibilityChanged(visible = true), "only once")
     }
+
+    @Test
+    fun failedTrackedCatchUpDoesNotConsumeCoalesceWindowAndAllowsNetworkRestored() {
+        val clock = Clock()
+        val gate = RaftFreshnessGate(nowMillis = { clock.now }, trackOutcome = true)
+
+        assertEquals(RaftFreshnessTrigger.Foreground, gate.onEvent(foreground, "server-1", visible = true))
+        clock.now += 500
+        assertNull(gate.onCatchUpCompleted(succeeded = false, visible = true))
+
+        // Network recovers 2 s later inside the 10 s window: must retry because foreground failed.
+        clock.now += 2_000
+        assertEquals(
+            RaftFreshnessTrigger.NetworkRestored,
+            gate.onEvent(network, "server-1", visible = true),
+            "a failed foreground catch-up must not swallow a subsequent NetworkRestored",
+        )
+        clock.now += 300
+        assertNull(gate.onCatchUpCompleted(succeeded = true, visible = true))
+
+        // Once succeeded, redundant non-forced events within 10 s still coalesce.
+        clock.now += 2_000
+        assertNull(gate.onEvent(network, "server-1", visible = true), "already succeeded within 10 s")
+    }
+
+    @Test
+    fun networkRestoredArrivingWhileFailingForegroundCatchUpRunsTriggersImmediateFollowUp() {
+        val clock = Clock()
+        val gate = RaftFreshnessGate(nowMillis = { clock.now }, trackOutcome = true)
+
+        assertEquals(RaftFreshnessTrigger.Foreground, gate.onEvent(foreground, "server-1", visible = true))
+        // Network comes back while the foreground request is still hanging on the old offline socket.
+        clock.now += 1_500
+        assertNull(gate.onEvent(network, "server-1", visible = true), "queued while foreground is in flight")
+        // Foreground request fails: queued NetworkRestored must fire immediately.
+        clock.now += 1_000
+        assertEquals(
+            RaftFreshnessTrigger.NetworkRestored,
+            gate.onCatchUpCompleted(succeeded = false, visible = true),
+            "queued NetworkRestored fires once the failing foreground read finishes",
+        )
+        assertNull(gate.onCatchUpCompleted(succeeded = true, visible = true))
+    }
+
+    @Test
+    fun newReconnectDuringSucceededCatchUpStillTriggersFollowUp() {
+        val clock = Clock()
+        val gate = RaftFreshnessGate(nowMillis = { clock.now }, trackOutcome = true)
+
+        assertEquals(RaftFreshnessTrigger.Foreground, gate.onEvent(foreground, "server-1", visible = true))
+        clock.now += 1_000
+        assertNull(gate.onEvent(reconnect("server-1", epoch = 2), "server-1", visible = true))
+        clock.now += 500
+        assertEquals(
+            RaftFreshnessTrigger.Reconnect,
+            gate.onCatchUpCompleted(succeeded = true, visible = true),
+            "a new socket connection arriving mid-flight still triggers a post-reconnect catch-up",
+        )
+    }
 }
