@@ -224,6 +224,7 @@
     <string name="settings_step_up_passkeys_unavailable">As chaves de acesso não estão disponíveis no momento. Tente novamente mais tarde.</string>
     <string name="settings_step_up_passkey_none_here">Não há nenhuma chave de acesso do Raft neste dispositivo. Use outro método.</string>
     <string name="settings_step_up_passkey_unsupported">Este dispositivo não pode usar sua chave de acesso aqui. Use outro método.</string>
+    <string name="settings_step_up_passkey_failed">Não foi possível concluir a verificação com a chave de acesso. Verifique sua conexão de rede e tente novamente, ou use outro método.</string>
     <string name="settings_step_up_failed">Não foi possível verificar. Tente novamente.</string>
     <string name="settings_step_up_lost_device_description">Desconectar um dispositivo perdido e o que ele aprovou exige passar pela segunda etapa de novo. A verificação vale por 10 minutos.</string>
     <string name="settings_step_up_lost_authenticator">Perdeu o dispositivo com seu app autenticador?</string>

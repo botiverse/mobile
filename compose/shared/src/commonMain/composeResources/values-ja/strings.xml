@@ -224,6 +224,7 @@
     <string name="settings_step_up_passkeys_unavailable">現在、パスキーを利用できません。しばらくしてからもう一度お試しください。</string>
     <string name="settings_step_up_passkey_none_here">このデバイスには Raft のパスキーがありません。別の方法を使用してください。</string>
     <string name="settings_step_up_passkey_unsupported">このデバイスでは、ここでパスキーを使用できません。別の方法を使用してください。</string>
+    <string name="settings_step_up_passkey_failed">パスキーの確認を完了できませんでした。ネットワーク接続を確認してもう一度試すか、別の方法を使用してください。</string>
     <string name="settings_step_up_failed">確認できませんでした。もう一度お試しください。</string>
     <string name="settings_step_up_lost_device_description">なくしたデバイスをログアウトし、そのデバイスが承認したものを切断するには、改めて 2 段階目の認証が必要です。認証は 10 分間有効です。</string>
     <string name="settings_step_up_lost_authenticator">認証アプリの入ったデバイスをなくしましたか？</string>

@@ -224,6 +224,7 @@
     <string name="settings_step_up_passkeys_unavailable">Passkeys aren't available right now. Try again later.</string>
     <string name="settings_step_up_passkey_none_here">There's no passkey for Raft on this device. Use another way.</string>
     <string name="settings_step_up_passkey_unsupported">This device can't use your passkey here. Use another way.</string>
+    <string name="settings_step_up_passkey_failed">Passkey verification couldn't complete. Check your network connection and try again, or use another way.</string>
     <string name="settings_step_up_failed">Couldn't verify. Try again.</string>
     <string name="settings_step_up_lost_device_description">Signing out a lost device and disconnecting what it approved needs a fresh second step. It lasts 10 minutes.</string>
     <string name="settings_step_up_lost_authenticator">Lost the device with your authenticator?</string>

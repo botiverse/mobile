@@ -224,6 +224,7 @@
     <string name="settings_step_up_passkeys_unavailable">Ключи доступа сейчас недоступны. Попробуйте позже.</string>
     <string name="settings_step_up_passkey_none_here">На этом устройстве нет ключа доступа для Raft. Выберите другой способ.</string>
     <string name="settings_step_up_passkey_unsupported">Это устройство не может использовать здесь ваш ключ доступа. Выберите другой способ.</string>
+    <string name="settings_step_up_passkey_failed">Не удалось завершить проверку ключа доступа. Проверьте подключение к сети и попробуйте ещё раз или выберите другой способ.</string>
     <string name="settings_step_up_failed">Не удалось подтвердить. Попробуйте ещё раз.</string>
     <string name="settings_step_up_lost_device_description">Чтобы выйти на потерянном устройстве и отключить то, что с него одобрено, нужно заново пройти второй шаг. Подтверждение действует 10 минут.</string>
     <string name="settings_step_up_lost_authenticator">Потеряли устройство с аутентификатором?</string>
