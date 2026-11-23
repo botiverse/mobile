@@ -59,11 +59,15 @@ Colours are generated; never edit `RaftUiColorTokens.g.kt` by hand. Follow
    (paths, origins, `slockCommit`, sha256).
 3. `python3 tools/design-tokens/gen_tokens.py`, regenerate the Chromium oracle
    with the **same** Chromium, then `--check`.
-4. Every changed colour in the Kotlin diff is a visible change: say so in the PR.
+4. `python3 tools/design-tokens/gen_theme_decor.py` and
+   `python3 tools/design-tokens/gen_dimensions.py` (the Web's lengths in `Compact` / `Wide` /
+   `Fine`), then each with `--check`.
+5. Every changed colour or length in the Kotlin diff is a visible change: say so in the PR.
 
 ## 4. Everything else: by hand
 
-The generator skips non-colour tokens (spacing, radius, type, sizes). For each
+`gen_dimensions.py` covers the root length custom properties; a size written in a component's
+or page's own classes is not a custom property and is not generated. For each
 **change** item:
 
 - Update the design-system token or component (`tokens/RaftDimensions.kt`,
