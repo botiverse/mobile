@@ -434,7 +434,8 @@ internal fun String?.errorPresentationKeyOrNull(): ErrorPresentationKey? {
             ErrorPresentationKey.ServerUnreachable
         "timeout" in lower || "timed_out" in lower ->
             ErrorPresentationKey.RequestTimedOut
-        "network" in lower || "socket" in lower || lower == "code_0" || lower == "0" ->
+        "network" in lower || "socket" in lower || lower == "code_0" || lower == "http_0" || lower == "0" ||
+            lower.endsWith("_http_0") ->
             ErrorPresentationKey.NetworkConnectionFailed
         "server_unavailable" in lower || "service_unavailable" in lower || lower.isHttp5xxPresentationCode() ->
             ErrorPresentationKey.ServerUnavailable

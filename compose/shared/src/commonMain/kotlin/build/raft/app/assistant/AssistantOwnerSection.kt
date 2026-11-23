@@ -923,7 +923,7 @@ internal fun AssistantOwnerPausedNotice(
                                             AssistantStartRefusal.MachineUnassigned -> noComputerMessage
                                             AssistantStartRefusal.ComputerAccessRevoked -> revokedMessage
                                         },
-                                        error,
+                                        error.copy(serverMessage = null),
                                     )
                                     // The pause is lifted already: read the roster for it.
                                     owner.serverMembersStore.refreshMembers(

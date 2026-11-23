@@ -16,6 +16,10 @@ import build.raft.app.compat.json.JSONObject
 import build.raft.app.compat.module.Module
 import build.raft.app.compat.pager.PageData
 import build.raft.app.compat.pager.Pager
+import build.raft.app.data.DataResult
+import build.raft.app.data.EmptyReason
+import build.raft.app.data.PermissionBlocker
+import build.raft.app.data.ScreenError
 import build.raft.designsystem.components.RaftToastHostState
 import build.raft.designsystem.components.RaftToastIntent
 import kotlinx.serialization.json.Json
@@ -197,5 +201,136 @@ class BridgeModuleToastTest {
         assertEquals("Trace ID 62ac7fa7…", toast.footnote)
         assertEquals(RaftToastIntent.Error, toast.intent)
         assertEquals("Copy", toast.actionLabel)
+    }
+
+    @Test
+    fun errorToastFromScreenErrorSurfacesUsableServerReasonAndTraceId() {
+        val window = window(visible = true)
+        window.addOrigin(capabilities)
+        val traceId = "62ac7fa79a3785a6bee414a074f82634"
+        val error =
+            ScreenError(
+                code = "http_403",
+                serverCode = "file_upload_quota_exceeded",
+                serverMessage = "Monthly upload quota reached (5 GB / 5 GB).",
+                traceId = traceId,
+            )
+
+        bridge().errorToast("Unable to upload file", error) {
+            RaftTraceIdToastStrings({ "Trace ID $it" }, "Copy", "Trace ID copied")
+        }
+
+        val toast = window.state.visible.single()
+        assertEquals("Unable to upload file", toast.title)
+        assertEquals("Monthly upload quota reached (5 GB / 5 GB).", toast.description)
+        assertEquals("Trace ID 62ac7fa7…", toast.footnote)
+        assertEquals(RaftToastIntent.Error, toast.intent)
+        assertEquals("Copy", toast.actionLabel)
+    }
+
+    @Test
+    fun errorToastFromScreenErrorScrubsInfrastructure5xx401HtmlAndDuplicates() {
+        val traceId = "62ac7fa79a3785a6bee414a074f82634"
+        val scrubbedErrors =
+            listOf(
+                ScreenError(code = "http_500", serverMessage = "SQLSTATE[42P01] internal crash", traceId = traceId),
+                ScreenError(code = "http_400", serverCode = "internal_error", serverMessage = "unexpected panic", traceId = traceId),
+                ScreenError(code = "http_401", serverMessage = "jwt expired", traceId = traceId),
+                ScreenError(code = "http_403", serverMessage = "edge_blocked", traceId = traceId),
+                ScreenError(code = "network_timeout", serverMessage = "network_timeout", traceId = null),
+                ScreenError(code = "http_0", serverMessage = "Connection reset by peer", traceId = null),
+                ScreenError(code = "tasks_http_0", serverMessage = "EOF while reading socket", traceId = null),
+                ScreenError(code = "parse_error", serverMessage = "unexpected token <", traceId = null),
+                ScreenError(code = "http_403", serverMessage = "<html><body>Access Denied</body></html>", traceId = traceId),
+                ScreenError(code = "http_400", serverMessage = "boom\n    at foo.js:12", traceId = traceId),
+            )
+        for (error in scrubbedErrors) {
+            val window = window(visible = true)
+            window.addOrigin(capabilities)
+            bridge().errorToast("Action failed", error) {
+                RaftTraceIdToastStrings({ "Trace ID $it" }, "Copy", "Trace ID copied")
+            }
+            val toast = window.state.visible.single()
+            assertEquals("Action failed", toast.title)
+            assertNull(toast.description, "Expected scrubbed description for $error")
+            window.detach()
+        }
+
+        val dedupWindow = window(visible = true)
+        dedupWindow.addOrigin(capabilities)
+        bridge().errorToast(
+            "Unable to open direct message: Direct messages are disabled in this server.",
+            ScreenError(
+                code = "http_403",
+                serverMessage = "Direct messages are disabled in this server.",
+                traceId = traceId,
+            ),
+        ) { RaftTraceIdToastStrings({ "Trace ID $it" }, "Copy", "Trace ID copied") }
+        val dedupToast = dedupWindow.state.visible.single()
+        assertEquals("Unable to open direct message: Direct messages are disabled in this server.", dedupToast.title)
+        assertNull(dedupToast.description)
+        assertEquals("Trace ID 62ac7fa7…", dedupToast.footnote)
+        dedupWindow.detach()
+
+        val punctuationDedupWindow = window(visible = true)
+        punctuationDedupWindow.addOrigin(capabilities)
+        bridge().errorToast(
+            "Permission denied",
+            ScreenError(
+                code = "http_403",
+                serverMessage = "Permission denied.",
+                traceId = traceId,
+            ),
+        ) { RaftTraceIdToastStrings({ "Trace ID $it" }, "Copy", "Trace ID copied") }
+        val punctuationDedupToast = punctuationDedupWindow.state.visible.single()
+        assertEquals("Permission denied", punctuationDedupToast.title)
+        assertNull(punctuationDedupToast.description)
+        assertEquals("Trace ID 62ac7fa7…", punctuationDedupToast.footnote)
+    }
+
+    @Test
+    fun errorToastFromPermissionBlockerAndDataResultSurfacesRefusalReasonAndScrubsAuth() {
+        val traceId = "62ac7fa79a3785a6bee414a074f82634"
+        val permWindow = window(visible = true)
+        permWindow.addOrigin(capabilities)
+        bridge().errorToast(
+            "Unable to join channel",
+            PermissionBlocker(
+                code = "forbidden",
+                serverMessage = "Only workspace admins can join restricted channels.",
+                traceId = traceId,
+            ),
+        ) { RaftTraceIdToastStrings({ "Trace ID $it" }, "Copy", "Trace ID copied") }
+        val permToast = permWindow.state.visible.single()
+        assertEquals("Unable to join channel", permToast.title)
+        assertEquals("Only workspace admins can join restricted channels.", permToast.description)
+        assertEquals("Trace ID 62ac7fa7…", permToast.footnote)
+        permWindow.detach()
+
+        val authWindow = window(visible = true)
+        authWindow.addOrigin(capabilities)
+        bridge().errorToast(
+            "Unable to join channel",
+            DataResult.NoPermission(
+                PermissionBlocker(
+                    code = "auth_required",
+                    requiredCapability = "auth_session",
+                    serverMessage = "session token invalid",
+                    traceId = traceId,
+                ),
+            ),
+        ) { RaftTraceIdToastStrings({ "Trace ID $it" }, "Copy", "Trace ID copied") }
+        val authToast = authWindow.state.visible.single()
+        assertEquals("Unable to join channel", authToast.title)
+        assertNull(authToast.description)
+        authWindow.detach()
+
+        val emptyWindow = window(visible = true)
+        emptyWindow.addOrigin(capabilities)
+        bridge().errorToast("Nothing returned", DataResult.Empty(EmptyReason.NoChannels))
+        val emptyToast = emptyWindow.state.visible.single()
+        assertEquals("Nothing returned", emptyToast.title)
+        assertNull(emptyToast.description)
+        assertNull(emptyToast.footnote)
     }
 }

@@ -1440,7 +1440,7 @@ internal fun MemberDetailPageContent(
                                                 bridge.errorToast(
                                                     tabOrderSaveErrorTemplate
                                                         .membersFormat(result.error.userFacingMessage(errorStrings)),
-                                                    result.error,
+                                                    result.error.traceId,
                                                 )
                                             }
                                             is DataResult.NoPermission -> {

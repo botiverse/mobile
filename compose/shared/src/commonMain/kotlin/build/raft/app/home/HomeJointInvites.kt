@@ -16,6 +16,7 @@ import build.raft.app.data.SharedJointInviteEffect
 import build.raft.app.data.SharedJointInviteIntent
 import build.raft.app.data.SharedJointInviteState
 import build.raft.app.data.SharedJointInviteStore
+import build.raft.app.data.failureTraceIdOrNull
 import build.raft.app.data.jointInviteHomeNotificationId
 import build.raft.app.model.ConversationKind
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -99,7 +100,7 @@ internal fun rememberHomeJointInvites(
                             }
                         }
                     },
-                    effect.result,
+                    effect.result.failureTraceIdOrNull(),
                 )
             }
             null -> Unit

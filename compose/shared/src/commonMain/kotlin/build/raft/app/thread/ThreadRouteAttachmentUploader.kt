@@ -165,7 +165,7 @@ internal class ThreadRouteAttachmentUploader(
         // takes seconds and would hold the composer chip back.  Use the cached value if fresh;
         // otherwise the background upload task resolves it after the chip is admitted.  The
         // all-files (Gallery) path must have an explicit receipt before admission, so it awaits.
-        var probeErrorTraceId: String? = null
+        var probeError: ScreenError? = null
         val directCapabilities: AttachmentUploadCapabilities? =
             if (directUploadOperation == null) {
                 null
@@ -179,7 +179,7 @@ internal class ThreadRouteAttachmentUploader(
                 if ((probe as? DataResult.Error)?.error?.code.equals("cancelled", ignoreCase = true)) {
                     return false
                 }
-                probeErrorTraceId = (probe as? DataResult.Error)?.error?.traceId
+                probeError = (probe as? DataResult.Error)?.error
                 (probe as? DataResult.Content)?.data
             } else {
                 dataSource.peekAttachmentUploadCapabilities(directUploadOperation)
@@ -187,7 +187,12 @@ internal class ThreadRouteAttachmentUploader(
         // Per-file Thread path fail-opens to multipart when capabilities cannot be read.
         // Gallery N/N remains fail-closed: it cannot compensate without an explicit capability.
         if (requireAllFiles && directCapabilities == null) {
-            bridge.errorToast(attachmentLimitUnavailableLabel, probeErrorTraceId)
+            val error = probeError
+            if (error != null) {
+                bridge.errorToast(attachmentLimitUnavailableLabel, error)
+            } else {
+                bridge.errorToast(attachmentLimitUnavailableLabel, traceId = null)
+            }
             return false
         }
         val admittedFiles = admittedComposerAttachmentFiles(

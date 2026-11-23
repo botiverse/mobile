@@ -465,7 +465,7 @@ internal fun rememberMembersRowActions(
                 }
             },
             editAgent = { member -> latestEdit(member) },
-            onError = { message, error -> bridge.errorToast(message, error) },
+            onError = { message, error -> bridge.errorToast(message, error.traceId) },
         )
     }
 }
