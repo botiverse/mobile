@@ -5,6 +5,7 @@ import build.raft.app.data.JointChannelConnections
 import build.raft.app.data.JointChannelRole
 import build.raft.app.data.JointChannelServer
 import build.raft.app.data.MemberConnectResponse
+import build.raft.app.data.MemberConnectServerLimit
 import build.raft.app.data.ScreenError
 import build.raft.app.data.ServerConnectOutcome
 import build.raft.app.model.ChannelId
@@ -183,12 +184,56 @@ class JointMemberConnectStoreTest {
         participant.clear()
     }
 
+    @Test
+    fun limitsDisableAtLimitRowsPruneSelectionAndConnectionsNotifyChangesOnPartialAndFullConnect() = runTest {
+        val dataSource = FakeJointConnectionsDataSource(connections = memberTestConnections())
+        val limitsGate = CompletableDeferred<Unit>()
+        dataSource.memberConnectLimitsGate = limitsGate
+        dataSource.memberConnectLimits =
+            mapOf(
+                "srv-zed" to MemberConnectServerLimit(serverId = "srv-zed", atLimit = true, canUpgrade = true),
+                "srv-alpha" to MemberConnectServerLimit(serverId = "srv-alpha", atLimit = false, canUpgrade = false),
+            )
+        var connectionsChangedCount = 0
+        val store = memberStore(dataSource, onConnectionsChanged = { connectionsChangedCount += 1 })
+        store.dispatch(JointChannelConnectionsIntent.OpenMemberConnect)
+        // Before limits arrive, user checks both servers.
+        store.dispatch(JointChannelConnectionsIntent.SetMemberConnectSelection(setOf("srv-zed", "srv-alpha")))
+        assertEquals(setOf("srv-zed", "srv-alpha"), store.state.value.memberConnectSheet?.selected)
+
+        // When limits resolve, at-limit srv-zed becomes unselectable and is pruned from selection.
+        limitsGate.complete(Unit)
+        runCurrent()
+        assertEquals(1, dataSource.memberConnectLimitsCalls)
+        assertEquals(setOf("srv-alpha"), store.state.value.memberConnectSheet?.selected)
+        val zedRow = store.state.value.memberConnectRows.first { it.server.id == "srv-zed" }
+        assertFalse(store.state.value.memberConnectRowSelectable(zedRow))
+        assertEquals(true, store.state.value.memberConnectLimit(zedRow)?.canUpgrade)
+
+        // Partial success still triggers onConnectionsChanged so parent projections refresh.
+        dataSource.memberConnectResult =
+            DataResult.Content(
+                MemberConnectResponse.Answered(
+                    listOf(
+                        ServerConnectOutcome.Connected("srv-alpha", "c1"),
+                        ServerConnectOutcome.Refused("srv-zed", 409, "free_external_limit", "limit"),
+                    ),
+                    traceId = TRACE,
+                )
+            )
+        store.dispatch(JointChannelConnectionsIntent.SubmitMemberConnect)
+        runCurrent()
+        assertEquals(1, connectionsChangedCount)
+        store.clear()
+    }
+
     private fun TestScope.memberStore(
         dataSource: FakeJointConnectionsDataSource,
         account: MemberConnectAccount = memberTestAccount(),
         connectedByYou: MemberConnectedByYouSlot? = null,
+        onConnectionsChanged: () -> Unit = {},
     ): JointChannelConnectionsStore {
-        val store = JointChannelConnectionsStore(dataSource, this, connectedByYouSlot = connectedByYou)
+        val store = JointChannelConnectionsStore(dataSource, this, connectedByYouSlot = connectedByYou, onConnectionsChanged = onConnectionsChanged)
         store.dispatch(JointChannelConnectionsIntent.SetMemberConnectAccount(account))
         store.dispatch(JointChannelConnectionsIntent.Load)
         runCurrent()

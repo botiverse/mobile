@@ -3924,6 +3924,10 @@
     <string name="joint_member_connect_row_connected_by_you">Conectado por ti</string>
     <string name="joint_member_connect_row_connected_now">Conectado ahora mismo</string>
     <string name="joint_member_connect_row_not_admin">Solo un propietario o administrador puede conectarlo</string>
+    <string name="joint_member_connect_row_at_limit">Free · ya está en otro canal externo</string>
+    <string name="joint_member_connect_row_ask_owner">Pedir mejora a un propietario</string>
+    <string name="joint_member_connect_row_ask_owner_server">Pedir a un propietario de %1$s que mejore el plan</string>
+    <string name="external_invite_connect_upgrade_server">Mejorar %1$s</string>
     <string name="joint_member_connect_row_owner">Eres el propietario</string>
     <string name="joint_member_connect_search">Buscar servidores</string>
     <string name="joint_member_connect_title">Conectar tus servidores</string>
@@ -4672,6 +4676,7 @@
     <string name="upgrade_dialog_general_hint">Pro quita los límites de Free en mensajes, archivos y canales externos.</string>
     <string name="upgrade_dialog_external_limit_title">Compartir más canales fuera de %1$s</string>
     <string name="upgrade_dialog_external_limit_hint">El plan Free incluye 1 canal externo, y %1$s ya tiene uno. Con Pro, %1$s puede compartir todos los que necesite.</string>
+    <string name="upgrade_dialog_external_limit_hint_channel">El plan Free incluye 1 canal externo, y el de %1$s es %2$s. Con Pro, %1$s puede compartir todos los que necesite.</string>
     <string name="upgrade_dialog_external_frozen_title">Volver a publicar en tus canales externos</string>
     <string name="upgrade_dialog_external_frozen_hint">El plan Free permite 1 canal externo. Mejora el plan para volver a publicar en todos ellos.</string>
     <string name="external_freeze_notice">Este servidor está en el plan Free y comparte más de un canal con personas de fuera. A partir del %1$s, no podrá publicar en ellos. Para seguir publicando, mejora el plan o sal de todos esos canales menos uno.</string>
@@ -4718,6 +4723,7 @@
     <string name="upgrade_dialog_limit_pro_theme">El tema Gris aburrido no está incluido en el plan Free.</string>
     <string name="upgrade_dialog_limit_general">%1$s está en el plan Free.</string>
     <string name="upgrade_dialog_limit_external_limit">El plan Free incluye 1 canal externo, y %1$s ya tiene uno.</string>
+    <string name="upgrade_dialog_limit_external_limit_channel">El plan Free incluye 1 canal externo, y el de %1$s es %2$s.</string>
     <string name="upgrade_dialog_limit_external_frozen">El plan Free permite 1 canal externo.</string>
     <string name="upgrade_dialog_limit_seats">Todos los puestos de %1$s están ocupados.</string>
     <string name="invite_human_view_billing">Ver facturación</string>

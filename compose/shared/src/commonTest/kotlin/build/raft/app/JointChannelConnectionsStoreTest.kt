@@ -131,4 +131,14 @@ internal class FakeJointConnectionsDataSource(
         memberConnectGate?.await()
         return memberConnectResult
     }
+
+    var memberConnectLimits: Map<String, build.raft.app.data.MemberConnectServerLimit> = emptyMap()
+    var memberConnectLimitsGate: CompletableDeferred<Unit>? = null
+    var memberConnectLimitsCalls = 0
+
+    override suspend fun listMemberConnectLimits(): Map<String, build.raft.app.data.MemberConnectServerLimit> {
+        memberConnectLimitsCalls += 1
+        memberConnectLimitsGate?.await()
+        return memberConnectLimits
+    }
 }

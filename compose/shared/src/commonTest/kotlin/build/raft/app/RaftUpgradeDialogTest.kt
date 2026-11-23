@@ -1,5 +1,10 @@
 package build.raft.app
 
+import build.raft.app.data.HomeChannelRow
+import build.raft.app.model.ChannelId
+import build.raft.app.model.ConversationKind
+import build.raft.app.model.MemberServerRef
+import build.raft.app.model.ThreadId
 import build.raft.app.resources.*
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -127,5 +132,50 @@ class RaftUpgradeDialogTest {
         assertFalse(raftUpgradeDoneOnReturn(RaftUpgradeMode.Upgrade, "free"))
         assertFalse(raftUpgradeDoneOnReturn(RaftUpgradeMode.Upgrade, null))
         assertFalse(raftUpgradeDoneOnReturn(RaftUpgradeMode.AddSeats, "pro"))
+    }
+
+    @Test
+    fun externalSlotContextPairsOnlyWithExternalChannelFreeLimitAndResolvesSingleLiveChannel() {
+        val slot = RaftUpgradeExternalContext.Slot("#launch")
+        assertEquals(slot, externalContextForGate(RaftUpgradeGate.ExternalChannelFreeLimit, slot))
+        assertNull(externalContextForGate(RaftUpgradeGate.ExternalChannelFrozen, slot))
+        assertNull(externalContextForGate(RaftUpgradeGate.ExternalChannelFreeLimit, RaftUpgradeExternalContext.Slot(" ")))
+
+        val plain = HomeChannelRow(ThreadId("t0"), ChannelId("c0"), channelType = "channel", name = "general")
+        val privateWithExternal =
+            HomeChannelRow(ThreadId("t1"), ChannelId("c1"), channelType = "private", name = "launch", hasExternalRelation = true)
+        val archivedJoint =
+            HomeChannelRow(ThreadId("t2"), ChannelId("c2"), channelType = "joint", kind = ConversationKind.Joint, name = "old", archived = true)
+        val activeJoint =
+            HomeChannelRow(
+                ThreadId("t3"),
+                ChannelId("c3"),
+                channelType = "joint",
+                kind = ConversationKind.Joint,
+                name = "partners",
+                jointServers = listOf(MemberServerRef(id = "srv-a"), MemberServerRef(id = "srv-b")),
+            )
+
+        assertFalse(plain.holdsExternalSlot("srv-a"))
+        assertTrue(privateWithExternal.holdsExternalSlot("srv-a"))
+        assertFalse(archivedJoint.holdsExternalSlot("srv-a"))
+        assertTrue(activeJoint.holdsExternalSlot("srv-a"))
+
+        // Single live slot channel names it; excluding it or having 2+ returns null.
+        assertEquals(
+            RaftUpgradeExternalContext.Slot("#launch"),
+            externalSlotUpgradeContext(listOf(plain, privateWithExternal, archivedJoint), serverId = "srv-a"),
+        )
+        assertNull(
+            externalSlotUpgradeContext(
+                listOf(plain, privateWithExternal, archivedJoint),
+                serverId = "srv-a",
+                exceptChannelId = "c1",
+            )
+        )
+        assertNull(
+            externalSlotUpgradeContext(listOf(privateWithExternal, activeJoint), serverId = "srv-a")
+        )
+        assertEquals("c1,c3", externalSlotChannelsKey(listOf(plain, privateWithExternal, archivedJoint, activeJoint), serverId = "srv-a"))
     }
 }

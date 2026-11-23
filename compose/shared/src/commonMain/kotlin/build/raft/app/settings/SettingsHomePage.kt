@@ -3392,12 +3392,45 @@ private fun RaftAppShellReadyContent(
     }
 
     // The External section's "+" ([externalCreateEntry], web useExternalLimitGate surface sidebar):
-    // Create Channel with External chosen; on a Free server whose one external channel is taken,
-    // the upgrade dialog instead.
+    // prefetches Free external-channel slot availability so opens are immediate when the slot is
+    // free, and re-reads + passes channel context when the slot appears taken.
     var externalCreateGateReading by remember { mutableStateOf(false) }
+    var prefetchedExternalFreeLimit by remember { mutableStateOf<Pair<String, Boolean>?>(null) }
+    val homeExternalSnapshot = (homeState.content as? SharedHomeContentState.Content)?.snapshot
+    val homeExternalServerId = homeExternalSnapshot?.server?.id?.value
+    val homeExternalServerPlan = homeExternalSnapshot?.server?.plan
+    val homeCanCreateExternal = externalChannelCreateAccess(homeExternalSnapshot?.server?.role)
+    val homeExternalSlotKey =
+        remember(homeExternalSnapshot?.channels, homeExternalServerId) {
+            if (homeExternalSnapshot == null || homeExternalServerId == null) {
+                ""
+            } else {
+                externalSlotChannelsKey(homeExternalSnapshot.channels, homeExternalServerId)
+            }
+        }
+    LaunchedEffect(homeExternalServerId, homeExternalServerPlan, homeCanCreateExternal, homeExternalSlotKey) {
+        val serverId = homeExternalServerId
+        if (serverId == null || homeExternalServerPlan != "free" || !homeCanCreateExternal) {
+            prefetchedExternalFreeLimit = null
+            return@LaunchedEffect
+        }
+        val reached =
+            runCatchingPreservingCancellation {
+                RealCreateExternalChannelDataSource(appShellNetworkClient, channelRepository).freeLimitReached()
+            }.getOrNull()
+        if (reached != null) {
+            prefetchedExternalFreeLimit = serverId to reached
+        }
+    }
     fun openExternalCreateChannelGated() {
         if (externalCreateGateReading) return
-        val plan = (homeState.content as? SharedHomeContentState.Content)?.snapshot?.server?.plan
+        val snapshot = (homeState.content as? SharedHomeContentState.Content)?.snapshot
+        val serverId = snapshot?.server?.id?.value
+        val plan = snapshot?.server?.plan
+        if (plan != "free" || (serverId != null && prefetchedExternalFreeLimit == (serverId to false))) {
+            openCreateChannelDialog(external = true)
+            return
+        }
         externalCreateGateReading = true
         // Undispatched: a server that is not Free reads nothing, so Create Channel opens in this tap.
         appShellCoroutineScope.launch(start = CoroutineStart.UNDISPATCHED) {
@@ -3407,11 +3440,19 @@ private fun RaftAppShellReadyContent(
                 } finally {
                     externalCreateGateReading = false
                 }
+            if (serverId != null) {
+                prefetchedExternalFreeLimit = serverId to (entry == ExternalCreateEntry.FreeLimit)
+            }
             when (entry) {
                 ExternalCreateEntry.CreateChannel -> openCreateChannelDialog(external = true)
                 ExternalCreateEntry.FreeLimit ->
                     if (settingsBillingOffersUpgrade()) {
-                        pager.openRaftUpgradeDialog(RaftUpgradeGate.ExternalChannelFreeLimit, storeScope)
+                        pager.openRaftUpgradeDialog(
+                            gate = RaftUpgradeGate.ExternalChannelFreeLimit,
+                            storeScope = storeScope,
+                            externalContext =
+                                snapshot?.let { externalSlotUpgradeContext(it.channels, it.server.id.value) },
+                        )
                     } else {
                         pager.openSettingsBillingPage(storeScope)
                     }
@@ -6944,7 +6985,13 @@ private fun RaftAppShellReadyContent(
                             createChannelDialogOpen = false
                             // Web openUpgradeDialog("external_channel_free_limit", { surface: "create_channel" }).
                             if (settingsBillingOffersUpgrade()) {
-                                pager.openRaftUpgradeDialog(RaftUpgradeGate.ExternalChannelFreeLimit, storeScope)
+                                val snapshot = (homeState.content as? SharedHomeContentState.Content)?.snapshot
+                                pager.openRaftUpgradeDialog(
+                                    gate = RaftUpgradeGate.ExternalChannelFreeLimit,
+                                    storeScope = storeScope,
+                                    externalContext =
+                                        snapshot?.let { externalSlotUpgradeContext(it.channels, it.server.id.value) },
+                                )
                             } else {
                                 pager.openSettingsBillingPage(storeScope)
                             }

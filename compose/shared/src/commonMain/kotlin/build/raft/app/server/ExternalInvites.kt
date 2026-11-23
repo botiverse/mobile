@@ -490,12 +490,17 @@ internal data class ExternalInvitesState(
     val withdrawConfirm: ChannelExternalInvite? = null,
     val withdrawBusy: Boolean = false,
     val withdrawFailure: ExternalInviteFailure? = null,
+    /** True while a gated entry tap is re-reading `GET channels/external-availability`. */
+    val openingEntry: Boolean = false,
     val dialog: ExternalInviteDialogState? = null,
     val effects: List<ExternalInvitesEffect> = emptyList(),
 )
 
 internal sealed interface ExternalInvitesIntent {
     data object Load : ExternalInvitesIntent
+
+    /** Web `useExternalLimitGate`: prefetch Free external-channel slot availability before click. */
+    data class PrefetchFreeLimit(val gated: Boolean) : ExternalInvitesIntent
 
     /** [joint]: a joint channel this server hosts, whose connected servers aren't offered. */
     data class OpenDialog(val joint: Boolean = false) : ExternalInvitesIntent
@@ -612,23 +617,29 @@ internal class RealExternalInvitesDataSource(
 internal class ExternalInvitesStore(
     private val scope: CoroutineScope,
     private val dataSource: ExternalInvitesDataSource,
+    private val onChannelMutated: (membersChanged: Boolean) -> Unit = {},
 ) {
     private val mutableState = MutableStateFlow(ExternalInvitesState())
     val state: StateFlow<ExternalInvitesState> = mutableState.asStateFlow()
     private var generation = 0
     /** Each opening of the dialog: an older opening's "Your servers" answer is dropped. */
     private var dialogGeneration = 0
+    /** Generation counter for [PrefetchFreeLimit] so stale answers never overwrite newer state. */
+    private var freeLimitGeneration = 0
+    /** Cached result of `GET channels/external-availability` when prefetched for a gated entry. */
+    private var prefetchedFreeLimit: Boolean? = null
     /** A gated entry's slot read under way: taps meanwhile do nothing. */
     private var entryReading = false
 
     fun dispatch(intent: ExternalInvitesIntent) {
         when (intent) {
             ExternalInvitesIntent.Load -> load()
+            is ExternalInvitesIntent.PrefetchFreeLimit -> prefetchFreeLimit(intent.gated)
             is ExternalInvitesIntent.OpenDialog -> openDialog(intent.joint)
             is ExternalInvitesIntent.RequestOpen -> requestOpen(intent.joint, intent.gated)
             ExternalInvitesIntent.CloseDialog ->
                 mutableState.update { if (it.dialog?.busy == true) it else it.copy(dialog = null) }
-            is ExternalInvitesIntent.SetText -> updateDialog { it.copy(text = intent.text, failure = null) }
+            is ExternalInvitesIntent.SetText -> updateDialog { if (it.busy) it else it.copy(text = intent.text, failure = null) }
             is ExternalInvitesIntent.SetServers -> updateDialog { if (it.busy) it else it.copy(serverIds = intent.serverIds) }
             is ExternalInvitesIntent.SetConnectInvite -> updateDialog { it.withConnectInvite(intent.email, intent.checked) }
             ExternalInvitesIntent.Next -> next()
@@ -689,18 +700,42 @@ internal class ExternalInvitesStore(
         }
     }
 
+    private fun prefetchFreeLimit(gated: Boolean) {
+        val mine = ++freeLimitGeneration
+        if (!gated) {
+            prefetchedFreeLimit = null
+            return
+        }
+        scope.launch {
+            val reached = dataSource.freeLimitReached()
+            if (mine == freeLimitGeneration) {
+                prefetchedFreeLimit = reached
+            }
+        }
+    }
+
     private fun requestOpen(joint: Boolean, gated: Boolean) {
         // A second tap never resets the open dialog (its emails, servers, review).
         if (mutableState.value.dialog != null) return
-        if (!gated) {
+        if (!gated || prefetchedFreeLimit == false) {
             openDialog(joint)
             return
         }
         if (entryReading) return
         entryReading = true
+        mutableState.update { it.copy(openingEntry = true) }
+        val mine = ++freeLimitGeneration
         scope.launch {
-            val reached = dataSource.freeLimitReached()
-            entryReading = false
+            val reached =
+                try {
+                    dataSource.freeLimitReached()
+                } finally {
+                    entryReading = false
+                    mutableState.update { it.copy(openingEntry = false) }
+                }
+            if (mine == freeLimitGeneration) {
+                prefetchedFreeLimit = reached
+            }
             if (reached == true) emit(ExternalInvitesEffect.FreeLimitUpgrade) else openDialog(joint)
         }
     }
@@ -782,6 +817,8 @@ internal class ExternalInvitesStore(
                         }
                     }
                 }
+            val anyServerConnected =
+                serverEffects.any { it is ExternalInvitesEffect.ServersConnected || it is ExternalInvitesEffect.ServersConnecting }
             mutableState.update { it.copy(dialog = null) }
             emit(
                 *(
@@ -791,6 +828,10 @@ internal class ExternalInvitesStore(
                     ) + serverEffects
                 ).toTypedArray()
             )
+            if (sent > 0 || added > 0 || anyServerConnected) {
+                prefetchedFreeLimit = null
+                onChannelMutated(added > 0 || anyServerConnected)
+            }
             load()
         }
     }
@@ -829,6 +870,8 @@ internal class ExternalInvitesStore(
                         )
                     }
                     emit(ExternalInvitesEffect.Withdrawn(invite.email))
+                    prefetchedFreeLimit = null
+                    onChannelMutated(false)
                     load()
                 }
                 // The confirm shows the refusal and stays open (web ConfirmDialog's thrown error).

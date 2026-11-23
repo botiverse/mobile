@@ -77,6 +77,12 @@ class RaftChoiceListItem<T>(
     val media: (@Composable () -> Unit)? = null,
     val labelTrailing: (@Composable () -> Unit)? = null,
     val group: String? = null,
+    /**
+     * Optional inline trailing action (e.g. an Upgrade button on a disabled at-limit row), laid out
+     * beside the selectable/toggleable area so text buttons reserve their exact width without
+     * overlapping descriptions or toggling the row.
+     */
+    val trailingAction: (@Composable () -> Unit)? = null,
 )
 
 /** A heading over the rows of one kind (Agents, People) in a [RaftMultiChoiceList]. */
@@ -397,13 +403,13 @@ private fun <T> ChoiceListRow(
     val inset = ((RaftChoiceListDefaults.RowMinHeight - lineHeight) / 2).coerceAtLeast(0.dp)
     val chipShape = RoundedCornerShape(RaftRadius.Chip)
     val lines = item.descriptions.filter { it.isNotBlank() }.take(2)
-    Box(Modifier.fillMaxWidth()) {
+    val inlineTrailing = item.trailingAction
+    val rowContent: @Composable (Modifier) -> Unit = { rowModifier ->
         RaftFirstLineRow(
             lineHeight = lineHeight,
             gap = 10.dp,
             modifier =
-                Modifier
-                    .fillMaxWidth()
+                rowModifier
                     .then(if (hovered) Modifier.background(colors.brandSoft, chipShape) else Modifier)
                     .raftPressOverlay(pressed, raftPressOverlayColor(RaftPressSurface.Paper, colors), RaftRadius.Chip)
                     .raftPointerHover(source)
@@ -417,7 +423,12 @@ private fun <T> ChoiceListRow(
                     .heightIn(min = RaftChoiceListDefaults.RowMinHeight)
                     .padding(
                         start = 10.dp,
-                        end = if (action != null) RaftChoiceListDefaults.ActionInset else 10.dp,
+                        end =
+                            when {
+                                inlineTrailing != null -> 8.dp
+                                action != null -> RaftChoiceListDefaults.ActionInset
+                                else -> 10.dp
+                            },
                         top = inset,
                         bottom = inset,
                     ),
@@ -456,13 +467,23 @@ private fun <T> ChoiceListRow(
                 }
             }
         }
-        if (action != null) {
-            // 32dp, centred on the name's line, 4dp from the row's end.
-            Box(
-                Modifier
-                    .align(Alignment.TopEnd)
-                    .padding(top = (inset + lineHeight / 2 - 16.dp).coerceAtLeast(0.dp), end = 4.dp),
-            ) { action(item) }
+    }
+    if (inlineTrailing != null && action == null) {
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            rowContent(Modifier.weight(1f))
+            Box(Modifier.padding(end = 8.dp)) { inlineTrailing() }
+        }
+    } else {
+        Box(Modifier.fillMaxWidth()) {
+            rowContent(Modifier.fillMaxWidth())
+            if (action != null) {
+                // 32dp, centred on the name's line, 4dp from the row's end.
+                Box(
+                    Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(top = (inset + lineHeight / 2 - 16.dp).coerceAtLeast(0.dp), end = 4.dp),
+                ) { action(item) }
+            }
         }
     }
 }

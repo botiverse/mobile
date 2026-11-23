@@ -13,6 +13,7 @@ import build.raft.app.components.RaftDesignSystemTheme
 import build.raft.app.data.DataResult
 import build.raft.app.data.JointChannelConnections
 import build.raft.app.data.MemberConnectResponse
+import build.raft.app.data.MemberConnectServerLimit
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -40,8 +41,11 @@ class JointMemberConnectSheetUiTest {
     private fun ComposeUiTest.show(
         connections: JointChannelConnections = memberTestConnections(),
         answer: MemberConnectResponse? = null,
+        limits: Map<String, MemberConnectServerLimit> = emptyMap(),
+        offersUpgrade: Boolean = true,
+        onUpgradeServer: (String) -> Unit = {},
     ): Pair<JointChannelConnectionsStore, FakeJointConnectionsDataSource> {
-        val dataSource = FakeJointConnectionsDataSource(connections = connections)
+        val dataSource = FakeJointConnectionsDataSource(connections = connections).apply { memberConnectLimits = limits }
         answer?.let { dataSource.memberConnectResult = DataResult.Content(it) }
         val store =
             JointChannelConnectionsStore(
@@ -63,6 +67,8 @@ class JointMemberConnectSheetUiTest {
                     onDismiss = { store.dispatch(JointChannelConnectionsIntent.DismissMemberConnect) },
                     onSelectionChange = { store.dispatch(JointChannelConnectionsIntent.SetMemberConnectSelection(it)) },
                     onSubmit = { store.dispatch(JointChannelConnectionsIntent.SubmitMemberConnect) },
+                    onUpgradeServer = onUpgradeServer,
+                    offersUpgrade = offersUpgrade,
                 )
             }
         }
@@ -91,5 +97,39 @@ class JointMemberConnectSheetUiTest {
         onNodeWithText("Alpha Co", useUnmergedTree = true).performClick()
         waitForIdle()
         assertTrue(shown("#secret-room becomes a channel shared with other servers, and the servers you connect see its earlier messages."))
+    }
+
+    @Test
+    fun atLimitRowsShowUpgradeForOwnerAskOwnerForAdminAndHideActionsWhenUpgradeNotOffered() = runRobolectricComposeUiTest {
+        val upgraded = mutableListOf<String>()
+        val limits =
+            mapOf(
+                "srv-zed" to MemberConnectServerLimit(serverId = "srv-zed", atLimit = true, canUpgrade = true),
+                "srv-alpha" to MemberConnectServerLimit(serverId = "srv-alpha", atLimit = true, canUpgrade = false),
+            )
+        show(limits = limits, offersUpgrade = true, onUpgradeServer = { upgraded += it })
+        openSheet()
+        assertTrue(shown("Free · in another external channel"))
+        assertEquals(1, count(JointMemberConnectUpgradeTag))
+        assertEquals(1, count(JointMemberConnectAskOwnerTag))
+
+        onNodeWithTag(JointMemberConnectUpgradeTag, useUnmergedTree = true).performClick()
+        onNodeWithTag(JointMemberConnectAskOwnerTag, useUnmergedTree = true).performClick()
+        waitForIdle()
+        assertEquals(listOf("srv-zed", "srv-alpha"), upgraded)
+    }
+
+    @Test
+    fun atLimitRowsOmitInlineUpgradeButtonsWhenPlatformDisallowsUpgradeOffers() = runRobolectricComposeUiTest {
+        val limits =
+            mapOf(
+                "srv-zed" to MemberConnectServerLimit(serverId = "srv-zed", atLimit = true, canUpgrade = true),
+                "srv-alpha" to MemberConnectServerLimit(serverId = "srv-alpha", atLimit = true, canUpgrade = false),
+            )
+        show(limits = limits, offersUpgrade = false)
+        openSheet()
+        assertTrue(shown("Free · in another external channel"))
+        assertEquals(0, count(JointMemberConnectUpgradeTag))
+        assertEquals(0, count(JointMemberConnectAskOwnerTag))
     }
 }

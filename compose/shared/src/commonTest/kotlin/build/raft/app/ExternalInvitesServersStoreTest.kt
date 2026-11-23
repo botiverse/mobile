@@ -7,6 +7,7 @@ import build.raft.app.data.ExternalInviteRefusal
 import build.raft.app.data.InviteConnectableServer
 import build.raft.app.data.OwnConnectableServers
 import build.raft.app.data.ServerConnectOutcome
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
@@ -247,5 +248,61 @@ class ExternalInvitesServersStoreTest {
         runCurrent()
         assertEquals("kept@example.com", direct.state.value.dialog?.text)
         assertEquals(0, ungated.freeLimitCalls)
+    }
+
+    @Test
+    fun prefetchFreeLimitOpensImmediatelyWhenFreeAndShowsLoadingOnReReadWhenTaken() = runTest {
+        // Prefetched free (false): RequestOpen opens with zero additional network reads.
+        val freeSource = FakeExternalInvitesDataSource().apply { freeLimitAnswer = false }
+        val freeStore = ExternalInvitesStore(this, freeSource)
+        freeStore.dispatch(ExternalInvitesIntent.PrefetchFreeLimit(gated = true))
+        runCurrent()
+        assertEquals(1, freeSource.freeLimitCalls)
+        freeStore.dispatch(ExternalInvitesIntent.RequestOpen(joint = false, gated = true))
+        runCurrent()
+        assertNotNull(freeStore.state.value.dialog)
+        assertEquals(1, freeSource.freeLimitCalls)
+        assertFalse(freeStore.state.value.openingEntry)
+
+        // Prefetched taken (true): RequestOpen re-reads with openingEntry = true before emitting upgrade.
+        val gate = CompletableDeferred<Boolean?>()
+        val takenSource = FakeExternalInvitesDataSource().apply { freeLimitAnswer = true }
+        val takenStore = ExternalInvitesStore(this, takenSource)
+        takenStore.dispatch(ExternalInvitesIntent.PrefetchFreeLimit(gated = true))
+        runCurrent()
+        assertEquals(1, takenSource.freeLimitCalls)
+        takenSource.freeLimitDeferred = gate
+        takenStore.dispatch(ExternalInvitesIntent.RequestOpen(joint = false, gated = true))
+        runCurrent()
+        assertTrue(takenStore.state.value.openingEntry)
+        assertNull(takenStore.state.value.dialog)
+        gate.complete(true)
+        runCurrent()
+        assertFalse(takenStore.state.value.openingEntry)
+        assertEquals(2, takenSource.freeLimitCalls)
+        assertEquals(listOf<ExternalInvitesEffect>(ExternalInvitesEffect.FreeLimitUpgrade), takenStore.state.value.effects)
+    }
+
+    @Test
+    fun mutationsNotifyChannelRefreshAndBusyIgnoresSetText() = runTest {
+        val source = source(ownServer("s2", "Beta"))
+        source.connectAnswer = DataResult.Content(ExternalInviteAnswer.Ok(listOf(ServerConnectOutcome.Connected("s2", "c2"))))
+        val mutations = mutableListOf<Boolean>()
+        val store = ExternalInvitesStore(this, source, onChannelMutated = { mutations += it })
+        store.dispatch(ExternalInvitesIntent.Load)
+        store.dispatch(ExternalInvitesIntent.OpenDialog(joint = false))
+        runCurrent()
+        store.dispatch(ExternalInvitesIntent.SetText("new@example.com"))
+        store.dispatch(ExternalInvitesIntent.SetServers(setOf("s2")))
+        store.dispatch(ExternalInvitesIntent.Next)
+        runCurrent()
+        store.dispatch(ExternalInvitesIntent.Send(makePrivate = false))
+        runCurrent()
+        assertEquals(listOf(true), mutations)
+
+        store.dispatch(ExternalInvitesIntent.RequestWithdraw("i1"))
+        store.dispatch(ExternalInvitesIntent.ConfirmWithdraw)
+        runCurrent()
+        assertEquals(listOf(true, false), mutations)
     }
 }

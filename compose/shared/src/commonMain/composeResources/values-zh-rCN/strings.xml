@@ -4103,6 +4103,10 @@
     <string name="joint_member_connect_row_connected_by_you">由你连接</string>
     <string name="joint_member_connect_row_connected_now">刚刚连接</string>
     <string name="joint_member_connect_row_not_admin">只有所有者或管理员能连接它</string>
+    <string name="joint_member_connect_row_at_limit">免费版 · 已在另一个外部频道中</string>
+    <string name="joint_member_connect_row_ask_owner">请所有者升级</string>
+    <string name="joint_member_connect_row_ask_owner_server">请 %1$s 的所有者升级</string>
+    <string name="external_invite_connect_upgrade_server">升级 %1$s</string>
     <string name="joint_member_connect_row_owner">你是所有者</string>
     <string name="joint_member_connect_search">搜索服务器</string>
     <string name="joint_member_connect_title">连接你的服务器</string>
@@ -4866,6 +4870,7 @@
     <string name="upgrade_dialog_general_hint">升级到 Pro，免费版在消息历史、文件上传和外部频道上的限制都会解除。</string>
     <string name="upgrade_dialog_external_limit_title">与 %1$s 之外的人共享更多频道</string>
     <string name="upgrade_dialog_external_limit_hint">免费版包含 1 个外部频道，%1$s 已经有一个了。升级到 Pro 后，%1$s 需要多少就能共享多少。</string>
+    <string name="upgrade_dialog_external_limit_hint_channel">免费版包含 1 个外部频道，%1$s 的这个名额已用于 %2$s。升级到 Pro 后，%1$s 需要多少就能共享多少。</string>
     <string name="upgrade_dialog_external_frozen_title">恢复在外部频道中发言</string>
     <string name="upgrade_dialog_external_frozen_hint">免费版只能有 1 个外部频道。升级后即可在所有外部频道中恢复发言。</string>
     <string name="external_freeze_notice">此服务器使用免费版，且与外部的人共享了不止一个频道。从 %1$s 起，它将无法在这些频道中发消息。要继续发消息，请升级，或只保留其中一个这样的频道。</string>
@@ -4912,6 +4917,7 @@
     <string name="upgrade_dialog_limit_pro_theme">免费版不包含无聊灰主题。</string>
     <string name="upgrade_dialog_limit_general">%1$s 正在使用免费版。</string>
     <string name="upgrade_dialog_limit_external_limit">免费版包含 1 个外部频道，%1$s 已经有一个了。</string>
+    <string name="upgrade_dialog_limit_external_limit_channel">免费版包含 1 个外部频道，%1$s 的这个名额已用于 %2$s。</string>
     <string name="upgrade_dialog_limit_external_frozen">免费版只能有 1 个外部频道。</string>
     <string name="upgrade_dialog_limit_seats">%1$s 的席位已全部用完。</string>
     <string name="invite_human_view_billing">查看账单</string>

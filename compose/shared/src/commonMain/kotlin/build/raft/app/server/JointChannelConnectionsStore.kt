@@ -16,6 +16,7 @@ import build.raft.app.data.JointChannelServer
 import build.raft.app.data.JointChannelServerPlan
 import build.raft.app.data.JointChannelRole
 import build.raft.app.data.MemberConnectResponse
+import build.raft.app.data.MemberConnectServerLimit
 import build.raft.app.data.ServerConnectOutcome
 import build.raft.app.data.isAuthSessionBlocker
 import build.raft.app.model.ChannelId
@@ -161,10 +162,23 @@ internal data class JointChannelConnectionsState(
     fun memberConnectRowState(row: MemberConnectRow): MemberConnectRowState =
         memberConnectSheet?.rowStates?.get(row.server.id) ?: row.state
 
-    /** Web ChoiceList `disabled`: only an eligible row not connected yet, while the route is open. */
+    /**
+     * Web `ConnectYourServersDialog`: Free-plan limit overlay applies only to eligible rows not
+     * already connected in this sheet session.
+     */
+    fun memberConnectLimit(row: MemberConnectRow): MemberConnectServerLimit? {
+        val sheet = memberConnectSheet ?: return null
+        if (row.server.id in sheet.done || memberConnectRowState(row) != MemberConnectRowState.Eligible) return null
+        return sheet.limits[row.server.id]
+    }
+
+    /** Web ChoiceList `disabled`: only an eligible row not connected yet and not at Free limit, while the route is open. */
     fun memberConnectRowSelectable(row: MemberConnectRow): Boolean {
         val sheet = memberConnectSheet ?: return false
-        return !sheet.closed && row.server.id !in sheet.done && memberConnectRowState(row) == MemberConnectRowState.Eligible
+        return !sheet.closed &&
+            row.server.id !in sheet.done &&
+            memberConnectRowState(row) == MemberConnectRowState.Eligible &&
+            memberConnectLimit(row)?.atLimit != true
     }
 
     /** The host row's Host badge (web: `server.role === "host"`). */
@@ -219,6 +233,7 @@ internal interface JointChannelConnectionsDataSource {
     suspend fun load(): DataResult<JointChannelConnectionsSnapshot>
     suspend fun disconnectServer(serverId: String): DataResult<Unit>
     suspend fun connectMyServers(serverIds: List<String>): DataResult<MemberConnectResponse>
+    suspend fun listMemberConnectLimits(): Map<String, MemberConnectServerLimit> = emptyMap()
 }
 
 internal class RealJointChannelConnectionsDataSource(
@@ -249,6 +264,14 @@ internal class RealJointChannelConnectionsDataSource(
 
     override suspend fun connectMyServers(serverIds: List<String>): DataResult<MemberConnectResponse> =
         runner.run { _, networkClient -> repository(networkClient).connectMyServers(route.channelId, serverIds) }
+
+    override suspend fun listMemberConnectLimits(): Map<String, MemberConnectServerLimit> {
+        val result =
+            runner.run { _, networkClient ->
+                DataResult.Content(repository(networkClient).listMemberConnectLimits(route.channelId))
+            }
+        return (result as? DataResult.Content)?.data.orEmpty()
+    }
 
     private fun repository(networkClient: build.raft.app.data.RaftNetworkClient) =
         RealJointChannelRepository(networkClient) { logger("joint_connections $it") }
@@ -294,6 +317,7 @@ internal class JointChannelConnectionsStore(
     private val scope: CoroutineScope,
     private val cacheSlot: JointChannelConnectionsCacheSlot? = null,
     private val connectedByYouSlot: MemberConnectedByYouSlot? = null,
+    private val onConnectionsChanged: () -> Unit = {},
 ) {
     private val mutableState =
         MutableStateFlow(
@@ -307,6 +331,7 @@ internal class JointChannelConnectionsStore(
     private var loadGeneration = 0L
     private var loadJob: Job? = null
     private var actionJob: Job? = null
+    private var memberConnectLimitsJob: Job? = null
 
     fun dispatch(intent: JointChannelConnectionsIntent) {
         when (intent) {
@@ -320,11 +345,14 @@ internal class JointChannelConnectionsStore(
                 val current = mutableState.value
                 if (current.memberConnectSheet == null && current.actionInFlight == null && current.memberConnectAvailable) {
                     mutableState.value = current.copy(memberConnectSheet = MemberConnectSheet())
+                    fetchMemberConnectLimits()
                 }
             }
             JointChannelConnectionsIntent.DismissMemberConnect -> {
                 val current = mutableState.value
                 if (current.memberConnectSheet != null && current.memberConnectSheet.busy.not()) {
+                    memberConnectLimitsJob?.cancel()
+                    memberConnectLimitsJob = null
                     mutableState.value = current.copy(memberConnectSheet = null)
                 }
             }
@@ -449,6 +477,7 @@ internal class JointChannelConnectionsStore(
                             ),
                     )
                 load(force = true)
+                onConnectionsChanged()
             } else {
                 // Web: every refusal reads as one line in the still-open confirm.
                 mutableState.value = previous.copy(actionInFlight = null, disconnectFailure = result.toJointChannelFailure())
@@ -562,9 +591,39 @@ internal class JointChannelConnectionsStore(
                     }
                 }
             mutableState.value = next
+            if (next.memberConnectSheet == null) {
+                memberConnectLimitsJob?.cancel()
+                memberConnectLimitsJob = null
+            }
             // The new rows come with the channel read again (web ensureChannel refresh).
-            if (went.isNotEmpty()) load(force = true)
+            if (went.isNotEmpty()) {
+                load(force = true)
+                onConnectionsChanged()
+            }
         }
+    }
+
+    private fun fetchMemberConnectLimits() {
+        memberConnectLimitsJob?.cancel()
+        memberConnectLimitsJob =
+            scope.launch {
+                val limits =
+                    try {
+                        dataSource.listMemberConnectLimits()
+                    } catch (cancellation: CancellationException) {
+                        throw cancellation
+                    } catch (_: Throwable) {
+                        emptyMap()
+                    }
+                val current = mutableState.value
+                val open = current.memberConnectSheet ?: return@launch
+                if (limits.isEmpty()) return@launch
+                val prunedSelection = open.selected.filterNot { limits[it]?.atLimit == true }.toSet()
+                mutableState.value =
+                    current.copy(
+                        memberConnectSheet = open.copy(limits = limits, selected = prunedSelection),
+                    )
+            }
     }
 
     private fun launchAction(block: suspend () -> Unit) {
@@ -579,8 +638,10 @@ internal class JointChannelConnectionsStore(
         loadGeneration += 1L
         loadJob?.cancel()
         actionJob?.cancel()
+        memberConnectLimitsJob?.cancel()
         loadJob = null
         actionJob = null
+        memberConnectLimitsJob = null
     }
 }
 

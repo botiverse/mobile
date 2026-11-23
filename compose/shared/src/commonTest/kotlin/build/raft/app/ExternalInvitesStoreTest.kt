@@ -82,9 +82,18 @@ internal class FakeExternalInvitesDataSource : ExternalInvitesDataSource {
         connectAnswer.also { connectCalls += serverIds to makePrivate }
 
     var freeLimitAnswer: Boolean? = false
+    var freeLimitDeferred: CompletableDeferred<Boolean?>? = null
     var freeLimitCalls = 0
 
-    override suspend fun freeLimitReached() = freeLimitAnswer.also { freeLimitCalls++ }
+    override suspend fun freeLimitReached(): Boolean? {
+        freeLimitCalls++
+        val deferred = freeLimitDeferred
+        if (deferred != null) {
+            freeLimitDeferred = null
+            return deferred.await()
+        }
+        return freeLimitAnswer
+    }
 }
 
 internal fun externalTestInvite(

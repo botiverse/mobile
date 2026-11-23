@@ -81,9 +81,11 @@ internal fun rememberJointConnectedServers(
     storeScope: RaftShellStoreScope,
     bridge: BridgeModule,
     active: Boolean,
+    onConnectionsChanged: () -> Unit = {},
 ): JointConnectedServersHolder {
     val scope = rememberCoroutineScope()
     val authorityGateway = remember(sharedStores, storeScope) { sharedStores.authenticatedRouteAuthorityGateway(storeScope) }
+    val latestOnConnectionsChanged = androidx.compose.runtime.rememberUpdatedState(onConnectionsChanged)
     val holder =
         remember(route, routeOwner, authorityGateway, scope, sharedStores) {
             JointConnectedServersHolder(
@@ -104,6 +106,7 @@ internal fun rememberJointConnectedServers(
                             RaftMemberConnectedByYou,
                             "${routeOwner.environmentId}|${routeOwner.accountId}|${route.serverId.value}|${route.channelId.value}",
                         ),
+                    onConnectionsChanged = { latestOnConnectionsChanged.value() },
                 ),
             )
         }
@@ -133,7 +136,10 @@ internal fun rememberJointConnectedServers(
 
 /** The section's dialogs: the host's Disconnect confirm and the Connect your servers sheet. */
 @Composable
-internal fun JointConnectedServersOverlays(holder: JointConnectedServersHolder) {
+internal fun JointConnectedServersOverlays(
+    holder: JointConnectedServersHolder,
+    onUpgradeServer: (serverId: String) -> Unit = {},
+) {
     val store = holder.store
     val state by store.state.collectAsState()
     state.disconnectConfirmServer?.let { server ->
@@ -151,6 +157,10 @@ internal fun JointConnectedServersOverlays(holder: JointConnectedServersHolder) 
         onDismiss = { store.dispatch(JointChannelConnectionsIntent.DismissMemberConnect) },
         onSelectionChange = { store.dispatch(JointChannelConnectionsIntent.SetMemberConnectSelection(it)) },
         onSubmit = { store.dispatch(JointChannelConnectionsIntent.SubmitMemberConnect) },
+        onUpgradeServer = { serverId ->
+            store.dispatch(JointChannelConnectionsIntent.DismissMemberConnect)
+            onUpgradeServer(serverId)
+        },
     )
 }
 

@@ -604,6 +604,18 @@ private fun ChannelSettingsPageScreen() {
             storeScope = storeScope,
             bridge = bridge,
             active = showsServers,
+            onConnectionsChanged = {
+                settingsStore.dispatch(ChannelSettingsIntent.Refresh)
+                homeStore?.dispatch(SharedHomeIntent.Refresh)
+                scope.launch {
+                    membersStore.loadChannelMembers(
+                        owner = routeOwner,
+                        channelId = route.channelId,
+                        priority = DataRequestPriority.Background,
+                        force = true,
+                    )
+                }
+            },
         )
     var sosStore by remember(route) { mutableStateOf<ChannelSosStore?>(null) }
     val agentControlsApi = remember(sharedStores, storeScope) {
@@ -860,7 +872,22 @@ private fun ChannelSettingsPageScreen() {
             )
         }
 
-        if (showsServers) JointConnectedServersOverlays(connectedServers)
+        if (showsServers) {
+            JointConnectedServersOverlays(
+                holder = connectedServers,
+                onUpgradeServer = { targetServerId ->
+                    if (settingsBillingOffersUpgrade()) {
+                        pager.openRaftUpgradeDialog(
+                            gate = RaftUpgradeGate.ExternalChannelFreeLimit,
+                            storeScope = storeScope,
+                            targetServerId = targetServerId,
+                        )
+                    } else {
+                        pager.openSettingsBillingPage(storeScope)
+                    }
+                },
+            )
+        }
 
         val activeSosStore = sosStore
         if (channel != null && activeSosStore != null) {
