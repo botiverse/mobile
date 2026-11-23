@@ -566,6 +566,7 @@ class ExternalShareStoreTest {
 
         assertTrue(lookupCancelled)
         assertIs<ExternalShareState.Idle>(store.state.value)
+        Unit
     }
 
     private fun CoroutineScope.store(

@@ -160,7 +160,7 @@ object RaftShareSuggestionsHostProvider {
         appScopeHost?.clear(reason)
     }
 
-    internal fun clearForTests() {
+    fun clearForTests() {
         appScopeHost = null
     }
 }
