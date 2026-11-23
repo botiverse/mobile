@@ -3,6 +3,20 @@
 The desktop host for the shared Compose Multiplatform pages (`:shared`, rendered through
 `:ui-cmp`'s `RaftCmpRoot`), packaged for macOS as a `.dmg`.
 
+## Window
+
+The window is [Nucleus](https://github.com/NucleusFramework/Nucleus)'s Tao backend
+(`nucleusApplication` + `DecoratedWindow`, 2.5.x), not Compose Desktop's AWT window: the Compose
+UI thread is the macOS main thread, which AppKit (text input, window resizing) and the embedded web
+views run on too. Nothing may start AWT before the window (`java.awt.Desktop`, `Toolkit`): AWT and Tao
+would each set up the macOS application object. Links, files and folders open through the system's
+`open` command (`RaftDesktopExternalOpen`); the clipboard stays Compose's own.
+
+On macOS the content runs up under the title bar: a transparent band as tall as the top bar
+(`RaftDesktopTitleBar.kt`) moves the window, the traffic lights sit at the start of the top bar.
+Embedded web pages (Artifacts, Settings web pages) are the system WKWebView through
+ComposeNativeWebview, a Tao `NativeView` under the Compose surface (`RaftSandboxWebView.desktop.kt`).
+
 ## Build and run (from `compose/`)
 
 ```bash
@@ -77,8 +91,10 @@ Not configured here. Compose Desktop reads them from Gradle properties, e.g.:
 
 ## Desktop gaps (TODO(desktop))
 
-PDF and embedded web views, animated images, attachment pickers / uploads, settings
-host actions (storage, diagnostics, notifications, developer environment, account linking),
-notifications and the app icon (`.icns`) are not implemented yet; they show a notice or do
-nothing. Video plays on macOS 14+ only (ComposeMediaPlayer's AVFoundation bridge); elsewhere video
-attachments stay download cards. Audio-only media does not play yet and keeps the "not available" notice.
+PDF, animated images, settings host actions (notifications, developer environment, account
+linking), notifications, the app menu bar (Nucleus `menu-macos`), the dock badge and the app icon
+(`.icns`) are not implemented yet; they show a notice or do nothing. Video plays on macOS 14+ only
+(ComposeMediaPlayer's AVFoundation bridge), without full screen (the library's full screen is an AWT
+window); elsewhere video attachments stay download cards. Audio-only media does not play yet and
+keeps the "not available" notice. A mouse's side buttons do not step through the history (the Tao
+window reports them as the main button); ⌘[ / ⌘] do.

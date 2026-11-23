@@ -16,10 +16,10 @@ enum class RaftDesktopWebViewNavigation {
     /**
      * Fails the top-level fence but is a declared sub-frame: an https page under one of the
      * surface's [RaftDesktopWebViewPolicy.frameHosts] (the Artifact content domain), or
-     * about:/blob:/data:. The engine (Wry) reports only the URL, not the frame, so it loads; the
-     * host then checks the top-level address and takes the page back if the top-level document
-     * left the fence, or if the page does not answer the check in time. Scripts and the host
-     * channel are guarded in JS by top frame + origin, so such a document never gets them.
+     * about:/blob:/data:. The engine reports only the URL, not the frame, so it loads; the host
+     * then reads the engine's top-level address and takes the page back if the top-level document
+     * left the fence. Scripts and the host channel are guarded in JS by top frame + origin, so such
+     * a document never gets them.
      */
     AllowUnverifiedFrame,
 
@@ -38,8 +38,8 @@ enum class RaftDesktopWebViewNavigation {
  *    refused on the host side unless the current top-level address is trusted ([canRunRuntimeScript]).
  * 2. Navigation fence: [navigation] decides per URL before it loads; only declared frames
  *    ([frameHosts], about:/blob:/data:) load without passing the top-level fence, and
- *    [isTrustedTopLevel] checks the committed top-level address afterwards (the host also takes the
- *    page back when that check gets no answer; see [RaftDesktopWebViewNavigation.AllowUnverifiedFrame]).
+ *    [isTrustedTopLevel] checks the engine's top-level address afterwards (see
+ *    [RaftDesktopWebViewNavigation.AllowUnverifiedFrame]).
  * 3. Host channel: messages carry a per-WebView secret held only inside the closure of the script
  *    of a top-level document on [url]'s origin, so a sub-frame or a foreign document cannot post
  *    ([unwrapChannelMessage]).
@@ -107,9 +107,11 @@ class RaftDesktopWebViewPolicy(
     fun guardRuntimeScript(script: String): String = "if (${documentCondition(sameOriginAsUrl = true)}) {\n$script\n}"
 
     /**
-     * The single document-start script (Wry has one): host channel helpers and [injectedJavaScript],
-     * each behind its guard. Wry injects it into the main frame only on macOS/Linux and into every
-     * frame on Windows, hence the `window.top` check inside.
+     * The single document-start script (the engine takes one): host channel helpers and
+     * [injectedJavaScript], each behind its guard. It runs in the main frame only on macOS / Linux
+     * (WKUserScript forMainFrameOnly) and in every frame on Windows (WebView2), hence the
+     * `window.top` check inside. The engine's `window.ipc` shim is installed before it, in every
+     * frame.
      */
     fun documentStartScript(): String =
         buildString {
@@ -125,8 +127,8 @@ class RaftDesktopWebViewPolicy(
             append("var stringify = JSON.stringify;\n")
             append("var post = function(kind, value) { try { ipcPost(stringify({s: ${js(channelSecret)}, k: kind, v: String(value)})); } catch (e) {} };\n")
             // iOS hands `target=_blank` / `window.open` to the system browser (createWindowBlocked);
-            // Wry drops them, so the trusted document reports them itself. User activation only, as
-            // iOS (javaScriptCanOpenWindowsAutomatically = false).
+            // the desktop engine drops them (no window delegate), so the trusted document reports them
+            // itself. User activation only, as iOS (javaScriptCanOpenWindowsAutomatically = false).
             append(
                 """
                 var activated = function() { return !navigator.userActivation || navigator.userActivation.isActive; };
@@ -163,7 +165,7 @@ class RaftDesktopWebViewPolicy(
         }
 
     /**
-     * Decodes a raw Wry IPC message. Null unless it carries this WebView's secret (so it came from
+     * Decodes a raw engine IPC message. Null unless it carries this WebView's secret (so it came from
      * the guarded top-level script) and a known kind.
      */
     fun unwrapChannelMessage(raw: String): RaftDesktopWebViewChannelMessage? {
@@ -222,7 +224,7 @@ class RaftDesktopWebViewPolicy(
         /** Local sub-frame schemes (srcdoc/blank, blob/data media); no remote document. */
         private val LocalFrameSchemes = setOf("about", "blob", "data")
 
-        /** The `""+location.href` result Wry hands back (a JSON string literal), or null. */
+        /** A string script result as the engine hands it back (a JSON string literal), or null. */
         fun decodeEvaluatedString(result: String): String? =
             runCatching { (Json.parseToJsonElement(result) as? JsonPrimitive)?.takeIf { it.isString }?.content }.getOrNull()
 
@@ -246,56 +248,4 @@ sealed interface RaftDesktopWebViewChannelMessage {
 
     /** `target=_blank` / `window.open` from the top-level document: opens outside, as on iOS. */
     data class OpenWindow(val url: String) : RaftDesktopWebViewChannelMessage
-}
-
-/**
- * The after-the-fact top-level check that follows an [RaftDesktopWebViewNavigation.AllowUnverifiedFrame]
- * navigation. The address is read from the page (`location.href`), so a page that blocks its main
- * thread would never answer: once a declared-frame navigation happened, an address request that
- * stays unanswered for [timeoutMs] counts as untrusted (fail closed). The check stands down once
- * the trusted document answered with the page idle at least [settleMs] after the navigation.
- *
- * [markUnverified] is called on the engine's thread; everything else on the UI thread. Pure (the
- * clock is passed in), so it is unit-tested.
- */
-class RaftDesktopWebViewTopLevelCheck(
-    private val timeoutMs: Long = 500,
-    private val settleMs: Long = 1_000,
-) {
-    enum class Verdict { Trusted, Untrusted, Stale }
-
-    private val unverifiedAt = java.util.concurrent.atomic.AtomicLong(0)
-    private var outstandingSince = 0L
-    private var token = 0L
-
-    val armed: Boolean get() = unverifiedAt.get() != 0L
-
-    fun markUnverified(nowMs: Long) = unverifiedAt.set(nowMs.coerceAtLeast(1))
-
-    /** A token for a new address request, or null while one is still unanswered. */
-    fun beginRequest(nowMs: Long): Long? {
-        if (outstandingSince != 0L) return null
-        outstandingSince = nowMs.coerceAtLeast(1)
-        token += 1
-        return token
-    }
-
-    fun answer(requestToken: Long, trusted: Boolean, idle: Boolean, nowMs: Long): Verdict {
-        if (requestToken != token || outstandingSince == 0L) return Verdict.Stale
-        outstandingSince = 0L
-        if (!trusted) return Verdict.Untrusted
-        val since = unverifiedAt.get()
-        if (since != 0L && idle && nowMs - since >= settleMs) unverifiedAt.compareAndSet(since, 0L)
-        return Verdict.Trusted
-    }
-
-    /** True when a declared-frame navigation is pending and the page has not answered in time. */
-    fun timedOut(nowMs: Long): Boolean = armed && outstandingSince != 0L && nowMs - outstandingSince > timeoutMs
-
-    /** After the host took the page back: forget the pending request (its late answer is stale). */
-    fun reset() {
-        unverifiedAt.set(0L)
-        outstandingSince = 0L
-        token += 1
-    }
 }

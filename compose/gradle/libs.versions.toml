@@ -43,18 +43,21 @@ gson = "2.15.0"
 # org.json for androidApp JVM unit tests (android.jar has stubs only); the version socket.io-client brought.
 orgJson = "20090211"
 sqldelight = "2.4.1"
-# Desktop-only embedded WebView: the OS engine through Wry (macOS WKWebView, Windows WebView2,
-# Linux WebKitGTK). The last Wry release of ComposeNativeWebView (Apache-2.0); see :shared desktopMain.
-# Upstream no longer maintains it (moved to Tao): owned by Lagoon, who forks it if it needs a fix.
-# Jar SHA-256 pinned in desktopApp/build.gradle.kts (verifyPinnedDesktopJars): bump both together.
-wrywebview = "1.0.0-beta-02"
+# NucleusFramework (MIT): the desktop app's window backend, Tao (a Rust native window and event loop,
+# no AWT: the Compose UI thread is the macOS main thread). nucleus-application (nucleusApplication,
+# DecoratedWindow) + decorated-window-tao; their natives ship inside the jars. 2.5.x is the stable
+# line (never the 3.0.0-dev builds); 2.5.18 is built against CMP desktop 1.12.0 / Kotlin 2.4.10.
+# :desktopApp, and decorated-window-tao in :shared desktopMain (NativeView), never on Android / iOS.
+# Jar SHA-256s pinned in desktopApp/build.gradle.kts (verifyPinnedDesktopJars): bump both together.
+nucleus = "2.5.18"
+# ComposeNativeWebview (MIT, dev.nucleusframework:composewebview): desktop embedded web pages, the OS
+# engine (macOS WKWebView) as a Tao NativeView under the Compose surface. Desktop needs the Tao
+# backend. :shared desktopMain only. Jar SHA-256 pinned in desktopApp/build.gradle.kts.
+composeNativeWebview = "1.0.3"
 # FileKit (MIT): the system open / save panels on desktop (macOS NSOpenPanel / NSSavePanel through
 # JNA). :desktopApp only; built against Kotlin 2.4.21 / coroutines 1.11.0 like the app.
 # Jar SHA-256s pinned in desktopApp/build.gradle.kts (verifyPinnedDesktopJars): bump both together.
 filekit = "0.17.1"
-# JetBrains Runtime API (Apache-2.0): the macOS custom title bar (RaftDesktopTitleBar). :desktopApp
-# only; jar SHA-256 pinned in desktopApp/build.gradle.kts (verifyPinnedDesktopJars).
-jbrApi = "1.12.0"
 # kdroidFilter ComposeMediaPlayer (MIT): desktop video playback (RaftVideoPlayer.desktop.kt). On macOS a
 # small JNI bridge (shipped in the jar, macOS 14+) drives AVFoundation; no bundled media runtime.
 # :shared desktopMain only, never on the Android / iOS graphs. Built against Kotlin 2.4.10 / CMP 1.11.1.
@@ -141,9 +144,10 @@ sqldelight-android-driver = { group = "app.cash.sqldelight", name = "android-dri
 sqldelight-coroutines-extensions = { group = "app.cash.sqldelight", name = "coroutines-extensions-jvm", version.ref = "sqldelight" }
 sqldelight-sqlite-driver = { group = "app.cash.sqldelight", name = "sqlite-driver", version.ref = "sqldelight" }
 sqldelight-native-driver = { group = "app.cash.sqldelight", name = "native-driver", version.ref = "sqldelight" }
-wrywebview = { group = "io.github.kdroidfilter", name = "wrywebview", version.ref = "wrywebview" }
+nucleus-application = { group = "dev.nucleusframework", name = "nucleus.nucleus-application", version.ref = "nucleus" }
+nucleus-decorated-window-tao = { group = "dev.nucleusframework", name = "nucleus.decorated-window-tao", version.ref = "nucleus" }
+composewebview = { group = "dev.nucleusframework", name = "composewebview", version.ref = "composeNativeWebview" }
 filekit-dialogs = { group = "io.github.vinceglb", name = "filekit-dialogs", version.ref = "filekit" }
-jbr-api = { group = "org.jetbrains.runtime", name = "jbr-api", version.ref = "jbrApi" }
 androidsvg = { group = "com.caverock", name = "androidsvg-aar", version.ref = "androidsvg" }
 mmkv = { group = "com.tencent", name = "mmkv", version.ref = "mmkv" }
 firebase-bom = { group = "com.google.firebase", name = "firebase-bom", version.ref = "firebaseBom" }

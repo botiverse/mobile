@@ -4,6 +4,10 @@ import app.cash.sqldelight.db.SqlDriver
 import java.io.File
 import java.io.RandomAccessFile
 import java.util.Properties
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 
 // Connections are reused (RaftDesktopSqliteDriver): SQLDelight's JdbcSqliteDriver reopened the file
 // for every statement, on the UI thread for the pages' reads.
@@ -51,11 +55,15 @@ internal actual fun createDefaultPlatformFileResolver(): RaftPlatformFileResolve
 
 /**
  * Posts a host event to the shared app-scope bus on the UI thread (Android:
- * `postAndroidAppScopeEvent`). [eventDataJson] is a JSON object.
+ * `postAndroidAppScopeEvent`). [eventDataJson] is a JSON object. The UI thread is the window's
+ * (Nucleus Tao: the macOS main thread), which `Dispatchers.Main` is in the app; never the AWT
+ * event thread, which the Tao window does not use.
  */
 fun postDesktopAppScopeEvent(eventName: String, eventDataJson: String, source: String = "desktop") {
     val data = build.raft.app.parseRaftJsonObject(eventDataJson)
-    javax.swing.SwingUtilities.invokeLater {
+    desktopAppScopeEventScope.launch {
         RaftEventBuses.appScope().post(eventName = eventName, eventData = data, crossProcess = false, source = source)
     }
 }
+
+private val desktopAppScopeEventScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)

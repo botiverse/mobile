@@ -7,7 +7,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
 
-/** A saved attachment's Show in Finder / Open fallbacks, when `java.awt.Desktop` can't. */
+/** A saved attachment's Show in Finder / Open: the system's own commands (RaftDesktopExternalOpen). */
 class RaftDesktopSavedFilesTest {
     @Test
     fun revealSelectsTheFileInTheFileManager() {

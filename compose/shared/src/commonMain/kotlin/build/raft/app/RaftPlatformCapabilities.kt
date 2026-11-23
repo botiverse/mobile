@@ -87,15 +87,15 @@ internal expect fun raftPlatformSupportsInAppBrowser(): Boolean
 
 /**
  * Whether this platform can host an embedded native WebView for authenticated Raft own-web pages
- * ([SettingsWebViewSurface.WebPage]). False on Windows desktop where Wry currently renders an
- * "Open in browser" placeholder instead of an embedded WebView.
+ * ([SettingsWebViewSurface.WebPage]). False on Windows desktop, which renders an "Open in browser"
+ * placeholder instead of an embedded WebView.
  */
 internal expect fun raftPlatformSupportsEmbeddedOwnWebView(): Boolean
 
 /**
  * Whether authenticated Settings / own-web WebViews should use ephemeral/incognito storage on this
- * platform (Desktop Wry ignores `data_directory` on macOS and would otherwise persist injected
- * tokens into `~/Library/WebKit`; authenticated pages re-inject the token on every load).
+ * platform (the desktop WKWebView has no data directory of its own: a persistent store would keep
+ * injected tokens in `~/Library/WebKit`; authenticated pages re-inject the token on every load).
  */
 internal expect fun raftPlatformUsesEphemeralAuthWebView(): Boolean
 

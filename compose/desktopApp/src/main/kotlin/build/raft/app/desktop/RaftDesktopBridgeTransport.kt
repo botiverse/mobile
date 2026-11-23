@@ -1,9 +1,9 @@
 package build.raft.app.desktop
 
+import build.raft.app.RaftDesktopExternalOpen
 import build.raft.app.cmp.host.HostBridgeTransport
 import build.raft.app.parseRaftJsonObjectOrNull
 import build.raft.app.toRaftJsonString
-import java.awt.Desktop
 import java.awt.Toolkit
 import java.awt.datatransfer.StringSelection
 import java.net.URI
@@ -28,6 +28,8 @@ class RaftDesktopBridgeTransport(
         val params = parseRaftJsonObjectOrNull(paramsJson) ?: JsonObject(emptyMap())
         when (method) {
             "toast" -> RaftDesktopToasts.show(params.string("content"))
+            // The system clipboard through AWT, as Compose's own text copy / paste in the Nucleus
+            // Tao window on macOS (Nucleus keeps Compose's AWT clipboard there).
             "copyToPasteboard" ->
                 runCatching {
                     Toolkit.getDefaultToolkit().systemClipboard.setContents(StringSelection(params.string("content")), null)
@@ -70,8 +72,7 @@ class RaftDesktopBridgeTransport(
             log("openUrl refused scheme=${uri.scheme}")
             return
         }
-        runCatching { Desktop.getDesktop().browse(uri) }
-            .onFailure { log("openUrl failed: ${it::class.simpleName}") }
+        if (!RaftDesktopExternalOpen.browse(uri)) log("openUrl failed")
     }
 
     companion object {

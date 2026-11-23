@@ -3,7 +3,6 @@ package build.raft.app.desktop
 import build.raft.app.data.RaftAppLoginBridge
 import build.raft.app.data.RaftDesktopPaths
 import build.raft.app.data.RaftDesktopPrivateFiles
-import java.awt.Desktop
 import java.io.File
 import java.io.IOException
 import java.io.InputStream
@@ -20,9 +19,10 @@ import kotlin.system.exitProcess
  * Browser sign-in callbacks (`raft://login/callback?...`).
  *
  * - macOS: the packaged app declares the `raft` URL scheme (Info.plist, see build.gradle.kts);
- *   macOS delivers the URL to the running app's open-URI handler. The Electron "Raft Desktop" app
- *   registers `raft` too and macOS gives a scheme to only one app: with both installed, sign-in
- *   may land in Raft Desktop.
+ *   macOS delivers the URL to the running app as an open-URLs event, which the Nucleus Tao window
+ *   hands to [acceptDeepLink] (Main.kt, `onDeepLink`). The Electron "Raft Desktop" app registers
+ *   `raft` too and macOS gives a scheme to only one app: with both installed, sign-in may land in
+ *   Raft Desktop.
  * - Elsewhere (and development runs) a URL handler starts the app again with the URL as an
  *   argument: a second instance forwards its `raft://login/callback` arguments to the running one over a
  *   loopback socket and exits, so the waiting sign-in completes. The running instance writes its
@@ -39,7 +39,12 @@ object RaftDesktopLoginCallbacks {
 
     private val instanceFile: File get() = File(RaftDesktopPaths.dataDir, "instance")
 
-    /** Call first in main: may forward [args] to a running instance and exit this process. */
+    /**
+     * Call first in main: may forward [args] to a running instance and exit this process. Nothing
+     * here may start AWT (no `java.awt.Desktop` open-URI handler): the app's window is Nucleus Tao,
+     * which owns the macOS application object; a URL opened while the app runs comes through
+     * [acceptDeepLink] instead.
+     */
     fun install(args: Array<String>) {
         val callbacks = callbackArguments(args.asList())
         if (forwardToRunningInstance(callbacks)) {
@@ -47,12 +52,12 @@ object RaftDesktopLoginCallbacks {
             exitProcess(0)
         }
         listenForForwardedCallbacks()
-        runCatching {
-            if (Desktop.isDesktopSupported() && Desktop.getDesktop().isSupported(Desktop.Action.APP_OPEN_URI)) {
-                Desktop.getDesktop().setOpenURIHandler { event -> accept(event.uri.toString()) }
-            }
-        }.onFailure { log("login callbacks: no open-URI handler (${it::class.simpleName})") }
         callbacks.forEach(::accept)
+    }
+
+    /** A URL macOS opened in the app (its `raft` scheme): taken when it is a sign-in callback. */
+    fun acceptDeepLink(uri: String) {
+        callbackArguments(listOf(uri)).forEach(::accept)
     }
 
     /** The arguments / forwarded lines that are this app's callbacks (`raft://login/callback`, not other `raft://` links). */

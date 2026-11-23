@@ -3,7 +3,6 @@ package build.raft.app.desktop
 import build.raft.app.RaftDesktopWebViewChannelMessage
 import build.raft.app.RaftDesktopWebViewNavigation
 import build.raft.app.RaftDesktopWebViewPolicy
-import build.raft.app.RaftDesktopWebViewTopLevelCheck
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -41,15 +40,14 @@ class RaftDesktopWebViewPolicyTest {
     @Test fun `origin lock keeps top-level documents on the web origin and loads only declared frames`() {
         val policy = artifactViewer()
         assertEquals(RaftDesktopWebViewNavigation.Allow, policy.navigation("$web/s/srv/artifacts/a2?shown=2"))
-        // The declared content frame: Wry cannot tell it from a top-level navigation, so it loads and
-        // the committed top-level address is checked afterwards.
+        // The declared content frame: the engine cannot tell it from a top-level navigation, so it
+        // loads and the engine's top-level address is checked afterwards.
         assertEquals(RaftDesktopWebViewNavigation.AllowUnverifiedFrame, policy.navigation("https://w1.raftusercontent.com/f?ticket=x"))
         assertEquals(RaftDesktopWebViewNavigation.AllowUnverifiedFrame, policy.navigation("https://raftusercontent.com/f"))
         assertFalse(policy.isTrustedTopLevel("https://w1.raftusercontent.com/f?ticket=x"))
         assertEquals(RaftDesktopWebViewNavigation.AllowUnverifiedFrame, policy.navigation("about:srcdoc"))
         assertEquals(RaftDesktopWebViewNavigation.AllowUnverifiedFrame, policy.navigation("blob:$web/1"))
-        // Anything else off the fence is refused before it loads (a page that never answers the
-        // after-the-fact check can't stay).
+        // Anything else off the fence is refused before it loads.
         listOf(
             "https://content.example/f",
             "https://raftusercontent.com.attacker.example/f",
@@ -104,26 +102,9 @@ class RaftDesktopWebViewPolicyTest {
         assertTrue("raftHostPort" in policy.documentStartScript())
     }
 
-    @Test fun `an unanswered check after a declared-frame navigation fails closed`() {
-        val check = RaftDesktopWebViewTopLevelCheck(timeoutMs = 500, settleMs = 1_000)
-        // Nothing pending: a slow page is just slow.
-        val first = assertNotNull(check.beginRequest(nowMs = 1_000))
-        assertFalse(check.timedOut(nowMs = 5_000))
-        assertEquals(RaftDesktopWebViewTopLevelCheck.Verdict.Trusted, check.answer(first, trusted = true, idle = true, nowMs = 5_000))
-
-        check.markUnverified(nowMs = 6_000)
-        val pending = assertNotNull(check.beginRequest(nowMs = 6_050))
-        assertNull(check.beginRequest(nowMs = 6_100))
-        assertFalse(check.timedOut(nowMs = 6_500))
-        assertTrue(check.timedOut(nowMs = 6_600))
-        check.reset()
-        assertFalse(check.armed)
-        // The hung page's late answer is ignored.
-        assertEquals(RaftDesktopWebViewTopLevelCheck.Verdict.Stale, check.answer(pending, trusted = true, idle = true, nowMs = 9_000))
-    }
-
-    @Test fun `the macOS arm64 engine bridge ships on the app classpath`() {
-        // JNA loads it from here; the packaged app's jar is the same artifact.
-        assertNotNull(javaClass.classLoader.getResource("darwin-aarch64/libcomposewebview_wry.dylib"))
+    @Test fun `the macOS arm64 window and web view natives ship on the app classpath`() {
+        // Nucleus's loader extracts them from here; the packaged app's jars are the same artifacts.
+        assertNotNull(javaClass.classLoader.getResource("nucleus/native/darwin-aarch64/libnucleus_tao.dylib"))
+        assertNotNull(javaClass.classLoader.getResource("nucleus/native/darwin-aarch64/libcompose_webview_macos.dylib"))
     }
 }

@@ -19,7 +19,6 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import build.raft.app.data.RaftDesktopPaths
 import build.raft.app.data.SharedAuthDataSource
-import java.awt.Desktop
 import java.io.File
 import java.net.URI
 import build.raft.app.components.RaftSlotIcon
@@ -96,11 +95,7 @@ internal fun RaftDesktopOpenInBrowser(target: String?, kind: String, modifier: M
             RaftButton(
                 text = stringResource(Res.string.file_preview_action_open_in_browser),
                 onClick = {
-                    val opened =
-                        runCatching {
-                            val desktop = Desktop.getDesktop().takeIf { Desktop.isDesktopSupported() && it.isSupported(Desktop.Action.BROWSE) }
-                            desktop?.browse(uri) != null
-                        }.getOrDefault(false)
+                    val opened = RaftDesktopExternalOpen.browse(uri)
                     raftLogInfo(RAFT_DESKTOP_OPEN_IN_BROWSER_TAG, "desktop_open_in_browser kind=$kind opened=$opened")
                 },
                 trailingIcon = { RaftSlotIcon(RaftLucideIconName.ExternalLink) },
@@ -113,7 +108,7 @@ private const val RAFT_DESKTOP_OPEN_IN_BROWSER_TAG = "RaftDesktop"
 
 /**
  * What "Open in browser" opens for [target]: only an http(s) URL, the desktop openUrl policy's web
- * links. A file, a plain path or any other scheme gets no button (null), never Desktop.browse.
+ * links. A file, a plain path or any other scheme gets no button (null), so it is never opened.
  */
 fun raftDesktopBrowseUri(target: String?): URI? =
     runCatching {

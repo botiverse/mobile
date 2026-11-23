@@ -4,10 +4,16 @@ import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.window.WindowExceptionHandler
 import build.raft.app.RaftDesktopFileLog
 import build.raft.app.raftDesktopThrowableLines
-import java.awt.GraphicsEnvironment
+import dev.nucleusframework.window.tao.DefaultWindowExceptionHandlerFactory
+import dev.nucleusframework.window.tao.WindowExceptionHandlerFactory
 import java.io.File
 import java.lang.management.ManagementFactory
 import java.lang.management.MemoryUsage
+import java.util.logging.Handler
+import java.util.logging.Level
+import java.util.logging.LogRecord
+import java.util.logging.Logger
+import java.util.logging.SimpleFormatter
 import javax.management.NotificationEmitter
 import javax.management.openmbean.CompositeData
 
@@ -17,9 +23,11 @@ import javax.management.openmbean.CompositeData
  * nowhere, so without this a crash left no trace (artin 11-03: froze on opening a reply, then quit).
  *
  * - Startup facts: version, OS, JVM, heap limit.
- * - An uncaught throwable on any thread (the UI thread included: Compose rethrows a composition
- *   failure there after showing its error dialog) is logged with its stack trace before the
- *   previous handler runs; an OutOfMemoryError also logs the heap.
+ * - An uncaught throwable on any thread is logged with its stack trace before the previous handler
+ *   runs; an OutOfMemoryError also logs the heap.
+ * - A failure in the window (frame, input, IME, composition) reaches the window's exception handler
+ *   ([windowExceptionHandlerFactory]): logged, then Nucleus's fatal path (its error dialog, then the
+ *   app exits). What Nucleus reports itself (java.util.logging, warnings and up) is logged too.
  * - A session that ended without the JVM shutting down (killed, a native crash, the OS) is
  *   reported at the next start ([UNCLEAN_EXIT_MARKER]).
  * - Garbage collections that pause long or run a full collection, and a heap still over 85 % after
@@ -40,9 +48,20 @@ object RaftDesktopCrashReporting {
         logStartup()
         if (dir != null) checkPreviousSession(dir)
         installUncaughtHandler()
+        installNucleusLogBridge()
         installGcMonitor()
-        warmUpAwtFonts()
     }
+
+    /**
+     * The Nucleus Tao window's exception handlers (provided around the window in Main.kt): each logs
+     * through [wrapWindowExceptionHandler], then hands the failure to Nucleus's default, which
+     * rethrows into its fatal path (log, native error dialog, exit).
+     */
+    @OptIn(ExperimentalComposeUiApi::class)
+    val windowExceptionHandlerFactory: WindowExceptionHandlerFactory =
+        WindowExceptionHandlerFactory { window ->
+            wrapWindowExceptionHandler(DefaultWindowExceptionHandlerFactory.exceptionHandler(window))
+        }
 
     /** Logs [throwable] as fatal for [source], once per throwable, and flushes the file. */
     fun logFatal(source: String, thread: Thread, throwable: Throwable) {
@@ -57,8 +76,8 @@ object RaftDesktopCrashReporting {
     }
 
     /**
-     * Wraps a Compose window's exception handler (the default shows an error dialog, then closes
-     * the window, which quits the app): log first, then the same behaviour.
+     * Wraps a window's exception handler (Nucleus's default rethrows into its fatal path: error
+     * dialog, then the app exits): log first, then the same behaviour.
      */
     @OptIn(ExperimentalComposeUiApi::class)
     fun wrapWindowExceptionHandler(previous: WindowExceptionHandler?): WindowExceptionHandler =
@@ -67,7 +86,7 @@ object RaftDesktopCrashReporting {
                 // An event or frame reached a popup / hover card / layer whose Compose scene was
                 // already torn down (CMP desktop, "RootNodeOwner is already disposed"). The owner
                 // is gone, so there is nothing left to update: log it and keep the window open
-                // instead of the default error dialog that quits the app (artin 11-03).
+                // instead of the fatal error dialog that quits the app (artin 11-03).
                 logRecovered("compose_window", Thread.currentThread(), throwable)
                 return@WindowExceptionHandler
             }
@@ -182,28 +201,31 @@ object RaftDesktopCrashReporting {
         }
     }
 
-    /**
-     * AWT's font list (CoreText registration on macOS) loads the first time any Swing text is
-     * shown, e.g. Compose's error dialog, a file panel, a tooltip window. That took a noticeable part
-     * of the UI thread in the freeze's sample; load it once at startup on a background thread.
-     */
-    private fun warmUpAwtFonts() {
-        if (GraphicsEnvironment.isHeadless()) return
-        Thread(
-            {
-                val started = System.nanoTime()
-                runCatching { GraphicsEnvironment.getLocalGraphicsEnvironment().availableFontFamilyNames.size }
-                    .onSuccess { count ->
-                        RaftDesktopLog.i(TAG, "awt_fonts_warm families=$count ms=${(System.nanoTime() - started) / 1_000_000}")
+    /** Nucleus's own reports (java.util.logging), warnings and up, into the log file. */
+    private fun installNucleusLogBridge() {
+        runCatching {
+            val formatter = SimpleFormatter()
+            nucleusLogger.addHandler(
+                object : Handler() {
+                    override fun publish(record: LogRecord) {
+                        if (record.level.intValue() < Level.WARNING.intValue()) return
+                        val message = runCatching { formatter.formatMessage(record) }.getOrDefault(record.message.orEmpty())
+                        val lines = listOf("${record.loggerName}: $message") + (record.thrown?.let { raftDesktopThrowableLines(it) } ?: emptyList())
+                        RaftDesktopFileLog.writeNow(if (record.level == Level.SEVERE) "E" else "W", NUCLEUS_TAG, lines)
                     }
-            },
-            "RaftDesktopFontWarmUp",
-        ).apply {
-            isDaemon = true
-            priority = Thread.MIN_PRIORITY
-            start()
-        }
+
+                    override fun flush() = Unit
+
+                    override fun close() = Unit
+                }
+            )
+        }.onFailure { RaftDesktopLog.w(TAG, "nucleus_log_bridge unavailable ${it.javaClass.simpleName}") }
     }
+
+    /** Held: java.util.logging keeps loggers weakly, and a collected one would drop the handler. */
+    private val nucleusLogger: Logger = Logger.getLogger("dev.nucleusframework")
+
+    private const val NUCLEUS_TAG = "Nucleus"
 
     private const val MB = 1024L * 1024L
 }

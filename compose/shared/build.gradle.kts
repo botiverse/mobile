@@ -294,9 +294,12 @@ kotlin {
             dependencies {
                 implementation(libs.sqldelight.sqlite.driver)
                 implementation(libs.kotlinx.coroutines.swing)
-                // Embedded web content (RaftSandboxWebView.desktop.kt): desktop only, never on the
-                // Android / iOS graphs. Its JNA-loaded natives ship inside the jar.
-                implementation(libs.wrywebview)
+                // Embedded web content (RaftSandboxWebView.desktop.kt): ComposeNativeWebview's native
+                // web view (macOS WKWebView) in a Nucleus Tao NativeView. Desktop only, never on the
+                // Android / iOS graphs; its JNI natives ship inside the jars. decorated-window-tao is
+                // named for NativeView at the app's Nucleus version (composewebview asks for 2.5.5).
+                implementation(libs.composewebview)
+                implementation(libs.nucleus.decorated.window.tao)
                 // Video / audio attachment playback (RaftVideoPlayer.desktop.kt): AVFoundation on macOS
                 // through the JNI bridge inside the jar. Its kotlinx-datetime 0.8 (only for its disabled
                 // debug log) would bump the app's 0.7.1, and coroutines-test is a mis-scoped runtime dep.

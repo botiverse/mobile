@@ -8,8 +8,8 @@ import kotlin.test.assertNull
 
 /**
  * What desktop's "Open in browser" opens in place of a video or web view it can't show inline:
- * only web links (http / https), as the desktop openUrl policy allows; nothing else reaches
- * Desktop.browse.
+ * only web links (http / https), as the desktop openUrl policy allows; nothing else is handed to the
+ * system to open.
  */
 class RaftDesktopOpenInBrowserTest {
     @Test

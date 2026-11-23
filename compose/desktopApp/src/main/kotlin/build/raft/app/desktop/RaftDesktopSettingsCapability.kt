@@ -1,10 +1,10 @@
 package build.raft.app.desktop
 
+import build.raft.app.RaftDesktopExternalOpen
 import build.raft.app.RaftDesktopFileLog
 import build.raft.app.data.RaftDesktopPaths
 import build.raft.app.data.isAllowedAppLoginUrl
 import build.raft.app.toRaftJsonString
-import java.awt.Desktop
 import java.io.File
 import java.net.URI
 import java.security.MessageDigest
@@ -121,19 +121,11 @@ object RaftDesktopSettingsCapability {
         val dir = RaftDesktopFileLog.directory ?: RaftDesktopPaths.logDir
         RaftDesktopFileLog.flush()
         val current = File(dir, "raft.log")
-        val shown =
-            runCatching {
-                val desktop = Desktop.getDesktop()
-                if (current.isFile && desktop.isSupported(Desktop.Action.BROWSE_FILE_DIR)) {
-                    desktop.browseFileDirectory(current)
-                } else {
-                    desktop.open(dir)
-                }
-            }
-        log("diagnostics: reveal log folder result=${if (shown.isSuccess) "ok" else shown.exceptionOrNull()?.javaClass?.simpleName}")
+        val shown = if (current.isFile) RaftDesktopExternalOpen.reveal(current) else RaftDesktopExternalOpen.open(dir)
+        log("diagnostics: reveal log folder result=${if (shown) "ok" else "failed"}")
         return JsonObject(
             mapOf(
-                "status" to JsonPrimitive(if (shown.isSuccess) "ok" else "error"),
+                "status" to JsonPrimitive(if (shown) "ok" else "error"),
                 "path" to JsonPrimitive(dir.absolutePath),
             ),
         )
@@ -162,13 +154,9 @@ object RaftDesktopSettingsCapability {
             return mapOf("status" to "error", "code" to "settings_mobile_oauth_url_invalid")
         }
         log("app login: opening the browser")
-        return runCatching { Desktop.getDesktop().browse(URI(authorizationUrl)) }
-            .fold(
-                onSuccess = { mapOf("status" to "started") },
-                onFailure = {
-                    log("app login: no browser available (${it::class.simpleName})")
-                    mapOf("status" to "error", "code" to "settings_mobile_oauth_browser_unavailable")
-                },
-            )
+        val opened = runCatching { RaftDesktopExternalOpen.browse(URI(authorizationUrl)) }.getOrDefault(false)
+        if (opened) return mapOf("status" to "started")
+        log("app login: no browser available")
+        return mapOf("status" to "error", "code" to "settings_mobile_oauth_browser_unavailable")
     }
 }

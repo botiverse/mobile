@@ -145,7 +145,7 @@ internal actual fun RaftVideoPlayer(
             VideoPlayerSurface(
                 playerState = playerState,
                 modifier = modifier.background(RaftUiPalette.black), // raft-color: video surface is black in both modes
-                overlay = { RaftDesktopVideoControls(controller, playerState) },
+                overlay = { RaftDesktopVideoControls(controller) },
             )
         }
     }
@@ -214,7 +214,7 @@ private fun raftComposeMediaPlayerNoVideoTrack(error: VideoPlayerError?): Boolea
 
 @OptIn(ExperimentalComposeUiApi::class)
 @Composable
-private fun RaftDesktopVideoControls(controller: RaftDesktopVideoController, playerState: VideoPlayerState) {
+private fun RaftDesktopVideoControls(controller: RaftDesktopVideoController) {
     val focusRequester = remember { FocusRequester() }
     var hovering by remember { mutableStateOf(false) }
     var pointerMoves by remember { mutableIntStateOf(0) }
@@ -223,10 +223,6 @@ private fun RaftDesktopVideoControls(controller: RaftDesktopVideoController, pla
         idle = false
         delay(RAFT_DESKTOP_VIDEO_CONTROLS_IDLE_MS)
         idle = true
-    }
-    // Full screen opens its own window with this overlay in it: take the keys there.
-    LaunchedEffect(playerState.isFullscreen) {
-        if (playerState.isFullscreen) runCatching { focusRequester.requestFocus() }
     }
     val showControls = !controller.isPlaying || controller.failed || (hovering && !idle)
     RaftDesignSystemTheme(forceDark = true) {
@@ -260,8 +256,11 @@ private fun RaftDesktopVideoControls(controller: RaftDesktopVideoController, pla
             if (showControls) {
                 RaftDesktopVideoControlBar(
                     controller = controller,
-                    fullscreen = playerState.isFullscreen,
-                    onToggleFullscreen = { playerState.toggleFullscreen() },
+                    fullscreen = false,
+                    // TODO(desktop, Tao): no full screen for now. ComposeMediaPlayer 0.11.4 shows it
+                    // in a Compose Desktop AWT Window (common/FullscreenVideoPlayerWindow.kt), which
+                    // the Nucleus Tao window cannot host; it needs an in-window full-screen layer.
+                    onToggleFullscreen = null,
                     modifier = Modifier.align(Alignment.BottomCenter)
                 )
             }
@@ -273,7 +272,8 @@ private fun RaftDesktopVideoControls(controller: RaftDesktopVideoController, pla
 private fun RaftDesktopVideoControlBar(
     controller: RaftDesktopVideoController,
     fullscreen: Boolean,
-    onToggleFullscreen: () -> Unit,
+    /** Null: no full-screen button. */
+    onToggleFullscreen: (() -> Unit)?,
     modifier: Modifier = Modifier,
 ) {
     val playing = controller.isPlaying
@@ -336,14 +336,16 @@ private fun RaftDesktopVideoControlBar(
                 onChange = controller::changeVolume,
                 modifier = Modifier.width(72.dp)
             )
-            RaftIconButton(
-                onClick = onToggleFullscreen,
-                tooltip =
-                    stringResource(
-                        if (fullscreen) Res.string.video_player_exit_fullscreen else Res.string.video_player_fullscreen
-                    ),
-                variant = RaftButtonVariant.Ghost
-            ) { RaftSlotIcon(if (fullscreen) RaftLucideIconName.Minimize2 else RaftLucideIconName.Maximize2) }
+            if (onToggleFullscreen != null) {
+                RaftIconButton(
+                    onClick = onToggleFullscreen,
+                    tooltip =
+                        stringResource(
+                            if (fullscreen) Res.string.video_player_exit_fullscreen else Res.string.video_player_fullscreen
+                        ),
+                    variant = RaftButtonVariant.Ghost
+                ) { RaftSlotIcon(if (fullscreen) RaftLucideIconName.Minimize2 else RaftLucideIconName.Maximize2) }
+            }
         }
     }
 }

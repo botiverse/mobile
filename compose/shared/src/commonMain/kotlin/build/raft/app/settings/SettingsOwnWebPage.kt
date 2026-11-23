@@ -500,7 +500,7 @@ internal fun SettingsOwnWebViewPage(pager: Pager) {
                         emptySet()
                     },
                 hostEventsEnabled = false,
-                // Desktop uses incognito storage (so macOS Wry never persists tokens into
+                // Desktop uses incognito storage (so the macOS WKWebView never persists tokens into
                 // ~/Library/WebKit); iOS uses non-persistent storage so the Artifact fallback page
                 // never leaks slock_access_token into WKWebsiteDataStore.defaultDataStore().
                 ephemeral = appStoreBillingRules || raftPlatformUsesEphemeralAuthWebView(),

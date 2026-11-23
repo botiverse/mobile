@@ -1,26 +1,49 @@
 package build.raft.app
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.awt.SwingPanel
+import androidx.compose.ui.graphics.Color
 import build.raft.app.data.RaftDesktopPaths
-import io.github.kdroidfilter.webview.wry.Rgba
-import io.github.kdroidfilter.webview.wry.WryWebViewPanel
+import build.raft.designsystem.components.RaftSpinner
+import build.raft.designsystem.components.RaftSpinnerSize
+import dev.nucleusframework.webview.web.NativeWebView
+import dev.nucleusframework.webview.web.linux.LinuxWebKitNativeWebView
+import dev.nucleusframework.webview.web.macos.MacOsWebKitNativeWebView
+import dev.nucleusframework.window.tao.NativeView
+import dev.nucleusframework.window.tao.NucleusPlatformView
 import java.io.File
-import javax.swing.SwingUtilities
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 /**
- * Desktop sandbox WebView: the OS engine (macOS WKWebView, Windows WebView2, Linux WebKitGTK)
- * through Wry ([WryWebViewPanel], io.github.kdroidfilter:wrywebview), embedded in the Compose window
- * as a native child view. Security rules: [RaftDesktopWebViewPolicy].
+ * Desktop sandbox WebView: the OS engine (macOS WKWebView, Linux WebKitGTK) through
+ * ComposeNativeWebview (dev.nucleusframework:composewebview), embedded as a Nucleus Tao
+ * [NativeView]. The native view sits under the Compose surface, which leaves a hole where this
+ * composable draws: Compose drawn after it (a page's splash, popups, menus) and the loading cover
+ * below draw over the page, and a page that is not drawn (under another page of the stack) is
+ * hidden by the opaque Compose content over it. Security rules: [RaftDesktopWebViewPolicy].
  *
- * Wry's engine has no switch to turn JavaScript off, so a surface that asks for no scripts keeps
- * "Open in browser" (fail closed). Any change to the policy inputs or the data store rebuilds the WebView.
+ * Every native call runs on the Tao main thread (the macOS main thread), which is the Compose UI
+ * thread: no hop between the UI thread and AppKit, so no wait cycle between them either.
+ *
+ * The engine has no switch to turn JavaScript off here, so a surface that asks for no scripts keeps
+ * "Open in browser" (fail closed). Any change to the policy inputs or the data store rebuilds the
+ * WebView.
  *
  * Windows offers "Open in browser" too for now: WebView2 injects the document-start script into every
  * frame, a path not yet verified on a Windows machine (Tenny, #3968); it ships separately.
@@ -33,21 +56,7 @@ internal actual fun RaftSandboxWebViewHost(
     modifier: Modifier,
 ) {
     if (!config.allowScripts || RaftDesktopWebViewOnWindows) {
-        // The Artifact viewer loads an embed URL and has its own Open in browser in its top bar,
-        // so it gets no second button here.
-        RaftDesktopOpenInBrowser(
-            config.url
-                .takeIf { config.diagnosticsSurface != RAFT_ARTIFACT_VIEWER_WEBVIEW_SURFACE }
-                ?.let { raw ->
-                    if (config.diagnosticsSurface == SETTINGS_WEB_PAGE_DIAGNOSTICS_NAME) {
-                        stripRaftOwnWebPageEmbedParams(raw)
-                    } else {
-                        raw
-                    }
-                },
-            kind = "web_content",
-            modifier = modifier,
-        )
+        RaftDesktopWebViewOpenInBrowser(config, modifier)
         return
     }
     val policy =
@@ -71,14 +80,20 @@ internal actual fun RaftSandboxWebViewHost(
             )
         }
     key(policy, config.ephemeral) {
-        val host = remember { RaftDesktopWryWebView(policy, config.ephemeral, events) }
+        val host = remember { RaftDesktopNativeWebView.createOrNull(policy, config.ephemeral, events) }
+        if (host == null) {
+            // No engine here (its native library did not load): the page opens in the browser.
+            RaftDesktopWebViewOpenInBrowser(config, modifier)
+            return@key
+        }
         host.events = events
-        SwingPanel(factory = { host.view }, modifier = modifier)
+        // Registered before NativeView on purpose: Compose forgets in reverse order, so NativeView
+        // first takes the native view out of the window and only then is it released here.
+        DisposableEffect(Unit) { onDispose { host.dispose() } }
         DisposableEffect(controller) {
             host.bind(controller)
             onDispose { host.unbind(controller) }
         }
-        DisposableEffect(Unit) { onDispose { host.dispose() } }
         LaunchedEffect(Unit) {
             host.start()
             while (true) {
@@ -86,6 +101,40 @@ internal actual fun RaftSandboxWebViewHost(
                 delay(host.nextPollDelayMs())
             }
         }
+        NativeView(factory = { host.platformView }, modifier = modifier) {
+            // Until the page is past its loading frame (or the reveal deadline), the App's own
+            // loading state covers it, in the canvas colour: never the engine's white or a web
+            // skeleton inside a Settings section (#242).
+            if (!host.revealed) RaftDesktopWebViewLoadingCover(config.backgroundArgb)
+        }
+    }
+}
+
+@Composable
+private fun RaftDesktopWebViewOpenInBrowser(config: RaftWebViewConfig, modifier: Modifier) {
+    // The Artifact viewer loads an embed URL and has its own Open in browser in its top bar,
+    // so it gets no second button here.
+    RaftDesktopOpenInBrowser(
+        config.url
+            .takeIf { config.diagnosticsSurface != RAFT_ARTIFACT_VIEWER_WEBVIEW_SURFACE }
+            ?.let { raw ->
+                if (config.diagnosticsSurface == SETTINGS_WEB_PAGE_DIAGNOSTICS_NAME) {
+                    stripRaftOwnWebPageEmbedParams(raw)
+                } else {
+                    raw
+                }
+            },
+        kind = "web_content",
+        modifier = modifier,
+    )
+}
+
+/** The loading state over a page not yet shown: the canvas colour (white when none) and a spinner. */
+@Composable
+private fun RaftDesktopWebViewLoadingCover(backgroundArgb: Int) {
+    val background = if (backgroundArgb == 0) Color.White else Color(backgroundArgb)
+    Box(Modifier.fillMaxSize().background(background), contentAlignment = Alignment.Center) {
+        RaftSpinner(size = RaftSpinnerSize.Md)
     }
 }
 
@@ -95,11 +144,14 @@ private val RaftDesktopWebViewOnWindows: Boolean =
 /** Poll interval for address / loading / title / host messages (iOS polls at the same rate). */
 private const val RaftDesktopWebViewPollMs = 250L
 
-/** Poll interval while a declared-frame navigation ([RaftDesktopWebViewNavigation.AllowUnverifiedFrame]) is unverified. */
-private const val RaftDesktopWebViewVerifyMs = 50L
+/** Poll interval while a declared-frame navigation was just allowed or the page is about to show. */
+private const val RaftDesktopWebViewFastPollMs = 50L
+
+/** How long after a declared-frame navigation the top-level address is read at the fast interval. */
+private const val RaftDesktopWebViewFrameWatchMs = 1_000L
 
 /**
- * Longest the WebView stays hidden after its first load finished while the page still looks busy
+ * Longest the WebView stays covered after its first load finished while the page still looks busy
  * ([RaftDesktopWebViewReadyScript]); then it shows anyway.
  */
 private const val RaftDesktopWebViewRevealDeadlineMs = 2_500L
@@ -107,8 +159,8 @@ private const val RaftDesktopWebViewRevealDeadlineMs = 2_500L
 /**
  * Whether the page is past its loading frame: loaded, and no `aria-busy` region left (the web's
  * boot shell and its pending server frame are `aria-busy`; ShellFrame `pending`). Until then the
- * native view stays off screen and the host's own loading state shows, so the web's full-app
- * skeleton never appears inside a Settings section.
+ * loading cover stays over the page, so the web's full-app skeleton never appears inside a
+ * Settings section.
  */
 private const val RaftDesktopWebViewReadyScript =
     "(function(){try{return document.readyState==='complete'&&!!document.body&&" +
@@ -118,38 +170,35 @@ private const val RaftDesktopWebViewReadyScript =
 private const val RaftDesktopWebViewMaxRestores = 2
 
 /**
- * One native WebView. Everything except [onNavigation] (Wry calls it on the engine's thread) runs
- * on the AWT event thread, which is Compose desktop's main thread.
+ * One native WebView ([NativeWebView], ComposeNativeWebview's macOS / Linux engine). Everything runs
+ * on the Tao main thread: the poll, the commands, and the engine's callbacks (navigation decisions,
+ * script results), which WebKit delivers on the main thread.
+ *
+ * The engine reports state only when asked (no callback for the address, loading or title), so
+ * [poll] reads it every [RaftDesktopWebViewPollMs] (the library's own WebView composable polls the
+ * same way) and drains the page's messages. The top-level address is the engine's own
+ * (`WKWebView.URL`, History API changes included), read without asking the page, so a page that
+ * blocks its main thread cannot keep it from being checked.
  */
-internal class RaftDesktopWryWebView(
+internal class RaftDesktopNativeWebView private constructor(
     private val policy: RaftDesktopWebViewPolicy,
-    ephemeral: Boolean,
+    private val webView: NativeWebView,
+    val platformView: NucleusPlatformView,
     var events: RaftWebViewEvents,
 ) {
     private val initialUrl = policy.initialUrl()
 
-    val panel =
-        WryWebViewPanel(
-            initialUrl = initialUrl ?: "about:blank",
-            dataDirectory = if (ephemeral) null else File(RaftDesktopPaths.dataDir, "webview").apply { mkdirs() }.path,
-            initScript = policy.documentStartScript(),
-            supportZoom = false,
-            backgroundColor = Rgba(255u, 255u, 255u, 255u),
-            transparent = false,
-            enableNavigationGestures = false,
-            incognito = ephemeral,
-            autoplayWithoutUserInteraction = false,
-        )
+    /** Callbacks the engine makes from inside its own handlers run one step later, on the main thread. */
+    private val mainScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
 
-    /** What Compose hosts: keeps the native view off screen until [revealWhenReady] and when the page leaves. */
-    val view = RaftDesktopWryNativeView(panel)
-    private var revealed = false
+    /** Whether the page is shown (the loading cover is gone): Compose state, read by the host. */
+    var revealed by mutableStateOf(false)
+        private set
     private var loadFinishedAt = 0L
     private var readyCheckPending = false
+    private var fastPollUntil = 0L
 
-    @Volatile private var disposed = false
-    @Volatile private var verifySoon = false
-    private val topLevelCheck = RaftDesktopWebViewTopLevelCheck()
+    private var disposed = false
     private var boundController: RaftWebViewController? = null
     private var currentUrl = initialUrl ?: ""
     private var lastTrustedUrl: String? = initialUrl
@@ -164,21 +213,28 @@ internal class RaftDesktopWryWebView(
     private var commitSent = false
     private var lastStateKey = ""
 
+    private val navigationListener: (String) -> Boolean = ::onNavigation
+
     init {
-        // Wry asks for every navigation, main frame and sub-frames alike (URL only).
-        panel.addNavigateListener(::onNavigation)
+        // The engine asks for every navigation, main frame and sub-frames alike (URL only); it
+        // loads about:, data: and blob: addresses without asking.
+        webView.addNavigateListener(navigationListener)
     }
 
     fun start() {
-        if (initialUrl == null) events.onNavigationBlocked(policy.url.trim())
+        if (initialUrl == null) {
+            events.onNavigationBlocked(policy.url.trim())
+            webView.loadUrl("about:blank")
+        } else {
+            webView.loadUrl(initialUrl)
+        }
         notifyState(force = true)
     }
 
-    /** Quick polls while a declared-frame navigation is unverified (its timeout) or the page is about to show. */
+    /** Quick polls while a declared-frame navigation is fresh or the page is about to show. */
     fun nextPollDelayMs(): Long =
-        if (verifySoon || topLevelCheck.armed || (!revealed && loadFinishedAt != 0L)) {
-            verifySoon = false
-            RaftDesktopWebViewVerifyMs
+        if (System.currentTimeMillis() < fastPollUntil || (!revealed && loadFinishedAt != 0L)) {
+            RaftDesktopWebViewFastPollMs
         } else {
             RaftDesktopWebViewPollMs
         }
@@ -193,15 +249,15 @@ internal class RaftDesktopWryWebView(
         if (boundController === controller) boundController = null
     }
 
-    /**
-     * The native view goes with the panel ([WryWebViewPanel.removeNotify]); this stops callbacks.
-     * The navigation listener stays registered (Wry reads the list on its own thread); it only
-     * reads the immutable policy.
-     */
+    /** Stops callbacks and releases the engine's view (NativeView took it out of the window first). */
     fun dispose() {
+        if (disposed) return
         disposed = true
         boundController?.unbindCommandDispatcher(this)
         boundController = null
+        mainScope.cancel()
+        webView.removeNavigateListener(navigationListener)
+        webView.destroy()
     }
 
     private fun onNavigation(url: String): Boolean {
@@ -209,36 +265,24 @@ internal class RaftDesktopWryWebView(
         return when (policy.navigation(url)) {
             RaftDesktopWebViewNavigation.Allow -> true
             RaftDesktopWebViewNavigation.AllowUnverifiedFrame -> {
-                topLevelCheck.markUnverified(System.currentTimeMillis())
-                verifySoon = true
+                // Maybe a sub-frame, maybe the top-level document: the poll reads the top-level
+                // address at the fast interval for a while and takes the page back if it left.
+                fastPollUntil = System.currentTimeMillis() + RaftDesktopWebViewFrameWatchMs
                 true
             }
             RaftDesktopWebViewNavigation.Block -> {
-                SwingUtilities.invokeLater { if (!disposed) events.onNavigationBlocked(url) }
+                mainScope.launch { if (!disposed) events.onNavigationBlocked(url) }
                 false
             }
         }
     }
 
     fun poll() {
-        if (disposed || !panel.isReady()) return
-        for (raw in panel.drainIpcMessages()) onChannelMessage(raw)
-        val now = System.currentTimeMillis()
-        if (topLevelCheck.timedOut(now)) {
-            // A declared-frame navigation happened and the page does not answer: it may be a foreign
-            // top-level page holding its main thread. Fail closed, without waiting for it.
-            takeBack(blockedUrl = null)
-            return
-        }
-        val nowLoading = panel.isLoading()
-        topLevelCheck.beginRequest(now)?.let { token ->
-            val idle = !nowLoading
-            panel.evaluateJavaScript(HrefScript) { result ->
-                val href = RaftDesktopWebViewPolicy.decodeEvaluatedString(result)
-                SwingUtilities.invokeLater { onTopLevelUrl(token, idle, href) }
-            }
-        }
-        currentTitle = panel.getTitle().orEmpty()
+        if (disposed || !webView.isReady()) return
+        for (raw in webView.drainIpcMessages()) onChannelMessage(raw)
+        if (!checkTopLevelUrl()) return
+        val nowLoading = webView.isLoading()
+        currentTitle = webView.getTitle().orEmpty()
         if (nowLoading && !loading) {
             loading = true
             progress = 10
@@ -258,72 +302,61 @@ internal class RaftDesktopWryWebView(
         notifyState(force = false)
     }
 
-    /** Shows the native view once the page is past its loading frame, or at the deadline. */
+    /** Removes the loading cover once the page is past its loading frame, or at the deadline. */
     private fun revealWhenReady() {
         if (revealed || loadFinishedAt == 0L || readyCheckPending) return
         if (System.currentTimeMillis() - loadFinishedAt >= RaftDesktopWebViewRevealDeadlineMs) {
-            reveal()
+            revealed = true
             return
         }
         readyCheckPending = true
-        panel.evaluateJavaScript(RaftDesktopWebViewReadyScript) { result ->
-            val ready = RaftDesktopWebViewPolicy.decodeEvaluatedString(result) == "1"
-            SwingUtilities.invokeLater {
-                readyCheckPending = false
-                if (ready && !disposed) reveal()
-            }
+        webView.evaluateJavaScript(RaftDesktopWebViewReadyScript) { result ->
+            readyCheckPending = false
+            if (!disposed && RaftDesktopWebViewPolicy.decodeEvaluatedString(result) == "1") revealed = true
         }
     }
 
-    private fun reveal() {
-        if (revealed) return
-        revealed = true
-        view.reveal()
-    }
-
-    private fun onTopLevelUrl(token: Long, idle: Boolean, href: String?) {
-        if (disposed) return
-        // Before the first document the engine reports about:blank: nothing to fence yet.
-        // No readable answer (script error) is trusted only while no declared-frame check is pending.
-        val trusted =
-            if (href == null) !topLevelCheck.armed else href == "about:blank" || policy.isTrustedTopLevel(href)
-        val verdict = topLevelCheck.answer(token, trusted, idle, System.currentTimeMillis())
-        if (verdict == RaftDesktopWebViewTopLevelCheck.Verdict.Stale) return
-        if (verdict == RaftDesktopWebViewTopLevelCheck.Verdict.Untrusted) {
-            takeBack(blockedUrl = href?.takeIf { it.isNotBlank() })
-            return
+    /**
+     * The top-level fence, after the fact: a top-level document off the fence (one a declared-frame
+     * navigation let through, or an about:/data:/blob: one the engine loads without asking) is
+     * reported and taken back. False when the page was taken back.
+     */
+    private fun checkTopLevelUrl(): Boolean {
+        val href = webView.getCurrentUrl()?.trim().orEmpty()
+        // Before the first document the engine reports nothing or about:blank: nothing to fence yet.
+        if (href.isEmpty() || href == "about:blank") return true
+        if (!policy.isTrustedTopLevel(href)) {
+            takeBack(blockedUrl = href)
+            return false
         }
-        if (href == null || href.isBlank() || href == "about:blank") return
-        // Enforce top-level-only route checks on the AWT thread (never on sub-frames or Wry's thread).
+        // Top-level-only route checks, never on sub-frames.
         if (href != initialUrl && events.routesMainFrameNavigation?.invoke(href) == true) {
             takeBack(blockedUrl = href)
-            return
+            return false
         }
         lastBlockedUrl = ""
         // A trusted page the user reached (not the one restored to) re-arms the restore budget.
         if (href != lastTrustedUrl) restores = 0
         lastTrustedUrl = href
-        if (href == currentUrl) return
+        if (href == currentUrl) return true
         currentUrl = href
+        // No commit here: while a new document loads the engine already reports its address
+        // (the provisional one), before the document exists. The commit is sent when the load ends.
         events.onUrlChange(href)
-        if (loading && !commitSent) {
-            commitSent = true
-            events.onLoadCommit()
-        }
         notifyState(force = false)
+        return true
     }
 
-    /** The top-level document left the fence (or stopped answering): report it and load back. */
-    private fun takeBack(blockedUrl: String?) {
-        topLevelCheck.reset()
-        if (blockedUrl != null && blockedUrl != lastBlockedUrl) {
+    /** The top-level document left the fence: report it and load back. */
+    private fun takeBack(blockedUrl: String) {
+        if (blockedUrl != lastBlockedUrl) {
             lastBlockedUrl = blockedUrl
             events.onNavigationBlocked(blockedUrl)
         }
-        panel.stopLoading()
+        webView.stopLoading()
         val back = lastTrustedUrl?.takeIf { restores < RaftDesktopWebViewMaxRestores } ?: "about:blank"
         restores += 1
-        panel.loadUrl(back)
+        webView.loadUrl(back)
     }
 
     private fun onChannelMessage(raw: String) {
@@ -343,26 +376,26 @@ internal class RaftDesktopWryWebView(
             val script = command.removePrefix(RaftWebViewController.COMMAND_EVALUATE_JAVA_SCRIPT_PREFIX)
             if (script.isEmpty() || script.length > RaftWebViewMaxRuntimeJavaScriptLength) return
             if (!policy.canRunRuntimeScript(currentUrl)) return
-            panel.evaluateJavaScript(policy.guardRuntimeScript(script)) {}
+            webView.evaluateJavaScript(policy.guardRuntimeScript(script)) {}
             return
         }
         if (command == RaftWebViewController.COMMAND_PROBE_DOCUMENT_CONTENT) {
             // The fixed, read-only probe ('1'/'0'), so not fenced like runtime scripts.
-            panel.evaluateJavaScript(RaftWebViewContentProbeScript) { result ->
+            webView.evaluateJavaScript(RaftWebViewContentProbeScript) { result ->
                 val answer = raftWebViewDecodeContentProbe(RaftDesktopWebViewPolicy.decodeEvaluatedString(result) ?: result)
-                SwingUtilities.invokeLater { if (!disposed) events.onContentProbe(answer) }
+                mainScope.launch { if (!disposed) events.onContentProbe(answer) }
             }
             return
         }
         when (command) {
-            RaftWebViewController.COMMAND_GO_BACK -> if (panel.canGoBack()) panel.goBack()
-            RaftWebViewController.COMMAND_GO_FORWARD -> if (panel.canGoForward()) panel.goForward()
+            RaftWebViewController.COMMAND_GO_BACK -> if (webView.canGoBack()) webView.goBack()
+            RaftWebViewController.COMMAND_GO_FORWARD -> if (webView.canGoForward()) webView.goForward()
             RaftWebViewController.COMMAND_RELOAD -> {
                 restores = 0
                 progress = 0
-                panel.reload()
+                webView.reload()
             }
-            RaftWebViewController.COMMAND_STOP -> panel.stopLoading()
+            RaftWebViewController.COMMAND_STOP -> webView.stopLoading()
             else -> return
         }
         notifyState(force = true)
@@ -374,8 +407,8 @@ internal class RaftDesktopWryWebView(
             RaftWebViewNavigationState(
                 url = currentUrl,
                 title = currentTitle,
-                canGoBack = panel.canGoBack(),
-                canGoForward = panel.canGoForward(),
+                canGoBack = webView.canGoBack(),
+                canGoForward = webView.canGoForward(),
                 isLoading = loading,
                 progress = progress.coerceIn(0, 100),
                 loadGeneration = loadGeneration,
@@ -386,8 +419,58 @@ internal class RaftDesktopWryWebView(
         events.onNavigationStateChange(state)
     }
 
-    private companion object {
-        /** The committed top-level address, History API changes included. */
-        const val HrefScript = "\"\" + window.location.href"
+    companion object {
+        private const val TAG = "RaftDesktopWebView"
+
+        private val osName: String = System.getProperty("os.name").orEmpty().lowercase()
+
+        /**
+         * A new native WebView for [policy] (macOS WKWebView, Linux WebKitGTK), or null where the
+         * engine is not available (another OS, or its native library did not load).
+         *
+         * `transparent`: the engine then adds no style of its own; opaque, it forces a white
+         * `html, body` background into every frame (`!important`), which would override the
+         * pages' own (dark mode) and an Artifact's. A page that paints no background still shows
+         * the engine's default white, as in a browser. Ephemeral: a non-persistent data store, so
+         * no token reaches ~/Library/WebKit; the data directory only matters on Linux.
+         */
+        fun createOrNull(
+            policy: RaftDesktopWebViewPolicy,
+            ephemeral: Boolean,
+            events: RaftWebViewEvents,
+        ): RaftDesktopNativeWebView? {
+            val dataDirectory = if (ephemeral) null else File(RaftDesktopPaths.dataDir, "webview").apply { mkdirs() }.path
+            val initScript = policy.documentStartScript()
+            return runCatching {
+                when {
+                    osName.startsWith("mac") -> {
+                        val view =
+                            MacOsWebKitNativeWebView(
+                                dataDirectory = dataDirectory,
+                                initScript = initScript,
+                                incognito = ephemeral,
+                                javascriptEnabled = true,
+                                transparent = true,
+                                backgroundColor = Color.Transparent,
+                            )
+                        RaftDesktopNativeWebView(policy, view, view.asPlatformView(), events)
+                    }
+                    osName.startsWith("linux") -> {
+                        val view =
+                            LinuxWebKitNativeWebView(
+                                dataDirectory = dataDirectory,
+                                initScript = initScript,
+                                incognito = ephemeral,
+                                javascriptEnabled = true,
+                                transparent = true,
+                                backgroundColor = Color.Transparent,
+                            )
+                        RaftDesktopNativeWebView(policy, view, view.asPlatformView(), events)
+                    }
+                    else -> null
+                }
+            }.onFailure { raftLogWarn(TAG, "desktop_webview_unavailable error=${it::class.simpleName}") }
+                .getOrNull()
+        }
     }
 }

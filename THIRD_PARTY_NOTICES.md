@@ -44,6 +44,8 @@ published package metadata (Maven POM `<licenses>`, npm registry `license`, Coco
 | io.github.alexzhirkevich:qrose (+ qrose-core / qrose-encoder-matrix / qrose-encoder-core; WeChat connect QR code) | 1.3.1 | MIT |
 | io.github.kdroidfilter:composemediaplayer (desktop video playback; jar includes its native AVFoundation / Media Foundation / GStreamer bridges) | 0.11.4 | MIT |
 | io.github.vinceglb:filekit-core (transitive, via composemediaplayer) | 0.14.2 | MIT |
+| dev.nucleusframework:nucleus.nucleus-application / nucleus.decorated-window-tao (+ decorated-window-core / -awt, core-runtime, aot-runtime, darkmode-detector, energy-manager, graalvm-runtime, linux-hidpi, menu-macos, sf-symbols, spellcheck; the desktop window, Tao backend; jars include their native libraries) | 2.5.18 | MIT; the Tao jar's native library compiles in vendored `tao` (Apache-2.0) and AccessKit (MIT OR Apache-2.0), and its Windows build ships ANGLE (BSD-3-Clause), per Nucleus's THIRD_PARTY_NOTICES.md (shipped in the jar) |
+| dev.nucleusframework:composewebview (ComposeNativeWebview; desktop embedded web pages through the system WKWebView / WebKitGTK / WebView2; jar includes its native bridges) | 1.0.3 | MIT |
 | org.mobilenativefoundation.store:store5 (+ core5 / cache5 / multicast5; offline-first resources) | 5.1.0-beta01 | Apache-2.0 |
 | co.touchlab:kermit (transitive, via store5) | 2.1.0 | Apache-2.0 |
 | KaTeX fonts (`compose/designsystem/src/commonMain/composeResources/font/katex_*.ttf`, from the `katex` npm package) | 0.19.0 | MIT |

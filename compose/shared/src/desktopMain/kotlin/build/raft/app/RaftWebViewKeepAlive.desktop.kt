@@ -13,7 +13,7 @@ internal actual fun raftWebViewEvaluateInKept(key: String, origin: String, scrip
 internal actual fun raftWebViewKeepAliveClear() = Unit
 
 internal actual suspend fun raftClearPlatformWebViewAuthStorage(origins: Set<String>) {
-    // Authenticated desktop WebViews use incognito/ephemeral storage (so macOS Wry never writes
+    // Authenticated desktop WebViews use a non-persistent data store (so WKWebView never writes
     // tokens to ~/Library/WebKit); also purge any legacy disk webview directory off the caller thread.
     withContext(Dispatchers.IO) {
         runCatching {
