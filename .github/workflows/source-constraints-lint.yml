@@ -48,6 +48,11 @@ on:
       - "scripts/ci/check_component_sizes.py"
       - "tools/design-tokens/manifest.json"
       - "tools/design-tokens/source/**"
+      # objc_entry_points.py --check: the iOS framework's Objective-C export list must name every
+      # Kotlin API the Swift/Objective-C app uses (Kotlin sources are covered by compose/**/src above).
+      - "compose/iosApp/**/*.swift"
+      - "compose/shared/objc-entry-points.txt"
+      - "scripts/ios/objc_entry_points.py"
       - ".github/workflows/source-constraints-lint.yml"
   push:
     branches:
@@ -105,3 +110,10 @@ jobs:
 
       - name: Enforce component sizes
         run: python3 scripts/ci/check_component_sizes.py
+
+      # compose/shared/build.gradle.kts exports to Objective-C only what this list names
+      # (objcExportEntryPointsPath, #wg-mobile-sync:#220). A Swift change that starts using new Kotlin
+      # API, or a Kotlin change to a listed type, must regenerate it; this fails in seconds instead of
+      # at the end of an iOS compile.
+      - name: iOS Objective-C entry points are current
+        run: python3 scripts/ios/objc_entry_points.py --check
