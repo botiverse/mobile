@@ -53,6 +53,20 @@ class RaftLoungeRefTest {
     }
 
     @Test
+    fun aLoungeRefEndsWhereTheWebGrammarEndsIt() {
+        // `raftRefs.ts` (slock 87ab82603): the prefix in any case (`giu`), and the agent's name, a thread's
+        // short id and a task's number each end the token (`RAFT_LOUNGE_AGENT_PATTERN`, the thread pass's
+        // `(?![\p{L}\p{N}_-])`, `RAFT_TASK_REF_END_PATTERN`). A tail that does not end it leaves the Lounge
+        // itself; a name that does not end it (a sentence's `.`) leaves no ref at all, and no `@ops`.
+        fun String.refs(): List<List<String>> =
+            threadInlineTagMatches().map { listOf(it.tag.kind.name, it.tag.label, substring(it.range)) }
+        assertEquals(listOf(listOf("Lounge", "lounge:@Ops", "LOUNGE:@Ops")), "LOUNGE:@Ops".refs())
+        assertEquals(listOf(listOf("Lounge", "lounge:@ops", "lounge:@ops")), "lounge:@ops:abcd1234x".refs())
+        assertEquals(listOf(listOf("Lounge", "lounge:@ops", "lounge:@ops")), "lounge:@ops:#7a".refs())
+        assertEquals(emptyList(), "ask in lounge:@ops.".refs())
+    }
+
+    @Test
     fun aMalformedLoungeTokenStaysTextAndNeverMentionsItsAgent() {
         // Web `createRaftMalformedLoungeRefRegex`: `@ops` inside `lounge:@ops~agent` is not a mention.
         val source = "ask lounge:@ops~agent, not @ops"
