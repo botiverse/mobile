@@ -110,9 +110,13 @@ internal fun homeSidebarDirectMessageSectionRows(
     lounges: List<RaftHomeConversationItem>,
     mode: RaftSidebarSortMode,
 ): List<RaftHomeConversationItem> {
-    if (lounges.isEmpty()) return directMessages
+    val uniqueDirectMessages = directMessages.distinctBy { it.id }
+    if (lounges.isEmpty()) return uniqueDirectMessages
+    val dmIds = uniqueDirectMessages.mapTo(HashSet()) { it.id }
+    val uniqueLounges = lounges.distinctBy { it.id }.filterNot { it.id in dmIds }
+    if (uniqueLounges.isEmpty()) return uniqueDirectMessages
     if (mode == RaftSidebarSortMode.Manual) {
-        return directMessages + lounges.sortedForSidebar(RaftSidebarSortMode.Recent) { it.name }
+        return uniqueDirectMessages + uniqueLounges.sortedForSidebar(RaftSidebarSortMode.Recent) { it.name }
     }
-    return (directMessages + lounges).sortedForSidebar(mode) { it.name }
+    return (uniqueDirectMessages + uniqueLounges).sortedForSidebar(mode) { it.name }
 }

@@ -5128,11 +5128,21 @@ private fun SettingsServerSidebarOrderSnapshot.withConversationInSection(
             presenceMemberId = row?.presenceMemberId?.value,
             conversationId = conversationId
         )
+    // Strip any legacy `channel:<conversationId>` alias when placing or removing an
+    // agent DM keyed by `agent:<memberId>` (mirroring togglePinned's dual-key cleanup),
+    // so an agent DM never accumulates both `channel:<dmId>` and `agent:<memberId>`
+    // placements on the server.
+    val cleanedPlacements =
+        if (placementKind == SIDEBAR_SECTION_ITEM_KIND_AGENT) {
+            removeSidebarItemPlacement(sectionPlacements, SIDEBAR_SECTION_ITEM_KIND_CHANNEL, conversationId)
+        } else {
+            sectionPlacements
+        }
     val nextPlacements =
         if (sectionId == null) {
-            removeSidebarItemPlacement(sectionPlacements, placementKind, placementId)
+            removeSidebarItemPlacement(cleanedPlacements, placementKind, placementId)
         } else {
-            moveSidebarItemToCustomSection(sectionPlacements, placementKind, placementId, sectionId)
+            moveSidebarItemToCustomSection(cleanedPlacements, placementKind, placementId, sectionId)
         }
     val next = if (sectionId != null && wasPinned) withoutPinnedTarget(pinnedTarget) else this
     return next.copy(sectionPlacements = nextPlacements)
@@ -6107,7 +6117,8 @@ internal fun HomeSnapshot.toHomeServerDrawerNormalizedContent(): HomeServerDrawe
 }
 
 private fun List<HomeConversationRow>.orderedForHomeServerDrawer(order: List<String>): List<HomeConversationRow> {
-    if (isEmpty() || order.isEmpty()) return this
+    if (isEmpty()) return this
+    if (order.isEmpty()) return distinctBy { it.threadId.value }
     val byId = associateBy { it.threadId.value }
     val ordered = LinkedHashMap<String, HomeConversationRow>()
     order.forEach { id -> byId[id]?.let { row -> ordered[row.threadId.value] = row } }

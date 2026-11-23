@@ -94,7 +94,10 @@ import build.raft.app.data.SettingsServerSidebarPinnedItem
 import build.raft.app.data.SettingsServerSidebarSectionPlacement
 import build.raft.app.data.SIDEBAR_SECTION_ITEM_KIND_AGENT
 import build.raft.app.data.SIDEBAR_SECTION_ITEM_KIND_CHANNEL
+import build.raft.app.data.normalizeSidebarCustomSections
 import build.raft.app.data.normalizeSidebarSectionOrder
+import build.raft.app.data.normalizeSidebarSectionPlacements
+import build.raft.app.data.resolveSidebarPlacementSectionId
 import build.raft.app.data.RaftSidebarHideEmptySectionsDefault
 import build.raft.app.data.ScreenError
 import build.raft.app.data.APP_UPDATE_HOME_NOTIFICATION_ID
@@ -2304,11 +2307,6 @@ private fun RaftStructuralHomeShellContent(
         }
     }
     val allChannelId = remember(channels) { channels.firstOrNull { it.name == "all" }?.id }
-    // task #512: conversations claimed by a custom section leave their default
-    // system section (web customPlacedChannelIds / customPlacedAgentIds).
-    val customPlacedConversationIds = remember(sectionPlacements, directMessages) {
-        sidebarCustomPlacedConversationIds(sectionPlacements, directMessages)
-    }
     val displayedPinned = remember(channels, agentLounges, directMessages, pinnedChannelIds, pinnedAgentIds, pinnedOrder, pinnedItems, pinnedSortModeState, pinnedMemberProfileResolver) {
         pinnedRowsForSidebar(
             // Agent Lounge v0: a pinned Lounge is a `channel` pin of the Lounge's id.
@@ -2327,6 +2325,25 @@ private fun RaftStructuralHomeShellContent(
     // already shown under Pinned. Only rows the Pinned section actually renders are removed, so
     // a stale pin can never hide a conversation from every section.
     val pinnedShownConversationIds = remember(displayedPinned) { displayedPinned.sidebarPinnedConversationIds() }
+    // task #512: custom sections interleave with the system sections in web's
+    // sectionOrder order; like web, custom sections show even when empty.
+    // Computed against `pinnedShownConversationIds` (not stale legacy `pinnedIdSet`)
+    // and used to derive `customPlacedConversationIds`, so only conversations
+    // actually rendered in a live custom section leave their default system section.
+    val displayedCustomSections =
+        remember(channels, directMessages, customSections, sectionOrder, sectionPlacements, pinnedShownConversationIds) {
+            sidebarCustomSectionRows(
+                channels = channels,
+                directMessages = directMessages,
+                customSections = customSections,
+                sectionOrder = sectionOrder,
+                sectionPlacements = sectionPlacements,
+                pinnedConversationIds = pinnedShownConversationIds
+            )
+        }
+    val customPlacedConversationIds = remember(displayedCustomSections) {
+        displayedCustomSections.sidebarCustomShownConversationIds()
+    }
     val baseDisplayedChannels = remember(channels, channelOrder, channelSortModeState, customPlacedConversationIds, pinnedShownConversationIds) {
         val regularChannels = channels.filter { !it.isHomeExternalSectionChannel() }
         regularChannels
@@ -2390,19 +2407,6 @@ private fun RaftStructuralHomeShellContent(
         )
     }
     val pinnedItemsForSort = remember(displayedPinned) { displayedPinned.mapNotNull { it.toSidebarSortItem() } }
-    // task #512: custom sections interleave with the system sections in web's
-    // sectionOrder order; like web, custom sections show even when empty.
-    val displayedCustomSections =
-        remember(channels, directMessages, customSections, sectionOrder, sectionPlacements, pinnedIdSet) {
-            sidebarCustomSectionRows(
-                channels = channels,
-                directMessages = directMessages,
-                customSections = customSections,
-                sectionOrder = sectionOrder,
-                sectionPlacements = sectionPlacements,
-                pinnedConversationIds = pinnedIdSet
-            )
-        }
     val hasDisplayedPinned = displayedPinned.isNotEmpty()
     val hasDisplayedJointChannels = displayedJointChannels.isNotEmpty()
     // Keep the DMs section while its rows are still loading (skeletons).
@@ -3764,17 +3768,13 @@ private fun RaftStructuralHomeShellContent(
                     val moveTargetDm = directMessages.firstOrNull { it.id == moveToSectionTarget }
                     val moveTargetIsPinned = moveToSectionTarget in pinnedIdSet
                     val moveTargetCurrentSectionId =
-                        sectionPlacements
-                            .firstOrNull { placement ->
-                                when (placement.kind) {
-                                    SIDEBAR_SECTION_ITEM_KIND_CHANNEL -> placement.id == moveToSectionTarget
-                                    SIDEBAR_SECTION_ITEM_KIND_AGENT ->
-                                        moveTargetDm?.presenceMemberId != null &&
-                                            placement.id == moveTargetDm?.presenceMemberId
-                                    else -> false
-                                }
-                            }
-                            ?.sectionId
+                        resolveSidebarPlacementSectionId(
+                            placements = sectionPlacements,
+                            peerType = moveTargetDm?.peerType,
+                            presenceMemberId = moveTargetDm?.presenceMemberId,
+                            conversationId = moveToSectionTarget,
+                            validSectionIds = customSections.mapTo(HashSet()) { it.id }
+                        )
                     val moveTargetChannel = channels.firstOrNull { it.id == moveToSectionTarget }
                     val movePlacement =
                         ChannelSectionPlacement(
@@ -4089,19 +4089,43 @@ internal class HomeSidebarLazyKeyRegistry {
     fun keysFor(serverId: String, section: String, identities: List<String>): List<String> {
         val normalizedServerId = serverId.trim()
         val previous = sectionKeys[section]
+        val seenKeys = HashSet<String>(identities.size)
         val keys =
             if (previous == null || previous.serverId != normalizedServerId) {
-                identities.mapIndexed { index, _ -> homeSidebarSlotKey(section, index) }
+                identities.mapIndexed { index, _ ->
+                    val candidate = homeSidebarSlotKey(section, index)
+                    seenKeys.add(candidate)
+                    candidate
+                }
             } else {
-                identities.map { identity ->
-                    previous.keysByIdentity[identity]
-                        ?: "home-$section-identity-$identity"
+                identities.mapIndexed { index, identity ->
+                    val base =
+                        previous.keysByIdentity[identity]
+                            ?: "home-$section-identity-$identity"
+                    if (seenKeys.add(base)) {
+                        base
+                    } else {
+                        var suffix = index
+                        var disambiguated = "$base#dup-$suffix"
+                        while (!seenKeys.add(disambiguated)) {
+                            suffix += 1
+                            disambiguated = "$base#dup-$suffix"
+                        }
+                        disambiguated
+                    }
                 }
             }
         sectionKeys[section] =
             SectionKeys(
                 serverId = normalizedServerId,
-                keysByIdentity = identities.zip(keys).toMap()
+                // Keep the first (undisambiguated) key per identity so repeated
+                // identities stay stable across recompositions without growing `#dup-N`.
+                keysByIdentity =
+                    buildMap(identities.size) {
+                        identities.forEachIndexed { index, identity ->
+                            if (!containsKey(identity)) put(identity, keys[index])
+                        }
+                    }
             )
         return keys
     }
@@ -4973,7 +4997,7 @@ internal fun List<RaftHomeConversationItem>.orderedBySidebarIds(
     pinnedFirstId: String? = null
 ): List<RaftHomeConversationItem> {
     if (isEmpty()) return this
-    if (order.isEmpty()) return withPinnedFirst(pinnedFirstId)
+    if (order.isEmpty()) return distinctBy { it.id }.withPinnedFirst(pinnedFirstId)
     val byId = associateBy { it.id }
     val ordered = LinkedHashMap<String, RaftHomeConversationItem>()
     pinnedFirstId?.let { id ->
@@ -5454,32 +5478,57 @@ internal fun sidebarCustomSectionRows(
     sectionPlacements: List<SettingsServerSidebarSectionPlacement>,
     pinnedConversationIds: Set<String>
 ): List<RaftHomeCustomSectionRows> {
-    if (customSections.isEmpty()) return emptyList()
-    val sectionById = customSections.associateBy { it.id }
+    val normalizedSections = normalizeSidebarCustomSections(customSections)
+    if (normalizedSections.isEmpty()) return emptyList()
+    val sectionById = normalizedSections.associateBy { it.id }
     val conversationById = buildMap {
         channels.forEach { put(it.id, it) }
         directMessages.forEach { put(it.id, it) }
     }
     val agentDmByMemberId =
-        directMessages
-            .filter {
-                it.peerType.equals(SIDEBAR_SECTION_ITEM_KIND_AGENT, ignoreCase = true) &&
-                    !it.presenceMemberId.isNullOrBlank()
+        buildMap<String, RaftHomeConversationItem> {
+            directMessages.forEach { dm ->
+                val memberId = dm.presenceMemberId?.takeIf { it.isNotBlank() } ?: return@forEach
+                if (dm.peerType.equals(SIDEBAR_SECTION_ITEM_KIND_AGENT, ignoreCase = true) && !containsKey(memberId)) {
+                    put(memberId, dm)
+                }
             }
-            .associateBy { it.presenceMemberId.orEmpty() }
+        }
+    val livePlacements =
+        normalizeSidebarSectionPlacements(sectionPlacements.filter { it.sectionId in sectionById })
+    // When an agent DM carries both a canonical `agent:<memberId>` placement
+    // (pointing to a live custom section) and a legacy `channel:<dmId>` placement,
+    // ignore the legacy alias so the canonical `agent:` entry keeps its section
+    // and manual position (or pinning exclusion) without emitting the conversation twice.
+    val canonicalAgentDmConversationIds =
+        buildSet {
+            livePlacements.forEach { placement ->
+                if (placement.kind != SIDEBAR_SECTION_ITEM_KIND_AGENT) return@forEach
+                val conversation = agentDmByMemberId[placement.id] ?: return@forEach
+                add(conversation.id)
+            }
+        }
+    val seenConversationIds = HashSet<String>()
     val itemsBySection = LinkedHashMap<String, MutableList<RaftHomeConversationItem>>()
-    sectionPlacements.sortedBy { it.position }.forEach { placement ->
+    livePlacements.sortedBy { it.position }.forEach { placement ->
         val section = sectionById[placement.sectionId] ?: return@forEach
         val conversation =
             when (placement.kind) {
-                SIDEBAR_SECTION_ITEM_KIND_CHANNEL -> conversationById[placement.id]
+                SIDEBAR_SECTION_ITEM_KIND_CHANNEL ->
+                    conversationById[placement.id]?.takeUnless { it.id in canonicalAgentDmConversationIds }
                 SIDEBAR_SECTION_ITEM_KIND_AGENT -> agentDmByMemberId[placement.id]
                 else -> null
             } ?: return@forEach
-        if (conversation.id in pinnedConversationIds || placement.id in pinnedConversationIds) return@forEach
+        val isPinned =
+            conversation.id in pinnedConversationIds ||
+                placement.id in pinnedConversationIds ||
+                (conversation.peerType.equals(SIDEBAR_SECTION_ITEM_KIND_AGENT, ignoreCase = true) &&
+                    conversation.presenceMemberId in pinnedConversationIds)
+        if (isPinned) return@forEach
+        if (!seenConversationIds.add(conversation.id)) return@forEach
         itemsBySection.getOrPut(section.id) { mutableListOf() } += conversation
     }
-    return normalizeSidebarSectionOrder(sectionOrder, customSections)
+    return normalizeSidebarSectionOrder(sectionOrder, normalizedSections)
         .mapNotNull { sectionId ->
             val section = sectionById[sectionId] ?: return@mapNotNull null
             val items = itemsBySection[sectionId].orEmpty()
@@ -5491,27 +5540,18 @@ internal fun sidebarCustomSectionRows(
 }
 
 /**
- * task #512: conversation ids hidden from their default system sections because
- * a custom section claims them (web customPlacedChannelIds / customPlacedAgentIds).
+ * Conversation ids rendered in live custom sections; they leave their default
+ * system section (analogous to [sidebarPinnedConversationIds]), so orphaned or
+ * skipped placements can never hide a conversation from every section.
  */
-internal fun sidebarCustomPlacedConversationIds(
-    sectionPlacements: List<SettingsServerSidebarSectionPlacement>,
-    directMessages: List<RaftHomeConversationItem>
-): Set<String> =
-    buildSet {
-        sectionPlacements.forEach { placement ->
-            when (placement.kind) {
-                SIDEBAR_SECTION_ITEM_KIND_CHANNEL -> add(placement.id)
-                SIDEBAR_SECTION_ITEM_KIND_AGENT ->
-                    directMessages
-                        .firstOrNull {
-                            it.peerType.equals(SIDEBAR_SECTION_ITEM_KIND_AGENT, ignoreCase = true) &&
-                                it.presenceMemberId == placement.id
-                        }
-                        ?.let { add(it.id) }
-            }
+internal fun List<RaftHomeCustomSectionRows>.sidebarCustomShownConversationIds(): Set<String> {
+    val rows = this
+    return buildSet {
+        rows.forEach { sectionRows ->
+            sectionRows.items.forEach { add(it.id) }
         }
     }
+}
 
 private fun String?.homeDmPeerMemberKindOrNull(): MemberKind? =
     parsedMemberKindOrNull(MemberKindWireContract.InternalActor)

@@ -96,4 +96,90 @@ class RaftSidebarSectionsContractTest {
         store.write(true)
         assertTrue(store.read())
     }
+
+    @Test
+    fun normalizeCustomSectionsAndPlacementsDeduplicatesByIdentity() {
+        val sections =
+            normalizeSidebarCustomSections(
+                listOf(
+                    SettingsServerSidebarCustomSection(id = "sec-1", name = "First", sortMode = "manual"),
+                    SettingsServerSidebarCustomSection(id = "sec-1", name = "Duplicate", sortMode = "az"),
+                    SettingsServerSidebarCustomSection(id = "sec-2", name = "Second", sortMode = "recent")
+                )
+            )
+        assertEquals(listOf("First", "Second"), sections.map { it.name })
+
+        val placements =
+            normalizeSidebarSectionPlacements(
+                listOf(
+                    SettingsServerSidebarSectionPlacement(kind = "channel", id = "c-1", sectionId = "sec-1", position = 0),
+                    SettingsServerSidebarSectionPlacement(kind = "channel", id = "c-1", sectionId = "sec-2", position = 1),
+                    SettingsServerSidebarSectionPlacement(kind = "agent", id = "a-1", sectionId = "sec-1", position = 2)
+                )
+            )
+        assertEquals(
+            listOf(
+                SettingsServerSidebarSectionPlacement(kind = "channel", id = "c-1", sectionId = "sec-1", position = 0),
+                SettingsServerSidebarSectionPlacement(kind = "agent", id = "a-1", sectionId = "sec-1", position = 2)
+            ),
+            placements
+        )
+    }
+
+    @Test
+    fun resolveSidebarPlacementSectionIdPrefersLiveCanonicalAgentKeyOverLegacyChannelKey() {
+        val validSections = setOf("sec-old", "sec-new")
+        val dualPlacements =
+            listOf(
+                SettingsServerSidebarSectionPlacement(kind = "channel", id = "dm-agent-1", sectionId = "sec-old", position = 0),
+                SettingsServerSidebarSectionPlacement(kind = "agent", id = "agent-1", sectionId = "sec-new", position = 1)
+            )
+        assertEquals(
+            "sec-new",
+            resolveSidebarPlacementSectionId(
+                placements = dualPlacements,
+                peerType = "agent",
+                presenceMemberId = "agent-1",
+                conversationId = "dm-agent-1",
+                validSectionIds = validSections
+            )
+        )
+        // Legacy-only channel placement still resolves for an agent DM.
+        assertEquals(
+            "sec-old",
+            resolveSidebarPlacementSectionId(
+                placements = listOf(dualPlacements.first()),
+                peerType = "agent",
+                presenceMemberId = "agent-1",
+                conversationId = "dm-agent-1",
+                validSectionIds = validSections
+            )
+        )
+        // Orphaned canonical placement falls back to live legacy placement, and orphan-only is still returned so Home can clear it.
+        val orphanCanonical =
+            listOf(
+                SettingsServerSidebarSectionPlacement(kind = "agent", id = "agent-1", sectionId = "deleted", position = 0),
+                SettingsServerSidebarSectionPlacement(kind = "channel", id = "dm-agent-1", sectionId = "sec-old", position = 1)
+            )
+        assertEquals(
+            "sec-old",
+            resolveSidebarPlacementSectionId(
+                placements = orphanCanonical,
+                peerType = "agent",
+                presenceMemberId = "agent-1",
+                conversationId = "dm-agent-1",
+                validSectionIds = validSections
+            )
+        )
+        assertEquals(
+            "deleted",
+            resolveSidebarPlacementSectionId(
+                placements = listOf(orphanCanonical.first()),
+                peerType = "agent",
+                presenceMemberId = "agent-1",
+                conversationId = "dm-agent-1",
+                validSectionIds = validSections
+            )
+        )
+    }
 }
