@@ -124,10 +124,9 @@ test("the clean verdict names the account it measured", () => {
   assert.match(v.detail, /b8b3f81d/, "the reading must carry the identity that produced it");
 });
 
-test("the claimed Android login checks the assigned API identity from the 0600 credential file before the emulator and prints fixed codes", () => {
+test("the claimed Android login checks the assigned API identity before the emulator and prints fixed codes", () => {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), "qa-account-preflight-"));
   const file = path.join(directory, "input.json");
-  const credFile = path.join(directory, "account");
   const calls = path.join(directory, "calls.txt");
   const runCase = "00000000-0000-4000-8000-000000000001";
   const target = { user_id: "assigned-user", server_id: "assigned-server", server_slug: "assigned-slug" };
@@ -135,8 +134,6 @@ test("the claimed Android login checks the assigned API identity from the 0600 c
     attempt_id: "pla_" + "a".repeat(32), nonce: "b".repeat(64), expected_target: target };
   const member = { id: target.server_id, slug: target.server_slug, name: REQUIRED_QA_SERVER };
   const fixture = { user: { id: target.user_id }, servers: [member] };
-  const runtimeEmail = "acceptance@example.invalid";
-  const runtimePassword = "acceptance-config-password";
   // The upstream auth route returns {user,accessToken,refreshToken}; GET /api/servers returns
   // the membership array with server.id/name/slug (botiverse/slock staging 22c31d25).
   const mock = String.raw`
@@ -149,8 +146,8 @@ test("the claimed Android login checks the assigned API identity from the 0600 c
       if (process.env.DEDICATED) assert.equal(init.redirect, "error");
       fs.appendFileSync(process.env.CALLS, u.pathname + "\n");
       if (u.pathname === "/api/auth/login") {
-        const expectedEmail = process.env.DEDICATED ? process.env.EXPECTED_RUNTIME_EMAIL : process.env.QA_TEST_EMAIL;
-        const expectedPassword = process.env.DEDICATED ? process.env.EXPECTED_RUNTIME_PASSWORD : process.env.QA_TEST_PASSWORD;
+        const expectedEmail = process.env.DEDICATED ? process.env.QA_LOGIN_ACCEPTANCE_EMAIL : process.env.QA_TEST_EMAIL;
+        const expectedPassword = process.env.DEDICATED ? process.env.QA_LOGIN_ACCEPTANCE_PASSWORD : process.env.QA_TEST_PASSWORD;
         assert.deepEqual(JSON.parse(init.body), {email:expectedEmail, password:expectedPassword});
         return Response.json({user:f.user, accessToken:"test-access", refreshToken:"test-refresh"});
       }
@@ -165,22 +162,16 @@ test("the claimed Android login checks the assigned API identity from the 0600 c
   `;
   function run(name, data, expectedCode, expectedLine, options = {}) {
     fs.rmSync(file, { force: true });
-    fs.rmSync(credFile, { force: true });
     fs.writeFileSync(calls, "");
     if (!options.missing) fs.writeFileSync(file, JSON.stringify(input), { mode: 0o600 });
-    if (options.setupCred) options.setupCred(credFile);
-    else if (!options.missingCred) {
-      fs.writeFileSync(credFile, `${runtimeEmail}\n${runtimePassword}\n`, { mode: 0o600 });
-      fs.chmodSync(credFile, 0o600);
-    }
     const script = fileURLToPath(new URL("./visible_servers_probe.mjs", import.meta.url));
-    const args = options.args ?? (options.ordinary ? [] : ["--testbed-input", file, "--credential-file", credFile]);
+    const args = options.ordinary ? [] : ["--testbed-input", file];
     const baseEnv = {
       STAMP_RUN_CASE_ID: runCase,
       QA_TEST_EMAIL: "legacy@example.invalid",
       QA_TEST_PASSWORD: "legacy-config-password",
-      EXPECTED_RUNTIME_EMAIL: runtimeEmail,
-      EXPECTED_RUNTIME_PASSWORD: runtimePassword,
+      QA_LOGIN_ACCEPTANCE_EMAIL: "acceptance@example.invalid",
+      QA_LOGIN_ACCEPTANCE_PASSWORD: "acceptance-config-password",
       CALLS: calls, DEDICATED: options.ordinary ? "" : "1", FIXTURE: JSON.stringify(data),
       ...options.env,
     };
@@ -191,34 +182,22 @@ test("the claimed Android login checks the assigned API identity from the 0600 c
     const output = (result.stdout + result.stderr).trim();
     assert.equal(output, expectedLine, name);
     if (!options.ordinary) {
-      for (const privateValue of [...Object.values(target), input.nonce, input.attempt_id, "legacy-config-password", runtimePassword, "legacy@example.invalid", runtimeEmail, "test-refresh", "test-access"]) {
+      for (const privateValue of [...Object.values(target), input.nonce, input.attempt_id, "legacy-config-password", "acceptance-config-password", "legacy@example.invalid", "acceptance@example.invalid", "test-refresh", "test-access"]) {
         assert.ok(!output.includes(privateValue), name);
       }
     }
     const paths = fs.readFileSync(calls, "utf8").trim().split("\n").filter(Boolean);
-    assert.deepEqual(paths, options.missing || options.missingCred || options.noCalls ? [] : options.ordinary ? ["/api/auth/login", "/api/servers"] :
+    assert.deepEqual(paths, options.missing || options.noCalls ? [] : options.ordinary ? ["/api/auth/login", "/api/servers"] :
       ["/api/auth/login", "/api/servers", "/api/auth/logout"], name);
     if (!options.missing) assert.deepEqual(JSON.parse(fs.readFileSync(file)), input, "the device login can consume the same input");
-    if (!options.missingCred && !options.setupCred) {
-      assert.equal(fs.readFileSync(credFile, "utf8"), `${runtimeEmail}\n${runtimePassword}\n`, "the device login can consume the same credential file");
-    }
   }
   try {
     run("assigned", fixture, 0, "QA account preflight: account_and_server_confirmed");
-    run("missing credential file does not fall back to QA_TEST_*", fixture, 2, "QA account preflight: unavailable (credential)", {
-      missingCred: true,
+    run("missing acceptance email does not fall back to QA_TEST_*", fixture, 2, "QA account preflight: unavailable (credential)", {
+      env: { QA_LOGIN_ACCEPTANCE_EMAIL: "" }, noCalls: true,
     });
-    run("missing --credential-file flag fails closed without falling back to env", fixture, 2, "QA account preflight: unavailable (credential)", {
-      args: ["--testbed-input", file], noCalls: true,
-      env: { QA_LOGIN_ACCEPTANCE_EMAIL: runtimeEmail, QA_LOGIN_ACCEPTANCE_PASSWORD: runtimePassword },
-    });
-    run("group-readable credential file fails closed", fixture, 2, "QA account preflight: unavailable (credential)", {
-      setupCred: (p) => { fs.writeFileSync(p, `${runtimeEmail}\n${runtimePassword}\n`, { mode: 0o640 }); fs.chmodSync(p, 0o640); },
-      noCalls: true,
-    });
-    run("malformed credential file fails closed", fixture, 2, "QA account preflight: unavailable (credential)", {
-      setupCred: (p) => { fs.writeFileSync(p, "no-password-line\n", { mode: 0o600 }); fs.chmodSync(p, 0o600); },
-      noCalls: true,
+    run("missing acceptance password does not fall back to QA_TEST_*", fixture, 2, "QA account preflight: unavailable (credential)", {
+      env: { QA_LOGIN_ACCEPTANCE_PASSWORD: "" }, noCalls: true,
     });
     run("another user", { ...fixture, user: {id:"another-user"} }, 1, "QA account preflight: configured_user_mismatch");
     for (const servers of [[{...member, id:"another-id"}], [{...member, slug:"another-slug"}], [member, member]]) {

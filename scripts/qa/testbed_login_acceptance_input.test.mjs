@@ -11,16 +11,8 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
-import { readCredentialFile, readTestbedInput } from "./login_phase.mjs";
-import {
-  acceptedCredential,
-  acceptedInput,
-  acceptedInputWithCredential,
-  credentialPath,
-  fetchLoginAcceptanceCredential,
-  fetchLoginAcceptanceInput,
-  inputPath,
-} from "./testbed_login_acceptance_input.mjs";
+import { readTestbedInput } from "./login_phase.mjs";
+import { acceptedInput, fetchLoginAcceptanceInput, inputPath } from "./testbed_login_acceptance_input.mjs";
 
 const SCRIPT = fileURLToPath(new URL("./testbed_login_acceptance_input.mjs", import.meta.url));
 const vector = JSON.parse(fs.readFileSync(new URL("./fixtures/app-identity-receipt-vector.json", import.meta.url), "utf8"));
@@ -72,11 +64,11 @@ function job(origin, extra = {}) {
     GITHUB_SERVER_URL: "https://github.com", GITHUB_REPOSITORY: "botiverse/mobile", GITHUB_RUN_ID: "424242",
     ACTIONS_ID_TOKEN_REQUEST_URL: `${origin}/oidc?api-version=2.0`, ACTIONS_ID_TOKEN_REQUEST_TOKEN: OIDC_REQUEST, ...extra,
   };
-  return { env, runnerTemp, file: inputPath(env), credFile: credentialPath(env), close: () => fs.rmSync(runnerTemp, { recursive: true, force: true }) };
+  return { env, runnerTemp, file: inputPath(env), close: () => fs.rmSync(runnerTemp, { recursive: true, force: true }) };
 }
 
-const cli = (env, args = []) => new Promise((resolve) => {
-  const child = spawn(process.execPath, [SCRIPT, ...args], { env });
+const cli = (env) => new Promise((resolve) => {
+  const child = spawn(process.execPath, [SCRIPT], { env });
   let stdout = "", stderr = "";
   child.stdout.on("data", (d) => { stdout += d; });
   child.stderr.on("data", (d) => { stderr += d; });
@@ -196,147 +188,5 @@ test("only exactly the six fields of this run case's login-email-password attemp
   for (const body of [null, [], "x", { ...INPUT, attempt: 0 }, { ...INPUT, attempt: "1" }, { ...INPUT, attempt_id: "pla_x" },
     { ...INPUT, expected_target: { ...INPUT.expected_target, user_id: "" } }, { ...INPUT, expected_target: [] }]) {
     assert.equal(acceptedInput(body, env), null, JSON.stringify(body));
-  }
-});
-
-test("--include-credential writes target-only input.json and separate 0600 credential file, never printing secrets", async () => {
-  const CRED = { email: "runtime.qa@example.invalid", password: "Runtime-Fake-Password-9x!" };
-  const testbed = await fakeTestbed(() => ({ status: 200, body: { ...INPUT, credential: CRED } }));
-  const j = job(testbed.origin);
-  try {
-    const r = await cli(j.env, ["--include-credential"]);
-    assert.equal(r.status, 0, r.stderr);
-    assert.equal(r.stdout, "testbed login acceptance: input and credential received\n");
-    for (const value of [...PRIVATE, CRED.email, CRED.password]) {
-      assert.ok(!r.stdout.includes(value) && !r.stderr.includes(value), `leaked ${value}`);
-    }
-    const [oidc, call, ...rest] = testbed.requests;
-    assert.deepEqual(rest, [], "one request");
-    assert.deepEqual(oidc, { kind: "oidc", audience: `${testbed.origin}${ENDPOINT}`, authorization: `Bearer ${OIDC_REQUEST}` });
-    assert.deepEqual(JSON.parse(call.body), { id_token: `fake-oidc-token-for-${testbed.origin}${ENDPOINT}`, include_credential: true });
-    // Target input file holds ONLY the six original fields (never credential).
-    assert.equal(fs.statSync(path.dirname(j.file)).mode & 0o777, 0o700);
-    assert.equal(fs.statSync(j.file).mode & 0o777, 0o600);
-    assert.deepEqual(JSON.parse(fs.readFileSync(j.file, "utf8")), INPUT);
-    assert.ok(!fs.readFileSync(j.file, "utf8").includes(CRED.password));
-    // Credential file is separate 0600 inside 0700 dir, readable by preflight & login_phase.
-    assert.equal(fs.statSync(path.dirname(j.credFile)).mode & 0o777, 0o700);
-    assert.equal(fs.statSync(j.credFile).mode & 0o777, 0o600);
-    assert.deepEqual(fs.readdirSync(path.dirname(j.credFile)), ["account"]);
-    assert.deepEqual(readCredentialFile(j.credFile, { consume: false }), { email: CRED.email, password: CRED.password, problem: null });
-    assert.equal(fs.existsSync(j.credFile), true, "preflight non-consuming read preserves file for device login");
-    const read = readTestbedInput(j.file, j.env, { required: true });
-    assert.equal(read.problem, null);
-    assert.deepEqual(read.expected, { userRef: vector.fixture.user_ref, serverRef: vector.fixture.server_ref });
-  } finally {
-    j.close();
-    await testbed.close();
-  }
-});
-
-test("--include-credential stops fail-closed on missing/malformed credential or 503 LOGIN_ACCEPTANCE_CREDENTIAL_UNAVAILABLE and removes stale files", async () => {
-  const CRED = { email: "runtime.qa@example.invalid", password: "Runtime-Fake-Password-9x!" };
-  for (const [name, answer, code, expectedCalls] of [
-    ["503 credential unavailable (rotated/disabled/private/missing)", { status: 503, body: { code: "LOGIN_ACCEPTANCE_CREDENTIAL_UNAVAILABLE" } }, "login-acceptance-input_credential_unavailable", 1],
-    ["200 without credential object", { status: 200, body: INPUT }, "login-acceptance-input_reply_invalid", 1],
-    ["200 with missing email", { status: 200, body: { ...INPUT, credential: { password: CRED.password } } }, "login-acceptance-input_reply_invalid", 1],
-    ["200 with empty password", { status: 200, body: { ...INPUT, credential: { email: CRED.email, password: "" } } }, "login-acceptance-input_reply_invalid", 1],
-    ["200 with newline in password", { status: 200, body: { ...INPUT, credential: { email: CRED.email, password: "a\nb" } } }, "login-acceptance-input_reply_invalid", 1],
-    ["200 with extra credential field", { status: 200, body: { ...INPUT, credential: { ...CRED, extra: "1" } } }, "login-acceptance-input_reply_invalid", 1],
-    ["409 attempt mismatch", { status: 409, body: { code: "LOGIN_ACCEPTANCE_ATTEMPT_MISMATCH" } }, "login-acceptance-input_http_409", 1],
-  ]) {
-    const testbed = await fakeTestbed(() => answer);
-    const j = job(testbed.origin);
-    try {
-      fs.mkdirSync(path.dirname(j.file), { recursive: true });
-      fs.writeFileSync(j.file, JSON.stringify(INPUT), { mode: 0o600 });
-      fs.mkdirSync(path.dirname(j.credFile), { recursive: true });
-      fs.writeFileSync(j.credFile, `${CRED.email}\n${CRED.password}\n`, { mode: 0o600 });
-      await assert.rejects(fetchLoginAcceptanceInput({ env: j.env, retryDelaysMs: [0, 0], includeCredential: true }), (e) => e.message === code, name);
-      assert.equal(fs.existsSync(j.file), false, `${name}: stale input removed`);
-      assert.equal(fs.existsSync(j.credFile), false, `${name}: stale credential removed`);
-      assert.equal(testbed.requests.filter((r) => r.kind === "testbed").length, expectedCalls, name);
-    } finally {
-      j.close();
-      await testbed.close();
-    }
-  }
-  assert.equal(acceptedCredential({ email: "not-an-email", password: "pw" }), null);
-  assert.equal(acceptedInputWithCredential({ ...INPUT, credential: { email: "a@b.c", password: "pw" } }, { STAMP_RUN_CASE_ID: RUN_CASE })?.credential.email, "a@b.c");
-});
-
-test("fetchLoginAcceptanceCredential fetches runtime credentials in memory without writing any files", async () => {
-  const CRED = { email: "mem.qa@example.invalid", password: "Mem-Only-Password-7k!" };
-  const testbed = await fakeTestbed(() => ({ status: 200, body: { ...INPUT, credential: CRED } }));
-  const j = job(testbed.origin);
-  try {
-    const cred = await fetchLoginAcceptanceCredential({ env: j.env, retryDelaysMs: [0, 0] });
-    assert.deepEqual(cred, CRED);
-    assert.equal(fs.existsSync(j.file), false, "no input file written");
-    assert.equal(fs.existsSync(j.credFile), false, "no credential file written");
-  } finally {
-    j.close();
-    await testbed.close();
-  }
-});
-
-test("3xx redirects on OIDC token or login-acceptance-input fail immediately without following or writing files", async () => {
-  const CRED = { email: "runtime.qa@example.invalid", password: "Runtime-Fake-Password-9x!" };
-  for (const [name, mode, expectedCode] of [
-    ["302 on OIDC token endpoint", "oidc-redirect", "oidc_redirect_refused"],
-    ["302 on login-acceptance-input endpoint", "input-redirect", "login-acceptance-input_http_302"],
-    ["307 on login-acceptance-input endpoint", "input-redirect-307", "login-acceptance-input_http_307"],
-  ]) {
-    const hits = [];
-    const server = http.createServer((req, res) => {
-      let text = "";
-      req.on("data", (c) => { text += c; });
-      req.on("end", () => {
-        const u = new URL(req.url, "http://127.0.0.1");
-        hits.push(u.pathname);
-        if (u.pathname === "/redirected") {
-          res.writeHead(200, { "content-type": "application/json" });
-          res.end(JSON.stringify({ value: "should-never-be-followed", ...INPUT, credential: CRED }));
-          return;
-        }
-        if (u.pathname === "/oidc") {
-          if (mode === "oidc-redirect") {
-            res.writeHead(302, { location: `${origin}/redirected` });
-            res.end();
-            return;
-          }
-          res.writeHead(200, { "content-type": "application/json" });
-          res.end(JSON.stringify({ value: `fake-oidc-token-for-${u.searchParams.get("audience")}` }));
-          return;
-        }
-        res.writeHead(mode === "input-redirect-307" ? 307 : 302, { location: `${origin}/redirected` });
-        res.end();
-      });
-    });
-    await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
-    const origin = `http://127.0.0.1:${server.address().port}`;
-    const j = job(origin);
-    try {
-      fs.mkdirSync(path.dirname(j.file), { recursive: true });
-      fs.writeFileSync(j.file, JSON.stringify(INPUT), { mode: 0o600 });
-      fs.mkdirSync(path.dirname(j.credFile), { recursive: true });
-      fs.writeFileSync(j.credFile, `${CRED.email}\n${CRED.password}\n`, { mode: 0o600 });
-      await assert.rejects(
-        fetchLoginAcceptanceInput({ env: j.env, retryDelaysMs: [0, 0], includeCredential: true }),
-        (e) => e.message === expectedCode,
-        name,
-      );
-      assert.equal(hits.includes("/redirected"), false, `${name}: redirect target must never be requested`);
-      assert.deepEqual(
-        hits,
-        mode === "oidc-redirect" ? ["/oidc"] : ["/oidc", ENDPOINT],
-        `${name}: stopped on first 3xx without retries`,
-      );
-      assert.equal(fs.existsSync(j.file), false, `${name}: no input file left behind`);
-      assert.equal(fs.existsSync(j.credFile), false, `${name}: no credential file left behind`);
-    } finally {
-      j.close();
-      await new Promise((resolve) => server.close(resolve));
-    }
   }
 });
