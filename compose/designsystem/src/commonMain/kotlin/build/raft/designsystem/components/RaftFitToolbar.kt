@@ -295,14 +295,15 @@ fun RaftFitToolbar(
     LaunchedEffect(measuredOverScope.value) { onShownOverScope?.invoke(measuredOverScope.value) }
     SubcomposeLayout(
         modifier
-            .raftSlot("fit-toolbar")
             .fillMaxWidth()
             .drawBehind {
                 val stroke = RaftStroke.Hairline.toPx()
                 drawRect(seam, topLeft = Offset(0f, size.height - stroke), size = Size(size.width, stroke))
             }
             .clipToBounds()
-            .padding(start = horizontalPadding, end = horizontalPadding, top = airTop, bottom = airBottom + RaftStroke.Hairline),
+            .padding(start = horizontalPadding, end = horizontalPadding, top = airTop, bottom = airBottom + RaftStroke.Hairline)
+            // The slot is the row of controls inside the air, as the web measures it.
+            .raftSlot("fit-toolbar"),
     ) { constraints ->
         val available = constraints.maxWidth
         if (available <= 0) return@SubcomposeLayout layout(constraints.minWidth, constraints.minHeight) {}
