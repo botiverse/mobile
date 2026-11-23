@@ -595,6 +595,10 @@ sealed interface SharedSettingsIntent {
     data class UpdateAppearance(
         val request: SettingsAppearanceUpdateRequest
     ) : SharedSettingsIntent
+    /** Settings › Appearance › Keyboard "Send messages with": optimistic, rolled back if the save fails. */
+    data class UpdateComposerSendKey(
+        val sendKey: RaftComposerSendKey
+    ) : SharedSettingsIntent
     data class CompleteSystemNotificationAction(
         val action: String,
         val result: SystemNotificationActionResult
@@ -1354,6 +1358,12 @@ class SharedSettingsDataSource(
         request: SettingsAppearanceUpdateRequest
     ): DataResult<SettingsAppearanceSnapshot> =
         settingsRepository?.updateAppearanceSettings(request)
+            ?: DataResult.Empty(EmptyReason.NoSettingsAvailable)
+
+    suspend fun updateComposerSendKey(
+        sendKey: RaftComposerSendKey
+    ): DataResult<SettingsAppearanceSnapshot> =
+        settingsRepository?.updateComposerSendKey(sendKey)
             ?: DataResult.Empty(EmptyReason.NoSettingsAvailable)
 
     suspend fun setLanguageRegionServerTranslation(enabled: Boolean): DataResult<SettingsLanguageRegionSnapshot> =
@@ -2186,6 +2196,8 @@ class SharedSettingsStore(
     private var serverNotificationModeMutationGeneration: Long = 0L
     private var serverNotificationModeMutation: ServerNotificationModeMutation? = null
     private var shareUsageDataMutation: ShareUsageDataMutation? = null
+    private var composerSendKeyMutationGeneration: Long = 0L
+    private var composerSendKeyMutation: ComposerSendKeyMutation? = null
 
     init {
         authOwnerObservationJob =
@@ -2963,9 +2975,12 @@ class SharedSettingsStore(
             }
             is SharedSettingsIntent.UpdateAppearance -> {
                 runAction(APPEARANCE_ACTION_MESSAGE_FONT_SIZE) {
-                    dataSource.updateAppearance(intent.request).applyAppearanceActionResult(APPEARANCE_ACTION_MESSAGE_FONT_SIZE)
+                    dataSource.updateAppearance(intent.request)
+                        .preservingPendingComposerSendKey()
+                        .applyAppearanceActionResult(APPEARANCE_ACTION_MESSAGE_FONT_SIZE)
                 }
             }
+            is SharedSettingsIntent.UpdateComposerSendKey -> updateComposerSendKey(intent.sendKey)
             is SharedSettingsIntent.SetLocale -> {
                 _state.value =
                     _state.value.copy(
@@ -3184,7 +3199,7 @@ class SharedSettingsStore(
             SharedSettingsDestination.Appearance -> {
                 // The desktop app shows the app preferences (Mobile's cards) under Appearance, like the web.
                 dataSource.loadMobilePreferences().applyToState(destination) { copy(mobile = it) }
-                dataSource.loadAppearance().applyToState(destination) { copy(appearance = it) }
+                dataSource.loadAppearance().preservingPendingComposerSendKey().applyToState(destination) { copy(appearance = it) }
             }
             SharedSettingsDestination.Notifications ->
                 dataSource.loadMobile().preservingPendingServerNotificationMode()
@@ -3847,6 +3862,70 @@ class SharedSettingsStore(
         val pending = shareUsageDataMutation ?: return this
         if (this !is DataResult.Content || data.usageData == null) return this
         return DataResult.Content(data.copy(usageData = AccountUsageDataSnapshot(choice = pending.enabled)))
+    }
+
+    /**
+     * Web `ComposerSendKeySetting` / `saveComposerSendKey` (#triage:#210): applies immediately,
+     * sends `PATCH /api/auth/me` `{ composerSendKey }`, and on failure puts the previous choice
+     * back (unless a newer change replaced it) with a SaveStatus error.
+     */
+    private suspend fun updateComposerSendKey(sendKey: RaftComposerSendKey) {
+        val currentAppearance = (_state.value.appearance as? ScreenLoadState.Content)?.data
+        val previous = composerSendKeyMutation?.previous ?: currentAppearance?.composerSendKey ?: RaftComposerSendKeyRuntime.sendKey
+        if (currentAppearance != null && currentAppearance.composerSendKey == sendKey && composerSendKeyMutation == null) {
+            return
+        }
+        val generation = ++composerSendKeyMutationGeneration
+        composerSendKeyMutation = ComposerSendKeyMutation(sendKey = sendKey, previous = previous)
+        RaftComposerSendKeyRuntime.setInMemory(sendKey)
+        _state.value =
+            _state.value.copy(
+                appearance =
+                    currentAppearance?.let { ScreenLoadState.Content(it.copy(composerSendKey = sendKey)) }
+                        ?: _state.value.appearance,
+                actionState =
+                    _state.value.actionState?.takeUnless { it.action == APPEARANCE_ACTION_COMPOSER_SEND_KEY },
+                routeErrorCode = null,
+            )
+        val result =
+            runCatchingPreservingCancellation { dataSource.updateComposerSendKey(sendKey) }
+                .getOrElse { DataResult.Error(ScreenError("settings_composer_send_key_failed")) }
+        if (generation != composerSendKeyMutationGeneration) return
+        composerSendKeyMutation = null
+        val latest = (_state.value.appearance as? ScreenLoadState.Content)?.data
+        when (result) {
+            is DataResult.Content -> {
+                RaftComposerSendKeyRuntime.setSendKey(result.data.composerSendKey)
+                _state.value =
+                    _state.value.copy(
+                        appearance =
+                            latest?.let { ScreenLoadState.Content(it.copy(composerSendKey = result.data.composerSendKey)) }
+                                ?: ScreenLoadState.Content(result.data),
+                        actionState = SharedSettingsActionState(APPEARANCE_ACTION_COMPOSER_SEND_KEY, inProgress = false),
+                        routeErrorCode = null,
+                    )
+            }
+            is DataResult.Empty,
+            is DataResult.Error,
+            is DataResult.NoPermission -> {
+                RaftComposerSendKeyRuntime.setInMemory(previous)
+                _state.value =
+                    _state.value.copy(
+                        appearance =
+                            latest?.let { ScreenLoadState.Content(it.copy(composerSendKey = previous)) }
+                                ?: _state.value.appearance,
+                        actionState = result.toScreenLoadState().toSettingsActionState(APPEARANCE_ACTION_COMPOSER_SEND_KEY),
+                        routeErrorCode = result.toScreenLoadState().routeErrorCode(),
+                    )
+            }
+        }
+    }
+
+    /** An Appearance reload while a send-key save runs keeps the segmented control where the user put it. */
+    private fun DataResult<SettingsAppearanceSnapshot>.preservingPendingComposerSendKey(): DataResult<SettingsAppearanceSnapshot> {
+        val pending = composerSendKeyMutation ?: return this
+        if (this !is DataResult.Content) return this
+        return DataResult.Content(data.copy(composerSendKey = pending.sendKey))
     }
 
     /**
@@ -4626,6 +4705,7 @@ private val SharedSettingsIntent.loadsSettingsContent: Boolean
             is SharedSettingsIntent.SetTranslationTargetLanguage,
             is SharedSettingsIntent.UpdateLanguageRegionPreference,
             is SharedSettingsIntent.UpdateAppearance,
+            is SharedSettingsIntent.UpdateComposerSendKey,
             is SharedSettingsIntent.CompleteSystemNotificationAction,
             is SharedSettingsIntent.SetLocale,
             is SharedSettingsIntent.SetMessageAlignment,
@@ -5049,6 +5129,7 @@ internal const val LANGUAGE_REGION_ACTION_TIMEZONE = "languageRegionTimezone"
 internal const val LANGUAGE_REGION_ACTION_TIME_FORMAT = "languageRegionTimeFormat"
 internal const val LANGUAGE_REGION_ACTION_TRANSLATION_DISPLAY = "languageRegionTranslationDisplay"
 internal const val APPEARANCE_ACTION_MESSAGE_FONT_SIZE = "appearanceMessageFontSize"
+internal const val APPEARANCE_ACTION_COMPOSER_SEND_KEY = "appearanceComposerSendKey"
 internal const val CONNECTED_APPS_ACTION_REGISTER = "connectedAppsRegister"
 internal const val CONNECTED_APPS_ACTION_UPDATE = "connectedAppsUpdate"
 internal const val CONNECTED_APPS_ACTION_LOGO_UPLOAD = "connectedAppsLogoUpload"
@@ -5070,6 +5151,11 @@ internal const val SHARE_USAGE_DATA_PRIVACY_URL = "https://raft.build/privacy"
 private data class ShareUsageDataMutation(
     val enabled: Boolean,
     val previous: AccountUsageDataSnapshot
+)
+
+private data class ComposerSendKeyMutation(
+    val sendKey: RaftComposerSendKey,
+    val previous: RaftComposerSendKey,
 )
 internal const val SERVER_ACTION_PROFILE_SAVE = "serverProfileSave"
 internal const val SERVER_ACTION_INVITE_CREATE = "serverInviteCreate"

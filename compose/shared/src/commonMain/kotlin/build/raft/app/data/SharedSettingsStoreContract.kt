@@ -142,6 +142,7 @@ class SharedSettingsStoreContract(
                 is SharedSettingsIntent.SetComposerSendKey -> MviActionKey(MOBILE_ACTION_COMPOSER_SEND_KEY)
                 is SharedSettingsIntent.SetServerDrawerEnabled -> MviActionKey(MOBILE_ACTION_SERVER_DRAWER)
                 is SharedSettingsIntent.UpdateAppearance -> MviActionKey(APPEARANCE_ACTION_MESSAGE_FONT_SIZE)
+                is SharedSettingsIntent.UpdateComposerSendKey -> MviActionKey(APPEARANCE_ACTION_COMPOSER_SEND_KEY)
                 is SharedSettingsIntent.SetApiEnvironment -> MviActionKey("${DEVELOPER_ACTION_API_ENVIRONMENT}:$environmentKey")
                 is SharedSettingsIntent.SaveApiEnvironment -> MviActionKey("${DEVELOPER_ACTION_API_ENVIRONMENT}:${request.key}")
                 SharedSettingsIntent.CheckHandsUpdate -> MviActionKey(DEVELOPER_ACTION_HANDS_UPDATE_CHECK)

@@ -1,6 +1,27 @@
 package build.raft.app
 
-import build.raft.app.resources.*
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
 import build.raft.app.components.SegmentedControl
 import build.raft.app.components.SegmentedControlOption
 import build.raft.app.data.LinkOpenMode
@@ -23,40 +44,30 @@ import build.raft.app.data.SharedSettingsActionState
 import build.raft.app.data.raftAppSettingToggleValue
 import build.raft.app.data.raftSharedPreferenceStore
 import build.raft.app.nav.RaftIosNativeNavFlag
+import build.raft.app.resources.*
 import build.raft.designsystem.components.RaftBadge
 import build.raft.designsystem.components.RaftBadgeAppearance
 import build.raft.designsystem.components.RaftBadgeVariant
+import build.raft.designsystem.components.RaftListRow
+import build.raft.designsystem.components.RaftListRowVariant
+import build.raft.designsystem.components.RaftSaveStatus
+import build.raft.designsystem.components.RaftSaveStatusDefaults
+import build.raft.designsystem.components.RaftSaveStatusState
 import build.raft.designsystem.components.RaftSwitch
 import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.RaftTheme
-import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.unit.dp
-import org.jetbrains.compose.resources.StringResource
 
 /*
- * The app's own preferences under Settings > Appearance (settings cleanup, 1.27.0: the former
- * "Mobile" page is gone). Grouped by what they change: Messages, Home, Windows (only where a large
- * screen is possible) and the web's display switches. Every row is a plain settings row: the
- * title (with a small Beta badge for an experiment), one line saying what it does, the control.
+ * The app's own preferences under Settings > Appearance (web AppearanceSection parity, 1.29.0):
+ * every row lives inside Appearance's single display group, named by its title alone (no per-item
+ * descriptions; DS Forms › A setting's row, #proj-raft-ui:#220), with a small Beta badge for an
+ * experiment. On Compose desktop, iPad app on Mac, and devices with a hardware keyboard, the
+ * composer send key moves into the Keyboard section ("Send messages with": Enter / ⌘Enter or
+ * Ctrl+Enter), leaving touch-only mobile with its soft-keyboard "Enter to send" toggle here.
  */
+
+/** Web `@max-lg` (32rem = 512px): below this group width a trailing segmented control wraps under the title. */
+internal val SettingsAppearanceInlineControlBreakpoint = 512.dp
 
 /** What the app preference rows do when changed. */
 internal class SettingsAppPreferenceActions(
@@ -75,19 +86,24 @@ internal class SettingsAppPreferenceActions(
     val diagnosticsLogger: (String) -> Unit = {},
 )
 
-/** Which app preference rows, and which copy, this platform shows. */
+/** Which preference rows and Keyboard section entries this platform and input setup shows. */
 internal data class SettingsAppPreferenceVisibility(
     /** "Open web links": only where an in-app browser can show a page (not desktop yet). */
     val linkOpenMode: Boolean,
     /** Multiple app windows: only where the host can open another app window (Android). */
     val multiShellHost: Boolean,
-    /** Enter-to-send copy about Enter / Shift+Enter instead of the soft keyboard's action key. */
-    val hardwareKeyboardComposerCopy: Boolean,
+    /**
+     * Web's Keyboard › "Send messages with" (`Enter` / `⌘Enter` or `Ctrl+Enter`): shown on
+     * Compose desktop, iPad app on Mac, and whenever a hardware keyboard is connected. Hidden on
+     * touch-only mobile without a hardware keyboard (which keeps the soft-keyboard "Enter to send"
+     * switch in Appearance).
+     */
+    val keyboardSendKey: Boolean,
     /** "iOS native navigation (Beta)": only on an iPhone host ([RaftIosNativeNavFlag.hostSupported]). */
     val iosNativeNav: Boolean = false,
-    /** A large screen is possible here ([raftPlatformLargeScreenPossible]): the Windows group. */
+    /** A large screen is possible here ([raftPlatformLargeScreenPossible]): gates multiple app windows. */
     val largeScreen: Boolean = false,
-    /** A hardware keyboard is plausible here ([settingsKeyboardShortcutsVisible]): the Keyboard shortcuts group. */
+    /** A hardware keyboard is plausible or connected: the Keyboard shortcuts row. */
     val keyboardShortcuts: Boolean = false,
 ) {
     /**
@@ -103,8 +119,8 @@ internal data class SettingsAppPreferenceVisibility(
      */
     fun multiShellHostRow(enabled: Boolean): Boolean = multiShellHost && (largeScreen || enabled)
 
-    /** The Windows group: shown when it has a row. */
-    fun windowsGroup(multiShellHostEnabled: Boolean): Boolean = desktopMode || multiShellHostRow(multiShellHostEnabled)
+    /** Appearance › Keyboard section: shown when either "Send messages with" or "Keyboard shortcuts" is shown. */
+    val keyboardSection: Boolean get() = keyboardSendKey || keyboardShortcuts
 }
 
 internal fun settingsAppPreferenceVisibility(
@@ -113,117 +129,132 @@ internal fun settingsAppPreferenceVisibility(
     supportsMultiShellHost: Boolean = raftPlatformSupportsMultiShellHost(),
     supportsIosNativeNav: Boolean = RaftIosNativeNavFlag.hostSupported,
     largeScreenPossible: Boolean = raftPlatformLargeScreenPossible(),
-): SettingsAppPreferenceVisibility =
-    SettingsAppPreferenceVisibility(
+    hardwareKeyboardConnected: Boolean = false,
+    isiOSAppOnMac: Boolean = raftPlatformIsiOSAppOnMac(),
+): SettingsAppPreferenceVisibility {
+    val hasHardwareKeyboard = finePointer || hardwareKeyboardConnected || isiOSAppOnMac
+    return SettingsAppPreferenceVisibility(
         linkOpenMode = supportsInAppBrowser,
         multiShellHost = supportsMultiShellHost,
-        hardwareKeyboardComposerCopy = finePointer,
+        keyboardSendKey = hasHardwareKeyboard,
         iosNativeNav = supportsIosNativeNav,
         largeScreen = largeScreenPossible,
-        keyboardShortcuts = settingsKeyboardShortcutsVisible(finePointer, largeScreenPossible),
+        keyboardShortcuts = settingsKeyboardShortcutsVisible(finePointer, largeScreenPossible) || hasHardwareKeyboard,
     )
+}
 
-/** The Enter-to-send row's description: Enter / Shift+Enter with a hardware keyboard, else the soft keyboard's key. */
-internal fun settingsComposerKeyDetail(hardwareKeyboard: Boolean): StringResource =
-    if (hardwareKeyboard) {
-        Res.string.settings_mobile_composer_key_detail_hardware_keyboard
-    } else {
-        Res.string.settings_mobile_composer_key_detail
-    }
+@Composable
+internal fun rememberSettingsAppPreferenceVisibility(): SettingsAppPreferenceVisibility {
+    val hardwareKeyboardConnected = rememberRaftHardwareKeyboardConnected()
+    return settingsAppPreferenceVisibility(hardwareKeyboardConnected = hardwareKeyboardConnected)
+}
 
 /**
- * Appearance > Messages, after the message font size: my message alignment, compact consecutive
- * messages, collapse long messages, Enter to send, open web links, then the Beta ones.
+ * The app's own rows inside Appearance's single display group, immediately after the web's four
+ * switches (every row starts with a hairline divider and shows its title alone, with no per-item
+ * descriptions).
  */
 @Composable
-internal fun SettingsAppearanceMessageRows(
+internal fun SettingsAppearanceAppRows(
     snapshot: SettingsMobileSnapshot,
     actionState: SharedSettingsActionState?,
     actions: SettingsAppPreferenceActions,
     visibility: SettingsAppPreferenceVisibility,
 ) {
-    val rows = SettingsAppearanceRowCounter()
-    val alignment = snapshot.messageAlignmentPreference
-    SettingsAppearanceRow(
-        title = stringResource(Res.string.settings_message_alignment_title),
-        description = stringResource(Res.string.settings_message_alignment_detail),
-        divider = rows.next(),
-        error = actionState.errorFor(MOBILE_ACTION_MESSAGE_ALIGNMENT),
-        below = {
+    if (visibility.linkOpenMode) {
+        val linkOpenMode = snapshot.linkOpenMode
+        SettingsAppearanceSegmentedRow(
+            title = stringResource(Res.string.settings_mobile_link_open_mode_title),
+            divider = true,
+            error = actionState.errorFor(MOBILE_ACTION_LINK_OPEN_MODE),
+        ) {
             SegmentedControl(
-                selectedValue = alignment.selectedKey.ifBlank { "left" },
+                selectedValue = linkOpenMode.selectedKey.ifBlank { LinkOpenMode.Default.storageKey },
                 options =
                     listOf(
-                        SegmentedControlOption("left", stringResource(Res.string.settings_message_alignment_left)),
-                        SegmentedControlOption("right", stringResource(Res.string.settings_message_alignment_right))
+                        SegmentedControlOption(
+                            LinkOpenMode.SystemBrowser.storageKey,
+                            stringResource(Res.string.settings_mobile_link_open_mode_system_browser),
+                        ),
+                        SegmentedControlOption(
+                            LinkOpenMode.InAppBrowser.storageKey,
+                            stringResource(Res.string.settings_mobile_link_open_mode_in_app_browser),
+                        ),
                     ),
-                onValueSelected = actions.onAlignmentChange,
-                enabled = alignment.available && !actionState.busyWith(MOBILE_ACTION_MESSAGE_ALIGNMENT),
+                onValueSelected = actions.onLinkOpenModeChange,
+                enabled = linkOpenMode.available && !actionState.busyWith(MOBILE_ACTION_LINK_OPEN_MODE),
             )
         }
-    )
+    }
+    val alignment = snapshot.messageAlignmentPreference
+    SettingsAppearanceSegmentedRow(
+        title = stringResource(Res.string.settings_message_alignment_title),
+        divider = true,
+        error = actionState.errorFor(MOBILE_ACTION_MESSAGE_ALIGNMENT),
+    ) {
+        SegmentedControl(
+            selectedValue = alignment.selectedKey.ifBlank { "left" },
+            options =
+                listOf(
+                    SegmentedControlOption("left", stringResource(Res.string.settings_message_alignment_left)),
+                    SegmentedControlOption("right", stringResource(Res.string.settings_message_alignment_right)),
+                ),
+            onValueSelected = actions.onAlignmentChange,
+            enabled = alignment.available && !actionState.busyWith(MOBILE_ACTION_MESSAGE_ALIGNMENT),
+        )
+    }
     SettingsAppearanceToggleRow(
         title = stringResource(Res.string.settings_mobile_compact_messages),
-        description = stringResource(Res.string.settings_mobile_compact_detail),
         preference = snapshot.compactConsecutiveMessages,
         action = MOBILE_ACTION_COMPACT_MESSAGES,
         actionState = actionState,
-        divider = rows.next(),
+        divider = true,
         onCheckedChange = actions.onCompactConsecutiveMessagesChange,
     )
     SettingsAppearanceToggleRow(
         title = stringResource(Res.string.settings_mobile_long_message_collapse),
-        description = stringResource(Res.string.settings_mobile_long_message_collapse_detail),
         preference = snapshot.longMessageCollapse,
         action = MOBILE_ACTION_LONG_MESSAGE_COLLAPSE,
         actionState = actionState,
-        divider = rows.next(),
+        divider = true,
         onCheckedChange = actions.onLongMessageCollapseChange,
     )
-    SettingsAppearanceToggleRow(
-        title = stringResource(Res.string.settings_mobile_composer_key),
-        description = stringResource(settingsComposerKeyDetail(visibility.hardwareKeyboardComposerCopy)),
-        preference = snapshot.composerSendKey,
-        action = MOBILE_ACTION_COMPOSER_SEND_KEY,
-        actionState = actionState,
-        divider = rows.next(),
-        anchorId = "send-with",
-        onCheckedChange = actions.onComposerSendKeyChange,
-    )
-    if (visibility.linkOpenMode) {
-        val linkOpenMode = snapshot.linkOpenMode
-        SettingsAppearanceRow(
-            title = stringResource(Res.string.settings_mobile_link_open_mode_title),
-            description = stringResource(Res.string.settings_mobile_link_open_mode_detail),
-            divider = rows.next(),
-            error = actionState.errorFor(MOBILE_ACTION_LINK_OPEN_MODE),
-            below = {
-                SegmentedControl(
-                    selectedValue = linkOpenMode.selectedKey.ifBlank { LinkOpenMode.Default.storageKey },
-                    options =
-                        listOf(
-                            SegmentedControlOption(
-                                LinkOpenMode.SystemBrowser.storageKey,
-                                stringResource(Res.string.settings_mobile_link_open_mode_system_browser)
-                            ),
-                            SegmentedControlOption(
-                                LinkOpenMode.InAppBrowser.storageKey,
-                                stringResource(Res.string.settings_mobile_link_open_mode_in_app_browser)
-                            )
-                        ),
-                    onValueSelected = actions.onLinkOpenModeChange,
-                    enabled = linkOpenMode.available && !actionState.busyWith(MOBILE_ACTION_LINK_OPEN_MODE),
-                )
-            }
+    if (!visibility.keyboardSendKey) {
+        SettingsAppearanceToggleRow(
+            title = stringResource(Res.string.settings_mobile_composer_key),
+            preference = snapshot.composerSendKey,
+            action = MOBILE_ACTION_COMPOSER_SEND_KEY,
+            actionState = actionState,
+            divider = true,
+            anchorId = "send-with",
+            onCheckedChange = actions.onComposerSendKeyChange,
+        )
+    }
+    if (visibility.desktopMode) {
+        val desktopMode = snapshot.desktopModeOnLargeScreen
+        LaunchedEffect(desktopMode.available, desktopMode.enabled) {
+            actions.diagnosticsLogger(
+                "desktop_mode_card_state enabled=${desktopMode.enabled} available=${desktopMode.available}",
+            )
+        }
+        SettingsAppearanceToggleRow(
+            title = stringResource(Res.string.settings_mobile_desktop_mode),
+            preference = desktopMode,
+            action = MOBILE_ACTION_DESKTOP_MODE,
+            actionState = actionState,
+            divider = true,
+            onCheckedChange = { enabled ->
+                actions.diagnosticsLogger("desktop_mode_toggle_click target=$enabled available=${desktopMode.available}")
+                actions.onDesktopModeOnLargeScreenChange(enabled)
+            },
         )
     }
     SettingsAppearanceToggleRow(
         title = stringResource(Res.string.settings_mobile_new_message_menu),
-        description = stringResource(Res.string.settings_mobile_new_message_menu_detail),
         preference = snapshot.newMessageMenu,
         action = MOBILE_ACTION_NEW_MESSAGE_MENU,
         actionState = actionState,
-        divider = rows.next(),
+        divider = true,
         beta = true,
         onCheckedChange = actions.onNewMessageMenuChange,
     )
@@ -232,38 +263,23 @@ internal fun SettingsAppearanceMessageRows(
         val accessibility = stringResource(Res.string.settings_mobile_conversation_forward_gesture_accessibility)
         SettingsAppearanceToggleRow(
             title = stringResource(Res.string.settings_mobile_conversation_forward_gesture),
-            description = stringResource(Res.string.settings_mobile_conversation_forward_gesture_detail),
             preference = snapshot.conversationForwardGesture,
             action = MOBILE_ACTION_CONVERSATION_FORWARD_GESTURE,
             actionState = actionState,
-            divider = rows.next(),
+            divider = true,
             beta = true,
             modifier = Modifier.semantics { contentDescription = accessibility },
             onCheckedChange = actions.onConversationForwardGestureChange,
         )
     }
-}
-
-/**
- * Appearance > Home, after "Hide empty Home sections": the multi-server Home drawer (Beta) and,
- * on an iPhone, iOS native navigation (Beta), which changes how the app moves between pages.
- */
-@Composable
-internal fun SettingsAppearanceHomeRows(
-    snapshot: SettingsMobileSnapshot,
-    actionState: SharedSettingsActionState?,
-    actions: SettingsAppPreferenceActions,
-    visibility: SettingsAppPreferenceVisibility,
-) {
     val serverDrawer = snapshot.serverDrawer
     LaunchedEffect(serverDrawer.available, serverDrawer.enabled) {
         actions.diagnosticsLogger(
-            "server_drawer_card_state enabled=${serverDrawer.enabled} available=${serverDrawer.available}"
+            "server_drawer_card_state enabled=${serverDrawer.enabled} available=${serverDrawer.available}",
         )
     }
     SettingsAppearanceToggleRow(
         title = stringResource(Res.string.settings_mobile_server_drawer),
-        description = stringResource(Res.string.settings_mobile_server_drawer_detail),
         preference = serverDrawer,
         action = MOBILE_ACTION_SERVER_DRAWER,
         actionState = actionState,
@@ -277,48 +293,13 @@ internal fun SettingsAppearanceHomeRows(
     if (visibility.iosNativeNav) {
         SettingsIosNativeNavRow(actions.surface)
     }
-}
-
-/**
- * Appearance > Windows, only where a large screen is possible ([SettingsAppPreferenceVisibility]):
- * desktop layout on large screens, multiple app windows (Beta, Android).
- */
-@Composable
-internal fun SettingsAppearanceWindowRows(
-    snapshot: SettingsMobileSnapshot,
-    actionState: SharedSettingsActionState?,
-    actions: SettingsAppPreferenceActions,
-    visibility: SettingsAppPreferenceVisibility,
-) {
-    val rows = SettingsAppearanceRowCounter()
-    if (visibility.desktopMode) {
-        val desktopMode = snapshot.desktopModeOnLargeScreen
-        LaunchedEffect(desktopMode.available, desktopMode.enabled) {
-            actions.diagnosticsLogger(
-                "desktop_mode_card_state enabled=${desktopMode.enabled} available=${desktopMode.available}"
-            )
-        }
-        SettingsAppearanceToggleRow(
-            title = stringResource(Res.string.settings_mobile_desktop_mode),
-            description = stringResource(Res.string.settings_mobile_desktop_mode_detail),
-            preference = desktopMode,
-            action = MOBILE_ACTION_DESKTOP_MODE,
-            actionState = actionState,
-            divider = rows.next(),
-            onCheckedChange = { enabled ->
-                actions.diagnosticsLogger("desktop_mode_toggle_click target=$enabled available=${desktopMode.available}")
-                actions.onDesktopModeOnLargeScreenChange(enabled)
-            },
-        )
-    }
     if (visibility.multiShellHostRow(snapshot.multiShellHost.enabled)) {
         SettingsAppearanceToggleRow(
             title = stringResource(Res.string.settings_mobile_multi_shell_host),
-            description = stringResource(Res.string.settings_mobile_multi_shell_host_detail),
             preference = snapshot.multiShellHost,
             action = MOBILE_ACTION_MULTI_SHELL_HOST,
             actionState = actionState,
-            divider = rows.next(),
+            divider = true,
             beta = true,
             onCheckedChange = actions.onMultiShellHostChange,
         )
@@ -326,10 +307,8 @@ internal fun SettingsAppearanceWindowRows(
 }
 
 /**
- * iOS native navigation (Beta, iPhone only). The same stored switch as before
- * ([RaftIosNativeNavFlag.KEY_LOCAL_OVERRIDE]); it shows what the next start decides (the switch,
- * else the server's last value: off by default). Read once per process, so it takes effect on the
- * next app start (the description says so).
+ * iOS native navigation (Beta, iPhone only). Stored under [RaftIosNativeNavFlag.KEY_LOCAL_OVERRIDE]
+ * and read on app start.
  */
 @Composable
 private fun SettingsIosNativeNavRow(surface: RaftAppSettingSurface) {
@@ -337,7 +316,6 @@ private fun SettingsIosNativeNavRow(surface: RaftAppSettingSurface) {
     var enabled by remember { mutableStateOf(RaftIosNativeNavFlag.stored(preferences)) }
     SettingsAppearanceSwitchRow(
         title = stringResource(Res.string.settings_mobile_ios_native_nav),
-        description = stringResource(Res.string.settings_mobile_ios_native_nav_detail),
         checked = enabled,
         onCheckedChange = { checked ->
             val previous = enabled
@@ -355,11 +333,10 @@ private fun SettingsIosNativeNavRow(surface: RaftAppSettingSurface) {
     )
 }
 
-/** One stored on/off preference: off while it is unavailable or its change is saving. */
+/** One stored on/off preference: disabled while unavailable or while its change is saving. */
 @Composable
 private fun SettingsAppearanceToggleRow(
     title: String,
-    description: String,
     preference: SettingsMobileToggleSnapshot,
     action: String,
     actionState: SharedSettingsActionState?,
@@ -371,7 +348,6 @@ private fun SettingsAppearanceToggleRow(
 ) {
     SettingsAppearanceSwitchRow(
         title = title,
-        description = description,
         checked = preference.enabled,
         onCheckedChange = onCheckedChange,
         divider = divider,
@@ -383,14 +359,14 @@ private fun SettingsAppearanceToggleRow(
     )
 }
 
-/** raft-ui ListRow `plain` with a switch as its control (px 16, py 12, gap 12). */
+/** raft-ui `ListRow` `plain` with a title (optional [description], omitted in Appearance) and a switch as its control. */
 @Composable
 internal fun SettingsAppearanceSwitchRow(
     title: String,
-    description: String,
     checked: Boolean,
     onCheckedChange: (Boolean) -> Unit,
     divider: Boolean,
+    description: String? = null,
     /** The Settings search id of the row ([settingsSearchAnchor]); null: not in the index. */
     anchorId: String? = null,
     beta: Boolean = false,
@@ -398,68 +374,100 @@ internal fun SettingsAppearanceSwitchRow(
     error: SharedSettingsActionState? = null,
     modifier: Modifier = Modifier,
 ) {
-    SettingsAppearanceRow(
-        title = title,
-        description = description,
-        divider = divider,
-        anchorId = anchorId,
-        beta = beta,
-        error = error,
-        modifier = modifier,
-        trailing = { RaftSwitch(checked = checked, onCheckedChange = onCheckedChange, enabled = enabled, label = title) },
-    )
+    val errorMessage = error?.userFacingErrorMessage(localizedErrorPresentationStrings())
+    val traceId = error?.screenError?.traceId ?: error?.permissionBlocker?.traceId
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .then(if (anchorId != null) Modifier.settingsSearchAnchor(anchorId) else Modifier)
+            .then(modifier),
+    ) {
+        RaftListRow(
+            title = title,
+            variant = RaftListRowVariant.Plain,
+            divider = divider,
+            description = description,
+            wrapDescription = description != null,
+            titleMaxLines = Int.MAX_VALUE,
+            titleTrailing = if (beta) ({ SettingsBetaBadge() }) else null,
+            saveStatus = errorMessage?.let { RaftSaveStatusState.Failed(it) },
+            trailing = { RaftSwitch(checked = checked, onCheckedChange = onCheckedChange, enabled = enabled, label = title) },
+        )
+        if (errorMessage != null && !traceId.isNullOrBlank()) {
+            RaftTraceIdNote(traceId, Modifier.padding(start = 16.dp, end = 16.dp, bottom = 8.dp))
+        }
+    }
 }
 
 /**
- * One row of an Appearance group: a hairline above it unless it is the first ([divider]), the
- * title (a small Beta badge after it for an experiment) over its description, the control at the
- * end ([trailing]) or under the words ([below], a segmented choice), and what failed under it.
+ * One plain settings row whose control is a [SegmentedControl] (web `ListRow variant="plain"
+ * className="@max-lg:flex-wrap"`): title on the left and control on the right when wide enough
+ * (>= [SettingsAppearanceInlineControlBreakpoint]), wrapping the control under the title on
+ * narrow widths. Shows the title alone, with no per-item description.
  */
 @Composable
-private fun SettingsAppearanceRow(
+internal fun SettingsAppearanceSegmentedRow(
     title: String,
-    description: String,
     divider: Boolean,
     anchorId: String? = null,
-    beta: Boolean = false,
+    saveStatus: RaftSaveStatusState? = null,
+    saveStatusTag: String? = null,
     error: SharedSettingsActionState? = null,
+    traceId: String? = null,
     modifier: Modifier = Modifier,
-    trailing: (@Composable () -> Unit)? = null,
-    below: (@Composable () -> Unit)? = null,
+    control: @Composable () -> Unit,
 ) {
     val colors = RaftTheme.colors
     val typography = RaftTheme.typography
     Column(
-        Modifier.fillMaxWidth().then(if (anchorId != null) Modifier.settingsSearchAnchor(anchorId) else Modifier).then(modifier)
+        Modifier
+            .fillMaxWidth()
+            .then(if (anchorId != null) Modifier.settingsSearchAnchor(anchorId) else Modifier)
+            .then(modifier),
     ) {
         if (divider) {
             Box(Modifier.fillMaxWidth().padding(start = 16.dp).height(RaftAppStroke.Thin).background(colors.lineHairline))
         }
-        Column(
-            Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp)
-        ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
-                        RaftText(
-                            title,
-                            modifier = Modifier.weight(1f, fill = false),
-                            style = typography.body.copy(fontWeight = FontWeight.SemiBold),
-                            color = colors.foreground
+        BoxWithConstraints(Modifier.fillMaxWidth()) {
+            val wide = maxWidth >= SettingsAppearanceInlineControlBreakpoint
+            val labelBlock: @Composable (Modifier) -> Unit = { blockModifier ->
+                Column(blockModifier, verticalArrangement = Arrangement.spacedBy(RaftSaveStatusDefaults.Gap)) {
+                    RaftText(
+                        title,
+                        style = typography.body.copy(fontWeight = FontWeight.SemiBold),
+                        color = colors.foreground,
+                    )
+                    if (saveStatus != null) {
+                        RaftSaveStatus(
+                            saveStatus,
+                            modifier = if (saveStatusTag != null) Modifier.testTag(saveStatusTag) else Modifier,
                         )
-                        if (beta) SettingsBetaBadge()
+                        if (!traceId.isNullOrBlank()) {
+                            RaftTraceIdNote(traceId)
+                        }
+                    } else if (error != null) {
+                        SettingsFormErrorText(error)
                     }
-                    RaftText(description, style = typography.callout, color = colors.foregroundMuted)
                 }
-                trailing?.invoke()
             }
-            below?.invoke()
-            error?.let { SettingsFormErrorText(it) }
+            if (wide) {
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    labelBlock(Modifier.weight(1f))
+                    control()
+                }
+            } else {
+                Column(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    labelBlock(Modifier.fillMaxWidth())
+                    control()
+                }
+            }
         }
     }
 }
@@ -472,13 +480,6 @@ internal fun SettingsBetaBadge() {
         appearance = RaftBadgeAppearance.Soft,
         variant = RaftBadgeVariant.Primary,
     )
-}
-
-/** Hands out the rows' dividers in order: none above the first row of a group. */
-internal class SettingsAppearanceRowCounter {
-    private var count = 0
-
-    fun next(): Boolean = count++ > 0
 }
 
 private fun SharedSettingsActionState?.busyWith(action: String): Boolean = this != null && this.action == action && inProgress

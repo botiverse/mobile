@@ -146,6 +146,7 @@ internal data class ThreadPageContentData(
     val markdownReferencePendingActionId: String?,
     val attachmentOpenStates: Map<String, ThreadAttachmentOpenUiState>,
     val composerSendKeyEnabled: Boolean,
+    val composerSendKey: build.raft.app.data.RaftComposerSendKey = build.raft.app.data.RaftComposerSendKey.Default,
     val longMessageCollapseEnabled: Boolean,
     val longMessageCollapseConversationSetting: RaftLongMessageCollapseConversationSetting?,
     val channelSettingsPanel: ThreadChannelSettingsPanel?,
@@ -287,6 +288,7 @@ fun ThreadPageContent(
     markdownReferencePendingActionId: String? = null,
     attachmentOpenStates: Map<String, ThreadAttachmentOpenUiState> = emptyMap(),
     composerSendKeyEnabled: Boolean = false,
+    composerSendKey: build.raft.app.data.RaftComposerSendKey = build.raft.app.data.RaftComposerSendKey.Default,
     longMessageCollapseEnabled: Boolean = false,
     longMessageCollapseConversationSetting: RaftLongMessageCollapseConversationSetting? = null,
     /** The settings drawer's members strip and preferences (null: the drawer shows the name form and actions). */
@@ -386,6 +388,7 @@ fun ThreadPageContent(
                 markdownReferencePendingActionId = markdownReferencePendingActionId,
                 attachmentOpenStates = attachmentOpenStates,
                 composerSendKeyEnabled = composerSendKeyEnabled,
+                composerSendKey = composerSendKey,
                 longMessageCollapseEnabled = longMessageCollapseEnabled,
                 longMessageCollapseConversationSetting = longMessageCollapseConversationSetting,
                 channelSettingsPanel = channelSettingsPanel,
@@ -560,6 +563,7 @@ private fun ThreadPageContentContent(
     val markdownReferencePendingActionId = data.markdownReferencePendingActionId
     val attachmentOpenStates = data.attachmentOpenStates
     val composerSendKeyEnabled = data.composerSendKeyEnabled
+    val composerSendKey = data.composerSendKey
     val longMessageCollapseEnabled = data.longMessageCollapseEnabled
     val longMessageCollapseConversationSetting = data.longMessageCollapseConversationSetting
     val channelSettingsPanel = data.channelSettingsPanel
@@ -1591,6 +1595,7 @@ private fun ThreadPageContentContent(
                             },
                             onSuggestionDemandChanged = onSuggestionDemandChanged,
                             composerSendKeyEnabled = composerSendKeyEnabled,
+                            composerSendKey = composerSendKey,
                             onKeyboardHeightChange = { nextInset ->
                                 if (nextInset != composerKeyboardInsetDp) {
                                     composerKeyboardInsetDp = nextInset

@@ -57,6 +57,8 @@ import build.raft.app.data.KeyValueLocalePreferenceStore
 import build.raft.app.data.RaftHostNetworkEvents
 import build.raft.app.data.RaftAppUpdateEvents
 import build.raft.app.data.RaftChatLayoutPreferenceEvents
+import build.raft.app.data.RaftComposerSendKey
+import build.raft.app.data.RaftComposerSendKeyRuntime
 import build.raft.app.data.RaftRealtimeEvents
 import build.raft.app.data.RaftTimeFormatRuntime
 import build.raft.app.data.RaftTimeZoneRuntime
@@ -1275,6 +1277,7 @@ private fun RaftAppShellReadyContent(
                 serverNotificationLastKnownStore = sharedStores.settingsServerNotificationLastKnownStore,
                 onTimeFormatUpdated = RaftTimeFormatRuntime::update,
                 onTimeZoneUpdated = RaftTimeZoneRuntime::update,
+                onComposerSendKeyUpdated = RaftComposerSendKeyRuntime::setSendKey,
             )
         }
     val myMessageAlignmentState = remember { mutableStateOf(MyMessageAlignmentPreference.Default) }
@@ -2262,11 +2265,15 @@ private fun RaftAppShellReadyContent(
     val sessionPreferredTimezone = (readySession ?: homePreviewSession).appShellPreferredTimezone()
     val effectiveSessionTimeFormat =
         RaftTimeFormatRuntime.observe(fallback = sessionTimeFormat ?: RaftTimeFormat24Hour)
+    val sessionComposerSendKey = (readySession ?: homePreviewSession)?.user?.composerSendKey
     val authRequired = authGateState is SharedAuthGateState.AuthRequired
-    LaunchedEffect(readySession?.user?.id, sessionTimeFormat, sessionPreferredTimezone, authRequired) {
+    LaunchedEffect(readySession?.user?.id, sessionTimeFormat, sessionPreferredTimezone, sessionComposerSendKey, authRequired) {
         if (readySession != null || authRequired) {
             RaftTimeFormatRuntime.update(sessionTimeFormat)
             RaftTimeZoneRuntime.update(sessionPreferredTimezone)
+            RaftComposerSendKeyRuntime.setSendKey(
+                if (readySession != null) RaftComposerSendKey.fromWire(sessionComposerSendKey) else RaftComposerSendKey.Default
+            )
         }
     }
     // Subscribe only to low-frequency dateContext (updates on midnight, timezone/DST shift, or

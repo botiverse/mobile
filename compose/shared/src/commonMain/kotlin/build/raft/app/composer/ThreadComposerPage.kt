@@ -54,6 +54,7 @@ import build.raft.designsystem.components.RaftIconButtonSize
 import build.raft.app.components.raftCardSurface
 import build.raft.app.components.raftControlSurface
 import build.raft.app.components.raftLookOverlaySurface
+import build.raft.app.data.RaftComposerSendKey
 import build.raft.app.data.SharedMembersLoadStatus
 import build.raft.app.format.RaftFormat
 import build.raft.app.model.ConversationSummary
@@ -1245,6 +1246,30 @@ internal fun threadComposerUsesImeAction(
     @Suppress("UNUSED_PARAMETER") channelCount: Int
 ): Boolean = composerSendKeyEnabled
 
+/**
+ * Effective IME action request for the composer editor: on a hardware keyboard / Compose desktop,
+ * plain Enter sends only in [RaftComposerSendKey.Enter] mode ([RaftComposerSendKey.ModEnter] leaves
+ * plain Enter as a newline while ⌘/Ctrl+Enter sends via [RaftHardwareEnterConfig]); on touch-only
+ * mobile without a hardware keyboard, the soft-keyboard preference [composerSendKeyEnabled] wins.
+ */
+internal fun threadComposerEffectiveImeActionRequested(
+    hardwareKeyboard: Boolean,
+    composerSendKey: RaftComposerSendKey,
+    composerSendKeyEnabled: Boolean,
+): Boolean =
+    if (hardwareKeyboard) {
+        composerSendKey == RaftComposerSendKey.Enter
+    } else {
+        composerSendKeyEnabled
+    }
+
+/** Whether this host currently has a desktop or connected hardware keyboard for composer shortcuts. */
+@Composable
+internal fun rememberRaftComposerHasHardwareKeyboard(): Boolean =
+    raftPlatformHasFinePointer() || rememberRaftHardwareKeyboardConnected() || raftPlatformIsiOSAppOnMac()
+
+internal const val ThreadComposerSendKeyHintTestTag = "composer-send-key-hint"
+
 internal fun threadComposerImeAction(composerUsesImeAction: Boolean): ImeAction =
     if (composerUsesImeAction) ImeAction.Send else ImeAction.Default
 
@@ -2341,6 +2366,8 @@ internal fun ThreadComposerContent(
     hostPaddingTop: Dp = 0.dp,
     keyboardLiftBottomContentPadding: Dp? = null,
     composerSendKeyEnabled: Boolean = false,
+    composerSendKey: RaftComposerSendKey = RaftComposerSendKey.Default,
+    hardwareKeyboardConnected: Boolean = rememberRaftComposerHasHardwareKeyboard(),
     dismissKeyboardOnBlur: Boolean = false,
     attachmentPreviewEnabled: Boolean,
     /** See [ThreadComposerUiState.attachmentReorderEnabled]. */
@@ -2374,6 +2401,8 @@ internal fun ThreadComposerContent(
         hostPaddingTop = hostPaddingTop,
         keyboardLiftBottomContentPadding = keyboardLiftBottomContentPadding,
         composerSendKeyEnabled = composerSendKeyEnabled,
+        composerSendKey = composerSendKey,
+        hardwareKeyboardConnected = hardwareKeyboardConnected,
         dismissKeyboardOnBlur = dismissKeyboardOnBlur,
         attachmentPreviewEnabled = attachmentPreviewEnabled,
         agentStatusResolver = agentStatusResolver,
@@ -2398,6 +2427,8 @@ internal fun ThreadComposerContent(
     hostPaddingTop: Dp = 0.dp,
     keyboardLiftBottomContentPadding: Dp? = null,
     composerSendKeyEnabled: Boolean = false,
+    composerSendKey: RaftComposerSendKey = RaftComposerSendKey.Default,
+    hardwareKeyboardConnected: Boolean = rememberRaftComposerHasHardwareKeyboard(),
     dismissKeyboardOnBlur: Boolean = false,
     attachmentPreviewEnabled: Boolean,
     agentStatusResolver: RaftAgentStatusResolver = EmptyRaftAgentStatusResolver,
@@ -2456,6 +2487,8 @@ internal fun ThreadComposerContent(
         hostPaddingTop = hostPaddingTop,
         keyboardLiftBottomContentPadding = keyboardLiftBottomContentPadding,
         composerSendKeyEnabled = composerSendKeyEnabled,
+        composerSendKey = composerSendKey,
+        hardwareKeyboardConnected = hardwareKeyboardConnected,
         dismissKeyboardOnBlur = dismissKeyboardOnBlur,
         attachmentPreviewEnabled = attachmentPreviewEnabled,
         agentStatusResolver = agentStatusResolver,
@@ -2490,6 +2523,8 @@ internal fun ThreadComposerContentLeaf(
     hostPaddingTop: Dp = 0.dp,
     keyboardLiftBottomContentPadding: Dp? = null,
     composerSendKeyEnabled: Boolean = false,
+    composerSendKey: RaftComposerSendKey = RaftComposerSendKey.Default,
+    hardwareKeyboardConnected: Boolean = rememberRaftComposerHasHardwareKeyboard(),
     dismissKeyboardOnBlur: Boolean = false,
     attachmentPreviewEnabled: Boolean,
     agentStatusResolver: RaftAgentStatusResolver = EmptyRaftAgentStatusResolver,
@@ -2904,9 +2939,15 @@ internal fun ThreadComposerContentLeaf(
             state.composerMode != "no_permission" &&
             !state.pendingAttachments.hasFailedThreadAttachmentUpload() &&
             (text.isNotBlank() || state.pendingAttachments.isNotEmpty())
+    val effectiveImeActionRequested =
+        threadComposerEffectiveImeActionRequested(
+            hardwareKeyboard = hardwareKeyboardConnected,
+            composerSendKey = composerSendKey,
+            composerSendKeyEnabled = composerSendKeyEnabled,
+        )
     val composerUsesImeAction =
         threadComposerUsesImeAction(
-            composerSendKeyEnabled = composerSendKeyEnabled,
+            composerSendKeyEnabled = effectiveImeActionRequested,
             panelState = suggestionPanelState,
             memberCount = filteredMemberSuggestions.size,
             channelCount = filteredChannelSuggestions.size
@@ -3067,9 +3108,10 @@ internal fun ThreadComposerContentLeaf(
         }
     }
 
-    fun sendComposerMessage() {
+    fun sendComposerMessage(forceAsTask: Boolean = false) {
         if (sendSnapshotGate.isPending) return
         val sourceSessionId = editorSessionId
+        val effectiveAsTask = asTask || (forceAsTask && surface.sendsAsTask)
         val requestToken = sendSnapshotGate.begin()
         nativeEditingStateReader.readCurrentValue { readResult ->
             if (!sendSnapshotGate.finish(requestToken)) return@readCurrentValue
@@ -3097,20 +3139,20 @@ internal fun ThreadComposerContentLeaf(
                 ThreadComposerSendRequest(
                     editorSessionId = sourceSessionId,
                     value = nativeValue,
-                    asTask = asTask,
+                    asTask = effectiveAsTask,
                 )
             submittedEchoFence.begin(request)
             val admission =
                 onSendRequest?.invoke(request)
                     ?: run {
-                        onEvent("send", nativeValue.text, asTask, null)
+                        onEvent("send", nativeValue.text, effectiveAsTask, null)
                         ThreadComposerSendAdmission.Rejected
                     }
             submittedEchoFence.finishAdmission(admission)
         }
     }
 
-    fun handleKeyboardSend(fromHardwareEnter: Boolean) {
+    fun handleKeyboardSend(fromHardwareEnter: Boolean, forceAsTask: Boolean = false) {
         when (
             threadComposerEnterAction(
                 trigger = suggestionTrigger,
@@ -3138,7 +3180,7 @@ internal fun ThreadComposerContentLeaf(
                     )
                     ?.let(::applyChannelSuggestion)
             ThreadComposerEnterAction.CommitSuggestionToken -> commitSuggestionToken()
-            ThreadComposerEnterAction.Send -> sendComposerMessage()
+            ThreadComposerEnterAction.Send -> sendComposerMessage(forceAsTask = forceAsTask)
             ThreadComposerEnterAction.Noop -> Unit
         }
     }
@@ -3565,9 +3607,19 @@ internal fun ThreadComposerContentLeaf(
                             // toggling the preference while this composer is alive does not take
                             // effect until the subtree is recreated. Changing it emits a warning
                             // from the native side rather than silently serving the old mode.
-                            imeActionRequested = composerSendKeyEnabled,
+                            imeActionRequested = effectiveImeActionRequested,
                             keyboardOptions = composerKeyboardOptions,
                             keyboardActions = composerKeyboardActions,
+                            hardwareEnterConfig =
+                                RaftHardwareEnterConfig(
+                                    mode = composerSendKey,
+                                    hardwareKeyboard = hardwareKeyboardConnected,
+                                    softEnterSends = composerSendKeyEnabled,
+                                    isImeComposing = { latestFieldValue.composition != null },
+                                    canSendAsTask = surface.showTaskButton && surface.sendsAsTask,
+                                    onSend = { handleKeyboardSend(fromHardwareEnter = true) },
+                                    onSendAsTask = { handleKeyboardSend(fromHardwareEnter = true, forceAsTask = true) },
+                                ),
                             // RaftType.Input uses the shared content size, same as message text.
                             textStyle = RaftType.Input.copy(
                                 color = if (composerEnabled) RaftColor.TextBlack else RaftColor.ForegroundDisabled,
@@ -3690,6 +3742,23 @@ internal fun ThreadComposerContentLeaf(
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.spacedBy(ThreadComposerRightActionGroupSpacing)
                             ) {
+                                if (
+                                    hardwareKeyboardConnected &&
+                                    composerSendKey == RaftComposerSendKey.ModEnter &&
+                                    threadComposerComposing(text, state.pendingAttachments.size)
+                                ) {
+                                    Text(
+                                        text =
+                                            stringResource(
+                                                Res.string.composer_send_key_hint,
+                                                raftComposerModEnterKeyLabel(raftPlatformShortcutsUseCommand()),
+                                            ),
+                                        modifier = Modifier.testTag(ThreadComposerSendKeyHintTestTag),
+                                        style = RaftType.Caption.copy(color = RaftColor.ForegroundHint),
+                                        color = RaftColor.ForegroundHint,
+                                        maxLines = 1,
+                                    )
+                                }
                                 if (surface.showTaskButton) {
                                     Row(
                                         modifier = Modifier

@@ -100,6 +100,12 @@ interface SettingsRepository {
     suspend fun deleteServer(request: SettingsServerDeleteRequest): DataResult<SettingsServerActionResult>
     suspend fun getAppearanceSettings(): DataResult<SettingsAppearanceSnapshot>
     suspend fun updateAppearanceSettings(request: SettingsAppearanceUpdateRequest): DataResult<SettingsAppearanceSnapshot>
+    /**
+     * `PATCH /api/auth/me` `{ composerSendKey }` (botiverse/slock #13051 `composerSendKey.ts`):
+     * how the message box sends on Compose desktop and hardware keyboards (`"enter"` or `"mod_enter"`).
+     */
+    suspend fun updateComposerSendKey(sendKey: RaftComposerSendKey): DataResult<SettingsAppearanceSnapshot> =
+        DataResult.Empty(EmptyReason.NoSettingsAvailable)
     suspend fun getMobileSettings(): DataResult<SettingsMobileSnapshot>
     suspend fun getLanguageRegionSettings(): DataResult<SettingsLanguageRegionSnapshot>
     suspend fun updateLanguageRegionPreference(

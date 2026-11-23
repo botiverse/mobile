@@ -5932,4 +5932,8 @@
     <string name="agent_readiness_owner_can_fix_computer_owner">컴퓨터 소유자가 해결할 수 있어요</string>
     <string name="agent_readiness_owner_can_fix_agent_owner">에이전트 소유자가 해결할 수 있어요</string>
     <string name="agent_readiness_owner_can_fix_server_admin">서버 관리자가 해결할 수 있어요</string>
+    <string name="settings_appearance_keyboard_section">키보드</string>
+    <string name="settings_appearance_send_key_title">메시지 보내기 키</string>
+    <string name="settings_appearance_send_key_save_failed">메시지 보내기 키를 바꾸지 못했어요. 다시 시도해 주세요.</string>
+    <string name="composer_send_key_hint">%1$s 키로 보내기</string>
 </resources>

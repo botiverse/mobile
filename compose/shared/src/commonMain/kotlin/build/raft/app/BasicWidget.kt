@@ -73,10 +73,14 @@ import androidx.compose.foundation.text.KeyboardActionScope
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.isAltPressed
+import androidx.compose.ui.input.key.isCtrlPressed
+import androidx.compose.ui.input.key.isMetaPressed
 import androidx.compose.ui.input.key.isShiftPressed
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
+import build.raft.app.data.RaftComposerSendKey
 import androidx.compose.material3.Text
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -1540,12 +1544,72 @@ internal fun raftResolvedKeyboardOptions(
         keyboardOptions
     }
 
+/** What a hardware Enter press does in a composer ([raftHardwareEnterOutcome]). */
+internal enum class RaftHardwareEnterOutcome {
+    Newline,
+    Send,
+    SendAsTask,
+}
+
+/**
+ * Pure decision for a hardware Enter / NumPadEnter key-down in a message composer, matching web
+ * `composerEnterAction` (`botiverse/slock` `packages/web/src/features/composer/composerSendKey.ts`
+ * @ 1e18003722ce4e38e599a11836305b7494be0a25):
+ *
+ * - Alt+Enter always leaves the key alone ([RaftHardwareEnterOutcome.Newline]).
+ * - ⌘/Ctrl+Shift+Enter sends as a task where the composer offers it ([canSendAsTask]).
+ * - Shift+Enter always inserts a newline.
+ * - With a hardware keyboard (Compose desktop, Mac, or connected external keyboard):
+ *   - [RaftComposerSendKey.Enter]: Enter (and ⌘/Ctrl+Enter) sends.
+ *   - [RaftComposerSendKey.ModEnter]: ⌘/Ctrl+Enter sends; plain Enter inserts a newline.
+ * - On touch-only mobile without a hardware keyboard: plain Enter follows [softEnterSends]
+ *   (default false = newline); ⌘/Ctrl+Enter still sends if a modified key event arrives.
+ */
+internal fun raftHardwareEnterOutcome(
+    mode: RaftComposerSendKey,
+    hardwareKeyboard: Boolean,
+    softEnterSends: Boolean,
+    modPressed: Boolean,
+    shiftPressed: Boolean,
+    altPressed: Boolean,
+    canSendAsTask: Boolean = false,
+): RaftHardwareEnterOutcome {
+    if (altPressed) return RaftHardwareEnterOutcome.Newline
+    if (modPressed && shiftPressed && canSendAsTask) return RaftHardwareEnterOutcome.SendAsTask
+    if (shiftPressed) return RaftHardwareEnterOutcome.Newline
+    if (hardwareKeyboard) {
+        return when (mode) {
+            RaftComposerSendKey.Enter -> RaftHardwareEnterOutcome.Send
+            RaftComposerSendKey.ModEnter ->
+                if (modPressed) RaftHardwareEnterOutcome.Send else RaftHardwareEnterOutcome.Newline
+        }
+    }
+    return if (modPressed || softEnterSends) RaftHardwareEnterOutcome.Send else RaftHardwareEnterOutcome.Newline
+}
+
+/**
+ * Composer-level hardware Enter configuration for [TextField] / [raftImeEnterAction]. When set,
+ * hardware Enter / ⌘Enter / Ctrl+Enter routing follows [raftHardwareEnterOutcome] even when
+ * `imeAction` is [ImeAction.Default] (as in [RaftComposerSendKey.ModEnter] mode where plain Enter
+ * inserts a newline and ⌘/Ctrl+Enter sends).
+ */
+internal class RaftHardwareEnterConfig(
+    val mode: RaftComposerSendKey,
+    val hardwareKeyboard: Boolean,
+    val softEnterSends: Boolean,
+    val isImeComposing: () -> Boolean,
+    val canSendAsTask: Boolean = false,
+    val onSend: () -> Unit,
+    val onSendAsTask: () -> Unit = onSend,
+)
+
 /**
  * CMP port of the Android host's hardware-Enter routing (RaftLegacyHostActivity
- * handleRaftTextFieldEnterKey): when the field's IME action is Send, Enter sends on key-up and
- * Shift+Enter inserts a newline (multi-line fields only); which of the two is decided on key-down
- * ([RaftHardwareEnterRouter]). Compose would otherwise insert a newline
- * for every hardware Enter on a multi-line field.
+ * handleRaftTextFieldEnterKey): when [hardwareEnterConfig] is supplied, follows
+ * [raftHardwareEnterOutcome] (supporting both Enter and ⌘/Ctrl+Enter send modes, Shift+Enter
+ * newline, ⌘/Ctrl+Shift+Enter send as task, and IME composition pass-through); otherwise, when the
+ * field's IME action is Send, Enter sends on key-up and Shift+Enter inserts a newline (multi-line
+ * fields only). Which action runs is decided on key-down ([RaftHardwareEnterRouter]).
  *
  * TODO(cmp-switch): `systemNewlineAction` (an "Insert newline" item in the Android text
  * selection menu) has no common Compose API yet; it is still ignored.
@@ -1557,8 +1621,43 @@ internal fun Modifier.raftImeEnterAction(
     singleLine: Boolean,
     keyboardOptions: KeyboardOptions,
     keyboardActions: KeyboardActions,
+    hardwareEnterConfig: RaftHardwareEnterConfig? = null,
 ): Modifier {
     val router = remember { RaftHardwareEnterRouter() }
+    if (hardwareEnterConfig != null) {
+        val currentConfig by rememberUpdatedState(hardwareEnterConfig)
+        return onPreviewKeyEvent { event ->
+            if (event.key != Key.Enter && event.key != Key.NumPadEnter) return@onPreviewKeyEvent false
+            val phase =
+                when (event.type) {
+                    KeyEventType.KeyDown -> RaftHardwareEnterRouter.Phase.Down
+                    KeyEventType.KeyUp -> RaftHardwareEnterRouter.Phase.Up
+                    else -> return@onPreviewKeyEvent false
+                }
+            val config = currentConfig
+            if (phase == RaftHardwareEnterRouter.Phase.Down && config.isImeComposing()) {
+                router.reset()
+                return@onPreviewKeyEvent false
+            }
+            val outcome =
+                raftHardwareEnterOutcome(
+                    mode = config.mode,
+                    hardwareKeyboard = config.hardwareKeyboard,
+                    softEnterSends = config.softEnterSends,
+                    modPressed = event.isMetaPressed || event.isCtrlPressed,
+                    shiftPressed = event.isShiftPressed,
+                    altPressed = event.isAltPressed,
+                    canSendAsTask = config.canSendAsTask,
+                )
+            router.onEnter(
+                phase = phase,
+                outcome = outcome,
+                singleLine = singleLine,
+                send = config.onSend,
+                sendAsTask = config.onSendAsTask,
+            )
+        }
+    }
     if (keyboardOptions.imeAction != ImeAction.Send) return this
     val onSend = keyboardActions.onSend ?: return this
     return onPreviewKeyEvent { event ->
@@ -1577,39 +1676,59 @@ internal fun Modifier.raftImeEnterAction(
 
 /**
  * Per-field hardware Enter decision for [raftImeEnterAction]. Send vs newline is decided on the
- * key-down (by the Shift state at that moment) and the key-up only carries it out, so releasing
- * Shift a moment before Enter still inserts the newline instead of sending, and a key-up whose
+ * key-down (by the modifier state at that moment) and the key-up only carries it out, so releasing
+ * Shift/Ctrl/⌘ a moment before Enter still performs the key-down decision, and a key-up whose
  * key-down this field did not see (focus moved mid-press) does nothing.
  */
 internal class RaftHardwareEnterRouter {
     enum class Phase { Down, Up }
 
-    private enum class Decision { Send, Newline }
+    private var pending: RaftHardwareEnterOutcome? = null
 
-    private var pending: Decision? = null
+    fun reset() {
+        pending = null
+    }
 
     /** Returns true when the event is consumed (the field must not handle it). */
-    fun onEnter(phase: Phase, shiftPressed: Boolean, singleLine: Boolean, send: () -> Unit): Boolean =
+    fun onEnter(
+        phase: Phase,
+        outcome: RaftHardwareEnterOutcome,
+        singleLine: Boolean,
+        send: () -> Unit,
+        sendAsTask: () -> Unit = send,
+    ): Boolean =
         when (phase) {
             Phase.Down -> {
-                val decision = if (shiftPressed) Decision.Newline else Decision.Send
-                pending = decision
+                pending = outcome
                 // Newline: a multi-line field inserts it; a single-line field swallows (no send).
-                decision == Decision.Send || singleLine
+                outcome != RaftHardwareEnterOutcome.Newline || singleLine
             }
             Phase.Up -> {
                 val decision = pending
                 pending = null
                 when (decision) {
-                    Decision.Send -> {
+                    RaftHardwareEnterOutcome.Send -> {
                         send()
                         true
                     }
-                    Decision.Newline -> singleLine
+                    RaftHardwareEnterOutcome.SendAsTask -> {
+                        sendAsTask()
+                        true
+                    }
+                    RaftHardwareEnterOutcome.Newline -> singleLine
                     null -> false
                 }
             }
         }
+
+    /** Returns true when the event is consumed (the field must not handle it). */
+    fun onEnter(phase: Phase, shiftPressed: Boolean, singleLine: Boolean, send: () -> Unit): Boolean =
+        onEnter(
+            phase = phase,
+            outcome = if (shiftPressed) RaftHardwareEnterOutcome.Newline else RaftHardwareEnterOutcome.Send,
+            singleLine = singleLine,
+            send = send,
+        )
 }
 
 /**
@@ -1783,6 +1902,7 @@ internal fun Modifier.raftAppEditorBehavior(
     onFocus: () -> Unit,
     onBlur: () -> Unit,
     participatesInGlobalFocusDismiss: Boolean = true,
+    hardwareEnterConfig: RaftHardwareEnterConfig? = null,
 ): Modifier {
     var lastFocus by remember { mutableStateOf(false) }
     val focusOwnerRegistry = LocalRaftInputFocusOwnerRegistry.current
@@ -1820,6 +1940,7 @@ internal fun Modifier.raftAppEditorBehavior(
             singleLine = singleLine,
             keyboardOptions = resolvedKeyboardOptions,
             keyboardActions = keyboardActions,
+            hardwareEnterConfig = hardwareEnterConfig,
         )
         .keyboardHeightChange { params ->
             currentKeyboardHeightChange(params)
@@ -1975,6 +2096,7 @@ internal fun TextField(
     visualTransformation: VisualTransformation = VisualTransformation.None,
     contentAlignment: Alignment = Alignment.CenterStart,
     nativeEditingStateReader: RaftTextFieldNativeEditingStateReader? = null,
+    hardwareEnterConfig: RaftHardwareEnterConfig? = null,
 ) {
     val nativeEditingStateBindingOwner = remember { Any() }
 
@@ -1996,6 +2118,7 @@ internal fun TextField(
             onFocus = onFocus,
             onBlur = onBlur,
             participatesInGlobalFocusDismiss = participatesInGlobalFocusDismiss,
+            hardwareEnterConfig = hardwareEnterConfig,
         )
     // The editor edits a TextFieldState; the caller's value follows it (rememberRaftTextFieldState).
     // The "native" read is that state itself: it already holds an IME edit the caller has not been

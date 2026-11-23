@@ -5934,4 +5934,8 @@
     <string name="agent_readiness_owner_can_fix_computer_owner">The computer's owner can fix it</string>
     <string name="agent_readiness_owner_can_fix_agent_owner">The agent's owner can fix it</string>
     <string name="agent_readiness_owner_can_fix_server_admin">A server admin can fix it</string>
+    <string name="settings_appearance_keyboard_section">Keyboard</string>
+    <string name="settings_appearance_send_key_title">Send messages with</string>
+    <string name="settings_appearance_send_key_save_failed">Couldn’t change how messages send. Try again.</string>
+    <string name="composer_send_key_hint">%1$s to send</string>
 </resources>

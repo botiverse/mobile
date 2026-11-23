@@ -165,6 +165,7 @@ enum class RaftLucideIconName(val wireName: String) {
     Info("info"),
     Key("key"),
     KeyRound("key-round"),
+    Keyboard("keyboard"),
     Languages("languages"),
     LayoutGrid("layout-grid"),
     LayoutList("layout-list"),

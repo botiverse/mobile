@@ -164,6 +164,7 @@ internal fun SharedHandsFeedbackContent(
         }
     var lastPersistedDraft by lastPersistedDraftState
     val composerSendKeyEnabled = chatLayoutPreferenceStore.readComposerSendKeyEnabledSync()
+    val composerSendKey = build.raft.app.data.RaftComposerSendKeyRuntime.observeSendKey()
     var messageFieldValue by remember(accountId) {
         mutableStateOf(
             TextFieldValue(
@@ -1078,6 +1079,7 @@ internal fun SharedHandsFeedbackContent(
             attachmentActionsEnabled = remainingSlots > 0,
             attachments = attachments.toFeedbackComposerAttachmentItems(copy, uploading = submitting),
             composerSendKeyEnabled = composerSendKeyEnabled,
+            composerSendKey = composerSendKey,
             onKeyboardHeightChange = { inset -> if (keyboardInsetDp != inset) keyboardInsetDp = inset },
             onEvent = { action, value, attachmentId -> onComposerEvent(action, value, attachmentId) },
         )
@@ -1539,6 +1541,7 @@ internal fun SettingsHandsFeedbackComposer(
     attachmentActionsEnabled: Boolean,
     attachments: List<RaftPendingAttachmentItem>,
     composerSendKeyEnabled: Boolean,
+    composerSendKey: build.raft.app.data.RaftComposerSendKey = build.raft.app.data.RaftComposerSendKey.Default,
     onEvent: (action: String, value: String?, attachmentId: String?) -> Unit,
     onKeyboardHeightChange: (Float) -> Unit = {},
     /** The field's value now (a second native callback may come before the next recomposition). */
@@ -1588,6 +1591,7 @@ internal fun SettingsHandsFeedbackComposer(
         editorAsTask = false,
         onEditorAsTaskChange = { _, _ -> true },
         composerSendKeyEnabled = composerSendKeyEnabled,
+        composerSendKey = composerSendKey,
         dismissKeyboardOnBlur = true,
         onEvent = { action, eventValue, _, attachmentId -> onEvent(action, eventValue, attachmentId) },
         onKeyboardHeightChange = onKeyboardHeightChange,

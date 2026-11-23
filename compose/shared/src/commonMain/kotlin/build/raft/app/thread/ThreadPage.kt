@@ -2969,6 +2969,7 @@ private fun SharedThreadRouteContentContent(
     val labels = threadRouteLabels()
     val genericActionCardSuccessLabel = labels.genericActionCardSuccessLabel
     val composerSendKeyEnabled = rememberComposerSendKeyEnabled(chatLayoutPreferenceStore, eventBus)
+    val composerSendKey = build.raft.app.data.RaftComposerSendKeyRuntime.observeSendKey()
     val newMessageMenuEnabled = rememberNewMessageMenuEnabled(chatLayoutPreferenceStore, eventBus)
     val attachmentUploadFailedDetailTemplate = labels.attachmentUploadFailedDetailTemplate
     val unableToOpenTaskLabel = labels.unableToOpenTaskLabel
@@ -6556,6 +6557,7 @@ private fun SharedThreadRouteContentContent(
             markdownReferencePendingActionId = markdownReferencePending.busyActionId,
             attachmentOpenStates = attachmentOpenStates,
             composerSendKeyEnabled = composerSendKeyEnabled,
+            composerSendKey = composerSendKey,
             longMessageCollapseEnabled = longMessageCollapseEnabled,
             longMessageCollapseConversationSetting = longMessageCollapseConversationSetting,
             channelSettingsPanel = channelSettingsPanel,

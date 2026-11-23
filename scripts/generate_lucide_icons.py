@@ -211,6 +211,7 @@ LUCIDE_ICONS = [
     "info",
     "key",
     "key-round",
+    "keyboard",
     "languages",
     "layout-grid",
     "layout-list",
