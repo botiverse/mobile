@@ -628,6 +628,8 @@ internal class ExternalInvitesStore(
     private var freeLimitGeneration = 0
     /** Cached result of `GET channels/external-availability` when prefetched for a gated entry. */
     private var prefetchedFreeLimit: Boolean? = null
+    /** Latest `gated` state passed to [PrefetchFreeLimit] so an in-flight open never emits a stale upgrade. */
+    private var lastPrefetchedGated: Boolean? = null
     /** A gated entry's slot read under way: taps meanwhile do nothing. */
     private var entryReading = false
 
@@ -702,10 +704,9 @@ internal class ExternalInvitesStore(
 
     private fun prefetchFreeLimit(gated: Boolean) {
         val mine = ++freeLimitGeneration
-        if (!gated) {
-            prefetchedFreeLimit = null
-            return
-        }
+        prefetchedFreeLimit = null
+        lastPrefetchedGated = gated
+        if (!gated) return
         scope.launch {
             val reached = dataSource.freeLimitReached()
             if (mine == freeLimitGeneration) {
@@ -733,10 +734,17 @@ internal class ExternalInvitesStore(
                     entryReading = false
                     mutableState.update { it.copy(openingEntry = false) }
                 }
+            if (mutableState.value.dialog != null) return@launch
             if (mine == freeLimitGeneration) {
                 prefetchedFreeLimit = reached
+                if (reached == true) emit(ExternalInvitesEffect.FreeLimitUpgrade) else openDialog(joint)
+            } else if (lastPrefetchedGated == false || prefetchedFreeLimit == false) {
+                // Superseded by an ungated state or a fresher prefetch saying the slot is open:
+                // never emit a stale upgrade dialog.
+                openDialog(joint)
+            } else if (prefetchedFreeLimit == true) {
+                emit(ExternalInvitesEffect.FreeLimitUpgrade)
             }
-            if (reached == true) emit(ExternalInvitesEffect.FreeLimitUpgrade) else openDialog(joint)
         }
     }
 

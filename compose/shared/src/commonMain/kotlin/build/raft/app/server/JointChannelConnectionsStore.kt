@@ -574,7 +574,11 @@ internal class JointChannelConnectionsStore(
                         val rowStates =
                             open.rowStates +
                                 refused.mapNotNull { outcome -> memberConnectRefusalRowState(outcome)?.let { outcome.serverId to it } }
-                        val retry = refused.filter { memberConnectRefusalRowState(it) == null }.map { it.serverId }.toSet()
+                        val retry =
+                            refused
+                                .filter { memberConnectRefusalRowState(it) == null && open.limits[it.serverId]?.atLimit != true }
+                                .map { it.serverId }
+                                .toSet()
                         previous.copy(
                             actionInFlight = null,
                             connectedByYou = byYou,
@@ -618,10 +622,15 @@ internal class JointChannelConnectionsStore(
                 val current = mutableState.value
                 val open = current.memberConnectSheet ?: return@launch
                 if (limits.isEmpty()) return@launch
-                val prunedSelection = open.selected.filterNot { limits[it]?.atLimit == true }.toSet()
+                val nextSelected =
+                    if (open.busy) {
+                        open.selected
+                    } else {
+                        open.selected.filterNot { limits[it]?.atLimit == true }.toSet()
+                    }
                 mutableState.value =
                     current.copy(
-                        memberConnectSheet = open.copy(limits = limits, selected = prunedSelection),
+                        memberConnectSheet = open.copy(limits = limits, selected = nextSelected),
                     )
             }
     }

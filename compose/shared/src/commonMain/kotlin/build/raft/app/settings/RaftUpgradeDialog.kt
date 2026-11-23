@@ -279,7 +279,7 @@ internal fun externalContextForGate(
  * plan's single external-channel slot on [serverId].
  */
 internal fun build.raft.app.data.HomeChannelRow.holdsExternalSlot(serverId: String): Boolean {
-    if (archived) return false
+    if (serverId.isBlank() || archived) return false
     val type = channelType ?: if (kind == build.raft.app.model.ConversationKind.Joint) "joint" else null
     return when (type) {
         "joint" -> hasExternalRelation || jointServers.isEmpty() || jointServers.any { it.id != serverId }
@@ -415,8 +415,11 @@ internal fun Pager.openRaftUpgradeDialog(
         val session = runCatchingPreservingCancellation { authStore.readSession() }.getOrNull()
         val requestedServerId = targetServerId?.trim()?.takeIf { it.isNotEmpty() }
         val server =
-            requestedServerId?.let { id -> session?.servers?.firstOrNull { it.id == id }?.toServerSummary() }
-                ?: session?.currentServerSummary()
+            if (requestedServerId != null) {
+                session?.servers?.firstOrNull { it.id == requestedServerId }?.toServerSummary() ?: return@launch
+            } else {
+                session?.currentServerSummary()
+            }
         val outcome = raftUpgradeOutcome(gate, server?.plan)
         bridge.log("upgrade_dialog_open gate=${gate.wire} plan=${server?.plan ?: "unknown"} outcome=$outcome")
         when (outcome) {

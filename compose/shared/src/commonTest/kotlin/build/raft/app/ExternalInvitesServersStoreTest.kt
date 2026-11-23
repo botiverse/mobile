@@ -284,6 +284,39 @@ class ExternalInvitesServersStoreTest {
     }
 
     @Test
+    fun prefetchClearsStaleFalseOnRefetchAndUngatedSupersedesInFlightOpen() = runTest {
+        // After a prefetched false, a new PrefetchFreeLimit(true) clears the stale cache immediately so
+        // RequestOpen does not open with stale false while the fresh read is in flight.
+        val source = FakeExternalInvitesDataSource().apply { freeLimitAnswer = false }
+        val store = ExternalInvitesStore(this, source)
+        store.dispatch(ExternalInvitesIntent.PrefetchFreeLimit(gated = true))
+        runCurrent()
+        assertEquals(1, source.freeLimitCalls)
+
+        val refetchGate = CompletableDeferred<Boolean?>()
+        source.freeLimitDeferred = refetchGate
+        store.dispatch(ExternalInvitesIntent.PrefetchFreeLimit(gated = true))
+        runCurrent()
+        assertEquals(2, source.freeLimitCalls)
+
+        val openGate = CompletableDeferred<Boolean?>()
+        source.freeLimitDeferred = openGate
+        store.dispatch(ExternalInvitesIntent.RequestOpen(joint = false, gated = true))
+        runCurrent()
+        assertTrue(store.state.value.openingEntry)
+        assertNull(store.state.value.dialog)
+
+        // Becoming ungated while RequestOpen is in flight must open the dialog instead of emitting a stale upgrade.
+        store.dispatch(ExternalInvitesIntent.PrefetchFreeLimit(gated = false))
+        openGate.complete(true)
+        refetchGate.complete(true)
+        runCurrent()
+        assertFalse(store.state.value.openingEntry)
+        assertNotNull(store.state.value.dialog)
+        assertEquals(emptyList(), store.state.value.effects)
+    }
+
+    @Test
     fun mutationsNotifyChannelRefreshAndBusyIgnoresSetText() = runTest {
         val source = source(ownServer("s2", "Beta"))
         source.connectAnswer = DataResult.Content(ExternalInviteAnswer.Ok(listOf(ServerConnectOutcome.Connected("s2", "c2"))))
@@ -294,7 +327,14 @@ class ExternalInvitesServersStoreTest {
         runCurrent()
         store.dispatch(ExternalInvitesIntent.SetText("new@example.com"))
         store.dispatch(ExternalInvitesIntent.SetServers(setOf("s2")))
+        val previewGate = CompletableDeferred<DataResult<ExternalInviteAnswer<ExternalInvitePreview>>>()
+        source.previewDeferred = previewGate
         store.dispatch(ExternalInvitesIntent.Next)
+        runCurrent()
+        assertTrue(store.state.value.dialog?.busy == true)
+        store.dispatch(ExternalInvitesIntent.SetText("ignored@example.com"))
+        assertEquals("new@example.com", store.state.value.dialog?.text)
+        previewGate.complete(source.previewAnswer)
         runCurrent()
         store.dispatch(ExternalInvitesIntent.Send(makePrivate = false))
         runCurrent()

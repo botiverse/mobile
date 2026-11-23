@@ -197,7 +197,7 @@ internal fun JointMemberConnectSheet(
                             text = if (canUpgrade) upgradeLabel else askOwnerLabel,
                             onClick = { onUpgradeServer(server.id) },
                             variant = RaftButtonVariant.Default,
-                            size = RaftButtonSize.Sm,
+                            size = RaftButtonSize.Md,
                             enabled = !sheet.busy,
                             modifier =
                                 Modifier

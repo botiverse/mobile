@@ -404,6 +404,7 @@ private fun <T> ChoiceListRow(
     val chipShape = RoundedCornerShape(RaftRadius.Chip)
     val lines = item.descriptions.filter { it.isNotBlank() }.take(2)
     val inlineTrailing = item.trailingAction
+    val showInlineTrailing = inlineTrailing != null && action == null
     val rowContent: @Composable (Modifier) -> Unit = { rowModifier ->
         RaftFirstLineRow(
             lineHeight = lineHeight,
@@ -425,7 +426,7 @@ private fun <T> ChoiceListRow(
                         start = 10.dp,
                         end =
                             when {
-                                inlineTrailing != null -> 8.dp
+                                showInlineTrailing -> 8.dp
                                 action != null -> RaftChoiceListDefaults.ActionInset
                                 else -> 10.dp
                             },
@@ -468,10 +469,10 @@ private fun <T> ChoiceListRow(
             }
         }
     }
-    if (inlineTrailing != null && action == null) {
+    if (showInlineTrailing) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             rowContent(Modifier.weight(1f))
-            Box(Modifier.padding(end = 8.dp)) { inlineTrailing() }
+            Box(Modifier.padding(end = 8.dp)) { inlineTrailing?.invoke() }
         }
     } else {
         Box(Modifier.fillMaxWidth()) {

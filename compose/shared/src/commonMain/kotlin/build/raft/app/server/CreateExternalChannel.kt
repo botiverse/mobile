@@ -192,7 +192,7 @@ internal class CreateExternalChannelStore(
         when (intent) {
             CreateExternalChannelIntent.Start -> start()
             CreateExternalChannelIntent.LoadServers -> loadServers()
-            is CreateExternalChannelIntent.SetText -> updateInvite { it.copy(text = intent.text, failure = null) }
+            is CreateExternalChannelIntent.SetText -> updateInvite { if (it.busy) it else it.copy(text = intent.text, failure = null) }
             is CreateExternalChannelIntent.SetServers -> updateInvite { if (it.busy) it else it.copy(serverIds = intent.serverIds) }
             is CreateExternalChannelIntent.SetConnectInvite -> updateInvite { it.withConnectInvite(intent.email, intent.checked) }
             CreateExternalChannelIntent.Review -> review()

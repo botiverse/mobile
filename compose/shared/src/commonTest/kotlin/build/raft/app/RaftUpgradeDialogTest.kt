@@ -158,8 +158,10 @@ class RaftUpgradeDialogTest {
 
         assertFalse(plain.holdsExternalSlot("srv-a"))
         assertTrue(privateWithExternal.holdsExternalSlot("srv-a"))
+        assertFalse(privateWithExternal.holdsExternalSlot(""))
         assertFalse(archivedJoint.holdsExternalSlot("srv-a"))
         assertTrue(activeJoint.holdsExternalSlot("srv-a"))
+        assertFalse(activeJoint.holdsExternalSlot(" "))
 
         // Single live slot channel names it; excluding it or having 2+ returns null.
         assertEquals(

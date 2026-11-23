@@ -227,6 +227,47 @@ class JointMemberConnectStoreTest {
         store.clear()
     }
 
+    @Test
+    fun limitsArrivingMidSubmitKeepSelectionStableAndExcludeAtLimitFromRetry() = runTest {
+        val dataSource = FakeJointConnectionsDataSource(connections = memberTestConnections())
+        val limitsGate = CompletableDeferred<Unit>()
+        val submitGate = CompletableDeferred<Unit>()
+        dataSource.memberConnectLimitsGate = limitsGate
+        dataSource.memberConnectLimits =
+            mapOf(
+                "srv-zed" to MemberConnectServerLimit(serverId = "srv-zed", atLimit = true, canUpgrade = true),
+            )
+        dataSource.memberConnectGate = submitGate
+        dataSource.memberConnectResult =
+            DataResult.Content(
+                MemberConnectResponse.Answered(
+                    listOf(
+                        ServerConnectOutcome.Refused("srv-zed", 500, "internal_error", "boom"),
+                        ServerConnectOutcome.Refused("srv-alpha", 500, "internal_error", "boom"),
+                    ),
+                    traceId = TRACE,
+                )
+            )
+        val store = memberStore(dataSource)
+        store.dispatch(JointChannelConnectionsIntent.OpenMemberConnect)
+        store.dispatch(JointChannelConnectionsIntent.SetMemberConnectSelection(setOf("srv-zed", "srv-alpha")))
+        store.dispatch(JointChannelConnectionsIntent.SubmitMemberConnect)
+        runCurrent()
+        assertTrue(store.state.value.memberConnectSheet?.busy == true)
+
+        // Limits arrive while submit is in flight: limits are stored, but selection does not flicker mid-submit.
+        limitsGate.complete(Unit)
+        runCurrent()
+        assertEquals(setOf("srv-zed", "srv-alpha"), store.state.value.memberConnectSheet?.selected)
+        assertEquals(true, store.state.value.memberConnectSheet?.limits?.get("srv-zed")?.atLimit)
+
+        // Once submit finishes with partial/transient refusals, at-limit srv-zed is dropped from retry selection.
+        submitGate.complete(Unit)
+        runCurrent()
+        assertEquals(setOf("srv-alpha"), store.state.value.memberConnectSheet?.selected)
+        store.clear()
+    }
+
     private fun TestScope.memberStore(
         dataSource: FakeJointConnectionsDataSource,
         account: MemberConnectAccount = memberTestAccount(),

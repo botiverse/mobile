@@ -554,14 +554,15 @@ private fun ThreadMembersPageScreen() {
             ?.channels
             .orEmpty()
     val latestHomeChannels by rememberUpdatedState(homeChannels)
-    val latestRefreshMembers by rememberUpdatedState(::refreshMembers)
+    val latestHomeStore by rememberUpdatedState(homeStore)
+    val latestRefreshMembers by rememberUpdatedState<() -> Unit>({ refreshMembers() })
     val externalInvitesStore =
         remember(routeOwner, route.channelId) {
             ExternalInvitesStore(
                 scope = memberScope,
                 dataSource = RealExternalInvitesDataSource(route.channelId, routeOwner, authorityGateway, bridge::log),
                 onChannelMutated = { membersChanged ->
-                    homeStore?.dispatch(SharedHomeIntent.Refresh)
+                    latestHomeStore?.dispatch(SharedHomeIntent.Refresh)
                     if (membersChanged) latestRefreshMembers()
                 },
             )
@@ -1201,7 +1202,7 @@ internal fun ThreadMembersPageContent(
             } else if (filteredMembers.isEmpty() && filteredExternal.isEmpty() && visibleInvites.isEmpty()) {
                 item {
                     val query = rosterQuery.text.trim()
-                    val hasAnyRows = members.isNotEmpty() || externalMemberCount > 0 || externalInvites?.state?.invites?.isNotEmpty() == true
+                    val hasAnyRows = members.isNotEmpty() || externalMemberCount > 0 || externalInvites?.visibleInvites("")?.isNotEmpty() == true
                     if (query.isNotEmpty() && hasAnyRows) {
                         ChannelMembersEmptyState(
                             icon = RaftLucideIconName.Search,
