@@ -50,8 +50,9 @@ Point the app at a local stack by seeding `<dataDir>/kv/slock_api_server_environ
 
 ## CI
 
-`.github/workflows/desktop-macos-dmg.yml` (workflow_dispatch) runs `:desktopApp:createDistributable`
-on a macOS runner, ad-hoc signs `Raft.app` (`codesign --sign -`, no certificate; without it Apple
+`.github/workflows/desktop-macos-dmg.yml` (workflow_dispatch) first runs the desktop app's tests
+(`:desktopApp:test`; no other CI lane runs them, so dispatch it for any desktop change), then
+`:desktopApp:createDistributable` on a macOS runner, ad-hoc signs `Raft.app` (`codesign --sign -`, no certificate; without it Apple
 silicon reports the downloaded app as "damaged"), wraps it in a `.dmg` with `hdiutil` and uploads
 it as the `raft-desktop-macos-dmg` artifact. It has no Developer ID signature and is not notarized.
 It is also a reusable workflow: `github-release.yml` calls it for each `vX.Y.Z` tag (tag

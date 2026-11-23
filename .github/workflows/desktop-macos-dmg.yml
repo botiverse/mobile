@@ -103,6 +103,27 @@ jobs:
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v6
 
+      # The desktop app's own tests (compose/desktopApp/src/test: video controller, navigator,
+      # host lifecycle, title bar, …) run in no other lane: test.yml covers Android, iOS and the
+      # design system only. Run them before packaging, so every dmg (dispatch, release) is built
+      # from desktop code whose tests pass.
+      - name: Desktop unit tests
+        working-directory: compose
+        run: |
+          set -euo pipefail
+          ./gradlew :desktopApp:test --no-daemon --console=plain --stacktrace
+
+      - name: Upload desktop test reports
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: desktop-test-reports
+          path: |
+            compose/desktopApp/build/reports/tests/test/
+            compose/desktopApp/build/test-results/test/
+          if-no-files-found: ignore
+          retention-days: 7
+
       # Unsigned for now (owner decision 2026-10-28: no Developer ID yet), but ad-hoc signed:
       # on Apple silicon an arm64 app with no signature at all is reported as "damaged" when it
       # carries the download quarantine flag, and Privacy & Security offers no "Open Anyway".
