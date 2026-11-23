@@ -2802,10 +2802,11 @@
     <string name="settings_computers_dialog_title_connect">連接電腦</string>
     <string name="settings_computers_dialog_title_connected">電腦已連接</string>
     <string name="settings_computers_error_add_permission">你沒有新增電腦的權限。</string>
-    <string name="settings_computers_your_computer">你的電腦</string>
-    <string name="settings_computers_your_computer_hint">在你自己的電腦上執行 Agent</string>
-    <string name="settings_computers_cloud_computer">雲端電腦</string>
-    <string name="settings_computers_coming_soon">即將推出</string>
+    <string name="settings_computers_limit_reached">已達電腦上限（%1$d/%2$d，%3$s 方案）。</string>
+    <string name="settings_computers_which_computer">哪一台電腦？</string>
+    <string name="settings_computers_your_computer">你自己的電腦</string>
+    <string name="settings_computers_your_computer_hint">筆電、桌機或雲端伺服器（VPS）都可以：在上面執行一行指令</string>
+    <string name="settings_computers_own_computer_hint">筆電、桌機或雲端伺服器（VPS）都可以：在上面執行這行指令。</string>
     <string name="settings_computers_install_daemon_hint">在你的電腦上安裝 daemon，並將它連線到此工作區。</string>
     <string name="settings_computers_setting_up">正在設定…</string>
     <string name="settings_computers_next">下一步</string>

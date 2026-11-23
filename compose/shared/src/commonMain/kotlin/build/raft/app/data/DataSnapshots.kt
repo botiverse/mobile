@@ -1842,7 +1842,9 @@ data class SettingsComputersSnapshot(
     val latestDaemonVersion: String? = null,
     val latestComputerVersion: String? = null,
     /** For the offline cards' restart command; null while the session has no server slug. */
-    val commandContext: SettingsComputerCommandContext? = null
+    val commandContext: SettingsComputerCommandContext? = null,
+    /** Server plan's cap on Computers (-1 = unlimited, web `getEffectiveLimits(plan).maxMachines`). */
+    val maxComputers: Int = -1,
 )
 
 data class SettingsComputerSnapshot(

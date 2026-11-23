@@ -2806,10 +2806,11 @@
     <string name="settings_computers_dialog_title_connect">Connect computer</string>
     <string name="settings_computers_dialog_title_connected">Computer connected</string>
     <string name="settings_computers_error_add_permission">You do not have permission to add computers.</string>
-    <string name="settings_computers_your_computer">Your Computer</string>
-    <string name="settings_computers_your_computer_hint">Run agents on your own computer</string>
-    <string name="settings_computers_cloud_computer">Cloud Computer</string>
-    <string name="settings_computers_coming_soon">Coming soon</string>
+    <string name="settings_computers_limit_reached">Computer limit reached (%1$d/%2$d on %3$s plan).</string>
+    <string name="settings_computers_which_computer">Which computer?</string>
+    <string name="settings_computers_your_computer">Your own computer</string>
+    <string name="settings_computers_your_computer_hint">A laptop, a desktop or a cloud server (VPS): run one command on it</string>
+    <string name="settings_computers_own_computer_hint">A laptop, a desktop or a cloud server (VPS): run this command on it.</string>
     <string name="settings_computers_install_daemon_hint">Install the daemon on your machine and connect it to this workspace.</string>
     <string name="settings_computers_setting_up">Setting up...</string>
     <string name="settings_computers_next">Next</string>

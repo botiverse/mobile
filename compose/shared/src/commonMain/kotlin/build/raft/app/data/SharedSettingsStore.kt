@@ -141,6 +141,9 @@ data class AddComputerDialogState(
     val saving: Boolean = false,
     val canManage: Boolean = true,
     val atLimit: Boolean = false,
+    val computerCount: Int = 0,
+    val maxComputers: Int = -1,
+    val planDisplayName: String = "Free",
     /** "The terminal shows a code? Enter it here." under the command (AddComputerCode.kt). */
     val code: AddComputerCodeState = AddComputerCodeState()
 )
@@ -538,7 +541,7 @@ sealed interface SharedSettingsIntent {
     data class SetAddComputerName(val name: String) : SharedSettingsIntent
     data class SetAddComputerRegistration(val machineId: String, val apiKeyPrefix: String) : SharedSettingsIntent
     data class SetAddComputerError(val message: String) : SharedSettingsIntent
-    data class PollAddComputerMachineStatus(val machineId: String) : SharedSettingsIntent
+    data class PollAddComputerMachineStatus(val machineId: String = "") : SharedSettingsIntent
     data class SetAddComputerConfirmedMatch(val confirmed: Boolean) : SharedSettingsIntent
     data object CompleteAddComputerDialog : SharedSettingsIntent
     /** "The terminal shows a code? Enter it here.": opens or closes the code field (web `useAddComputerCode.toggle`). */
@@ -1174,6 +1177,10 @@ class SharedSettingsDataSource(
 
     /** The server Add Computer adds to (the one it registers in): the only one its code field approves for. */
     suspend fun addComputerServerId(): String? = sessionStore.readSession().settingsCurrentServer()?.id
+
+    /** The current server plan's display name for Add Computer's limit banner (web `PLAN_CONFIG[plan].displayName`). */
+    suspend fun addComputerPlanDisplayName(): String =
+        settingsPlanDisplayName(sessionStore.readSession().settingsCurrentServer()?.plan)
 
     /** `POST /auth/device/describe` for a code typed into Add Computer (DeviceLoginApprovalApi.kt). */
     suspend fun describeDeviceLogin(userCode: String): DataResult<DeviceLoginRequest> =
@@ -2737,15 +2744,50 @@ class SharedSettingsStore(
                     }
                 }
             }
-            is SharedSettingsIntent.ShowAddComputerDialog ->
-                _state.value = _state.value.copy(
-                    addComputerDialog = _state.value.addComputerDialog ?: _state.value.computers.toAddComputerDialogState()
-                )
+            is SharedSettingsIntent.ShowAddComputerDialog -> {
+                if (_state.value.addComputerDialog == null) {
+                    val snapshot = (_state.value.computers as? ScreenLoadState.Content)?.data
+                    val commandContext = snapshot?.commandContext ?: dataSource.addComputerCommandContext()
+                    val planDisplayName = dataSource.addComputerPlanDisplayName()
+                    _state.value = _state.value.copy(
+                        addComputerDialog =
+                            _state.value.addComputerDialog
+                                ?: _state.value.computers.toAddComputerDialogState(
+                                    commandContext = commandContext,
+                                    planDisplayName = planDisplayName,
+                                )
+                    )
+                }
+            }
             is SharedSettingsIntent.DismissAddComputerDialog -> dismissAddComputerDialog(cleanupPendingMachine = true)
-            is SharedSettingsIntent.SetAddComputerStep ->
-                _state.value = _state.value.copy(
-                    addComputerDialog = _state.value.addComputerDialog?.copy(step = intent.step)
-                )
+            is SharedSettingsIntent.SetAddComputerStep -> {
+                val current = _state.value.addComputerDialog
+                if (current != null) {
+                    val enteringWaiting = intent.step == AddComputerStep.Waiting && current.step != AddComputerStep.Waiting
+                    val snapshot = (_state.value.computers as? ScreenLoadState.Content)?.data
+                    val commandContext =
+                        if (enteringWaiting) {
+                            current.commandContext ?: snapshot?.commandContext ?: dataSource.addComputerCommandContext()
+                        } else {
+                            current.commandContext
+                        }
+                    val baseline =
+                        if (enteringWaiting && current.baseline.isEmpty()) {
+                            snapshot?.computers.orEmpty().map { it.toAddComputerBaselineEntry() }
+                        } else {
+                            current.baseline
+                        }
+                    _state.value = _state.value.copy(
+                        addComputerDialog =
+                            current.copy(
+                                step = intent.step,
+                                commandContext = commandContext,
+                                baseline = baseline,
+                                confirmedMatch = if (enteringWaiting) false else current.confirmedMatch,
+                            )
+                    )
+                }
+            }
             is SharedSettingsIntent.SetAddComputerType ->
                 _state.value = _state.value.copy(
                     addComputerDialog = _state.value.addComputerDialog?.copy(machineType = intent.machineType)
@@ -3458,8 +3500,9 @@ class SharedSettingsStore(
     private fun dismissAddComputerDialog(cleanupPendingMachine: Boolean) {
         val dialog = _state.value.addComputerDialog ?: return
         _state.value = _state.value.copy(addComputerDialog = null)
-        // Web handleCancel: the placeholder goes unless it is the row that connected (and confirmed).
-        val machineId = (dialog.registeredMachineId ?: dialog.machineId)?.takeIf { it.isNotBlank() } ?: return
+        // Only a placeholder row explicitly registered by this dialog is cleaned up on dismiss;
+        // never delete a real Computer row created/resumed by `raft-computer setup` (slock #12602).
+        val machineId = dialog.registeredMachineId?.takeIf { it.isNotBlank() } ?: return
         if (!cleanupPendingMachine) return
         val connected = dialog.step == AddComputerStep.Connected && (!dialog.requiresConfirmation || dialog.confirmedMatch)
         if (connected && dialog.machineId == machineId) return
@@ -4830,15 +4873,39 @@ internal fun settingsComputerCanControl(
         (computer.isComputer && computer.controlledByCurrentUser == true)
 }
 
-private fun ScreenLoadState<SettingsComputersSnapshot>.toAddComputerDialogState(): AddComputerDialogState {
+private fun settingsPlanDisplayName(plan: String?): String =
+    when (plan?.trim()?.lowercase()) {
+        "pro" -> "Pro"
+        "founder" -> "Founder"
+        "partner" -> "Partner"
+        else -> "Free"
+    }
+
+private fun ScreenLoadState<SettingsComputersSnapshot>.toAddComputerDialogState(
+    commandContext: SettingsComputerCommandContext?,
+    planDisplayName: String,
+): AddComputerDialogState {
     val snapshot = (this as? ScreenLoadState.Content)?.data
     val canManage = snapshot?.canAddComputer ?: false
+    val computers = snapshot?.computers.orEmpty()
+    val maxComputers = snapshot?.maxComputers ?: -1
+    val atLimit = maxComputers != -1 && computers.size >= maxComputers
+    // Web AddMachineDialog `initialStep` (botiverse/slock #14251): mobile has only one choice
+    // ("Your own computer"), so open straight on the connect command when under the plan limit and
+    // allowed to add; stay on the choice step when at limit or without permission. Nothing is
+    // registered on the server until a machine actually connects (botiverse/slock #12602).
+    val openOnCommand = canManage && !atLimit
     return AddComputerDialogState(
-        step = AddComputerStep.Type,
+        step = if (openOnCommand) AddComputerStep.Waiting else AddComputerStep.Type,
         machineType = AddComputerType.Local,
         name = "my-computer",
+        commandContext = if (openOnCommand) snapshot?.commandContext ?: commandContext else null,
+        baseline = if (openOnCommand) computers.map { it.toAddComputerBaselineEntry() } else emptyList(),
         canManage = canManage,
-        atLimit = false,
+        atLimit = atLimit,
+        computerCount = computers.size,
+        maxComputers = maxComputers,
+        planDisplayName = planDisplayName,
         permissionBlocker =
             if (canManage) {
                 null
