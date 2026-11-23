@@ -5,8 +5,7 @@ import build.raft.designsystem.components.RaftButton
 import build.raft.designsystem.components.RaftButtonVariant
 import build.raft.designsystem.components.RaftButtonSize
 import build.raft.app.components.RaftSlotIcon
-import build.raft.designsystem.components.RaftGlyph
-import build.raft.designsystem.components.RaftBackButton
+import build.raft.designsystem.components.RaftCloseButton
 import build.raft.designsystem.components.RaftSegment
 import build.raft.designsystem.components.RaftSegmentedControl
 import build.raft.app.downloads.RaftDownloadStatus
@@ -459,10 +458,9 @@ internal fun ThreadAttachmentCommentsSheet(
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
                         )
-                        RaftBackButton(
+                        RaftCloseButton(
                             onClick = onDismiss,
                             label = stringResource(Res.string.common_close),
-                            glyph = RaftGlyph.X,
                         )
                     }
                     ThreadAttachmentCommentsContent(

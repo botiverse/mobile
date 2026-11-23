@@ -27,6 +27,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import build.raft.designsystem.text.RaftText
+import build.raft.designsystem.theme.LocalRaftStrings
 import build.raft.designsystem.theme.RaftTheme
 import build.raft.designsystem.tokens.RaftStroke
 
@@ -304,15 +305,12 @@ fun RaftPaneGridColumnHead(
                     }
                 }
                 if (onClose != null && !fit.closeInMenu) {
-                    RaftIconButton(
+                    // The head's last control, at its end (raft-design panel.md "Close placement").
+                    RaftCloseButton(
                         onClick = onClose,
-                        tooltip = closeLabel,
                         modifier = Modifier.testTag(tag + RAFT_PANE_GRID_HEAD_CLOSE_SUFFIX),
-                        variant = RaftButtonVariant.Ghost,
-                        size = RaftIconButtonSize.Lg,
-                    ) {
-                        RaftGlyphIcon(RaftGlyph.X, size = metrics.barIconSize)
-                    }
+                        label = closeLabel ?: LocalRaftStrings.current.close,
+                    )
                 }
             }
         }
