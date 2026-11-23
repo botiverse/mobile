@@ -94,10 +94,34 @@ class RaftThreadImeLayoutTest {
         )
         // Android (keyboard excludes the safe area) keeps adding it back.
         assertEquals(
-            resting + 5.dp,
+            resting + 5.dp + 14.dp,
             threadComposerBottomPadding(
                 keyboardInsetDp = 5f,
                 bottomSafeArea = safeArea,
+                keyboardInsetExcludesBottomSafeArea = true,
+            ),
+        )
+    }
+
+    @Test
+    fun iosRestingComposerPaddingDoesNotStackExtraClearanceOverHomeIndicatorSafeArea() {
+        // iPhone Duo landscape (21dp) and iPhone portrait (34dp): the transparent home-indicator
+        // safe area already clears the indicator, so resting padding does not stack +14dp on top.
+        assertEquals(21.dp, threadComposerBottomPadding(keyboardInsetDp = 0f, bottomSafeArea = 21.dp))
+        assertEquals(34.dp, threadComposerBottomPadding(keyboardInsetDp = 0f, bottomSafeArea = 34.dp))
+        // Without a bottom safe area (iPad, desktop, zero-safe-area visual captures), base clearance stays 14dp.
+        assertEquals(14.dp, threadComposerBottomPadding(keyboardInsetDp = 0f, bottomSafeArea = 0.dp))
+        // Desktop minimumBottomPadding (16dp) still wins when no safe area or keyboard is present.
+        assertEquals(
+            16.dp,
+            threadComposerBottomPadding(keyboardInsetDp = 0f, bottomSafeArea = 0.dp, minimumBottomPadding = 16.dp),
+        )
+        // Android opaque navigation bar still keeps base clearance above safeArea + keyboard.
+        assertEquals(
+            38.dp,
+            threadComposerBottomPadding(
+                keyboardInsetDp = 0f,
+                bottomSafeArea = 24.dp,
                 keyboardInsetExcludesBottomSafeArea = true,
             ),
         )

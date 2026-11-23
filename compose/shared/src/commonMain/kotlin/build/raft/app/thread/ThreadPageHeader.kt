@@ -3,6 +3,7 @@ package build.raft.app
 import build.raft.designsystem.theme.RaftControlMetrics
 import androidx.compose.runtime.ReadOnlyComposable
 import build.raft.app.resources.*
+import build.raft.designsystem.theme.RaftScale
 import build.raft.designsystem.theme.RaftTheme
 import build.raft.designsystem.components.LocalRaftPaneGridHeadTabs
 import build.raft.designsystem.components.RaftPaneGridHeadFit
@@ -59,6 +60,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.AlignmentLine
+import androidx.compose.ui.layout.FirstBaseline
 import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.layout.layoutId
 import androidx.compose.ui.layout.layout
@@ -141,18 +144,22 @@ internal fun threadComposerBottomPadding(
     minimumBottomPadding: Dp = raftPlatformComposerMinimumBottomPaddingDp().dp
 ): Dp {
     val keyboardInset = keyboardInsetDp.coerceAtLeast(0f).dp
-    // When the keyboard height already contains the bottom safe area (iOS keyboard frame), the
-    // keyboard and the safe area overlap: the composer sits on whichever is taller. Taking the max
-    // (instead of switching from safe area to keyboard as soon as the keyboard is > 0) keeps the
-    // padding from dipping below its resting value during the first frames of the keyboard
-    // animation, while the keyboard is still shorter than the safe area.
-    val bottomInset =
+    val restingBase = ThreadComposerBottomBasePadding + ThreadComposerBottomSafeAreaLift
+    // On Android (keyboard excludes the bottom safe area), the safe area may be an opaque system
+    // navigation bar, so the composer keeps the base clearance above both safe area and keyboard.
+    // On iOS (keyboard frame includes the bottom safe area), the resting bottom safe area is the
+    // transparent home-indicator band, which already clears the indicator; stacking another 14dp
+    // on top left a 35-48dp empty band below the composer on iPhone Duo landscape (#proj-mobile:#330).
+    // Taking maxOf(restingBase + keyboardInset, bottomSafeArea) keeps resting clearance tight to
+    // the safe area while remaining monotonic across every IME frame and preserving full clearance
+    // above the open keyboard.
+    val padded =
         if (keyboardInsetExcludesBottomSafeArea) {
-            keyboardInset + bottomSafeArea
+            restingBase + keyboardInset + bottomSafeArea
         } else {
-            maxOf(keyboardInset, bottomSafeArea)
+            maxOf(restingBase + keyboardInset, bottomSafeArea)
         }
-    return maxOf(ThreadComposerBottomBasePadding + ThreadComposerBottomSafeAreaLift + bottomInset, minimumBottomPadding)
+    return maxOf(padded, minimumBottomPadding)
 }
 
 internal fun threadChannelHeaderSubtitle(channelName: String?): String? {
@@ -513,9 +520,8 @@ internal fun ThreadPageHeader(
                 // Task v2 (web TaskConversationBar): the ref over "Task #7", and on a phone the task's
                 // state with the chevron that pulls the head down.
                 TaskConversationBarTitle(taskConversationChrome, Modifier.weight(1f))
-            } else
-            Column(
-                modifier =
+            } else {
+                val headModifier =
                     Modifier
                         .weight(1f)
                         .then(if (loungeHeader != null) Modifier.testTag(AgentLoungeTestTags.Header) else Modifier)
@@ -524,61 +530,85 @@ internal fun ThreadPageHeader(
                             loungeTitle?.takeIf { loungeHeader != null }
                                 ?: threadHeaderCopyText(headerDisplay.title, headerDisplay.surfaceKind),
                             onClick = onTitleClick,
-                        ),
-                // raft-ui `PanelHeaderContent`: the 22dp title line sits straight on the 18dp meta line.
-                verticalArrangement = Arrangement.Top
-            ) {
-                ThreadHeaderNameFirstRow(modifier = Modifier.fillMaxWidth()) {
-                    ThreadHeaderTitleText(
-                        normalTitle = localizedHeaderTitle,
-                        state = headerOriginal,
-                        // raft-ui `PanelTitle`: text-headline (17/22 bold; 16/24 in the wide type).
-                        style = RaftType.Headline.copy(color = RaftColor.TextBlack),
-                        color = RaftColor.TextBlack,
-                    )
-                    if (
-                        loungeHeader == null &&
-                            threadHeaderShowsArchivedBadge(payload, directoryArchived = headerDisplay.channelArchived)
-                    ) {
-                        ThreadArchivedChannelBadge()
+                        )
+                val titleRowContent: @Composable (Modifier) -> Unit = { rowModifier ->
+                    ThreadHeaderNameFirstRow(modifier = rowModifier) {
+                        ThreadHeaderTitleText(
+                            normalTitle = localizedHeaderTitle,
+                            state = headerOriginal,
+                            // raft-ui `PanelTitle`: text-headline (17/22 bold; 16/24 in the wide type).
+                            style = RaftType.Headline.copy(color = RaftColor.TextBlack),
+                            color = RaftColor.TextBlack,
+                        )
+                        if (
+                            loungeHeader == null &&
+                                threadHeaderShowsArchivedBadge(payload, directoryArchived = headerDisplay.channelArchived)
+                        ) {
+                            ThreadArchivedChannelBadge()
+                        }
+                        if (headerDisplay.surfaceKind == RaftThreadSurfaceKind.Channel && loungeHeader == null) {
+                            // Web ChatPanel `ChannelSlackSyncBadge`: a Slack channel says so by its glyph;
+                            // after its name only a stopped sync, the warning Badge.
+                            RaftSlackSyncBadge(headerDisplay.slackSyncProblem)
+                        }
+                        if (activityMutedIndicatorVisible) {
+                            ThreadActivityMutedBadge()
+                        }
+                        if (dmAppBot != null) {
+                            RaftAppBotBadge(identity = dmAppBot, botName = localizedHeaderTitle)
+                        } else {
+                            dmAgentActivity?.let {
+                                ThreadDmAgentActivity(
+                                    state = it,
+                                    agentName = localizedHeaderTitle,
+                                    modifier = Modifier.layoutId(ThreadHeaderYieldingSlot)
+                                )
+                            }
+                        }
                     }
-                    if (headerDisplay.surfaceKind == RaftThreadSurfaceKind.Channel && loungeHeader == null) {
-                        // Web ChatPanel `ChannelSlackSyncBadge`: a Slack channel says so by its glyph;
-                        // after its name only a stopped sync, the warning Badge.
-                        RaftSlackSyncBadge(headerDisplay.slackSyncProblem)
-                    }
-                    if (activityMutedIndicatorVisible) {
-                        ThreadActivityMutedBadge()
-                    }
-                    if (dmAppBot != null) {
-                        RaftAppBotBadge(identity = dmAppBot, botName = localizedHeaderTitle)
+                }
+                val hasSubtitle = channelLinkLabel != null || !headerSubtitle.isNullOrBlank()
+                val subtitleContent: @Composable (Modifier) -> Unit = { subModifier ->
+                    // Web #10285: under a View in Channel tooltip.
+                    if (channelLinkLabel != null) {
+                        ThreadHeaderChannelLinkSubtitle(
+                            channelLabel = channelLinkLabel,
+                            replyCountLabel = replyThreadReplyCountLabel,
+                            onOpenInChannel = onOpenInChannel,
+                            modifier = subModifier,
+                        )
                     } else {
-                        dmAgentActivity?.let {
-                            ThreadDmAgentActivity(
-                                state = it,
-                                agentName = localizedHeaderTitle,
-                                modifier = Modifier.layoutId(ThreadHeaderYieldingSlot)
+                        headerSubtitle?.takeIf { it.isNotBlank() }?.let {
+                            Text(
+                                text = it,
+                                modifier = subModifier,
+                                // raft-ui `PanelMeta` (md): sans text-footnote on foreground-hint.
+                                style = ThreadHeaderMetaStyle,
+                                color = RaftColor.ForegroundHint,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
                             )
                         }
                     }
                 }
-                // Web #10285: under a View in Channel tooltip.
-                if (channelLinkLabel != null) {
-                    ThreadHeaderChannelLinkSubtitle(
-                        channelLabel = channelLinkLabel,
-                        replyCountLabel = replyThreadReplyCountLabel,
-                        onOpenInChannel = onOpenInChannel
+                // raft-design desktop-density rule 2 & panel.md (web PanelHeaderContent / ThreadPanelHeader):
+                // from 768px (RaftScale.Wide), every head is one line by touch or mouse alike; only a
+                // compact phone stacks the subtitle under the title.
+                if (RaftTheme.scale == RaftScale.Wide && hasSubtitle) {
+                    ThreadHeaderInlineTitleRow(
+                        subtitlePriority = headerOriginal?.swapped == true,
+                        modifier = headModifier,
+                        title = { titleRowContent(Modifier.layoutId("title")) },
+                        subtitle = { subtitleContent(Modifier.layoutId("subtitle")) },
                     )
                 } else {
-                    headerSubtitle?.let {
-                        Text(
-                            text = it,
-                            // raft-ui `PanelMeta` (md): sans text-footnote on foreground-hint.
-                            style = ThreadHeaderMetaStyle,
-                            color = RaftColor.ForegroundHint,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
+                    Column(
+                        modifier = headModifier,
+                        // raft-ui `PanelHeaderContent`: the 22dp title line sits straight on the 18dp meta line.
+                        verticalArrangement = Arrangement.Top
+                    ) {
+                        titleRowContent(Modifier.fillMaxWidth())
+                        if (hasSubtitle) subtitleContent(Modifier)
                     }
                 }
             }
@@ -786,8 +816,9 @@ internal fun ThreadHeaderChannelLinkSubtitle(
     channelLabel: String,
     replyCountLabel: String?,
     onOpenInChannel: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
-    Row(verticalAlignment = Alignment.CenterVertically) {
+    Row(modifier = modifier, verticalAlignment = Alignment.CenterVertically) {
         ThreadHeaderViewInChannelLink(
             label = channelLabel,
             onViewInChannel = onOpenInChannel,
@@ -1255,11 +1286,113 @@ private fun ThreadHeaderNameFirstRow(modifier: Modifier = Modifier, content: @Co
         val placeables = listOf(namePlaceable) + fixed + listOfNotNull(yieldingPlaceable)
         val width = constraints.constrainWidth(placeables.sumOf { it.width } + gap * (placeables.size - 1))
         val height = constraints.constrainHeight(placeables.maxOf { it.height })
-        layout(width, height) {
+        val nameY = (height - namePlaceable.height) / 2
+        val nameBaseline = namePlaceable[FirstBaseline]
+        val alignmentLines: Map<AlignmentLine, Int> =
+            if (nameBaseline != AlignmentLine.Unspecified) {
+                mapOf(FirstBaseline to nameY + nameBaseline)
+            } else {
+                emptyMap()
+            }
+        layout(width, height, alignmentLines = alignmentLines) {
             var x = 0
             placeables.forEach {
                 it.placeRelative(x, (height - it.height) / 2)
                 x += it.width + gap
+            }
+        }
+    }
+}
+
+/**
+ * Wide-scale single-line conversation head (raft-design desktop-density rule 2, web
+ * `PanelHeaderContent` / `ThreadPanelHeader`): title row and subtitle share one baseline separated
+ * by [RaftPanelHeadInlineMetaGap]. Normally the title keeps its room and the subtitle yields first;
+ * when a reply thread's title has swapped to the original message preview ([subtitlePriority]), the
+ * place + reply count keeps up to half the width (matching web `ThreadPanelHeader` `max-w-[50%]`)
+ * so a long message preview never erases the channel link and reply count.
+ */
+@Composable
+private fun ThreadHeaderInlineTitleRow(
+    subtitlePriority: Boolean,
+    modifier: Modifier = Modifier,
+    title: @Composable () -> Unit,
+    subtitle: @Composable () -> Unit,
+) {
+    Layout(
+        content = {
+            title()
+            subtitle()
+        },
+        modifier = modifier,
+    ) { measurables, constraints ->
+        val gap = RaftPanelHeadInlineMetaGap.roundToPx()
+        val loose = constraints.copy(minWidth = 0)
+        val titleMeasurable = measurables.first { it.layoutId == "title" }
+        val subtitleMeasurable = measurables.firstOrNull { it.layoutId == "subtitle" }
+        val (titlePlaceable, subtitlePlaceable) =
+            if (subtitleMeasurable == null) {
+                titleMeasurable.measure(loose) to null
+            } else if (!constraints.hasBoundedWidth) {
+                titleMeasurable.measure(loose) to subtitleMeasurable.measure(loose)
+            } else if (subtitlePriority) {
+                val available = (constraints.maxWidth - gap).coerceAtLeast(0)
+                val halfRoom = available / 2
+                val titleIntrinsic = titleMeasurable.maxIntrinsicWidth(constraints.maxHeight)
+                val subtitleCap =
+                    if (titleIntrinsic < available - halfRoom) {
+                        (available - titleIntrinsic).coerceAtLeast(halfRoom)
+                    } else {
+                        halfRoom
+                    }
+                val sub = subtitleMeasurable.measure(loose.copy(maxWidth = subtitleCap.coerceAtLeast(0)))
+                val titleRoom =
+                    if (sub.width > 0) (constraints.maxWidth - sub.width - gap).coerceAtLeast(0) else constraints.maxWidth
+                val tit = titleMeasurable.measure(loose.copy(maxWidth = titleRoom))
+                tit to sub
+            } else {
+                val tit = titleMeasurable.measure(loose)
+                val subRoom =
+                    if (tit.width > 0) (constraints.maxWidth - tit.width - gap).coerceAtLeast(0) else constraints.maxWidth
+                val sub = subtitleMeasurable.measure(loose.copy(maxWidth = subRoom))
+                tit to sub
+            }
+        val showGap = titlePlaceable.width > 0 && subtitlePlaceable != null && subtitlePlaceable.width > 0
+        val contentWidth = titlePlaceable.width + (if (showGap) gap else 0) + (subtitlePlaceable?.width ?: 0)
+        val width = constraints.constrainWidth(contentWidth)
+        val titleBaseline = titlePlaceable[FirstBaseline]
+        val subtitleBaseline = subtitlePlaceable?.get(FirstBaseline) ?: AlignmentLine.Unspecified
+        val alignBaselines =
+            subtitlePlaceable != null &&
+                subtitlePlaceable.width > 0 &&
+                titleBaseline != AlignmentLine.Unspecified &&
+                subtitleBaseline != AlignmentLine.Unspecified
+        val naturalHeight =
+            if (alignBaselines) {
+                val ascent = maxOf(titleBaseline, subtitleBaseline)
+                val descent = maxOf(titlePlaceable.height - titleBaseline, subtitlePlaceable.height - subtitleBaseline)
+                ascent + descent
+            } else {
+                maxOf(titlePlaceable.height, subtitlePlaceable?.height ?: 0)
+            }
+        val height = constraints.constrainHeight(naturalHeight)
+        layout(width, height) {
+            if (alignBaselines) {
+                val ascent = maxOf(titleBaseline, subtitleBaseline)
+                val topOffset = (height - naturalHeight) / 2
+                titlePlaceable.placeRelative(0, topOffset + ascent - titleBaseline)
+                subtitlePlaceable.placeRelative(
+                    titlePlaceable.width + (if (showGap) gap else 0),
+                    topOffset + ascent - subtitleBaseline,
+                )
+            } else {
+                titlePlaceable.placeRelative(0, (height - titlePlaceable.height) / 2)
+                if (subtitlePlaceable != null && subtitlePlaceable.width > 0) {
+                    subtitlePlaceable.placeRelative(
+                        titlePlaceable.width + (if (showGap) gap else 0),
+                        (height - subtitlePlaceable.height) / 2,
+                    )
+                }
             }
         }
     }

@@ -409,19 +409,33 @@ internal fun ThreadHeaderTitleText(
         }
     val separator = stringResource(Res.string.thread_title_original_separator)
     val visibleText = shown?.let { threadHeaderOriginalTitleText(it, separator) } ?: normalTitle
+    val titleModifier =
+        modifier
+            .testTag(ThreadHeaderTitleTestTag)
+            // One node for both faces: the words shown, named with "Thread:" before them. Not a
+            // live region, so the change is not announced while the replies scroll.
+            .clearAndSetSemantics {
+                contentDescription = accessibleName
+                text = AnnotatedString(visibleText)
+            }
+    if (state == null) {
+        // Channels and DMs never crossfade; drawing Text directly preserves FirstBaseline so wide
+        // headers align the subtitle on the title's exact typographic baseline.
+        Text(
+            text = normalTitle,
+            modifier = titleModifier,
+            style = style,
+            color = color,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+        return
+    }
     Crossfade(
         targetState = shown,
         animationSpec = tween(ThreadHeaderTitleFadeMillis),
         label = "threadHeaderTitle",
-        modifier =
-            modifier
-                .testTag(ThreadHeaderTitleTestTag)
-                // One node for both faces: the words shown, named with "Thread:" before them. Not a
-                // live region, so the change is not announced while the replies scroll.
-                .clearAndSetSemantics {
-                    contentDescription = accessibleName
-                    text = AnnotatedString(visibleText)
-                },
+        modifier = titleModifier,
     ) { face ->
         Text(
             text = face?.let { threadHeaderOriginalTitleAnnotated(it, separator) } ?: AnnotatedString(normalTitle),

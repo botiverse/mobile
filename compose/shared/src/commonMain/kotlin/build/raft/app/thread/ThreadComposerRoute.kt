@@ -969,8 +969,9 @@ private fun String?.threadParticipantHandleKey(): String? =
 
 /**
  * The dock under a conversation's messages (channel, thread, DM) that holds its composer: the
- * page canvas with the composer 12dp under the list and [RaftAppSpacing.Sm] from the sides. No
- * seam above it: on the web the composer's own box sits on the canvas.
+ * page canvas with the composer 8dp under the list (web `COMPOSER_FULL_EDGE_CLASS` `pt-2`) and
+ * [RaftAppSpacing.Sm] from the sides. No seam above it: on the web the composer's own box sits
+ * on the canvas.
  */
 @Composable
 internal fun ThreadComposerDock(
@@ -996,7 +997,7 @@ internal fun ThreadComposerDock(
                     // The dock's canvas runs edge to edge; the composer box keeps out of the
                     // horizontal safe area.
                     .raftSafeAreaHorizontalPadding()
-                    .padding(start = edgePadding, top = 12.dp, end = edgePadding)
+                    .padding(start = edgePadding, top = 8.dp, end = edgePadding)
                     .then(composerModifier)
                     // raft-ui: on a conversation page the window's toasts sit just above the composer.
                     // Gated by LocalRaftToastAvoidanceActive (immediately active on the top stack
