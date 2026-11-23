@@ -3,7 +3,7 @@ type: fixed
 area: attachments
 platforms:
   - desktop
-pull_request: TBD
+pull_request: 5457
 rollout: full
 ---
 
