@@ -28,7 +28,7 @@
 
 import { pathToFileURL } from "node:url";
 import { serverRef, userRef } from "./app_identity_receipt_lib.mjs";
-import { readCredentialFile, readTestbedInput } from "./login_phase.mjs";
+import { readTestbedInput } from "./login_phase.mjs";
 
 export const PRODUCTION_SERVER_NAME = "Raft Android";
 export const REQUIRED_QA_SERVER = "OranixSlockTest";
@@ -163,28 +163,21 @@ function assignedAccountCode(list, identity, acceptance) {
   return "account_and_server_confirmed";
 }
 
-async function probe(inputFile, credentialFile) {
+async function probe(inputFile) {
   const base = (process.env.QA_API_BASE || PRODUCTION_API).replace(/\/?$/, "/");
   let acceptance;
-  let email;
-  let password;
   if (inputFile) {
     if (base !== PRODUCTION_API || !process.env.STAMP_RUN_CASE_ID) throw new ProbeError("contract", "private_target_unavailable");
     acceptance = readTestbedInput(inputFile, process.env, { required: true, consume: false });
     if (acceptance.problem || acceptance.binding.attempt !== 1) throw new ProbeError("contract", "private_target_unavailable");
-    // Private login acceptance consumes the exact 0600 credential file fetched from Testbed (never QA_TEST_* env).
-    const cred = readCredentialFile(credentialFile, { consume: false });
-    if (cred.problem || !cred.email || !cred.password) {
-      throw new ProbeError("credential", cred.problem || "credential_file_missing");
-    }
-    email = cred.email;
-    password = cred.password;
-  } else {
-    email = process.env.QA_TEST_EMAIL;
-    password = process.env.QA_TEST_PASSWORD;
-    if (!email || !password) {
-      throw new ProbeError("credential", "QA_TEST_EMAIL / QA_TEST_PASSWORD not set");
-    }
+  }
+  const email = inputFile ? process.env.QA_LOGIN_ACCEPTANCE_EMAIL : process.env.QA_TEST_EMAIL;
+  const password = inputFile ? process.env.QA_LOGIN_ACCEPTANCE_PASSWORD : process.env.QA_TEST_PASSWORD;
+  if (!email || !password) {
+    throw new ProbeError(
+      "credential",
+      inputFile ? "QA_LOGIN_ACCEPTANCE_EMAIL / QA_LOGIN_ACCEPTANCE_PASSWORD not set" : "QA_TEST_EMAIL / QA_TEST_PASSWORD not set",
+    );
   }
 
   // The dedicated job pins the first-party production origin and keeps the login on its runner.
@@ -223,28 +216,14 @@ async function probe(inputFile, credentialFile) {
   }
 }
 
-function parsePrivateArgs(args) {
-  let inputFile = "";
-  let credentialFile = "";
-  for (let i = 0; i < args.length; i += 2) {
-    const flag = args[i];
-    const value = args[i + 1];
-    if (!value) throw new ProbeError("contract", "private_target_unavailable");
-    if (flag === "--testbed-input" && !inputFile) inputFile = value;
-    else if (flag === "--credential-file" && !credentialFile) credentialFile = value;
-    else throw new ProbeError("contract", "private_target_unavailable");
-  }
-  if (!inputFile) throw new ProbeError("contract", "private_target_unavailable");
-  if (!credentialFile) throw new ProbeError("credential", "credential_file_missing");
-  return { inputFile, credentialFile };
-}
-
 if (import.meta.url === pathToFileURL(process.argv[1] || "").href) {
   const args = process.argv.slice(2);
   const privateMode = args.length !== 0;
   try {
-    const { inputFile, credentialFile } = privateMode ? parsePrivateArgs(args) : { inputFile: null, credentialFile: null };
-    const verdict = await probe(inputFile, credentialFile);
+    if (privateMode && (args.length !== 2 || args[0] !== "--testbed-input" || !args[1])) {
+      throw new ProbeError("contract", "private_target_unavailable");
+    }
+    const verdict = await probe(privateMode ? args[1] : null);
     if (privateMode) console.log(`QA account preflight: ${verdict.code}`);
     else console.log(`visible-servers probe: ${verdict.ok ? "PASS" : "FAIL"} [${verdict.code}] ${verdict.detail}`);
     process.exitCode = verdict.ok ? 0 : 1;

@@ -15,10 +15,8 @@
 // The same client fetches the login acceptance input (#216) for the claimed case login-email-password
 // (testbed_login_acceptance_input.mjs) and reports its result (testbed_login_acceptance_result.mjs), with
 // the claim credential of stamp_report.sh claim:
-//   input      POST .../login-acceptance-input        { id_token, include_credential? } -> HTTP 200 only: the six-field input,
-//                                                      plus credential: { email, password } when include_credential: true
-//                                                      (botiverse/testbed worker/src/login-acceptance.ts; 503
-//                                                      LOGIN_ACCEPTANCE_CREDENTIAL_UNAVAILABLE when the pool row is unavailable)
+//   input      POST .../login-acceptance-input        { id_token }                    -> HTTP 200 only: the six-field input
+//                                                      (botiverse/testbed worker/src/login-acceptance.ts)
 //   result     POST .../login-acceptance-result       { id_token, verdict, reason }   -> HTTP 200 only (also for an identical
 //                                                      resend); 409: Testbed already holds another result
 //
@@ -50,22 +48,14 @@ export function releaseSettingsAudience(testbedUrl, runCaseId, endpoint) {
   return `${new URL(testbedUrl).origin}/api/agent/run-cases/${runCaseId}/${endpoint}`;
 }
 
-/** A GitHub OIDC token for one audience (needs `permissions: id-token: write` on the job). Never follows redirects. */
+/** A GitHub OIDC token for one audience (needs `permissions: id-token: write` on the job). */
 export async function requestOidcToken({ env = process.env, fetchImpl = fetch, audience }) {
   const url = env.ACTIONS_ID_TOKEN_REQUEST_URL;
   const bearer = env.ACTIONS_ID_TOKEN_REQUEST_TOKEN;
   if (!url || !bearer) fail("oidc_unavailable");
   const target = new URL(url);
   target.searchParams.set("audience", audience);
-  const response = await fetchImpl(target, {
-    headers: { Authorization: `Bearer ${bearer}` },
-    redirect: "manual",
-    signal: AbortSignal.timeout(20_000),
-  });
-  if (response.status >= 300 && response.status < 400) {
-    await response.body?.cancel().catch(() => {});
-    fail("oidc_redirect_refused");
-  }
+  const response = await fetchImpl(target, { headers: { Authorization: `Bearer ${bearer}` }, signal: AbortSignal.timeout(20_000) });
   const json = response.ok ? await response.json().catch(() => null) : null;
   if (typeof json?.value !== "string" || !json.value) fail("oidc_unavailable");
   return json.value;
@@ -121,7 +111,7 @@ export function createTestbedReleaseClient({ env = process.env, fetchImpl = fetc
         ...(claimed ? { "X-Testbed-Claim-Token": claimToken } : {}),
       },
       body: JSON.stringify({ id_token: idToken, ...body }),
-      redirect: "manual",
+      ...(statusOnly ? { redirect: "manual" } : {}),
     };
     const delays = retry ? retryDelaysMs : [];
     let lastFailure = `${endpoint}_no_reply`;
@@ -141,16 +131,8 @@ export function createTestbedReleaseClient({ env = process.env, fetchImpl = fetc
         lastFailure = `${endpoint}_http_${response.status}`;
         continue;
       }
-      if (response.status >= 300 && response.status < 400) {
-        await response.body?.cancel().catch(() => {});
-        fail(`${endpoint}_http_${response.status}`);
-      }
       if (response.status >= 400 && response.status < 500) fail(`${endpoint}_http_${response.status}`);
       if (!response.ok || (status !== null && response.status !== status)) {
-        if (response.status === 503 && endpoint === "login-acceptance-input") {
-          const errBody = await response.json().catch(() => null);
-          if (errBody?.code === "LOGIN_ACCEPTANCE_CREDENTIAL_UNAVAILABLE") fail("login-acceptance-input_credential_unavailable");
-        }
         lastFailure = `${endpoint}_http_${response.status}`;
         continue;
       }
@@ -188,13 +170,11 @@ export function createTestbedReleaseClient({ env = process.env, fetchImpl = fetc
     },
     /**
      * The login acceptance input of this attempt (#216): HTTP 200 only (Testbed delivers nothing
-     * before a test target is configured); the caller checks the body. When `includeCredential` is
-     * true, sends `{ id_token, include_credential: true }` so Testbed also delivers the registered
-     * pool credential for this attempt (or 503 LOGIN_ACCEPTANCE_CREDENTIAL_UNAVAILABLE). Testbed
-     * answers a repeat from the same job with the same input, so a lost reply is retried like the claim.
+     * before a test target is configured); the caller checks the body. Testbed answers a repeat from
+     * the same job with the same input, so a lost reply is retried like the claim.
      */
-    async loginAcceptanceInput({ includeCredential = false } = {}) {
-      return post("login-acceptance-input", includeCredential ? { include_credential: true } : {}, { retry: true, status: 200 });
+    async loginAcceptanceInput() {
+      return post("login-acceptance-input", {}, { retry: true, status: 200 });
     },
     /**
      * The login acceptance result of this attempt (#216): the body is exactly { id_token, verdict, reason }
