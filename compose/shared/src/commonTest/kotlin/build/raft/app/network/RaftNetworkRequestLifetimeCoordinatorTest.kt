@@ -1,7 +1,9 @@
 package build.raft.app.network
 
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import kotlin.test.Test
@@ -146,5 +148,54 @@ class RaftNetworkRequestLifetimeCoordinatorTest {
         assertEquals(1, startCount)
         assertEquals(0, cancelCount)
         assertEquals(0, coordinator.activeRequestCountForTest())
+    }
+
+    @Test
+    fun updateProcessVisibilityAdvancesGenerationBeforeNotifyingForegroundObservers() = runBlocking {
+        // Seed foreground -> background so the next foreground call is a real visibility edge.
+        updateRaftProcessNetworkVisibility(foreground = true)
+        updateRaftProcessNetworkVisibility(foreground = false)
+
+        val observedForegroundState = CompletableDeferred<Boolean>()
+        val startedDuringForegroundEvent = CompletableDeferred<RaftNetworkRequestLifetimeOutcome<String>>()
+        val readCallback = CompletableDeferred<(String) -> Unit>()
+
+        val collector =
+            launch(Dispatchers.Unconfined) {
+                build.raft.app.data.RaftFreshnessSignal.events.collect { event ->
+                    if (event.trigger == build.raft.app.data.RaftFreshnessTrigger.Foreground && !observedForegroundState.isCompleted) {
+                        observedForegroundState.complete(raftProcessIsForeground())
+                        launch(Dispatchers.Unconfined) {
+                            val outcome =
+                                RaftProcessNetworkRequestLifetime.coordinator.execute(
+                                    methodClass = RaftNetworkMethodClass.Read,
+                                    timeoutMillis = 30_000L,
+                                ) { callback ->
+                                    readCallback.complete(callback)
+                                    RaftNetworkRequestCancelHandle {}
+                                }
+                            startedDuringForegroundEvent.complete(outcome)
+                        }
+                    }
+                }
+            }
+        try {
+            val retired = updateRaftProcessNetworkVisibility(foreground = true)
+            assertEquals(0, retired)
+            assertTrue(
+                withTimeout(250L) { observedForegroundState.await() },
+                "coordinator must already be foreground when RaftFreshnessSignal.onForeground() fires",
+            )
+            val callback = withTimeout(250L) { readCallback.await() }
+            assertFalse(
+                startedDuringForegroundEvent.isCompleted,
+                "a foreground catch-up started from the freshness signal must not be retired by the same edge",
+            )
+            callback("ok")
+            val outcome = withTimeout(250L) { startedDuringForegroundEvent.await() }
+            assertEquals("ok", assertIs<RaftNetworkRequestLifetimeOutcome.Completed<String>>(outcome).value)
+        } finally {
+            collector.cancel()
+        }
     }
 }

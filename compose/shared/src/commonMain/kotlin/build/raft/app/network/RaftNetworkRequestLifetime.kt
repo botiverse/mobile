@@ -329,13 +329,18 @@ internal object RaftProcessNetworkRequestLifetime {
 
 /** Platform hosts call this only from their process/application-level visibility owner. */
 fun updateRaftProcessNetworkVisibility(foreground: Boolean): Int {
+    // Advance HTTP request lifetime generation and retire previous-edge requests BEFORE notifying
+    // foreground/background observers so newly started foreground catch-up reads register under
+    // the new generation and are never retired by the same visibility transition (#wg-mobile-feedback:#273).
+    val retired =
+        RaftProcessNetworkRequestLifetime.coordinator
+            .onProcessVisibilityChanged(foreground)
+            .retiredRequestCount
     // Task #164: stale unread / Activity reads recover only in the foreground, and at once on return.
     build.raft.app.data.RaftStaleReadRecoverySignals.onProcessVisibility(foreground)
     // #proj-mobile:#172: mobile.realtime.session_health measures foreground time only.
     build.raft.app.data.realtime.RaftRealtimeSessionHealth.onProcessVisibility(foreground)
-    return RaftProcessNetworkRequestLifetime.coordinator
-        .onProcessVisibilityChanged(foreground)
-        .retiredRequestCount
+    return retired
 }
 
 /** True only after a platform host has reported the process as visible. */

@@ -84,6 +84,14 @@ class RaftFreshnessGate(
     private val reconnect: Boolean = true,
     private val coalesceMillis: Long = RAFT_FRESHNESS_COALESCE_MILLIS,
     private val nowMillis: () -> Long,
+    /**
+     * When true, [lastCatchUpAt] is stamped only when [onCatchUpCompleted] reports success, so a
+     * failed foreground catch-up never consumes the coalescing window and a later
+     * [RaftFreshnessTrigger.NetworkRestored] or [RaftFreshnessTrigger.Reconnect] retries
+     * immediately (#wg-mobile-feedback:#273). While a tracked catch-up is in flight, an arriving
+     * trigger is queued and returned from [onCatchUpCompleted] if needed.
+     */
+    private val trackOutcome: Boolean = false,
 ) {
     private var lastCatchUpAt: Long? = null
 
@@ -94,16 +102,32 @@ class RaftFreshnessGate(
     /** The kept event is a new socket connection: it fires inside the coalescing window too. */
     private var pendingNewConnection = false
 
+    private var inFlight = false
+    private var queuedWhileInFlight: RaftFreshnessTrigger? = null
+    private var queuedWhileInFlightForce = false
+    private var acceptedEventSeq = 0L
+
+    /** Monotonic counter incremented only when [onEvent] accepts (fires or queues) an event. */
+    fun acceptedEventCount(): Long = acceptedEventSeq
+
     fun onEvent(event: RaftFreshnessEvent, serverId: String?, visible: Boolean): RaftFreshnessTrigger? {
         val trigger = classify(event, serverId) ?: return null
         val newConnection = trigger == RaftFreshnessTrigger.Reconnect && noteNewConnection(event)
+        acceptedEventSeq += 1L
         if (!visible) {
-            if (pending == null || (newConnection && !pendingNewConnection)) pending = trigger
-            pendingNewConnection = pendingNewConnection || newConnection
+            recordPending(trigger, newConnection)
+            return null
+        }
+        val force = newConnection || pendingNewConnection
+        if (trackOutcome && inFlight) {
+            // Preserve the trigger while an async catch-up is running so a NetworkRestored or
+            // Reconnect arriving before a hanging Foreground read fails is never lost.
+            pending = null
+            pendingNewConnection = false
+            recordQueuedWhileInFlight(trigger, force)
             return null
         }
         // A kept event is answered by this catch-up (or was just answered by a recent one).
-        val force = newConnection || pendingNewConnection
         pending = null
         pendingNewConnection = false
         return fire(trigger, force)
@@ -115,7 +139,88 @@ class RaftFreshnessGate(
         val force = pendingNewConnection
         pending = null
         pendingNewConnection = false
+        if (trackOutcome && inFlight) {
+            recordQueuedWhileInFlight(trigger, force)
+            return null
+        }
         return fire(trigger, force)
+    }
+
+    /** True while an outcome-tracked catch-up is currently running. */
+    fun isInFlight(): Boolean = trackOutcome && inFlight
+
+    /**
+     * Records that an external catch-up (e.g. `SharedForegroundReconciler`'s foreground refresh)
+     * started for this subscriber without going through [onEvent], so a [RaftFreshnessTrigger.NetworkRestored]
+     * arriving while it is in flight is latched instead of dropped.
+     */
+    fun onExternalCatchUpStarted() {
+        if (trackOutcome) {
+            inFlight = true
+        }
+    }
+
+    /**
+     * Reports the outcome of the catch-up returned by [onEvent] / [onVisibilityChanged].
+     *
+     * - [succeeded] true: commits [lastCatchUpAt] so subsequent non-forced events within
+     *   [coalesceMillis] coalesce. If a new-connection reconnect arrived while this catch-up was
+     *   in flight, returns it (when [visible]) or keeps it pending.
+     * - [succeeded] false: clears [lastCatchUpAt] so the failed read does not block a later
+     *   [RaftFreshnessTrigger.NetworkRestored] / [RaftFreshnessTrigger.Reconnect] within
+     *   [coalesceMillis]. If another trigger arrived while this failed catch-up was running,
+     *   returns it immediately (when [visible]) or keeps it pending.
+     */
+    fun onCatchUpCompleted(succeeded: Boolean, visible: Boolean = true): RaftFreshnessTrigger? {
+        val queued = queuedWhileInFlight
+        val queuedForce = queuedWhileInFlightForce
+        inFlight = false
+        queuedWhileInFlight = null
+        queuedWhileInFlightForce = false
+        if (succeeded) {
+            lastCatchUpAt = nowMillis()
+            if (queued != null && queuedForce) {
+                return dispatchFollowUp(queued, force = true, visible = visible)
+            }
+            return null
+        }
+        lastCatchUpAt = null
+        if (queued != null) {
+            return dispatchFollowUp(queued, force = queuedForce, visible = visible)
+        }
+        return null
+    }
+
+    fun reset() {
+        lastCatchUpAt = null
+        lastTransportEpochs.clear()
+        pending = null
+        pendingNewConnection = false
+        inFlight = false
+        queuedWhileInFlight = null
+        queuedWhileInFlightForce = false
+    }
+
+    private fun dispatchFollowUp(
+        trigger: RaftFreshnessTrigger,
+        force: Boolean,
+        visible: Boolean,
+    ): RaftFreshnessTrigger? {
+        if (!visible) {
+            recordPending(trigger, force)
+            return null
+        }
+        return fire(trigger, force)
+    }
+
+    private fun recordPending(trigger: RaftFreshnessTrigger, force: Boolean) {
+        if (pending == null || (force && !pendingNewConnection)) pending = trigger
+        pendingNewConnection = pendingNewConnection || force
+    }
+
+    private fun recordQueuedWhileInFlight(trigger: RaftFreshnessTrigger, force: Boolean) {
+        if (queuedWhileInFlight == null || (force && !queuedWhileInFlightForce)) queuedWhileInFlight = trigger
+        queuedWhileInFlightForce = queuedWhileInFlightForce || force
     }
 
     private fun classify(event: RaftFreshnessEvent, serverId: String?): RaftFreshnessTrigger? =
@@ -145,7 +250,11 @@ class RaftFreshnessGate(
         val now = nowMillis()
         val last = lastCatchUpAt
         if (!force && last != null && now - last < coalesceMillis) return null
-        lastCatchUpAt = now
+        if (trackOutcome) {
+            inFlight = true
+        } else {
+            lastCatchUpAt = now
+        }
         return trigger
     }
 }

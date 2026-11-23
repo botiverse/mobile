@@ -7,6 +7,7 @@ import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.yield
 import kotlin.test.Test
@@ -321,6 +322,92 @@ class SharedComputersStoreTest {
         assertFalse(slice.refreshing)
     }
 
+    @Test
+    fun supersededSettingsLoadAwaitsReplacementInsteadOfReturningStaleOfflineSnapshot() = runBlocking {
+        // #wg-mobile-feedback:#273: when an older forced load finishes FIRST after being superseded
+        // by a concurrent reloadMachinesForSyncSucceeded, it must await the replacement load instead
+        // of returning the stale pre-background Offline slice from _state.
+        val api = ControlledComputersApi()
+        api.enqueue(HomeNetworkResponse(code = 200, bodyText = machinesBodyWithStatus("machine-1", "Mac Studio", "offline")))
+        val store = controlledStore(api, this@runBlocking)
+        store.ensureComputerPickerForServer("server-1")
+        assertEquals(ComputerStatus.Offline, store.state.value.selectComputerServerSlice("server-1").machines.single().status)
+
+        val olderResponse = api.enqueuePending()
+        val replacementResponse = api.enqueuePending()
+        val olderLoad = async(start = CoroutineStart.UNDISPATCHED) {
+            store.loadSettingsComputersForServer("server-1", force = true)
+        }
+        yield()
+        val syncReload = async(start = CoroutineStart.UNDISPATCHED) {
+            store.reloadMachinesForSyncSucceeded("server-1")
+        }
+        yield()
+        assertEquals(3, api.serverIds.size)
+
+        // Older load finishes FIRST and is dropped as stale_generation.
+        olderResponse.complete(HomeNetworkResponse(code = 200, bodyText = machinesBodyWithStatus("machine-1", "Mac Studio", "offline")))
+        yield()
+        assertFalse(olderLoad.isCompleted, "superseded load must wait for the replacement flight")
+
+        // Replacement finishes with Online: both callers must observe Online.
+        replacementResponse.complete(HomeNetworkResponse(code = 200, bodyText = machinesBodyWithStatus("machine-1", "Mac Studio", "online")))
+        assertTrue(syncReload.await())
+        val olderSnapshot = assertIs<DataResult.Content<SettingsComputersSnapshot>>(olderLoad.await()).data
+        assertTrue(olderSnapshot.computers.single().online, "older caller must see replacement Online state")
+    }
+
+    @Test
+    fun observerCountTracksActiveCollectorsAndCleansUpOnCancel() = runBlocking {
+        val api = RecordingComputersApi()
+        val store = store(api)
+        assertFalse(store.hasActiveObservers("server-1"))
+        assertFalse(store.hasLoadedOrObservedServer("server-1"))
+
+        val firstEmission = CompletableDeferred<SettingsComputersLiveUpdate>()
+        val job =
+            launch(start = CoroutineStart.UNDISPATCHED) {
+                store.observeSettingsComputersForServer("server-1")!!.collect { update ->
+                    if (!firstEmission.isCompleted) firstEmission.complete(update)
+                }
+            }
+        firstEmission.await()
+        assertTrue(store.hasActiveObservers("server-1"))
+        assertTrue(store.hasLoadedOrObservedServer("server-1"))
+        assertEquals(setOf("server-1"), store.loadedOrObservedServerIds())
+
+        job.cancel()
+        job.join()
+        assertFalse(store.hasActiveObservers("server-1"))
+        assertFalse(store.hasLoadedOrObservedServer("server-1"))
+    }
+
+    @Test
+    fun supersededReloadReturnsWinningGenerationsOutcomeWhenReplacementFinishesFirst() = runBlocking {
+        val api = ControlledComputersApi()
+        api.enqueue(HomeNetworkResponse(code = 200, bodyText = machinesBodyWithStatus("machine-1", "Mac Studio", "offline")))
+        val store = controlledStore(api, this@runBlocking)
+        store.ensureComputerPickerForServer("server-1")
+
+        val olderResponse = api.enqueuePending()
+        val replacementResponse = api.enqueuePending()
+        val olderReload = async(start = CoroutineStart.UNDISPATCHED) {
+            store.reloadMachinesForSyncSucceeded("server-1")
+        }
+        yield()
+        val replacementReload = async(start = CoroutineStart.UNDISPATCHED) {
+            store.reloadMachinesForSyncSucceeded("server-1")
+        }
+        yield()
+
+        // Replacement finishes FIRST with 503 failure; older flight finishes SECOND with dropped 200.
+        replacementResponse.complete(HomeNetworkResponse(code = 503, bodyText = """{"error":"down"}"""))
+        assertFalse(replacementReload.await())
+
+        olderResponse.complete(HomeNetworkResponse(code = 200, bodyText = machinesBodyWithStatus("machine-1", "Mac Studio", "online")))
+        assertFalse(olderReload.await(), "dropped flight must report the winning generation's failed outcome, not its own dropped 200")
+    }
+
     private fun store(api: RecordingComputersApi): SharedComputersStore =
         SharedComputersStore(
             computersApiClient = RaftComputersApiClient(api),
@@ -394,7 +481,10 @@ private const val machinesBody: String =
     """{"machines":[{"id":"machine-1","name":"Maria Laptop","status":"online","statusVersion":7,"apiKeyPrefix":"sk_machine_abc","runtimes":["claude","codex"],"daemonVersion":"0.53.0","hostname":"maria.local","os":"darwin","lastHeartbeat":"2026-06-14T02:00:00.000Z","createdAt":"2026-05-01T00:00:00.000Z"}],"latestDaemonVersion":"0.53.0"}"""
 
 private fun machinesBodyFor(machineId: String, machineName: String): String =
-    """{"machines":[{"id":"$machineId","name":"$machineName","status":"online","runtimes":["codex"]}]}"""
+    machinesBodyWithStatus(machineId, machineName, "online")
+
+private fun machinesBodyWithStatus(machineId: String, machineName: String, status: String): String =
+    """{"machines":[{"id":"$machineId","name":"$machineName","status":"$status","runtimes":["codex"]}]}"""
 
 /** One `machines` item of `GET /api/servers/:id/machines` as a sync `machine` row carries it. */
 private fun syncMachineRow(id: String, name: String, status: String): kotlinx.serialization.json.JsonObject =
