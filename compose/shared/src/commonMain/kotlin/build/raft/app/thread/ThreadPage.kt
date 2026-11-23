@@ -10,6 +10,7 @@ import build.raft.app.nav.LocalRaftStackPageInMotion
 import build.raft.app.resources.*
 import build.raft.app.downloads.RaftDownloadCenterProcess
 import build.raft.app.data.homeStateForPage
+import build.raft.app.data.HomeFollowedThreadUnread
 import build.raft.app.data.RaftRatingPrompt
 import build.raft.app.data.RaftReadToggleNotice
 import build.raft.app.data.openWithinWideDetail
@@ -1977,7 +1978,8 @@ private fun SharedThreadRouteContentContent(
     }
     val payload = renderSlice.payload
     val timelineSlice = renderSlice.timelineSlice
-    val replyMetadataByParentId = renderSlice.replyMetadataByParentId
+    // What the store knows of each parent's thread; shown with Home's count below (replyMetadataByParentId).
+    val pageReplyMetadataByParentId = renderSlice.replyMetadataByParentId
     val highlightedMentions = renderSlice.highlightedMentions
     // Task #228 successor (direction A): the shared Home directory is the same
     // authority source the initial parent lookup consults. Forward the exact
@@ -3301,6 +3303,10 @@ private fun SharedThreadRouteContentContent(
                 jumpLoading = jumpLoading,
             )
         }
+    // #wg-mobile-sync:#256: a parent's inline replies count its thread's new replies as the channel
+    // row's thread mark does (Home's followed-thread unread), so a reply that arrives while the
+    // channel is open shows under its parent, not only on the row (ThreadJumpPills.kt).
+    val replyMetadataByParentId = rememberInlineReplyMetadata(pageReplyMetadataByParentId, jumpFollowedThreadUnread)
     // The unread threads whose parent is neither loaded nor resolved: look them up (single-flight
     // in the store; each id at most once per page). Keyed by the id set, not the message list.
     val jumpUnresolvedUnreadThreadIds =
@@ -6901,6 +6907,18 @@ private fun rememberThreadChannelJointServers(
             conversationIdentityProvider = conversationIdentityProvider,
         )
     }
+
+/**
+ * [page]'s reply metadata with each thread's unread raised to Home's count for it
+ * ([withHomeFollowedThreadUnread]), kept per input pair. Outside `SharedThreadRouteContentContent` to
+ * keep that route below its JVM method-size cap.
+ */
+@Composable
+private fun rememberInlineReplyMetadata(
+    page: Map<String, ThreadReplyMetadata>,
+    followedThreadUnread: Map<String, HomeFollowedThreadUnread>?,
+): Map<String, ThreadReplyMetadata> =
+    remember(page, followedThreadUnread) { page.withHomeFollowedThreadUnread(followedThreadUnread) }
 
 /**
  * Hosts [RaftViewerImageEditor] outside `SharedThreadRouteContentContent` (keeping that route
