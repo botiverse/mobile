@@ -76,6 +76,10 @@ def context_of(stack):
         return ("fine",)
     if wide:
         return ("wide", "fine")
+    if fine:
+        # A mouse at any width (raft-ui 0.102.23): of the three contexts only `fine` has one;
+        # the desktop block after it still wins there.
+        return ("fine",)
     return None
 
 
@@ -139,7 +143,8 @@ def camel(name):
     return parts[0] + "".join(p[:1].upper() + p[1:] for p in parts[1:])
 
 
-def generate():
+def compute():
+    """Every root length the sources declare, resolved: ({context: {name: px}}, names, sources)."""
     manifest = json.loads((HERE / "manifest.json").read_text())
     s = manifest["sources"]
     # Tailwind's theme resolves references (`--spacing`); only raft-ui's and the Web's names are emitted.
@@ -165,6 +170,11 @@ def generate():
         return bool(re.search(r"px|rem|--spacing|var\(", v)) and not re.search(r"\d(%|vh|vw|s\b|ms\b|deg)", v)
     names = sorted(n for n in emitted if n in values["compact"] and is_length(n))
     names = [n for n in names if all(n in values[c] for c in CONTEXTS)]
+    return values, names, s
+
+
+def generate():
+    values, names, s = compute()
     origins = "\n".join(f"//   {s[k]['origin']} sha256={s[k]['sha256'][:16]}" for k in ("tailwind", "raftUiStyles", "raftUiFoundation", "web"))
     def block(c):
         return "\n".join(f"        val {camel(n)}: Dp = {fmt(values[c][n])}.dp // {n}" for n in names)
