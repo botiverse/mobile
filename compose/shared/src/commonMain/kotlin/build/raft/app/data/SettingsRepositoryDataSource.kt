@@ -307,6 +307,7 @@ class RealSettingsRepository(
     private val serverNotificationLastKnownStore: SettingsServerNotificationLastKnownStore? = null,
     private val onTimeFormatUpdated: (String) -> Unit = {},
     private val onTimeZoneUpdated: (String?) -> Unit = {},
+    private val onComposerSendKeyUpdated: (RaftComposerSendKey) -> Unit = {},
 ) : SettingsRepository, SettingsServerActionRepository, SettingsServerManagementRepository {
     private val computersApiClient = RaftComputersApiClient(RaftComputersNetworkApi(networkClient))
     private val secondFactorStepUpRepository = SecondFactorStepUpRepository(networkClient)
@@ -1397,6 +1398,7 @@ class RealSettingsRepository(
         ).also { result ->
             (result as? DataResult.Content)?.data?.let { snapshot ->
                 onAppearanceSnapshot(session.user.id, snapshot)
+                persistUpdatedComposerSendKey(session.user.id, snapshot.composerSendKey)
             }
         }
     }
@@ -1424,6 +1426,52 @@ class RealSettingsRepository(
             (result as? DataResult.Content)?.data?.let { snapshot ->
                 onAppearanceSnapshot(session.user.id, snapshot)
             }
+        }
+    }
+
+    override suspend fun updateComposerSendKey(
+        sendKey: RaftComposerSendKey
+    ): DataResult<SettingsAppearanceSnapshot> {
+        val session = sessionStore.readSession() ?: return authRequired()
+        return executeSettings(
+            emptyReason = EmptyReason.NoSettingsAvailable,
+            source = "settings_composer_send_key_update",
+            warningLogger = warningLogger,
+            block = {
+                networkClient.updateSettingsAccount(
+                    DataRequestPriority.Foreground,
+                    buildSharedComposerSendKeyUpdateBody(sendKey)
+                )
+            },
+            errorTextDecoder = HomeNetworkResponse::settingsAccountRouteErrorTextOrNull,
+            mapper = { bodyText ->
+                parseSharedAppearanceSettingsSnapshot(bodyText)
+                    ?: throw IllegalStateException("Composer send key update response missing preferences")
+            }
+        ).also { result ->
+            (result as? DataResult.Content)?.data?.let { snapshot ->
+                onAppearanceSnapshot(session.user.id, snapshot)
+                persistUpdatedComposerSendKey(session.user.id, snapshot.composerSendKey)
+            }
+        }
+    }
+
+    private suspend fun persistUpdatedComposerSendKey(
+        expectedAccountId: String,
+        sendKey: RaftComposerSendKey,
+    ) {
+        val storedWire = sendKey.toStoredAccountWireOrNull()
+        var applied = false
+        sessionStore.updateMetadata(expectedAccountId) { latest ->
+            applied = true
+            if (latest.user.composerSendKey == storedWire) {
+                latest
+            } else {
+                latest.copy(user = latest.user.copy(composerSendKey = storedWire))
+            }
+        }
+        if (applied) {
+            onComposerSendKeyUpdated(sendKey)
         }
     }
 
@@ -3424,6 +3472,12 @@ data class SettingsAppearanceUpdateRequestBody(
     val preferredMessageBodyFontSize: String
 )
 
+/** `PATCH /api/auth/me` `{ composerSendKey }` (botiverse/slock #13051 `packages/shared/src/composerSendKey.ts`). */
+@Serializable
+data class SettingsComposerSendKeyUpdateRequestBody(
+    val composerSendKey: String
+)
+
 @Serializable
 data class AccountPasswordChangeRequestBody(
     val currentPassword: String,
@@ -3472,6 +3526,13 @@ fun buildSharedAppearanceUpdateBody(request: SettingsAppearanceUpdateRequest): S
     settingsRepositoryJson.encodeToString(
         SettingsAppearanceUpdateRequestBody(
             preferredMessageBodyFontSize = normalizeSettingsMessageBodyFontSize(request.preferredMessageBodyFontSize)
+        )
+    )
+
+fun buildSharedComposerSendKeyUpdateBody(sendKey: RaftComposerSendKey): String =
+    settingsRepositoryJson.encodeToString(
+        SettingsComposerSendKeyUpdateRequestBody(
+            composerSendKey = sendKey.wireValue
         )
     )
 

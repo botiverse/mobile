@@ -5939,4 +5939,8 @@
     <string name="agent_readiness_owner_can_fix_computer_owner">Владелец компьютера может это исправить</string>
     <string name="agent_readiness_owner_can_fix_agent_owner">Владелец агента может это исправить</string>
     <string name="agent_readiness_owner_can_fix_server_admin">Администратор сервера может это исправить</string>
+    <string name="settings_appearance_keyboard_section">Клавиатура</string>
+    <string name="settings_appearance_send_key_title">Клавиша отправки сообщений</string>
+    <string name="settings_appearance_send_key_save_failed">Не удалось изменить способ отправки. Попробуйте ещё раз.</string>
+    <string name="composer_send_key_hint">%1$s — отправить</string>
 </resources>

@@ -1,18 +1,17 @@
 package build.raft.app
 
 import build.raft.app.data.LinkOpenMode
-import build.raft.app.resources.Res
-import build.raft.app.resources.settings_mobile_composer_key_detail_hardware_keyboard
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 /**
- * Settings cleanup (1.27.0): there is no "Mobile" Settings page on any platform. Its rows are part
- * of Appearance (Messages, Home, Windows), as the web keeps its device preferences in
- * AppearanceSection. Desktop hides "Open web links" (no embedded web view) and links open in the
- * default browser there; the Windows group shows the desktop layout switch on every device (a large phone held sideways reaches it), multiple windows only where a large screen is possible.
+ * Settings > Appearance (web parity 1.29.0): there is no "Mobile" Settings page on any platform;
+ * app rows share Appearance's single group, and the Keyboard section ("Send messages with": Enter /
+ * ⌘Enter or Ctrl+Enter, plus Keyboard shortcuts) shows on Compose desktop, iPad app on Mac, and
+ * mobile devices with a hardware keyboard connected — while touch-only mobile without a hardware
+ * keyboard hides the Keyboard send-key setting.
  */
 class SettingsAppPreferencesPlacementTest {
     @Test
@@ -22,7 +21,7 @@ class SettingsAppPreferencesPlacementTest {
     }
 
     @Test
-    fun desktopHidesLinkModeAndUsesEnterCopy() {
+    fun desktopHidesLinkModeAndShowsKeyboardSendKeyAndShortcuts() {
         val desktop =
             settingsAppPreferenceVisibility(
                 finePointer = true,
@@ -30,12 +29,91 @@ class SettingsAppPreferencesPlacementTest {
                 supportsMultiShellHost = false,
                 supportsIosNativeNav = false,
                 largeScreenPossible = true,
+                hardwareKeyboardConnected = true,
+                isiOSAppOnMac = false,
             )
         assertFalse(desktop.linkOpenMode)
         assertFalse(desktop.multiShellHost)
-        assertTrue(desktop.hardwareKeyboardComposerCopy)
+        assertTrue(desktop.keyboardSendKey)
+        assertTrue(desktop.keyboardShortcuts)
+        assertTrue(desktop.keyboardSection)
         assertTrue(desktop.desktopMode)
-        assertEquals(Res.string.settings_mobile_composer_key_detail_hardware_keyboard, settingsComposerKeyDetail(true))
+    }
+
+    @Test
+    fun touchOnlyPhoneHidesKeyboardSectionAndSendKey() {
+        val phone =
+            settingsAppPreferenceVisibility(
+                finePointer = false,
+                supportsInAppBrowser = true,
+                supportsMultiShellHost = true,
+                supportsIosNativeNav = false,
+                largeScreenPossible = false,
+                hardwareKeyboardConnected = false,
+                isiOSAppOnMac = false,
+            )
+        assertTrue(phone.linkOpenMode)
+        assertFalse(phone.keyboardSendKey)
+        assertFalse(phone.keyboardShortcuts)
+        assertFalse(phone.keyboardSection)
+    }
+
+    @Test
+    fun phoneWithHardwareKeyboardShowsKeyboardSectionAndSendKey() {
+        val phoneWithKeyboard =
+            settingsAppPreferenceVisibility(
+                finePointer = false,
+                supportsInAppBrowser = true,
+                supportsMultiShellHost = true,
+                supportsIosNativeNav = false,
+                largeScreenPossible = false,
+                hardwareKeyboardConnected = true,
+                isiOSAppOnMac = false,
+            )
+        assertTrue(phoneWithKeyboard.keyboardSendKey)
+        assertTrue(phoneWithKeyboard.keyboardShortcuts)
+        assertTrue(phoneWithKeyboard.keyboardSection)
+    }
+
+    @Test
+    fun tabletWithoutHardwareKeyboardHidesSendKeyButShowsKeyboardShortcuts() {
+        val tablet =
+            settingsAppPreferenceVisibility(
+                finePointer = false,
+                supportsInAppBrowser = true,
+                supportsMultiShellHost = true,
+                supportsIosNativeNav = false,
+                largeScreenPossible = true,
+                hardwareKeyboardConnected = false,
+                isiOSAppOnMac = false,
+            )
+        assertFalse(tablet.keyboardSendKey)
+        assertTrue(tablet.keyboardShortcuts)
+        assertTrue(tablet.keyboardSection)
+    }
+
+    @Test
+    fun ipadAppOnMacShowsKeyboardSectionAndSendKey() {
+        val ipadOnMac =
+            settingsAppPreferenceVisibility(
+                finePointer = false,
+                supportsInAppBrowser = true,
+                supportsMultiShellHost = false,
+                supportsIosNativeNav = false,
+                largeScreenPossible = true,
+                hardwareKeyboardConnected = false,
+                isiOSAppOnMac = true,
+            )
+        assertTrue(ipadOnMac.keyboardSendKey)
+        assertTrue(ipadOnMac.keyboardShortcuts)
+        assertTrue(ipadOnMac.keyboardSection)
+    }
+
+    @Test
+    fun keyLabelsMatchWebPlatformConventions() {
+        assertEquals("Enter", raftComposerEnterKeyLabel())
+        assertEquals("⌘Enter", raftComposerModEnterKeyLabel(apple = true))
+        assertEquals("Ctrl+Enter", raftComposerModEnterKeyLabel(apple = false))
     }
 
     @Test

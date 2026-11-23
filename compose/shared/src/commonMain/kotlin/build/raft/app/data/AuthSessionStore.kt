@@ -559,7 +559,13 @@ data class StoredAuthUser(
      * default; botiverse/slock 4ca2f2e6cb packages/server/src/services/userService.ts
      * `toPublicUser`). Read through [normalizeRaftRailTabOrder] ([SharedRailTabOrderStore]).
      */
-    val railTabOrder: List<String>? = null
+    val railTabOrder: List<String>? = null,
+    /**
+     * How the message box sends on Compose desktop and hardware keyboards (`GET /api/auth/me`
+     * `composerSendKey`, botiverse/slock #13051 `packages/shared/src/composerSendKey.ts`):
+     * `"mod_enter"` = ⌘Enter / Ctrl+Enter sends, `null` or `"enter"` = Enter sends (default).
+     */
+    val composerSendKey: String? = null
 ) {
     val requiresProfileSetup: Boolean
         get() = profileSetupCompletedAt.isNullOrBlank()

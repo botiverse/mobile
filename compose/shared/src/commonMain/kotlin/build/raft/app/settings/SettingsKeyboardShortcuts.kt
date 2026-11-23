@@ -5,15 +5,10 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
-import build.raft.app.components.RaftDesignSystemTheme
 import build.raft.app.resources.*
 import build.raft.designsystem.components.RaftButton
 import build.raft.designsystem.components.RaftButtonSize
@@ -23,7 +18,6 @@ import build.raft.designsystem.components.RaftDialogSize
 import build.raft.designsystem.components.RaftKbd
 import build.raft.designsystem.components.RaftListRow
 import build.raft.designsystem.components.RaftListRowChevron
-import build.raft.designsystem.components.RaftListRowGroup
 import build.raft.designsystem.components.RaftListRowVariant
 import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.RaftTheme
@@ -64,6 +58,12 @@ internal fun settingsKeyboardShortcutsVisible(finePointer: Boolean, largeScreenP
 /** The modifier key's cap: ⌘ on Apple platforms ([apple], `raftPlatformShortcutsUseCommand`), else Ctrl. */
 private fun modifierKey(apple: Boolean): String = if (apple) "⌘" else "Ctrl"
 
+/** Web `formatShortcut({ key: "Enter" })`: "Enter". */
+internal fun raftComposerEnterKeyLabel(): String = "Enter"
+
+/** Web `formatShortcut(MOD_ENTER_SEND_SHORTCUT)`: "⌘Enter" on Apple platforms, "Ctrl+Enter" elsewhere. */
+internal fun raftComposerModEnterKeyLabel(apple: Boolean): String = if (apple) "⌘Enter" else "Ctrl+Enter"
+
 /** The groups, in the web panel's order (Global, then Channels and threads). */
 internal fun settingsKeyboardShortcutGroups(apple: Boolean): List<SettingsKeyboardShortcutGroup> =
     listOf(
@@ -97,25 +97,18 @@ internal fun settingsKeyboardShortcutGroups(apple: Boolean): List<SettingsKeyboa
         ),
     )
 
-/** Appearance's Keyboard shortcuts group: one row that opens the list. */
+/** One row inside Appearance › Keyboard that opens the Keyboard shortcuts dialog. */
 @Composable
-internal fun SettingsKeyboardShortcutsSection(apple: Boolean = raftPlatformShortcutsUseCommand()) {
-    var open by remember { mutableStateOf(false) }
-    val title = stringResource(Res.string.settings_keyboard_shortcuts_title)
-    RaftDesignSystemTheme {
-    SettingsFormSection(iconName = RaftLucideIconName.Type, title = title) {
-        RaftListRowGroup(Modifier.fillMaxWidth().settingsSearchAnchor("keyboard-shortcuts")) {
-            RaftListRow(
-                title = title,
-                modifier = Modifier.testTag(SettingsKeyboardShortcutsRowTag),
-                onClick = { open = true },
-                variant = RaftListRowVariant.Plain,
-                trailing = { RaftListRowChevron() },
-            )
-        }
-    }
-    if (open) SettingsKeyboardShortcutsDialog(apple = apple, onDismiss = { open = false })
-    }
+internal fun SettingsKeyboardShortcutsRow(divider: Boolean, onClick: () -> Unit) {
+    RaftListRow(
+        title = stringResource(Res.string.settings_keyboard_shortcuts_title),
+        modifier = Modifier.settingsSearchAnchor("keyboard-shortcuts").testTag(SettingsKeyboardShortcutsRowTag),
+        onClick = onClick,
+        variant = RaftListRowVariant.Plain,
+        divider = divider,
+        titleMaxLines = Int.MAX_VALUE,
+        trailing = { RaftListRowChevron() },
+    )
 }
 
 @Composable

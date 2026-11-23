@@ -2625,7 +2625,8 @@ data class SettingsAppearanceSnapshot(
                     SettingsMobileSelectionOptionSnapshot("md", "Medium"),
                     SettingsMobileSelectionOptionSnapshot("lg", "Large")
                 )
-        )
+        ),
+    val composerSendKey: RaftComposerSendKey = RaftComposerSendKey.Default
 )
 
 data class SettingsAppearanceUpdateRequest(

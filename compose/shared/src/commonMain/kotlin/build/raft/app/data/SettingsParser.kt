@@ -42,6 +42,11 @@ private data class WireAccountUser(
     val preferredMessageBodyFontSize: String? = null,
     val preferredTranslationDisplay: String? = null,
     /**
+     * How the message box sends on desktop / hardware keyboards (`users.composer_send_key`,
+     * botiverse/slock #13051 `packages/shared/src/composerSendKey.ts`): `"mod_enter"` or null.
+     */
+    val composerSendKey: String? = null,
+    /**
      * RFC-067 "Share usage data" (slock `userService.toPublicUser`): true / false, or null when the
      * user has not chosen yet ([SHARE_USAGE_DATA_DEFAULT] applies). An older server omits it: also null.
      */
@@ -218,13 +223,17 @@ fun parseSharedLanguageRegionAccountPreferences(
 
 fun parseSharedAppearanceSettingsSnapshot(bodyText: String): SettingsAppearanceSnapshot? = runCatching {
     val user = settingsJson.decodeFromString(WireAccountUser.serializer(), bodyText)
-    user.preferredMessageBodyFontSize.toSettingsAppearanceSnapshot()
+    user.preferredMessageBodyFontSize.toSettingsAppearanceSnapshot(
+        composerSendKey = RaftComposerSendKey.fromWire(user.composerSendKey)
+    )
 }.getOrNull()
 
 private fun String.titleLabel(): String =
     replaceFirstChar { it.uppercase() }
 
-internal fun String?.toSettingsAppearanceSnapshot(): SettingsAppearanceSnapshot {
+internal fun String?.toSettingsAppearanceSnapshot(
+    composerSendKey: RaftComposerSendKey = RaftComposerSendKey.Default,
+): SettingsAppearanceSnapshot {
     val selectedKey = normalizeSettingsMessageBodyFontSize(this)
     return SettingsAppearanceSnapshot(
         messageBodyFontSize =
@@ -239,7 +248,8 @@ internal fun String?.toSettingsAppearanceSnapshot(): SettingsAppearanceSnapshot 
                         SettingsMobileSelectionOptionSnapshot("md", "Medium"),
                         SettingsMobileSelectionOptionSnapshot("lg", "Large")
                     )
-            )
+            ),
+        composerSendKey = composerSendKey,
     )
 }
 

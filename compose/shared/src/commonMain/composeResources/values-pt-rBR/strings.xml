@@ -5939,4 +5939,8 @@
     <string name="agent_readiness_owner_can_fix_computer_owner">O proprietário do computador pode resolver isso</string>
     <string name="agent_readiness_owner_can_fix_agent_owner">O proprietário do agente pode resolver isso</string>
     <string name="agent_readiness_owner_can_fix_server_admin">Um administrador do servidor pode resolver isso</string>
+    <string name="settings_appearance_keyboard_section">Teclado</string>
+    <string name="settings_appearance_send_key_title">Enviar mensagens com</string>
+    <string name="settings_appearance_send_key_save_failed">Não foi possível alterar a forma de envio das mensagens. Tente novamente.</string>
+    <string name="composer_send_key_hint">%1$s para enviar</string>
 </resources>

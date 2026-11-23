@@ -91,26 +91,33 @@ internal val RaftSettingsSearchCopies: Map<String, RaftSettingsSearchCopy> =
         "message-font-size" to
             RaftSettingsSearchCopy(
                 Res.string.settings_appearance_message_font_size_title,
-                Res.string.settings_appearance_message_font_size_description,
+                section = Res.string.settings_appearance_title,
             ),
         "live-agent-activity" to
             RaftSettingsSearchCopy(
                 Res.string.settings_appearance_live_agent_activity_title,
-                Res.string.settings_appearance_live_agent_activity_description,
+                section = Res.string.settings_appearance_title,
             ),
         "show-agent-model" to
-            RaftSettingsSearchCopy(Res.string.settings_appearance_show_agent_model_title, Res.string.settings_appearance_show_agent_model_description),
+            RaftSettingsSearchCopy(
+                Res.string.settings_appearance_show_agent_model_title,
+                section = Res.string.settings_appearance_title,
+            ),
         "show-sender-description" to
             RaftSettingsSearchCopy(
                 Res.string.settings_appearance_show_sender_description_title,
-                Res.string.settings_appearance_show_sender_description_description,
+                section = Res.string.settings_appearance_title,
             ),
         "hide-empty-sidebar-sections" to
             RaftSettingsSearchCopy(
                 Res.string.settings_appearance_hide_empty_sidebar_sections_title,
-                Res.string.settings_appearance_hide_empty_sidebar_sections_description,
+                section = Res.string.settings_appearance_title,
             ),
-        "send-with" to RaftSettingsSearchCopy(Res.string.settings_mobile_composer_key, Res.string.settings_mobile_composer_key_detail),
+        "send-with" to
+            RaftSettingsSearchCopy(
+                Res.string.settings_appearance_send_key_title,
+                section = Res.string.settings_appearance_keyboard_section,
+            ),
         "push-notifications" to
             RaftSettingsSearchCopy(
                 Res.string.settings_notifications_message_title,

@@ -1503,6 +1503,21 @@ internal object RaftLucideIconPaths {
                         RaftLucidePathSpec("M 16.0 7.5 A 0.5 0.5 0 1 0 17.0 7.5 A 0.5 0.5 0 1 0 16.0 7.5 Z", fillPaint = "currentColor"),
                     ),
                 )
+            RaftLucideIconName.Keyboard ->
+                RaftLucideIconSpec(
+                    "keyboard",
+                    listOf(
+                        RaftLucidePathSpec("M10 8h.01"),
+                        RaftLucidePathSpec("M12 12h.01"),
+                        RaftLucidePathSpec("M14 8h.01"),
+                        RaftLucidePathSpec("M16 12h.01"),
+                        RaftLucidePathSpec("M18 8h.01"),
+                        RaftLucidePathSpec("M6 8h.01"),
+                        RaftLucidePathSpec("M7 16h10"),
+                        RaftLucidePathSpec("M8 12h.01"),
+                        RaftLucidePathSpec("M 4.0 4.0 H 20.0 A 2.0 2.0 0 0 1 22.0 6.0 V 18.0 A 2.0 2.0 0 0 1 20.0 20.0 H 4.0 A 2.0 2.0 0 0 1 2.0 18.0 V 6.0 A 2.0 2.0 0 0 1 4.0 4.0 Z"),
+                    ),
+                )
             RaftLucideIconName.Languages ->
                 RaftLucideIconSpec(
                     "languages",

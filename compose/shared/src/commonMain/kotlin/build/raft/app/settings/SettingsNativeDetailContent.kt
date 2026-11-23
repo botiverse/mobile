@@ -527,7 +527,7 @@ internal fun SettingsNativeDetailPageContent(
             },
             diagnosticsLogger = diagnosticsLogger,
         )
-    val appPreferenceVisibility = settingsAppPreferenceVisibility()
+    val appPreferenceVisibility = rememberSettingsAppPreferenceVisibility()
 
     SettingsDetailShell(
         title = settingsNativeDetailPageTitle(route),
@@ -596,6 +596,9 @@ internal fun SettingsNativeDetailPageContent(
                                 SettingsAppearanceUpdateRequest(appearanceMessageFontSizeDraft)
                             )
                         )
+                    },
+                    onComposerSendKeyChange = { sendKey ->
+                        onSettingsIntent(SharedSettingsIntent.UpdateComposerSendKey(sendKey))
                     },
                     onRetry = { onSettingsIntent(SharedSettingsIntent.Refresh) },
                     showModeCard = settingsAppearanceShowsModeCard(session),

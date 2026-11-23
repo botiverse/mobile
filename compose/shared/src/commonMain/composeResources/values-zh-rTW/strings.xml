@@ -5939,4 +5939,8 @@
     <string name="agent_readiness_owner_can_fix_computer_owner">電腦的擁有者可以處理</string>
     <string name="agent_readiness_owner_can_fix_agent_owner">Agent 的擁有者可以處理</string>
     <string name="agent_readiness_owner_can_fix_server_admin">伺服器管理員可以處理</string>
+    <string name="settings_appearance_keyboard_section">鍵盤</string>
+    <string name="settings_appearance_send_key_title">傳送訊息的按鍵</string>
+    <string name="settings_appearance_send_key_save_failed">無法變更傳送方式，請再試一次。</string>
+    <string name="composer_send_key_hint">按 %1$s 傳送</string>
 </resources>

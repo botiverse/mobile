@@ -5940,4 +5940,8 @@
     <string name="agent_readiness_owner_can_fix_computer_owner">Computer 的所有者可以处理</string>
     <string name="agent_readiness_owner_can_fix_agent_owner">Agent 的所有者可以处理</string>
     <string name="agent_readiness_owner_can_fix_server_admin">服务器管理员可以处理</string>
+    <string name="settings_appearance_keyboard_section">键盘</string>
+    <string name="settings_appearance_send_key_title">发送消息的按键</string>
+    <string name="settings_appearance_send_key_save_failed">没能保存发送方式，请重试。</string>
+    <string name="composer_send_key_hint">按 %1$s 发送</string>
 </resources>

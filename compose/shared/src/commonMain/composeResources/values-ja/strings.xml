@@ -5940,4 +5940,8 @@
     <string name="agent_readiness_owner_can_fix_computer_owner">コンピューターのオーナーが対応できます</string>
     <string name="agent_readiness_owner_can_fix_agent_owner">エージェントのオーナーが対応できます</string>
     <string name="agent_readiness_owner_can_fix_server_admin">サーバー管理者が対応できます</string>
+    <string name="settings_appearance_keyboard_section">キーボード</string>
+    <string name="settings_appearance_send_key_title">メッセージの送信キー</string>
+    <string name="settings_appearance_send_key_save_failed">送信キーを変更できませんでした。もう一度お試しください。</string>
+    <string name="composer_send_key_hint">%1$s で送信</string>
 </resources>
