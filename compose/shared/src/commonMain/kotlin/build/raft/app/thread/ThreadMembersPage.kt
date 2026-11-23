@@ -1166,6 +1166,7 @@ internal fun ThreadMembersPageContent(
             )
         }
         if (roleChange.failed) ChannelMemberRoleErrorBanner(roleChange.failureTraceId)
+        val showBottomActionBar = !membersLoading && (canAddMembers || externalInvites?.access == true)
         // Pull-to-refresh reloads the roster through the same path as the error state's Retry.
         RaftStorePullToRefreshBox(
             refreshing = refreshing,
@@ -1174,7 +1175,6 @@ internal fun ThreadMembersPageContent(
             enabled = !membersLoading,
             pullState = rosterPullState,
         ) {
-        val showBottomActionBar = !membersLoading && (canAddMembers || externalInvites?.access == true)
         val visibleInvites = externalInvites?.visibleInvites(rosterQuery.text).orEmpty()
         LazyColumn(
             state = rosterListState,
