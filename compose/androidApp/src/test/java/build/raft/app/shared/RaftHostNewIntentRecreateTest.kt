@@ -67,4 +67,31 @@ class RaftHostNewIntentRecreateTest {
             )
         )
     }
+
+    @Test
+    fun externalShareTokenParserExtractsOpaqueTokenAndRejectsForbiddenPayloadKeys() {
+        assertEquals(
+            "opaque-token_1234567890",
+            externalShareTokenFromPageDataOrNull(
+                """{"intent":"open_share_to_raft","externalShareToken":"opaque-token_1234567890"}"""
+            )
+        )
+        assertNull(
+            externalShareTokenFromPageDataOrNull(
+                """{"intent":"open_share_to_raft","externalShareToken":"opaque-token_1234567890","text":"raw"}"""
+            )
+        )
+        assertNull(
+            externalShareTokenFromPageDataOrNull(
+                """{"intent":"open_share_to_raft","externalShareToken":"../../bad"}"""
+            )
+        )
+        assertNull(
+            externalShareTokenFromPageDataOrNull(
+                """{"intent":"open_thread","externalShareToken":"opaque-token_1234567890"}"""
+            )
+        )
+        assertNull(externalShareTokenFromPageDataOrNull("{}"))
+        assertNull(externalShareTokenFromPageDataOrNull(null))
+    }
 }

@@ -202,4 +202,38 @@ class AndroidShellWindowOrchestrationTest {
             )
         assertFalse(loginIntent.getBooleanExtra(RaftCmpActivity.KEY_PRESERVE_LIVE_SHELL_ON_NEW_INTENT, false))
     }
+
+    @Test
+    fun externalShareStartIntentPreservesLiveAppShellWithoutClearTaskAndCarriesOpaqueToken() {
+        val context = RuntimeEnvironment.getApplication()
+        val pageData =
+            build.raft.app.androidExternalSharePageData(
+                build.raft.app.AndroidExternalShareLaunch("opaque-token_1234567890")
+            )
+        val shareStartIntent =
+            RaftCmpActivity.buildStartIntent(
+                context = context,
+                pageName = RaftCmpActivity.PAGE_APP_SHELL,
+                pageData = pageData,
+                clearTask = false,
+                hostActivityClass = RaftAppShellActivity::class.java,
+                preserveLiveShell = true,
+            )
+
+        assertEquals(0, shareStartIntent.flags and Intent.FLAG_ACTIVITY_CLEAR_TASK)
+        assertTrue((shareStartIntent.flags and Intent.FLAG_ACTIVITY_NEW_TASK) != 0)
+        assertTrue((shareStartIntent.flags and Intent.FLAG_ACTIVITY_SINGLE_TOP) != 0)
+        assertTrue(shareStartIntent.getBooleanExtra(RaftCmpActivity.KEY_PRESERVE_LIVE_SHELL_ON_NEW_INTENT, false))
+        assertTrue(
+            shouldPreserveLiveAppShellOnNewIntent(
+                currentPageName = RaftCmpActivity.PAGE_APP_SHELL,
+                incomingPageName = shareStartIntent.getStringExtra(RaftCmpActivity.KEY_PAGE_NAME).orEmpty(),
+                preserveRequested = shareStartIntent.getBooleanExtra(RaftCmpActivity.KEY_PRESERVE_LIVE_SHELL_ON_NEW_INTENT, false),
+            )
+        )
+        assertEquals(
+            "opaque-token_1234567890",
+            externalShareTokenFromPageDataOrNull(RaftCmpActivity.resolvedPageData(shareStartIntent).text)
+        )
+    }
 }

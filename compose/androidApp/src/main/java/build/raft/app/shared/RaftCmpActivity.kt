@@ -1580,9 +1580,23 @@ internal open class RaftCmpActivity :
                 recreatePending = recreateOnResume,
             )
         ) {
+            val externalShareToken =
+                externalShareTokenFromPageDataOrNull(resolvedPageData(intent).text)
+            if (externalShareToken != null) {
+                nav3Stack?.let { stack ->
+                    if (stack.pages.size > 1) {
+                        raftAndroidNav3ClearForWindowReplace(stack, nav3Results)
+                    }
+                }
+                build.raft.app.RaftExternalShareLaunchIngress.submit(
+                    token = externalShareToken,
+                    targetShellInstanceId = androidShellLaunchTarget?.shellInstanceId,
+                )
+            }
             val line =
                 "host_new_intent page=${resolvedPageName(intent)} currentPage=${pageSpec?.pageName.orEmpty()} " +
-                    "state=${lifecycle.currentState} recreate=preserved"
+                    "state=${lifecycle.currentState} recreate=preserved" +
+                    if (externalShareToken != null) " externalShare=delivered" else ""
             RaftAppLog.record("SlockKuiklyActivity", line)
             RaftAndroidLocalDiagnostics.recordLog("info", "SlockKuiklyActivity", line)
             return

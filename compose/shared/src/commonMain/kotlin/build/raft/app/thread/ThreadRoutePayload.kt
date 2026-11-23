@@ -591,12 +591,18 @@ internal fun WireThreadLaunchPayload.threadComposerDraftKey(
     fallbackInstanceId: String = instanceId
 ): String? {
     val initialPayload = toInitialPayload(fallbackInstanceId)
-    val resolvedAuxiliaryThreadId = initialPayload.resolvedAuxiliaryThreadId()
+    // toInitialPayload() starts in status="loading", where resolvedAuxiliaryThreadId() returns
+    // null for reply threads; when the reply thread's stream channel is already known in the
+    // launch payload (e.g. Share-to-Raft handoff), fall back to its canonical timelineChannelId
+    // so the staged draft key matches ThreadPage once the reply thread finishes loading.
+    val resolvedStreamChannelId =
+        initialPayload.resolvedAuxiliaryThreadId()
+            ?: initialPayload.resolveThreadRouteIdentity().timelineChannelId
     return initialPayload
         .resolveThreadComposer()
-        .copy(streamChannelId = resolvedAuxiliaryThreadId)
+        .copy(streamChannelId = resolvedStreamChannelId)
         .toThreadComposerSurface(
-            channelId = resolvedAuxiliaryThreadId.orEmpty(),
+            channelId = resolvedStreamChannelId.orEmpty(),
             parentChannelId = initialPayload.parentChannelId
         )
         .threadComposerDraftKey()

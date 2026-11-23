@@ -175,6 +175,8 @@ class AndroidShellWindowContractTest {
                 .put(RAFT_SERVER_SWITCH_KEEP_WINDOW, true)
                 .put("slockSuppressRestoreLanding", true)
                 .put(RaftDesktopShortcutContract.KeyTargetId, "ch-1")
+                .put("intent", build.raft.app.AndroidExternalShareIntent)
+                .put(build.raft.app.AndroidExternalShareTokenKey, "opaque-token_1234567890")
                 .withAndroidShellLaunchTarget(target)
 
         val sanitized = sanitizeAppShellPageDataForHistoryLaunch(raw)
@@ -199,6 +201,8 @@ class AndroidShellWindowContractTest {
         assertFalse(sanitized.has(RAFT_SERVER_SWITCH_KEEP_WINDOW))
         assertFalse(sanitized.has("slockSuppressRestoreLanding"))
         assertFalse(sanitized.has(RaftDesktopShortcutContract.KeyTargetId))
+        assertFalse(sanitized.has("intent"))
+        assertFalse(sanitized.has(build.raft.app.AndroidExternalShareTokenKey))
     }
 
 }

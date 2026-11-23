@@ -276,11 +276,111 @@ class ForwardConversationTargetsTest {
     }
 
     @Test
-    fun externalSharePickerDropsThreadAndTaskRows() {
+    fun externalSharePickerRetainsThreadAndTaskRowsAndDropsMalformedConversations() {
+        val malformed =
+            ForwardMessageTarget(
+                serverId = serverId,
+                kind = ForwardMessageTargetKind.ConversationThread,
+                id = "thread-no-channel",
+                title = "Broken thread",
+                channelId = null,
+                channelKind = ConversationKind.Thread
+            )
         val targets = parseForwardMessageTargetSearchResults(ConversationsBody, serverId) +
+            malformed +
             ForwardMessageTarget(serverId, ForwardMessageTargetKind.RecentChannel, "ch", "#ch", channelId = ChannelId("ch"))
 
-        assertEquals(listOf("ch"), targets.externalShareTargets().map { it.id })
+        assertEquals(
+            listOf("thread-current", "thread-5", "task-conv-7", "ch"),
+            targets.externalShareTargets().map { it.id }
+        )
+    }
+
+    @Test
+    fun resolveConversationThreadParentReadsChannelProbeAndRetriesLifecycleRetired() = runTest {
+        val network = ConversationNetworkClient()
+        var attempts = 0
+        network.channelResponse = { channelId ->
+            attempts += 1
+            if (attempts == 1) {
+                HomeNetworkResponse(code = 0, bodyText = null, errorBodyText = "network_request_lifecycle_retired")
+            } else {
+                HomeNetworkResponse(
+                    code = 200,
+                    bodyText = """{"id":"$channelId","type":"thread","parentChannelId":"room-1","parentMessageId":"parent-5"}"""
+                )
+            }
+        }
+        val repository = repository(network)
+
+        val resolved =
+            assertIs<DataResult.Content<ForwardThreadParentInfo>>(
+                repository.resolveConversationThreadParent(serverId, ChannelId("thread-5"))
+            ).data
+
+        assertEquals(2, attempts)
+        assertEquals(ChannelId("room-1"), resolved.parentChannelId)
+        assertEquals(MessageId("parent-5"), resolved.parentMessageId)
+    }
+
+    @Test
+    fun conversationTargetsRetriesOnceOnLifecycleRetired() = runTest {
+        val network = ConversationNetworkClient()
+        var attempts = 0
+        network.conversationsResponse = {
+            attempts += 1
+            if (attempts == 1) {
+                HomeNetworkResponse(code = 0, bodyText = null, errorBodyText = "network_request_lifecycle_retired")
+            } else {
+                HomeNetworkResponse(code = 200, bodyText = ConversationsBody)
+            }
+        }
+        val repository = repository(network)
+
+        val targets = repository.conversationTargets(serverId, currentChannelId = null)
+
+        assertEquals(2, attempts)
+        assertEquals(listOf("thread-current", "thread-5", "task-conv-7"), targets.map { it.id })
+    }
+
+    @Test
+    fun directoryTargetsUsesCachedHomeSnapshotWithoutColdFetchingChannelsOrDms() = runTest {
+        val network = ConversationNetworkClient()
+        val cachedSnapshot =
+            HomeSnapshot(
+                server = build.raft.app.model.ServerSummary(id = serverId, name = "Server"),
+                currentMember = build.raft.app.model.MemberProfile(
+                    id = build.raft.app.model.MemberId("user-1"),
+                    displayName = "Ada",
+                    handle = "ada",
+                    kind = build.raft.app.model.MemberKind.Human
+                ),
+                channels = listOf(
+                    HomeChannelRow(
+                        threadId = build.raft.app.model.ThreadId("ch-warm"),
+                        channelId = ChannelId("ch-warm"),
+                        name = "general",
+                        channelType = "public",
+                        joined = true
+                    )
+                ),
+                directMessages = listOf(
+                    HomeDirectMessageRow(
+                        threadId = build.raft.app.model.ThreadId("dm-warm"),
+                        channelId = ChannelId("dm-warm"),
+                        name = "Grace"
+                    )
+                ),
+                unreadTotal = 0
+            )
+        val repository = repository(network, cachedHomeSnapshotProvider = { id -> cachedSnapshot.takeIf { id == serverId } })
+
+        val page = assertIs<DataResult.Content<ForwardMessageTargetDirectoryPage>>(
+            repository.directoryTargets(serverId, sessionId = "external-share:warm", pageSize = 40)
+        ).data
+
+        assertEquals(listOf("dm-warm", "ch-warm"), page.items.map { it.id })
+        assertEquals(0, network.calls.count { it.path == "channels" || it.path == "channels/dm" })
     }
 
     @Test
@@ -311,7 +411,10 @@ class ForwardConversationTargetsTest {
         assertNull(hidden.visibleForwardSource())
     }
 
-    private fun repository(network: ConversationNetworkClient): RealForwardMessageTargetRepository {
+    private fun repository(
+        network: ConversationNetworkClient,
+        cachedHomeSnapshotProvider: (ServerId) -> HomeSnapshot? = { null }
+    ): RealForwardMessageTargetRepository {
         val store =
             InMemoryRaftAuthSessionStore(
                 StoredAuthSession(
@@ -327,7 +430,8 @@ class ForwardConversationTargetsTest {
             networkClient = network,
             channelRepository = RealChannelRepository(store, network),
             memberRepository = RealMemberRepository(store, network),
-            warningLogger = { network.logs += it }
+            warningLogger = { network.logs += it },
+            cachedHomeSnapshotProvider = cachedHomeSnapshotProvider
         )
     }
 }
@@ -371,6 +475,9 @@ private class ConversationNetworkClient : RaftNetworkClient {
     var forwardResponse: suspend (String) -> HomeNetworkResponse = {
         HomeNetworkResponse(code = 500, bodyText = null, errorBodyText = "unexpected")
     }
+    var channelResponse: suspend (String) -> HomeNetworkResponse = {
+        HomeNetworkResponse(code = 404, bodyText = null, errorBodyText = "not found")
+    }
 
     override suspend fun request(
         priority: DataRequestPriority,
@@ -381,11 +488,12 @@ private class ConversationNetworkClient : RaftNetworkClient {
         bodyText: String?
     ): HomeNetworkResponse {
         calls += ConversationNetworkCall(priority, path, method, query, serverIdOverride, bodyText)
-        return when (path) {
-            ForwardConversationTargetsPath -> conversationsResponse()
-            ForwardTargetSearchPath -> HomeNetworkResponse(code = 200, bodyText = """{"targets":[]}""")
-            "messages/forward" -> forwardResponse(bodyText.orEmpty())
-            "channels", "channels/dm" -> HomeNetworkResponse(code = 200, bodyText = "[]")
+        return when {
+            path == ForwardConversationTargetsPath -> conversationsResponse()
+            path == ForwardTargetSearchPath -> HomeNetworkResponse(code = 200, bodyText = """{"targets":[]}""")
+            path == "messages/forward" -> forwardResponse(bodyText.orEmpty())
+            path == "channels" || path == "channels/dm" -> HomeNetworkResponse(code = 200, bodyText = "[]")
+            path.startsWith("channels/") -> channelResponse(path.removePrefix("channels/"))
             else -> HomeNetworkResponse(code = 404, bodyText = null, errorBodyText = "not found")
         }
     }

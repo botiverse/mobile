@@ -283,8 +283,12 @@ internal fun sanitizeAppShellPageDataForHistoryLaunch(pageData: JSONObject): JSO
             RaftDesktopShortcutContract.KeyTargetKind,
             RaftDesktopShortcutContract.KeyLaunchId,
             RaftDesktopShortcutContract.KeyTitle,
+            build.raft.app.AndroidExternalShareTokenKey,
         )
     keysToRemove.forEach { sanitized.remove(it) }
+    if (sanitized.optString("intent").trim() == build.raft.app.AndroidExternalShareIntent) {
+        sanitized.remove("intent")
+    }
     if (sanitized.optString("instanceId").startsWith("notification-app-shell-")) {
         sanitized.remove("instanceId")
     }
