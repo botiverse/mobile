@@ -17,7 +17,13 @@ import kotlin.test.assertFalse
  * gates (botiverse/slock #14533, staging 33f441958): `upgradeDialog.externalLimit.{title,hint}` and
  * `upgradeDialog.externalFrozen.{title,hint}` (`{server}` = `%1$s`). Home's External section
  * (botiverse/slock #15939, staging ad835ded6): `layout.sidebar.external` and
- * `layout.sidebar.createExternalChannel`.
+ * `layout.sidebar.createExternalChannel`. The last joint copy (botiverse/slock #16103, staging
+ * 3c3eede9): `layout.systemNotifications.jointInviteBody` (`{server}` = `%1$s`),
+ * `channel.joint.acceptFailed`, `channel.joint.serverLimit` (`{max}` = 30),
+ * `channel.joint.inviteHostFreeLimit` and `channel.edit.failedConvertJoint`, with
+ * `planBilling.usage.jointChannels` and zh-CN `thread.followers.peerRemoveHostOnly` (staging
+ * 0f825229). The app's free-server, over-limit, read-only and disconnect strings have no web
+ * counterpart and use the same term.
  */
 class ExternalChannelCopyCatalogTest {
     private val expected =
@@ -52,6 +58,23 @@ class ExternalChannelCopyCatalogTest {
                     "external_frozen_title" to "%1\$s can't post in external channels right now",
                     "external_frozen_body_manager" to "Free allows 1 external channel. Upgrade, or leave the extra channels, to post again.",
                     "external_frozen_body_member" to "Free allows 1 external channel. Ask an owner to upgrade.",
+                    "joint_invite_notification_body" to "%1\$s invited this server to an external channel.",
+                    "joint_invite_accept_failed" to "Couldn't accept the external channel invite.",
+                    "joint_limit_servers" to
+                        "External channels are limited to 30 servers. To request a higher limit, send feedback from Settings.",
+                    "joint_limit_host_free" to
+                        "The server hosting this external channel has reached its external channel limit. Ask its admin to make room, then accept the invite again.",
+                    "channel_conversion_retry_failed" to "Failed to convert channel to external channel",
+                    "settings_billing_vo_joint_channels" to "External channels you host",
+                    "joint_limit_free_servers" to
+                        "This external channel already has 2 free servers. Upgrade either side to Pro, or have a free server leave, to continue (30 servers max).",
+                    "joint_limit_free_servers_neutral" to
+                        "This external channel already has 2 free servers. To continue, a free server has to leave or one side needs a Pro plan (30 servers max).",
+                    "joint_over_limit_grace_title" to "External channel over limit",
+                    "joint_over_limit_grace_detail" to
+                        "This external channel is over its member limit until %1\$s. An admin of one server must upgrade, or one free server must leave.",
+                    "joint_billing_locked_title" to "External channel read-only",
+                    "joint_disconnect_failed" to "Failed to disconnect external channel",
                 ),
             "zh-rCN" to
                 mapOf(
@@ -84,6 +107,22 @@ class ExternalChannelCopyCatalogTest {
                     "external_frozen_title" to "%1\$s 现在不能在外部频道中发言",
                     "external_frozen_body_manager" to "免费版只能有 1 个外部频道。升级，或退出多出来的频道，即可重新发言。",
                     "external_frozen_body_member" to "免费版只能有 1 个外部频道。请所有者升级。",
+                    "joint_invite_notification_body" to "%1\$s 邀请本服务器加入外部频道。",
+                    "joint_invite_accept_failed" to "接受外部频道邀请失败",
+                    "joint_limit_servers" to "外部频道最多 30 个服务器。如需提高上限，请在设置里提交反馈。",
+                    "joint_limit_host_free" to "托管这个外部频道的服务器已达到外部频道数量上限。请联系对方管理员处理后，再重新接受邀请。",
+                    "channel_conversion_retry_failed" to "将频道转换为外部频道失败",
+                    "settings_billing_vo_joint_channels" to "你托管的外部频道",
+                    "thread_followers_peer_remove_host_only" to "只有托管服务器的管理员和这个频道的管理员，可以移除其他服务器的 Agent。",
+                    "joint_limit_free_servers" to
+                        "这个外部频道已满 2 个免费服务器。把任一方升级到 Pro，或有免费服务器退出后，可以继续加入（总服务器上限 30 个）",
+                    "joint_limit_free_servers_neutral" to
+                        "这个外部频道已满 2 个免费服务器。需要有免费服务器退出，或任一方使用 Pro 套餐，才能继续加入（总服务器上限 30 个）",
+                    "joint_over_limit_grace_title" to "外部频道已超出成员上限",
+                    "joint_over_limit_grace_detail" to
+                        "该外部频道在 %1\$s 之前处于宽限期且超出成员上限。需要其中一个服务器的管理员升级，或让一个免费服务器退出。",
+                    "joint_billing_locked_title" to "外部频道只读",
+                    "joint_disconnect_failed" to "断开外部频道失败",
                 ),
             "ja" to
                 mapOf(
@@ -116,6 +155,23 @@ class ExternalChannelCopyCatalogTest {
                     "external_frozen_title" to "%1\$s は現在、外部チャンネルに投稿できません",
                     "external_frozen_body_manager" to "無料プランで使える外部チャンネルは 1 つです。アップグレードするか、余分なチャンネルから退出すると、再び投稿できます。",
                     "external_frozen_body_member" to "無料プランで使える外部チャンネルは 1 つです。オーナーにアップグレードを依頼してください。",
+                    "joint_invite_notification_body" to "%1\$s がこのサーバーを外部チャンネルに招待しました。",
+                    "joint_invite_accept_failed" to "外部チャンネルの招待を承諾できませんでした。",
+                    "joint_limit_servers" to
+                        "外部チャンネルに参加できるサーバーは最大 30 個です。上限の引き上げをご希望の場合は、設定からフィードバックを送信してください。",
+                    "joint_limit_host_free" to
+                        "この外部チャンネルをホストしているサーバーは、外部チャンネルの上限に達しています。そのサーバーの管理者に枠を空けてもらってから、もう一度招待を承諾してください。",
+                    "channel_conversion_retry_failed" to "チャンネルを外部チャンネルに変換できませんでした",
+                    "settings_billing_vo_joint_channels" to "ホストしている外部チャンネル",
+                    "joint_limit_free_servers" to
+                        "この外部チャンネルにはすでに無料サーバーが 2 個参加しています。続行するには、いずれかのサーバーを Pro にアップグレードするか、無料サーバーに退出してもらってください（サーバーは最大 30 個）。",
+                    "joint_limit_free_servers_neutral" to
+                        "この外部チャンネルにはすでに無料サーバーが 2 個参加しています。続行するには、無料サーバーが退出するか、いずれかのサーバーが Pro プランである必要があります（サーバーは最大 30 個）。",
+                    "joint_over_limit_grace_title" to "外部チャンネルが上限超過です",
+                    "joint_over_limit_grace_detail" to
+                        "この外部チャンネルは %1\$s までメンバー数上限を超過しています。いずれかのサーバーの管理者がアップグレードするか、無料サーバーが脱退する必要があります。",
+                    "joint_billing_locked_title" to "外部チャンネルは読み取り専用です",
+                    "joint_disconnect_failed" to "外部チャンネルの接続を解除できませんでした",
                 ),
         )
 
