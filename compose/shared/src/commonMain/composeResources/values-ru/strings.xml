@@ -3938,6 +3938,10 @@
     <string name="joint_invite_notification_accept">Принять</string>
     <string name="joint_invite_notification_accepting">Принятие…</string>
     <string name="joint_invite_accept_failed">Не удалось принять приглашение во внешний канал.</string>
+    <string name="joint_invite_not_found">Приглашение не найдено. Попросите сервер, который его отправил, пригласить этот сервер снова.</string>
+    <string name="joint_invite_accept_forbidden">Принять это приглашение могут только администраторы сервера.</string>
+    <string name="joint_invite_not_acceptable">Это приглашение больше нельзя принять.</string>
+    <string name="joint_invite_archived">Этот канал в архиве, поэтому приглашение нельзя принять.</string>
     <string name="home_section_create_external_channel">Создать внешний канал</string>
     <string name="joint_create_archived_name_held">Название #%1$s занято архивным каналом.</string>
     <string name="joint_create_unarchive">Вернуть из архива</string>

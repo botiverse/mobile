@@ -4118,6 +4118,10 @@
     <string name="joint_invite_notification_accept">Accept</string>
     <string name="joint_invite_notification_accepting">Accepting…</string>
     <string name="joint_invite_accept_failed">Couldn't accept the external channel invite.</string>
+    <string name="joint_invite_not_found">This invite can't be found. Ask the server that sent it to invite this server again.</string>
+    <string name="joint_invite_accept_forbidden">Only server admins can accept this invite.</string>
+    <string name="joint_invite_not_acceptable">This invite can no longer be accepted.</string>
+    <string name="joint_invite_archived">This channel is archived, so the invite can't be accepted.</string>
     <string name="home_section_create_external_channel">Create external channel</string>
     <string name="joint_create_archived_name_held">The name #%1$s is held by an archived channel.</string>
     <string name="joint_create_unarchive">Unarchive</string>

@@ -4117,6 +4117,10 @@
     <string name="joint_invite_notification_accept">接受</string>
     <string name="joint_invite_notification_accepting">正在接受…</string>
     <string name="joint_invite_accept_failed">接受外部频道邀请失败</string>
+    <string name="joint_invite_not_found">找不到这个邀请。请让发出邀请的服务器重新邀请。</string>
+    <string name="joint_invite_accept_forbidden">只有服务器管理员可以接受这个邀请。</string>
+    <string name="joint_invite_not_acceptable">这个邀请已经不能接受了。</string>
+    <string name="joint_invite_archived">这个频道已归档，无法接受邀请。</string>
     <string name="home_section_create_external_channel">创建外部频道</string>
     <string name="joint_create_archived_name_held">名称 #%1$s 已被一个已归档的频道占用。</string>
     <string name="joint_create_unarchive">取消归档</string>

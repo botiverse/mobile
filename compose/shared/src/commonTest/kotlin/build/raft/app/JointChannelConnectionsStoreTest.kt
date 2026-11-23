@@ -3,6 +3,10 @@ package build.raft.app
 import build.raft.app.data.DataResult
 import build.raft.app.data.JOINT_CHANNEL_PLAN_LIMIT_REACHED
 import build.raft.app.data.JOINT_FREE_SERVER_LIMIT
+import build.raft.app.data.JOINT_INVITE_ACCEPT_FORBIDDEN
+import build.raft.app.data.JOINT_INVITE_CHANNEL_ARCHIVED
+import build.raft.app.data.JOINT_INVITE_NOT_ACCEPTABLE
+import build.raft.app.data.JOINT_INVITE_NOT_FOUND
 import build.raft.app.data.JOINT_SERVER_LIMIT
 import build.raft.app.data.JointChannelConnections
 import build.raft.app.data.JointChannelServer
@@ -64,6 +68,96 @@ class JointChannelConnectionsStoreTest {
         assertEquals("host", jointChannelFailureText(JointChannelFailure.Blocked(PermissionBlocker(JOINT_CHANNEL_PLAN_LIMIT_REACHED)), copy, pipeline))
         assertEquals("pipeline:joint_http_409", jointChannelFailureText(JointChannelFailure.Error(ScreenError("joint_http_409")), copy, pipeline))
         assertEquals("fallback", jointChannelFailureText(JointChannelFailure.Error(ScreenError("x")), copy) { "" })
+        // Non-accept surface (acceptRefusals == null) does not show invite-accept copy for channel_archived.
+        assertEquals(
+            "Channel is archived",
+            jointChannelFailureText(
+                JointChannelFailure.Error(ScreenError(JOINT_INVITE_CHANNEL_ARCHIVED, serverMessage = "Channel is archived")),
+                copy,
+                pipeline,
+            ),
+        )
+    }
+
+    @Test
+    fun acceptInviteRefusalCodesResolveThroughServerRefusalResolverKnownCodeTier() {
+        val acceptCopy =
+            JointFailureCopy(
+                freeServerLimit = "free",
+                serverLimit = "max",
+                hostLimit = "host",
+                fallback = "fallback",
+                acceptRefusals =
+                    JointInviteAcceptRefusalCopy(
+                        notFound = "localized_not_found",
+                        forbidden = "localized_forbidden",
+                        notAcceptable = "localized_not_acceptable",
+                        archived = "localized_archived",
+                    ),
+            )
+        val pipeline: (JointChannelFailure) -> String = { "pipeline:${it.code}" }
+
+        // 404 joint_invite_not_found -> localized web copy, not server English.
+        assertEquals(
+            "localized_not_found",
+            jointChannelFailureText(
+                JointChannelFailure.Error(ScreenError(JOINT_INVITE_NOT_FOUND, serverMessage = "Joint channel invite not found")),
+                acceptCopy,
+                pipeline,
+            ),
+        )
+        // 403 joint_invite_accept_forbidden -> localized web copy, not server English.
+        assertEquals(
+            "localized_forbidden",
+            jointChannelFailureText(
+                JointChannelFailure.Blocked(PermissionBlocker(JOINT_INVITE_ACCEPT_FORBIDDEN, serverMessage = "Only server admins can accept this invite")),
+                acceptCopy,
+                pipeline,
+            ),
+        )
+        // 409 joint_invite_not_acceptable -> localized web copy, not server English.
+        assertEquals(
+            "localized_not_acceptable",
+            jointChannelFailureText(
+                JointChannelFailure.Error(ScreenError(JOINT_INVITE_NOT_ACCEPTABLE, serverMessage = "This invite can no longer be accepted")),
+                acceptCopy,
+                pipeline,
+            ),
+        )
+        // 409 channel_archived -> localized web copy, not server English.
+        assertEquals(
+            "localized_archived",
+            jointChannelFailureText(
+                JointChannelFailure.Error(ScreenError(JOINT_INVITE_CHANNEL_ARCHIVED, serverMessage = "Channel is archived")),
+                acceptCopy,
+                pipeline,
+            ),
+        )
+        // Unknown non-5xx refusal keeps server's explanation (Tier 3), while 5xx and edge_blocked suppress raw body (Tiers 1 & 4).
+        assertEquals(
+            "Policy refusal from server.",
+            jointChannelFailureText(
+                JointChannelFailure.Error(ScreenError("custom_policy", serverMessage = "Policy refusal from server.")),
+                acceptCopy,
+                pipeline,
+            ),
+        )
+        assertEquals(
+            "pipeline:server_unavailable",
+            jointChannelFailureText(
+                JointChannelFailure.Error(ScreenError("server_unavailable", serverMessage = "Internal SQL error")),
+                acceptCopy,
+                pipeline,
+            ),
+        )
+        assertEquals(
+            "pipeline:edge_blocked",
+            jointChannelFailureText(
+                JointChannelFailure.Blocked(PermissionBlocker("edge_blocked", serverMessage = "<html>403</html>")),
+                acceptCopy,
+                pipeline,
+            ),
+        )
     }
 
     private fun TestScope.loadedStore(dataSource: FakeJointConnectionsDataSource): JointChannelConnectionsStore {
