@@ -38,6 +38,7 @@ internal object SharedTasksQueryToolbarTags {
     /** The scope; its segments are `tasks-page-scope-mine` / `tasks-page-scope-all`. */
     const val Scope = "tasks-page-scope"
     const val Search = "tasks-page-search"
+    const val Filters = "tasks-page-filters"
     const val Status = "tasks-page-filter-status"
     const val Sort = "tasks-page-sort"
 }
@@ -172,6 +173,7 @@ internal fun SharedTasksQueryToolbar(
                 ),
             moreLabel = stringResource(Res.string.list_toolbar_more),
             wrap = true,
+            filtersTestTag = SharedTasksQueryToolbarTags.Filters,
         )
     }
 }

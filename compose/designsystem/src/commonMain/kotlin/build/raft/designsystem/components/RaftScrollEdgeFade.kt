@@ -18,6 +18,7 @@ import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.layout.onPlaced
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.layout.positionInParent
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.unit.IntSize
@@ -110,16 +111,18 @@ private class RaftRevealSeen(var active: Boolean, var size: IntSize = IntSize.Ze
 
 /**
  * A [raftScrollEdgeFade] strip whose items keep an applied one in view as raft-ui's FitToolbar
- * does (`useScrollGroup` since raft-ui 0.84; the web's search filters): when the strip first
- * shows, the first item that is active then comes into view and the others stay where they are;
- * after that, the item that turns active (or is added to the strip active); and that item again
- * when it or the strip changes size, unless the person has scrolled the strip since. The strip
- * jumps there, with no animation, the item's `padding` clear of the edge it was past so the fade
- * never covers it: an item past the start edge lines up its start, one past the end edge its end.
+ * does (`useScrollGroup` since raft-ui 0.84; [RaftFitToolbar] and the web's search filters): when
+ * the strip first shows, the first item that is active then comes into view and the others stay
+ * where they are; after that, the item that turns active (or is added to the strip active); and
+ * that item again when it moves or changes size, or the strip changes size, unless the person has
+ * scrolled the strip since. The strip jumps there, with no animation, the item's `padding` clear
+ * of the edge it was past so the fade never covers it: an item past the start edge lines up its
+ * start, one past the end edge its end.
  *
  * Remember one per strip with [rememberRaftScrollIntoViewGroup] in the composable that composes
- * the strip's items (not in a subcomposition), put [raftScrollIntoViewGroup] on the scroller
- * before its `horizontalScroll`, and give the group to each item's [raftScrollIntoViewWhen].
+ * the strip's items (not outside a subcomposition that composes them), put [raftScrollIntoViewGroup]
+ * on the scroller before its `horizontalScroll`, and give the group to each item's
+ * [raftScrollIntoViewWhen].
  */
 @Stable
 class RaftScrollIntoViewGroup internal constructor(private val scroll: ScrollState) {
@@ -168,15 +171,19 @@ class RaftScrollIntoViewGroup internal constructor(private val scroll: ScrollSta
         if (!coordinates.isAttached) return
         val box = view.localBoundingBoxOf(coordinates, clipBounds = false)
         val width = view.size.width.toFloat()
+        // Never require more clearance on both sides than fits around this item, or a wide item
+        // brought in from the end gets pulled back off the end on the next layout pass.
+        val clearance = padding.coerceAtMost(((width - box.width) / 2f).coerceAtLeast(0f))
         // How far the content has to move left to bring the item in (negative: right).
         val shift =
             when {
-                box.left - padding < 0f -> box.left - padding
-                box.right + padding > width -> box.right + padding - width
+                box.left - clearance < 0f -> box.left - clearance
+                box.right + clearance > width -> box.right + clearance - width
                 else -> 0f
             }
         // The scroll value grows as the content moves left (right in RTL); the state keeps it in range.
-        if (shift != 0f) scroll.scrollTo(scroll.value + (if (rtl) -shift else shift).roundToInt())
+        val next = (scroll.value + (if (rtl) -shift else shift).roundToInt()).coerceIn(0, scroll.maxValue)
+        if (next != scroll.value) scroll.scrollTo(next)
         placed = scroll.value
     }
 }
@@ -198,7 +205,7 @@ fun Modifier.raftScrollIntoViewGroup(group: RaftScrollIntoViewGroup): Modifier =
 /**
  * An item of a [RaftScrollIntoViewGroup] strip: it comes into view, [padding] clear of the edge,
  * when the group says (the first active item when the strip first shows, an item that turns
- * [active], and the item in view again when it or the strip changes size).
+ * [active], and the item in view again when it moves or changes size or the strip changes size).
  */
 @Composable
 fun Modifier.raftScrollIntoViewWhen(
@@ -209,10 +216,11 @@ fun Modifier.raftScrollIntoViewWhen(
     // An item active as it is composed counts as just turned active only when the group says so.
     val item = remember(group) { RaftRevealItem(active = active && !group.revealsAsComposed(active)) }
     var size by remember { mutableStateOf(IntSize.Zero) }
+    var placedX by remember { mutableIntStateOf(Int.MIN_VALUE) }
     val pad = with(LocalDensity.current) { padding.toPx() }
     val rtl = LocalLayoutDirection.current == LayoutDirection.Rtl
     val viewportWidth = group.viewportWidth
-    LaunchedEffect(group, active, size, viewportWidth) {
+    LaunchedEffect(group, active, size, placedX, viewportWidth) {
         // Not laid out yet: decide once it is, so a reveal is not spent before it can scroll.
         val coordinates = item.coordinates
         if (size == IntSize.Zero || coordinates == null) return@LaunchedEffect
@@ -220,7 +228,12 @@ fun Modifier.raftScrollIntoViewWhen(
         item.active = active
         if (becameActive || (active && group.keepsInView(item))) group.reveal(item, coordinates, pad, rtl)
     }
-    return this.onSizeChanged { size = it }.onPlaced { item.coordinates = it }
+    return this
+        .onSizeChanged { size = it }
+        .onPlaced {
+            item.coordinates = it
+            placedX = it.positionInParent().x.roundToInt()
+        }
 }
 
 /** What an item of a [RaftScrollIntoViewGroup] last saw: whether it was active, and where it is laid out. */

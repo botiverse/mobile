@@ -1387,6 +1387,7 @@ private fun defaultTasksViewMode(maxWidth: Dp): TasksViewMode =
 /** Test tags of the Tasks toolbar (web `tasks-page-*` / channel `tasks-toolbar-*` data-testids). */
 internal object SharedTasksToolbarTags {
     const val Toolbar = "tasks-toolbar"
+    const val Filters = "tasks-toolbar-filters"
     const val Channel = "tasks-filter-channel"
     const val Creator = "tasks-filter-creator"
     const val Assignee = "tasks-filter-assignee"
@@ -1517,6 +1518,7 @@ private fun SharedTasksToolbar(
             moreLabel = stringResource(Res.string.list_toolbar_more),
             // The page's filters may move to a second line; a channel's Tasks keeps one line (web).
             wrap = !channelMode,
+            filtersTestTag = SharedTasksToolbarTags.Filters,
         )
     }
 }
