@@ -514,6 +514,11 @@ smoke.
    on a virtual device (iOS Simulator, Android emulator or cloud phone) with a
    build of the exact release source. A physical device is not required and its
    absence does not block a release; record the device kind in the grid.
+8. **Large-screen smoke (from 1.29, artin 2026-11-23)**: before each release,
+   have QA run the reusable large-screen smoke checklist in
+   `docs/qa-acceptance/large-screen-smoke-test.md` across separate Tablet Touch
+   and Wide Keyboard/Mouse (plus Phone Landscape/toggle) seats, and record each
+   seat's `PASS / FAIL / NOT RUN` result in the release issue.
 
 Alpha (`Android Alpha Validation`, `build.raft.app.alpha`) and internal
 TestFlight builds from `main` are for pre-cut smoke and owner trials; they do
