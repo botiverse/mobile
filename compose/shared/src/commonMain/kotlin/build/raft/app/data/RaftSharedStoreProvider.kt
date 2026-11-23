@@ -799,6 +799,10 @@ internal class RaftSharedStoreProvider private constructor(
      */
     internal val besideMemoryRepository = RaftBesideMemoryRepository(sharedPreferenceStore)
 
+    /** Per-(account, server) persisted Artifacts home filters and settled-seen state (#proj-workspace:#381). */
+    internal val artifactsHomeFilterRepository = ArtifactsHomeFilterRepository(sharedPreferenceStore)
+    internal val artifactsHomeSettledSeenRepository = ArtifactsHomeSettledSeenRepository(sharedPreferenceStore)
+
     /** The account's local data on sign-out and on server-access loss (see the class). */
     private val accountLocalData =
         AccountLocalData(
@@ -829,6 +833,8 @@ internal class RaftSharedStoreProvider private constructor(
             },
             logger = sharedInfoLogger("CanonicalMessageV2Store", "canonical_v2_access_evict"),
             besideMemory = besideMemoryRepository,
+            artifactsHomeFilters = artifactsHomeFilterRepository,
+            artifactsHomeSettledSeen = artifactsHomeSettledSeenRepository,
         )
 
     /**

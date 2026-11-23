@@ -10,9 +10,10 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /**
- * The Artifacts home routes (botiverse/slock staging aae2b7a89 `packages/shared/src/webArtifactsContract.ts`
- * `dashboardAll` / `dashboardAuthors` / `dashboardConversations`, `ArtifactWebDashboardAll`,
- * `ArtifactDashboardAllRow`, `ArtifactDashboardAllCounts`; `workspaceArtifacts.ts` `ArtifactCard`,
+ * The Artifacts home routes (botiverse/slock staging aae2b7a89 + #15654 + #16137
+ * `packages/shared/src/webArtifactsContract.ts` `dashboardAll` / `dashboardAuthors` /
+ * `dashboardConversations` / `settle`, `ArtifactWebDashboardAll`, `ArtifactDashboardAllRow`,
+ * `ArtifactDashboardAllCounts`, `ArtifactWebSettlement`; `workspaceArtifacts.ts` `ArtifactCard`,
  * `ArtifactActor`): the answers as the server writes them.
  */
 class ArtifactsDashboardApiTest {
@@ -77,7 +78,7 @@ class ArtifactsDashboardApiTest {
             parseArtifactsHomeConversations(
                 """
                 { "conversations": [
-                  { "id": "c-1", "name": "proj-workspace", "type": "channel", "count": 3, "updatedAt": "2026-11-07T09:00:00.000Z" },
+                  { "id": "c-1", "name": "proj-workspace", "type": "channel", "count": 3, "updatedAt": "2026-11-07T09:00:00.000Z", "archived": true },
                   { "id": "c-2", "name": "remy", "type": "dm", "peerDisplayName": "Remy", "count": 1, "updatedAt": "2026-11-06T09:00:00.000Z",
                     "peer": { "type": "user", "id": "u-3", "name": "remy", "displayName": "Remy", "avatarUrl": null } },
                   { "id": "c-3", "name": "Joint", "type": "joint", "count": 1, "updatedAt": "2026-11-05T09:00:00.000Z" }
@@ -85,6 +86,9 @@ class ArtifactsDashboardApiTest {
                 """.trimIndent()
             )!!
         assertEquals(listOf("#proj-workspace", "Remy", "Joint"), conversations.map { it.label })
+        assertTrue(conversations[0].archived)
+        assertEquals(3, conversations[0].count)
+        assertEquals("2026-11-07T09:00:00.000Z", conversations[0].updatedAt)
         assertEquals("user:u-3", conversations[1].peer?.filterValue)
         assertNull(parseArtifactsHomeAuthors("nope"))
     }
@@ -115,12 +119,40 @@ class ArtifactsDashboardApiTest {
 
         assertEquals(
             listOf(
-                Recorded(DataRequestPriority.Foreground, "artifacts/dashboard/all", listOf("q" to "x", "sort" to "opened"), ServerId("s-1")),
-                Recorded(DataRequestPriority.Visible, "artifacts/dashboard/authors", listOf("q" to "pa"), ServerId("s-1")),
-                Recorded(DataRequestPriority.Visible, "artifacts/dashboard/conversations", emptyList(), ServerId("s-1")),
+                Recorded("GET", DataRequestPriority.Foreground, "artifacts/dashboard/all", listOf("q" to "x", "sort" to "opened"), ServerId("s-1")),
+                Recorded("GET", DataRequestPriority.Visible, "artifacts/dashboard/authors", listOf("q" to "pa"), ServerId("s-1")),
+                Recorded("GET", DataRequestPriority.Visible, "artifacts/dashboard/conversations", emptyList(), ServerId("s-1")),
             ),
             network.requests,
         )
+    }
+
+    @Test
+    fun settleRouteUsesPostAndDeleteInTheReadersServer() = runTest {
+        val settledJson =
+            """{ "settled": { "by": { "type": "user", "id": "u-1", "name": "kirby", "displayName": "Kirby", "avatarUrl": null }, "at": "2026-11-20T09:00:00.000Z", "version": 2 }, "changed": true }"""
+        val network = RecordingNetworkClient(HomeNetworkResponse(200, settledJson))
+        val api = NetworkRaftArtifactsDashboardApi(network)
+
+        val settledRes = assertIs<ArtifactsHomeLoad.Ok<ArtifactsHomeSettlement>>(api.updateArtifactSettled("s-1", "pt_a", true))
+        assertEquals(2, settledRes.value.settled?.version)
+        assertTrue(settledRes.value.changed)
+
+        network.response = HomeNetworkResponse(200, """{ "settled": null, "changed": true }""")
+        val unsettledRes = assertIs<ArtifactsHomeLoad.Ok<ArtifactsHomeSettlement>>(api.updateArtifactSettled("s-1", "pt_a", false))
+        assertNull(unsettledRes.value.settled)
+
+        assertEquals(
+            listOf(
+                Recorded("POST", DataRequestPriority.Foreground, "artifacts/pt_a/settle", emptyList(), ServerId("s-1")),
+                Recorded("DELETE", DataRequestPriority.Foreground, "artifacts/pt_a/settle", emptyList(), ServerId("s-1")),
+            ),
+            network.requests,
+        )
+
+        network.response = HomeNetworkResponse(403, null, errorBodyText = """{ "code": "FORBIDDEN", "error": "no" }""")
+        val forbidden = assertIs<ArtifactsHomeLoad.Failed>(api.updateArtifactSettled("s-1", "pt_a", true))
+        assertEquals("FORBIDDEN", forbidden.error.serverCode)
     }
 
     @Test
@@ -136,9 +168,9 @@ class ArtifactsDashboardApiTest {
         assertIs<ArtifactsHomeLoad.Failed>(load(HomeNetworkResponse(200, "<html>")))
     }
 
-    private data class Recorded(val priority: DataRequestPriority, val path: String, val query: List<Pair<String, String>>, val serverId: ServerId?)
+    private data class Recorded(val method: String, val priority: DataRequestPriority, val path: String, val query: List<Pair<String, String>>, val serverId: ServerId?)
 
-    private class RecordingNetworkClient(private val response: HomeNetworkResponse) : RaftNetworkClient {
+    private class RecordingNetworkClient(var response: HomeNetworkResponse) : RaftNetworkClient {
         val requests = mutableListOf<Recorded>()
 
         override suspend fun request(
@@ -149,8 +181,7 @@ class ArtifactsDashboardApiTest {
             serverIdOverride: ServerId?,
             bodyText: String?,
         ): HomeNetworkResponse {
-            assertEquals("GET", method)
-            requests += Recorded(priority, path, query, serverIdOverride)
+            requests += Recorded(method, priority, path, query, serverIdOverride)
             return response
         }
     }

@@ -1,6 +1,7 @@
 package build.raft.app
 
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
@@ -9,6 +10,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.assertContentDescriptionEquals
+import androidx.compose.ui.test.assertCountEquals
+import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.unit.dp
 import build.raft.app.components.RaftDesignSystemTheme
@@ -18,6 +21,8 @@ import build.raft.app.data.ArtifactKind
 import build.raft.app.data.ArtifactSettled
 import build.raft.app.data.ArtifactSummary
 import build.raft.app.data.ArtifactsHomeActor
+import build.raft.app.data.ArtifactsHomeNews
+import build.raft.app.data.ArtifactsHomeRow
 import build.raft.app.model.RaftTimeContext
 import build.raft.app.model.raftEpochDayForDate
 import kotlin.test.Test
@@ -27,9 +32,9 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 
 /**
- * The Settled tag on an Artifact's chat card (web `ArtifactMessageCard`, botiverse/slock #15654) on a
- * real composition: drawn only while the card says it is settled; nothing while it is Working or
- * the card says nothing of Settled (`artifact_settled_v0` off: both read as no `settled`). Its
+ * The Settled tag on an Artifact's chat card (`ArtifactMessageCard`) and Artifacts home tiles/rows
+ * (`ArtifactsHomeTile`, `ArtifactsHomeListRow`; botiverse/slock #15654, #16137): drawn only while
+ * the card says it is settled; nothing while it is Working or the card says nothing of Settled. Its
  * words for a screen reader say who settled it, when and at which version, the reader's own as "You".
  */
 @OptIn(ExperimentalTestApi::class)
@@ -84,5 +89,56 @@ class ArtifactSettledTagUiTest {
         summary = working.copy(version = 4, latestVersion = 4)
         waitForIdle()
         onNodeWithTag(ArtifactSettledTagTestTag, useUnmergedTree = true).assertDoesNotExist()
+    }
+
+    @Test
+    fun homeTileAndListRowShowSettledTagOnlyWhenSettled() = runRobolectricComposeUiTest {
+        var summary by mutableStateOf(working.copy(settledShown = true))
+        val author = ArtifactsHomeActor("agent", "a1", "remy", "Remy")
+        setContent {
+            val row = ArtifactsHomeRow(summary = summary, author = author, openedAt = null, news = ArtifactsHomeNews())
+            CompositionLocalProvider(LocalRaftTimeContextProvider provides RaftTimeContextProvider(timeContext)) {
+                RaftDesignSystemTheme {
+                    Column(Modifier.width(360.dp)) {
+                        ArtifactsHomeTile(
+                            row = row,
+                            readerId = "u1",
+                            serverName = "Northwind Labs",
+                            byOpened = false,
+                            dimmed = true,
+                            settledEnabled = true,
+                            settling = false,
+                            onOpen = {},
+                            onCopyLink = null,
+                            onSetSettled = null,
+                            cover = { r, _ -> ArtifactsHomeTilePlaceholder(r.summary.kind) },
+                        )
+                        ArtifactsHomeListRow(
+                            row = row,
+                            readerId = "u1",
+                            serverName = "Northwind Labs",
+                            byOpened = false,
+                            wide = false,
+                            dimmed = true,
+                            settledEnabled = true,
+                            settling = false,
+                            onOpen = {},
+                            onCopyLink = null,
+                            onSetSettled = null,
+                            thumbnail = { r, _ -> ArtifactsHomeRowThumbnailPlaceholder(r.summary.kind) },
+                        )
+                    }
+                }
+            }
+        }
+        waitForIdle()
+        onAllNodesWithTag(ArtifactSettledTagTestTag, useUnmergedTree = true).assertCountEquals(0)
+
+        summary = working.copy(settled = settled, settledShown = true)
+        waitForIdle()
+        val tags = onAllNodesWithTag(ArtifactSettledTagTestTag, useUnmergedTree = true)
+        tags.assertCountEquals(2)
+        tags[0].assertContentDescriptionEquals("Settled: Remy settled it on 11-18 17:30 (v3)")
+        tags[1].assertContentDescriptionEquals("Settled: Remy settled it on 11-18 17:30 (v3)")
     }
 }

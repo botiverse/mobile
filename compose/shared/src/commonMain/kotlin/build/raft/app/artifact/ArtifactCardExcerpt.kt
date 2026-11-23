@@ -76,31 +76,53 @@ private object ExcerptType {
 }
 
 /**
- * The excerpt's frame (web `fit="content"`): its height follows the words, at least
- * [ArtifactCardExcerptMinHeight], at most [ArtifactCardExcerptMaxHeight], where the words are cut
- * and fade out at its foot. Decoration, as a screenshot is: hidden from assistive technology, which
- * reads the card's title instead; nothing in it takes focus or a tap of its own.
+ * The excerpt's frame:
+ * - [fitFrame] = false (web `fit="content"`, message cards): height follows the words between
+ *   [ArtifactCardExcerptMinHeight] and [ArtifactCardExcerptMaxHeight], fading at its foot once past
+ *   the max, followed by a bottom hairline.
+ * - [fitFrame] = true (web `fit="frame"`, home tiles): fills its parent 16:10 frame on `layerCard`,
+ *   clipped and fading at its foot; the caller's cover frame draws the hairline.
  */
 @Composable
-internal fun ArtifactCardExcerpt(excerpt: ArtifactExcerpt, modifier: Modifier = Modifier) {
+internal fun ArtifactCardExcerpt(
+    excerpt: ArtifactExcerpt,
+    modifier: Modifier = Modifier,
+    fitFrame: Boolean = false,
+) {
     val colors = RaftTheme.colors
     val textStyle = ExcerptType.body.copy(color = colors.foreground, fontFamily = RaftTheme.typography.callout.fontFamily)
+    val content: @Composable () -> Unit = {
+        val blocks = excerpt.blocks
+        if (blocks != null) {
+            Column(Modifier.fillMaxWidth()) {
+                blocks.forEachIndexed { index, block -> ExcerptBlock(block, first = index == 0, base = textStyle) }
+            }
+        } else {
+            RaftText(excerpt.text, style = textStyle)
+        }
+    }
+    if (fitFrame) {
+        Box(
+            modifier
+                .fillMaxWidth()
+                .fillMaxHeight()
+                .background(colors.layerCard)
+                .padding(12.dp)
+                .excerptFade(alwaysFade = true)
+                .clearAndSetSemantics {}
+                .testTag(if (excerpt.blocks != null) "artifact-card-excerpt-blocks" else "artifact-card-excerpt-text"),
+        ) {
+            content()
+        }
+        return
+    }
     Column(
         modifier
             .fillMaxWidth()
             .clearAndSetSemantics {}
             .testTag(if (excerpt.blocks != null) "artifact-card-excerpt-blocks" else "artifact-card-excerpt-text"),
     ) {
-        ArtifactCardExcerptFrame(Modifier.fillMaxWidth().background(colors.layerCard), padding = 12.dp) {
-            val blocks = excerpt.blocks
-            if (blocks != null) {
-                Column(Modifier.fillMaxWidth()) {
-                    blocks.forEachIndexed { index, block -> ExcerptBlock(block, first = index == 0, base = textStyle) }
-                }
-            } else {
-                RaftText(excerpt.text, style = textStyle)
-            }
-        }
+        ArtifactCardExcerptFrame(Modifier.fillMaxWidth().background(colors.layerCard), padding = 12.dp, content = content)
         Box(Modifier.fillMaxWidth().height(RaftStroke.Hairline).background(colors.lineHairline))
     }
 }
@@ -129,18 +151,18 @@ private fun ArtifactCardExcerptFrame(modifier: Modifier, padding: Dp, content: @
 }
 
 /**
- * Clips the words to the box and, when they are taller than it (cut at the max), fades its last
- * [ArtifactCardExcerptFade] to transparent (web `mask-fade-b-edge-at-max`).
+ * Clips the words to the box and fades its last [ArtifactCardExcerptFade] to transparent (web
+ * `mask-fade-b-edge` when [alwaysFade], or `mask-fade-b-edge-at-max` when taller than the box).
  */
-private fun Modifier.excerptFade(): Modifier {
+private fun Modifier.excerptFade(alwaysFade: Boolean = false): Modifier {
     var overflowing = false
     return this
         .clipToBounds()
         .graphicsLayer(compositingStrategy = CompositingStrategy.Offscreen)
         .drawWithContent {
             drawContent()
-            if (overflowing) {
-                val fade = ArtifactCardExcerptFade.toPx()
+            if (alwaysFade || overflowing) {
+                val fade = ArtifactCardExcerptFade.toPx().coerceAtMost(size.height)
                 drawRect(
                     brush = Brush.verticalGradient(listOf(Color.Black, Color.Transparent), startY = size.height - fade, endY = size.height), // raft-color: DstIn alpha mask for the fade; only alpha is used
                     topLeft = Offset(0f, size.height - fade),
@@ -151,7 +173,7 @@ private fun Modifier.excerptFade(): Modifier {
         .layout { measurable, constraints ->
             // The words at their own height, top-aligned in the box: taller than it overflows.
             val placeable = measurable.measure(constraints.copy(minHeight = 0, maxHeight = Constraints.Infinity))
-            val height = placeable.height.coerceIn(constraints.minHeight, constraints.maxHeight)
+            val height = if (alwaysFade && constraints.hasBoundedHeight) constraints.maxHeight else placeable.height.coerceIn(constraints.minHeight, constraints.maxHeight)
             overflowing = placeable.height > height
             layout(placeable.width, height) { placeable.place(0, 0) }
         }

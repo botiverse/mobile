@@ -4,7 +4,11 @@ import build.raft.app.reportUnknownTypeDropped
 import build.raft.app.reportProjectionRowDropped
 import build.raft.app.strictProjectionDiagnosticsLogger
 import build.raft.app.model.ServerId
+import kotlinx.serialization.KSerializer
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.descriptors.SerialDescriptor
+import kotlinx.serialization.encoding.Decoder
+import kotlinx.serialization.encoding.Encoder
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonNull
@@ -126,19 +130,48 @@ data class ArtifactCardWireDto(
     /**
      * Settled (botiverse/slock #15649 / #15654, behind `artifact_settled_v0`; `workspaceArtifacts.ts`
      * `ArtifactCard.settled`): someone who may comment on it marked it done, an [ArtifactSettledWireDto].
-     * The Artifact's current state, whichever version the card shows. `null` while it is Working; absent
-     * where its server has the flag off, for a reader outside its server and from older servers. Kept raw
-     * and read by [settledOrNull], so a value this client can't read never fails the card (or a page of
-     * the home list).
+     * The Artifact's current state, whichever version the card shows. [ArtifactOptionalJson.Present]
+     * with [JsonNull] while it is Working (server sent `"settled": null`); [ArtifactOptionalJson.Absent]
+     * when omitted (server has the flag off, reader outside its server, or older server). Kept raw and
+     * read by [settledOrNull], so a value this client can't read never fails the card.
      */
-    val settled: JsonElement? = null,
+    val settled: ArtifactOptionalJson = ArtifactOptionalJson.Absent,
     /**
      * Working again (#334, `ArtifactCard.reopened`): the version that took a settled Artifact back to
-     * Working and the settle it ended, an [ArtifactReopenedWireDto]; `null` otherwise, absent exactly
-     * when [settled] is. Nothing in the App draws it yet (the web says it in a desktop viewer's details).
+     * Working and the settle it ended, an [ArtifactReopenedWireDto]; [ArtifactOptionalJson.Present]
+     * with [JsonNull] otherwise, [ArtifactOptionalJson.Absent] when omitted.
      */
-    val reopened: JsonElement? = null,
+    val reopened: ArtifactOptionalJson = ArtifactOptionalJson.Absent,
 )
+
+/**
+ * Non-nullable wrapper that preserves the distinction between an absent JSON key ([Absent] via
+ * Kotlin default parameter) and an explicit JSON `null` ([Present] holding [JsonNull]): because
+ * the property type is non-nullable, kotlinx.serialization invokes [ArtifactOptionalJsonSerializer]
+ * for JSON `null` too, matching web's `card.settled !== undefined`.
+ */
+@Serializable(with = ArtifactOptionalJsonSerializer::class)
+sealed interface ArtifactOptionalJson {
+    data object Absent : ArtifactOptionalJson
+
+    data class Present(val value: JsonElement) : ArtifactOptionalJson
+
+    val isPresent: Boolean get() = this is Present
+
+    fun valueOrNull(): JsonElement? = (this as? Present)?.value?.takeUnless { it is JsonNull }
+}
+
+internal object ArtifactOptionalJsonSerializer : KSerializer<ArtifactOptionalJson> {
+    override val descriptor: SerialDescriptor = JsonElement.serializer().descriptor
+
+    override fun deserialize(decoder: Decoder): ArtifactOptionalJson =
+        ArtifactOptionalJson.Present(decoder.decodeSerializableValue(JsonElement.serializer()))
+
+    override fun serialize(encoder: Encoder, value: ArtifactOptionalJson) {
+        val raw = (value as? ArtifactOptionalJson.Present)?.value ?: JsonNull
+        encoder.encodeSerializableValue(JsonElement.serializer(), raw)
+    }
+}
 
 /**
  * `ArtifactSettled` (botiverse/slock #15649, `packages/shared/src/workspaceArtifacts.ts`): who settled
@@ -299,6 +332,12 @@ data class ArtifactSummary(
      * it is drawn (web `card.settled ? <ArtifactSettledTag/> : null`).
      */
     val settled: ArtifactSettled? = null,
+    /**
+     * True when the server included the `settled` field on the card (`"settled": null` for Working
+     * or `"settled": {...}` for Settled), i.e. `artifact_settled_v0` is enabled for the Artifact's
+     * server and the reader is not an outsider (web `settledShown`: `card.settled !== undefined`).
+     */
+    val settledShown: Boolean = settled != null,
 )
 
 /** web `ArtifactSettled` as this client shows it: who settled it, when (ISO 8601) and at which version. */
@@ -487,6 +526,7 @@ internal fun ArtifactCardWireDto.toArtifactSummaryOrNull(): ArtifactSummary? {
         screenshot = card.preview?.screenshotOrNull(),
         excerpt = card.preview?.excerptOrNull(),
         settled = card.settledOrNull(),
+        settledShown = card.settled.isPresent,
     )
 }
 
@@ -498,7 +538,7 @@ internal fun ArtifactCardWireDto.toArtifactSummaryOrNull(): ArtifactSummary? {
 internal fun ArtifactCardWireDto.settledOrNull(
     diagnostics: (String) -> Unit = strictProjectionDiagnosticsLogger,
 ): ArtifactSettled? {
-    val value = settled?.takeUnless { it is JsonNull } ?: return null
+    val value = settled.valueOrNull() ?: return null
     val wire =
         runCatching { artifactSummariesJson.decodeFromJsonElement(ArtifactSettledWireDto.serializer(), value) }.getOrNull()
             ?: run {

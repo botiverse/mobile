@@ -3,6 +3,8 @@ package build.raft.app.data
 import build.raft.app.model.ServerId
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonNull
 
 /**
  * The Artifacts home page's reads (botiverse/slock staging aae2b7a89; contract
@@ -64,12 +66,30 @@ data class ArtifactDashboardConversationWireDto(
     val peerDisplayName: String? = null,
     val count: Int = 0,
     val updatedAt: String? = null,
+    val archived: Boolean? = null,
     val peer: ArtifactActorWireDto? = null,
 )
 
 @Serializable
 data class ArtifactDashboardConversationsWireDto(
     val conversations: List<ArtifactDashboardConversationWireDto>,
+)
+
+/**
+ * `ArtifactWebSettlement` (botiverse/slock `packages/shared/src/webArtifactsContract.ts`
+ * `artifactWebPaths.settle`: `POST /api/artifacts/:id/settle`, `DELETE /api/artifacts/:id/settle`):
+ * `{ settled: ArtifactSettled | null, changed: boolean }`.
+ */
+@Serializable
+data class ArtifactWebSettlementWireDto(
+    val settled: ArtifactOptionalJson = ArtifactOptionalJson.Absent,
+    val changed: Boolean = false,
+)
+
+/** Parsed answer from settling or unsettling an Artifact. */
+data class ArtifactsHomeSettlement(
+    val settled: ArtifactSettled?,
+    val changed: Boolean = true,
 )
 
 /** `ArtifactShownActor` as the home page names it (web `artifactAuthorText.ts`). */
@@ -132,6 +152,9 @@ data class ArtifactsHomeConversation(
     val type: String,
     val peerDisplayName: String? = null,
     val peer: ArtifactsHomeActor? = null,
+    val count: Int = 0,
+    val updatedAt: String? = null,
+    val archived: Boolean = false,
 ) {
     /** web `conversationName`: a DM by its peer's display name, else the handle. */
     val shownName: String get() = peerDisplayName?.takeIf { it.isNotBlank() } ?: name
@@ -143,6 +166,22 @@ data class ArtifactsHomeConversation(
             "channel", "private" -> "#$name"
             else -> name
         }
+}
+
+/**
+ * Status filter on the Artifacts home page (web `ARTIFACT_HOME_STATUS_FILTERS`, slock #16137):
+ * `unsettled` (default: hides settled except mentioned/new comments), `all` (shows all with settled
+ * dimmed), `settled` (shows only settled). Client-side only; hidden when `settledEnabled` is false.
+ */
+enum class ArtifactsHomeStatusFilter(val wire: String) {
+    Unsettled("unsettled"),
+    All("all"),
+    Settled("settled");
+
+    companion object {
+        val Default = Unsettled
+        fun fromWire(value: String?): ArtifactsHomeStatusFilter = entries.firstOrNull { it.wire == value } ?: Default
+    }
 }
 
 /** The two homes the Conversation filter offers above the conversations (web `ARTIFACT_PLACE_HOMES`). */
@@ -268,8 +307,28 @@ fun parseArtifactsHomeConversations(bodyText: String?): List<ArtifactsHomeConver
                 type = it.type,
                 peerDisplayName = it.peerDisplayName?.takeIf { peer -> peer.isNotBlank() },
                 peer = it.peer?.toArtifactsHomeActor(),
+                count = it.count.coerceAtLeast(0),
+                updatedAt = it.updatedAt?.takeIf { ts -> ts.isNotBlank() },
+                archived = it.archived == true,
             )
         }
+
+fun parseArtifactsHomeSettlement(bodyText: String?): ArtifactsHomeSettlement? {
+    val wire =
+        bodyText?.let { runCatching { artifactsDashboardJson.decodeFromString(ArtifactWebSettlementWireDto.serializer(), it) }.getOrNull() }
+            ?: return null
+    val present = wire.settled as? ArtifactOptionalJson.Present ?: return null
+    val settledElement = present.value.takeUnless { it is JsonNull }
+    val settled =
+        if (settledElement == null) {
+            null
+        } else {
+            val dto = runCatching { artifactsDashboardJson.decodeFromJsonElement(ArtifactSettledWireDto.serializer(), settledElement) }.getOrNull()
+                ?: return null
+            ArtifactSettled(by = dto.by.toArtifactsHomeActor(), at = dto.at, version = dto.version)
+        }
+    return ArtifactsHomeSettlement(settled = settled, changed = wire.changed)
+}
 
 private fun <T> HomeNetworkResponse.toArtifactsHomeLoad(parse: (String?) -> T?): ArtifactsHomeLoad<T> {
     if (isSuccessful) {
@@ -299,6 +358,8 @@ internal interface RaftArtifactsDashboardApi {
     suspend fun authors(serverId: String, q: String): HomeNetworkResponse
 
     suspend fun conversations(serverId: String, q: String): HomeNetworkResponse
+
+    suspend fun setSettled(serverId: String, artifactId: String, settled: Boolean): HomeNetworkResponse
 }
 
 private fun searchParam(q: String): List<Pair<String, String>> =
@@ -329,6 +390,14 @@ internal class NetworkRaftArtifactsDashboardApi(private val networkClient: RaftN
             query = searchParam(q),
             serverIdOverride = ServerId(serverId),
         )
+
+    override suspend fun setSettled(serverId: String, artifactId: String, settled: Boolean): HomeNetworkResponse =
+        networkClient.request(
+            priority = DataRequestPriority.Foreground,
+            path = "artifacts/${artifactId.appLinkPathSegment()}/settle",
+            method = if (settled) "POST" else "DELETE",
+            serverIdOverride = ServerId(serverId),
+        )
 }
 
 /** A failure to reach the server at all: no response, so no trace id. */
@@ -355,13 +424,24 @@ internal suspend fun RaftArtifactsDashboardApi.loadArtifactsHomeConversations(
     runCatchingPreservingCancellation { conversations(serverId, q) }
         .fold({ it.toArtifactsHomeLoad(::parseArtifactsHomeConversations) }, { ArtifactsHomeLoad.Failed(unreachable(it)) })
 
-/** The store's typed reads: the routes through their response mapping (a test hands answers directly). */
+internal suspend fun RaftArtifactsDashboardApi.updateArtifactSettled(
+    serverId: String,
+    artifactId: String,
+    settled: Boolean,
+): ArtifactsHomeLoad<ArtifactsHomeSettlement> =
+    runCatchingPreservingCancellation { setSettled(serverId, artifactId, settled) }
+        .fold({ it.toArtifactsHomeLoad(::parseArtifactsHomeSettlement) }, { ArtifactsHomeLoad.Failed(unreachable(it)) })
+
+/** The store's typed reads and settle writes: routes through response mapping (a test hands answers directly). */
 internal interface ArtifactsHomeSource {
     suspend fun page(serverId: String, query: ArtifactsHomeQuery, cursor: String?, priority: DataRequestPriority): ArtifactsHomeLoad<ArtifactsHomePage>
 
     suspend fun authors(serverId: String, q: String): ArtifactsHomeLoad<List<ArtifactsHomeActor>>
 
     suspend fun conversations(serverId: String, q: String): ArtifactsHomeLoad<List<ArtifactsHomeConversation>>
+
+    suspend fun setSettled(serverId: String, artifactId: String, settled: Boolean): ArtifactsHomeLoad<ArtifactsHomeSettlement> =
+        ArtifactsHomeLoad.Failed(ScreenError("artifacts_settle_unsupported", retryable = false))
 }
 
 internal fun RaftArtifactsDashboardApi.asArtifactsHomeSource(): ArtifactsHomeSource {
@@ -373,5 +453,8 @@ internal fun RaftArtifactsDashboardApi.asArtifactsHomeSource(): ArtifactsHomeSou
         override suspend fun authors(serverId: String, q: String) = api.loadArtifactsHomeAuthors(serverId, q)
 
         override suspend fun conversations(serverId: String, q: String) = api.loadArtifactsHomeConversations(serverId, q)
+
+        override suspend fun setSettled(serverId: String, artifactId: String, settled: Boolean) =
+            api.updateArtifactSettled(serverId, artifactId, settled)
     }
 }

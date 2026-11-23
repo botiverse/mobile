@@ -54,6 +54,9 @@ internal class AccountLocalData(
     private val logger: (String) -> Unit = {},
     /** What was open beside each conversation on the wide layout: dropped with the server (sign-out keeps it). */
     private val besideMemory: RaftBesideMemoryRepository? = null,
+    /** Persisted Artifacts home filters and settled-seen state per (account, server): dropped with the server. */
+    private val artifactsHomeFilters: ArtifactsHomeFilterRepository? = null,
+    private val artifactsHomeSettledSeen: ArtifactsHomeSettledSeenRepository? = null,
 ) {
     /** Sign-out. Runs inside the auth terminal-revision gate: synchronous, no suspension. */
     fun onSignOut() {
@@ -87,6 +90,8 @@ internal class AccountLocalData(
         notificationPreferences.dropServer(serverId, accountId)
         replyWindowCache?.dropServer(serverId, accountId)
         besideMemory?.dropServer(serverId, accountId)
+        artifactsHomeFilters?.dropServer(serverId, accountId)
+        artifactsHomeSettledSeen?.dropServer(serverId, accountId)
         if (messagePartition.consumerId == SYNC_CORE_MESSAGES_V2_DURABLE_CONSUMER_ID) {
             messageEngine.clearPartition(messagePartition)
             logger("durable_access_evict scope=server server=${messagePartition.serverId}")

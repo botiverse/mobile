@@ -13,11 +13,12 @@ import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
-/** web `ArtifactsDashboard.tsx` `useAllArtifacts` / `allReducer` behaviour, on virtual time. */
+/** web `ArtifactsDashboard.tsx` `useAllArtifacts` / `allReducer` + #16153/#16182/#16137 behaviour, on virtual time. */
 class SharedArtifactsHomeStoreTest {
     @Test
     fun startReadsTheFirstPageWithTheSkeletonFirstAndCountsAfter() = runTest {
@@ -74,7 +75,7 @@ class SharedArtifactsHomeStoreTest {
     }
 
     @Test
-    fun typingWaitsForAPauseAndOnlyTheLatestAnswerLands() = runTest {
+    fun typingWaitsForAPauseAndClearingSearchAppliesImmediately() = runTest {
         val api = FakeDashboardApi()
         val store = started(api)
         val slow = CompletableDeferred<ArtifactsHomeLoad<ArtifactsHomePage>>()
@@ -95,6 +96,12 @@ class SharedArtifactsHomeStoreTest {
 
         assertEquals("plan", store.state.value.query.q)
         assertEquals(listOf("plan"), store.state.value.rows?.map { it.summary.id })
+
+        // Clearing search applies with 0ms debounce.
+        store.dispatch(ArtifactsHomeIntent.Search(""))
+        runCurrent()
+        assertEquals("", store.state.value.query.q)
+        assertEquals("", api.calls.last().query.q)
     }
 
     @Test
@@ -170,7 +177,6 @@ class SharedArtifactsHomeStoreTest {
 
     @Test
     fun catchUpReadsAgainSilentlyKeepingTheRows() = runTest {
-        // #198: the app came back / the socket reconnected; pushes sent meanwhile were missed.
         val api = FakeDashboardApi()
         api.answer = { _, _ -> ok(rows("a")) }
         val store = store(api)
@@ -221,43 +227,205 @@ class SharedArtifactsHomeStoreTest {
     }
 
     @Test
-    fun anotherServerStartsWithNoFiltersAndNoCounts() = runTest {
+    fun anotherServerStartsWithItsOwnPersistedFiltersAndNoCounts() = runTest {
+        val prefs = InMemoryPrefStore()
+        val filterRepo = ArtifactsHomeFilterRepository(prefs)
+        val settledRepo = ArtifactsHomeSettledSeenRepository(prefs)
         val api = FakeDashboardApi()
+        val authorId = "11111111-1111-1111-1111-111111111111"
         api.answer = { _, _ -> ok(rows("a"), counts = ArtifactsHomeCounts(3, 3, 0)) }
-        val store = store(api)
-        store.dispatch(ArtifactsHomeIntent.Start("s-1"))
+        val store = store(api, filterRepo = filterRepo, settledRepo = settledRepo)
+        store.dispatch(ArtifactsHomeIntent.Start("s-1", "r-1"))
         advanceUntilIdle()
-        store.dispatch(ArtifactsHomeIntent.SetAuthor(actor("u-1")))
+        store.dispatch(ArtifactsHomeIntent.SetAuthor(actor(authorId, displayName = "Kirby")))
         store.dispatch(ArtifactsHomeIntent.SetPlace(ArtifactsHomePlace.Home(ArtifactsHomeScope.Server)))
+        store.dispatch(ArtifactsHomeIntent.SetStatus(ArtifactsHomeStatusFilter.All))
         advanceUntilIdle()
 
-        store.dispatch(ArtifactsHomeIntent.Start("s-2"))
+        // Switch to s-2 -> clean defaults; switch back to s-1 -> restores all persisted filters!
+        store.dispatch(ArtifactsHomeIntent.Start("s-2", "r-1"))
         assertNull(store.state.value.counts)
         advanceUntilIdle()
-
         assertEquals(ArtifactsHomeQuery(), store.state.value.query)
+        assertEquals(ArtifactsHomeStatusFilter.Unsettled, store.state.value.statusFilter)
         assertNull(store.state.value.authorActor)
         assertEquals("s-2", api.calls.last().serverId)
+
+        store.dispatch(ArtifactsHomeIntent.Start("s-1", "r-1"))
+        advanceUntilIdle()
+        assertEquals(ArtifactsHomePlace.Home(ArtifactsHomeScope.Server), store.state.value.query.place)
+        assertEquals("user:$authorId", store.state.value.query.author)
+        assertEquals("Kirby", store.state.value.resolvedAuthorActor?.displayName)
+        assertEquals(ArtifactsHomeStatusFilter.All, store.state.value.statusFilter)
+        assertEquals("user:$authorId", api.calls.last().query.author)
     }
 
     @Test
-    fun clearingTakesTheRightThingsAway() = runTest {
+    fun clearAllResetsAllFiveFiltersCancelsSearchDebounceAndRemovesPersistedKey() = runTest {
+        val prefs = InMemoryPrefStore()
+        val filterRepo = ArtifactsHomeFilterRepository(prefs)
         val api = FakeDashboardApi()
-        val store = started(api)
-        store.dispatch(ArtifactsHomeIntent.Search("plan"))
+        val store = store(api, filterRepo = filterRepo)
+        store.dispatch(ArtifactsHomeIntent.Start("s-1", "r-1"))
+        advanceUntilIdle()
+
+        store.dispatch(ArtifactsHomeIntent.SetPlace(ArtifactsHomePlace.Home(ArtifactsHomeScope.Public)))
         store.dispatch(ArtifactsHomeIntent.SetAuthor(actor("u-1")))
+        store.dispatch(ArtifactsHomeIntent.SetStatus(ArtifactsHomeStatusFilter.Settled))
         store.dispatch(ArtifactsHomeIntent.SetRelevant(true))
+        advanceUntilIdle()
+
+        // Type a search string that is STILL pending debounce, then immediately ClearFilters (#16182).
+        val callsBefore = api.calls.size
+        store.dispatch(ArtifactsHomeIntent.Search("unfired"))
+        store.dispatch(ArtifactsHomeIntent.ClearFilters)
+        advanceUntilIdle()
+
+        assertEquals(ArtifactsHomeQuery(), store.state.value.query)
+        assertEquals("", store.state.value.search)
+        assertEquals(ArtifactsHomeStatusFilter.Unsettled, store.state.value.statusFilter)
+        assertNull(store.state.value.authorActor)
+        assertFalse(store.state.value.hasToolbarFilter)
+        assertFalse(prefs.values.containsKey("raft:artifacts:filters:v1:r-1:s-1"))
+        // No spurious request carrying q="unfired" should have fired.
+        assertTrue(api.calls.drop(callsBefore).none { it.query.q == "unfired" })
+
+        // Empty-state ClearSearchAndFilters also clears all five filters including relevant & status (#16182).
+        store.dispatch(ArtifactsHomeIntent.Search("plan"))
+        store.dispatch(ArtifactsHomeIntent.SetRelevant(true))
+        store.dispatch(ArtifactsHomeIntent.SetStatus(ArtifactsHomeStatusFilter.All))
         advanceUntilIdle()
 
         store.dispatch(ArtifactsHomeIntent.ClearSearchAndFilters)
         advanceUntilIdle()
-        assertEquals(ArtifactsHomeQuery(relevant = true), store.state.value.query, "the empty state's clear keeps the toggle")
-        assertEquals("", store.state.value.search)
-
-        store.dispatch(ArtifactsHomeIntent.SetPlace(ArtifactsHomePlace.Home(ArtifactsHomeScope.Public)))
-        store.dispatch(ArtifactsHomeIntent.ClearFilters)
-        advanceUntilIdle()
         assertEquals(ArtifactsHomeQuery(), store.state.value.query)
+        assertEquals("", store.state.value.search)
+        assertEquals(ArtifactsHomeStatusFilter.Unsettled, store.state.value.statusFilter)
+    }
+
+    @Test
+    fun emptyReloadPreservesPersistedAuthorAndSettledEnabledWithoutExtraAuthorsCall() = runTest {
+        val prefs = InMemoryPrefStore()
+        val filterRepo = ArtifactsHomeFilterRepository(prefs)
+        val settledRepo = ArtifactsHomeSettledSeenRepository(prefs)
+        val kirby = actor("11111111-1111-1111-1111-111111111111", displayName = "Kirby")
+        filterRepo.write(
+            "r-1",
+            "s-1",
+            ArtifactsHomeFilters(
+                search = "no-match",
+                author = kirby.filterValue,
+                authorActor = kirby,
+                status = ArtifactsHomeStatusFilter.All,
+            ),
+        )
+        settledRepo.observe("r-1", "s-1", detected = true, rowsLoaded = true)
+
+        val api = FakeDashboardApi()
+        api.answer = { _, _ -> ok(emptyList()) }
+        var authorsCalls = 0
+        api.authorsAnswer = {
+            authorsCalls++
+            ArtifactsHomeLoad.Ok(emptyList())
+        }
+
+        val store = store(api, filterRepo = filterRepo, settledRepo = settledRepo)
+        store.dispatch(ArtifactsHomeIntent.Start("s-1", "r-1"))
+        advanceUntilIdle()
+
+        assertEquals("Kirby", store.state.value.resolvedAuthorActor?.displayName)
+        assertTrue(store.state.value.settledEnabled, "settled-seen survives empty reload so Status picker stays visible")
+        assertEquals(0, authorsCalls, "persisted authorActor avoids redundant dashboardAuthors request")
+    }
+
+    @Test
+    fun legacyPersistedAuthorWithoutActorResolvesViaAuthorsAndLiveMetadataWinsOverPersisted() = runTest {
+        val prefs = InMemoryPrefStore()
+        val filterRepo = ArtifactsHomeFilterRepository(prefs)
+        val legacyId = "22222222-2222-2222-2222-222222222222"
+        val liveId = "33333333-3333-3333-3333-333333333333"
+        // Simulate legacy entry without authorActor.
+        prefs.values["raft:artifacts:filters:v1:r-1:s-1"] = """{"author":"user:$legacyId"}"""
+
+        val api = FakeDashboardApi()
+        api.answer = { _, _ -> ok(emptyList()) }
+        val resolvedLegacy = ArtifactsHomeActor("user", legacyId, "legacy", "Legacy Person")
+        api.authorsAnswer = { ArtifactsHomeLoad.Ok(listOf(resolvedLegacy)) }
+
+        val store = store(api, filterRepo = filterRepo)
+        store.dispatch(ArtifactsHomeIntent.Start("s-1", "r-1"))
+        advanceUntilIdle()
+        assertEquals("Legacy Person", store.state.value.resolvedAuthorActor?.displayName)
+
+        // Now test that live row metadata beats a stale persisted authorActor (never downgrades).
+        val stalePersisted = ArtifactsHomeActor("user", liveId, "old", "Old Name")
+        val freshFromRows = ArtifactsHomeActor("user", liveId, "new", "Fresh Name", avatarUrl = "https://cdn.raft.build/new.png")
+        filterRepo.write("r-1", "s-2", ArtifactsHomeFilters(author = "user:$liveId", authorActor = stalePersisted))
+        api.answer = { _, _ -> ok(listOf(row("x", author = freshFromRows))) }
+        store.dispatch(ArtifactsHomeIntent.Start("s-2", "r-1"))
+        advanceUntilIdle()
+        assertEquals("Fresh Name", store.state.value.resolvedAuthorActor?.displayName)
+        assertEquals("https://cdn.raft.build/new.png", store.state.value.resolvedAuthorActor?.avatarUrl)
+    }
+
+    @Test
+    fun serverSwitchDoesNotLeakSettledEnabledFromPreviousServer() = runTest {
+        val prefs = InMemoryPrefStore()
+        val settledRepo = ArtifactsHomeSettledSeenRepository(prefs)
+        val api = FakeDashboardApi()
+        api.answer = { _, _ -> ok(listOf(row("a", settledShown = true))) }
+        val store = store(api, settledRepo = settledRepo)
+        store.dispatch(ArtifactsHomeIntent.Start("s-on", "r-1"))
+        advanceUntilIdle()
+        assertTrue(store.state.value.settledEnabled)
+
+        // Switch to a server where settled is OFF.
+        api.answer = { _, _ -> ok(listOf(row("b", settledShown = false))) }
+        store.dispatch(ArtifactsHomeIntent.Start("s-off", "r-1"))
+        assertFalse(store.state.value.settledEnabled, "reset before new server rows land")
+        advanceUntilIdle()
+        assertFalse(store.state.value.settledEnabled)
+    }
+
+    @Test
+    fun setSettledIsSingleFlightPatchesImmediatelyRefreshesAndReportsErrors() = runTest {
+        val api = FakeDashboardApi()
+        val settledObj = ArtifactSettled(actor("u-1"), "2026-11-20T09:00:00.000Z", 1)
+        api.answer = { _, _ -> ok(listOf(row("a", settledShown = true))) }
+        val settleGate = CompletableDeferred<ArtifactsHomeLoad<ArtifactsHomeSettlement>>()
+        var settleCalls = 0
+        api.settleAnswer = { _, _, _ ->
+            settleCalls++
+            settleGate.await()
+        }
+        val store = store(api)
+        store.dispatch(ArtifactsHomeIntent.Start("s-1", "r-1"))
+        advanceUntilIdle()
+        val events = mutableListOf<ArtifactsHomeEvent>()
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { store.events.toList(events) }
+
+        // Two rapid settle clicks -> single-flight (only 1 network call).
+        store.dispatch(ArtifactsHomeIntent.SetSettled("a", true))
+        store.dispatch(ArtifactsHomeIntent.SetSettled("a", true))
+        runCurrent()
+        assertEquals(1, settleCalls)
+        assertTrue("a" in store.state.value.settlingIds)
+
+        // Complete settle -> immediate row patch + silent refresh on page 1.
+        val pageCallsBefore = api.calls.size
+        api.answer = { _, _ -> ok(listOf(row("a", settled = settledObj, settledShown = true))) }
+        settleGate.complete(ArtifactsHomeLoad.Ok(ArtifactsHomeSettlement(settledObj)))
+        advanceUntilIdle()
+        assertFalse("a" in store.state.value.settlingIds)
+        assertEquals(settledObj, store.state.value.rows?.single()?.summary?.settled)
+        assertEquals(pageCallsBefore + 1, api.calls.size, "silent refresh after settle when not extended")
+
+        // Failure emits SettleFailed with forbidden flag.
+        api.settleAnswer = { _, _, _ -> ArtifactsHomeLoad.Failed(ScreenError("nope", serverCode = "FORBIDDEN")) }
+        store.dispatch(ArtifactsHomeIntent.SetSettled("a", false))
+        advanceUntilIdle()
+        val failEvent = assertIs<ArtifactsHomeEvent.SettleFailed>(events.single())
+        assertTrue(failEvent.forbidden)
     }
 
     @Test
@@ -296,7 +464,6 @@ class SharedArtifactsHomeStoreTest {
         store.dispatch(ArtifactsHomeIntent.Start("server-a"))
         runCurrent()
 
-        // Server B, its flag still unknown: nothing read yet.
         store.dispatch(ArtifactsHomeIntent.Start(null))
         late.complete(ok(rows("from-a"), counts = ArtifactsHomeCounts(9, 9, 1)))
         advanceUntilIdle()
@@ -305,7 +472,6 @@ class SharedArtifactsHomeStoreTest {
         assertNull(store.state.value.counts)
         assertEquals(ArtifactsHomeStatus.Idle, store.state.value.status)
 
-        // B's flag resolves on: B's own list.
         api.answer = { _, _ -> ok(rows("from-b")) }
         store.dispatch(ArtifactsHomeIntent.Start("server-b"))
         advanceUntilIdle()
@@ -322,7 +488,6 @@ class SharedArtifactsHomeStoreTest {
         backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { store.events.toList(events) }
 
         api.answer = { query, _ -> if (query.relevant) ArtifactsHomeLoad.Failed(ScreenError("x")) else ok(rows("a")) }
-        // The sort changes, then the toggle before the sort's read answers: the read that fails is the filter's.
         store.dispatch(ArtifactsHomeIntent.SetSort(ArtifactsHomeSort.Updated))
         store.dispatch(ArtifactsHomeIntent.SetRelevant(true))
         advanceUntilIdle()
@@ -346,10 +511,19 @@ class SharedArtifactsHomeStoreTest {
         assertEquals(listOf("a", "b"), store.state.value.rows?.map { it.summary.id })
     }
 
-    private fun TestScope.store(api: FakeDashboardApi, onSortChosen: (ArtifactsHomeSort) -> Unit = {}) =
-        // Not backgroundScope: advanceUntilIdle runs only foreground work. A scope of no job on the test's
-        // scheduler runs with the test's clock and is never waited for when the test ends.
-        SharedArtifactsHomeStore(api, CoroutineScope(StandardTestDispatcher(testScheduler)), onSortChosen = onSortChosen)
+    private fun TestScope.store(
+        api: FakeDashboardApi,
+        onSortChosen: (ArtifactsHomeSort) -> Unit = {},
+        filterRepo: ArtifactsHomeFilterRepository? = null,
+        settledRepo: ArtifactsHomeSettledSeenRepository? = null,
+    ) =
+        SharedArtifactsHomeStore(
+            api = api,
+            scope = CoroutineScope(StandardTestDispatcher(testScheduler)),
+            onSortChosen = onSortChosen,
+            filterRepository = filterRepo,
+            settledSeenRepository = settledRepo,
+        )
 
     private fun TestScope.started(api: FakeDashboardApi, onSortChosen: (ArtifactsHomeSort) -> Unit = {}): SharedArtifactsHomeStore {
         val store = store(api, onSortChosen)
@@ -360,11 +534,22 @@ class SharedArtifactsHomeStoreTest {
 
     private data class Call(val serverId: String, val query: ArtifactsHomeQuery, val cursor: String?, val priority: DataRequestPriority)
 
+    private class InMemoryPrefStore : SharedPreferenceStore {
+        val values = mutableMapOf<String, String?>()
+        override fun getString(key: String): String? = values[key]
+        override fun putString(key: String, value: String?) {
+            if (value == null) values.remove(key) else values[key] = value
+        }
+    }
+
     private class FakeDashboardApi : ArtifactsHomeSource {
         val calls = mutableListOf<Call>()
         var answer: suspend (ArtifactsHomeQuery, String?) -> ArtifactsHomeLoad<ArtifactsHomePage> = { _, _ -> ok(rows("a")) }
         var authorsAnswer: suspend (String) -> ArtifactsHomeLoad<List<ArtifactsHomeActor>> = { ArtifactsHomeLoad.Ok(emptyList()) }
         var conversationsAnswer: suspend (String) -> ArtifactsHomeLoad<List<ArtifactsHomeConversation>> = { ArtifactsHomeLoad.Ok(emptyList()) }
+        var settleAnswer: suspend (String, String, Boolean) -> ArtifactsHomeLoad<ArtifactsHomeSettlement> = { _, _, _ ->
+            ArtifactsHomeLoad.Ok(ArtifactsHomeSettlement(null))
+        }
 
         override suspend fun page(serverId: String, query: ArtifactsHomeQuery, cursor: String?, priority: DataRequestPriority): ArtifactsHomeLoad<ArtifactsHomePage> {
             calls += Call(serverId, query, cursor, priority)
@@ -374,14 +559,35 @@ class SharedArtifactsHomeStoreTest {
         override suspend fun authors(serverId: String, q: String): ArtifactsHomeLoad<List<ArtifactsHomeActor>> = authorsAnswer(q)
 
         override suspend fun conversations(serverId: String, q: String): ArtifactsHomeLoad<List<ArtifactsHomeConversation>> = conversationsAnswer(q)
+
+        override suspend fun setSettled(serverId: String, artifactId: String, settled: Boolean): ArtifactsHomeLoad<ArtifactsHomeSettlement> =
+            settleAnswer(serverId, artifactId, settled)
     }
 }
 
-private fun actor(id: String) = ArtifactsHomeActor(type = "user", id = id, name = id, displayName = id.uppercase())
+private fun actor(id: String, displayName: String = id.uppercase()) =
+    ArtifactsHomeActor(type = "user", id = id, name = id, displayName = displayName)
 
-private fun row(id: String, author: ArtifactsHomeActor = actor("u-1")) =
+private fun row(
+    id: String,
+    author: ArtifactsHomeActor = actor("u-1"),
+    settled: ArtifactSettled? = null,
+    settledShown: Boolean = false,
+) =
     ArtifactsHomeRow(
-        summary = ArtifactSummary(id = id, title = id, description = null, kind = ArtifactKind.Html, version = 1, pinned = false, latestVersion = 1, home = ArtifactHome.Server),
+        summary =
+            ArtifactSummary(
+                id = id,
+                title = id,
+                description = null,
+                kind = ArtifactKind.Html,
+                version = 1,
+                pinned = false,
+                latestVersion = 1,
+                home = ArtifactHome.Server,
+                settled = settled,
+                settledShown = settledShown,
+            ),
         author = author,
         openedAt = null,
         news = ArtifactsHomeNews(),
