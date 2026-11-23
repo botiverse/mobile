@@ -133,6 +133,15 @@ enum class RaftIconButtonSize(internal val box: Dp, internal val glyph: Dp) {
      * the mobile values; components read [boxIn] / [glyphIn].
      */
     Lg(44.dp, 22.dp),
+
+    /**
+     * A row's trailing action revealed on hover, such as an Activity row's Mark as Done (web
+     * InboxRowDone: `icon-md` with `md:pointer-fine:size-(--bar-button-size)
+     * md:pointer-fine:rounded-(--bar-button-radius)`): [Md]'s 32dp with an 18dp icon by touch;
+     * under a fine pointer the 28dp bar button ([RaftControlMetrics.barButtonSize]) at
+     * `--bar-button-radius` (6), keeping the 18dp icon.
+     */
+    Row(32.dp, 18.dp),
     ;
 
     /** The inline sizes ([Xs], [Sm]) round at `radius-chip`, not `radius-control`. */
@@ -146,6 +155,8 @@ enum class RaftIconButtonSize(internal val box: Dp, internal val glyph: Dp) {
         when (this) {
             Lg -> if (bar) controls.barButtonSize else controls.height
             Md -> controls.rowHeight ?: box
+            // The fine-pointer metrics are the ones with a shared row height.
+            Row -> if (controls.rowHeight != null) controls.barButtonSize else box
             else -> box
         }
 
@@ -159,7 +170,11 @@ enum class RaftIconButtonSize(internal val box: Dp, internal val glyph: Dp) {
      * the default.
      */
     internal fun radiusIn(controls: RaftControlMetrics, bar: Boolean): Dp? =
-        if (this == Lg) (if (bar) controls.barButtonRadius else controls.controlRadius) else null
+        when {
+            this == Lg -> if (bar) controls.barButtonRadius else controls.controlRadius
+            this == Row && controls.rowHeight != null -> controls.barButtonRadius
+            else -> null
+        }
 }
 
 /**

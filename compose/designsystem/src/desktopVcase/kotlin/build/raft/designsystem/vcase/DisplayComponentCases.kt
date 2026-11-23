@@ -258,7 +258,7 @@ fun IconButtonGallery() {
                                     RaftGlyph.Plus,
                                     when (size) {
                                         RaftIconButtonSize.Lg -> 22.dp
-                                        RaftIconButtonSize.Md -> 18.dp
+                                        RaftIconButtonSize.Md, RaftIconButtonSize.Row -> 18.dp
                                         else -> 16.dp
                                     },
                                 )
