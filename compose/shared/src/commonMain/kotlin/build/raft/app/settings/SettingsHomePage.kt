@@ -5831,11 +5831,12 @@ private fun RaftAppShellReadyContent(
                                     authStore = shellAuthStore,
                                     tasksDataSource = tasksDataSource,
                                     tasksDataStore = sharedStores.tasksDataStore,
-                                    onFailedWithTrace = { code, traceId ->
-                                        when {
-                                            code.startsWith("tasks_status") -> bridge.errorToast(tasksUpdateFailedLabel, traceId)
-                                            code.startsWith("tasks_assign") -> bridge.errorToast(tasksAssignFailedLabel, traceId)
-                                        }
+                                    onOperationFailed = { event ->
+                                        bridge.showTaskOperationFailedToast(
+                                            event = event,
+                                            updateFailedLabel = tasksUpdateFailedLabel,
+                                            assignFailedLabel = tasksAssignFailedLabel,
+                                        )
                                     },
                                     log = { bridge.log(it) },
                                 ),
@@ -6009,7 +6010,7 @@ private fun RaftAppShellReadyContent(
                                     },
                                     openPage = { openedTask, conversationId -> openTaskPage(openedTask, conversationId) },
                                     onLoadError = { error -> bridge.errorToast(tasksOpenFailedLabel, error) },
-                                    onNoPermission = { traceId -> bridge.errorToast(tasksOpenFailedLabel, traceId) },
+                                    onNoPermission = { blocker -> bridge.errorToast(tasksOpenFailedLabel, blocker) },
                                     onNotFound = { bridge.toast(tasksOpenFailedLabel) },
                                     log = bridge::log,
                                 )
