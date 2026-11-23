@@ -2806,10 +2806,11 @@
     <string name="settings_computers_dialog_title_connect">컴퓨터 연결</string>
     <string name="settings_computers_dialog_title_connected">컴퓨터 연결됨</string>
     <string name="settings_computers_error_add_permission">컴퓨터를 추가할 권한이 없어요.</string>
+    <string name="settings_computers_limit_reached">컴퓨터 수 한도에 도달했어요 (%1$d/%2$d, %3$s 요금제).</string>
+    <string name="settings_computers_which_computer">어떤 컴퓨터를 추가할까요?</string>
     <string name="settings_computers_your_computer">내 컴퓨터</string>
-    <string name="settings_computers_your_computer_hint">내 컴퓨터에서 에이전트를 실행해요</string>
-    <string name="settings_computers_cloud_computer">클라우드 컴퓨터</string>
-    <string name="settings_computers_coming_soon">출시 예정</string>
+    <string name="settings_computers_your_computer_hint">노트북, 데스크톱, 클라우드 서버(VPS) 모두 가능해요: 거기서 명령어 하나를 실행해요</string>
+    <string name="settings_computers_own_computer_hint">노트북, 데스크톱, 클라우드 서버(VPS) 모두 가능해요: 그 컴퓨터에서 이 명령어를 실행하세요.</string>
     <string name="settings_computers_install_daemon_hint">내 컴퓨터에 데몬을 설치하고 이 워크스페이스에 연결하세요.</string>
     <string name="settings_computers_setting_up">설정하는 중…</string>
     <string name="settings_computers_next">다음</string>

@@ -122,6 +122,8 @@ class SharedSettingsComputerStepUpTest {
             )
         store.accept(SharedSettingsIntent.LoadPageContent(SharedSettingsDestination.Computers))
         store.accept(SharedSettingsIntent.ShowAddComputerDialog)
+        // Step-up is verified for explicit RegisterComputer calls initiated from the Type step.
+        store.accept(SharedSettingsIntent.SetAddComputerStep(AddComputerStep.Type))
         runCurrent()
         return store
     }

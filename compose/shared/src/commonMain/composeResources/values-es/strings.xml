@@ -2806,10 +2806,11 @@
     <string name="settings_computers_dialog_title_connect">Conectar computadora</string>
     <string name="settings_computers_dialog_title_connected">Computadora conectada</string>
     <string name="settings_computers_error_add_permission">No tienes permiso para agregar computadoras.</string>
+    <string name="settings_computers_limit_reached">Alcanzaste el límite de computadoras (%1$d/%2$d en el plan %3$s).</string>
+    <string name="settings_computers_which_computer">¿Qué computadora?</string>
     <string name="settings_computers_your_computer">Tu computadora</string>
-    <string name="settings_computers_your_computer_hint">Ejecuta agentes en tu propia computadora</string>
-    <string name="settings_computers_cloud_computer">Computadora en la nube</string>
-    <string name="settings_computers_coming_soon">Próximamente</string>
+    <string name="settings_computers_your_computer_hint">Una laptop, una computadora de escritorio o un servidor en la nube (VPS): ejecuta un comando en ella</string>
+    <string name="settings_computers_own_computer_hint">Una laptop, una computadora de escritorio o un servidor en la nube (VPS): ejecuta este comando en ella.</string>
     <string name="settings_computers_install_daemon_hint">Instala el daemon en tu computadora y conéctalo a este espacio de trabajo.</string>
     <string name="settings_computers_setting_up">Configurando…</string>
     <string name="settings_computers_next">Siguiente</string>

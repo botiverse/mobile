@@ -2809,10 +2809,11 @@
     <string name="settings_computers_dialog_title_connect">コンピューターを接続</string>
     <string name="settings_computers_dialog_title_connected">コンピューターが接続されました</string>
     <string name="settings_computers_error_add_permission">コンピューターを追加する権限がありません。</string>
+    <string name="settings_computers_limit_reached">コンピューター数の上限に達しました（%1$d/%2$d、%3$s プラン）。</string>
+    <string name="settings_computers_which_computer">どのコンピューターを追加しますか？</string>
     <string name="settings_computers_your_computer">自分のコンピューター</string>
-    <string name="settings_computers_your_computer_hint">自分のコンピューターでエージェントを実行します</string>
-    <string name="settings_computers_cloud_computer">クラウドコンピューター</string>
-    <string name="settings_computers_coming_soon">近日公開</string>
+    <string name="settings_computers_your_computer_hint">ノート PC、デスクトップ、クラウドサーバー（VPS）など：そこでコマンドを 1 つ実行します</string>
+    <string name="settings_computers_own_computer_hint">ノート PC、デスクトップ、クラウドサーバー（VPS）など：そこで次のコマンドを実行してください。</string>
     <string name="settings_computers_install_daemon_hint">コンピューターにデーモンをインストールし、このワークスペースに接続します。</string>
     <string name="settings_computers_setting_up">設定中...</string>
     <string name="settings_computers_next">次へ</string>

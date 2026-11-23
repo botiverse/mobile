@@ -1847,6 +1847,160 @@ class SharedSettingsStoreTest {
     }
 
     @Test
+    fun showAddComputerDialogOpensDirectlyOnWaitingWithCommandContextAndConnectsWithoutPlaceholder() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val existingOnline =
+            SettingsComputerSnapshot(
+                id = "computer-existing",
+                name = "existing",
+                daemonVersion = "",
+                isComputer = true,
+                attachedByCurrentUser = true,
+                online = true,
+            )
+        val freshComputer =
+            SettingsComputerSnapshot(
+                id = "computer-fresh",
+                name = "vps-1",
+                daemonVersion = "",
+                isComputer = true,
+                attachedByCurrentUser = true,
+                online = true,
+                hostname = "vps-1.local",
+                platform = "linux",
+                runtimes = listOf("claude"),
+            )
+        val repository =
+            FakeSettingsRepository(
+                computersResult = DataResult.Content(SettingsComputersSnapshot(computers = listOf(existingOnline))),
+                computerDetailResult = DataResult.Content(computerDetailSnapshot("computer-fresh")),
+            )
+        val store =
+            SharedSettingsStore(
+                dataSource =
+                    SharedSettingsDataSource(
+                        sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
+                        settingsRepository = repository,
+                    ),
+                scope = scope,
+            )
+
+        store.accept(SharedSettingsIntent.LoadPageContent(SharedSettingsDestination.Computers))
+        store.accept(SharedSettingsIntent.ShowAddComputerDialog)
+
+        val opened = store.state.value.addComputerDialog
+        assertEquals(AddComputerStep.Waiting, opened?.step)
+        assertEquals("slock", opened?.commandContext?.serverSlug)
+        assertEquals("production", opened?.commandContext?.deploymentEnv)
+        assertEquals(null, opened?.registeredMachineId)
+        assertEquals(null, opened?.machineId)
+        assertEquals(listOf("computer-existing"), opened?.baseline?.map { it.id })
+        assertEquals(listOf("computers"), repository.calls)
+
+        // Already-online baseline computer must not advance the dialog on poll.
+        store.accept(SharedSettingsIntent.PollAddComputerMachineStatus())
+        yield()
+        assertEquals(AddComputerStep.Waiting, store.state.value.addComputerDialog?.step)
+
+        // When a fresh Computer connects, polling advances directly without any placeholder row.
+        repository.computersResult =
+            DataResult.Content(SettingsComputersSnapshot(computers = listOf(existingOnline, freshComputer)))
+        store.accept(SharedSettingsIntent.PollAddComputerMachineStatus())
+        yield()
+
+        val connected = store.state.value.addComputerDialog
+        assertEquals(AddComputerStep.Connected, connected?.step)
+        assertEquals("computer-fresh", connected?.machineId)
+        assertEquals("vps-1.local", connected?.name)
+        assertEquals("vps-1.local — linux", connected?.connectedDetail)
+        assertEquals(true, connected?.requiresConfirmation)
+
+        // Dismissing before confirmation makes no deleteComputer call because no placeholder exists.
+        store.accept(SharedSettingsIntent.DismissAddComputerDialog)
+        yield()
+        assertEquals(null, store.state.value.addComputerDialog)
+        assertEquals(false, repository.calls.any { it.startsWith("registerComputer") || it.startsWith("deleteComputer") })
+        scope.cancel()
+    }
+
+    @Test
+    fun showAddComputerDialogAtLimitStaysOnTypeStep() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val existing =
+            SettingsComputerSnapshot(
+                id = "computer-1",
+                name = "Studio",
+                daemonVersion = "",
+                isComputer = true,
+                online = true,
+            )
+        val repository =
+            FakeSettingsRepository(
+                computersResult =
+                    DataResult.Content(
+                        SettingsComputersSnapshot(
+                            computers = listOf(existing),
+                            maxComputers = 1,
+                        )
+                    )
+            )
+        val store =
+            SharedSettingsStore(
+                dataSource =
+                    SharedSettingsDataSource(
+                        sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
+                        settingsRepository = repository,
+                    ),
+                scope = scope,
+            )
+
+        store.accept(SharedSettingsIntent.LoadPageContent(SharedSettingsDestination.Computers))
+        store.accept(SharedSettingsIntent.ShowAddComputerDialog)
+
+        val dialog = store.state.value.addComputerDialog
+        assertEquals(AddComputerStep.Type, dialog?.step)
+        assertEquals(true, dialog?.atLimit)
+        assertEquals(true, dialog?.canManage)
+        assertEquals(1, dialog?.computerCount)
+        assertEquals(1, dialog?.maxComputers)
+        assertEquals("Free", dialog?.planDisplayName)
+        assertEquals(null, dialog?.commandContext)
+        scope.cancel()
+    }
+
+    @Test
+    fun showAddComputerDialogWithoutManagePermissionStaysOnTypeStep() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val memberSession =
+            sampleSession().copy(
+                servers =
+                    sampleSession().servers.map { it.copy(role = "member") }
+            )
+        val repository =
+            FakeSettingsRepository(
+                computersResult = DataResult.Content(SettingsComputersSnapshot(computers = emptyList()))
+            )
+        val store =
+            SharedSettingsStore(
+                dataSource =
+                    SharedSettingsDataSource(
+                        sessionStore = InMemoryRaftAuthSessionStore(memberSession),
+                        settingsRepository = repository,
+                    ),
+                scope = scope,
+            )
+
+        store.accept(SharedSettingsIntent.LoadPageContent(SharedSettingsDestination.Computers))
+        store.accept(SharedSettingsIntent.ShowAddComputerDialog)
+
+        val dialog = store.state.value.addComputerDialog
+        assertEquals(AddComputerStep.Type, dialog?.step)
+        assertEquals(false, dialog?.canManage)
+        assertEquals(false, dialog?.atLimit)
+        scope.cancel()
+    }
+
+    @Test
     fun diagnosticFeatureFlagOverrideIntentForwardsKeyAndModeThenReloadsDiagnostics() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val capabilities = FakeSettingsCapabilities()

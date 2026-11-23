@@ -41,8 +41,6 @@ class AddComputerSheetScreenshotTest {
     private val waiting =
         AddComputerDialogState(
             step = AddComputerStep.Waiting,
-            machineId = "machine-new",
-            registeredMachineId = "machine-new",
             commandContext = SettingsComputerCommandContext(serverSlug = "acme", deploymentEnv = "production"),
         )
     private val connected =

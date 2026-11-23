@@ -1,7 +1,6 @@
 package build.raft.app
 
 import build.raft.app.resources.*
-import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -26,8 +25,6 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.semantics.selected
-import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextRange
@@ -41,7 +38,6 @@ import build.raft.app.data.AddComputerStep
 import build.raft.app.data.AddComputerType
 import build.raft.app.data.BundledRuntimeCatalog
 import build.raft.app.data.ServerRuntimeCatalog
-import build.raft.app.data.SettingsComputerRegisterRequest
 import build.raft.app.data.SharedSettingsIntent
 import build.raft.designsystem.components.RaftTextFieldDefaults
 import build.raft.designsystem.components.RaftBadge
@@ -51,6 +47,8 @@ import build.raft.designsystem.components.RaftBanner
 import build.raft.designsystem.components.RaftBannerStatus
 import build.raft.designsystem.components.RaftButtonVariant
 import build.raft.designsystem.components.RaftCheckboxRow
+import build.raft.designsystem.components.RaftChoiceList
+import build.raft.designsystem.components.RaftChoiceListItem
 import build.raft.designsystem.components.RaftCodeBlock
 import build.raft.designsystem.components.RaftDialogSheet
 import build.raft.designsystem.components.RaftDialogSheetSurface
@@ -66,15 +64,15 @@ import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.RaftTheme
 import build.raft.designsystem.tokens.RaftRadius
 import build.raft.designsystem.tokens.RaftStroke
-import build.raft.designsystem.components.raftClickable
 
 /*
  * Add Computer, after web AddMachineDialog.tsx and ComputerCommandGuide.tsx (botiverse/slock
- * staging): on a phone the raft-ui Dialog "On a phone" sheet (`DialogCard narrow="sheet"`), × at
- * the start of its head and the step's one commit button at the end; on a tablet the centred
- * dialog. Three steps: the type, the `raft-computer` connect commands while waiting, and naming
- * the computer that connected. While waiting, a code the terminal shows can be approved from the
- * sheet (AddComputerCodeEntry.kt; web AddMachineDialog `codeEntry`, botiverse/slock #15612).
+ * staging, #14244/#14251/#12602): on a phone the raft-ui Dialog "On a phone" sheet
+ * (`DialogCard narrow="sheet"`), × at the start of its head and the step's one commit button at
+ * the end; on a tablet the centred dialog. Opens straight on the `raft-computer` connect command
+ * when under the plan limit and allowed to add; stays on the single-column choice step when at
+ * limit or without permission, then names the computer that connected. While waiting, a code the
+ * terminal shows can be approved from the sheet (AddComputerCodeEntry.kt; botiverse/slock #15612).
  */
 
 /** Web `WAITING_HINT_DELAY_MS`: after this long, point the user at the terminal. */
@@ -125,7 +123,9 @@ private fun addComputerSheetHead(state: AddComputerDialogState): AddComputerShee
 
 private fun addComputerCommit(state: AddComputerDialogState, onIntent: (SharedSettingsIntent) -> Unit) {
     when (state.step) {
-        AddComputerStep.Type -> onIntent(SharedSettingsIntent.RegisterComputer(SettingsComputerRegisterRequest(name = "my-computer")))
+        // Web `handleSelectType` (botiverse/slock #12602): Next only shows the command; nothing is
+        // written to the server until a computer connects.
+        AddComputerStep.Type -> onIntent(SharedSettingsIntent.SetAddComputerStep(AddComputerStep.Waiting))
         AddComputerStep.Waiting -> if (state.code.review?.target != null) onIntent(SharedSettingsIntent.ApproveAddComputerCode)
         AddComputerStep.Connected -> onIntent(SharedSettingsIntent.CompleteAddComputerDialog)
     }
@@ -211,33 +211,45 @@ private fun AddComputerTypeStep(
     onIntent: (SharedSettingsIntent) -> Unit
 ) {
     val userFacingError = state.userFacingErrorMessage(localizedErrorPresentationStrings())
-    // Web: one warning Banner for the limit or a failed registration.
+    // Web: one warning Banner for the limit, missing permission, or a failed registration.
     val warning =
-        if (!state.canManage || state.atLimit) {
-            userFacingError ?: stringResource(Res.string.settings_computers_error_add_permission)
-        } else {
-            userFacingError?.takeIf { it.isNotBlank() }
+        when {
+            !state.canManage -> userFacingError ?: stringResource(Res.string.settings_computers_error_add_permission)
+            state.atLimit ->
+                userFacingError
+                    ?: if (state.maxComputers >= 0) {
+                        stringResource(
+                            Res.string.settings_computers_limit_reached,
+                            state.computerCount,
+                            state.maxComputers,
+                            state.planDisplayName,
+                        )
+                    } else {
+                        stringResource(Res.string.settings_computers_error_add_permission)
+                    }
+            else -> userFacingError?.takeIf { it.isNotBlank() }
         }
     if (warning != null) RaftBanner(description = warning, status = RaftBannerStatus.Warning)
     if (!state.atLimit) ComputerAccessNotice()
-    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        AddComputerTypeCard(
-            title = stringResource(Res.string.settings_computers_your_computer),
-            detail = stringResource(Res.string.settings_computers_your_computer_hint),
-            iconName = RaftLucideIconName.Monitor,
-            selected = state.machineType == AddComputerType.Local,
-            enabled = true,
-            onClick = { onIntent(SharedSettingsIntent.SetAddComputerType(AddComputerType.Local)) },
-            modifier = Modifier.weight(1f)
+    val whichComputer = stringResource(Res.string.settings_computers_which_computer)
+    val items =
+        listOf(
+            RaftChoiceListItem(
+                value = AddComputerType.Local,
+                label = stringResource(Res.string.settings_computers_your_computer),
+                descriptions = listOf(AnnotatedString(stringResource(Res.string.settings_computers_your_computer_hint))),
+                media = { AddComputerIcon(RaftLucideIconName.Monitor, size = 20, muted = true) },
+            )
         )
-        AddComputerTypeCard(
-            title = stringResource(Res.string.settings_computers_cloud_computer),
-            detail = stringResource(Res.string.settings_computers_coming_soon),
-            iconName = RaftLucideIconName.Server,
-            selected = false,
-            enabled = false,
-            onClick = {},
-            modifier = Modifier.weight(1f)
+    RaftField(label = whichComputer) {
+        RaftChoiceList(
+            items = items,
+            value = state.machineType,
+            onValueChange = { onIntent(SharedSettingsIntent.SetAddComputerType(it)) },
+            searchPlaceholder = whichComputer,
+            clearSearchLabel = stringResource(Res.string.settings_search_clear),
+            noMatchLabel = "",
+            emptyLabel = "",
         )
     }
 }
@@ -249,8 +261,9 @@ private fun AddComputerWaitingStep(
     showAccessNotice: Boolean = false,
 ) {
     val userFacingError = state.userFacingErrorMessage(localizedErrorPresentationStrings())
-    LaunchedEffect(state.step, state.registeredMachineId) {
-        val targetId = state.registeredMachineId ?: state.machineId ?: return@LaunchedEffect
+    LaunchedEffect(state.step, state.registeredMachineId, state.machineId) {
+        if (state.step != AddComputerStep.Waiting) return@LaunchedEffect
+        val targetId = state.registeredMachineId ?: state.machineId ?: ""
         while (true) {
             kotlinx.coroutines.delay(3_000)
             onIntent(SharedSettingsIntent.PollAddComputerMachineStatus(targetId))
@@ -268,7 +281,17 @@ private fun AddComputerWaitingStep(
         return
     }
     if (showAccessNotice) ComputerAccessNotice()
-    AddComputerCommandGuide(state, onCopy = { onIntent(SharedSettingsIntent.CopyComputerCommand(it)) })
+    // Web `AddMachineDialog` (botiverse/slock #14251): any machine of the person's own, a cloud
+    // server too, right above `ComputerCommandGuide` (`mb-2`).
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        RaftText(
+            stringResource(Res.string.settings_computers_own_computer_hint),
+            modifier = Modifier.testTag(AddComputerOwnComputerHintTag),
+            style = RaftTheme.typography.callout,
+            color = RaftTheme.colors.foregroundMuted,
+        )
+        AddComputerCommandGuide(state, onCopy = { onIntent(SharedSettingsIntent.CopyComputerCommand(it)) })
+    }
     // Web: "The terminal shows a code? Enter it here." under the command.
     AddComputerCodeEntry(state.code, onIntent)
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -305,6 +328,7 @@ private fun ComputerAccessNotice() {
 }
 
 internal const val ComputerAccessNoticeTag = "computer-access-notice"
+internal const val AddComputerOwnComputerHintTag = "add-machine-own-computer-hint"
 
 /** Web `ComputerCommandGuide`: the connect command for macOS / Linux or Windows x64. */
 @Composable
@@ -468,59 +492,6 @@ private fun AddComputerRuntimeBadge(chip: RaftComputerRuntimeChip) {
         variant =
             if (chip.availability == RaftComputerRuntimeAvailability.Detected) RaftBadgeVariant.Information else RaftBadgeVariant.Muted,
     )
-}
-
-/**
- * Web Add Machine option card: `rounded-control`, a 1.5dp `line-strong` edge, `info-soft` when
- * picked; the unavailable option is the disabled surface (`fill-muted`, hairline, disabled ink).
- */
-@Composable
-private fun AddComputerTypeCard(
-    title: String,
-    detail: String,
-    iconName: RaftLucideIconName,
-    selected: Boolean,
-    enabled: Boolean,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier
-) {
-    val colors = RaftTheme.colors
-    val shape = RoundedCornerShape(RaftRadius.Control)
-    Row(
-        modifier = modifier
-            .background(
-                when {
-                    !enabled -> colors.fillMuted
-                    selected -> colors.infoSoft
-                    else -> colors.layerCard
-                },
-                shape,
-            )
-            .border(
-                if (enabled) RaftStroke.Control else RaftStroke.Hairline,
-                if (enabled) colors.lineStrong else colors.lineHairline,
-                shape,
-            )
-            .semantics { this.selected = selected }
-            .raftClickable(onClick = onClick, enabled = enabled, shape = shape, selected = selected)
-            .padding(12.dp),
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        AddComputerIcon(iconName, size = 20, muted = enabled, disabled = !enabled)
-        Column(modifier = Modifier.weight(1f)) {
-            RaftText(
-                title,
-                style = RaftTheme.typography.callout.copy(fontWeight = FontWeight.SemiBold),
-                color = if (enabled) colors.foreground else colors.foregroundDisabled,
-            )
-            RaftText(
-                detail,
-                style = RaftTheme.typography.footnote,
-                color = if (enabled) colors.foregroundMuted else colors.foregroundDisabled,
-            )
-        }
-    }
 }
 
 /** Web `CommandRow`: an optional step label over the command and its copy button. */

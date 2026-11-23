@@ -2809,10 +2809,11 @@
     <string name="settings_computers_dialog_title_connect">连接计算机</string>
     <string name="settings_computers_dialog_title_connected">计算机已连接</string>
     <string name="settings_computers_error_add_permission">你没有添加计算机的权限。</string>
-    <string name="settings_computers_your_computer">你的计算机</string>
-    <string name="settings_computers_your_computer_hint">在你自己的计算机上运行 Agent</string>
-    <string name="settings_computers_cloud_computer">云计算机</string>
-    <string name="settings_computers_coming_soon">即将推出</string>
+    <string name="settings_computers_limit_reached">已达到 Computer 数量上限（%1$d/%2$d，%3$s 套餐）。</string>
+    <string name="settings_computers_which_computer">添加哪台计算机？</string>
+    <string name="settings_computers_your_computer">你自己的计算机</string>
+    <string name="settings_computers_your_computer_hint">笔记本、台式机或云服务器（VPS）都可以：在它上面运行一条命令</string>
+    <string name="settings_computers_own_computer_hint">笔记本、台式机或云服务器（VPS）都可以：在它上面运行下面这条命令。</string>
     <string name="settings_computers_install_daemon_hint">在你的计算机上安装守护进程，并将其连接到此工作空间。</string>
     <string name="settings_computers_setting_up">正在设置...</string>
     <string name="settings_computers_next">下一步</string>

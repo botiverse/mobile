@@ -2806,10 +2806,11 @@
     <string name="settings_computers_dialog_title_connect">Подключить компьютер</string>
     <string name="settings_computers_dialog_title_connected">Компьютер подключён</string>
     <string name="settings_computers_error_add_permission">У вас нет прав на добавление компьютеров.</string>
+    <string name="settings_computers_limit_reached">Достигнут лимит компьютеров (%1$d/%2$d на тарифе %3$s).</string>
+    <string name="settings_computers_which_computer">Какой компьютер?</string>
     <string name="settings_computers_your_computer">Ваш компьютер</string>
-    <string name="settings_computers_your_computer_hint">Агенты будут работать на вашем компьютере</string>
-    <string name="settings_computers_cloud_computer">Облачный компьютер</string>
-    <string name="settings_computers_coming_soon">Скоро</string>
+    <string name="settings_computers_your_computer_hint">Ноутбук, настольный компьютер или облачный сервер (VPS): выполните на нём одну команду</string>
+    <string name="settings_computers_own_computer_hint">Ноутбук, настольный компьютер или облачный сервер (VPS): выполните на нём эту команду.</string>
     <string name="settings_computers_install_daemon_hint">Установите демон на свой компьютер и подключите его к этому рабочему пространству.</string>
     <string name="settings_computers_setting_up">Настройка…</string>
     <string name="settings_computers_next">Далее</string>
