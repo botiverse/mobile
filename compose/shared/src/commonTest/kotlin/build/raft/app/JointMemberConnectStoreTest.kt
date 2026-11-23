@@ -266,6 +266,28 @@ class JointMemberConnectStoreTest {
         runCurrent()
         assertEquals(setOf("srv-alpha"), store.state.value.memberConnectSheet?.selected)
         store.clear()
+
+        // Same invariant on whole-request failure (e.g. network_unavailable): disabled at-limit row is never stuck checked.
+        val wholeFailDataSource = FakeJointConnectionsDataSource(connections = memberTestConnections())
+        val wholeLimitsGate = CompletableDeferred<Unit>()
+        val wholeSubmitGate = CompletableDeferred<Unit>()
+        wholeFailDataSource.memberConnectLimitsGate = wholeLimitsGate
+        wholeFailDataSource.memberConnectLimits =
+            mapOf("srv-zed" to MemberConnectServerLimit(serverId = "srv-zed", atLimit = true, canUpgrade = true))
+        wholeFailDataSource.memberConnectGate = wholeSubmitGate
+        wholeFailDataSource.memberConnectResult = DataResult.Error(ScreenError(code = "network_unavailable", traceId = null))
+        val wholeFailStore = memberStore(wholeFailDataSource)
+        wholeFailStore.dispatch(JointChannelConnectionsIntent.OpenMemberConnect)
+        wholeFailStore.dispatch(JointChannelConnectionsIntent.SetMemberConnectSelection(setOf("srv-zed", "srv-alpha")))
+        wholeFailStore.dispatch(JointChannelConnectionsIntent.SubmitMemberConnect)
+        runCurrent()
+        wholeLimitsGate.complete(Unit)
+        runCurrent()
+        assertEquals(setOf("srv-zed", "srv-alpha"), wholeFailStore.state.value.memberConnectSheet?.selected)
+        wholeSubmitGate.complete(Unit)
+        runCurrent()
+        assertEquals(setOf("srv-alpha"), wholeFailStore.state.value.memberConnectSheet?.selected)
+        wholeFailStore.clear()
     }
 
     private fun TestScope.memberStore(

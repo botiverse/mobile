@@ -534,6 +534,7 @@ internal class JointChannelConnectionsStore(
                                 lines = listOf(requestLine),
                                 traceId = traceId,
                                 closed = open.closed || closed,
+                                selected = open.selected.filterNot { open.limits[it]?.atLimit == true }.toSet(),
                             ),
                     )
                 return@launchAction

@@ -744,6 +744,10 @@ internal class ExternalInvitesStore(
                 openDialog(joint)
             } else if (prefetchedFreeLimit == true) {
                 emit(ExternalInvitesEffect.FreeLimitUpgrade)
+            } else if (reached == true) {
+                emit(ExternalInvitesEffect.FreeLimitUpgrade)
+            } else {
+                openDialog(joint)
             }
         }
     }
