@@ -1009,7 +1009,7 @@ private fun RaftHomePageContent(routeVisibleTick: Int = 0) {
                             ),
                             result.error
                         )
-                    is DataResult.NoPermission -> bridge.errorToast(noDirectMessagePermission, result.blocker.traceId)
+                    is DataResult.NoPermission -> bridge.errorToast(noDirectMessagePermission, result.blocker)
                 }
             }
         },

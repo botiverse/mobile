@@ -13,6 +13,7 @@ import build.raft.app.data.DataResult
 import build.raft.app.data.PermissionBlocker
 import build.raft.app.data.ScreenError
 import build.raft.app.data.failureTraceIdOrNull
+import build.raft.app.data.usableServerRefusalReasonForToast
 import build.raft.app.network.RaftFailedRequestTraceIds
 import build.raft.app.network.raftValidTraceIdOrNull
 import build.raft.app.RaftTraceIdToastStrings
@@ -463,14 +464,41 @@ internal class BridgeModule : Module() {
         callNativeMethod("toast", methodArgs, null)
     }
 
-    /** [errorToast] with [error]'s own trace id. */
-    fun errorToast(content: String, error: ScreenError) = errorToast(content, error.traceId)
+    /** [errorToast] with [error]'s usable server refusal reason (when non-redundant) and trace id. */
+    fun errorToast(
+        content: String,
+        error: ScreenError,
+        strings: () -> RaftTraceIdToastStrings = ::localizedRaftTraceIdToastStrings,
+    ) = errorToast(
+        title = content,
+        reason = usableServerRefusalReasonForToast(content, error),
+        traceId = error.traceId,
+        strings = strings,
+    )
 
-    /** [errorToast] with [blocker]'s own trace id. */
-    fun errorToast(content: String, blocker: PermissionBlocker) = errorToast(content, blocker.traceId)
+    /** [errorToast] with [blocker]'s usable server refusal reason (when non-redundant) and trace id. */
+    fun errorToast(
+        content: String,
+        blocker: PermissionBlocker,
+        strings: () -> RaftTraceIdToastStrings = ::localizedRaftTraceIdToastStrings,
+    ) = errorToast(
+        title = content,
+        reason = usableServerRefusalReasonForToast(content, blocker),
+        traceId = blocker.traceId,
+        strings = strings,
+    )
 
-    /** [errorToast] with [result]'s own trace id (plain toast when [result] carries none). */
-    fun errorToast(content: String, result: DataResult<*>) = errorToast(content, result.failureTraceIdOrNull())
+    /** [errorToast] with [result]'s usable server refusal reason (when non-redundant) and trace id. */
+    fun errorToast(
+        content: String,
+        result: DataResult<*>,
+        strings: () -> RaftTraceIdToastStrings = ::localizedRaftTraceIdToastStrings,
+    ) = errorToast(
+        title = content,
+        reason = usableServerRefusalReasonForToast(content, result),
+        traceId = result.failureTraceIdOrNull(),
+        strings = strings,
+    )
 
     /** [toast] for a confirmation that needs no reading ("Copied"): 1.5s, not a notification's 5s. */
     fun briefToast(content: String) {
