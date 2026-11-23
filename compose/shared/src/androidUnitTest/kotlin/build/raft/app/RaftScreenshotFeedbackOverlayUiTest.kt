@@ -18,9 +18,24 @@ import androidx.compose.ui.test.performTextInput
 import build.raft.app.components.RaftDesignSystemTheme
 import build.raft.app.data.PlatformFile
 import build.raft.app.data.SettingsFeedbackType
+import build.raft.app.resources.Res
+import build.raft.app.resources.artifacts_column_title
+import build.raft.app.resources.drafts_row_task_untitled
+import build.raft.app.resources.file_preview_title
+import build.raft.app.resources.home_nav_search
+import build.raft.app.resources.saved_title
+import build.raft.app.resources.settings_account_title
+import build.raft.app.resources.settings_title
+import build.raft.app.resources.tab_activity
+import build.raft.app.resources.tab_home
+import build.raft.app.resources.tab_members
+import build.raft.app.resources.tab_settings
+import build.raft.app.resources.tab_tasks
+import build.raft.app.resources.thread_reply_title
 import build.raft.designsystem.components.RaftButton
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import org.junit.Rule
 import org.junit.runner.RunWith
@@ -219,5 +234,92 @@ class RaftScreenshotFeedbackOverlayUiTest {
         onNodeWithTag(RaftScreenshotFeedbackErrorTag).assertExists()
         onNodeWithText("Keep my typed note").assertExists()
         onNodeWithText("4bf92f35", substring = true).assertExists()
+    }
+
+    @Test
+    fun localizedPageLabelResourceMapsKnownPagesAndTabsAndFallsBackForUnknown() {
+        assertEquals(
+            Res.string.tab_home,
+            localizedScreenshotFeedbackPageLabelResource(
+                RaftScreenshotFeedbackPageContext(pageName = "compose_slock_app_shell", activeTab = "home")
+            ),
+        )
+        assertEquals(
+            Res.string.tab_activity,
+            localizedScreenshotFeedbackPageLabelResource(
+                RaftScreenshotFeedbackPageContext(pageName = "compose_slock_app_shell", activeTab = "activity")
+            ),
+        )
+        assertEquals(
+            Res.string.tab_tasks,
+            localizedScreenshotFeedbackPageLabelResource(
+                RaftScreenshotFeedbackPageContext(pageName = "compose_slock_app_shell", activeTab = "tasks")
+            ),
+        )
+        assertEquals(
+            Res.string.tab_members,
+            localizedScreenshotFeedbackPageLabelResource(
+                RaftScreenshotFeedbackPageContext(pageName = "compose_slock_app_shell", activeTab = "members")
+            ),
+        )
+        assertEquals(
+            Res.string.tab_settings,
+            localizedScreenshotFeedbackPageLabelResource(
+                RaftScreenshotFeedbackPageContext(pageName = "compose_slock_app_shell", activeTab = "settings")
+            ),
+        )
+        assertEquals(
+            Res.string.home_nav_search,
+            localizedScreenshotFeedbackPageLabelResource(
+                RaftScreenshotFeedbackPageContext(pageName = "compose_slock_app_shell", activeTab = "search")
+            ),
+        )
+        assertEquals(
+            Res.string.thread_reply_title,
+            localizedScreenshotFeedbackPageLabelResource(
+                RaftScreenshotFeedbackPageContext(pageName = "compose_thread")
+            ),
+        )
+        assertEquals(
+            Res.string.drafts_row_task_untitled,
+            localizedScreenshotFeedbackPageLabelResource(
+                RaftScreenshotFeedbackPageContext(pageName = "compose_task_detail")
+            ),
+        )
+        assertEquals(
+            Res.string.saved_title,
+            localizedScreenshotFeedbackPageLabelResource(
+                RaftScreenshotFeedbackPageContext(pageName = "compose_home_saved")
+            ),
+        )
+        assertEquals(
+            Res.string.settings_account_title,
+            localizedScreenshotFeedbackPageLabelResource(
+                RaftScreenshotFeedbackPageContext(pageName = "compose_settings_account")
+            ),
+        )
+        assertEquals(
+            Res.string.settings_title,
+            localizedScreenshotFeedbackPageLabelResource(
+                RaftScreenshotFeedbackPageContext(pageName = "compose_settings_future_panel")
+            ),
+        )
+        assertEquals(
+            Res.string.artifacts_column_title,
+            localizedScreenshotFeedbackPageLabelResource(
+                RaftScreenshotFeedbackPageContext(pageName = "compose_artifact_viewer")
+            ),
+        )
+        assertEquals(
+            Res.string.file_preview_title,
+            localizedScreenshotFeedbackPageLabelResource(
+                RaftScreenshotFeedbackPageContext(pageName = "compose_file_preview")
+            ),
+        )
+        assertNull(
+            localizedScreenshotFeedbackPageLabelResource(
+                RaftScreenshotFeedbackPageContext(pageName = "compose_unmapped_custom_screen")
+            )
+        )
     }
 }

@@ -28,7 +28,6 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -51,7 +50,7 @@ import build.raft.app.cmp.RaftCmpToasts
 import build.raft.app.cmp.host.LocalRaftHost
 import build.raft.app.cmp.host.LocalRaftPageArgs
 import build.raft.app.components.RaftDesignSystemTheme
-import build.raft.app.data.HostSettingsFeedbackDiagnosticsUploader
+import build.raft.app.data.BridgeSettingsPlatformCapabilities
 import build.raft.app.data.NetworkSettingsFeedbackSubmitRepository
 import build.raft.app.data.RaftSharedStoreRegistry
 import build.raft.app.data.RaftShellStoreScope
@@ -61,10 +60,20 @@ import build.raft.app.data.SettingsFeedbackType
 import build.raft.app.format.RaftFormat
 import build.raft.app.network.RaftAppIdentityRegistry
 import build.raft.app.resources.Res
+import build.raft.app.resources.artifacts_column_title
+import build.raft.app.resources.artifacts_dashboard_title
+import build.raft.app.resources.channel_details_channel_settings
 import build.raft.app.resources.common_cancel
 import build.raft.app.resources.common_close
 import build.raft.app.resources.common_dismiss
+import build.raft.app.resources.drafts_row_task_untitled
+import build.raft.app.resources.drafts_title
+import build.raft.app.resources.file_preview_title
+import build.raft.app.resources.home_nav_search
+import build.raft.app.resources.member_label_profile
+import build.raft.app.resources.members_page_title
 import build.raft.app.resources.raftCurrentUiLocaleTag
+import build.raft.app.resources.saved_title
 import build.raft.app.resources.screenshot_feedback_context_page
 import build.raft.app.resources.screenshot_feedback_diagnostics_preparing
 import build.raft.app.resources.screenshot_feedback_diagnostics_ready
@@ -78,21 +87,34 @@ import build.raft.app.resources.screenshot_feedback_sheet_title
 import build.raft.app.resources.screenshot_feedback_submit
 import build.raft.app.resources.screenshot_feedback_submitted_toast
 import build.raft.app.resources.screenshot_feedback_submitting
+import build.raft.app.resources.settings_account_title
+import build.raft.app.resources.settings_computers_title
+import build.raft.app.resources.settings_feedback_title
+import build.raft.app.resources.settings_release_notes_title
+import build.raft.app.resources.settings_storage_title
+import build.raft.app.resources.settings_title
 import build.raft.app.resources.stringResource
+import build.raft.app.resources.tab_activity
+import build.raft.app.resources.tab_apps
+import build.raft.app.resources.tab_computers
+import build.raft.app.resources.tab_home
+import build.raft.app.resources.tab_members
+import build.raft.app.resources.tab_settings
+import build.raft.app.resources.tab_tasks
+import build.raft.app.resources.thread_members_heading
+import build.raft.app.resources.thread_reply_title
 import build.raft.designsystem.components.RaftBanner
 import build.raft.designsystem.components.RaftBannerSize
 import build.raft.designsystem.components.RaftBannerStatus
 import build.raft.designsystem.components.RaftButton
 import build.raft.designsystem.components.RaftButtonSize
 import build.raft.designsystem.components.RaftButtonVariant
+import build.raft.designsystem.components.RaftCloseButton
+import build.raft.designsystem.components.RaftCloseButtonSize
 import build.raft.designsystem.components.RaftComposerAttachment
 import build.raft.designsystem.components.RaftComposerAttachmentImage
 import build.raft.designsystem.components.RaftComposerAttachmentRemove
 import build.raft.designsystem.components.RaftComposerAttachmentRemoveOverhang
-import build.raft.designsystem.components.RaftGlyph
-import build.raft.designsystem.components.RaftGlyphIcon
-import build.raft.designsystem.components.RaftIconButton
-import build.raft.designsystem.components.RaftIconButtonSize
 import build.raft.designsystem.components.RaftSegment
 import build.raft.designsystem.components.RaftSegmentedControl
 import build.raft.designsystem.components.RaftSheet
@@ -109,7 +131,8 @@ import build.raft.designsystem.theme.RaftTheme
 import build.raft.designsystem.tokens.RaftRadius
 import build.raft.designsystem.tokens.RaftSpacing
 import build.raft.designsystem.tokens.RaftStroke
-import kotlinx.coroutines.withContext
+import kotlinx.coroutines.Dispatchers
+import org.jetbrains.compose.resources.StringResource
 
 internal const val RaftScreenshotFeedbackPromptPillTag = "screenshot_feedback_prompt_pill"
 internal const val RaftScreenshotFeedbackPromptActionTag = "screenshot_feedback_prompt_action"
@@ -196,17 +219,14 @@ internal fun RaftScreenshotFeedbackRootOverlay() {
     val state by RaftScreenshotFeedbackRuntime.controller.state.collectAsState()
     if (state is RaftScreenshotFeedbackState.Idle) return
 
-    val uiScope = rememberCoroutineScope()
     val log: (String) -> Unit = remember { { line -> raftLogInfo("RaftScreenshotFeedback", line) } }
     val diagnosticsUploader: SettingsFeedbackDiagnosticsUploader =
         remember(host.capabilities) {
-            val hostUploader = HostSettingsFeedbackDiagnosticsUploader(host.capabilities, logger = log)
-            SettingsFeedbackDiagnosticsUploader { accountId ->
-                flushRaftPlatformLogs()
-                withContext(uiScope.coroutineContext) {
-                    hostUploader.upload(accountId)
-                }
-            }
+            BridgeSettingsPlatformCapabilities(
+                host = host.capabilities,
+                copiedMessage = "",
+                bridgeCallContext = Dispatchers.Main.immediate,
+            ).feedbackDiagnosticsUploader()
         }
 
     RaftDesignSystemTheme {
@@ -388,15 +408,12 @@ private fun RaftScreenshotFeedbackPromptPill(
                     overflow = TextOverflow.Ellipsis,
                 )
             }
-            RaftIconButton(
+            RaftCloseButton(
                 onClick = onDismiss,
-                tooltip = stringResource(Res.string.common_dismiss),
                 modifier = Modifier.testTag(RaftScreenshotFeedbackPromptDismissTag),
-                variant = RaftButtonVariant.Ghost,
-                size = RaftIconButtonSize.Sm,
-            ) {
-                RaftGlyphIcon(RaftGlyph.X, size = 16.dp)
-            }
+                label = stringResource(Res.string.common_dismiss),
+                size = RaftCloseButtonSize.Dialog,
+            )
         }
     }
 }
@@ -525,7 +542,7 @@ private fun RaftScreenshotFeedbackSheet(
                         text =
                             stringResource(
                                 Res.string.screenshot_feedback_context_page,
-                                state.pageContext.displayPageLabel(),
+                                localizedScreenshotFeedbackPageLabel(state.pageContext),
                             ),
                         style = RaftTheme.typography.footnote.copy(fontWeight = FontWeight.Medium),
                         color = colors.foreground,
@@ -638,3 +655,56 @@ private fun ScreenshotFeedbackTypeIcon(name: RaftLucideIconName) {
     val ink = LocalRaftContentColor.current.takeIf { it.isSpecified } ?: RaftTheme.colors.foreground
     RaftLucideIcon(name, modifier = Modifier.size(16.dp), color = raftArgbHex(ink))
 }
+
+internal fun localizedScreenshotFeedbackPageLabelResource(
+    context: RaftScreenshotFeedbackPageContext,
+): StringResource? {
+    val normalizedPage = context.pageName.trim()
+    val normalizedTab = context.activeTab?.trim()?.takeIf { it.isNotEmpty() }
+    if ((normalizedPage == APP_SHELL_ROUTE_NAME || normalizedPage == "compose_app_shell_child_tab") && normalizedTab != null) {
+        return when (normalizedTab.lowercase()) {
+            "home", "chat" -> Res.string.tab_home
+            "activity", "inbox" -> Res.string.tab_activity
+            "tasks" -> Res.string.tab_tasks
+            "members" -> Res.string.tab_members
+            "more", "settings" -> Res.string.tab_settings
+            "computers" -> Res.string.tab_computers
+            "apps" -> Res.string.tab_apps
+            "search" -> Res.string.home_nav_search
+            "artifacts" -> Res.string.artifacts_dashboard_title
+            else -> null
+        }
+    }
+    return when (normalizedPage) {
+        APP_SHELL_ROUTE_NAME, "compose_home", "compose_app_shell_server_page" -> Res.string.tab_home
+        "compose_home_activity" -> Res.string.tab_activity
+        "compose_home_saved" -> Res.string.saved_title
+        "compose_home_drafts" -> Res.string.drafts_title
+        "compose_home_search", "compose_search" -> Res.string.home_nav_search
+        "compose_thread", "compose_thread_forward_bundle_page" -> Res.string.thread_reply_title
+        "compose_thread_members" -> Res.string.thread_members_heading
+        "compose_channel_settings", "compose_thread_settings" -> Res.string.channel_details_channel_settings
+        "compose_tasks", "compose_task_pending" -> Res.string.tab_tasks
+        "compose_task_detail" -> Res.string.drafts_row_task_untitled
+        "compose_members" -> Res.string.members_page_title
+        "compose_member_detail" -> Res.string.member_label_profile
+        "compose_settings_home", "compose_settings_native_detail", "compose_settings_webview", "compose_settings_labs" ->
+            Res.string.settings_title
+        "compose_settings_account" -> Res.string.settings_account_title
+        "compose_settings_storage" -> Res.string.settings_storage_title
+        "compose_settings_computers" -> Res.string.settings_computers_title
+        "compose_settings_hands_feedback", "compose_settings_feedback_tickets" -> Res.string.settings_feedback_title
+        "compose_release_notes" -> Res.string.settings_release_notes_title
+        "compose_artifacts_home" -> Res.string.artifacts_dashboard_title
+        "compose_artifact_viewer" -> Res.string.artifacts_column_title
+        "compose_file_preview" -> Res.string.file_preview_title
+        else -> if (normalizedPage.startsWith("compose_settings_")) Res.string.settings_title else null
+    }
+}
+
+@Composable
+private fun localizedScreenshotFeedbackPageLabel(
+    context: RaftScreenshotFeedbackPageContext,
+): String =
+    localizedScreenshotFeedbackPageLabelResource(context)?.let { stringResource(it) }
+        ?: context.displayPageLabel()
