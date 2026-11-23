@@ -131,7 +131,8 @@ import androidx.compose.ui.graphics.Shape
  * Activity conversation list, the only Activity layout: the KMP port of the web
  * `ThreadsInbox` `layout="list"` branch (slock packages/web/src/components/thread/ThreadsInbox.tsx,
  * raft-ui InboxItem density="compact"). One row per conversation: a leading avatar or channel tile, the
- * name, a preview that always reserves two lines (artin: every row the same height), the time and the unread count, in the order the server lists them.
+ * name, a one-line preview as on the web (artin 2026-11-23, db45cd71: phones try one line in 1.29; they reserved two
+ * lines before, #3653), the time and the unread count, in the order the server lists them.
  *
  * This file is presentation only. Opening, Done, read/unread and the press-and-hold menu stay the
  * Activity list's own intents (SharedActivityList); this layout never changes how Done is applied. The
@@ -905,8 +906,8 @@ private val ConversationSenderAvatar = 19.dp
  * `RaftInboxItem density="compact"`, a list cell; raft-design patterns/lists.md and
  * components/inbox-item.md): the state drawn on one rounded shape inset [shapeInset] from both sides
  * of the column, the content [contentPadX] inside that shape, [padY] above and below it, rows
- * [rowGap] apart and no line between them. A phone keeps its two reserved excerpt lines (artin
- * #3653; artin 2026-11-20: the compact spacing, the two-line preview kept); the wide layout shows one.
+ * [rowGap] apart and no line between them. Every width shows one excerpt line, as the web does (artin
+ * 2026-11-23, db45cd71: phones try one line in 1.29; they reserved two lines before, #3653 and 2026-11-20).
  */
 @Immutable
 internal data class ActivityRowLayout(
@@ -936,7 +937,7 @@ internal data class ActivityRowLayout(
 
     companion object {
         /**
-         * The phone's row: the web's compact list cell with two excerpt lines. The shape 8dp in, the
+         * The phone's row: the web's compact list cell with one excerpt line. The shape 8dp in, the
          * content 12dp inside it (20dp from the screen's edge); by touch 8dp above and below and at
          * least 56dp tall (`pointer-coarse:min-h-14 pointer-coarse:py-2`); under a mouse or trackpad in
          * a narrow window 12dp above and below with no minimum (`py-3`, `md:pointer-fine` only from
@@ -948,7 +949,7 @@ internal data class ActivityRowLayout(
                 contentPadX = 12.dp,
                 padY = if (pointerInput == RaftPointerInput.Fine) 12.dp else 8.dp,
                 minHeight = if (pointerInput == RaftPointerInput.Fine) 0.dp else 56.dp,
-                previewLines = ActivityConversationPreviewMaxLines,
+                previewLines = 1,
                 dividers = false,
                 rowGap = 2.dp,
                 listTop = 8.dp,
@@ -1270,8 +1271,8 @@ internal fun ActivityConversationListRow(
                                 )
                             }.orEmpty()
                         }
-                    // Line 2+: the excerpt (up to two lines). The marks sit beside its first line only;
-                    // the second line runs the full width, so the marks never narrow the whole excerpt.
+                    // Line 2: the excerpt, [ActivityRowLayout.previewLines] lines (one), the marks beside
+                    // its first line only, so they never narrow a longer excerpt (Drafts uses two).
                     val senderText =
                         when (val sender = model.sender) {
                             ActivityConversationSender.System -> systemLabel
@@ -1399,7 +1400,11 @@ internal fun activityRowDoneLabel(item: InboxItem, model: ActivityConversationRo
     }
 }
 
-/** The body wraps to a second line before it ellipsizes; a one-line body still reserves both lines. */
+/**
+ * [ActivityExcerptBesideMarks]' default, which the Drafts panel's excerpt uses: it wraps to a second line before it
+ * ellipsizes, and a one-line body still reserves both lines. Activity rows pass their layout's one line
+ * ([ActivityRowLayout.previewLines]).
+ */
 internal const val ActivityConversationPreviewMaxLines = 2
 
 internal const val ActivityConversationSenderAvatarInlineId = "activity-conversation-sender-avatar"

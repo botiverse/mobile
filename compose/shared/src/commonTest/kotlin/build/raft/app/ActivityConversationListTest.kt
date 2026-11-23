@@ -27,6 +27,8 @@ import build.raft.app.model.ServerId
 import build.raft.app.model.ServerSummary
 import build.raft.app.model.TaskStatus
 import build.raft.app.model.ThreadId
+import build.raft.designsystem.theme.RaftPointerInput
+import build.raft.designsystem.theme.RaftScale
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -450,8 +452,17 @@ class ActivityConversationListTest {
                     .filter { it.item == ActivityConversationSenderAvatarInlineId }
             assertEquals(case.faces, faces.size, "$case")
         }
-        // The body wraps to a second line before it ellipsizes.
-        assertEquals(2, ActivityConversationPreviewMaxLines)
+    }
+
+    @Test
+    fun activityRowsShowOneExcerptLineAtEveryWidthAsTheWeb() {
+        // artin 2026-11-23 (db45cd71): a phone's Activity row shows one excerpt line, as the web's compact
+        // inbox row and the app's wide layout already do; the row then takes the web's 56dp by touch.
+        for (scale in listOf(RaftScale.Compact, RaftScale.Wide)) {
+            for (input in RaftPointerInput.entries) {
+                assertEquals(1, ActivityRowLayout.of(scale, input).previewLines, "$scale $input")
+            }
+        }
     }
 
     private fun homeSnapshot(serverId: String = "server-1"): HomeSnapshot =
