@@ -13,21 +13,26 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
 /**
- * The Artifacts home page's list (web `ArtifactsDashboard.tsx` `useAllArtifacts`, `allReducer`, and
- * `DashboardList`'s filter state; slock staging aae2b7a89).
+ * The Artifacts home page's list (web `ArtifactsDashboard.tsx` `useAllArtifacts`, `allReducer`,
+ * `artifactDashboardFilters.ts`, and `useArtifactHomeGroups.ts`; botiverse/slock staging `87ab82603`
+ * — `#15654`, `#16137`, `#16153`, `#16182`, `#16290`).
  *
- * - The list is read when the page has a server with workspace_artifacts_v0 on, and again for a
- *   new server, filter, settled search (typing waits [SEARCH_DEBOUNCE_MILLIS]), the toggle or a sort.
- *   The same filter in another sort keeps the rows on screen while it reads; a new filter shows the
- *   skeleton. An answer to an older read is dropped ([generation]).
+ * - Reads when the page has a server with `workspace_artifacts_v0` on, and again for a new server,
+ *   filter, settled search (typing waits [SEARCH_DEBOUNCE_MILLIS]; clearing search is immediate),
+ *   the toggle or a sort. Same filter in another sort keeps rows on screen; new filter shows the
+ *   skeleton. Older answers are dropped ([generation]).
+ * - All 5 filters (conversation/place, author + cached actor, settled status, search, relevant)
+ *   persist per `(readerId, serverId)` via [filterRepository], and server settled support persists
+ *   via [settledSeenRepository] so 0-result reloads keep the Author label/avatar and Status chip.
+ * - "Clear all" resets all 5 filters atomically and cancels any pending search debounce so no
+ *   spurious `q` request fires.
  * - A sort that fails goes back to the last answered one, with [ArtifactsHomeEvent.SortFailed].
- * - Load More continues the query the rows on screen were read for, and is dropped when a read
- *   replaced them meanwhile; it de-duplicates by id (keyset paging can list one twice).
+ * - Load More continues the query the rows on screen were read for and de-duplicates by id.
+ * - Own Settle / Unsettle (`SetSettled`) is single-flight per Artifact, patches the row at once,
+ *   and re-reads the first page silently unless Load More has extended the list.
  * - New activity on this server's Artifacts reads the first page again, rows kept, unless the
- *   viewer is open or Load More has extended the list (web `useArtifactActivityChanged`): one
- *   read at a time, at most one more queued. Closing the viewer always reads again.
+ *   viewer is open or Load More has extended the list. Closing the viewer always reads again.
  * - 403 ARTIFACTS_NOT_ENABLED: [ArtifactsHomeStatus.Off].
- * - Filters are this page's state: another server starts with none.
  */
 internal class SharedArtifactsHomeStore(
     private val api: ArtifactsHomeSource,
@@ -36,6 +41,8 @@ internal class SharedArtifactsHomeStore(
     /** The sort the reader chose, to keep on the device (web `artifactDashboardPrefs`). */
     private val onSortChosen: (ArtifactsHomeSort) -> Unit = {},
     private val logger: ((String) -> Unit)? = null,
+    private val filterRepository: ArtifactsHomeFilterRepository? = null,
+    private val settledSeenRepository: ArtifactsHomeSettledSeenRepository? = null,
 ) {
     private val mutableState = MutableStateFlow(ArtifactsHomeState(query = ArtifactsHomeQuery(sort = initialSort)))
     val state: StateFlow<ArtifactsHomeState> = mutableState.asStateFlow()
@@ -47,6 +54,7 @@ internal class SharedArtifactsHomeStore(
     private var readJob: Job? = null
     private var pageJob: Job? = null
     private var searchJob: Job? = null
+    private var legacyAuthorJob: Job? = null
 
     /** What the rows on screen were read with: their cursor continues only that. */
     private var shownQuery: ArtifactsHomeQuery? = null
@@ -61,31 +69,48 @@ internal class SharedArtifactsHomeStore(
     private var activityRead: ActivityRead = ActivityRead.Idle
 
     private val choiceJobs = mutableMapOf<ArtifactsHomeChoiceKind, Job>()
+    private val settleJobs = mutableMapOf<String, Job>()
 
     fun dispatch(intent: ArtifactsHomeIntent) {
         when (intent) {
-            is ArtifactsHomeIntent.Start -> start(intent.serverId)
+            is ArtifactsHomeIntent.Start -> start(intent.serverId, intent.readerId)
             is ArtifactsHomeIntent.Search -> search(intent.text)
-            is ArtifactsHomeIntent.SetPlace -> applyQuery { it.copy(place = intent.place) }
-            is ArtifactsHomeIntent.SetAuthor -> {
-                mutableState.value = mutableState.value.copy(authorActor = intent.author)
-                applyQuery { it.copy(author = intent.author?.filterValue) }
+            is ArtifactsHomeIntent.SetPlace -> {
+                applyQuery { it.copy(place = intent.place) }
+                persistCurrentFilters()
             }
-            is ArtifactsHomeIntent.SetRelevant -> applyQuery { it.copy(relevant = intent.relevant) }
+            is ArtifactsHomeIntent.SetAuthor -> {
+                legacyAuthorJob?.cancel()
+                val actor = intent.author
+                val authorValue = normalizeArtifactsHomeAuthorFilter(actor?.filterValue)
+                val updatedKnown =
+                    if (actor != null && authorValue != null) {
+                        mutableState.value.knownAuthors + (authorValue to actor)
+                    } else {
+                        mutableState.value.knownAuthors
+                    }
+                mutableState.value = mutableState.value.copy(authorActor = actor, knownAuthors = updatedKnown)
+                applyQuery { it.copy(author = authorValue) }
+                persistCurrentFilters()
+            }
+            is ArtifactsHomeIntent.SetStatus -> {
+                if (intent.status == mutableState.value.statusFilter) return
+                mutableState.value = mutableState.value.copy(statusFilter = intent.status)
+                persistCurrentFilters()
+            }
+            is ArtifactsHomeIntent.SetRelevant -> {
+                applyQuery { it.copy(relevant = intent.relevant) }
+                persistCurrentFilters()
+            }
             is ArtifactsHomeIntent.SetSort -> {
                 if (intent.sort == mutableState.value.query.sort) return
                 onSortChosen(intent.sort)
                 applyQuery { it.copy(sort = intent.sort) }
             }
-            ArtifactsHomeIntent.ClearSearchAndFilters -> {
-                searchJob?.cancel()
-                mutableState.value = mutableState.value.copy(search = "", authorActor = null)
-                applyQuery { it.copy(q = "", place = null, author = null) }
-            }
-            ArtifactsHomeIntent.ClearFilters -> {
-                mutableState.value = mutableState.value.copy(authorActor = null)
-                applyQuery { it.copy(place = null, author = null, relevant = false) }
-            }
+            ArtifactsHomeIntent.ClearSearchAndFilters,
+            ArtifactsHomeIntent.ClearFilters,
+            -> clearAllFilters()
+            is ArtifactsHomeIntent.SetSettled -> setSettled(intent.artifactId, intent.settled)
             ArtifactsHomeIntent.Retry -> read(keepRows = mutableState.value.rows != null)
             ArtifactsHomeIntent.LoadMore -> loadMore()
             is ArtifactsHomeIntent.ActivityChanged -> onActivity(intent.serverId)
@@ -112,15 +137,19 @@ internal class SharedArtifactsHomeStore(
         readJob?.cancel()
         pageJob?.cancel()
         searchJob?.cancel()
+        legacyAuthorJob?.cancel()
         choiceJobs.values.forEach { it.cancel() }
         choiceJobs.clear()
+        settleJobs.values.forEach { it.cancel() }
+        settleJobs.clear()
     }
 
-    private fun start(serverId: String?) {
+    private fun start(serverId: String?, readerId: String?) {
         val current = mutableState.value
-        if (serverId == current.serverId && current.status != ArtifactsHomeStatus.Idle) return
-        if (serverId != current.serverId) {
-            // Both filters name someone or somewhere in one server: another's list starts with neither.
+        val cleanReader = readerId?.trim()?.takeIf { it.isNotEmpty() }
+        val scopeChanged = serverId != current.serverId || cleanReader != current.readerId
+        if (!scopeChanged && current.status != ArtifactsHomeStatus.Idle) return
+        if (scopeChanged) {
             // An answer still on its way is the old server's: it must never land under the new one
             // (review H2), even while the new one's flag is still unknown (Start(null)).
             generation++
@@ -129,31 +158,132 @@ internal class SharedArtifactsHomeStore(
             activityRead = ActivityRead.Idle
             answeredSort = current.query.sort
             searchJob?.cancel()
+            legacyAuthorJob?.cancel()
             choiceJobs.values.forEach { it.cancel() }
             choiceJobs.clear()
+            settleJobs.values.forEach { it.cancel() }
+            settleJobs.clear()
+            val persisted =
+                if (serverId != null) {
+                    filterRepository?.read(cleanReader, serverId) ?: ArtifactsHomeFilters.Default
+                } else {
+                    ArtifactsHomeFilters.Default
+                }
+            val rememberedSettled =
+                if (serverId != null) {
+                    settledSeenRepository?.read(cleanReader, serverId) ?: false
+                } else {
+                    false
+                }
+            val restoredQuery =
+                ArtifactsHomeQuery(
+                    place = persisted.place,
+                    author = persisted.author,
+                    q = persisted.search.trim(),
+                    sort = current.query.sort,
+                    relevant = persisted.relevant,
+                )
             mutableState.value =
                 ArtifactsHomeState(
                     serverId = serverId,
-                    query = ArtifactsHomeQuery(sort = current.query.sort),
+                    readerId = cleanReader,
+                    query = restoredQuery,
+                    search = persisted.search,
+                    authorActor = persisted.authorActor,
+                    statusFilter = persisted.status,
+                    settledEnabled = rememberedSettled,
                 )
             shownQuery = null
             readFor = null
+            if (serverId != null) {
+                maybeResolveLegacyAuthor(serverId, persisted.author, persisted.authorActor)
+            }
         }
         if (serverId == null) return
         read(keepRows = false, keepCounts = false)
     }
 
+    /**
+     * Fallback for legacy persisted filter entries that stored `author` without `authorActor`
+     * (web `ArtifactAuthorFilter.tsx:83-100`, slock #16182): resolves the trigger's label/avatar
+     * once on empty reload.
+     */
+    private fun maybeResolveLegacyAuthor(serverId: String, author: String?, persistedActor: ArtifactsHomeActor?) {
+        if (author == null || author == "me" || author == "my-agents" || persistedActor != null) return
+        legacyAuthorJob?.cancel()
+        legacyAuthorJob =
+            scope.launch {
+                val load = api.authors(serverId, "")
+                if (load !is ArtifactsHomeLoad.Ok) return@launch
+                val latest = mutableState.value
+                if (latest.serverId != serverId) return@launch
+                val match = load.value.firstOrNull { it.filterValue?.lowercase() == author } ?: return@launch
+                val key = match.filterValue?.lowercase() ?: return@launch
+                // Never downgrade fresher live metadata already in knownAuthors.
+                if (key !in latest.knownAuthors) {
+                    mutableState.value = latest.copy(knownAuthors = latest.knownAuthors + (key to match))
+                }
+            }
+    }
+
+    private fun clearAllFilters() {
+        searchJob?.cancel()
+        legacyAuthorJob?.cancel()
+        val current = mutableState.value
+        val nextQuery = current.query.copy(q = "", place = null, author = null, relevant = false)
+        val stateChanged =
+            current.search.isNotEmpty() ||
+                current.authorActor != null ||
+                current.statusFilter != ArtifactsHomeStatusFilter.Default ||
+                nextQuery != current.query
+        mutableState.value =
+            current.copy(
+                search = "",
+                authorActor = null,
+                statusFilter = ArtifactsHomeStatusFilter.Default,
+                query = nextQuery,
+            )
+        persistCurrentFilters()
+        if (!stateChanged || nextQuery == current.query) return
+        if (current.serverId == null || current.status == ArtifactsHomeStatus.Off) return
+        read(keepRows = readFor == filterKey(current.serverId, nextQuery), sortOnly = false)
+    }
+
     private fun search(text: String) {
-        val clipped = text.take(ARTIFACTS_HOME_SEARCH_MAX_CHARS)
+        val clipped = clampArtifactsHomeSearch(text)
         mutableState.value = mutableState.value.copy(search = clipped)
+        persistCurrentFilters()
         searchJob?.cancel()
         val settled = clipped.trim()
         if (settled == mutableState.value.query.q) return
+        if (settled.isEmpty()) {
+            applyQuery { it.copy(q = "") }
+            return
+        }
         searchJob =
             scope.launch {
                 delay(SEARCH_DEBOUNCE_MILLIS)
                 applyQuery { it.copy(q = settled) }
             }
+    }
+
+    private fun persistCurrentFilters() {
+        val repo = filterRepository ?: return
+        val current = mutableState.value
+        val serverId = current.serverId ?: return
+        repo.write(
+            readerId = current.readerId,
+            serverId = serverId,
+            filters =
+                ArtifactsHomeFilters(
+                    place = current.query.place,
+                    author = current.query.author,
+                    authorActor = current.resolvedAuthorActor ?: current.authorActor,
+                    status = current.statusFilter,
+                    search = current.search,
+                    relevant = current.query.relevant,
+                ),
+        )
     }
 
     private fun applyQuery(change: (ArtifactsHomeQuery) -> ArtifactsHomeQuery) {
@@ -200,6 +330,12 @@ internal class SharedArtifactsHomeStore(
                         shownGeneration = readGeneration
                         answeredSort = query.sort
                         val page = load.value
+                        val rowsLoaded = page.rows.isNotEmpty()
+                        val rowHasSettled = rowsLoaded && page.rows.any { it.summary.settledShown }
+                        val nextSettledEnabled =
+                            settledSeenRepository?.observe(latest.readerId, serverId, rowHasSettled, rowsLoaded)
+                                ?: if (rowsLoaded) rowHasSettled else latest.settledEnabled
+                        val mergedKnown = mergeKnownAuthors(latest.knownAuthors, page.rows.map { it.author })
                         mutableState.value =
                             latest.copy(
                                 status = ArtifactsHomeStatus.Ok,
@@ -208,6 +344,8 @@ internal class SharedArtifactsHomeStore(
                                 counts = page.counts ?: latest.counts,
                                 countsNarrowed = if (page.counts != null) query.narrowed else latest.countsNarrowed,
                                 rowsByOpened = !query.relevant && query.sort == ArtifactsHomeSort.Opened,
+                                settledEnabled = nextSettledEnabled,
+                                knownAuthors = mergedKnown,
                                 extended = false,
                                 error = null,
                             )
@@ -232,6 +370,46 @@ internal class SharedArtifactsHomeStore(
         return job
     }
 
+    private fun setSettled(artifactId: String, settled: Boolean) {
+        val current = mutableState.value
+        val serverId = current.serverId ?: return
+        if (current.status == ArtifactsHomeStatus.Off || artifactId in current.settlingIds) return
+        mutableState.value = current.copy(settlingIds = current.settlingIds + artifactId)
+        val job =
+            scope.launch {
+                val load = api.setSettled(serverId, artifactId, settled)
+                val latest = mutableState.value
+                if (latest.serverId != serverId) return@launch
+                val remaining = latest.settlingIds - artifactId
+                when (load) {
+                    is ArtifactsHomeLoad.Ok -> {
+                        val updatedRows =
+                            latest.rows?.map { row ->
+                                if (row.summary.id == artifactId) {
+                                    row.copy(summary = row.summary.copy(settled = load.value.settled, settledShown = true))
+                                } else {
+                                    row
+                                }
+                            }
+                        mutableState.value = latest.copy(rows = updatedRows, settlingIds = remaining)
+                        if (!latest.extended) read(keepRows = true)
+                    }
+                    else -> {
+                        val error = load.errorOrNull()
+                        mutableState.value = latest.copy(settlingIds = remaining)
+                        mutableEvents.tryEmit(
+                            ArtifactsHomeEvent.SettleFailed(
+                                forbidden = error?.serverCode == "FORBIDDEN",
+                                error = error,
+                            ),
+                        )
+                    }
+                }
+            }
+        settleJobs[artifactId] = job
+        job.invokeOnCompletion { settleJobs.remove(artifactId, job) }
+    }
+
     private fun loadMore() {
         val current = mutableState.value
         val serverId = current.serverId ?: return
@@ -254,11 +432,14 @@ internal class SharedArtifactsHomeStore(
                     return@launch
                 }
                 val seen = latest.rows.mapTo(HashSet()) { it.summary.id }
+                val mergedRows = (latest.rows + load.value.rows.filter { it.summary.id !in seen }).distinctBy { it.summary.id }
+                val mergedKnown = mergeKnownAuthors(latest.knownAuthors, load.value.rows.map { it.author })
                 mutableState.value =
                     latest.copy(
                         // Keyset paging may list one twice, even within a page (review L2).
-                        rows = (latest.rows + load.value.rows.filter { it.summary.id !in seen }).distinctBy { it.summary.id },
+                        rows = mergedRows,
                         nextCursor = load.value.nextCursor,
+                        knownAuthors = mergedKnown,
                         paging = false,
                         extended = true,
                     )
@@ -319,6 +500,10 @@ internal class SharedArtifactsHomeStore(
                 when (kind) {
                     ArtifactsHomeChoiceKind.Author -> {
                         val load = api.authors(serverId, q)
+                        if (load is ArtifactsHomeLoad.Ok && mutableState.value.serverId == serverId) {
+                            mutableState.value =
+                                mutableState.value.copy(knownAuthors = mergeKnownAuthors(mutableState.value.knownAuthors, load.value))
+                        }
                         landChoices(kind, q, load) { choices, rows -> choices.copy(authors = rows, baseAuthors = if (q.isEmpty()) rows else choices.baseAuthors) }
                     }
                     ArtifactsHomeChoiceKind.Conversation -> {
@@ -372,6 +557,19 @@ internal class SharedArtifactsHomeStore(
     }
 }
 
+private fun mergeKnownAuthors(
+    existing: Map<String, ArtifactsHomeActor>,
+    incoming: List<ArtifactsHomeActor>,
+): Map<String, ArtifactsHomeActor> {
+    if (incoming.isEmpty()) return existing
+    val next = LinkedHashMap(existing)
+    for (actor in incoming) {
+        val key = actor.filterValue?.lowercase() ?: continue
+        next[key] = actor
+    }
+    return next
+}
+
 private fun ArtifactsHomeLoad<*>.errorOrNull(): ScreenError? =
     when (this) {
         is ArtifactsHomeLoad.Failed -> error
@@ -403,13 +601,22 @@ internal data class ArtifactsHomeChoices(
 
 internal data class ArtifactsHomeState(
     val serverId: String? = null,
+    val readerId: String? = null,
     val status: ArtifactsHomeStatus = ArtifactsHomeStatus.Idle,
     /** The settled query the list is read for. */
     val query: ArtifactsHomeQuery = ArtifactsHomeQuery(),
     /** What the search field holds now (the query's `q` follows it after a pause). */
     val search: String = "",
-    /** The chosen author, kept whole so the chip names them when the list has moved on. */
+    /** The chosen author, persisted so empty reloads keep rendering their name/avatar. */
     val authorActor: ArtifactsHomeActor? = null,
+    /** Live author metadata from loaded rows, choices, or legacy fallback; wins over older persisted [authorActor]. */
+    val knownAuthors: Map<String, ArtifactsHomeActor> = emptyMap(),
+    /** Client-side settled status filter (default: Unsettled). */
+    val statusFilter: ArtifactsHomeStatusFilter = ArtifactsHomeStatusFilter.Default,
+    /** Whether settled support is active for this server (observed from rows or remembered across empty reloads). */
+    val settledEnabled: Boolean = false,
+    /** Artifact ids whose Settle / Unsettle write is currently in flight. */
+    val settlingIds: Set<String> = emptySet(),
     /** The rows on screen; null before the first page (the skeleton). */
     val rows: List<ArtifactsHomeRow>? = null,
     val nextCursor: String? = null,
@@ -429,6 +636,22 @@ internal data class ArtifactsHomeState(
 ) {
     /** The list is reading itself again over rows already shown. */
     val refreshing: Boolean get() = status == ArtifactsHomeStatus.Loading && rows != null
+
+    /** Live author metadata for [query.author], falling back to persisted [authorActor]. */
+    val resolvedAuthorActor: ArtifactsHomeActor?
+        get() {
+            val author = query.author?.lowercase() ?: return null
+            return knownAuthors[author] ?: authorActor?.takeIf { it.filterValue?.lowercase() == author }
+        }
+
+    /** True when the Status picker is active and off its default (`Unsettled`). */
+    val statusActive: Boolean get() = settledEnabled && statusFilter != ArtifactsHomeStatusFilter.Default
+
+    /** Any non-search filter (Conversation, Author, Relevant, or non-default Status). */
+    val hasNonSearchFilter: Boolean get() = query.place != null || query.author != null || query.relevant || statusActive
+
+    /** Any of the 5 filters (including live search text) is non-default: reveals toolbar Clear all. */
+    val hasToolbarFilter: Boolean get() = hasNonSearchFilter || search.trim().isNotEmpty()
 
     /** The author choices to show: the server's answer, or (an older server) the authors on screen. */
     val shownAuthorChoices: List<ArtifactsHomeActor>
@@ -470,21 +693,23 @@ internal fun artifactsHomeAuthorsOnScreen(actors: List<ArtifactsHomeActor>): Lis
 internal const val ARTIFACTS_HOME_AUTHORS_LIMIT: Int = 50
 
 internal sealed interface ArtifactsHomeIntent {
-    /** The page's server with the flag on; null leaves the list unread. */
-    data class Start(val serverId: String?) : ArtifactsHomeIntent
+    /** The page's server (with the flag on) and signed-in reader; null server leaves the list unread. */
+    data class Start(val serverId: String?, val readerId: String? = null) : ArtifactsHomeIntent
 
     /** The one freshness signal (#198): re-read what the page shows, silently. */
     data class CatchUp(val serverId: String) : ArtifactsHomeIntent
     data class Search(val text: String) : ArtifactsHomeIntent
     data class SetPlace(val place: ArtifactsHomePlace?) : ArtifactsHomeIntent
     data class SetAuthor(val author: ArtifactsHomeActor?) : ArtifactsHomeIntent
+    data class SetStatus(val status: ArtifactsHomeStatusFilter) : ArtifactsHomeIntent
     data class SetRelevant(val relevant: Boolean) : ArtifactsHomeIntent
     data class SetSort(val sort: ArtifactsHomeSort) : ArtifactsHomeIntent
+    data class SetSettled(val artifactId: String, val settled: Boolean) : ArtifactsHomeIntent
 
-    /** The empty state's way out: the search, the conversation and the author. */
+    /** Empty state's clear: resets all 5 persisted filters atomically (web `clearFilters`). */
     data object ClearSearchAndFilters : ArtifactsHomeIntent
 
-    /** The toolbar's Clear all: the conversation, the author and the toggle. */
+    /** Toolbar Clear all: resets all 5 persisted filters (search, place, author, status, relevant) atomically. */
     data object ClearFilters : ArtifactsHomeIntent
     data object Retry : ArtifactsHomeIntent
     data object LoadMore : ArtifactsHomeIntent
@@ -503,4 +728,5 @@ internal sealed interface ArtifactsHomeIntent {
 internal sealed interface ArtifactsHomeEvent {
     data class SortFailed(val error: ScreenError) : ArtifactsHomeEvent
     data class MoreFailed(val error: ScreenError?) : ArtifactsHomeEvent
+    data class SettleFailed(val forbidden: Boolean, val error: ScreenError?) : ArtifactsHomeEvent
 }

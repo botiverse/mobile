@@ -1,14 +1,10 @@
 package build.raft.app
 
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.Alignment
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.layout.ContentScale
-import coil3.compose.LocalPlatformContext
-import coil3.compose.rememberAsyncImagePainter
-import coil3.request.ImageRequest
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -19,8 +15,14 @@ import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalWindowInfo
+import androidx.compose.ui.unit.dp
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -32,9 +34,11 @@ import build.raft.app.compat.pager.Page
 import build.raft.app.compat.pager.Pager
 import build.raft.app.data.ArtifactLinkTarget
 import build.raft.app.data.ArtifactsHomeEvent
+import build.raft.app.data.ArtifactsHomeFilterRepository
 import build.raft.app.data.ArtifactsHomeIntent
 import build.raft.app.data.ArtifactsHomePreferenceRepository
 import build.raft.app.data.ArtifactsHomeRow
+import build.raft.app.data.ArtifactsHomeSettledSeenRepository
 import build.raft.app.data.ArtifactsHomeSort
 import build.raft.app.data.ArtifactsHomeSource
 import build.raft.app.data.ArtifactsHomeState
@@ -52,6 +56,9 @@ import build.raft.app.data.runCatchingPreservingCancellation
 import build.raft.app.model.ActivityChanged
 import build.raft.app.model.ServerId
 import build.raft.app.resources.*
+import coil3.compose.LocalPlatformContext
+import coil3.compose.rememberAsyncImagePainter
+import coil3.request.ImageRequest
 import kotlinx.coroutines.flow.StateFlow
 
 /** The Artifacts home page (web route `/artifacts`, `ArtifactsDashboard`). */
@@ -87,8 +94,19 @@ internal class ArtifactsHomeViewModel(
     initialSort: ArtifactsHomeSort,
     onSortChosen: (ArtifactsHomeSort) -> Unit,
     logger: (String) -> Unit,
+    filterRepository: ArtifactsHomeFilterRepository,
+    settledSeenRepository: ArtifactsHomeSettledSeenRepository,
 ) : ViewModel() {
-    val store = SharedArtifactsHomeStore(source, viewModelScope, initialSort, onSortChosen, logger)
+    val store =
+        SharedArtifactsHomeStore(
+            api = source,
+            scope = viewModelScope,
+            initialSort = initialSort,
+            onSortChosen = onSortChosen,
+            logger = logger,
+            filterRepository = filterRepository,
+            settledSeenRepository = settledSeenRepository,
+        )
     val state: StateFlow<ArtifactsHomeState> get() = store.state
 
     override fun onCleared() {
@@ -97,14 +115,20 @@ internal class ArtifactsHomeViewModel(
     }
 }
 
-/** Who reads and where: the current server, its name, the signed-in person. */
-private data class ArtifactsHomeSession(val serverId: String?, val serverName: String?, val readerId: String?)
+/** Who reads and where: the current server, its name, the signed-in person, and whether readSession has landed. */
+private data class ArtifactsHomeSession(
+    val serverId: String?,
+    val serverName: String?,
+    val readerId: String?,
+    val resolved: Boolean,
+)
 
 /**
  * Wires [ArtifactsHomeScreen]: the store (`dashboardAll` through the shell's network client), the
  * server's workspace_artifacts_v0 (live: off once resolved off is the off state, web parity), the
- * device prefs (view, sort), `activity:changed` while the page shows, and the in-app viewer: a row
- * opens the latest version (web `version: null`), and coming back from it reads the list again.
+ * device prefs (view, sort), per-(account, server) persisted filters and settled-seen state,
+ * `activity:changed` while the page shows, and the in-app viewer: a row opens the latest version
+ * (web `version: null`), and coming back from it reads the list again.
  */
 @Composable
 internal fun ArtifactsHomeRoute(pageVisibleResumeTick: Int = 0, pageVisible: Boolean = true) {
@@ -125,13 +149,37 @@ internal fun ArtifactsHomeRoute(pageVisibleResumeTick: Int = 0, pageVisible: Boo
                 initialSort = prefs.sort,
                 onSortChosen = { sort -> prefsRepository.write(prefsRepository.read().copy(sort = sort)) },
                 logger = { bridge.log(it) },
+                filterRepository = sharedStores.artifactsHomeFilterRepository,
+                settledSeenRepository = sharedStores.artifactsHomeSettledSeenRepository,
             )
         }
     val state by viewModel.state.collectAsState()
-    val session by produceState(ArtifactsHomeSession(storeScope.initialServerId, null, null), authStore) {
+    val initialSession =
+        remember(sharedStores, storeScope) {
+            val committed = sharedStores.authStore.readCommittedSessionSnapshot()
+            val committedReader = sharedStores.currentAccountBindingOrNull()?.second ?: committed?.user?.id?.takeIf { it.isNotBlank() }
+            val committedServer = storeScope.initialServerId ?: committed?.currentServerId?.takeIf { it.isNotBlank() }
+            ArtifactsHomeSession(
+                serverId = committedServer,
+                serverName = committed?.currentServerSummary()?.name,
+                readerId = committedReader,
+                resolved = committedReader != null,
+            )
+        }
+    val session by produceState(initialSession, authStore) {
         suspend fun read() {
-            val read = runCatchingPreservingCancellation { authStore.readSession() }.getOrNull() ?: return
-            val next = ArtifactsHomeSession(read.currentServerId?.takeIf { it.isNotBlank() }, read.currentServerSummary()?.name, read.user.id.takeIf { it.isNotBlank() })
+            val read = runCatchingPreservingCancellation { authStore.readSession() }.getOrNull()
+            val next =
+                if (read == null) {
+                    value.copy(resolved = true)
+                } else {
+                    ArtifactsHomeSession(
+                        serverId = read.currentServerId?.takeIf { it.isNotBlank() },
+                        serverName = read.currentServerSummary()?.name,
+                        readerId = read.user.id.takeIf { it.isNotBlank() },
+                        resolved = true,
+                    )
+                }
             if (next != value) value = next
         }
         read()
@@ -145,8 +193,10 @@ internal fun ArtifactsHomeRoute(pageVisibleResumeTick: Int = 0, pageVisible: Boo
     val revision by flags.snapshotRevision.collectAsState()
     val flagEnabled = remember(serverId, revision) { serverId != null && flags.isEnabled(ServerId(serverId), WORKSPACE_ARTIFACTS_FEATURE_FLAG_KEY) }
     val flagPending = remember(serverId, revision) { serverId == null || flags.isDecisionPending(ServerId(serverId), WORKSPACE_ARTIFACTS_FEATURE_FLAG_KEY) }
-    LaunchedEffect(serverId, flagEnabled) {
-        viewModel.store.dispatch(ArtifactsHomeIntent.Start(serverId?.takeIf { flagEnabled }))
+    // Wait until readerId is resolved before starting, so persisted filters restore on frame 1 without flashing unfiltered rows.
+    LaunchedEffect(serverId, session.readerId, session.resolved, flagEnabled) {
+        if (!session.resolved) return@LaunchedEffect
+        viewModel.store.dispatch(ArtifactsHomeIntent.Start(serverId?.takeIf { flagEnabled }, session.readerId))
     }
     ArtifactsHomeActivityEffect(storeScope, serverId?.takeIf { flagEnabled && pageVisible }) { viewModel.store.dispatch(it) }
     // #198: pushes stop in the background and while the socket is down; catch up on return.
@@ -159,11 +209,18 @@ internal fun ArtifactsHomeRoute(pageVisibleResumeTick: Int = 0, pageVisible: Boo
     }
     val sortFailed = stringResource(Res.string.artifacts_dashboard_failed_title)
     val moreFailed = stringResource(Res.string.artifacts_dashboard_more_failed)
+    val settleFailed = stringResource(Res.string.artifacts_settled_failed)
+    val settleForbidden = stringResource(Res.string.artifacts_settled_forbidden)
+    val copiedMessage = stringResource(Res.string.common_copied)
     LaunchedEffect(viewModel) {
         viewModel.store.events.collect { event ->
             when (event) {
                 is ArtifactsHomeEvent.SortFailed -> bridge.errorToast(sortFailed, event.error)
                 is ArtifactsHomeEvent.MoreFailed -> event.error?.let { bridge.errorToast(moreFailed, it) } ?: bridge.toast(moreFailed)
+                is ArtifactsHomeEvent.SettleFailed -> {
+                    val message = if (event.forbidden) settleForbidden else settleFailed
+                    event.error?.let { bridge.errorToast(message, it) } ?: bridge.toast(message)
+                }
             }
         }
     }
@@ -195,42 +252,85 @@ internal fun ArtifactsHomeRoute(pageVisibleResumeTick: Int = 0, pageVisible: Boo
                 opener.open(target, RaftArtifactViewerHeader.of(row.summary, target), "artifacts_home")
             },
             onBack = { pager.acquireModule<RouterModule>(RouterModule.MODULE_NAME).closePage() },
-            cover = { row -> ArtifactsHomeTileCover(row) },
+            onCopyLink = { row ->
+                bridge.copyToPasteboard(artifactWebUrl(webBaseUrl, ArtifactLinkTarget(row.summary.id)))
+                bridge.toast(copiedMessage)
+            },
+            cover = { row, dimmed -> ArtifactsHomeTileCover(row, dimmed) },
+            thumbnail = { row, dimmed -> ArtifactsHomeRowThumbnail(row, dimmed) },
         )
     }
 }
 
-/** web `TileCover`: the publish check's screenshot, else a Markdown version's excerpt, else the kind's glyph. */
+/** web `ArtifactCoverPicture` `variant="tile"`: publish-check screenshot, else Markdown excerpt (`fit="frame"`), else kind glyph. */
 @Composable
-private fun ArtifactsHomeTileCover(row: ArtifactsHomeRow) {
+private fun ArtifactsHomeTileCover(row: ArtifactsHomeRow, dimmed: Boolean) {
     val summary = row.summary
     val excerpt = summary.excerpt
     when {
         summary.screenshot != null ->
             ArtifactsHomeTileCoverFrame {
-                // A screenshot still read, or one that can't be, is the empty box: no spinner, no error.
-                val view = rememberArtifactCardScreenshot(summary)
-                if (view is ArtifactCardScreenshotView.Shown) {
-                    val context = LocalPlatformContext.current
-                    val request =
-                        remember(view.cardId, view.fileId, view.bytes, context) {
-                            ImageRequest.Builder(context)
-                                .data(view.bytes)
-                                .memoryCacheKey("artifact-screenshot|${view.cardId}|${view.fileId}")
-                                .build()
-                        }
-                    // `object-cover object-top`: cut from the bottom.
-                    Image(
-                        painter = rememberAsyncImagePainter(request),
-                        contentDescription = null,
-                        modifier = Modifier.fillMaxSize(),
-                        contentScale = ContentScale.Crop,
-                        alignment = Alignment.TopCenter,
-                    )
+                ArtifactsHomeScreenshotImage(row, dimmed)
+            }
+        excerpt != null ->
+            ArtifactsHomeTileCoverFrame(Alignment.TopCenter) {
+                ArtifactCardExcerpt(excerpt, fitFrame = true)
+            }
+        else -> ArtifactsHomeTilePlaceholder(summary.kind)
+    }
+}
+
+/** web `ArtifactCoverPicture` `variant="thumbnail"`: 76dp 16:10 screenshot, scaled excerpt miniature, or kind glyph. */
+@Composable
+private fun ArtifactsHomeRowThumbnail(row: ArtifactsHomeRow, dimmed: Boolean) {
+    val summary = row.summary
+    val excerpt = summary.excerpt
+    when {
+        summary.screenshot != null ->
+            ArtifactsHomeRowThumbnailFrame {
+                ArtifactsHomeScreenshotImage(row, dimmed)
+            }
+        excerpt != null ->
+            ArtifactsHomeRowThumbnailFrame(Alignment.TopStart) {
+                // web `h-[123px] w-[196px] origin-top-left scale-[0.3878]` scaled into the 76x47.5dp thumbnail box.
+                Box(
+                    Modifier
+                        .requiredSize(width = 196.dp, height = 123.dp)
+                        .graphicsLayer {
+                            scaleX = 0.3878f
+                            scaleY = 0.3878f
+                            transformOrigin = TransformOrigin(0f, 0f)
+                        },
+                ) {
+                    ArtifactCardExcerpt(excerpt, fitFrame = true)
                 }
             }
-        excerpt != null -> ArtifactsHomeTileCoverFrame(Alignment.TopCenter) { ArtifactCardExcerpt(excerpt) }
-        else -> ArtifactsHomeTilePlaceholder(summary.kind)
+        else -> ArtifactsHomeRowThumbnailPlaceholder(summary.kind)
+    }
+}
+
+@Composable
+private fun ArtifactsHomeScreenshotImage(row: ArtifactsHomeRow, dimmed: Boolean) {
+    // A screenshot still read, or one that can't be, is the empty box: no spinner, no error.
+    val view = rememberArtifactCardScreenshot(row.summary)
+    if (view is ArtifactCardScreenshotView.Shown) {
+        val context = LocalPlatformContext.current
+        val request =
+            remember(view.cardId, view.fileId, view.bytes, context) {
+                ImageRequest.Builder(context)
+                    .data(view.bytes)
+                    .memoryCacheKey("artifact-screenshot|${view.cardId}|${view.fileId}")
+                    .build()
+            }
+        // `object-cover object-top`: cut from the bottom.
+        Image(
+            painter = rememberAsyncImagePainter(request),
+            contentDescription = null,
+            modifier = Modifier.fillMaxSize(),
+            contentScale = ContentScale.Crop,
+            alignment = Alignment.TopCenter,
+            colorFilter = if (dimmed) ArtifactsHomeGrayscaleFilter else null,
+        )
     }
 }
 

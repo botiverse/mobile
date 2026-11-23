@@ -1,29 +1,22 @@
 package build.raft.app
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.itemsIndexed
-import androidx.compose.foundation.lazy.staggeredgrid.LazyVerticalStaggeredGrid
-import androidx.compose.foundation.lazy.staggeredgrid.StaggeredGridCells
-import androidx.compose.foundation.lazy.staggeredgrid.StaggeredGridItemSpan
-import androidx.compose.foundation.lazy.staggeredgrid.itemsIndexed as staggeredItemsIndexed
-import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.GridItemSpan
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -31,19 +24,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.semantics.Role
-import androidx.compose.ui.semantics.clearAndSetSemantics
-import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.onClick
-import androidx.compose.ui.semantics.role
-import androidx.compose.ui.semantics.selected
-import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.semantics.toggleableState
-import androidx.compose.ui.state.ToggleableState
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -54,7 +36,6 @@ import build.raft.app.data.ArtifactKind
 import build.raft.app.data.ArtifactsHomeActor
 import build.raft.app.data.ArtifactsHomeChoiceKind
 import build.raft.app.data.ArtifactsHomeChoicesPhase
-import build.raft.app.data.ArtifactsHomeConversation
 import build.raft.app.data.ArtifactsHomeIntent
 import build.raft.app.data.ArtifactsHomeNews
 import build.raft.app.data.ArtifactsHomePlace
@@ -63,47 +44,45 @@ import build.raft.app.data.ArtifactsHomeScope
 import build.raft.app.data.ArtifactsHomeSort
 import build.raft.app.data.ArtifactsHomeState
 import build.raft.app.data.ArtifactsHomeStatus
+import build.raft.app.data.ArtifactsHomeStatusFilter
 import build.raft.app.data.ArtifactsHomeView
 import build.raft.app.data.ARTIFACTS_HOME_SEARCH_MAX_CHARS
+import build.raft.app.data.artifactDateTimestamp
+import build.raft.app.data.buildArtifactsHomeGroups
+import build.raft.app.data.isArtifactDimmed
 import build.raft.app.markdown.lucideIcon
 import build.raft.app.resources.*
-import build.raft.designsystem.components.RaftBadge
-import build.raft.designsystem.components.RaftBadgeVariant
 import build.raft.designsystem.components.RaftBanner
 import build.raft.designsystem.components.RaftBannerStatus
 import build.raft.designsystem.components.RaftButton
-import build.raft.designsystem.components.RaftButtonSize
 import build.raft.designsystem.components.RaftButtonVariant
 import build.raft.designsystem.components.RaftComboboxOption
 import build.raft.designsystem.components.RaftComboboxPicker
-import build.raft.designsystem.components.RaftDropdownMenu
 import build.raft.designsystem.components.RaftEmptyState
-import build.raft.designsystem.components.RaftIconTile
-import build.raft.designsystem.components.RaftIconTileSize
-import build.raft.designsystem.components.RaftMenuItem
-import build.raft.designsystem.components.RaftPickerTriggerButton
-import build.raft.designsystem.components.RaftSegment
-import build.raft.designsystem.components.RaftSegmentedControl
-import build.raft.designsystem.components.RaftSkeleton
-import build.raft.designsystem.components.RaftSkeletonVariant
-import build.raft.designsystem.components.RaftTextField
-import build.raft.designsystem.components.RaftTextFieldSize
-import build.raft.designsystem.components.RaftIconButton
-import build.raft.designsystem.components.raftClickable
+import build.raft.designsystem.components.RaftFitToolbar
+import build.raft.designsystem.components.RaftFitToolbarAction
+import build.raft.designsystem.components.RaftFitToolbarChoice
+import build.raft.designsystem.components.RaftFitToolbarOption
+import build.raft.designsystem.components.RaftFitToolbarSearch
+import build.raft.designsystem.components.RaftFitToolbarView
+import build.raft.designsystem.components.RaftFitToolbarViewOption
 import build.raft.designsystem.text.RaftText
+import build.raft.designsystem.theme.LocalRaftContentColor
 import build.raft.designsystem.theme.RaftTheme
-import build.raft.designsystem.tokens.RaftRadius
 import build.raft.designsystem.tokens.RaftStroke
 
 /**
- * The Artifacts home page (web `ArtifactsDashboard.tsx` + `ArtifactDashboardList.tsx`, slock staging
- * aae2b7a89): the head (title, "5 of 24 Artifacts"), the filter bar (title search, sort, then the
- * Conversation and Author filters, 和我有关 and Clear all), then every Artifact the reader can see in
- * the server as tiles (the default) or rows, Load more for the next page. The skeleton while the first
- * page loads, a warning with Try again when a read fails (rows stay under it), an empty state by
- * cause, and the off state when workspace_artifacts_v0 is off. A row opens the in-app viewer.
- *
- * Pure: state in, intents out ([ArtifactsHomeRoute] wires the store, the flag and the viewer).
+ * The Artifacts home page (web `ArtifactsDashboard.tsx` + `ArtifactDashboardList.tsx` +
+ * `ArtifactDashboardToolbar.tsx`; botiverse/slock staging `87ab82603` — `#15654`, `#16137`,
+ * `#16153`, `#16182`, `#16290`):
+ * - Two-row header (`PanelHeader` with title & count line) over `RaftFitToolbar` (search,
+ *   Conversation, Author, Status when settled is enabled, Relevant to me, Clear all, Sort, and
+ *   Grid/List view switch — one row on wide, 2-row wrapping filter strip on phone).
+ * - Inline quiet settled strip, collapsible "For you" section, adaptive date groups (week with
+ *   >= 8 adaptive day split in grid; calendar day in list), flat mode while searching.
+ * - Compact 16:10 grid tiles (`minmax(196dp, 1fr)` on wide, 2 columns on phone) and 2-column wide /
+ *   1-column phone thumbnail list rows built on [RaftListRow].
+ * - Pure: state in, intents out ([ArtifactsHomeRoute] wires the store, flags, persistence and viewer).
  */
 @Composable
 internal fun ArtifactsHomeScreen(
@@ -111,40 +90,45 @@ internal fun ArtifactsHomeScreen(
     view: ArtifactsHomeView,
     readerId: String?,
     serverName: String?,
-    /** The shell's wide layout: masonry tiles in auto-fill columns of at least 248dp (web `minmax(248px,1fr)`). */
+    /** Wide/tablet/desktop layout: 196dp adaptive tile grid and 2-column thumbnail list. */
     wide: Boolean,
     onIntent: (ArtifactsHomeIntent) -> Unit,
     onView: (ArtifactsHomeView) -> Unit,
     onOpen: (ArtifactsHomeRow) -> Unit,
     onBack: () -> Unit,
-    /** The tile's cover: the card's screenshot where one is read (none in tests). */
-    cover: @Composable (ArtifactsHomeRow) -> Unit = { ArtifactsHomeTilePlaceholder(it.summary.kind) },
+    onCopyLink: ((ArtifactsHomeRow) -> Unit)? = null,
+    /** The tile's cover: screenshot, excerpt, or placeholder (dimmed flag for grayscale). */
+    cover: @Composable (ArtifactsHomeRow, Boolean) -> Unit = { row, _ -> ArtifactsHomeTilePlaceholder(row.summary.kind) },
+    /** The list row's 76dp 16:10 thumbnail: screenshot, excerpt, or placeholder. */
+    thumbnail: @Composable (ArtifactsHomeRow, Boolean) -> Unit = { row, _ -> ArtifactsHomeRowThumbnailPlaceholder(row.summary.kind) },
 ) {
     RaftDesignSystemTheme {
         SettingsDetailShell(
             title = stringResource(Res.string.artifacts_dashboard_title),
             subtitle = "",
             onBack = onBack,
-            // The title takes the room the view toggle leaves, so the toggle sits at the head's
-            // trailing end (artin), on the same 16dp line as the toolbar and the tiles below. The
-            // web puts it at the end of the toolbar's first row (ArtifactDashboardToolbar.tsx:58);
-            // here it has the head's end to itself and the search keeps that row.
             titleContent = { ArtifactsHomeTitle(state) },
-            trailingContent =
-                if (state.status != ArtifactsHomeStatus.Off) {
-                    { ArtifactsHomeViewToggle(view, wide, onView) }
-                } else {
-                    null
-                },
+            trailingContent = null,
         ) {
             Column(Modifier.fillMaxSize().background(RaftTheme.colors.layerCanvas).testTag(ArtifactsHomeTags.Page)) {
                 if (state.status == ArtifactsHomeStatus.Off) {
                     ArtifactsHomeEmpty(stringResource(Res.string.artifacts_dashboard_off_title), testTag = ArtifactsHomeTags.Off)
                     return@Column
                 }
-                ArtifactsHomeToolbar(state, serverName, readerId, wide, onIntent)
+                ArtifactsHomeToolbar(state, view, serverName, readerId, wide, onIntent, onView)
                 Box(Modifier.weight(1f).fillMaxWidth()) {
-                    ArtifactsHomeList(state, view, readerId, serverName, wide, onIntent, onOpen, cover)
+                    ArtifactsHomeList(
+                        state = state,
+                        view = view,
+                        readerId = readerId,
+                        serverName = serverName,
+                        wide = wide,
+                        onIntent = onIntent,
+                        onOpen = onOpen,
+                        onCopyLink = onCopyLink,
+                        cover = cover,
+                        thumbnail = thumbnail,
+                    )
                 }
             }
         }
@@ -156,10 +140,13 @@ internal object ArtifactsHomeTags {
     const val Page = "artifacts-dashboard"
     const val Off = "artifacts-dashboard-off"
     const val Count = "artifacts-dashboard-count"
+    const val Toolbar = "artifacts-all-toolbar"
+    const val FilterStrip = "artifacts-all-filter-strip"
     const val Search = "artifacts-all-search"
     const val Sort = "artifacts-all-sort"
     const val Conversation = "artifacts-all-conversation-filter"
     const val Author = "artifacts-all-author-filter"
+    const val Status = "artifacts-all-status"
     const val Relevant = "artifacts-all-relevant"
     const val Clear = "artifacts-all-toolbar-clear"
     const val Skeleton = "artifacts-all-skeleton"
@@ -168,9 +155,29 @@ internal object ArtifactsHomeTags {
     const val EmptyAction = "artifacts-all-empty-action"
     const val Row = "artifacts-all-row"
     const val Tile = "artifacts-dashboard-row"
+    const val TileTitle = "artifacts-tile-title"
+    const val TileMeta = "artifacts-tile-meta"
+    const val ListMeta = "artifacts-list-meta"
+    const val ListTime = "artifacts-list-time"
+    const val ListBadges = "artifacts-list-badges"
     const val More = "artifacts-all-more"
+    const val View = "artifacts-dashboard-view"
     const val ViewGrid = "artifacts-dashboard-view-grid"
     const val ViewList = "artifacts-dashboard-view-list"
+    const val Groups = "artifacts-groups"
+    const val ForYouHead = "artifacts-group-foryou"
+    const val ForYouCount = "artifacts-group-foryou-count"
+    const val DateGroupHeading = "artifacts-date-group-heading"
+    const val SettledStrip = "artifacts-settled-strip"
+    const val SettledStripAction = "artifacts-settled-strip-action"
+    const val PublicBadge = "artifacts-public-badge"
+    const val MentionedPill = "artifact-card-mentioned"
+    const val NewVersionPill = "artifact-card-new-version"
+    const val CommentBadge = "artifacts-comment-count"
+    const val HomeMenu = "artifacts-home-menu"
+    const val HomeMenuOpen = "artifacts-home-menu-open"
+    const val HomeMenuCopyLink = "artifacts-home-menu-copy-link"
+    const val HomeMenuSettle = "artifacts-home-menu-settle"
 }
 
 @Composable
@@ -205,131 +212,282 @@ internal fun artifactsHomeCountLine(total: Int, filtered: Int, narrowed: Boolean
         stringResource(if (total == 1) Res.string.artifacts_dashboard_count_one else Res.string.artifacts_dashboard_count_many, total)
     }
 
-/** web `ViewToggle` (ArtifactDashboardToolbar.tsx:85): grid first; icons only on a phone (`iconsOnlyBelow="md"`). */
 @Composable
-private fun ArtifactsHomeViewToggle(view: ArtifactsHomeView, wide: Boolean, onView: (ArtifactsHomeView) -> Unit) {
-    val viewLabel = stringResource(Res.string.artifacts_dashboard_view_label)
-    RaftSegmentedControl(modifier = Modifier.semantics { contentDescription = viewLabel }, iconsOnlyWhenLabelsDontFit = true, iconsOnly = !wide) {
-        RaftSegment(
-            text = stringResource(Res.string.artifacts_dashboard_view_grid),
-            selected = view == ArtifactsHomeView.Grid,
-            onClick = { onView(ArtifactsHomeView.Grid) },
-            modifier = Modifier.testTag(ArtifactsHomeTags.ViewGrid),
-            iconsOnlyIcon = { RaftSlotIcon(RaftLucideIconName.LayoutGrid) },
-        )
-        RaftSegment(
-            text = stringResource(Res.string.artifacts_dashboard_view_list),
-            selected = view == ArtifactsHomeView.List,
-            onClick = { onView(ArtifactsHomeView.List) },
-            modifier = Modifier.testTag(ArtifactsHomeTags.ViewList),
-            iconsOnlyIcon = { RaftSlotIcon(RaftLucideIconName.LayoutList) },
+private fun ArtifactsHomeToolbarIcon(name: RaftLucideIconName) {
+    RaftLucideIcon(name, Modifier.fillMaxSize(), color = raftArgbHex(LocalRaftContentColor.current))
+}
+
+/**
+ * The Artifacts home toolbar on [RaftFitToolbar] (web `DashboardToolbar`, slock #16137/#16182/#16290):
+ * - Wide: `[Search] [Conversation] [Author] [Status?] [Relevant to me] [Clear all?] [Sort?] [Grid | List]`
+ * - Phone: line 1 `[Search] [Sort?] [Grid | List]`, line 2 scrolling `[Conversation] [Author] [Status?] [Relevant to me] [×?]`
+ */
+@Composable
+private fun ArtifactsHomeToolbar(
+    state: ArtifactsHomeState,
+    view: ArtifactsHomeView,
+    serverName: String?,
+    readerId: String?,
+    wide: Boolean,
+    onIntent: (ArtifactsHomeIntent) -> Unit,
+    onView: (ArtifactsHomeView) -> Unit,
+) {
+    var searchOpen by remember { mutableStateOf(false) }
+    var searchOverScope by remember { mutableStateOf(false) }
+    RaftBackHandler(enabled = searchOverScope, label = "artifacts_home_toolbar_search") {
+        if (state.search.isNotEmpty()) onIntent(ArtifactsHomeIntent.Search("")) else searchOpen = false
+    }
+
+    val conversationChoice = artifactsHomeConversationChoice(state, serverName, onIntent)
+    val authorChoice = artifactsHomeAuthorChoice(state, readerId, onIntent)
+    val statusChoice = if (state.settledEnabled) artifactsHomeStatusChoice(state.statusFilter, onIntent) else null
+    val relevantChoice = artifactsHomeRelevantChoice(state, onIntent)
+    val filters = listOfNotNull(conversationChoice, authorChoice, statusChoice, relevantChoice)
+    val display = if (state.query.relevant) emptyList() else listOf(artifactsHomeSortChoice(state.query.sort, onIntent))
+    val viewSwitch = artifactsHomeViewSwitch(view, onView)
+    val clearLabel = stringResource(Res.string.artifacts_dashboard_clear_filters)
+
+    Box(Modifier.fillMaxWidth().background(RaftTheme.colors.layerCanvas).testTag(ArtifactsHomeTags.Toolbar)) {
+        RaftFitToolbar(
+            search =
+                RaftFitToolbarSearch(
+                    value = state.search,
+                    onValueChange = { onIntent(ArtifactsHomeIntent.Search(it.take(ARTIFACTS_HOME_SEARCH_MAX_CHARS))) },
+                    label = stringResource(Res.string.artifacts_dashboard_search_label),
+                    placeholder = stringResource(if (wide) Res.string.artifacts_dashboard_search_placeholder else Res.string.home_nav_search),
+                    clearLabel = stringResource(Res.string.artifacts_dashboard_clear_search),
+                    testTag = ArtifactsHomeTags.Search,
+                    open = searchOpen,
+                    onOpenChange = { searchOpen = it },
+                    onShownOverScopeChange = { searchOverScope = it },
+                ),
+            filters = filters,
+            filtersEnd =
+                if (state.hasToolbarFilter) {
+                    RaftFitToolbarAction(
+                        text = clearLabel,
+                        icon = { ArtifactsHomeToolbarIcon(RaftLucideIconName.X) },
+                        onClick = { onIntent(ArtifactsHomeIntent.ClearFilters) },
+                        testTag = ArtifactsHomeTags.Clear,
+                    )
+                } else {
+                    null
+                },
+            display = display,
+            view = viewSwitch,
+            moreLabel = stringResource(Res.string.list_toolbar_more),
+            wrap = true,
+            horizontalPadding = ArtifactsHomeMargin,
+            filtersTestTag = ArtifactsHomeTags.FilterStrip,
         )
     }
 }
 
-/**
- * web `DashboardToolbar`, its phone form (ArtifactDashboardToolbar.tsx:56-67, slock staging
- * 99ba05aef): the search and the sort on the first row, then the filters (对话, 作者, 和我有关) in
- * a row that scrolls sideways (ArtifactFilterStrip), Clear its ✕ there. Clear only with both
- * filters set (each has its own Clear in its list).
- *
- * One grid: both rows run between the page's 16dp margins (the tiles' edges), 8dp apart (`gap-2`).
- * The search is InputGroup `size="md"` (ArtifactDashboardList.tsx:129), so it is a picker
- * trigger's 32dp, the sort's height; the sort is its icon and chevron on a phone
- * (ArtifactDashboardToolbar.tsx:120) and the search takes the rest of the row.
- */
 @Composable
-private fun ArtifactsHomeToolbar(state: ArtifactsHomeState, serverName: String?, readerId: String?, wide: Boolean, onIntent: (ArtifactsHomeIntent) -> Unit) {
-    val colors = RaftTheme.colors
-    var sortOpen by remember { mutableStateOf(false) }
-    Column(
-        Modifier.fillMaxWidth().background(colors.layerCanvas).padding(horizontal = ArtifactsHomeMargin, vertical = 8.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        val searchLabel = stringResource(Res.string.artifacts_dashboard_search_label)
-        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            RaftTextField(
-                value = state.search,
-                onValueChange = { onIntent(ArtifactsHomeIntent.Search(it.take(ARTIFACTS_HOME_SEARCH_MAX_CHARS))) },
-                modifier = Modifier.weight(1f).testTag(ArtifactsHomeTags.Search).semantics { contentDescription = searchLabel },
-                // web: a phone's first row has room for the one word (`layout.mobileTabBar.search`).
-                placeholder = stringResource(if (wide) Res.string.artifacts_dashboard_search_placeholder else Res.string.home_nav_search),
-                leading = { RaftSlotIcon(RaftLucideIconName.Search, size = 14.dp) },
-                size = RaftTextFieldSize.Md,
-            )
-            // 和我有关 fixes the order: no sort then (its value is kept for when it goes off).
-            if (!state.query.relevant) {
-                Box {
-                    val sortLabel = artifactsHomeSortLabel(state.query.sort)
-                    // web `SortPicker`: named "Sort: Recently opened"; on a phone the icon and the
-                    // chevron alone, filled once it isn't the default.
-                    val sortName = stringResource(Res.string.artifacts_dashboard_sort_label, sortLabel)
-                    RaftPickerTriggerButton(
-                        text = if (wide) sortLabel else "",
-                        onClick = { sortOpen = true },
-                        modifier = Modifier.testTag(ArtifactsHomeTags.Sort).semantics { contentDescription = sortName },
-                        hasValue = state.query.sort != ArtifactsHomeSort.Default,
-                        leadingIcon = { RaftSlotIcon(RaftLucideIconName.ArrowDownUp) },
-                    )
-                    RaftDropdownMenu(expanded = sortOpen, onDismissRequest = { sortOpen = false }, alignEnd = true, minWidth = 200.dp) {
-                        ArtifactsHomeSort.entries.forEach { sort ->
-                            RaftMenuItem(
-                                text = artifactsHomeSortLabel(sort),
-                                checked = sort == state.query.sort,
-                                modifier = Modifier.testTag("${ArtifactsHomeTags.Sort}-${sort.wire}"),
-                                onClick = {
-                                    sortOpen = false
-                                    onIntent(ArtifactsHomeIntent.SetSort(sort))
-                                },
-                            )
-                        }
-                    }
-                }
-            }
+private fun artifactsHomeConversationChoice(
+    state: ArtifactsHomeState,
+    serverName: String?,
+    onIntent: (ArtifactsHomeIntent) -> Unit,
+): RaftFitToolbarChoice {
+    val place = state.query.place
+    val whoTitle = stringResource(Res.string.artifacts_dashboard_who_title)
+    val groupTitle = stringResource(Res.string.artifacts_dashboard_conversation_group)
+    val homeLabels = ArtifactsHomeScope.entries.associateWith { artifactsHomeScopeLabel(it, serverName) }
+    val valueLabel =
+        when (place) {
+            is ArtifactsHomePlace.Home -> homeLabels.getValue(place.scope)
+            is ArtifactsHomePlace.Conversation -> place.conversation.label
+            null -> null
         }
-        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-            item(key = "conversation") { ArtifactsHomeConversationFilter(state, serverName, onIntent) }
-            item(key = "author") { ArtifactsHomeAuthorFilter(state, readerId, onIntent) }
-            item(key = "relevant") {
-                val count = state.counts?.relevant?.takeIf { it > 0 }
-                val label = stringResource(Res.string.artifacts_dashboard_relevant)
-                RaftPickerTriggerButton(
-                    text = if (count != null) "$label $count" else label,
-                    onClick = { onIntent(ArtifactsHomeIntent.SetRelevant(!state.query.relevant)) },
-                    // web `aria-pressed`: a switch, read as on or off (review M3).
-                    modifier =
-                        Modifier.testTag(ArtifactsHomeTags.Relevant).semantics {
-                            toggleableState = ToggleableState(state.query.relevant)
-                            selected = state.query.relevant
+    val label = stringResource(Res.string.artifacts_dashboard_conversation_label)
+    val description = valueLabel?.let { stringResource(Res.string.artifacts_dashboard_conversation_applied, it) } ?: label
+    return RaftFitToolbarChoice(
+        text = valueLabel ?: label,
+        icon = { ArtifactsHomeToolbarIcon(artifactsHomePlaceIcon(place)) },
+        options = emptyList(),
+        selectedKey = null,
+        onSelect = {},
+        contentDescription = description,
+        applied = place != null,
+        testTag = ArtifactsHomeTags.Conversation,
+        key = ArtifactsHomeTags.Conversation,
+        onOpen = { onIntent(ArtifactsHomeIntent.OpenChoices(ArtifactsHomeChoiceKind.Conversation)) },
+        popup = {
+            if (state.conversationChoices.open) {
+                ArtifactsHomeConversationChoices(state, homeLabels, whoTitle, groupTitle, onIntent)
+            }
+        },
+    )
+}
+
+@Composable
+private fun artifactsHomeAuthorChoice(
+    state: ArtifactsHomeState,
+    readerId: String?,
+    onIntent: (ArtifactsHomeIntent) -> Unit,
+): RaftFitToolbarChoice {
+    val unknown = stringResource(Res.string.artifacts_dashboard_author_unknown)
+    val chosen = state.resolvedAuthorActor
+    val hasAuthor = state.query.author != null
+    val authorLabel =
+        when {
+            chosen != null -> artifactsHomeActorName(chosen, unknown)
+            hasAuthor -> unknown
+            else -> null
+        }
+    val filterLabel = stringResource(Res.string.artifacts_dashboard_author_label)
+    val description = authorLabel?.let { stringResource(Res.string.artifacts_dashboard_author_applied, it) } ?: filterLabel
+    return RaftFitToolbarChoice(
+        text = authorLabel ?: filterLabel,
+        icon = {
+            if (chosen != null) {
+                RaftAppAvatar(
+                    kind =
+                        when {
+                            chosen.type == "agent" -> RaftAvatarKind.Agent
+                            chosen.avatarUrl.isNullOrBlank() -> RaftAvatarKind.Labeled
+                            else -> RaftAvatarKind.Human
                         },
-                    hasValue = state.query.relevant,
-                    showIndicator = false,
-                    leadingIcon = { RaftSlotIcon(RaftLucideIconName.Inbox) },
+                    avatarWireValue = chosen.avatarUrl,
+                    label = artifactsHomeActorName(chosen, unknown),
+                    avatarSize = 16.dp,
                 )
+            } else {
+                ArtifactsHomeToolbarIcon(RaftLucideIconName.CircleUser)
             }
-            if (state.query.place != null && state.query.author != null) {
-                item(key = "clear") {
-                    val clearLabel = stringResource(Res.string.artifacts_dashboard_clear_filters)
-                    if (wide) {
-                        RaftButton(
-                            text = clearLabel,
-                            onClick = { onIntent(ArtifactsHomeIntent.ClearFilters) },
-                            modifier = Modifier.testTag(ArtifactsHomeTags.Clear),
-                            variant = RaftButtonVariant.Ghost,
-                        )
-                    } else {
-                        // web: on a phone Clear is its ✕ (a ghost `icon-md`), its words having no room.
-                        RaftIconButton(
-                            onClick = { onIntent(ArtifactsHomeIntent.ClearFilters) },
-                            tooltip = clearLabel,
-                            modifier = Modifier.testTag(ArtifactsHomeTags.Clear),
-                            variant = RaftButtonVariant.Ghost,
-                        ) { RaftSlotIcon(RaftLucideIconName.X) }
-                    }
-                }
+        },
+        options = emptyList(),
+        selectedKey = null,
+        onSelect = {},
+        contentDescription = description,
+        applied = hasAuthor,
+        testTag = ArtifactsHomeTags.Author,
+        key = ArtifactsHomeTags.Author,
+        onOpen = { onIntent(ArtifactsHomeIntent.OpenChoices(ArtifactsHomeChoiceKind.Author)) },
+        popup = {
+            if (state.authorChoices.open) {
+                ArtifactsHomeAuthorChoices(state, readerId, unknown, onIntent)
             }
+        },
+    )
+}
+
+/** web `StatusPicker` (`ArtifactDashboardToolbar.tsx:117-154`): Unsettled (default) / All / Settled. */
+@Composable
+private fun artifactsHomeStatusChoice(
+    status: ArtifactsHomeStatusFilter,
+    onIntent: (ArtifactsHomeIntent) -> Unit,
+): RaftFitToolbarChoice {
+    val valueLabel = artifactsHomeStatusLabel(status)
+    val fullLabel = stringResource(Res.string.artifacts_dashboard_status_label, valueLabel)
+    val options =
+        ArtifactsHomeStatusFilter.entries.map { option ->
+            RaftFitToolbarOption(key = option.wire, label = artifactsHomeStatusLabel(option))
         }
-    }
+    return RaftFitToolbarChoice(
+        text = fullLabel,
+        icon = { ArtifactsHomeToolbarIcon(RaftLucideIconName.CircleCheck) },
+        options = options,
+        selectedKey = status.wire,
+        onSelect = { wire ->
+            ArtifactsHomeStatusFilter.entries.firstOrNull { it.wire == wire }?.let { onIntent(ArtifactsHomeIntent.SetStatus(it)) }
+        },
+        contentDescription = fullLabel,
+        // web: `data-has-value={status === "all" ? undefined : ""}` (Unsettled & Settled actively filter).
+        applied = status != ArtifactsHomeStatusFilter.All,
+        testTag = ArtifactsHomeTags.Status,
+        key = ArtifactsHomeTags.Status,
+    )
+}
+
+@Composable
+private fun artifactsHomeStatusLabel(status: ArtifactsHomeStatusFilter): String =
+    stringResource(
+        when (status) {
+            ArtifactsHomeStatusFilter.Unsettled -> Res.string.artifacts_dashboard_status_unsettled
+            ArtifactsHomeStatusFilter.All -> Res.string.artifacts_dashboard_status_all
+            ArtifactsHomeStatusFilter.Settled -> Res.string.artifacts_dashboard_status_settled
+        },
+    )
+
+@Composable
+private fun artifactsHomeRelevantChoice(
+    state: ArtifactsHomeState,
+    onIntent: (ArtifactsHomeIntent) -> Unit,
+): RaftFitToolbarChoice {
+    val count = state.counts?.relevant?.takeIf { it > 0 }
+    val label = stringResource(Res.string.artifacts_dashboard_relevant)
+    val text = if (count != null) "$label $count" else label
+    return RaftFitToolbarChoice(
+        text = text,
+        icon = { ArtifactsHomeToolbarIcon(RaftLucideIconName.Inbox) },
+        options = emptyList(),
+        selectedKey = null,
+        onSelect = {},
+        contentDescription = text,
+        applied = state.query.relevant,
+        testTag = ArtifactsHomeTags.Relevant,
+        key = ArtifactsHomeTags.Relevant,
+        onOpen = { onIntent(ArtifactsHomeIntent.SetRelevant(!state.query.relevant)) },
+    )
+}
+
+@Composable
+private fun artifactsHomeSortChoice(
+    sort: ArtifactsHomeSort,
+    onIntent: (ArtifactsHomeIntent) -> Unit,
+): RaftFitToolbarChoice {
+    val sortLabel = artifactsHomeSortLabel(sort)
+    val sortName = stringResource(Res.string.artifacts_dashboard_sort_label, sortLabel)
+    val options =
+        ArtifactsHomeSort.entries.map { option ->
+            RaftFitToolbarOption(key = option.wire, label = artifactsHomeSortLabel(option))
+        }
+    return RaftFitToolbarChoice(
+        text = sortLabel,
+        icon = { ArtifactsHomeToolbarIcon(RaftLucideIconName.ArrowDownUp) },
+        options = options,
+        selectedKey = sort.wire,
+        onSelect = { wire ->
+            ArtifactsHomeSort.entries.firstOrNull { it.wire == wire }?.let { onIntent(ArtifactsHomeIntent.SetSort(it)) }
+        },
+        heading = stringResource(Res.string.list_toolbar_sort),
+        contentDescription = sortName,
+        applied = sort != ArtifactsHomeSort.Default,
+        testTag = ArtifactsHomeTags.Sort,
+        key = ArtifactsHomeTags.Sort,
+    )
+}
+
+@Composable
+private fun artifactsHomeViewSwitch(
+    view: ArtifactsHomeView,
+    onView: (ArtifactsHomeView) -> Unit,
+): RaftFitToolbarView {
+    val grid = stringResource(Res.string.artifacts_dashboard_view_grid)
+    val list = stringResource(Res.string.artifacts_dashboard_view_list)
+    return RaftFitToolbarView(
+        options =
+            listOf(
+                RaftFitToolbarViewOption(
+                    key = ArtifactsHomeView.Grid.wire,
+                    label = grid,
+                    icon = { ArtifactsHomeToolbarIcon(RaftLucideIconName.LayoutGrid) },
+                ),
+                RaftFitToolbarViewOption(
+                    key = ArtifactsHomeView.List.wire,
+                    label = list,
+                    icon = { ArtifactsHomeToolbarIcon(RaftLucideIconName.LayoutList) },
+                ),
+            ),
+        selectedKey = view.wire,
+        onSelect = { wire ->
+            ArtifactsHomeView.entries.firstOrNull { it.wire == wire }?.let(onView)
+        },
+        label = stringResource(Res.string.artifacts_dashboard_view_label),
+        heading = stringResource(Res.string.list_toolbar_view),
+        testTag = ArtifactsHomeTags.View,
+    )
 }
 
 @Composable
@@ -343,44 +501,6 @@ private fun artifactsHomeSortLabel(sort: ArtifactsHomeSort): String =
 
 private const val HomeValuePrefix = "home:"
 
-/**
- * web `ArtifactConversationFilter`: under "Who can see it" the two homes that are no conversation,
- * then "Channels & DMs" (`dashboardConversations`, the server searching them). One value.
- */
-@Composable
-private fun ArtifactsHomeConversationFilter(state: ArtifactsHomeState, serverName: String?, onIntent: (ArtifactsHomeIntent) -> Unit) {
-    val choices = state.conversationChoices
-    val place = state.query.place
-    val whoTitle = stringResource(Res.string.artifacts_dashboard_who_title)
-    val groupTitle = stringResource(Res.string.artifacts_dashboard_conversation_group)
-    val homeLabels = ArtifactsHomeScope.entries.associateWith { artifactsHomeScopeLabel(it, serverName) }
-    val valueLabel =
-        when (place) {
-            is ArtifactsHomePlace.Home -> homeLabels.getValue(place.scope)
-            is ArtifactsHomePlace.Conversation -> place.conversation.label
-            null -> null
-        }
-    val conversationName =
-        valueLabel?.let { stringResource(Res.string.artifacts_dashboard_conversation_applied, it) }
-            ?: stringResource(Res.string.artifacts_dashboard_conversation_label)
-    // The trigger's box: on a wide window the choices hang from it (web ArtifactFilterCombobox).
-    Box {
-        RaftPickerTriggerButton(
-            text = valueLabel ?: stringResource(Res.string.artifacts_dashboard_conversation_label),
-            onClick = { onIntent(ArtifactsHomeIntent.OpenChoices(ArtifactsHomeChoiceKind.Conversation)) },
-            // web: named by the filter and its value ("Conversation: #proj").
-            modifier = Modifier.testTag(ArtifactsHomeTags.Conversation).semantics { contentDescription = conversationName },
-            hasValue = place != null,
-            leadingIcon = { RaftSlotIcon(artifactsHomePlaceIcon(place)) },
-        )
-        if (choices.open) ArtifactsHomeConversationChoices(state, homeLabels, whoTitle, groupTitle, onIntent)
-    }
-}
-
-/**
- * The Conversation filter's choices while open ([ArtifactsHomeConversationFilter]): a searchable
- * pick of one ([RaftComboboxPicker]), under the trigger on a wide window, a bottom sheet on a phone.
- */
 @Composable
 private fun ArtifactsHomeConversationChoices(
     state: ArtifactsHomeState,
@@ -471,36 +591,6 @@ internal fun artifactsHomeScopeLabel(scope: ArtifactsHomeScope, serverName: Stri
                 ?: stringResource(Res.string.artifacts_scope_server)
     }
 
-/**
- * web `ArtifactAuthorFilter`: who wrote what the reader can see (`dashboardAuthors`, most first), an
- * agent saying whose assistant it is. An older server without the route: the authors on screen.
- */
-@Composable
-private fun ArtifactsHomeAuthorFilter(state: ArtifactsHomeState, readerId: String?, onIntent: (ArtifactsHomeIntent) -> Unit) {
-    val choices = state.authorChoices
-    val chosen = state.authorActor
-    val unknown = stringResource(Res.string.artifacts_dashboard_author_unknown)
-    val authorLabel = chosen?.let { artifactsHomeActorName(it, unknown) }
-    val authorName =
-        authorLabel?.let { stringResource(Res.string.artifacts_dashboard_author_applied, it) }
-            ?: stringResource(Res.string.artifacts_dashboard_author_label)
-    // The trigger's box: on a wide window the choices hang from it (web ArtifactFilterCombobox).
-    Box {
-        RaftPickerTriggerButton(
-            text = authorLabel ?: stringResource(Res.string.artifacts_dashboard_author_label),
-            onClick = { onIntent(ArtifactsHomeIntent.OpenChoices(ArtifactsHomeChoiceKind.Author)) },
-            modifier = Modifier.testTag(ArtifactsHomeTags.Author).semantics { contentDescription = authorName },
-            hasValue = chosen != null,
-            leadingIcon = { RaftSlotIcon(RaftLucideIconName.CircleUser) },
-        )
-        if (choices.open) ArtifactsHomeAuthorChoices(state, readerId, unknown, onIntent)
-    }
-}
-
-/**
- * The Author filter's choices while open ([ArtifactsHomeAuthorFilter]): a searchable pick of one
- * ([RaftComboboxPicker]), under the trigger on a wide window, a bottom sheet on a phone.
- */
 @Composable
 private fun ArtifactsHomeAuthorChoices(
     state: ArtifactsHomeState,
@@ -561,9 +651,13 @@ private fun ArtifactsHomeList(
     wide: Boolean,
     onIntent: (ArtifactsHomeIntent) -> Unit,
     onOpen: (ArtifactsHomeRow) -> Unit,
-    cover: @Composable (ArtifactsHomeRow) -> Unit,
+    onCopyLink: ((ArtifactsHomeRow) -> Unit)?,
+    cover: @Composable (ArtifactsHomeRow, Boolean) -> Unit,
+    thumbnail: @Composable (ArtifactsHomeRow, Boolean) -> Unit,
 ) {
     val rows = state.rows
+    val timeContext = currentRaftEffectiveDateTimeContext()
+    var forYouOpen by remember { mutableStateOf(true) }
     val failed: @Composable () -> Unit = {
         if (state.status == ArtifactsHomeStatus.Failed) {
             Column(Modifier.fillMaxWidth().padding(horizontal = ArtifactsHomeMargin, vertical = 8.dp).testTag(ArtifactsHomeTags.Failed)) {
@@ -584,63 +678,204 @@ private fun ArtifactsHomeList(
     }
     when {
         rows == null && state.status == ArtifactsHomeStatus.Failed -> failed()
-        rows == null -> ArtifactsHomeSkeleton()
-        rows.isEmpty() ->
-            Column(Modifier.fillMaxSize()) {
-                failed()
-                ArtifactsHomeEmptyByCause(state, onIntent)
-            }
-        // Masonry: tiles differ in height (a one- or two-line title, the sticker, comments), so
-        // each column packs its own; the warning and Load more span the full line.
-        view == ArtifactsHomeView.Grid -> {
-            val gap = if (wide) 12.dp else 8.dp
-            LazyVerticalStaggeredGrid(
-                columns = artifactsHomeGridColumns(wide),
-                modifier = Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(start = ArtifactsHomeMargin, end = ArtifactsHomeMargin, top = 8.dp, bottom = 24.dp + raftBottomSafeAreaPadding()),
-                horizontalArrangement = Arrangement.spacedBy(gap),
-                verticalItemSpacing = gap,
-            ) {
-                item(key = "failed", span = StaggeredGridItemSpan.FullLine) { failed() }
-                staggeredItemsIndexed(rows, key = { _, row -> row.summary.id }) { _, row ->
-                    ArtifactsHomeTile(row, readerId, serverName, state.rowsByOpened, wide, onOpen = { onOpen(row) }, cover = cover)
+        rows == null -> ArtifactsHomeSkeleton(view, wide, grouped = state.search.trim().isEmpty(), horizontalPadding = ArtifactsHomeMargin)
+        else -> {
+            val searching = state.query.q.trim().isNotEmpty()
+            val grouped =
+                remember(rows, view, state.statusFilter, searching, state.rowsByOpened, state.settledEnabled, timeContext) {
+                    buildArtifactsHomeGroups(
+                        rows = rows,
+                        view = view,
+                        status = state.statusFilter,
+                        searching = searching,
+                        byOpened = state.rowsByOpened,
+                        settledEnabled = state.settledEnabled,
+                        timeContext = timeContext,
+                    )
                 }
-                item(key = "more", span = StaggeredGridItemSpan.FullLine) { ArtifactsHomeMore(state, onIntent) }
+            val showSettledStrip = grouped.settledEnabled && (grouped.visible.isNotEmpty() || state.nextCursor != null)
+            if (rows.isEmpty()) {
+                Column(Modifier.fillMaxSize()) {
+                    failed()
+                    if (showSettledStrip) {
+                        ArtifactSettledStrip(
+                            status = grouped.status,
+                            hiddenCount = grouped.hiddenSettledCount,
+                            dimmedCount = grouped.dimmedSettledCount,
+                            horizontalPadding = ArtifactsHomeMargin,
+                            onStatusChange = { onIntent(ArtifactsHomeIntent.SetStatus(it)) },
+                        )
+                    }
+                    ArtifactsHomeEmptyByCause(state, onIntent)
+                }
+                return
+            }
+            if (grouped.visible.isEmpty() && state.nextCursor == null) {
+                Column(Modifier.fillMaxSize()) {
+                    failed()
+                    ArtifactsHomeSettledEmpty(grouped.status, grouped.hiddenSettledCount, state, onIntent)
+                }
+                return
+            }
+
+            val isGrid = view == ArtifactsHomeView.Grid
+            val columns =
+                if (isGrid) {
+                    artifactsHomeGridColumns(wide)
+                } else {
+                    if (wide) GridCells.Fixed(2) else GridCells.Fixed(1)
+                }
+            val horizontalGap =
+                when {
+                    isGrid && wide -> 12.dp
+                    isGrid -> 8.dp
+                    wide -> 8.dp
+                    else -> 0.dp
+                }
+            val verticalGap =
+                when {
+                    isGrid && wide -> 14.dp
+                    isGrid -> 8.dp
+                    else -> 2.dp
+                }
+            val contentPadding =
+                if (isGrid) {
+                    PaddingValues(start = ArtifactsHomeMargin, end = ArtifactsHomeMargin, top = 4.dp, bottom = 24.dp + raftBottomSafeAreaPadding())
+                } else {
+                    PaddingValues(top = 4.dp, bottom = 24.dp + raftBottomSafeAreaPadding())
+                }
+            // Full-span items inside the grid already inherit horizontal padding; in list view they add their own margin.
+            val headerPadding = if (isGrid) 0.dp else ArtifactsHomeMargin
+
+            LazyVerticalGrid(
+                columns = columns,
+                modifier = Modifier.fillMaxSize().then(if (!grouped.searching) Modifier.testTag(ArtifactsHomeTags.Groups) else Modifier),
+                contentPadding = contentPadding,
+                horizontalArrangement = Arrangement.spacedBy(horizontalGap),
+                verticalArrangement = Arrangement.spacedBy(verticalGap),
+            ) {
+                if (state.status == ArtifactsHomeStatus.Failed) {
+                    item(key = "failed", span = { GridItemSpan(maxLineSpan) }) { failed() }
+                }
+                if (showSettledStrip) {
+                    item(key = "settled-strip", span = { GridItemSpan(maxLineSpan) }) {
+                        ArtifactSettledStrip(
+                            status = grouped.status,
+                            hiddenCount = grouped.hiddenSettledCount,
+                            dimmedCount = grouped.dimmedSettledCount,
+                            horizontalPadding = headerPadding,
+                            onStatusChange = { onIntent(ArtifactsHomeIntent.SetStatus(it)) },
+                        )
+                    }
+                }
+
+                fun addSectionItems(prefix: String, sectionRows: List<ArtifactsHomeRow>) {
+                    items(sectionRows, key = { row -> "$prefix:${row.summary.id}" }) { row ->
+                        val dimmed = isArtifactDimmed(row, grouped.status, grouped.settledEnabled)
+                        val settling = row.summary.id in state.settlingIds
+                        val copyAction = onCopyLink?.let { cb -> { cb(row) } }
+                        val settleAction: (Boolean) -> Unit = { next -> onIntent(ArtifactsHomeIntent.SetSettled(row.summary.id, next)) }
+                        if (isGrid) {
+                            ArtifactsHomeTile(
+                                row = row,
+                                readerId = readerId,
+                                serverName = serverName,
+                                byOpened = state.rowsByOpened,
+                                dimmed = dimmed,
+                                settledEnabled = grouped.settledEnabled,
+                                settling = settling,
+                                onOpen = { onOpen(row) },
+                                onCopyLink = copyAction,
+                                onSetSettled = settleAction,
+                                cover = cover,
+                            )
+                        } else {
+                            ArtifactsHomeListRow(
+                                row = row,
+                                readerId = readerId,
+                                serverName = serverName,
+                                byOpened = state.rowsByOpened,
+                                wide = wide,
+                                dimmed = dimmed,
+                                settledEnabled = grouped.settledEnabled,
+                                settling = settling,
+                                onOpen = { onOpen(row) },
+                                onCopyLink = copyAction,
+                                onSetSettled = settleAction,
+                                thumbnail = thumbnail,
+                            )
+                        }
+                    }
+                }
+
+                if (grouped.searching) {
+                    addSectionItems("search", grouped.visible)
+                } else {
+                    if (grouped.forYou.isNotEmpty()) {
+                        item(key = "group-head:for-you", span = { GridItemSpan(maxLineSpan) }) {
+                            ArtifactForYouHead(
+                                count = grouped.forYou.size,
+                                open = forYouOpen,
+                                onToggle = { forYouOpen = !forYouOpen },
+                                horizontalPadding = headerPadding,
+                            )
+                        }
+                        if (forYouOpen) {
+                            addSectionItems("for-you", grouped.forYou)
+                        }
+                    }
+                    grouped.dateGroups.forEach { group ->
+                        item(key = "group-head:${group.key}", span = { GridItemSpan(maxLineSpan) }) {
+                            ArtifactDateGroupHead(label = group.label, horizontalPadding = headerPadding)
+                        }
+                        addSectionItems("group:${group.key}", group.rows)
+                    }
+                }
+
+                if (state.nextCursor != null) {
+                    item(key = "more", span = { GridItemSpan(maxLineSpan) }) {
+                        ArtifactsHomeMore(state, horizontalPadding = headerPadding, onIntent = onIntent)
+                    }
+                }
             }
         }
-        else ->
-            LazyColumn(
-                Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(top = 4.dp, bottom = 24.dp + raftBottomSafeAreaPadding()),
-            ) {
-                item(key = "failed") { failed() }
-                itemsIndexed(rows, key = { _, row -> row.summary.id }) { _, row ->
-                    ArtifactsHomeListRow(row, readerId, serverName, state.rowsByOpened, onOpen = { onOpen(row) })
-                }
-                item(key = "more") { ArtifactsHomeMore(state, onIntent) }
-            }
     }
 }
 
-/** The grid's columns: two on a phone; on a wide layout as many of at least 248dp as fit (web `minmax(248px,1fr)`). */
-internal fun artifactsHomeGridColumns(wide: Boolean): StaggeredGridCells =
-    if (wide) StaggeredGridCells.Adaptive(ArtifactsHomeTileMinWidth) else StaggeredGridCells.Fixed(2)
+/** The grid's columns: two on a phone; on a wide layout adaptive columns of at least 196dp (web `minmax(196px, 1fr)`). */
+internal fun artifactsHomeGridColumns(wide: Boolean): GridCells =
+    if (wide) GridCells.Adaptive(ArtifactsHomeTileMinWidth) else GridCells.Fixed(2)
 
-internal val ArtifactsHomeTileMinWidth: Dp = 248.dp
+internal val ArtifactsHomeTileMinWidth: Dp = 196.dp
 
-/** web `InboxItemSkeletonList` count 3, compact, leading. */
+/** web `DashboardList` `settledEmpty`: all rows hidden by Unsettled or none matching Settled. */
 @Composable
-private fun ArtifactsHomeSkeleton() {
-    Column(Modifier.fillMaxWidth().padding(horizontal = ArtifactsHomeMargin, vertical = 8.dp).testTag(ArtifactsHomeTags.Skeleton), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        repeat(3) {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                RaftSkeleton(Modifier.size(RaftIconTileSize.Md.edge))
-                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    RaftSkeleton(Modifier.fillMaxWidth(0.6f), variant = RaftSkeletonVariant.Line)
-                    RaftSkeleton(Modifier.fillMaxWidth(0.4f), variant = RaftSkeletonVariant.Line)
-                }
+private fun ArtifactsHomeSettledEmpty(
+    status: ArtifactsHomeStatusFilter,
+    hiddenSettledCount: Int,
+    state: ArtifactsHomeState,
+    onIntent: (ArtifactsHomeIntent) -> Unit,
+) {
+    when {
+        status == ArtifactsHomeStatusFilter.Unsettled && hiddenSettledCount > 0 ->
+            ArtifactsHomeEmpty(stringResource(Res.string.artifacts_dashboard_empty_unsettled_title), testTag = ArtifactsHomeTags.Empty) {
+                RaftButton(
+                    text = stringResource(Res.string.artifacts_dashboard_show_settled),
+                    onClick = { onIntent(ArtifactsHomeIntent.SetStatus(ArtifactsHomeStatusFilter.All)) },
+                    modifier = Modifier.testTag(ArtifactsHomeTags.EmptyAction),
+                    variant = RaftButtonVariant.Default,
+                )
             }
-        }
+        status == ArtifactsHomeStatusFilter.Settled ->
+            ArtifactsHomeEmpty(stringResource(Res.string.artifacts_dashboard_empty_settled_title), testTag = ArtifactsHomeTags.Empty) {
+                RaftButton(
+                    text = stringResource(Res.string.artifacts_dashboard_see_all),
+                    onClick = { onIntent(ArtifactsHomeIntent.SetStatus(ArtifactsHomeStatusFilter.All)) },
+                    modifier = Modifier.testTag(ArtifactsHomeTags.EmptyAction),
+                    variant = RaftButtonVariant.Default,
+                )
+            }
+        else -> ArtifactsHomeEmptyByCause(state, onIntent)
     }
 }
 
@@ -670,7 +905,7 @@ private fun ArtifactsHomeEmptyByCause(state: ArtifactsHomeState, onIntent: (Arti
         }
     val clearLabel =
         when {
-            searched && filtered -> Res.string.artifacts_dashboard_clear_all
+            searched && state.hasNonSearchFilter -> Res.string.artifacts_dashboard_clear_all
             searched -> Res.string.artifacts_dashboard_clear_search
             else -> Res.string.artifacts_dashboard_clear_filters
         }
@@ -705,9 +940,9 @@ private fun ArtifactsHomeEmpty(title: String, testTag: String, action: (@Composa
 }
 
 @Composable
-private fun ArtifactsHomeMore(state: ArtifactsHomeState, onIntent: (ArtifactsHomeIntent) -> Unit) {
+private fun ArtifactsHomeMore(state: ArtifactsHomeState, horizontalPadding: Dp, onIntent: (ArtifactsHomeIntent) -> Unit) {
     if (state.nextCursor == null) return
-    Box(Modifier.fillMaxWidth().padding(horizontal = ArtifactsHomeMargin, vertical = 4.dp)) {
+    Box(Modifier.fillMaxWidth().padding(horizontal = horizontalPadding, vertical = 4.dp)) {
         RaftButton(
             text = stringResource(Res.string.artifacts_dashboard_show_more),
             onClick = { onIntent(ArtifactsHomeIntent.LoadMore) },
@@ -768,14 +1003,7 @@ internal fun artifactsHomeAuthorText(actor: ArtifactsHomeActor, readerId: String
         }
 }
 
-/** web `NewSticker`: one pink sticker, "Mentions you · Updated · 2 new comments". */
-@Composable
-private fun ArtifactsHomeSticker(news: ArtifactsHomeNews) {
-    val text = artifactsHomeNewsText(news) ?: return
-    RaftBadge(text = text, variant = RaftBadgeVariant.Accent)
-}
-
-/** The sticker's words, or null when nothing is new. Counts go through the plural path (ru few/many). */
+/** The sticker's words, or null when nothing is new. */
 @Composable
 private fun artifactsHomeNewsText(news: ArtifactsHomeNews): String? {
     if (!news.any) return null
@@ -795,15 +1023,11 @@ private fun artifactsHomeNewsText(news: ArtifactsHomeNews): String? {
     return parts.joinToString(" · ")
 }
 
-/**
- * One name for a row or tile (review M4): title, where it lives, version, comments, who made it,
- * when it was opened or updated, what is new. Its parts are cleared, so it is read once, and the
- * avatar, icons and cover are decoration.
- */
+/** Accessible summary for a tile or list row. */
 @Composable
-private fun artifactsHomeOpenLabel(row: ArtifactsHomeRow, readerId: String?, serverName: String?, byOpened: Boolean): String {
+internal fun artifactsHomeOpenLabel(row: ArtifactsHomeRow, readerId: String?, serverName: String?, byOpened: Boolean): String {
     val (name, behalf) = artifactsHomeAuthorText(row.author, readerId)
-    val relative = raftRelativeTimestampLabel(row.openedAt ?: row.summary.updatedAt)
+    val relative = raftRelativeTimestampLabel(artifactDateTimestamp(row, byOpened))
     val time =
         when {
             relative.isBlank() -> null
@@ -817,18 +1041,8 @@ private fun artifactsHomeOpenLabel(row: ArtifactsHomeRow, readerId: String?, ser
         ).joinToString(", ")
 }
 
-private fun Modifier.artifactsHomeOpenSemantics(label: String, onOpen: () -> Unit): Modifier =
-    clearAndSetSemantics {
-        contentDescription = label
-        role = Role.Button
-        onClick {
-            onOpen()
-            true
-        }
-    }
-
 @Composable
-private fun ArtifactsHomeAuthorLine(actor: ArtifactsHomeActor, readerId: String?, modifier: Modifier = Modifier) {
+internal fun ArtifactsHomeAuthorLine(actor: ArtifactsHomeActor, readerId: String?, modifier: Modifier = Modifier) {
     val (name, behalf) = artifactsHomeAuthorText(actor, readerId)
     Row(modifier, verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
         RaftAppAvatar(
@@ -854,7 +1068,6 @@ private fun ArtifactsHomeAuthorLine(actor: ArtifactsHomeActor, readerId: String?
     }
 }
 
-/** web `ArtifactCardFacts` for the row: "v2 · 4 comments" (comments only when there are any). */
 @Composable
 private fun artifactsHomeFacts(row: ArtifactsHomeRow): List<String> =
     listOfNotNull(
@@ -863,118 +1076,6 @@ private fun artifactsHomeFacts(row: ArtifactsHomeRow): List<String> =
             if (it == 1) stringResource(Res.string.artifacts_card_comments_one) else stringResource(Res.string.artifacts_card_comments_many, it)
         },
     )
-
-/**
- * web `AllRow` (phone list): the kind's tile, the title on one line, "#place · v2 · 4 comments", the
- * short time it was opened (in that order) or updated, then who made it and the sticker.
- */
-@Composable
-private fun ArtifactsHomeListRow(row: ArtifactsHomeRow, readerId: String?, serverName: String?, byOpened: Boolean, onOpen: () -> Unit) {
-    val colors = RaftTheme.colors
-    val label = artifactsHomeOpenLabel(row, readerId, serverName, byOpened)
-    val time = raftRelativeTimestampLabel(row.openedAt ?: row.summary.updatedAt)
-    val subtitle = (listOf(artifactsHomePlaceWords(row, serverName)) + artifactsHomeFacts(row)).joinToString(" · ")
-    Row(
-        Modifier
-            .fillMaxWidth()
-            .testTag(ArtifactsHomeTags.Row)
-            .raftClickable(onClick = onOpen)
-            .artifactsHomeOpenSemantics(label, onOpen)
-            .padding(horizontal = ArtifactsHomeMargin, vertical = 8.dp),
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
-    ) {
-        RaftIconTile(size = RaftIconTileSize.Md) {
-            RaftLucideIcon(row.summary.kind.lucideIcon(), Modifier.size(RaftIconTileSize.Md.icon), color = raftArgbHex(colors.foregroundMuted))
-        }
-        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                RaftText(
-                    artifactsHomeShownTitle(row.summary.title),
-                    modifier = Modifier.weight(1f),
-                    style = RaftTheme.typography.callout.copy(fontWeight = FontWeight.SemiBold),
-                    color = colors.foreground,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                if (time.isNotBlank()) {
-                    RaftText(time, Modifier.padding(start = 8.dp), style = RaftTheme.typography.footnote, color = colors.foregroundHint, maxLines = 1)
-                }
-            }
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                if (row.summary.home == ArtifactHome.Public) {
-                    RaftLucideIcon(RaftLucideIconName.Globe, Modifier.size(12.dp).padding(end = 0.dp), color = raftArgbHex(colors.foregroundMuted))
-                    Spacer(Modifier.width(4.dp))
-                }
-                RaftText(subtitle, style = RaftTheme.typography.footnote, color = colors.foregroundMuted, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            }
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                ArtifactsHomeAuthorLine(row.author, readerId, Modifier.weight(1f, fill = false))
-                ArtifactsHomeSticker(row.news)
-            }
-        }
-    }
-}
-
-/**
- * web `ArtifactTile` (grid, the default view): the message card's frame, the cover, the title (2
- * lines) and version, the sticker; who made it, "💬 N" when there are comments; then when it was
- * opened (in that order) or updated, short on a phone.
- */
-@Composable
-private fun ArtifactsHomeTile(
-    row: ArtifactsHomeRow,
-    readerId: String?,
-    serverName: String?,
-    byOpened: Boolean,
-    wide: Boolean,
-    onOpen: () -> Unit,
-    cover: @Composable (ArtifactsHomeRow) -> Unit,
-) {
-    val colors = RaftTheme.colors
-    val label = artifactsHomeOpenLabel(row, readerId, serverName, byOpened)
-    val shape = RoundedCornerShape(RaftRadius.Container)
-    val relative = raftRelativeTimestampLabel(row.openedAt ?: row.summary.updatedAt)
-    val time =
-        when {
-            relative.isBlank() || !wide -> relative
-            byOpened && row.openedAt != null -> stringResource(Res.string.artifacts_dashboard_tile_opened, relative)
-            else -> stringResource(Res.string.artifacts_dashboard_tile_updated, relative)
-        }
-    Column(
-        Modifier
-            .fillMaxWidth()
-            .clip(shape)
-            .background(colors.layerCard, shape)
-            .border(RaftStroke.Hairline, colors.lineSeam, shape)
-            .testTag(ArtifactsHomeTags.Tile)
-            .raftClickable(onClick = onOpen)
-            .artifactsHomeOpenSemantics(label, onOpen),
-    ) {
-        cover(row)
-        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            Row(verticalAlignment = Alignment.Top, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                RaftText(
-                    artifactsHomeShownTitle(row.summary.title),
-                    modifier = Modifier.weight(1f),
-                    style = RaftTheme.typography.subhead.copy(fontWeight = FontWeight.Bold),
-                    color = colors.foreground,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                RaftBadge(text = stringResource(Res.string.artifacts_card_version, row.summary.version), variant = RaftBadgeVariant.Muted)
-            }
-            ArtifactsHomeSticker(row.news)
-            ArtifactsHomeAuthorLine(row.author, readerId)
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                RaftText(time, Modifier.weight(1f), style = RaftTheme.typography.footnote, color = colors.foregroundHint, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                if (row.summary.commentCount > 0) {
-                    RaftLucideIcon(RaftLucideIconName.MessageSquare, Modifier.size(12.dp), color = raftArgbHex(colors.foregroundMuted))
-                    RaftText("${row.summary.commentCount}", style = RaftTheme.typography.footnote, color = colors.foregroundMuted, maxLines = 1)
-                }
-            }
-        }
-    }
-}
 
 /** web `TileCover`'s last resort: the kind's glyph on `fill-muted`, 16:10. */
 @Composable
@@ -987,8 +1088,7 @@ internal fun ArtifactsHomeTilePlaceholder(kind: ArtifactKind) {
 
 /**
  * web `TileCover`'s box: every cover is the tile's width at 16:10 (`aspect-[16/10]`, review L3);
- * what doesn't fit is cut, on `fill-muted`, with a hairline under it. The text under it still
- * varies, so the grid is masonry.
+ * what doesn't fit is cut, on `fill-muted`, with a hairline under it.
  */
 @Composable
 internal fun ArtifactsHomeTileCoverFrame(alignment: Alignment = Alignment.Center, content: @Composable () -> Unit) {
@@ -1002,5 +1102,5 @@ internal fun ArtifactsHomeTileCoverFrame(alignment: Alignment = Alignment.Center
     }
 }
 
-/** raft-ui `--column-margin` on a phone list. */
-private val ArtifactsHomeMargin: Dp = 16.dp
+/** raft-ui `--column-margin` aligned across toolbar, headers, grid tiles and list rows. */
+internal val ArtifactsHomeMargin: Dp = 16.dp
