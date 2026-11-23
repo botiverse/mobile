@@ -97,8 +97,11 @@ callable build.raft.app.cmp.ios.RaftCmpIosBridge.Companion.*
 function build.raft.app.cmp.ios.RaftCmpIosBridgeCallback.deliver
 callable build.raft.app.cmp.ios.RaftCmpIosBridgeCallback.Companion.*
 function build.raft.app.cmp.ios.RaftCmpIosNavigator.closePage
+function build.raft.app.cmp.ios.RaftCmpIosNavigator.currentTopPage
 function build.raft.app.cmp.ios.RaftCmpIosNavigator.openPage
 callable build.raft.app.cmp.ios.RaftCmpIosNavigator.Companion.*
+callable build.raft.app.cmp.ios.RaftCmpIosTopPage.*
+callable build.raft.app.cmp.ios.RaftCmpIosTopPage.Companion.*
 callable build.raft.app.cmp.ios.RaftIosPage.*
 callable build.raft.app.cmp.ios.RaftIosPage.Companion.*
 function build.raft.app.cmp.ios.RaftIosPageListener.onDarkThemeResolved

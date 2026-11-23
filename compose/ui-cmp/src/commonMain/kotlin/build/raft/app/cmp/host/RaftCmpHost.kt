@@ -25,6 +25,15 @@ interface RaftCmpNavigator {
      * transition runs (the iOS router, the Android Activity path: [RaftNativePageOpenGate]).
      */
     fun openTransition(pageName: String, pageData: JsonObject): RaftPageOpenTransition = RaftPageOpenTransition.Timed
+
+    /**
+     * Authoritative top page of this window's navigation stack, when the host knows it directly
+     * (iOS `UINavigationController.topViewController`, Android `RaftActivityPageOpens` /
+     * `RaftPageStack`, Desktop `RaftPageStack`). Survives app backgrounding, cancelled swipes,
+     * and native pops without relying on Compose `pageDidAppear`. Null when the host does not
+     * report a top page directly.
+     */
+    fun topPage(): RaftCmpPageArgs? = null
 }
 
 /** See [RaftCmpNavigator.openTransition]. */

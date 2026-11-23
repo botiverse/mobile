@@ -1,6 +1,10 @@
 package build.raft.app
 
 import build.raft.app.data.ArtifactLinkTarget
+import build.raft.app.nav.RAFT_REPLACE_CURRENT_PAGE
+import build.raft.app.nav.RaftPageStack
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 import build.raft.app.data.SharedConversationDirectoryProjection
 import build.raft.app.data.SharedConversationDirectoryState
 import build.raft.app.data.SharedWindowNavigationCoordinator
@@ -103,6 +107,145 @@ class RaftShellNavigationIntakeTest {
 
         assertTrue(host.performed.isEmpty(), "both target the page on top: ${host.performed}")
         assertEquals(2, host.logs.count { it.startsWith("window_navigation_open_skipped reason=already_top_page") })
+    }
+
+    @Test
+    fun authoritativeHostStackTopDeduplicatesBackgroundNotificationsAcrossPopsAndReplaces() = intakeTest {
+        fun threadPageData(channelId: String, focusedMessageId: String? = null): JsonObject =
+            JsonObject(
+                mapOf(
+                    "instanceId" to JsonPrimitive("channel:$channelId"),
+                    "payload" to
+                        JsonPrimitive(
+                            """{"instanceId":"channel:$channelId","surfaceKind":"channel","threadId":"$channelId","streamChannelId":"$channelId"""" +
+                                (focusedMessageId?.let { ""","focusedMessageId":"$it"""" } ?: "") +
+                                """}""",
+                        ),
+                ),
+            )
+
+        val stack = RaftPageStack()
+        val shell = stack.pages.single()
+        val navigator = stack.navigatorFor(shell)
+        val paneNavigator = RaftPaneNavigator(platform = navigator, wide = { false }, openInPane = { _, _, _ -> })
+        var fallbackVisibleRoute: ThreadRouteIdentity? = null
+        var desktopWide = false
+        host.topPageProvider = {
+            raftResolveNavigationTopPageRoute(
+                desktopModeOnLargeScreen = desktopWide,
+                hostTopPage = paneNavigator.topPage(),
+                fallbackVisibleRoute = { fallbackVisibleRoute },
+            )
+        }
+
+        // Open channel-1, then simulate app backgrounding (Compose visibility clears fallback to null).
+        stack.open(THREAD_PAGE, threadPageData("channel-1", focusedMessageId = "message-1"), from = shell)
+        fallbackVisibleRoute = null
+
+        // Three consecutive notifications for different messages in channel-1 must all be skipped.
+        assertTrue(intake.enqueue(notificationIntent(channelId = "channel-1", messageId = "message-2")))
+        advanceUntilIdle()
+        assertTrue(intake.enqueue(notificationIntent(channelId = "channel-1", messageId = "message-3")))
+        advanceUntilIdle()
+        assertTrue(intake.enqueue(notificationIntent(channelId = "channel-1", messageId = "message-4")))
+        advanceUntilIdle()
+        assertTrue(host.performed.isEmpty(), "duplicate pushes over top channel-1: ${host.performed}")
+        assertEquals(3, host.logs.count { it.startsWith("window_navigation_open_skipped reason=already_top_page") })
+
+        // Pushing a non-conversation page (ChannelSettings) clears top conversation even if fallback is stale.
+        fallbackVisibleRoute = channelRoute(host)
+        stack.open("compose_channel_settings", JsonObject(emptyMap()), from = stack.pages.last())
+        assertTrue(intake.enqueue(notificationIntent(channelId = "channel-1", messageId = "message-5")))
+        advanceUntilIdle()
+        assertEquals(1, host.performed.size, "non-thread top page must not fall back to stale visibleRoute")
+
+        // Popping ChannelSettings back to channel-1 immediately restores channel-1 without Compose pageDidAppear.
+        fallbackVisibleRoute = null
+        assertTrue(stack.back())
+        assertTrue(intake.enqueue(notificationIntent(channelId = "channel-1", messageId = "message-6")))
+        advanceUntilIdle()
+        assertEquals(1, host.performed.size)
+        assertEquals(4, host.logs.count { it.startsWith("window_navigation_open_skipped reason=already_top_page") })
+
+        // In-place replacement of a covered page beneath a covering page never clobbers the top page.
+        val pendingTask = stack.pages.last()
+        stack.open("compose_channel_settings", JsonObject(emptyMap()), from = pendingTask)
+        stack.open(
+            THREAD_PAGE,
+            JsonObject(threadPageData("channel-2") + (RAFT_REPLACE_CURRENT_PAGE to JsonPrimitive(true))),
+            from = pendingTask,
+        )
+        assertNull(
+            raftResolveNavigationTopPageRoute(
+                desktopModeOnLargeScreen = false,
+                hostTopPage = paneNavigator.topPage(),
+                fallbackVisibleRoute = { channelRoute(host) },
+            )
+        )
+
+        // Wide desktop layout always returns null regardless of host top page.
+        assertTrue(stack.back())
+        desktopWide = true
+        assertNull(host.topPageRoute())
+
+        // Popping back to AppShell on phone layout allows notifications for channel-1 to open again.
+        desktopWide = false
+        assertTrue(stack.back())
+        assertEquals(RAFT_APP_SHELL_PAGE, paneNavigator.topPage()?.pageName)
+        assertTrue(intake.enqueue(notificationIntent(channelId = "channel-1", messageId = "message-7")))
+        advanceUntilIdle()
+        assertEquals(2, host.performed.size)
+
+        // Direct message (Hands iOS 5e33271a): consecutive background notifications for the top DM skip cleanly.
+        val dmId = "dm-f0a32ee2"
+        val dmPageData =
+            JsonObject(
+                mapOf(
+                    "instanceId" to JsonPrimitive("dm:$dmId"),
+                    "payload" to
+                        JsonPrimitive("""{"instanceId":"dm:$dmId","surfaceKind":"dm","threadId":"$dmId","streamChannelId":"$dmId"}"""),
+                ),
+            )
+        stack.open(THREAD_PAGE, dmPageData, from = shell)
+        val dmRequest =
+            HomeMessageOpenRequest(
+                conversationIdentity =
+                    ThreadLaunchConversationIdentity(
+                        threadId = build.raft.app.model.ThreadId(dmId),
+                        channelId = build.raft.app.model.ChannelId(dmId),
+                        kind = ConversationKind.DirectMessage,
+                    ),
+                anchorMessageId = "dm-msg-2",
+            )
+        assertTrue(raftWindowNavigationTargetIsTopPage(dmRequest, host.topPageRoute()))
+
+        // Unresolved 0-reply ReplyThread on top still matches a notification carrying the newly created streamChannelId.
+        val replyPageData =
+            JsonObject(
+                mapOf(
+                    "instanceId" to JsonPrimitive("reply-parent:channel-1:root-1"),
+                    "payload" to
+                        JsonPrimitive(
+                            """{"instanceId":"reply-parent:channel-1:root-1","surfaceKind":"${RaftThreadSurfaceKind.ReplyThread}","parentChannelId":"channel-1","parentMessageId":"root-1","parentSurfaceKind":"${RaftThreadSurfaceKind.Channel}","parentChannelKind":"${RaftThreadSurfaceKind.Channel}"}"""
+                        ),
+                ),
+            )
+        stack.open(THREAD_PAGE, replyPageData, from = stack.pages.last())
+        val replyNotificationRequest =
+            HomeMessageOpenRequest(
+                conversationIdentity =
+                    buildThreadLaunchConversationIdentity(
+                        kind = ConversationKind.Thread,
+                        channelId = build.raft.app.model.ChannelId("channel-1"),
+                        threadChannelId = build.raft.app.model.ChannelId("stream-99"),
+                        parentChannelId = build.raft.app.model.ChannelId("channel-1"),
+                        parentMessageId = build.raft.app.model.MessageId("root-1"),
+                        parentSurfaceKind = RaftThreadSurfaceKind.Channel,
+                        parentChannelKind = RaftThreadSurfaceKind.Channel,
+                    ),
+                anchorMessageId = "reply-msg-1",
+            )
+        assertTrue(raftWindowNavigationTargetIsTopPage(replyNotificationRequest, host.topPageRoute()))
     }
 
     @Test
@@ -238,6 +381,8 @@ class RaftShellNavigationIntakeTest {
 internal class FakeShellNavigationIntakeHost : RaftShellNavigationIntakeHost {
     var sessionReady = true
     var topPage: ThreadRouteIdentity? = null
+    /** Live top-page provider (defaults to [topPage]); lets tests wire an authoritative host stack. */
+    var topPageProvider: () -> ThreadRouteIdentity? = { topPage }
     /** The window's task surfaces; null: none registered. */
     var cover: RaftIncomingNavigationSignal? = null
     val performed = mutableListOf<WindowNavigationAction>()
@@ -284,7 +429,7 @@ internal class FakeShellNavigationIntakeHost : RaftShellNavigationIntakeHost {
             conversationDirectory = ShellNavigationIntakeFixtures.directory(),
         )
 
-    override fun topPageRoute(): ThreadRouteIdentity? = topPage
+    override fun topPageRoute(): ThreadRouteIdentity? = topPageProvider()
 
     override suspend fun closeIncomingNavigationCover(): Boolean = cover?.closeAll() ?: false
 

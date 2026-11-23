@@ -1297,6 +1297,8 @@ internal open class RaftCmpActivity :
                     override fun openTransition(pageName: String, pageData: JsonObject) = openTransitionFrom(page, pageName, pageData)
 
                     override fun closePage() = stack.close(page)
+
+                    override fun topPage(): RaftCmpPageArgs? = topStackPage()
                 },
             bridgeTransport = transport,
             events = page.events,
@@ -1571,6 +1573,9 @@ internal open class RaftCmpActivity :
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
+        // singleTask + FLAG_ACTIVITY_CLEAR_TOP brings this Activity to front before cleared
+        // Activities above it finish onDestroy(): trim stale entries synchronously.
+        RaftActivityPageOpens.Process.broughtToFront(this, taskId)
         AndroidAppScopeRealtimeOwner.onActivityNewIntent(intent)
         if (
             shouldPreserveLiveAppShellOnNewIntent(
@@ -1979,6 +1984,7 @@ internal open class RaftCmpActivity :
 
     override fun onResume() {
         super.onResume()
+        RaftActivityPageOpens.Process.broughtToFront(this, taskId)
         if (recreateOnResume) {
             recreateOnResume = false
             RaftAndroidLocalDiagnostics.recordLog(
@@ -2125,6 +2131,20 @@ internal open class RaftCmpActivity :
     override fun openPage(pageName: String, pageData: JsonObject) = openPageFrom(null, pageName, pageData)
 
     override fun openTransition(pageName: String, pageData: JsonObject) = openTransitionFrom(null, pageName, pageData)
+
+    override fun topPage(): RaftCmpPageArgs? = topStackPage()
+
+    private fun topStackPage(): RaftCmpPageArgs? {
+        val topHost = RaftActivityPageOpens.Process.topHost(taskId)
+        if (topHost != null && topHost !== this) {
+            return RaftActivityPageOpens.Process.topPage(taskId)
+        }
+        val stack = nav3Stack
+        if (stack != null) {
+            return stack.pages.lastOrNull()?.let { RaftCmpPageArgs(it.key.pageName, it.key.pageData) }
+        }
+        return RaftActivityPageOpens.Process.topPage(taskId)
+    }
 
     /**
      * The open guard's window for an open from [from] ([RaftCmpNavigator.openTransition]): the

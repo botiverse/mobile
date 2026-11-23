@@ -67,6 +67,9 @@ class RaftPageStack(
             override fun closePage() = close(page)
 
             override fun openTransition(pageName: String, pageData: JsonObject) = pushTransition
+
+            override fun topPage(): RaftCmpPageArgs? =
+                pages.lastOrNull()?.let { RaftCmpPageArgs(it.key.pageName, it.key.pageData) }
         }
 
     fun open(pageName: String, pageData: JsonObject, from: RaftStackPage?) {

@@ -155,6 +155,8 @@ private class RaftPageCoverNavigator(
 
     override fun openTransition(pageName: String, pageData: JsonObject) = platform.openTransition(pageName, pageData)
 
+    override fun topPage(): RaftCmpPageArgs? = platform.topPage()
+
     private fun push(pageName: String, pageData: JsonObject) {
         signal.fire()
         platform.openPage(pageName, pageData)

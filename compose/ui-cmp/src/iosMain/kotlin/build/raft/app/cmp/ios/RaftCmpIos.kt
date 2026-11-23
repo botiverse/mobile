@@ -69,6 +69,12 @@ interface RaftCmpIosBridgeCallback {
     fun deliver(json: String?)
 }
 
+/** Snapshot of the top page on iOS's `UINavigationController`, returned by [RaftCmpIosNavigator.topPage]. */
+class RaftCmpIosTopPage(
+    val pageName: String,
+    val pageDataJson: String,
+)
+
 /**
  * Implemented by the iOS app (Swift, `RaftCmpPageNavigator`): page navigation through the app's
  * `UINavigationController`. [openPage] goes through the app's page router (`RaftPageRouter`).
@@ -77,6 +83,14 @@ interface RaftCmpIosNavigator {
     fun openPage(pageName: String, pageDataJson: String)
 
     fun closePage()
+
+    /**
+     * Authoritative top page on the window's navigation stack, or null when detached.
+     * Distinct name + `@ObjCName` avoids colliding with `RaftCmpNavigator.topPage` in Objective-C.
+     */
+    @OptIn(ExperimentalObjCName::class)
+    @ObjCName("currentTopPage")
+    fun currentTopPage(): RaftCmpIosTopPage?
 }
 
 /** Implemented by the iOS page container (`RaftPageViewController`): page -> host notifications. */
@@ -321,4 +335,7 @@ private class IosNavigator(private val navigator: RaftCmpIosNavigator) : RaftCmp
     override fun openTransition(pageName: String, pageData: JsonObject) = RaftPageOpenTransition.Untimed
 
     override fun closePage() = navigator.closePage()
+
+    override fun topPage(): RaftCmpPageArgs? =
+        navigator.currentTopPage()?.let { RaftCmpPageArgs.fromJsonText(it.pageName, it.pageDataJson) }
 }

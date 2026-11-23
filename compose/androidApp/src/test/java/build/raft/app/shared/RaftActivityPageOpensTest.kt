@@ -57,4 +57,30 @@ class RaftActivityPageOpensTest {
         scheduled.toList().forEach { it() }
         assertEquals(listOf("t1", "t2"), started)
     }
+
+    @Test
+    fun topPageReflectsAuthoritativeStackAndDropsClearedActivitiesOnBringToFront() {
+        opens.created("shell", 1, "compose_slock_app_shell", JsonObject(emptyMap()))
+        opens.created("t1-activity", 1, "compose_thread", thread("t1"))
+        assertEquals("compose_thread", opens.topPage(1)?.pageName)
+        assertEquals("t1-activity", opens.topHost(1))
+
+        // Finishing Activity is skipped immediately even before destroyed().
+        leavingHosts += "t1-activity"
+        assertEquals("compose_slock_app_shell", opens.topPage(1)?.pageName)
+        assertEquals("shell", opens.topHost(1))
+
+        // singleTask + CLEAR_TOP delivers onNewIntent to shell before the cleared thread Activity
+        // runs onDestroy() or flips isFinishing: broughtToFront trims the stale entry synchronously
+        // and drops any queued pending open rather than resurrecting it.
+        leavingHosts.clear()
+        assertEquals("compose_thread", opens.topPage(1)?.pageName)
+        assertEquals(RaftNativePageOpenOutcome.Opened, open(1, "t2"))
+        assertEquals(RaftNativePageOpenOutcome.Queued, open(1, "t3"))
+        assertEquals(listOf("t2"), started)
+        opens.broughtToFront("shell", 1)
+        assertEquals("compose_slock_app_shell", opens.topPage(1)?.pageName)
+        assertEquals("shell", opens.topHost(1))
+        assertEquals(listOf("t2"), started)
+    }
 }

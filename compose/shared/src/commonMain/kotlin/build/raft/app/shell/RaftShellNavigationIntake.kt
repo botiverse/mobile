@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.app.cmp.host.RaftCmpPageArgs
 import build.raft.app.data.SharedWindowNavigationCoordinator
 import build.raft.app.data.WindowNavigationAction
 import build.raft.app.data.WindowNavigationIntent
@@ -9,6 +10,7 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 import kotlinx.atomicfu.locks.SynchronizedObject
 import kotlinx.atomicfu.locks.synchronized
+import kotlinx.serialization.json.JsonPrimitive
 
 /**
  * What the app shell gives [RaftShellNavigationIntake]: its latest state, read when the intake
@@ -199,8 +201,43 @@ internal fun raftWindowNavigationTargetIsTopPage(request: HomeMessageOpenRequest
     val target = request.conversationIdentity.resolveThreadRouteIdentity()
     if (target.instanceKey.isNotBlank() && target.instanceKey == top.instanceKey) return true
     val timeline = target.timelineChannelId
-    return timeline != null && timeline == top.timelineChannelId
+    if (timeline != null && timeline == top.timelineChannelId) return true
+    return target.surfaceKind == RaftThreadSurfaceKind.ReplyThread &&
+        top.surfaceKind == RaftThreadSurfaceKind.ReplyThread &&
+        !target.parentKey.isNullOrBlank() &&
+        target.parentKey == top.parentKey
 }
+
+/**
+ * Conversation route of a host's authoritative top page ([RaftCmpNavigator.topPage]), or null when
+ * the top page is not a conversation page (`THREAD_PAGE`) or carries no valid thread route.
+ */
+internal fun raftTopPageThreadRouteOrNull(topPage: RaftCmpPageArgs): ThreadRouteIdentity? {
+    if (topPage.pageName != THREAD_PAGE) return null
+    val payloadText = (topPage.pageData["payload"] as? JsonPrimitive)?.takeIf { it.isString }?.content
+    if (payloadText.isNullOrBlank()) return null
+    val instanceId = (topPage.pageData["instanceId"] as? JsonPrimitive)?.takeIf { it.isString }?.content.orEmpty()
+    return parseThreadLaunchPayload(payloadText, instanceId)?.resolveThreadRouteIdentity()
+}
+
+/**
+ * Resolves the phone-layout top conversation route for [RaftShellNavigationIntake]:
+ * - Wide desktop layout returns null (split pane handles selection in place).
+ * - When the host reports its authoritative top stack page ([hostTopPage] != null), use it
+ *   exclusively — surviving app backgrounding, native pops, and cancelled interactive swipes,
+ *   and never falling back to a stale [fallbackVisibleRoute] when a non-conversation page sits on top.
+ * - Fall back to [fallbackVisibleRoute] only when the host does not report [hostTopPage].
+ */
+internal fun raftResolveNavigationTopPageRoute(
+    desktopModeOnLargeScreen: Boolean,
+    hostTopPage: RaftCmpPageArgs?,
+    fallbackVisibleRoute: () -> ThreadRouteIdentity?,
+): ThreadRouteIdentity? =
+    when {
+        desktopModeOnLargeScreen -> null
+        hostTopPage != null -> raftTopPageThreadRouteOrNull(hostTopPage)
+        else -> fallbackVisibleRoute()
+    }
 
 /**
  * "Something is about to open in this window" (a message link, a notification or banner open, an

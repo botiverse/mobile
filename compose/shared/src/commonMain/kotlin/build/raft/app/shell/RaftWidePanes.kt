@@ -187,6 +187,8 @@ internal class RaftPaneNavigator(
     }
 
     override fun closePage() = close()
+
+    override fun topPage() = platform.topPage()
 }
 
 /**
