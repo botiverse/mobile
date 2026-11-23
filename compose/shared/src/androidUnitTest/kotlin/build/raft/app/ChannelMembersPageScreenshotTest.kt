@@ -61,7 +61,14 @@ class ChannelMembersPageScreenshotTest {
 
     // Add Member (web ChannelMembers add view): nothing selected yet, as artin's web capture.
     @Test
-    fun channelMembersAddLight() = capture("channel.members.add", RaftAppAppearance.Light) { ChannelAddMemberPanelVisualScreen() }
+    fun channelMembersAddLight() =
+        capture("channel.members.add", RaftAppAppearance.Light) {
+            ChannelAddMemberPanelVisualScreen(
+                viewerRole = VisualFixtureData.Humans.Owner.ROLE,
+                serverName = VisualFixtureData.Server.NAME,
+                nowEpochMillis = VisualFixtureData.Locale.NOW_EPOCH_MILLIS,
+            )
+        }
 
     private fun capture(name: String, appearance: RaftAppAppearance, content: @Composable () -> Unit = { ChannelMembersVisualContent() }) {
         // zh-CN copy, restored here (not in a DisposableEffect: the activity outlives the

@@ -680,7 +680,14 @@ internal fun ChannelAddMemberPanelVisualScreen(
     val externalInviteAccessOn =
         externalInviteAccess(
             serverRole = viewerRole,
-            channel = ExternalInviteChannel(type = "channel", name = "design", archived = false),
+            channel =
+                ExternalInviteChannel(
+                    type = "channel",
+                    name = "design",
+                    archived = false,
+                    jointRole = null,
+                    hasExternalRelation = false,
+                ),
         )
     ThreadMembersPageContent(
         members = emptyList(),
