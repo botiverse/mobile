@@ -18,6 +18,8 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.navigation3.runtime.NavEntry
 import androidx.navigation3.ui.NavDisplay
 import build.raft.app.nav.RaftStackSceneStrategy
+import kotlin.test.AfterTest
+import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertSame
@@ -29,6 +31,10 @@ import kotlin.test.assertSame
  */
 @OptIn(ExperimentalTestApi::class)
 class RaftStackSceneTest {
+    @BeforeTest fun mainOnTheAwtThread() = RaftDesktopComposeUiTestMain.install()
+
+    @AfterTest fun resetMain() = RaftDesktopComposeUiTestMain.reset()
+
     private class Probe {
         val composed = mutableListOf<String>()
         val disposed = mutableListOf<String>()

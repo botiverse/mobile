@@ -24,6 +24,8 @@ import androidx.navigationevent.NavigationEventInput
 import androidx.navigationevent.compose.LocalNavigationEventDispatcherOwner
 import androidx.navigationevent.compose.NavigationBackHandler
 import androidx.navigationevent.compose.rememberNavigationEventState
+import kotlin.test.AfterTest
+import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlinx.serialization.json.JsonObject
@@ -38,6 +40,10 @@ import kotlinx.serialization.json.JsonObject
  */
 @OptIn(ExperimentalTestApi::class)
 class RaftDesktopNavDisplayBackTest {
+    @BeforeTest fun mainOnTheAwtThread() = RaftDesktopComposeUiTestMain.install()
+
+    @AfterTest fun resetMain() = RaftDesktopComposeUiTestMain.reset()
+
     /** The window's back event (Compose Desktop's Esc input). */
     private class BackInput : NavigationEventInput() {
         fun back() = dispatchOnBackCompleted()
