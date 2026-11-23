@@ -284,6 +284,11 @@ internal fun RaftPaneGrid(
     mainBounds: RaftPaneGridColumnBounds? = null,
     /** The row's Expand (#189 rule 5), handed up to the outermost grid: the shell's ([RaftWideSideColumns.expand]). */
     expand: RaftPaneGridExpand? = null,
+    /**
+     * Whether the main pane's own header carries the row tabs ([build.raft.designsystem.components.LocalRaftPaneGridHeadTabs])
+     * instead of the grid drawing a standalone tab strip above [main].
+     */
+    mainHeadCarriesTabs: Boolean = false,
     main: @Composable () -> Unit,
 ) {
     // The main pane's tab where the row makes columns tabs in its head (#189 rule 4): the conversation, web "Chat".
@@ -298,6 +303,7 @@ internal fun RaftPaneGrid(
             mainTabLabel = mainTab,
             mainBounds = mainBounds,
             expand = expand,
+            mainHeadCarriesTabs = mainHeadCarriesTabs,
             main = main,
         )
     }

@@ -1,7 +1,11 @@
 package build.raft.app
 
+import build.raft.designsystem.components.LocalRaftPaneGridHeadTabs
 import build.raft.designsystem.components.RaftBackButtonDefaults
 import build.raft.designsystem.components.LocalRaftBarButtons
+import build.raft.designsystem.components.RaftPaneGridHeadRowTabs
+import build.raft.designsystem.components.raftPaneGridFitHead
+import build.raft.designsystem.components.raftPaneGridHeadShownActions
 import build.raft.app.resources.*
 import androidx.compose.ui.platform.testTag
 import androidx.compose.runtime.setValue
@@ -62,6 +66,7 @@ import androidx.compose.foundation.border
 import build.raft.designsystem.components.raftDetectDragGesturesAfterHold
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -126,6 +131,7 @@ internal fun MembersHumanDetailHeader(
     val messageLabel = stringResource(Res.string.member_label_message)
     val showsBack = raftSidePaneShowsBack()
     val paneCloses = LocalRaftSidePanePage.current != null
+    val headRowTabs = LocalRaftPaneGridHeadTabs.current
     val messageButton: @Composable () -> Unit = {
         RaftIconButton(
             onClick = onOpenDirectMessage,
@@ -156,7 +162,9 @@ internal fun MembersHumanDetailHeader(
         showBodyTopBanner = false,
         titleLeadingContent = {
             RaftPaneAwareBackButton(onClick = onBack)
-            MembersStickerAvatar(member, RaftAvatarSize.Md, memberAvatarResolver)
+            if (headRowTabs == null) {
+                MembersStickerAvatar(member, RaftAvatarSize.Md, memberAvatarResolver)
+            }
         },
         titleContent = {
             Column(modifier = Modifier.weight(1f)) {
@@ -255,7 +263,9 @@ internal fun MembersDetailHeader(
     val nativeLoungeLabel = stringResource(Res.string.agent_lounge_label)
     val nativeMoreLabel = stringResource(Res.string.tab_more)
     val nativeBar = LocalRaftNativeNavBar.current
+    val headRowTabs = LocalRaftPaneGridHeadTabs.current
     if (
+        headRowTabs == null &&
         nativeBar != null &&
         raftNativeNavBarPublish(
             title = member.displayName,
@@ -304,120 +314,154 @@ internal fun MembersDetailHeader(
     // In the wide layout's profile column (a side pane) the actions end in the pane's Close, and
     // Back shows only over a page of the cell's own stack (raftSidePaneHeadButtons).
     val showsBack = raftSidePaneShowsBack()
+    val paneCloses = LocalRaftSidePanePage.current != null
     Column(
         modifier = Modifier
+            .raftPaneGridFitHead()
             .fillMaxWidth()
             .background(colors.layerCanvas)
             .padding(top = topSafeArea)
     ) {
         // The head's icon-lg buttons are bar buttons: 28dp under a mouse or trackpad (sizing v12).
         CompositionLocalProvider(LocalRaftBarButtons provides true) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    // 56 with a finger, 44 under a mouse or trackpad (sizing v12, raft-ui 0.65 desktop density).
-                    .height(RaftTheme.controls.headHeight - RaftStroke.Hairline)
-                    // 3dp for a finger's 44dp buttons; 8dp for the 28dp bar buttons (sizing v12). Without
-                    // Back the avatar starts on the 16dp content margin.
-                    .padding(
-                        start = if (showsBack) RaftBackButtonDefaults.EdgeInset - 2.dp else MembersHeaderContentMargin,
-                        end = RaftBackButtonDefaults.EdgeInset - 2.dp,
-                    ),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(RaftAppSpacing.Sm)
-            ) {
-                RaftPaneAwareBackButton(onClick = onBack)
-                // The web's panel head shows the avatar only; it is changed from the profile hero.
-                MembersRaftAvatar(
-                    member = member,
-                    size = RaftAvatarSize.Md,
-                    memberAvatarResolver = memberAvatarResolver
-                )
-                Column(
-                    modifier = Modifier.weight(1f)
-                ) {
-                    RaftText(
-                        text = member.displayName,
-                        style = typography.headline,
-                        color = colors.foreground,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                    if (!headerMetaLabel.isNullOrBlank()) {
-                        RaftText(
-                            text = headerMetaLabel,
-                            style = if (deleted) typography.caption else typography.monoMeta.copy(lineHeight = typography.caption.lineHeight),
-                            color = if (deleted) colors.dangerStrong else colors.foregroundHint,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
+            BoxWithConstraints(Modifier.fillMaxWidth()) {
+                val startInset = if (showsBack) RaftBackButtonDefaults.EdgeInset - 2.dp else MembersHeaderContentMargin
+                val endInset = RaftBackButtonDefaults.EdgeInset - 2.dp
+                val hasLounge = onOpenLounge != null
+                val hasMessage = directMessageEligibility != MembersDirectMessageEligibility.Unavailable
+                val hasMore = member.kind == MemberKind.Agent && canManage && !deleted
+                val ownCount = (if (hasLounge) 1 else 0) + (if (hasMessage) 1 else 0)
+                val shownOwn =
+                    if (headRowTabs != null) {
+                        raftPaneGridHeadShownActions(
+                            widthDp = maxWidth.value,
+                            leadButtons = if (showsBack) 1 else 0,
+                            own = ownCount,
+                            controls = (if (hasMore) 1 else 0) + (if (paneCloses) 1 else 0),
+                            menuItems = 0,
+                            tabs = true,
+                            buttonDp = RaftTheme.controls.barButtonSize.value,
+                            startDp = startInset.value,
+                            endDp = endInset.value,
+                            gapDp = 2f,
+                            leadDp = RaftTheme.controls.barButtonSize.value + RaftAppSpacing.Sm.value,
+                            titleGapDp = RaftAppSpacing.Sm.value,
                         )
+                    } else {
+                        ownCount
                     }
-                }
+                val showLounge = hasLounge && shownOwn >= 1
+                val showMessage = hasMessage && shownOwn >= (if (hasLounge) 2 else 1)
                 Row(
-                    horizontalArrangement = Arrangement.spacedBy(2.dp),
-                    verticalAlignment = Alignment.CenterVertically
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        // 56 with a finger, 44 under a mouse or trackpad (sizing v12, raft-ui 0.65 desktop density).
+                        .height(RaftTheme.controls.headHeight - RaftStroke.Hairline)
+                        // 3dp for a finger's 44dp buttons; 8dp for the 28dp bar buttons (sizing v12). Without
+                        // Back the avatar starts on the 16dp content margin.
+                        .padding(start = startInset, end = endInset),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(RaftAppSpacing.Sm)
                 ) {
-                    // Agent Lounge v0 (web AgentProfileOverflowMenu `agent-profile-inline-lounge`): the
-                    // Lounge button inline in the head, before Message.
-                    if (onOpenLounge != null) {
-                        RaftIconButton(
-                            onClick = onOpenLounge,
-                            tooltip = nativeLoungeLabel,
-                            variant = RaftButtonVariant.Ghost,
-                            size = RaftIconButtonSize.Lg,
-                            loading = loungeOpening,
-                            modifier = Modifier.testTag(AgentLoungeTestTags.ProfileAction)
-                        ) {
-                            RaftContentLucideIcon(RaftLucideIconName.Users, size = 22.dp)
+                    RaftPaneAwareBackButton(onClick = onBack)
+                    if (headRowTabs != null) {
+                        Box(Modifier.weight(1f), contentAlignment = Alignment.CenterStart) {
+                            RaftPaneGridHeadRowTabs(
+                                tabs = headRowTabs,
+                                contentDescription = stringResource(Res.string.pane_grid_row_tabs),
+                            )
                         }
-                    }
-                    if (
-                        directMessageEligibility != MembersDirectMessageEligibility.Unavailable &&
-                        membersHeaderMessageUsesIconOnly(member.kind)
-                    ) {
-                        RaftIconButton(
-                            onClick = onOpenDirectMessage,
-                            tooltip = stringResource(Res.string.member_label_message),
-                            variant = RaftButtonVariant.Ghost,
-                            size = RaftIconButtonSize.Lg,
-                            loading = directMessageOpening
-                        ) {
-                            // raft-ui `DirectMessageIcon`, as the web head draws it.
-                            RaftContentLucideIcon(RaftLucideIconName.DirectMessage, size = 22.dp)
-                        }
-                    } else if (directMessageEligibility != MembersDirectMessageEligibility.Unavailable) {
-                        // A filled Button straight in the head ends on the content edge (raft-ui panelHeadEdges).
-                        RaftButton(
-                            text = stringResource(Res.string.member_label_message),
-                            onClick = onOpenDirectMessage,
-                            modifier = Modifier.padding(end = 7.dp),
-                            loading = directMessageOpening,
-                            leadingIcon = { RaftContentLucideIcon(RaftLucideIconName.DirectMessage) }
+                    } else {
+                        // The web's panel head shows the avatar only; it is changed from the profile hero.
+                        MembersRaftAvatar(
+                            member = member,
+                            size = RaftAvatarSize.Md,
+                            memberAvatarResolver = memberAvatarResolver
                         )
-                    }
-                    // The More menu holds only Start/Stop and Restart / Reset: nothing to show without
-                    // manage rights or once the agent is archived.
-                    if (member.kind == MemberKind.Agent && canManage && !deleted) {
-                        RaftIconButton(
-                            onClick = {
-                                onRequestManagementMenu(
-                                    threeDotButtonAnchorResolver.resolve()
-                                )
-                            },
-                            tooltip = stringResource(Res.string.tab_more),
-                            variant = RaftButtonVariant.Ghost,
-                            size = RaftIconButtonSize.Lg,
-                            modifier =
-                                Modifier.raftCaptureLiveRootAnchor(threeDotButtonAnchor) {
-                                    currentOnManagementMenuAnchorResolverReady(threeDotButtonAnchorResolver)
-                                }
+                        Column(
+                            modifier = Modifier.weight(1f)
                         ) {
-                            // Web AgentProfileOverflowMenu: EllipsisVertical.
-                            RaftContentLucideIcon(RaftLucideIconName.EllipsisVertical, size = 22.dp)
+                            RaftText(
+                                text = member.displayName,
+                                style = typography.headline,
+                                color = colors.foreground,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            if (!headerMetaLabel.isNullOrBlank()) {
+                                RaftText(
+                                    text = headerMetaLabel,
+                                    style = if (deleted) typography.caption else typography.monoMeta.copy(lineHeight = typography.caption.lineHeight),
+                                    color = if (deleted) colors.dangerStrong else colors.foregroundHint,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
                         }
                     }
-                    // web AgentDetailPanel: the side pane's Close ends the head (nothing outside one).
-                    RaftSidePaneCloseButton()
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(2.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        // Agent Lounge v0 (web AgentProfileOverflowMenu `agent-profile-inline-lounge`): the
+                        // Lounge button inline in the head, before Message.
+                        if (showLounge && onOpenLounge != null) {
+                            RaftIconButton(
+                                onClick = onOpenLounge,
+                                tooltip = nativeLoungeLabel,
+                                variant = RaftButtonVariant.Ghost,
+                                size = RaftIconButtonSize.Lg,
+                                loading = loungeOpening,
+                                modifier = Modifier.testTag(AgentLoungeTestTags.ProfileAction)
+                            ) {
+                                RaftContentLucideIcon(RaftLucideIconName.Users, size = 22.dp)
+                            }
+                        }
+                        if (showMessage && membersHeaderMessageUsesIconOnly(member.kind)) {
+                            RaftIconButton(
+                                onClick = onOpenDirectMessage,
+                                tooltip = stringResource(Res.string.member_label_message),
+                                variant = RaftButtonVariant.Ghost,
+                                size = RaftIconButtonSize.Lg,
+                                loading = directMessageOpening
+                            ) {
+                                // raft-ui `DirectMessageIcon`, as the web head draws it.
+                                RaftContentLucideIcon(RaftLucideIconName.DirectMessage, size = 22.dp)
+                            }
+                        } else if (showMessage) {
+                            // A filled Button straight in the head ends on the content edge (raft-ui panelHeadEdges).
+                            RaftButton(
+                                text = stringResource(Res.string.member_label_message),
+                                onClick = onOpenDirectMessage,
+                                modifier = Modifier.padding(end = 7.dp),
+                                loading = directMessageOpening,
+                                leadingIcon = { RaftContentLucideIcon(RaftLucideIconName.DirectMessage) }
+                            )
+                        }
+                        // The More menu holds only Start/Stop and Restart / Reset: nothing to show without
+                        // manage rights or once the agent is archived.
+                        if (hasMore) {
+                            RaftIconButton(
+                                onClick = {
+                                    onRequestManagementMenu(
+                                        threeDotButtonAnchorResolver.resolve()
+                                    )
+                                },
+                                tooltip = stringResource(Res.string.tab_more),
+                                variant = RaftButtonVariant.Ghost,
+                                size = RaftIconButtonSize.Lg,
+                                modifier =
+                                    Modifier.raftCaptureLiveRootAnchor(threeDotButtonAnchor) {
+                                        currentOnManagementMenuAnchorResolverReady(threeDotButtonAnchorResolver)
+                                    }
+                            ) {
+                                // Web AgentProfileOverflowMenu: EllipsisVertical.
+                                RaftContentLucideIcon(RaftLucideIconName.EllipsisVertical, size = 22.dp)
+                            }
+                        }
+                        // web AgentDetailPanel: the side pane's Close ends the head (nothing outside one).
+                        RaftSidePaneCloseButton()
+                    }
                 }
             }
         }

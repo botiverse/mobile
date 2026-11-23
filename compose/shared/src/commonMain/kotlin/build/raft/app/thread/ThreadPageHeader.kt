@@ -4,7 +4,10 @@ import build.raft.designsystem.theme.RaftControlMetrics
 import androidx.compose.runtime.ReadOnlyComposable
 import build.raft.app.resources.*
 import build.raft.designsystem.theme.RaftTheme
+import build.raft.designsystem.components.LocalRaftPaneGridHeadTabs
+import build.raft.designsystem.components.RaftPaneGridHeadFit
 import build.raft.designsystem.components.raftCopyable
+import build.raft.designsystem.components.raftPaneGridHeadFit
 import build.raft.designsystem.components.RaftIconToggleButton
 import build.raft.designsystem.components.RaftBackButton
 import build.raft.designsystem.components.RaftSideAction
@@ -405,6 +408,8 @@ internal fun ThreadPageHeader(
         }
     val headerDensity = LocalDensity.current
     var headerWidthDp by remember { mutableStateOf(0f) }
+    val headRowTabs = LocalRaftPaneGridHeadTabs.current
+    val sidePane = LocalRaftSidePanePage.current
     RaftTopPageHeader(
         title = localizedHeaderTitle,
         modifier =
@@ -444,7 +449,7 @@ internal fun ThreadPageHeader(
         contentStartPadding =
             when {
                 controlsInColumn -> RaftTopPageHeaderContentEndPadding
-                showBack -> ThreadHeaderEdgeInset
+                showsBack -> ThreadHeaderEdgeInset
                 else -> ThreadSplitDetailEdgeInset
             },
         // The 3dp edge inset only mirrors Back when a trailing PanelAction sits at the end;
@@ -458,45 +463,48 @@ internal fun ThreadPageHeader(
             if (showsBack && !controlsInColumn) {
                 RaftBackButton(onClick = onBack, label = stringResource(Res.string.common_back))
             }
-            if (loungeHeader != null) {
-                // The face is decorative for screen readers; its tap opens the agent's profile.
-                // Raw clickable on purpose, as on the DM peer's face below: the app's press wash
-                // draws over the face, where raftClickable's would sit behind the opaque avatar.
-                Box(
-                    modifier =
-                        Modifier
-                            .padding(end = ThreadHeaderChannelTitleGapExtra)
-                            .then(
-                                loungeHeader.onOpenAgentProfile?.let { open -> Modifier.clickable(onClick = open) } ?: Modifier
-                            )
-                ) {
-                    RaftLoungeAvatar(
-                        agentId = loungeHeader.lounge?.agentId,
-                        avatarWireValue = loungeHeader.agentAvatarWireValue,
-                        label = loungeHeader.agentName,
-                        cacheServerId = loungeHeader.cacheServerId,
-                        avatarSize = 35.dp,
+            // Rule 4 crowded split view: row tabs replace the identity avatar/tile + title (web PanelHeader).
+            if (headRowTabs == null) {
+                if (loungeHeader != null) {
+                    // The face is decorative for screen readers; its tap opens the agent's profile.
+                    // Raw clickable on purpose, as on the DM peer's face below: the app's press wash
+                    // draws over the face, where raftClickable's would sit behind the opaque avatar.
+                    Box(
+                        modifier =
+                            Modifier
+                                .padding(end = ThreadHeaderChannelTitleGapExtra)
+                                .then(
+                                    loungeHeader.onOpenAgentProfile?.let { open -> Modifier.clickable(onClick = open) } ?: Modifier
+                                )
+                    ) {
+                        RaftLoungeAvatar(
+                            agentId = loungeHeader.lounge?.agentId,
+                            avatarWireValue = loungeHeader.agentAvatarWireValue,
+                            label = loungeHeader.agentName,
+                            cacheServerId = loungeHeader.cacheServerId,
+                            avatarSize = 35.dp,
+                        )
+                    }
+                } else if (headerDisplay.surfaceKind == RaftThreadSurfaceKind.DirectMessage) {
+                    ThreadDmPeerAvatarTile(
+                        avatarWireValue = resolvedDmPeerAvatarWireValue ?: headerDisplay.dmPeerAvatarWireValue,
+                        // The peer's name (the header title): initials come from its words.
+                        avatarLabel = headerDisplay.title.ifBlank { headerDisplay.dmPeerAvatarLabel },
+                        kind = raftAvatarKind(headerDisplay.dmPeerIdentity?.kind),
+                        cacheSubject =
+                            headerDisplay.dmPeerIdentity?.let { identity ->
+                                raftMemberAvatarCacheSubject(identity.kind, identity.memberId.value)
+                            },
+                        cacheServerId = headerDisplay.dmPeerIdentity?.sourceServerId?.value,
+                        onClick =
+                            headerDisplay.dmPeerIdentity?.let { identity ->
+                                { onOpenMemberProfile(identity) }
+                            }
                     )
-                }
-            } else if (headerDisplay.surfaceKind == RaftThreadSurfaceKind.DirectMessage) {
-                ThreadDmPeerAvatarTile(
-                    avatarWireValue = resolvedDmPeerAvatarWireValue ?: headerDisplay.dmPeerAvatarWireValue,
-                    // The peer's name (the header title): initials come from its words.
-                    avatarLabel = headerDisplay.title.ifBlank { headerDisplay.dmPeerAvatarLabel },
-                    kind = raftAvatarKind(headerDisplay.dmPeerIdentity?.kind),
-                    cacheSubject =
-                        headerDisplay.dmPeerIdentity?.let { identity ->
-                            raftMemberAvatarCacheSubject(identity.kind, identity.memberId.value)
-                        },
-                    cacheServerId = headerDisplay.dmPeerIdentity?.sourceServerId?.value,
-                    onClick =
-                        headerDisplay.dmPeerIdentity?.let { identity ->
-                            { onOpenMemberProfile(identity) }
-                        }
-                )
-            } else if (payload.showModeTabs) {
-                Box(modifier = Modifier.padding(end = ThreadHeaderChannelTitleGapExtra)) {
-                    RaftChannelIdentityTile(glyph = headerDisplay.channelKindGlyph)
+                } else if (payload.showModeTabs) {
+                    Box(modifier = Modifier.padding(end = ThreadHeaderChannelTitleGapExtra)) {
+                        RaftChannelIdentityTile(glyph = headerDisplay.channelKindGlyph)
+                    }
                 }
             }
         },
@@ -585,10 +593,11 @@ internal fun ThreadPageHeader(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(ThreadHeaderActionGroupSpacing)
                 ) {
+                    var closeInMenu = false
                     if (showHeaderActions && controlsInColumn) {
-                        agentFollowersHeader()
+                        if (headRowTabs == null) agentFollowersHeader()
                     } else if (showHeaderActions) {
-                    agentFollowersHeader()
+                    if (headRowTabs == null) agentFollowersHeader()
                     // Web ThreadPanel: a reply thread's Search in Thread and View in Channel live in
                     // its ⋯ menu ("thread commands live in the menu"), not as header buttons.
                     val replyThreadMenu = headerDisplay.surfaceKind == RaftThreadSurfaceKind.ReplyThread
@@ -641,10 +650,11 @@ internal fun ThreadPageHeader(
                     val actionSizeDp = ThreadHeaderActionSize.value
                     val horizontalSafeArea = LocalRaftWindowHorizontalSafeArea.current
                     val horizontalSafeAreaDp = horizontalSafeArea.left.value + horizontalSafeArea.right.value
-                    val startInsetDp = if (showBack && !controlsInColumn) edgeInsetDp else ThreadSplitDetailEdgeInset.value
+                    val startInsetDp = if (showsBack && !controlsInColumn) edgeInsetDp else ThreadSplitDetailEdgeInset.value
                     val backWidthDp = if (showsBack && !controlsInColumn) actionSizeDp + ThreadHeaderContentSpacing.value else 0f
                     val leadingTileDp =
                         when {
+                            headRowTabs != null -> 0f
                             loungeHeader != null -> 35f + ThreadHeaderContentSpacing.value
                             headerDisplay.surfaceKind == RaftThreadSurfaceKind.DirectMessage ->
                                 ThreadHeaderDmAvatarSize.value + ThreadHeaderContentSpacing.value
@@ -653,18 +663,65 @@ internal fun ThreadPageHeader(
                         }
                     val leadOverheadDp =
                         horizontalSafeAreaDp + startInsetDp + backWidthDp + leadingTileDp + ThreadHeaderContentSpacing.value + edgeInsetDp
-                    val shownOwnCount =
-                        threadHeaderShownOwnActions(
-                            widthDp = headerWidthDp,
-                            leadOverheadDp = leadOverheadDp,
-                            ownCount = ownActions.size,
-                            actionSizeDp = actionSizeDp,
-                            // Expand and the side pane's Close never fold (web ThreadPanelHeader).
-                            fixedTrailingCount = (if (toggleFocus != null) 1 else 0) + (if (paneCloses) 1 else 0),
-                            existingMenuItems = hasPanelMenu,
-                        )
+                    // When row tabs sit inline in a narrow column (e.g. 160dp touch with 44dp bar buttons),
+                    // apply raftPaneGridHeadFit so Expand (and then Close) fold into ⋯ instead of crushing tabs.
+                    val fit =
+                        if (headRowTabs != null) {
+                            raftPaneGridHeadFit(
+                                widthDp = headerWidthDp,
+                                leadButtons = 0,
+                                own = ownActions.size,
+                                expand = toggleFocus != null,
+                                close = paneCloses,
+                                menuItems = if (hasPanelMenu) 1 else 0,
+                                tabs = true,
+                                buttonDp = actionSizeDp,
+                                startDp = horizontalSafeAreaDp + startInsetDp + backWidthDp + leadingTileDp,
+                                endDp = edgeInsetDp,
+                                gapDp = ThreadHeaderActionGroupSpacing.value,
+                                titleGapDp = ThreadHeaderContentSpacing.value,
+                            )
+                        } else {
+                            RaftPaneGridHeadFit(
+                                shownOwn =
+                                    threadHeaderShownOwnActions(
+                                        widthDp = headerWidthDp,
+                                        leadOverheadDp = leadOverheadDp,
+                                        ownCount = ownActions.size,
+                                        actionSizeDp = actionSizeDp,
+                                        // Expand and the side pane's Close never fold (web ThreadPanelHeader).
+                                        fixedTrailingCount = (if (toggleFocus != null) 1 else 0) + (if (paneCloses) 1 else 0),
+                                        existingMenuItems = hasPanelMenu,
+                                    ),
+                            )
+                        }
+                    closeInMenu = fit.closeInMenu
+                    val shownOwnCount = fit.shownOwn
                     val visibleOwnActions = ownActions.take(shownOwnCount)
-                    val foldedOwnActions = ownActions.drop(shownOwnCount)
+                    val foldedWindowActions =
+                        buildList {
+                            if (fit.expandInMenu && toggleFocus != null) {
+                                add(
+                                    ThreadHeaderOwnActionSpec(
+                                        id = FOCUS_MODE_MENU_ITEM_ID,
+                                        label = stringResource(if (focusModeActive) Res.string.tasks_task_column_restore else Res.string.tasks_task_column_expand),
+                                        icon = if (focusModeActive) RaftLucideIconName.Minimize2 else RaftLucideIconName.Maximize2,
+                                        onClick = toggleFocus,
+                                    )
+                                )
+                            }
+                            if (fit.closeInMenu && sidePane != null) {
+                                add(
+                                    ThreadHeaderOwnActionSpec(
+                                        id = "thread-pane-close",
+                                        label = stringResource(Res.string.common_close),
+                                        icon = RaftLucideIconName.X,
+                                        onClick = sidePane.close,
+                                    )
+                                )
+                            }
+                        }
+                    val foldedOwnActions = ownActions.drop(shownOwnCount) + foldedWindowActions
                     visibleOwnActions.forEach { action ->
                         val renderButton: @Composable () -> Unit = {
                             if (action.toggle) {
@@ -701,11 +758,13 @@ internal fun ThreadPageHeader(
                     }
                     // web ThreadPanelHeader (slock #12211): Focus mode is the head's Expand, a window
                     // control after ⋯ and never in it, so a wide layout always shows it.
-                    toggleFocus?.let { ThreadHeaderFocusModeToggle(focused = focusModeActive, onToggle = it) }
+                    if (!fit.expandInMenu) {
+                        toggleFocus?.let { ThreadHeaderFocusModeToggle(focused = focusModeActive, onToggle = it) }
+                    }
                     }
                     taskColumnHead?.let { RaftTaskColumnHeadActions(it) }
                     // web ThreadPanelHeader: Close after Expand, the head's last control, in the thread's column.
-                    if (paneCloses) RaftSidePaneCloseButton()
+                    if (paneCloses && !closeInMenu) RaftSidePaneCloseButton()
                 }
                 }
             } else {

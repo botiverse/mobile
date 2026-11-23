@@ -488,7 +488,12 @@ internal fun Modifier.raftPaneGridUnfaded(): Modifier {
  */
 @Composable
 fun RaftPaneGridOutsideRow(content: @Composable () -> Unit) {
-    CompositionLocalProvider(LocalRaftPaneGridVisibleWidth provides null, LocalRaftPaneGridHeadBands provides null, content = content)
+    CompositionLocalProvider(
+        LocalRaftPaneGridVisibleWidth provides null,
+        LocalRaftPaneGridHeadBands provides null,
+        LocalRaftPaneGridHeadTabs provides null,
+        content = content,
+    )
 }
 
 /**
@@ -509,10 +514,21 @@ private fun Modifier.raftPaneGridInert(inert: Boolean): Modifier {
         .focusGroup()
 }
 
-/** A row-tab strip (web RowTabs) on top of the column it shows, which keeps its own head under it. */
+/**
+ * A row-tab strip (web RowTabs) on top of a column whose own head cannot carry them (e.g. an
+ * embedded WebView column, or a host without inline row-tab support): sized to the shell's
+ * [build.raft.designsystem.theme.RaftControlMetrics.headHeight] (56dp touch, 44dp fine pointer)
+ * with its bottom hairline inside that height, so its first horizontal hairline lines up with
+ * every adjacent column's head.
+ */
 @Composable
 private fun RaftPaneGridTabStrip(tabs: RaftPaneGridRowTabs, tag: String) {
-    RaftTabStrip(Modifier.testTag(tag)) {
+    RaftTabStripImpl(
+        modifier = Modifier.testTag(tag),
+        variant = RaftTabsVariant.Default,
+        inHead = false,
+        height = RaftTheme.controls.headHeight,
+    ) {
         tabs.tabs.forEach { (key, label) ->
             RaftTab(text = label, selected = key == tabs.selected, onClick = { tabs.onSelect(key) })
         }
@@ -682,6 +698,8 @@ internal class RaftPaneGridHandedUp(
     val mainBounds: RaftPaneGridColumnBounds? = null,
     /** The row's Expand ([RaftPaneGrid]'s `expand`), where the declaring grid keeps one. */
     val expand: RaftPaneGridExpand? = null,
+    /** The main pane's own head carries its Rule 4 row tabs ([LocalRaftPaneGridHeadTabs]), so no strip is drawn above it. */
+    val mainHeadCarriesTabs: Boolean = false,
 ) {
     /**
      * What the outermost grid lays out and draws by, compared by value: the level, the fill, the inset, the locals
@@ -691,7 +709,7 @@ internal class RaftPaneGridHandedUp(
      * (rememberUpdatedState), so the cells recompose by themselves.
      */
     val shape: List<Any?> =
-        listOf(depth, fillColumn, topInset, locals, mainBounds, expand) +
+        listOf(depth, fillColumn, topInset, locals, mainBounds, expand, mainHeadCarriesTabs) +
             columns.map { column ->
                 listOf(
                     column.bounds,
@@ -806,7 +824,7 @@ internal class RaftPaneGridHost internal constructor() {
      * changed with the same shape (a captured value) is drawn anew.
      */
     internal fun handUp(token: Any, up: RaftPaneGridHandedUp?) {
-        if (up == null || (up.columns.isEmpty() && up.fillColumn == null && up.mainBounds == null && up.expand == null)) {
+        if (up == null || (up.columns.isEmpty() && up.fillColumn == null && up.mainBounds == null && up.expand == null && !up.mainHeadCarriesTabs)) {
             fresh.remove(token)?.let { if (it.value != null) it.value = null }
             if (token in handedUp) handedUp.remove(token)
             return
@@ -869,6 +887,7 @@ internal class RaftPaneGridHost internal constructor() {
                         // The declaring grid's locals, then what the column gives its cells (as RaftPaneGridSideColumn).
                         val shown = LocalRaftPaneGridColumnShown.current
                         val controls = LocalRaftPaneGridColumnControls.current
+                        val headTabs = LocalRaftPaneGridHeadTabs.current
                         val visible = LocalRaftPaneGridVisibleWidth.current
                         val bands = LocalRaftPaneGridHeadBands.current
                         CompositionLocalProvider(locals) {
@@ -876,6 +895,7 @@ internal class RaftPaneGridHost internal constructor() {
                                 LocalRaftPaneGridHost provides null,
                                 LocalRaftPaneGridColumnShown provides shown,
                                 LocalRaftPaneGridColumnControls provides controls,
+                                LocalRaftPaneGridHeadTabs provides headTabs,
                                 LocalRaftPaneGridVisibleWidth provides visible,
                                 LocalRaftPaneGridHeadBands provides bands,
                             ) {
@@ -902,7 +922,8 @@ internal class RaftPaneGridHost internal constructor() {
                 shortShownCell = first.shortShownCell.takeIf { sources.size == 1 },
                 shortSwitch = first.shortSwitch.takeIf { sources.size == 1 },
                 tabLabel = sources.mapNotNull { it.column.tabLabel }.distinct().joinToString(" · ").ifEmpty { null },
-                headCarriesTabs = sources.all { it.column.headCarriesTabs },
+                // Only the column's top cell carries the row tabs, so its head decides whether the column does.
+                headCarriesTabs = slot.cells.firstOrNull()?.first?.let { placed[it].column.headCarriesTabs } ?: false,
             )
         return RaftPaneGridPlaced(
             column = column,
@@ -923,6 +944,9 @@ internal class RaftPaneGridHost internal constructor() {
     /** The row's Expand: the innermost grid's that hands one up, else the outermost's [own]. */
     internal fun expandState(own: RaftPaneGridExpand?): RaftPaneGridExpand? =
         handedUp.values.filter { it.expand != null }.maxByOrNull { it.depth }?.expand ?: own
+
+    /** Whether the main pane's own head carries its Rule 4 row tabs (declared on this grid or handed up by a page in its main pane). */
+    internal fun mainHeadCarriesTabs(own: Boolean): Boolean = own || handedUp.values.any { it.mainHeadCarriesTabs }
 
     /** Which unit each group of row tabs shows: one per outermost grid. */
     internal val tabPicks = RaftPaneGridTabPicks()
@@ -1063,6 +1087,15 @@ val LocalRaftPaneGridVisibleWidth = compositionLocalOf<Dp?> { null }
 /** The controls of the column a cell stands in ([RaftPaneGridColumnControls]); null outside a planned row's column. */
 val LocalRaftPaneGridColumnControls = compositionLocalOf<RaftPaneGridColumnControls?> { null }
 
+/**
+ * The Rule 4 row tabs ([RaftPaneGridRowTabs]) that the top head of this pane or column cell carries
+ * in its title slot (web `RowTabs` inside `PanelHeaderContent`): non-null ONLY in the main pane when
+ * `mainHeadCarriesTabs` is true, or in the top cell of a column whose [RaftPaneGridColumn.headCarriesTabs]
+ * is true. Null everywhere else (stacked cells below the top cell, the leading column, dialogs inside
+ * [RaftPaneGridOutsideRow]).
+ */
+val LocalRaftPaneGridHeadTabs = compositionLocalOf<RaftPaneGridRowTabs?> { null }
+
 /** [region]'s Expand in the column it stands in, for a page that draws its own head (the thread's Focus mode). */
 @Composable
 fun raftPaneGridCellExpand(region: String): RaftPaneGridExpandControl? = LocalRaftPaneGridColumnControls.current?.expandFor(region)
@@ -1148,6 +1181,7 @@ fun RaftPaneGrid(
     mainTabLabel: String? = null,
     mainBounds: RaftPaneGridColumnBounds? = null,
     expand: RaftPaneGridExpand? = null,
+    mainHeadCarriesTabs: Boolean = false,
     main: @Composable () -> Unit,
 ) {
     val outer = LocalRaftPaneGridHost.current
@@ -1155,7 +1189,7 @@ fun RaftPaneGrid(
     if (outer != null) {
         val locals = currentCompositionLocalContext
         val token = remember { Any() }
-        SideEffect { outer.handUp(token, RaftPaneGridHandedUp(depth, columns, fillColumn, topInset, locals, mainBounds, expand)) }
+        SideEffect { outer.handUp(token, RaftPaneGridHandedUp(depth, columns, fillColumn, topInset, locals, mainBounds, expand, mainHeadCarriesTabs)) }
         DisposableEffect(outer) { onDispose { outer.handUp(token, null) } }
     }
     val host = outer ?: remember { RaftPaneGridHost() }
@@ -1283,9 +1317,13 @@ fun RaftPaneGrid(
                     .raftPaneGridInert(mainHidden)
             ) {
                 Column(Modifier.fillMaxSize()) {
-                    // The row tabs at the pane's own width, so every tab stays in reach while the content clips.
+                    // The row tabs at the pane's own width, so every tab stays in reach while the content clips;
+                    // carried inside the main pane's own header when [mainHeadCarriesTabs] is true.
+                    val mainCarriesTabs = if (outer != null) false else host.mainHeadCarriesTabs(mainHeadCarriesTabs)
                     val mainTabs = tabsOf[RAFT_ROW_CONVERSATION]
-                    if (mainTabs != null) RaftPaneGridTabStrip(mainTabs, RAFT_PANE_GRID_TABS_TEST_TAG + RAFT_ROW_CONVERSATION)
+                    if (mainTabs != null && !mainCarriesTabs) {
+                        RaftPaneGridTabStrip(mainTabs, RAFT_PANE_GRID_TABS_TEST_TAG + RAFT_ROW_CONVERSATION)
+                    }
                     // Rule 2: in the planned row the main pane's content keeps 360 and clips, its end fading; its
                     // head fits what shows (raftPaneGridFitHead), as a column's does.
                     val mainShownDp = raftPaneGridMainShownDp(roomDp, fitted)
@@ -1304,6 +1342,8 @@ fun RaftPaneGrid(
                                 LocalRaftPaneGridVisibleWidth provides
                                     if (plan == null) LocalRaftPaneGridVisibleWidth.current else if (mainClipped) mainShownDp.dp else null,
                                 LocalRaftPaneGridHeadBands provides if (plan == null) LocalRaftPaneGridHeadBands.current else mainBands,
+                                LocalRaftPaneGridHeadTabs provides
+                                    if (plan == null) LocalRaftPaneGridHeadTabs.current else mainTabs?.takeIf { mainCarriesTabs },
                             ) { main() }
                         }
                     }
@@ -1376,7 +1416,10 @@ private fun RowScope.RaftPaneGridLeadingView(leading: RaftPaneGridLeadingColumn)
                     // Beside the main pane the column's inner side is away from the screen edge.
                     .then(if (beside) Modifier.raftConsumeSafeAreaHorizontal(WindowInsetsSides.End) else Modifier)
             ) {
-                CompositionLocalProvider(LocalRaftPaneGridHost provides null) { leading.content() }
+                CompositionLocalProvider(
+                    LocalRaftPaneGridHost provides null,
+                    LocalRaftPaneGridHeadTabs provides null,
+                ) { leading.content() }
             }
             // raft-ui: one line-seam between regions, as the rail's.
             if (beside) Box(Modifier.width(RaftStroke.Hairline).fillMaxHeight().background(RaftTheme.colors.lineSeam))
@@ -1458,6 +1501,7 @@ fun RowScope.RaftPaneGridSideColumn(
                         LocalRaftPaneGridHost provides null,
                         LocalRaftPaneGridColumnShown provides !gone,
                         LocalRaftPaneGridColumnControls provides controls,
+                        LocalRaftPaneGridHeadTabs provides null,
                         // What of the column shows, for the heads (its content may be laid out wider and clipped).
                         LocalRaftPaneGridVisibleWidth provides if (fill) null else (width.dp - seam).coerceAtLeast(0.dp),
                         LocalRaftPaneGridHeadBands provides bands,
@@ -1590,7 +1634,11 @@ private fun RaftPaneGridCellHost(cell: RaftPaneGridCell, canFold: Boolean, folde
                 override fun setCollapsed(collapsed: Boolean) = currentOnChange(collapsed)
             }
         }
-    cell.content(scope)
+    val controls = LocalRaftPaneGridColumnControls.current
+    val headTabs = controls?.tabs?.takeIf { controls.tabsCell == cell.id }
+    CompositionLocalProvider(LocalRaftPaneGridHeadTabs provides headTabs) {
+        cell.content(scope)
+    }
 }
 
 /** The resize pointer a mouse shows over a splitter: left-right for a [vertical] seam, else up-down. */
