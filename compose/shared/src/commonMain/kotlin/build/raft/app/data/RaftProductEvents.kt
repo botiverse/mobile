@@ -88,12 +88,54 @@ object RaftProductEvents {
         recorder.client.invalidateConsent()
     }
 
+    internal var testEntryEventObserver: ((RaftProductEvent<*>) -> Unit)? = null
+
     fun channelTabSelected(tab: RaftChannelTab, wasActive: Boolean) {
         recorder.channelTabSelected(tab, wasActive)
     }
 
     fun channelTabSwiped(tab: RaftChannelTab) {
         recorder.channelTabSwiped(tab)
+    }
+
+    fun conversationHeaderActionSelected(
+        action: RaftConversationHeaderAction,
+        surface: RaftConversationHeaderSurface,
+        conversation: RaftConversationHeaderKind,
+        compact: Boolean,
+    ) {
+        testEntryEventObserver?.invoke(
+            RaftProductEvent.ConversationHeaderActionSelected(
+                RaftConversationHeaderActionSelectedProperties(action, surface, conversation, compact)
+            )
+        )
+        recorder.conversationHeaderActionSelected(action, surface, conversation, compact)
+    }
+
+    fun sidebarActionSelected(
+        action: RaftSidebarAction,
+        surface: RaftSidebarActionSurface,
+        row: RaftSidebarRowKind? = null,
+    ) {
+        val effectiveRow = row.takeIf { surface == RaftSidebarActionSurface.RowMenu }
+        testEntryEventObserver?.invoke(
+            RaftProductEvent.SidebarActionSelected(
+                RaftSidebarActionSelectedProperties(action, surface, effectiveRow)
+            )
+        )
+        recorder.sidebarActionSelected(action, surface, effectiveRow)
+    }
+
+    fun activityActionSelected(
+        action: RaftActivityAction,
+        surface: RaftActivityActionSurface,
+    ) {
+        testEntryEventObserver?.invoke(
+            RaftProductEvent.ActivityActionSelected(
+                RaftActivityActionSelectedProperties(action, surface)
+            )
+        )
+        recorder.activityActionSelected(action, surface)
     }
 
     fun messageActionSelected(action: RaftMessageAction, inThread: Boolean) {

@@ -36,6 +36,10 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import build.raft.app.model.MemberKind
 import build.raft.app.base.Utils
+import build.raft.app.data.RaftConversationHeaderAction
+import build.raft.app.data.RaftConversationHeaderKind
+import build.raft.app.data.RaftConversationHeaderSurface
+import build.raft.app.data.RaftProductEvents
 import build.raft.app.data.RealThreadAgentFollowersRepository
 import build.raft.app.data.RealtimeGuardedActiveThreadSink
 import build.raft.app.data.SharedThreadAgentFollowersStore
@@ -94,6 +98,8 @@ internal fun ThreadAgentFollowersRoute(
     onOpenAgentProfile: (MemberDetailIdentity) -> Unit = {},
     /** Task #20: the thread's live member-status source (the one its message avatars read). */
     agentStatusResolver: RaftAgentStatusResolver = EmptyRaftAgentStatusResolver,
+    /** True on a reply thread (records `conversation_header_action_selected`); false on task conversations. */
+    trackHeaderActions: Boolean = false,
 ) {
     if (threadId.isNullOrBlank() || serverId.isNullOrBlank() || accountId.isNullOrBlank()) return
     val pager = LocalActivity.current.getPager() as Pager
@@ -131,7 +137,7 @@ internal fun ThreadAgentFollowersRoute(
         if (active) store.dispatch(ThreadAgentFollowersIntent.Refresh)
         else store.dispatch(ThreadAgentFollowersIntent.Close)
     }
-    ThreadAgentFollowersHeader(state, store::dispatch, onOpenAgentProfile, agentStatusResolver)
+    ThreadAgentFollowersHeader(state, store::dispatch, onOpenAgentProfile, agentStatusResolver, trackHeaderActions)
 }
 
 private data class FollowersOverlay(
@@ -224,18 +230,42 @@ internal fun ThreadAgentFollowersHeader(
     dispatch: (ThreadAgentFollowersIntent) -> Unit,
     onOpenAgentProfile: (MemberDetailIdentity) -> Unit = {},
     agentStatusResolver: RaftAgentStatusResolver = EmptyRaftAgentStatusResolver,
+    trackHeaderActions: Boolean = false,
 ) {
     val agents = state.roster?.agents.orEmpty()
     val owner = LocalFollowersOverlay.current
     val anchorRef = remember { RaftLiveRootAnchorRef("thread-followers") }
     var resolver by remember { mutableStateOf<RaftPopoverAnchorResolver?>(null) }
+    val compact = !raftWindowWide()
+    val latestTrack by rememberUpdatedState(trackHeaderActions)
+    val latestCompact by rememberUpdatedState(compact)
     val latestDispatch by rememberUpdatedState(dispatch)
-    val stableDispatch = remember { { intent: ThreadAgentFollowersIntent -> latestDispatch(intent) } }
+    val stableDispatch = remember {
+        { intent: ThreadAgentFollowersIntent ->
+            if (latestTrack && intent is ThreadAgentFollowersIntent.Remove) {
+                RaftProductEvents.conversationHeaderActionSelected(
+                    action = RaftConversationHeaderAction.RemoveFollower,
+                    surface = RaftConversationHeaderSurface.FollowersPopover,
+                    conversation = RaftConversationHeaderKind.Thread,
+                    compact = latestCompact,
+                )
+            }
+            latestDispatch(intent)
+        }
+    }
     val latestOpenAgentProfile by rememberUpdatedState(onOpenAgentProfile)
     // Web ThreadAgentFollowerRow: the row opens the agent's profile (a peer agent's too). The
     // popover closes first so the profile is not opened under it.
     val openAgentProfile = remember {
         { agent: ThreadAgentFollower ->
+            if (latestTrack) {
+                RaftProductEvents.conversationHeaderActionSelected(
+                    action = RaftConversationHeaderAction.OpenProfile,
+                    surface = RaftConversationHeaderSurface.FollowersPopover,
+                    conversation = RaftConversationHeaderKind.Thread,
+                    compact = latestCompact,
+                )
+            }
             latestDispatch(ThreadAgentFollowersIntent.Close)
             latestOpenAgentProfile(threadFollowerProfileIdentity(agent))
         }
@@ -252,7 +282,17 @@ internal fun ThreadAgentFollowersHeader(
                 horizontalPadding = 6.dp,
                 onClick = {
                     resolver = anchorRef.resolver(RaftPopoverLocalPoint.BottomEnd)
-                    if (resolver?.resolve() != null) dispatch(ThreadAgentFollowersIntent.Open)
+                    if (resolver?.resolve() != null) {
+                        if (latestTrack && !state.open) {
+                            RaftProductEvents.conversationHeaderActionSelected(
+                                action = RaftConversationHeaderAction.OpenFollowers,
+                                surface = RaftConversationHeaderSurface.Header,
+                                conversation = RaftConversationHeaderKind.Thread,
+                                compact = latestCompact,
+                            )
+                        }
+                        dispatch(ThreadAgentFollowersIntent.Open)
+                    }
                 },
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {

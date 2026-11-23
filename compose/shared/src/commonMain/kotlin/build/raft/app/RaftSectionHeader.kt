@@ -131,9 +131,15 @@ internal fun RaftPaneAwareBackButton(onClick: () -> Unit) {
  * Nothing outside a side pane.
  */
 @Composable
-internal fun RaftSidePaneCloseButton() {
+internal fun RaftSidePaneCloseButton(onBeforeClose: (() -> Unit)? = null) {
     val pane = LocalRaftSidePanePage.current ?: return
-    RaftCloseButton(onClick = pane.close, label = stringResource(Res.string.common_close))
+    RaftCloseButton(
+        onClick = {
+            onBeforeClose?.invoke()
+            pane.close()
+        },
+        label = stringResource(Res.string.common_close),
+    )
 }
 
 @Composable

@@ -297,6 +297,57 @@ class RaftProductEventsRecorder(
         )
     }
 
+    /** One conversation / thread header, announcement strip, or followers popover entry. */
+    fun conversationHeaderActionSelected(
+        action: RaftConversationHeaderAction,
+        surface: RaftConversationHeaderSurface,
+        conversation: RaftConversationHeaderKind,
+        compact: Boolean,
+    ) {
+        client.track(
+            RaftProductEvent.ConversationHeaderActionSelected(
+                RaftConversationHeaderActionSelectedProperties(
+                    action = action,
+                    surface = surface,
+                    conversation = conversation,
+                    compact = compact,
+                )
+            )
+        )
+    }
+
+    /** One Home sidebar entry; [row] is carried only for [RaftSidebarActionSurface.RowMenu]. */
+    fun sidebarActionSelected(
+        action: RaftSidebarAction,
+        surface: RaftSidebarActionSurface,
+        row: RaftSidebarRowKind? = null,
+    ) {
+        client.track(
+            RaftProductEvent.SidebarActionSelected(
+                RaftSidebarActionSelectedProperties(
+                    action = action,
+                    surface = surface,
+                    row = row.takeIf { surface == RaftSidebarActionSurface.RowMenu },
+                )
+            )
+        )
+    }
+
+    /** One Activity row menu or row button entry (swipes and screen-reader actions are not recorded). */
+    fun activityActionSelected(
+        action: RaftActivityAction,
+        surface: RaftActivityActionSurface,
+    ) {
+        client.track(
+            RaftProductEvent.ActivityActionSelected(
+                RaftActivityActionSelectedProperties(
+                    action = action,
+                    surface = surface,
+                )
+            )
+        )
+    }
+
     /** One long-press message menu action; [inThread] is true for a thread reply, false for any other message (including a thread's parent). */
     fun messageActionSelected(action: RaftMessageAction, inThread: Boolean) {
         client.track(

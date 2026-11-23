@@ -133,6 +133,7 @@ internal fun ChannelAnnouncementStrip(
     /** Opens the channel details; null for people who may not change the announcement. */
     onOpenSettings: (() -> Unit)?,
     modifier: Modifier = Modifier,
+    onOpenMenu: (() -> Unit)? = null,
 ) {
     val colors = RaftTheme.colors
     val typography = RaftTheme.typography
@@ -206,18 +207,25 @@ internal fun ChannelAnnouncementStrip(
                 )
             }
         }
-            ChannelAnnouncementStripMenu(onCopyLink = onCopyLink, onOpenSettings = onOpenSettings)
+            ChannelAnnouncementStripMenu(onCopyLink = onCopyLink, onOpenSettings = onOpenSettings, onOpenMenu = onOpenMenu)
         }
     }
 }
 
 @Composable
-private fun ChannelAnnouncementStripMenu(onCopyLink: () -> Unit, onOpenSettings: (() -> Unit)?) {
+private fun ChannelAnnouncementStripMenu(
+    onCopyLink: () -> Unit,
+    onOpenSettings: (() -> Unit)?,
+    onOpenMenu: (() -> Unit)? = null,
+) {
     val colors = RaftTheme.colors
     var open by remember { mutableStateOf(false) }
     Box {
         RaftIconButton(
-            onClick = { open = true },
+            onClick = {
+                if (!open) onOpenMenu?.invoke()
+                open = true
+            },
             tooltip = stringResource(Res.string.channel_announcement_strip_options),
             modifier = Modifier.testTag(ChannelAnnouncementTestTags.StripOptions),
             variant = RaftButtonVariant.Ghost,
