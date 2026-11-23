@@ -112,4 +112,249 @@ class DataResultErrorCopyTest {
             ScreenError("channel_archived", retryable = false).userFacingMessage(errorStrings)
         )
     }
+
+    @Test
+    fun generic403And404ScreenErrorsPreserveUsableServerRefusalMessageAndFallbackWhenBlank() {
+        assertEquals(
+            "You must join this channel to modify tasks",
+            ScreenError(
+                code = "tasks_amend_403",
+                retryable = false,
+                serverMessage = "You must join this channel to modify tasks",
+            ).userFacingMessage(errorStrings)
+        )
+        assertEquals(
+            "You do not have permission to view this page.",
+            ScreenError(code = "http_403", retryable = false, serverMessage = "   ").userFacingMessage(errorStrings)
+        )
+        assertEquals(
+            "Invite link has already been revoked.",
+            ScreenError(
+                code = "http_404",
+                retryable = false,
+                serverMessage = "Invite link has already been revoked.",
+            ).userFacingMessage(errorStrings)
+        )
+        assertEquals(
+            "This item could not be found. It may have been moved or deleted.",
+            ScreenError(code = "http_404", retryable = false).userFacingMessage(errorStrings)
+        )
+        assertEquals(
+            "This item could not be found. It may have been moved or deleted.",
+            ScreenError(code = "tasks_amend_404", retryable = false).userFacingMessage(errorStrings)
+        )
+    }
+
+    @Test
+    fun serverCodeTakesPrecedenceOverGenericHttpCodeWithoutSubstringFalsePositives() {
+        assertEquals(
+            "This month's uploads are used up",
+            ScreenError(
+                code = "http_403",
+                retryable = false,
+                serverMessage = "Monthly file upload quota exceeded.",
+                serverCode = "FILE_UPLOAD_QUOTA_EXCEEDED",
+            ).userFacingMessage(errorStrings)
+        )
+        assertEquals(
+            "This channel is archived.",
+            ScreenError(
+                code = "http_409",
+                retryable = false,
+                serverMessage = "Channel is archived",
+                serverCode = "channel_archived",
+            ).userFacingMessage(errorStrings)
+        )
+        assertEquals(
+            "This channel is archived.",
+            PermissionBlocker(
+                code = "http_403",
+                serverMessage = "Channel is archived",
+                serverCode = "channel_archived",
+            ).userFacingMessage(errorStrings)
+        )
+        assertEquals(
+            "Your session expired. Sign in again to continue.",
+            ScreenError(
+                code = "http_403",
+                retryable = false,
+                serverMessage = "Invalid bearer token",
+                serverCode = "unauthenticated",
+            ).userFacingMessage(errorStrings)
+        )
+        assertEquals(
+            "Your session expired. Sign in again to continue.",
+            ScreenError(
+                code = "UNAUTHENTICATED",
+                retryable = false,
+                serverMessage = "Invalid JWT",
+            ).userFacingMessage(errorStrings)
+        )
+        assertEquals(
+            "Your session expired. Sign in again to continue.",
+            PermissionBlocker(
+                code = "unauthenticated",
+                serverMessage = "Invalid bearer token",
+            ).userFacingMessage(errorStrings)
+        )
+        assertEquals(
+            "Your session expired. Sign in again to continue.",
+            PermissionBlocker(
+                code = "AUTH_REQUIRED",
+                serverMessage = "Invalid bearer token",
+            ).userFacingMessage(errorStrings)
+        )
+        // Real server refusal codes containing "host", "auth", "rate", or "mismatch" must never be
+        // misclassified as local network/auth/parse/rate-limit errors.
+        assertEquals(
+            "Host server reached its external channel limit.",
+            ScreenError(
+                code = "joint_channel_host_limit",
+                retryable = false,
+                serverMessage = "Host server reached its external channel limit.",
+                serverCode = "joint_channel_host_limit",
+            ).userFacingMessage(errorStrings)
+        )
+        assertEquals(
+            "Channel changed during conversion.",
+            ScreenError(
+                code = "channel_conversion_fence_mismatch",
+                retryable = false,
+                serverMessage = "Channel changed during conversion.",
+                serverCode = "channel_conversion_fence_mismatch",
+            ).userFacingMessage(errorStrings)
+        )
+        assertEquals(
+            "OAuth provider is not enabled.",
+            ScreenError(
+                code = "oauth_provider_disabled",
+                retryable = false,
+                serverMessage = "OAuth provider is not enabled.",
+                serverCode = "oauth_provider_disabled",
+            ).userFacingMessage(errorStrings)
+        )
+        assertEquals(
+            "Federated channels require Pro.",
+            PermissionBlocker(
+                code = "federated_channel_forbidden",
+                serverMessage = "Federated channels require Pro.",
+            ).userFacingMessage(errorStrings)
+        )
+        assertEquals(
+            "You do not have permission to view this page.",
+            PermissionBlocker(
+                code = "server_mismatch",
+                requiredCapability = "selected_server",
+            ).userFacingMessage(errorStrings)
+        )
+    }
+
+    @Test
+    fun serverFaultsHtmlAndStackTracesNeverLeakThroughScreenErrorOrPermissionBlocker() {
+        val unavailable = "The server is unavailable right now. Please try again shortly."
+        assertEquals(
+            unavailable,
+            ScreenError(
+                code = "http_500",
+                serverMessage = "SQLSTATE[42P01]: relation missing",
+            ).userFacingMessage(errorStrings)
+        )
+        assertEquals(
+            unavailable,
+            ScreenError(
+                code = "tasks_500",
+                serverMessage = "database deadlock",
+            ).userFacingMessage(errorStrings)
+        )
+        assertEquals(
+            unavailable,
+            ScreenError(
+                code = "tasks_amend_502",
+                serverMessage = "upstream bad gateway",
+            ).userFacingMessage(errorStrings)
+        )
+        assertEquals(
+            unavailable,
+            ScreenError(
+                code = "504",
+                serverMessage = "gateway timeout",
+            ).userFacingMessage(errorStrings)
+        )
+        assertEquals(
+            unavailable,
+            ScreenError(
+                code = "server_unavailable",
+                serverCode = "server_unavailable",
+                serverMessage = "upstream pool exhausted",
+            ).userFacingMessage(errorStrings)
+        )
+        assertEquals(
+            unavailable,
+            ScreenError(
+                code = "http_409",
+                serverCode = "server_unavailable",
+                serverMessage = "upstream pool exhausted",
+            ).userFacingMessage(errorStrings)
+        )
+        assertEquals(
+            unavailable,
+            PermissionBlocker(
+                code = "http_403",
+                serverCode = "server_unavailable",
+                serverMessage = "upstream pool exhausted",
+            ).userFacingMessage(errorStrings)
+        )
+        assertEquals(
+            unavailable,
+            PermissionBlocker(
+                code = "http_500",
+                serverMessage = "raw 500 body",
+            ).userFacingMessage(errorStrings)
+        )
+        assertEquals(
+            "Your session expired. Sign in again to continue.",
+            ScreenError(
+                code = "http_401",
+                serverCode = "internal_error",
+                serverMessage = "raw auth stack",
+            ).userFacingMessage(errorStrings)
+        )
+        assertEquals(
+            "Something went wrong. Please try again.",
+            ScreenError(
+                code = "http_409",
+                serverCode = "internal_error",
+                serverMessage = "Unhandled TypeError in route",
+            ).userFacingMessage(errorStrings)
+        )
+        assertEquals(
+            "Something went wrong. Please try again.",
+            ScreenError(
+                code = "http_400",
+                serverMessage = "<!DOCTYPE html><html><body>502 Bad Gateway</body></html>",
+            ).userFacingMessage(errorStrings)
+        )
+        assertEquals(
+            "This item could not be found. It may have been moved or deleted.",
+            ScreenError(
+                code = "http_404",
+                serverMessage = "Error: lookup failed\n    at route.ts:42",
+            ).userFacingMessage(errorStrings)
+        )
+        assertEquals(
+            "You do not have permission to view this page.",
+            PermissionBlocker(
+                code = "http_403",
+                serverMessage = "<html><head><title>403 Forbidden</title></head></html>",
+            ).userFacingMessage(errorStrings)
+        )
+        assertEquals(
+            "Something went wrong. Please try again.",
+            PermissionBlocker(
+                code = "http_403",
+                serverCode = "internal_error",
+                serverMessage = "raw server exception",
+            ).userFacingMessage(errorStrings)
+        )
+    }
 }

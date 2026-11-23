@@ -12,6 +12,7 @@ import build.raft.app.data.ScreenError
 import build.raft.app.data.SharedSettingsActionState
 import build.raft.app.data.errorPresentation
 import build.raft.app.data.errorPresentationOrNull
+import build.raft.app.data.usableServerRefusalMessage
 
 /**
  * Locale-resolved half of the canonical error pipeline.
@@ -58,7 +59,7 @@ internal fun localizedErrorPresentationStrings(): ErrorPresentationStrings =
     )
 
 internal fun ErrorPresentation.resolve(strings: ErrorPresentationStrings): String {
-    val raw = rawServerMessage?.takeIf { it.isNotBlank() }
+    val raw = usableServerRefusalMessage(rawServerMessage)
     return when (rawServerMessagePriority) {
         RawServerMessagePriority.ServerMessageFirst -> raw ?: strings.value(key)
         RawServerMessagePriority.LocalizedCopyFirst -> strings.value(key)
