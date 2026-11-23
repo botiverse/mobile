@@ -274,7 +274,9 @@ internal fun rememberRaftNotificationLevelMenuLabel(target: RaftNotificationLeve
 internal fun RaftNotificationLevelDialog(
     target: RaftNotificationLevelTarget,
     onDismiss: () -> Unit,
-    onSetMuted: ((Boolean) -> Unit)? = null
+    onSetMuted: ((Boolean) -> Unit)? = null,
+    /** Called when the person picks a choice different from the currently selected one. */
+    onChoiceApplied: ((RaftNotificationChoice) -> Unit)? = null,
 ) {
     val all by RaftNotificationLevelStore.state.collectAsState()
     val levels = all[target.serverId] ?: RaftServerNotificationLevels(target.serverId)
@@ -301,6 +303,7 @@ internal fun RaftNotificationLevelDialog(
                     enabled = !saving,
                     onClick = {
                         if (option == selected || saving) return@SettingsServerSelectRow
+                        onChoiceApplied?.invoke(option)
                         val plan = raftNotificationChoicePlan(option, shownTarget, levels)
                         plan.setMuted?.let { muted -> onSetMuted?.invoke(muted) }
                         val write = plan.writeLevel ?: return@SettingsServerSelectRow

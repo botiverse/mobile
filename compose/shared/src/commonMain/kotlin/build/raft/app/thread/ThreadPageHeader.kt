@@ -5,9 +5,12 @@ import androidx.compose.runtime.ReadOnlyComposable
 import build.raft.app.resources.*
 import build.raft.designsystem.theme.RaftScale
 import build.raft.designsystem.theme.RaftTheme
+import build.raft.designsystem.components.LocalRaftCopyHandler
 import build.raft.designsystem.components.LocalRaftPaneGridHeadTabs
+import build.raft.designsystem.components.RaftCopyHandler
 import build.raft.designsystem.components.RaftPaneGridHeadFit
 import build.raft.designsystem.components.raftCopyable
+import build.raft.designsystem.components.rememberRaftCopyAction
 import build.raft.designsystem.components.raftPaneGridHeadFit
 import build.raft.designsystem.components.RaftIconToggleButton
 import build.raft.designsystem.components.RaftBackButton
@@ -18,6 +21,9 @@ import build.raft.designsystem.components.RaftBackButtonDefaults
 import build.raft.app.RAFT_ADAPTIVE_DETAIL_IDENTITY_KEY
 import build.raft.app.data.RAFT_SHELL_OVERLAY_REQUEST_EVENT
 import build.raft.app.data.RAFT_SHELL_OVERLAY_RESULT_EVENT
+import build.raft.app.data.RaftConversationHeaderAction
+import build.raft.app.data.RaftConversationHeaderSurface
+import build.raft.app.data.RaftProductEvents
 import build.raft.app.data.SHELL_OVERLAY_SELECTED_ID
 import build.raft.app.data.raftShouldApplyShellOverlayResult
 import build.raft.app.data.RaftShellOverlayRequest
@@ -33,6 +39,7 @@ import build.raft.app.data.RaftShellStoreScope
 import build.raft.app.data.RaftSharedStoreRegistry
 import build.raft.app.model.MemberKind
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -316,16 +323,78 @@ internal fun ThreadPageHeader(
     // are the column's (Back first, two actions, the rest in its ⋯); the header keeps the title
     // and the subtitle, from the 16dp margin, without Back and without icon buttons.
     val showsBack = threadHeaderShowsBack(showBack, headerDisplay.surfaceKind) && raftSidePaneShowsBack()
+    val wideWindow = raftWindowWide()
+    val baseCompact = !wideWindow
+    val headerConversation = threadHeaderConversationKind(headerDisplay.surfaceKind, taskConversation)
+    fun trackHeader(
+        action: RaftConversationHeaderAction,
+        surface: RaftConversationHeaderSurface,
+        compact: Boolean = baseCompact,
+    ) {
+        val kind = headerConversation ?: return
+        RaftProductEvents.conversationHeaderActionSelected(action, surface, kind, compact)
+    }
+    val trackedBack: () -> Unit = {
+        threadHeaderBackProductEvent(
+            surfaceKind = headerDisplay.surfaceKind,
+            taskConversation = taskConversation,
+            wideLayout = wideWindow,
+            inSidePane = paneCloses,
+        )?.let { action ->
+            trackHeader(action, RaftConversationHeaderSurface.Header, compact = false)
+        }
+        onBack()
+    }
     val controlsInColumn =
         raftSideColumnControls(
             back =
                 if (showsBack) {
-                    raftSideColumnBackAction(onBack)
+                    raftSideColumnBackAction(trackedBack)
                 } else {
                     null
                 },
             actions =
                 if (showActions) {
+                    wrapThreadHeaderSideColumnActionsForAnalytics(
+                        actions =
+                            threadHeaderSideColumnActions(
+                                payload = payload,
+                                surfaceKind = headerDisplay.surfaceKind,
+                                taskConversation = taskConversation,
+                                onOpenSearch = onOpenSearch,
+                                onShowSettings = onShowSettings,
+                                onOpenInChannel = onOpenInChannel,
+                                parentReachable = parentReachable,
+                                onToggleFocusMode = onToggleFocusMode,
+                                focusModeActive = focusModeActive,
+                                threadFollowed = threadFollowed,
+                                onToggleThreadFollow = onToggleThreadFollow,
+                                onMarkThreadUnread = onMarkThreadUnread,
+                                onViewTaskInChannel = taskConversationChrome?.onViewInChannel,
+                                sideCardToggles = sideCardToggles,
+                                dmLoungeToggle = dmLoungeToggle,
+                                loungeLabel = loungeLabel,
+                                onOpenTimeline = onOpenTimeline,
+                                onDeleteTask = taskConversationChrome?.onDeleteTask,
+                            ),
+                        conversation = headerConversation,
+                        compact = baseCompact,
+                        settingsOpen = settingsOpen,
+                        focusModeActive = focusModeActive,
+                        threadFollowed = threadFollowed,
+                        taskConversation = taskConversation,
+                    )
+                } else {
+                    emptyList()
+                },
+        )
+    // iOS native nav bar (web Task v2 head parity, #proj-mobile:#281): Search, Lounge (agent DM),
+    // Tasks, Files, Settings — folding from the last into ⋯ to fit, with no Members button
+    // (Members lives in Settings / channel details, also reachable by tapping the channel title).
+    val nativeSideActions =
+        if (showActions && (LocalRaftNativeNavBar.current != null || LocalRaftNativeNavBarScript.current != null)) {
+            wrapThreadHeaderSideColumnActionsForAnalytics(
+                actions =
                     threadHeaderSideColumnActions(
                         payload = payload,
                         surfaceKind = headerDisplay.surfaceKind,
@@ -345,35 +414,13 @@ internal fun ThreadPageHeader(
                         loungeLabel = loungeLabel,
                         onOpenTimeline = onOpenTimeline,
                         onDeleteTask = taskConversationChrome?.onDeleteTask,
-                    )
-                } else {
-                    emptyList()
-                },
-        )
-    // iOS native nav bar (web Task v2 head parity, #proj-mobile:#281): Search, Lounge (agent DM),
-    // Tasks, Files, Settings — folding from the last into ⋯ to fit, with no Members button
-    // (Members lives in Settings / channel details, also reachable by tapping the channel title).
-    val nativeSideActions =
-        if (showActions && (LocalRaftNativeNavBar.current != null || LocalRaftNativeNavBarScript.current != null)) {
-            threadHeaderSideColumnActions(
-                payload = payload,
-                surfaceKind = headerDisplay.surfaceKind,
-                taskConversation = taskConversation,
-                onOpenSearch = onOpenSearch,
-                onShowSettings = onShowSettings,
-                onOpenInChannel = onOpenInChannel,
-                parentReachable = parentReachable,
-                onToggleFocusMode = onToggleFocusMode,
+                    ),
+                conversation = headerConversation,
+                compact = baseCompact,
+                settingsOpen = settingsOpen,
                 focusModeActive = focusModeActive,
                 threadFollowed = threadFollowed,
-                onToggleThreadFollow = onToggleThreadFollow,
-                onMarkThreadUnread = onMarkThreadUnread,
-                onViewTaskInChannel = taskConversationChrome?.onViewInChannel,
-                sideCardToggles = sideCardToggles,
-                dmLoungeToggle = dmLoungeToggle,
-                loungeLabel = loungeLabel,
-                onOpenTimeline = onOpenTimeline,
-                onDeleteTask = taskConversationChrome?.onDeleteTask,
+                taskConversation = taskConversation,
             )
         } else {
             emptyList()
@@ -425,7 +472,13 @@ internal fun ThreadPageHeader(
                 if (measured != headerWidthDp) headerWidthDp = measured
             },
         nativeSubtitle = headerSubtitle,
-        nativeOnSubtitleClick = onOpenInChannel.takeIf { channelLinkLabel != null },
+        nativeOnSubtitleClick =
+            channelLinkLabel?.let {
+                {
+                    trackHeader(RaftConversationHeaderAction.ViewInChannel, RaftConversationHeaderSurface.Title)
+                    onOpenInChannel()
+                }
+            },
         nativePreservePrefilledActions = preserveNativePrefilledActions,
         nativeActions = nativeNavBarActions,
         // PROTOTYPE: the channel glyph / DM avatar and the refresh spinner in the host's title view.
@@ -468,7 +521,7 @@ internal fun ThreadPageHeader(
             // Back is the same 44dp frameless PanelAction as the trailing actions (not the shared
             // 36dp leading slot), so its arrow mirrors the last trailing glyph 14dp from the edge.
             if (showsBack && !controlsInColumn) {
-                RaftBackButton(onClick = onBack, label = stringResource(Res.string.common_back))
+                RaftBackButton(onClick = trackedBack, label = stringResource(Res.string.common_back))
             }
             // Rule 4 crowded split view: row tabs replace the identity avatar/tile + title (web PanelHeader).
             if (headRowTabs == null) {
@@ -481,7 +534,12 @@ internal fun ThreadPageHeader(
                             Modifier
                                 .padding(end = ThreadHeaderChannelTitleGapExtra)
                                 .then(
-                                    loungeHeader.onOpenAgentProfile?.let { open -> Modifier.clickable(onClick = open) } ?: Modifier
+                                    loungeHeader.onOpenAgentProfile?.let { open ->
+                                        Modifier.clickable {
+                                            trackHeader(RaftConversationHeaderAction.OpenProfile, RaftConversationHeaderSurface.Title)
+                                            open()
+                                        }
+                                    } ?: Modifier
                                 )
                     ) {
                         RaftLoungeAvatar(
@@ -505,7 +563,10 @@ internal fun ThreadPageHeader(
                         cacheServerId = headerDisplay.dmPeerIdentity?.sourceServerId?.value,
                         onClick =
                             headerDisplay.dmPeerIdentity?.let { identity ->
-                                { onOpenMemberProfile(identity) }
+                                {
+                                    trackHeader(RaftConversationHeaderAction.OpenProfile, RaftConversationHeaderSurface.Title)
+                                    onOpenMemberProfile(identity)
+                                }
                             }
                     )
                 } else if (payload.showModeTabs) {
@@ -521,15 +582,46 @@ internal fun ThreadPageHeader(
                 // state with the chevron that pulls the head down.
                 TaskConversationBarTitle(taskConversationChrome, Modifier.weight(1f))
             } else {
+                val copyText =
+                    loungeTitle?.takeIf { loungeHeader != null }
+                        ?: threadHeaderCopyText(headerDisplay.title, headerDisplay.surfaceKind)
+                val trackedTitleClick =
+                    onTitleClick?.let { click ->
+                        {
+                            threadHeaderTitleClickProductEvent(
+                                surfaceKind = headerDisplay.surfaceKind,
+                                taskConversation = taskConversation,
+                                isLounge = loungeHeader != null,
+                                settingsOpen = settingsOpen,
+                            )?.let { action ->
+                                trackHeader(action, RaftConversationHeaderSurface.Title)
+                            }
+                            click()
+                        }
+                    }
+                val enclosingCopyAction = rememberRaftCopyAction()
+                val copyTrackedHandler =
+                    remember(enclosingCopyAction, headerConversation, baseCompact) {
+                        RaftCopyHandler { text ->
+                            headerConversation?.let { kind ->
+                                RaftProductEvents.conversationHeaderActionSelected(
+                                    action = RaftConversationHeaderAction.CopyName,
+                                    surface = RaftConversationHeaderSurface.Title,
+                                    conversation = kind,
+                                    compact = baseCompact,
+                                )
+                            }
+                            enclosingCopyAction(text)
+                        }
+                    }
                 val headModifier =
                     Modifier
                         .weight(1f)
                         .then(if (loungeHeader != null) Modifier.testTag(AgentLoungeTestTags.Header) else Modifier)
                         // A long press copies the channel / DM name; the tap (scroll to top) stays.
                         .raftCopyable(
-                            loungeTitle?.takeIf { loungeHeader != null }
-                                ?: threadHeaderCopyText(headerDisplay.title, headerDisplay.surfaceKind),
-                            onClick = onTitleClick,
+                            copyText,
+                            onClick = trackedTitleClick,
                         )
                 val titleRowContent: @Composable (Modifier) -> Unit = { rowModifier ->
                     ThreadHeaderNameFirstRow(modifier = rowModifier) {
@@ -574,7 +666,10 @@ internal fun ThreadPageHeader(
                         ThreadHeaderChannelLinkSubtitle(
                             channelLabel = channelLinkLabel,
                             replyCountLabel = replyThreadReplyCountLabel,
-                            onOpenInChannel = onOpenInChannel,
+                            onOpenInChannel = {
+                                trackHeader(RaftConversationHeaderAction.ViewInChannel, RaftConversationHeaderSurface.Title)
+                                onOpenInChannel()
+                            },
                             modifier = subModifier,
                         )
                     } else {
@@ -594,21 +689,23 @@ internal fun ThreadPageHeader(
                 // raft-design desktop-density rule 2 & panel.md (web PanelHeaderContent / ThreadPanelHeader):
                 // from 768px (RaftScale.Wide), every head is one line by touch or mouse alike; only a
                 // compact phone stacks the subtitle under the title.
-                if (RaftTheme.scale == RaftScale.Wide && hasSubtitle) {
-                    ThreadHeaderInlineTitleRow(
-                        subtitlePriority = headerOriginal?.swapped == true,
-                        modifier = headModifier,
-                        title = { titleRowContent(Modifier.layoutId("title")) },
-                        subtitle = { subtitleContent(Modifier.layoutId("subtitle")) },
-                    )
-                } else {
-                    Column(
-                        modifier = headModifier,
-                        // raft-ui `PanelHeaderContent`: the 22dp title line sits straight on the 18dp meta line.
-                        verticalArrangement = Arrangement.Top
-                    ) {
-                        titleRowContent(Modifier.fillMaxWidth())
-                        if (hasSubtitle) subtitleContent(Modifier)
+                CompositionLocalProvider(LocalRaftCopyHandler provides copyTrackedHandler) {
+                    if (RaftTheme.scale == RaftScale.Wide && hasSubtitle) {
+                        ThreadHeaderInlineTitleRow(
+                            subtitlePriority = headerOriginal?.swapped == true,
+                            modifier = headModifier,
+                            title = { titleRowContent(Modifier.layoutId("title")) },
+                            subtitle = { subtitleContent(Modifier.layoutId("subtitle")) },
+                        )
+                    } else {
+                        Column(
+                            modifier = headModifier,
+                            // raft-ui `PanelHeaderContent`: the 22dp title line sits straight on the 18dp meta line.
+                            verticalArrangement = Arrangement.Top
+                        ) {
+                            titleRowContent(Modifier.fillMaxWidth())
+                            if (hasSubtitle) subtitleContent(Modifier)
+                        }
                     }
                 }
             }
@@ -624,6 +721,7 @@ internal fun ThreadPageHeader(
                     horizontalArrangement = Arrangement.spacedBy(ThreadHeaderActionGroupSpacing)
                 ) {
                     var closeInMenu = false
+                    var trailingCompact = baseCompact
                     if (showHeaderActions && controlsInColumn) {
                         if (headRowTabs == null) agentFollowersHeader()
                     } else if (showHeaderActions) {
@@ -752,17 +850,49 @@ internal fun ThreadPageHeader(
                             }
                         }
                     val foldedOwnActions = ownActions.drop(shownOwnCount) + foldedWindowActions
+                    val headerCompact = baseCompact || foldedOwnActions.isNotEmpty()
+                    trailingCompact = headerCompact
+                    val trackedFoldedOwnActions =
+                        foldedOwnActions.map { action ->
+                            val eventAction =
+                                threadHeaderOwnActionProductEvent(
+                                    actionId = action.id,
+                                    settingsOpen = settingsOpen,
+                                    focusModeActive = focusModeActive,
+                                )
+                            if (eventAction == null) {
+                                action
+                            } else {
+                                val delegate = action.onClick
+                                action.copy(
+                                    onClick = {
+                                        trackHeader(eventAction, RaftConversationHeaderSurface.MoreMenu, compact = headerCompact)
+                                        delegate()
+                                    }
+                                )
+                            }
+                        }
                     visibleOwnActions.forEach { action ->
+                        val trackedClick: () -> Unit = {
+                            threadHeaderOwnActionProductEvent(
+                                actionId = action.id,
+                                settingsOpen = settingsOpen,
+                                focusModeActive = focusModeActive,
+                            )?.let { eventAction ->
+                                trackHeader(eventAction, RaftConversationHeaderSurface.Header, compact = headerCompact)
+                            }
+                            action.onClick()
+                        }
                         val renderButton: @Composable () -> Unit = {
                             if (action.toggle) {
                                 ConversationHeaderToggle(
                                     icon = action.icon,
                                     selected = action.selected,
                                     label = action.label,
-                                    onClick = action.onClick,
+                                    onClick = trackedClick,
                                 )
                             } else {
-                                ThreadHeaderIconButton(icon = action.icon, onClick = action.onClick)
+                                ThreadHeaderIconButton(icon = action.icon, onClick = trackedClick)
                             }
                         }
                         if (action.testTag != null) {
@@ -771,9 +901,9 @@ internal fun ThreadPageHeader(
                             renderButton()
                         }
                     }
-                    if (hasPanelMenu || foldedOwnActions.isNotEmpty()) {
+                    if (hasPanelMenu || trackedFoldedOwnActions.isNotEmpty()) {
                         ThreadHeaderFocusModeMenu(
-                            foldedActions = foldedOwnActions,
+                            foldedActions = trackedFoldedOwnActions,
                             followed = threadFollowed,
                             onToggleFollow = onToggleThreadFollow,
                             onMarkUnread = onMarkThreadUnread,
@@ -784,17 +914,47 @@ internal fun ThreadPageHeader(
                             onDeleteTask = taskConversationChrome?.onDeleteTask.takeIf { taskConversation },
                             drawLocally = toggleFocus == null,
                             notificationLevelTargetInput = notificationLevelTarget,
+                            onMenuOpen = {
+                                trackHeader(RaftConversationHeaderAction.OpenMenu, RaftConversationHeaderSurface.Header, compact = headerCompact)
+                            },
+                            onMenuItemSelected = { selectedId ->
+                                threadHeaderOverflowMenuProductEvent(
+                                    actionId = selectedId,
+                                    followed = threadFollowed,
+                                    taskConversation = taskConversation,
+                                )?.let { eventAction ->
+                                    trackHeader(eventAction, RaftConversationHeaderSurface.MoreMenu, compact = headerCompact)
+                                }
+                            },
                         )
                     }
                     // web ThreadPanelHeader (slock #12211): Focus mode is the head's Expand, a window
                     // control after ⋯ and never in it, so a wide layout always shows it.
                     if (!fit.expandInMenu) {
-                        toggleFocus?.let { ThreadHeaderFocusModeToggle(focused = focusModeActive, onToggle = it) }
+                        toggleFocus?.let { toggle ->
+                            ThreadHeaderFocusModeToggle(
+                                focused = focusModeActive,
+                                onToggle = {
+                                    trackHeader(
+                                        if (focusModeActive) RaftConversationHeaderAction.Restore else RaftConversationHeaderAction.Expand,
+                                        RaftConversationHeaderSurface.Header,
+                                        compact = headerCompact,
+                                    )
+                                    toggle()
+                                },
+                            )
+                        }
                     }
                     }
                     taskColumnHead?.let { RaftTaskColumnHeadActions(it) }
                     // web ThreadPanelHeader: Close after Expand, the head's last control, in the thread's column.
-                    if (paneCloses && !closeInMenu) RaftSidePaneCloseButton()
+                    if (paneCloses && !closeInMenu) {
+                        RaftSidePaneCloseButton(
+                            onBeforeClose = {
+                                trackHeader(RaftConversationHeaderAction.Close, RaftConversationHeaderSurface.Header, compact = trailingCompact)
+                            }
+                        )
+                    }
                 }
                 }
             } else {
@@ -1856,6 +2016,8 @@ private fun ThreadHeaderFocusModeMenu(
     drawLocally: Boolean = false,
     /** The thread's notification level row ("Notifications: <level>"); null leaves it out. */
     notificationLevelTargetInput: RaftNotificationLevelTarget? = null,
+    onMenuOpen: (() -> Unit)? = null,
+    onMenuItemSelected: ((String) -> Unit)? = null,
 ) {
     // An older server without the unified API shows no level row.
     val notificationLevelTarget = notificationLevelTargetInput.whenLevelsSupported()
@@ -1864,6 +2026,14 @@ private fun ThreadHeaderFocusModeMenu(
     var notificationLevelDialogOpen by remember { mutableStateOf(false) }
     val notificationLevelLabel = rememberRaftNotificationLevelMenuLabel(notificationLevelTarget)
     val latestFoldedActions by rememberUpdatedState(foldedActions)
+    val latestOnMenuOpen by rememberUpdatedState(onMenuOpen)
+    val latestOnMenuItemSelected by rememberUpdatedState(onMenuItemSelected)
+    val latestOnToggleFollow by rememberUpdatedState(onToggleFollow)
+    val latestOnMarkUnread by rememberUpdatedState(onMarkUnread)
+    val latestOnSearchInTask by rememberUpdatedState(onSearchInTask)
+    val latestOnTimeline by rememberUpdatedState(onTimeline)
+    val latestOnViewInChannel by rememberUpdatedState(onViewInChannel)
+    val latestOnDeleteTask by rememberUpdatedState(onDeleteTask)
     val followLabel =
         if (followed != null && onToggleFollow != null) {
             stringResource(
@@ -1944,12 +2114,12 @@ private fun ThreadHeaderFocusModeMenu(
                     openRequestId = null
                     val selectedId = eventData?.optString(SHELL_OVERLAY_SELECTED_ID).orEmpty()
                     when (selectedId) {
-                        FOLLOW_THREAD_MENU_ITEM_ID -> onToggleFollow?.invoke()
-                        MARK_THREAD_UNREAD_MENU_ITEM_ID -> onMarkUnread?.invoke()
-                        SEARCH_IN_TASK_MENU_ITEM_ID -> onSearchInTask?.invoke()
-                        THREAD_TIMELINE_MENU_ITEM_ID -> onTimeline?.invoke()
-                        VIEW_TASK_IN_CHANNEL_MENU_ITEM_ID -> onViewInChannel?.invoke()
-                        DELETE_TASK_MENU_ITEM_ID -> onDeleteTask?.invoke()
+                        FOLLOW_THREAD_MENU_ITEM_ID -> latestOnToggleFollow?.let { latestOnMenuItemSelected?.invoke(selectedId); it() }
+                        MARK_THREAD_UNREAD_MENU_ITEM_ID -> latestOnMarkUnread?.let { latestOnMenuItemSelected?.invoke(selectedId); it() }
+                        SEARCH_IN_TASK_MENU_ITEM_ID -> latestOnSearchInTask?.let { latestOnMenuItemSelected?.invoke(selectedId); it() }
+                        THREAD_TIMELINE_MENU_ITEM_ID -> latestOnTimeline?.let { latestOnMenuItemSelected?.invoke(selectedId); it() }
+                        VIEW_TASK_IN_CHANNEL_MENU_ITEM_ID -> latestOnViewInChannel?.let { latestOnMenuItemSelected?.invoke(selectedId); it() }
+                        DELETE_TASK_MENU_ITEM_ID -> latestOnDeleteTask?.invoke()
                         NOTIFICATION_LEVEL_MENU_ITEM_ID -> notificationLevelDialogOpen = true
                         else -> latestFoldedActions.firstOrNull { it.id == selectedId }?.onClick?.invoke()
                     }
@@ -1972,7 +2142,10 @@ private fun ThreadHeaderFocusModeMenu(
             // handler" from "the lines went somewhere else". This line fires before any guard.
             raftTraceToPlatformLog("SlockShellOverlay", "click_enter")
             if (drawLocally) {
-                anchorRef.resolve(RaftPopoverLocalPoint.BottomEnd)?.let { localMenuAnchor = it }
+                anchorRef.resolve(RaftPopoverLocalPoint.BottomEnd)?.let {
+                    if (localMenuAnchor == null) latestOnMenuOpen?.invoke()
+                    localMenuAnchor = it
+                }
                 return@onClick
             }
             val bus = pageEventBus ?: return@onClick
@@ -1992,6 +2165,7 @@ private fun ThreadHeaderFocusModeMenu(
             val pageOrigin = RaftChildPageOriginRegistry.stateFor(pageOriginKey).windowOrigin
             val requestId = "thread-panel-${anchor.hashCode()}-${items.size}"
             openRequestId = requestId
+            latestOnMenuOpen?.invoke()
             // task #180 diagnostics (Argus): point 1 of 3 -- the page posted a request.
             raftTraceToPlatformLog(
                 "SlockShellOverlay",
@@ -2028,12 +2202,12 @@ private fun ThreadHeaderFocusModeMenu(
             onSelect = { id ->
                 localMenuAnchor = null
                 when (id) {
-                    FOLLOW_THREAD_MENU_ITEM_ID -> onToggleFollow?.invoke()
-                    MARK_THREAD_UNREAD_MENU_ITEM_ID -> onMarkUnread?.invoke()
-                    SEARCH_IN_TASK_MENU_ITEM_ID -> onSearchInTask?.invoke()
-                    THREAD_TIMELINE_MENU_ITEM_ID -> onTimeline?.invoke()
-                    VIEW_TASK_IN_CHANNEL_MENU_ITEM_ID -> onViewInChannel?.invoke()
-                    DELETE_TASK_MENU_ITEM_ID -> onDeleteTask?.invoke()
+                    FOLLOW_THREAD_MENU_ITEM_ID -> latestOnToggleFollow?.let { latestOnMenuItemSelected?.invoke(id); it() }
+                    MARK_THREAD_UNREAD_MENU_ITEM_ID -> latestOnMarkUnread?.let { latestOnMenuItemSelected?.invoke(id); it() }
+                    SEARCH_IN_TASK_MENU_ITEM_ID -> latestOnSearchInTask?.let { latestOnMenuItemSelected?.invoke(id); it() }
+                    THREAD_TIMELINE_MENU_ITEM_ID -> latestOnTimeline?.let { latestOnMenuItemSelected?.invoke(id); it() }
+                    VIEW_TASK_IN_CHANNEL_MENU_ITEM_ID -> latestOnViewInChannel?.let { latestOnMenuItemSelected?.invoke(id); it() }
+                    DELETE_TASK_MENU_ITEM_ID -> latestOnDeleteTask?.invoke()
                     NOTIFICATION_LEVEL_MENU_ITEM_ID -> notificationLevelDialogOpen = true
                     else -> latestFoldedActions.firstOrNull { it.id == id }?.onClick?.invoke()
                 }

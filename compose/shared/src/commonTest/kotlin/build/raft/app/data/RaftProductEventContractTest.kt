@@ -54,6 +54,32 @@ class RaftProductEventContractTest {
         /** `clientEventBatchSchema.device_class` at botiverse/slock #10790 @ [PinnedDeviceClassSlockSha]. */
         const val PinnedDeviceClassSlockSha = "9a30dba7deb45b2f7d3154a8a57ace55fb45b35c"
         val DeviceClasses = listOf("phone", "tablet")
+
+        /** botiverse/slock #16056 + #16067 (v1.35.0): header, sidebar, and Activity entry events. */
+        const val PinnedHeadSidebarActivitySlockSha = "cff8ab38bc0bd2229a378ab89af22355a266d4a2"
+        val ConversationHeaderActions =
+            listOf(
+                "search", "open_menu", "open_details", "open_lounge", "start_call",
+                "close_details", "open_profile", "open_dm", "expand", "restore", "scroll_to_start", "view_in_channel",
+                "open_followers", "open_timeline", "mark_unread", "follow", "unfollow", "move_left", "move_right", "close",
+                "remove_follower", "open_announcement", "copy_link", "open_announcement_settings",
+                "copy_name", "open_members",
+            )
+        val ConversationHeaderSurfaces = listOf("header", "more_menu", "title", "announcement", "followers_popover")
+        val ConversationHeaderConversations = listOf("channel", "dm", "thread")
+        val SidebarActions =
+            listOf(
+                "open_menu", "mark_read", "mark_unread", "pin", "unpin", "mute", "unmute", "notify_all", "notify_mentions", "notify_none",
+                "move_to_home", "move_to_pinned", "move_to_section", "new_section", "archive", "leave", "close",
+                "collapse_section", "expand_section", "open_sort", "sort_manual", "sort_recent", "sort_alpha", "create_channel", "create_external_channel",
+                "joined_only_on", "joined_only_off", "hide_empty_on", "hide_empty_off", "rename_section", "delete_section",
+                "open_reorder",
+            )
+        val SidebarActionSurfaces = listOf("row_menu", "section_header", "section_menu", "surface_menu")
+        val SidebarRowKinds = listOf("channel", "dm", "agent_dm", "lounge")
+        val ActivityActions =
+            listOf("open_menu", "mark_read", "mark_unread", "done", "follow", "unfollow", "mute", "unmute", "unfollow_artifact")
+        val ActivityActionSurfaces = listOf("row_menu", "row_button")
     }
 
     @Test
@@ -68,6 +94,22 @@ class RaftProductEventContractTest {
                 "app_opened.via" to (AppOpenedVia to RaftAppOpenVia.entries.map { it.wire }),
                 "native sources" to (NativeSources to RaftProductEventSource.entries.map { it.wire }),
                 "device_class" to (DeviceClasses to RaftProductEventDeviceClass.entries.map { it.wire }),
+                "CONVERSATION_HEADER_ACTIONS@$PinnedHeadSidebarActivitySlockSha" to
+                    (ConversationHeaderActions to RaftConversationHeaderAction.entries.map { it.wire }),
+                "CONVERSATION_HEADER_SURFACES@$PinnedHeadSidebarActivitySlockSha" to
+                    (ConversationHeaderSurfaces to RaftConversationHeaderSurface.entries.map { it.wire }),
+                "CONVERSATION_HEADER_CONVERSATIONS@$PinnedHeadSidebarActivitySlockSha" to
+                    (ConversationHeaderConversations to RaftConversationHeaderKind.entries.map { it.wire }),
+                "SIDEBAR_ACTIONS@$PinnedHeadSidebarActivitySlockSha" to
+                    (SidebarActions to RaftSidebarAction.entries.map { it.wire }),
+                "SIDEBAR_ACTION_SURFACES@$PinnedHeadSidebarActivitySlockSha" to
+                    (SidebarActionSurfaces to RaftSidebarActionSurface.entries.map { it.wire }),
+                "SIDEBAR_ROW_KINDS@$PinnedHeadSidebarActivitySlockSha" to
+                    (SidebarRowKinds to RaftSidebarRowKind.entries.map { it.wire }),
+                "ACTIVITY_ACTIONS@$PinnedHeadSidebarActivitySlockSha" to
+                    (ActivityActions to RaftActivityAction.entries.map { it.wire }),
+                "ACTIVITY_ACTION_SURFACES@$PinnedHeadSidebarActivitySlockSha" to
+                    (ActivityActionSurfaces to RaftActivityActionSurface.entries.map { it.wire }),
             )
         cases.forEach { (name, lists) ->
             assertEquals(lists.first.toSet(), lists.second.toSet(), "$name drifted from slock@$PinnedSlockSha")
@@ -100,6 +142,58 @@ class RaftProductEventContractTest {
         assertEquals("settings", pageProps.getValue("route").jsonPrimitive.content)
         assertEquals("language-region", pageProps.getValue("settings_tab").jsonPrimitive.content)
         assertEquals(setOf("route"), pageViewed(RaftPageRoute.Home).encodeProperties().keys)
+
+        val header =
+            RaftProductEvent.ConversationHeaderActionSelected(
+                RaftConversationHeaderActionSelectedProperties(
+                    action = RaftConversationHeaderAction.CopyName,
+                    surface = RaftConversationHeaderSurface.Title,
+                    conversation = RaftConversationHeaderKind.Dm,
+                    compact = true,
+                )
+            )
+        assertEquals("conversation_header_action_selected", header.name)
+        val headerProps = header.encodeProperties()
+        assertEquals(setOf("action", "surface", "conversation", "compact"), headerProps.keys)
+        assertEquals("copy_name", headerProps.getValue("action").jsonPrimitive.content)
+        assertEquals("title", headerProps.getValue("surface").jsonPrimitive.content)
+        assertEquals("dm", headerProps.getValue("conversation").jsonPrimitive.content)
+        assertTrue(headerProps.getValue("compact").jsonPrimitive.boolean)
+
+        val sidebarRow =
+            RaftProductEvent.SidebarActionSelected(
+                RaftSidebarActionSelectedProperties(
+                    action = RaftSidebarAction.OpenReorder,
+                    surface = RaftSidebarActionSurface.RowMenu,
+                    row = RaftSidebarRowKind.Channel,
+                )
+            )
+        assertEquals("sidebar_action_selected", sidebarRow.name)
+        assertEquals(setOf("action", "surface", "row"), sidebarRow.encodeProperties().keys)
+        assertEquals("open_reorder", sidebarRow.encodeProperties().getValue("action").jsonPrimitive.content)
+        assertEquals("row_menu", sidebarRow.encodeProperties().getValue("surface").jsonPrimitive.content)
+        assertEquals("channel", sidebarRow.encodeProperties().getValue("row").jsonPrimitive.content)
+
+        val sidebarSection =
+            RaftProductEvent.SidebarActionSelected(
+                RaftSidebarActionSelectedProperties(
+                    action = RaftSidebarAction.CollapseSection,
+                    surface = RaftSidebarActionSurface.SectionHeader,
+                )
+            )
+        assertEquals(setOf("action", "surface"), sidebarSection.encodeProperties().keys)
+
+        val activity =
+            RaftProductEvent.ActivityActionSelected(
+                RaftActivityActionSelectedProperties(
+                    action = RaftActivityAction.UnfollowArtifact,
+                    surface = RaftActivityActionSurface.RowMenu,
+                )
+            )
+        assertEquals("activity_action_selected", activity.name)
+        assertEquals(setOf("action", "surface"), activity.encodeProperties().keys)
+        assertEquals("unfollow_artifact", activity.encodeProperties().getValue("action").jsonPrimitive.content)
+        assertEquals("row_menu", activity.encodeProperties().getValue("surface").jsonPrimitive.content)
     }
 
     @Test

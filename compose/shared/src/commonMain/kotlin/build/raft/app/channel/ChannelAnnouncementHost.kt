@@ -25,10 +25,14 @@ import build.raft.app.data.ChannelAnnouncementPickerStore
 import build.raft.app.data.ChannelAnnouncementSlice
 import build.raft.app.data.NetworkRaftConversationArtifactsApi
 import build.raft.app.data.RaftChannelAnnouncement
+import build.raft.app.data.RaftConversationHeaderAction
+import build.raft.app.data.RaftConversationHeaderKind
+import build.raft.app.data.RaftConversationHeaderSurface
 import build.raft.app.data.RaftFreshnessEvent
 import build.raft.app.data.RaftFreshnessGate
 import build.raft.app.data.RaftFreshnessSignal
 import build.raft.app.data.RaftFreshnessTrigger
+import build.raft.app.data.RaftProductEvents
 import build.raft.app.data.RaftSharedStoreProvider
 import build.raft.app.data.RaftShellStoreScope
 import build.raft.app.data.SharedChannelAnnouncementStore
@@ -205,16 +209,50 @@ internal fun ThreadChannelAnnouncementStrip(
     val webBaseUrl = remember(sharedStores) { channelAnnouncementWebBaseUrl(sharedStores) }
     val open = rememberChannelAnnouncementOpener(webBaseUrl)
     val copiedMessage = stringResource(Res.string.channel_announcement_strip_link_copied)
+    val compact = !raftWindowWide()
     ChannelAnnouncementStrip(
         announcement = announcement,
         authorName = channelAnnouncementAuthorName(announcement.updatedBy.name),
-        onOpen = { open(announcement) },
+        onOpen = {
+            RaftProductEvents.conversationHeaderActionSelected(
+                action = RaftConversationHeaderAction.OpenAnnouncement,
+                surface = RaftConversationHeaderSurface.Announcement,
+                conversation = RaftConversationHeaderKind.Channel,
+                compact = compact,
+            )
+            open(announcement)
+        },
         onCopyLink = {
+            RaftProductEvents.conversationHeaderActionSelected(
+                action = RaftConversationHeaderAction.CopyLink,
+                surface = RaftConversationHeaderSurface.Announcement,
+                conversation = RaftConversationHeaderKind.Channel,
+                compact = compact,
+            )
             bridge.copyToPasteboard(artifactWebUrl(webBaseUrl, ArtifactLinkTarget(announcement.artifactId)))
             bridge.toast(copiedMessage)
         },
-        onOpenSettings = onOpenSettings,
+        onOpenSettings =
+            onOpenSettings?.let { openSettings ->
+                {
+                    RaftProductEvents.conversationHeaderActionSelected(
+                        action = RaftConversationHeaderAction.OpenAnnouncementSettings,
+                        surface = RaftConversationHeaderSurface.Announcement,
+                        conversation = RaftConversationHeaderKind.Channel,
+                        compact = compact,
+                    )
+                    openSettings()
+                }
+            },
         modifier = modifier,
+        onOpenMenu = {
+            RaftProductEvents.conversationHeaderActionSelected(
+                action = RaftConversationHeaderAction.OpenMenu,
+                surface = RaftConversationHeaderSurface.Announcement,
+                conversation = RaftConversationHeaderKind.Channel,
+                compact = compact,
+            )
+        },
     )
 }
 

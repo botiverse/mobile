@@ -20,6 +20,8 @@ import build.raft.app.data.InboxItem
 import build.raft.app.data.RaftReadToggleNotice
 import build.raft.app.data.showsUnread
 import build.raft.app.data.isTaskConversation
+import build.raft.app.data.RaftActivityAction
+import build.raft.app.data.RaftActivityActionSurface
 import build.raft.app.data.RaftActivityMarkAction
 import build.raft.app.data.RaftProductEvents
 import build.raft.app.data.HomeThreadUnfollowPhase
@@ -2078,6 +2080,7 @@ internal fun SharedActivityList(
     fun openRowMenu(renderedItemKey: String, anchor: RaftPopoverAnchor) {
         if (pendingRowExits.isExiting(renderedItemKey)) return
         val currentItem = committedRowItem(renderedItemKey) ?: return
+        RaftProductEvents.activityActionSelected(RaftActivityAction.OpenMenu, RaftActivityActionSurface.RowMenu)
         effectiveSwipeHost.close()
         activeMenuItem = currentItem
         menuAnchor = anchor
@@ -2317,17 +2320,30 @@ internal fun SharedActivityList(
         commitRowAction(item, actionId)
     }
     // A screen-reader action on a rendered row: resolved against the live row like a tap, and only while
-    // the row still offers it (its menu would list it).
-    fun accessibilityRowAction(renderedItemKey: String, actionId: String) {
+    // the row still offers it (its menu would list it). Screen-reader custom actions are not recorded in
+    // activity_action_selected (Nova, #proj-mobile:7e5fdb23).
+    fun runLiveRowAction(
+        renderedItemKey: String,
+        actionId: String,
+        onBeforeRun: (() -> Unit)? = null,
+    ) {
         if (pendingRowExits.isExiting(renderedItemKey)) return
         val currentItem = committedRowItem(renderedItemKey) ?: return
         if (actionId !in activityContextMenuActionIds(currentItem, channelMute?.mutedByChannelId.orEmpty())) return
+        onBeforeRun?.invoke()
         effectiveSwipeHost.close()
         runRowAction(currentItem, actionId)
     }
+    fun accessibilityRowAction(renderedItemKey: String, actionId: String) {
+        runLiveRowAction(renderedItemKey, actionId)
+    }
     // The row's Done button (web InboxRowDone: on hover with a mouse or trackpad, at rest in the wide layout by touch):
-    // the menu's Done, with the same Undo toast, as on the web.
-    fun rowDoneButton(renderedItemKey: String) = accessibilityRowAction(renderedItemKey, "done")
+    // the menu's Done, with the same Undo toast, as on the web; recorded as row_button before the outcome write.
+    fun rowDoneButton(renderedItemKey: String) {
+        runLiveRowAction(renderedItemKey, "done") {
+            RaftProductEvents.activityActionSelected(RaftActivityAction.Done, RaftActivityActionSurface.RowButton)
+        }
+    }
     fun undoSwipeEnd(token: Long) {
         val transition = swipeEndUndo.undo(token)
         swipeEndUndo = transition.state
@@ -2662,6 +2678,9 @@ internal fun SharedActivityList(
                 selectedId = "",
                 onDismiss = { activeMenuItem = null },
                 onSelect = { id ->
+                    activityRowMenuProductAction(item, id)?.let { action ->
+                        RaftProductEvents.activityActionSelected(action, RaftActivityActionSurface.RowMenu)
+                    }
                     runRowAction(item, id)
                     activeMenuItem = null
                 }
@@ -2806,6 +2825,19 @@ internal fun activityContextMenuItems(
         )
     }
 }
+
+/** Maps an Activity row context-menu item id to its `activity_action_selected` value (`row_menu`). */
+internal fun activityRowMenuProductAction(item: InboxItem, actionId: String): RaftActivityAction? =
+    when (actionId) {
+        "toggle-read" -> if (item.showsUnread) RaftActivityAction.MarkRead else RaftActivityAction.MarkUnread
+        "done" -> RaftActivityAction.Done
+        "follow-thread" -> RaftActivityAction.Follow
+        "unfollow-thread" -> RaftActivityAction.Unfollow
+        "mute-activity" -> RaftActivityAction.Mute
+        "unmute-activity" -> RaftActivityAction.Unmute
+        "unfollow-object" -> RaftActivityAction.UnfollowArtifact
+        else -> null
+    }
 
 /** What one row action ([activityContextMenuActionIds]) writes, and its `activity_mark` analytics value if any. */
 internal data class ActivityRowActionWrite(

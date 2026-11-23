@@ -6467,6 +6467,9 @@ private fun SharedThreadRouteContentContent(
                             onOpenMemberProfile(renderedThread, renderedTimelineSlice, identity)
                         },
                         agentStatusResolver = agentStatusResolver,
+                        trackHeaderActions =
+                            renderedThread.surfaceKind == RaftThreadSurfaceKind.ReplyThread &&
+                                !renderedThread.isTaskConversationSurface(),
                     )
                 }
             },

@@ -58,6 +58,15 @@ const val RAFT_PRODUCT_EVENTS_SELECT_TEXT_SLOCK_SHA: String = "27f555f166a5f51e8
  */
 const val RAFT_PRODUCT_EVENTS_QUOTE_SLOCK_SHA: String = "35efb3b86baa4400d58cbab4444b76149bcf80e4"
 
+/**
+ * botiverse/slock #16056 (staging @ d7d12845b49053d895cc4beacc1c72aee1612383) + #16067 (staging @
+ * this commit; live in server v1.35.0): `conversation_header_action_selected` (threads,
+ * announcement strip, followers popover, and native `copy_name` / `open_members`),
+ * `sidebar_action_selected` (including native `open_reorder`), and `activity_action_selected`
+ * (including native `unfollow_artifact`).
+ */
+const val RAFT_PRODUCT_EVENTS_HEAD_SIDEBAR_ACTIVITY_SLOCK_SHA: String = "cff8ab38bc0bd2229a378ab89af22355a266d4a2"
+
 /** botiverse/slock #11045 merge commit on staging: `channel_tab_selected`, `message_action_selected`. */
 const val RAFT_PRODUCT_ENTRY_EVENTS_BASE_SLOCK_SHA: String = "3e959613eeeaa80607e826792c1f72bd17459191"
 
@@ -239,6 +248,135 @@ enum class RaftChannelTab(val wire: String) {
 enum class RaftChannelTabSurface(val wire: String) {
     @SerialName("header_tabs") HeaderTabs("header_tabs"),
     @SerialName("header_swipe") HeaderSwipe("header_swipe"),
+}
+
+/**
+ * `CONVERSATION_HEADER_ACTIONS` @ [RAFT_PRODUCT_EVENTS_HEAD_SIDEBAR_ACTIVITY_SLOCK_SHA]
+ * (botiverse/slock #16056 + #16067): conversation / thread header, announcement strip, and
+ * followers popover entries.
+ */
+@Serializable
+enum class RaftConversationHeaderAction(val wire: String) {
+    @SerialName("search") Search("search"),
+    @SerialName("open_menu") OpenMenu("open_menu"),
+    @SerialName("open_details") OpenDetails("open_details"),
+    @SerialName("open_lounge") OpenLounge("open_lounge"),
+    @SerialName("start_call") StartCall("start_call"),
+    @SerialName("close_details") CloseDetails("close_details"),
+    @SerialName("open_profile") OpenProfile("open_profile"),
+    @SerialName("open_dm") OpenDm("open_dm"),
+    @SerialName("expand") Expand("expand"),
+    @SerialName("restore") Restore("restore"),
+    @SerialName("scroll_to_start") ScrollToStart("scroll_to_start"),
+    @SerialName("view_in_channel") ViewInChannel("view_in_channel"),
+    @SerialName("open_followers") OpenFollowers("open_followers"),
+    @SerialName("open_timeline") OpenTimeline("open_timeline"),
+    @SerialName("mark_unread") MarkUnread("mark_unread"),
+    @SerialName("follow") Follow("follow"),
+    @SerialName("unfollow") Unfollow("unfollow"),
+    @SerialName("move_left") MoveLeft("move_left"),
+    @SerialName("move_right") MoveRight("move_right"),
+    @SerialName("close") Close("close"),
+    @SerialName("remove_follower") RemoveFollower("remove_follower"),
+    @SerialName("open_announcement") OpenAnnouncement("open_announcement"),
+    @SerialName("copy_link") CopyLink("copy_link"),
+    @SerialName("open_announcement_settings") OpenAnnouncementSettings("open_announcement_settings"),
+    @SerialName("copy_name") CopyName("copy_name"),
+    @SerialName("open_members") OpenMembers("open_members"),
+}
+
+/** `CONVERSATION_HEADER_SURFACES` @ [RAFT_PRODUCT_EVENTS_HEAD_SIDEBAR_ACTIVITY_SLOCK_SHA]. */
+@Serializable
+enum class RaftConversationHeaderSurface(val wire: String) {
+    @SerialName("header") Header("header"),
+    @SerialName("more_menu") MoreMenu("more_menu"),
+    @SerialName("title") Title("title"),
+    @SerialName("announcement") Announcement("announcement"),
+    @SerialName("followers_popover") FollowersPopover("followers_popover"),
+}
+
+/** `CONVERSATION_HEADER_CONVERSATIONS` @ [RAFT_PRODUCT_EVENTS_HEAD_SIDEBAR_ACTIVITY_SLOCK_SHA]. */
+@Serializable
+enum class RaftConversationHeaderKind(val wire: String) {
+    @SerialName("channel") Channel("channel"),
+    @SerialName("dm") Dm("dm"),
+    @SerialName("thread") Thread("thread"),
+}
+
+/** `SIDEBAR_ACTIONS` @ [RAFT_PRODUCT_EVENTS_HEAD_SIDEBAR_ACTIVITY_SLOCK_SHA]. */
+@Serializable
+enum class RaftSidebarAction(val wire: String) {
+    @SerialName("open_menu") OpenMenu("open_menu"),
+    @SerialName("mark_read") MarkRead("mark_read"),
+    @SerialName("mark_unread") MarkUnread("mark_unread"),
+    @SerialName("pin") Pin("pin"),
+    @SerialName("unpin") Unpin("unpin"),
+    @SerialName("mute") Mute("mute"),
+    @SerialName("unmute") Unmute("unmute"),
+    @SerialName("notify_all") NotifyAll("notify_all"),
+    @SerialName("notify_mentions") NotifyMentions("notify_mentions"),
+    @SerialName("notify_none") NotifyNone("notify_none"),
+    @SerialName("move_to_home") MoveToHome("move_to_home"),
+    @SerialName("move_to_pinned") MoveToPinned("move_to_pinned"),
+    @SerialName("move_to_section") MoveToSection("move_to_section"),
+    @SerialName("new_section") NewSection("new_section"),
+    @SerialName("archive") Archive("archive"),
+    @SerialName("leave") Leave("leave"),
+    @SerialName("close") Close("close"),
+    @SerialName("collapse_section") CollapseSection("collapse_section"),
+    @SerialName("expand_section") ExpandSection("expand_section"),
+    @SerialName("open_sort") OpenSort("open_sort"),
+    @SerialName("sort_manual") SortManual("sort_manual"),
+    @SerialName("sort_recent") SortRecent("sort_recent"),
+    @SerialName("sort_alpha") SortAlpha("sort_alpha"),
+    @SerialName("create_channel") CreateChannel("create_channel"),
+    @SerialName("create_external_channel") CreateExternalChannel("create_external_channel"),
+    @SerialName("joined_only_on") JoinedOnlyOn("joined_only_on"),
+    @SerialName("joined_only_off") JoinedOnlyOff("joined_only_off"),
+    @SerialName("hide_empty_on") HideEmptyOn("hide_empty_on"),
+    @SerialName("hide_empty_off") HideEmptyOff("hide_empty_off"),
+    @SerialName("rename_section") RenameSection("rename_section"),
+    @SerialName("delete_section") DeleteSection("delete_section"),
+    @SerialName("open_reorder") OpenReorder("open_reorder"),
+}
+
+/** `SIDEBAR_ACTION_SURFACES` @ [RAFT_PRODUCT_EVENTS_HEAD_SIDEBAR_ACTIVITY_SLOCK_SHA]. */
+@Serializable
+enum class RaftSidebarActionSurface(val wire: String) {
+    @SerialName("row_menu") RowMenu("row_menu"),
+    @SerialName("section_header") SectionHeader("section_header"),
+    @SerialName("section_menu") SectionMenu("section_menu"),
+    @SerialName("surface_menu") SurfaceMenu("surface_menu"),
+}
+
+/** `SIDEBAR_ROW_KINDS` @ [RAFT_PRODUCT_EVENTS_HEAD_SIDEBAR_ACTIVITY_SLOCK_SHA]. */
+@Serializable
+enum class RaftSidebarRowKind(val wire: String) {
+    @SerialName("channel") Channel("channel"),
+    @SerialName("dm") Dm("dm"),
+    @SerialName("agent_dm") AgentDm("agent_dm"),
+    @SerialName("lounge") Lounge("lounge"),
+}
+
+/** `ACTIVITY_ACTIONS` @ [RAFT_PRODUCT_EVENTS_HEAD_SIDEBAR_ACTIVITY_SLOCK_SHA]. */
+@Serializable
+enum class RaftActivityAction(val wire: String) {
+    @SerialName("open_menu") OpenMenu("open_menu"),
+    @SerialName("mark_read") MarkRead("mark_read"),
+    @SerialName("mark_unread") MarkUnread("mark_unread"),
+    @SerialName("done") Done("done"),
+    @SerialName("follow") Follow("follow"),
+    @SerialName("unfollow") Unfollow("unfollow"),
+    @SerialName("mute") Mute("mute"),
+    @SerialName("unmute") Unmute("unmute"),
+    @SerialName("unfollow_artifact") UnfollowArtifact("unfollow_artifact"),
+}
+
+/** `ACTIVITY_ACTION_SURFACES` @ [RAFT_PRODUCT_EVENTS_HEAD_SIDEBAR_ACTIVITY_SLOCK_SHA]. */
+@Serializable
+enum class RaftActivityActionSurface(val wire: String) {
+    @SerialName("row_menu") RowMenu("row_menu"),
+    @SerialName("row_button") RowButton("row_button"),
 }
 
 /** `MESSAGE_ACTION_SURFACES` the app has: the long-press message menu. */
@@ -464,6 +602,28 @@ data class RaftChannelTabSelectedProperties(
 )
 
 @Serializable
+data class RaftConversationHeaderActionSelectedProperties(
+    val action: RaftConversationHeaderAction,
+    val surface: RaftConversationHeaderSurface,
+    val conversation: RaftConversationHeaderKind,
+    val compact: Boolean,
+)
+
+@Serializable
+data class RaftSidebarActionSelectedProperties(
+    val action: RaftSidebarAction,
+    val surface: RaftSidebarActionSurface,
+    /** Only for [RaftSidebarActionSurface.RowMenu]; omitted for section headers and menus. */
+    val row: RaftSidebarRowKind? = null,
+)
+
+@Serializable
+data class RaftActivityActionSelectedProperties(
+    val action: RaftActivityAction,
+    val surface: RaftActivityActionSurface,
+)
+
+@Serializable
 data class RaftMessageActionSelectedProperties(
     val action: RaftMessageAction,
     val surface: RaftMessageActionSurface,
@@ -517,6 +677,24 @@ sealed class RaftProductEvent<P>(val name: String, private val serializer: KSeri
 
     data class ChannelTabSelected(override val properties: RaftChannelTabSelectedProperties) :
         RaftProductEvent<RaftChannelTabSelectedProperties>("channel_tab_selected", RaftChannelTabSelectedProperties.serializer())
+
+    data class ConversationHeaderActionSelected(override val properties: RaftConversationHeaderActionSelectedProperties) :
+        RaftProductEvent<RaftConversationHeaderActionSelectedProperties>(
+            "conversation_header_action_selected",
+            RaftConversationHeaderActionSelectedProperties.serializer(),
+        )
+
+    data class SidebarActionSelected(override val properties: RaftSidebarActionSelectedProperties) :
+        RaftProductEvent<RaftSidebarActionSelectedProperties>(
+            "sidebar_action_selected",
+            RaftSidebarActionSelectedProperties.serializer(),
+        )
+
+    data class ActivityActionSelected(override val properties: RaftActivityActionSelectedProperties) :
+        RaftProductEvent<RaftActivityActionSelectedProperties>(
+            "activity_action_selected",
+            RaftActivityActionSelectedProperties.serializer(),
+        )
 
     data class MessageActionSelected(override val properties: RaftMessageActionSelectedProperties) :
         RaftProductEvent<RaftMessageActionSelectedProperties>("message_action_selected", RaftMessageActionSelectedProperties.serializer())

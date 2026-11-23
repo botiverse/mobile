@@ -19,6 +19,9 @@ import build.raft.designsystem.components.RaftSideActionColumnDefaults
 import build.raft.designsystem.components.RaftStatusBarBackdropClaim
 import build.raft.designsystem.components.raftSafeAreaHorizontalPadding
 import build.raft.app.resources.*
+import build.raft.app.data.RaftProductEvents
+import build.raft.app.data.RaftSidebarAction
+import build.raft.app.data.RaftSidebarActionSurface
 import build.raft.app.components.RaftIconSpinner
 import build.raft.designsystem.components.RaftButton
 import build.raft.designsystem.components.RaftTopBarDefaults
@@ -2942,7 +2945,15 @@ private fun RaftStructuralHomeShellContent(
                                                 title = labels.pinned,
                                                 count = displayedPinned.size,
                                                 expanded = pinnedExpanded,
-                                                onExpandedChange = { if (sidebarInteractionsEnabled) pinnedExpanded = it },
+                                                onExpandedChange = {
+                                                    if (sidebarInteractionsEnabled) {
+                                                        RaftProductEvents.sidebarActionSelected(
+                                                            if (it) RaftSidebarAction.ExpandSection else RaftSidebarAction.CollapseSection,
+                                                            RaftSidebarActionSurface.SectionHeader,
+                                                        )
+                                                        pinnedExpanded = it
+                                                    }
+                                                },
                                                 longPressIdentity = "$currentServerId:system:pinned",
                                                 menuOpen = activeSystemSectionMenu == RaftHomeSortSection.Pinned,
                                                 sortMenuOpen = activeSortMenu == RaftHomeSortSection.Pinned,
@@ -2950,13 +2961,24 @@ private fun RaftStructuralHomeShellContent(
                                                 sortLabel = "${labels.sortChannels} ${labels.pinned}",
                                                 onSortClick = { anchor ->
                                                     if (sidebarInteractionsEnabled) {
-                                                        activeSortMenu = if (activeSortMenu == RaftHomeSortSection.Pinned) null else RaftHomeSortSection.Pinned
+                                                        val opening = activeSortMenu != RaftHomeSortSection.Pinned
+                                                        if (opening) {
+                                                            RaftProductEvents.sidebarActionSelected(
+                                                                RaftSidebarAction.OpenSort,
+                                                                RaftSidebarActionSurface.SectionHeader,
+                                                            )
+                                                        }
+                                                        activeSortMenu = if (opening) RaftHomeSortSection.Pinned else null
                                                         sortMenuAnchor = anchor
                                                     }
                                                 },
                                                 onLongPress =
                                                     if (sidebarInteractionsEnabled) {
                                                         { anchor ->
+                                                            RaftProductEvents.sidebarActionSelected(
+                                                                RaftSidebarAction.OpenMenu,
+                                                                RaftSidebarActionSurface.SectionMenu,
+                                                            )
                                                             activeSystemSectionMenu = RaftHomeSortSection.Pinned
                                                             systemSectionMenuAnchor = anchor
                                                         }
@@ -2992,6 +3014,11 @@ private fun RaftStructuralHomeShellContent(
                                                 val handleLongPress: (RaftPopoverAnchor) -> Unit = { anchor ->
                                                     when {
                                                         pinned != null -> {
+                                                            RaftProductEvents.sidebarActionSelected(
+                                                                RaftSidebarAction.OpenMenu,
+                                                                RaftSidebarActionSurface.RowMenu,
+                                                                pinned.sidebarRowKind(),
+                                                            )
                                                             onChannelLongPressWithDismiss(pinned.id, anchor)
                                                             activePinnedMemberMenuKey = null
                                                             activePinMenuConversationId = pinned.id
@@ -3004,6 +3031,11 @@ private fun RaftStructuralHomeShellContent(
                                                             // a stable member id in the per-user pinned
                                                             // order, so expose the section-level Sort action
                                                             // without inventing conversation operations.
+                                                            RaftProductEvents.sidebarActionSelected(
+                                                                RaftSidebarAction.OpenMenu,
+                                                                RaftSidebarActionSurface.RowMenu,
+                                                                pinnedMember.sidebarRowKind(),
+                                                            )
                                                             dismissNotificationCenterForFocusLoss()
                                                             activePinMenuConversationId = null
                                                             activePinnedMemberMenuKey = pinnedRow.key
@@ -3110,7 +3142,15 @@ private fun RaftStructuralHomeShellContent(
                                                 title = labels.external,
                                                 count = displayedJointChannels.size,
                                                 expanded = jointChannelsExpanded,
-                                                onExpandedChange = { if (sidebarInteractionsEnabled) jointChannelsExpanded = it },
+                                                onExpandedChange = {
+                                                    if (sidebarInteractionsEnabled) {
+                                                        RaftProductEvents.sidebarActionSelected(
+                                                            if (it) RaftSidebarAction.ExpandSection else RaftSidebarAction.CollapseSection,
+                                                            RaftSidebarActionSurface.SectionHeader,
+                                                        )
+                                                        jointChannelsExpanded = it
+                                                    }
+                                                },
                                                 longPressIdentity = "$currentServerId:system:joint",
                                                 menuOpen = activeSystemSectionMenu == RaftHomeSortSection.JointChannels,
                                                 sortMenuOpen = activeSortMenu == RaftHomeSortSection.JointChannels,
@@ -3118,16 +3158,36 @@ private fun RaftStructuralHomeShellContent(
                                                 sortLabel = "${labels.sortChannels} ${labels.external}",
                                                 onSortClick = { anchor ->
                                                     if (sidebarInteractionsEnabled) {
-                                                        activeSortMenu = if (activeSortMenu == RaftHomeSortSection.JointChannels) null else RaftHomeSortSection.JointChannels
+                                                        val opening = activeSortMenu != RaftHomeSortSection.JointChannels
+                                                        if (opening) {
+                                                            RaftProductEvents.sidebarActionSelected(
+                                                                RaftSidebarAction.OpenSort,
+                                                                RaftSidebarActionSurface.SectionHeader,
+                                                            )
+                                                        }
+                                                        activeSortMenu = if (opening) RaftHomeSortSection.JointChannels else null
                                                         sortMenuAnchor = anchor
                                                     }
                                                 },
                                                 addLabel = labels.createExternalChannel.takeIf { onCreateJointChannelClick != null },
-                                                onAddClick = onCreateJointChannelClick,
+                                                onAddClick =
+                                                    onCreateJointChannelClick?.let { createExternal ->
+                                                        {
+                                                            RaftProductEvents.sidebarActionSelected(
+                                                                RaftSidebarAction.CreateExternalChannel,
+                                                                RaftSidebarActionSurface.SectionHeader,
+                                                            )
+                                                            createExternal()
+                                                        }
+                                                    },
                                                 addEnabled = sidebarInteractionsEnabled,
                                                 onLongPress =
                                                     if (sidebarInteractionsEnabled) {
                                                         { anchor ->
+                                                            RaftProductEvents.sidebarActionSelected(
+                                                                RaftSidebarAction.OpenMenu,
+                                                                RaftSidebarActionSurface.SectionMenu,
+                                                            )
                                                             activeSystemSectionMenu = RaftHomeSortSection.JointChannels
                                                             systemSectionMenuAnchor = anchor
                                                         }
@@ -3158,6 +3218,11 @@ private fun RaftStructuralHomeShellContent(
                                                     menuOpen = activePinMenuConversationId == channel.id && activeMenuSection == RaftHomeSortSection.JointChannels,
                                                     onClick = if (sidebarInteractionsEnabled) ({ onChannelClickWithDismiss(channel.id) }) else null,
                                                     onLongPress = if (sidebarInteractionsEnabled) ({ anchor ->
+                                                        RaftProductEvents.sidebarActionSelected(
+                                                            RaftSidebarAction.OpenMenu,
+                                                            RaftSidebarActionSurface.RowMenu,
+                                                            channel.sidebarRowKind(),
+                                                        )
                                                         onChannelLongPressWithDismiss(channel.id, anchor)
                                                         activePinMenuConversationId = channel.id
                                                         activeMenuSection = RaftHomeSortSection.JointChannels
@@ -3176,7 +3241,15 @@ private fun RaftStructuralHomeShellContent(
                                                 title = labels.channels,
                                                 count = displayedChannels.size,
                                                 expanded = channelsExpanded,
-                                                onExpandedChange = { if (sidebarInteractionsEnabled) channelsExpanded = it },
+                                                onExpandedChange = {
+                                                    if (sidebarInteractionsEnabled) {
+                                                        RaftProductEvents.sidebarActionSelected(
+                                                            if (it) RaftSidebarAction.ExpandSection else RaftSidebarAction.CollapseSection,
+                                                            RaftSidebarActionSurface.SectionHeader,
+                                                        )
+                                                        channelsExpanded = it
+                                                    }
+                                                },
                                                 longPressIdentity = "$currentServerId:system:channels",
                                                 menuOpen = activeSystemSectionMenu == RaftHomeSortSection.Channels,
                                                 sortMenuOpen = activeSortMenu == RaftHomeSortSection.Channels,
@@ -3184,16 +3257,33 @@ private fun RaftStructuralHomeShellContent(
                                                 sortLabel = "${labels.sortChannels} ${labels.channels}",
                                                 onSortClick = { anchor ->
                                                     if (sidebarInteractionsEnabled) {
-                                                        activeSortMenu = if (activeSortMenu == RaftHomeSortSection.Channels) null else RaftHomeSortSection.Channels
+                                                        val opening = activeSortMenu != RaftHomeSortSection.Channels
+                                                        if (opening) {
+                                                            RaftProductEvents.sidebarActionSelected(
+                                                                RaftSidebarAction.OpenSort,
+                                                                RaftSidebarActionSurface.SectionHeader,
+                                                            )
+                                                        }
+                                                        activeSortMenu = if (opening) RaftHomeSortSection.Channels else null
                                                         sortMenuAnchor = anchor
                                                     }
                                                 },
                                                 addLabel = labels.addChannel,
-                                                onAddClick = onCreateChannelClick,
+                                                onAddClick = {
+                                                    RaftProductEvents.sidebarActionSelected(
+                                                        RaftSidebarAction.CreateChannel,
+                                                        RaftSidebarActionSurface.SectionHeader,
+                                                    )
+                                                    onCreateChannelClick()
+                                                },
                                                 addEnabled = sidebarInteractionsEnabled,
                                                 onLongPress =
                                                     if (sidebarInteractionsEnabled) {
                                                         { anchor ->
+                                                            RaftProductEvents.sidebarActionSelected(
+                                                                RaftSidebarAction.OpenMenu,
+                                                                RaftSidebarActionSurface.SectionMenu,
+                                                            )
                                                             activeSystemSectionMenu = RaftHomeSortSection.Channels
                                                             systemSectionMenuAnchor = anchor
                                                         }
@@ -3224,6 +3314,11 @@ private fun RaftStructuralHomeShellContent(
                                                     menuOpen = activePinMenuConversationId == channel.id && activeMenuSection == RaftHomeSortSection.Channels,
                                                     onClick = if (sidebarInteractionsEnabled) ({ onChannelClickWithDismiss(channel.id) }) else null,
                                                     onLongPress = if (sidebarInteractionsEnabled) ({ anchor ->
+                                                        RaftProductEvents.sidebarActionSelected(
+                                                            RaftSidebarAction.OpenMenu,
+                                                            RaftSidebarActionSurface.RowMenu,
+                                                            channel.sidebarRowKind(),
+                                                        )
                                                         onChannelLongPressWithDismiss(channel.id, anchor)
                                                         activePinMenuConversationId = channel.id
                                                         activeMenuSection = RaftHomeSortSection.Channels
@@ -3247,7 +3342,15 @@ private fun RaftStructuralHomeShellContent(
                                                 title = labels.directMessages,
                                                 count = directMessageSectionRows.size,
                                                 expanded = directMessagesExpanded,
-                                                onExpandedChange = { if (sidebarInteractionsEnabled) directMessagesExpanded = it },
+                                                onExpandedChange = {
+                                                    if (sidebarInteractionsEnabled) {
+                                                        RaftProductEvents.sidebarActionSelected(
+                                                            if (it) RaftSidebarAction.ExpandSection else RaftSidebarAction.CollapseSection,
+                                                            RaftSidebarActionSurface.SectionHeader,
+                                                        )
+                                                        directMessagesExpanded = it
+                                                    }
+                                                },
                                                 longPressIdentity = "$currentServerId:system:dms",
                                                 menuOpen = activeSystemSectionMenu == RaftHomeSortSection.DirectMessages,
                                                 sortMenuOpen = activeSortMenu == RaftHomeSortSection.DirectMessages,
@@ -3255,13 +3358,24 @@ private fun RaftStructuralHomeShellContent(
                                                 sortLabel = "${labels.sortChannels} ${labels.directMessages}",
                                                 onSortClick = { anchor ->
                                                     if (sidebarInteractionsEnabled) {
-                                                        activeSortMenu = if (activeSortMenu == RaftHomeSortSection.DirectMessages) null else RaftHomeSortSection.DirectMessages
+                                                        val opening = activeSortMenu != RaftHomeSortSection.DirectMessages
+                                                        if (opening) {
+                                                            RaftProductEvents.sidebarActionSelected(
+                                                                RaftSidebarAction.OpenSort,
+                                                                RaftSidebarActionSurface.SectionHeader,
+                                                            )
+                                                        }
+                                                        activeSortMenu = if (opening) RaftHomeSortSection.DirectMessages else null
                                                         sortMenuAnchor = anchor
                                                     }
                                                 },
                                                 onLongPress =
                                                     if (sidebarInteractionsEnabled) {
                                                         { anchor ->
+                                                            RaftProductEvents.sidebarActionSelected(
+                                                                RaftSidebarAction.OpenMenu,
+                                                                RaftSidebarActionSurface.SectionMenu,
+                                                            )
                                                             activeSystemSectionMenu = RaftHomeSortSection.DirectMessages
                                                             systemSectionMenuAnchor = anchor
                                                         }
@@ -3292,6 +3406,11 @@ private fun RaftStructuralHomeShellContent(
                                                         menuOpen = activePinMenuConversationId == dm.id && activeMenuSection == RaftHomeSortSection.DirectMessages,
                                                         onClick = if (sidebarInteractionsEnabled) ({ onChannelClickWithDismiss(dm.id) }) else null,
                                                         onLongPress = if (sidebarInteractionsEnabled) ({ anchor ->
+                                                            RaftProductEvents.sidebarActionSelected(
+                                                                RaftSidebarAction.OpenMenu,
+                                                                RaftSidebarActionSurface.RowMenu,
+                                                                dm.sidebarRowKind(),
+                                                            )
                                                             onChannelLongPressWithDismiss(dm.id, anchor)
                                                             activePinMenuConversationId = dm.id
                                                             activeMenuSection = RaftHomeSortSection.DirectMessages
@@ -3319,6 +3438,11 @@ private fun RaftStructuralHomeShellContent(
                                                     menuOpen = activePinMenuConversationId == dm.id && activeMenuSection == RaftHomeSortSection.DirectMessages,
                                                     onClick = if (sidebarInteractionsEnabled) ({ onChannelClickWithDismiss(dm.id) }) else null,
                                                     onLongPress = if (sidebarInteractionsEnabled) ({ anchor ->
+                                                        RaftProductEvents.sidebarActionSelected(
+                                                            RaftSidebarAction.OpenMenu,
+                                                            RaftSidebarActionSurface.RowMenu,
+                                                            dm.sidebarRowKind(),
+                                                        )
                                                         onChannelLongPressWithDismiss(dm.id, anchor)
                                                         activePinMenuConversationId = dm.id
                                                         activeMenuSection = RaftHomeSortSection.DirectMessages
@@ -3351,6 +3475,10 @@ private fun RaftStructuralHomeShellContent(
                                                 expanded = customSectionExpanded,
                                                 onExpandedChange = { expanded ->
                                                     if (sidebarInteractionsEnabled) {
+                                                        RaftProductEvents.sidebarActionSelected(
+                                                            if (expanded) RaftSidebarAction.ExpandSection else RaftSidebarAction.CollapseSection,
+                                                            RaftSidebarActionSurface.SectionHeader,
+                                                        )
                                                         collapsedCustomSectionIds =
                                                             if (expanded) {
                                                                 collapsedCustomSectionIds - customSection.id
@@ -3365,6 +3493,10 @@ private fun RaftStructuralHomeShellContent(
                                                 onLongPress =
                                                     if (sidebarInteractionsEnabled) {
                                                         { anchor ->
+                                                            RaftProductEvents.sidebarActionSelected(
+                                                                RaftSidebarAction.OpenMenu,
+                                                                RaftSidebarActionSurface.SectionMenu,
+                                                            )
                                                             activeSectionMenuId = customSection.id
                                                             sectionMenuAnchor = anchor
                                                         }
@@ -3390,6 +3522,11 @@ private fun RaftStructuralHomeShellContent(
                                                 val customSelected = sidebarSelection.conversationId == item.id
                                                 val customMenuOpen = activePinMenuConversationId == item.id && activeMenuSection == null
                                                 val customLongPress: (RaftPopoverAnchor) -> Unit = { anchor ->
+                                                    RaftProductEvents.sidebarActionSelected(
+                                                        RaftSidebarAction.OpenMenu,
+                                                        RaftSidebarActionSurface.RowMenu,
+                                                        item.sidebarRowKind(),
+                                                    )
                                                     onChannelLongPressWithDismiss(item.id, anchor)
                                                     activePinMenuConversationId = item.id
                                                     activeMenuSection = null
@@ -3568,7 +3705,12 @@ private fun RaftStructuralHomeShellContent(
                     selectedId = systemSectionSortMode(section).wireValue,
                     onDismiss = { activeSortMenu = null },
                     onSelect = { selected ->
-                        selectSystemSectionSortMode(section, RaftSidebarSortMode.fromWireValue(selected))
+                        val mode = RaftSidebarSortMode.fromWireValue(selected)
+                        RaftProductEvents.sidebarActionSelected(
+                            homeSortModeSidebarAction(mode),
+                            RaftSidebarActionSurface.SectionHeader,
+                        )
+                        selectSystemSectionSortMode(section, mode)
                         activeSortMenu = null
                     }
                 )
@@ -3589,6 +3731,9 @@ private fun RaftStructuralHomeShellContent(
                     selectedId = "",
                     onDismiss = { activeSystemSectionMenu = null },
                     onSelect = { actionId ->
+                        homeSectionMenuSidebarAction(actionId, hideEmptySections)?.let { action ->
+                            RaftProductEvents.sidebarActionSelected(action, RaftSidebarActionSurface.SectionMenu)
+                        }
                         when {
                             actionId.startsWith("sort:") ->
                                 selectSystemSectionSortMode(section, RaftSidebarSortMode.fromWireValue(actionId.removePrefix("sort:")))
@@ -3674,6 +3819,13 @@ private fun RaftStructuralHomeShellContent(
                         onPinMenuDismiss()
                     },
                     onSelect = { actionId ->
+                        homeConversationMenuSidebarAction(actionId, pinTargetIsPinned)?.let { action ->
+                            RaftProductEvents.sidebarActionSelected(
+                                action,
+                                RaftSidebarActionSurface.RowMenu,
+                                activeConversation.sidebarRowKind(),
+                            )
+                        }
                         when (actionId) {
                             "mark-read" -> onReadToggle(activeConversationId, false)
                             "mark-unread" -> onReadToggle(activeConversationId, true)
@@ -3707,11 +3859,22 @@ private fun RaftStructuralHomeShellContent(
                     onDismiss = { notificationLevelConversationId = null },
                     // Mute is the picker's third choice; it sets the same mute as Activity's Mute.
                     onSetMuted = { muted -> onChannelActivityMuteToggle(target.id, muted) },
+                    onChoiceApplied = { choice ->
+                        homeNotificationChoiceSidebarAction(choice)?.let { action ->
+                            RaftProductEvents.sidebarActionSelected(
+                                action,
+                                RaftSidebarActionSurface.RowMenu,
+                                notificationLevelConversation.sidebarRowKind(),
+                            )
+                        }
+                    },
                 )
             }
             if (activePinnedMemberMenuKey != null) {
                 val resolvedPinAnchor = pinMenuAnchor
                 if (resolvedPinAnchor != null) {
+                val activePinnedMember =
+                    displayedPinned.firstOrNull { it.key == activePinnedMemberMenuKey }?.member
                 RaftBaseMenuOverlay(
                     anchor = resolvedPinAnchor,
                     items = raftHomePinnedMemberMenuItems(labels),
@@ -3722,6 +3885,13 @@ private fun RaftStructuralHomeShellContent(
                     },
                     onSelect = { actionId ->
                         if (actionId == "sort-channels") {
+                            activePinnedMember?.let { member ->
+                                RaftProductEvents.sidebarActionSelected(
+                                    RaftSidebarAction.OpenReorder,
+                                    RaftSidebarActionSurface.RowMenu,
+                                    member.sidebarRowKind(),
+                                )
+                            }
                             sortOverlaySection = RaftHomeSortSection.Pinned
                         }
                         activePinnedMemberMenuKey = null
@@ -3748,6 +3918,9 @@ private fun RaftStructuralHomeShellContent(
                         selectedId = "",
                         onDismiss = { activeSectionMenuId = null },
                         onSelect = { actionId ->
+                            homeSectionMenuSidebarAction(actionId, hideEmptySections)?.let { action ->
+                                RaftProductEvents.sidebarActionSelected(action, RaftSidebarActionSurface.SectionMenu)
+                            }
                             val sectionId = activeSectionMenuSection.id
                             when {
                                 actionId.startsWith("sort:") ->
@@ -3782,6 +3955,8 @@ private fun RaftStructuralHomeShellContent(
                             validSectionIds = customSections.mapTo(HashSet()) { it.id }
                         )
                     val moveTargetChannel = channels.firstOrNull { it.id == moveToSectionTarget }
+                    val moveTargetConversation =
+                        moveTargetDm ?: moveTargetChannel ?: agentLounges.firstOrNull { it.id == moveToSectionTarget }
                     val movePlacement =
                         ChannelSectionPlacement(
                             customSections = customSections,
@@ -3796,6 +3971,15 @@ private fun RaftStructuralHomeShellContent(
                         selectedId = "",
                         onDismiss = { moveToSectionConversationId = null },
                         onSelect = { actionId ->
+                            homeMoveToSectionSidebarAction(actionId, movePlacement)?.let { action ->
+                                moveTargetConversation?.let { conversation ->
+                                    RaftProductEvents.sidebarActionSelected(
+                                        action,
+                                        RaftSidebarActionSurface.RowMenu,
+                                        conversation.sidebarRowKind(),
+                                    )
+                                }
+                            }
                             if (actionId == "create") {
                                 // Web: New section goes before the section the row is shown in.
                                 sectionDialogTarget =
