@@ -50,9 +50,11 @@ import androidx.compose.ui.semantics.semantics
 import build.raft.designsystem.components.raftGrayscale
 import build.raft.designsystem.theme.LocalRaftSurfaceColor
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -84,7 +86,6 @@ import androidx.compose.ui.graphics.isSpecified
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Constraints
-import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.unit.dp
@@ -168,9 +169,6 @@ import build.raft.app.model.ComputerRestartDone
 import build.raft.app.model.RaftRelativeTimeLabel
 import build.raft.app.model.RaftRelativeTimeUnit
 import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.SpanStyle
-import androidx.compose.ui.text.buildAnnotatedString
-import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.draw.drawBehind
@@ -1093,11 +1091,20 @@ private fun RaftComputersRackBody(
                             rows.chunked(cardColumns).forEach { rowCards ->
                                 val top = gap()
                                 item(key = "computers-$section-${rowCards.first().id}") {
+                                    // Web: a CSS grid row (`grid-auto-rows: auto`, stretched items) is as
+                                    // tall as its tallest card, and each card fills it (`Card h-full`).
+                                    // One lazy item per row, so only the rows on screen are measured: the
+                                    // row asks its cards how tall they are at their width (an intrinsic
+                                    // pass, no second composition), then lays every card out that tall.
                                     Row(
-                                        Modifier.fillMaxWidth().padding(horizontal = cardEdge).padding(top = top),
+                                        Modifier
+                                            .fillMaxWidth()
+                                            .padding(horizontal = cardEdge)
+                                            .padding(top = top)
+                                            .then(if (rowCards.size > 1) Modifier.height(IntrinsicSize.Max) else Modifier),
                                         horizontalArrangement = Arrangement.spacedBy(RaftComputerCardGridGap),
                                     ) {
-                                        rowCards.forEach { row -> card(row, Modifier.weight(1f)) }
+                                        rowCards.forEach { row -> card(row, Modifier.weight(1f).fillMaxHeight()) }
                                         // A short last row keeps the grid's card width.
                                         repeat(cardColumns - rowCards.size) { Spacer(Modifier.weight(1f)) }
                                     }
@@ -1280,7 +1287,8 @@ internal fun raftComputersCountsLine(counts: RaftComputersCounts): String =
  * One computer as a web ComputersRack card (`view === "cards"`): the device icon with its light,
  * the name and the Low disk badge; the facts line under the name; then its agents on exactly one
  * line. The whole card opens the computer; each avatar opens its agent. An offline computer's card
- * sits on `fill-subtle` with its agents dimmed.
+ * sits on `fill-subtle` with its agents dimmed. Stretched to its grid row ([modifier] with a height),
+ * it keeps its content at the top and its next step at the bottom.
  */
 @Composable
 private fun RaftComputerRackCard(
@@ -1348,9 +1356,11 @@ private fun RaftComputerRackCard(
                 RaftComputerRackOtherRuntimes(columns.other, runtimeCatalog)
             }
         }
-        // The card's one next step ends its content (web: a card-level action, not a footer note).
+        // The card's one next step ends its content (web: a card-level action, not a footer note),
+        // at the bottom of a card stretched to its row (web `mt-auto` in `CardContent flex-1`).
         if (action != null) {
             Spacer(Modifier.height(12.dp))
+            Spacer(Modifier.weight(1f))
             RaftComputerRackActionRow(action, onUpgrade, onCopyCommand, install = install)
         }
     }
@@ -2394,13 +2404,17 @@ private fun raftRackModelLineUi(model: RaftRackModelLine, nowMillis: Long): Raft
 private fun RaftComputerRackOtherRuntimes(runtimeIds: List<String>, runtimeCatalog: ServerRuntimeCatalog) {
     val hint = RaftTheme.colors.foregroundHint
     val deprecated = stringResource(Res.string.runtime_suffix_deprecated)
+    // Each item is one line, so it is as wide as its whole text at its narrowest too
+    // (`width(IntrinsicSize.Max)`): FlowRow predicts its height from its items' narrowest widths (a
+    // text's longest word), and the card row that matches its cards' heights asks for that height.
+    val item = Modifier.width(IntrinsicSize.Max)
     FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        RaftText(stringResource(Res.string.settings_computers_rack_other_runtimes), style = RaftTheme.typography.footnote, color = hint, maxLines = 1)
+        RaftText(stringResource(Res.string.settings_computers_rack_other_runtimes), modifier = item, style = RaftTheme.typography.footnote, color = hint, maxLines = 1)
         runtimeIds.forEach { runtimeId ->
             val entry = runtimeCatalog.entry(runtimeId)
             val name = entry?.displayName ?: raftAgentRuntimeDisplayName(runtimeId)
             val suffix = if (entry?.deprecated == true) deprecated else ""
-            Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
+            Row(item, horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
                 RaftRuntimeMark(runtimeId, color = hint)
                 RaftText(name + suffix, style = RaftTheme.typography.footnote, color = hint, maxLines = 1)
             }
@@ -2439,11 +2453,14 @@ private fun RaftComputerDeviceIcon(row: RaftComputerRowModel) {
 }
 
 /**
- * The facts line (web card `CardDescription`, Space Mono `foreground-hint`). Online it is one line
- * that only the OS gives way on: "Ubuntu 24.04 · v1.0.49 · Update available", the step in bold
- * `warning-strong` (Update available and Update required alike, raft-design patterns/status.md),
- * "· Updating to v1.0.50" in bold ink while an update is in flight. Offline: "Offline · Last seen
- * 2 days ago.".
+ * The facts line (web card `CardDescription`, Space Mono `foreground-hint`). Online, as on the web it
+ * keeps to one line where it can, "Ubuntu 24.04 · v1.0.49 · Update available", with the OS giving way
+ * first (cut, down to a couple of characters); the step is bold `warning-strong` (Update available and
+ * Update required alike, raft-design patterns/status.md), "· Updating to v1.0.50" bold ink while an
+ * update is in flight. A step that doesn't fit beside the version even then goes whole onto the next
+ * line, and the OS keeps its room on the first ([raftComputerFactsLinePlan]): the version and the
+ * step are never cut (a staging build's long version wraps). Offline: "Offline · Last seen 2 days
+ * ago.".
  */
 @Composable
 private fun RaftComputerCardFactsLine(facts: RaftComputerCardFacts, modifier: Modifier = Modifier) {
@@ -2464,38 +2481,105 @@ private fun RaftComputerCardFactsLine(facts: RaftComputerCardFacts, modifier: Mo
                 } else {
                     raftComputerKindVersion(facts.kind, facts.version)
                 }
-            val notice =
+            val step =
                 when (val notice = facts.notice) {
                     is RaftComputerVersionNotice.Available ->
-                        " · " + stringResource(Res.string.settings_computers_update_available) to RaftTheme.colors.warningStrong
+                        stringResource(Res.string.settings_computers_update_available) to RaftTheme.colors.warningStrong
                     is RaftComputerVersionNotice.BelowFloor ->
-                        " · " + stringResource(Res.string.settings_computers_update_required) to RaftTheme.colors.warningStrong
+                        stringResource(Res.string.settings_computers_update_required) to RaftTheme.colors.warningStrong
                     is RaftComputerVersionNotice.Updating ->
-                        " · " + stringResource(Res.string.settings_computers_rack_updating_to, notice.version.removePrefix("v")) to
-                            RaftTheme.colors.foreground
+                        stringResource(Res.string.settings_computers_rack_updating_to, notice.version.removePrefix("v")) to RaftTheme.colors.foreground
                     null -> null
                 }
-            // The whole version and its notice, never cut: a version too long for the line (a staging
-            // build's "v1.25.0-staging.…") wraps onto the next.
-            val versionAndNotice =
-                buildAnnotatedString {
-                    if (version != null) append(if (facts.osName != null) " · $version" else version)
-                    notice?.let { (text, color) -> withStyle(SpanStyle(fontWeight = FontWeight.Bold, color = color)) { append(text) } }
-                }
-            if (facts.osName != null) {
-                // The OS gives way first (down to a couple of characters), then the version.
-                RaftComputerGiveWayRow(
-                    leadFloor = { 24.dp.roundToPx() },
-                    gap = 0.dp,
-                    modifier = modifier,
-                    lead = {
-                        RaftText(facts.osName, style = style, color = hint, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            val versionText = version?.let { if (facts.osName != null) " · $it" else it }
+            val stepStyle = style.copy(fontWeight = FontWeight.Bold)
+            RaftComputerFactsRow(
+                modifier = modifier,
+                os = facts.osName?.let { os -> { RaftText(os, style = style, color = hint, maxLines = 1, overflow = TextOverflow.Ellipsis) } },
+                version = versionText?.let { text -> { RaftText(text, style = style, color = hint) } },
+                // On the line, after the version: " · Update available"; on a line of its own, the words
+                // alone (screen readers read the line's one, below).
+                stepOnLine =
+                    step?.let { (text, color) ->
+                        { RaftText(if (facts.osName != null || version != null) " · $text" else text, style = stepStyle, color = color) }
                     },
-                    trail = { RaftText(versionAndNotice, style = style, color = hint) },
-                )
+                stepAlone = step?.let { (text, color) -> { RaftText(text, modifier = Modifier.clearAndSetSemantics {}, style = stepStyle, color = color) } },
+            )
+        }
+    }
+}
+
+/** Where a card's facts line puts its parts ([raftComputerFactsLinePlan]). */
+internal data class RaftComputerFactsLinePlan(
+    /** The room the OS name gets: its own width, or less (cut with an ellipsis). */
+    val osWidth: Int,
+    /** The step stays on the line after the version; false: it goes whole onto the next line. */
+    val stepOnLine: Boolean,
+)
+
+/**
+ * The facts line's layout, in px: the line is [width] wide ([Constraints.Infinity]: unbounded); the OS
+ * name wants [os] (0: none) and gives way down to [osFloor]; the version (" · v1.0.49") wants
+ * [version]; the step (" · Update available") [step] (0: none). Web ComputerRackRow `onlineFacts`: one
+ * line, the OS gives way first, the version and the step never. So the step stays on the line when it
+ * fits there with the OS cut to its floor at most. Otherwise (its words are longer than the web's
+ * "→ v1.0.50") it goes whole onto the next line, and the OS gives way only as far as the version needs.
+ */
+internal fun raftComputerFactsLinePlan(width: Int, os: Int, osFloor: Int, version: Int, step: Int): RaftComputerFactsLinePlan {
+    val floor = minOf(os, osFloor)
+    if (width == Constraints.Infinity || os + version + step <= width) return RaftComputerFactsLinePlan(os, stepOnLine = true)
+    if (step > 0 && floor + version + step <= width) return RaftComputerFactsLinePlan(width - version - step, stepOnLine = true)
+    val osWidth = if (os + version <= width) os else maxOf(width - version, floor)
+    return RaftComputerFactsLinePlan(osWidth, stepOnLine = step == 0)
+}
+
+private val RaftComputerFactsOsFloor = 24.dp
+
+/**
+ * The online facts line laid out as [raftComputerFactsLinePlan] says: [os], then [version] right after
+ * it, then [stepOnLine] after the version or, when it doesn't fit there, [stepAlone] on the next line.
+ * The first line's parts are centred on it.
+ */
+@Composable
+private fun RaftComputerFactsRow(
+    modifier: Modifier,
+    os: (@Composable () -> Unit)?,
+    version: (@Composable () -> Unit)?,
+    stepOnLine: (@Composable () -> Unit)?,
+    stepAlone: (@Composable () -> Unit)?,
+) {
+    Layout(contents = listOf(os ?: {}, version ?: {}, stepOnLine ?: {}, stepAlone ?: {}), modifier = modifier) { measurables, constraints ->
+        val (osMeasurable, versionMeasurable, inlineMeasurable, aloneMeasurable) = measurables.map { it.firstOrNull() }
+        val width = constraints.maxWidth
+        val osWant = osMeasurable?.maxIntrinsicWidth(constraints.maxHeight) ?: 0
+        val versionWant = versionMeasurable?.maxIntrinsicWidth(constraints.maxHeight) ?: 0
+        val stepWant = inlineMeasurable?.maxIntrinsicWidth(constraints.maxHeight) ?: 0
+        val plan = raftComputerFactsLinePlan(width, osWant, RaftComputerFactsOsFloor.roundToPx(), versionWant, stepWant)
+        val osPlaceable = osMeasurable?.measure(Constraints(maxWidth = plan.osWidth, maxHeight = constraints.maxHeight))
+        val osWidth = osPlaceable?.width ?: 0
+        val stepOnLine = plan.stepOnLine && inlineMeasurable != null
+        val versionRoom = if (width == Constraints.Infinity || stepOnLine) versionWant else minOf(versionWant, (width - osWidth).coerceAtLeast(0))
+        val versionPlaceable = versionMeasurable?.measure(Constraints(maxWidth = versionRoom, maxHeight = constraints.maxHeight))
+        val inlinePlaceable = if (stepOnLine) inlineMeasurable?.measure(Constraints(maxWidth = stepWant, maxHeight = constraints.maxHeight)) else null
+        val alonePlaceable =
+            if (!stepOnLine && inlineMeasurable != null) {
+                aloneMeasurable?.measure(Constraints(maxWidth = width))
             } else {
-                RaftText(versionAndNotice, modifier = modifier, style = style, color = hint)
+                null
             }
+        val firstLine = listOfNotNull(osPlaceable, versionPlaceable, inlinePlaceable)
+        val firstHeight = firstLine.maxOfOrNull { it.height } ?: 0
+        val firstWidth = firstLine.sumOf { it.width }
+        val natural = maxOf(firstWidth, alonePlaceable?.width ?: 0)
+        val lineWidth = natural.coerceIn(constraints.minWidth, constraints.maxWidth)
+        val height = (firstHeight + (alonePlaceable?.height ?: 0)).coerceIn(constraints.minHeight, constraints.maxHeight)
+        layout(lineWidth, height) {
+            var x = 0
+            firstLine.forEach { placeable ->
+                placeable.placeRelative(x, (firstHeight - placeable.height) / 2)
+                x += placeable.width
+            }
+            alonePlaceable?.placeRelative(0, firstHeight)
         }
     }
 }
@@ -2537,46 +2621,6 @@ private fun RaftComputerWrapRow(
                 leadPlaceable.placeRelative(0, 0)
                 trailPlaceable.placeRelative(indent, leadPlaceable.height)
             }
-        }
-    }
-}
-
-/**
- * One line of a lead and, right after it, a trail. When both don't fit, the lead gives way first,
- * down to [leadFloor] (px, of the line's width), then the trail does; each is measured to the
- * width it gets (the lead cuts its text, the trail may wrap).
- */
-@Composable
-private fun RaftComputerGiveWayRow(
-    leadFloor: Density.(Int) -> Int,
-    gap: Dp,
-    modifier: Modifier = Modifier,
-    lead: @Composable () -> Unit,
-    trail: @Composable () -> Unit,
-) {
-    Layout(contents = listOf(lead, trail), modifier = modifier) { (leadMeasurables, trailMeasurables), constraints ->
-        val leadMeasurable = leadMeasurables.first()
-        val trailMeasurable = trailMeasurables.first()
-        val gapPx = gap.roundToPx()
-        val width = constraints.maxWidth
-        val leadWant = leadMeasurable.maxIntrinsicWidth(constraints.maxHeight)
-        val trailWant = trailMeasurable.maxIntrinsicWidth(constraints.maxHeight)
-        val leadWidth =
-            if (width == Constraints.Infinity || leadWant + gapPx + trailWant <= width) {
-    leadWant
-            } else {
-    maxOf(width - gapPx - trailWant, minOf(leadWant, leadFloor(width))).coerceIn(0, width)
-            }
-        val trailWidth =
-            if (width == Constraints.Infinity) trailWant else minOf(trailWant, (width - gapPx - leadWidth).coerceAtLeast(0))
-        val leadPlaceable = leadMeasurable.measure(Constraints(maxWidth = leadWidth, maxHeight = constraints.maxHeight))
-        val trailPlaceable = trailMeasurable.measure(Constraints(maxWidth = trailWidth, maxHeight = constraints.maxHeight))
-        val natural = leadPlaceable.width + gapPx + trailPlaceable.width
-        val lineWidth = natural.coerceIn(constraints.minWidth, constraints.maxWidth)
-        val height = maxOf(leadPlaceable.height, trailPlaceable.height).coerceIn(constraints.minHeight, constraints.maxHeight)
-        layout(lineWidth, height) {
-            leadPlaceable.placeRelative(0, (height - leadPlaceable.height) / 2)
-            trailPlaceable.placeRelative(leadPlaceable.width + gapPx, (height - trailPlaceable.height) / 2)
         }
     }
 }

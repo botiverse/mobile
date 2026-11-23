@@ -129,6 +129,28 @@ class RaftComputersRackCardsModelTest {
         assertEquals(RaftComputersCounts(computers = 3, online = 2, agents = 0), raftComputersCounts(model.rows, emptyMap()))
     }
 
+    // The facts line's layout (web ComputerRackRow `onlineFacts`: one line, the OS gives way first).
+    // Widths in a mono-meta character (7px here): "Ubuntu 26.04" 12, " · v1.25.9" 10,
+    // " · Update available" 19; a card at the grid's 250dp minimum has about 190px for the line.
+    private fun ch(n: Int) = n * 7
+
+    @Test
+    fun factsLineKeepsTheStepBesideTheVersionWhileTheOsCanGiveWay() {
+        // Everything fits: nothing gives way.
+        assertEquals(RaftComputerFactsLinePlan(osWidth = ch(12), stepOnLine = true), raftComputerFactsLinePlan(ch(45), ch(12), 24, ch(10), ch(19)))
+        // The OS gives way first; the version and the step stay whole on the line.
+        assertEquals(RaftComputerFactsLinePlan(osWidth = ch(37 - 29), stepOnLine = true), raftComputerFactsLinePlan(ch(37), ch(12), 24, ch(10), ch(19)))
+    }
+
+    @Test
+    fun aStepThatCannotSitBesideTheVersionGoesWholeOntoTheNextLine() {
+        // Not even the OS cut to its floor leaves room: the step takes the next line, and the OS keeps
+        // its whole name beside the version instead of two letters for nothing (#wg-mobile-sync:#255).
+        assertEquals(RaftComputerFactsLinePlan(osWidth = ch(12), stepOnLine = false), raftComputerFactsLinePlan(190, ch(12), 24, ch(10), ch(19)))
+        // Narrower still, the OS gives way only as far as the version needs.
+        assertEquals(RaftComputerFactsLinePlan(osWidth = 100 - ch(10), stepOnLine = false), raftComputerFactsLinePlan(100, ch(12), 24, ch(10), ch(19)))
+    }
+
     private fun agent(id: String, name: String, machineId: String?) =
         MemberProfile(
             id = MemberId(id),
