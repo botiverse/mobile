@@ -40,9 +40,19 @@ export function extractClaimSpecBinding(claimResponse, { runCaseId = null } = {}
   }
   const hasSpecSha = claimResponse.spec_sha256 !== undefined && claimResponse.spec_sha256 !== null;
   const hasGoalSha = claimResponse.rendered_goal_sha256 !== undefined && claimResponse.rendered_goal_sha256 !== null;
-  const resolvedRunCaseId = typeof claimResponse.run_case_id === "string" && claimResponse.run_case_id
-    ? claimResponse.run_case_id
-    : (runCaseId || null);
+  const expectedRunCaseId = typeof runCaseId === "string" && runCaseId.trim() ? runCaseId.trim() : null;
+  const hasResponseRunCaseId = claimResponse.run_case_id !== undefined && claimResponse.run_case_id !== null;
+  const responseRunCaseId = typeof claimResponse.run_case_id === "string" && claimResponse.run_case_id.trim()
+    ? claimResponse.run_case_id.trim()
+    : null;
+  if (hasResponseRunCaseId && !responseRunCaseId) {
+    throw new ClaimSpecBindingError(`claim response has invalid run_case_id: ${JSON.stringify(claimResponse.run_case_id)}`);
+  }
+  if (expectedRunCaseId && responseRunCaseId && responseRunCaseId !== expectedRunCaseId) {
+    throw new ClaimSpecBindingError(
+      `claim response run_case_id mismatch: expected=${expectedRunCaseId} actual=${responseRunCaseId}`
+    );
+  }
   const resolvedCaseId = typeof claimResponse.case_id === "string" && CASE_ID_RE.test(claimResponse.case_id)
     ? claimResponse.case_id
     : null;
@@ -50,9 +60,12 @@ export function extractClaimSpecBinding(claimResponse, { runCaseId = null } = {}
     return {
       contract_version: CLAIM_SPEC_BINDING_CONTRACT,
       bound: false,
-      run_case_id: resolvedRunCaseId,
+      run_case_id: responseRunCaseId || expectedRunCaseId || null,
       case_id: resolvedCaseId,
     };
+  }
+  if (!responseRunCaseId) {
+    throw new ClaimSpecBindingError("bound claim response is missing run_case_id");
   }
   if (typeof claimResponse.spec_sha256 !== "string" || !SHA256_RE.test(claimResponse.spec_sha256)) {
     throw new ClaimSpecBindingError(`claim response has invalid spec_sha256: ${JSON.stringify(claimResponse.spec_sha256)}`);
@@ -70,7 +83,7 @@ export function extractClaimSpecBinding(claimResponse, { runCaseId = null } = {}
   return {
     contract_version: CLAIM_SPEC_BINDING_CONTRACT,
     bound: true,
-    run_case_id: resolvedRunCaseId,
+    run_case_id: responseRunCaseId,
     case_id: resolvedCaseId,
     spec_sha256: claimResponse.spec_sha256,
     platform_slice_sha256: sha256Utf8(claimResponse.spec_yaml),
@@ -79,12 +92,35 @@ export function extractClaimSpecBinding(claimResponse, { runCaseId = null } = {}
   };
 }
 
-export function verifyClaimSpecBinding(binding, dispatched = {}, { requireGoal = false, requireBudget = false } = {}) {
+export function verifyClaimSpecBinding(
+  binding,
+  dispatched = {},
+  { requireGoal = false, requireBudget = false, expectedRunCaseId = null } = {},
+) {
   if (!plainObject(binding) || binding.contract_version !== CLAIM_SPEC_BINDING_CONTRACT) {
     throw new ClaimSpecBindingError("claim spec binding file is missing or has unsupported contract_version");
   }
+  const expectedId = typeof expectedRunCaseId === "string" && expectedRunCaseId.trim()
+    ? expectedRunCaseId.trim()
+    : null;
+  const bindingRunCaseId = typeof binding.run_case_id === "string" && binding.run_case_id.trim()
+    ? binding.run_case_id.trim()
+    : null;
+  if (expectedId && bindingRunCaseId && bindingRunCaseId !== expectedId) {
+    throw new ClaimSpecBindingError(
+      `claim spec binding run_case_id mismatch: expected=${expectedId} actual=${bindingRunCaseId}`
+    );
+  }
   if (!binding.bound) {
     return { ...binding, verified: true, mode: "legacy_unbound" };
+  }
+  if (!bindingRunCaseId) {
+    throw new ClaimSpecBindingError("bound claim spec binding is missing run_case_id");
+  }
+  if (expectedId && bindingRunCaseId !== expectedId) {
+    throw new ClaimSpecBindingError(
+      `claim spec binding run_case_id mismatch: expected=${expectedId} actual=${bindingRunCaseId}`
+    );
   }
   if (typeof binding.spec_sha256 !== "string" || !SHA256_RE.test(binding.spec_sha256)) {
     throw new ClaimSpecBindingError("claim spec binding has invalid spec_sha256");
@@ -169,12 +205,16 @@ function main(argv) {
       process.env.QA_NO_PROGRESS_TURNS
     );
     const recorded = hasDispatched
-      ? verifyClaimSpecBinding(binding, {
-          goal: process.env.QA_GOAL || "",
-          maxTurns: process.env.QA_MAX_TURNS,
-          maxMinutes: process.env.QA_MAX_MINUTES,
-          noProgressTurns: process.env.QA_NO_PROGRESS_TURNS,
-        })
+      ? verifyClaimSpecBinding(
+          binding,
+          {
+            goal: process.env.QA_GOAL || "",
+            maxTurns: process.env.QA_MAX_TURNS,
+            maxMinutes: process.env.QA_MAX_MINUTES,
+            noProgressTurns: process.env.QA_NO_PROGRESS_TURNS,
+          },
+          { expectedRunCaseId: runCaseId },
+        )
       : binding;
     writePrivateJson(outPath, recorded);
     return;
@@ -182,6 +222,7 @@ function main(argv) {
   if (command === "verify") {
     const bindingPath = argValue(argv, "--binding");
     const outPath = argValue(argv, "--out");
+    const runCaseId = argValue(argv, "--run-case-id") || process.env.STAMP_RUN_CASE_ID || "";
     if (!bindingPath) {
       throw new ClaimSpecBindingError("usage: claim_spec_binding.mjs verify --binding <file> [--out <file>]");
     }
@@ -194,7 +235,7 @@ function main(argv) {
         maxMinutes: process.env.QA_MAX_MINUTES,
         noProgressTurns: process.env.QA_NO_PROGRESS_TURNS,
       },
-      { requireGoal: true, requireBudget: true },
+      { requireGoal: true, requireBudget: true, expectedRunCaseId: runCaseId },
     );
     if (outPath) writePrivateJson(outPath, verified);
     if (verified.bound) {

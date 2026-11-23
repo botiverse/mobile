@@ -498,6 +498,7 @@ jobs:
           QA_NO_PROGRESS_TURNS: ${{ inputs.no_progress_turns || '8' }}
         run: |
           node scripts/qa/claim_spec_binding.mjs verify \
+            --run-case-id "$STAMP_RUN_CASE_ID" \
             --binding "$RUNNER_TEMP/stamp-claim-spec-${STAMP_RUN_CASE_ID}.json" \
             --out "$RUNNER_TEMP/stamp-claim-spec-verified-${STAMP_RUN_CASE_ID}.json"
 

@@ -224,6 +224,7 @@ async function main() {
       getJson: stampGetJson,
       runId,
       runCase: rc,
+      admission: data.admission ?? null,
       defaultPlatform,
       parseYaml,
     });
@@ -390,6 +391,34 @@ async function main() {
     assertion_frames: assertionFrames,
     missing_assertion_frames: missingAssertionFrames,
   });
+  // An attempt without a verified frozen specification (409 LEGACY_UNBOUND or
+  // 409 FROZEN_SPEC_UNAVAILABLE) has incomplete review provenance: record the
+  // reason and affected attempt ids locally, make zero model calls, and stop
+  // without submitting any new panel vote (preserving any existing vote).
+  if (incompleteAttemptSpecs.length) {
+    const specText = incompleteAttemptSpecs.map((s) => `${s.case_id}/${s.run_case_id} (${s.code})`);
+    const reason = `evidence incomplete: frozen attempt specification unavailable for ${specText.join(", ")}`.slice(0, 1000);
+    saveRecord({
+      stage: "evidence_incomplete",
+      evidence_incomplete: true,
+      vote_submitted: false,
+      incomplete_reason: reason,
+      incomplete_attempt_specs: incompleteAttemptSpecs,
+      existing_review: existingReview
+        ? {
+            id: existingReview.id,
+            reviewer: existingReview.reviewer,
+            verdict: existingReview.verdict,
+            created_at: existingReview.created_at,
+          }
+        : null,
+    });
+    console.log(JSON.stringify(record, null, 2));
+    console.error(`review_agent: ${reason}; stopped without voting`);
+    process.exitCode = 2;
+    return;
+  }
+
   if (existingReview) {
     const existingDetail = typeof existingReview.detail_json === "string" ? JSON.parse(existingReview.detail_json) : existingReview.detail_json;
     if (!plainObject(existingDetail) || existingDetail.review_input_sha256 !== reviewInputSha256) {
@@ -415,60 +444,6 @@ async function main() {
       },
     });
     console.log(JSON.stringify(record, null, 2));
-    return;
-  }
-
-  // An attempt without a verified frozen specification (409 LEGACY_UNBOUND or
-  // 409 FROZEN_SPEC_UNAVAILABLE) has incomplete review provenance and must
-  // never fall back to the mutable catalog (`/api/cases/...`) or consult the
-  // model.
-  if (incompleteAttemptSpecs.length) {
-    const specText = incompleteAttemptSpecs.map((s) => `${s.case_id}/${s.run_case_id} (${s.code})`);
-    const incompleteVote = {
-      verdict: "failed",
-      reason: `evidence incomplete: frozen attempt specification unavailable for ${specText.join(", ")}`.slice(0, 1000),
-      detail_json: Object.fromEntries(cases.map((c) => [
-        c.case_id,
-        c.binding_status === "verified"
-          ? Object.fromEntries(c.assertion_ids.map((id) => [id, {
-              ok: false,
-              note: "not judged: review input is evidence incomplete (a run attempt lacks a verified frozen specification)",
-            }]))
-          : {},
-      ])),
-      anomalies: incompleteAttemptSpecs.map((s) =>
-        `evidence incomplete: attempt ${s.run_case_id} (${s.case_id}) frozen specification unavailable (${s.code})`
-      ),
-    };
-    validateVote(incompleteVote, cases);
-    saveRecord({ stage: "evidence_incomplete", parsed_vote: incompleteVote, validation: { ok: true } });
-    finishSubmission(await submitPanelVote({
-      scope,
-      runId,
-      post: stampPost,
-      vote: {
-        reviewer,
-        verdict: incompleteVote.verdict,
-        reason: incompleteVote.reason,
-        detail_json: {
-          assertions: incompleteVote.detail_json,
-          anomalies: incompleteVote.anomalies,
-          evidence_incomplete: true,
-          incomplete_attempt_specs: incompleteAttemptSpecs,
-          attempt_specifications: attemptSpecifications,
-          missing_assertion_frames: missingAssertionFrames,
-          assertion_frames: assertionFrames,
-          evidence_manifest_sha256: evidenceManifestSha256,
-          review_input_sha256: reviewInputSha256,
-          evidence_manifest: evidenceManifest,
-          raw_evidence_ids: rawShots.map((e) => e.id),
-          log_scans: logScans,
-          provider: providerName,
-          model: modelName,
-          usage: null,
-        },
-      },
-    }));
     return;
   }
 

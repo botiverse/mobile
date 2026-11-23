@@ -79,8 +79,32 @@ export function attemptSpecPath(runId, runCaseId) {
   return `/api/runs/${encodeURIComponent(runId)}/cases/${encodeURIComponent(runCaseId)}/spec`;
 }
 
+export function parseAttemptExecutionBudgetJson(raw, label = "execution_budget_json") {
+  let parsed = raw;
+  if (typeof raw === "string") {
+    try {
+      parsed = JSON.parse(raw);
+    } catch {
+      throw new AttemptSpecError(`${label} is not valid JSON`);
+    }
+  }
+  const budget = normalizeAttemptExecutionBudget(parsed);
+  if (!budget) {
+    throw new AttemptSpecError(`${label} is invalid: ${JSON.stringify(raw)}`);
+  }
+  return budget;
+}
+
+function sameExecutionBudget(a, b) {
+  return a.max_turns === b.max_turns &&
+    a.max_minutes === b.max_minutes &&
+    a.no_progress_turns === b.no_progress_turns;
+}
+
 // Verifies a 200 payload from GET /api/runs/{run_id}/cases/{run_case_id}/spec
-// against the expected attempt identity and recomputed UTF-8 SHA-256 digests.
+// against the expected attempt identity, recomputed UTF-8 SHA-256 digests,
+// the run report's own run_cases row (`spec_sha256`, `execution_budget_json`),
+// and the first-dispatch `admission` record when present.
 export function verifyAttemptSpecification(payload, expected, parseYaml) {
   if (!plainObject(payload)) {
     throw new AttemptSpecError(`attempt ${expected.runCaseId} spec payload is not a JSON object`);
@@ -166,6 +190,91 @@ export function verifyAttemptSpecification(payload, expected, parseYaml) {
     );
   }
 
+  // Independent cross-check against the run report's own run_cases row:
+  // a tampered /spec reply must not pass when the run report disagrees on
+  // spec_sha256 or execution_budget_json.
+  if (expected.reportSpecSha256 !== undefined) {
+    if (typeof expected.reportSpecSha256 !== "string" || !SHA256_RE.test(expected.reportSpecSha256)) {
+      throw new AttemptSpecError(
+        `attempt ${expected.runCaseId} run report spec_sha256 is invalid or unbound: ${JSON.stringify(expected.reportSpecSha256)}`
+      );
+    }
+    if (expected.reportSpecSha256 !== payload.spec_sha256) {
+      throw new AttemptSpecError(
+        `attempt ${expected.runCaseId} spec_sha256 disagrees with run report: report=${expected.reportSpecSha256} spec=${payload.spec_sha256}`
+      );
+    }
+  }
+  if (expected.reportExecutionBudgetJson !== undefined) {
+    const reportBudget = parseAttemptExecutionBudgetJson(
+      expected.reportExecutionBudgetJson,
+      `attempt ${expected.runCaseId} run report execution_budget_json`,
+    );
+    if (!sameExecutionBudget(reportBudget, budget)) {
+      throw new AttemptSpecError(
+        `attempt ${expected.runCaseId} execution_budget disagrees with run report: report=${JSON.stringify(reportBudget)} spec=${JSON.stringify(budget)}`
+      );
+    }
+  }
+
+  // First-dispatch checked runs also carry `report.admission`: verify the
+  // admission's identity and original YAML, goal, and spec document digests.
+  if (expected.admission !== undefined && expected.admission !== null) {
+    if (!plainObject(expected.admission)) {
+      throw new AttemptSpecError(`attempt ${expected.runCaseId} run report admission is malformed`);
+    }
+    if (typeof expected.admission.run_case_id !== "string" || !expected.admission.run_case_id) {
+      throw new AttemptSpecError(`attempt ${expected.runCaseId} run report admission is missing run_case_id`);
+    }
+    if (expected.admission.run_case_id === expected.runCaseId) {
+      if (expected.admission.confirmation_id !== undefined && expected.admission.confirmation_id !== expected.runId) {
+        throw new AttemptSpecError(
+          `attempt ${expected.runCaseId} admission confirmation_id mismatch: admission=${expected.admission.confirmation_id} run=${expected.runId}`
+        );
+      }
+      if (expected.admission.attempt !== undefined && Number(expected.admission.attempt) !== payload.attempt) {
+        throw new AttemptSpecError(
+          `attempt ${expected.runCaseId} admission attempt mismatch: admission=${expected.admission.attempt} spec=${payload.attempt}`
+        );
+      }
+      const sel = expected.admission.selection;
+      if (!plainObject(sel)) {
+        throw new AttemptSpecError(`attempt ${expected.runCaseId} run report admission.selection is malformed`);
+      }
+      if (sel.case_id !== undefined && sel.case_id !== payload.case_id) {
+        throw new AttemptSpecError(
+          `attempt ${expected.runCaseId} admission case_id mismatch: admission=${sel.case_id} spec=${payload.case_id}`
+        );
+      }
+      if (sel.case_revision !== undefined && Number(sel.case_revision) !== payload.case_revision) {
+        throw new AttemptSpecError(
+          `attempt ${expected.runCaseId} admission case_revision mismatch: admission=${sel.case_revision} spec=${payload.case_revision}`
+        );
+      }
+      if (sel.platform !== undefined && sel.platform !== payload.platform) {
+        throw new AttemptSpecError(
+          `attempt ${expected.runCaseId} admission platform mismatch: admission=${sel.platform} spec=${payload.platform}`
+        );
+      }
+      for (const [admissionField, specField] of [
+        ["case_sha256", "full_yaml_sha256"],
+        ["goal_sha256", "rendered_goal_sha256"],
+        ["spec_sha256", "spec_sha256"],
+      ]) {
+        if (typeof sel[admissionField] !== "string" || !SHA256_RE.test(sel[admissionField])) {
+          throw new AttemptSpecError(
+            `attempt ${expected.runCaseId} admission.selection.${admissionField} is missing or invalid: ${JSON.stringify(sel[admissionField])}`
+          );
+        }
+        if (sel[admissionField] !== payload[specField]) {
+          throw new AttemptSpecError(
+            `attempt ${expected.runCaseId} admission.selection.${admissionField} disagrees with ${specField}: admission=${sel[admissionField]} spec=${payload[specField]}`
+          );
+        }
+      }
+    }
+  }
+
   const sliceDoc = parseYaml(payload.platform_slice_yaml);
   const fullDoc = parseYaml(payload.full_yaml);
   if (!plainObject(sliceDoc) || !plainObject(fullDoc)) {
@@ -213,7 +322,7 @@ export function verifyAttemptSpecification(payload, expected, parseYaml) {
 
 // Fetches one attempt's frozen specification from Testbed.
 // `getJson(path)` must return `{ status, body }`.
-export async function fetchAttemptSpecification({ getJson, runId, runCase, defaultPlatform, parseYaml }) {
+export async function fetchAttemptSpecification({ getJson, runId, runCase, admission = null, defaultPlatform, parseYaml }) {
   if (!runCase?.id) {
     throw new AttemptSpecError(`case ${runCase?.case_id || "unknown"} is missing run_case_id; cannot fetch frozen spec`);
   }
@@ -250,6 +359,9 @@ export async function fetchAttemptSpecification({ getJson, runId, runCase, defau
       caseRevision: runCase.case_revision,
       attempt: runCase.attempt,
       platform: expectedPlatform,
+      ...(Object.hasOwn(runCase, "spec_sha256") ? { reportSpecSha256: runCase.spec_sha256 } : {}),
+      ...(Object.hasOwn(runCase, "execution_budget_json") ? { reportExecutionBudgetJson: runCase.execution_budget_json } : {}),
+      ...(admission !== null && admission !== undefined ? { admission } : {}),
     },
     parseYaml,
   );

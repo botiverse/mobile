@@ -154,6 +154,82 @@ test("verifyAttemptSpecification fails closed on identity, digest, line-ending, 
   }
 });
 
+test("verifyAttemptSpecification cross-checks run report spec_sha256, execution_budget_json, and first-dispatch admission digests", () => {
+  const base = makeFrozenSpec({
+    runId: "run-257",
+    runCaseId: "rc-1",
+    caseId: "settings-open",
+    caseRevision: 1,
+    attempt: 1,
+    platform: "android",
+    executionBudget: { max_turns: 45, max_minutes: 40, no_progress_turns: 8 },
+  });
+  const matchingAdmission = {
+    confirmation_id: "run-257",
+    run_case_id: "rc-1",
+    attempt: 1,
+    selection: {
+      case_id: "settings-open",
+      case_revision: 1,
+      platform: "android",
+      case_sha256: base.full_yaml_sha256,
+      goal_sha256: base.rendered_goal_sha256,
+      spec_sha256: base.spec_sha256,
+    },
+  };
+  const expectedBase = {
+    runId: "run-257",
+    runCaseId: "rc-1",
+    caseId: "settings-open",
+    caseRevision: 1,
+    attempt: 1,
+    platform: "android",
+    reportSpecSha256: base.spec_sha256,
+    reportExecutionBudgetJson: JSON.stringify(base.execution_budget),
+    admission: matchingAdmission,
+  };
+
+  // Positive control: report row + first-dispatch admission match /spec.
+  const ok = verifyAttemptSpecification(base, expectedBase, parseFixtureYaml);
+  assert.equal(ok.spec_sha256, base.spec_sha256);
+  assert.deepEqual(ok.execution_budget, { max_turns: 45, max_minutes: 40, no_progress_turns: 8 });
+
+  // Argus review finding #1: report says 45 turns, /spec tampered to 60 turns -> must fail closed.
+  const driftedSpecBudget = { ...base, execution_budget: { max_turns: 60, max_minutes: 40, no_progress_turns: 8 } };
+  assert.throws(
+    () => verifyAttemptSpecification(driftedSpecBudget, expectedBase, parseFixtureYaml),
+    /execution_budget disagrees with run report/,
+  );
+
+  // Report spec_sha256 mismatch or null -> fail closed.
+  assert.throws(
+    () => verifyAttemptSpecification(base, { ...expectedBase, reportSpecSha256: "0".repeat(64) }, parseFixtureYaml),
+    /spec_sha256 disagrees with run report/,
+  );
+  assert.throws(
+    () => verifyAttemptSpecification(base, { ...expectedBase, reportSpecSha256: null }, parseFixtureYaml),
+    /run report spec_sha256 is invalid or unbound/,
+  );
+
+  // First-dispatch admission digest & identity mismatches -> fail closed.
+  const badAdmissions = [
+    ["case_sha256 mismatch", { ...matchingAdmission, selection: { ...matchingAdmission.selection, case_sha256: "0".repeat(64) } }, /case_sha256 disagrees/],
+    ["goal_sha256 mismatch", { ...matchingAdmission, selection: { ...matchingAdmission.selection, goal_sha256: "0".repeat(64) } }, /goal_sha256 disagrees/],
+    ["spec_sha256 mismatch", { ...matchingAdmission, selection: { ...matchingAdmission.selection, spec_sha256: "0".repeat(64) } }, /spec_sha256 disagrees/],
+    ["missing spec_sha256", { ...matchingAdmission, selection: { ...matchingAdmission.selection, spec_sha256: undefined } }, /admission\.selection\.spec_sha256/],
+    ["wrong confirmation_id", { ...matchingAdmission, confirmation_id: "run-other" }, /confirmation_id mismatch/],
+    ["wrong attempt", { ...matchingAdmission, attempt: 2 }, /admission attempt mismatch/],
+    ["wrong case_id", { ...matchingAdmission, selection: { ...matchingAdmission.selection, case_id: "other" } }, /admission case_id mismatch/],
+  ];
+  for (const [label, admission, pattern] of badAdmissions) {
+    assert.throws(
+      () => verifyAttemptSpecification(base, { ...expectedBase, admission }, parseFixtureYaml),
+      pattern,
+      label,
+    );
+  }
+});
+
 test("fetchAttemptSpecification maps 409 LEGACY_UNBOUND / FROZEN_SPEC_UNAVAILABLE to incomplete and fails closed on 404", async () => {
   const rc = { id: "rc-old", case_id: "settings-open", case_revision: 1, attempt: 1, platform: "android" };
   for (const code of ["LEGACY_UNBOUND", "FROZEN_SPEC_UNAVAILABLE"]) {
@@ -391,12 +467,27 @@ cp "${claimReplyFile}" "$out"
   });
   const report = {
     run: { id: "run-257", status: "in_review", app_slug: "raft-android" },
+    admission: {
+      confirmation_id: "run-257",
+      run_case_id: "rc-257-a1",
+      attempt: 1,
+      selection: {
+        case_id: frozen.case_id,
+        case_revision: 1,
+        platform: "android",
+        case_sha256: frozen.full_yaml_sha256,
+        goal_sha256: frozen.rendered_goal_sha256,
+        spec_sha256: frozen.spec_sha256,
+      },
+    },
     cases: [{
       id: frozen.run_case_id,
       case_id: frozen.case_id,
       case_revision: 1,
       attempt: 2,
       platform: "android",
+      spec_sha256: frozen.spec_sha256,
+      execution_budget_json: JSON.stringify(frozen.execution_budget),
       status: "judging",
       verdict_json: JSON.stringify({ annotations: { assertion: [{ assertion_id: "settings-visible", step: 19, result: "pass" }] } }),
     }],
@@ -439,11 +530,11 @@ cp "${claimReplyFile}" "$out"
   assert.equal(reviewedSpec.case_revision, 1);
 });
 
-test("review_agent marks 409 LEGACY_UNBOUND and FROZEN_SPEC_UNAVAILABLE as evidence_incomplete without consulting /api/cases or the model", () => {
+test("review_agent records evidence_incomplete on 409 LEGACY_UNBOUND / FROZEN_SPEC_UNAVAILABLE and stops with zero new votes while preserving existing votes", () => {
   for (const code of ["LEGACY_UNBOUND", "FROZEN_SPEC_UNAVAILABLE"]) {
     const report = {
       run: { id: "run-legacy", status: "in_review", app_slug: "raft-android" },
-      cases: [{ id: "rc-legacy", case_id: "settings-open", case_revision: 1, attempt: 1, platform: "android", status: "judging", verdict_json: "{}" }],
+      cases: [{ id: "rc-legacy", case_id: "settings-open", case_revision: 1, attempt: 1, platform: "android", spec_sha256: null, status: "judging", verdict_json: "{}" }],
       review_context: { attempt_ids: ["rc-legacy"] },
       evidence: [],
       reviews: [],
@@ -452,48 +543,92 @@ test("review_agent marks 409 LEGACY_UNBOUND and FROZEN_SPEC_UNAVAILABLE as evide
       report,
       specs: { "rc-legacy": { status: 409, body: { code } } },
     });
-    assert.equal(r.code, 0, `${code}: ${r.stderr}`);
+    assert.equal(r.code, 2, `${code}: ${r.stderr}`);
     assert.deepEqual(r.catalogCalls, [], `${code}: must never fall back to /api/cases/`);
     assert.equal(r.modelPrompt, null, `${code}: must never call model`);
-    assert.equal(r.posts.length, 1, code);
-    assert.equal(r.posts[0].verdict, "failed", code);
-    assert.equal(r.posts[0].detail_json.evidence_incomplete, true, code);
-    assert.equal(r.posts[0].detail_json.incomplete_attempt_specs[0].code, code);
-    assert.match(r.posts[0].reason, new RegExp(code));
-    assert.equal(r.record.stage, "submitted", code);
+    assert.equal(r.posts.length, 0, `${code}: must submit zero new panel votes`);
+    assert.equal(r.record.stage, "evidence_incomplete", code);
+    assert.equal(r.record.evidence_incomplete, true, code);
+    assert.equal(r.record.vote_submitted, false, code);
+    assert.equal(r.record.incomplete_attempt_specs[0].run_case_id, "rc-legacy", code);
+    assert.equal(r.record.incomplete_attempt_specs[0].code, code, code);
+    assert.match(r.record.incomplete_reason, new RegExp(code));
+    assert.match(r.record.incomplete_reason, /rc-legacy/);
+    assert.equal(r.record.existing_review, null, code);
 
-    // Re-running with that existing vote reuses it as already_submitted.
+    // If an existing vote is already in Testbed, preserve it with zero new POSTs.
     const existing = {
-      id: "v-inc",
+      id: "v-existing",
       role: "panel",
       reviewer: "agent-review-1",
-      verdict: r.posts[0].verdict,
-      comment: r.posts[0].reason,
-      detail_json: JSON.stringify(r.posts[0].detail_json),
+      verdict: "passed",
+      comment: "pre-existing vote",
+      detail_json: JSON.stringify({ review_input_sha256: "older-hash" }),
       attempt_ids: ["rc-legacy"],
+      created_at: 12345,
     };
     const replay = runReviewAgent({
       report: { ...report, reviews: [existing] },
       specs: { "rc-legacy": { status: 409, body: { code } } },
     });
-    assert.equal(replay.code, 0, `${code} replay: ${replay.stderr}`);
-    assert.equal(replay.posts.length, 0, code);
-    assert.equal(replay.record.stage, "already_submitted", code);
+    assert.equal(replay.code, 2, `${code} with existing vote: ${replay.stderr}`);
+    assert.equal(replay.posts.length, 0, `${code}: zero new POSTs when existing vote exists`);
+    assert.equal(replay.modelPrompt, null, code);
+    assert.equal(replay.record.stage, "evidence_incomplete", code);
+    assert.equal(replay.record.vote_submitted, false, code);
+    assert.equal(replay.record.existing_review.id, "v-existing", code);
   }
 });
 
-test("review_agent fails closed on 404 ATTEMPT_NOT_FOUND or tampered frozen digest without voting", () => {
-  const valid = makeFrozenSpec({ runId: "run-bad", runCaseId: "rc-bad" });
+test("review_agent fails closed on 404, tampered digest, report budget drift, or admission mismatch without model call or voting", () => {
+  const valid = makeFrozenSpec({
+    runId: "run-bad",
+    runCaseId: "rc-bad",
+    executionBudget: { max_turns: 45, max_minutes: 40, no_progress_turns: 8 },
+  });
   const tampered = { ...valid, full_yaml_sha256: "0".repeat(64) };
+  const budgetDrifted = { ...valid, execution_budget: { max_turns: 60, max_minutes: 40, no_progress_turns: 8 } };
   const ev = { id: "ev-1", kind: "screenshot", run_case_id: "rc-bad", step_index: 1, seq: 1, captured_at: 1, sha256: sha256Utf8("bytes:ev-1") };
-  const report = {
+  const baseReport = {
     run: { id: "run-bad", status: "in_review", app_slug: "raft-android" },
-    cases: [{ id: "rc-bad", case_id: "settings-open", case_revision: 1, attempt: 1, platform: "android", status: "judging", verdict_json: "{}" }],
+    admission: {
+      confirmation_id: "run-bad",
+      run_case_id: "rc-bad",
+      attempt: 1,
+      selection: {
+        case_id: valid.case_id,
+        case_revision: 1,
+        platform: "android",
+        case_sha256: valid.full_yaml_sha256,
+        goal_sha256: valid.rendered_goal_sha256,
+        spec_sha256: valid.spec_sha256,
+      },
+    },
+    cases: [{
+      id: "rc-bad",
+      case_id: "settings-open",
+      case_revision: 1,
+      attempt: 1,
+      platform: "android",
+      spec_sha256: valid.spec_sha256,
+      execution_budget_json: JSON.stringify(valid.execution_budget),
+      status: "judging",
+      verdict_json: "{}",
+    }],
     review_context: { attempt_ids: ["rc-bad"] },
     evidence: [ev],
     reviews: [],
   };
-  for (const [label, specs] of [["404", {}], ["digest-tamper", { "rc-bad": { status: 200, body: tampered } }]]) {
+  const admissionGoalMismatch = {
+    ...baseReport,
+    admission: { ...baseReport.admission, selection: { ...baseReport.admission.selection, goal_sha256: "f".repeat(64) } },
+  };
+  for (const [label, report, specs] of [
+    ["404", baseReport, {}],
+    ["digest-tamper", baseReport, { "rc-bad": { status: 200, body: tampered } }],
+    ["report-budget-drift-45-vs-60", baseReport, { "rc-bad": { status: 200, body: budgetDrifted } }],
+    ["admission-goal-mismatch", admissionGoalMismatch, { "rc-bad": { status: 200, body: valid } }],
+  ]) {
     const r = runReviewAgent({ report, specs });
     assert.notEqual(r.code, 0, label);
     assert.equal(r.posts.length, 0, label);
@@ -502,7 +637,7 @@ test("review_agent fails closed on 404 ATTEMPT_NOT_FOUND or tampered frozen dige
   }
 });
 
-test("claim_spec_binding fails closed on goal/budget mismatch, preserves claim token for workflow-error, and allows legacy unbound claims", (t) => {
+test("claim_spec_binding enforces run_case_id parity, fails closed on goal/budget mismatch, preserves claim token, and allows legacy unbound claims", (t) => {
   const frozen = makeFrozenSpec({ executionBudget: { max_turns: 45, max_minutes: 40, no_progress_turns: 8 } });
   const bound = extractClaimSpecBinding({
     run_case_id: "rc-1",
@@ -511,28 +646,63 @@ test("claim_spec_binding fails closed on goal/budget mismatch, preserves claim t
     spec_sha256: frozen.spec_sha256,
     rendered_goal_sha256: frozen.rendered_goal_sha256,
     guardrails: frozen.execution_budget,
-  });
+  }, { runCaseId: "rc-1" });
   assert.equal(bound.bound, true);
+  // Argus review finding #2: mismatched or missing run_case_id must fail closed.
   assert.throws(
-    () => verifyClaimSpecBinding(bound, { goal: "tampered goal", maxTurns: "45", maxMinutes: "40", noProgressTurns: "8" }, { requireGoal: true, requireBudget: true }),
+    () => extractClaimSpecBinding({
+      run_case_id: "rc-other",
+      case_id: "settings-open",
+      spec_yaml: frozen.platform_slice_yaml,
+      spec_sha256: frozen.spec_sha256,
+      rendered_goal_sha256: frozen.rendered_goal_sha256,
+      guardrails: frozen.execution_budget,
+    }, { runCaseId: "rc-1" }),
+    /run_case_id mismatch/,
+  );
+  assert.throws(
+    () => extractClaimSpecBinding({
+      case_id: "settings-open",
+      spec_yaml: frozen.platform_slice_yaml,
+      spec_sha256: frozen.spec_sha256,
+      rendered_goal_sha256: frozen.rendered_goal_sha256,
+      guardrails: frozen.execution_budget,
+    }, { runCaseId: "rc-1" }),
+    /bound claim response is missing run_case_id/,
+  );
+  assert.throws(
+    () => extractClaimSpecBinding({ run_case_id: "rc-other", case_id: "settings-open", claim_token: "t" }, { runCaseId: "rc-1" }),
+    /run_case_id mismatch/,
+  );
+  assert.throws(
+    () => verifyClaimSpecBinding(bound, { goal: frozen.rendered_goal, maxTurns: "45", maxMinutes: "40", noProgressTurns: "8" }, { requireGoal: true, requireBudget: true, expectedRunCaseId: "rc-other" }),
+    /run_case_id mismatch/,
+  );
+  assert.throws(
+    () => verifyClaimSpecBinding({ ...bound, run_case_id: null }, { goal: frozen.rendered_goal, maxTurns: "45", maxMinutes: "40", noProgressTurns: "8" }, { requireGoal: true, requireBudget: true, expectedRunCaseId: "rc-1" }),
+    /bound claim spec binding is missing run_case_id/,
+  );
+  assert.throws(
+    () => verifyClaimSpecBinding(bound, { goal: "tampered goal", maxTurns: "45", maxMinutes: "40", noProgressTurns: "8" }, { requireGoal: true, requireBudget: true, expectedRunCaseId: "rc-1" }),
     ClaimSpecBindingError,
   );
   assert.throws(
-    () => verifyClaimSpecBinding(bound, { goal: frozen.rendered_goal, maxTurns: "80", maxMinutes: "60", noProgressTurns: "10" }, { requireGoal: true, requireBudget: true }),
+    () => verifyClaimSpecBinding(bound, { goal: frozen.rendered_goal, maxTurns: "80", maxMinutes: "60", noProgressTurns: "10" }, { requireGoal: true, requireBudget: true, expectedRunCaseId: "rc-1" }),
     ClaimSpecBindingError,
   );
-  const legacy = extractClaimSpecBinding({ run_case_id: "rc-legacy", case_id: "settings-open", claim_token: "t" });
+  const legacy = extractClaimSpecBinding({ run_case_id: "rc-legacy", case_id: "settings-open", claim_token: "t" }, { runCaseId: "rc-legacy" });
   assert.equal(legacy.bound, false);
-  assert.equal(verifyClaimSpecBinding(legacy, { goal: "", maxTurns: "30", maxMinutes: "20", noProgressTurns: "8" }, { requireGoal: true, requireBudget: true }).mode, "legacy_unbound");
+  assert.equal(verifyClaimSpecBinding(legacy, { goal: "", maxTurns: "30", maxMinutes: "20", noProgressTurns: "8" }, { requireGoal: true, requireBudget: true, expectedRunCaseId: "rc-legacy" }).mode, "legacy_unbound");
 
-  // End-to-end stamp_report.sh claim with mismatched goal fails closed while keeping the claim token file.
+  // End-to-end stamp_report.sh claim: mismatched goal, mismatched run_case_id, or missing bound run_case_id fail closed while keeping claim token.
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "claim-mismatch-"));
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
   const bin = path.join(root, "bin");
   const runnerTemp = path.join(root, "runner-temp");
   fs.mkdirSync(bin); fs.mkdirSync(runnerTemp); fs.mkdirSync(path.join(root, "qa-evidence"));
   const claimReqFile = path.join(root, "claim-req.json");
-  const reply = JSON.stringify({
+  const replyFile = path.join(root, "reply.json");
+  const baseReply = {
     claim_token: "lease-keep",
     run_case_id: "rc-mis",
     case_id: "settings-open",
@@ -541,12 +711,12 @@ test("claim_spec_binding fails closed on goal/budget mismatch, preserves claim t
     spec_sha256: frozen.spec_sha256,
     rendered_goal_sha256: frozen.rendered_goal_sha256,
     guardrails: frozen.execution_budget,
-  });
+  };
   fs.writeFileSync(path.join(bin, "curl"), `#!/usr/bin/env bash
 out=""; payload=""
 while [ "$#" -gt 0 ]; do case "$1" in -o) out="$2"; shift 2;; --data-binary) payload="$2"; shift 2;; *) shift;; esac; done
 cp "\${payload#@}" "${claimReqFile}"
-printf '%s' '${reply.replaceAll("'", "'\\''")}' > "$out"
+cp "${replyFile}" "$out"
 `, { mode: 0o755 });
 
   const env = {
@@ -564,10 +734,18 @@ printf '%s' '${reply.replaceAll("'", "'\\''")}' > "$out"
     STAMP_VERIFIED_APP_VERSION: "1.28.0",
     STAMP_VERIFIED_VERSION_CODE: "12800005",
     STAMP_VERIFIED_PACKAGE_ID: "build.raft.app",
-    QA_GOAL: "different goal",
+    QA_GOAL: frozen.rendered_goal,
   };
-  assert.throws(() => execFileSync("bash", [STAMP_REPORT, "claim", "qa-evidence"], { cwd: root, env, stdio: "pipe" }));
-  assert.equal(fs.readFileSync(path.join(runnerTemp, "stamp-claim-rc-mis"), "utf8"), "lease-keep", "claim token preserved for workflow-error cleanup");
+  for (const [label, replyObj, extraEnv] of [
+    ["goal mismatch", baseReply, { QA_GOAL: "different goal" }],
+    ["run_case_id mismatch", { ...baseReply, run_case_id: "rc-other" }, {}],
+    ["missing run_case_id on bound reply", (() => { const { run_case_id: _, ...rest } = baseReply; return rest; })(), {}],
+  ]) {
+    fs.writeFileSync(replyFile, JSON.stringify(replyObj));
+    assert.throws(() => execFileSync("bash", [STAMP_REPORT, "claim", "qa-evidence"], { cwd: root, env: { ...env, ...extraEnv }, stdio: "pipe" }), label);
+    assert.equal(fs.readFileSync(path.join(runnerTemp, "stamp-claim-rc-mis"), "utf8"), "lease-keep", `${label}: claim token preserved`);
+    assert.equal(fs.existsSync(path.join(runnerTemp, "stamp-claim-spec-rc-mis.json")), false, `${label}: invalid binding file must not be kept`);
+  }
   assert.equal(Object.hasOwn(JSON.parse(fs.readFileSync(claimReqFile, "utf8")), "rendered_goal_sha256"), false, "rendered_goal_sha256 omitted by default so legacy runs never 409");
 
   // Workflow ordering check: verify step runs after claim, before preflight, and skips release-prelogin.
@@ -579,4 +757,5 @@ printf '%s' '${reply.replaceAll("'", "'\\''")}' > "$out"
   const verifyBlock = workflow.slice(verifyIdx, workflow.indexOf("\n      - name:", verifyIdx + 1));
   assert.match(verifyBlock, /inputs\.login_mode != 'release-prelogin'/);
   assert.match(verifyBlock, /claim_spec_binding\.mjs verify/);
+  assert.match(verifyBlock, /--run-case-id "\$STAMP_RUN_CASE_ID"/);
 });
