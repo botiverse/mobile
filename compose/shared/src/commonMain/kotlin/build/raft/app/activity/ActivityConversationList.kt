@@ -11,6 +11,7 @@ import build.raft.designsystem.components.raftPointerHover
 import build.raft.designsystem.components.raftPointerHoverPosition
 import build.raft.designsystem.components.RaftButtonVariant
 import build.raft.designsystem.components.RaftIconButton
+import build.raft.designsystem.components.RaftIconButtonSize
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.platform.testTag
 import build.raft.designsystem.components.raftStateOverlay
@@ -1111,8 +1112,10 @@ internal fun ActivityConversationListRow(
             hasAction = onRowDone != null,
         )
     // raft-ui `--inbox-item-actions-room`: while Done shows, both lines end short of it by its width
-    // plus the gap, so the time and the marks move over and stay in view (never fade).
-    val doneButtonBox = RaftTheme.controls.rowHeight ?: ActivityRowDoneButtonBox
+    // plus the gap, so the time and the marks move over and stay in view (never fade). The button is
+    // [RaftIconButtonSize.Row]: the 28dp bar button under a fine pointer (metrics with a row height),
+    // so the room is 28 + 12 = 40, as the web's.
+    val doneButtonBox = RaftTheme.controls.let { if (it.rowHeight != null) it.barButtonSize else ActivityRowDoneButtonBox }
     val doneRoom = doneButton?.let { doneButtonBox + it.gap } ?: 0.dp
     val swipeButtons =
         activitySwipeButtons(
@@ -1318,6 +1321,7 @@ internal fun ActivityConversationListRow(
                     tooltip = stringResource(Res.string.thread_action_mark_done),
                     contentDescription = activityRowDoneLabel(item, model, loungeTitle, fallback),
                     variant = doneButton.variant,
+                    size = RaftIconButtonSize.Row,
                     hitSize = doneButton.hitSize,
                     modifier =
                         Modifier
@@ -1335,7 +1339,7 @@ internal fun ActivityConversationListRow(
 
 internal const val ActivityRowDoneTag = "activity-row-done"
 
-/** The Done button's box with a finger (raft-ui `icon-md`, 32px); a fine pointer takes [RaftControlMetrics.rowHeight]. */
+/** The Done button's box with a finger (raft-ui `icon-md`, 32px); a fine pointer takes the 28dp bar button ([RaftIconButtonSize.Row]). */
 private val ActivityRowDoneButtonBox = 32.dp
 
 /**
@@ -1351,9 +1355,10 @@ internal enum class ActivityRowDoneButton(
 ) {
     /**
      * A mouse or trackpad, while the row is hovered, open beside the list or has its menu open:
-     * a ghost button on the row's hover fill, 8dp from the time and the marks.
+     * a ghost 28dp row action (web InboxRowDone `md:pointer-fine:size-(--bar-button-size)`) on the
+     * row's hover fill, 12dp from the time and the marks (`--inbox-item-actions-room` 40).
      */
-    Revealed(RaftButtonVariant.Ghost, gap = 8.dp, hitSize = null),
+    Revealed(RaftButtonVariant.Ghost, gap = 12.dp, hitSize = null),
 }
 
 /**
