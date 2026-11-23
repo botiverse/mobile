@@ -13,9 +13,11 @@ import android.content.pm.ServiceInfo
 import android.net.Uri
 import android.os.Build
 import android.os.IBinder
+import android.webkit.MimeTypeMap
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
+import build.raft.app.MainActivity
 import build.raft.app.R
 import build.raft.app.core.data.diagnostics.RaftAppLog
 import build.raft.app.downloads.RaftDownloadCenter
@@ -51,6 +53,35 @@ import kotlinx.coroutines.launch
  * channel that does not exist (CannotPostForegroundServiceNotificationException, a crash), and
  * creating a channel needs no permission.
  */
+/** Action carried by download progress / fallback notifications to open Raft's Download Center (#proj-mobile:#21). */
+internal const val ACTION_RAFT_OPEN_DOWNLOADS = "build.raft.app.action.OPEN_DOWNLOADS"
+
+private const val ANDROID_PACKAGE_ARCHIVE_MIME = "application/vnd.android.package-archive"
+
+internal fun resolveDownloadNotificationMimeType(mimeType: String?, fileName: String): String {
+    val extension = fileName.trim().substringAfterLast('.', missingDelimiterValue = "").lowercase()
+    if (extension == "apk") return ANDROID_PACKAGE_ARCHIVE_MIME
+    val declared = mimeType?.substringBefore(';')?.trim()?.takeIf { it.contains('/') }
+    if (declared.equals(ANDROID_PACKAGE_ARCHIVE_MIME, ignoreCase = true)) {
+        return ANDROID_PACKAGE_ARCHIVE_MIME
+    }
+    val genericDeclared =
+        declared == null ||
+            declared.equals("application/octet-stream", ignoreCase = true) ||
+            declared.equals("binary/octet-stream", ignoreCase = true) ||
+            declared == "*/*"
+    if (!genericDeclared) return declared
+    if (extension.isNotEmpty()) {
+        val inferred = runCatching { MimeTypeMap.getSingleton().getMimeTypeFromExtension(extension) }.getOrNull()
+        if (!inferred.isNullOrBlank()) return inferred
+    }
+    return declared ?: "*/*"
+}
+
+internal fun isDownloadNotificationAndroidPackage(mimeType: String, fileName: String): Boolean =
+    mimeType.substringBefore(';').trim().equals(ANDROID_PACKAGE_ARCHIVE_MIME, ignoreCase = true) ||
+        fileName.trim().endsWith(".apk", ignoreCase = true)
+
 internal object RaftDownloadNotifications {
     private const val LOG_TAG = "RaftDownloadNotifications"
     internal const val CHANNEL_ID = "raft-downloads-v1"
@@ -168,8 +199,24 @@ internal object RaftDownloadNotifications {
             .setContentIntent(progressLaunchAppIntent(context))
     }
 
-    private fun finishedNotification(context: Context, entry: RaftDownloadEntry, failed: Boolean): Notification {
-        val openFile = if (failed) null else entry.localUri?.let { openFileIntent(context, entry, it) }
+    private fun finishedNotification(
+        context: Context,
+        entry: RaftDownloadEntry,
+        failed: Boolean,
+        canLaunchApkInstaller: () -> Boolean = {
+            androidPackageInstallDecision(
+                installPermissionDeclared = AndroidPackageInstallPermission.isDeclared(context),
+                canRequestPackageInstalls = AndroidPackageInstallPermission.canRequest(context),
+            ) == AndroidPackageInstallDecision.Launch
+        },
+        canResolveViewIntent: (Intent) -> Boolean = { it.resolveActivity(context.packageManager) != null },
+    ): Notification {
+        val openFile =
+            if (failed) {
+                null
+            } else {
+                entry.localUri?.let { openFileIntent(context, entry, it, canLaunchApkInstaller, canResolveViewIntent) }
+            }
         return NotificationCompat.Builder(context, CHANNEL_ID)
             .setSmallIcon(if (failed) android.R.drawable.stat_notify_error else android.R.drawable.stat_sys_download_done)
             .setContentTitle(
@@ -190,13 +237,26 @@ internal object RaftDownloadNotifications {
             .build()
     }
 
-    private fun openFileIntent(context: Context, entry: RaftDownloadEntry, uri: String): PendingIntent? {
+    private fun openFileIntent(
+        context: Context,
+        entry: RaftDownloadEntry,
+        uri: String,
+        canLaunchApkInstaller: () -> Boolean,
+        canResolveViewIntent: (Intent) -> Boolean,
+    ): PendingIntent? {
         val parsed = runCatching { Uri.parse(uri) }.getOrNull()?.takeIf { it.scheme == "content" } ?: return null
+        val effectiveMime = resolveDownloadNotificationMimeType(entry.mimeType, entry.fileName)
+        if (isDownloadNotificationAndroidPackage(effectiveMime, entry.fileName) && !canLaunchApkInstaller()) {
+            // Avoid launching Android's package installer directly when Raft lacks install
+            // permission (Google Play builds or "Install unknown apps" off): the installer would
+            // finish silently. Fall back to the in-app Download Center where the install gate runs.
+            return null
+        }
         val view =
             Intent(Intent.ACTION_VIEW)
-                .setDataAndType(parsed, entry.mimeType?.takeIf { it.isNotBlank() } ?: "*/*")
+                .setDataAndType(parsed, effectiveMime)
                 .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
-        if (view.resolveActivity(context.packageManager) == null) return null
+        if (!canResolveViewIntent(view)) return null
         return PendingIntent.getActivity(
             context,
             finishedId(entry),
@@ -216,16 +276,21 @@ internal object RaftDownloadNotifications {
         }
     }
 
-    private fun resolveLaunchIntent(context: Context): Intent? {
+    private fun resolveLaunchIntent(context: Context): Intent {
         val appContext = context.applicationContext
         cachedLaunchTemplate?.takeIf { it.appContext === appContext }?.let { return Intent(it.intent) }
         synchronized(launchIntentLock) {
             cachedLaunchTemplate?.takeIf { it.appContext === appContext }?.let { return Intent(it.intent) }
             val resolved =
-                appContext.packageManager.getLaunchIntentForPackage(appContext.packageName)?.apply {
-                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED)
+                Intent(appContext, MainActivity::class.java).apply {
+                    action = ACTION_RAFT_OPEN_DOWNLOADS
+                    addFlags(
+                        Intent.FLAG_ACTIVITY_NEW_TASK or
+                            Intent.FLAG_ACTIVITY_CLEAR_TOP or
+                            Intent.FLAG_ACTIVITY_SINGLE_TOP
+                    )
                     putExtra(EXTRA_RAFT_APP_OPEN_SOURCE, RAFT_APP_OPEN_SOURCE_APP_NOTIFICATION)
-                } ?: return null
+                }
             cachedLaunchTemplate = CachedLaunchTemplate(appContext, resolved)
             return Intent(resolved)
         }
@@ -233,7 +298,7 @@ internal object RaftDownloadNotifications {
 
     private fun launchAppIntent(context: Context, requestCode: Int): PendingIntent? {
         val appContext = context.applicationContext
-        val launch = resolveLaunchIntent(appContext) ?: return null
+        val launch = resolveLaunchIntent(appContext)
         return PendingIntent.getActivity(
             appContext,
             requestCode,
@@ -276,6 +341,19 @@ internal object RaftDownloadNotifications {
 
     internal fun progressLaunchAppIntentForTest(context: Context): PendingIntent? =
         progressLaunchAppIntent(context)
+
+    internal fun finishedNotificationForTest(
+        context: Context,
+        entry: RaftDownloadEntry,
+        failed: Boolean,
+        canLaunchApkInstaller: () -> Boolean = {
+            androidPackageInstallDecision(
+                installPermissionDeclared = AndroidPackageInstallPermission.isDeclared(context),
+                canRequestPackageInstalls = AndroidPackageInstallPermission.canRequest(context),
+            ) == AndroidPackageInstallDecision.Launch
+        },
+        canResolveViewIntent: (Intent) -> Boolean = { it.resolveActivity(context.packageManager) != null },
+    ): Notification = finishedNotification(context, entry, failed, canLaunchApkInstaller, canResolveViewIntent)
 
     internal fun setHasActiveDownloadsForTests(active: Boolean) {
         hasActiveDownloads = active

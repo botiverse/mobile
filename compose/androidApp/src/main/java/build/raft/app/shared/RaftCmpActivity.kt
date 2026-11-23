@@ -1598,10 +1598,19 @@ internal open class RaftCmpActivity :
                     targetShellInstanceId = androidShellLaunchTarget?.shellInstanceId,
                 )
             }
+            val openDownloadCenter =
+                shouldOpenDownloadCenterFromPageData(resolvedPageData(intent).text)
+            if (openDownloadCenter) {
+                build.raft.app.RaftDownloadCenterLaunchIngress.submit(
+                    source = "android_download_notification",
+                    targetShellInstanceId = androidShellLaunchTarget?.shellInstanceId,
+                )
+            }
             val line =
                 "host_new_intent page=${resolvedPageName(intent)} currentPage=${pageSpec?.pageName.orEmpty()} " +
                     "state=${lifecycle.currentState} recreate=preserved" +
-                    if (externalShareToken != null) " externalShare=delivered" else ""
+                    (if (externalShareToken != null) " externalShare=delivered" else "") +
+                    (if (openDownloadCenter) " downloadCenter=delivered" else "")
             RaftAppLog.record("SlockKuiklyActivity", line)
             RaftAndroidLocalDiagnostics.recordLog("info", "SlockKuiklyActivity", line)
             return
@@ -1612,9 +1621,17 @@ internal open class RaftCmpActivity :
             loginTransitionToken = null
         }
         androidShellLaunchTarget?.let { AndroidShellWindowRegistry.unregister(it.shellInstanceId) }
+        val openDownloadCenterOnRecreate =
+            shouldOpenDownloadCenterFromPageData(resolvedPageData(intent).text)
         setIntent(intent)
         intent.putExtra(KEY_REBUILT_ON_NEW_INTENT, true)
         registerAndroidShellWindow(intent)
+        if (openDownloadCenterOnRecreate) {
+            build.raft.app.RaftDownloadCenterLaunchIngress.submit(
+                source = "android_download_notification",
+                targetShellInstanceId = androidShellLaunchTarget?.shellInstanceId,
+            )
+        }
         // As today: a new intent resets the window to the shell (singleTask cleared the Activities
         // above it); pages on the stack are not brought back by the recreation.
         nav3DropStackOnSave = true
@@ -3598,6 +3615,8 @@ internal open class RaftCmpActivity :
          * without recreating itself or dropping its Nav3 stack (#proj-mobile:#311).
          */
         internal const val KEY_PRESERVE_LIVE_SHELL_ON_NEW_INTENT = "build.raft.app.preserveLiveShellOnNewIntent"
+        /** One-shot pageData flag delivered via [startAppShell] after clearing a covering Activity (#proj-mobile:#21). */
+        internal const val KEY_APP_SHELL_OPEN_DOWNLOAD_CENTER = "slockOpenDownloadCenter"
         /** The tap a first-frame line was already written for (see pendingServerSwitchTapEpochMillis). */
         private const val KEY_SERVER_SWITCH_FIRST_FRAME_LOGGED_TAP = "build.raft.app.serverSwitchFirstFrameLoggedTap"
         private const val KEY_APP_SHELL_INITIAL_SETTINGS_DESTINATION = "slockInitialSettingsDestination"

@@ -6,13 +6,18 @@ import build.raft.app.core.data.auth.AndroidMobileOAuth
 import build.raft.app.core.data.auth.AndroidMobileOAuthPendingStore
 import build.raft.app.core.data.auth.androidMMKVAuthKeyValueStore
 import build.raft.app.core.data.diagnostics.RaftAppLog
+import build.raft.app.shared.ACTION_RAFT_OPEN_DOWNLOADS
 import build.raft.app.shared.AndroidPendingLauncherTaskLaunchStore
 import build.raft.app.shared.AndroidShellRouteOwner
 import build.raft.app.shared.AndroidShellWindowRegistry
 import build.raft.app.shared.AndroidShellWindowStore
 import build.raft.app.shared.ANDROID_SHELL_SERVER_ID_KEY
 import build.raft.app.shared.AndroidLoginTransitionRouting
+import build.raft.app.shared.DEFAULT_ANDROID_SHELL_INSTANCE_ID
+import build.raft.app.shared.RaftActivityPageOpens
+import build.raft.app.shared.RaftAppShellActivity
 import build.raft.app.shared.RaftCmpActivity
+import build.raft.app.shared.RaftDocumentShellActivity
 import build.raft.app.shared.RaftRouteKeys
 import build.raft.app.shared.currentAndroidShellRouteOwner
 import build.raft.app.shared.hasExplicitAndroidShellServer
@@ -144,6 +149,7 @@ class MainActivity : ComponentActivity() {
                 openSharedShell(launchIntent = pageDataIntent, taskPolicyIntent = cleanLaunch)
             },
             onExternalShare = ::handleExternalShareIntent,
+            onDownloadCenterLaunch = ::handleDownloadCenterLaunch,
             onAppLoginCallback = ::handleAppLoginCallback,
             onMobileOAuthCallback = ::handleMobileOAuthCallback,
             onEmailVerificationLink = ::handleEmailVerificationLink,
@@ -152,6 +158,59 @@ class MainActivity : ComponentActivity() {
             onUnsupportedRaftWebLink = ::handleUnsupportedRaftWebLink,
             onOpenSharedShell = ::openSharedShell,
         )
+    }
+
+    private fun handleDownloadCenterLaunch(intent: Intent?): Boolean {
+        if (!intent.isOpenDownloadCenterIntent()) return false
+        setIntent(Intent(this, MainActivity::class.java))
+        val liveShellInstanceId = AndroidShellWindowRegistry.shellInstanceIdInTask(taskId)
+        val topHost = RaftActivityPageOpens.Process.topHost(taskId)
+        val topHostIsShell = topHost == null || topHost is RaftAppShellActivity || topHost is RaftDocumentShellActivity
+        val topHostPageName = RaftActivityPageOpens.Process.topPage(taskId)?.pageName
+        val plan =
+            resolveDownloadCenterLaunchPlan(
+                liveShellInstanceId = liveShellInstanceId,
+                topHostIsShell = topHostIsShell,
+                topHostPageName = topHostPageName,
+            )
+        RaftAppLog.d(
+            "SlockBoot",
+            "download_center_notification_open plan=$plan liveShellId=${liveShellInstanceId.orEmpty()} " +
+                "topHostIsShell=$topHostIsShell topPage=${topHostPageName.orEmpty()}"
+        )
+        when (plan) {
+            MainActivityDownloadCenterLaunchPlan.RevealAlreadyOnTop -> Unit
+            MainActivityDownloadCenterLaunchPlan.RevealLiveShell -> {
+                RaftDownloadCenterLaunchIngress.submit(
+                    source = "android_download_notification",
+                    targetShellInstanceId = liveShellInstanceId ?: DEFAULT_ANDROID_SHELL_INSTANCE_ID,
+                )
+            }
+            MainActivityDownloadCenterLaunchPlan.ClearCoveringActivityAndRevealShell -> {
+                // Finish any standalone Activity covering the live app shell first so the
+                // Download Center opens visibly after CLEAR_TOP brings the shell to front.
+                RaftCmpActivity.startAppShell(
+                    applicationContext,
+                    pageData = JSONObject().put(RaftCmpActivity.KEY_APP_SHELL_OPEN_DOWNLOAD_CENTER, true),
+                    clearTask = false,
+                    preserveLiveShell = true,
+                )
+            }
+            MainActivityDownloadCenterLaunchPlan.StartAppShell -> {
+                RaftDownloadCenterLaunchIngress.submit(
+                    source = "android_download_notification",
+                    targetShellInstanceId = DEFAULT_ANDROID_SHELL_INSTANCE_ID,
+                )
+                RaftCmpActivity.startAppShell(
+                    applicationContext,
+                    pageData = JSONObject(),
+                    clearTask = false,
+                    preserveLiveShell = true,
+                )
+            }
+        }
+        finish()
+        return true
     }
 
     private fun handleExternalShareIntent(intent: Intent?): Boolean {
@@ -549,10 +608,33 @@ internal fun resolveMainActivityOnCreateShareAction(intent: Intent?): MainActivi
     }
 }
 
+internal fun Intent?.isOpenDownloadCenterIntent(): Boolean =
+    this?.action == ACTION_RAFT_OPEN_DOWNLOADS
+
+internal enum class MainActivityDownloadCenterLaunchPlan {
+    RevealAlreadyOnTop,
+    RevealLiveShell,
+    ClearCoveringActivityAndRevealShell,
+    StartAppShell,
+}
+
+internal fun resolveDownloadCenterLaunchPlan(
+    liveShellInstanceId: String?,
+    topHostIsShell: Boolean,
+    topHostPageName: String?,
+): MainActivityDownloadCenterLaunchPlan =
+    when {
+        liveShellInstanceId == null -> MainActivityDownloadCenterLaunchPlan.StartAppShell
+        topHostIsShell -> MainActivityDownloadCenterLaunchPlan.RevealLiveShell
+        topHostPageName == SETTINGS_STORAGE_PAGE -> MainActivityDownloadCenterLaunchPlan.RevealAlreadyOnTop
+        else -> MainActivityDownloadCenterLaunchPlan.ClearCoveringActivityAndRevealShell
+    }
+
 internal fun dispatchMainActivityLaunchIntent(
     intent: Intent?,
     onHistoryRevival: (Intent?) -> Unit,
     onExternalShare: (Intent?) -> Boolean,
+    onDownloadCenterLaunch: (Intent?) -> Boolean = { false },
     onAppLoginCallback: (Intent?) -> Boolean,
     onMobileOAuthCallback: (Intent?) -> Boolean,
     onEmailVerificationLink: (Intent?) -> Boolean,
@@ -567,6 +649,7 @@ internal fun dispatchMainActivityLaunchIntent(
     }
     if (
         !onExternalShare(intent) &&
+        !onDownloadCenterLaunch(intent) &&
         !onAppLoginCallback(intent) &&
         !onMobileOAuthCallback(intent) &&
         !onEmailVerificationLink(intent) &&

@@ -291,6 +291,15 @@ internal fun AppShellExternalLinkNavigationEffects(
                 ?: canonicalFinalSelectedServerId?.takeIf(String::isNotBlank)
         sendPromptHostState.open(serverId = serverId, prompt = taken.link.prompt)
     }
+    val latestOpenDownloadCenter by rememberUpdatedState<(RaftPendingDownloadCenterLaunch) -> Unit> { taken ->
+        val topPageName = pager.host?.navigator?.topPage()?.pageName
+        if (topPageName == SETTINGS_STORAGE_PAGE) {
+            bridge.log("download_center_open_skipped reason=already_on_top source=${taken.source}")
+        } else {
+            bridge.log("download_center_open source=${taken.source}")
+            pager.openSettingsStoragePage(navigationStoreScope)
+        }
+    }
     // Phone layout: the conversation page on top of the shell, so a notification or link to it is
     // not pushed twice (preferring the host's authoritative navigation stack over Compose visibility,
     // which clears when the app enters the background).
@@ -317,7 +326,11 @@ internal fun AppShellExternalLinkNavigationEffects(
 
                 override fun openSendPromptLink(taken: RaftPendingSendPromptLink) = latestOpenSendPromptLink(taken)
 
+                override fun openDownloadCenter(taken: RaftPendingDownloadCenterLaunch) = latestOpenDownloadCenter(taken)
+
                 override fun currentAccountId(): String? = latestNavigationAccountId()
+
+                override fun shellInstanceId(): String = navigationStoreScope.shellInstanceId
 
                 override fun readiness(): WindowNavigationReadiness? = latestNavigationReadiness()
 
