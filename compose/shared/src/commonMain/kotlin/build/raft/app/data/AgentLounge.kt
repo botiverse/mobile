@@ -214,6 +214,24 @@ class AgentLoungeApi(private val networkClient: RaftNetworkClient) {
     }
 
     /**
+     * `GET /agents/:id/lounge` (slock #16297): the agent's Lounge when it has one this viewer may see,
+     * in POST's shape, and never creates one: no Lounge, one the viewer can't see, the flag off, an
+     * assistant or another server's agent all answer 404 [AGENT_LOUNGE_NOT_FOUND_ERROR_CODE]; a Guest
+     * 403. For a `lounge:@agent` ref, which names an existing Lounge only (slock #16279); POST stays the
+     * agent profile's explicit Lounge button.
+     */
+    suspend fun lookupLounge(serverId: ServerId?, agentId: String): DataResult<AgentLoungeOpenResult> {
+        val response =
+            networkClient.request(
+                priority = DataRequestPriority.Foreground,
+                path = "agents/$agentId/lounge",
+                method = "GET",
+                serverIdOverride = serverId,
+            )
+        return agentLoungeOpenResponse(response, agentId)
+    }
+
+    /**
      * `GET channels/:id` for a listed Lounge this client never loaded (web `ensureChannel` in
      * useSidebarItems, slock #13876): its row says whether you joined, your mute and its latest
      * activity, so its sidebar menu offers Mute and it sorts by recency. Remembered on success.

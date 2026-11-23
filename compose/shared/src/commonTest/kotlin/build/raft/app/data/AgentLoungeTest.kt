@@ -195,6 +195,30 @@ class AgentLoungeTest {
     }
 
     @Test
+    fun aLoungeRefLooksTheLoungeUpWithAGetAndNeverCreatesOne() = runTest {
+        // slock #16297: GET /agents/:id/lounge answers POST's shape when the Lounge exists...
+        val found =
+            FakeNetwork {
+                HomeNetworkResponse(
+                    200,
+                    """{"channel":{"id":"lounge-bugen","name":"bugen-lounge","type":"channel","archivedAt":null,""" +
+                        """"loungeAgentId":"agent-bugen","joined":false},"joined":false,"canPost":true}""",
+                )
+            }
+        val result = AgentLoungeApi(found).lookupLounge(ServerId("server-1"), "agent-bugen")
+        assertIs<DataResult.Content<AgentLoungeOpenResult>>(result)
+        assertEquals("lounge-bugen", result.data.channel.channelId.value)
+        assertEquals(listOf("GET agents/agent-bugen/lounge"), found.paths)
+
+        // ...and 404 agent_lounge_not_found, creating nothing, when the agent has none.
+        val none = FakeNetwork { HomeNetworkResponse(404, """{"code":"agent_lounge_not_found","error":"Not found"}""") }
+        val missing = AgentLoungeApi(none).lookupLounge(ServerId("server-1"), "agent-quiet")
+        assertIs<DataResult.Error>(missing)
+        assertEquals(AGENT_LOUNGE_NOT_FOUND_ERROR_CODE, missing.error.code)
+        assertEquals(listOf("GET agents/agent-quiet/lounge"), none.paths)
+    }
+
+    @Test
     fun loungesNeverOutliveTheAccountOrTheServerTheyWereKnownFor() {
         RaftAgentLounges.bindAccount("user-a")
         RaftAgentLounges.rememberRow("server-1", loungeRow(), canPost = true)
