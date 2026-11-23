@@ -1201,6 +1201,8 @@
     <string name="video_player_position">Playback position</string>
     <string name="video_player_fullscreen">Full screen</string>
     <string name="video_player_exit_fullscreen">Exit full screen</string>
+    <string name="video_player_speed">Playback speed</string>
+    <string name="video_player_replay">Replay</string>
     <string name="thread_audio_preview_loading">Loading audio preview</string>
     <string name="thread_audio_attachment_fallback_name">Audio attachment</string>
     <string name="thread_audio_file_label">Audio file</string>
