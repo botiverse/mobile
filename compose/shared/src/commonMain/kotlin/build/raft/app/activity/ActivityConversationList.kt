@@ -243,6 +243,7 @@ internal fun HomeSnapshot.activityJointChannelIds(): Set<String> =
 /** An agent's Lounge as an Activity row draws it. */
 internal data class ActivityConversationLounge(
     val agentId: String,
+    /** The agent's name; blank while unknown (the row then says the bare "Lounge"). */
     val agentName: String,
     val avatarWireValue: String? = null,
 )
@@ -270,7 +271,7 @@ internal fun ActivityConversationListContext.withKnownLounges(
 ): ActivityConversationListContext {
     if (known.isNullOrEmpty()) return this
     val fromRegistry =
-        known.mapValues { (_, lounge) -> ActivityConversationLounge(agentId = lounge.agentId, agentName = lounge.displayAgentName) }
+        known.mapValues { (_, lounge) -> ActivityConversationLounge(agentId = lounge.agentId, agentName = lounge.displayAgentName.orEmpty()) }
     val merged = fromRegistry + loungesByChannelId
     return if (merged == loungesByChannelId) this else copy(loungesByChannelId = merged)
 }

@@ -16,10 +16,12 @@ import kotlinx.serialization.json.Json
 /**
  * Agent Lounge v0 (zh 会客厅; botiverse/slock #proj-chat:30a58e4d): the one public conversation per
  * agent where the server's members talk with that agent; other agents may read it but never take
- * part. On the wire it is a plain `type: "channel"` named `<agent>-lounge` that carries
- * `loungeAgentId`; it is never listed (`GET /channels` leaves it out, and so does every channel
- * list here), it has no Join step (the first post joins), and it is always named after its agent:
- * "{Name}'s Lounge", never the raw channel name.
+ * part. On the wire it is a plain `type: "channel"` that carries `loungeAgentId`, named with a
+ * reserved slug fixed at creation (`_lounge-<agent>-<id4>`, slock #16272; older ones `<agent>-lounge`);
+ * it is never listed (`GET /channels` leaves it out, and so does every channel list here), it has no
+ * Join step (the first post joins), and it is always named after its agent's current name:
+ * "{Name}'s Lounge", the bare "Lounge" while that name is unknown, never anything read from the
+ * channel name (slock #16282). Agents address it `lounge:@<agent>` (slock #16279).
  *
  * Web source: packages/web/src/components/agent/agentLounge.ts, store/channelStore.ts `openLounge`;
  * server: packages/server/src/routes/agents.ts `POST /:id/lounge`, services/agentLoungeService.ts.
@@ -64,31 +66,22 @@ fun agentOffersLounge(deleted: Boolean, personalAssistant: Boolean, remoteProfil
     !deleted && !personalAssistant && !remoteProfile
 
 /**
- * A Lounge's channel name since slock #16272: `_lounge-<agent>-<first 4 characters of the agent id>`
- * (8 when two agents of one server would collide). The prefix can't start a user channel name.
+ * The name a Lounge is shown under (web `loungeAgentDisplayName`, slock #16282): its agent's name,
+ * or null while it is unknown; the caller then says the bare "Lounge". Never read from the
+ * Lounge's channel name: that is a reserved slug fixed at creation, which does not follow a rename.
  */
-private val LoungeSlugName = Regex("^_lounge-(.+)-[0-9a-z]{4}(?:[0-9a-z]{4})?$")
-
-/**
- * The agent's name from a Lounge's own channel name when nothing better is known (web
- * `agentNameFromLoungeChannel`): the agent part of a `_lounge-<agent>-<id>` slug, else the older
- * `<agent>-lounge` name without its trailing "-lounge". A fallback only: the agent's DM row or the
- * open answer names it otherwise ([RaftAgentLounge.agentName]).
- */
-fun loungeAgentNameFromChannelName(channelName: String): String =
-    LoungeSlugName.matchEntire(channelName)?.groupValues?.get(1) ?: channelName.removeSuffix("-lounge")
-
-/** The name a Lounge is shown under: its agent's display name, else from the channel name (web `loungeAgentDisplayName`). */
-fun loungeAgentDisplayName(agentDisplayName: String?, channelName: String): String =
-    agentDisplayName?.trim()?.takeIf { it.isNotEmpty() } ?: loungeAgentNameFromChannelName(channelName.trim().removePrefix("#"))
+fun loungeAgentDisplayName(agentName: String?): String? = agentName?.trim()?.takeIf { it.isNotEmpty() }
 
 /** A Lounge the client knows: opened (POST /agents/:id/lounge), loaded by id, or carried on its agent's DM row. */
 data class RaftAgentLounge(
     val channelId: ChannelId,
     val agentId: String,
-    /** The agent's display name when known (its DM row, the member directory); else null. */
+    /**
+     * The agent's display name when known: its DM row (by the Lounge's `loungeAgentId`, kept
+     * current as Home reloads it), or the name the client opened it under; else null.
+     */
     val agentName: String? = null,
-    /** The Lounge's own channel name (`<agent>-lounge`), for the name fallback; may be blank. */
+    /** The Lounge's own channel name (a reserved slug): its Home row's name, never shown. May be blank. */
     val channelName: String = "",
     val joined: Boolean = false,
     /** From POST /agents/:id/lounge; null when this client never opened it (absent = may post, as on the web). */
@@ -102,9 +95,9 @@ data class RaftAgentLounge(
     /** The Lounge's latest activity (its row's `lastMessageAt`, then live messages): the sidebar's recency. */
     val lastMessageAt: String? = null,
 ) {
-    /** The agent's name for "{Name}'s Lounge". */
-    val displayAgentName: String
-        get() = loungeAgentDisplayName(agentName, channelName)
+    /** The agent's name for "{Name}'s Lounge"; null while it is unknown (the bare "Lounge"). */
+    val displayAgentName: String?
+        get() = loungeAgentDisplayName(agentName)
 
     /** May this person post here: not archived and not refused by the open answer. */
     val postable: Boolean

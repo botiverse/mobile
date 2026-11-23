@@ -61,7 +61,8 @@ internal data class RaftNativeNavBarPrefillStrings(
     val openTasksLabel: String,
     val openFilesLabel: String,
     val loungeLabel: String,
-    val loungeTitleForAgent: (String) -> String,
+    /** "{Name}'s Lounge", the bare "Lounge" for a null name ([agentLoungeTitleNow]). */
+    val loungeTitleForAgent: (String?) -> String,
     val channelDetailsTitle: String,
     val membersTitle: String,
 )
@@ -232,7 +233,7 @@ internal fun buildThreadNativeNavBarPrefillHead(
             .copy(serverPublicPageLive = serverPublicPageLive)
     val loungeHeader = pageLounge?.takeIf { headerDisplay.surfaceKind == RaftThreadSurfaceKind.Channel }
     val resolvedLoungeName = pageLounge?.displayAgentName
-    val loungeTitle = resolvedLoungeName?.let(resolvedStrings.loungeTitleForAgent)
+    val loungeTitle = pageLounge?.let { resolvedStrings.loungeTitleForAgent(resolvedLoungeName) }
     val title =
         if (loungeHeader != null && loungeTitle != null) {
             loungeTitle
