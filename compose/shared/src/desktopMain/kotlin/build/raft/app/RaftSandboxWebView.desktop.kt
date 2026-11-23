@@ -5,19 +5,28 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.key
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.awt.SwingPanel
-import build.raft.app.data.RaftDesktopPaths
-import io.github.kdroidfilter.webview.wry.Rgba
-import io.github.kdroidfilter.webview.wry.WryWebViewPanel
-import java.io.File
+import java.awt.Component
 import javax.swing.SwingUtilities
 import kotlinx.coroutines.delay
 
 /**
+ * Factory for the desktop WebView's off-EDT Wry bridge. Production always uses
+ * [RaftDesktopWryGateway.create]; desktop Compose UI tests can substitute a fake bridge without
+ * global mutable state.
+ */
+internal val LocalRaftDesktopWryBridgeFactory =
+    staticCompositionLocalOf<(policy: RaftDesktopWebViewPolicy, ephemeral: Boolean) -> RaftDesktopWryBridge> {
+        { policy, ephemeral -> RaftDesktopWryGateway.create(policy, ephemeral) }
+    }
+
+/**
  * Desktop sandbox WebView: the OS engine (macOS WKWebView, Windows WebView2, Linux WebKitGTK)
- * through Wry ([WryWebViewPanel], io.github.kdroidfilter:wrywebview), embedded in the Compose window
- * as a native child view. Security rules: [RaftDesktopWebViewPolicy].
+ * through Wry (`io.github.kdroidfilter:wrywebview`), embedded in the Compose window as a native
+ * child view via the single off-EDT gateway ([RaftDesktopWryGateway]). Security rules:
+ * [RaftDesktopWebViewPolicy].
  *
  * Wry's engine has no switch to turn JavaScript off, so a surface that asks for no scripts keeps
  * "Open in browser" (fail closed). Any change to the policy inputs or the data store rebuilds the WebView.
@@ -50,6 +59,7 @@ internal actual fun RaftSandboxWebViewHost(
         )
         return
     }
+    val bridgeFactory = LocalRaftDesktopWryBridgeFactory.current
     val policy =
         remember(
             config.url,
@@ -71,7 +81,7 @@ internal actual fun RaftSandboxWebViewHost(
             )
         }
     key(policy, config.ephemeral) {
-        val host = remember { RaftDesktopWryWebView(policy, config.ephemeral, events) }
+        val host = remember { RaftDesktopWryWebView(policy, bridgeFactory(policy, config.ephemeral), events) }
         host.events = events
         SwingPanel(factory = { host.view }, modifier = modifier)
         DisposableEffect(controller) {
@@ -118,34 +128,28 @@ private const val RaftDesktopWebViewReadyScript =
 private const val RaftDesktopWebViewMaxRestores = 2
 
 /**
- * One native WebView. Everything except [onNavigation] (Wry calls it on the engine's thread) runs
- * on the AWT event thread, which is Compose desktop's main thread.
+ * One native WebView host state machine.
+ *
+ * Everything except [onNavigation] (Wry calls it on the engine's thread) runs on the AWT EDT,
+ * while ALL blocking native Wry calls run strictly off-EDT via [bridge] ([RaftDesktopWryGateway])
+ * so the AWT EDT never synchronously waits on macOS Thread 0.
  */
 internal class RaftDesktopWryWebView(
     private val policy: RaftDesktopWebViewPolicy,
-    ephemeral: Boolean,
+    private val bridge: RaftDesktopWryBridge,
     var events: RaftWebViewEvents,
+    private val nowMs: () -> Long = System::currentTimeMillis,
+    private val postToEdt: (() -> Unit) -> Unit = { SwingUtilities.invokeLater(it) },
 ) {
     private val initialUrl = policy.initialUrl()
 
-    val panel =
-        WryWebViewPanel(
-            initialUrl = initialUrl ?: "about:blank",
-            dataDirectory = if (ephemeral) null else File(RaftDesktopPaths.dataDir, "webview").apply { mkdirs() }.path,
-            initScript = policy.documentStartScript(),
-            supportZoom = false,
-            backgroundColor = Rgba(255u, 255u, 255u, 255u),
-            transparent = false,
-            enableNavigationGestures = false,
-            incognito = ephemeral,
-            autoplayWithoutUserInteraction = false,
-        )
-
     /** What Compose hosts: keeps the native view off screen until [revealWhenReady] and when the page leaves. */
-    val view = RaftDesktopWryNativeView(panel)
+    val view: Component get() = bridge.component
+
     private var revealed = false
     private var loadFinishedAt = 0L
     private var readyCheckPending = false
+    private var pollInFlight = false
 
     @Volatile private var disposed = false
     @Volatile private var verifySoon = false
@@ -156,6 +160,8 @@ internal class RaftDesktopWryWebView(
     private var lastBlockedUrl = ""
     private var restores = 0
     private var currentTitle = ""
+    private var canGoBack = false
+    private var canGoForward = false
     private var loading = false
     private var progress = 0
 
@@ -166,7 +172,7 @@ internal class RaftDesktopWryWebView(
 
     init {
         // Wry asks for every navigation, main frame and sub-frames alike (URL only).
-        panel.addNavigateListener(::onNavigation)
+        bridge.addNavigateListener(::onNavigation)
     }
 
     fun start() {
@@ -194,12 +200,14 @@ internal class RaftDesktopWryWebView(
     }
 
     /**
-     * The native view goes with the panel ([WryWebViewPanel.removeNotify]); this stops callbacks.
+     * The native view goes with the panel's `removeNotify`; this stops callbacks and off-EDT work.
      * The navigation listener stays registered (Wry reads the list on its own thread); it only
-     * reads the immutable policy.
+     * reads the immutable policy and `@Volatile disposed`.
      */
     fun dispose() {
         disposed = true
+        pollInFlight = false
+        bridge.dispose()
         boundController?.unbindCommandDispatcher(this)
         boundController = null
     }
@@ -209,76 +217,101 @@ internal class RaftDesktopWryWebView(
         return when (policy.navigation(url)) {
             RaftDesktopWebViewNavigation.Allow -> true
             RaftDesktopWebViewNavigation.AllowUnverifiedFrame -> {
-                topLevelCheck.markUnverified(System.currentTimeMillis())
+                topLevelCheck.markUnverified(nowMs())
                 verifySoon = true
                 true
             }
             RaftDesktopWebViewNavigation.Block -> {
-                SwingUtilities.invokeLater { if (!disposed) events.onNavigationBlocked(url) }
+                postToEdt { if (!disposed) events.onNavigationBlocked(url) }
                 false
             }
         }
     }
 
     fun poll() {
-        if (disposed || !panel.isReady()) return
-        for (raw in panel.drainIpcMessages()) onChannelMessage(raw)
-        val now = System.currentTimeMillis()
+        if (disposed || !bridge.isReady()) return
+        val now = nowMs()
         if (topLevelCheck.timedOut(now)) {
             // A declared-frame navigation happened and the page does not answer: it may be a foreign
             // top-level page holding its main thread. Fail closed, without waiting for it.
             takeBack(blockedUrl = null)
             return
         }
-        val nowLoading = panel.isLoading()
+        // Coalesce overlapping polls while the off-EDT worker is waiting on macOS Thread 0 (e.g.
+        // during Chinese IME or live window resize) so pending polls never pile up in the queue.
+        if (pollInFlight) return
+        pollInFlight = true
+        val started =
+            bridge.poll { snapshot ->
+                pollInFlight = false
+                if (!disposed) onPollSnapshot(snapshot)
+            }
+        if (!started) {
+            pollInFlight = false
+        }
+    }
+
+    private fun onPollSnapshot(snapshot: RaftDesktopWryPollSnapshot) {
+        for (raw in snapshot.ipcMessages) onChannelMessage(raw)
+        if (disposed) return
+        val now = nowMs()
+        if (topLevelCheck.timedOut(now)) {
+            takeBack(blockedUrl = null)
+            return
+        }
+        val nowLoading = snapshot.isLoading
+        canGoBack = snapshot.canGoBack
+        canGoForward = snapshot.canGoForward
         topLevelCheck.beginRequest(now)?.let { token ->
             val idle = !nowLoading
-            panel.evaluateJavaScript(HrefScript) { result ->
+            bridge.evaluateJavaScript(HrefScript) { result ->
                 val href = RaftDesktopWebViewPolicy.decodeEvaluatedString(result)
-                SwingUtilities.invokeLater { onTopLevelUrl(token, idle, href) }
+                if (!disposed) onTopLevelUrl(token, idle, href)
             }
         }
-        currentTitle = panel.getTitle().orEmpty()
+        currentTitle = snapshot.title
         if (nowLoading && !loading) {
             loading = true
             progress = 10
             loadGeneration += 1
             commitSent = false
         } else if (!nowLoading && loading) {
-            loading = false
-            progress = 100
-            if (loadFinishedAt == 0L) loadFinishedAt = System.currentTimeMillis()
-            if (!commitSent) {
-                commitSent = true
-                events.onLoadCommit()
-            }
-            events.onLoadSuccess()
+            finishLoad(now)
         }
         revealWhenReady()
         notifyState(force = false)
     }
 
+    private fun finishLoad(now: Long) {
+        loading = false
+        progress = 100
+        if (loadFinishedAt == 0L) loadFinishedAt = now
+        if (!commitSent) {
+            commitSent = true
+            events.onLoadCommit()
+        }
+        events.onLoadSuccess()
+    }
+
     /** Shows the native view once the page is past its loading frame, or at the deadline. */
     private fun revealWhenReady() {
         if (revealed || loadFinishedAt == 0L || readyCheckPending) return
-        if (System.currentTimeMillis() - loadFinishedAt >= RaftDesktopWebViewRevealDeadlineMs) {
+        if (nowMs() - loadFinishedAt >= RaftDesktopWebViewRevealDeadlineMs) {
             reveal()
             return
         }
         readyCheckPending = true
-        panel.evaluateJavaScript(RaftDesktopWebViewReadyScript) { result ->
+        bridge.evaluateJavaScript(RaftDesktopWebViewReadyScript) { result ->
             val ready = RaftDesktopWebViewPolicy.decodeEvaluatedString(result) == "1"
-            SwingUtilities.invokeLater {
-                readyCheckPending = false
-                if (ready && !disposed) reveal()
-            }
+            readyCheckPending = false
+            if (ready && !disposed) reveal()
         }
     }
 
     private fun reveal() {
         if (revealed) return
         revealed = true
-        view.reveal()
+        bridge.reveal()
     }
 
     private fun onTopLevelUrl(token: Long, idle: Boolean, href: String?) {
@@ -287,7 +320,7 @@ internal class RaftDesktopWryWebView(
         // No readable answer (script error) is trusted only while no declared-frame check is pending.
         val trusted =
             if (href == null) !topLevelCheck.armed else href == "about:blank" || policy.isTrustedTopLevel(href)
-        val verdict = topLevelCheck.answer(token, trusted, idle, System.currentTimeMillis())
+        val verdict = topLevelCheck.answer(token, trusted, idle, nowMs())
         if (verdict == RaftDesktopWebViewTopLevelCheck.Verdict.Stale) return
         if (verdict == RaftDesktopWebViewTopLevelCheck.Verdict.Untrusted) {
             takeBack(blockedUrl = href?.takeIf { it.isNotBlank() })
@@ -303,14 +336,26 @@ internal class RaftDesktopWryWebView(
         // A trusted page the user reached (not the one restored to) re-arms the restore budget.
         if (href != lastTrustedUrl) restores = 0
         lastTrustedUrl = href
-        if (href == currentUrl) return
-        currentUrl = href
-        events.onUrlChange(href)
-        if (loading && !commitSent) {
-            commitSent = true
-            events.onLoadCommit()
+        val urlChanged = href != currentUrl
+        if (urlChanged) {
+            currentUrl = href
+            events.onUrlChange(href)
+            if (loading && !commitSent) {
+                commitSent = true
+                events.onLoadCommit()
+            }
         }
-        notifyState(force = false)
+        if (idle && !loading && !commitSent) {
+            // Fast/cached initial load finished before any poll saw `isLoading == true`: complete
+            // commit, success, and reveal so the native view never stays parked off-screen.
+            finishLoad(nowMs())
+            revealWhenReady()
+            notifyState(force = false)
+            return
+        }
+        if (urlChanged) {
+            notifyState(force = false)
+        }
     }
 
     /** The top-level document left the fence (or stopped answering): report it and load back. */
@@ -320,10 +365,10 @@ internal class RaftDesktopWryWebView(
             lastBlockedUrl = blockedUrl
             events.onNavigationBlocked(blockedUrl)
         }
-        panel.stopLoading()
+        bridge.stopLoading()
         val back = lastTrustedUrl?.takeIf { restores < RaftDesktopWebViewMaxRestores } ?: "about:blank"
         restores += 1
-        panel.loadUrl(back)
+        bridge.loadUrl(back)
     }
 
     private fun onChannelMessage(raw: String) {
@@ -343,26 +388,26 @@ internal class RaftDesktopWryWebView(
             val script = command.removePrefix(RaftWebViewController.COMMAND_EVALUATE_JAVA_SCRIPT_PREFIX)
             if (script.isEmpty() || script.length > RaftWebViewMaxRuntimeJavaScriptLength) return
             if (!policy.canRunRuntimeScript(currentUrl)) return
-            panel.evaluateJavaScript(policy.guardRuntimeScript(script)) {}
+            bridge.evaluateJavaScript(policy.guardRuntimeScript(script)) {}
             return
         }
         if (command == RaftWebViewController.COMMAND_PROBE_DOCUMENT_CONTENT) {
             // The fixed, read-only probe ('1'/'0'), so not fenced like runtime scripts.
-            panel.evaluateJavaScript(RaftWebViewContentProbeScript) { result ->
+            bridge.evaluateJavaScript(RaftWebViewContentProbeScript) { result ->
                 val answer = raftWebViewDecodeContentProbe(RaftDesktopWebViewPolicy.decodeEvaluatedString(result) ?: result)
-                SwingUtilities.invokeLater { if (!disposed) events.onContentProbe(answer) }
+                if (!disposed) events.onContentProbe(answer)
             }
             return
         }
         when (command) {
-            RaftWebViewController.COMMAND_GO_BACK -> if (panel.canGoBack()) panel.goBack()
-            RaftWebViewController.COMMAND_GO_FORWARD -> if (panel.canGoForward()) panel.goForward()
+            RaftWebViewController.COMMAND_GO_BACK -> bridge.goBackIfPossible { poll() }
+            RaftWebViewController.COMMAND_GO_FORWARD -> bridge.goForwardIfPossible { poll() }
             RaftWebViewController.COMMAND_RELOAD -> {
                 restores = 0
                 progress = 0
-                panel.reload()
+                bridge.reload { poll() }
             }
-            RaftWebViewController.COMMAND_STOP -> panel.stopLoading()
+            RaftWebViewController.COMMAND_STOP -> bridge.stopLoading { poll() }
             else -> return
         }
         notifyState(force = true)
@@ -374,8 +419,8 @@ internal class RaftDesktopWryWebView(
             RaftWebViewNavigationState(
                 url = currentUrl,
                 title = currentTitle,
-                canGoBack = panel.canGoBack(),
-                canGoForward = panel.canGoForward(),
+                canGoBack = canGoBack,
+                canGoForward = canGoForward,
                 isLoading = loading,
                 progress = progress.coerceIn(0, 100),
                 loadGeneration = loadGeneration,
@@ -386,7 +431,7 @@ internal class RaftDesktopWryWebView(
         events.onNavigationStateChange(state)
     }
 
-    private companion object {
+    internal companion object {
         /** The committed top-level address, History API changes included. */
         const val HrefScript = "\"\" + window.location.href"
     }
