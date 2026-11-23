@@ -955,7 +955,7 @@
     {
       "id": "ds.pointer-density.heads",
       "kind": "component",
-      "source": "compose/designsystem/src/desktopVcase/kotlin/build/raft/designsystem/vcase/PointerDensityCases.kt:119",
+      "source": "compose/designsystem/src/desktopVcase/kotlin/build/raft/designsystem/vcase/PointerDensityCases.kt:123",
       "fixture": null,
       "axes": {
         "viewport": [
@@ -975,7 +975,7 @@
     {
       "id": "ds.pointer-density.rail",
       "kind": "component",
-      "source": "compose/designsystem/src/desktopVcase/kotlin/build/raft/designsystem/vcase/PointerDensityCases.kt:181",
+      "source": "compose/designsystem/src/desktopVcase/kotlin/build/raft/designsystem/vcase/PointerDensityCases.kt:185",
       "fixture": null,
       "axes": {
         "viewport": [

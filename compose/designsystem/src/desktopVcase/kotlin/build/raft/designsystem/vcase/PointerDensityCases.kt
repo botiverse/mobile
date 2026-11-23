@@ -77,6 +77,10 @@ fun PointerDensityControls() {
             RaftIconButton(onClick = {}, tooltip = "Search", size = RaftIconButtonSize.Lg) {
                 RaftGlyphIcon(RaftGlyph.Search, size = RaftTheme.controls.iconSize)
             }
+            // A row's trailing action (web InboxRowDone): the 28dp bar button under a fine pointer.
+            RaftIconButton(onClick = {}, tooltip = "Mark as Done", variant = RaftButtonVariant.Ghost, size = RaftIconButtonSize.Row) {
+                RaftGlyphIcon(RaftGlyph.Check, size = 18.dp)
+            }
         }
         RaftTabs {
             RaftTab("Workspace", selected = true, onClick = {})
