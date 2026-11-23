@@ -166,9 +166,10 @@ object RaftListRowIconSize {
     val Default: Dp = 20.dp
 
     /**
-     * An action row's leading icon: an interactive row with a risk (raft-design #1296, raft-ui
-     * 0.102.2, `size-4.5`). A row that does one thing is a labelled `lg` button, so it takes that
-     * button's 18px icon, not a list row's 20px.
+     * An action row's leading icon: an interactive row that is one action ([RaftListRow]'s
+     * `action`, raft-ui 0.102.21 `data-action`) or has a risk (raft-design #1296, `size-4.5`). A
+     * row that does one thing is a labelled `lg` button, so it takes that button's 18px icon, not
+     * a list row's 20px.
      */
     val Action: Dp = 18.dp
 }
@@ -178,8 +179,8 @@ object RaftListRowIconSize {
  * interactive row with a [risk], disabled or not (so the row doesn't shift when it greys);
  * [RaftListRowIconSize.Default] on every other row, a display-only one with a risk included.
  */
-internal fun raftListRowIconSize(risk: RaftRiskTone?, interactive: Boolean): Dp =
-    if (interactive && risk != null) RaftListRowIconSize.Action else RaftListRowIconSize.Default
+internal fun raftListRowIconSize(risk: RaftRiskTone?, interactive: Boolean, action: Boolean = false): Dp =
+    if (interactive && (action || risk != null)) RaftListRowIconSize.Action else RaftListRowIconSize.Default
 
 /**
  * The size to draw a [RaftListRow]'s leading icon at, read inside its `leading` slot (web
@@ -280,6 +281,12 @@ fun RaftListRow(
     variant: RaftListRowVariant = RaftListRowVariant.Default,
     tone: RaftRowTone = RaftRowTone.Default,
     risk: RaftRiskTone? = null,
+    /**
+     * The row is one action (raft-ui 0.102.21 ListRow `action`): its leading icon is 18dp, a
+     * labelled `lg` button's, whatever its [risk]. Pass it on every row of an actions card (Stop
+     * agent, Restart, Archive, Leave, Delete) so their icons match.
+     */
+    action: Boolean = false,
     selected: Boolean = false,
     enabled: Boolean = true,
     divider: Boolean = false,
@@ -381,7 +388,7 @@ fun RaftListRow(
                     // (raft-design #1296); an avatar ignores both.
                     CompositionLocalProvider(
                         LocalRaftContentColor provides (inks.riskInk ?: inks.ink3),
-                        LocalRaftListRowIconSize provides raftListRowIconSize(risk, interactive),
+                        LocalRaftListRowIconSize provides raftListRowIconSize(risk, interactive, action),
                     ) { leading() }
                 }
             }
