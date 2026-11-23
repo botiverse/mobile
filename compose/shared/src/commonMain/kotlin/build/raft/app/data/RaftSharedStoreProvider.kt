@@ -2848,7 +2848,10 @@ internal class RaftSharedStoreProvider private constructor(
 
     /**
      * Channel announcements of this shell scope (SharedChannelAnnouncementStore.kt): one store, so
-     * the conversation's strip and the channel details read and write the same slice.
+     * the conversation's strip and the channel details read and write the same slice. Created by the
+     * first page that shows one, and from then on fed by the shell's realtime owner whichever page is
+     * open (as the web's socket bridge feeds its channel rows): an announcement changed while its
+     * channel is closed is read when it opens.
      */
     internal fun channelAnnouncementStore(scope: RaftShellStoreScope): SharedChannelAnnouncementStore =
         shellChannelAnnouncementStores.getOrPut(scope) {
@@ -2856,8 +2859,16 @@ internal class RaftSharedStoreProvider private constructor(
                 repository = ChannelAnnouncementRepository(NetworkRaftChannelAnnouncementApi(networkClient(scope))),
                 scope = threadSendScope,
                 logger = sharedInfoLogger("SlockChannelAnnouncement", "shared_channel_announcement"),
-            )
+            ).also { store ->
+                realtimeDomainEventOwner(scope).registerGuardedActiveThreadSink(
+                    RealtimeGuardedActiveThreadSink { serverId, event -> store.dispatch(ChannelAnnouncementIntent.Realtime(serverId, event)) },
+                )
+            }
         }
+
+    /** This scope's channel announcement store if a page made one (the Artifact viewer tells it what was seen). */
+    internal fun existingChannelAnnouncementStore(scope: RaftShellStoreScope): SharedChannelAnnouncementStore? =
+        shellChannelAnnouncementStores.get(scope)
 
     /**
      * Channel conversions of this shell scope (SharedChannelConversionStore.kt): the conversation's

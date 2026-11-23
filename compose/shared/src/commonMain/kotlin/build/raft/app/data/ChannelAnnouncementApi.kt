@@ -6,6 +6,7 @@ import build.raft.app.model.ServerId
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.contentOrNull
@@ -136,6 +137,25 @@ private val channelAnnouncementJson = Json {
 
 /** The announcement a read answered; [announcement] null: the channel has none. */
 data class ChannelAnnouncementRead(val announcement: RaftChannelAnnouncement?)
+
+/**
+ * Which announcement a channel row names (web `channelRowAnnouncementKey`, botiverse/slock #16289):
+ * [artifactId], null for none. Only what the store needs to know whether to read it again; the
+ * announcement itself is read on its own.
+ */
+@Serializable
+data class RaftChannelRowAnnouncement(val artifactId: String?)
+
+/**
+ * The announcement a `channel:updated` row names: its stored `announcementArtifactId` (the DB row
+ * of every `PATCH channels/:id`, publishChannelUpdate; null for none). Null when the row has no such
+ * field: it says nothing about it.
+ */
+internal fun parseRaftChannelRowAnnouncement(row: JsonObject): RaftChannelRowAnnouncement? {
+    val stored = row["announcementArtifactId"] ?: return null
+    if (stored is JsonNull) return RaftChannelRowAnnouncement(null)
+    return (stored as? JsonPrimitive)?.takeIf { it.isString }?.contentOrNull?.takeIf { it.isNotBlank() }?.let(::RaftChannelRowAnnouncement)
+}
 
 private fun ChannelAnnouncementForPersonWireDto.toDomainOrNull(): RaftChannelAnnouncement? {
     val actorType =
