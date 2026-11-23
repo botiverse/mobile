@@ -195,7 +195,13 @@ internal fun String?.isEdgeBlockedMarker(): Boolean =
     this?.trim()?.lowercase() == "edge_blocked"
 
 internal fun ScreenError.errorPresentation(): ErrorPresentation {
-    if (serverMessage.isEdgeBlockedMarker()) {
+    val normalizedCode = code.trim().lowercase()
+    val normalizedServerCode = serverCode?.trim()?.lowercase()
+    if (
+        serverMessage.isEdgeBlockedMarker() ||
+        normalizedServerCode == "edge_blocked" ||
+        normalizedCode == "edge_blocked"
+    ) {
         // The marker is an internal wire fact, not human-readable copy; the
         // localized network-blocked sentence always wins.
         return ErrorPresentation(
@@ -205,46 +211,174 @@ internal fun ScreenError.errorPresentation(): ErrorPresentation {
             traceId = traceId,
         )
     }
-    val key = code.errorPresentationKeyOrNull()
+    val serverCodeKey = serverCode.serverCodePresentationKeyOrNull()
+    val codeKey =
+        if (!normalizedServerCode.isNullOrEmpty() && normalizedCode == normalizedServerCode) {
+            serverCodeKey
+        } else {
+            code.errorPresentationKeyOrNull()
+        }
+    val isServerFault =
+        normalizedServerCode == "internal_error" ||
+        normalizedCode == "internal_error" ||
+        serverCodeKey == ErrorPresentationKey.ServerUnavailable ||
+        codeKey == ErrorPresentationKey.ServerUnavailable
+    if (isServerFault) {
+        return ErrorPresentation(
+            key =
+                if (serverCodeKey == ErrorPresentationKey.ServerUnavailable || codeKey == ErrorPresentationKey.ServerUnavailable) {
+                    ErrorPresentationKey.ServerUnavailable
+                } else {
+                    ErrorPresentationKey.Generic
+                },
+            rawServerMessage = null,
+            rawServerMessagePriority = RawServerMessagePriority.LocalizedCopyFirst,
+            traceId = traceId,
+        )
+    }
+    // Tier 1 (infrastructure/auth/network/parse/version): localized copy always wins.
+    val infraKey = listOfNotNull(codeKey, serverCodeKey).firstOrNull { it.isInfrastructureLocalizedOnly() }
+    if (infraKey != null) {
+        return ErrorPresentation(
+            key = infraKey,
+            rawServerMessage = null,
+            rawServerMessagePriority = RawServerMessagePriority.LocalizedCopyFirst,
+            traceId = traceId,
+        )
+    }
+    // Tier 2 (specific localized domain codes): exact serverCode takes precedence over generic
+    // HTTP status codes in `code` (e.g. code="http_403", serverCode="file_upload_quota_exceeded").
+    val specificDomainKey = listOfNotNull(serverCodeKey, codeKey).firstOrNull { it.isSpecificLocalizedDomainCode() }
+    if (specificDomainKey != null) {
+        return ErrorPresentation(
+            key = specificDomainKey,
+            rawServerMessage = usableServerRefusalMessage(serverMessage),
+            rawServerMessagePriority = RawServerMessagePriority.LocalizedCopyFirst,
+            traceId = traceId,
+        )
+    }
+    // Tier 3 / 4 (generic 4xx categories like ItemNotFound / PermissionDenied, or unknown codes):
+    // match PermissionBlocker.errorPresentation() — show a usable server refusal sentence verbatim
+    // when present, otherwise fall back to localized category / generic copy.
     return ErrorPresentation(
-        key = key ?: ErrorPresentationKey.Generic,
-        rawServerMessage = serverMessage,
-        rawServerMessagePriority =
-            if (key == null) {
-                RawServerMessagePriority.ServerMessageFirst
-            } else {
-                RawServerMessagePriority.LocalizedCopyFirst
-            },
+        key = serverCodeKey ?: codeKey ?: ErrorPresentationKey.Generic,
+        rawServerMessage = usableServerRefusalMessage(serverMessage),
+        rawServerMessagePriority = RawServerMessagePriority.ServerMessageFirst,
         traceId = traceId,
     )
 }
 
-internal fun PermissionBlocker.errorPresentation(): ErrorPresentation =
-    if (serverMessage.isEdgeBlockedMarker()) {
-        ErrorPresentation(
+internal fun PermissionBlocker.errorPresentation(): ErrorPresentation {
+    val normalizedCode = code.trim().lowercase()
+    val normalizedServerCode = serverCode?.trim()?.lowercase()
+    if (
+        serverMessage.isEdgeBlockedMarker() ||
+        normalizedServerCode == "edge_blocked" ||
+        normalizedCode == "edge_blocked"
+    ) {
+        return ErrorPresentation(
             key = ErrorPresentationKey.EdgeBlocked,
             rawServerMessage = serverMessage,
             rawServerMessagePriority = RawServerMessagePriority.LocalizedCopyFirst,
             traceId = traceId,
         )
-    } else if (isAuthSessionBlocker() || code.isHttpStatusPresentationCode(401)) {
-        ErrorPresentation(
+    }
+    if (
+        isAuthSessionBlocker() ||
+        normalizedCode.isHttpStatusPresentationCode(401) ||
+        normalizedServerCode.isAuthSessionErrorCode()
+    ) {
+        return ErrorPresentation(
             key = ErrorPresentationKey.SessionExpired,
-            rawServerMessage = serverMessage,
+            rawServerMessage = null,
             rawServerMessagePriority = RawServerMessagePriority.LocalizedCopyFirst,
             traceId = traceId,
         )
-    } else {
-        ErrorPresentation(
-            key = ErrorPresentationKey.PermissionDenied,
-            rawServerMessage = serverMessage,
-            // Route-specific typed adapters only populate serverMessage from
-            // the endpoint's confirmed human-readable field. A non-blank
-            // value is therefore the deterministic "specific reason" signal;
-            // do not guess actionability from English keywords.
-            rawServerMessagePriority = RawServerMessagePriority.ServerMessageFirst,
+    }
+    if (normalizedServerCode == "internal_error" || normalizedCode == "internal_error") {
+        return ErrorPresentation(
+            key = ErrorPresentationKey.Generic,
+            rawServerMessage = null,
+            rawServerMessagePriority = RawServerMessagePriority.LocalizedCopyFirst,
             traceId = traceId,
         )
+    }
+    val serverCodeKey = serverCode.serverCodePresentationKeyOrNull()
+    val codeKey =
+        if (!normalizedServerCode.isNullOrEmpty() && normalizedCode == normalizedServerCode) {
+            serverCodeKey
+        } else {
+            code.errorPresentationKeyOrNull()
+        }
+    val specificDomainKey = listOfNotNull(serverCodeKey, codeKey).firstOrNull { it.isSpecificLocalizedDomainCode() }
+    if (specificDomainKey != null) {
+        return ErrorPresentation(
+            key = specificDomainKey,
+            rawServerMessage = usableServerRefusalMessage(serverMessage),
+            rawServerMessagePriority = RawServerMessagePriority.LocalizedCopyFirst,
+            traceId = traceId,
+        )
+    }
+    return ErrorPresentation(
+        key = ErrorPresentationKey.PermissionDenied,
+        rawServerMessage = usableServerRefusalMessage(serverMessage),
+        // Route-specific typed adapters only populate serverMessage from
+        // the endpoint's confirmed human-readable field. A usable non-blank
+        // value is therefore the deterministic "specific reason" signal;
+        // do not guess actionability from English keywords.
+        rawServerMessagePriority = RawServerMessagePriority.ServerMessageFirst,
+        traceId = traceId,
+    )
+}
+
+private fun ErrorPresentationKey.isInfrastructureLocalizedOnly(): Boolean =
+    when (this) {
+        ErrorPresentationKey.EdgeBlocked,
+        ErrorPresentationKey.SessionExpired,
+        ErrorPresentationKey.ServerUnreachable,
+        ErrorPresentationKey.RequestTimedOut,
+        ErrorPresentationKey.NetworkConnectionFailed,
+        ErrorPresentationKey.ServerUnavailable,
+        ErrorPresentationKey.ResponseUnreadable,
+        ErrorPresentationKey.ServerVersionIncompatible -> true
+        else -> false
+    }
+
+private fun ErrorPresentationKey.isSpecificLocalizedDomainCode(): Boolean =
+    when (this) {
+        ErrorPresentationKey.AttachmentTooLarge,
+        ErrorPresentationKey.AttachmentMonthlyQuotaExceeded,
+        ErrorPresentationKey.ChannelReadOnly,
+        ErrorPresentationKey.ChannelArchived,
+        ErrorPresentationKey.TooManyAttempts -> true
+        else -> false
+    }
+
+/**
+ * Exact-match mapping for wire `serverCode` values carried in API JSON error envelopes.
+ * Deliberately avoids substring heuristics (such as `"host"`, `"auth"`, `"rate"`, or `"mismatch"`)
+ * that belong only to client-synthesized local [ScreenError.code] identifiers and would
+ * misclassify real server refusal codes like `joint_channel_host_limit`, `oauth_not_connected`,
+ * `federated_channel_...`, or `channel_conversion_fence_mismatch`.
+ */
+internal fun String?.serverCodePresentationKeyOrNull(): ErrorPresentationKey? =
+    when (this?.trim()?.lowercase()) {
+        "edge_blocked" -> ErrorPresentationKey.EdgeBlocked
+        "auth_required",
+        "auth_session",
+        "unauthenticated" -> ErrorPresentationKey.SessionExpired
+        "attachment_too_large",
+        "upload_too_large" -> ErrorPresentationKey.AttachmentTooLarge
+        "file_upload_quota_exceeded",
+        "upload_quota_exceeded" -> ErrorPresentationKey.AttachmentMonthlyQuotaExceeded
+        "external_limit_frozen",
+        "channel_read_only",
+        "quota_read_only" -> ErrorPresentationKey.ChannelReadOnly
+        "channel_archived" -> ErrorPresentationKey.ChannelArchived
+        "rate_limited",
+        "too_many_requests",
+        "too_many_attempts" -> ErrorPresentationKey.TooManyAttempts
+        else -> null
     }
 
 internal fun EmptyReason.errorPresentation(): ErrorPresentation =
