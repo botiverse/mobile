@@ -290,7 +290,7 @@ internal data class StandaloneSettingsWebViewSpec(
     val frameHosts: Set<String> = emptySet(),
     val bottomContentPadding: Dp = 0.dp,
     val hostEventsEnabled: Boolean = false,
-    /** Uses non-persistent/incognito WebView storage (e.g. Desktop Wry or iOS own-web fallback). */
+    /** Uses non-persistent/incognito WebView storage (e.g. the desktop WebView or iOS own-web fallback). */
     val ephemeral: Boolean = raftPlatformUsesEphemeralAuthWebView(),
     val buildWebUrl: (webBaseUrl: String?, session: StoredAuthSession?, localeTag: String) -> String,
 )
@@ -517,7 +517,7 @@ private fun StandaloneSettingsWebViewBody(
         remember(sharedStores, storeScope) {
             sharedStores.authStore(storeScope)
         }
-    val authSnapshot = rememberSettingsWebViewAuthSnapshot(authStore, sharedStores.authStore)
+    val authSnapshot = rememberSettingsWebViewAuthSnapshot(authStore, sharedStores.authStore, followShellServerScope = true)
     val webBaseUrl = standaloneSettingsWebBaseUrl(sharedStores.apiEnvironmentStore)
     // #300: the page holds only the access token; it is refreshed ahead of its expiry while shown.
     val accessTokenRefresher =
@@ -689,7 +689,10 @@ internal fun StandaloneSettingsWebViewContent(
                 ephemeral = spec.ephemeral,
                 injectedJavaScript = injectedJavaScript,
                 controller = controller,
-                generationKey = hostAuthBinding?.webViewGeneration,
+                // The WebView is keyed on its address and the selected server (with the auth
+                // binding): a page kept on screen across a server switch reloads for the new server,
+                // also when its address names none (#247).
+                generationKey = hostAuthBinding?.webViewGeneration to session.currentServerId,
                 onLoadCommit = onLoadCommit,
                 onLoadSuccess = onLoadSuccess,
                 onUrlChange = { changedUrl ->

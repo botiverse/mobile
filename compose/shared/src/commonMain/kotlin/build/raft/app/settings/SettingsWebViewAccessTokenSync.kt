@@ -15,6 +15,7 @@ import build.raft.app.data.AuthSessionEvent
 import build.raft.app.data.RaftAuthSessionEventSource
 import build.raft.app.data.RaftAuthSessionStore
 import build.raft.app.data.StoredAuthSession
+import build.raft.app.data.raftServerScopeFlow
 import build.raft.app.data.runCatchingPreservingCancellation
 import kotlinx.atomicfu.atomic
 import kotlinx.coroutines.flow.collect
@@ -88,6 +89,8 @@ internal class SettingsWebViewAuthSnapshotReducer(
 internal fun rememberSettingsWebViewAuthSnapshot(
     shellAuthStore: RaftAuthSessionStore,
     processAuthEvents: RaftAuthSessionEventSource,
+    /** Re-reads the session when the shell's selected server changes (see below); Settings pages. */
+    followShellServerScope: Boolean = false,
 ): SettingsWebViewAuthSnapshot {
     var snapshot by remember(shellAuthStore, processAuthEvents) { mutableStateOf(SettingsWebViewAuthSnapshot()) }
     val reducer =
@@ -105,6 +108,16 @@ internal fun rememberSettingsWebViewAuthSnapshot(
                 val latestSession = runCatchingPreservingCancellation { shellAuthStore.readSession() }.getOrNull()
                 snapshot = reducer.reduceAccepted(latestSession, event)
             }
+    }
+    // A server switch from the rail or the switcher is the shell's own selection, announced on the
+    // shell store ([raftServerScopeFlow]), not always as a process event: follow it too, so a page
+    // kept on screen across the switch (the wide layout's Settings detail) gets the new server's
+    // session, address and WebView (#247).
+    if (followShellServerScope) LaunchedEffect(shellAuthStore, reducer) {
+        shellAuthStore.raftServerScopeFlow().collect {
+            val latestSession = runCatchingPreservingCancellation { shellAuthStore.readSession() }.getOrNull()
+            snapshot = reducer.reconcileSubscription(latestSession)
+        }
     }
     return snapshot
 }
