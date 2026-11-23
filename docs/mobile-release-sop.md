@@ -269,6 +269,15 @@ change-logs/X.Y.Z/play/{zh-CN,en,ja}.md
   `🐛 **修复** / 🐛 **Fixed** / 🐛 **修正**`.
 - Only behaviour shipped on that platform; bullets don't repeat the platform
   name; fold small related fixes into one line; soften partial capabilities.
+- **No gated features (artin, 2026-11-24).** Do not include features behind a
+  feature flag or rollout gate (`rollout: flag`, `rollout: canary`, allowlist,
+  or any default-off server/local switch not yet rolled out to everyone — for
+  example `agent_lounge_v0`, `channel_announcement_v0`, `quote_reply_v0`,
+  `mobile_ios_native_nav_v1`, `mobile_raft_sign_in_v0`,
+  `mobile_screenshot_feedback_v0`, `app_web_step_up_v1`), even if their
+  changesets landed in the train. Verify every candidate bullet against
+  `SharedServerFeatureFlags.kt` and `botiverse/slock`
+  `packages/shared/src/featureFlags.ts` before aggregating.
 - Same claims and section counts in all three locales.
 - Terms match the live catalogs: `botiverse/slock`
   `packages/web/src/i18n/messages/` and
