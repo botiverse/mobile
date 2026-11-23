@@ -53,6 +53,7 @@ internal data class RaftShellOverlayItem(
     val label: String,
     val iconName: String? = null,
     val enabled: Boolean = true,
+    val dividerBefore: Boolean = false,
 )
 
 /**
@@ -82,6 +83,7 @@ internal data class RaftShellOverlayRequest(
                                 put("label", item.label)
                                 put("enabled", item.enabled)
                                 item.iconName?.let { put("icon", it) }
+                                if (item.dividerBefore) put("dividerBefore", true)
                             }
                         )
                     }
@@ -162,6 +164,7 @@ internal fun JsonObject?.toRaftShellOverlayRequestOrNull(): RaftShellOverlayRequ
                 label = label,
                 iconName = row.optString("icon").takeIf { it.isNotEmpty() },
                 enabled = row.optBoolean("enabled", true),
+                dividerBefore = row.optBoolean("dividerBefore", false),
             )
         }
     if (items.isEmpty()) return null

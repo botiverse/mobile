@@ -3583,7 +3583,8 @@ private fun RaftStructuralHomeShellContent(
                             sortMode = systemSectionSortMode(section),
                             hideEmptySections = hideEmptySections,
                             custom = false,
-                            canCreateChannel = section == RaftHomeSortSection.Channels
+                            canCreateChannel = section == RaftHomeSortSection.Channels,
+                            canCreateExternalChannel = section == RaftHomeSortSection.JointChannels && onCreateJointChannelClick != null,
                         ),
                     selectedId = "",
                     onDismiss = { activeSystemSectionMenu = null },
@@ -3596,6 +3597,7 @@ private fun RaftStructuralHomeShellContent(
                                 sectionDialogTarget =
                                     RaftHomeSectionDialogTarget.Create(insertBeforeSectionId = section.sidebarSectionOrderId())
                             actionId == "create-channel" -> onCreateChannelClick()
+                            actionId == "create-external-channel" -> onCreateJointChannelClick?.invoke()
                         }
                         activeSystemSectionMenu = null
                     }
@@ -4233,11 +4235,13 @@ private fun RaftHomeSortSection.sidebarSectionOrderId(): String =
     }
 
 /**
- * Agent Lounge v0: a Lounge row's long-press menu, a DM row's (web SidebarRowContextMenu
- * `lounge`): Mark as Read / Unread, Pin / Unpin, Mute / Unmute (only once joined and its own row
- * is loaded, [RaftHomeConversationItem.activityMuteSupported]; a stored mute keeps Unmute), then
- * Close. No Move to section, Notifications or Sort: a Lounge has no place in a custom section or
- * in the saved order.
+ * Agent Lounge v0 (menu order v4, botiverse/slock #16225 / `SidebarRowContextMenu` `lounge`):
+ * Group 1: Mark as read / unread + Mute / Unmute (only once joined and its own row is loaded,
+ * [RaftHomeConversationItem.activityMuteSupported]; a stored mute keeps Unmute).
+ * Group 2: Pin / Unpin (own group after divider).
+ * Group 4: Close chat (own group after divider).
+ * No Move to section, Notifications or Sort: a Lounge has no place in a custom section or in the
+ * saved order.
  */
 internal fun raftHomeAgentLoungeMenuItems(
     lounge: RaftHomeConversationItem,
@@ -4253,13 +4257,6 @@ internal fun raftHomeAgentLoungeMenuItems(
                 icon = if (hasUnread) RaftLucideIconName.MailOpen else RaftLucideIconName.Mail
             )
         )
-        add(
-            RaftBaseMenuItem(
-                id = "toggle-pin",
-                label = if (pinned) labels.unpin else labels.pin,
-                icon = if (pinned) RaftLucideIconName.PinOff else RaftLucideIconName.Pin
-            )
-        )
         if (lounge.activityMuteSupported || lounge.activityMuted) {
             add(
                 RaftBaseMenuItem(
@@ -4269,6 +4266,14 @@ internal fun raftHomeAgentLoungeMenuItems(
                 )
             )
         }
+        add(
+            RaftBaseMenuItem(
+                id = "toggle-pin",
+                label = if (pinned) labels.unpin else labels.pin,
+                icon = if (pinned) RaftLucideIconName.PinOff else RaftLucideIconName.Pin,
+                dividerBefore = true
+            )
+        )
         add(RaftBaseMenuItem(id = "close-dm", label = labels.closeChat, icon = RaftLucideIconName.X, dividerBefore = true))
     }
 
@@ -4383,17 +4388,12 @@ internal fun raftHomeConversationMenuItems(
     notificationLevelLabel: String? = null
 ): List<RaftBaseMenuItem> =
     buildList {
-        // Web parity (Sidebar.tsx row context menu): "Move to Section" leads,
-        // then read / pin / mute, then close (DMs) or archive / leave (channels).
-        if (canMoveToSection) {
-            add(
-                RaftBaseMenuItem(
-                    id = "move-to-section",
-                    label = labels.moveToSection,
-                    icon = RaftLucideIconName.FolderInput
-                )
-            )
-        }
+        // Web parity (menu order v4, botiverse/slock #16225 / SidebarRowContextMenu.tsx):
+        // 1. Mark read/unread + Notifications / Mute
+        // 2. Pin + Move to section (+ mobile-only Sort manual reorder)
+        // 3. Archive (channels only, own group)
+        // 4. Leave (channels, own group) or Close chat (DMs)
+        //
         // Web SidebarReadToggleMenuItem: a joined channel reads with its followed threads ("Mark All
         // as Read") once both gates are on, and thread-only unread then also counts as unread.
         // DMs and unjoined channels keep the single-scope toggle.
@@ -4415,21 +4415,15 @@ internal fun raftHomeConversationMenuItems(
                         readConversation -> labels.markAllAsRead
                         else -> labels.markAsRead
                     },
-                icon = if (hasUnread) RaftLucideIconName.MailOpen else RaftLucideIconName.Mail,
-                dividerBefore = canMoveToSection
-            )
-        )
-        add(
-            RaftBaseMenuItem(
-                id = "toggle-pin",
-                label = if (pinTargetIsPinned) labels.unpin else labels.pin,
-                icon = if (pinTargetIsPinned) RaftLucideIconName.PinOff else RaftLucideIconName.Pin
+                icon = if (hasUnread) RaftLucideIconName.MailOpen else RaftLucideIconName.Mail
             )
         )
         // A channel's mute is the third choice of its Notifications row (slock #12231, as in Slack), so
         // only a row without one (a DM, or a server without the unified API) lists Mute / Unmute.
         // Unmute stays offered while muted even if mute is no longer supported (removed App bot DM).
-        if (notificationLevelLabel == null && (conversation.activityMuteSupported || conversation.activityMuted)) {
+        if (notificationLevelLabel != null) {
+            add(RaftBaseMenuItem(id = "notification-level", label = notificationLevelLabel, icon = RaftLucideIconName.BellRing))
+        } else if (conversation.activityMuteSupported || conversation.activityMuted) {
             add(
                 RaftBaseMenuItem(
                     id = if (conversation.activityMuted) "unmute-channel" else "mute-channel",
@@ -4438,8 +4432,22 @@ internal fun raftHomeConversationMenuItems(
                 )
             )
         }
-        if (notificationLevelLabel != null) {
-            add(RaftBaseMenuItem(id = "notification-level", label = notificationLevelLabel, icon = RaftLucideIconName.BellRing))
+        add(
+            RaftBaseMenuItem(
+                id = "toggle-pin",
+                label = if (pinTargetIsPinned) labels.unpin else labels.pin,
+                icon = if (pinTargetIsPinned) RaftLucideIconName.PinOff else RaftLucideIconName.Pin,
+                dividerBefore = true
+            )
+        )
+        if (canMoveToSection) {
+            add(
+                RaftBaseMenuItem(
+                    id = "move-to-section",
+                    label = labels.moveToSection,
+                    icon = RaftLucideIconName.FolderInput
+                )
+            )
         }
         // Mobile-only: the manual reorder overlay stands in for web drag-and-drop.
         if (sortableFromMenu) {
@@ -4453,26 +4461,28 @@ internal fun raftHomeConversationMenuItems(
         }
         if (activeIsDirectMessage) {
             add(RaftBaseMenuItem(id = "close-dm", label = labels.closeChat, icon = RaftLucideIconName.X, dividerBefore = true))
-        } else if (activeCanArchive) {
-            add(
-                RaftBaseMenuItem(
-                    id = "archive-channel",
-                    label = labels.archive,
-                    icon = RaftLucideIconName.Archive,
-                    dividerBefore = true
+        } else {
+            if (activeCanArchive) {
+                add(
+                    RaftBaseMenuItem(
+                        id = "archive-channel",
+                        label = labels.archive,
+                        icon = RaftLucideIconName.Archive,
+                        dividerBefore = true
+                    )
                 )
-            )
-        }
-        // botiverse/slock #11289: Leave sits under Archive, sharing its divider.
-        if (!activeIsDirectMessage && activeCanLeave) {
-            add(
-                RaftBaseMenuItem(
-                    id = "leave-channel",
-                    label = labels.leaveChannel,
-                    icon = RaftLucideIconName.LogOut,
-                    dividerBefore = !activeCanArchive
+            }
+            // botiverse/slock #16225 (menu order v4): Leave is its own group after Archive.
+            if (activeCanLeave) {
+                add(
+                    RaftBaseMenuItem(
+                        id = "leave-channel",
+                        label = labels.leaveChannel,
+                        icon = RaftLucideIconName.LogOut,
+                        dividerBefore = true
+                    )
                 )
-            )
+            }
         }
     }
 
@@ -4488,26 +4498,23 @@ internal fun raftHomePinnedMemberMenuItems(
     )
 
 /**
- * Section header menu (long-press on a section header, the mobile stand-in
- * for web's right-click). Mirrors web Sidebar.tsx's section context menu:
- * [create channel (Channels only)] / Sort: Manual, Recent, A-Z (current one
- * checked) / Display: Hide Empty Sections (checked when on) / [rename] /
- * New Section… / [delete]. Rename and delete only exist on custom sections.
- * Web also offers "Create external channel" on the External menu; here that is
- * the External header's "+" (shown with the menu's section, which is only
- * drawn while it has channels), so the menu leaves it out.
+ * Section header menu (long-press on a section header, the mobile stand-in for web's right-click).
+ * Mirrors web `SidebarSectionContextMenu.tsx` (menu order v4, botiverse/slock #16225 / `563672da5`):
+ * 1. Sort: Manual, Recent, A-Z (current one checked)
+ * 2. Display: Hide empty sections (checked when on)
+ * 3. Create channel (Channels) or Create external channel (External), when permitted
+ * 4. Rename section (custom only) / New section…
+ * 5. Delete section (custom only)
  */
 internal fun raftHomeSectionMenuItems(
     labels: RaftHomeShellLabels = RaftHomeShellLabels(),
     sortMode: RaftSidebarSortMode = RaftSidebarSortMode.Manual,
     hideEmptySections: Boolean = false,
     custom: Boolean = true,
-    canCreateChannel: Boolean = false
+    canCreateChannel: Boolean = false,
+    canCreateExternalChannel: Boolean = false,
 ): List<RaftBaseMenuItem> =
     buildList {
-        if (canCreateChannel) {
-            add(RaftBaseMenuItem(id = "create-channel", label = labels.createChannel, icon = RaftLucideIconName.Plus))
-        }
         RaftSidebarSortMode.entries.forEachIndexed { index, mode ->
             add(
                 RaftBaseMenuItem(
@@ -4519,7 +4526,6 @@ internal fun raftHomeSectionMenuItems(
                             RaftSidebarSortMode.Az -> labels.sortAz
                         },
                     checked = mode == sortMode,
-                    dividerBefore = index == 0 && canCreateChannel,
                     groupLabel = if (index == 0) labels.sortMenuTitle else null
                 )
             )
@@ -4533,6 +4539,25 @@ internal fun raftHomeSectionMenuItems(
                 groupLabel = labels.displaySection
             )
         )
+        if (canCreateChannel) {
+            add(
+                RaftBaseMenuItem(
+                    id = "create-channel",
+                    label = labels.createChannel,
+                    icon = RaftLucideIconName.Plus,
+                    dividerBefore = true
+                )
+            )
+        } else if (canCreateExternalChannel) {
+            add(
+                RaftBaseMenuItem(
+                    id = "create-external-channel",
+                    label = labels.createExternalChannel,
+                    icon = RaftLucideIconName.ExternalChannel,
+                    dividerBefore = true
+                )
+            )
+        }
         if (custom) {
             add(RaftBaseMenuItem(id = "rename", label = labels.renameSection, icon = RaftLucideIconName.Pencil, dividerBefore = true))
         }

@@ -34,9 +34,9 @@ import org.robolectric.RuntimeEnvironment
 import org.robolectric.annotation.Config
 
 /**
- * botiverse/slock #14222: a message's menus in a channel's list (the Compact menu and its More, the
- * Classic menu) name the conversation's Mark as Unread by its kind, web's words, and a tap on
- * either runs it once; a thread's menus never show it.
+ * botiverse/slock #16225 (menu order v4): "Mark channel as unread" and "Mark DM as unread" are
+ * gone from both the Compact and Classic message menus (the Home/sidebar row menu owns it); a
+ * message whose thread is followed still offers "Mark thread as unread" in both menus.
  */
 @OptIn(ExperimentalTestApi::class)
 @RunWith(RobolectricTestRunner::class)
@@ -58,37 +58,35 @@ class ThreadMarkConversationUnreadMenuUiTest {
     @AfterTest fun unregisterPager() = PagerManager.unregister(livePager)
 
     @Test
-    fun bothMenusOfAChannelMessageMarkTheChannelUnread() =
+    fun messageMenusOmitMarkChannelAndDmUnreadAndKeepMarkThreadUnread() =
         runRobolectricComposeUiTest {
             build.raft.app.data.RaftAndroidSqlDatabaseContext.init(RuntimeEnvironment.getApplication())
-            var marked = 0
+            var markedThread = 0
             setContent {
                 CompositionLocalProvider(LocalActivity provides RaftPageActivity(livePager)) {
                     RaftTheme(appearance = RaftAppearance.Light) {
-                        ChannelMessageMenus(ThreadMarkConversationUnreadKind.Channel) { marked += 1 }
+                        ChannelMessageMenus { markedThread += 1 }
                     }
                 }
             }
             waitForIdle()
-            onAllNodesWithText("Mark channel as unread", useUnmergedTree = true).assertCountEquals(2)
-            // The menu rows themselves (the label merges into its clickable row); by their click
-            // action, as the stacked menus run past the test window's bottom.
-            val items = onAllNodes(hasClickAction() and (hasText("Mark channel as unread") or hasContentDescription("Mark channel as unread")))
+            onAllNodesWithText("Mark channel as unread", useUnmergedTree = true).assertCountEquals(0)
+            onAllNodesWithText("Mark DM as unread", useUnmergedTree = true).assertCountEquals(0)
+            val items = onAllNodes(hasClickAction() and (hasText("Mark thread as unread") or hasContentDescription("Mark thread as unread")))
             items.assertCountEquals(2)
             items[0].performSemanticsAction(SemanticsActions.OnClick)
             items[1].performSemanticsAction(SemanticsActions.OnClick)
             waitForIdle()
-            assertEquals(2, marked, "each menu's item runs it once")
-            onAllNodesWithText("Mark DM as unread", useUnmergedTree = true).assertCountEquals(0)
+            assertEquals(2, markedThread, "each menu's Mark thread as unread runs it once")
         }
 }
 
 /**
  * A top-level message's menus in a conversation list whose thread the person follows: the Compact
- * menu, then the Classic menu, as [ThreadMarkConversationUnreadMenuScreenshotTest] draws them too.
+ * menu, then the Classic menu.
  */
 @Composable
-internal fun ChannelMessageMenus(kind: ThreadMarkConversationUnreadKind?, onMarkConversationUnread: () -> Unit) {
+internal fun ChannelMessageMenus(onMarkThreadUnread: () -> Unit) {
     val message =
         RaftThreadMessageItem(
             id = "message-1",
@@ -107,7 +105,6 @@ internal fun ChannelMessageMenus(kind: ThreadMarkConversationUnreadKind?, onMark
                     followThread = true,
                     threadFollowed = true,
                     markThreadUnread = true,
-                    markConversationUnread = kind,
                 ),
             onReact = {},
             onCopy = {},
@@ -117,7 +114,7 @@ internal fun ChannelMessageMenus(kind: ThreadMarkConversationUnreadKind?, onMark
             onTranslate = {},
             onSelect = {},
             onMore = {},
-            onMarkConversationUnread = onMarkConversationUnread,
+            onMarkThreadUnread = onMarkThreadUnread,
         )
         ThreadMessageMenuChrome(
             actions =
@@ -134,7 +131,6 @@ internal fun ChannelMessageMenus(kind: ThreadMarkConversationUnreadKind?, onMark
                     showDeleteAction = false,
                     showForwardAction = true,
                     showMarkThreadUnreadAction = true,
-                    markConversationUnread = kind,
                     onReply = {},
                     onCopyLink = {},
                     onCopy = {},
@@ -147,7 +143,7 @@ internal fun ChannelMessageMenus(kind: ThreadMarkConversationUnreadKind?, onMark
                     onConvertToTask = {},
                     onCancel = {},
                     onDelete = {},
-                    onMarkConversationUnread = onMarkConversationUnread,
+                    onMarkThreadUnread = onMarkThreadUnread,
                 ),
             showReactionActions = true,
             reactionAtlasImage = null,

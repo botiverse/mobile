@@ -2653,11 +2653,12 @@ internal fun SharedActivityList(
         }
         activeMenuItem?.let { item ->
             val resolvedMenuAnchor = menuAnchor ?: return@let
+            val mutedByChannelId = channelMute?.mutedByChannelId.orEmpty()
+            val actionIds = activityContextMenuActionIds(item, mutedByChannelId)
+            val labels = actionIds.associateWith { actionId -> activityRowActionLabel(item, actionId) }
             RaftBaseMenuOverlay(
                 anchor = resolvedMenuAnchor,
-                items = activityContextMenuActionIds(item, channelMute?.mutedByChannelId.orEmpty()).map { actionId ->
-                    RaftBaseMenuItem(id = actionId, label = activityRowActionLabel(item, actionId), icon = activityRowActionIcon(item, actionId))
-                },
+                items = activityContextMenuItems(item, mutedByChannelId) { actionId -> labels.getValue(actionId) },
                 selectedId = "",
                 onDismiss = { activeMenuItem = null },
                 onSelect = { id ->
@@ -2781,6 +2782,30 @@ internal fun activityContextMenuActionIds(item: InboxItem, mutedByChannelId: Map
             }
         }
     }
+
+/**
+ * Web `InboxContextMenu.tsx` (menu order v4, botiverse/slock #16225 / `563672da5`): Mute / Unmute
+ * Activity sits in its own group after read / done / follow, separated by a divider only when
+ * preceded by another group.
+ */
+internal fun activityContextMenuActionDividerBefore(actionIds: List<String>, index: Int): Boolean =
+    index > 0 && (actionIds[index] == "mute-activity" || actionIds[index] == "unmute-activity")
+
+internal fun activityContextMenuItems(
+    item: InboxItem,
+    mutedByChannelId: Map<String, Boolean> = emptyMap(),
+    labelForAction: (String) -> String,
+): List<RaftBaseMenuItem> {
+    val actionIds = activityContextMenuActionIds(item, mutedByChannelId)
+    return actionIds.mapIndexed { index, actionId ->
+        RaftBaseMenuItem(
+            id = actionId,
+            label = labelForAction(actionId),
+            icon = activityRowActionIcon(item, actionId),
+            dividerBefore = activityContextMenuActionDividerBefore(actionIds, index),
+        )
+    }
+}
 
 /** What one row action ([activityContextMenuActionIds]) writes, and its `activity_mark` analytics value if any. */
 internal data class ActivityRowActionWrite(

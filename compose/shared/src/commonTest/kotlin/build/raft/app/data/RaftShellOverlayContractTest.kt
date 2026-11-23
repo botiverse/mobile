@@ -53,4 +53,20 @@ class RaftShellOverlayContractTest {
         // Nothing open: a stray cancel is harmless, not something to process as a close.
         assertFalse(raftShellShouldDropOverlayRequest(activeRequestId = null, incomingRequestId = "req-old"))
     }
+
+    @Test
+    fun requestRoundTripsIconsAndDividers() {
+        val request =
+            RaftShellOverlayRequest(
+                requestId = "req-menu",
+                pageKey = "thread-panel",
+                anchor = androidx.compose.ui.geometry.Offset(12f, 34f),
+                items =
+                    listOf(
+                        RaftShellOverlayItem(id = "follow", label = "Unfollow thread", iconName = "UnfollowThread"),
+                        RaftShellOverlayItem(id = "search", label = "Search in thread", iconName = "Search", dividerBefore = true),
+                    ),
+            )
+        assertEquals(request, request.toJson().toRaftShellOverlayRequestOrNull())
+    }
 }

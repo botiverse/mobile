@@ -5564,7 +5564,9 @@ private fun RaftAppShellReadyContent(
                                         RaftUiMenuItem(
                                             id = item.id,
                                             label = item.label,
-                                            enabled = item.enabled
+                                            icon = item.iconName?.let { name -> RaftLucideIconName.entries.firstOrNull { it.name == name } },
+                                            enabled = item.enabled,
+                                            dividerBefore = item.dividerBefore,
                                         )
                                     },
                                 onSelect = { id ->

@@ -535,6 +535,8 @@ internal fun RaftUiControlledMenu(
     if (!expanded) return
     val density = LocalDensity.current
     val effectiveRowCount = items.size.coerceAtLeast(1)
+    val dividerCount = items.drop(1).count { it.dividerBefore }
+    val separatorHeight = RaftMetrics.MenuSeparatorInset * 2 + RaftAppStroke.Thin
     // raft overlays float on a shadow that takes no layout space; the list sits in a p-1 popup.
     val chromeHeight = RaftMetrics.PopupPadding * 2
     // raft: the surface turns the legacy 40dp row into `min-h-9` and widens to `min-w-60`.
@@ -546,6 +548,7 @@ internal fun RaftUiControlledMenu(
                 width = measuredWidth.toPx(),
                 height =
                     measuredRowHeight.toPx() * effectiveRowCount +
+                        separatorHeight.toPx() * dividerCount +
                         chromeHeight.toPx()
             )
         }

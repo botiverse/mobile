@@ -378,19 +378,28 @@ internal fun ThreadPageHeader(
         if (!showActions) {
             emptyList()
         } else {
-            buildList {
-                addAll(nativeSideActions.toRaftNativeNavBarActions())
-                if (nativeLevelTarget != null) {
-                    add(
-                        RaftNativeNavBarAction(
-                            NOTIFICATION_LEVEL_MENU_ITEM_ID,
-                            nativeLevelLabel,
-                            "bell",
-                            { nativeLevelDialogOpen = true },
-                            placement = RaftNativeNavBarPlacement.Overflow,
-                            icon = RaftLucideIconName.BellRing,
-                        )
+            val baseActions = nativeSideActions.toRaftNativeNavBarActions()
+            if (nativeLevelTarget == null) {
+                baseActions
+            } else {
+                val levelAction =
+                    RaftNativeNavBarAction(
+                        NOTIFICATION_LEVEL_MENU_ITEM_ID,
+                        nativeLevelLabel,
+                        "bell",
+                        { nativeLevelDialogOpen = true },
+                        placement = RaftNativeNavBarPlacement.Overflow,
+                        icon = RaftLucideIconName.BellRing,
                     )
+                val deleteIndex = baseActions.indexOfFirst { it.id == DELETE_TASK_MENU_ITEM_ID }
+                if (deleteIndex >= 0) {
+                    buildList {
+                        addAll(baseActions.subList(0, deleteIndex))
+                        add(levelAction)
+                        addAll(baseActions.subList(deleteIndex, baseActions.size))
+                    }
+                } else {
+                    baseActions + levelAction
                 }
             }
         }
@@ -957,18 +966,18 @@ internal fun threadHeaderSideColumnActionsForPayload(
             val icon = if (focusModeActive) RaftLucideIconName.Minimize2 else RaftLucideIconName.Maximize2
             add(raftSideColumnLucideAction(FOCUS_MODE_MENU_ITEM_ID, labels.focusLabel, icon, onToggleFocusMode).copy(keepVisible = true))
         }
-        if (taskConversation || (replyThreadMenu && payload.threadHeaderSearchAction() != null)) {
-            val label = if (taskConversation) labels.searchInTaskLabel else labels.searchInThreadLabel
-            add(raftSideColumnLucideAction(SEARCH_IN_TASK_MENU_ITEM_ID, label, RaftLucideIconName.Search, onOpenSearch))
-        }
-        // Web ThreadOverflowMenu: Timeline after Search, before View in Channel; in the ⋯.
-        if (onOpenTimeline != null) {
-            add(raftSideColumnLucideAction(THREAD_TIMELINE_MENU_ITEM_ID, labels.timelineLabel, RaftLucideIconName.List, onOpenTimeline, priority = -1))
-        }
-        if (taskConversation && onViewTaskInChannel != null) {
-            add(raftSideColumnLucideAction(VIEW_TASK_IN_CHANNEL_MENU_ITEM_ID, labels.viewInChannelLabel, RaftLucideIconName.MapPin, onViewTaskInChannel))
-        } else if (replyThreadMenu && parentReachable && payload.threadHeaderOpenInParentActionVisible()) {
-            add(raftSideColumnLucideAction(VIEW_TASK_IN_CHANNEL_MENU_ITEM_ID, labels.viewInChannelLabel, RaftLucideIconName.MapPin, onOpenInChannel))
+        // Menu order v4 (botiverse/slock #16225): Follow + Mark as unread lead the thread/task ⋯,
+        // before Search, Timeline, View in channel, then Delete task.
+        if (labels.followLabel != null && threadFollowed != null && onToggleThreadFollow != null) {
+            add(
+                raftSideColumnLucideAction(
+                    FOLLOW_THREAD_MENU_ITEM_ID,
+                    labels.followLabel,
+                    threadFollowMenuIcon(threadFollowed),
+                    onToggleThreadFollow,
+                    priority = -1,
+                )
+            )
         }
         if (onMarkThreadUnread != null) {
             add(
@@ -981,16 +990,18 @@ internal fun threadHeaderSideColumnActionsForPayload(
                 )
             )
         }
-        if (labels.followLabel != null && threadFollowed != null && onToggleThreadFollow != null) {
-            add(
-                raftSideColumnLucideAction(
-                    FOLLOW_THREAD_MENU_ITEM_ID,
-                    labels.followLabel,
-                    threadFollowMenuIcon(threadFollowed),
-                    onToggleThreadFollow,
-                    priority = -1,
-                )
-            )
+        if (taskConversation || (replyThreadMenu && payload.threadHeaderSearchAction() != null)) {
+            val label = if (taskConversation) labels.searchInTaskLabel else labels.searchInThreadLabel
+            add(raftSideColumnLucideAction(SEARCH_IN_TASK_MENU_ITEM_ID, label, RaftLucideIconName.Search, onOpenSearch))
+        }
+        // Web ThreadOverflowMenu: Timeline after Search, before View in Channel; in the ⋯.
+        if (onOpenTimeline != null) {
+            add(raftSideColumnLucideAction(THREAD_TIMELINE_MENU_ITEM_ID, labels.timelineLabel, RaftLucideIconName.List, onOpenTimeline, priority = -1))
+        }
+        if (taskConversation && onViewTaskInChannel != null) {
+            add(raftSideColumnLucideAction(VIEW_TASK_IN_CHANNEL_MENU_ITEM_ID, labels.viewInChannelLabel, RaftLucideIconName.MapPin, onViewTaskInChannel))
+        } else if (replyThreadMenu && parentReachable && payload.threadHeaderOpenInParentActionVisible()) {
+            add(raftSideColumnLucideAction(VIEW_TASK_IN_CHANNEL_MENU_ITEM_ID, labels.viewInChannelLabel, RaftLucideIconName.MapPin, onOpenInChannel))
         }
         if (taskConversation && onDeleteTask != null) {
             add(raftSideColumnLucideAction(DELETE_TASK_MENU_ITEM_ID, labels.deleteTaskLabel, RaftLucideIconName.Trash2, onDeleteTask, priority = -1))
@@ -1487,12 +1498,143 @@ private fun rememberThreadAdaptiveFocusContext(
     return context
 }
 
+internal data class ThreadHeaderOverflowMenuLabels(
+    val followLabel: String? = null,
+    val markUnreadLabel: String = "",
+    val searchLabel: String = "",
+    val timelineLabel: String = "",
+    val viewInChannelLabel: String = "",
+    val notificationLevelLabel: String? = null,
+    val deleteTaskLabel: String = "",
+)
+
 /**
- * task #180 (web parity #9172/#9335): the thread panel's overflow menu, anchored in the header.
- *
- * Web puts Focus mode as the first item of this menu; mobile had no thread-panel overflow at all,
- * so this is that menu with its first (and for now only) entry. Kept generic so later parity items
- * can join it instead of adding more permanent header icons.
+ * Thread / task `⋯` header menu items (menu order v4, botiverse/slock #16225 / `563672da5`,
+ * `ThreadOverflowMenu.tsx`):
+ * 1. Follow / Unfollow + Mark as unread (for a reply thread; a task has no Mark as unread so its
+ *    Follow shares the next group rather than standing alone above a divider).
+ * 2. Search, Timeline, View in channel, then folded head actions.
+ * 3. Notifications level (mobile-only, when supported).
+ * 4. Delete task (when offered).
+ * Dividers appear only between non-empty groups (never leading, trailing, or double).
+ */
+internal fun threadHeaderOverflowMenuItems(
+    labels: ThreadHeaderOverflowMenuLabels,
+    foldedActions: List<ThreadHeaderOwnActionSpec> = emptyList(),
+    followed: Boolean? = null,
+    hasToggleFollow: Boolean = false,
+    hasMarkUnread: Boolean = false,
+    hasSearch: Boolean = false,
+    hasTimeline: Boolean = false,
+    hasViewInChannel: Boolean = false,
+    taskFollowLabels: Boolean = false,
+    hasDeleteTask: Boolean = false,
+): List<RaftUiMenuItem> =
+    buildList {
+        val showFollow = followed != null && hasToggleFollow && !labels.followLabel.isNullOrBlank()
+        val showMarkUnread = hasMarkUnread && !taskFollowLabels
+        val hasAttentionGroup = showFollow || showMarkUnread
+        if (showFollow) {
+            add(
+                RaftUiMenuItem(
+                    id = FOLLOW_THREAD_MENU_ITEM_ID,
+                    label = labels.followLabel.orEmpty(),
+                    icon = threadFollowMenuIcon(followed == true),
+                    enabled = true,
+                )
+            )
+        }
+        if (showMarkUnread) {
+            add(
+                RaftUiMenuItem(
+                    id = MARK_THREAD_UNREAD_MENU_ITEM_ID,
+                    label = labels.markUnreadLabel,
+                    icon = RaftLucideIconName.MessageSquareDot,
+                    enabled = true,
+                )
+            )
+        }
+        // Web ThreadOverflowMenu.tsx:177: a task has no Mark as Unread, so its Follow shares the
+        // conversation group rather than standing alone above a divider.
+        var needConversationDivider = !taskFollowLabels && hasAttentionGroup
+        fun consumeConversationDivider(): Boolean {
+            val divider = needConversationDivider
+            needConversationDivider = false
+            return divider
+        }
+        if (hasSearch) {
+            add(
+                RaftUiMenuItem(
+                    id = SEARCH_IN_TASK_MENU_ITEM_ID,
+                    label = labels.searchLabel,
+                    icon = RaftLucideIconName.Search,
+                    enabled = true,
+                    dividerBefore = consumeConversationDivider(),
+                )
+            )
+        }
+        if (hasTimeline) {
+            add(
+                RaftUiMenuItem(
+                    id = THREAD_TIMELINE_MENU_ITEM_ID,
+                    label = labels.timelineLabel,
+                    icon = RaftLucideIconName.List,
+                    enabled = true,
+                    dividerBefore = consumeConversationDivider(),
+                )
+            )
+        }
+        if (hasViewInChannel) {
+            add(
+                RaftUiMenuItem(
+                    id = VIEW_TASK_IN_CHANNEL_MENU_ITEM_ID,
+                    label = labels.viewInChannelLabel,
+                    icon = RaftLucideIconName.MapPin,
+                    enabled = true,
+                    dividerBefore = consumeConversationDivider(),
+                )
+            )
+        }
+        foldedActions.forEach { action ->
+            add(
+                RaftUiMenuItem(
+                    id = action.id,
+                    label = action.label,
+                    icon = action.icon,
+                    enabled = true,
+                    dividerBefore = consumeConversationDivider(),
+                )
+            )
+        }
+        // Design §4.3: the thread's notification level (All replies = follow / Mentions / Nothing / Default).
+        labels.notificationLevelLabel?.let { levelLabel ->
+            add(
+                RaftUiMenuItem(
+                    id = NOTIFICATION_LEVEL_MENU_ITEM_ID,
+                    label = levelLabel,
+                    icon = RaftLucideIconName.BellRing,
+                    enabled = true,
+                    dividerBefore = isNotEmpty(),
+                )
+            )
+        }
+        // Web: a separator, then Delete task (trash icon, no red in the menu).
+        if (hasDeleteTask) {
+            add(
+                RaftUiMenuItem(
+                    id = DELETE_TASK_MENU_ITEM_ID,
+                    label = labels.deleteTaskLabel,
+                    icon = RaftLucideIconName.Trash2,
+                    enabled = true,
+                    dividerBefore = isNotEmpty(),
+                )
+            )
+        }
+    }
+
+/**
+ * task #180 (web parity #9172/#9335, menu order v4 #16225): the thread/task panel's `⋯` overflow
+ * menu, anchored in the header.
  */
 @Composable
 private fun ThreadHeaderFocusModeMenu(
@@ -1500,11 +1642,11 @@ private fun ThreadHeaderFocusModeMenu(
     followed: Boolean? = null,
     onToggleFollow: (() -> Unit)? = null,
     /**
-     * botiverse/slock #11687 (web ThreadOverflowMenu): Mark as Unread, before Follow; null for a
-     * thread the person doesn't follow, as its Activity row has none.
+     * botiverse/slock #11687 / #16225 (web ThreadOverflowMenu): Mark as unread, after Follow in
+     * the thread's first group; null for a thread the person doesn't follow.
      */
     onMarkUnread: (() -> Unit)? = null,
-    /** Web ThreadOverflowMenu: Search in Task (a task) or Search in Thread (a reply thread), after Focus mode. */
+    /** Web ThreadOverflowMenu: Search in Task (a task) or Search in Thread (a reply thread). */
     onSearchInTask: (() -> Unit)? = null,
     /** Web ThreadOverflowMenu Timeline (botiverse/slock #13534): the thread timeline's sheet, after Search. */
     onTimeline: (() -> Unit)? = null,
@@ -1530,105 +1672,41 @@ private fun ThreadHeaderFocusModeMenu(
     var notificationLevelDialogOpen by remember { mutableStateOf(false) }
     val notificationLevelLabel = rememberRaftNotificationLevelMenuLabel(notificationLevelTarget)
     val latestFoldedActions by rememberUpdatedState(foldedActions)
-    val items =
-        buildList {
-            // Folded conversation head toggles sit at the top of ⋯ in listed order (web ColumnOverflowMenu).
-            foldedActions.forEach { action ->
-                add(
-                    RaftUiMenuItem(
-                        id = action.id,
-                        label = action.label,
-                        icon = action.icon,
-                        enabled = true,
-                    )
-                )
-            }
-            // Task v2: the web menu's next rows for a task, in its order (ThreadOverflowMenu.tsx).
-            if (onSearchInTask != null) {
-                add(
-                    RaftUiMenuItem(
-                        id = SEARCH_IN_TASK_MENU_ITEM_ID,
-                        label = stringResource(if (taskFollowLabels) Res.string.task_conversation_search else Res.string.thread_action_search_in_thread),
-                        icon = RaftLucideIconName.Search,
-                        enabled = true
-                    )
-                )
-            }
-            if (onTimeline != null) {
-                add(
-                    RaftUiMenuItem(
-                        id = THREAD_TIMELINE_MENU_ITEM_ID,
-                        label = stringResource(Res.string.thread_outline_list_title),
-                        icon = RaftLucideIconName.List,
-                        enabled = true
-                    )
-                )
-            }
-            if (onViewInChannel != null) {
-                add(
-                    RaftUiMenuItem(
-                        id = VIEW_TASK_IN_CHANNEL_MENU_ITEM_ID,
-                        label = stringResource(Res.string.task_conversation_view_in_channel),
-                        icon = RaftLucideIconName.MapPin,
-                        enabled = true
-                    )
-                )
-            }
-            if (onMarkUnread != null) {
-                add(
-                    RaftUiMenuItem(
-                        id = MARK_THREAD_UNREAD_MENU_ITEM_ID,
-                        label = stringResource(Res.string.home_action_mark_as_unread),
-                        icon = RaftLucideIconName.MessageSquareDot,
-                        enabled = true
-                    )
-                )
-            }
-            // task #180 (artin): follow/unfollow of this thread's message column sits in the same
-            // panel menu. `followed` is null when the thread has no message to follow, in which case
-            // the row is not offered at all rather than shown disabled.
-            if (followed != null && onToggleFollow != null) {
-                add(
-                    RaftUiMenuItem(
-                        id = FOLLOW_THREAD_MENU_ITEM_ID,
-                        label =
-                            stringResource(
-                                when {
-                                    taskFollowLabels && followed -> Res.string.task_conversation_unfollow
-                                    taskFollowLabels -> Res.string.task_conversation_follow
-                                    followed -> Res.string.thread_action_unfollow_thread
-                                    else -> Res.string.thread_action_follow_thread
-                                }
-                            ),
-                        icon = threadFollowMenuIcon(followed),
-                        enabled = true
-                    )
-                )
-            }
-            // Design §4.3: the thread's level (All replies = follow / Mentions / Nothing / Default).
-            if (notificationLevelTarget != null) {
-                add(
-                    RaftUiMenuItem(
-                        id = NOTIFICATION_LEVEL_MENU_ITEM_ID,
-                        label = notificationLevelLabel,
-                        icon = RaftLucideIconName.BellRing,
-                        enabled = true
-                    )
-                )
-            }
-            // Web: a separator, then Delete task (trash icon, no red in the menu).
-            if (onDeleteTask != null) {
-                add(
-                    RaftUiMenuItem(
-                        id = DELETE_TASK_MENU_ITEM_ID,
-                        label = stringResource(Res.string.task_delete_action),
-                        icon = RaftLucideIconName.Trash2,
-                        enabled = true,
-                        dividerBefore = true,
-                    )
-                )
-            }
+    val followLabel =
+        if (followed != null && onToggleFollow != null) {
+            stringResource(
+                when {
+                    taskFollowLabels && followed -> Res.string.task_conversation_unfollow
+                    taskFollowLabels -> Res.string.task_conversation_follow
+                    followed -> Res.string.thread_action_unfollow_thread
+                    else -> Res.string.thread_action_follow_thread
+                }
+            )
+        } else {
+            null
         }
+    val items =
+        threadHeaderOverflowMenuItems(
+            labels =
+                ThreadHeaderOverflowMenuLabels(
+                    followLabel = followLabel,
+                    markUnreadLabel = stringResource(Res.string.home_action_mark_as_unread),
+                    searchLabel = stringResource(if (taskFollowLabels) Res.string.task_conversation_search else Res.string.thread_action_search_in_thread),
+                    timelineLabel = stringResource(Res.string.thread_outline_list_title),
+                    viewInChannelLabel = stringResource(Res.string.task_conversation_view_in_channel),
+                    notificationLevelLabel = notificationLevelTarget?.let { notificationLevelLabel },
+                    deleteTaskLabel = stringResource(Res.string.task_delete_action),
+                ),
+            foldedActions = foldedActions,
+            followed = followed,
+            hasToggleFollow = onToggleFollow != null,
+            hasMarkUnread = onMarkUnread != null,
+            hasSearch = onSearchInTask != null,
+            hasTimeline = onTimeline != null,
+            hasViewInChannel = onViewInChannel != null,
+            taskFollowLabels = taskFollowLabels,
+            hasDeleteTask = onDeleteTask != null,
+        )
     // task #180: the menu is drawn by the SHELL, not here. This page is a Kuikly @Page whose visible
     // surface is only its own pane, so a Modal opened inside it is clipped to that pane (device
     // evidence: nothing outside the window's left 400px strip could ever appear). We resolve the
@@ -1739,7 +1817,9 @@ private fun ThreadHeaderFocusModeMenu(
                             RaftShellOverlayItem(
                                 id = it.id,
                                 label = it.label,
-                                enabled = it.enabled
+                                iconName = it.icon?.name,
+                                enabled = it.enabled,
+                                dividerBefore = it.dividerBefore,
                             )
                         }
                 ).toJson()

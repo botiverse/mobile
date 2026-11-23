@@ -27,12 +27,13 @@ import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 
 /**
- * botiverse/slock #11687: a reply's long-press menu in a followed reply thread, light and dark. The
- * Compact menu (top) has Mark Thread as Unread on its second row after Select Text and Copy Link;
- * the Classic menu (below, the Compact menu's More) has it right after Save, as web's MessageItem
- * menu in a thread panel. Both with the message-square-dot icon. The menus are the real chrome,
- * drawn in the page (in the app each is its own popup). Reports land in
- * `build/reports/home-screenshots/`; verify / record as [RaftRobolectricScreenshot].
+ * botiverse/slock #11687 / #16225: a reply's long-press menu in a followed reply thread, light and
+ * dark. The Compact menu (top) has Mark Thread as Unread on its second row after Select Text and
+ * Copy Link; the Classic menu (below, the Compact menu's More) groups Mark thread as unread in the
+ * thread section, then Copy Markdown / Copy link / Forward / Select text / Select message, then
+ * Save. Both with the message-square-dot icon. The menus are the real chrome, drawn in the page
+ * (in the app each is its own popup). Reports land in `build/reports/home-screenshots/`; verify /
+ * record as [RaftRobolectricScreenshot].
  */
 @RunWith(RobolectricTestRunner::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)

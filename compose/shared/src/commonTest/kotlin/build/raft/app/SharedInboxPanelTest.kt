@@ -521,6 +521,20 @@ class SharedInboxPanelTest {
         assertEquals(listOf("toggle-read", "done"), activityContextMenuActionIds(channel, emptyMap()))
         // DMs mute from their own settings, not from Activity.
         assertEquals(listOf("toggle-read", "done"), activityContextMenuActionIds(dm, mapOf("dm-peer" to false)))
+
+        // Menu order v4 (botiverse/slock #16225): Mute / Unmute Activity sits in its own group.
+        assertEquals(
+            listOf("toggle-read" to false, "done" to false, "mute-activity" to true),
+            activityContextMenuItems(channel, mapOf("general" to false)) { it }.map { it.id to it.dividerBefore },
+        )
+        assertEquals(
+            listOf("toggle-read" to false, "done" to false, "unmute-activity" to true),
+            activityContextMenuItems(channel, mapOf("general" to true)) { it }.map { it.id to it.dividerBefore },
+        )
+        assertEquals(
+            listOf("toggle-read" to false, "done" to false),
+            activityContextMenuItems(channel, emptyMap()) { it }.map { it.id to it.dividerBefore },
+        )
     }
 
     @Test

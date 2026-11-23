@@ -38,28 +38,9 @@ class ThreadMarkThreadUnreadMenuTest {
         }
     }
 
-    // botiverse/slock #14222 (web useMessageMenuMarkUnread): in a channel's or DM's list, a
-    // message's menu offers the conversation's Mark as Unread and, when the person follows the
-    // message's thread, that thread's.
-    @Test
-    fun aConversationListOffersItsOwnMarkAsUnreadNamedByItsKind() {
-        data class Case(val name: String, val slice: ThreadTimelineSlice, val expected: ThreadMarkConversationUnreadKind?)
-        listOf(
-            Case("channel", slice(RaftThreadSurfaceKind.Channel), ThreadMarkConversationUnreadKind.Channel),
-            Case("dm", slice(RaftThreadSurfaceKind.DirectMessage), ThreadMarkConversationUnreadKind.DirectMessage),
-            Case("channel previewed without joining", slice(RaftThreadSurfaceKind.Channel).copy(joined = false), null),
-            Case("reply thread", slice(RaftThreadSurfaceKind.ReplyThread), null),
-            Case("task conversation", slice(RaftThreadSurfaceKind.Channel).copy(channelKind = RaftTaskConversationChannelKind), null),
-        ).forEach { case ->
-            assertEquals(case.expected, capabilities(message("m1"), case.slice, null).markConversationUnread, case.name)
-        }
-        assertNull(
-            capabilities(message("m1", deliveryState = ThreadMessageDeliverySending), slice(RaftThreadSurfaceKind.Channel), null)
-                .markConversationUnread,
-            "a local send has none"
-        )
-    }
-
+    // botiverse/slock #16225 (menu order v4): Mark channel/DM as unread is gone from the message
+    // menu (it lives on the Home/sidebar row menu); a list message whose thread is followed still
+    // offers Mark thread as unread.
     @Test
     fun aListMessageWhoseThreadIsFollowedMarksThatThread() {
         val channel = slice(RaftThreadSurfaceKind.Channel)

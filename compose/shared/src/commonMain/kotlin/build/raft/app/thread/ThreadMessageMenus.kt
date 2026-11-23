@@ -117,7 +117,6 @@ internal fun ThreadNewMessageMenu(
     onSelectText: () -> Unit = {},
     onMarkThreadUnread: () -> Unit = {},
     onCopySelection: () -> Unit = {},
-    onMarkConversationUnread: () -> Unit = {},
     /** A long press on a link opened the menu: that link's section on top (ThreadMessageLinkMenu.kt). */
     link: ThreadMessageLinkMenuSection? = null
 ) {
@@ -171,7 +170,6 @@ internal fun ThreadNewMessageMenu(
             onSelectText = onSelectText,
             onMarkThreadUnread = onMarkThreadUnread,
             onCopySelection = onCopySelection,
-            onMarkConversationUnread = onMarkConversationUnread,
             link = link
         )
     }
@@ -198,7 +196,6 @@ internal fun ThreadNewMessageMenuChrome(
     onSelectAll: () -> Unit = {},
     onMarkThreadUnread: () -> Unit = {},
     onCopySelection: () -> Unit = {},
-    onMarkConversationUnread: () -> Unit = {},
     /** A long press on a link opened the menu: that link's section on top (ThreadMessageLinkMenu.kt). */
     link: ThreadMessageLinkMenuSection? = null
 ) {
@@ -218,8 +215,7 @@ internal fun ThreadNewMessageMenuChrome(
             onSelectText = onSelectText,
             onSelectAll = onSelectAll,
             onMarkThreadUnread = onMarkThreadUnread,
-            onCopySelection = onCopySelection,
-            onMarkConversationUnread = onMarkConversationUnread
+            onCopySelection = onCopySelection
         )
     // The link section's "Copy link" sits above: the message's own reads "Copy Message Link".
     val menuAvailability = if (link != null) availability.copy(linkSection = true) else availability
@@ -339,16 +335,7 @@ internal fun ThreadNewMessageMenuTool.compactLabelResource(
         ThreadNewMessageMenuTool.SelectText -> Res.string.thread_action_select_text
         ThreadNewMessageMenuTool.SelectAll -> Res.string.thread_text_selection_select_all
         ThreadNewMessageMenuTool.MarkThreadUnread -> Res.string.thread_action_mark_thread_unread
-        ThreadNewMessageMenuTool.MarkConversationUnread ->
-            (availability.markConversationUnread ?: ThreadMarkConversationUnreadKind.Channel).menuLabel()
         ThreadNewMessageMenuTool.CopySelection -> Res.string.common_copy
-    }
-
-/** web `message.messageItem.markChannelAsUnread` / `markDmAsUnread`. */
-internal fun ThreadMarkConversationUnreadKind.menuLabel(): StringResource =
-    when (this) {
-        ThreadMarkConversationUnreadKind.Channel -> Res.string.thread_action_mark_channel_unread
-        ThreadMarkConversationUnreadKind.DirectMessage -> Res.string.thread_action_mark_dm_unread
     }
 
 internal fun ThreadNewMessageMenuTool.compactIcon(
@@ -371,8 +358,7 @@ internal fun ThreadNewMessageMenuTool.compactIcon(
         // Not SquareCheckBig: that is Mark as Done in the same menu (web MessageItem). Select All
         // only shows over a partial selection, where Select Text is hidden.
         ThreadNewMessageMenuTool.SelectAll -> RaftLucideIconName.SquareDashedText
-        ThreadNewMessageMenuTool.MarkThreadUnread,
-        ThreadNewMessageMenuTool.MarkConversationUnread -> RaftLucideIconName.MessageSquareDot
+        ThreadNewMessageMenuTool.MarkThreadUnread -> RaftLucideIconName.MessageSquareDot
         // Not Copy: that is Copy Markdown beside it in the same menu (web's icon for it).
         ThreadNewMessageMenuTool.CopySelection -> RaftLucideIconName.Type
     }
@@ -525,7 +511,6 @@ internal fun ThreadMessageActionMenu(
     showForwardAction: Boolean = false,
     showAddReactionAction: Boolean = false,
     showMarkThreadUnreadAction: Boolean = false,
-    markConversationUnread: ThreadMarkConversationUnreadKind? = null,
     onDismiss: () -> Unit,
     onReply: () -> Unit,
     onCopyLink: () -> Unit,
@@ -544,7 +529,6 @@ internal fun ThreadMessageActionMenu(
     onForward: () -> Unit = {},
     onAddReaction: () -> Unit = {},
     onMarkThreadUnread: () -> Unit = {},
-    onMarkConversationUnread: () -> Unit = {},
     onCopySelection: (() -> Unit)? = null,
     onDownloadVideo: (() -> Unit)? = null,
     /** Quote was chosen (the menu quotes the message into the composer itself), for its `message_action_selected`. */
@@ -576,7 +560,6 @@ internal fun ThreadMessageActionMenu(
             translatePending,
             showForwardAction,
             showMarkThreadUnreadAction,
-            markConversationUnread,
             onReply,
             onCopyLink,
             onCopy,
@@ -592,7 +575,6 @@ internal fun ThreadMessageActionMenu(
             onTranslate,
             onForward,
             onMarkThreadUnread,
-            onMarkConversationUnread,
             onCopySelection,
             onDownloadVideo,
             link != null,
@@ -618,7 +600,6 @@ internal fun ThreadMessageActionMenu(
                 translatePending = translatePending,
                 showForwardAction = showForwardAction,
                 showMarkThreadUnreadAction = showMarkThreadUnreadAction,
-                markConversationUnread = markConversationUnread,
                 onCopySelection = onCopySelection,
                 linkSection = link != null,
                 onReply = onReply,
@@ -636,7 +617,6 @@ internal fun ThreadMessageActionMenu(
                 onTranslate = onTranslate,
                 onForward = onForward,
                 onMarkThreadUnread = onMarkThreadUnread,
-                onMarkConversationUnread = onMarkConversationUnread,
                 onDownloadVideo = onDownloadVideo,
                 showQuoteAction = menuQuote != null && quoteIntoComposer != null,
                 onQuote = {

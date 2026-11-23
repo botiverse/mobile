@@ -358,8 +358,16 @@ class RaftHomeSidebarSectionsTest {
     fun customSectionMenuMirrorsWebSectionContextMenu() {
         val items = raftHomeSectionMenuItems(sortMode = RaftSidebarSortMode.Recent, hideEmptySections = true)
         assertEquals(
-            listOf("sort:manual", "sort:recent", "sort:az", "toggle-hide-empty", "rename", "create", "delete"),
-            items.map { it.id }
+            listOf(
+                "sort:manual" to false,
+                "sort:recent" to false,
+                "sort:az" to false,
+                "toggle-hide-empty" to true,
+                "rename" to true,
+                "create" to false,
+                "delete" to true,
+            ),
+            items.map { it.id to it.dividerBefore }
         )
         assertEquals(listOf("sort:recent", "toggle-hide-empty"), items.filter { it.checked }.map { it.id })
         assertEquals("Sort", items.first().groupLabel)
@@ -367,7 +375,7 @@ class RaftHomeSidebarSectionsTest {
     }
 
     @Test
-    fun systemSectionMenuOffersSortDisplayAndNewSectionButNoRenameOrDelete() {
+    fun systemSectionMenuOffersSortDisplayCreateAndNewSectionWithV4Dividers() {
         val channels =
             raftHomeSectionMenuItems(
                 sortMode = RaftSidebarSortMode.Manual,
@@ -376,15 +384,91 @@ class RaftHomeSidebarSectionsTest {
                 canCreateChannel = true
             )
         assertEquals(
-            listOf("create-channel", "sort:manual", "sort:recent", "sort:az", "toggle-hide-empty", "create"),
-            channels.map { it.id }
+            listOf(
+                "sort:manual" to false,
+                "sort:recent" to false,
+                "sort:az" to false,
+                "toggle-hide-empty" to true,
+                "create-channel" to true,
+                "create" to true,
+            ),
+            channels.map { it.id to it.dividerBefore }
         )
         assertEquals(listOf("sort:manual"), channels.filter { it.checked }.map { it.id })
+
+        val externalWithCreate =
+            raftHomeSectionMenuItems(
+                sortMode = RaftSidebarSortMode.Az,
+                custom = false,
+                canCreateExternalChannel = true,
+            )
+        assertEquals(
+            listOf(
+                "sort:manual" to false,
+                "sort:recent" to false,
+                "sort:az" to false,
+                "toggle-hide-empty" to true,
+                "create-external-channel" to true,
+                "create" to true,
+            ),
+            externalWithCreate.map { it.id to it.dividerBefore }
+        )
+        assertEquals(RaftLucideIconName.ExternalChannel, externalWithCreate.single { it.id == "create-external-channel" }.icon)
+
         val labels = RaftHomeShellLabels(sortMenuTitle = "排序", displaySection = "显示", hideEmptySections = "隐藏空的分区", newSectionMenu = "新建分区")
         val joint = raftHomeSectionMenuItems(labels = labels, sortMode = RaftSidebarSortMode.Az, custom = false)
         assertEquals(listOf("排序", "显示"), joint.mapNotNull { it.groupLabel })
         assertEquals("新建分区", joint.last().label)
-        assertTrue(joint.none { it.id == "create-channel" })
+        assertTrue(joint.last().dividerBefore)
+        assertTrue(joint.none { it.id == "create-channel" || it.id == "create-external-channel" })
+    }
+
+    @Test
+    fun homeConversationRowMenuFollowsWebMenuOrderV4GroupsAndDividers() {
+        val channel = RaftHomeConversationItem(id = "c-1", name = "general", activityMuteSupported = true)
+        val channelMenu =
+            raftHomeConversationMenuItems(
+                conversation = channel,
+                pinTargetIsPinned = false,
+                sortableFromMenu = true,
+                activeIsDirectMessage = false,
+                activeCanArchive = true,
+                activeCanLeave = true,
+                notificationLevelLabel = "Notifications: Default",
+            )
+        assertEquals(
+            listOf(
+                "mark-unread" to false,
+                "notification-level" to false,
+                "toggle-pin" to true,
+                "move-to-section" to false,
+                "sort-channels" to false,
+                "archive-channel" to true,
+                "leave-channel" to true,
+            ),
+            channelMenu.map { it.id to it.dividerBefore },
+        )
+
+        val dm = RaftHomeConversationItem(id = "dm-1", name = "Alice", unreadCount = 2, activityMuteSupported = true)
+        val dmMenu =
+            raftHomeConversationMenuItems(
+                conversation = dm,
+                pinTargetIsPinned = true,
+                sortableFromMenu = false,
+                activeIsDirectMessage = true,
+                activeCanArchive = false,
+                activeCanLeave = false,
+            )
+        assertEquals(
+            listOf(
+                "mark-read" to false,
+                "mute-channel" to false,
+                "toggle-pin" to true,
+                "move-to-section" to false,
+                "close-dm" to true,
+            ),
+            dmMenu.map { it.id to it.dividerBefore },
+        )
     }
 
     @Test
