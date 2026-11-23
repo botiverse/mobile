@@ -102,8 +102,11 @@ internal actual fun RaftWebViewPrewarmEffect(config: RaftWebViewConfig?) = Unit
  * the web content and networking processes, the default data store. iOS's counterpart of Android's
  * `RaftAndroidWebViewWarmup` (which only warms the provider); here the page takes the warm view
  * itself ([take]), when its configuration is the spare's ([raftIosWebViewConfiguration] with the
- * persistent store and scripts on). It carries no page script, bridge or session: the page adds its
- * own to the view's user content controller before it loads anything.
+ * persistent store, scripts on, and default viewport scale limits — surfaces that set
+ * `ignoresViewportScaleLimits = true`, such as the Artifact viewer, build their own WKWebView
+ * while still reusing the warmed networking process and default data store). It carries no page
+ * script, bridge or session: the page adds its own to the view's user content controller before
+ * it loads anything.
  *
  * At most one spare exists. It is made once the app is active and settled ([schedule], after
  * [WARM_DELAY_SECONDS]), made again a while after a page takes it ([REFILL_DELAY_SECONDS]), and

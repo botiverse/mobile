@@ -63,6 +63,15 @@ internal data class RaftWebViewConfig(
      * Android and desktop have no such bar.
      */
     val showsFormAccessoryBar: Boolean = false,
+    /**
+     * Mobile pinch-to-zoom outside Desktop Mode (#proj-workspace:#360, the Artifact viewer):
+     * Android enables `supportZoom` and `builtInZoomControls` (with `displayZoomControls = false`,
+     * no +/- overlay buttons) even while [useWideViewPort] is off; iOS sets
+     * `WKWebViewConfiguration.ignoresViewportScaleLimits = true` so pages remain pinch-zoomable
+     * regardless of viewport scale limits. Desktop ignores this. Off by default so unrelated
+     * surfaces (Settings, Billing, in-app browser) keep their existing zoom behavior.
+     */
+    val allowPinchZoom: Boolean = false,
 )
 
 internal const val RAFT_WEBVIEW_SURFACE_DEFAULT = "web_view"

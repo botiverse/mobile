@@ -142,6 +142,8 @@ internal class RaftIosSandboxWebView(
     private var hostEventsEnabled = false
     /** [RaftWebViewConfig.showsFormAccessoryBar], applied to every WKWebView this host shows ([RaftIosWebView]). */
     private var showsFormAccessoryBar = false
+    /** [RaftWebViewConfig.allowPinchZoom], applied via `WKWebViewConfiguration.ignoresViewportScaleLimits` at build time. */
+    private var allowPinchZoom = false
     /** [RaftWebViewConfig.mainFrameOrigin]: every top-level document stays on it. */
     private var mainFrameOrigin: String? = null
     private var currentURL = ""
@@ -230,7 +232,8 @@ internal class RaftIosSandboxWebView(
                 ephemeral != config.ephemeral ||
                 injectedJavaScript != config.injectedJavaScript ||
                 hostEventsEnabled != config.hostEventsEnabled ||
-                mainFrameOrigin != config.mainFrameOrigin?.let(::raftWebOriginOf)
+                mainFrameOrigin != config.mainFrameOrigin?.let(::raftWebOriginOf) ||
+                allowPinchZoom != config.allowPinchZoom
         allowScripts = config.allowScripts
         // Injected user scripts always run main-frame-only; navigation policy changes still
         // rebuild the WebView so fencing takes effect on a clean configuration.
@@ -241,6 +244,7 @@ internal class RaftIosSandboxWebView(
         injectedJavaScript = config.injectedJavaScript
         hostEventsEnabled = config.hostEventsEnabled
         mainFrameOrigin = config.mainFrameOrigin?.let(::raftWebOriginOf)
+        allowPinchZoom = config.allowPinchZoom
         diagnosticsSurface = config.diagnosticsSurface
         showsFormAccessoryBar = config.showsFormAccessoryBar
         (webView as? RaftIosWebView)?.showsFormAccessoryBar = showsFormAccessoryBar
@@ -305,10 +309,16 @@ internal class RaftIosSandboxWebView(
     private fun rebuildWebView(restoreUrl: String? = null) {
         tearDownWebView()
         // The app's spare WKWebView (created after launch, RaftIosWebViewSpare) when this page's
-        // configuration is the one it was built with: persistent store, scripts on. It saves the
-        // WebKit start-up (web content / networking processes, the data store) on the first load.
-        // Not after a crash (contentProcessDidTerminate rebuilds while a WebView already existed).
-        val spare = if (!ephemeral && allowScripts && webView == null) RaftIosWebViewSpare.take() else null
+        // configuration is the one it was built with: persistent store, scripts on, default
+        // viewport scale limits. It saves the WebKit start-up (web content / networking processes,
+        // the data store) on the first load. Not after a crash (contentProcessDidTerminate
+        // rebuilds while a WebView already existed).
+        val spare =
+            if (raftIosCanUseSpareWebView(ephemeral, allowScripts, allowPinchZoom, webView != null)) {
+                RaftIosWebViewSpare.take()
+            } else {
+                null
+            }
         val userContentController =
             spare?.configuration?.userContentController?.also { it.removeAllUserScripts() } ?: WKUserContentController()
         if (hostEventsEnabled) {
@@ -346,7 +356,12 @@ internal class RaftIosSandboxWebView(
         val next =
             spare?.also { it.setFrame(container.bounds) }
                 ?: run {
-                    val configuration = raftIosWebViewConfiguration(ephemeral = ephemeral, allowScripts = allowScripts)
+                    val configuration =
+                        raftIosWebViewConfiguration(
+                            ephemeral = ephemeral,
+                            allowScripts = allowScripts,
+                            ignoresViewportScaleLimits = allowPinchZoom,
+                        )
                     configuration.userContentController = userContentController
                     RaftIosWebView(frame = container.bounds, configuration = configuration)
                 }
@@ -1134,15 +1149,36 @@ private fun raftIosColorAlpha(color: UIColor?): Double = color?.CGColor?.let { C
 private const val RaftIosWebViewDiagnosticsTag = "SlockWebView"
 
 /**
- * The configuration every page's WKWebView is built with (the spare too, so a page can take it):
- * [ephemeral] picks the non-persistent store, otherwise the app's default one. The user content
- * controller (scripts, host bridge) is per page and set by the caller.
+ * Whether a page may take [RaftIosWebViewSpare] instead of building a fresh [RaftIosWebView]:
+ * the spare is built with the default persistent store, scripts on, and default viewport scale
+ * limits (`ignoresViewportScaleLimits = false`). Surfaces that opt into [allowPinchZoom]
+ * (#proj-workspace:#360, the Artifact viewer) build their own WKWebView so
+ * `WKWebViewConfiguration.ignoresViewportScaleLimits` takes effect at initialization time.
  */
-internal fun raftIosWebViewConfiguration(ephemeral: Boolean, allowScripts: Boolean): WKWebViewConfiguration {
+internal fun raftIosCanUseSpareWebView(
+    ephemeral: Boolean,
+    allowScripts: Boolean,
+    allowPinchZoom: Boolean,
+    hasExistingWebView: Boolean,
+): Boolean = !ephemeral && allowScripts && !allowPinchZoom && !hasExistingWebView
+
+/**
+ * The configuration every page's WKWebView is built with (the spare too, so a page can take it):
+ * [ephemeral] picks the non-persistent store, otherwise the app's default one;
+ * [ignoresViewportScaleLimits] lets the reader pinch-to-zoom regardless of viewport meta limits
+ * (#proj-workspace:#360). The user content controller (scripts, host bridge) is per page and set
+ * by the caller.
+ */
+internal fun raftIosWebViewConfiguration(
+    ephemeral: Boolean,
+    allowScripts: Boolean,
+    ignoresViewportScaleLimits: Boolean = false,
+): WKWebViewConfiguration {
     val configuration = WKWebViewConfiguration()
     configuration.websiteDataStore =
         if (ephemeral) WKWebsiteDataStore.nonPersistentDataStore() else WKWebsiteDataStore.defaultDataStore()
     configuration.allowsInlineMediaPlayback = true
+    configuration.ignoresViewportScaleLimits = ignoresViewportScaleLimits
     configuration.preferences.javaScriptCanOpenWindowsAutomatically = false
     configuration.mediaTypesRequiringUserActionForPlayback = WKAudiovisualMediaTypeAll
     val pagePreferences = WKWebpagePreferences()

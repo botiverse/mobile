@@ -110,4 +110,50 @@ class RaftAndroidArtifactViewerWebViewRulesTest {
         // No `addJavascriptInterface` anywhere: Robolectric records none.
         assertNull(shadowOf(webView).getJavascriptInterface("raftHostPort"))
     }
+
+    @Test
+    fun pinchZoomStaysEnabledWithoutButtonsAcrossDesktopModeTogglesAndRendererRecovery() {
+        val (host, webView) = host()
+
+        assertTrue(webView.settings.supportZoom())
+        assertTrue(webView.settings.builtInZoomControls)
+        assertFalse(webView.settings.displayZoomControls)
+        assertFalse(webView.settings.useWideViewPort)
+        assertFalse(webView.settings.loadWithOverviewMode)
+
+        host.applyConfig(
+            raftArtifactViewerWebViewConfig(
+                viewerUrl,
+                scope,
+                raftArtifactViewerInjectedScript(webOrigin, raftArtifactViewerSessionScript(scope, null, null), desktopMode = true),
+                desktopMode = true,
+            )
+        )
+        assertTrue(webView.settings.supportZoom())
+        assertTrue(webView.settings.builtInZoomControls)
+        assertFalse(webView.settings.displayZoomControls)
+        assertTrue(webView.settings.useWideViewPort)
+        assertTrue(webView.settings.loadWithOverviewMode)
+
+        host.applyConfig(
+            raftArtifactViewerWebViewConfig(
+                viewerUrl,
+                scope,
+                raftArtifactViewerInjectedScript(webOrigin, raftArtifactViewerSessionScript(scope, null, null), desktopMode = false),
+                desktopMode = false,
+            )
+        )
+        assertTrue(webView.settings.supportZoom())
+        assertTrue(webView.settings.builtInZoomControls)
+        assertFalse(webView.settings.displayZoomControls)
+        assertFalse(webView.settings.useWideViewPort)
+        assertFalse(webView.settings.loadWithOverviewMode)
+
+        // Renderer recovery rebuilds the WebView and preserves pinch-to-zoom without buttons.
+        assertTrue(shadowOf(webView).webViewClient.onRenderProcessGone(webView, null))
+        val recreated = host.getChildAt(0) as WebView
+        assertTrue(recreated.settings.supportZoom())
+        assertTrue(recreated.settings.builtInZoomControls)
+        assertFalse(recreated.settings.displayZoomControls)
+    }
 }

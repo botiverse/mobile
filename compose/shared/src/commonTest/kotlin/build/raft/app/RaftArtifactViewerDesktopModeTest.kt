@@ -87,4 +87,35 @@ class RaftArtifactViewerDesktopModeTest {
         page.write(false)
         assertTrue(column.read(), "turning it off on the page leaves the column's")
     }
+
+    /** #proj-workspace:#360: the Artifact viewer enables pinch-to-zoom both outside and inside Desktop Mode. */
+    @Test
+    fun artifactViewerConfigEnablesPinchZoomOutsideAndInsideDesktopMode() {
+        val scope = RaftArtifactViewerScope(web, "https://api-aws-staging.botiverse.dev/api", "user-1", "server-1")
+        val url = "$web/artifacts/pt_c82e597f-5434-4741-909b-d1c8a7a531c8"
+
+        val defaultConfig = raftArtifactViewerWebViewConfig(url, scope, session, desktopMode = false)
+        assertFalse(defaultConfig.useWideViewPort)
+        assertTrue(defaultConfig.allowPinchZoom)
+
+        val desktopConfig = raftArtifactViewerWebViewConfig(url, scope, session, desktopMode = true)
+        assertTrue(desktopConfig.useWideViewPort)
+        assertTrue(desktopConfig.allowPinchZoom)
+
+        // Unrelated WebView surfaces keep pinch-zoom off by default.
+        val unrelatedConfig =
+            RaftWebViewConfig(
+                url = "https://example.test/",
+                allowScripts = true,
+                allowNavigation = true,
+                domStorageEnabled = true,
+                useWideViewPort = false,
+                cacheEnabled = true,
+                ephemeral = false,
+                injectedJavaScript = "",
+                allowedNavigationSchemes = setOf("https"),
+                hostEventsEnabled = false,
+            )
+        assertFalse(unrelatedConfig.allowPinchZoom)
+    }
 }

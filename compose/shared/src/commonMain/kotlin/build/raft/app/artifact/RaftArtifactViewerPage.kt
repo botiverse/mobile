@@ -123,6 +123,8 @@ internal fun raftArtifactViewerWebViewConfig(
         frameHosts = setOf(ARTIFACT_CONTENT_DOMAIN),
         keepAliveKey = scope.keepAliveKey,
         diagnosticsSurface = RAFT_ARTIFACT_VIEWER_WEBVIEW_SURFACE,
+        // #proj-workspace:#360: pinch-to-zoom stays available outside Desktop Mode too.
+        allowPinchZoom = true,
     )
 
 /** [RaftWebViewConfig.diagnosticsSurface] of the Artifact viewer (its prewarmed view too). */
@@ -1294,6 +1296,8 @@ private fun RaftArtifactViewerWebBody(
             frameHosts = setOf(ARTIFACT_CONTENT_DOMAIN),
             keepAliveKey = scope.keepAliveKey,
             diagnosticsSurface = RAFT_ARTIFACT_VIEWER_WEBVIEW_SURFACE,
+            // #proj-workspace:#360: pinch-to-zoom stays available outside Desktop Mode too.
+            allowPinchZoom = true,
             loadWatchdog = loadWatchdog,
             onLoadCommit = {
                 // A new document: it holds the token its injected session wrote.
