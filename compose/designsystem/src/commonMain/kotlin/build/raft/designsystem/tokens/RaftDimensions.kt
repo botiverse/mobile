@@ -18,19 +18,19 @@ object RaftRadius {
     val Xs = 2.dp
 
     /** Avatars, channel tiles, checkboxes, counts, inline marks. */
-    val Sticker = 4.dp
+    val Sticker = RaftUiDimensionTokens.Compact.radiusSticker
 
     /** 22px tags and status chips. */
-    val Chip = 6.dp
+    val Chip = RaftUiDimensionTokens.Compact.radiusChip
 
     /** Buttons, fields, rows, menu items. */
-    val Control = 8.dp
+    val Control = RaftUiDimensionTokens.Compact.radiusControl
 
     /** Cards, menus, composer, banners. */
-    val Container = 10.dp
+    val Container = RaftUiDimensionTokens.Compact.radiusContainer
 
     /** Dialogs and sheet tops. */
-    val Dialog = 16.dp
+    val Dialog = RaftUiDimensionTokens.Compact.radiusDialog
 }
 
 /**
@@ -96,8 +96,8 @@ object RaftSpacing {
  * cut off (a fold). A mask, not a colour gradient, so the fade works on any surface.
  */
 object RaftFade {
-    val Edge = 24.dp
-    val Content = 48.dp
+    val Edge = RaftUiDimensionTokens.Compact.fadeEdge
+    val Content = RaftUiDimensionTokens.Compact.fadeContent
 }
 
 /**
