@@ -198,7 +198,7 @@ class RaftFitToolbarFilterRevealTest {
                 )
             }
             waitForIdle()
-            assertTrue(bounds("f1").width > strip().width, "f1 is wider than the strip")
+            assertTrue(bounds("f1").let { it.right - it.left } > strip().let { it.right - it.left }, "f1 is wider than the strip")
             assertAtStart("f1")
         }
 
