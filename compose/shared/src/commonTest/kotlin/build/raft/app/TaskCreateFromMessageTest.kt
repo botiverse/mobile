@@ -58,6 +58,15 @@ class TaskCreateFromMessageTest {
     }
 
     @Test
+    fun aQuoteReplyIsQuotedAndTitledByItsReply() {
+        // web MessageItem `createFromMessageSource` (botiverse/slock #16158): `extractQuoteReplyPreviewText`,
+        // so the dialog quotes the reply and the first title starts as it.
+        val text = taskCreateSourceText("> Status page banner goes live at 9:00 PT\n> msg=c54e1234\n\nCan we move it to 8:30?")
+        assertEquals("Can we move it to 8:30?", text)
+        assertEquals("Can we move it to 8:30?", taskTitleFromMessage(text))
+    }
+
+    @Test
     fun createStepWritesTheTasksIntoTheStoreOrKeepsTheServersWordsAndCannotBeDismissedMeanwhile() = runTest {
         val source = TaskCreateSourceMessage(ChannelId("channel-1"), MessageId("msg-1"), "artin", "Ship it")
         // (case, answer) -> (closed, error shown, tasks in the store)

@@ -5,7 +5,8 @@ import kotlin.test.assertEquals
 
 /**
  * Message Markdown read as a one-line preview (Activity rows, Saved, search, banners, local
- * notifications, widget). xxchan task #67: a thread title showed "**`#wg-rust-rewrite` 开场**".
+ * notifications, widget, inline thread replies). xxchan task #67: a thread title showed
+ * "**`#wg-rust-rewrite` 开场**".
  */
 class RaftMarkdownPreviewTextTest {
     private class Case(val name: String, val markdown: String, val expected: String)
@@ -77,5 +78,21 @@ class RaftMarkdownPreviewTextTest {
         mobileCases.forEach { case ->
             assertEquals(case.expected, markdownToPreviewText(case.markdown), case.name)
         }
+    }
+
+    /**
+     * botiverse/slock #16158 (staging 87ab82603b3c530eb8d96c4359c8109b662de793): a quote reply's
+     * one-line preview leads with the reply, never the quote or its `> msg=<id>` line.
+     * notificationDisplay.test.ts:61-68 and web tests/quoteReply.behavior.test.tsx (InlineMarkdownPreview).
+     */
+    @Test
+    fun aQuoteReplyReadsAsItsReply() {
+        val reply = "> Status page banner goes live at 9:00 PT\n> msg=c54e1234\n\nCan we move it to **8:30**?"
+        assertEquals("Can we move it to 8:30?", markdownToPreviewText(reply))
+        assertEquals("Can we move it to 8:30?", markdownToPreviewText(reply, RaftMarkdownPreviewNotificationLength))
+        // Nothing but the quote: its words.
+        assertEquals("Status page banner goes live at 9:00 PT", markdownToPreviewText("> Status page banner goes live at 9:00 PT\n> msg=c54e1234"))
+        // A legacy preview folded to one line and cut inside the ref.
+        assertEquals("Status page banner goes live at 9:00 PT…", markdownToPreviewText("> Status page banner goes live at 9:00 PT > msg=c54e1…"))
     }
 }

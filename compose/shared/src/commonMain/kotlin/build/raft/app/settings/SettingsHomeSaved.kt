@@ -352,6 +352,9 @@ internal fun InboxItem.previewMarkdownText(): String? =
         ?.let(::markdownToPreviewText)
         ?.takeIf { it.isNotBlank() }
 
+/** RED seam for botiverse/slock #16158: a search hit reads as a Saved row does. */
+internal fun InboxItem.searchHitPreviewText(): String? = previewMarkdownText()
+
 internal fun InboxItem.sharedHomeSavedMarkdownContent(): String =
     latestActivityPreview ?: lastMessagePreview ?: parentMessagePreview ?: ""
 

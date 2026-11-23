@@ -297,6 +297,9 @@ internal fun serializeInlineQuoteReply(excerpt: String, targetMessageId: String,
  * web `stripQuoteReplyRefsForPreview`: a message's Markdown with each quote block's `msg=` line taken
  * out, so a preview (Activity, notifications, search, a reply's line) reads the quote, not an id.
  */
+/** RED seam for botiverse/slock #16158: not ported yet, previews still read the whole body. */
+internal fun extractQuoteReplyPreviewText(content: String): String = content
+
 internal fun stripQuoteReplyRefsForPreview(content: String): String {
     if (!hasSameConversationQuoteRef(content)) return content
     return parseMessageQuoteSegments(content)

@@ -54,6 +54,18 @@ class ThreadHeaderOriginalTitleTest {
     }
 
     @Test
+    fun aQuoteReplyOriginalReadsAsItsReplyLoadedOrBehindTheHistoryWindow() {
+        // web threadHeaderTitle.ts:24,67 (botiverse/slock #16158, tests/quoteReply.behavior.test.tsx:982):
+        // the first line of `notificationPlainText`, which leads a quote reply with its reply.
+        val quoteReply = "> Status page banner goes live at 9:00 PT\n> msg=c54e1234\n\nCan we move it to **8:30** so it's up before the flags flip?"
+        assertEquals("Juno: Can we move it to 8:30 so it's up before the flags flip?", title(origin(body = quoteReply)))
+        assertEquals(
+            ThreadHeaderOriginal.Shown("msg-1", "Juno", "Can we move it to 8:30 so it's up before the flags flip?", behindHistory = true),
+            threadHeaderHiddenOriginal(hidden.copy(preview = quoteReply), unknownSenderLabel = ""),
+        )
+    }
+
+    @Test
     fun onlyAPermissionRefusalMakesTheParentUnavailable() {
         assertEquals(ThreadHeaderOriginal.Unavailable, resolve(null, originStatus = "error", originErrorCode = "server_forbidden"))
         // A plain 404 (not found, or not readable: the context route answers both alike) or a network

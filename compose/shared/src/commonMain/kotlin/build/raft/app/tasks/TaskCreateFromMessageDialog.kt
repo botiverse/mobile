@@ -47,6 +47,9 @@ internal data class TaskCreateSourceMessage(
     val text: String,
 )
 
+/** RED seam for botiverse/slock #16158: the source is the whole body. */
+internal fun taskCreateSourceText(body: String): String = body
+
 private const val TaskSourceTitleMax = 200
 
 /** Web `titleFromMessage`: the message on one line, cut at 200 characters with an ellipsis. */
