@@ -346,14 +346,22 @@ internal fun sharedHomeSavedPermalink(
     return "$cleanWebBaseUrl/s/$cleanServerSlug/$routeKind/${channelForLink.value}?$params"
 }
 
-/** Saved and search rows: the item's message Markdown read as one line; null when nothing is left. */
-internal fun InboxItem.previewMarkdownText(): String? =
-    (latestActivityPreview ?: lastMessagePreview ?: parentMessagePreview)
-        ?.let(::markdownToPreviewText)
-        ?.takeIf { it.isNotBlank() }
+/**
+ * Saved rows: the item's message Markdown read as one line, a quote reply as its reply (web
+ * SavedPanel `extractQuoteReplyPreviewText`, botiverse/slock #16158); null when nothing is left.
+ */
+internal fun InboxItem.previewMarkdownText(): String? = messagePreviewText(keepQuotes = false)
 
-/** RED seam for botiverse/slock #16158: a search hit reads as a Saved row does. */
-internal fun InboxItem.searchHitPreviewText(): String? = previewMarkdownText()
+/**
+ * Search hits: the same, but a quote reply keeps its quotes, without their `> msg=<id>` lines (web
+ * MessageHitRow `stripQuoteReplyRefsForPreview`): the words searched for may be in the quote.
+ */
+internal fun InboxItem.searchHitPreviewText(): String? = messagePreviewText(keepQuotes = true)
+
+private fun InboxItem.messagePreviewText(keepQuotes: Boolean): String? =
+    (latestActivityPreview ?: lastMessagePreview ?: parentMessagePreview)
+        ?.let { markdownToPreviewText(it, keepQuotes = keepQuotes) }
+        ?.takeIf { it.isNotBlank() }
 
 internal fun InboxItem.sharedHomeSavedMarkdownContent(): String =
     latestActivityPreview ?: lastMessagePreview ?: parentMessagePreview ?: ""

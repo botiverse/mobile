@@ -37,6 +37,7 @@ import build.raft.app.data.MessageContextHistoryLimitedCode
 import build.raft.app.data.RAFT_ADAPTIVE_DETAIL_FOCUS_MESSAGE_EVENT
 import build.raft.app.data.RaftEventBus
 import build.raft.app.data.ScreenError
+import build.raft.app.data.extractQuoteReplyPreviewText
 import build.raft.app.markdown.markdownToPreviewText
 import build.raft.app.resources.*
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -258,8 +259,8 @@ internal fun ThreadHistoryStartFocusEffect(threadInstanceKey: Any, request: Int,
 
 /**
  * Web `threadOriginalFirstLine`: the first non-empty line of the message as plain text (no Markdown
- * syntax; an @mention stays its words), or, with no text, "Image" when every file is an image and
- * "File" otherwise. Null when it has neither.
+ * syntax; an @mention stays its words; a quote reply's own words, not its quote), or, with no text,
+ * "Image" when every file is an image and "File" otherwise. Null when it has neither.
  */
 internal fun threadHeaderOriginalFirstLine(
     body: String,
@@ -267,7 +268,9 @@ internal fun threadHeaderOriginalFirstLine(
     imageLabel: String,
     fileLabel: String,
 ): String? {
-    body.lineSequence()
+    // web `notificationPlainText` leads a quote reply with its reply before the first line is taken
+    // (botiverse/slock #16158): the whole body, as the per-line preview below can't see its quotes.
+    extractQuoteReplyPreviewText(body).lineSequence()
         .map { line -> markdownToPreviewText(line).trim() }
         .firstOrNull { it.isNotEmpty() }
         ?.let { return it }

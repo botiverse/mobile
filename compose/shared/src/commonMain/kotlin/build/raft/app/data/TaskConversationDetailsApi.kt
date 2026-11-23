@@ -273,9 +273,12 @@ internal data class TaskSourceMessagePreview(
     val createdAt: String?,
 )
 
-/** The first non-blank line of [body], trimmed (web `content.split("\n").find(line => line.trim())`). */
+/**
+ * The first non-blank line of [body], trimmed, a quote reply's own words first (web
+ * `extractQuoteReplyPreviewText(content).split("\n").find(line => line.trim())`, botiverse/slock #16158).
+ */
 internal fun taskSourcePreviewLine(body: String): String =
-    body.lineSequence().firstOrNull { it.isNotBlank() }?.trim().orEmpty()
+    extractQuoteReplyPreviewText(body).lineSequence().firstOrNull { it.isNotBlank() }?.trim().orEmpty()
 
 /** The source message out of a `messages/context` page; null when the page does not hold it. */
 internal fun parseTaskSourceMessage(bodyText: String, channelId: ChannelId, messageId: MessageId): TaskSourceMessagePreview? {

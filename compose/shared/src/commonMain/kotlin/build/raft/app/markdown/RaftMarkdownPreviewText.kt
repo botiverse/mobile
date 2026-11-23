@@ -2,6 +2,7 @@ package build.raft.app.markdown
 
 import androidx.compose.runtime.Immutable
 import build.raft.app.RaftAppThemeState
+import build.raft.app.data.extractQuoteReplyPreviewText
 import build.raft.app.data.stripQuoteReplyRefsForPreview
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.AnnotatedString
@@ -38,7 +39,8 @@ import org.intellij.markdown.parser.MarkdownParser
  * - mentions, channel and task references, `$math$` and `:shortcodes:` stay as written (the web
  *   preview has no plugins for them);
  * - entities and backslash escapes are decoded;
- * - every run of whitespace, line breaks and block boundaries included, becomes one space.
+ * - every run of whitespace, line breaks and block boundaries included, becomes one space;
+ * - a quote reply reads as its sender's own words, not the message it quotes (botiverse/slock #16158).
  *
  * It walks the app's own Markdown tree ([RaftGFMFlavourDescriptor], the one messages render with),
  * so `**` inside code or `_` inside a URL are never mistaken for markup, and an unterminated marker
@@ -87,14 +89,19 @@ const val RaftMarkdownPreviewNotificationLength = 140
 /** web `MAX_NOTIFICATION_MARKDOWN_SOURCE_LENGTH`: no preview shows more, so parse no more. */
 internal const val RaftMarkdownPreviewMaxSourceLength = 2_048
 
-/** The one-line plain text of [markdown]; cut to [maxLength] (ending in "…") when given. */
-fun markdownToPreviewText(markdown: String, maxLength: Int? = null): String =
-    markdownToPreview(markdown, maxLength).text
+/**
+ * The one-line plain text of [markdown]; cut to [maxLength] (ending in "…") when given. A quote reply
+ * reads as its sender's own words (web `notificationPlainText` runs `extractQuoteReplyPreviewText`,
+ * botiverse/slock #16158). [keepQuotes] keeps its quotes instead, without their `> msg=<id>` lines
+ * (web `stripQuoteReplyRefsForPreview`): only where the web keeps them, a search hit.
+ */
+fun markdownToPreviewText(markdown: String, maxLength: Int? = null, keepQuotes: Boolean = false): String =
+    markdownToPreview(markdown, maxLength, keepQuotes).text
 
 /** [markdownToPreviewText] with its styled runs. Cached per body, so list rows can call it per frame. */
-fun markdownToPreview(markdown: String, maxLength: Int? = null): RaftMarkdownPreview {
+fun markdownToPreview(markdown: String, maxLength: Int? = null, keepQuotes: Boolean = false): RaftMarkdownPreview {
     if (markdown.isBlank()) return RaftMarkdownPreview.Empty
-    val full = RaftMarkdownPreviewCache.get(markdown)
+    val full = RaftMarkdownPreviewCache.get(markdown, keepQuotes)
     return if (maxLength == null) full else full.truncated(maxLength)
 }
 
@@ -112,16 +119,18 @@ internal fun RaftMarkdownPreview.truncated(maxLength: Int): RaftMarkdownPreview 
 private object RaftMarkdownPreviewCache {
     private const val MaxEntries = 512
     private val lock = SynchronizedObject()
-    private val entries = LinkedHashMap<String, RaftMarkdownPreview>()
+    private val replyEntries = LinkedHashMap<String, RaftMarkdownPreview>()
+    private val keptQuoteEntries = LinkedHashMap<String, RaftMarkdownPreview>()
 
-    fun get(markdown: String): RaftMarkdownPreview {
+    fun get(markdown: String, keepQuotes: Boolean): RaftMarkdownPreview {
+        val entries = if (keepQuotes) keptQuoteEntries else replyEntries
         synchronized(lock) {
             entries.remove(markdown)?.let { cached ->
                 entries[markdown] = cached
                 return cached
             }
         }
-        val computed = flattenMarkdownPreview(markdown)
+        val computed = flattenMarkdownPreview(markdown, keepQuotes)
         synchronized(lock) {
             entries[markdown] = computed
             while (entries.size > MaxEntries) entries.keys.firstOrNull()?.let(entries::remove) ?: break
@@ -130,10 +139,12 @@ private object RaftMarkdownPreviewCache {
     }
 }
 
-internal fun flattenMarkdownPreview(markdown: String): RaftMarkdownPreview {
-    // A quote reply's `> msg=<id>` line points at the quoted message; a preview reads the quote
-    // without it (web `stripQuoteReplyRefsForPreview`).
-    val source = stripQuoteReplyRefsForPreview(markdown.take(RaftMarkdownPreviewMaxSourceLength))
+internal fun flattenMarkdownPreview(markdown: String, keepQuotes: Boolean = false): RaftMarkdownPreview {
+    // A quote reply reads as its reply (web `extractQuoteReplyPreviewText`); kept quotes lose their
+    // `> msg=<id>` lines (web `stripQuoteReplyRefsForPreview`). Both before the source is cut, as
+    // web `notificationPlainText` does, so a long quote never cuts its reply off.
+    val quoteReplyText = if (keepQuotes) stripQuoteReplyRefsForPreview(markdown) else extractQuoteReplyPreviewText(markdown)
+    val source = quoteReplyText.take(RaftMarkdownPreviewMaxSourceLength)
     val root =
         try {
             MarkdownParser(RaftGFMFlavourDescriptor()).buildMarkdownTreeFromString(source)
