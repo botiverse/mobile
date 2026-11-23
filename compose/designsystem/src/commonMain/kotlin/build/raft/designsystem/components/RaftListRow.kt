@@ -350,7 +350,7 @@ fun RaftListRow(
         LocalRaftSurfaceColor provides surface,
     ) {
         Row(
-            modifier
+            modifier.raftSlot("list-row")
                 .fillMaxWidth()
                 .heightIn(min = raftListRowMinHeight(variant, attached, interactive, RaftTheme.controls.height, pointer))
                 .then(if (selected) Modifier.background(colors.infoSoft).semantics { this.selected = true } else Modifier)

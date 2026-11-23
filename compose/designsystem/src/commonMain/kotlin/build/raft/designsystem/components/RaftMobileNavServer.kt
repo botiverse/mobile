@@ -290,7 +290,7 @@ fun RaftMobileNavItem(
     val pressed = raftIsPressed(source) && enabled
     val colors = RaftTheme.colors
     Column(
-        modifier
+        modifier.raftSlot("mobile-nav-item")
             .clickable(source, indication = null, enabled = enabled, role = Role.Tab, onClick = onClick)
             .semantics { this.selected = selected },
         horizontalAlignment = Alignment.CenterHorizontally,

@@ -153,7 +153,7 @@ fun RaftAvatar(
         fill = fill,
         edge = RaftUiPalette.stickerInk,
         modifier =
-            modifier.semantics {
+            modifier.raftSlot("avatar").semantics {
                 if (contentDescription != null) {
                     this.contentDescription = contentDescription
                     role = Role.Image

@@ -647,7 +647,7 @@ fun RaftButton(
     RaftButtonBox(
         look = look,
         onClick = onClick,
-        modifier = modifier.height(metrics.height),
+        modifier = modifier.raftSlot("button").height(metrics.height),
         enabled = enabled,
         loading = loading,
         loadingLabel = loadingLabel,
