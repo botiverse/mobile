@@ -6,28 +6,41 @@ name: Android Update E2E
 # still signed in on the same server with the draft. docs/mobile-release-sop.md
 # §7.2.1 has the manual version this automates.
 #
-# A and B come from "Android App Update QA Fixture" (android-update-qa.yml): the
-# same commit, release variant, production signer, versionCodes from the reserved
-# QA window (majors 200-209). B reaches A the way the fixture README defines:
-# Hands raft-android channel `debug`, full APK, as a release scoped to ONE
-# device group that holds only this run's emulator. A is never published. The
-# cleanup step removes the emulator from the group and cancels B's release.
+# Two modes:
+# 1. Real preview candidate (`preview_release_id` set, #proj-mobile-release:#29):
+#    A = the active full-scope `preview` release downloaded from Hands;
+#    B = the candidate `preview` draft, scoped to ONE device group holding only
+#    this run's emulator, activated, verified, and NEVER cancelled by cleanup
+#    (on pass, widen B with `hands releases update ... --full`; on fail, cancel
+#    explicitly). Requires B to carry a universal (no-arch) or x86_64 APK.
+# 2. Fixture fallback (`preview_release_id` empty):
+#    A and B come from "Android App Update QA Fixture" (android-update-qa.yml)
+#    on channel `debug`; cleanup removes the emulator and cancels B.
 
 on:
   workflow_dispatch:
     inputs:
+      preview_release_id:
+        description: "Optional: Hands draft release id on preview to test real A (active preview) -> B (candidate) without building fixture APKs"
+        required: false
+        type: string
+        default: ""
       source_sha:
-        description: "Full 40-char commit to build A and B from (default: the dispatched ref)"
+        description: "Fixture mode only: full 40-char commit to build A and B from (default: the dispatched ref)"
         required: false
         type: string
         default: ""
       fixture_run_id:
-        description: "Optional: reuse A/B APKs from an earlier run of this workflow or android-update-qa.yml instead of building"
+        description: "Fixture mode only: reuse A/B APKs from an earlier run of this workflow or android-update-qa.yml instead of building"
         required: false
         type: string
         default: ""
   workflow_call:
     inputs:
+      preview_release_id:
+        required: false
+        type: string
+        default: ""
       source_sha:
         required: false
         type: string
@@ -42,7 +55,7 @@ permissions:
   actions: read
   packages: read
 
-# Single writer for the Hands device group / debug-channel fixture.
+# Single writer for the Hands device group / fixture release.
 concurrency:
   group: android-update-e2e
   cancel-in-progress: false
@@ -51,6 +64,8 @@ jobs:
   plan:
     runs-on: ubuntu-latest
     outputs:
+      mode: ${{ steps.p.outputs.mode }}
+      preview_release_id: ${{ steps.p.outputs.preview_release_id }}
       source_sha: ${{ steps.p.outputs.source_sha }}
       build: ${{ steps.p.outputs.build }}
       version_major: ${{ steps.p.outputs.version_major }}
@@ -60,15 +75,30 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - name: Install Hands CLI
-        run: npm install -g --ignore-scripts @botiverse/hands-cli@0.5.47
+        run: npm install -g --ignore-scripts @botiverse/hands-cli@0.5.73
       - id: p
         env:
           HANDS_AUTH_TOKEN: ${{ secrets.QUIVER_BEARER_TOKEN }}
           HANDS_API: https://hands.build
+          PREVIEW_RELEASE_ID: ${{ inputs.preview_release_id }}
           SOURCE_SHA: ${{ inputs.source_sha }}
           FIXTURE_RUN_ID: ${{ inputs.fixture_run_id }}
         run: |
           set -euo pipefail
+          if [ -n "${PREVIEW_RELEASE_ID}" ]; then
+            if [ -n "${FIXTURE_RUN_ID}" ] || [ -n "${SOURCE_SHA}" ]; then
+              echo "::error::preview_release_id cannot be combined with fixture_run_id or source_sha"
+              exit 1
+            fi
+            [[ "${PREVIEW_RELEASE_ID}" =~ ^[0-9a-fA-F-]{8,64}$ ]] || { echo "::error::preview_release_id must be a release id"; exit 1; }
+            echo "mode=preview" >> "$GITHUB_OUTPUT"
+            echo "preview_release_id=${PREVIEW_RELEASE_ID}" >> "$GITHUB_OUTPUT"
+            echo "build=false" >> "$GITHUB_OUTPUT"
+            echo "source_sha=" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "mode=fixture" >> "$GITHUB_OUTPUT"
+          echo "preview_release_id=" >> "$GITHUB_OUTPUT"
           if [ -n "${FIXTURE_RUN_ID}" ]; then
             [[ "${FIXTURE_RUN_ID}" =~ ^[0-9]+$ ]] || { echo "::error::fixture_run_id must be a run id"; exit 1; }
             echo "build=false" >> "$GITHUB_OUTPUT"
@@ -105,7 +135,11 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      - name: Install Hands CLI
+        run: npm install -g --ignore-scripts @botiverse/hands-cli@0.5.73
+
       - name: Download A and B
+        if: needs.plan.outputs.mode == 'fixture'
         env:
           GH_TOKEN: ${{ github.token }}
           RUN_ID: ${{ inputs.fixture_run_id || github.run_id }}
@@ -115,13 +149,24 @@ jobs:
           gh run download "${RUN_ID}" -R "${GITHUB_REPOSITORY}" -n android-update-qa-a-apk -D apks/a
           gh run download "${RUN_ID}" -R "${GITHUB_REPOSITORY}" -n android-update-qa-b-apk -D apks/b
 
+      - name: Prepare real preview A and B (preview channel, e2e device group only)
+        if: needs.plan.outputs.mode == 'preview'
+        id: preview_hands
+        env:
+          PREVIEW_RELEASE_ID: ${{ needs.plan.outputs.preview_release_id }}
+        run: |
+          set -euo pipefail
+          GROUP="$(bash scripts/qa/android_update_hands_fixture.sh group)"
+          echo "group=${GROUP}" >> "$GITHUB_OUTPUT"
+          bash scripts/qa/android_update_hands_fixture.sh preview-prepare "${PREVIEW_RELEASE_ID}" "${GROUP}" apks | tee -a "$GITHUB_OUTPUT"
+
       - name: Read A/B identity
         id: ids
         run: |
           set -euo pipefail
           BT="$(ls -d "${ANDROID_HOME}"/build-tools/* | sort -V | tail -1)"
           A="$(find apks/a -name '*.apk' | head -1)"; B="$(find apks/b -name '*.apk' | head -1)"
-          [ -s "$A" ] && [ -s "$B" ] || { echo "::error::A or B APK missing from the fixture artifacts"; exit 1; }
+          [ -s "$A" ] && [ -s "$B" ] || { echo "::error::A or B APK missing"; exit 1; }
           badging() { "$BT/aapt" dump badging "$1" | head -1; }
           field() { sed -n "s/.* $2='\([^']*\)'.*/\1/p" <<<"$1"; }
           AB="$(badging "$A")"; BB="$(badging "$B")"
@@ -139,16 +184,13 @@ jobs:
             echo "b_sha256=$(sha256sum "$B" | cut -d' ' -f1)"
           } | tee -a "$GITHUB_OUTPUT"
 
-      - name: Install Hands CLI
-        run: npm install -g --ignore-scripts @botiverse/hands-cli@0.5.47
-
       - name: Serve B on Hands (debug channel, e2e device group only)
+        if: needs.plan.outputs.mode == 'fixture'
         id: hands
         run: |
           set -euo pipefail
           GROUP="$(bash scripts/qa/android_update_hands_fixture.sh group)"
           echo "group=${GROUP}" >> "$GITHUB_OUTPUT"
-          SOURCE="$(git rev-parse HEAD)"
           RID="$(bash scripts/qa/android_update_hands_fixture.sh publish "${{ steps.ids.outputs.b_apk }}" \
             "${{ steps.ids.outputs.b_name }}" "${{ steps.ids.outputs.b_code }}" "${GROUP}" "${{ needs.plan.outputs.source_sha || github.sha }}")"
           echo "release_id=${RID}" >> "$GITHUB_OUTPUT"
@@ -185,24 +227,35 @@ jobs:
           emulator-boot-timeout: 1200
           emulator-options: -no-snapshot -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -no-metrics
           disable-animations: true
-          script: node scripts/qa/android_update_e2e.mjs --apk-a "${{ steps.ids.outputs.a_apk }}" --a-code "${{ steps.ids.outputs.a_code }}" --b-code "${{ steps.ids.outputs.b_code }}" --b-name "${{ steps.ids.outputs.b_name }}" --hands-group "${{ steps.hands.outputs.group }}" --hands-release "${{ steps.hands.outputs.release_id }}" --device-id-file "${{ runner.temp }}/hands-device-id" --out "${{ env.EVIDENCE }}"
+          script: node scripts/qa/android_update_e2e.mjs --apk-a "${{ steps.ids.outputs.a_apk }}" --a-code "${{ steps.ids.outputs.a_code }}" --b-code "${{ steps.ids.outputs.b_code }}" --b-name "${{ steps.ids.outputs.b_name }}" --hands-channel "${{ needs.plan.outputs.mode == 'preview' && 'preview' || 'debug' }}" --hands-group "${{ steps.preview_hands.outputs.group || steps.hands.outputs.group }}" --hands-release "${{ steps.preview_hands.outputs.b_release_id || steps.hands.outputs.release_id }}" --device-id-file "${{ runner.temp }}/hands-device-id" --out "${{ env.EVIDENCE }}"
 
-      - name: Hands cleanup (remove emulator from group, cancel B)
-        if: always() && steps.hands.outputs.group != ''
+      - name: Hands cleanup (remove emulator from group, cancel debug fixture B)
+        if: always() && needs.plan.outputs.mode == 'fixture' && steps.hands.outputs.group != ''
         run: |
           DEVICE="$(cat "${RUNNER_TEMP}/hands-device-id" 2>/dev/null || true)"
           bash scripts/qa/android_update_hands_fixture.sh cleanup "${{ steps.hands.outputs.group }}" "${{ steps.hands.outputs.release_id }}" "${DEVICE}"
+          rm -f "${RUNNER_TEMP}/hands-device-id"
+
+      - name: Hands cleanup (remove emulator from group; keep preview candidate B)
+        if: always() && needs.plan.outputs.mode == 'preview' && steps.preview_hands.outputs.group != ''
+        run: |
+          DEVICE="$(cat "${RUNNER_TEMP}/hands-device-id" 2>/dev/null || true)"
+          bash scripts/qa/android_update_hands_fixture.sh preview-cleanup "${{ steps.preview_hands.outputs.group }}" "${DEVICE}"
           rm -f "${RUNNER_TEMP}/hands-device-id"
 
       - name: Summary
         if: always()
         run: |
           {
-            echo "## Android update e2e"
+            echo "## Android update e2e (${{ needs.plan.outputs.mode }})"
             echo "| | |"; echo "|---|---|"
-            echo "| A | \`${{ steps.ids.outputs.a_name }}\` (${{ steps.ids.outputs.a_code }}) |"
+            echo "| A | \`${{ steps.ids.outputs.a_name }}\` (${{ steps.ids.outputs.a_code }})${{ steps.preview_hands.outputs.a_release_id != '' && format(' · Hands `{0}`', steps.preview_hands.outputs.a_release_id) || '' }} |"
             echo "| B | \`${{ steps.ids.outputs.b_name }}\` (${{ steps.ids.outputs.b_code }}) |"
-            echo "| B served by | Hands raft-android/debug release \`${{ steps.hands.outputs.release_id }}\`, device-group scope |"
+            if [ "${{ needs.plan.outputs.mode }}" = "preview" ]; then
+              echo "| B served by | Hands raft-android/preview release \`${{ steps.preview_hands.outputs.b_release_id }}\`, device-group scope (kept after run) |"
+            else
+              echo "| B served by | Hands raft-android/debug release \`${{ steps.hands.outputs.release_id }}\`, device-group scope |"
+            fi
             echo "| Emulator | API 34 google_apis x86_64, pixel_6 |"
             if [ -f "${EVIDENCE}/summary.json" ]; then
               echo; echo '```json'; cat "${EVIDENCE}/summary.json"; echo '```'

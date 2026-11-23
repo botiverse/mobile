@@ -54,6 +54,7 @@ jobs:
           python3 -I scripts/ci/check_ios_profile_entitlements.py --self-test
           python3 -I scripts/ci/configure_ios_share_extension.py --self-test
           scripts/test_resolve_git_revision.sh
+          scripts/tests/android_update_hands_fixture_test.sh
 
       - name: Test iOS device automation helpers
         shell: bash

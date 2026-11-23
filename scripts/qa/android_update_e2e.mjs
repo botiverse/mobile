@@ -38,6 +38,10 @@ const B_NAME = args["b-name"] ?? "";
 const SERVER = args.server ?? "OranixSlockTest";
 const HANDS_GROUP = args["hands-group"] ?? "";
 const HANDS_RELEASE = args["hands-release"] ?? "";
+const HANDS_CHANNEL = args["hands-channel"] ?? "debug";
+if (!["debug", "preview"].includes(HANDS_CHANNEL)) {
+  throw new Error(`--hands-channel must be debug or preview, got ${HANDS_CHANNEL}`);
+}
 const DEVICE_ID_FILE = args["device-id-file"] ?? "";
 const RAFT_API = (process.env.QA_API_BASE || "https://api.raft.build/api/").replace(/\/?$/, "/");
 const HANDS_BASE = process.env.HANDS_PUBLIC_BASE || "https://hands.build";
@@ -49,7 +53,7 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const redact = (text) => SECRETS.reduce((s, secret) => s.split(secret).join("[redacted]"), String(text));
 let stepIndex = 0;
 let currentStep = "setup";
-const summary = { a_code: A_CODE, b_code: B_CODE, server: SERVER, steps: [] };
+const summary = { a_code: A_CODE, b_code: B_CODE, channel: HANDS_CHANNEL, server: SERVER, steps: [] };
 
 function log(message) {
   console.log(`[update-e2e] ${redact(message)}`);
@@ -397,7 +401,7 @@ async function main() {
         if (check.status !== 0) fail(`B's Hands release does not match the emulator ABI ${deviceAbi}: ${String(check.stderr).trim().slice(-500)}`);
       }
       // Server-side check, exactly as the app asks: B must be offered to this installation.
-      const url = `${HANDS_BASE}/public/v2/apps/raft-android/updates/check?channel=debug&product_type=android-apk&current_version_code=${A_CODE}&platform=android&filetype=apk&arch=${encodeURIComponent(deviceAbi)}`;
+      const url = `${HANDS_BASE}/public/v2/apps/raft-android/updates/check?channel=${encodeURIComponent(HANDS_CHANNEL)}&product_type=android-apk&current_version_code=${A_CODE}&platform=android&filetype=apk&arch=${encodeURIComponent(deviceAbi)}`;
       let offered = 0;
       let reason = "";
       for (let i = 0; i < 10 && offered !== B_CODE; i += 1) {

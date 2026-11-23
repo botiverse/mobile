@@ -774,7 +774,7 @@ jobs:
       - name: Install hands-cli for symbol attach
         if: ${{ steps.hands-artifacts.outputs.build_id != '' }}
         shell: bash
-        run: npm install -g --ignore-scripts @botiverse/hands-cli@0.5.50
+        run: npm install -g --ignore-scripts @botiverse/hands-cli@0.5.73
 
       - name: Attach R8 mapping + native symbols to the Hands build
         id: hands-symbols
@@ -894,7 +894,7 @@ jobs:
       - name: Install Hands CLI (npm)
         shell: bash
         run: |
-          npm install -g @botiverse/hands-cli@0.5.50
+          npm install -g @botiverse/hands-cli@0.5.73
           hands --version
 
       - name: Generate changelog from git history
