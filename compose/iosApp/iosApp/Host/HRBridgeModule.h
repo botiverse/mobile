@@ -116,4 +116,21 @@ FOUNDATION_EXTERN void RaftRunAfterPickerDismissAndWork(
     dispatch_queue_t _Nullable completionQueue,
     void (^ _Nonnull completion)(void));
 
+/**
+ * Persists a freshly exported attachment into `<storeRoot>/<ownerKey>-<safe(attachmentId)>/<safe(fileName)>`
+ * so tapping "Open" on the post-save toast (or in Storage › Downloads) opens the local copy without
+ * re-downloading. Moves `sourceURL` into place when `moveSource` is YES (falling back to copy across
+ * volumes) via an atomic `.part-` sibling rename, then removes stale differently-named files in that
+ * attachment's cache directory. Returns YES on success.
+ *
+ * Pure filesystem helper for tests.
+ */
+FOUNDATION_EXTERN BOOL RaftPersistExportedAttachmentToCache(
+    NSString * _Nullable storeRoot,
+    NSString * _Nullable ownerKey,
+    NSString * _Nullable attachmentId,
+    NSString * _Nullable fileName,
+    NSURL * _Nullable sourceURL,
+    BOOL moveSource);
+
 NS_ASSUME_NONNULL_END

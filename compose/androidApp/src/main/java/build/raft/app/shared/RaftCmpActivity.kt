@@ -2309,6 +2309,10 @@ internal open class RaftCmpActivity :
             callback: RaftBridgeCallback?
     ) {
         runOnUiThread {
+            if (isFinishing || isDestroyed) {
+                callback?.invoke(AndroidAttachmentOpenResult.noApp(dispatch.source.durableCache).toBridgePayload())
+                return@runOnUiThread
+            }
             if (!ProcessAndroidAttachmentOwners.admit(dispatch.owner)) {
                 callback?.invoke(AndroidAttachmentOpenResult.cancelled().toBridgePayload())
                 return@runOnUiThread
@@ -8115,9 +8119,10 @@ internal class RaftBridgeModule(
             when (dispatch) {
                 is AndroidAttachmentOpenDispatch.Complete -> callback?.invoke(dispatch.result.toBridgePayload())
                 is AndroidAttachmentOpenDispatch.SaveAs -> {
-                    val host = activity as? RaftHostActivity
-                    if (host == null) {
-                        callback?.invoke(AndroidAttachmentOpenResult.storageFailed().toBridgePayload())
+                    val hostActivity = activity
+                    val host = hostActivity as? RaftHostActivity
+                    if (host == null || hostActivity.isFinishing || hostActivity.isDestroyed) {
+                        callback?.invoke(AndroidAttachmentOpenResult.noApp(dispatch.source.durableCache).toBridgePayload())
                     } else {
                         host.requestAttachmentSaveAs(dispatch, callback)
                     }

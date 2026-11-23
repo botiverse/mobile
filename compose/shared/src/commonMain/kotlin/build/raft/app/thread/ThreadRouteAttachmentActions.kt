@@ -110,6 +110,7 @@ internal class ThreadRouteAttachmentActions(
     val unableToResolveCommentLabel = labels.unableToResolveCommentLabel
     val unableToOpenAttachmentLabel = labels.unableToOpenAttachmentLabel
     val unableToDownloadAttachmentLabel = labels.unableToDownloadAttachmentLabel
+    val openAttachmentActionLabel = labels.openAttachmentActionLabel
     val attachmentOpenResultTerms = labels.attachmentOpenResultTerms
     val attachmentSavedToDownloadsLabel = labels.attachmentSavedToDownloadsLabel
     val attachmentSavedToFilesLabel = labels.attachmentSavedToFilesLabel
@@ -636,7 +637,19 @@ internal class ThreadRouteAttachmentActions(
                     attachmentOpenStates = attachmentOpenStates - attachment.id
                     attachmentOperationTokens = attachmentOperationTokens - attachment.id
                     if (toast is ThreadAttachmentSaveToast.Info) {
-                        bridge.toast(toast.message)
+                        raftShowSavedDownloadToast(
+                            bridge = bridge,
+                            message = toast.message,
+                            openLabel = openAttachmentActionLabel,
+                            target =
+                                RaftSavedDownloadOpenTarget(
+                                    attachmentId = attachment.id,
+                                    fileName = attachment.name.ifBlank { "attachment-${attachment.id.take(8)}" },
+                                    owner = owner,
+                                    mimeType = attachment.mimeType.takeIf { it.isNotBlank() },
+                                ),
+                            openResultTerms = attachmentOpenResultTerms,
+                        )
                     }
                 }
                 "cancelled" -> {

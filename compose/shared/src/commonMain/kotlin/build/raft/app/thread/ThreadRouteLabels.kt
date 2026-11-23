@@ -21,6 +21,7 @@ internal data class ThreadRouteLabels(
     val unableToResolveCommentLabel: String,
     val unableToOpenAttachmentLabel: String,
     val unableToDownloadAttachmentLabel: String,
+    val openAttachmentActionLabel: String,
     val attachmentOpenResultTerms: RaftAttachmentOpenResultTerms,
     val attachmentSavedToDownloadsLabel: String,
     val attachmentSavedToFilesLabel: String,
@@ -113,6 +114,7 @@ internal fun threadRouteLabels(): ThreadRouteLabels {
     val unableToResolveCommentLabel = stringResource(Res.string.thread_error_resolve_comment)
     val unableToOpenAttachmentLabel = stringResource(Res.string.thread_error_open_attachment)
     val unableToDownloadAttachmentLabel = stringResource(Res.string.file_preview_error_download_attachment)
+    val openAttachmentActionLabel = stringResource(Res.string.file_preview_action_open)
     val attachmentOpenResultTerms =
         RaftAttachmentOpenResultTerms(
             downloadStopped = stringResource(Res.string.file_preview_download_stopped),
@@ -258,6 +260,7 @@ internal fun threadRouteLabels(): ThreadRouteLabels {
         unableToResolveCommentLabel = unableToResolveCommentLabel,
         unableToOpenAttachmentLabel = unableToOpenAttachmentLabel,
         unableToDownloadAttachmentLabel = unableToDownloadAttachmentLabel,
+        openAttachmentActionLabel = openAttachmentActionLabel,
         attachmentOpenResultTerms = attachmentOpenResultTerms,
         attachmentSavedToDownloadsLabel = attachmentSavedToDownloadsLabel,
         attachmentSavedToFilesLabel = attachmentSavedToFilesLabel,

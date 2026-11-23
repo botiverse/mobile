@@ -2997,18 +2997,38 @@ private fun RaftFilePreviewStandalonePageContent() {
                 val savedToFolder =
                     result?.optString("uri")?.takeIf { it.isNotBlank() && !toPhotos }
                         ?.let { uri -> savedFileHost?.folderName(uri) }
-                if (savedToFolder == null) bridge.toast(
-                    raftFilePreviewSavedMessage(
-                        exportPrivateDownload = exportPrivateDownload,
-                        toPhotos = toPhotos,
-                        supportsPublicDownloadReadback = supportsPublicDownloadReadback,
-                        supportsPrivateAttachmentExport = supportsPrivateAttachmentExport,
-                        downloadSaved = downloadSaved,
-                        privateDownloadSaved = privateDownloadSaved,
-                        fileExportSaved = fileExportSaved,
-                        imageSavedToPhotos = imageSavedToPhotos
-                    )
-                )
+                if (savedToFolder == null) {
+                    val savedMessage =
+                        raftFilePreviewSavedMessage(
+                            exportPrivateDownload = exportPrivateDownload,
+                            toPhotos = toPhotos,
+                            supportsPublicDownloadReadback = supportsPublicDownloadReadback,
+                            supportsPrivateAttachmentExport = supportsPrivateAttachmentExport,
+                            downloadSaved = downloadSaved,
+                            privateDownloadSaved = privateDownloadSaved,
+                            fileExportSaved = fileExportSaved,
+                            imageSavedToPhotos = imageSavedToPhotos
+                        )
+                    if (toPhotos || exportPrivateDownload) {
+                        bridge.toast(savedMessage)
+                    } else {
+                        raftShowSavedDownloadToast(
+                            bridge = bridge,
+                            message = savedMessage,
+                            openLabel = actionTerms.open,
+                            target =
+                                raftSavedDownloadTargetFromResult(
+                                    attachmentId = currentPayload.attachmentCacheId(),
+                                    fallbackFileName = currentPayload.attachmentCacheFileName(),
+                                    owner = operation.owner,
+                                    mimeType = currentPayload.externalMimeType,
+                                    result = result,
+                                ),
+                            openResultTerms = attachmentOpenResultTerms,
+                            hasDesktopDownloadBar = savedFileHost != null,
+                        )
+                    }
+                }
                 null
             }
             "cancelled" -> {
