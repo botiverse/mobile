@@ -295,6 +295,7 @@ fun RaftFitToolbar(
     LaunchedEffect(measuredOverScope.value) { onShownOverScope?.invoke(measuredOverScope.value) }
     SubcomposeLayout(
         modifier
+            .raftSlot("fit-toolbar")
             .fillMaxWidth()
             .drawBehind {
                 val stroke = RaftStroke.Hairline.toPx()

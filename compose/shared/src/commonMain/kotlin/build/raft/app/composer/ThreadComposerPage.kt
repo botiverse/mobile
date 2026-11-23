@@ -8,6 +8,7 @@ import build.raft.app.transfer.RaftTransferProgress
 import build.raft.app.transfer.RaftTransferMeter
 import build.raft.app.transfer.RaftComposerUploadDisplay
 import build.raft.app.transfer.RaftComposerUploadPhase
+import build.raft.designsystem.components.raftSlot
 import build.raft.designsystem.components.RaftBadge
 import build.raft.designsystem.components.RaftBadgeAppearance
 import build.raft.designsystem.components.RaftBadgeVariant
@@ -3431,6 +3432,7 @@ internal fun ThreadComposerContentLeaf(
                             radius = RaftAppRadius.Container
                         )
                         .testTag(ThreadComposerCardTestTag)
+                        .raftSlot("composer-frame")
                         // Blank-area tap only forwards focus to the editor. No indication: the
                         // default one paints the whole card gray (pressed/focused overlay); raft-ui
                         // shows composer focus through the editor caret, not a fill.
