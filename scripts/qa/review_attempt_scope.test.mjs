@@ -173,12 +173,56 @@ const fs = require("fs");
 const crypto = require("crypto");
 const report = JSON.parse(fs.readFileSync(process.env.FAKE_REPORT, "utf8"));
 const trace = (x) => fs.appendFileSync(process.env.FAKE_TRACE, JSON.stringify(x) + "\\n");
-const spec = (id) => JSON.stringify({ id, title: id, goal: "g", tier: "smoke", assertions: [{ id: "a1", text: "visible" }], android: {} });
+const sha = (s) => crypto.createHash("sha256").update(Buffer.from(String(s), "utf8")).digest("hex");
+const attemptSpec = (rc) => {
+  const full = JSON.stringify({ id: rc.case_id, title: rc.case_id, goal: "g", tier: "smoke", assertions: [{ id: "a1", text: "visible" }], android: { steps: [{ goal: "check" }] } });
+  const slice = JSON.stringify({ id: rc.case_id, title: rc.case_id, goal: "g", tier: "smoke", assertions: [{ id: "a1", text: "visible" }], steps: [{ goal: "check" }] });
+  const goal = "Check " + rc.case_id;
+  const doc = {
+    contract_version: "testbed-attempt-spec/v1",
+    case_id: rc.case_id,
+    case_revision: Number(rc.case_revision || 1),
+    platform: rc.platform || "android",
+    full_yaml: full,
+    full_yaml_sha256: sha(full),
+    platform_slice_yaml: slice,
+    platform_slice_sha256: sha(slice),
+    rendered_goal: goal,
+    rendered_goal_sha256: sha(goal),
+  };
+  return {
+    ...doc,
+    run_id: report.run.id,
+    run_case_id: rc.id,
+    attempt: Number(rc.attempt || 1),
+    binding_status: "verified",
+    spec_sha256: sha(JSON.stringify(doc)),
+    execution_budget: { max_turns: 45, max_minutes: 40, no_progress_turns: 8 },
+  };
+};
 const res = (status, body) => ({ ok: status < 400, status, text: async () => JSON.stringify(body) });
+const enrichedReport = {
+  ...report,
+  cases: (report.cases || []).map((rc) => {
+    const spec = attemptSpec(rc);
+    return {
+      ...rc,
+      spec_sha256: Object.hasOwn(rc, "spec_sha256") ? rc.spec_sha256 : spec.spec_sha256,
+      execution_budget_json: Object.hasOwn(rc, "execution_budget_json") ? rc.execution_budget_json : JSON.stringify(spec.execution_budget),
+    };
+  }),
+};
 global.fetch = async (url, opts = {}) => {
   const p = new URL(url).pathname, m = opts.method || "GET";
-  if (m === "GET" && p === "/api/runs/run-1") return res(200, report);
-  if (m === "GET" && p.startsWith("/api/cases/")) { const id = decodeURIComponent(p.split("/").pop()); return res(200, { revision: 1, spec_yaml: spec(id) }); }
+  if (m === "GET" && p === "/api/runs/run-1") return res(200, enrichedReport);
+  if (m === "GET" && p.startsWith("/api/cases/")) throw new Error("catalog /api/cases/ must never be called by review_agent");
+  const specMatch = p.match(/^\\/api\\/runs\\/run-1\\/cases\\/([^/]+)\\/spec$/);
+  if (m === "GET" && specMatch) {
+    const id = decodeURIComponent(specMatch[1]);
+    const rc = (report.cases || []).find((c) => c.id === id);
+    if (!rc) return res(404, { code: "ATTEMPT_NOT_FOUND" });
+    return res(200, attemptSpec(rc));
+  }
   const ev = p.match(/^\\/api\\/runs\\/run-1\\/evidence\\/(.+)$/);
   if (m === "GET" && ev) { trace({ evidence: ev[1] }); const b = Buffer.from("bytes:" + ev[1]); return { ok: true, status: 200, arrayBuffer: async () => b }; }
   if (m === "POST" && p === "/api/runs/run-1/panel-review") { trace({ post: JSON.parse(opts.body), path: p }); return res(200, { ok: true }); }
