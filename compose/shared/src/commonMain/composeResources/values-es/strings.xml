@@ -166,6 +166,7 @@
     <string name="settings_account_profile_save_failed">No se pudo guardar el perfil: %1$s</string>
     <string name="settings_account_change_password">Cambiar contraseña</string>
     <string name="settings_account_change_password_detail">Se requiere la contraseña actual antes de guardar una nueva</string>
+    <string name="settings_account_device_login_notice">Al cambiar tu contraseña se cierra la sesión en todos los dispositivos. Las conexiones de computadoras y las credenciales de agentes configuradas con un inicio de sesión de dispositivo (Raft Computer, la CLI de raft) también dejan de funcionar, así que tendrás que volver a iniciar sesión en ellas.</string>
     <string name="settings_account_current_password">Contraseña actual</string>
     <string name="settings_account_new_password">Nueva contraseña</string>
     <string name="settings_account_confirm_password">Confirmar contraseña</string>
@@ -356,6 +357,7 @@
     <string name="settings_keyboard_shortcuts_previous_match">Coincidencia anterior</string>
     <string name="settings_keyboard_shortcuts_previous_match_where">En la búsqueda del hilo; Enter va a la siguiente</string>
     <string name="settings_usage_data_title">Compartir datos de uso</string>
+    <string name="settings_usage_data_section_title">Analítica de producto</string>
     <string name="settings_account_login_security_title">Inicio de sesión y seguridad</string>
     <string name="settings_account_two_step_title">Verificación en dos pasos</string>
     <string name="settings_account_two_step_on">Activada</string>

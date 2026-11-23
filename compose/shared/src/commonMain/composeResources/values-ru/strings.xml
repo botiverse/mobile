@@ -166,6 +166,7 @@
     <string name="settings_account_profile_save_failed">Не удалось сохранить профиль: %1$s</string>
     <string name="settings_account_change_password">Изменить пароль</string>
     <string name="settings_account_change_password_detail">Перед сохранением нового пароля нужно ввести текущий</string>
+    <string name="settings_account_device_login_notice">После смены пароля вы выйдете из аккаунта на всех устройствах. Компьютеры и учётные данные агентов, настроенные через вход на устройстве (Raft Computer, raft CLI), тоже перестанут работать — на них нужно будет войти снова.</string>
     <string name="settings_account_current_password">Текущий пароль</string>
     <string name="settings_account_new_password">Новый пароль</string>
     <string name="settings_account_confirm_password">Подтверждение пароля</string>
@@ -356,6 +357,7 @@
     <string name="settings_keyboard_shortcuts_previous_match">Предыдущее совпадение</string>
     <string name="settings_keyboard_shortcuts_previous_match_where">В поиске по ветке; Enter — к следующему</string>
     <string name="settings_usage_data_title">Передавать данные об использовании</string>
+    <string name="settings_usage_data_section_title">Продуктовая аналитика</string>
     <string name="settings_account_login_security_title">Вход и безопасность</string>
     <string name="settings_account_two_step_title">Двухэтапная аутентификация</string>
     <string name="settings_account_two_step_on">Включена</string>

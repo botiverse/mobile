@@ -166,6 +166,7 @@
     <string name="settings_account_profile_save_failed">プロフィールの保存に失敗しました: %1$s</string>
     <string name="settings_account_change_password">パスワードを変更</string>
     <string name="settings_account_change_password_detail">新しいパスワードを保存する前に現在のパスワードが必要です</string>
+    <string name="settings_account_device_login_notice">パスワードを変更すると、すべてのデバイスからログアウトします。デバイスログイン（Raft Computer、raft CLI）で設定したコンピューターの接続とエージェントの認証情報も使えなくなるため、それぞれで再度ログインしてください。</string>
     <string name="settings_account_current_password">現在のパスワード</string>
     <string name="settings_account_new_password">新しいパスワード</string>
     <string name="settings_account_confirm_password">パスワードの確認</string>
@@ -356,6 +357,7 @@
     <string name="settings_keyboard_shortcuts_previous_match">前の一致</string>
     <string name="settings_keyboard_shortcuts_previous_match_where">スレッド内検索で。Enter は次へ</string>
     <string name="settings_usage_data_title">使用状況データを共有</string>
+    <string name="settings_usage_data_section_title">プロダクト分析</string>
     <string name="settings_account_login_security_title">ログインとセキュリティ</string>
     <string name="settings_account_two_step_title">2 段階認証</string>
     <string name="settings_account_two_step_on">オン</string>

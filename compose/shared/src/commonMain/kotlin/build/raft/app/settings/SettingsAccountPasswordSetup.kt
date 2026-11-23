@@ -3,6 +3,7 @@ package build.raft.app
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -185,16 +186,20 @@ internal fun SettingsAccountSetPasswordRow(
     onSend: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    Column(modifier.fillMaxWidth().testTag(SettingsAccountSetPasswordTag), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    // Web AccountSection lines 442-469 (`ListRow variant="plain"` inside `ListRowGroup`: `px-4 py-3`).
+    Column(
+        modifier = modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp).testTag(SettingsAccountSetPasswordTag),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
         Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
             RaftText(
                 stringResource(Res.string.settings_account_set_password),
-                style = RaftTheme.typography.subhead.copy(fontWeight = FontWeight.SemiBold),
+                style = RaftTheme.typography.body.copy(fontWeight = FontWeight.SemiBold),
                 color = RaftTheme.colors.foreground,
             )
             RaftText(
                 stringResource(Res.string.settings_account_set_password_description),
-                style = RaftTheme.typography.footnote,
+                style = RaftTheme.typography.callout,
                 color = RaftTheme.colors.foregroundMuted,
             )
         }
