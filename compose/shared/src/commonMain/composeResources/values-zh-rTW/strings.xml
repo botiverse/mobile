@@ -4809,6 +4809,11 @@
     <string name="agent_status_computer_access_revoked">電腦的存取權已撤銷：請把 Agent 移到另一台電腦（重新加入會新增一台電腦）</string>
     <string name="agent_status_computer_update_required">電腦需要更新</string>
     <string name="agent_status_computer_offline">電腦離線</string>
+    <string name="agent_computer_offline_card_title">%1$s 自 %2$s 起離線</string>
+    <string name="agent_computer_offline_card_title_no_time">%1$s 已離線</string>
+    <string name="agent_computer_offline_step_power_owner">把 %1$s 的電腦「%2$s」打開，別讓它睡眠</string>
+    <string name="agent_computer_offline_step_power">把電腦「%1$s」打開，別讓它睡眠</string>
+    <string name="agent_computer_offline_step_run">在那台電腦上開啟 Raft Desktop，或執行：</string>
     <string name="agent_status_open_computer">開啟電腦</string>
     <string name="agent_migration_place_from_revoked_computer_note">這個 Agent 所在的電腦已失去伺服器的存取權，無法帶走它的檔案。它會移到你選擇的電腦，並在下次收到訊息時在那裡開始新的工作階段。</string>
     <string name="agent_status_model_unsupported">這個執行環境的帳號或方案不包含模型「%1$s」。請更換模型，或登入包含該模型的帳號</string>

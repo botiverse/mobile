@@ -1258,6 +1258,14 @@ internal fun MemberDetailPageContent(
                             )
                         },
                         machineStatusRow = machineStatusRow,
+                        offlineComputerInputs = MembersAgentOfflineComputerInputs(
+                            machines = computerSliceForLink.machines,
+                            offlineObservedAtMs = computerSliceForLink.offlineObservedAtMs,
+                            commandContext = raftComputerCommandContext(
+                                serverSlug = current.server.slug,
+                                environment = provider.apiEnvironmentStore.current(),
+                            ),
+                        ),
                         actions = MembersDetailActions(
                             onBack = { closeDetail() },
                             directMessageOpening = pendingDirectMessageOpens.isOpening(member.kind, member.id),

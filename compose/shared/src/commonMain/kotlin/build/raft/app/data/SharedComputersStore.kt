@@ -63,7 +63,13 @@ internal data class SharedComputersServerSlice(
      */
     val seededFromDurable: Boolean = false,
     /** The last Add Computer gate the settings page computed for this server (first-frame seed). */
-    val canAddComputer: Boolean? = null
+    val canAddComputer: Boolean? = null,
+    /**
+     * When this session saw an online Computer go offline (`machineId -> epochMillis`, web
+     * `machineStore.computerOfflineObservedAt`, slock #13076). Never set on initial load or
+     * cleared when the machine stays offline; removed once the machine comes back online or leaves.
+     */
+    val offlineObservedAtMs: Map<String, Long> = emptyMap(),
 ) {
     val errorCode: String?
         get() = error?.code
@@ -610,13 +616,25 @@ class SharedComputersStore internal constructor(
                             latestComputerVersion = result.data.latestComputerVersion,
                             status = SharedComputersLoadStatus.Loaded,
                             hasSnapshot = true,
-                            canAddComputer = current.canAddComputer
+                            canAddComputer = current.canAddComputer,
+                            offlineObservedAtMs =
+                                if (current.hasSnapshot) {
+                                    reconcileComputerOfflineObservedAtMs(
+                                        previousMachines = current.machines,
+                                        nextMachines = result.data.machines,
+                                        previousObserved = current.offlineObservedAtMs,
+                                        nowMillis = defaultNowMillis(),
+                                    )
+                                } else {
+                                    emptyMap()
+                                },
                         )
                     is DataResult.Empty ->
                         SharedComputersServerSlice(
                             status = SharedComputersLoadStatus.Loaded,
                             hasSnapshot = true,
-                            canAddComputer = current.canAddComputer
+                            canAddComputer = current.canAddComputer,
+                            offlineObservedAtMs = emptyMap(),
                         )
                     is DataResult.Error -> current.withComputersFailure(result.error)
                     is DataResult.NoPermission -> current.withComputersFailure(result.toComputersScreenError())
@@ -690,7 +708,14 @@ class SharedComputersStore internal constructor(
                         machines = nextMachines,
                         machineCount = nextMachines.size,
                         onlineCount = nextMachines.count { it.status == ComputerStatus.Online },
-                        refreshing = if (superseded) false else current.refreshing
+                        refreshing = if (superseded) false else current.refreshing,
+                        offlineObservedAtMs =
+                            reconcileComputerOfflineObservedAtMs(
+                                previousMachines = current.machines,
+                                nextMachines = nextMachines,
+                                previousObserved = current.offlineObservedAtMs,
+                                nowMillis = defaultNowMillis(),
+                            ),
                     )
                 setServerSliceLocked(key, next)
                 lastPublishedSucceeded[key] = true
@@ -940,6 +965,34 @@ class SharedComputersStore internal constructor(
         const val DefaultMaxServers = 16
         const val MaxCachedDetails = 32
     }
+}
+
+/**
+ * Tracks when this session observed an online Computer go offline (web
+ * `machineStore.computerOfflineObservedAt`, slock #13076): recorded on an `Online -> Offline`
+ * transition, kept while it stays offline, and cleared once it returns online or leaves the list.
+ */
+internal fun reconcileComputerOfflineObservedAtMs(
+    previousMachines: List<ComputerSummary>,
+    nextMachines: List<ComputerSummary>,
+    previousObserved: Map<String, Long>,
+    nowMillis: Long,
+): Map<String, Long> {
+    val previousStatusById = previousMachines.associate { it.id to it.status }
+    val nextObserved = LinkedHashMap<String, Long>()
+    nextMachines.forEach { machine ->
+        when (machine.status) {
+            ComputerStatus.Offline -> {
+                val prior = previousObserved[machine.id]
+                when {
+                    prior != null -> nextObserved[machine.id] = prior
+                    previousStatusById[machine.id] == ComputerStatus.Online -> nextObserved[machine.id] = nowMillis
+                }
+            }
+            ComputerStatus.Online, ComputerStatus.Unknown -> Unit
+        }
+    }
+    return nextObserved
 }
 
 private fun DataResult<*>.toComputersScreenError(): ScreenError =

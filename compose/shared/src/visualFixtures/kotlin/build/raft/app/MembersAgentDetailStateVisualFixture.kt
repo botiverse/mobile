@@ -61,7 +61,9 @@ internal class ComposeMembersAgentDetailStateVisualPage : BasePager() {
                     payload = payload,
                     variant = variant,
                     pageVisibleTick = raftPageVisibleResumeTick,
-                    machineStatusRow = machineStatusRow
+                    machineStatusRow = machineStatusRow,
+                    offlineComputerInputs =
+                        if (state == "loading-state") MembersAgentOfflineComputerInputs() else null
                 )
             }
         }

@@ -4785,6 +4785,11 @@
     <string name="agent_status_computer_access_revoked">Доступ компьютера отозван: перенесите агента на другой компьютер (повторное подключение добавит новый компьютер)</string>
     <string name="agent_status_computer_update_required">Требуется обновление компьютера</string>
     <string name="agent_status_computer_offline">Компьютер не в сети</string>
+    <string name="agent_computer_offline_card_title">Компьютер %1$s не в сети с %2$s</string>
+    <string name="agent_computer_offline_card_title_no_time">Компьютер %1$s не в сети</string>
+    <string name="agent_computer_offline_step_power_owner">Включите компьютер %2$s (владелец: %1$s) и не давайте ему переходить в спящий режим</string>
+    <string name="agent_computer_offline_step_power">Включите компьютер %1$s и не давайте ему переходить в спящий режим</string>
+    <string name="agent_computer_offline_step_run">На этом компьютере откройте Raft Desktop или выполните:</string>
     <string name="agent_status_open_computer">Открыть компьютер</string>
     <string name="agent_migration_place_from_revoked_computer_note">Компьютер этого агента потерял доступ к серверу, поэтому его файлы перенести нельзя. Агент переедет на выбранный компьютер и начнёт там новый сеанс, когда получит следующее сообщение.</string>
     <string name="agent_status_model_unsupported">Аккаунт или тариф этой среды выполнения не включает «%1$s». Смените модель или войдите в аккаунт, где она есть</string>
