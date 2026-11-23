@@ -63,8 +63,20 @@ fun agentLoungeEnabled(flagEnabled: Boolean, serverRole: String?): Boolean {
 fun agentOffersLounge(deleted: Boolean, personalAssistant: Boolean, remoteProfile: Boolean): Boolean =
     !deleted && !personalAssistant && !remoteProfile
 
-/** The agent's name from a Lounge's own channel name when nothing better is known (web `agentNameFromLoungeChannel`). */
-fun loungeAgentNameFromChannelName(channelName: String): String = channelName.removeSuffix("-lounge")
+/**
+ * A Lounge's channel name since slock #16272: `_lounge-<agent>-<first 4 characters of the agent id>`
+ * (8 when two agents of one server would collide). The prefix can't start a user channel name.
+ */
+private val LoungeSlugName = Regex("^_lounge-(.+)-[0-9a-z]{4}(?:[0-9a-z]{4})?$")
+
+/**
+ * The agent's name from a Lounge's own channel name when nothing better is known (web
+ * `agentNameFromLoungeChannel`): the agent part of a `_lounge-<agent>-<id>` slug, else the older
+ * `<agent>-lounge` name without its trailing "-lounge". A fallback only: the agent's DM row or the
+ * open answer names it otherwise ([RaftAgentLounge.agentName]).
+ */
+fun loungeAgentNameFromChannelName(channelName: String): String =
+    LoungeSlugName.matchEntire(channelName)?.groupValues?.get(1) ?: channelName.removeSuffix("-lounge")
 
 /** The name a Lounge is shown under: its agent's display name, else from the channel name (web `loungeAgentDisplayName`). */
 fun loungeAgentDisplayName(agentDisplayName: String?, channelName: String): String =
