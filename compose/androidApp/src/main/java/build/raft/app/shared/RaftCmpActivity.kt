@@ -79,9 +79,6 @@ import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
-import androidx.core.content.pm.ShortcutInfoCompat
-import androidx.core.content.pm.ShortcutManagerCompat
-import androidx.core.graphics.drawable.IconCompat
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
@@ -4878,49 +4875,7 @@ internal class RaftBridgeModule(
         val request = runCatching { JSONObject(params ?: "{}") }.getOrNull() ?: return
         val rawShortcuts = request.optString("shortcuts")
         val shortcuts = RaftDesktopShortcutContract.deserializeList(rawShortcuts)
-        RaftThreadAdapter.execute("sync-desktop-shortcuts") {
-            try {
-                if (shortcuts.isEmpty()) {
-                    ShortcutManagerCompat.removeAllDynamicShortcuts(appContext)
-                    RaftAppLog.d("SlockDesktopShortcut", "dynamic_shortcuts_cleared")
-                    return@execute
-                }
-                val shortcutInfos = shortcuts.take(4).mapNotNull { item ->
-                    val targetId = item.targetId.trim().takeIf { it.isNotBlank() } ?: return@mapNotNull null
-                    val serverId = item.serverId.trim().takeIf { it.isNotBlank() } ?: return@mapNotNull null
-                    val title = item.title.trim().takeIf { it.isNotBlank() } ?: return@mapNotNull null
-
-                    val launchId = "${serverId}_${targetId}_${System.currentTimeMillis()}"
-                    val launchIntent = Intent(appContext, MainActivity::class.java).apply {
-                        action = Intent.ACTION_VIEW
-                        putExtra(RaftCmpActivity.KEY_PAGE_NAME, RaftCmpActivity.PAGE_APP_SHELL)
-                        val pageData = JSONObject().apply {
-                            put(RaftDesktopShortcutContract.KeyServerId, serverId)
-                            put(RaftDesktopShortcutContract.KeyTargetId, targetId)
-                            put(RaftDesktopShortcutContract.KeyTargetKind, item.targetKind)
-                            put(RaftDesktopShortcutContract.KeyLaunchId, launchId)
-                        }
-                        putExtra(RaftCmpActivity.KEY_PAGE_DATA, pageData.toString())
-                        putExtra(RaftDesktopShortcutContract.KeyServerId, serverId)
-                        putExtra(RaftDesktopShortcutContract.KeyTargetId, targetId)
-                        putExtra(RaftDesktopShortcutContract.KeyTargetKind, item.targetKind)
-                        putExtra(RaftDesktopShortcutContract.KeyLaunchId, launchId)
-                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
-                    }
-
-                    ShortcutInfoCompat.Builder(appContext, item.id)
-                        .setShortLabel(title)
-                        .setLongLabel(title)
-                        .setIcon(IconCompat.createWithResource(appContext, R.mipmap.ic_launcher))
-                        .setIntent(launchIntent)
-                        .build()
-                }
-                ShortcutManagerCompat.setDynamicShortcuts(appContext, shortcutInfos)
-                RaftAppLog.d("SlockDesktopShortcut", "dynamic_shortcuts_updated count=${shortcutInfos.size}")
-            } catch (e: Throwable) {
-                RaftAppLog.w("SlockDesktopShortcut", "dynamic_shortcuts_update_failed error=${e.message}")
-            }
-        }
+        AndroidDynamicShortcutCoordinator.updatePinnedShortcuts(appContext, shortcuts)
     }
 
     private fun copyToPasteboard(params: String?) {

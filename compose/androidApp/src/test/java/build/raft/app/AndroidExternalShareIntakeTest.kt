@@ -160,6 +160,101 @@ class AndroidExternalShareIntakeTest {
         }
     }
 
+    @Test
+    fun preselectedTargetHintRoundTripsSeparatesFingerprintAndDropsMalformedHints() = runTest {
+        val root = Files.createTempDirectory("external-share-hint").toFile()
+        val source = FakeSource(mapOf("content://one" to byteArrayOf(1, 2)), mapOf("content://one" to 2L))
+        var nextTokenIndex = 0
+        val inbox =
+            AndroidExternalShareInbox(
+                root = root,
+                source = source,
+                limits = limits(),
+                tokenFactory = {
+                    nextTokenIndex += 1
+                    "hint-token-12345678-$nextTokenIndex"
+                },
+                clock = { 1_000L },
+                atomicWriter = { file, bytes ->
+                    file.parentFile?.mkdirs()
+                    file.writeBytes(bytes)
+                    file.setLastModified(1_000L)
+                },
+                atomicReader = { file -> file.readText() }
+            )
+        try {
+            val dmHint = "raft_share:v1:srv-1:dm:dm-agent-1"
+            val channelHint = "raft_share:v1:srv-1:channel:ch-general"
+
+            val first =
+                inbox.admit(
+                    AndroidExternalShareSpec(
+                        text = "same payload",
+                        subject = "",
+                        uris = listOf("content://one"),
+                        preselectedTargetHint = dmHint
+                    )
+                ) as AndroidExternalShareIntakeResult.Admitted
+            val firstLoaded = inbox.load(first.launch.token) as RaftExternalShareEnvelopeHostReadResult.Content
+            assertEquals(dmHint, firstLoaded.record.preselectedTargetHint)
+
+            // Same payload to the same Direct Share target within 30s deduplicates.
+            val dup =
+                inbox.admit(
+                    AndroidExternalShareSpec(
+                        text = "same payload",
+                        subject = "",
+                        uris = listOf("content://one"),
+                        preselectedTargetHint = dmHint
+                    )
+                ) as AndroidExternalShareIntakeResult.Admitted
+            assertEquals(first.launch.token, dup.launch.token)
+
+            // Same payload to a DIFFERENT Direct Share target within 30s must NOT reuse the first token.
+            val second =
+                inbox.admit(
+                    AndroidExternalShareSpec(
+                        text = "same payload",
+                        subject = "",
+                        uris = listOf("content://one"),
+                        preselectedTargetHint = channelHint
+                    )
+                ) as AndroidExternalShareIntakeResult.Admitted
+            assertTrue(first.launch.token != second.launch.token)
+            val secondLoaded = inbox.load(second.launch.token) as RaftExternalShareEnvelopeHostReadResult.Content
+            assertEquals(channelHint, secondLoaded.record.preselectedTargetHint)
+
+            // Same payload without any Direct Share hint must also NOT reuse a hinted envelope.
+            val plain =
+                inbox.admit(
+                    AndroidExternalShareSpec(
+                        text = "same payload",
+                        subject = "",
+                        uris = listOf("content://one"),
+                        preselectedTargetHint = null
+                    )
+                ) as AndroidExternalShareIntakeResult.Admitted
+            assertTrue(plain.launch.token != first.launch.token && plain.launch.token != second.launch.token)
+            val plainLoaded = inbox.load(plain.launch.token) as RaftExternalShareEnvelopeHostReadResult.Content
+            assertEquals(null, plainLoaded.record.preselectedTargetHint)
+
+            // Malformed hint is stripped cleanly during admission.
+            val malformed =
+                inbox.admit(
+                    AndroidExternalShareSpec(
+                        text = "bad hint payload",
+                        subject = "",
+                        uris = emptyList(),
+                        preselectedTargetHint = "not-a-raft-hint"
+                    )
+                ) as AndroidExternalShareIntakeResult.Admitted
+            val malformedLoaded = inbox.load(malformed.launch.token) as RaftExternalShareEnvelopeHostReadResult.Content
+            assertEquals(null, malformedLoaded.record.preselectedTargetHint)
+        } finally {
+            root.deleteRecursively()
+        }
+    }
+
     private fun spec(text: String, vararg refs: String): AndroidExternalShareSpec =
         AndroidExternalShareSpec(text = text, subject = "", uris = refs.toList())
 

@@ -35,7 +35,8 @@ internal data class ExternalShareEnvelope(
     val sourcePlatform: String,
     val text: String = "",
     val subject: String = "",
-    val items: List<ExternalShareItem> = emptyList()
+    val items: List<ExternalShareItem> = emptyList(),
+    val preselectedTargetHint: String? = null
 ) {
     fun hasContent(): Boolean =
         text.isNotBlank() || subject.isNotBlank() || items.isNotEmpty()
@@ -88,7 +89,8 @@ internal data class ExternalShareDraft(
     // Legacy fields retained for backwards-compatible decoding only.
     val comment: String = "",
     val deliveries: List<ExternalShareDelivery> = emptyList(),
-    val envelopeConsumed: Boolean = false
+    val envelopeConsumed: Boolean = false,
+    val hintHandled: Boolean = false
 )
 
 internal interface ExternalShareDraftRepository {
@@ -263,9 +265,14 @@ internal class ExternalShareStore(
                 when (val draftResult = draftRepository.load(token)) {
                     is DataResult.Content -> {
                         val existing = draftResult.data
+                        val hasUnhandledHint =
+                            !existing.hintHandled &&
+                                existing.selectedTargets.isEmpty() &&
+                                !existing.envelope.preselectedTargetHint.isNullOrBlank()
                         val shouldPrefetch =
                             existing.stage == ExternalShareDraftStage.SelectingTargets &&
                                 !existing.envelopeConsumed &&
+                                !hasUnhandledHint &&
                                 existing.isValidFor(token, authorizedServerOptions.mapTo(linkedSetOf()) { it.id })
                         if (shouldPrefetch) {
                             val prefetchServerId = existing.serverId
@@ -300,11 +307,60 @@ internal class ExternalShareStore(
                     setLoadError(token, serverId, "external_share_envelope_invalid", false, generation)
                     return
                 }
+                val parsedHint = authorizedPreselectedHintOrNull(envelope.preselectedTargetHint)
+                if (parsedHint != null) {
+                    val hintLookup = scope.async { resolvePreselectedHintTarget(parsedHint) }
+                    try {
+                        val draft =
+                            ExternalShareDraft(
+                                envelope = envelope,
+                                serverId = serverId,
+                                stage = ExternalShareDraftStage.SelectingTargets,
+                                hintHandled = false
+                            )
+                        when (val transfer = persistAndConsumeEnvelope(draft)) {
+                            is DataResult.Content -> {
+                                val matchedTarget = hintLookup.await()
+                                completeHintOrFallback(
+                                    consumedDraft = transfer.data,
+                                    hint = parsedHint,
+                                    matchedTarget = matchedTarget,
+                                    accountId = accountId,
+                                    requestedServerId = serverId,
+                                    generation = generation
+                                )
+                            }
+                            is DataResult.Empty -> {
+                                hintLookup.cancel()
+                                setLoadError(token, serverId, "external_share_draft_persist_empty", true, generation)
+                            }
+                            is DataResult.Error -> {
+                                hintLookup.cancel()
+                                setLoadError(token, serverId, transfer.error.code, transfer.error.retryable, generation)
+                            }
+                            is DataResult.NoPermission -> {
+                                hintLookup.cancel()
+                                setLoadError(token, serverId, transfer.blocker.code, false, generation)
+                            }
+                        }
+                    } finally {
+                        if (hintLookup.isActive) {
+                            hintLookup.cancel()
+                        }
+                    }
+                    return
+                }
                 // Start loading targets + recent threads/tasks in parallel with durable draft/consume
                 // I/O so the picker opens immediately once the two-phase envelope claim settles.
                 val dirPrefetch = startDirectoryPrefetch(token, serverId)
                 val convPrefetch = startConversationTargetsPrefetch(serverId)
-                val draft = ExternalShareDraft(envelope, serverId, ExternalShareDraftStage.SelectingTargets)
+                val draft =
+                    ExternalShareDraft(
+                        envelope = envelope,
+                        serverId = serverId,
+                        stage = ExternalShareDraftStage.SelectingTargets,
+                        hintHandled = true
+                    )
                 when (val transfer = persistAndConsumeEnvelope(draft)) {
                     is DataResult.Content ->
                         restoreDraft(
@@ -450,6 +506,41 @@ internal class ExternalShareStore(
         }
         when (readyDraft.stage) {
             ExternalShareDraftStage.SelectingTargets -> {
+                if (
+                    !readyDraft.hintHandled &&
+                    readyDraft.selectedTargets.isEmpty() &&
+                    !readyDraft.envelope.preselectedTargetHint.isNullOrBlank()
+                ) {
+                    val parsedHint = authorizedPreselectedHintOrNull(readyDraft.envelope.preselectedTargetHint)
+                    if (parsedHint != null) {
+                        prefetchedDirectory?.cancel()
+                        prefetchedConversations?.cancel()
+                        val matchedTarget = resolvePreselectedHintTarget(parsedHint)
+                        completeHintOrFallback(
+                            consumedDraft = readyDraft,
+                            hint = parsedHint,
+                            matchedTarget = matchedTarget,
+                            accountId = accountId,
+                            requestedServerId = requestedServerId,
+                            generation = generation
+                        )
+                        return
+                    }
+                    try {
+                        draftRepository.save(readyDraft.copy(hintHandled = true))
+                    } catch (cancellation: CancellationException) {
+                        prefetchedDirectory?.cancel()
+                        prefetchedConversations?.cancel()
+                        throw cancellation
+                    } catch (_: Throwable) {
+                        diagnosticsLogger("external_share_hint_mark_handled_failed")
+                    }
+                    if (generation != loadGeneration) {
+                        prefetchedDirectory?.cancel()
+                        prefetchedConversations?.cancel()
+                        return
+                    }
+                }
                 _state.value =
                     ExternalShareState.SelectingTargets(
                         envelope = readyDraft.envelope,
@@ -469,7 +560,12 @@ internal class ExternalShareStore(
                     setLoadError(token, requestedServerId, "external_share_legacy_draft_unsupported", false, generation)
                     return
                 }
-                val migrated = readyDraft.copy(stage = ExternalShareDraftStage.ComposerHandoff, comment = "")
+                val migrated =
+                    readyDraft.copy(
+                        stage = ExternalShareDraftStage.ComposerHandoff,
+                        comment = "",
+                        hintHandled = true
+                    )
                 resolveComposerHandoff(migrated, accountId, generation)
             }
             ExternalShareDraftStage.Delivering -> {
@@ -735,7 +831,8 @@ internal class ExternalShareStore(
                 serverId = current.serverId,
                 stage = ExternalShareDraftStage.ComposerHandoff,
                 selectedTargets = listOf(target),
-                envelopeConsumed = true
+                envelopeConsumed = true,
+                hintHandled = true
             )
         handoffJob?.cancel()
         handoffJob =
@@ -749,7 +846,116 @@ internal class ExternalShareStore(
             }
     }
 
-    private suspend fun resolveComposerHandoff(draft: ExternalShareDraft, accountId: String, loadAtStart: Long) {
+    private fun authorizedPreselectedHintOrNull(rawHint: String?): RaftShareSuggestionTargetHint? {
+        val decoded = RaftShareSuggestionContract.decodeTargetHint(rawHint) ?: return null
+        if (authorizedServerOptions.none { it.id == decoded.serverId }) {
+            diagnosticsLogger("external_share_hint_unauthorized serverId=${decoded.serverId}")
+            return null
+        }
+        return decoded
+    }
+
+    private suspend fun resolvePreselectedHintTarget(
+        hint: RaftShareSuggestionTargetHint
+    ): ForwardMessageTarget? {
+        val result =
+            try {
+                targetRepository.recentTargets(
+                    serverId = ServerId(hint.serverId),
+                    limit = ExternalShareHintLookupLimit
+                )
+            } catch (cancellation: CancellationException) {
+                throw cancellation
+            } catch (_: Throwable) {
+                return null
+            }
+        val candidates = (result as? DataResult.Content)?.data ?: return null
+        return candidates.firstOrNull { target ->
+            target.serverId.value == hint.serverId &&
+                target.channelId?.value == hint.channelId &&
+                target.requiredAction == ForwardMessageTargetRequiredAction.None &&
+                target.canForwardNow &&
+                target.joined != false &&
+                target.matchesShareSuggestionKind(hint.kind)
+        }
+    }
+
+    private suspend fun completeHintOrFallback(
+        consumedDraft: ExternalShareDraft,
+        hint: RaftShareSuggestionTargetHint,
+        matchedTarget: ForwardMessageTarget?,
+        accountId: String,
+        requestedServerId: String,
+        generation: Long
+    ) {
+        if (generation != loadGeneration) return
+        val fallbackDraft =
+            consumedDraft.copy(
+                serverId = requestedServerId,
+                stage = ExternalShareDraftStage.SelectingTargets,
+                selectedTargets = emptyList(),
+                envelopeConsumed = true,
+                hintHandled = true
+            )
+        if (matchedTarget == null) {
+            diagnosticsLogger("external_share_hint_miss serverId=${hint.serverId} kind=${hint.kind.wireValue}")
+            enterSelectingTargetsFromFallback(fallbackDraft, accountId, generation)
+            return
+        }
+        val handoffDraft =
+            consumedDraft.copy(
+                serverId = hint.serverId,
+                stage = ExternalShareDraftStage.ComposerHandoff,
+                selectedTargets = listOf(matchedTarget),
+                envelopeConsumed = true,
+                hintHandled = true
+            )
+        when (draftRepository.save(handoffDraft)) {
+            is DataResult.Content ->
+                resolveComposerHandoff(
+                    draft = handoffDraft,
+                    accountId = accountId,
+                    loadAtStart = generation,
+                    fallbackToPicker = fallbackDraft
+                )
+            else -> {
+                diagnosticsLogger("external_share_hint_handoff_save_fallback serverId=${hint.serverId}")
+                enterSelectingTargetsFromFallback(fallbackDraft, accountId, generation)
+            }
+        }
+    }
+
+    private suspend fun enterSelectingTargetsFromFallback(
+        fallbackDraft: ExternalShareDraft,
+        accountId: String,
+        generation: Long
+    ) {
+        try {
+            draftRepository.save(fallbackDraft)
+        } catch (cancellation: CancellationException) {
+            throw cancellation
+        } catch (_: Throwable) {
+            diagnosticsLogger("external_share_hint_fallback_draft_save_failed")
+        }
+        if (generation != loadGeneration) return
+        _state.value =
+            ExternalShareState.SelectingTargets(
+                envelope = fallbackDraft.envelope,
+                accountId = accountId,
+                serverId = fallbackDraft.serverId,
+                serverOptions = authorizedServerOptions,
+                selectedTargets = emptyList()
+            )
+        search("")
+        loadConversationTargets()
+    }
+
+    private suspend fun resolveComposerHandoff(
+        draft: ExternalShareDraft,
+        accountId: String,
+        loadAtStart: Long,
+        fallbackToPicker: ExternalShareDraft? = null
+    ) {
         val target = draft.selectedTargets.singleOrNull() ?: return
         val resolution =
             try {
@@ -764,6 +970,14 @@ internal class ExternalShareStore(
                 DataResult.Error(ScreenError("external_share_target_resolution_failed", true))
             }
         if (loadAtStart != loadGeneration) return
+        suspend fun failOrFallback(errorCode: String, retryable: Boolean) {
+            if (fallbackToPicker != null) {
+                diagnosticsLogger("external_share_hint_resolve_fallback code=$errorCode")
+                enterSelectingTargetsFromFallback(fallbackToPicker, accountId, loadAtStart)
+            } else {
+                setLoadError(draft.envelope.token, draft.serverId, errorCode, retryable, loadAtStart)
+            }
+        }
         when (resolution) {
             is DataResult.Content -> {
                 val destination = resolution.data
@@ -801,20 +1015,20 @@ internal class ExternalShareStore(
                                 )
                         }
                         is DataResult.Empty -> {
-                            setLoadError(draft.envelope.token, draft.serverId, "external_share_thread_parent_missing", true, loadAtStart)
+                            failOrFallback("external_share_thread_parent_missing", true)
                             return
                         }
                         is DataResult.Error -> {
-                            setLoadError(draft.envelope.token, draft.serverId, parentResolution.error.code, parentResolution.error.retryable, loadAtStart)
+                            failOrFallback(parentResolution.error.code, parentResolution.error.retryable)
                             return
                         }
                         is DataResult.NoPermission -> {
-                            setLoadError(draft.envelope.token, draft.serverId, parentResolution.blocker.code, false, loadAtStart)
+                            failOrFallback(parentResolution.blocker.code, false)
                             return
                         }
                     }
                 }
-                val resolvedDraft = draft.copy(selectedTargets = listOf(resolvedTarget))
+                val resolvedDraft = draft.copy(selectedTargets = listOf(resolvedTarget), hintHandled = true)
                 when (val save = draftRepository.save(resolvedDraft)) {
                     is DataResult.Content -> {
                         handoffGeneration += 1
@@ -830,14 +1044,14 @@ internal class ExternalShareStore(
                                 )
                             )
                     }
-                    is DataResult.Empty -> setLoadError(draft.envelope.token, draft.serverId, "external_share_draft_persist_empty", true, loadAtStart)
-                    is DataResult.Error -> setLoadError(draft.envelope.token, draft.serverId, save.error.code, save.error.retryable, loadAtStart)
-                    is DataResult.NoPermission -> setLoadError(draft.envelope.token, draft.serverId, save.blocker.code, false, loadAtStart)
+                    is DataResult.Empty -> failOrFallback("external_share_draft_persist_empty", true)
+                    is DataResult.Error -> failOrFallback(save.error.code, save.error.retryable)
+                    is DataResult.NoPermission -> failOrFallback(save.blocker.code, false)
                 }
             }
-            is DataResult.Empty -> setLoadError(draft.envelope.token, draft.serverId, "external_share_target_resolution_empty", true, loadAtStart)
-            is DataResult.Error -> setLoadError(draft.envelope.token, draft.serverId, resolution.error.code, resolution.error.retryable, loadAtStart)
-            is DataResult.NoPermission -> setLoadError(draft.envelope.token, draft.serverId, resolution.blocker.code, false, loadAtStart)
+            is DataResult.Empty -> failOrFallback("external_share_target_resolution_empty", true)
+            is DataResult.Error -> failOrFallback(resolution.error.code, resolution.error.retryable)
+            is DataResult.NoPermission -> failOrFallback(resolution.blocker.code, false)
         }
     }
 
@@ -882,7 +1096,8 @@ internal class ExternalShareStore(
                 serverId = current.serverId,
                 stage = ExternalShareDraftStage.SelectingTargets,
                 selectedTargets = current.selectedTargets,
-                envelopeConsumed = true
+                envelopeConsumed = true,
+                hintHandled = true
             )
         val previous = draftWriteTail
         draftWriteTail =
@@ -978,3 +1193,15 @@ private fun List<ExternalShareServerOption>.normalizedExternalShareServerOptions
  */
 internal fun List<ForwardMessageTarget>.externalShareTargets(): List<ForwardMessageTarget> =
     filter { !it.isForwardConversationTarget() || it.channelId != null }
+
+private const val ExternalShareHintLookupLimit = 500
+
+private fun ForwardMessageTarget.matchesShareSuggestionKind(kind: RaftShareSuggestionKind): Boolean =
+    when (kind) {
+        RaftShareSuggestionKind.DirectMessage ->
+            channelKind == ConversationKind.DirectMessage
+        RaftShareSuggestionKind.Joint ->
+            channelKind == ConversationKind.Joint || channelType?.trim().equals("joint", ignoreCase = true)
+        RaftShareSuggestionKind.Channel ->
+            channelKind == ConversationKind.Channel && !channelType?.trim().equals("joint", ignoreCase = true)
+    }

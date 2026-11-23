@@ -9,12 +9,14 @@ import android.net.Uri
 import android.provider.OpenableColumns
 import android.util.AtomicFile
 import android.webkit.MimeTypeMap
+import androidx.core.content.pm.ShortcutManagerCompat
 import build.raft.app.data.RaftExternalShareEnvelopeHost
 import build.raft.app.data.RaftExternalShareEnvelopeHostItem
 import build.raft.app.data.RaftExternalShareEnvelopeHostMutationResult
 import build.raft.app.data.RaftExternalShareEnvelopeHostProvider
 import build.raft.app.data.RaftExternalShareEnvelopeHostReadResult
 import build.raft.app.data.RaftExternalShareEnvelopeHostRecord
+import build.raft.app.data.RaftShareSuggestionContract
 import build.raft.app.downloads.RaftShareFileName
 import java.io.File
 import java.io.FileOutputStream
@@ -237,6 +239,7 @@ internal class AndroidExternalShareInbox(
         }
         return try {
             val items = copyItems(spec.uris, directory)
+            val canonicalHint = RaftShareSuggestionContract.canonicalizeTargetHint(spec.preselectedTargetHint)
             val envelope =
                 JSONObject()
                     .put("token", token)
@@ -245,6 +248,11 @@ internal class AndroidExternalShareInbox(
                     .put("text", spec.text)
                     .put("subject", spec.subject)
                     .put("fingerprint", fingerprint)
+                    .apply {
+                        if (canonicalHint != null) {
+                            put("preselectedTargetHint", canonicalHint)
+                        }
+                    }
                     .put(
                         "items",
                         JSONArray().apply {
@@ -418,6 +426,10 @@ internal class AndroidExternalShareInbox(
                     )
                 }
             }
+        val preselectedTargetHint =
+            RaftShareSuggestionContract.canonicalizeTargetHint(
+                json.optString("preselectedTargetHint").takeIf { it.isNotBlank() }
+            )
         return RaftExternalShareEnvelopeHostReadResult.Content(
             RaftExternalShareEnvelopeHostRecord(
                 token = token,
@@ -425,7 +437,8 @@ internal class AndroidExternalShareInbox(
                 sourcePlatform = "android",
                 text = json.optString("text"),
                 subject = json.optString("subject"),
-                items = items
+                items = items,
+                preselectedTargetHint = preselectedTargetHint
             )
         )
     }
@@ -671,7 +684,8 @@ internal data class AndroidExternalShareSpec(
     val text: String,
     val subject: String,
     val uris: List<String>,
-    val textTooLong: Boolean = false
+    val textTooLong: Boolean = false,
+    val preselectedTargetHint: String? = null
 ) {
     fun hasContent(): Boolean = text.isNotBlank() || subject.isNotBlank() || uris.isNotEmpty()
 }
@@ -685,11 +699,16 @@ internal fun Intent.toAndroidExternalShareSpec(): AndroidExternalShareSpec? {
     val textValue = getCharSequenceExtra(Intent.EXTRA_TEXT)
     val subjectValue = getCharSequenceExtra(Intent.EXTRA_SUBJECT)
     val textTooLong = (textValue?.length ?: 0) > MaxTextCharacters || (subjectValue?.length ?: 0) > MaxTextCharacters
+    val preselectedTargetHint =
+        RaftShareSuggestionContract.canonicalizeTargetHint(
+            getStringExtra(ShortcutManagerCompat.EXTRA_SHORTCUT_ID)
+        )
     return AndroidExternalShareSpec(
         text = textValue?.takeUnless { textTooLong }?.toString().orEmpty(),
         subject = subjectValue?.takeUnless { textTooLong }?.toString().orEmpty(),
         uris = uris.map(Uri::toString),
-        textTooLong = textTooLong
+        textTooLong = textTooLong,
+        preselectedTargetHint = preselectedTargetHint
     )
 }
 
@@ -718,6 +737,12 @@ private fun AndroidExternalShareSpec.fingerprint(): String {
     digest.update(text.toByteArray(Charsets.UTF_8))
     digest.update(0.toByte())
     digest.update(subject.toByteArray(Charsets.UTF_8))
+    digest.update(0.toByte())
+    digest.update(
+        RaftShareSuggestionContract.canonicalizeTargetHint(preselectedTargetHint)
+            .orEmpty()
+            .toByteArray(Charsets.UTF_8)
+    )
     uris.forEach { uri ->
         digest.update(0.toByte())
         digest.update(uri.toByteArray(Charsets.UTF_8))

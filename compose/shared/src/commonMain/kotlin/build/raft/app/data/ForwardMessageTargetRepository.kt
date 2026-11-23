@@ -382,12 +382,14 @@ class RealForwardMessageTargetRepository(
         val peerProfiles = cachedPeerProfiles(serverId)
         val now = nowMillis()
         val items =
-            (directMessages.mapNotNull { directMessage ->
-                directMessage.toRecentForwardTarget(serverId, directMessage.presenceMemberId?.let(peerProfiles::get))
-            } +
-                channels.mapNotNull { it.toRecentForwardTarget(serverId, now) })
-                .distinctBy { it.serverId.value + ":" + it.kind.name + ":" + it.id }
-                .take(limit.coerceAtLeast(1))
+            recentForwardMessageTargets(
+                serverId = serverId,
+                directMessages = directMessages,
+                channels = channels,
+                peerProfiles = peerProfiles,
+                limit = limit,
+                nowEpochMillis = now
+            )
         return DataResult.Content(items)
     }
 
@@ -1075,8 +1077,12 @@ private inline fun <T, R> DataResult<T>.mapContent(mapper: (T) -> R): DataResult
 
 private fun HomeDirectMessageRow.toRecentForwardTarget(
     serverId: ServerId,
-    peer: MemberProfile? = null
+    peer: MemberProfile? = null,
+    nowEpochMillis: Long = defaultNowMillis()
 ): ForwardMessageTarget? {
+    if (!joined || archived || isExternalFreezeActive(nowEpochMillis) || !permissions.canRead || !permissions.canSend) {
+        return null
+    }
     val channelId = toConversationSummary().messageStreamChannelId()
     val title = name.trim().takeIf { it.isNotBlank() } ?: return null
     return ForwardMessageTarget(
@@ -1093,12 +1099,13 @@ private fun HomeDirectMessageRow.toRecentForwardTarget(
         channelKind = ConversationKind.DirectMessage,
         channelType = "dm",
         memberId = presenceMemberId,
+        joined = true,
         dmExists = true,
         canForwardNow = true
     )
 }
 
-private fun HomeChannelRow.isExternalFreezeActive(nowEpochMillis: Long): Boolean {
+private fun HomeConversationRow.isExternalFreezeActive(nowEpochMillis: Long): Boolean {
     val freezeAt = externalFreezeAt?.takeIf { it.isNotBlank() } ?: return false
     val deadlineMillis = parseRaftTimestampEpochMillisOrNull(freezeAt, 0) ?: return false
     return nowEpochMillis >= deadlineMillis
@@ -1108,7 +1115,9 @@ private fun HomeChannelRow.toRecentForwardTarget(
     serverId: ServerId,
     nowEpochMillis: Long = defaultNowMillis(),
 ): ForwardMessageTarget? {
-    if (!joined || archived || isExternalFreezeActive(nowEpochMillis)) return null
+    if (!joined || archived || isExternalFreezeActive(nowEpochMillis) || !permissions.canRead || !permissions.canSend) {
+        return null
+    }
     val channelId = toConversationSummary().messageStreamChannelId()
     val title = name.trim().removePrefix("#").takeIf { it.isNotBlank() } ?: return null
     return ForwardMessageTarget(
@@ -1159,6 +1168,25 @@ private fun HomeChannelRow.toSearchForwardTarget(
     )
 }
 
+internal fun recentForwardMessageTargets(
+    serverId: ServerId,
+    directMessages: List<HomeDirectMessageRow>,
+    channels: List<HomeChannelRow>,
+    peerProfiles: Map<MemberId, MemberProfile> = emptyMap(),
+    limit: Int,
+    nowEpochMillis: Long = defaultNowMillis()
+): List<ForwardMessageTarget> =
+    (directMessages.mapNotNull { directMessage ->
+        directMessage.toRecentForwardTarget(
+            serverId = serverId,
+            peer = directMessage.presenceMemberId?.let(peerProfiles::get),
+            nowEpochMillis = nowEpochMillis
+        )
+    } +
+        channels.mapNotNull { it.toRecentForwardTarget(serverId, nowEpochMillis) })
+        .distinctBy { it.serverId.value + ":" + it.kind.name + ":" + it.id }
+        .take(limit.coerceAtLeast(1))
+
 internal fun fallbackForwardMessageTargets(
     serverId: ServerId,
     directMessages: List<HomeDirectMessageRow>,
@@ -1172,7 +1200,11 @@ internal fun fallbackForwardMessageTargets(
     val matches =
         (
         directMessages.mapNotNull { directMessage ->
-            directMessage.toRecentForwardTarget(serverId, directMessage.presenceMemberId?.let(peerProfiles::get))
+            directMessage.toRecentForwardTarget(
+                serverId = serverId,
+                peer = directMessage.presenceMemberId?.let(peerProfiles::get),
+                nowEpochMillis = nowEpochMillis
+            )
         } +
             channels.mapNotNull { it.toSearchForwardTarget(serverId, nowEpochMillis) }
         )

@@ -32,7 +32,8 @@ data class RaftExternalShareEnvelopeHostRecord(
     val sourcePlatform: String,
     val text: String = "",
     val subject: String = "",
-    val items: List<RaftExternalShareEnvelopeHostItem> = emptyList()
+    val items: List<RaftExternalShareEnvelopeHostItem> = emptyList(),
+    val preselectedTargetHint: String? = null
 )
 
 sealed interface RaftExternalShareEnvelopeHostReadResult {
@@ -98,7 +99,8 @@ private class HostExternalShareEnvelopeRepository(
                                     mimeType = item.mimeType,
                                     sizeBytes = item.sizeBytes
                                 )
-                            }
+                            },
+                        preselectedTargetHint = result.record.preselectedTargetHint
                     )
                 )
             RaftExternalShareEnvelopeHostReadResult.Missing ->
