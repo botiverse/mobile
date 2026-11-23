@@ -102,7 +102,7 @@ internal fun <T> VirtualMessageTimeline(
         remember(items, itemKeys, contentType, isAnchorable, state.pinnedItemList) {
             VirtualTimelineItemProvider(
                 items = items,
-                keys = itemKeys,
+                itemKeys = itemKeys,
                 contentTypeOf = contentType,
                 isAnchorableOf = isAnchorable,
                 pinnedItemList = state.pinnedItemList,
@@ -179,16 +179,16 @@ internal fun <T> VirtualMessageTimeline(
 
 private class VirtualTimelineItemProvider<T>(
     private val items: List<T>,
-    private val keys: List<Any>,
+    private val itemKeys: List<Any>,
     private val contentTypeOf: (T) -> Any?,
     private val isAnchorableOf: (T) -> Boolean,
     private val pinnedItemList: LazyLayoutPinnedItemList,
     private val itemContentState: State<@Composable (index: Int, item: T) -> Unit>,
 ) : LazyLayoutItemProvider {
     private val keyToIndex: Map<Any, Int> =
-        buildMap(keys.size) {
-            for (i in keys.indices) {
-                put(keys[i], i)
+        buildMap(itemKeys.size) {
+            for (i in itemKeys.indices) {
+                put(itemKeys[i], i)
             }
         }
 
@@ -211,7 +211,7 @@ private class VirtualTimelineItemProvider<T>(
         }
     }
 
-    override fun getKey(index: Int): Any = keys[index]
+    override fun getKey(index: Int): Any = itemKeys[index]
 
     override fun getContentType(index: Int): Any? =
         if (index in items.indices) contentTypeOf(items[index]) else null
