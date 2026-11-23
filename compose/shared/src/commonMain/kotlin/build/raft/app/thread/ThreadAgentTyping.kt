@@ -318,17 +318,23 @@ internal val ThreadAgentTypingLineHeight = 24.dp
 internal val ThreadAgentTypingListEndHeight = 30.dp
 
 /**
- * Whether the line coming or going retires the viewport's intent to
+ * Whether the line coming ([lineShown]) or going retires the viewport's intent to
  * [LazyViewportIntent.FollowingLatest] before the list's end changes height (web MessageTimeline
  * keeps a reader who follows the bottom pinned when AgentTypingListEnd appears or goes, and holds
  * the reading position of one scrolled up).
  *
- * The bottom-up list keeps a reader resting on its end ([restsOnListEnd]) there by itself: the rows
- * ride up by the slot, the newest message clear of the line, and come back when it goes. Only a
- * reader resting there under another intent (opened on the newest message from Inbox or Activity, a
- * focused tail) needs this; otherwise the reading anchor keeper puts the old position back and the
- * line covers the newest message's last line (Android 1.27.0, #proj-mobile #227). The keyboard
- * correction retires a parked tail the same way ([resolveThreadComposerInsetViewportAction]).
+ * The bottom-up list keeps a reader resting on its end there by itself: the rows ride up by the
+ * slot, the newest message clear of the line, and come back when it goes. Only a reader there under
+ * another intent (opened on the newest message from Inbox or Activity, a focused tail, a drag let go
+ * just above the end) needs this; otherwise the reading anchor keeper puts the old position back
+ * and the line covers the newest message's last line (Android 1.27.0, #proj-mobile #227). The
+ * keyboard correction retires a parked tail the same way ([resolveThreadComposerInsetViewportAction]).
+ *
+ * When the line comes, any reader who sees the end row ([listEndInView]) sees the newest message
+ * whole, and keeps seeing it whole above the line. When it goes, only a reader resting on the end
+ * ([restsOnListEnd], the tolerance a settled drag counts as following) follows: one further up
+ * keeps their place as far as the shorter end allows, where following would drop the rows by the
+ * slot and then bring them back up to the end.
  *
  * Nothing to follow for a reader scrolled up (the end changes out of view), while a drag or fling
  * owns the viewport (a finger down included), before the placement settles (the initial anchor, a
@@ -337,14 +343,16 @@ internal val ThreadAgentTypingListEndHeight = 30.dp
  */
 internal fun threadTypingLineEndFollowsLatest(
     reverseLayout: Boolean,
+    lineShown: Boolean,
     intent: LazyViewportIntent,
+    listEndInView: Boolean,
     restsOnListEnd: Boolean,
     scrollInProgress: Boolean,
     placementSettled: Boolean,
     newerPagePending: Boolean,
 ): Boolean =
     reverseLayout &&
-        restsOnListEnd &&
+        (if (lineShown) listEndInView else restsOnListEnd) &&
         !scrollInProgress &&
         placementSettled &&
         !newerPagePending &&

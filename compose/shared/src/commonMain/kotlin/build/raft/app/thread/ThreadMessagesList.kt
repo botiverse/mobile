@@ -5530,16 +5530,18 @@ private class ThreadTypingLineEndSeen(
  *
  * The bottom-up list keeps a reader resting on the end there by itself (the rows ride with it) and
  * one scrolled into the history never sees the end change, so nothing scrolls for either. A reader
- * resting on the end under another intent (opened on the newest message, a focused tail) is
- * retired to FollowingLatest here, after the composition and before that layout, as the keyboard
- * correction retires a parked tail: the reading anchor keeper owns only while not following, so it
- * does not put the old position back under the line, and later replays of the intent pin the end
- * instead of an offset taken before it changed.
+ * at the end under another intent (opened on the newest message, a focused tail, a drag let go
+ * just above the end) is retired to FollowingLatest here, after the composition and before that
+ * layout, as the keyboard correction retires a parked tail: the reading anchor keeper owns only
+ * while not following, so it does not put the old position back under the line, and later replays
+ * of the intent pin the end instead of an offset taken before it changed.
  *
- * Owner: the end the reader rests on. Fence ([threadTypingLineEndFollowsLatest]): the last layout
- * rests on the end ([restsOnListEnd]), no scroll in progress, a settled placement, the live tail
- * loaded, never over a drag. Decided synchronously once per change of the line, no delayed job; the
- * Latest command it emits goes through the controller's executor and finds the end in place.
+ * Owner: the end the reader is at. Fence ([threadTypingLineEndFollowsLatest]), from the last
+ * layout: the end row in view when the line comes ([listEndInView]), resting on the end when it
+ * goes ([restsOnListEnd]); no scroll in progress, a settled placement, the live tail loaded, never
+ * over a drag. Decided synchronously once per change of the line, no delayed job; the Latest
+ * command it emits goes through the controller's executor and closes what is left of the gap to
+ * the end (nothing when the reader rested on it).
  * Non-restartable, like [ThreadMessagesListOverlays]: it runs whenever the list's content runs.
  */
 @Composable
@@ -5558,20 +5560,23 @@ private fun ThreadTypingLineEndEffect(
     SideEffect {
         if (seen.shown != lineShown) {
             seen.shown = lineShown
+            val endInView = listState.listEndInView()
             val restsOnEnd = listState.restsOnListEnd()
             val intent = controllerState.value.intent
             val follow =
                 threadTypingLineEndFollowsLatest(
                     reverseLayout = listState.reverse,
+                    lineShown = lineShown,
                     intent = intent,
+                    listEndInView = endInView,
                     restsOnListEnd = restsOnEnd,
                     scrollInProgress = listState.isScrollInProgress,
                     placementSettled = placementSettled.value,
                     newerPagePending = newerPagePending,
                 )
             diagnosticsLogger(
-                "thread_typing_line_end key=$threadInstanceKey shown=$lineShown restsOnEnd=$restsOnEnd " +
-                    "intent=${intent.logTag()} action=${if (follow) "follow_latest" else "none"}"
+                "thread_typing_line_end key=$threadInstanceKey shown=$lineShown endInView=$endInView " +
+                    "restsOnEnd=$restsOnEnd intent=${intent.logTag()} action=${if (follow) "follow_latest" else "none"}"
             )
             if (follow) {
                 listState.noteDispatchOwner(ThreadViewportOwnerTag.TypingLineEnd)
@@ -5621,6 +5626,16 @@ private fun ThreadListViewport.restsOnListEnd(): Boolean {
     val info = layoutInfo
     val end = info.visibleItemsInfo.firstOrNull { it.key == ThreadBottomScrollPaddingListItemKey } ?: return false
     return kotlin.math.abs(end.offset + end.size - info.viewportEndOffset) <= ThreadBackToBottomTolerancePx
+}
+
+/**
+ * Some of the end row under the newest message shows in the last layout: the newest message is
+ * whole on screen, above it. Found by its key, as [restsOnListEnd].
+ */
+private fun ThreadListViewport.listEndInView(): Boolean {
+    val info = layoutInfo
+    val end = info.visibleItemsInfo.firstOrNull { it.key == ThreadBottomScrollPaddingListItemKey } ?: return false
+    return end.offset < info.viewportEndOffset
 }
 
 private const val ThreadBackToBottomReleaseGuardMillis = 64L

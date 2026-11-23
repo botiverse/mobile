@@ -71,7 +71,9 @@ class ThreadAgentTypingTest {
             )
 
         fun follows(
+            lineShown: Boolean = true,
             intent: LazyViewportIntent = anchoredOnTheNewest,
+            listEndInView: Boolean = true,
             restsOnListEnd: Boolean = true,
             scrollInProgress: Boolean = false,
             placementSettled: Boolean = true,
@@ -79,7 +81,9 @@ class ThreadAgentTypingTest {
         ) =
             threadTypingLineEndFollowsLatest(
                 reverseLayout = true,
+                lineShown = lineShown,
                 intent = intent,
+                listEndInView = listEndInView,
                 restsOnListEnd = restsOnListEnd,
                 scrollInProgress = scrollInProgress,
                 placementSettled = placementSettled,
@@ -89,8 +93,15 @@ class ThreadAgentTypingTest {
         // Resting on the end, the reader follows it: the newest message rises above the line instead
         // of the reading anchor holding it under the line (Android 1.27.0, #proj-mobile #227).
         assertTrue(follows())
+        // Let go a little above the end, the newest message still whole on screen: it stays whole
+        // above the line too.
+        assertTrue(follows(restsOnListEnd = false))
+        // When the line goes, only a reader resting on the end follows; one a little above it keeps
+        // their place.
+        assertTrue(follows(lineShown = false))
+        assertFalse(follows(lineShown = false, restsOnListEnd = false))
         // Scrolled up into the history: the end changes out of view and the reader keeps their place.
-        assertFalse(follows(restsOnListEnd = false))
+        assertFalse(follows(listEndInView = false, restsOnListEnd = false))
         // The user's drag or fling owns the viewport, and so does a finger resting on the list.
         assertFalse(follows(scrollInProgress = true))
         assertFalse(follows(intent = LazyViewportIntent.UserDragging))
