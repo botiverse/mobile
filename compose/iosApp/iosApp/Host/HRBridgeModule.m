@@ -7,6 +7,7 @@
 #import <CommonCrypto/CommonDigest.h>
 #import <Hands/Hands.h>
 #import <ImageIO/ImageIO.h>
+#import <LinkPresentation/LinkPresentation.h>
 #import <shared/shared.h>
 #import "iosApp-Swift.h"
 #import <MMKV/MMKV.h>
@@ -3550,6 +3551,103 @@ static NSDictionary *RaftFeedbackDiagnosticsWriteArchive(BOOL (^isCancelled)(voi
 
 @end
 
+/// Share out (share loop, first batch): the prefix of the activity types of Raft's own actions in
+/// the system share sheet; the rest of the type is the action's id (`send_text`, `send_image`).
+static NSString *const RaftShareOutActivityTypePrefix = @"build.raft.app.share.";
+
+/// One of Raft's own actions in the share sheet. An activity can only end the sheet, so picking it
+/// finishes with this activity's type and the shared module then acts on it (a new sheet with the
+/// text, or the long image).
+@interface RaftShareOutActivity : UIActivity
+- (instancetype)initWithActionId:(NSString *)actionId title:(NSString *)title;
+@end
+
+@implementation RaftShareOutActivity {
+    NSString *_raftActionId;
+    NSString *_raftTitle;
+}
+
+- (instancetype)initWithActionId:(NSString *)actionId title:(NSString *)title {
+    self = [super init];
+    if (self) {
+        _raftActionId = [actionId copy];
+        _raftTitle = [title copy];
+    }
+    return self;
+}
+
++ (UIActivityCategory)activityCategory {
+    return UIActivityCategoryAction;
+}
+
+- (UIActivityType)activityType {
+    return [RaftShareOutActivityTypePrefix stringByAppendingString:_raftActionId];
+}
+
+- (NSString *)activityTitle {
+    return _raftTitle;
+}
+
+- (UIImage *)activityImage {
+    NSString *symbol = @"photo";
+    if ([_raftActionId isEqualToString:@"send_text"]) {
+        symbol = @"text.alignleft";
+    } else if ([_raftActionId isEqualToString:@"copy_link"]) {
+        symbol = @"link";
+    }
+    return [UIImage systemImageNamed:symbol];
+}
+
+- (BOOL)canPerformWithActivityItems:(NSArray *)activityItems {
+    return YES;
+}
+
+- (void)performActivity {
+    [self activityDidFinish:YES];
+}
+
+@end
+
+/// The link a share sheet carries, with the title its preview shows (only the sender sees it).
+@interface RaftShareOutLinkItem : NSObject <UIActivityItemSource>
+- (instancetype)initWithURL:(NSURL *)url title:(NSString *)title;
+@end
+
+@implementation RaftShareOutLinkItem {
+    NSURL *_raftURL;
+    NSString *_raftTitle;
+}
+
+- (instancetype)initWithURL:(NSURL *)url title:(NSString *)title {
+    self = [super init];
+    if (self) {
+        _raftURL = url;
+        _raftTitle = [title copy];
+    }
+    return self;
+}
+
+- (id)activityViewControllerPlaceholderItem:(UIActivityViewController *)activityViewController {
+    return _raftURL;
+}
+
+- (id)activityViewController:(UIActivityViewController *)activityViewController
+         itemForActivityType:(UIActivityType)activityType {
+    return _raftURL;
+}
+
+- (LPLinkMetadata *)activityViewControllerLinkMetadata:(UIActivityViewController *)activityViewController {
+    LPLinkMetadata *metadata = [[LPLinkMetadata alloc] init];
+    metadata.originalURL = _raftURL;
+    metadata.URL = _raftURL;
+    if (_raftTitle.length > 0) {
+        metadata.title = _raftTitle;
+    }
+    return metadata;
+}
+
+@end
+
 @interface HRBridgeModule () <PHPickerViewControllerDelegate, UIDocumentPickerDelegate, UIImagePickerControllerDelegate, UINavigationControllerDelegate, SharedAttachmentDownloadObserver>
 
 @property(nonatomic, copy, nullable) RaftBridgeCallback raft_attachmentExportCallback;
@@ -4112,6 +4210,10 @@ NSString *const RaftBridgeCallbackKey = @"callback";
     }
     if ([action isEqualToString:@"feedbackDiagnosticsCancel"]) {
         [self raft_cancelFeedbackDiagnosticsUpload:params callback:callback];
+        return;
+    }
+    if ([action isEqualToString:@"shareOut"]) {
+        [self raft_presentShareOut:params callback:callback];
         return;
     }
     if ([action isEqualToString:@"getNotificationPermissionStatus"]) {
@@ -7213,6 +7315,112 @@ didFinishPickingMediaWithInfo:(NSDictionary<UIImagePickerControllerInfoKey, id> 
 - (NSDictionary *)raft_prepareDiagnosticsFeedbackDraft {
     NSDictionary *about = [self raft_settingsCapabilityResultForAction:@"loadAbout" params:@{}];
     return RaftDiagnosticsPrepareFeedbackDraftResult(about);
+}
+
+/// Share out (share loop, first batch): the system share sheet for one `shareOut` command of the
+/// shared module (RaftShareOut.kt decides what is sent and which actions the sheet has).
+///  - `kind` link: the URL, with `title` as the preview's title; text: the text itself; image: the
+///    image at `imagePath`.
+///  - `actions`: Raft's own actions, each a `RaftShareOutActivity` in the sheet's action list.
+/// Answers once, when the sheet ends (`terminal`): `{event: "action", id}` for one of Raft's
+/// actions, `{event: "completed", activityType, copied}` when something was shared (`copied`: the
+/// system's Copy), `{event: "cancelled"}` when it was closed, `{event: "failed"}` when it could not
+/// open. iOS names the activity's type, never an app.
+- (void)raft_presentShareOut:(NSDictionary *)params callback:(RaftBridgeCallback)callback {
+    NSString *kind = RaftBridgeString(params[@"kind"]);
+    NSMutableArray *items = [NSMutableArray array];
+    if ([kind isEqualToString:@"image"]) {
+        NSString *path = RaftBridgeString(params[@"imagePath"]);
+        if ([path hasPrefix:@"file:"]) {
+            path = [NSURL URLWithString:path].path ?: path;
+        }
+        UIImage *image = path.length > 0 ? [UIImage imageWithContentsOfFile:path] : nil;
+        if (image) {
+            [items addObject:image];
+        }
+    } else if ([kind isEqualToString:@"text"]) {
+        NSString *text = RaftBridgeString(params[@"text"]);
+        if (text.length > 0) {
+            [items addObject:text];
+        }
+    } else {
+        NSString *link = RaftBridgeString(params[@"link"]);
+        NSURL *url = link.length > 0 ? [NSURL URLWithString:link] : nil;
+        if (url.scheme.length > 0) {
+            [items addObject:[[RaftShareOutLinkItem alloc] initWithURL:url title:RaftBridgeString(params[@"title"])]];
+        } else if (link.length > 0) {
+            // Several links (a selection's), one a line: they go as text.
+            [items addObject:link];
+        }
+    }
+    NSDictionary *failed = @{ @"event" : @"failed", @"terminal" : @YES };
+    if (items.count == 0) {
+        RaftDiagnosticsRecord(@"error", @"SlockShare", [NSString stringWithFormat:@"share_out_no_payload kind=%@", kind]);
+        callback(failed);
+        return;
+    }
+    NSMutableArray<UIActivity *> *activities = [NSMutableArray array];
+    id rawActions = params[@"actions"];
+    if ([rawActions isKindOfClass:NSArray.class]) {
+        for (id rawAction in (NSArray *)rawActions) {
+            if (![rawAction isKindOfClass:NSDictionary.class]) {
+                continue;
+            }
+            NSString *actionId = RaftBridgeString(((NSDictionary *)rawAction)[@"id"]);
+            NSString *label = RaftBridgeString(((NSDictionary *)rawAction)[@"label"]);
+            if (actionId.length > 0 && label.length > 0) {
+                [activities addObject:[[RaftShareOutActivity alloc] initWithActionId:actionId title:label]];
+            }
+        }
+    }
+    RaftBridgeRunOnMain(^{
+        UIViewController *controller = [self raft_currentViewController];
+        if (!controller || controller.isBeingDismissed) {
+            RaftDiagnosticsRecord(@"error", @"SlockShare",
+                                  [NSString stringWithFormat:@"share_out_present_failed reason=%@",
+                                   [self raft_shareControllerFailureReason]]);
+            callback(failed);
+            return;
+        }
+        UIActivityViewController *sheet = [[UIActivityViewController alloc] initWithActivityItems:items
+                                                                             applicationActivities:activities];
+        sheet.completionWithItemsHandler = ^(UIActivityType activityType, BOOL completed, NSArray *returnedItems,
+                                             NSError *activityError) {
+            NSString *type = activityType ?: @"";
+            if (completed && [type hasPrefix:RaftShareOutActivityTypePrefix]) {
+                NSDictionary *picked = @{
+                    @"event" : @"action",
+                    @"id" : [type substringFromIndex:RaftShareOutActivityTypePrefix.length],
+                    @"terminal" : @YES
+                };
+                // The sheet is still closing: the next one (the text, the image) opens after it has gone.
+                dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.45 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+                    callback(picked);
+                });
+                return;
+            }
+            if (completed) {
+                callback(@{
+                    @"event" : @"completed",
+                    @"activityType" : type,
+                    @"copied" : @([type isEqualToString:UIActivityTypeCopyToPasteboard]),
+                    @"terminal" : @YES
+                });
+                return;
+            }
+            callback(@{ @"event" : @"cancelled", @"terminal" : @YES });
+        };
+        UIPopoverPresentationController *popover = sheet.popoverPresentationController;
+        if (popover) {
+            popover.sourceView = controller.view;
+            popover.sourceRect = CGRectMake(CGRectGetMidX(controller.view.bounds), CGRectGetMidY(controller.view.bounds), 1, 1);
+            popover.permittedArrowDirections = 0;
+        }
+        RaftDiagnosticsRecord(@"info", @"SlockShare",
+                              [NSString stringWithFormat:@"share_out_present kind=%@ actions=%lu", kind,
+                               (unsigned long)activities.count]);
+        [controller presentViewController:sheet animated:YES completion:nil];
+    });
 }
 
 - (void)raft_shareItems:(NSArray *)items {

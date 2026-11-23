@@ -461,6 +461,14 @@ internal class BridgeModule : Module() {
         callNativeMethod("toast", methodArgs, null)
     }
 
+    /** [toast] shown for [durationMillis] (share out's "Opened <App>": 2s). */
+    fun timedToast(content: String, durationMillis: Long) {
+        if (RaftCmpToasts.post(content, origin = pager?.host?.capabilities, durationMillis = durationMillis)) return
+        val methodArgs = JSONObject()
+        methodArgs.put("content", content)
+        callNativeMethod("toast", methodArgs, null)
+    }
+
     /** [inBrowser]: `browser: true`, a web browser even for a Raft link (HostLinkCapability.openUrlInBrowser). */
     fun openUrl(url: String, mimeType: String? = null, inBrowser: Boolean = false) {
         val methodArgs = JSONObject()

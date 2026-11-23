@@ -873,6 +873,12 @@ private fun TaskPendingConversationRoute(pageVisible: Boolean) {
                 seed = seed,
             )
         val edits = channelTasks?.let { TaskHeadEdits(it::dispatch) }
+        // Share loop (share_loop_v0): ⋯ with Share task / Copy link, as on the modal pending page; null
+        // while the loop is off. This page does not know the page it was opened from, so a task without
+        // an explicit channel type is held to the DM rule (no link). The page's scope keeps the sheet's
+        // answer alive while the task changes under it.
+        val shareEntry =
+            rememberTaskHeaderShareEntry(task = liveTask, serverId = resolvedServerId, directMessage = true, scope = coroutineScope)
 
         TaskPendingConversationPage(
             task = liveTask,
@@ -965,6 +971,7 @@ private fun TaskPendingConversationRoute(pageVisible: Boolean) {
             onAmend = channelTasks.taskHeadAmend(liveTask),
             useHostSafeArea = true,
             loadingDiscussion = needsSummaryHydration,
+            shareEntry = shareEntry,
         )
     }
     }

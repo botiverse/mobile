@@ -323,6 +323,7 @@ fun ThreadPageContent(
 )
  {
     ThreadFollowersOverlayHost {
+    ThreadShareOutScope {
     ThreadPageContentContent(
         modifier = Modifier,
         onToggleFocusMode = onToggleFocusMode,
@@ -442,6 +443,7 @@ fun ThreadPageContent(
                 onComposerDropFiles = onComposerDropFiles,
             ),
     )
+    }
 }
 }
 
@@ -691,6 +693,9 @@ private fun ThreadPageContentContent(
     val sharePngWriter = rememberRaftPngFileWriter()
     val sharePreviewOpen = activeModal == "sharePreview"
     ThreadShareImageEffects(shareState, sharePreviewOpen)
+    // Share loop (share_loop_v0): null while it is off, and then nothing below changes.
+    val shareOut =
+        rememberThreadShareOut(payload, data.forwardServerId, currentServerSlug, conversationLounge != null, headerDisplay.title, shareState)
     // Search in this thread (web ThreadSearchBar): a reply thread's or a task's own bar.
     val threadFind =
         rememberThreadFindController(threadInstanceKey, taskSurface = payload.isTaskConversationSurface())
@@ -1002,6 +1007,7 @@ private fun ThreadPageContentContent(
                     }
                 }
                 ThreadPageHeader(
+                    shareEntry = shareOut?.headerEntry(data.taskConversationChrome),
                     onOpenTimeline =
                         threadOutline?.openTimelineAction(
                             leadingMessageId = timelineSlice.parentMessageId ?: timelineSlice.originMessage?.id,
@@ -1474,7 +1480,11 @@ private fun ThreadPageContentContent(
                             } else if (selectedShareMarkdown.isNotBlank()) {
                                 onThreadEvent("copyShareSelectionMarkdown", selectedShareMarkdown, null, null)
                             }
-                        }
+                        },
+                        onShare = shareOut?.let { out -> { out.shareSelection(selectedShareMessages) { shareState.pendingShareImageExport = true } } },
+                        showCopyLinks = shareOut?.directMessage != true,
+                        pendingExport = shareState.pendingShareImageExport,
+                        onPendingExportConsumed = { shareState.pendingShareImageExport = false },
                     )
                 }
             } else if (
@@ -1734,6 +1744,20 @@ private fun ThreadPageContentContent(
                     shareExportScope = shareExportScope,
                     onSaveShareImage = onSaveShareImage,
                     onThreadEvent = onThreadEvent,
+                    // Share loop: the preview's Share button sends the image through the system sheet.
+                    onShareImage =
+                        shareOut?.let { out ->
+                            {
+                                threadSharePreviewShareImage(
+                                    shareOut = out,
+                                    shareState = shareState,
+                                    scope = shareExportScope,
+                                    pngWriter = sharePngWriter,
+                                    messageCount = selectedShareMessages.size,
+                                    onFailed = { onThreadEvent("shareSelectionExportFailed", null, null, null) },
+                                )
+                            }
+                        },
                 )
         }
             }

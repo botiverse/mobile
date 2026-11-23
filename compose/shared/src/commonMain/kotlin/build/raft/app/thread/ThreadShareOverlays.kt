@@ -178,6 +178,8 @@ internal fun ThreadSharePreviewOverlay(
     shareExportScope: CoroutineScope,
     onSaveShareImage: suspend (String) -> JSONObject?,
     onThreadEvent: ThreadEventHandler,
+    /** Share loop (share_loop_v0): the preview's Share sends the image through the system sheet; null: off. */
+    onShareImage: (() -> Unit)? = null,
 ) {
     var activeModal by activeModalState
     ThreadSharePreviewModal(
@@ -189,6 +191,7 @@ internal fun ThreadSharePreviewOverlay(
                 onThreadEvent("copyShareSelectionMarkdown", selectedShareMarkdown, null, null)
             }
         },
+        onShareImage = onShareImage,
         offscreen =
             if (threadShareImageRendersOffscreen) {
                 ThreadSharePreviewOffscreen(

@@ -51,7 +51,12 @@ internal enum class ThreadNewMessageMenuTool {
      * A right-click menu opened while part of the message was selected: copy that text ("Copy",
      * leading the second row). Never in the long-press menu or the selection menu.
      */
-    CopySelection
+    CopySelection,
+    /**
+     * Share loop (share_loop_v0): the system share sheet for this message, after Forward on the
+     * first row; Select then leads the second row, so the first keeps its six slots.
+     */
+    Share
 }
 
 internal val ThreadNewMessageMenuToolOrder =
@@ -62,6 +67,17 @@ internal val ThreadNewMessageMenuToolOrder =
         ThreadNewMessageMenuTool.Save,
         ThreadNewMessageMenuTool.Translate,
         ThreadNewMessageMenuTool.Select
+    )
+
+/** The first row with the share loop's Share after Forward ([ThreadNewMessageMenuToolOrder] with Select moved down). */
+internal val ThreadNewMessageMenuShareToolOrder =
+    listOf(
+        ThreadNewMessageMenuTool.Copy,
+        ThreadNewMessageMenuTool.Reply,
+        ThreadNewMessageMenuTool.Forward,
+        ThreadNewMessageMenuTool.Share,
+        ThreadNewMessageMenuTool.Save,
+        ThreadNewMessageMenuTool.Translate
     )
 
 /**
@@ -118,7 +134,8 @@ internal data class ThreadNewMessageMenuToolCallbacks(
     val onSelectAll: () -> Unit = {},
     val onMarkThreadUnread: () -> Unit = {},
     val onCopySelection: () -> Unit = {},
-    val onMarkConversationUnread: () -> Unit = {}
+    val onMarkConversationUnread: () -> Unit = {},
+    val onShare: () -> Unit = {}
 )
 
 internal fun ThreadNewMessageMenuTool.dispatch(callbacks: ThreadNewMessageMenuToolCallbacks) {
@@ -139,6 +156,7 @@ internal fun ThreadNewMessageMenuTool.dispatch(callbacks: ThreadNewMessageMenuTo
         ThreadNewMessageMenuTool.MarkThreadUnread -> callbacks.onMarkThreadUnread()
         ThreadNewMessageMenuTool.MarkConversationUnread -> callbacks.onMarkConversationUnread()
         ThreadNewMessageMenuTool.CopySelection -> callbacks.onCopySelection()
+        ThreadNewMessageMenuTool.Share -> callbacks.onShare()
     }
 }
 
@@ -184,8 +202,13 @@ internal data class ThreadNewMessageMenuActionAvailability(
      * A long press on a link opened the menu, so the link's own "Copy link" shows above: the
      * message's Copy Link reads "Copy Message Link" (artin, 1.25).
      */
-    val linkSection: Boolean = false
+    val linkSection: Boolean = false,
+    /** Share loop: Share is offered on this message (false while the loop is off: the menu as before). */
+    val share: Boolean = false
 ) {
+    /** Share takes Select's first-row slot; never for a text selection's menu. */
+    private val shareOnFirstRow: Boolean get() = share && !selectionContext
+
     fun enabled(tool: ThreadNewMessageMenuTool): Boolean =
         when (tool) {
             ThreadNewMessageMenuTool.Copy -> copy
@@ -207,10 +230,12 @@ internal data class ThreadNewMessageMenuActionAvailability(
             ThreadNewMessageMenuTool.SelectText -> selectText && !selectionContext
             ThreadNewMessageMenuTool.SelectAll -> selectionContext && partialSelection
             ThreadNewMessageMenuTool.CopySelection -> copySelection && !selectionContext
+            ThreadNewMessageMenuTool.Share -> shareOnFirstRow
         }
 
     fun primaryTools(): List<ThreadNewMessageMenuTool> =
         when {
+            shareOnFirstRow -> ThreadNewMessageMenuShareToolOrder
             // Part of the message selected: only the tools that act on the picked text.
             selectionContext && partialSelection -> ThreadNewMessageMenuSelectionToolOrder.filter(::enabled)
             // Whole message selected: the long-press row without the Select tool.
@@ -221,8 +246,13 @@ internal data class ThreadNewMessageMenuActionAvailability(
     /** Reactions apply to the whole message, so a partial selection drops the reaction row. */
     fun showsReactionRow(): Boolean = !(selectionContext && partialSelection)
 
-    fun secondaryTools(): List<ThreadNewMessageMenuTool> =
-        ThreadNewMessageMenuSecondaryToolOrder.filter(::enabled)
+    fun secondaryTools(): List<ThreadNewMessageMenuTool> {
+        val tools = ThreadNewMessageMenuSecondaryToolOrder.filter(::enabled)
+        if (!shareOnFirstRow || !enabled(ThreadNewMessageMenuTool.Select)) return tools
+        // Select gave its first-row slot to Share: it leads this row (after a right-click's Copy).
+        val at = if (tools.firstOrNull() == ThreadNewMessageMenuTool.CopySelection) 1 else 0
+        return tools.take(at) + ThreadNewMessageMenuTool.Select + tools.drop(at)
+    }
 }
 
 internal fun ThreadMessageMenuCapabilities.toThreadNewMessageMenuActionAvailability(
@@ -653,7 +683,9 @@ internal fun threadMessageMenuActions(
     onMarkConversationUnread: () -> Unit = {},
     /** Downloads the message's video ([threadMessageMenuDownloadVideoAttachmentId]); null hides it. */
     onDownloadVideo: (() -> Unit)? = null,
-    onQuote: () -> Unit = {}
+    onQuote: () -> Unit = {},
+    /** Share loop: Share (the system share sheet), after Forward; null (the loop off) hides it. */
+    onShare: (() -> Unit)? = null
 ): List<ThreadMessageMenuAction> =
     // Add Reaction is not a row: it ends the reaction header ([ThreadMessageMenuChrome]).
     // web MessageItem's sections, by what the action does: keep going on this message (thread and
@@ -751,6 +783,9 @@ internal fun threadMessageMenuActions(
         if (showForwardAction) {
             // Web uses the select-mode Forward glyph (lucide forward) for the per-message entry.
             add(ThreadMessageMenuAction(Res.string.thread_action_forward.desc(), RaftLucideIconName.Forward, "copy", onClick = onForward))
+        }
+        if (onShare != null) {
+            add(ThreadMessageMenuAction(Res.string.common_share.desc(), RaftLucideIconName.Share, "copy", onClick = onShare))
         }
         if (showShareMessagesAction) {
             add(

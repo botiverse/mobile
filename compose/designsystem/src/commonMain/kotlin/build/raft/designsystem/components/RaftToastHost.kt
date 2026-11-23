@@ -122,9 +122,23 @@ internal fun raftToastSafeBottomPx(overridePx: Float?, safeDrawingBottomPx: Floa
  *   closes after its timeout ([RaftToastHostState.runTimers]); a pointer over it or a finger on
  *   it pauses every timer. Each toast is a polite live region (an error, assertive) and offers
  *   the dismiss accessibility action in place of the swipe.
+ * - [overlay]: set true when hosting [state] inside a full-screen Dialog window above the base
+ *   window's toast layer; the topmost overlay host renders the shared toasts and hands them back
+ *   to the host underneath when it disposes.
  */
 @Composable
-fun RaftToastHost(state: RaftToastHostState, modifier: Modifier = Modifier) {
+fun RaftToastHost(state: RaftToastHostState, modifier: Modifier = Modifier, overlay: Boolean = false) {
+    val overlayStack by state.overlayHosts.collectAsState()
+    if (overlay) {
+        val overlayToken = remember(state) { Any() }
+        DisposableEffect(state, overlayToken) {
+            state.enterOverlayHost(overlayToken)
+            onDispose { state.leaveOverlayHost(overlayToken) }
+        }
+        if (overlayStack.lastOrNull() !== overlayToken) return
+    } else if (overlayStack.isNotEmpty()) {
+        return
+    }
     LaunchedEffect(state) { state.runTimers() }
     val toasts by state.toasts.collectAsState()
     // Toasts already on screen when the host appears (handed over from another window) do not

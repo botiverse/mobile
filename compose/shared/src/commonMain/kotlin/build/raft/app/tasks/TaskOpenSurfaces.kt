@@ -13,6 +13,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.input.nestedscroll.nestedScroll
@@ -50,6 +51,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -61,8 +63,12 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import build.raft.app.components.RaftSlotIcon
 import build.raft.app.data.DataResult
 import build.raft.app.data.SharedServerMembersStore
 import build.raft.app.data.SharedTasksDataSource
@@ -76,11 +82,15 @@ import build.raft.app.model.RaftTimeContext
 import build.raft.app.model.ServerId
 import build.raft.app.model.TaskSummary
 import build.raft.app.resources.*
+import build.raft.designsystem.components.LocalRaftToastHostState
 import build.raft.designsystem.components.RaftBanner
 import build.raft.designsystem.components.RaftCard
 import build.raft.designsystem.components.RaftBannerStatus
 import build.raft.designsystem.components.RaftDialogSheet
+import build.raft.designsystem.components.RaftDropdownMenu
+import build.raft.designsystem.components.RaftMenuItem
 import build.raft.designsystem.components.RaftTaskStatusBadge
+import build.raft.designsystem.components.RaftToastHost
 import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.RaftTheme
 
@@ -478,7 +488,12 @@ internal fun TaskOpenSurfaceHost(
     onConversationArrived: (TaskSummary) -> Unit = {},
     /** Whether the reader may write the task's channel (web canWriteTasksInChannel); unknown: yes. */
     canWriteTaskChannel: (ChannelId?) -> Boolean = { true },
+    /** True when the page hosting this pending task is itself a DM (enforces the share DM rule). */
+    hostDirectMessage: Boolean = false,
 ) {
+    // Kept outside the Pending branch so a task conversation arriving while the system share sheet
+    // is open does not cancel the share launcher's host-event callback before ACTION_CHOSEN arrives.
+    val shareScope = rememberCoroutineScope()
     when (val surface = flow.surface) {
         is TaskOpenSurface.Pending -> {
             val channelTasks =
@@ -558,6 +573,7 @@ internal fun TaskOpenSurfaceHost(
                 summaryDetailHydrationSettled = true
             }
             val edits = channelTasks?.let { TaskHeadEdits(it::dispatch) }
+            val shareEntry = rememberTaskHeaderShareEntry(task = task, serverId = serverId, directMessage = hostDirectMessage, scope = shareScope)
             TaskPendingConversationWindow(onDismissRequest = { flow.requestClose() }) {
                 TaskPendingConversationPage(
                     task = task,
@@ -583,6 +599,7 @@ internal fun TaskOpenSurfaceHost(
                     onMoveToBacklog = { reason -> edits?.moveToBacklog(task, reason) },
                     onAmend = channelTasks.taskHeadAmend(task),
                     loadingDiscussion = needsSummaryHydration,
+                    shareEntry = shareEntry,
                 )
             }
         }
@@ -670,13 +687,19 @@ internal fun TaskPendingConversationWindow(onDismissRequest: () -> Unit, content
     ) {
         // Opaque under the system bars too: without a scrim the host's tab bar showed through the
         // nav-bar strip, so the page looked like a floating sheet (web: full-screen, opaque).
-        Box(
-            Modifier
-                .fillMaxSize()
-                .background(RaftTheme.colors.layerCanvas)
-                .windowInsetsPadding(rememberRaftStableWindowInsets(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom)))
-        ) {
-            content()
+        Box(Modifier.fillMaxSize().background(RaftTheme.colors.layerCanvas)) {
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    .windowInsetsPadding(rememberRaftStableWindowInsets(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom)))
+            ) {
+                content()
+            }
+            // This page lives in its own Dialog window above the host's RaftCmpToastLayer, so draw
+            // the window's shared toast host here too ("Copied", "Opened <App>").
+            LocalRaftToastHostState.current?.let { toastHost ->
+                RaftToastHost(toastHost, overlay = true)
+            }
         }
     }
 }
@@ -685,7 +708,8 @@ internal fun TaskPendingConversationWindow(onDismissRequest: () -> Unit, content
  * A task before its first message (web `TaskConversationDialog` with no conversation yet), drawn as
  * the task conversation page it becomes, so nothing moves when the first send opens it:
  * - the same top bar (the task's ref over "Task #N"; on a phone its status and assignee too once
- *   the head is out of view, [TaskConversationBarTitle]);
+ *   the head is out of view, [TaskConversationBarTitle], and when the share loop is on for a
+ *   non-DM task, ⋯ with Share task / Copy link);
  * - the same head ([TaskConversationHeadRoute]): on a phone the first row of the page under the
  *   bar, scrolling with it (and pulled down from the bar while it is out of view); wider, pinned
  *   above it. Title, description, facts and History, with the
@@ -697,8 +721,8 @@ internal fun TaskPendingConversationWindow(onDismissRequest: () -> Unit, content
  * - the conversation composer at the bottom, or for a reader who has not joined the task's
  *   channel "Join Channel to Reply" ([joined] false; null = not known here, the composer shows
  *   and a refusal comes back as [errorText]).
- * Sending creates the conversation; a refused send keeps the typed text. Attachments, mentions,
- * Follow and the More menu wait for the conversation page.
+ * Sending creates the conversation; a refused send keeps the typed text. Attachments, mentions and
+ * Follow wait for the conversation page.
  */
 @Composable
 internal fun TaskPendingConversationPage(
@@ -741,6 +765,8 @@ internal fun TaskPendingConversationPage(
      * server: shows a spinner instead of falsely claiming "No discussion in this task yet".
      */
     loadingDiscussion: Boolean = false,
+    /** Share loop: ⋯ with Share task / Copy link (null when the flag is off, unsupported host, or DM task). */
+    shareEntry: ThreadHeaderShareEntry? = null,
 ) {
     val colors = RaftTheme.colors
     val typography = RaftTheme.typography
@@ -781,7 +807,8 @@ internal fun TaskPendingConversationPage(
             backgroundColor = RaftColor.Canvas,
             topSafeAreaOverride = if (useHostSafeArea) null else WindowInsets.safeDrawing.asPaddingValues().calculateTopPadding(),
             contentStartPadding = if (taskColumnHead == null) RaftBackButtonDefaults.EdgeInset else ThreadSplitDetailEdgeInset,
-            contentEndPadding = if (taskColumnHead == null) RaftTopPageHeaderContentEndPadding else RaftBackButtonDefaults.EdgeInset,
+            contentEndPadding =
+                if (taskColumnHead != null || shareEntry != null) RaftBackButtonDefaults.EdgeInset else RaftTopPageHeaderContentEndPadding,
             contentSpacing = ThreadHeaderContentSpacing,
             titleLeadingContent =
                 if (taskColumnHead == null) {
@@ -790,7 +817,18 @@ internal fun TaskPendingConversationPage(
                     null
                 },
             titleContent = { TaskConversationBarTitle(chrome, Modifier.weight(1f)) },
-            trailingContent = if (taskColumnHead != null) { { RaftTaskColumnHeadEnd(taskColumnHead) } } else null,
+            // ⋯ first, then the column's Expand and Close (raft-ui panelHeadActions: Close last).
+            trailingContent =
+                if (shareEntry == null && taskColumnHead == null) {
+                    null
+                } else {
+                    {
+                        Row(horizontalArrangement = Arrangement.spacedBy(2.dp), verticalAlignment = Alignment.CenterVertically) {
+                            shareEntry?.let { TaskPendingHeaderMoreMenu(it) }
+                            taskColumnHead?.let { RaftTaskColumnHeadActions(it) }
+                        }
+                    }
+                },
         )
         // The head, as on the conversation page: the first row of what scrolls here, and pulled down
         // from the bar while that row is out of view ([TaskHeadPlacement.Page] holds the page's effects).
@@ -929,6 +967,52 @@ internal fun TaskPendingConversationPage(
                 )
             }
         }
+        }
+    }
+}
+
+internal const val TaskPendingMoreMenuTestTag = "task-pending-more-menu"
+
+/** The pending task page's ⋯ menu: Share task and Copy link, matching a task conversation's header. */
+@Composable
+private fun TaskPendingHeaderMoreMenu(entry: ThreadHeaderShareEntry) {
+    var menuOpen by remember { mutableStateOf(false) }
+    val moreLabel = stringResource(Res.string.thread_focus_mode_menu_more)
+    Box {
+        ThreadHeaderActionButton(
+            onClick = { menuOpen = true },
+            modifier =
+                Modifier
+                    .testTag(TaskPendingMoreMenuTestTag)
+                    .semantics { contentDescription = moreLabel },
+        ) {
+            RaftLucideIcon(
+                RaftLucideIconName.Ellipsis,
+                Modifier.size(RaftTheme.controls.barIconSize),
+                color = raftArgbHex(RaftTheme.colors.foreground),
+            )
+        }
+        RaftDropdownMenu(
+            expanded = menuOpen,
+            onDismissRequest = { menuOpen = false },
+            alignEnd = true,
+        ) {
+            RaftMenuItem(
+                text = stringResource(entry.shareLabel),
+                leadingIcon = { RaftSlotIcon(RaftLucideIconName.Share) },
+                onClick = {
+                    menuOpen = false
+                    entry.onShare()
+                },
+            )
+            RaftMenuItem(
+                text = stringResource(Res.string.thread_link_menu_copy_link),
+                leadingIcon = { RaftSlotIcon(RaftLucideIconName.Link) },
+                onClick = {
+                    menuOpen = false
+                    entry.onCopyLink()
+                },
+            )
         }
     }
 }

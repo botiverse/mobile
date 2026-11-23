@@ -1323,6 +1323,11 @@ internal data class TaskConversationHeaderChrome(
     val onToggleFollow: () -> Unit,
     /** Delete task (the ⋯ menu's last row); null for a reader who may not delete it. */
     val onDeleteTask: (() -> Unit)? = null,
+    /** Share loop: the task's id and title for Share task / Copy link (`/tasks/<short id>`); null: not known. */
+    val taskId: String? = null,
+    val title: String = "",
+    /** Share loop: the task is in a DM, so it has no link (the DM rule). True until known. */
+    val directMessage: Boolean = true,
 )
 
 internal fun TaskSummary.taskConversationHeaderChrome(
@@ -1353,6 +1358,9 @@ internal fun TaskSummary.taskConversationHeaderChrome(
         onViewInChannel = onViewInChannel,
         onToggleFollow = { followed?.let(onToggleFollow) },
         onDeleteTask = onDeleteTask,
+        taskId = id.value,
+        title = title,
+        directMessage = parseConversationKindOrNull(channelType) == ConversationKind.DirectMessage,
     )
 }
 

@@ -85,6 +85,18 @@ class RaftToastHostState(
 
     private val model = MutableStateFlow(Model())
     private val visibleFlow = MutableStateFlow<List<RaftToastData>>(emptyList())
+    private val overlayHostStack = MutableStateFlow<List<Any>>(emptyList())
+
+    /** Ordered stack of full-screen overlay hosts; only the topmost renders (base renders when empty). */
+    internal val overlayHosts: StateFlow<List<Any>> get() = overlayHostStack
+
+    internal fun enterOverlayHost(token: Any) {
+        overlayHostStack.update { stack -> if (stack.any { it === token }) stack else stack + token }
+    }
+
+    internal fun leaveOverlayHost(token: Any) {
+        overlayHostStack.update { stack -> stack.filterNot { it === token } }
+    }
 
     /** The toasts on screen, oldest first (the newest is the frontmost, at the bottom). */
     val visible: List<RaftToastData> get() = model.value.toasts

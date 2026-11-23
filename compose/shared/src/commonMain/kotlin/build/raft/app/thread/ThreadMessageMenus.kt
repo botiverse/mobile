@@ -119,7 +119,9 @@ internal fun ThreadNewMessageMenu(
     onCopySelection: () -> Unit = {},
     onMarkConversationUnread: () -> Unit = {},
     /** A long press on a link opened the menu: that link's section on top (ThreadMessageLinkMenu.kt). */
-    link: ThreadMessageLinkMenuSection? = null
+    link: ThreadMessageLinkMenuSection? = null,
+    /** Share loop: the first row's Share (shown only where the availability says so). */
+    onShare: () -> Unit = {}
 ) {
     val density = LocalDensity.current
     val secondaryRowCount = if (availability.secondaryTools().isEmpty()) 0 else 1
@@ -172,7 +174,8 @@ internal fun ThreadNewMessageMenu(
             onMarkThreadUnread = onMarkThreadUnread,
             onCopySelection = onCopySelection,
             onMarkConversationUnread = onMarkConversationUnread,
-            link = link
+            link = link,
+            onShare = onShare
         )
     }
 }
@@ -200,7 +203,9 @@ internal fun ThreadNewMessageMenuChrome(
     onCopySelection: () -> Unit = {},
     onMarkConversationUnread: () -> Unit = {},
     /** A long press on a link opened the menu: that link's section on top (ThreadMessageLinkMenu.kt). */
-    link: ThreadMessageLinkMenuSection? = null
+    link: ThreadMessageLinkMenuSection? = null,
+    /** Share loop: the first row's Share (shown only where the availability says so). */
+    onShare: () -> Unit = {}
 ) {
     val callbacks =
         ThreadNewMessageMenuToolCallbacks(
@@ -219,7 +224,8 @@ internal fun ThreadNewMessageMenuChrome(
             onSelectAll = onSelectAll,
             onMarkThreadUnread = onMarkThreadUnread,
             onCopySelection = onCopySelection,
-            onMarkConversationUnread = onMarkConversationUnread
+            onMarkConversationUnread = onMarkConversationUnread,
+            onShare = onShare
         )
     // The link section's "Copy link" sits above: the message's own reads "Copy Message Link".
     val menuAvailability = if (link != null) availability.copy(linkSection = true) else availability
@@ -342,6 +348,7 @@ internal fun ThreadNewMessageMenuTool.compactLabelResource(
         ThreadNewMessageMenuTool.MarkConversationUnread ->
             (availability.markConversationUnread ?: ThreadMarkConversationUnreadKind.Channel).menuLabel()
         ThreadNewMessageMenuTool.CopySelection -> Res.string.common_copy
+        ThreadNewMessageMenuTool.Share -> Res.string.common_share
     }
 
 /** web `message.messageItem.markChannelAsUnread` / `markDmAsUnread`. */
@@ -375,6 +382,7 @@ internal fun ThreadNewMessageMenuTool.compactIcon(
         ThreadNewMessageMenuTool.MarkConversationUnread -> RaftLucideIconName.MessageSquareDot
         // Not Copy: that is Copy Markdown beside it in the same menu (web's icon for it).
         ThreadNewMessageMenuTool.CopySelection -> RaftLucideIconName.Type
+        ThreadNewMessageMenuTool.Share -> RaftLucideIconName.Share
     }
 
 @Composable
@@ -551,7 +559,9 @@ internal fun ThreadMessageActionMenu(
     onQuoteChosen: () -> Unit = {},
     /** A long press on a link opened the menu: that link's section on top (ThreadMessageLinkMenu.kt). */
     link: ThreadMessageLinkMenuSection? = null,
-    diagnosticsLogger: (String) -> Unit = {}
+    diagnosticsLogger: (String) -> Unit = {},
+    /** Share loop: Share after Forward; null (the loop off) hides it. */
+    onShare: (() -> Unit)? = null
 ) {
     val reactionAtlasImage = LocalThreadReactionAtlasImage.current
     // web MessageItem "Quote" (quote_reply_v0): the message's opening as a quote reply, into this
@@ -599,7 +609,8 @@ internal fun ThreadMessageActionMenu(
             menuQuote,
             quoteIntoComposer,
             onQuoteChosen,
-            onDismiss
+            onDismiss,
+            onShare
         ) {
             threadMessageMenuActions(
                 message = message,
@@ -645,7 +656,8 @@ internal fun ThreadMessageActionMenu(
                         onDismiss()
                         quoteIntoComposer(menuQuote)
                     }
-                }
+                },
+                onShare = onShare
             )
         }
     // web `reaction-add-any`: the reaction header's trailing Add Reaction (full emoji picker).

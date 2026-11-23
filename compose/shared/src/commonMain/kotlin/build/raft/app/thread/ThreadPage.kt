@@ -5459,6 +5459,7 @@ private fun SharedThreadRouteContentContent(
             detailsRepository = taskConversation.detailsRepository,
             membersStore = serverMembersStore,
             serverId = currentServerId,
+            hostDirectMessage = renderedThread.threadShareIsDirectMessage(),
             // The conversation page's head writes: the same task channel store, gates and failure toasts.
             editing =
                 TaskPageEditing(

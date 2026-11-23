@@ -113,6 +113,11 @@ object RaftProductEvents {
         recorder.agentCreateOpened(entry)
     }
 
+    /** See [RaftProductEventsRecorder.shareActionSelected]. */
+    fun shareActionSelected(properties: RaftShareActionSelectedProperties) {
+        recorder.shareActionSelected(properties)
+    }
+
     fun draftsPageViewed(count: Int) {
         recorder.draftsPageViewed(count)
     }

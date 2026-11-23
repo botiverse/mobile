@@ -280,6 +280,58 @@ enum class RaftMessageAction(val wire: String) {
     @SerialName("translate") Translate("translate"),
 }
 
+/**
+ * `share_action_selected.object`: what was shared out (share loop, #proj-mobile:#212).
+ *
+ * NOT IN THE REGISTRY YET: botiverse/slock staging @ 7c3e67b85c0da943b31c87c646ac888babfc5a52
+ * (`packages/shared/src/productEvents.ts`) has no `share_action_selected`, so the server drops the
+ * event (a per-event rejection, never the batch) until the web side registers it with these names
+ * and values. Agree them there before this ships; the app sends them only behind `share_loop_v0`.
+ */
+@Serializable
+enum class RaftShareActionObject(val wire: String) {
+    @SerialName("channel") Channel("channel"),
+    @SerialName("lounge") Lounge("lounge"),
+    @SerialName("thread") Thread("thread"),
+    @SerialName("message") Message("message"),
+    @SerialName("message_selection") MessageSelection("message_selection"),
+    @SerialName("task") Task("task"),
+}
+
+/** `share_action_selected.method`: what was sent (or copied). Not in the registry yet ([RaftShareActionObject]). */
+@Serializable
+enum class RaftShareActionMethod(val wire: String) {
+    @SerialName("link") Link("link"),
+    @SerialName("copy_link") CopyLink("copy_link"),
+    @SerialName("text") Text("text"),
+    @SerialName("image") Image("image"),
+}
+
+/** `share_action_selected.surface`: where the action was. Not in the registry yet ([RaftShareActionObject]). */
+@Serializable
+enum class RaftShareActionSurface(val wire: String) {
+    @SerialName("conversation_menu") ConversationMenu("conversation_menu"),
+    @SerialName("message_menu") MessageMenu("message_menu"),
+    @SerialName("selection_toolbar") SelectionToolbar("selection_toolbar"),
+    @SerialName("share_preview") SharePreview("share_preview"),
+    @SerialName("task_menu") TaskMenu("task_menu"),
+}
+
+/**
+ * `share_action_selected.result`. `opened`: Android, a target app was picked (the system does not
+ * say whether anything was sent). `shared` / `cancelled`: iOS, the sheet's completion. `copied`: the
+ * link went to the clipboard. `failed`: the sheet could not open. Not in the registry yet
+ * ([RaftShareActionObject]).
+ */
+@Serializable
+enum class RaftShareActionResult(val wire: String) {
+    @SerialName("opened") Opened("opened"),
+    @SerialName("shared") Shared("shared"),
+    @SerialName("cancelled") Cancelled("cancelled"),
+    @SerialName("copied") Copied("copied"),
+    @SerialName("failed") Failed("failed"),
+}
+
 /** `activity_item_open.item_kind`. */
 @Serializable
 enum class RaftActivityItemKind(val wire: String) {
@@ -471,6 +523,15 @@ data class RaftMessageActionSelectedProperties(
     @SerialName("in_thread") val inThread: Boolean? = null,
 )
 
+/** `share_action_selected` (not in the registry yet, see [RaftShareActionObject]): enums only, no link, text or app name. */
+@Serializable
+data class RaftShareActionSelectedProperties(
+    @SerialName("object") val obj: RaftShareActionObject,
+    val method: RaftShareActionMethod,
+    val surface: RaftShareActionSurface,
+    val result: RaftShareActionResult,
+)
+
 @Serializable
 data class RaftActivityItemOpenProperties(
     @SerialName("item_kind") val itemKind: RaftActivityItemKind,
@@ -520,6 +581,9 @@ sealed class RaftProductEvent<P>(val name: String, private val serializer: KSeri
 
     data class MessageActionSelected(override val properties: RaftMessageActionSelectedProperties) :
         RaftProductEvent<RaftMessageActionSelectedProperties>("message_action_selected", RaftMessageActionSelectedProperties.serializer())
+
+    data class ShareActionSelected(override val properties: RaftShareActionSelectedProperties) :
+        RaftProductEvent<RaftShareActionSelectedProperties>("share_action_selected", RaftShareActionSelectedProperties.serializer())
 
     data class ActivityItemOpen(override val properties: RaftActivityItemOpenProperties) :
         RaftProductEvent<RaftActivityItemOpenProperties>("activity_item_open", RaftActivityItemOpenProperties.serializer())

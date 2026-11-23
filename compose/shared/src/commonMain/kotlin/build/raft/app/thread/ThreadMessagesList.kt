@@ -4904,6 +4904,8 @@ private fun ThreadMessagesListContent(
                 onDismiss = { menuState.authorDescriptionPopover = null }
             )
         }
+        // Share loop (share_loop_v0): the page's share out; null while the loop is off.
+        val messageShareOut = LocalThreadShareOut.current?.shareOut
         // Product analytics: one chosen long-press menu item (`message_action_selected`, surface
         // long_press). Nothing is sent for a menu that did not come from a long press.
         fun trackLongPressMenuAction(message: RaftThreadMessageItem, action: RaftMessageAction?) {
@@ -5027,6 +5029,10 @@ private fun ThreadMessagesListContent(
                         onMarkConversationUnread = {
                             close()
                             onThreadEvent(MARK_CONVERSATION_UNREAD_ACTION, message.id, null, null)
+                        },
+                        onShare = {
+                            close()
+                            messageShareOut?.shareMessage(message)
                         }
                     )
             )
@@ -5189,7 +5195,8 @@ private fun ThreadMessagesListContent(
                         anchor = resolvedActionAnchor,
                         availability =
                             capabilities.toThreadNewMessageMenuActionAvailability(message, replyMetadata)
-                                .copy(copySelection = onCopySelection != null && capabilities.copyText),
+                                .copy(copySelection = onCopySelection != null && capabilities.copyText)
+                                .withShareOut(messageShareOut, message),
                         onDismiss = closeActionMenu,
                         onReact = actions.onReact,
                         onCopy = actions.tools.onCopy,
@@ -5211,7 +5218,8 @@ private fun ThreadMessagesListContent(
                         onMarkThreadUnread = actions.tools.onMarkThreadUnread,
                         onCopySelection = onCopySelection ?: {},
                         onMarkConversationUnread = actions.tools.onMarkConversationUnread,
-                        link = linkSection
+                        link = linkSection,
+                        onShare = actions.tools.onShare
                     )
                 } else {
                     ThreadMessageActionMenu(
@@ -5233,7 +5241,8 @@ private fun ThreadMessagesListContent(
                         showConvertToTaskAction = capabilities.convertToTask,
                         createTaskFromMessage = capabilities.createTaskFromMessage,
                         showReactionActions = capabilities.quickReactions,
-                        showCopyLinkAction = capabilities.copyLink,
+                        showCopyLinkAction = capabilities.copyLink && messageShareOut?.directMessage != true,
+                        onShare = messageShareOut?.takeIf { threadMessageShareable(message) }?.let { out -> { closeActionMenu(); out.shareMessage(message) } },
                         showShareMessagesAction = capabilities.selectMessage,
                         showCancelAction = capabilities.cancelLocalSend,
                         showDeleteAction = capabilities.deleteLocalSend,
