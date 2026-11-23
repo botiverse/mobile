@@ -2,6 +2,8 @@ package build.raft.app.image
 
 import coil3.ImageLoader
 import coil3.PlatformContext
+import coil3.request.maxBitmapSize
+import coil3.size.Size
 import kotlinx.cinterop.BetaInteropApi
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.addressOf
@@ -53,5 +55,16 @@ private fun NSData.toRaftByteArray(): ByteArray {
     return out
 }
 
-/** iOS has no hardware-bitmap config: Coil's defaults apply unchanged. */
-internal actual fun ImageLoader.Builder.raftPlatformImageLoaderDefaults(): ImageLoader.Builder = this
+/**
+ * Cap default Coil bitmaps at [RAFT_IOS_MAX_BITMAP_EDGE_PX] on the long edge (#wg-mobile-feedback:#269,
+ * matching Desktop's 2048 px default; Coil's default is 4096). Unbounded painters (`rememberAsyncImagePainter`)
+ * otherwise decode 12–48 MP camera photos into ~48–64 MB RGBA Skia bitmaps and stall Metal texture
+ * uploads during UIKit push transitions. High-resolution exports (`raftLoadImageBitmap`) override
+ * `maxBitmapSize` explicitly per request.
+ */
+internal actual fun ImageLoader.Builder.raftPlatformImageLoaderDefaults(): ImageLoader.Builder =
+    maxBitmapSize(Size(RAFT_IOS_MAX_BITMAP_EDGE_PX, RAFT_IOS_MAX_BITMAP_EDGE_PX))
+
+internal actual val raftPlatformMaxDisplayBitmapEdgePx: Int? = RAFT_IOS_MAX_BITMAP_EDGE_PX
+
+internal const val RAFT_IOS_MAX_BITMAP_EDGE_PX = 2048

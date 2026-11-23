@@ -1,5 +1,6 @@
 package build.raft.app.data
 
+import build.raft.app.RaftScrollFrameSignal
 import build.raft.app.activityRowTimeValue
 import build.raft.app.reportProjectionRowDropped
 import build.raft.app.shownAuthorName
@@ -449,7 +450,15 @@ class SharedActivityStore internal constructor(
      * The app asks for one debounced incremental sync pull ([RaftSyncRealtimePull]). Called under the
      * realtime owner lock: it must only queue.
      */
-    private val onSyncPullHint: (serverId: String, reason: String) -> Unit = { _, _ -> }
+    private val onSyncPullHint: (serverId: String, reason: String) -> Unit = { _, _ -> },
+    /**
+     * Defers hidden background-tab Activity projections while Home is actively scrolling
+     * (#wg-mobile-feedback:#271). Injectable for tests.
+     */
+    private val isBackgroundProjectionDeferred: () -> Boolean = { RaftScrollFrameSignal.isHomeScrolling },
+    private val awaitBackgroundProjectionWindow: suspend (wakeWhen: StateFlow<Boolean>) -> Unit = { wake ->
+        RaftScrollFrameSignal.awaitHomeScrollSettled(cancelWhen = wake)
+    },
 ) {
     private val _state = raftStoreState(SharedActivityState(), "SharedActivityStore")
     val state: StateFlow<SharedActivityState> = _state.asStateFlow()
@@ -645,6 +654,8 @@ class SharedActivityStore internal constructor(
      */
     @Volatile
     private var panelActive: Boolean? = null
+    /** Flips true whenever the Activity panel becomes visible so a deferred background projection wakes immediately. */
+    private val panelActiveWake = MutableStateFlow(true)
     /** Why the load in flight reads (for `activity:list_row_lowered`'s fetch reason / trigger). */
     private var loadFetchLabel: Pair<InboxFetchReason?, InboxRefreshTriggerCount?> = null to null
     /** The app came back to the foreground and no reset load has started since (guarded by realtimeOwnerLock). */
@@ -682,6 +693,13 @@ class SharedActivityStore internal constructor(
         val active = panelActive
         return if (active != null && rowPositionOnLocked()) !active else activitySurfaceHidden
     }
+
+    /**
+     * True whenever the Activity tab is known to be hidden (independent of `inbox_row_position_v1`
+     * and selected filter), used to defer background-tab projections while Home is scrolling.
+     */
+    private fun isBackgroundTabHiddenLocked(): Boolean =
+        panelActive == false || (panelActive == null && activitySurfaceHidden)
 
     /** Test hook: the position state kept for a row's conversation. */
     internal fun rowPositionStateForTest(scopeId: String): ActivityRowClientState? = rowPositions.keptForTest(scopeId)
@@ -828,8 +846,14 @@ class SharedActivityStore internal constructor(
             is SharedActivityIntent.PrewarmVisibleReplyThreads -> prewarmVisibleReplyThreads(intent.markers)
             is SharedActivityIntent.PrewarmActivityTail -> prewarmActivityTail(intent.orderedMarkers)
             SharedActivityIntent.DetachPrewarmViewport -> prewarmVisibleReplyThreads(emptySet())
-            SharedActivityIntent.SurfaceHidden -> onSurfaceHidden()
-            is SharedActivityIntent.SurfaceActive -> panelActive = intent.active
+            SharedActivityIntent.SurfaceHidden -> {
+                if (panelActive == null) panelActiveWake.value = false
+                onSurfaceHidden()
+            }
+            is SharedActivityIntent.SurfaceActive -> {
+                panelActive = intent.active
+                panelActiveWake.value = intent.active
+            }
             is SharedActivityIntent.RowOpened -> onRowOpened(intent)
             is SharedActivityIntent.ChannelAccessLost -> dropRetainedRows(intent) { item ->
                 item.touchesChannel(intent.channelIds)
@@ -2770,6 +2794,10 @@ class SharedActivityStore internal constructor(
         val followups = mutableListOf<Pair<String, InboxItem>>()
         var delta = 0
         val moved = mutableSetOf<String>()
+        var keptCount = 0
+        var mergedCount = 0
+        var newerCount = 0
+        var rereadCount = 0
         val items =
             snapshot.items.map { item ->
                 val row = servedByKey[item.key]
@@ -2777,7 +2805,10 @@ class SharedActivityStore internal constructor(
                 val scopeId = item.activityRowScopeId() ?: return@map item
                 val entry = askedByScope[scopeId] ?: return@map item
                 judged += scopeId
-                val next = mergeServedRowLocked(item, row, base = row)
+                val next = mergeServedRowLocked(item, row, base = row, emitLog = false)
+                if (next.kept && !next.newer) keptCount += 1 else mergedCount += 1
+                if (next.newer) newerCount += 1
+                if (next.reread) rereadCount += 1
                 val audit = entry.audit?.let { audited -> ActivityRowAudit(moved = item.auditMovedFrom(audited), followup = entry.followup) }
                 val (check, followup) =
                     inPlaceDriftCheck.checkRow(item, row, entry.trigger.trigger, backend, audit, next.row, next.note)
@@ -2788,6 +2819,13 @@ class SharedActivityStore internal constructor(
                 if (!next.kept && next.row.activityRowTimeValue() != item.activityRowTimeValue()) moved += next.row.key
                 next.row
             }
+        val evaluated = keptCount + mergedCount
+        if (evaluated > 0) {
+            diagnosticsLogger(
+                "activity_row_position event=answer_batch source=reread rows=$evaluated " +
+                    "kept=$keptCount merged=$mergedCount newer=$newerCount reread=$rereadCount"
+            )
+        }
         if (items != snapshot.items) {
             val ordered =
                 if (moved.isEmpty()) {
@@ -2868,7 +2906,13 @@ class SharedActivityStore internal constructor(
     }
 
     /** [note]: web `mergeServedRow`'s note, what the merge started from (the audit detail's `;merged=`). */
-    private data class ActivityRowMerge(val row: InboxItem, val kept: Boolean, val note: String = "")
+    private data class ActivityRowMerge(
+        val row: InboxItem,
+        val kept: Boolean,
+        val note: String = "",
+        val newer: Boolean = false,
+        val reread: Boolean = false
+    )
 
 
     /**
@@ -2884,7 +2928,8 @@ class SharedActivityStore internal constructor(
         served: InboxItem,
         base: InboxItem,
         /** The read seq served with the row (a sync `inbox_row` upsert's `maxReadSeq`), merged as a read is. */
-        readSeq: String? = null
+        readSeq: String? = null,
+        emitLog: Boolean = true
     ): ActivityRowMerge {
         val scopeId = current.activityRowScopeId() ?: return ActivityRowMerge(base, kept = false)
         val pa = served.latestActivitySeq?.takeIf(::isCanonicalActivitySeq)
@@ -2916,8 +2961,10 @@ class SharedActivityStore internal constructor(
         // The reducer hands the row back as it was only when the answer is older than its position
         // (identity, as web's `result.row === before`: an answer equal to it is still taken).
         if (result.row === before) {
-            diagnosticsLogger("activity_row_position event=answer scopeId=$scopeId pa=${pa ?: "-"} result=kept")
-            return ActivityRowMerge(current, kept = true, note = note)
+            if (emitLog) {
+                diagnosticsLogger("activity_row_position event=answer scopeId=$scopeId pa=${pa ?: "-"} result=kept")
+            }
+            return ActivityRowMerge(current, kept = true, note = note, reread = result.reread)
         }
         rowPositions.keep(scopeId, result.row)
         val shown = current.latestActivitySeq?.takeIf(::isCanonicalActivitySeq)
@@ -2941,11 +2988,13 @@ class SharedActivityStore internal constructor(
                         else -> served.firstMentionMessageId
                     }
             )
-        diagnosticsLogger(
-            "activity_row_position event=answer scopeId=$scopeId pa=${pa ?: "-"} result=merged " +
-                "newer=$newer unread=${merged.unreadCount} mention=${merged.hasMention} reread=${result.reread}"
-        )
-        return ActivityRowMerge(merged, kept = newer, note = note)
+        if (emitLog) {
+            diagnosticsLogger(
+                "activity_row_position event=answer scopeId=$scopeId pa=${pa ?: "-"} result=merged " +
+                    "newer=$newer unread=${merged.unreadCount} mention=${merged.hasMention} reread=${result.reread}"
+            )
+        }
+        return ActivityRowMerge(merged, kept = newer, note = note, newer = newer, reread = result.reread)
     }
 
     /**
@@ -2966,6 +3015,11 @@ class SharedActivityStore internal constructor(
         val shownByKey = shown.filter { it.isActivityPositionRow() }.associateBy(InboxItem::key)
         var delta = 0
         val kept = mutableSetOf<String>()
+        var startedCount = 0
+        var keptCount = 0
+        var mergedCount = 0
+        var newerCount = 0
+        var rereadCount = 0
         val items =
             folded.map { item ->
                 val answered = servedByKey[item.key] ?: return@map item
@@ -2974,16 +3028,27 @@ class SharedActivityStore internal constructor(
                 if (before == null) {
                     rowPositions.start(scopeId, answered.latestActivitySeq)
                     foldLedgerRead(scopeId)
+                    startedCount += 1
                     return@map item
                 }
                 if (append) return@map item
                 // The realtime hold does not judge these rows: the merged unread replaces what it kept.
                 realtimeHighWater.remove(item.key)
-                val next = mergeServedRowLocked(before, answered, base = answered)
+                val next = mergeServedRowLocked(before, answered, base = answered, emitLog = false)
+                if (next.kept && !next.newer) keptCount += 1 else mergedCount += 1
+                if (next.newer) newerCount += 1
+                if (next.reread) rereadCount += 1
                 delta += next.row.unreadCount - answered.unreadCount
                 if (next.kept) kept += next.row.key
                 next.row
             }
+        val evaluated = keptCount + mergedCount
+        if (evaluated > 0 || startedCount > 0) {
+            diagnosticsLogger(
+                "activity_row_position event=answer_batch source=list rows=$evaluated started=$startedCount " +
+                    "kept=$keptCount merged=$mergedCount newer=$newerCount reread=$rereadCount"
+            )
+        }
         if (kept.isEmpty()) return items to delta
         // Rows kept at a newer message than the answer go back to their place by time.
         val shownOrder = shown.withIndex().associate { (index, item) -> item.key to index }
@@ -3865,6 +3930,9 @@ class SharedActivityStore internal constructor(
                                     SharedActivityPageSize
                                 )
                             }
+                        if (synchronized(realtimeOwnerLock) { isBackgroundTabHiddenLocked() } && isBackgroundProjectionDeferred()) {
+                            awaitBackgroundProjectionWindow(panelActiveWake)
+                        }
                         // task #302: guard on identity (user + server), not the access
                         // token. A 401 inside loadCanonicalDepth triggers a token
                         // rotation and the retry already returns fresh data; comparing
@@ -4033,6 +4101,11 @@ class SharedActivityStore internal constructor(
         durationMs: Long
     ) {
         if (fetched.staleReason != null) return
+        if (synchronized(realtimeOwnerLock) { isBackgroundTabHiddenLocked() } && isBackgroundProjectionDeferred()) {
+            // Activity tab is hidden while Home is actively scrolling (#wg-mobile-feedback:#271):
+            // skip intermediate progressive publish so the final combined page projects once after scroll settles.
+            return
+        }
         val session = authStore.readSession()
         if (session == null || session.user.id != userId || session.currentServerId != serverId.value) return
         val readySenderProfiles = if (senderProfilesLoad.isCompleted) senderProfilesLoad.await() else null
@@ -5891,6 +5964,10 @@ class SharedActivityStore internal constructor(
                 var unreadable = 0
                 var upserts = 0
                 var deletes = 0
+                var syncKeptCount = 0
+                var syncMergedCount = 0
+                var syncNewerCount = 0
+                var syncRereadCount = 0
                 fun listedIndex(id: String) = items.indexOfFirst { it.isActivityPositionRow() && it.activityRowScopeId() == id }
                 for (change in changes) {
                     when (change) {
@@ -5915,7 +5992,17 @@ class SharedActivityStore internal constructor(
                             if (index >= 0) {
                                 val shown = items[index]
                                 realtimeHighWater.remove(shown.key)
-                                val next = mergeServedRowLocked(shown, served, base = served, readSeq = parsed.readStateMaxReadSeq)
+                                val next =
+                                    mergeServedRowLocked(
+                                        shown,
+                                        served,
+                                        base = served,
+                                        readSeq = parsed.readStateMaxReadSeq,
+                                        emitLog = false
+                                    )
+                                if (next.kept && !next.newer) syncKeptCount += 1 else syncMergedCount += 1
+                                if (next.newer) syncNewerCount += 1
+                                if (next.reread) syncRereadCount += 1
                                 delta += next.row.unreadCount - shown.unreadCount
                                 if (!next.kept && next.row.activityRowTimeValue() != shown.activityRowTimeValue()) moved += next.row.key
                                 items[index] = next.row
@@ -5948,6 +6035,13 @@ class SharedActivityStore internal constructor(
                             delta -= shown.unreadCount
                         }
                     }
+                }
+                val syncEvaluated = syncKeptCount + syncMergedCount
+                if (syncEvaluated > 0) {
+                    diagnosticsLogger(
+                        "activity_row_position event=answer_batch source=sync rows=$syncEvaluated " +
+                            "kept=$syncKeptCount merged=$syncMergedCount newer=$syncNewerCount reread=$syncRereadCount"
+                    )
                 }
                 val ordered =
                     if (moved.isEmpty()) {
@@ -6185,6 +6279,9 @@ class SharedActivityStore internal constructor(
         diagnosticsLogger("store_load domain=activity phase=sender_profiles_pending serverId=${serverId.value}")
         scope.launch {
             val profiles = senderProfilesLoad.await()
+            if (synchronized(realtimeOwnerLock) { isBackgroundTabHiddenLocked() } && isBackgroundProjectionDeferred()) {
+                awaitBackgroundProjectionWindow(panelActiveWake)
+            }
             synchronized(realtimeOwnerLock) {
                 val current = _state.value
                 if (current.ownerServerId != serverId.value || current.ownerUserId != userId) return@synchronized

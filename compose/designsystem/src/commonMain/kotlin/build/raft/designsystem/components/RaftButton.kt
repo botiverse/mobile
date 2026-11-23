@@ -133,6 +133,15 @@ enum class RaftIconButtonSize(internal val box: Dp, internal val glyph: Dp) {
      * the mobile values; components read [boxIn] / [glyphIn].
      */
     Lg(44.dp, 22.dp),
+
+    /**
+     * A row's trailing action revealed on hover, such as an Activity row's Mark as Done (web
+     * InboxRowDone: `icon-md` with `md:pointer-fine:size-(--bar-button-size)
+     * md:pointer-fine:rounded-(--bar-button-radius)`): [Md]'s 32dp with an 18dp icon by touch;
+     * under a fine pointer the 28dp bar button ([RaftControlMetrics.barButtonSize]) at
+     * `--bar-button-radius` (6), keeping the 18dp icon.
+     */
+    Row(32.dp, 18.dp),
     ;
 
     /** The inline sizes ([Xs], [Sm]) round at `radius-chip`, not `radius-control`. */
@@ -146,6 +155,8 @@ enum class RaftIconButtonSize(internal val box: Dp, internal val glyph: Dp) {
         when (this) {
             Lg -> if (bar) controls.barButtonSize else controls.height
             Md -> controls.rowHeight ?: box
+            // The fine-pointer metrics are the ones with a shared row height.
+            Row -> if (controls.rowHeight != null) controls.barButtonSize else box
             else -> box
         }
 
@@ -159,7 +170,11 @@ enum class RaftIconButtonSize(internal val box: Dp, internal val glyph: Dp) {
      * the default.
      */
     internal fun radiusIn(controls: RaftControlMetrics, bar: Boolean): Dp? =
-        if (this == Lg) (if (bar) controls.barButtonRadius else controls.controlRadius) else null
+        when {
+            this == Lg -> if (bar) controls.barButtonRadius else controls.controlRadius
+            this == Row && controls.rowHeight != null -> controls.barButtonRadius
+            else -> null
+        }
 }
 
 /**
@@ -576,7 +591,8 @@ val LocalRaftButtonsStacked = staticCompositionLocalOf { false }
  * - Disabled: `fill-muted`, `line-hairline` border, `foreground-disabled` type, no die-cut
  *   edge (a disabled button is no longer a sticker). An `OnFrame` button only greys its type.
  * - Busy ([loading]): the content is hidden (keeping the width) under a pixel
- *   [RaftSpinner] named [loadingLabel]; the button keeps its colour (Button > States),
+ *   [RaftSpinner] named [loadingLabel]; the button keeps its colour (Button > States), also
+ *   when the caller disables it while busy (`enabled = !submitting`, raft-design #1389),
  *   stays focusable (keyboard focus doesn't jump away when it turns busy) and ignores taps;
  *   semantics mark it disabled. Write the label as what is happening ("Creating…").
  *
@@ -616,7 +632,9 @@ fun RaftButton(
     val look =
         raftButtonLook(
             if (variant == RaftButtonVariant.Ghost && LocalRaftButtonsStacked.current) RaftButtonVariant.Default else variant,
-            enabled,
+            // raft-ui Button (raft-design #1389): a loading button keeps its colours even when
+            // the caller also disables it while the request runs; only the tap is ignored.
+            enabled || loading,
             frameless = false,
             colors = RaftTheme.colors,
         )
@@ -930,7 +948,8 @@ internal fun RaftSizedIconButton(
     cornerRadius: Dp? = null,
     icon: @Composable () -> Unit,
 ) {
-    val look = raftButtonLook(variant, enabled, frameless = variant == RaftButtonVariant.Ghost, colors = RaftTheme.colors)
+    // A loading button keeps its colours, disabled or not (raft-ui Button, raft-design #1389).
+    val look = raftButtonLook(variant, enabled || loading, frameless = variant == RaftButtonVariant.Ghost, colors = RaftTheme.colors)
     val description = contentDescription
     val misuse = LocalRaftMisuse.current
     if (description == null) misuse("RaftIconButton needs a name: pass tooltip or contentDescription")

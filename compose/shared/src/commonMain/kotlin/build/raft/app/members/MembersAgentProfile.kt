@@ -2113,6 +2113,8 @@ private fun MembersAgentActionRow(
         variant = RaftListRowVariant.Plain,
         onClick = onClick,
         risk = risk,
+        // Each row is one action: the 18dp icon on all of them, toned or not (raft-ui 0.102.21).
+        action = true,
         enabled = enabled,
         divider = divider,
         leading = { RaftComputersIcon(iconName, size = LocalRaftListRowIconSize.current) },

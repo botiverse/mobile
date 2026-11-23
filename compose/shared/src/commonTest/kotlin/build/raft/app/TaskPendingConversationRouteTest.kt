@@ -180,6 +180,21 @@ class TaskPendingConversationRouteTest {
         assertFalse(motion.exitsWithoutMotion(threadPage.contentKey))
     }
 
+    @Test
+    fun aTaskWithoutAConversationOpensAsItsPageUnlessTheWideLayoutIsOn() {
+        // #307: from a chat, a wide window with "Desktop layout on large screens" off still got the
+        // old floating surface while the Tasks tab opened the page; both ask the same rule now.
+        fun pane(widthDp: Int, heightDp: Int) =
+            reduceRaftAdaptivePane(
+                RaftAdaptivePaneState(),
+                RaftAdaptivePaneEvent(widthDp * 2, heightDp * 2, 2f, RaftAdaptivePanePosture.Flat),
+            )
+        val tablet = pane(1024, 768)
+        assertTrue(taskPendingOpensAsPage(desktopModeEnabled = false, pane = tablet), "Desktop layout off: the page")
+        assertFalse(taskPendingOpensAsPage(desktopModeEnabled = true, pane = tablet), "the wide layout keeps its surface")
+        assertTrue(taskPendingOpensAsPage(desktopModeEnabled = true, pane = pane(402, 874)), "a phone: the page")
+    }
+
     private fun task(fields: String): TaskSummary {
         val base =
             """{"id":"t-1","channelId":"channel-1","channelName":"general","channelType":"channel","taskNumber":7,

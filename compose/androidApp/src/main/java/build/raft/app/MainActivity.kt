@@ -189,9 +189,10 @@ class MainActivity : ComponentActivity() {
      * A Raft message link (App Link on app.raft.build / open.raft.build, or the Developer
      * environment's web host): the shared inbox keeps it (through sign-in) until an app shell with
      * a ready session resolves and opens it through the window navigation coordinator, the entry a
-     * notification tap uses. A live shell in this task is only revealed; otherwise the shell is
-     * started or brought forward the way a notification tap starts it. Anything else stays on the
-     * web ([handleUnsupportedRaftWebLink]).
+     * notification tap uses. A live shell in this task is only revealed; a live shell in another
+     * task (when another app launches this trampoline in its own task) is brought forward without
+     * recreating it, so the inbox intake's Nav3 push is not wiped back to Home (#proj-mobile:#311).
+     * Anything else stays on the web ([handleUnsupportedRaftWebLink]).
      */
     private fun handleRaftMessageLink(intent: Intent?): Boolean {
         if (intent?.action != Intent.ACTION_VIEW) return false
@@ -202,11 +203,7 @@ class MainActivity : ComponentActivity() {
         }
         // Ids stay out of the retained Activity intent; the inbox owns the link now.
         setIntent(Intent(this, MainActivity::class.java))
-        val liveShellInTask = AndroidShellWindowRegistry.hasShellInTask(taskId)
-        RaftAppLog.d("SlockBoot", "app_message_link_accepted liveShellInTask=$liveShellInTask")
-        if (!liveShellInTask) {
-            RaftCmpActivity.startAppShell(applicationContext, pageData = JSONObject(), clearTask = false)
-        }
+        revealOrStartShellForLink(logEvent = "app_message_link_accepted")
         finish()
         return true
     }
@@ -214,19 +211,28 @@ class MainActivity : ComponentActivity() {
     /**
      * Any other `raft://` link (the manifest takes the whole app scheme for Raft Desktop's message
      * links): the app comes forward as it is, the way iOS treats it, instead of a fresh shell
-     * clearing the task.
+     * clearing or recreating the task.
      */
     private fun handleUnclaimedAppSchemeLink(intent: Intent?): Boolean {
         if (intent?.action != Intent.ACTION_VIEW) return false
         if (!intent.data?.scheme.equals(BuildConfig.OAUTH_CALLBACK_SCHEME, ignoreCase = true)) return false
         setIntent(Intent(this, MainActivity::class.java))
-        val liveShellInTask = AndroidShellWindowRegistry.hasShellInTask(taskId)
-        RaftAppLog.d("SlockBoot", "app_scheme_link_not_claimed liveShellInTask=$liveShellInTask")
-        if (!liveShellInTask) {
-            RaftCmpActivity.startAppShell(applicationContext, pageData = JSONObject(), clearTask = false)
-        }
+        revealOrStartShellForLink(logEvent = "app_scheme_link_not_claimed")
         finish()
         return true
+    }
+
+    private fun revealOrStartShellForLink(logEvent: String) {
+        val liveShellInTask = AndroidShellWindowRegistry.hasShellInTask(taskId)
+        RaftAppLog.d("SlockBoot", "$logEvent liveShellInTask=$liveShellInTask")
+        if (!liveShellInTask) {
+            RaftCmpActivity.startAppShell(
+                applicationContext,
+                pageData = JSONObject(),
+                clearTask = false,
+                preserveLiveShell = true,
+            )
+        }
     }
 
     /**

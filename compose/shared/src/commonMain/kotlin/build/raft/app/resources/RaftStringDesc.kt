@@ -266,6 +266,16 @@ internal fun raftCurrentUiLocaleTag(): String =
     raftResourceLocale(StringDesc.localeType, raftSystemPreferredLanguageTagsOrEmpty()).languageTag.ifBlank { "en" }
 
 /**
+ * [raftCurrentUiLocaleTag] in composition: the language the strings here resolve in, read from the
+ * shared lookup environment, so a language switch recomposes the caller as it does [stringResource].
+ */
+@Composable
+internal fun rememberRaftUiLocaleTag(): String {
+    val environment = rememberRaftResourceEnvironment()
+    return remember(environment) { RaftResourceLocale(environment.language, environment.region).languageTag.ifBlank { "en" } }
+}
+
+/**
  * The system's preferred languages, most preferred first, as BCP 47 tags (Android: the locale
  * list; iOS: `NSLocale.preferredLanguages`).
  */

@@ -4237,6 +4237,7 @@ private fun ThreadMessagesListContent(
                     (shareSelectionActive || shareSelectionCaptureActive) &&
                         message.id in selectedShareMessageIds
                 val liveTodayEpochDay = currentRaftTimeContextProvider?.todayEpochDay
+                val messageTime = rememberRaftMessageTimeFormat()
                 val dateDividerDay =
                     remember(
                         previousMessage?.timestampLabel,
@@ -4480,7 +4481,8 @@ private fun ThreadMessagesListContent(
                                     actionCardExecutedTimeLabel =
                                         renderConfig.formatActionCardExecutedTimeLabel(
                                             message.threadActionCard()?.executedAt,
-                                            liveTodayEpochDay
+                                            liveTodayEpochDay,
+                                            messageTime
                                         ),
                                     onOpenAttachment = { onThreadEvent("openAttachment", null, it, null) },
                                     onDownloadAttachment = { onThreadEvent("downloadAttachment", null, it, null) },
@@ -5154,7 +5156,7 @@ private fun ThreadMessagesListContent(
                 }
                 val onConvertToTask: () -> Unit = {
                     closeActionMenu()
-                    trackLongPressMenuAction(message, RaftMessageAction.ConvertToTask)
+                    trackLongPressMenuAction(message, RaftMessageAction.CreateTask)
                     onThreadEvent("convertMessageToTask", message.id, null, null)
                 }
                 val variant =
@@ -5306,6 +5308,8 @@ private fun ThreadMessagesListContent(
                                     onThreadEvent("downloadAttachment", null, attachmentId, null)
                                 }
                             },
+                        // botiverse/slock #16252: web MessageItem counts its menu's Quote too.
+                        onQuoteChosen = { trackLongPressMenuAction(message, RaftMessageAction.Quote) },
                         link = linkSection,
                         diagnosticsLogger = diagnosticsLogger
                     )

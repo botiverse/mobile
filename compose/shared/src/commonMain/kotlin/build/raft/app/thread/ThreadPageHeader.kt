@@ -67,8 +67,8 @@ import androidx.compose.ui.semantics.onClick
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.testTag
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.constrainHeight
@@ -300,10 +300,14 @@ internal fun ThreadPageHeader(
     // The Tasks page's task column (RaftTasksTaskColumn.kt; web TaskConversationBar beside the
     // list): its Expand and Close end the head, also while the page is still loading.
     val taskColumnHead = LocalRaftTaskColumnHead.current
+    // The reply thread's column on the wide layout (a side pane, LocalRaftSidePanePage; web ThreadPanelHeader
+    // presentation "side"): Close ends the head and closes the column only, the channel staying; no Back, the
+    // column holds no page under the thread (raftSidePaneHeadButtons).
+    val paneCloses = LocalRaftSidePanePage.current != null
     // iPhone Duo (raft-design #859): beside the system's side column, Back and the page's actions
     // are the column's (Back first, two actions, the rest in its ⋯); the header keeps the title
     // and the subtitle, from the 16dp margin, without Back and without icon buttons.
-    val showsBack = threadHeaderShowsBack(showBack, headerDisplay.surfaceKind)
+    val showsBack = threadHeaderShowsBack(showBack, headerDisplay.surfaceKind) && raftSidePaneShowsBack()
     val controlsInColumn =
         raftSideColumnControls(
             back =
@@ -441,7 +445,7 @@ internal fun ThreadPageHeader(
         // The 3dp edge inset only mirrors Back when a trailing PanelAction sits at the end;
         // without one the title keeps the default end padding instead of running to the edge.
         contentEndPadding =
-            if ((showHeaderActions && !controlsInColumn) || taskColumnHead != null) ThreadHeaderEdgeInset else RaftTopPageHeaderContentEndPadding,
+            if ((showHeaderActions && !controlsInColumn) || taskColumnHead != null || paneCloses) ThreadHeaderEdgeInset else RaftTopPageHeaderContentEndPadding,
         contentSpacing = ThreadHeaderContentSpacing,
         titleLeadingContent = {
             // Back is the same 44dp frameless PanelAction as the trailing actions (not the shared
@@ -567,10 +571,10 @@ internal fun ThreadPageHeader(
             }
         },
         trailingContent =
-            if (showHeaderActions && controlsInColumn && taskColumnHead == null) {
+            if (showHeaderActions && controlsInColumn && taskColumnHead == null && !paneCloses) {
                 // The Agent followers are the task's facts, not a button: they stay in the header.
                 { agentFollowersHeader() }
-            } else if (showHeaderActions || taskColumnHead != null) {
+            } else if (showHeaderActions || taskColumnHead != null || paneCloses) {
                 {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
@@ -651,7 +655,8 @@ internal fun ThreadPageHeader(
                             leadOverheadDp = leadOverheadDp,
                             ownCount = ownActions.size,
                             actionSizeDp = actionSizeDp,
-                            fixedTrailingCount = if (toggleFocus != null) 1 else 0,
+                            // Expand and the side pane's Close never fold (web ThreadPanelHeader).
+                            fixedTrailingCount = (if (toggleFocus != null) 1 else 0) + (if (paneCloses) 1 else 0),
                             existingMenuItems = hasPanelMenu,
                         )
                     val visibleOwnActions = ownActions.take(shownOwnCount)
@@ -696,6 +701,8 @@ internal fun ThreadPageHeader(
                     toggleFocus?.let { ThreadHeaderFocusModeToggle(focused = focusModeActive, onToggle = it) }
                     }
                     taskColumnHead?.let { RaftTaskColumnHeadActions(it) }
+                    // web ThreadPanelHeader: Close after Expand, the head's last control, in the thread's column.
+                    if (paneCloses) RaftSidePaneCloseButton()
                 }
                 }
             } else {
@@ -719,17 +726,12 @@ internal fun ThreadHeaderChannelLinkSubtitle(
     onOpenInChannel: () -> Unit,
 ) {
     Row(verticalAlignment = Alignment.CenterVertically) {
-        RaftTooltip(
-            text = stringResource(Res.string.task_conversation_view_in_channel),
+        ThreadHeaderViewInChannelLink(
+            label = channelLabel,
+            onViewInChannel = onOpenInChannel,
+            style = ThreadHeaderMetaStyle,
             modifier = Modifier.weight(1f, fill = false)
-        ) {
-            RaftTextLink(
-                text = channelLabel,
-                onClick = onOpenInChannel,
-                style = ThreadHeaderMetaStyle,
-                maxLines = 1
-            )
-        }
+        )
         replyCountLabel?.takeIf { it.isNotBlank() }?.let { count ->
             Text(
                 text = " · $count",
@@ -739,6 +741,30 @@ internal fun ThreadHeaderChannelLinkSubtitle(
                 softWrap = false
             )
         }
+    }
+}
+
+/**
+ * A conversation's name as a link that does what View in Channel does, under its tooltip: a reply
+ * thread's channel or DM (web ThreadPanelHeader #10285) and the place in a task's ref (web
+ * TaskConversationBar #16258). Screen readers hear where it goes, not just the name.
+ */
+@Composable
+internal fun ThreadHeaderViewInChannelLink(
+    label: String,
+    onViewInChannel: () -> Unit,
+    style: TextStyle,
+    modifier: Modifier = Modifier,
+) {
+    val viewInChannel = stringResource(Res.string.task_conversation_view_in_channel)
+    RaftTooltip(text = viewInChannel, modifier = modifier) {
+        RaftTextLink(
+            text = label,
+            onClick = onViewInChannel,
+            modifier = Modifier.semantics { onClick(label = viewInChannel) { onViewInChannel(); true } },
+            style = style,
+            maxLines = 1
+        )
     }
 }
 
@@ -1205,7 +1231,8 @@ private fun ThreadDmAgentActivity(
 ) {
     // Web ChatPanel AgentDMStatus (#10446): stuck on one tool call reads as that, in the
     // warning colour, not as a plain "busy". Otherwise, a failed start waiting for runtime sign-in
-    // (slock #15282) reads "Sign-in needed for <runtime>" ("Sign-in needed" below 768dp) on the
+    // (slock #15282) reads "Sign-in needed for <runtime>" ("Sign-in needed" in a phone window: under
+    // the app's wide breakpoint, [raftWindowWide], as the web's is under its `md`) on the
     // error light with Sign in beside it for viewers who can act on the Computer.
     val toolStuck = state.visibleToolStuck()
     val readinessCopy = if (toolStuck == null) rememberAgentReadinessDisplayCopy(state) else null
@@ -1239,7 +1266,7 @@ private fun ThreadDmAgentActivity(
     }
     val signIn = if (toolStuck == null) rememberAgentRuntimeSignInState(state, fallbackName = agentName) else null
     if (signIn != null) {
-        val wide = with(LocalDensity.current) { LocalWindowInfo.current.containerSize.width.toDp() } >= 768.dp
+        val wide = raftWindowWide()
         val signInLabel = if (wide) signIn.fullText else signIn.shortText
         Row(
             modifier = modifier,

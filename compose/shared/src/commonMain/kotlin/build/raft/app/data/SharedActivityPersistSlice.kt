@@ -1,19 +1,28 @@
 package build.raft.app.data
 
 import build.raft.app.model.PerReceiverReadStateChanged
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.serialization.Serializable
 
 internal fun createSharedActivityPersistSlice(
     storage: MviPersistStorage,
     diagnosticsLogger: (String) -> Unit = {},
-    failureLogger: (String) -> Unit = diagnosticsLogger
-): MviPersistSlice<SharedActivityState, SharedActivityIntent> =
-    MviPersistMiddleware(
-        storage = storage,
-        spec = SharedActivityPersistSpec,
-        diagnosticsLogger = diagnosticsLogger,
-        failureLogger = failureLogger
-    )
+    failureLogger: (String) -> Unit = diagnosticsLogger,
+    scrollDeferScope: CoroutineScope? = null,
+): MviPersistSlice<SharedActivityState, SharedActivityIntent> {
+    val middleware =
+        MviPersistMiddleware(
+            storage = storage,
+            spec = SharedActivityPersistSpec,
+            diagnosticsLogger = diagnosticsLogger,
+            failureLogger = failureLogger
+        )
+    return if (scrollDeferScope != null) {
+        ScrollDeferredMviPersistSlice(delegate = middleware, persistScope = scrollDeferScope)
+    } else {
+        middleware
+    }
+}
 
 private object SharedActivityPersistSpec :
     MviPersistSpec<SharedActivityState, SharedActivityIntent, SharedActivityPersistSnapshot> {

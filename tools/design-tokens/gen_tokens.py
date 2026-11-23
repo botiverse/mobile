@@ -652,7 +652,8 @@ def render(tokens, themed, target: Target) -> str:
         "// Sources (tools/design-tokens/manifest.json):",
     ]
     for entry in manifest["sources"].values():
-        lines.append(f"//   {entry['origin']} sha256={entry['sha256'][:16]}")
+        if entry["path"].endswith(".css"):  # the colours come from the stylesheets only
+            lines.append(f"//   {entry['origin']} sha256={entry['sha256'][:16]}")
     lines += [
         "",
         f"package {target.package}",

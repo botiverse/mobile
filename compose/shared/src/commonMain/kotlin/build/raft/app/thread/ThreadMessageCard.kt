@@ -866,11 +866,12 @@ private fun ThreadMessageCardContent(
     // Screen readers hear every row's time: a compact row without its header has no visible one
     // (only while pressed), so its avatar slot carries it, as the header would show it.
     val rowTimeContext = currentRaftDateTimeContext(null)
+    val rowMessageTime = rememberRaftMessageTimeFormat()
     val rowTimeAccessibilityLabel =
         if (showTimestampInHeader) {
             null
         } else {
-            threadRowTimeAccessibilityLabel(timestampLabel, compactTimestampLabel, rowTimeContext)
+            threadRowTimeAccessibilityLabel(timestampLabel, compactTimestampLabel, rowTimeContext, rowMessageTime)
         }
     val messageHasAttachments = message.attachments.isNotEmpty()
     val hasThreadAttachments = richContentEnabled && messageHasAttachments

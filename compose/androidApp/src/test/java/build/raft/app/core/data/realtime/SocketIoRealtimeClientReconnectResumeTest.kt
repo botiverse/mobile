@@ -131,4 +131,53 @@ class SocketIoRealtimeClientReconnectResumeTest {
         assertEquals(emptyList<Any?>(), harness.resumeSeqs())
         assertEquals(listOf(ServerId("server-2")), harness.catchUps().map { it.serverId })
     }
+
+    @Test
+    fun sameServerCredentialRotationReconnectRejoinsOpenChannelAndResumesSeq() {
+        val harness = Harness()
+        val witnessBefore =
+            build.raft.app.data.realtime.RealtimeConnectionWitnessToken(
+                scopeLeaseId = "lease-1",
+                principalId = "user-1",
+                authGeneration = 3L,
+                connectionFamilyId = "proc:family:1",
+            )
+        val witnessAfter =
+            build.raft.app.data.realtime.RealtimeConnectionWitnessToken(
+                scopeLeaseId = "lease-1",
+                principalId = "user-1",
+                authGeneration = 4L,
+                connectionFamilyId = "proc:family:2",
+            )
+        harness.client.connect(
+            RealtimeConnectRequest(
+                auth = RealtimeAuth(token = "token-old", serverId = ServerId("server-1")),
+                lastSeq = 0L,
+                witness = witnessBefore,
+            )
+        )
+        harness.transport.receive(RealtimeSocketEvents.Connect)
+        harness.client.joinChannel(ChannelId("channel-open"))
+        harness.receiveMessage(seq = 89)
+        harness.transport.emitted.clear()
+
+        // Silent auth refresh reconnects the existing client on the same server with rotated token and witness.
+        harness.client.connect(
+            RealtimeConnectRequest(
+                auth = RealtimeAuth(token = "token-new", serverId = ServerId("server-1")),
+                lastSeq = 89L,
+                witness = witnessAfter,
+            )
+        )
+        harness.transport.receive(RealtimeSocketEvents.Connect)
+        assertEquals(
+            listOf("channel-open"),
+            harness.transport.emitted
+                .filter { it.first == RealtimeSocketEvents.JoinChannel }
+                .map { it.second["channelId"] },
+        )
+
+        harness.transport.receive(RealtimeSocketEvents.RoomsJoined)
+        assertEquals(listOf<Any?>(89L), harness.resumeSeqs())
+    }
 }

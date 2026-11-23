@@ -2,7 +2,10 @@ package build.raft.app
 
 import build.raft.designsystem.components.raftSafeAreaHorizontalPadding
 import build.raft.designsystem.components.raftScrollEdgeFade
+import build.raft.designsystem.components.raftScrollIntoViewGroup
 import build.raft.designsystem.components.raftScrollIntoViewWhen
+import build.raft.designsystem.components.rememberRaftScrollIntoViewGroup
+import build.raft.app.components.RaftSlotIcon
 import build.raft.app.resources.*
 import build.raft.designsystem.components.RaftButton
 import build.raft.designsystem.components.RaftButtonVariant
@@ -193,8 +196,10 @@ internal fun SharedHomeSearchFilters(
     // Channel, the time range) fills it and scrolls sideways with its labels kept, Clear all
     // pinned at the strip's end, the sort pinned at the line's end. A chip naming a person or
     // a channel is capped (web `max-w-60`): a long name ends in an ellipsis. The strip fades
-    // over 24dp at an edge with chips hidden past it (raft-design spacing.md › Edges fade); an
-    // applied filter scrolls itself into view, 24dp clear of that edge (web `data-active`).
+    // over 24dp at an edge with chips hidden past it (raft-design spacing.md › Edges fade). An
+    // applied filter is kept in view, 24dp clear of that edge (web `data-active`, FitToolbar
+    // `useScrollGroup`): when Search opens with filters applied, the first of them; then the
+    // one just applied.
     SharedHomeSearchControlsBlock {
         Row(
             modifier = Modifier
@@ -206,10 +211,12 @@ internal fun SharedHomeSearchFilters(
         ) {
             val chipModifier = Modifier.widthIn(max = SearchFilterNameChipMaxWidth)
             val stripScroll = rememberScrollState()
+            val stripReveal = rememberRaftScrollIntoViewGroup(stripScroll)
             Row(
                 modifier = Modifier
                     .weight(1f)
                     .testTag("search-filter-strip")
+                    .raftScrollIntoViewGroup(stripReveal)
                     .raftScrollEdgeFade(stripScroll)
                     .horizontalScroll(stripScroll),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -219,7 +226,7 @@ internal fun SharedHomeSearchFilters(
                     key("search-filter-${filter.id}") {
                         when (filter) {
                             HomeSearchFilter.Sender ->
-                                Box(chipModifier.raftScrollIntoViewWhen(senderActive)) {
+                                Box(chipModifier.raftScrollIntoViewWhen(senderActive, stripReveal)) {
                                     RaftAnchoredPickerTrigger(
                                         label = state.localizedSenderFilterLabel(),
                                         anchorIdentity = "search_filter:sender",
@@ -234,7 +241,7 @@ internal fun SharedHomeSearchFilters(
                                 }
                             HomeSearchFilter.Scope ->
                                 RaftAnchoredPickerTrigger(
-                                    modifier = chipModifier.raftScrollIntoViewWhen(scopeActive),
+                                    modifier = chipModifier.raftScrollIntoViewWhen(scopeActive, stripReveal),
                                     label = if (scopeActive) "$scopeLabel ${state.selectedScopes.size}" else scopeLabel,
                                     anchorIdentity = "search_filter:scope",
                                     hasValue = scopeActive,
@@ -252,7 +259,7 @@ internal fun SharedHomeSearchFilters(
                                         appearance = RaftBadgeAppearance.Soft,
                                         variant = RaftBadgeVariant.Information,
                                     )
-                                } else Box(chipModifier.raftScrollIntoViewWhen(channelActive)) {
+                                } else Box(chipModifier.raftScrollIntoViewWhen(channelActive, stripReveal)) {
                                     RaftAnchoredPickerTrigger(
                                         label = selectedChannel?.label ?: channelLabel,
                                         anchorIdentity = "search_filter:channel",
@@ -267,7 +274,7 @@ internal fun SharedHomeSearchFilters(
                                 }
                             HomeSearchFilter.Time ->
                                 RaftAnchoredPickerTrigger(
-                                    modifier = chipModifier.raftScrollIntoViewWhen(timeActive),
+                                    modifier = chipModifier.raftScrollIntoViewWhen(timeActive, stripReveal),
                                     label = state.timeRange.localizedSearchLabel(),
                                     anchorIdentity = "search_filter:time",
                                     hasValue = timeActive,
@@ -389,10 +396,11 @@ internal fun sharedHomeSearchTimestampTextStyle() =
         letterSpacing = 0.sp
     )
 
-// raft-ui search-entity: a flat list-cell row, `py-3` (min 64dp) with its content 20dp in,
-// `gap-3` between a 27dp leading avatar / IconTile and the text; `text-body` semibold title with
-// at most one mark ([homeSearchEntityBadge]), `text-callout` `foreground-muted` description; 2dp
-// between rows, no line; pressed fills the cell shape. One tappable row, no Join: a channel the
+// raft-ui search-entity: a flat list-cell row, with a finger `pointer-coarse:py-2` (min 56dp, so
+// a title over its subtitle is the web's 62dp), under a mouse `py-3` (min 64dp), its content 20dp
+// in, `gap-3` between a 27dp leading avatar / IconTile and the text; `text-body` semibold title
+// with at most one mark ([homeSearchEntityBadge]), `text-callout` `foreground-muted` description;
+// 2dp between rows, no line; pressed fills the cell shape. One tappable row, no Join: a channel the
 // reader hasn't joined says "Not joined" and opens on its preview. An archived channel mutes its
 // title and description.
 @Composable
@@ -421,11 +429,12 @@ internal fun SharedHomeSearchEntityRow(
     val pressed by interactionSource.collectIsPressedAsState()
     val mutedArchived = result.archivedNow && result.type == SearchEntityType.Channel
     val typography = RaftTheme.typography
+    val pointer = RaftTheme.pointerInput
     Row(
         modifier =
             Modifier
                 .fillMaxWidth()
-                .heightIn(min = RaftSearchMetrics.EntityMinHeight)
+                .heightIn(min = RaftSearchMetrics.entityMinHeight(pointer))
                 .raftSearchRowGap(showSeparator)
                 .raftSearchRowPressed(pressed, RaftColor.FillPressed)
                 .raftCaptureLiveRootAnchor(contentAnchor)
@@ -453,7 +462,8 @@ internal fun SharedHomeSearchEntityRow(
                         )
                     }
                 }
-                .raftSafeAreaHorizontalPadding().padding(horizontal = RaftSearchMetrics.Inset, vertical = RaftSearchMetrics.RowPaddingVertical),
+                .raftSafeAreaHorizontalPadding()
+                .padding(horizontal = RaftSearchMetrics.Inset, vertical = RaftSearchMetrics.entityPaddingVertical(pointer)),
         horizontalArrangement = Arrangement.spacedBy(RaftSearchMetrics.EntityGap),
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -630,8 +640,11 @@ private fun SharedHomeSearchEntityBadge(badge: HomeSearchEntityBadge) {
 }
 
 // raft-ui search-thread: a flat block (no line, card or wash). The `px-5 pt-3` header holds a
-// mono-meta `foreground-hint` line (Thread Badge, #channel, hit count, time at the end) over the `text-callout` semibold title; the hits follow as
-// search-message rows.
+// mono-meta `foreground-hint` line (Thread Badge, #channel, hit count, time at the end) over the
+// `text-callout` semibold title; the hits follow as search-message rows. As the web's
+// SearchMessageResultsSection: the badge is an `outline` Badge, the count says "1 hit" / "2 hits",
+// and the title is the parent message as text, cut as the web cuts it ([homeSearchThreadTitle]),
+// with no hit mark and no line limit (`threadTitle`): only the hits below mark the query.
 @Composable
 internal fun SharedHomeThreadResultGroup(
     group: HomeSearchResultGroup.Thread,
@@ -670,16 +683,13 @@ internal fun SharedHomeThreadResultGroup(
                     horizontalArrangement = Arrangement.spacedBy(6.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
+                    // web `<Badge appearance="outline">`: a hairline `line-hairline` edge, mono
+                    // meta type in `foreground-muted`, the ThreadIcon at the badge's icon size
+                    // (`[&_svg]:size-3.5`) in the same ink.
                     RaftBadge(
                         text = stringResource(Res.string.search_meta_thread),
-                        icon = {
-                            // raft-ui ThreadIcon, as the web's thread Badge.
-                            RaftLucideIcon(
-                                RaftLucideIconName.Thread,
-                                color = raftArgbHex(RaftColor.StickerInk),
-                                modifier = Modifier.size(11.dp)
-                            )
-                        }
+                        appearance = RaftBadgeAppearance.Outline,
+                        icon = { RaftSlotIcon(RaftLucideIconName.Thread) }
                     )
                     Text(
                         text = sourceLabel,
@@ -690,7 +700,7 @@ internal fun SharedHomeThreadResultGroup(
                         modifier = Modifier.weight(1f, fill = false)
                     )
                     Text(
-                        text = stringResource(Res.string.search_hits_count, group.items.size),
+                        text = homeSearchThreadHitsCount(group.items.size).localized(),
                         style = metaStyle,
                         color = RaftColor.ForegroundHint,
                         maxLines = 1
@@ -709,13 +719,10 @@ internal fun SharedHomeThreadResultGroup(
                     )
                 }
             }
-            RaftSearchHitText(
+            RaftText(
                 text = group.title,
-                query = query,
                 style = RaftTheme.typography.callout.copy(fontWeight = FontWeight.SemiBold),
-                color = RaftColor.TextBlack,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis
+                color = RaftColor.TextBlack
             )
         }
         group.items.forEachIndexed { index, item ->
@@ -732,6 +739,13 @@ internal fun SharedHomeThreadResultGroup(
         RaftSearchListEnd()
     }
 }
+
+/**
+ * A thread result's hit count (web `search.hitsCount`): "1 hit", "2 hits", in each language's
+ * plural forms (Russian's from files/plurals/ru.json).
+ */
+internal fun homeSearchThreadHitsCount(count: Int): StringDesc =
+    (if (count == 1) Res.string.search_hits_count_one else Res.string.search_hits_count_other).format(count)
 
 // raft-ui search-message: a flat list-cell row, `py-3` with its content 20dp in (8dp cell inset +
 // 12dp padding), 2dp from the row above and no line between hits; pressed fills the cell shape.

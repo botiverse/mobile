@@ -112,6 +112,9 @@ class MviPersistMiddleware<State, Intent, Snapshot : Any>(
     private val diagnosticsLogger: (String) -> Unit = {},
     private val failureLogger: (String) -> Unit = diagnosticsLogger
 ) : MviPersistSlice<State, Intent> {
+    internal fun willHydrate(previous: State, intent: Intent, reduced: State): Boolean =
+        spec.shouldHydrate(previous, intent, reduced)
+
     override fun captureTransitionState(
         previous: State,
         intent: Intent,
@@ -222,6 +225,15 @@ class MviPersistMiddleware<State, Intent, Snapshot : Any>(
             }
         }
     }
+
+    internal fun persistKey(previous: State, intent: Intent, next: State): String? =
+        spec.key(previous, intent, next)
+
+    internal fun willPersist(previous: State, intent: Intent, next: State): Boolean =
+        spec.shouldPersist(previous, intent, next)
+
+    internal fun willRemove(previous: State, intent: Intent, next: State): Boolean =
+        spec.shouldRemove(previous, intent, next)
 
     override fun onTransition(previous: State, intent: Intent, next: State) {
         // This callback is retained for SharedActivityStore/SharedHomeStore, whose legacy

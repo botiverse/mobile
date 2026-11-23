@@ -3223,7 +3223,16 @@ internal class SharedThreadDataSource(
             basePayload.sourceThreadId?.takeIf { it.isNotBlank() }
                 ?: basePayload.streamChannelId?.takeIf { it.isNotBlank() }
                 ?: return DataResult.Error(ScreenError(code = "thread_id_missing", retryable = false))
-        val parentMessageIds = basePayload.messages.map { MessageId(it.id) }
+        // Only server messages can be thread parents. A local send row (sending, or failed with
+        // Retry) carries a `local-send-…` id, and the server refuses the whole request when one id
+        // is not a message id (400 `thread_parent_message_ids_invalid`, slock `channels.ts`
+        // `parseThreadSummaryParentMessageIds`). A refresh that runs while a send is in flight (the
+        // catch-up after a new message backfills the summaries) then got only the followed list,
+        // which has no reply previews (artin, #wg-mobile-sync: inline replies gone after a send).
+        val parentMessageIds =
+            basePayload.messages
+                .filterNot { message -> message.hasLocalSendState() }
+                .map { MessageId(it.id) }
         // Mark the instant the canonical summaries request is issued, not when
         // the response lands: facts recorded by realtime events that arrive
         // while this request is in flight must stay ahead of its (older)

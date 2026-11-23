@@ -228,6 +228,9 @@ import build.raft.app.compat.pager.Pager
 import androidx.compose.ui.text.input.TextFieldValue
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.dropWhile
+import kotlinx.coroutines.flow.map
 import kotlin.math.roundToInt
 import kotlin.time.TimeSource
 import kotlinx.serialization.Serializable
@@ -892,15 +895,12 @@ private fun RaftHomePageContent(routeVisibleTick: Int = 0) {
         remember(sharedStores.serverMembersStore, payload.currentServerId) {
             raftMemberAppBotResolver(sharedStores.serverMembersStore, payload.currentServerId)
         }
-    val serverMembersState by sharedStores.serverMembersStore.state.collectAsState()
-    val pinnedMemberProfileResolver: (String) -> RaftHomePinnedMemberItem? =
-        remember(serverMembersState, payload.currentServerId) {
-            { memberId ->
-                serverMembersState
-                    .memberProfile(ServerId(payload.currentServerId), memberId)
-                    ?.toRaftHomePinnedMemberItem()
-            }
-        }
+    val pinnedMemberProfileResolver =
+        rememberPinnedMemberProfileResolver(
+            serverMembersStore = sharedStores.serverMembersStore,
+            serverId = ServerId(payload.currentServerId),
+            pinnedItems = payload.pinned,
+        )
     val standaloneChannelRepository =
         remember(sharedStores) {
             RealChannelRepository(
@@ -1734,6 +1734,7 @@ internal data class RaftStructuralHomeShellData(
     val labels: RaftHomeShellLabels = RaftHomeShellLabels(),
     val scrollToTopRequest: Int = 0,
     val initialListPosition: AppShellLazyListPosition = AppShellLazyListPosition(),
+    val active: Boolean = true,
 )
 
 /**
@@ -1933,7 +1934,8 @@ internal fun RaftStructuralHomeShell(
     scrollToTopRequest: Int = 0,
     listPositionServerId: String = currentServerId,
     initialListPosition: AppShellLazyListPosition = AppShellLazyListPosition(),
-    onListPositionSnapshot: (String?, AppShellLazyListPosition) -> Unit = { _, _ -> }
+    onListPositionSnapshot: (String?, AppShellLazyListPosition) -> Unit = { _, _ -> },
+    active: Boolean = true
 ) {
     // task #336: thin delegation to the payload-based implementation keeps every call site
     // (named arguments) unchanged while the verifier-relevant frame lives on the small
@@ -2002,6 +2004,7 @@ internal fun RaftStructuralHomeShell(
                 labels = labels,
                 scrollToTopRequest = scrollToTopRequest,
                 initialListPosition = initialListPosition,
+                active = active,
             ),
         callbacks =
             RaftStructuralHomeShellCallbacks(
@@ -2514,7 +2517,8 @@ private fun RaftStructuralHomeShellContent(
     var listPremeasureServerId by remember { mutableStateOf(currentServerId) }
     var listPremeasureLimit by remember { mutableStateOf(homeListInitialBeyondBoundsItemCount()) }
     val homeUserScrollGeneration = remember { HomeUserScrollGeneration() }
-    RaftScrollFrameSignalEffect(list = "home") { listState.isScrollInProgress }
+    val homeActive = data.active
+    RaftScrollFrameSignalEffect(list = "home") { homeActive && listState.isScrollInProgress }
     val listPositionRestoreStartUserScrollGeneration =
         remember(
             listPositionServerId,
@@ -5277,6 +5281,66 @@ internal fun pinnedItemsForSidebar(
         pinnedOrder = pinnedOrder,
         mode = mode
     ).mapNotNull { it.conversation }
+
+/**
+ * Projects only the pinned human/agent member profiles that Home's Pinned section may resolve,
+ * deduplicating unrelated channel-member slice updates and deferring updates while Home is
+ * scrolling (#wg-mobile-feedback:#271).
+ */
+@Composable
+internal fun rememberPinnedMemberProfileResolver(
+    serverMembersStore: SharedServerMembersStore?,
+    serverId: ServerId,
+    pinnedItems: List<SettingsServerSidebarPinnedItem>,
+): (String) -> RaftHomePinnedMemberItem? {
+    val pinnedMemberIds =
+        remember(pinnedItems) {
+            pinnedItems
+                .asSequence()
+                .filter { item ->
+                    val kind = item.kind.trim().lowercase()
+                    kind == "agent" || kind == "human"
+                }
+                .map { it.id.trim() }
+                .filter { it.isNotEmpty() }
+                .distinct()
+                .toList()
+        }
+    fun projectPinned(state: build.raft.app.data.SharedServerMembersState): Map<String, RaftHomePinnedMemberItem> =
+        buildMap(pinnedMemberIds.size) {
+            pinnedMemberIds.forEach { memberId ->
+                state.memberProfile(serverId, memberId)
+                    ?.toRaftHomePinnedMemberItem()
+                    ?.let { put(memberId, it) }
+            }
+        }
+    val initialProfiles =
+        remember(serverMembersStore, serverId, pinnedMemberIds) {
+            if (serverMembersStore == null || pinnedMemberIds.isEmpty()) {
+                emptyMap()
+            } else {
+                projectPinned(serverMembersStore.state.value)
+            }
+        }
+    val profilesState =
+        remember(serverMembersStore, serverId, pinnedMemberIds) {
+            mutableStateOf(initialProfiles)
+        }
+    LaunchedEffect(serverMembersStore, serverId, pinnedMemberIds) {
+        if (serverMembersStore == null || pinnedMemberIds.isEmpty()) {
+            profilesState.value = emptyMap()
+            return@LaunchedEffect
+        }
+        serverMembersStore.state
+            .map(::projectPinned)
+            .distinctUntilChanged()
+            .dropWhile { it == initialProfiles }
+            .deferWhile(RaftScrollFrameSignal.homeScrolling)
+            .collect { profilesState.value = it }
+    }
+    val profiles = profilesState.value
+    return remember(profiles) { { memberId -> profiles[memberId] } }
+}
 
 /** Conversation ids the Pinned section renders; they leave their system section (web parity). */
 internal fun List<RaftHomePinnedRow>.sidebarPinnedConversationIds(): Set<String> =

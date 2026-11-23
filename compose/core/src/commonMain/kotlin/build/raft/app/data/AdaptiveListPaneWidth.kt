@@ -97,22 +97,26 @@ fun raftListPaneDraggedWidthDp(
 ): Float = raftListPaneWidthDp(kind, startWidthDp + dragDeltaDp, rowWidthDp)
 
 /**
- * Web `SNAP_PAST_END` (ColumnResizeHandle, DS Resizable "Dragging past the end"): a drag this far
- * under the list's minimum collapses it, as the rail's Collapse Sidebar does; far enough that a
- * drag which only reaches the minimum does not collapse by accident.
+ * Web `SNAP_PAST_END` (ColumnResizeHandle, DS Resizable "Dragging past the end"): with a mouse or
+ * trackpad, a drag this far under the list's minimum collapses it while the edge is held, as the
+ * rail's Collapse Sidebar does; far enough that a drag which only reaches the minimum does not
+ * collapse by accident. The shell's `raftListPaneDragCollapses` picks it for a fine pointer.
  */
 @RaftCoreInternalApi
 const val RAFT_LIST_PANE_SNAP_PAST_END_DP = 40f
 
 /**
- * Whether a drag that started at [startWidthDp] and moved [dragDeltaDp] (right = wider) has gone
- * more than [RAFT_LIST_PANE_SNAP_PAST_END_DP] under [kind]'s minimum, where the list collapses.
- * Taken before any clamp (web `reach < min - SNAP_PAST_END`), so dragging back across the line
- * while still held brings the list back.
+ * By touch, how close to its start a list's edge must be let go of to collapse the list, as a
+ * share of the kind's minimum width: under half of it, 100dp from the rail for the sidebar
+ * (minimum 200) and 120dp for the Activity / Search list (minimum 240), that is 100 to 120dp past
+ * the minimum. A tablet's edge is a 24dp touch target beside the list's rows: with the web's snap
+ * ([RAFT_LIST_PANE_SNAP_PAST_END_DP], the moment the pointer gets there) a sideways swipe that only
+ * overshot the minimum hid the list. By touch collapsing takes the edge dragged most of the way to
+ * the rail and let go there (from the sidebar's default 240dp, 140dp or more), at least four times
+ * the touch target's width. The shell's `raftListPaneDragCollapses` picks it for a finger.
  */
 @RaftCoreInternalApi
-fun raftListPaneDragCollapses(kind: RaftListPaneKind, startWidthDp: Float, dragDeltaDp: Float): Boolean =
-    startWidthDp + dragDeltaDp < kind.minDp - RAFT_LIST_PANE_SNAP_PAST_END_DP
+const val RAFT_LIST_PANE_COLLAPSE_RELEASE_SHARE = 0.5f
 
 /** What a finished drag saves: whole dp, so the stored value is stable across densities. */
 @RaftCoreInternalApi

@@ -1,5 +1,6 @@
 package build.raft.app.data
 
+import build.raft.app.RaftBesideMemoryRepository
 import build.raft.app.RaftComputersRackToolbarStore
 import build.raft.app.resources.raftSystemPreferredLanguageTagsOrEmpty
 import build.raft.app.toJointConnectionsDurableRecord
@@ -527,6 +528,7 @@ internal class RaftSharedStoreProvider private constructor(
     private val accountBinding: StateFlow<RaftAccountBinding<ProcessPresenceAuthContext>>,
     private val memberPresenceRealtimeSink: (RealtimePresenceAdmission, MemberPresenceUpdated) -> Unit,
     val composerDraftPersistSlice: SharedThreadComposerDraftPersistSlice,
+    private val activityPersistStorage: SharedActivityPersistStorage,
     private val activityPersistSlice: MviPersistSlice<SharedActivityState, SharedActivityIntent>,
     val homeSavedStateCache: SharedHomeSavedStateCache,
     /**
@@ -580,7 +582,8 @@ internal class RaftSharedStoreProvider private constructor(
         createSharedHomeRowHintPersistSlice(
             storage = homeRowHintPersistStorage,
             diagnosticsLogger = sharedInfoLogger("SlockHomePersist", "shared_home_row_hints"),
-            failureLogger = sharedErrorLogger("SlockHomePersist", "shared_home_row_hints")
+            failureLogger = sharedErrorLogger("SlockHomePersist", "shared_home_row_hints"),
+            scrollDeferScope = threadSendScope,
         )
     private val selectedServerStores = RaftShellScopedStoreCache<SelectedServerStore>()
     private val selectedServerSelectionEpochStore =
@@ -621,6 +624,8 @@ internal class RaftSharedStoreProvider private constructor(
             diagnosticsLogger = sharedInfoLogger("SlockAppLinkPreviews", "shared_app_link_previews"),
             // As the server's read: Artifact links never take one of the first three App links.
             artifactHosts = { clientConfigStore.appHosts.value },
+            offlineResource = offlineResourceCache.resource(AppLinkPreviewResourceSpec),
+            currentAccountId = { currentAccountBindingOrNull()?.second ?: authStore.readCommittedSessionSnapshot()?.user?.id },
         )
     }
     val appLinkPreviewStore: SharedAppLinkPreviewStore by appLinkPreviewStoreLazy
@@ -652,13 +657,20 @@ internal class RaftSharedStoreProvider private constructor(
             scope = RaftStoreThreading.newScope(),
             nowMillis = { clock.elapsedNow().inWholeMilliseconds },
             diagnosticsLogger = sharedInfoLogger("SlockArtifacts", "artifact_summaries"),
+            offlineResource = offlineResourceCache.resource(ArtifactSummaryResourceSpec),
+            currentAccountId = { currentAccountBindingOrNull()?.second ?: authStore.readCommittedSessionSnapshot()?.user?.id },
         )
     }
     val artifactSummaryStore: SharedArtifactSummaryStore by artifactSummaryStoreLazy
 
+    private val artifactScreenshotDiskCache: CoilArtifactScreenshotDiskCache by lazy {
+        CoilArtifactScreenshotDiskCache(sharedPreferenceStore)
+    }
+
     /**
      * Workspace Artifacts: the publish check's screenshots on the Artifact cards on screen
-     * (`GET /api/objects/artifact/{id}/files/{fileId}`), in memory for this viewer.
+     * (`GET /api/objects/artifact/{id}/files/{fileId}`), with per-(env, account, server) disk cache
+     * backed by Coil's DiskCache (#proj-mobile:#294).
      */
     private val artifactScreenshotStoreLazy = lazy {
         val clock = kotlin.time.TimeSource.Monotonic.markNow()
@@ -666,6 +678,17 @@ internal class RaftSharedStoreProvider private constructor(
             fetcher = NetworkArtifactScreenshotFetcher(networkClient),
             scope = RaftStoreThreading.newScope(),
             nowMillis = { clock.elapsedNow().inWholeMilliseconds },
+            diskCache = artifactScreenshotDiskCache,
+            currentOwner = {
+                val binding = currentAccountBindingOrNull()
+                val env = binding?.first ?: apiEnvironmentStore.current().apiBaseUrl
+                val accountId = binding?.second ?: authStore.readCommittedSessionSnapshot()?.user?.id
+                if (env.isNotBlank() && !accountId.isNullOrBlank()) {
+                    ArtifactScreenshotDiskOwner(environmentId = env, accountId = accountId)
+                } else {
+                    null
+                }
+            },
         )
     }
     val artifactScreenshotStore: SharedArtifactScreenshotStore by artifactScreenshotStoreLazy
@@ -769,13 +792,19 @@ internal class RaftSharedStoreProvider private constructor(
         agentDetailCache.evict(owner.agentDetailCacheKey(MemberId(agentId)))
     }
 
+    /**
+     * What was open beside each conversation on the wide layout (RaftBesideMemory.kt), per person and server on this
+     * device: one instance, so its reads and writes share one lock.
+     */
+    internal val besideMemoryRepository = RaftBesideMemoryRepository(sharedPreferenceStore)
+
     /** The account's local data on sign-out and on server-access loss (see the class). */
     private val accountLocalData =
         AccountLocalData(
             homeSavedStateCache = homeSavedStateCache,
             offlineResourceCache = offlineResourceCache,
             homeRowHints = homeRowHintPersistStorage,
-            activityFirstPages = SharedActivityPersistStorage(sharedPreferenceStore),
+            activityFirstPages = activityPersistStorage,
             notificationPreferences = settingsServerNotificationLastKnownStore,
             messageEngine = canonicalMessageV2GenerationEngine,
             memberAvatarRefStore = memberAvatarRefStore,
@@ -789,6 +818,7 @@ internal class RaftSharedStoreProvider private constructor(
                 if (appLinkPreviewStoreLazy.isInitialized()) appLinkPreviewStore.clearAll()
                 if (artifactSummaryStoreLazy.isInitialized()) artifactSummaryStore.clearAll()
                 if (artifactScreenshotStoreLazy.isInitialized()) artifactScreenshotStore.clearAll()
+                artifactScreenshotDiskCache.clearAllAsync(threadSendScope)
                 // Quote replies' resolved quotes: per viewer, session only.
                 if (resolvedQuotesStoreLazy.isInitialized()) resolvedQuotesStore.clearAll()
                 // The Artifact viewer's headers and its kept WebView (Tenny's cache rule 1).
@@ -797,6 +827,7 @@ internal class RaftSharedStoreProvider private constructor(
                 RaftModelLabelCatalogs.clear()
             },
             logger = sharedInfoLogger("CanonicalMessageV2Store", "canonical_v2_access_evict"),
+            besideMemory = besideMemoryRepository,
         )
 
     /**
@@ -1026,9 +1057,9 @@ internal class RaftSharedStoreProvider private constructor(
         reason: String,
         coalesceFreshWithin: Duration = Duration.ZERO,
         notStartedBefore: kotlin.time.ComparableTimeMark? = null,
-    ) {
-        val outcome =
-            machinesSyncRefreshCoalescer.runOrCoalesce(
+    ): Boolean {
+        val runResult =
+            machinesSyncRefreshCoalescer.runOrCoalesceWithResult(
                 serverId = serverId,
                 reason = reason,
                 coalesceFreshWithin = coalesceFreshWithin,
@@ -1048,11 +1079,12 @@ internal class RaftSharedStoreProvider private constructor(
                 )
                 allSucceeded
             }
-        if (outcome != RaftRecentServerRefreshCoalescer.Outcome.Executed) {
+        if (runResult.outcome != RaftRecentServerRefreshCoalescer.Outcome.Executed) {
             sharedInfoLogger("SlockSync", "sync_changes")(
-                "sync_machines_refresh serverId=$serverId outcome=${outcome.name.lowercase()} reason=$reason"
+                "sync_machines_refresh serverId=$serverId outcome=${runResult.outcome.name.lowercase()} ok=${runResult.succeeded} reason=$reason"
             )
         }
+        return runResult.succeeded
     }
 
     /**
@@ -1235,7 +1267,8 @@ internal class RaftSharedStoreProvider private constructor(
         jitterPull: Boolean = false,
         onFailed: (() -> Unit)? = null,
         transientRetry: Boolean = false,
-    ): Boolean = launchSyncChangesPull(serverId, trigger, jitterSnapshots, jitterPull, onFailed, transientRetry) != null
+        onFinished: ((Boolean) -> Unit)? = null,
+    ): Boolean = launchSyncChangesPull(serverId, trigger, jitterSnapshots, jitterPull, onFailed, transientRetry, onFinished) != null
 
     /** [requestSyncChangesPull], returning the pull's job (null when skipped). */
     private fun launchSyncChangesPull(
@@ -1245,6 +1278,7 @@ internal class RaftSharedStoreProvider private constructor(
         jitterPull: Boolean = false,
         onFailed: (() -> Unit)? = null,
         transientRetry: Boolean = false,
+        onFinished: ((Boolean) -> Unit)? = null,
     ): Job? {
         val scope = currentSyncScope(serverId) ?: return null
         if (scopesForServer(scope.serverId).isEmpty()) return null
@@ -1253,42 +1287,63 @@ internal class RaftSharedStoreProvider private constructor(
         syncRetryAfter.onTriggerPull(scope)
         // It reads after every realtime hint so far: a waiting realtime pull is moot too.
         syncRealtimePull.onTriggerPull(scope)
+        val finishedNotified = kotlinx.atomicfu.atomic(false)
+        val notifyFinished: (Boolean) -> Unit = { ok ->
+            if (finishedNotified.compareAndSet(expect = false, update = true)) {
+                onFinished?.invoke(ok)
+            }
+        }
         val job =
             threadSendScope.launch(start = CoroutineStart.LAZY) {
-                val result = syncChangesEngine.pull(scope, trigger, jitterSnapshots, jitterPull)
-                when (result) {
-                    is RaftSyncPullResult.Failed -> if (result.needsFullRefetchFallback) onFailed?.invoke()
-                    // Stopped at the page cap with more waiting: go on in a follow-up pull, unless
-                    // this pull left the cursor where it was (it would only ask the same again).
-                    is RaftSyncPullResult.Synced ->
-                        if (result.needsFollowUp) requestSyncChangesPull(scope.serverId, trigger = "truncated_follow_up")
-                }
-                // A first transient failure kept the cursor and refetched nothing: one retry 30–60 s
-                // later, with this caller's fallback for when it fails again (#proj-mobile:#112).
-                // inbox_row capability: a held row (`retryAfterMs`) pulls again later; a delayed inboxReset
-                // retakes the Activity list then.
-                syncRetryAfter.onPullFinished(
-                    scope,
-                    result,
-                    repull = {
-                        if (currentSyncScope(scope.serverId) == scope) requestSyncChangesPull(scope.serverId, trigger = "retry_after")
-                    },
-                    reloadInbox = {
-                        if (currentSyncScope(scope.serverId) == scope) {
-                            syncStoreTargets.refreshActivity(scope.serverId, reason = "sync_inbox_reset_delayed")
-                        }
-                    },
-                )
-                syncTransientRetry.onPullFinished(scope, result, wasRetry = transientRetry) {
-                    if (currentSyncScope(scope.serverId) == scope) {
-                        requestSyncChangesPull(scope.serverId, trigger = "transient_retry", onFailed = onFailed, transientRetry = true)
+                var succeeded = false
+                try {
+                    val result = syncChangesEngine.pull(scope, trigger, jitterSnapshots, jitterPull)
+                    succeeded = result is RaftSyncPullResult.Synced
+                    when (result) {
+                        is RaftSyncPullResult.Failed -> if (result.needsFullRefetchFallback) onFailed?.invoke()
+                        // Stopped at the page cap with more waiting: go on in a follow-up pull, unless
+                        // this pull left the cursor where it was (it would only ask the same again).
+                        is RaftSyncPullResult.Synced ->
+                            if (result.needsFollowUp) requestSyncChangesPull(scope.serverId, trigger = "truncated_follow_up")
                     }
+                    // A first transient failure kept the cursor and refetched nothing: one retry 30–60 s
+                    // later, with this caller's fallback for when it fails again (#proj-mobile:#112).
+                    // inbox_row capability: a held row (`retryAfterMs`) pulls again later; a delayed inboxReset
+                    // retakes the Activity list then.
+                    syncRetryAfter.onPullFinished(
+                        scope,
+                        result,
+                        repull = {
+                            if (currentSyncScope(scope.serverId) == scope) requestSyncChangesPull(scope.serverId, trigger = "retry_after")
+                        },
+                        reloadInbox = {
+                            if (currentSyncScope(scope.serverId) == scope) {
+                                syncStoreTargets.refreshActivity(scope.serverId, reason = "sync_inbox_reset_delayed")
+                            }
+                        },
+                    )
+                    syncTransientRetry.onPullFinished(scope, result, wasRetry = transientRetry) {
+                        if (currentSyncScope(scope.serverId) == scope) {
+                            requestSyncChangesPull(scope.serverId, trigger = "transient_retry", onFailed = onFailed, transientRetry = true)
+                        }
+                    }
+                } finally {
+                    notifyFinished(succeeded)
                 }
             }
         synchronized(syncPullJobsLock) { syncPullJobs.getOrPut(scope.serverId) { mutableSetOf() } += job }
-        job.invokeOnCompletion { synchronized(syncPullJobsLock) { syncPullJobs[scope.serverId]?.remove(job) } }
+        job.invokeOnCompletion {
+            synchronized(syncPullJobsLock) { syncPullJobs[scope.serverId]?.remove(job) }
+            notifyFinished(false)
+        }
         job.start()
         return job
+    }
+
+    internal suspend fun pullSyncChangesSucceeded(serverId: String, trigger: String): Boolean {
+        val outcome = kotlinx.coroutines.CompletableDeferred<Boolean>()
+        launchSyncChangesPull(serverId, trigger = trigger, onFinished = { outcome.complete(it) }) ?: return false
+        return outcome.await()
     }
 
     private fun syncServerMembersStores(serverId: String): List<SharedServerMembersStore> {
@@ -1571,8 +1626,62 @@ internal class RaftSharedStoreProvider private constructor(
         )
     }
 
+    private fun loadedOrObservedComputersServerIds(): Set<String> {
+        val selectedByScope =
+            selectedServerStores.entries()
+                .mapNotNull { (scope, selectionStore) ->
+                    if (selectionStore.disposed.value) return@mapNotNull null
+                    val serverId = selectionStore.selectedServerId.value?.trim()?.takeIf { it.isNotBlank() } ?: return@mapNotNull null
+                    scope to serverId
+                }
+                .toMap()
+        return shellComputersStores.entries()
+            .mapNotNullTo(LinkedHashSet()) { (scope, store) ->
+                val serverId = selectedByScope[scope] ?: return@mapNotNullTo null
+                serverId.takeIf { store.hasLoadedOrObservedServer(serverId) }
+            }
+    }
+
+    private val computersLiveRefreshCoordinator: ComputersLiveRefreshCoordinator by lazy {
+        ComputersLiveRefreshCoordinator(
+            scope = threadSendScope,
+            loadedOrObservedServerIds = ::loadedOrObservedComputersServerIds,
+            hasLoadedOrObservedServer = { serverId ->
+                syncComputersStores(serverId).any { it.hasLoadedOrObservedServer(serverId) }
+            },
+            hasActiveObservers = { serverId ->
+                syncComputersStores(serverId).any { it.hasActiveObservers(serverId) }
+            },
+            refreshMachines = { serverId, reason, coalesceFreshWithin, notStartedBefore ->
+                refreshMachinesForSync(
+                    serverId = serverId,
+                    reason = reason,
+                    coalesceFreshWithin = coalesceFreshWithin,
+                    notStartedBefore = notStartedBefore,
+                )
+            },
+            syncChangesPullAllowed = ::syncChangesPullAllowed,
+            pullSyncChanges = ::pullSyncChangesSucceeded,
+            logger = sharedInfoLogger("SlockComputers", "computers_live_refresh"),
+        )
+    }
+
     internal fun onMachineStatusRealtimeEvent(serverId: String) {
         machineStatusAgentRefresher.onMachineStatus(serverId)
+    }
+
+    internal fun onMachinesRealtimeEvent(serverId: String, reason: String) {
+        computersLiveRefreshCoordinator.onMachinesRealtimeEvent(serverId, reason)
+    }
+
+    internal fun onExternalForegroundRefreshStarted(
+        serverId: String,
+        returnBoundary: kotlin.time.ComparableTimeMark? = null,
+    ): Any? =
+        computersLiveRefreshCoordinator.onExternalForegroundRefreshStarted(serverId, returnBoundary)
+
+    internal fun onExternalForegroundRefreshCompleted(serverId: String, token: Any?, succeeded: Boolean) {
+        computersLiveRefreshCoordinator.onExternalForegroundRefreshCompleted(serverId, token, succeeded)
     }
 
     private val presenceTransportRosterRefetch: PresenceTransportRosterRefetch by lazy {
@@ -1645,6 +1754,7 @@ internal class RaftSharedStoreProvider private constructor(
                     reconnectRefetchJitter.reset(reason = if (context == null) "signed_out" else "binding_changed")
                     machinesSyncRefreshCoalescer.invalidateAll()
                     machineStatusAgentRefresher.cancelAll()
+                    computersLiveRefreshCoordinator.cancelAll()
                     syncTransientRetry.cancelAll(reason = if (context == null) "signed_out" else "binding_changed")
                     syncRetryAfter.cancelAll(reason = if (context == null) "signed_out" else "binding_changed")
                     syncRealtimePull.cancelAll(reason = if (context == null) "signed_out" else "binding_changed")
@@ -1895,6 +2005,10 @@ internal class RaftSharedStoreProvider private constructor(
                 processAuthTerminalSource.runIfAuthSessionTerminalRevision(expectedGeneration) {
                     // Sign-out keeps the account's stored data (keyed by account; owner decision
                     // 2026-10-27) and resets every in-memory copy: see AccountLocalData.
+                    // Fence deferred persist writes first so no in-flight write lands after sign-out.
+                    (activityPersistSlice as? RaftScrollDeferredPersistControl)?.discardPending()
+                    (homeIdentityPersistSlice as? RaftScrollDeferredPersistControl)?.discardPending()
+                    (homeRowHintPersistSlice as? RaftScrollDeferredPersistControl)?.discardPending()
                     accountLocalData.onSignOut()
                     // The signed-out account's attachment uploads stop with it.
                     composerDraftUploads.cancelAll()
@@ -1932,6 +2046,9 @@ internal class RaftSharedStoreProvider private constructor(
         // Agent status pushes are best effort: read agents and Computers again every 10 minutes
         // while the app stays in front, as the web does (Hands c76f162d, 46b6cebe).
         agentStatusReconcile.start()
+        // Computers single-source freshness (foreground, network-restored, active-observer reconnect):
+        // shares machinesSyncRefreshCoalescer with foregroundReconciler so one return reads /machines once.
+        computersLiveRefreshCoordinator.startFreshness(RaftFreshnessSignal.events)
         // A theme changed on another device while backgrounded: read the selected server's again.
         serverAppearanceCatchUp.followAppLifecycle(RaftStaleReadRecoverySignals.foreground) {
             authStore.readSession()?.currentServerId
@@ -1974,6 +2091,7 @@ internal class RaftSharedStoreProvider private constructor(
                 reconnectRefetchJitter.dropServer(grant.serverId, reason = "server_access_lost")
                 machinesSyncRefreshCoalescer.invalidate(grant.serverId)
                 machineStatusAgentRefresher.cancel(grant.serverId)
+                computersLiveRefreshCoordinator.cancel(grant.serverId)
                 // Minimum supported build: that server's gate reading no longer counts.
                 RaftMinBuildGate.onServerLeft(ServerId(grant.serverId))
                 threadPayloadStore.dropServer(grant.serverId)
@@ -2002,8 +2120,27 @@ internal class RaftSharedStoreProvider private constructor(
                 syncRealtimePull.cancelWhere(reason = "server_access_lost") { it.serverId == grant.serverId }
                 // #45: that server's recent searches and frequent people / channels.
                 searchPersonalizationRepository.dropServer(grant.serverId, lostAccountId, nowMillis = defaultNowMillis())
+                // #294: drop lost-server Artifact summaries, App link previews, and persisted Artifact screenshots
+                // (using the shared disk cache instance so in-flight writes are fenced even before store init).
+                if (artifactSummaryStoreLazy.isInitialized()) {
+                    artifactSummaryStore.dropServer(grant.serverId)
+                }
+                if (appLinkPreviewStoreLazy.isInitialized()) {
+                    appLinkPreviewStore.dropServer(grant.serverId)
+                }
+                val lostEnvironmentId = replyCacheAuthContext.value?.environmentId ?: apiEnvironmentStore.current().apiBaseUrl
+                if (artifactScreenshotStoreLazy.isInitialized()) {
+                    artifactScreenshotStore.dropServer(grant.serverId, lostAccountId, lostEnvironmentId)
+                } else {
+                    artifactScreenshotDiskCache.clearServer(grant.serverId, lostAccountId, lostEnvironmentId)
+                }
                 // Offline resources, Home hints, Activity pages, notification preferences, reply windows
                 // and the stored messages of that server (they outlive sign-out, so they must go here).
+                // Fence deferred scroll-coalesced persist slices before deleting from disk so an
+                // in-flight or queued flush cannot resurrect the lost server (#wg-mobile-feedback:#271).
+                (activityPersistSlice as? RaftScrollDeferredPersistControl)?.dropServer(grant.serverId, lostAccountId)
+                (homeIdentityPersistSlice as? RaftScrollDeferredPersistControl)?.dropServer(grant.serverId, lostAccountId)
+                (homeRowHintPersistSlice as? RaftScrollDeferredPersistControl)?.dropServer(grant.serverId, lostAccountId)
                 accountLocalData.onServerAccessLost(
                     serverId = grant.serverId,
                     accountId = lostAccountId,
@@ -3625,12 +3762,9 @@ internal class RaftSharedStoreProvider private constructor(
                 "shared_network_file_resolver",
                 "storage_scope=${platformFileResolverBinding.scope}"
             )
-            // task #323: keep avatar metadata SQLite I/O off the Kuikly frame thread.
-            val avatarCacheMetadataStore =
-                DispatchingRaftAvatarCacheMetadataStore(
-                    delegate = SqlDelightRaftAvatarCacheMetadataStore(database),
-                    dispatcher = RaftAvatarDbDispatcher
-                )
+            // #proj-mobile:#294: slock-avatar-render-v1 tables and startup prewarm are retired;
+            // Coil's disk cache is the sole avatar byte/image cache.
+            val avatarCacheMetadataStore: RaftAvatarCacheMetadataStore = NoOpRaftAvatarCacheMetadataStore
             val avatarCacheCoordinator =
                 RaftAvatarCacheCoordinator(avatarCacheMetadataStore, ::defaultNowMillis)
             val avatarOwnerResolver: suspend (String?) -> RaftAvatarCacheOwner? = { requestedServerId ->
@@ -3660,25 +3794,16 @@ internal class RaftSharedStoreProvider private constructor(
                     mountedBinding = avatarMountedBinding,
                     logger = sharedWarnLogger("SlockAvatarCache", "avatar_cache_runtime")
                 )
-            // task #343: seed the mounted session from durable rows once the owner resolves, so a
-            // cold start paints cached avatars on the first frame instead of waiting per-row mounts.
-            // Re-attempted on auth changes (login, server/binding switch); one run per owner.
             CoroutineScope(SupervisorJob()).launch {
-                runCatchingPreservingCancellation {
-                    avatarMountedBinding.prewarmOwner(authStore.readSession()?.currentServerId)
-                }
                 authStore.authSessionEvents.collect { event ->
                     when (event) {
-                        is AuthSessionEvent.Authenticated,
-                        is AuthSessionEvent.BindingMetadataChanged ->
-                            runCatchingPreservingCancellation {
-                                avatarMountedBinding.prewarmOwner(authStore.readSession()?.currentServerId)
-                            }
                         // A later sign-in may open the account deletion page, or ask for SSO, again.
                         is AuthSessionEvent.Cleared -> {
                             RaftAccountDeletionPendingSignal.Process.reset()
                             RaftSsoRequiredSignal.Process.reset()
                         }
+                        is AuthSessionEvent.Authenticated,
+                        is AuthSessionEvent.BindingMetadataChanged,
                         is AuthSessionEvent.TokensRotated -> Unit
                     }
                 }
@@ -4112,6 +4237,8 @@ internal class RaftSharedStoreProvider private constructor(
                                 reason = "foreground_reconcile"
                             )
                         }
+                        val returnBoundary = kotlin.time.TimeSource.Monotonic.markNow()
+                        val syncOutcome = kotlinx.coroutines.CompletableDeferred<Boolean>()
                         val pulled =
                             provider.requestSyncChangesPull(
                                 serverId.value,
@@ -4121,26 +4248,39 @@ internal class RaftSharedStoreProvider private constructor(
                                 onFailed = {
                                     provider.scheduleSyncFallbackRefetch(serverId.value, "foreground_fallback", fullRefresh)
                                 },
+                                onFinished = { ok -> syncOutcome.complete(ok) },
                             )
                         if (pulled) {
                             // Agent presence and machine status are not in the change log (no jitter here);
                             // share the 25 s coalesce window with reconnect refetch so both do not pull
-                            // /agents and /machines back-to-back on the same foreground return.
-                            coroutineScope {
-                                launch {
-                                    targetStore.refreshAgents(
-                                        serverId = serverId,
-                                        reason = "foreground_reconcile",
-                                        coalesceFreshWithin = RECENT_LIVE_STATUS_REFRESH_COALESCE_WINDOW,
-                                    )
+                            // /agents and /machines back-to-back on the same foreground return, while
+                            // [returnBoundary] prevents a pre-background read from suppressing this return.
+                            val externalToken = provider.onExternalForegroundRefreshStarted(serverId.value, returnBoundary)
+                            var foregroundOk = false
+                            try {
+                                var machinesOk = false
+                                coroutineScope {
+                                    launch {
+                                        targetStore.refreshAgents(
+                                            serverId = serverId,
+                                            reason = "foreground_reconcile",
+                                            coalesceFreshWithin = RECENT_LIVE_STATUS_REFRESH_COALESCE_WINDOW,
+                                        )
+                                    }
+                                    launch {
+                                        machinesOk =
+                                            provider.refreshMachinesForSync(
+                                                serverId = serverId.value,
+                                                reason = "foreground_reconcile",
+                                                coalesceFreshWithin = RECENT_LIVE_STATUS_REFRESH_COALESCE_WINDOW,
+                                                notStartedBefore = returnBoundary,
+                                            )
+                                    }
                                 }
-                                launch {
-                                    provider.refreshMachinesForSync(
-                                        serverId = serverId.value,
-                                        reason = "foreground_reconcile",
-                                        coalesceFreshWithin = RECENT_LIVE_STATUS_REFRESH_COALESCE_WINDOW,
-                                    )
-                                }
+                                val syncOk = syncOutcome.await()
+                                foregroundOk = syncOk && machinesOk
+                            } finally {
+                                provider.onExternalForegroundRefreshCompleted(serverId.value, externalToken, foregroundOk)
                             }
                         } else {
                             fullRefresh()
@@ -4236,6 +4376,7 @@ internal class RaftSharedStoreProvider private constructor(
                             }
                     }
             }
+            val sharedActivityPersistStorage = SharedActivityPersistStorage(sharedPreferenceStore)
             provider = RaftSharedStoreProvider(
                 host = host,
                 sqlDatabase = database,
@@ -4281,11 +4422,13 @@ internal class RaftSharedStoreProvider private constructor(
                 accountBinding = accountBinding,
                 memberPresenceRealtimeSink = memberPresenceRealtimeSink,
                 composerDraftPersistSlice = composerDraftPersistSlice,
+                activityPersistStorage = sharedActivityPersistStorage,
                 activityPersistSlice =
                     createSharedActivityPersistSlice(
-                        storage = SharedActivityPersistStorage(sharedPreferenceStore),
+                        storage = sharedActivityPersistStorage,
                         diagnosticsLogger = sharedInfoLogger("SlockActivityPersist", "shared_activity_persist"),
-                        failureLogger = sharedErrorLogger("SlockActivityPersist", "shared_activity_persist")
+                        failureLogger = sharedErrorLogger("SlockActivityPersist", "shared_activity_persist"),
+                        scrollDeferScope = threadSendScope,
                     ),
                 homeSavedStateCache = SharedHomeSavedStateCache(offlineResourceCache.resource(SavedListResourceSpec)),
                 offlineResourceCache = offlineResourceCache,
@@ -4294,7 +4437,8 @@ internal class RaftSharedStoreProvider private constructor(
                     createSharedHomeIdentityPersistSlice(
                         storage = SharedPreferencePersistStorage(sharedPreferenceStore),
                         diagnosticsLogger = sharedInfoLogger("SlockHomePersist", "shared_home_persist"),
-                        failureLogger = sharedErrorLogger("SlockHomePersist", "shared_home_persist")
+                        failureLogger = sharedErrorLogger("SlockHomePersist", "shared_home_persist"),
+                        scrollDeferScope = threadSendScope,
                     ),
                 apiEnvironmentStore = apiEnvironmentStore,
                 eventBus = eventBusRelay,
@@ -4333,6 +4477,9 @@ internal class RaftSharedStoreProvider private constructor(
                         }
                         owner.installMachineStatusSink { serverId, _ ->
                             provider.onMachineStatusRealtimeEvent(serverId)
+                        }
+                        owner.installMachinesRealtimeSink { serverId, event ->
+                            provider.onMachinesRealtimeEvent(serverId, event.reason)
                         }
                     },
                 realtimeAuthorityProvider = realtimeAuthorityProvider,
@@ -4736,6 +4883,16 @@ internal class SharedRealtimeDomainEventOwner(
         machineStatusSink = sink
     }
 
+    // All `RealtimeRefreshScope.Machines` pushes (`machine:status`, `machine:updated`,
+    // `machine:capabilities`, `computer:upgrade:*`, `machine:upgrade-request`, `daemon:status`):
+    // updates SharedComputersStore directly for servers with a loaded or observed slice even while
+    // the Computers page is not visible (#wg-mobile-feedback:#273).
+    private var machinesRealtimeSink: ((serverId: String, event: RealtimeRefreshRequired) -> Unit)? = null
+
+    fun installMachinesRealtimeSink(sink: (serverId: String, event: RealtimeRefreshRequired) -> Unit) {
+        machinesRealtimeSink = sink
+    }
+
     // `notification_prefs:updated` with a server mode is emitted to the viewer's own user room. Process entry
     // only, like the appearance sink: it refreshes the viewer's last-known workspace notification preference
     // under the grant's account whether or not a Settings page is mounted.
@@ -4940,6 +5097,12 @@ internal class SharedRealtimeDomainEventOwner(
             }
             if (acceptedEvent is RealtimeRefreshRequired && acceptedEvent.isMachineStatusUpdate()) {
                 machineStatusSink?.invoke(serverId, acceptedEvent)
+            }
+            if (acceptedEvent is RealtimeRefreshRequired && acceptedEvent.scope == RealtimeRefreshScope.Machines) {
+                val eventServerId = acceptedEvent.serverId?.value?.trim()
+                if (eventServerId.isNullOrEmpty() || eventServerId == serverId) {
+                    machinesRealtimeSink?.invoke(serverId, acceptedEvent)
+                }
             }
         }
 

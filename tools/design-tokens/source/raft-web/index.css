@@ -34,14 +34,23 @@
   --font-display: var(--font-heading);
 }
 
-/* Every column head shares the shell height (Raft Design System: 56, 48 in
-   windows under 600 tall), so the rail, sidebar and panel seams line up. */
+/* raft-ui's mask-fade-b-edge, only once a box that follows its content has been
+   cut: a message card's excerpt (ArtifactCardExcerpt), whose frame is max-h-48,
+   so its box is at most 12rem less the frame's padding (1.5rem) and border (1px).
+   The fade's length is 0 until the box (100%, along the gradient) is that tall,
+   then --fade-edge, as --clip-fade below works; 1px of slack for rounding. */
+@utility mask-fade-b-edge-at-max {
+  mask-image: linear-gradient(to top, transparent, oklch(0 0 0) clamp(0px, (100% - 12rem + 1.5rem + 2px) * 1000, var(--fade-edge)));
+}
+
+/* Every column head shares the shell height (raft-ui `header-height`: 44 with
+   a mouse, 56 on a touch screen; `header-height-short` under 600 tall), so the rail, sidebar and panel seams line up. */
 @utility h-panel-header {
-  height: var(--shell-header-height, 56px);
+  height: var(--shell-header-height, var(--header-height));
 }
 @media (max-height: 600px) {
   [data-slot="app-shell-root"] {
-    --shell-header-height: 48px;
+    --shell-header-height: var(--header-height-short);
   }
 }
 
@@ -212,21 +221,19 @@
   /* The scrim behind a phone sheet fades in over the same time and ease as the
      sheet slides (Jasper, 2026-10-21): the scrim moves with the layer it
      belongs to, as raft-ui's Drawer overlay does. Colour and opacity stay the
-     shared backdrop. Covers slock's own sheet scrim and raft-ui Dialog's
-     overlay when its content is a sheet. */
+     shared backdrop. Covers raft-ui Dialog's overlay when its content is a
+     sheet (NarrowDialog). */
   @keyframes narrow-scrim-enter {
     0% { opacity: 0; }
     100% { opacity: 1; }
   }
 
-  .narrow-scrim-enter,
   [data-slot="dialog-portal"]:has([data-narrow="sheet"]) [data-slot="dialog-overlay"] {
     animation: narrow-scrim-enter 280ms var(--ease-slide);
   }
 
   @media (prefers-reduced-motion: reduce) {
     .narrow-dialog-enter,
-    .narrow-scrim-enter,
     [data-slot="dialog-portal"]:has([data-narrow="sheet"]) [data-slot="dialog-overlay"] {
       animation: none;
     }
@@ -435,6 +442,61 @@
     }
   }
 
+  /* Asleep (nothing new, Artea #proj-assistant:#24) it breathes, its belly
+     on the edge, and z's float up from its head. Reduced motion: still, one z. */
+  @keyframes assistant-otter-breathe {
+    0%, 100% { transform: scale(1, 1); }
+    50% { transform: scale(1.015, 1.045); }
+  }
+
+  @keyframes assistant-otter-zzz {
+    0% { opacity: 0; transform: translate(0, 0) scale(0.7); }
+    20% { opacity: 0.9; }
+    100% { opacity: 0; transform: translate(12px, -24px) scale(1.15); }
+  }
+
+  .assistant-otter-breathe {
+    transform-origin: 50% 100%;
+    animation: assistant-otter-breathe 3.4s ease-in-out infinite;
+  }
+
+  .assistant-otter-zzz > span {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    opacity: 0;
+    animation: assistant-otter-zzz 2.7s ease-in infinite;
+  }
+
+  .assistant-otter-zzz > span:nth-child(1)::before { content: "z"; }
+  .assistant-otter-zzz > span:nth-child(2)::before { content: "z"; }
+  .assistant-otter-zzz > span:nth-child(3)::before { content: "Z"; }
+  .assistant-otter-zzz > span:nth-child(2) { animation-delay: 0.9s; }
+  .assistant-otter-zzz > span:nth-child(3) { animation-delay: 1.8s; }
+
+  /* Something new: out from behind its edge (--otter-tx/ty: one px toward
+     it), then two small bobs away from it. Never a sideways sway (Artea). */
+  @keyframes assistant-otter-wake {
+    0% { transform: translate(calc(var(--otter-tx) * 16), calc(var(--otter-ty) * 16)) scale(0.9); }
+    35% { transform: translate(calc(var(--otter-tx) * -6), calc(var(--otter-ty) * -6)) scale(1.06); }
+    50% { transform: none; }
+    62% { transform: translate(calc(var(--otter-tx) * -5), calc(var(--otter-ty) * -5)); }
+    75% { transform: none; }
+    87% { transform: translate(calc(var(--otter-tx) * -5), calc(var(--otter-ty) * -5)); }
+    100% { transform: none; }
+  }
+
+  .assistant-otter-wake {
+    animation: assistant-otter-wake 1.5s ease-in-out both;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .assistant-otter-wake { animation: none; }
+    .assistant-otter-breathe { animation: none; }
+    .assistant-otter-zzz > span { animation: none; opacity: 0.7; }
+    .assistant-otter-zzz > span:nth-child(n + 2) { display: none; }
+  }
+
   .image-transparency-bg {
     background-color: #fff;
     background-image:
@@ -461,16 +523,6 @@
   @media (pointer: coarse) {
     .safe-bottom-action-bar { padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 1rem); }
   }
-
-  /* Stacked overlays (raft-design elevation, stdrc and Jasper 2026-10-21): a
-     raft-ui Dialog, AlertDialog or Drawer opened over a slock Modal draws the
-     lighter nested scrim, as it does over another raft-ui overlay. raft-ui
-     keeps its overlay stack private, so this keys on the document instead: an
-     overlay whose portal comes after an open Modal's scrim was opened over it.
-     Kept in step with NESTED_RAFT_OVERLAY_SELECTOR (components/ui/scrim.ts). */
-  :is([data-slot="modal-backdrop"], [data-slot="modal-narrow-scrim"]) ~ * :is([data-slot="dialog-overlay"], [data-slot="alert-dialog-overlay"], [data-slot="drawer-overlay"]):not([data-nested]) {
-    background-color: var(--color-layer-backdrop-nested);
-  }
 }
 
 /* Responsive high-frequency actions use the width of their owning surface,
@@ -495,6 +547,11 @@
 
 .agent-profile-responsive-actions .agent-profile-overflow-actions {
   display: none;
+}
+
+/* Direct Message folded into ⋯, or Move Left / Move Right in it (#189): ⋯ at every width. */
+.agent-profile-responsive-actions .agent-profile-overflow-actions.agent-profile-overflow-shown {
+  display: flex;
 }
 
 /* The profile drawer is commonly ~600px wide even on a very wide desktop
@@ -561,7 +618,7 @@
    press on a button is the button's, never a drag. */
 [data-side-head] [data-slot="panel-actions"] {
   position: relative;
-  z-index: 40;
+  z-index: var(--z-index-chrome);
 }
 
 /* A press on the head that misses the grip moves nothing, and it doesn't
@@ -602,6 +659,34 @@
   display: none;
 }
 
+/* The last section of a column folded to its head under another section
+   that shows its body, so on the column's bottom edge (stackEnd.ts
+   `stackEndOf`, on the head itself): nothing under it to divide it from, so
+   it draws no seam along that edge. Where every section shows its head
+   alone each keeps its seam; between sections the seam stays; a panel
+   nested in a section keeps its own. */
+[data-slot="panel-header"][data-stack-end] {
+  border-bottom-width: 0;
+}
+
+/* Folded to its head by a region expanded in its column (#189 rule 5;
+   ChannelSideArea `threadFold`): its content stays laid out at the height it
+   had (rowPlanStore `keepThreadContent`), out of sight and out of reach, so
+   its replies keep their scroll position and the rows they rendered, and
+   restoring shows the thread as it was; inert meanwhile (useThreadColumnSide). */
+.thread-layout-container:not([data-thread-maximized="true"]) > .thread-side-column[data-thread-collapsed="expand"] > [data-slot="thread-panel-root"] {
+  flex: 0 0 auto;
+  position: relative;
+  overflow: clip;
+}
+
+.thread-layout-container:not([data-thread-maximized="true"]) > .thread-side-column[data-thread-collapsed="expand"] > [data-slot="thread-panel-root"] > [data-slot="thread-panel-content"] {
+  position: absolute;
+  inset: 0 0 auto;
+  height: var(--thread-kept-height, auto);
+  visibility: hidden;
+}
+
 /* In Focus Mode the thread fills the row alone: nothing to fold it against. */
 .thread-layout-container[data-thread-maximized="true"] [data-testid="thread-side-collapse"] {
   display: none;
@@ -623,19 +708,20 @@
   pointer-events: none !important;
 }
 
-/* Task v2's Tasks and Files column in the row (task #165): it gives way
-   before the conversation drops under its 360px, as the thread does. */
-.thread-layout-container:has(> [data-testid="channel-side-slot"] [data-mode="beside"]) > .thread-main-column {
-  min-width: 360px;
+/* Task v2's Tasks and Files column in the row (task #165). The row's widths
+   are rowLayout's (#189): the conversation is a column like the others and
+   goes down to 160px, its content clipped below 360 (rule 2). */
+.thread-layout-container[data-has-side-beside] > .thread-main-column {
+  min-width: 160px;
 }
 
 /* With another floating over the messages, the channel keeps room for it and
    for readable messages beside it (280 + 240; ChannelSideArea placeSections). */
-.thread-layout-container:has(> [data-testid="channel-side-slot"] [data-mode="beside"]):has([data-testid="channel-side-float-slot"] [data-mode="float"]) > .thread-main-column {
+.thread-layout-container[data-has-side-beside][data-has-side-float] > .thread-main-column {
   min-width: 520px;
 }
 
-.thread-layout-container:has(> .thread-side-column) > .thread-main-column {
+.thread-layout-container[data-has-thread] > .thread-main-column {
   display: none;
 }
 
@@ -651,7 +737,7 @@
 .thread-side-column {
   position: absolute;
   inset: 0;
-  z-index: 30;
+  z-index: var(--z-index-cover);
 }
 
 .thread-side-column [data-testid="thread-mobile-back"] {
@@ -685,7 +771,7 @@
    displays can still use the desktop split. */
 @media (orientation: landscape), (min-width: 1280px) {
   @container thread-layout (min-width: 720px) {
-    .thread-layout-container:has(> .thread-side-column) > .thread-main-column {
+    .thread-layout-container[data-has-thread] > .thread-main-column {
       display: flex;
     }
 
@@ -695,7 +781,7 @@
       z-index: auto;
       flex-shrink: 0;
       width: var(--thread-panel-width);
-      max-width: calc(100% - 360px);
+      max-width: calc(100% - 160px);
     }
 
     .thread-side-column-resizer {
@@ -709,78 +795,25 @@
     .thread-side-column [data-testid="thread-close"] {
       display: flex;
     }
-
-    /* The thread's column covering the channel (task #165; stdrc and Kirby,
-       2026-10-26): the row has no room for the channel's 360px beside the
-       side columns at their minimums (ChannelSideArea placeSections). The
-       column takes the channel's place, the sections stacked in it with it,
-       and fills what the other columns leave; it covers the channel, so Back
-       instead of × (DS Navigation, Closing). The channel keeps its box at its
-       360px, hidden and inert under the column, so its scroll position and
-       drafts are as they were when it comes back. */
-    .thread-layout-container:has(> .thread-side-column[data-covers]) > .thread-main-column {
-      position: absolute;
-      inset-block: 0;
-      left: 0;
-      width: 360px;
-      visibility: hidden;
-      pointer-events: none;
-    }
-
-    .thread-side-column[data-covers] {
-      flex: 1 1 0px;
-      width: auto;
-      min-width: 360px;
-      max-width: none;
-    }
-
-    .thread-side-column[data-covers] > .thread-side-column-resizer {
-      display: none;
-    }
-
-    .thread-side-column[data-covers] [data-testid="thread-mobile-back"] {
-      display: flex;
-    }
-
-    .thread-side-column[data-covers] [data-testid="thread-close"] {
-      display: none;
-    }
   }
 }
 
-/* Covering with the columns that don't fit beside it merged into its tabs
-   (ChannelSideArea ThreadColumnTabs; Kirby, c394e7a9): the tabs head is the
-   column's first row and has the one Back, so the thread's head drops its
-   own; the thread's panel shares the column with that head. While another
-   tab shows its section over it (ThreadColumnMerged's layer), the thread and
-   the sections stacked with it stay laid out at their size, only unseen (and
-   inert): no display none, which would drop their scroll (Kirby, #11439).
-   The column draws the left seam for all its rows. */
-.thread-side-column[data-cover-tab] {
-  border-left: 1px solid var(--line-seam);
+/* Focus Mode is the thread's Expand, a window control (raft-design panel.md,
+   Rules; stdrc, 2026-11-03): with the thread the row's only column, there is
+   nothing to expand into, so the button is hidden, not disabled. Where the
+   row is planned (#189, below) the plan says so (rowPlanStore); elsewhere it
+   is the thread-only modes above (a narrow row, a portrait tablet). In Focus
+   Mode it stays, so the channel can come back. */
+@container thread-layout (max-width: 719.98px) {
+  .thread-layout-container:not([data-thread-maximized="true"]):not([data-row-plan]) .thread-side-column [data-testid="thread-focus-mode"] {
+    display: none;
+  }
 }
 
-.thread-side-column[data-cover-tab] > [data-slot="thread-panel-root"] {
-  height: auto;
-  min-height: 0;
-  flex: var(--side-thread-flex, 1 1 0px);
-  border-left-width: 0;
-}
-
-.thread-side-column[data-cover-tab]:not([data-cover-tab="thread"]) > :not([data-testid="thread-cover-tabs"]):not([data-testid="thread-cover-merged"]) {
-  visibility: hidden;
-}
-
-.thread-side-column[data-covers][data-cover-tab] [data-testid="thread-mobile-back"] {
-  display: none;
-}
-
-/* Covering and first in the row, the thread's column draws no left edge: the
-   sidebar already has it. Behind a column the person put left of it, it keeps
-   its seam, as beside the channel. */
-.thread-side-column[data-covers="first"],
-.thread-side-column[data-covers="first"] > [data-slot="thread-panel-root"] {
-  border-left-width: 0;
+@media (orientation: portrait) and (max-width: 1279.98px) {
+  .thread-layout-container:not([data-thread-maximized="true"]):not([data-row-plan]) .thread-side-column [data-testid="thread-focus-mode"] {
+    display: none;
+  }
 }
 
 /* Where the thread covers its channel (the thread-only modes above: a narrow
@@ -788,7 +821,7 @@
    column (a workspace Artifact, F41) puts the thread behind the channel: still
    mounted where it was, back on top when it is opened again. The split row
    keeps both on screen, so there the thread stays. */
-.thread-layout-container[data-thread-behind="true"]:has(> .thread-side-column) > .thread-main-column {
+.thread-layout-container[data-thread-behind="true"][data-has-thread] > .thread-main-column {
   display: flex;
 }
 
@@ -812,11 +845,11 @@
    row where the thread is still in its thread-only (absolute) mode. */
 @media (min-width: 1024px) {
   @container thread-layout (min-width: 720px) {
-    .thread-layout-container:has(> .thread-profile-side-column[data-collapse-channel="true"]) > .thread-main-column {
+    .thread-layout-container:not([data-row-plan])[data-profile-collapse-channel="true"] > .thread-main-column {
       display: none;
     }
 
-    .thread-layout-container:has(> .thread-profile-side-column[data-collapse-channel="true"]) > .thread-side-column {
+    .thread-layout-container:not([data-row-plan])[data-profile-collapse-channel="true"] > .thread-side-column {
       flex: 1 1 auto;
       min-width: 0;
       width: auto;
@@ -825,17 +858,17 @@
 
     /* The channel is folded, so the thread is first in the row: the sidebar
        already draws that edge, and the profile owns the divider on its right. */
-    .thread-layout-container:has(> .thread-profile-side-column[data-collapse-channel="true"]) > .thread-side-column > [data-slot="thread-panel-root"] {
+    .thread-layout-container:not([data-row-plan])[data-profile-collapse-channel="true"] > .thread-side-column > [data-slot="thread-panel-root"] {
       border-left-width: 0;
     }
 
-    .thread-layout-container:has(> .thread-profile-side-column[data-collapse-channel="true"]) > .thread-profile-side-column > :is([data-testid="profile-panel"], [data-profile-panel-fallback]) {
+    .thread-layout-container:not([data-row-plan])[data-profile-collapse-channel="true"] > .thread-profile-side-column > :is([data-testid="profile-panel"], [data-profile-panel-fallback]) {
       position: relative;
       inset: auto;
       z-index: auto;
       flex: 0 0 auto;
       min-width: 0;
-      max-width: calc(100% - 360px);
+      max-width: calc(100% - 160px);
       overflow: hidden;
       border-left: 1px solid var(--line-seam);
     }
@@ -844,21 +877,21 @@
     /* A Channel avatar opens Profile without leaving the Channel. In the
        existing Channel + Thread row, fold only the retained Thread pane; the
        same Profile pane geometry is reused for both entry sources. */
-    .thread-layout-container:has(> .thread-profile-side-column[data-collapse-thread="true"]) > .thread-main-column {
+    .thread-layout-container:not([data-row-plan])[data-profile-collapse-thread="true"] > .thread-main-column {
       display: flex;
     }
 
-    .thread-layout-container:has(> .thread-profile-side-column[data-collapse-thread="true"]) > .thread-side-column {
+    .thread-layout-container:not([data-row-plan])[data-profile-collapse-thread="true"] > .thread-side-column {
       display: none;
     }
 
-    .thread-layout-container:has(> .thread-profile-side-column[data-collapse-thread="true"]) > .thread-profile-side-column > :is([data-testid="profile-panel"], [data-profile-panel-fallback]) {
+    .thread-layout-container:not([data-row-plan])[data-profile-collapse-thread="true"] > .thread-profile-side-column > :is([data-testid="profile-panel"], [data-profile-panel-fallback]) {
       position: relative;
       inset: auto;
       z-index: auto;
       flex: 0 0 auto;
       min-width: 0;
-      max-width: calc(100% - 360px);
+      max-width: calc(100% - 160px);
       overflow: hidden;
       border-left: 1px solid var(--line-seam);
     }
@@ -868,8 +901,8 @@
        divider on its own box, so nothing inside the chat column (the composer
        bar stacks above the resize handle) can cover it, and the chat keeps a
        readable width instead of shrinking to a strip. */
-    .thread-layout-container:has(> .thread-profile-side-column[data-collapse-channel="false"][data-collapse-thread="false"]) > .thread-profile-side-column > :is([data-testid="profile-panel"], [data-profile-panel-fallback]) {
-      max-width: calc(100% - 360px);
+    .thread-layout-container:not([data-row-plan])[data-profile-collapse-channel="false"][data-profile-collapse-thread="false"] > .thread-profile-side-column > :is([data-testid="profile-panel"], [data-profile-panel-fallback]) {
+      max-width: calc(100% - 160px);
       border-left: 1px solid var(--line-seam);
     }
 
@@ -878,12 +911,12 @@
   /* Too narrow for two readable panes: fold the conversation away and let the
      profile take the row, next to the sidebar, which already draws that edge. */
   @container thread-layout (max-width: 719.98px) {
-    .thread-layout-container:has(> .thread-profile-side-column) > .thread-main-column,
-    .thread-layout-container:has(> .thread-profile-side-column) > .thread-side-column {
+    .thread-layout-container:not([data-row-plan])[data-has-profile] > .thread-main-column,
+    .thread-layout-container:not([data-row-plan])[data-has-profile] > .thread-side-column {
       display: none;
     }
 
-    .thread-layout-container:has(> .thread-profile-side-column) > .thread-profile-side-column > :is([data-testid="profile-panel"], [data-profile-panel-fallback]) {
+    .thread-layout-container:not([data-row-plan])[data-has-profile] > .thread-profile-side-column > :is([data-testid="profile-panel"], [data-profile-panel-fallback]) {
       /* ProfilePanel sets width/flex inline for its resizable desktop size. */
       flex: 1 1 auto !important;
       width: auto !important;
@@ -893,17 +926,17 @@
     }
 
     /* The profile fills the row here, so its width does not apply: no handle. */
-    .thread-layout-container:has(> .thread-profile-side-column) > .thread-profile-side-column > [data-testid="profile-panel"] > [data-slot="column-resize-handle"] {
+    .thread-layout-container:not([data-row-plan])[data-has-profile] > .thread-profile-side-column > [data-testid="profile-panel"] > [data-slot="column-resize-handle"] {
       display: none;
     }
 
     /* The legacy task side panel folds the same way rather than going under
        its 320px minimum beside a conversation squeezed below 360px. */
-    .thread-layout-container:has(> :is([data-testid="legacy-task-panel"], [data-legacy-task-panel-fallback])) > .thread-main-column {
+    .thread-layout-container:not([data-row-plan])[data-has-legacy-task] > .thread-main-column {
       display: none;
     }
 
-    .thread-layout-container > :is([data-testid="legacy-task-panel"], [data-legacy-task-panel-fallback]) {
+    .thread-layout-container:not([data-row-plan]) > :is([data-testid="legacy-task-panel"], [data-legacy-task-panel-fallback]) {
       /* LegacyTaskPanel sets its resizable desktop width inline. */
       flex: 1 1 auto;
       width: auto !important;
@@ -911,7 +944,7 @@
       border-left-width: 0;
     }
 
-    .thread-layout-container > [data-testid="legacy-task-panel"] > [data-slot="column-resize-handle"] {
+    .thread-layout-container:not([data-row-plan]) > [data-testid="legacy-task-panel"] > [data-slot="column-resize-handle"] {
       display: none;
     }
   }
@@ -920,10 +953,430 @@
 /* Thread | Profile with the channel folded: the thread takes the rest of the
    row, so its own width does not apply and its handle would sit on the same
    seam as the sidebar's. Only the sidebar's handle is offered there. */
-.thread-layout-container:has(> .thread-profile-side-column[data-collapse-channel="true"]) > .thread-side-column > .thread-side-column-resizer {
+.thread-layout-container:not([data-row-plan])[data-profile-collapse-channel="true"] > .thread-side-column > .thread-side-column-resizer {
   display: none;
 }
 
+/* The keyboard shortcuts panel (features/keyboard-shortcuts/ShortcutHelpColumn)
+   takes the right-hand detail column over whatever is open there. The thread,
+   the profile or the legacy task stays mounted and laid out under it, only
+   unseen (and inert, from the panel): no display none, which would drop their
+   scroll (#11439), so closing the panel brings them back as they were. Every
+   descendant too: a merged section tab in a covering thread shows itself with
+   `visibility: visible` (ChannelSideArea ThreadColumnMerged). `!important`:
+   those surfaces' own rules above show and fold the row's columns at a higher
+   specificity, and none of them applies while the panel is open. */
+.thread-layout-container[data-has-help] > :is(.thread-side-column, [data-testid="legacy-task-panel"], [data-legacy-task-panel-fallback]),
+.thread-layout-container[data-has-help] > :is(.thread-side-column, [data-testid="legacy-task-panel"], [data-legacy-task-panel-fallback]) *,
+.thread-layout-container[data-has-help] > .thread-profile-side-column * {
+  visibility: hidden !important;
+  pointer-events: none !important;
+}
+
+/* Below 1024px the panel covers the page (PROFILE_PANEL_OVERLAY_CLASS) and
+   the covered surfaces stay where they are under it. From 1024px: */
+@media (min-width: 1024px) {
+  @container thread-layout (min-width: 720px) {
+    /* Beside the conversation, like a profile: the covered surfaces leave the
+       row at the width they had (absolute, at its end), the conversation keeps
+       360px, and the panel draws the line between them (its overlay class
+       turns the attached edge off). */
+    .thread-layout-container[data-has-help] > :is([data-testid="legacy-task-panel"], [data-legacy-task-panel-fallback]),
+    .thread-layout-container[data-has-help] > .thread-profile-side-column > * {
+      position: absolute !important;
+      inset-block: 0;
+      right: 0;
+    }
+
+    /* The thread only where it stood in the Channel | Thread split (the same
+       condition as the split above): in a portrait window under 1280px it
+       already fills the row, absolute, and stays so, at that width. The
+       panel doesn't make ChannelSideArea re-measure (useSideRoom), so taking
+       the thread out of flow here isn't read as the thread covering. */
+    @media (orientation: landscape), (min-width: 1280px) {
+      .thread-layout-container[data-has-help] > .thread-side-column:not([data-covers]) {
+        position: absolute !important;
+        inset-block: 0;
+        right: 0;
+        width: var(--thread-panel-width) !important;
+        max-width: none !important;
+      }
+    }
+
+    .thread-layout-container[data-has-help]:not([data-has-thread-covers]) > .thread-main-column {
+      display: flex !important;
+    }
+
+    .thread-layout-container > .shortcut-help-column {
+      min-width: 0;
+      max-width: calc(100% - 360px);
+      overflow: hidden;
+      border-left: 1px solid var(--line-seam);
+    }
+
+    /* A thread covering the channel (task #165): the panel takes the whole
+       row over it, the channel and the side columns, which all stay as the
+       cover left them (the thread in place at its own width, so its replies
+       don't reflow; the channel hidden and inert). */
+    .thread-layout-container[data-has-thread-covers] > .shortcut-help-column {
+      position: absolute !important;
+      inset: 0;
+      z-index: var(--z-index-cover);
+      width: auto !important;
+      max-width: none;
+      border-left-width: 0;
+    }
+
+    .thread-layout-container[data-has-thread-covers] > .shortcut-help-column > [data-slot="column-resize-handle"] {
+      display: none;
+    }
+  }
+
+  /* Too narrow for two readable panes: the panel takes the row. The covered
+     surfaces filled it, and keep doing so under it. Not where the panel is a
+     column of the planned row (`[data-row-width]`): the plan gives it and the
+     conversation their widths there (rules below the #189 block). */
+  @container thread-layout (max-width: 719.98px) {
+    .thread-layout-container[data-has-help]:not([data-help-row-width]) > :is(.thread-side-column, [data-testid="legacy-task-panel"], [data-legacy-task-panel-fallback]),
+    .thread-layout-container[data-has-help]:not([data-help-row-width]) > .thread-profile-side-column > * {
+      position: absolute !important;
+      inset: 0;
+    }
+
+    .thread-layout-container[data-has-help]:not([data-help-row-width]) > .thread-main-column {
+      display: none !important;
+    }
+
+    .thread-layout-container > .shortcut-help-column:not([data-row-width]) {
+      /* The panel sets its resizable width inline. */
+      flex: 1 1 auto !important;
+      width: auto !important;
+    }
+
+    .thread-layout-container > .shortcut-help-column:not([data-row-width]) > [data-slot="column-resize-handle"] {
+      display: none;
+    }
+  }
+}
+
+
+/* `--row-width` (rowLayout) is read only by the column that carries it (the
+   rule below). Not inherited: a new width restyles that column alone, not
+   everything inside it, which a window drag otherwise did on every frame
+   (#proj-frontend:#39). */
+@property --row-width {
+  syntax: "*";
+  inherits: false;
+}
+
+/* The row planned by the #189 rules (#proj-raft-ui:#189, the design lead's
+   prototype; rowPlan, rowLayout set `data-row-plan` on a desktop's row): every
+   column stands in the row at the width the plan gives it (`--row-width`),
+   the conversation, the flexible one, taking the rest, which is its own;
+   nothing floats or covers the row. These rules stand over the thread-only,
+   cover and fold rules above, which hold where the row isn't planned (a
+   phone, the first paint): `:not(#_)` lifts them over any of those selectors
+   (they use no ids). */
+.thread-layout-container[data-row-plan]:not(#_) [data-row-width] {
+  flex: 0 0 auto !important;
+  width: var(--row-width) !important;
+  min-width: var(--row-width) !important;
+  max-width: none !important;
+}
+
+.thread-layout-container[data-row-plan]:not(#_) > .thread-main-column {
+  display: flex;
+  position: relative;
+  inset: auto;
+  width: auto;
+  visibility: visible;
+  pointer-events: auto;
+}
+
+.thread-layout-container[data-row-plan]:not(#_) > .thread-side-column {
+  display: flex;
+  position: relative;
+  inset: auto;
+  z-index: auto;
+  flex: 0 0 auto;
+  width: var(--thread-panel-width);
+  min-width: 0;
+  max-width: none;
+}
+
+.thread-layout-container[data-row-plan]:not(#_) > .thread-side-column > [data-slot="thread-panel-root"] {
+  position: relative;
+  inset: auto;
+  z-index: auto;
+}
+
+.thread-layout-container[data-row-plan]:not(#_) > .thread-side-column:not([data-covers]):not([data-side-stacked="true"]) > [data-slot="thread-panel-root"] {
+  border-left-width: 1px;
+}
+
+.thread-layout-container[data-row-plan]:not(#_) > .thread-side-column > .thread-side-column-resizer {
+  display: block;
+}
+
+.thread-layout-container[data-row-plan]:not(#_) > .thread-side-column [data-testid="thread-mobile-back"] {
+  display: none;
+}
+
+.thread-layout-container[data-row-plan]:not(#_) > .thread-side-column [data-testid="thread-close"] {
+  display: flex;
+}
+
+/* Rule 3: the thread folded into the conversation's column (ChannelSideArea
+   `covers`), a layer over the chat at the conversation's width, which the
+   two share; the chat keeps its box under it, inert (its scroll and drafts as
+   they were). Back at its head's start closes it; no Close, no seam of its
+   own: the sidebar draws its left edge. */
+.thread-layout-container[data-row-plan]:not(#_) > .thread-side-column[data-covers] {
+  position: absolute;
+  inset-block: 0;
+  left: 0;
+  z-index: var(--z-index-cover);
+}
+
+.thread-layout-container[data-row-plan]:not(#_) > .thread-side-column[data-covers] > .thread-side-column-resizer,
+.thread-layout-container[data-row-plan]:not(#_) > .thread-side-column[data-covers] [data-testid="thread-close"] {
+  display: none;
+}
+
+.thread-layout-container[data-row-plan]:not(#_) > .thread-side-column[data-covers] [data-testid="thread-mobile-back"] {
+  display: flex;
+}
+
+.thread-layout-container[data-row-plan]:not(#_) > .thread-side-column[data-covers] > [data-slot="thread-panel-root"] {
+  border-left-width: 0;
+}
+
+/* Rule 4's last step: past 160 for every column, the rightmost columns are
+   tabs in their left neighbour's head (RowTabs); a column whose tab isn't
+   picked stays mounted as it was, out of the row and out of reach (rowLayout
+   also makes it inert), so picking it back keeps its scroll. */
+.thread-layout-container[data-row-plan]:not(#_) [data-row-tab-hidden] {
+  position: absolute !important;
+  inset-block: 0;
+  left: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+/* The keyboard shortcuts panel beside the conversation is a column of the
+   planned row (rowPlan withShortcutHelpColumn; rowLayout gives it its
+   `--row-width`), the rightmost, in the thread's place: every column gives
+   way for it as for any other. The thread it covers leaves the plan, but
+   not its box: it stays laid out at the width the row gave it
+   (`--covered-width`, ShortcutHelpColumn) and the row's height, at the row's
+   end, unseen and inert, so its replies don't reflow and its scroll holds
+   (#11439). Lifted over the planned row's own thread rules above. */
+.thread-layout-container[data-row-plan]:not(#_) > .shortcut-help-column[data-row-width] {
+  position: relative;
+  overflow: hidden;
+  border-left: 1px solid var(--line-seam);
+}
+
+.thread-layout-container[data-row-plan]:not(#_)[data-help-row-width] > .thread-side-column {
+  position: absolute !important;
+  top: 0 !important;
+  bottom: 0 !important;
+  left: auto !important;
+  right: 0 !important;
+  flex: none !important;
+  width: var(--covered-width, var(--thread-panel-width)) !important;
+  min-width: 0 !important;
+  max-width: none !important;
+}
+
+/* The profile beside the conversation (ProfilePanel) is a column like the
+   others here, at every desktop width: its seam on its own box. */
+.thread-layout-container[data-row-plan]:not(#_) > .thread-profile-side-column > :is([data-testid="profile-panel"], [data-profile-panel-fallback]) {
+  display: flex;
+  position: relative;
+  inset: auto;
+  z-index: auto;
+  flex: 0 0 auto;
+  border-left: 1px solid var(--line-seam);
+}
+
+/* Rule 2 (#189): a column in the row narrower than its content's minimum
+   (rowSeams markClipped: `data-clipped`, its width `--clip-width`, that
+   minimum `--content-min`, which a panel in it may set for itself below).
+   Each panel's head fits the column: its title ellipsizes, its buttons stay.
+   What follows the head keeps the content's minimum against the column's
+   start edge; the rest is clipped, with no scrollbar (clip, not hidden: no
+   scroll container), and fades over its last --fade-edge (24px, raft-ui's
+   sideways edge fade, as the row tabs' mask-fade-x) so the cut reads as
+   content going on. Only text, rows and controls fade: the mask reveals the
+   column's own surface behind them. Full-bleed media that is the body under
+   the head (an HTML or PDF Artifact's frame, an image, the page beside the
+   conversation; `data-clip-edge="cut"`) stops on a hard line at the column's
+   edge instead: faded, a dark page would show the lighter surface behind it
+   as a glow (raft-design spacing.md "Edges fade", responsive.md;
+   #proj-raft-ui:#270; mobile #5016). A Markdown Artifact is a document, text:
+   it fades. Media inside a list (a message's image) fades with the list.
+   The column itself does not clip: its resize handle stands over its edge. */
+[data-slot="thread-panel-root"] {
+  --content-min: 360px;
+}
+
+[data-card="tasks"],
+[data-card="files"] {
+  --content-min: 280px;
+}
+
+[data-card="app"] {
+  --content-min: 480px;
+}
+
+/* Rule 6 at a clipped column (#189): its head always fits, the title keeping
+   room for a letter and its ellipsis (28px) beside ⋯, Expand and Close, which
+   never fold (headFit folds the column's own actions first). The head's edges
+   and the gap before its buttons tighten to 12px and 4px; the title
+   ellipsizes, never drops to a bare letter. */
+[data-clipped] [data-slot="panel-header"] {
+  --column-margin: 12px;
+  gap: 4px;
+}
+
+[data-clipped] [data-slot="panel-header"] > [data-slot="panel-header-content"] {
+  min-width: 28px;
+}
+
+/* The Artifact's version tag beside its title gives the title its room where
+   the head has little: the version stays in ⋯'s Version history. */
+[data-clipped] [data-testid="artifact-viewer-header"] > [data-slot="panel-header-content"] {
+  container-type: inline-size;
+}
+
+@container (width < 96px) {
+  [data-testid="artifact-viewer-header"] [data-slot="panel-heading"] > [data-slot="panel-status"] {
+    display: none;
+  }
+}
+
+/* Native split-pane host header (`hostHead=<px>`, #proj-workspace:#383): keep single-line layout,
+   un-gate compact desktop sizing from >=768px media queries inside ~480px panes, and fold status
+   badges before crushing the title. */
+[data-slot="panel-header"][data-host-head] {
+  gap: 0.75rem;
+}
+
+[data-slot="panel-header"][data-host-head] > [data-slot="panel-header-content"] {
+  flex-direction: row;
+  align-items: baseline;
+  justify-content: flex-start;
+  gap: 0.5rem;
+  container-type: inline-size;
+}
+
+[data-slot="panel-header"][data-host-head] [data-slot="panel-header-content"] > [data-slot="panel-meta"] {
+  flex: 1 1000 0%;
+}
+
+[data-slot="panel-header"][data-host-head] [data-slot="panel-title-trigger"] {
+  height: var(--bar-button-size);
+}
+
+[data-slot="panel-header"][data-host-head] [data-slot="panel-title-trigger"]::after {
+  inset: calc(-1 * (var(--control-height) + 2 * var(--control-hit-inset) - var(--bar-button-size)) / 2);
+}
+
+[data-slot="panel-header"][data-host-head-compact] [data-slot="panel-actions"] {
+  gap: 0.25rem;
+}
+
+[data-slot="panel-header"][data-host-head-compact] :is([data-slot="panel-action"], [data-slot="panel-toggle-action"]) {
+  padding-inline: calc((var(--bar-button-size) - var(--control-icon-size) - 3px) / 2);
+}
+
+[data-slot="panel-header"][data-host-head-compact] [data-slot="panel-title-trigger"] {
+  --title-trigger-inset: var(--icon-inset);
+}
+
+@container (width < 210px) {
+  [data-slot="panel-header"][data-host-head] [data-testid="artifact-backlinks-chip"] {
+    display: none;
+  }
+}
+
+@container (width < 120px) {
+  [data-slot="panel-header"][data-host-head] [data-slot="panel-heading"] > [data-slot="panel-status"] {
+    display: none;
+  }
+}
+
+/* Rule 7 (#189): a new column's drop strip past the row's last column has no
+   seam to stand on; that column gives it its width while the hand is there
+   (sideSectionDrag `giveWay`), so the strip covers none of its buttons. */
+[data-side-col][data-drop-give-way] {
+  padding-right: 24px;
+}
+
+/* Rule 4's tabs in a head (RowTabs) take the title's place: a little tighter
+   than a page's tab row, so more of them show before the row scrolls. */
+[data-testid="row-tabs"] [role="tab"] {
+  padding-inline: 8px;
+  /* Never the strip's whole width: the next tab peeks 32px past it, under
+     the strip's end fade (raft-ui Tabs' data-overflow), so a strip with more
+     tabs than room reads as one; the label ellipsizes rather than hide it. */
+  max-width: max(calc(100% - 32px), 44px);
+}
+
+[data-testid="row-tabs"] [role="tab"] > *,
+[data-testid="row-tabs"] [data-slot="tabs-label"] {
+  min-width: 0;
+}
+
+[data-testid="row-tabs"] [data-slot="tabs-label"] {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+[data-clipped] :has(> [data-slot="panel-header"]) {
+  overflow-x: clip;
+}
+
+/* The Tasks page's task (TaskConversationDialog): its head is in a bar with
+   the pull-down that hangs from it, and what follows the bar follows the head. */
+[data-clipped] :has(> [data-slot="task-conversation-bar"]) {
+  overflow-x: clip;
+}
+
+/* The Tasks page's list (TasksPage), the conversation of its row beside the
+   task (TasksRoute): its head is a section head; what follows it is what
+   follows a head, kept at the conversation's 360 and clipped below it. */
+[data-clipped] [data-tasks-page] {
+  overflow-x: clip;
+}
+
+/* RowRegionBody (the Artifact's, the profile's) is a box of no layout of its
+   own: what it holds is what follows the head. */
+[data-clipped] [data-slot="panel-header"] ~ *,
+[data-clipped] [data-slot="panel-header"] ~ [data-row-region-body] > *,
+[data-clipped] [data-slot="task-conversation-bar"] ~ *,
+[data-clipped] [data-tasks-page] > [data-slot="panel-section-header"] ~ * {
+  --clip-fade: clamp(0px, (var(--content-min, 0px) - var(--clip-width)) * 1000, var(--fade-edge));
+  min-width: var(--content-min, 0px);
+  -webkit-mask-image: linear-gradient(to right, #000 calc(var(--clip-width) - var(--clip-fade)), transparent var(--clip-width));
+  mask-image: linear-gradient(to right, #000 calc(var(--clip-width) - var(--clip-fade)), transparent var(--clip-width));
+}
+
+/* Full-bleed media is cut hard (Rule 2 above): the content's minimum and the
+   clip stay, the fade goes. `:not(#_)` outranks the rule above's
+   RowRegionBody selector. */
+[data-clipped] [data-clip-edge="cut"]:not(#_) {
+  -webkit-mask-image: none;
+  mask-image: none;
+}
+
+/* The Artifact loading splash in a clipped column: its icon and line centre
+   in the part of the content that shows (the column's width), not in the
+   content's minimum, the rest of which is cut (Kirby, #12813). */
+[data-clipped] [data-splash-stage] {
+  padding-inline-end: calc(1rem + max(0px, var(--content-min, 0px) - var(--clip-width, 0px)));
+}
 
 @layer base {
   /* Raft Design System: a text selection is painted with its own token
@@ -997,6 +1450,40 @@
   touch-action: manipulation;
 }
 
+/* Drag the conversation left on a touch screen to see every message's time
+   (useTimelineTimeReveal; raft-design Conversation, artin 2026-11-04,
+   #triage:530f8c36). Each message row's time waits 20px past its right edge
+   (TimelineRevealTime), out of the layout at rest so the list never has
+   anything to scroll sideways; while the list is dragged the rows slide left
+   by inline transforms and the list's overflow-x: hidden clips the rest. On
+   release they spring back with the drag settle. The rows keep their
+   touch-action (above): pinch zoom stays. */
+.timeline-reveal-time {
+  display: none;
+}
+[data-time-reveal] .timeline-reveal-time {
+  display: block;
+}
+[data-time-reveal="settling"] [data-message-item] {
+  transition: transform var(--motion-drag-settle-duration) var(--motion-drag-settle-easing);
+}
+/* Reduced motion: nothing slides, and nothing lands on text. Each merged
+   (continuation) row's time fades in in its empty left gutter, where a
+   mouse's hover shows it (raft-ui MessageItemContinuationTime, marked
+   data-gutter-time by MessageItem, reads --mi-ct-color), and fades out on
+   release: color only. A group's first row
+   already shows its time in its header and gets nothing more; the edge
+   times stay hidden. */
+[data-time-reveal-motion="fade"] .timeline-reveal-time {
+  display: none;
+}
+[data-time-reveal-motion="fade"] [data-gutter-time] {
+  transition: color var(--motion-drag-settle-duration) linear;
+}
+[data-time-reveal-motion="fade"][data-time-reveal="dragging"] [data-message-item] {
+  --mi-ct-color: var(--foreground-hint);
+}
+
 /* RUI's tooltip positioner (the `isolate z-50` wrapper around the bubble) has
    no pointer-events guidance, so an open tooltip swallows hover/clicks aimed
    at whatever it covers — header action rows, sidebar rows, chips. Our
@@ -1012,23 +1499,23 @@
    surface overlays the row; hidden channel geometry never changes on toggle. */
 @media (orientation: landscape), (min-width: 1280px) {
   @container thread-layout (min-width: 720px) {
-    .thread-layout-container[data-thread-maximized="true"] { position: relative; }
-    .thread-layout-container[data-thread-maximized="true"] > .thread-main-column,
-    .thread-layout-container[data-thread-maximized="true"] > [data-testid="channel-side-slot"] > *,
-    .thread-layout-container[data-thread-maximized="true"] > .thread-side-column > :is([data-card], [data-side-seam]) {
+    .thread-layout-container[data-thread-maximized="true"]:not([data-row-plan]) { position: relative; }
+    .thread-layout-container[data-thread-maximized="true"]:not([data-row-plan]) > .thread-main-column,
+    .thread-layout-container[data-thread-maximized="true"]:not([data-row-plan]) > [data-testid="channel-side-slot"] > *,
+    .thread-layout-container[data-thread-maximized="true"]:not([data-row-plan]) > .thread-side-column > :is([data-card], [data-side-seam]) {
       visibility: hidden;
       pointer-events: none;
     }
-    .thread-layout-container[data-thread-maximized="true"] > .thread-side-column {
+    .thread-layout-container[data-thread-maximized="true"]:not([data-row-plan]) > .thread-side-column {
       position: static;
     }
-    .thread-layout-container[data-thread-maximized="true"] > .thread-side-column > .thread-side-column-resizer {
+    .thread-layout-container[data-thread-maximized="true"]:not([data-row-plan]) > .thread-side-column > .thread-side-column-resizer {
       display: none;
     }
-    .thread-layout-container[data-thread-maximized="true"] > .thread-side-column > [data-slot="thread-panel-root"] {
+    .thread-layout-container[data-thread-maximized="true"]:not([data-row-plan]) > .thread-side-column > [data-slot="thread-panel-root"] {
       position: absolute;
       inset: 0;
-      z-index: 30;
+      z-index: var(--z-index-cover);
       border-left-width: 0;
     }
   }

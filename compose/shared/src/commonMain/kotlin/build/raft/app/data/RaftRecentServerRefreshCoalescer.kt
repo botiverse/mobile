@@ -46,6 +46,11 @@ internal class RaftRecentServerRefreshCoalescer(
         FreshCoalesced,
     }
 
+    internal data class RunResult(
+        val outcome: Outcome,
+        val succeeded: Boolean,
+    )
+
     private data class Generation(
         val global: Long,
         val server: Long,
@@ -85,9 +90,29 @@ internal class RaftRecentServerRefreshCoalescer(
         coalesceFreshWithin: Duration = Duration.ZERO,
         notStartedBefore: ComparableTimeMark? = null,
         block: suspend () -> Boolean,
-    ): Outcome {
+    ): Outcome =
+        runOrCoalesceWithResult(
+            serverId = serverId,
+            reason = reason,
+            coalesceFreshWithin = coalesceFreshWithin,
+            notStartedBefore = notStartedBefore,
+            block = block,
+        ).outcome
+
+    /**
+     * Same as [runOrCoalesce], returning both how this call was coalesced and whether the
+     * underlying refresh succeeded (`true` for [Outcome.FreshCoalesced], or the joined/executed
+     * flight's [block] outcome).
+     */
+    suspend fun runOrCoalesceWithResult(
+        serverId: String,
+        reason: String,
+        coalesceFreshWithin: Duration = Duration.ZERO,
+        notStartedBefore: ComparableTimeMark? = null,
+        block: suspend () -> Boolean,
+    ): RunResult {
         val key = serverId.trim()
-        if (key.isEmpty()) return Outcome.FreshCoalesced
+        if (key.isEmpty()) return RunResult(Outcome.FreshCoalesced, succeeded = true)
         val decision =
             mutex.withLock {
                 val active = activeFlights[key]
@@ -100,8 +125,12 @@ internal class RaftRecentServerRefreshCoalescer(
                     serverGenerations[key] = (serverGenerations[key] ?: 0L) + 1L
                     logger("sync_machines_coalesce serverId=$key result=replace_pre_boundary reason=$reason")
                 }
-                if (coalesceFreshWithin > Duration.ZERO) {
-                    val last = completed[key]
+                val last = completed[key]
+                if (last != null && notStartedBefore != null && last.startedAt < notStartedBefore) {
+                    // Retire pre-boundary completed entries even if this replacement flight fails,
+                    // so a later retry without a newer boundary cannot reuse pre-background data.
+                    completed.remove(key)
+                } else if (coalesceFreshWithin > Duration.ZERO) {
                     val currentGen = generationLocked(key)
                     if (
                         last != null &&
@@ -159,15 +188,15 @@ internal class RaftRecentServerRefreshCoalescer(
                 Decision.Start(flight)
             }
         return when (decision) {
-            Decision.Fresh -> Outcome.FreshCoalesced
+            Decision.Fresh -> RunResult(Outcome.FreshCoalesced, succeeded = true)
             is Decision.Join -> {
-                decision.flight.deferred.await().getOrThrow()
-                Outcome.JoinedInFlight
+                val ok = decision.flight.deferred.await().getOrThrow()
+                RunResult(Outcome.JoinedInFlight, succeeded = ok)
             }
             is Decision.Start -> {
                 decision.flight.deferred.start()
-                decision.flight.deferred.await().getOrThrow()
-                Outcome.Executed
+                val ok = decision.flight.deferred.await().getOrThrow()
+                RunResult(Outcome.Executed, succeeded = ok)
             }
         }
     }

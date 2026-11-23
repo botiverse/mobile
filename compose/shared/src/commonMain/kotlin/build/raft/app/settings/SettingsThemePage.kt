@@ -51,18 +51,30 @@ internal val SettingsThemePageSections: List<SettingsThemePageSection> =
 /**
  * The sections Settings > Theme shows: all of them with a current server; without one (a stale
  * route), only light and dark, which belongs to the device rather than to a server. The frame's
- * pixel art shows on wide screens only, so a device that can't have one ([largeScreen] false, an
- * ordinary phone) has no switch for it (settings cleanup, 1.27.0).
+ * pixel art switch only where that frame can be on screen ([decorSwitch],
+ * [settingsThemeDecorSwitchShown]).
  */
 internal fun settingsThemePageSections(
     hasServer: Boolean,
-    largeScreen: Boolean = raftPlatformLargeScreenPossible(),
+    decorSwitch: Boolean,
 ): List<SettingsThemePageSection> =
     when {
         !hasServer -> listOf(SettingsThemePageSection.Mode)
-        largeScreen -> SettingsThemePageSections
+        decorSwitch -> SettingsThemePageSections
         else -> SettingsThemePageSections - SettingsThemePageSection.Decor
     }
+
+/**
+ * Whether Settings > Theme has the switch for the frame's pixel art: wherever the frame it is drawn
+ * on can be on screen. The art goes on the wide layout's top bar and rail, which a window gets from
+ * the app's wide breakpoint ([raftWindowWide], the width the rail is drawn from): a large screen
+ * ([largeScreen]: a tablet, a foldable, an iPad or a Mac, the desktop app) can always be that wide,
+ * and a phone is whenever its window is ([windowWide]: held sideways), so the art it shows there can
+ * be turned off there (#307). An ordinary phone held upright has no frame, so no switch (settings
+ * cleanup, 1.27.0).
+ */
+internal fun settingsThemeDecorSwitchShown(largeScreen: Boolean, windowWide: Boolean): Boolean =
+    largeScreen || windowWide
 
 /** Settings > Theme. [serverTheme] null (fixtures without a store) shows light and dark only. */
 @Composable
@@ -71,7 +83,12 @@ internal fun SettingsThemeContent(
     bottomContentPadding: Dp,
 ) {
     val hasServer = serverTheme?.state?.visible == true
-    val sections = settingsThemePageSections(hasServer)
+    val windowWide = raftWindowWide()
+    val sections =
+        settingsThemePageSections(
+            hasServer = hasServer,
+            decorSwitch = settingsThemeDecorSwitchShown(largeScreen = raftPlatformLargeScreenPossible(), windowWide = windowWide),
+        )
     // Web ServerThemeSection: what the assistant changed of this server's theme and the sidebar.
     val assistantChangesSource = LocalAssistantSettingChangesSource.current
     val assistantChanges = rememberAssistantSettingChanges(ASSISTANT_THEME_SETTINGS, assistantChangesSource)

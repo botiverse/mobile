@@ -577,13 +577,14 @@ class SharedThreadStoreStep2dTimelineGapTest {
         val payloadStore = SharedThreadPayloadStore(scope = backgroundScope)
         val ds = dataSource(backgroundScope, api, reader, payloadStore = payloadStore)
         // Warm memory cache with writable newest messages lacking v2-20 and mark resolved access:
-        // proves anchored cold open reads SQLite island AND does not inherit live write access (MEDIUM-3).
+        // proves anchored open reads SQLite island, overlays it onto cached metadata, and keeps
+        // verified resolved write access without flashing the composer (#265 Phase 2).
         assertNotNull(ds.readSession())
         val resolvedProvenance = assertNotNull(ds.captureReplyCacheProducerContext()?.provenance)
         ds.rememberResolvedThreadAccess("channel-1", resolvedProvenance, resolved = true)
         val cachedPayloadSeed =
             buildSharedThreadPayloadFromMessagesPage(
-                basePayload = basePayload().copy(joined = true, canSend = true, channelArchived = false),
+                basePayload = basePayload().copy(joined = true, canSend = true, channelArchived = false, subtitle = "Cached subtitle"),
                 page =
                     ThreadMessagesPage(
                         messages =
@@ -612,7 +613,9 @@ class SharedThreadStoreStep2dTimelineGapTest {
         assertTrue(anchored.durableLastKnown)
         assertEquals((15L..25L).toList(), anchored.messages.mapNotNull { it.seq })
         assertTrue(anchored.canLoadMoreAfter)
-        assertFalse(anchoredStore.state.value.writeActionsEnabled, "durable anchored winner must not inherit cached write access")
+        assertEquals("Cached subtitle", anchored.subtitle)
+        assertEquals(ThreadAccessResolution.Resolved, anchoredStore.state.value.accessResolution)
+        assertTrue(anchoredStore.state.value.writeActionsEnabled, "durable anchored overlay preserves verified cached write access")
 
         // Offline LoadNewer crosses into upper stored island without polluting memory cache.
         anchoredStore.accept(SharedThreadIntent.LoadNewer)

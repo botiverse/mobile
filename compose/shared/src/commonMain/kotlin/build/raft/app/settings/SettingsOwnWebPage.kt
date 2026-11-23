@@ -489,7 +489,6 @@ internal fun SettingsOwnWebViewPage(pager: Pager) {
         remember(validatedUrl, appStoreBillingRules) {
             StandaloneSettingsWebViewSpec(
                 surface = SettingsWebViewSurface.WebPage,
-                includeLocaleQuery = false,
                 headerFollowsDocumentTitle = true,
                 allowNavigation = true,
                 allowedNavigationSchemes = setOf("http", "https"),

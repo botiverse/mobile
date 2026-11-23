@@ -20,8 +20,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
@@ -41,7 +39,6 @@ import build.raft.app.data.SharedHomeState
 import build.raft.app.data.SharedServerChannelMembersSlice
 import build.raft.app.model.ChannelId
 import build.raft.app.model.ServerId
-import build.raft.designsystem.components.RaftSideDrawerDefaults
 import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.LocalRaftContentColor
 import build.raft.designsystem.theme.LocalRaftSurfaceColor
@@ -62,17 +59,17 @@ internal const val THREAD_SETTINGS_PAGE = "compose_thread_settings"
 internal const val THREAD_SETTINGS_LINK_KEY = "threadSettingsLink"
 
 /**
- * True where the settings open as a pushed page: a window no wider than the drawer, which would
- * fill it anyway (a phone). Wider windows keep the drawer as a panel beside the conversation.
+ * True where the settings open as a pushed page: every window under the app's wide breakpoint
+ * ([raftWindowWide]), the same phone-or-wide line as the rail and two panes. That is a phone of any
+ * size, a foldable's inner screen and a split-screen half; only a wide window keeps the drawer as
+ * a panel beside the conversation. It used to be the drawer's own 420dp, which gave a large phone
+ * (430 and up) or a foldable's inner screen the drawer over the conversation, not the page (#307).
  */
-internal fun threadSettingsOpensAsPage(windowWidth: Dp): Boolean = windowWidth <= RaftSideDrawerDefaults.MaxWidth
+internal fun threadSettingsOpensAsPage(windowWidth: Dp): Boolean = !raftWindowWide(windowWidth)
 
 /** [threadSettingsOpensAsPage] for the current window. */
 @Composable
-internal fun rememberThreadSettingsOpensAsPage(): Boolean {
-    val width = with(LocalDensity.current) { LocalWindowInfo.current.containerSize.width.toDp() }
-    return threadSettingsOpensAsPage(width)
-}
+internal fun rememberThreadSettingsOpensAsPage(): Boolean = threadSettingsOpensAsPage(raftWindowWidth())
 
 internal fun threadSettingsPageData(linkKey: String, serverId: ServerId, channelId: ChannelId): JSONObject =
     JSONObject().apply {

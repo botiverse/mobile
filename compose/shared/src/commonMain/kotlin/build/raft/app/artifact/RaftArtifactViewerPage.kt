@@ -12,6 +12,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.ReadOnlyComposable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
@@ -168,8 +169,9 @@ internal val LocalRaftArtifactOpenConversation = compositionLocalOf<String?> { n
 /**
  * True for the viewer in the wide layout's Artifact column (#189 step 4, RaftWidePanes.kt `RaftArtifactColumnCell`):
  * the column owns Back (its own handler, on only while the column is on screen), the bar is drawn as on the window
- * page but without touching the window's top ([RaftArtifactViewerFrame] `inColumn`), and an Artifact the page
- * navigates to opens in the same column.
+ * page but without touching the window's top ([RaftArtifactViewerFrame] `inColumn`), the page is told the shell's
+ * head height so its own bar lines up with the conversation's head (`hostHead`, [raftArtifactViewerHostHeadHere]), and
+ * an Artifact the page navigates to opens in the same column.
  */
 internal val LocalRaftArtifactViewerInColumn = compositionLocalOf { false }
 
@@ -178,6 +180,30 @@ internal val LocalRaftArtifactViewerInColumn = compositionLocalOf { false }
  * dp; null outside a column. Desktop Mode is offered by it there, not by the window's.
  */
 internal val LocalRaftArtifactViewerColumnWidthDp = compositionLocalOf<Float?> { null }
+
+/**
+ * True where an Artifact opened here opens in the wide layout's Artifact column: the conversation, its thread and the
+ * columns beside them, where their row has the column (RaftWidePanes.kt `RaftWorkspaceDetailGrid`, wide). False
+ * elsewhere, where the viewer opens as a page of its own (a phone; Artifacts home, Activity). What a prewarm here boots
+ * and what an opener here reuses carry the `hostHead` that viewer sends ([raftArtifactViewerOpenHostHead]).
+ */
+internal val LocalRaftArtifactOpenInColumn = compositionLocalOf { false }
+
+/**
+ * The `hostHead` of the viewer composed here ([raftArtifactViewerHostHead]): the shell's head height in the Artifact
+ * column ([LocalRaftArtifactViewerInColumn]), 56 by touch and 44 with a mouse as the input in use changes; null as a
+ * page of its own.
+ */
+@Composable
+@ReadOnlyComposable
+internal fun raftArtifactViewerHostHeadHere(): Int? =
+    raftArtifactViewerHostHead(LocalRaftArtifactViewerInColumn.current, RaftTheme.controls.headHeight)
+
+/** The `hostHead` a viewer opened from here sends ([LocalRaftArtifactOpenInColumn]): the one a prewarm or a reuse here needs. */
+@Composable
+@ReadOnlyComposable
+internal fun raftArtifactViewerOpenHostHead(): Int? =
+    raftArtifactViewerHostHead(LocalRaftArtifactOpenInColumn.current, RaftTheme.controls.headHeight)
 
 /**
  * The viewer screen's frame as the screen decides it: whether the App's bar is left out ([pageSaysItDrawsBar]: the
@@ -262,6 +288,8 @@ internal fun rememberRaftArtifactOpener(
     val coroutineScope = rememberCoroutineScope()
     val currentFallback by rememberUpdatedState(fallback)
     val conversation = raftArtifactViewerHostConversationOrNull(conversationId)
+    // The head height the viewer opened from here sends (the Artifact column's; none elsewhere), as at the tap.
+    val currentHostHead by rememberUpdatedState(raftArtifactViewerOpenHostHead())
     return remember(host, coroutineScope, conversation) {
         RaftArtifactOpener { target, header, source ->
             RaftArtifactOpenTrace.tap(source, target.id)
@@ -274,25 +302,28 @@ internal fun rememberRaftArtifactOpener(
             header?.let { RaftArtifactViewerMemory.cache.remember(scope, it) }
             // Start the web viewer's reads now, in a kept (booted) document, while the page opens.
             if (scope != null && !RaftArtifactViewerMemory.cache.keptDocumentShows(scope, target)) {
+                val hostHead = currentHostHead
                 coroutineScope.launch {
                     val session =
                         runCatchingPreservingCancellation { host.sharedStores.authStore(host.storeScope).readSession() }.getOrNull()
                     if (session == null || session.user.id.trim() != scope.accountId) return@launch
-                    // Only with the session it was parked with, and booted for this conversation (else the page
-                    // loads a new one).
-                    if (!RaftArtifactViewerMemory.cache.keptDocumentUsable(scope, session.accessToken, conversation)) return@launch
+                    // Only with the session it was parked with, and booted for this conversation and head height (else
+                    // the page loads a new one).
+                    if (!RaftArtifactViewerMemory.cache.keptDocumentUsable(scope, session.accessToken, conversation, hostHead)) return@launch
                     val script =
                         raftArtifactViewerNavigateScript(
                             scope.webOrigin,
                             settingsWebViewAuthStorageJavaScript(session, null),
                             target,
                             conversation,
+                            hostHead,
+                            raftEmbeddedWebLangTag(),
                         )
                     if (raftWebViewEvaluateInKept(scope.keepAliveKey, scope.webOrigin, script)) {
                         RaftArtifactViewerMemory.cache.rememberKeptDocument(
                             scope,
                             target,
-                            raftArtifactViewerEmbeddedPageUrl(host.webBaseUrl, target, conversation),
+                            raftArtifactViewerEmbeddedPageUrl(host.webBaseUrl, target, conversation, hostHead, raftEmbeddedWebLangTag()),
                             session.accessToken,
                         )
                         RaftArtifactOpenTrace.mark("viewer_nav_started", "where=tap")
@@ -314,7 +345,9 @@ internal fun rememberRaftArtifactOpener(
  * Nothing is read or marked read. No-op without keep-alive (iOS, desktop) or a known subject, or
  * while the hosting page is covered (`!pager.isAppeared`) or the app is in the background.
  * Booted for [conversationId] (`hostConversation`, latched by the page), the one the cards on screen
- * open from; a kept document of another conversation is not reused for them.
+ * open from, and with the `hostHead` the viewer opened from them sends (the Artifact column's beside a
+ * conversation on a tablet, by the input in use; none for a page of its own): what that viewer reuses. A
+ * kept document of another conversation or head height is not reused for them.
  */
 @Composable
 internal fun RaftArtifactViewerPrewarm(enabled: Boolean, conversationId: String? = LocalRaftArtifactOpenConversation.current) {
@@ -329,6 +362,7 @@ internal fun RaftArtifactViewerPrewarm(enabled: Boolean, conversationId: String?
         webBaseUrl = host.webBaseUrl,
         scope = host.scope(),
         conversationId = conversationId,
+        hostHead = raftArtifactViewerOpenHostHead(),
     )
 }
 
@@ -341,6 +375,8 @@ internal fun RaftArtifactViewerPrewarmRuntime(
     webBaseUrl: String,
     scope: RaftArtifactViewerScope?,
     conversationId: String? = null,
+    /** `hostHead` of the viewer this warm document is for ([raftArtifactViewerOpenHostHead]); null: a page of its own. */
+    hostHead: Int? = null,
     desktopModeOverride: Boolean? = null,
     keptDocumentPresent: (String) -> Boolean = { key -> raftWebViewKeptDocument(key) != null },
     prewarmEffect: @Composable (RaftWebViewConfig?) -> Unit = { config -> RaftWebViewPrewarmEffect(config) },
@@ -373,17 +409,18 @@ internal fun RaftArtifactViewerPrewarmRuntime(
         settled = true
     }
     val conversation = raftArtifactViewerHostConversationOrNull(conversationId)
+    val head = raftArtifactViewerHostHeadOrNull(hostHead)
     val config =
-        remember(settled, scope, snapshot.session?.accessToken, binding?.webViewGeneration, desktopMode, conversation) {
+        remember(settled, scope, snapshot.session?.accessToken, binding?.webViewGeneration, desktopMode, conversation, head) {
             val session = snapshot.session
             if (!settled || scope == null || session == null || session.user.id.trim() != scope.accountId) {
                 null
             } else if (keptDocumentPresent(scope.keepAliveKey)) {
                 null
             } else {
-                RaftArtifactViewerMemory.cache.markKeptWarm(scope, session.accessToken, conversation)
+                RaftArtifactViewerMemory.cache.markKeptWarm(scope, session.accessToken, conversation, head)
                 raftArtifactViewerWebViewConfig(
-                    url = raftArtifactViewerWarmUrl(webBaseUrl, conversation),
+                    url = raftArtifactViewerWarmUrl(webBaseUrl, conversation, head, raftEmbeddedWebLangTag()),
                     scope = scope,
                     injectedJavaScript =
                         raftArtifactViewerInjectedScript(scope.webOrigin, raftArtifactViewerSessionScript(scope, session, binding), desktopMode),
@@ -511,6 +548,9 @@ private fun RaftArtifactViewerScreen() {
     val pageUrl = remember(webBaseUrl, shown) { raftArtifactViewerPageUrl(webBaseUrl, shown) }
     // Desktop Mode's state for the page's own ⋯ (`hostDesktop`; null: not offered here).
     val hostDesktop: Boolean? = desktopMode.takeIf { desktopModeOffered }
+    // In the Artifact column, the head the page's toolbar lines up with (`hostHead`: the conversation's head height,
+    // by the input in use); null as a page of its own, where the page keeps its phone toolbar.
+    val hostHead: Int? = raftArtifactViewerHostHeadHere()
     // Paint the header at once: the opener's card (put in the cache on tap), else the last one seen,
     // in this scope only.
     var header by remember(params.toString()) { mutableStateOf(RaftArtifactViewerMemory.cache.header(scope, target.canonicalId)) }
@@ -528,10 +568,10 @@ private fun RaftArtifactViewerScreen() {
     // What a WebView body is opened on: [shown] when it is made (the open, or a new one after Retry or a
     // fresh reload); a move in place changes [shown] only, never the document.
     val bodyTarget = remember(params.toString(), webRetry) { shown }
-    // With Desktop Mode's state at open; the App keeps it current in the address afterwards.
+    // With Desktop Mode's state and the head height at open; the App keeps both current in the address afterwards.
     val embeddedPageUrl =
         remember(webBaseUrl, bodyTarget) {
-            raftArtifactViewerWithHostDesktop(raftArtifactViewerEmbeddedPageUrl(webBaseUrl, bodyTarget, conversationId), hostDesktop)
+            raftArtifactViewerWithHostDesktop(raftArtifactViewerEmbeddedPageUrl(webBaseUrl, bodyTarget, conversationId, hostHead, raftEmbeddedWebLangTag()), hostDesktop)
         }
     var freshReloadUsed by remember(params.toString()) { mutableStateOf(false) }
     // #300: one session recovery reload a minute at most ([RaftArtifactViewerSessionRecoveryGuard]).
@@ -647,6 +687,16 @@ private fun RaftArtifactViewerScreen() {
     val downloadAlreadySaved = stringResource(Res.string.file_preview_download_already_saved)
     val downloadSavedToFiles = stringResource(Res.string.file_preview_export_saved)
     val downloadFailed = stringResource(Res.string.file_preview_error_download_attachment)
+    val downloadOpenAction = stringResource(Res.string.file_preview_action_open)
+    val downloadOpenResultTerms =
+        RaftAttachmentOpenResultTerms(
+            downloadStopped = stringResource(Res.string.file_preview_download_stopped),
+            unableToDownloadAttachment = downloadFailed,
+            noAppCanOpenFile = stringResource(Res.string.file_preview_error_no_app),
+            storageUnavailable = stringResource(Res.string.file_preview_error_storage_unavailable),
+            downloadFailed = stringResource(Res.string.file_preview_download_failed),
+            unableToOpenAttachment = stringResource(Res.string.file_preview_error_open_attachment),
+        )
     val downloadScope = rememberCoroutineScope()
     fun toggleDesktopMode(from: String) {
         desktopModeChosen = !desktopModeChosen
@@ -718,6 +768,7 @@ private fun RaftArtifactViewerScreen() {
                             scope = scope,
                             target = bodyTarget,
                             conversationId = conversationId,
+                            hostHead = hostHead,
                             pageUrl = embeddedPageUrl,
                             controller = controller,
                             desktopMode = desktopMode,
@@ -748,6 +799,8 @@ private fun RaftArtifactViewerScreen() {
                                         alreadySavedMessage = downloadAlreadySaved,
                                         savedToFilesMessage = downloadSavedToFiles,
                                         failedMessage = downloadFailed,
+                                        openActionLabel = downloadOpenAction,
+                                        openResultTerms = downloadOpenResultTerms,
                                     )
                                 }
                             },
@@ -799,6 +852,12 @@ private fun RaftArtifactViewerWebBody(
     target: ArtifactLinkTarget,
     /** The conversation it was opened from (`hostConversation` in [pageUrl]); null: none. */
     conversationId: String?,
+    /**
+     * The head the page's toolbar lines up with, now (`hostHead`, [raftArtifactViewerHostHeadHere]: the Artifact
+     * column's, by the input in use; null: a page of its own). The one at open is in [pageUrl]; the address keeps
+     * the current one ([raftArtifactViewerHostHeadScript]).
+     */
+    hostHead: Int?,
     pageUrl: String,
     controller: RaftWebViewController,
     desktopMode: Boolean,
@@ -863,11 +922,11 @@ private fun RaftArtifactViewerWebBody(
                 RaftArtifactViewerMemory.cache.forgetKeptDocument(scope)
                 raftWebViewKeepAliveClear()
                 null
-            } else if (RaftArtifactViewerMemory.cache.keptDocumentUsable(scope, session.accessToken, conversationId)) {
+            } else if (RaftArtifactViewerMemory.cache.keptDocumentUsable(scope, session.accessToken, conversationId, hostHead)) {
                 candidate
             } else {
-                // Another session, or booted for another conversation (the page latched that one).
-                raftLogInfo(RAFT_ARTIFACT_VIEWER_DIAGNOSTICS_TAG, "artifact_viewer_kept_dropped reason=session_or_conversation_changed")
+                // Another session, or booted for another conversation or head height (the page latched those).
+                raftLogInfo(RAFT_ARTIFACT_VIEWER_DIAGNOSTICS_TAG, "artifact_viewer_kept_dropped reason=session_conversation_or_head_changed")
                 RaftArtifactViewerMemory.cache.forgetKeptDocument(scope)
                 raftWebViewKeepAliveClear()
                 null
@@ -876,6 +935,14 @@ private fun RaftArtifactViewerWebBody(
     // A rotation synced into the shown document: it is parked with this session.
     LaunchedEffect(session.accessToken) { RaftArtifactViewerMemory.cache.noteKeptSession(scope, session.accessToken) }
     val src = kept?.src ?: pageUrl
+    // The head height the document read as it booted (the web reads `hostHead` once per document): a kept one's is the
+    // one asked for now (keptDocumentUsable), a new one's is in its first address.
+    val documentHostHead = remember { if (kept != null) hostHead else raftArtifactViewerHostHeadIn(pageUrl) }
+    // The input changed while it was shown (a mouse used, then a finger): the address follows it, but what the page
+    // read (at boot, or again if it reloaded where it is: Desktop Mode on Android) is no longer known, so the
+    // document is not kept for the next open, which loads one with its own head height.
+    var hostHeadMoved by remember { mutableStateOf(false) }
+    LaunchedEffect(hostHead) { if (!hostHeadMoved && hostHead != documentHostHead) hostHeadMoved = true }
     val loadWatchdog = remember { RaftWebViewLoadWatchdog(page = "artifact_viewer", url = src, retry = retry) }
     val loadError = loadWatchdog.showsError
     LaunchedEffect(loadError) {
@@ -979,7 +1046,7 @@ private fun RaftArtifactViewerWebBody(
             RaftArtifactViewerMemory.cache.rememberKeptDocument(
                 scope,
                 switched,
-                raftArtifactViewerEmbeddedPageUrl(host.webBaseUrl, switched, conversationId),
+                raftArtifactViewerEmbeddedPageUrl(host.webBaseUrl, switched, conversationId, hostHead, raftEmbeddedWebLangTag()),
                 currentAppToken,
             )
             currentOnSwitch(switched)
@@ -1029,8 +1096,8 @@ private fun RaftArtifactViewerWebBody(
         RaftArtifactOpenTrace.mark("webview_attach", "kept=${kept != null} showsTarget=$showsTarget")
         if (kept == null) {
             RaftArtifactViewerMemory.cache.rememberKeptDocument(scope, target, pageUrl, session.accessToken)
-            // What this new document latches (`hostConversation` in its first address).
-            RaftArtifactViewerMemory.cache.noteKeptBoot(scope, conversationId)
+            // What this new document latches (`hostConversation` and `hostHead` in its first address).
+            RaftArtifactViewerMemory.cache.noteKeptBoot(scope, conversationId, documentHostHead)
         }
         // A new document: the page's splash counts from its navigation, so the App's does too.
         if (kept == null) currentOnPageLoadStarted()
@@ -1042,7 +1109,14 @@ private fun RaftArtifactViewerWebBody(
     LaunchedEffect(documentReady, navigated) {
         if (!documentReady || navigated) return@LaunchedEffect
         val script =
-            raftArtifactViewerNavigateScript(scope.webOrigin, settingsWebViewAuthStorageJavaScript(session, binding), target, conversationId)
+            raftArtifactViewerNavigateScript(
+                scope.webOrigin,
+                settingsWebViewAuthStorageJavaScript(session, binding),
+                target,
+                conversationId,
+                hostHead,
+                raftEmbeddedWebLangTag(),
+            )
         if (controller.evaluateJavaScript(script)) {
             // The kept page routes to this Artifact now: its splash counts from here, so the App's does too.
             currentOnPageLoadStarted()
@@ -1092,6 +1166,13 @@ private fun RaftArtifactViewerWebBody(
         if (raftArtifactViewerNavigation(address, scope.webOrigin, shownTarget.id) !is RaftArtifactViewerNavigation.Stay) return@LaunchedEffect
         if (raftArtifactViewerAddressSaysDesktop(address, hostDesktop)) return@LaunchedEffect
         controller.evaluateJavaScript(raftArtifactViewerHostDesktopScript(scope.webOrigin, hostDesktop))
+    }
+    // `hostHead` too follows the input in use (a mouse used, then a finger) and comes back if a route dropped it.
+    LaunchedEffect(visible, address, hostHead) {
+        if (!visible || address.isBlank() || pendingHostAction != null) return@LaunchedEffect
+        if (raftArtifactViewerNavigation(address, scope.webOrigin, shownTarget.id) !is RaftArtifactViewerNavigation.Stay) return@LaunchedEffect
+        if (raftArtifactViewerAddressSaysHostHead(address, hostHead)) return@LaunchedEffect
+        controller.evaluateJavaScript(raftArtifactViewerHostHeadScript(scope.webOrigin, hostHead))
     }
     val drawsBar = pageAcked && visible && !loadError
     // #301: one loader. The App's splash covers the page until the page says its content loaded
@@ -1144,6 +1225,7 @@ private fun RaftArtifactViewerWebBody(
     val currentLoadError by rememberUpdatedState(loadError)
     val currentVisible by rememberUpdatedState(visible)
     val currentNavigated by rememberUpdatedState(navigated)
+    val currentHostHeadMoved by rememberUpdatedState(hostHeadMoved)
     DisposableEffect(Unit) {
         onDispose {
             raftLogInfo(RAFT_ARTIFACT_VIEWER_DIAGNOSTICS_TAG, "artifact_viewer_closed $latestState")
@@ -1159,14 +1241,18 @@ private fun RaftArtifactViewerWebBody(
                 raftLogWarn(RAFT_ARTIFACT_VIEWER_DIAGNOSTICS_TAG, "artifact_viewer_kept_dropped reason=dispose_embed_contract_missing")
                 RaftArtifactViewerMemory.cache.forgetKeptDocument(scope)
                 raftWebViewKeepAliveClear()
+            } else if (currentHostHeadMoved) {
+                raftLogInfo(RAFT_ARTIFACT_VIEWER_DIAGNOSTICS_TAG, "artifact_viewer_kept_dropped reason=head_changed_while_shown")
+                RaftArtifactViewerMemory.cache.forgetKeptDocument(scope)
+                raftWebViewKeepAliveClear()
             } else if (!currentLeft && !currentLoadError && currentVisible && currentNavigated) {
                 RaftArtifactViewerMemory.cache.rememberKeptDocument(
                     scope,
                     currentShownTarget,
-                    raftArtifactViewerEmbeddedPageUrl(host.webBaseUrl, currentShownTarget, conversationId),
+                    raftArtifactViewerEmbeddedPageUrl(host.webBaseUrl, currentShownTarget, conversationId, documentHostHead, raftEmbeddedWebLangTag()),
                     currentAppToken,
                 )
-                RaftArtifactViewerMemory.cache.noteKeptBoot(scope, conversationId)
+                RaftArtifactViewerMemory.cache.noteKeptBoot(scope, conversationId, documentHostHead)
             }
         }
     }
@@ -1274,6 +1360,8 @@ private fun RaftArtifactViewerWebBody(
                                         settingsWebViewAuthStorageJavaScript(session, binding),
                                         ArtifactLinkTarget(shownTarget.id, sameArtifact.version),
                                         conversationId,
+                                        hostHead,
+                                        raftEmbeddedWebLangTag(),
                                     )
                                 )
                             }
@@ -1327,11 +1415,14 @@ internal const val RAFT_ARTIFACT_VIEWER_SPLASH_COVER_TAG = "artifact_viewer_spla
 /**
  * The App's loading splash over the viewer's body (#301): the web's ArtifactLoadingSplash, ported
  * ([RaftArtifactLoadingSplash]), where the page's own will show, so the hand-over moves nothing.
- * The page's splash lies over its content area, under its toolbar row and above its bottom safe
- * area; that row takes the place of the App's bar when the page draws itself (both about 56 dp), so
- * centred in the body below the App's bar the icon is where the page's will be. The bottom: what the
- * WebView is padded by (Android) or the safe area the page keeps (iOS, `safe-bottom`). In Desktop
- * Mode the page is fitted from a desktop width, so its splash is drawn smaller: scaled alike.
+ * The page's splash lies over its content area, under its toolbar and above its bottom safe area;
+ * that toolbar takes the place of the App's bar when the page draws itself. In the Artifact column
+ * it is one row exactly the App's head height, which the App sends as `hostHead`
+ * ([raftArtifactViewerHostHead]), so centred in the body below the App's bar the icon is where the
+ * page's will be. A page of its own (a phone) gets no `hostHead` and keeps its own toolbar, whose
+ * height is the page's, not the App's bar's. The bottom: what the WebView is padded by (Android) or
+ * the safe area the page keeps (iOS, `safe-bottom`). In Desktop Mode the page is fitted from a
+ * desktop width, so its splash is drawn smaller: scaled alike.
  * The kind is the card's (null: a document and "Loading Artifact", as the page's link screen); one
  * learned mid-cycle takes over at the next cycle ([RaftArtifactSplashKindState]). [loadedAt]: the
  * page said its content loaded: the ending plays, then [onGone].
@@ -1339,7 +1430,8 @@ internal const val RAFT_ARTIFACT_VIEWER_SPLASH_COVER_TAG = "artifact_viewer_spla
  * One bar (#301): while the App's bar is up the cover hides the whole body, the page's own loading
  * toolbar row (Back alone, `back=host`) too, so no second bar shows under the App's; [underPageBar]
  * (the page draws the only bar, `hostToolbar=1`, the App's is gone) it starts under the page's bar
- * ([raftArtifactViewerSplashCoverTop]), so that bar shows and the splash does not move.
+ * ([raftArtifactViewerSplashCoverTop]: the App's head height, which the page's bar has in the
+ * Artifact column), so that bar shows and the splash does not move.
  */
 @Composable
 internal fun RaftArtifactViewerSplashCover(
@@ -1432,24 +1524,66 @@ private suspend fun raftArtifactViewerSaveDownload(
     alreadySavedMessage: String,
     savedToFilesMessage: String,
     failedMessage: String,
+    openActionLabel: String,
+    openResultTerms: RaftAttachmentOpenResultTerms,
 ) {
-    val owner = currentAttachmentOwnerLease(host.storeScope)
+    raftSaveArtifactDownloadWithOpenToast(
+        bridge = host.bridge,
+        scope = scope,
+        owner = currentAttachmentOwnerLease(host.storeScope),
+        readSession = {
+            runCatchingPreservingCancellation { host.sharedStores.authStore(host.storeScope).readSession() }
+                .getOrNull()
+        },
+        download = download,
+        savedMessage = savedMessage,
+        savedToDownloadsMessage = savedToDownloadsMessage,
+        alreadySavedMessage = alreadySavedMessage,
+        savedToFilesMessage = savedToFilesMessage,
+        failedMessage = failedMessage,
+        openActionLabel = openActionLabel,
+        openResultTerms = openResultTerms,
+    )
+}
+
+internal suspend fun raftSaveArtifactDownloadWithOpenToast(
+    bridge: BridgeModule,
+    scope: RaftArtifactViewerScope,
+    owner: AttachmentOwnerLease?,
+    readSession: suspend () -> StoredAuthSession?,
+    download: RaftWebViewDownload,
+    savedMessage: String,
+    savedToDownloadsMessage: String,
+    alreadySavedMessage: String,
+    savedToFilesMessage: String,
+    failedMessage: String,
+    openActionLabel: String,
+    openResultTerms: RaftAttachmentOpenResultTerms,
+    hasDesktopDownloadBar: Boolean = raftPlatformSavedFileHost() != null,
+    openScope: kotlinx.coroutines.CoroutineScope = raftSavedDownloadToastOpenScope,
+) {
+    var savedAttachmentId = ""
+    var fallbackFileName = ""
+    var savedMimeType: String? = null
     val result: JSONObject? =
         when (download) {
             is RaftWebViewDownload.Failed -> {
-                host.bridge.log("artifact_viewer_download action=save result=failed reason=${download.reason}")
-                host.bridge.errorToast(failedMessage)
+                bridge.log("artifact_viewer_download action=save result=failed reason=${download.reason}")
+                bridge.errorToast(failedMessage)
                 return
             }
             is RaftWebViewDownload.Bytes -> {
                 if (owner == null) {
-                    host.bridge.log("artifact_viewer_download action=save kind=bytes result=no_owner")
-                    host.bridge.errorToast(failedMessage)
+                    bridge.log("artifact_viewer_download action=save kind=bytes result=no_owner")
+                    bridge.errorToast(failedMessage)
                     return
                 }
-                host.bridge.log("artifact_viewer_download action=save kind=bytes bytes=${download.bytes.size}")
+                bridge.log("artifact_viewer_download action=save kind=bytes bytes=${download.bytes.size}")
                 val token = raftArtifactViewerDownloadCacheId(scope.serverId, download.fileName + "|" + kotlin.random.Random.nextLong())
-                host.bridge.saveAttachment(
+                savedAttachmentId = token
+                fallbackFileName = download.fileName
+                savedMimeType = download.mimeType
+                bridge.saveAttachment(
                     url = "${AttachmentDownloadLocalBytes.SCHEME}://download/$token",
                     attachmentId = token,
                     fileName = download.fileName,
@@ -1460,20 +1594,24 @@ private suspend fun raftArtifactViewerSaveDownload(
             }
             is RaftWebViewDownload.Url -> {
                 val session =
-                    runCatchingPreservingCancellation { host.sharedStores.authStore(host.storeScope).readSession() }
-                        .getOrNull()
+                    readSession()
                         ?.takeIf { it.user.id.trim() == scope.accountId && it.accessToken.isNotBlank() }
                 if (owner == null || session == null || raftWebOriginOf(download.url) != raftWebOriginOf(scope.webOrigin)) {
-                    host.bridge.log("artifact_viewer_download action=save kind=url result=refused")
-                    host.bridge.errorToast(failedMessage)
+                    bridge.log("artifact_viewer_download action=save kind=url result=refused")
+                    bridge.errorToast(failedMessage)
                     return
                 }
-                host.bridge.log("artifact_viewer_download action=save kind=url")
+                bridge.log("artifact_viewer_download action=save kind=url")
                 val pageName = download.pageFileName
-                host.bridge.saveAttachment(
+                val cacheId = raftArtifactViewerDownloadCacheId(scope.serverId, download.url)
+                val requestedName = raftWebViewDownloadFileName(pageName, download.contentDisposition, download.url, download.mimeType)
+                savedAttachmentId = cacheId
+                fallbackFileName = requestedName
+                savedMimeType = download.mimeType
+                bridge.saveAttachment(
                     url = download.url,
-                    attachmentId = raftArtifactViewerDownloadCacheId(scope.serverId, download.url),
-                    fileName = raftWebViewDownloadFileName(pageName, download.contentDisposition, download.url, download.mimeType),
+                    attachmentId = cacheId,
+                    fileName = requestedName,
                     owner = owner,
                     mimeType = download.mimeType,
                     // The page's own name wins; else the name the response gives.
@@ -1488,8 +1626,8 @@ private suspend fun raftArtifactViewerSaveDownload(
         }
     when (val status = result?.optString("status").orEmpty()) {
         "saved" -> {
-            host.bridge.log("artifact_viewer_download action=save result=saved")
-            host.bridge.toast(
+            bridge.log("artifact_viewer_download action=save result=saved")
+            val toastMessage =
                 raftArtifactViewerSavedToast(
                     result,
                     saved = savedMessage,
@@ -1497,15 +1635,33 @@ private suspend fun raftArtifactViewerSaveDownload(
                     alreadySaved = alreadySavedMessage,
                     savedToFiles = savedToFilesMessage,
                 )
+            val openTarget =
+                owner?.let { currentOwner ->
+                    raftSavedDownloadTargetFromResult(
+                        attachmentId = savedAttachmentId,
+                        fallbackFileName = fallbackFileName,
+                        owner = currentOwner,
+                        mimeType = savedMimeType,
+                        result = result,
+                    )
+                }
+            raftShowSavedDownloadToast(
+                bridge = bridge,
+                message = toastMessage,
+                openLabel = openActionLabel,
+                target = openTarget,
+                openResultTerms = openResultTerms,
+                hasDesktopDownloadBar = hasDesktopDownloadBar,
+                openScope = openScope,
             )
         }
-        "cancelled" -> host.bridge.log("artifact_viewer_download action=save result=cancelled")
+        "cancelled" -> bridge.log("artifact_viewer_download action=save result=cancelled")
         else -> {
-            host.bridge.log(
+            bridge.log(
                 "artifact_viewer_download action=save result=failed status=${status.ifBlank { "none" }} " +
                     "errorKind=${result?.optString("errorKind").orEmpty().ifBlank { "none" }}"
             )
-            host.bridge.errorToast(failedMessage)
+            bridge.errorToast(failedMessage)
         }
     }
 }

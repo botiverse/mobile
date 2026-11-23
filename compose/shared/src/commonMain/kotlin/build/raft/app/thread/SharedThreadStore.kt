@@ -4,9 +4,6 @@ import build.raft.app.model.PerReceiverReadStateChanged
 import build.raft.app.data.ConversationReadOnSight
 import build.raft.app.data.raftConversationReadOnSight
 import build.raft.app.data.DataResult
-import build.raft.app.data.rwRetryAfterMillis
-import build.raft.app.data.RaftStaleReadRecovery
-import build.raft.app.data.isRwOverloadedError
 import build.raft.app.data.EmptyReason
 import build.raft.app.data.appendSharedThreadSentMessageFromPage
 import build.raft.app.data.MarkUnreadOutcome
@@ -19,7 +16,6 @@ import build.raft.app.data.SharedForegroundLoadGate
 import build.raft.app.data.SharedForegroundThreadKey
 import build.raft.app.data.ThreadActionCard
 import build.raft.app.data.ThreadReplySummariesSnapshot
-import build.raft.app.data.ThreadListSnapshot
 import build.raft.app.data.ThreadPendingSendDrainer
 import build.raft.app.data.ThreadPendingSendJournal
 import build.raft.app.data.ThreadPendingSendJournalDrainStore
@@ -67,7 +63,6 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
-import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -81,7 +76,6 @@ import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
-import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -322,7 +316,8 @@ internal class SharedThreadStore(
     private var visibleReadShown: Boolean = true
     // botiverse/slock #11687: the thread this page marked unread. Its visible reads are held while
     // the page shows it (web threadUnreadHold / autoReadHold), so the open page does not read it
-    // again at once; leaving the page (a new store) or showing another thread ends the hold.
+    // again at once; leaving the page (a new store) or showing another thread ends the hold, and so
+    // does sending in a channel or DM marked here (#16250, [endConversationUnreadHoldOnSend]).
     private var markedUnreadHoldChannelId: String? = null
     // #proj-mobile:#70: the thread whose Mark as Unread was answered 202 (admitted, result unknown). The
     // `read_state:updated` for it decides; it says so (the nothing toast) only while the hold is still on.
@@ -670,7 +665,7 @@ internal class SharedThreadStore(
                         historyStartFocusRequest = it.historyStartFocusRequest + 1
                     )
                 }
-            is SharedThreadIntent.ResolveUnreadThreadParents -> resolveUnreadThreadParents(intent.threadChannelIds)
+            is SharedThreadIntent.ResolveUnreadThreadParents -> unreadThreadParentLookup.resolve(intent.threadChannelIds)
             is SharedThreadIntent.JumpToMessage -> {
                 jumpToMessage(intent.messageId, intent.switchToTab, intent.unreadThreadPill)
                 intent.prewarmThreadChannelId?.let { threadId -> prewarmUnreadThread(threadId, intent.messageId) }
@@ -1035,11 +1030,12 @@ internal class SharedThreadStore(
                 null
             }
         // artin 10-23: the row the user tapped in Activity already holds this conversation's latest
-        // message (a thread row its latest replies). With no canonical memory frame, those messages are
-        // a candidate for the first frame: matched to this route's stream and owner, filling only what the
-        // stand-in lacks, replaced by the canonical load. They also make waiting for the baseline moot.
+        // message (a thread row its latest replies). Read it whenever there is no live in-memory
+        // candidate or an anchored open's hot memory cache lacks the focused message (#265 Phase 2),
+        // so tapping an Activity row never flashes a blank loading screen while memory already holds
+        // the conversation and Activity already holds the anchor.
         val activitySeed =
-            if (cached == null && current == null && producerContext != null) {
+            if (current == null && producerContext != null && (cached == null || cached.lacksFocusedAnchor())) {
                 dataSource.activityOpenSeedMessagesIfCurrent(routeIdentity, producerContext)
             } else {
                 emptyList()
@@ -1050,12 +1046,40 @@ internal class SharedThreadStore(
         if (producerContext != null) {
             watchThreadJoinConfirmations(routeIdentity, producerContext, routeContextPayload.durableReplyParentOrNull())
         }
-        // #proj-mobile:#265 Path 1: a superseded memory entry is already verified for this exact owner
-        // and route (only its freshness generation advanced while away). When it satisfies any focused
-        // anchor on its own (or together with the synchronous Activity seed) and there is no remembered
-        // access failure, publish it synchronously on Frame 1 before suspending on SQLite so cached
-        // opens never flash a loading shell. SQLite and network refresh still run right after and
-        // upgrade seamlessly if disk or server holds newer messages.
+        // #proj-mobile:#265: publish a verified in-memory frame synchronously on Frame 1 before
+        // suspending on SQLite whenever either:
+        // - Path 1: a superseded memory entry satisfies any focused anchor (alone or with Activity seed);
+        // - Path 2: an anchored open's hot memory cache lacks the focused message, yet Activity already
+        //   holds that newer message.
+        // SQLite and network refresh still run right after and upgrade seamlessly if disk or server
+        // holds newer messages or a richer anchored island.
+        val immediateCachedAnchorSeedBodies =
+            if (cached != null && cached.lacksFocusedAnchor() && activitySeed.isNotEmpty()) {
+                activitySeed.withLocalFullMessages(cached.messages)
+            } else {
+                emptyList()
+            }
+        val immediateCachedAnchorCandidate =
+            if (
+                cached != null &&
+                    current == null &&
+                    cached.lacksFocusedAnchor() &&
+                    immediateCachedAnchorSeedBodies.isNotEmpty() &&
+                    rememberedAccessFailure == null &&
+                    producerContext != null
+            ) {
+                cached
+                    .withActivityOpenSeed(immediateCachedAnchorSeedBodies)
+                    .takeUnless { it.lacksFocusedAnchor() }
+                    ?.copy(
+                        backgroundRefreshing = false,
+                        errorCode = null,
+                        errorServerMessage = null,
+                        errorTraceId = null,
+                    )
+            } else {
+                null
+            }
         val immediateSupersededSeedBodies =
             if (supersededMemory != null) {
                 activitySeed.withLocalFullMessages(supersededMemory.messages)
@@ -1082,21 +1106,28 @@ internal class SharedThreadStore(
             } else {
                 null
             }
-        var publishedImmediateSuperseded: RaftThreadScreenPayload? = null
-        var immediateSupersededKeptAccess = false
-        if (immediateSupersededCandidate != null && producerContext != null) {
+        val immediateFirstFrameFromCachedAnchor = immediateCachedAnchorCandidate != null
+        val immediateSourceMemory = if (immediateFirstFrameFromCachedAnchor) cached else supersededMemory
+        val immediateFirstFrameCandidate = immediateCachedAnchorCandidate ?: immediateSupersededCandidate
+        val immediateFrameAddedActivitySeed =
+            immediateFirstFrameCandidate != null &&
+                immediateSourceMemory != null &&
+                immediateFirstFrameCandidate.messages.size > immediateSourceMemory.messages.size
+        var publishedImmediateFrame: RaftThreadScreenPayload? = null
+        var immediateFrameKeptAccess = false
+        if (immediateFirstFrameCandidate != null && producerContext != null) {
             if (dataSource.isCurrentReplyCacheProvenance(producerContext.provenance)) {
                 dataSource.seedThreadAuthorProfiles(
                     serverId = session?.currentServerId,
-                    payload = immediateSupersededCandidate,
-                    source = "superseded_cache",
+                    payload = immediateFirstFrameCandidate,
+                    source = if (immediateFirstFrameFromCachedAnchor) "cached_anchor_seed" else "superseded_cache",
                 )
             }
             val immediateVisiblePayload =
                 dataSource.restorePendingLocalSends(
                     provenance = producerContext.provenance,
                     route = routeIdentity,
-                    canonicalPayload = immediateSupersededCandidate,
+                    canonicalPayload = immediateFirstFrameCandidate,
                 )
             val keptAccess =
                 threadId != null &&
@@ -1104,7 +1135,14 @@ internal class SharedThreadStore(
                     dataSource.hasResolvedThreadAccessIfCurrent(threadId, producerContext.provenance)
             var immediateStale = false
             initialAccessStateMutex.withLock {
-                if (!staleTokenStillCurrent(staleToken, "thread_start", "superseded_first_frame", routeContextPayload)) {
+                if (
+                    !staleTokenStillCurrent(
+                        staleToken,
+                        "thread_start",
+                        if (immediateFirstFrameFromCachedAnchor) "cached_anchor_first_frame" else "superseded_first_frame",
+                        routeContextPayload,
+                    )
+                ) {
                     immediateStale = true
                     return@withLock
                 }
@@ -1133,13 +1171,21 @@ internal class SharedThreadStore(
                         true
                     }
                 if (admitted == true) {
-                    publishedImmediateSuperseded = immediateVisiblePayload
-                    immediateSupersededKeptAccess = keptAccess
+                    publishedImmediateFrame = immediateVisiblePayload
+                    immediateFrameKeptAccess = keptAccess
                 }
             }
             if (immediateStale) return
-            if (publishedImmediateSuperseded != null) {
-                if (immediateSupersededKeptAccess) {
+            if (publishedImmediateFrame != null) {
+                if (immediateFirstFrameFromCachedAnchor) {
+                    diagnosticsLogger?.invoke(
+                        "thread_start_cached_anchor_seed threadId=${threadId.orEmpty()} " +
+                            "anchor=${routeContextPayload.focusedMessageId.orEmpty()} " +
+                            "cachedMessages=${cached?.messages?.size ?: 0} " +
+                            "seedAdded=${immediateFirstFrameCandidate.messages.size - (cached?.messages?.size ?: 0)}"
+                    )
+                }
+                if (immediateFrameKeptAccess) {
                     diagnosticsLogger?.invoke("thread_start_access_kept threadId=${threadId.orEmpty()}")
                 }
                 diagnosticsLogger?.invoke(
@@ -1195,9 +1241,17 @@ internal class SharedThreadStore(
             needsDurableAnchoredLookup &&
                 durableLastKnown != null &&
                 !durableLastKnown.lacksFocusedAnchor()
+        val publishedImmediateFromCachedAnchor =
+            publishedImmediateFrame != null && immediateFirstFrameFromCachedAnchor
+        val shouldUpgradeImmediateFromDisk =
+            when {
+                publishedImmediateFromCachedAnchor -> durableAnchoredOverCached
+                publishedImmediateFrame != null -> diskStrictlyNewerThanMemory
+                else -> false
+            }
         val shouldAdoptDurableFrame =
             when {
-                publishedImmediateSuperseded != null -> diskStrictlyNewerThanMemory
+                publishedImmediateFrame != null -> shouldUpgradeImmediateFromDisk
                 cached != null -> durableAnchoredOverCached
                 else -> durableLastKnown != null && supersededFirstFrame == null
             }
@@ -1210,7 +1264,7 @@ internal class SharedThreadStore(
                     "chosen=${if (shouldAdoptDurableFrame) "durable" else "memory"}"
             )
         }
-        if (supersededFirstFrame != null && publishedImmediateSuperseded == null) {
+        if (supersededFirstFrame != null && publishedImmediateFrame == null) {
             dataSource.seedThreadAuthorProfiles(
                 serverId = session?.currentServerId,
                 payload = supersededFirstFrame,
@@ -1255,9 +1309,9 @@ internal class SharedThreadStore(
         // route-matched local frame already holds that message.
         val activitySeedBodies =
             activitySeed.withLocalFullMessages(
-                listOfNotNull(supersededMemory, durableLastKnownWithReplies).flatMap { it.messages }
+                listOfNotNull(cached, supersededMemory, durableLastKnownWithReplies).flatMap { it.messages }
             )
-        if (publishedImmediateSuperseded != null) {
+        if (publishedImmediateFrame != null) {
             var staleDropped = false
             var adoptedDurableScope: SyncScopeKey? = null
             initialAccessStateMutex.withLock {
@@ -1270,7 +1324,7 @@ internal class SharedThreadStore(
                         dataSource.withCurrentReplyCacheProvenance(context.provenance) {
                             val liveState = _state.value
                             val livePayload = liveState.payload
-                            if (!diskStrictlyNewerThanMemory || durableLastKnownWithReplies == null) {
+                            if (!shouldUpgradeImmediateFromDisk || durableLastKnownWithReplies == null) {
                                 // Disk is equal or older than the already-rendered Frame-1 memory copy:
                                 // keep the richer memory state intact (metadata, originMessage, older pages,
                                 // and any live realtime/access updates) and only enrich truncated seeds.
@@ -1282,30 +1336,14 @@ internal class SharedThreadStore(
                                 }
                             } else {
                                 val liveSeq = livePayload.newestServerSeqOrNull() ?: Long.MIN_VALUE
-                                if (diskSeq > liveSeq) {
+                                val diskAdvancesLive =
+                                    diskSeq > liveSeq ||
+                                        (immediateFrameAddedActivitySeed && livePayload.durableLastKnown && diskSeq >= liveSeq)
+                                if (diskAdvancesLive) {
                                     // Merge disk timeline fields onto livePayload so ReplyThread originMessage,
                                     // header metadata (members/tasks/settingsActions), canonical access, and
                                     // live channelArchived updates are never wiped by a bare routePayload disk copy.
-                                    val mergedFromDisk =
-                                        livePayload.copy(
-                                            status = durableLastKnownWithReplies.status,
-                                            durableLastKnown = durableLastKnownWithReplies.durableLastKnown,
-                                            messages = durableLastKnownWithReplies.messages,
-                                            timelineGaps = durableLastKnownWithReplies.timelineGaps,
-                                            canLoadMoreBefore = durableLastKnownWithReplies.canLoadMoreBefore,
-                                            durableReachedOldest = durableLastKnownWithReplies.durableReachedOldest,
-                                            canLoadMoreAfter = durableLastKnownWithReplies.canLoadMoreAfter,
-                                            olderMessagesStatus = durableLastKnownWithReplies.olderMessagesStatus,
-                                            newerMessagesStatus = durableLastKnownWithReplies.newerMessagesStatus,
-                                            errorCode = null,
-                                            originMessage = durableLastKnownWithReplies.originMessage ?: livePayload.originMessage,
-                                            originStatus =
-                                                if (durableLastKnownWithReplies.originMessage != null) {
-                                                    durableLastKnownWithReplies.originStatus
-                                                } else {
-                                                    livePayload.originStatus
-                                                },
-                                        )
+                                    val mergedFromDisk = livePayload.withDurableTimelineOverlay(durableLastKnownWithReplies)
                                     val upgradedCandidate = mergedFromDisk.withActivityOpenSeed(activitySeedBodies)
                                     val upgradedVisible =
                                         dataSource.restorePendingLocalSends(
@@ -1326,6 +1364,11 @@ internal class SharedThreadStore(
                                             "thread_visible_payload threadId=${threadId.orEmpty()} status=${upgradedVisible.status} " +
                                                 "messages=${upgradedVisible.messages.size} " + upgradedVisible.originDiagnostics()
                                         )
+                                    }
+                                } else {
+                                    val upgraded = livePayload.withActivitySeedBodiesFrom(durableLastKnownWithReplies)
+                                    if (upgraded !== livePayload) {
+                                        reduceState(liveState.copy(payload = upgraded))
                                     }
                                 }
                             }
@@ -1364,9 +1407,13 @@ internal class SharedThreadStore(
                 scope.launch { dataSource.touchDurableUserAccess(readScope) }
             }
         } else {
+            val durableWithMemoryMetadata =
+                durableLastKnownWithReplies?.let { durable ->
+                    supersededMemory?.withDurableTimelineOverlay(durable) ?: durable
+                }
             val standInFirstFrame =
                 supersededFirstFrame
-                    ?: durableLastKnownWithReplies
+                    ?: durableWithMemoryMetadata
                     ?: if (threadId == null) {
                         routeContextPayload
                     } else {
@@ -1387,8 +1434,10 @@ internal class SharedThreadStore(
             // Such an open shows a loading state at the anchor instead (the Activity seed when it holds the
             // message); the candidate is kept only to stand in if the load fails.
             val durableAnchoredWinner =
-                durableLastKnownWithReplies?.takeIf {
-                    cached != null && cached.lacksFocusedAnchor() && !it.lacksFocusedAnchor()
+                if (cached != null && durableAnchoredOverCached && durableLastKnownWithReplies != null) {
+                    cached.withDurableTimelineOverlay(durableLastKnownWithReplies)
+                } else {
+                    null
                 }
             val firstFrameCandidate = durableAnchoredWinner ?: cached ?: current ?: seededStandIn
             val anchorPending =
@@ -1443,15 +1492,16 @@ internal class SharedThreadStore(
                 "thread_visible_payload threadId=${threadId.orEmpty()} status=${visiblePayload.status} " +
                     "messages=${visiblePayload.messages.size} " + visiblePayload.originDiagnostics()
             )
-            // Hands 4cf4c781: a reopen that shows this route's memory frame keeps the access this owner
-            // already resolved for it, so the composer / Join bar stays up while the refresh runs. The
-            // refresh still applies the canonical access it returns (canonicalAccessResolved stays false)
-            // and a terminal NoPermission closes it. Reply threads keep their parent-row lookup.
+            // Hands 4cf4c781: a reopen that shows this route's memory frame (or a durable anchored
+            // timeline overlaid onto that memory frame's verified metadata) keeps the access this
+            // owner already resolved for it, so the composer / Join bar stays up while the refresh
+            // runs. The refresh still applies the canonical access it returns (canonicalAccessResolved
+            // stays false) and a terminal NoPermission closes it. Reply threads keep their parent-row lookup.
             val keptResolvedAccess =
                 rememberedAccessFailure == null &&
                     threadId != null &&
-                    durableAnchoredWinner == null &&
-                    (cached ?: current) != null &&
+                    !anchorPending &&
+                    (cached ?: current ?: supersededMemory) != null &&
                     routeIdentity.surfaceKind != RaftThreadSurfaceKind.ReplyThread &&
                     producerContext?.provenance?.let { provenance ->
                         dataSource.hasResolvedThreadAccessIfCurrent(threadId, provenance)
@@ -4351,6 +4401,21 @@ internal class SharedThreadStore(
     }
 
     /**
+     * botiverse/slock #16250 (web messageStore.sendMessage forgetManualUnread): a message the person
+     * sends from this page into the channel or DM they marked unread here ends that hold. It ends as
+     * the send starts, whatever its answer, as web forgets the mark before its request: their own
+     * message reads the conversation and later ones are read on sight again. A reply thread's hold
+     * stays, as web's thread hold (threadUnreadHold) is not ended by a reply.
+     */
+    private fun endConversationUnreadHoldOnSend(payload: RaftThreadScreenPayload) {
+        if (payload.surfaceKind == RaftThreadSurfaceKind.ReplyThread) return
+        val channelId = markedUnreadHoldChannelId?.takeIf { it == payload.cacheThreadId() } ?: return
+        markedUnreadHoldChannelId = null
+        pendingMarkUnreadChannelId = null
+        diagnosticsLogger?.invoke("thread_mark_unread_hold_end channelId=$channelId reason=sent")
+    }
+
+    /**
      * #proj-mobile:#70 (Tenny): the `read_state:updated` that answers a 202 Mark as Unread. Marked (a
      * count or the mark) keeps the hold; not marked reads as a 200 nothing to mark (the toast, the
      * hold ends), but only while the person is still on the thread (the hold is on). Once they left,
@@ -5980,6 +6045,7 @@ internal class SharedThreadStore(
                         ThreadPendingSendJournal.ConsumeResult.NotFound -> Unit
                     }
                 }
+                if (emitted) endConversationUnreadHoldOnSend(nextPayload)
                 emitted
             }
         } ?: false
@@ -6424,106 +6490,15 @@ internal class SharedThreadStore(
         }
     }
 
-    /** Unread-thread ids already asked of the followed-threads list on this page (never re-asked). */
-    private val unreadThreadParentsRequested = mutableSetOf<String>()
-    private var unreadThreadParentsInFlight = false
-    /**
-     * Task #164: while the followed-threads list is overloaded or stale, the ids it could not resolve
-     * are asked again with the shared recovery backoff (foreground only; at once on return or reconnect).
-     */
-    private val unreadThreadParentsRecovery =
-        RaftStaleReadRecovery(
+    /** Parents of unread threads outside the loaded window; see [ThreadUnreadThreadParents]. */
+    private val unreadThreadParentLookup =
+        ThreadUnreadThreadParents(
+            dataSource = dataSource,
             scope = scope,
-            label = "followed_threads",
-            diagnosticsLogger = { line -> diagnosticsLogger?.invoke(line) },
+            diagnosticsLogger = diagnosticsLogger,
+            currentState = { _state.value },
+            reduceState = ::reduceState,
         )
-
-    /** Ids asked for while a lookup was in flight: looked up right after it instead of dropped. */
-    private val unreadThreadParentsQueued = LinkedHashSet<String>()
-
-    private suspend fun resolveUnreadThreadParents(threadChannelIds: Set<String>) {
-        val routeIdentity = _state.value.payload.resolveThreadRouteIdentity()
-        val channelId = routeIdentity.timelineChannelId?.takeIf { routeIdentity.surfaceKind == RaftThreadSurfaceKind.Channel }
-        if (channelId == null) {
-            unreadThreadParentsRecovery.reset()
-            return
-        }
-        if (unreadThreadParentsInFlight) {
-            // The page asks again only when its id set changes, so a request dropped here was lost
-            // for good and its threads stayed without a target (artin: the pill worked once).
-            unreadThreadParentsQueued += threadChannelIds
-            return
-        }
-        val pending =
-            threadChannelIds.filterTo(LinkedHashSet()) { id ->
-                id.isNotBlank() && id !in unreadThreadParentsRequested && id !in _state.value.unreadThreadParents
-            }
-        if (pending.isEmpty()) {
-            unreadThreadParentsRecovery.reset()
-            return
-        }
-        unreadThreadParentsInFlight = true
-        unreadThreadParentsRequested += pending
-        try {
-            val result = dataSource.fetchUnreadFollowedThreads()
-            if (_state.value.payload.resolveThreadRouteIdentity() != routeIdentity) {
-                diagnosticsLogger?.invoke("thread_unread_thread_parents_drop reason=route_changed")
-                unreadThreadParentsRecovery.reset()
-                return
-            }
-            val threads = (result as? DataResult.Content)?.data?.threads
-            // Task #164: the read warehouse being behind is temporary. Ids it could not resolve
-            // (an overload, or a remembered list that may predate them) may be asked again by the
-            // next trigger; every other answer stays final for this page, as before.
-            val rwStale = result?.isRwOverloadedError == true ||
-                (result as? DataResult.Content)?.data?.staleReason != null
-            if (threads == null) {
-                if (rwStale) {
-                    unreadThreadParentsRequested -= pending
-                    scheduleUnreadThreadParentsRecovery(pending, result)
-                }
-                diagnosticsLogger?.invoke(
-                    "thread_unread_thread_parents_result result=${result?.let { it::class.simpleName } ?: "unavailable"} " +
-                        "requested=${pending.size} rwStale=$rwStale"
-                )
-                return
-            }
-            val resolved = threads.toThreadUnreadThreadParents(channelId)
-            val unresolved = pending.filterNotTo(LinkedHashSet()) { it in resolved }
-            if (rwStale && unresolved.isNotEmpty()) {
-                unreadThreadParentsRequested -= unresolved
-                scheduleUnreadThreadParentsRecovery(unresolved, result)
-            } else {
-                unreadThreadParentsRecovery.reset()
-            }
-            diagnosticsLogger?.invoke(
-                "thread_unread_thread_parents_result result=content requested=${pending.size} " +
-                    "resolved=${pending.count { it in resolved }} channelThreads=${resolved.size}"
-            )
-            val latest = _state.value
-            val merged = latest.unreadThreadParents + resolved
-            if (merged != latest.unreadThreadParents) {
-                reduceState(latest.copy(unreadThreadParents = merged))
-            }
-        } finally {
-            unreadThreadParentsInFlight = false
-            if (unreadThreadParentsQueued.isNotEmpty() && currentCoroutineContext().isActive) {
-                val queued = unreadThreadParentsQueued.toSet()
-                unreadThreadParentsQueued.clear()
-                resolveUnreadThreadParents(queued)
-            }
-        }
-    }
-
-    private fun scheduleUnreadThreadParentsRecovery(ids: Set<String>, result: DataResult<ThreadListSnapshot>?) {
-        val retryAfterMillis =
-            (result as? DataResult.Content)?.data?.staleRetryAfterMillis
-                ?: (result as? DataResult.Error)?.error?.rwRetryAfterMillis
-        unreadThreadParentsRecovery.schedule(retryAfterMillis) {
-            resolveUnreadThreadParents(ids)
-            true
-        }
-    }
 
     /** The one unread-thread jump prewarm of this page (concurrency 1) and the thread it warms. */
     private var unreadThreadPrewarmJob: Job? = null
@@ -7089,3 +7064,45 @@ internal class SharedThreadViewModel(
 
 private val PendingReactionRealtimeGuard.key: String
     get() = "$messageId\u0000$emoji"
+
+/**
+ * #proj-mobile:#265: overlay a durable last-known timeline (newest page or anchored SQLite island)
+ * onto an owner-verified in-memory payload so header metadata (title/subtitle/members/tasks/
+ * settingsActions), live channelArchived state, membership/send capabilities, and ReplyThread
+ * originMessage are never wiped by a bare routePayload disk copy.
+ */
+private fun RaftThreadScreenPayload.withDurableTimelineOverlay(
+    durable: RaftThreadScreenPayload,
+): RaftThreadScreenPayload =
+    copy(
+        status = durable.status,
+        backgroundRefreshing = durable.backgroundRefreshing,
+        durableLastKnown = durable.durableLastKnown,
+        messages = durable.messages,
+        timelineGaps = durable.timelineGaps,
+        canLoadMoreBefore = durable.canLoadMoreBefore,
+        durableReachedOldest = durable.durableReachedOldest,
+        canLoadMoreAfter = durable.canLoadMoreAfter,
+        olderMessagesStatus = durable.olderMessagesStatus,
+        newerMessagesStatus = durable.newerMessagesStatus,
+        replySummariesAuthority = durable.replySummariesAuthority,
+        mainLoadFailed = false,
+        errorCode = null,
+        errorServerMessage = null,
+        errorTraceId = null,
+        originMessage = durable.originMessage ?: originMessage,
+        originPreview = durable.originPreview ?: originPreview,
+        originParentMessageId = durable.originParentMessageId ?: originParentMessageId,
+        originStatus =
+            if (durable.originMessage != null) {
+                durable.originStatus
+            } else {
+                originStatus
+            },
+        originErrorCode =
+            if (durable.originMessage != null) {
+                durable.originErrorCode
+            } else {
+                originErrorCode
+            },
+    ).withOriginReplyCountAtLeastLoadedReplies()

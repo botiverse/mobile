@@ -27,16 +27,18 @@ class RaftRelativeTimeConsumerTest {
         val timestamp = "2026-07-30T03:06:00Z"
 
         assertTrue(raftTimestampToggleAvailable(timestamp, context))
-        assertEquals("11:06", raftAbsoluteTimestampLabel(timestamp, context))
+        // The absolute label is the message row's time (web formatMessageTime; per language in RaftMessageTimeFormatTest).
+        assertEquals("11:06", raftMessageTimeLabel(timestamp, context, RaftEnglishMessageTime))
         assertEquals(
             "11:06 AM",
-            raftAbsoluteTimestampLabel(timestamp, context.copy(timeFormat = RaftTimeFormat12Hour))
+            raftMessageTimeLabel(timestamp, context.copy(timeFormat = RaftTimeFormat12Hour), RaftEnglishMessageTime)
         )
         assertEquals(
-            "07-30 11:06",
-            raftAbsoluteTimestampLabel(
+            "07/30 11:06",
+            raftMessageTimeLabel(
                 timestamp,
-                context.copy(todayEpochDay = raftEpochDayForDate(2026, 7, 31))
+                context.copy(todayEpochDay = raftEpochDayForDate(2026, 8, 1)),
+                RaftEnglishMessageTime
             )
         )
         assertEquals(

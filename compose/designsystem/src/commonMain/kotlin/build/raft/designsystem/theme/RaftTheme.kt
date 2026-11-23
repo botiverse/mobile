@@ -174,10 +174,11 @@ val LocalRaftSurfaceColor = staticCompositionLocalOf { Color.Unspecified }
  * characters take that language's forms. Null (the default) sets none and leaves the
  * device locale in charge. A span's own `localeList` (a user's name) still wins.
  *
- * [scale] picks the type scale ([RaftScale]). Null (the default) inherits the enclosing
+ * [scale] picks the layout scale ([RaftScale]). Null (the default) inherits the enclosing
  * [RaftTheme]'s; the outermost one follows the window width alone: [RaftScale.Wide] from
  * [RaftScale.WideMinWidth], else [RaftScale.Compact], touch or mouse alike. It follows the
- * window as it is resized.
+ * window as it is resized. The type scale ([RaftTheme.typeScale]) is the wide one only when
+ * [pointerInput] is [RaftPointerInput.Fine] as well, as on the Web.
  *
  * [pointerInput] picks the control metrics ([RaftPointerInput.controls]). Null inherits the
  * enclosing theme's; the outermost one follows the input in use ([RaftPointerInputState]): 44dp
@@ -205,11 +206,15 @@ fun RaftTheme(
     val resolvedFonts = fonts ?: rememberRaftFonts()
     val resolvedScale = scale ?: LocalRaftScale.current ?: raftAutoScale()
     val resolvedPointerInput = pointerInput ?: LocalRaftPointerInput.current ?: RaftPointerInputState.current
-    val typography = remember(resolvedFonts, localeList, resolvedScale) { RaftTypography.from(resolvedFonts, localeList, resolvedScale) }
+    // raft-ui styles.css "Desktop type" (raft-design #601): desktop sizes only on a wide window
+    // with a mouse or trackpad; a phone, and a touch screen at any width, keep the phone scale.
+    val typeScale = raftTypeScale(resolvedScale, resolvedPointerInput)
+    val typography = remember(resolvedFonts, localeList, typeScale) { RaftTypography.from(resolvedFonts, localeList, typeScale) }
     CompositionLocalProvider(
         LocalRaftColors provides colors,
         LocalRaftTypography provides typography,
         LocalRaftScale provides resolvedScale,
+        LocalRaftTypeScale provides typeScale,
         LocalRaftPointerInput provides resolvedPointerInput,
         LocalRaftControls provides resolvedPointerInput.controls,
         LocalRaftShapes provides RaftShapes(),
@@ -272,6 +277,14 @@ object RaftTheme {
     val scale: RaftScale
         @Composable @ReadOnlyComposable
         get() = LocalRaftScale.current ?: RaftScale.Compact
+
+    /**
+     * The scale of [typography]: [RaftScale.Wide] only on a wide window with a mouse or trackpad
+     * (raft-ui's desktop type), else [RaftScale.Compact]. [scale] is the layout's.
+     */
+    val typeScale: RaftScale
+        @Composable @ReadOnlyComposable
+        get() = LocalRaftTypeScale.current ?: RaftScale.Compact
 
     /** The input in effect ([RaftPointerInput]); [RaftPointerInput.Touch] outside any theme. */
     val pointerInput: RaftPointerInput

@@ -20,7 +20,6 @@ internal fun Pager.openSettingsAdministrationPage(
 internal val settingsAdministrationWebViewSpec =
     StandaloneSettingsWebViewSpec(
         surface = SettingsWebViewSurface.Administration,
-        includeLocaleQuery = true,
         buildWebUrl = ::settingsAdministrationWebViewUrl,
     )
 

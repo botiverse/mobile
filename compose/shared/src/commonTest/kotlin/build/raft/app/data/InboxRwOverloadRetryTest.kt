@@ -3,6 +3,7 @@ package build.raft.app.data
 import build.raft.app.model.ServerId
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.TestScope
+import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.currentTime
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
@@ -20,6 +21,7 @@ class InboxRwOverloadRetryTest {
 
     @Test
     fun overloadRetriesOnceAfterRetryAfterOnVirtualTime() = runTest {
+        val parseDispatcher = UnconfinedTestDispatcher(testScheduler)
         listOf(
             mapOf("Retry-After" to listOf("2")) to 2_000L,
             mapOf("retry-after" to listOf("60")) to 10_000L, // capped like web
@@ -28,7 +30,7 @@ class InboxRwOverloadRetryTest {
             val network = ScriptedInboxClient(this, listOf(overloaded(headers), ok()))
             val started = currentTime
 
-            val result = RealInboxRepository(InMemoryRaftAuthSessionStore(sampleSession()), network).loadInitial(ServerId("server-1"))
+            val result = RealInboxRepository(InMemoryRaftAuthSessionStore(sampleSession()), network, parseDispatcher = parseDispatcher).loadInitial(ServerId("server-1"))
 
             assertTrue(result is DataResult.Empty, "the retried 200 (no rows) is used: headers=$headers result=$result")
             assertEquals(listOf(started, started + expectedDelay), network.requestTimes, "headers=$headers")
@@ -37,8 +39,9 @@ class InboxRwOverloadRetryTest {
 
     @Test
     fun oneRetryOnlyAndOnlyForTheRetryableOverloadCode() = runTest {
+        val parseDispatcher = UnconfinedTestDispatcher(testScheduler)
         val twice = ScriptedInboxClient(this, listOf(overloaded(), overloaded(), ok()))
-        val failed = RealInboxRepository(InMemoryRaftAuthSessionStore(sampleSession()), twice).loadInitial(ServerId("server-1"))
+        val failed = RealInboxRepository(InMemoryRaftAuthSessionStore(sampleSession()), twice, parseDispatcher = parseDispatcher).loadInitial(ServerId("server-1"))
         assertEquals(2, twice.requestTimes.size, "never a second retry")
         assertEquals("server_unavailable", (failed as DataResult.Error).error.code)
 
@@ -48,7 +51,7 @@ class InboxRwOverloadRetryTest {
             HomeNetworkResponse(500, null, errorBodyText = """{"error":"x","code":"rw_overloaded","retryable":true}""")
         ).forEach { response ->
             val network = ScriptedInboxClient(this, listOf(response, ok()))
-            RealInboxRepository(InMemoryRaftAuthSessionStore(sampleSession()), network).loadInitial(ServerId("server-1"))
+            RealInboxRepository(InMemoryRaftAuthSessionStore(sampleSession()), network, parseDispatcher = parseDispatcher).loadInitial(ServerId("server-1"))
             assertEquals(1, network.requestTimes.size, "no retry for $response")
         }
     }

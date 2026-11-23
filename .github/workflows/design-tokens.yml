@@ -34,6 +34,12 @@ jobs:
       - name: Check generated theme decor art
         run: python3 tools/design-tokens/gen_theme_decor.py --check
 
+      - name: Check generated dimension tokens
+        run: python3 tools/design-tokens/gen_dimensions.py --check
+
+      - name: Check generated component tokens
+        run: python3 tools/design-tokens/gen_component_tokens.py --check
+
   # The committed Lucide Kotlin outputs (RaftLucideIconPaths.kt, RaftLucideIconCatalog.kt) must
   # match the generator run against the pinned Lucide tag, and the iOS asset catalog must hold
   # every manifest icon (generate_lucide_icons.py --check). The checkout is cached, so the

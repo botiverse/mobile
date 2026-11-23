@@ -271,6 +271,56 @@ class RaftMessageLinkResolverTest {
         }
     }
 
+    @Test
+    fun warmReturnLifecycleRetiredProbesRetryOnceAndResolveThreadReplyTaskAndShortIds() = runTest {
+        val retired = HomeNetworkResponse(0, null, errorBodyText = "network_request_lifecycle_retired")
+        val shortMid = mid.take(8)
+        val shortPid = pid.take(8)
+
+        // Both probes retired on the background->foreground edge, then succeed on the single retry.
+        val replyNetwork =
+            FakeMessageLinkNetwork(
+                channelResponses = listOf(retired, HomeNetworkResponse(200, channelBody())),
+                contextResponses = listOf(retired, HomeNetworkResponse(200, contextBody(mid, replyTarget()))),
+            )
+        val replyOpen =
+            assertIs<RaftMessageLinkResolution.Open>(
+                RaftMessageLinkResolver(replyNetwork).resolve(link(msg = shortMid, threadParent = shortPid), servers)
+            )
+        assertEquals(2, replyNetwork.requests.count { it.path == "channels/$cid" })
+        assertEquals(2, replyNetwork.requests.count { it.path == "messages/context/$shortMid" })
+        assertEquals(threadChannelId, replyOpen.sourceIdentity.threadChannelId)
+        val replyRequest = openThroughCoordinator(replyOpen)
+        assertEquals(ConversationKind.Thread, replyRequest.conversationIdentity.kind)
+        assertEquals(pid, replyRequest.conversationIdentity.threadParentMessageId())
+        assertEquals(mid, replyRequest.anchorMessageId)
+
+        // A task conversation link whose channel probe was retired still resolves as Task after retry.
+        val taskNetwork =
+            FakeMessageLinkNetwork(
+                channelResponses = listOf(retired, HomeNetworkResponse(200, channelBody(RaftTaskConversationChannelKind))),
+            )
+        val taskOpen =
+            assertIs<RaftMessageLinkResolution.Open>(
+                RaftMessageLinkResolver(taskNetwork).resolve(link(), servers)
+            )
+        assertEquals(2, taskNetwork.requests.count { it.path == "channels/$cid" })
+        assertEquals(ConversationKind.Task, openThroughCoordinator(taskOpen).conversationIdentity.kind)
+    }
+
+    @Test
+    fun repeatedLifecycleRetiredStopsAfterOneRetryAndOrdinaryOfflineDoesNotRetry() = runTest {
+        val retired = HomeNetworkResponse(0, null, errorBodyText = "network_request_lifecycle_retired")
+
+        val alwaysRetired = FakeMessageLinkNetwork(channel = retired)
+        assertIs<RaftMessageLinkResolution.Open>(RaftMessageLinkResolver(alwaysRetired).resolve(link(), servers))
+        assertEquals(2, alwaysRetired.requests.count { it.path == "channels/$cid" })
+
+        val ordinaryOffline = FakeMessageLinkNetwork(channel = HomeNetworkResponse(0, null))
+        assertIs<RaftMessageLinkResolution.Open>(RaftMessageLinkResolver(ordinaryOffline).resolve(link(), servers))
+        assertEquals(1, ordinaryOffline.requests.count { it.path == "channels/$cid" })
+    }
+
     private fun link(
         slug: String = this.slug,
         kind: ConversationKind = ConversationKind.Channel,
@@ -317,7 +367,9 @@ private data class RecordedMessageLinkRequest(
 private class FakeMessageLinkNetwork(
     private val channel: HomeNetworkResponse? = null,
     private val channelsById: Map<String, HomeNetworkResponse> = emptyMap(),
+    channelResponses: List<HomeNetworkResponse> = emptyList(),
     private val context: HomeNetworkResponse? = null,
+    contextResponses: List<HomeNetworkResponse> = emptyList(),
     private val throwOnContext: Boolean = false,
     private val throwOnChannel: Boolean = false,
     /** `GET /api/public/servers/:slug`; unset, the request is unexpected. */
@@ -325,6 +377,8 @@ private class FakeMessageLinkNetwork(
     private val throwOnPublicServer: Boolean = false,
 ) : RaftNetworkClient {
     val requests = mutableListOf<RecordedMessageLinkRequest>()
+    private val queuedChannelResponses = ArrayDeque(channelResponses)
+    private val queuedContextResponses = ArrayDeque(contextResponses)
 
     override suspend fun request(
         priority: DataRequestPriority,
@@ -339,13 +393,16 @@ private class FakeMessageLinkNetwork(
             path.startsWith("channels/") -> {
                 if (throwOnChannel) error("timeout")
                 val id = path.removePrefix("channels/")
-                channelsById[id]
+                queuedChannelResponses.removeFirstOrNull()
+                    ?: channelsById[id]
                     ?: channel
                     ?: HomeNetworkResponse(200, """{"id":"$id","name":"release-notes","type":"channel"}""")
             }
             path.startsWith("messages/context/") -> {
                 if (throwOnContext) error("socket closed")
-                context ?: HomeNetworkResponse(200, """{"channelId":null,"messages":[]}""")
+                queuedContextResponses.removeFirstOrNull()
+                    ?: context
+                    ?: HomeNetworkResponse(200, """{"channelId":null,"messages":[]}""")
             }
             path.startsWith("public/servers/") -> {
                 if (throwOnPublicServer) error("offline")

@@ -288,7 +288,6 @@ internal val settingsBillingSmokePayload =
 internal val settingsBillingWebViewSpec =
     StandaloneSettingsWebViewSpec(
         surface = SettingsWebViewSurface.Billing,
-        includeLocaleQuery = true,
         buildWebUrl = ::settingsBillingWebViewUrl,
     )
 

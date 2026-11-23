@@ -103,10 +103,12 @@ static NSString *RaftPageWindowId(NSString *controllerToken) {
     RaftIosAdaptivePanePublisher *_raftAdaptivePanePublisher;
     RaftIosWindowInsetsPublisher *_raftWindowInsetsPublisher;
     NSNumber *_darkTheme;
+    NSTimeInterval _raftPageInitUptime;
 }
 
 - (instancetype)initWithPageName:(NSString *)pageName pageData:(NSDictionary *)pageData {
     if (self = [super initWithNibName:nil bundle:nil]) {
+        _raftPageInitUptime = NSProcessInfo.processInfo.systemUptime;
         _raftControllerToken = NSUUID.UUID.UUIDString;
         _raftNavigationSession = [RaftAdaptiveNavigationSession new];
         _raftWindowInsetsPublisher = [[RaftIosWindowInsetsPublisher alloc] init];
@@ -253,6 +255,21 @@ static NSString *RaftPageWindowId(NSString *controllerToken) {
                                                  name:RaftIosTabBarController.didLayoutNotificationName
                                                object:nil];
     [self raftObserveVerticalBarEdge];
+    [self raftLogFilePreviewLifecycleStage:@"did_load" animated:nil];
+}
+
+- (void)raftLogFilePreviewLifecycleStage:(NSString *)stage animated:(NSNumber *)animated {
+    if (![_pageName isEqualToString:@"compose_file_preview"]) {
+        return;
+    }
+    long long elapsedMs = (long long)llround(fmax(0.0, (NSProcessInfo.processInfo.systemUptime - _raftPageInitUptime) * 1000.0));
+    NSString *animatedField = animated != nil ? (animated.boolValue ? @"true" : @"false") : @"none";
+    NSString *message = [NSString stringWithFormat:
+        @"file_preview_vc_lifecycle stage=%@ elapsedSinceInitMs=%lld animated=%@",
+        stage ?: @"unknown",
+        elapsedMs,
+        animatedField];
+    RaftIosDiagnosticsRecord(@"info", @"SlockFilePreview", message);
 }
 
 /// The vertical bar can move to the other edge with no resize and so no layout pass (a Split View
@@ -301,6 +318,7 @@ static NSString *RaftPageWindowId(NSString *controllerToken) {
 
 - (void)viewWillAppear:(BOOL)animated {
     [super viewWillAppear:animated];
+    [self raftLogFilePreviewLifecycleStage:@"will_appear" animated:@(animated)];
     // PROTOTYPE: a native-bar page shows the real bar (animated with the push / pop); every other
     // page keeps it hidden and draws its own head, as before.
     [self.navigationController setNavigationBarHidden:![self raftShowsNativeNavBar]
@@ -342,6 +360,7 @@ static NSString *RaftPageWindowId(NSString *controllerToken) {
 // (RaftPagerHost), so they are not sent again here.
 - (void)viewDidAppear:(BOOL)animated {
     [super viewDidAppear:animated];
+    [self raftLogFilePreviewLifecycleStage:@"did_appear" animated:@(animated)];
     [self.navigationController setNavigationBarHidden:![self raftShowsNativeNavBar] animated:NO];
     // PROTOTYPE: the system edge swipe for native-bar pages (FD's full-page pan stays off for
     // them through fd_interactivePopDisabled); FD keeps the swipe for every other page. Switched

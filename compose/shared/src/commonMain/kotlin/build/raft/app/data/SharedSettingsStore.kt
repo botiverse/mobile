@@ -987,6 +987,49 @@ class SharedSettingsDataSource(
         return DataResult.Content(detail)
     }
 
+    /** Reactive canonical computer snapshots for [serverId] from [SharedComputersStore]. */
+    fun observeComputersForServer(serverId: String): Flow<SettingsComputersLiveUpdate>? =
+        computersSource?.observeSettingsComputersForServer(serverId)
+
+    suspend fun currentServerIdForComputers(): String? =
+        sessionStore.readSession()?.currentServerId?.trim()?.takeIf { it.isNotBlank() }
+
+    suspend fun decorateLiveComputersSnapshot(
+        serverId: String,
+        snapshot: SettingsComputersSnapshot,
+    ): SettingsComputersSnapshot? {
+        val session = sessionStore.readSession() ?: return null
+        if (session.currentServerId?.trim() != serverId.trim()) return null
+        val canManage = session.canManageCurrentServer()
+        computersSource?.recordAddComputerGate(serverId, canManage)
+        val decorated =
+            DataResult.Content(snapshot)
+                .withAddComputerGate(canManage)
+                .withRuntimeUsageGate(session)
+                .withComputersCommandContext(computerCommandContext(session))
+        return (decorated as? DataResult.Content)?.data
+    }
+
+    suspend fun decorateLiveComputerDetailSnapshot(
+        serverId: String,
+        current: SettingsComputerDetailSnapshot,
+        computer: SettingsComputerSnapshot,
+    ): SettingsComputerDetailSnapshot? {
+        val session = sessionStore.readSession() ?: return null
+        if (session.currentServerId?.trim() != serverId.trim()) return null
+        val decorated =
+            DataResult.Content(current.copy(computer = computer))
+                .withComputerManageGate(session)
+                .withComputerCommandContext(computerCommandContext(session))
+        val updated = (decorated as? DataResult.Content)?.data ?: return null
+        computersSource?.recordSettingsComputerDetail(serverId, computer.id, updated)
+        return updated
+    }
+
+    fun forgetCachedComputerDetail(serverId: String, machineId: String) {
+        computersSource?.recordSettingsComputerDetail(serverId, machineId, null)
+    }
+
     suspend fun loadComputerDetail(machineId: String, forceComputers: Boolean = false): DataResult<SettingsComputerDetailSnapshot> {
         val session = sessionStore.readSession()
         val serverId = session?.currentServerId
@@ -1000,7 +1043,7 @@ class SharedSettingsDataSource(
             } else {
                 null
         }
-        val result =
+        val rawResult =
             when (sharedComputer) {
                 is DataResult.Content ->
                     settingsRepository?.getComputerDetailForComputer(sharedComputer.data)
@@ -1016,7 +1059,17 @@ class SharedSettingsDataSource(
                 is DataResult.Error -> DataResult.Error(sharedComputer.error)
                 is DataResult.NoPermission -> DataResult.NoPermission(sharedComputer.blocker)
                 null -> settingsRepository?.getComputerDetail(machineId) ?: DataResult.Empty(EmptyReason.NoSettingsAvailable)
-            }.withComputerManageGate(session).withComputerCommandContext(computerCommandContext(session))
+            }
+        // Overlay the latest computer snapshot from SharedComputersStore in case a realtime/sync
+        // update arrived while getComputerDetailForComputer was suspended fetching agents.
+        val overlaidResult =
+            if (rawResult is DataResult.Content && serverId != null && computersSource != null) {
+                val latestComputer = computersSource.currentSettingsComputerSnapshot(serverId, machineId)
+                if (latestComputer != null) DataResult.Content(rawResult.data.copy(computer = latestComputer)) else rawResult
+            } else {
+                rawResult
+            }
+        val result = overlaidResult.withComputerManageGate(session).withComputerCommandContext(computerCommandContext(session))
         if (serverId != null && computersSource != null) {
             when {
                 result is DataResult.Content ->
@@ -2111,6 +2164,9 @@ class SharedSettingsStore(
         )
 
     private var loadJob: Job? = null
+    private var pendingCatchUpComputers = false
+    private var computersObservationJob: Job? = null
+    private var observedComputersServerId: String? = null
     private val pendingMachineRealtimeIds = LinkedHashSet<String>()
     private var machineRealtimeDrainActive = false
     private var serverNotificationRealtimeDrainActive = false
@@ -2159,9 +2215,15 @@ class SharedSettingsStore(
                 "from=${previous.serverId ?: "_"} to=${next.serverId ?: "_"}"
         )
         pendingMachineRealtimeIds.clear()
+        pendingCatchUpComputers = false
+        stopComputersObservation()
         _state.value = _state.value.withServerScopedContentCleared()
         loadJob?.cancel()
-        loadJob = scope.launch { loadCurrentRoute(forceComputers = true) }
+        loadJob = scope.launch {
+            syncComputersObservation(destination, next.serverId)
+            loadCurrentRoute(forceComputers = true)
+            drainPendingCatchUpComputers()
+        }
     }
 
     fun dispatch(intent: SharedSettingsIntent) {
@@ -2169,15 +2231,15 @@ class SharedSettingsStore(
         // refreshing joins that refresh instead of cancelling and restarting it.
         if (intent == SharedSettingsIntent.CatchUpComputers) {
             val destination = _state.value.route.destination
-            val skipReason =
-                when {
-                    destination != SharedSettingsDestination.Computers &&
-                        destination != SharedSettingsDestination.ComputerDetail -> "route"
-                    loadJob?.isActive == true -> "in_flight"
-                    else -> null
-                }
-            if (skipReason != null) {
-                diagnosticsLogger("settings_computers_catch_up_skip destination=${destination.name} reason=$skipReason")
+            if (destination != SharedSettingsDestination.Computers &&
+                destination != SharedSettingsDestination.ComputerDetail
+            ) {
+                diagnosticsLogger("settings_computers_catch_up_skip destination=${destination.name} reason=route")
+                return
+            }
+            if (loadJob?.isActive == true) {
+                pendingCatchUpComputers = true
+                diagnosticsLogger("settings_computers_catch_up_coalesce destination=${destination.name} reason=in_flight")
                 return
             }
         }
@@ -2191,6 +2253,7 @@ class SharedSettingsStore(
             loadJob =
                 scope.launch {
                     accept(intent)
+                    drainPendingCatchUpComputers()
                 }
         } else {
             scope.launch {
@@ -2202,12 +2265,158 @@ class SharedSettingsStore(
     fun clear() {
         loadJob?.cancel()
         loadJob = null
+        pendingCatchUpComputers = false
+        stopComputersObservation()
         cancelDiagnosticsExpiryRefresh()
         authOwnerObservationJob?.cancel()
         authOwnerObservationJob = null
         serverScopeObservationJob?.cancel()
         serverScopeObservationJob = null
         retireServerNotificationModeMutation()
+    }
+
+    private suspend fun drainPendingCatchUpComputers() {
+        while (pendingCatchUpComputers) {
+            pendingCatchUpComputers = false
+            val destination = _state.value.route.destination
+            if (destination != SharedSettingsDestination.Computers &&
+                destination != SharedSettingsDestination.ComputerDetail
+            ) {
+                return
+            }
+            catchUpComputers()
+        }
+    }
+
+    private fun stopComputersObservation() {
+        computersObservationJob?.cancel()
+        computersObservationJob = null
+        observedComputersServerId = null
+    }
+
+    private suspend fun syncComputersObservation(
+        destination: SharedSettingsDestination,
+        serverIdOverride: String? = null,
+    ) {
+        if (destination != SharedSettingsDestination.Computers &&
+            destination != SharedSettingsDestination.ComputerDetail
+        ) {
+            stopComputersObservation()
+            return
+        }
+        val serverId = serverIdOverride?.trim()?.takeIf { it.isNotBlank() } ?: dataSource.currentServerIdForComputers()
+        if (serverId == null) {
+            stopComputersObservation()
+            return
+        }
+        if (observedComputersServerId == serverId && computersObservationJob?.isActive == true) return
+        stopComputersObservation()
+        val liveFlow = dataSource.observeComputersForServer(serverId) ?: return
+        observedComputersServerId = serverId
+        computersObservationJob =
+            scope.launch {
+                liveFlow.collect { update ->
+                    applyLiveComputersUpdate(serverId, update)
+                }
+            }
+    }
+
+    private suspend fun applyLiveComputersUpdate(
+        serverId: String,
+        update: SettingsComputersLiveUpdate,
+    ) {
+        if (observedComputersServerId != serverId) return
+        val destination = _state.value.route.destination
+        if (destination != SharedSettingsDestination.Computers &&
+            destination != SharedSettingsDestination.ComputerDetail
+        ) {
+            return
+        }
+        if (update.hasSnapshot && update.snapshot != null) {
+            val decorated = dataSource.decorateLiveComputersSnapshot(serverId, update.snapshot) ?: return
+            if (observedComputersServerId != serverId) return
+            val confirmedFresh = !update.seededFromDurable && !update.refreshing && update.error == null
+            when (_state.value.route.destination) {
+                SharedSettingsDestination.Computers -> {
+                    val nextError = if (confirmedFresh) null else _state.value.routeErrorCode
+                    _state.value =
+                        _state.value.copy(
+                            computers = ScreenLoadState.Content(decorated),
+                            routeErrorCode = nextError,
+                        )
+                    if (confirmedFresh) computersValidatedAtMillis = nowMillis()
+                    maybeAdvanceAddComputerDialogFromMachines()
+                }
+                SharedSettingsDestination.ComputerDetail -> {
+                    val openMachineId = _state.value.route.itemId.orEmpty().trim()
+                    if (openMachineId.isBlank()) return
+                    val liveComputer = decorated.computers.firstOrNull { it.id == openMachineId }
+                    if (liveComputer != null) {
+                        when (val currentDetail = _state.value.computerDetail) {
+                            is ScreenLoadState.Content -> {
+                                val updatedDetail =
+                                    dataSource.decorateLiveComputerDetailSnapshot(serverId, currentDetail.data, liveComputer)
+                                        ?: return
+                                if (
+                                    observedComputersServerId != serverId ||
+                                    _state.value.route.destination != SharedSettingsDestination.ComputerDetail ||
+                                    _state.value.route.itemId.orEmpty().trim() != openMachineId
+                                ) {
+                                    return
+                                }
+                                val nextError = if (confirmedFresh) null else _state.value.routeErrorCode
+                                _state.value =
+                                    _state.value.copy(
+                                        computerDetail = ScreenLoadState.Content(updatedDetail),
+                                        routeErrorCode = nextError,
+                                    )
+                                if (confirmedFresh) computerDetailValidatedAt = openMachineId to nowMillis()
+                            }
+                            is ScreenLoadState.Error,
+                            is ScreenLoadState.Empty -> {
+                                if (confirmedFresh && loadJob?.isActive != true) {
+                                    loadJob = scope.launch {
+                                        loadComputerDetail(openMachineId, forceComputers = false)
+                                        drainPendingCatchUpComputers()
+                                    }
+                                }
+                            }
+                            ScreenLoadState.Loading,
+                            is ScreenLoadState.NoPermission -> Unit
+                        }
+                    } else if (
+                        confirmedFresh &&
+                        _state.value.computerDetail is ScreenLoadState.Content &&
+                        _state.value.actionState?.inProgress != true
+                    ) {
+                        dataSource.forgetCachedComputerDetail(serverId, openMachineId)
+                        _state.value =
+                            _state.value.copy(
+                                computerDetail = ScreenLoadState.Empty(EmptyReason.NoSettingsAvailable),
+                            )
+                    }
+                }
+                else -> Unit
+            }
+        } else if (!update.hasSnapshot && update.error != null && !update.error.retryable) {
+            when (_state.value.route.destination) {
+                SharedSettingsDestination.Computers -> {
+                    _state.value =
+                        _state.value.copy(
+                            computers = ScreenLoadState.Error(update.error),
+                            routeErrorCode = update.error.code,
+                        )
+                }
+                SharedSettingsDestination.ComputerDetail -> {
+                    _state.value =
+                        _state.value.copy(
+                            computerDetail = ScreenLoadState.Error(update.error),
+                            routeErrorCode = update.error.code,
+                        )
+                }
+                else -> Unit
+            }
+        }
     }
 
     suspend fun accept(intent: SharedSettingsIntent) {
@@ -2234,6 +2443,7 @@ class SharedSettingsStore(
                         route = SharedSettingsRoute(intent.page, intent.itemId?.trim()?.takeIf { it.isNotBlank() }),
                         routeErrorCode = null
                     )
+                syncComputersObservation(intent.page)
                 loadCurrentRoute()
             }
             is SharedSettingsIntent.OpenComputer -> {
@@ -2243,11 +2453,13 @@ class SharedSettingsStore(
                         route = SharedSettingsRoute(SharedSettingsDestination.ComputerDetail, intent.machineId),
                         routeErrorCode = null
                     )
+                syncComputersObservation(SharedSettingsDestination.ComputerDetail)
                 loadComputerDetail(intent.machineId)
             }
             SharedSettingsIntent.Back -> {
                 cancelDiagnosticsExpiryRefresh()
                 retireServerNotificationModeMutation()
+                stopComputersObservation()
                 _state.value =
                     _state.value.copy(
                         route = SharedSettingsRoute(SharedSettingsDestination.Home),

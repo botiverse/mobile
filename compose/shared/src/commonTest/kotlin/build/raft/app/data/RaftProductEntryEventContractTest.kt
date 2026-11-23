@@ -23,6 +23,9 @@ class RaftProductEntryEventContractTest {
         /** botiverse/slock #11467 head: `MESSAGE_ACTIONS` gained `select_text` after `copy_markdown`. */
         const val PinnedSelectTextSlockSha = "27f555f166a5f51e8758d8e10549751db15f4429"
 
+        /** botiverse/slock #16252 on staging: `MESSAGE_ACTIONS` gained `quote` after `convert_to_task`. */
+        const val PinnedQuoteSlockSha = "35efb3b86baa4400d58cbab4444b76149bcf80e4"
+
         /** `APP_CLIENTS` = web + desktop + the native clients. */
         val AppClients = setOf("web", "desktop", "android", "ios", "harmonyos")
 
@@ -32,7 +35,7 @@ class RaftProductEntryEventContractTest {
             setOf(
                 "open_menu", "open_reaction_picker", "react_quick", "reply_in_thread", "follow_thread", "unfollow_thread",
                 "task_done", "task_reopen", "create_task", "convert_to_task",
-                "copy_link", "copy_markdown", "select_text", "forward", "select", "save", "unsave", "translate",
+                "quote", "copy_link", "copy_markdown", "select_text", "forward", "select", "save", "unsave", "translate",
                 "mention_sender", "copy_sender_name", "copy_sender_handle",
                 "copy_text", "pin", "unpin", "mark_unread", "edit", "delete", "report",
             )
@@ -78,8 +81,12 @@ class RaftProductEntryEventContractTest {
         /** Names the app once logged internally; never registered, so the server drops them. */
         val UnregisteredNames = listOf("row_opened", "task_created", "agent_created")
 
-        /** Registry message actions the app's long-press menu has no item for. */
-        val MessageActionsWithoutAppItem = setOf("copy_text", "pin", "unpin", "mark_unread", "edit", "delete", "report")
+        /**
+         * Registry message actions the app's long-press menu has no item for. `convert_to_task`: under
+         * task v2 the task item is Create Task from Message, `create_task` as web sends it.
+         */
+        val MessageActionsWithoutAppItem =
+            setOf("copy_text", "pin", "unpin", "mark_unread", "edit", "delete", "report", "convert_to_task")
     }
 
     private fun allEvents(): List<RaftProductEvent<*>> =

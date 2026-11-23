@@ -2909,6 +2909,7 @@ class KmpVisualScreenshotCaptureTest {
             )
             mirrorFileForAdbPull(context, imageFile)
             mirrorFileForAdbPull(context, metadataFile)
+            writeComponentBoxes(context, caseId, crop)
             normalized.recycle()
         } finally {
             closeScenarioBounded(scenario)
@@ -3073,6 +3074,7 @@ class KmpVisualScreenshotCaptureTest {
                 )
             )
             mirrorFileForAdbPull(context, metadataFile)
+            writeComponentBoxes(context, caseId, effectiveCrop)
             normalized.recycle()
         } finally {
             try {
@@ -5005,7 +5007,25 @@ class KmpVisualScreenshotCaptureTest {
         VisualAndroidArtifacts.mirrorFile(file)
     }
 
+    /** `<case>.components.json`: tagged nodes' boxes, paired with the React capture's by name. */
+    private fun writeComponentBoxes(context: Context, caseId: String, crop: VisualCrop) {
+        try {
+            val density = context.resources.displayMetrics.density
+            var boxes = JSONArray()
+            onActivityNoIdle { boxes = VisualFullLength.componentBoxes(windowRoots(it), density, crop.leftDp, crop.topDp) }
+            val file = File(visualOutputDir(context), "$caseId.components.json")
+            file.writeText(
+                JSONObject().put("provider", "android").put("caseId", caseId).put("unit", "dp").put("components", boxes).toString(2)
+            )
+            mirrorFileForAdbPull(context, file)
+        } catch (t: Throwable) {
+            // Evidence only: a capture never fails for it.
+            Log.w(VISUAL_LOG_TAG, "component boxes for $caseId failed: ${t.message}")
+        }
+    }
+
     private fun clearMirroredCaseArtifacts(context: Context, caseId: String) {
+        File(visualOutputDir(context), "$caseId.components.json").delete()
         File(visualOutputDir(context), "$caseId.png").delete()
         File(visualOutputDir(context), "$caseId.metadata.json").delete()
         File(visualOutputDir(context), "$caseId.failure.png").delete()

@@ -24,6 +24,7 @@ import build.raft.app.data.AuthenticatedRouteOwner
 import build.raft.app.data.normalizedOrNull
 import build.raft.app.data.backFromDetail
 import build.raft.app.data.closeFromDetailPage
+import build.raft.app.data.closeSideThread
 import build.raft.app.data.backClosesSideThreadFirst
 import build.raft.app.data.sideThreadColumnAvailable
 import build.raft.app.data.visibleSideThread
@@ -4019,7 +4020,7 @@ private fun RaftAppShellReadyContent(
         )
     // The wide layout's profile and Artifact columns (RaftWideSideColumns.kt, #189 steps 3-4): they belong to the
     // conversation picked, and reopen as pages when the window leaves the wide layout.
-    val sideColumns = rememberRaftWideSideColumns(adaptiveWorkspaceState?.selection?.identity?.key, navRailActive, tab = selectedTab)
+    val sideColumns = rememberRaftWideSideColumns(adaptiveWorkspaceState?.selection?.identity, navRailActive, tab = selectedTab)
     // stdrc 2026-10-21: Settings is the More tab's root on the phone bar and the pinned rail entry
     // on the wide layout; a selection made for the other layout moves to this layout's root.
     LaunchedEffect(selectedTab, navRailActive) {
@@ -4081,6 +4082,21 @@ private fun RaftAppShellReadyContent(
             serverLastConversationOwnerKey = serverLastConversationOwnerKey,
         )
     val railSelectionOpenedOn = rememberRaftSelectionOpenedOn(adaptiveWorkspaceState?.selection, wideNavShowing?.surface)
+    // What was open beside each conversation (AppShellBesideMemoryEffects.kt): remembered, and restored on entering it.
+    AppShellBesideMemoryEffect(
+        wideNavShowing = wideNavShowing,
+        accountId = readySession?.user?.id,
+        columns = sideColumns,
+        adaptiveWorkspaceStore = adaptiveWorkspaceStore,
+        desktopModeOnLargeScreen = desktopModeOnLargeScreen,
+        navigationStoreScope = navigationStoreScope,
+        sharedStores = sharedStores,
+        serverMembersStore = appShellServerMembersStore,
+        memberRepository = memberRepository,
+        conversationRepository = conversationRepository,
+        agentsApiClient = agentsApiClient,
+        bridge = bridge,
+    )
     val wideNavHistory = wideNavHistories.of(readyServerId)
     AppShellWideNavRestoreEffect(
         bridge = bridge,
@@ -5615,6 +5631,21 @@ private fun RaftAppShellReadyContent(
                                 // review): captured, a tab switched away and back could leave the column's page
                                 // inactive and blank. The column object stays the same; the page follows the state.
                                 val sideThreadActive by rememberUpdatedState(childActive)
+                                // The column is a side pane of one page (web layout-memory "Close and Back"): its head's
+                                // Close closes the column only, the channel staying; it never steps the detail back.
+                                val sideThreadShown by rememberUpdatedState<AdaptiveSideThread>(sideThread)
+                                val sideThreadShellId by rememberUpdatedState(workspace.shellInstanceId)
+                                val sideThreadPane =
+                                    remember {
+                                        RaftSidePanePage(depth = 1) {
+                                            val shellId = sideThreadShellId
+                                            if (shellId.isNotBlank()) {
+                                                val request = sideThreadShown.closeRequest(shellId)
+                                                adaptiveWorkspaceStore.update { current -> current.closeSideThread(request) }
+                                            }
+                                            bridge.log("wide_side_thread_close from=head")
+                                        }
+                                    }
                                 val sideThreadResizeLabel = stringResource(Res.string.thread_side_thread_resize)
                                 // Its tab where the row is short of 160 per column (#189 rule 4; web RowTabs "Thread").
                                 val sideThreadTabLabel = stringResource(Res.string.thread_reply_title)
@@ -5630,12 +5661,14 @@ private fun RaftAppShellReadyContent(
                                                         region = RaftFocusRegion.SideThread,
                                                         modifier = Modifier.fillMaxSize(),
                                                     ) {
-                                                        RaftChildPage(
-                                                            pageName = THREAD_PAGE,
-                                                            pageData = sideThreadPageData,
-                                                            modifier = Modifier.fillMaxSize(),
-                                                            active = sideThreadActive,
-                                                        )
+                                                        CompositionLocalProvider(LocalRaftSidePanePage provides sideThreadPane) {
+                                                            RaftChildPage(
+                                                                pageName = THREAD_PAGE,
+                                                                pageData = sideThreadPageData,
+                                                                modifier = Modifier.fillMaxSize(),
+                                                                active = sideThreadActive,
+                                                            )
+                                                        }
                                                     }
                                                 }
                                             ),
@@ -5950,9 +5983,8 @@ private fun RaftAppShellReadyContent(
                                     openSurface = { surface ->
                                         when (surface) {
                                             is TaskOpenSurface.Pending -> {
-                                                val useAdaptiveDetail =
-                                                    desktopModeOnLargeScreen && adaptivePane.layout == RaftAdaptivePaneLayout.DualPane
-                                                if (useAdaptiveDetail) {
+                                                // The rule a chat opens it by too: the page, but on the wide layout.
+                                                if (!taskPendingOpensAsPage(desktopModeOnLargeScreen, adaptivePane)) {
                                                     bridge.log("tasks_open_surface kind=Pending task=${surface.task.id.value} layout=dual_pane")
                                                     tasksOpenSurfaceFlow.open(surface)
                                                 } else {
@@ -6033,12 +6065,13 @@ private fun RaftAppShellReadyContent(
                                 detailPane = detailPane,
                                 fillListWhenNothingPicked = fillListWhenNothingPicked,
                                 collapsed = collapseColumn != null && sidebarCollapse.isHidden(collapseColumn),
-                                // web `snap` "collapse": only where the rail's toggle can bring it back.
+                                // The handle's collapse (web `snap` "collapse"; by touch only on a deliberate release) and the
+                                // Expand sidebar strip where the list was: only where the rail's toggle can bring it back.
                                 onCollapsedChange =
                                     collapseColumn?.takeIf { it == collapsibleColumn }?.let { column ->
                                         { hidden ->
                                             sidebarCollapse.setHidden(column, hidden)
-                                            bridge.log("app_shell_sidebar_toggle column=$column hidden=$hidden from=handle")
+                                            bridge.log("app_shell_sidebar_toggle column=$column hidden=$hidden from=split")
                                         }
                                     },
                                 // Web: Activity's list with an item open is at most half the row, so the
@@ -6046,6 +6079,8 @@ private fun RaftAppShellReadyContent(
                                 maxShare = 0.5f.takeIf { collapseColumn == RaftCollapsibleColumn.ActivityList && selection != null },
                                 onResizingChange = { adaptiveListPaneResizing = it },
                                 log = { bridge.log(it) },
+                                // The head beside the collapsed strip pads the status bar only without the top bar (Duo).
+                                detailHeadTopInset = if (railWithoutTopBar) shellScope.topSafeArea else 0.dp,
                             )
                         } else {
                             listPane(active)
@@ -6540,7 +6575,7 @@ private fun RaftAppShellReadyContent(
                                     RaftCollapsibleColumn.Sidebar.takeIf { it == collapsibleColumn }?.let { column ->
                                         { hidden ->
                                             sidebarCollapse.setHidden(column, hidden)
-                                            bridge.log("app_shell_sidebar_toggle column=$column hidden=$hidden from=handle")
+                                            bridge.log("app_shell_sidebar_toggle column=$column hidden=$hidden from=split")
                                         }
                                     },
                                 onResizingChange = { adaptiveListPaneResizing = it },
@@ -6559,6 +6594,7 @@ private fun RaftAppShellReadyContent(
                                         )
                                     }
                                 },
+                                detailHeadTopInset = if (railWithoutTopBar) shellScope.topSafeArea else 0.dp,
                             )
                         } else {
                         val stackPageClose = LocalAppShellServerStackPageClose.current

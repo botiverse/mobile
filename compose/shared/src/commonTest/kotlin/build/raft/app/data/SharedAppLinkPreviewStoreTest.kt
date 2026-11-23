@@ -246,4 +246,114 @@ class SharedAppLinkPreviewStoreTest {
         assertNull(store.state.value.entries.values.firstOrNull())
         assertTrue(store.messageViewFlow(Viewer, MessageB, Content, Conversation).first().wantsRead)
     }
+
+    @Test
+    fun diskSanitizerStripsPromptsTicketsHandlesConnectAccountAndRoundTripsBatchedV3ColdStart() = runTest(StandardTestDispatcher()) {
+        val cardTree =
+            """{"root":"root","elements":{""" +
+                """"root":{"type":"Stack","props":{},"children":["state"]},""" +
+                """"state":{"type":"Badge","props":{"text":"In review","tone":"review"}}}}"""
+        val v3CardItem =
+            """{"kind":"v3","url":"https://alpha.example.test/pr/1","app":{"id":"a1","name":"Alpha","icon":null},""" +
+                """"preview":{"version":3,"items":[""" +
+                """{"type":"inline","title":"PR 1 Chip"},""" +
+                """{"type":"card","placement":"hover","title":"PR 1: Fix sign-in","card_revision":"cr-1","business_revision":"br-1","card":$cardTree}""" +
+                """]},"ticket":"secret-ticket","actions":[{"action_id":"approve_pr","handle":"signed-handle-1"}]}"""
+        val v3ConnectItem =
+            """{"kind":"v3","url":"https://alpha.example.test/pr/2","app":{"id":"a1","name":"Alpha","icon":null},""" +
+                """"preview":{"version":3,"items":[{"type":"connect_account","connect_url":"https://alpha.example.test/connect"}]},""" +
+                """"ticket":"connect-ticket","actions":[]}"""
+        val rawV3Batch =
+            """{"items":[$v3CardItem,$v3ConnectItem,""" +
+                """{"kind":"rate_limited","url":"https://alpha.example.test/pr/3","retry_after":30}""" +
+                """],"prompts":[{"url":"https://alpha.example.test/pr/4","app":{"id":"a2","name":"Beta","icon":null}}]}"""
+        val liveParsed = parseAppLinkCardReadAnswer(rawV3Batch)
+        assertTrue(liveParsed != null)
+        val liveCard1 = liveParsed.results["https://alpha.example.test/pr/1"] as AppLinkResult.Card
+        assertEquals(mapOf("approve_pr" to "signed-handle-1"), liveCard1.handles)
+        val liveConnect = liveParsed.results["https://alpha.example.test/pr/2"] as AppLinkResult.Card
+        assertEquals("https://alpha.example.test/connect", liveConnect.connectUrl)
+
+        val sanitizedV3 = sanitizeAppLinkPreviewBodyForDisk(PERSISTED_APP_LINK_KIND_BATCH, rawV3Batch)
+        assertTrue(sanitizedV3 != null)
+        assertFalse("secret-ticket" in sanitizedV3)
+        assertFalse("signed-handle-1" in sanitizedV3)
+        assertFalse("connect_account" in sanitizedV3)
+        assertFalse("rate_limited" in sanitizedV3)
+        assertFalse("prompts" in sanitizedV3)
+        val reparsed = parseAppLinkCardReadAnswer(sanitizedV3)
+        assertTrue(reparsed != null)
+        assertEquals(setOf("https://alpha.example.test/pr/1"), reparsed.results.keys)
+        val reparsedCard = reparsed.results.values.single() as AppLinkResult.Card
+        assertEquals("PR 1: Fix sign-in", reparsedCard.title)
+        assertTrue(reparsedCard.handles.isEmpty())
+        assertNull(reparsedCard.connectUrl)
+
+        assertNull(sanitizeAppLinkPreviewBodyForDisk(PERSISTED_APP_LINK_KIND_GET, PromptBody))
+
+        val rows = InMemoryRaftOfflineResourceRows()
+        val offline = RaftOfflineResourceCache(rows, environmentId = { "https://api.example" }, scope = backgroundScope)
+        val resource = offline.resource(AppLinkPreviewResourceSpec)
+
+        val batchContent = "Check https://alpha.example.test/pr/1 and https://alpha.example.test/pr/2"
+        val batchOnlyValid = """{"items":[$v3CardItem,$v3ConnectItem],"prompts":[]}"""
+        val api1 = FakeAppLinkPreviewApi().apply { cardReadResponses += HomeNetworkResponse(200, batchOnlyValid) }
+        val store1 =
+            SharedAppLinkPreviewStore(
+                api = api1,
+                scope = backgroundScope,
+                offlineResource = resource,
+                currentAccountId = { "user-1" },
+            )
+        val batch1 = AppLinkBatchRead(AppLinkCardView.create(), locale = "en")
+        store1.read(Viewer, Server, MessageA, batchContent, Conversation, batch = batch1)
+        runCurrent()
+        assertEquals(2, store1.state.value.messageView(Viewer, MessageA, batchContent, Conversation, mode = batch1.mode, viewId = batch1.view.id).results.size)
+
+        // Cold start: disk cache hydrates display-only card immediately (no handles, no readAtMillis, no connect_account, staleFromDisk=true, wantsRead=true).
+        val api2 = FakeAppLinkPreviewApi().apply {
+            readGate = CompletableDeferred()
+            cardReadResponses += HomeNetworkResponse(200, """{"items":[],"prompts":[]}""")
+        }
+        val store2 =
+            SharedAppLinkPreviewStore(
+                api = api2,
+                scope = backgroundScope,
+                offlineResource = resource,
+                currentAccountId = { "user-1" },
+            )
+        val batch2 = AppLinkBatchRead(AppLinkCardView.create(), locale = "en")
+        store2.read(Viewer, Server, MessageA, batchContent, Conversation, batch = batch2)
+        runCurrent()
+        val hydratedScope = appLinkReadScope(Viewer, MessageA, batchContent, batch2.mode)
+        val hydratedLoaded = store2.state.value.entries[hydratedScope]
+        assertTrue(hydratedLoaded != null && hydratedLoaded.staleFromDisk, "hydrated entry must be marked staleFromDisk")
+        val hydratedView = store2.state.value.messageView(Viewer, MessageA, batchContent, Conversation, mode = batch2.mode, viewId = batch2.view.id)
+        assertTrue(hydratedView.wantsRead, "staleFromDisk view must still request live network revalidation")
+        assertEquals(setOf("https://alpha.example.test/pr/1"), hydratedView.results.keys)
+        val hydratedCard = hydratedView.results.values.single() as AppLinkResult.Card
+        assertTrue(hydratedCard.handles.isEmpty(), "disk-hydrated card must not carry signed handles")
+        assertNull(hydratedCard.readAtMillis, "disk-hydrated card must not carry live readAtMillis")
+
+        // Network revalidation returns empty (revoked/no cards) -> evicts persisted disk row.
+        api2.readGate!!.complete(Unit)
+        runCurrent()
+        assertEquals(1, api2.cardReads.size)
+        val diskKey = resource.key("user-1", Server, "$MessageA:${batchContent.length}:${batchContent.hashCode()}:${batch2.mode}")!!
+        assertNull(resource.read(diskKey), "empty revalidation must evict stale disk entry")
+
+        // dropServer clears that server's in-memory entries without touching another server.
+        val api3 = FakeAppLinkPreviewApi().apply {
+            readResponses += HomeNetworkResponse(200, CardsBody)
+            readResponses += HomeNetworkResponse(200, CardsBody)
+        }
+        val store3 = SharedAppLinkPreviewStore(api = api3, scope = backgroundScope)
+        store3.read("user-1:server-1", "server-1", MessageA, Content, Conversation)
+        store3.read("user-1:server-2", "server-2", MessageA, Content, Conversation)
+        runCurrent()
+        assertEquals(2, store3.state.value.entries.size)
+        store3.dropServer("server-1")
+        assertEquals(1, store3.state.value.entries.size)
+        assertEquals("server-2", store3.state.value.entries.values.single().serverId)
+    }
 }

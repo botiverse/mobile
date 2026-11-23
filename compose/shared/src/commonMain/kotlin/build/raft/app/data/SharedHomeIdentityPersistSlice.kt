@@ -2,18 +2,27 @@ package build.raft.app.data
 
 import build.raft.app.model.ChannelActivityNotificationPreference
 import build.raft.app.model.ServerId
+import kotlinx.coroutines.CoroutineScope
 
 internal fun createSharedHomeIdentityPersistSlice(
     storage: MviPersistStorage,
     diagnosticsLogger: (String) -> Unit = {},
-    failureLogger: (String) -> Unit = diagnosticsLogger
-): MviPersistSlice<SharedHomeState, SharedHomeIntent> =
-    MviPersistMiddleware(
-        storage = storage,
-        spec = SharedHomeIdentityPersistSpec,
-        diagnosticsLogger = diagnosticsLogger,
-        failureLogger = failureLogger
-    )
+    failureLogger: (String) -> Unit = diagnosticsLogger,
+    scrollDeferScope: CoroutineScope? = null,
+): MviPersistSlice<SharedHomeState, SharedHomeIntent> {
+    val middleware =
+        MviPersistMiddleware(
+            storage = storage,
+            spec = SharedHomeIdentityPersistSpec,
+            diagnosticsLogger = diagnosticsLogger,
+            failureLogger = failureLogger
+        )
+    return if (scrollDeferScope != null) {
+        ScrollDeferredMviPersistSlice(delegate = middleware, persistScope = scrollDeferScope)
+    } else {
+        middleware
+    }
+}
 
 private object SharedHomeIdentityPersistSpec :
     MviPersistSpec<SharedHomeState, SharedHomeIntent, HomeSnapshot> {
@@ -37,11 +46,8 @@ private object SharedHomeIdentityPersistSpec :
         intent: SharedHomeIntent,
         reduced: SharedHomeState
     ): Boolean =
-        intent is SharedHomeIntent.Start ||
-            (
-                intent is SharedHomeIntent.SelectServer &&
-                    reduced.content !is SharedHomeContentState.Content
-                )
+        reduced.content !is SharedHomeContentState.Content &&
+            (intent is SharedHomeIntent.Start || intent is SharedHomeIntent.SelectServer)
 
     override fun mergeHydrated(
         previous: SharedHomeState,

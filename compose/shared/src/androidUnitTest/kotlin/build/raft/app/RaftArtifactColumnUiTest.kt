@@ -7,11 +7,13 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.foundation.layout.wrapContentSize
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -43,6 +45,7 @@ import build.raft.app.compat.pager.PageData
 import build.raft.app.compat.pager.Pager
 import build.raft.app.compat.pager.RaftPageActivity
 import build.raft.app.components.RaftDesignSystemTheme
+import build.raft.app.data.ArtifactLinkTarget
 import build.raft.designsystem.components.RAFT_PANE_GRID_COLUMN_TEST_TAG
 import build.raft.designsystem.components.RAFT_PANE_GRID_HEAD_CLOSE_SUFFIX
 import build.raft.designsystem.components.RAFT_PANE_GRID_HEAD_EXPAND_SUFFIX
@@ -50,7 +53,11 @@ import build.raft.designsystem.components.RAFT_PANE_GRID_HEAD_MORE_SUFFIX
 import build.raft.designsystem.components.RAFT_PANE_GRID_HEAD_TEST_TAG
 import build.raft.designsystem.components.RAFT_PANE_GRID_MAIN_TEST_TAG
 import build.raft.designsystem.components.RaftPaneGridExpand
+import build.raft.designsystem.theme.RaftAppearance
+import build.raft.designsystem.theme.RaftPointerInput
+import build.raft.designsystem.theme.RaftTheme
 import kotlin.math.abs
+import kotlin.math.roundToInt
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -78,7 +85,10 @@ import org.robolectric.annotation.Config
  *   the row first;
  * - #189 step 5, the column head: title, ⋯, Expand, Close in that order; ⋯ holds Move Left / Move Right, which move the
  *   section in the side layout, keep it and stand the row anew; Expand / Restore and Back; the row tabs in the head's
- *   title slot (and on top of a column whose page draws its own head).
+ *   title slot (and on top of a column whose page draws its own head);
+ * - the column's head ends on the line the conversation's head (ThreadPage's) ends on, by touch and with a mouse: the
+ *   App's bar, and the page's once it draws the only bar, told the conversation head's height (`hostHead`) in the
+ *   address it opens at, which a prewarm in the conversation boots too.
  * Every scenario checks the row settles (no recomposition loop: the lesson of #4661).
  */
 @OptIn(ExperimentalTestApi::class)
@@ -106,6 +116,28 @@ class RaftArtifactColumnUiTest {
     private var detailCompositions = 0
     private var conversationCompositions = 0
 
+    /** The input in use, pinned in the theme (RaftTheme `pointerInput`): a finger, or a mouse. */
+    private var pointer by mutableStateOf(RaftPointerInput.Touch)
+
+    /** The heads' scenario: the conversation draws its head and the viewer its own frame ([FixtureViewer]). */
+    private var heads = false
+
+    /** The page said it draws the only bar (`hostToolbar=1`). */
+    private var pageDrawsBar by mutableStateOf(false)
+
+    /** The address the column's viewer opened its page at, and the `hostHead` a viewer opened from the conversation sends. */
+    private var viewerUrl: String? = null
+    private var conversationHostHead: Int? = null
+
+    private val conversationPayload =
+        RaftThreadScreenPayload(
+            instanceId = "c1",
+            sourceThreadId = "c1",
+            title = "#general",
+            status = "content",
+            surfaceKind = RaftThreadSurfaceKind.Channel,
+        )
+
     private fun counted(count: Int, page: String): Int {
         check(count < COMPOSITION_CAP) { "the $page recomposes without end: a recomposition loop in the pane grid's row" }
         return count + 1
@@ -122,6 +154,9 @@ class RaftArtifactColumnUiTest {
         platformOpened.clear()
         detailCompositions = 0
         conversationCompositions = 0
+        pageDrawsBar = false
+        viewerUrl = null
+        conversationHostHead = null
         var dispatcher: OnBackPressedDispatcher? = null
         val transport = HostBridgeTransport { _, _, _ -> }
         val platform =
@@ -146,10 +181,13 @@ class RaftArtifactColumnUiTest {
                 LocalRaftPaneGridStore provides grid,
                 LocalRaftChannelSideLayoutStore provides sideLayout,
             ) {
-                RaftDesignSystemTheme {
-                    // Wider than the test window: laid out from its start, unclipped by the window.
-                    Box(Modifier.wrapContentSize(Alignment.TopStart, unbounded = true).requiredSize(rowWidth.dp, 700.dp)) {
-                        Workspace()
+                // The input pinned (a pointer another test left in this JVM moves no head); the app's theme inherits it.
+                RaftTheme(appearance = RaftAppearance.Light, pointerInput = pointer) {
+                    RaftDesignSystemTheme {
+                        // Wider than the test window: laid out from its start, unclipped by the window.
+                        Box(Modifier.wrapContentSize(Alignment.TopStart, unbounded = true).requiredSize(rowWidth.dp, 700.dp)) {
+                            Workspace()
+                        }
                     }
                 }
             }
@@ -238,19 +276,75 @@ class RaftArtifactColumnUiTest {
             }
         RaftPaneGrid(columns = if (cardsOpen) listOf(cards) else emptyList()) {
             Column(Modifier.fillMaxSize().testTag("conversation")) {
+                if (heads) ConversationHead()
                 Button("artifact-card") { navigator.openPage(RAFT_ARTIFACT_VIEWER_PAGE, artifactData) }
                 Button("avatar") { navigator.openPage(MEMBER_DETAIL_PAGE, data) }
             }
         }
     }
 
-    /** A page in a column, closing through its host as the real pages do; a column's first page shows Close. */
+    /**
+     * The conversation's head as ThreadPage draws it in the wide detail (a channel; no Back, the split's detail pane),
+     * and what a prewarm or an opener here boots for the viewer ([raftArtifactViewerOpenHostHead]).
+     */
+    @Composable
+    private fun ConversationHead() {
+        val openHostHead = raftArtifactViewerOpenHostHead()
+        SideEffect { conversationHostHead = openHostHead }
+        Box(Modifier.fillMaxWidth().testTag(CONVERSATION_HEAD)) {
+            ThreadPageHeader(
+                payload = conversationPayload,
+                showBack = false,
+                onBack = {},
+                onOpenInChannel = {},
+                onOpenMemberProfile = {},
+                onOpenSearch = {},
+                onShowMembers = {},
+                onShowSettings = {},
+            )
+        }
+    }
+
+    /**
+     * A page in a column, closing through its host as the real pages do; its head's buttons as a side pane's
+     * ([raftSidePaneHeadButtons]): Back (its own `closePage`) over a page of the pane's stack, Close (the pane's). In
+     * the heads' scenario the viewer draws its own frame instead ([FixtureViewer]).
+     */
     @Composable
     private fun FixturePage(entry: RaftPaneEntry) {
         val navigator = LocalRaftHost.current.navigator
-        val closes = LocalRaftPaneBackCloses.current
+        val pane = LocalRaftSidePanePage.current
+        if (heads && entry.pageName == RAFT_ARTIFACT_VIEWER_PAGE) {
+            FixtureViewer(onBack = navigator::closePage)
+            return
+        }
         Column(Modifier.fillMaxSize().testTag("page:${entry.pageName}")) {
-            Button(if (closes) "close:${entry.pageName}" else "back:${entry.pageName}") { navigator.closePage() }
+            if (raftSidePaneShowsBack()) Button("back:${entry.pageName}") { navigator.closePage() }
+            if (pane != null) Button("close:${entry.pageName}") { pane.close() }
+        }
+    }
+
+    /**
+     * The viewer as RaftArtifactViewerScreen draws it in the column (the screen itself needs a live page): its frame
+     * ([RaftArtifactViewerScreenFrame]: the App's bar until the page says it draws the only one) over the page, opened
+     * at the address built at open with the head height here ([raftArtifactViewerHostHeadHere]). The page stands in for
+     * the web's side of `hostHead`: its toolbar is one row as tall as its address says.
+     */
+    @Composable
+    private fun FixtureViewer(onBack: () -> Unit) {
+        val hostHead = raftArtifactViewerHostHeadHere()
+        val url = remember { raftArtifactViewerEmbeddedPageUrl(WEB, ArtifactLinkTarget("pt_a1"), hostHead = hostHead) }
+        SideEffect { viewerUrl = url }
+        RaftArtifactViewerScreenFrame(
+            title = "q4-launch-plan.html",
+            onBack = onBack,
+            pageSaysItDrawsBar = pageDrawsBar,
+            viewing = true,
+            scopeKnown = true,
+        ) {
+            Column(Modifier.fillMaxSize().testTag(VIEWER_PAGE)) {
+                Box(Modifier.fillMaxWidth().height((raftArtifactViewerHostHeadIn(url) ?: 0).dp).testTag(PAGE_BAR))
+            }
         }
     }
 
@@ -270,6 +364,12 @@ class RaftArtifactColumnUiTest {
 
     private fun ComposeUiTest.leftDp(tag: String): Float =
         with(density) { onAllNodesWithTag(tag, useUnmergedTree = true)[0].fetchSemanticsNode().boundsInRoot.left.toDp().value }
+
+    private fun ComposeUiTest.topDp(tag: String): Float =
+        with(density) { onAllNodesWithTag(tag, useUnmergedTree = true)[0].fetchSemanticsNode().boundsInRoot.top.toDp().value }
+
+    private fun ComposeUiTest.bottomDp(tag: String): Float =
+        with(density) { onAllNodesWithTag(tag, useUnmergedTree = true)[0].fetchSemanticsNode().boundsInRoot.bottom.toDp().value }
 
     private fun near(expected: Float, actual: Float, what: String) = assertTrue(abs(expected - actual) <= 1f, "$what: expected $expected, was $actual")
 
@@ -402,7 +502,52 @@ class RaftArtifactColumnUiTest {
             cardsOpen = false
         }
 
+    // `hostHead` (agreed with the web owner): beside the conversation, the column's head ends where the conversation's
+    // head ends, by touch and with a mouse: the App's bar while the page loads, and the page's own once it draws the only
+    // bar, the page being told the conversation head's height in the address it opens at. A prewarm in the
+    // conversation boots that same value, so the column can reuse it.
+    @Test
+    fun theColumnsHeadEndsWhereTheConversationsHeadEndsByTouchAndWithAMouse() =
+        runRobolectricComposeUiTest {
+            layout = RaftChannelSideLayoutStore()
+            rowWidth = 1280f
+            heads = true
+            showWorkspace()
+            click("artifact-card")
+            val byTouch = assertHeadsLineUp("by touch")
+            // A mouse used: every head tightens, and an Artifact opened now tells its page so.
+            runOnIdle { pointer = RaftPointerInput.Fine }
+            waitForIdle()
+            click("artifact-card")
+            val withMouse = assertHeadsLineUp("with a mouse")
+            assertTrue(withMouse < byTouch, "a mouse takes the tighter head: $withMouse, by touch $byTouch")
+            assertSettled()
+        }
+
+    /**
+     * The column's head and the conversation's end on one line, the App's bar and then (the page drawing the only bar)
+     * the page's, which its address tells the conversation head's height; returns that height, in dp.
+     */
+    private fun ComposeUiTest.assertHeadsLineUp(input: String): Float {
+        runOnIdle { pageDrawsBar = false }
+        waitForIdle()
+        val headTop = topDp(CONVERSATION_HEAD)
+        val headBottom = bottomDp(CONVERSATION_HEAD)
+        near(headBottom, topDp(VIEWER_PAGE), "$input: the App's bar in the column ends where the conversation's head ends")
+        val told = viewerUrl?.let { url -> Regex("[?&]hostHead=(\\d+)").find(url)?.groupValues?.get(1)?.toInt() }
+        assertEquals((headBottom - headTop).roundToInt(), told, "$input: the page is told the conversation head's height: $viewerUrl")
+        assertEquals(told, conversationHostHead, "$input: a prewarm in the conversation boots what the column opens")
+        runOnIdle { pageDrawsBar = true }
+        waitForIdle()
+        near(headBottom, bottomDp(PAGE_BAR), "$input: the page's own bar ends where the conversation's head ends")
+        return headBottom - headTop
+    }
+
     private companion object {
         const val COMPOSITION_CAP = 200
+        const val WEB = "https://app.raft.build"
+        const val CONVERSATION_HEAD = "conversation-head"
+        const val VIEWER_PAGE = "artifact-viewer-page"
+        const val PAGE_BAR = "artifact-page-bar"
     }
 }

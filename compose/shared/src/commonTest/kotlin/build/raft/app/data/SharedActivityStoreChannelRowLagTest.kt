@@ -8,6 +8,7 @@ import build.raft.app.model.MessageNew
 import build.raft.app.model.MessageUpdated
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.TestScope
+import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
@@ -325,7 +326,7 @@ class SharedActivityStoreChannelRowLagTest {
         val store =
             activityStore(
                 scope = backgroundScope,
-                inboxRepository = RealInboxRepository(session, network),
+                inboxRepository = RealInboxRepository(session, network, parseDispatcher = UnconfinedTestDispatcher(testScheduler)),
                 authStore = session,
                 realtimeBackgroundRefreshIntervalMillis = ActivityRealtimeBackgroundRefreshIntervalMillis,
                 staleRecoveryDelayMillis = staleRecoveryDelayMillis

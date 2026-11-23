@@ -1,7 +1,6 @@
 package build.raft.app.data
 
 import build.raft.app.model.MemberKind
-import build.raft.app.shared.data.local.AvatarCacheMetadataEntity
 import kotlin.coroutines.CoroutineContext
 import kotlinx.coroutines.withContext
 
@@ -141,154 +140,28 @@ internal class DispatchingRaftAvatarCacheMetadataStore(
         withContext(dispatcher) { delegate.readCommittedForOwner(owner, nowMs, limit) }
 }
 
-private object AvatarCacheCommitRevoked : RuntimeException()
-
-internal class SqlDelightRaftAvatarCacheMetadataStore(
-    private val database: RaftSqlDatabase
-) : RaftAvatarCacheMetadataStore {
+/**
+ * #proj-mobile:#294: retired `slock-avatar-render-v1` SQLite tables (`avatarCacheMetadataEntity` /
+ * `avatarCacheFailureEntity`); Coil's disk cache is the sole avatar byte/image cache.
+ */
+internal object NoOpRaftAvatarCacheMetadataStore : RaftAvatarCacheMetadataStore {
     override suspend fun read(key: RaftAvatarCacheKey): RaftAvatarCacheStoredState =
-        readStoredState(key)
+        RaftAvatarCacheStoredState(metadata = null, failure = null)
 
     override suspend fun readCommittedForOwner(
         owner: RaftAvatarCacheOwner,
         nowMs: Long,
         limit: Long
-    ): List<RaftAvatarCacheMetadata> =
-        database.queries.selectCommittedAvatarCacheMetadataForOwner(
-            environmentId = owner.environmentId,
-            accountId = owner.accountId,
-            serverId = owner.serverId,
-            nowMs = nowMs,
-            limit = limit,
-            // The NOT EXISTS subquery makes SqlDelight generate a query-specific row type; map the
-            // identical column list back onto the table entity so both reads share one mapper.
-            mapper = ::AvatarCacheMetadataEntity
-        ).executeAsList().mapNotNull { row ->
-            // A row whose subject/content no longer parses is skipped, never fatal: prewarm is an
-            // optimization and the exact mount path remains the authority.
-            val subject = raftAvatarCacheSubjectFromStorage(row.subjectKind, row.subjectId, row.memberKind)
-                ?: return@mapNotNull null
-            runCatching { row.toCacheMetadataOrNull(owner, subject) }.getOrNull()
-                ?.takeIf { it.hasExactCommitIdentity }
-        }
-
-    /** Null for a row of a content kind this build no longer has (a retired Gravatar's): no cached avatar. */
-    private fun AvatarCacheMetadataEntity.toCacheMetadataOrNull(
-        owner: RaftAvatarCacheOwner,
-        subject: RaftAvatarCacheSubject
-    ): RaftAvatarCacheMetadata? {
-        val storedKey =
-            RaftAvatarCacheKey(
-                owner = owner,
-                subject = subject,
-                content =
-                    RaftAvatarContentIdentity(
-                        kind = RaftAvatarContentKind.fromStorage(contentKind) ?: return null,
-                        fingerprint = contentFingerprint
-                    )
-            )
-        val durableCommit =
-            raftAvatarDurableCommitOrNull(
-                commitGeneration = commitGeneration,
-                commitNonce = commitNonce,
-                modelRevision = modelRevision
-            )
-        return RaftAvatarCacheMetadata(
-            key = storedKey,
-            eTag = eTag,
-            lastModified = lastModified,
-            fetchedAtMs = fetchedAtMs,
-            validatedAtMs = validatedAtMs,
-            freshUntilMs = freshUntilMs,
-            staleUntilMs = staleUntilMs,
-            sizeBytes = sizeBytes,
-            contentType = contentType,
-            commitIdentity = durableCommit?.first,
-            modelRevision = durableCommit?.second ?: 0L
-        )
-    }
-
-    private fun readStoredState(key: RaftAvatarCacheKey): RaftAvatarCacheStoredState {
-        val owner = key.owner
-        val subject = key.subject
-        val metadata =
-            database.queries.selectAvatarCacheMetadata(
-                environmentId = owner.environmentId,
-                accountId = owner.accountId,
-                serverId = owner.serverId,
-                subjectKind = subject.subjectKind,
-                subjectId = subject.subjectId,
-                memberKind = subject.memberKind
-            ).executeAsOneOrNull()?.toCacheMetadataOrNull(owner, subject)
-        val failure =
-            database.queries.selectAvatarCacheFailure(
-                environmentId = owner.environmentId,
-                accountId = owner.accountId,
-                serverId = owner.serverId,
-                subjectKind = subject.subjectKind,
-                subjectId = subject.subjectId,
-                memberKind = subject.memberKind,
-                contentKind = key.content.kind.storageValue,
-                contentFingerprint = key.content.fingerprint
-            ).executeAsOneOrNull()?.let { row ->
-                RaftAvatarCacheFailure(
-                    key = key,
-                    kind = RaftAvatarCacheFailureKind.fromStorage(row.failureKind),
-                    consecutiveCount = row.consecutiveCount.toInt(),
-                    failedAtMs = row.failedAtMs,
-                    retryAtMs = row.retryAtMs
-                )
-            }
-        return RaftAvatarCacheStoredState(metadata = metadata, failure = failure)
-    }
+    ): List<RaftAvatarCacheMetadata> = emptyList()
 
     override suspend fun commitSuccess(
         metadata: RaftAvatarCacheMetadata,
         guard: RaftAvatarCacheCommitGuard
     ): RaftAvatarCacheCommitResult =
-        commitGuarded(metadata.key, guard) {
-            val key = metadata.key
-            guard.expectedCommit?.let { expected ->
-                val current = readStoredState(key).metadata
-                if (
-                    current?.key?.let { it != expected.key } == true ||
-                    current?.commitIdentity != expected.commitIdentity ||
-                    (current?.modelRevision ?: 0L) != expected.modelRevision
-                ) {
-                    throw AvatarCacheCommitRevoked
-                }
-            }
-            val owner = key.owner
-            val subject = key.subject
-            queries.upsertAvatarCacheMetadata(
-                environmentId = owner.environmentId,
-                accountId = owner.accountId,
-                serverId = owner.serverId,
-                subjectKind = subject.subjectKind,
-                subjectId = subject.subjectId,
-                memberKind = subject.memberKind,
-                contentKind = key.content.kind.storageValue,
-                contentFingerprint = key.content.fingerprint,
-                eTag = metadata.eTag,
-                lastModified = metadata.lastModified,
-                fetchedAtMs = metadata.fetchedAtMs,
-                validatedAtMs = metadata.validatedAtMs,
-                freshUntilMs = metadata.freshUntilMs,
-                staleUntilMs = metadata.staleUntilMs,
-                sizeBytes = metadata.sizeBytes,
-                contentType = metadata.contentType,
-                commitGeneration = metadata.commitIdentity?.commitGeneration,
-                commitNonce = metadata.commitIdentity?.nonce,
-                modelRevision = metadata.modelRevision.takeIf { metadata.commitIdentity != null }
-            )
-            queries.deleteAvatarCacheFailuresForSubject(
-                environmentId = owner.environmentId,
-                accountId = owner.accountId,
-                serverId = owner.serverId,
-                subjectKind = subject.subjectKind,
-                subjectId = subject.subjectId,
-                memberKind = subject.memberKind
-            )
+        if (guard.allows(metadata.key)) {
+            RaftAvatarCacheCommitResult.Accepted
+        } else {
+            RaftAvatarCacheCommitResult.RejectedStaleGeneration
         }
 
     override suspend fun commitFailure(
@@ -296,36 +169,10 @@ internal class SqlDelightRaftAvatarCacheMetadataStore(
         retireMatchingMetadata: Boolean,
         guard: RaftAvatarCacheCommitGuard
     ): RaftAvatarCacheCommitResult =
-        commitGuarded(failure.key, guard) {
-            val key = failure.key
-            val owner = key.owner
-            val subject = key.subject
-            if (retireMatchingMetadata) {
-                queries.deleteAvatarCacheMetadataForContent(
-                    environmentId = owner.environmentId,
-                    accountId = owner.accountId,
-                    serverId = owner.serverId,
-                    subjectKind = subject.subjectKind,
-                    subjectId = subject.subjectId,
-                    memberKind = subject.memberKind,
-                    contentKind = key.content.kind.storageValue,
-                    contentFingerprint = key.content.fingerprint
-                )
-            }
-            queries.upsertAvatarCacheFailure(
-                environmentId = owner.environmentId,
-                accountId = owner.accountId,
-                serverId = owner.serverId,
-                subjectKind = subject.subjectKind,
-                subjectId = subject.subjectId,
-                memberKind = subject.memberKind,
-                contentKind = key.content.kind.storageValue,
-                contentFingerprint = key.content.fingerprint,
-                failureKind = failure.kind.storageValue,
-                consecutiveCount = failure.consecutiveCount.toLong(),
-                failedAtMs = failure.failedAtMs,
-                retryAtMs = failure.retryAtMs
-            )
+        if (guard.allows(failure.key)) {
+            RaftAvatarCacheCommitResult.Accepted
+        } else {
+            RaftAvatarCacheCommitResult.RejectedStaleGeneration
         }
 
     override suspend fun restoreAfterNativeFinalizeFailure(
@@ -334,159 +181,21 @@ internal class SqlDelightRaftAvatarCacheMetadataStore(
         previousState: RaftAvatarCacheStoredState,
         guard: RaftAvatarCacheCommitGuard
     ): RaftAvatarCacheCommitResult =
-        commitGuarded(key, guard) {
-            if (readStoredState(key) != expectedCommittedState) throw AvatarCacheCommitRevoked
-            val owner = key.owner
-            val subject = key.subject
-            val previousMetadata = previousState.metadata
-            if (previousMetadata == null) {
-                queries.deleteAvatarCacheMetadata(
-                    environmentId = owner.environmentId,
-                    accountId = owner.accountId,
-                    serverId = owner.serverId,
-                    subjectKind = subject.subjectKind,
-                    subjectId = subject.subjectId,
-                    memberKind = subject.memberKind
-                )
-            } else {
-                require(previousMetadata.key.owner == owner && previousMetadata.key.subject == subject)
-                val previousKey = previousMetadata.key
-                queries.upsertAvatarCacheMetadata(
-                    environmentId = owner.environmentId,
-                    accountId = owner.accountId,
-                    serverId = owner.serverId,
-                    subjectKind = subject.subjectKind,
-                    subjectId = subject.subjectId,
-                    memberKind = subject.memberKind,
-                    contentKind = previousKey.content.kind.storageValue,
-                    contentFingerprint = previousKey.content.fingerprint,
-                    eTag = previousMetadata.eTag,
-                    lastModified = previousMetadata.lastModified,
-                    fetchedAtMs = previousMetadata.fetchedAtMs,
-                    validatedAtMs = previousMetadata.validatedAtMs,
-                    freshUntilMs = previousMetadata.freshUntilMs,
-                    staleUntilMs = previousMetadata.staleUntilMs,
-                    sizeBytes = previousMetadata.sizeBytes,
-                    contentType = previousMetadata.contentType,
-                    commitGeneration = previousMetadata.commitIdentity?.commitGeneration,
-                    commitNonce = previousMetadata.commitIdentity?.nonce,
-                    modelRevision = previousMetadata.modelRevision.takeIf {
-                        previousMetadata.commitIdentity != null
-                    }
-                )
-            }
-
-            queries.deleteAvatarCacheFailure(
-                environmentId = owner.environmentId,
-                accountId = owner.accountId,
-                serverId = owner.serverId,
-                subjectKind = subject.subjectKind,
-                subjectId = subject.subjectId,
-                memberKind = subject.memberKind,
-                contentKind = key.content.kind.storageValue,
-                contentFingerprint = key.content.fingerprint
-            )
-            previousState.failure?.let { previousFailure ->
-                require(previousFailure.key == key)
-                queries.upsertAvatarCacheFailure(
-                    environmentId = owner.environmentId,
-                    accountId = owner.accountId,
-                    serverId = owner.serverId,
-                    subjectKind = subject.subjectKind,
-                    subjectId = subject.subjectId,
-                    memberKind = subject.memberKind,
-                    contentKind = key.content.kind.storageValue,
-                    contentFingerprint = key.content.fingerprint,
-                    failureKind = previousFailure.kind.storageValue,
-                    consecutiveCount = previousFailure.consecutiveCount.toLong(),
-                    failedAtMs = previousFailure.failedAtMs,
-                    retryAtMs = previousFailure.retryAtMs
-                )
-            }
-        }
-
-    override suspend fun clearFailure(key: RaftAvatarCacheKey) {
-        val owner = key.owner
-        val subject = key.subject
-        database.queries.deleteAvatarCacheFailure(
-            environmentId = owner.environmentId,
-            accountId = owner.accountId,
-            serverId = owner.serverId,
-            subjectKind = subject.subjectKind,
-            subjectId = subject.subjectId,
-            memberKind = subject.memberKind,
-            contentKind = key.content.kind.storageValue,
-            contentFingerprint = key.content.fingerprint
-        )
-    }
-
-    override suspend fun clearTemporaryFailures(owner: RaftAvatarCacheOwner) {
-        database.queries.clearTemporaryAvatarCacheFailuresForOwner(
-            environmentId = owner.environmentId,
-            accountId = owner.accountId,
-            serverId = owner.serverId,
-            failureKind = RaftAvatarCacheFailureKind.TemporaryTransport.storageValue
-        )
-    }
-
-    override suspend fun clearSubject(owner: RaftAvatarCacheOwner, subject: RaftAvatarCacheSubject) {
-        database.transaction {
-            queries.deleteAvatarCacheMetadata(
-                environmentId = owner.environmentId,
-                accountId = owner.accountId,
-                serverId = owner.serverId,
-                subjectKind = subject.subjectKind,
-                subjectId = subject.subjectId,
-                memberKind = subject.memberKind
-            )
-            queries.deleteAvatarCacheFailuresForSubject(
-                environmentId = owner.environmentId,
-                accountId = owner.accountId,
-                serverId = owner.serverId,
-                subjectKind = subject.subjectKind,
-                subjectId = subject.subjectId,
-                memberKind = subject.memberKind
-            )
-        }
-    }
-
-    override suspend fun clearOwner(owner: RaftAvatarCacheOwner) {
-        database.transaction {
-            queries.clearAvatarCacheMetadataForOwner(
-                environmentId = owner.environmentId,
-                accountId = owner.accountId,
-                serverId = owner.serverId
-            )
-            queries.clearAvatarCacheFailuresForOwner(
-                environmentId = owner.environmentId,
-                accountId = owner.accountId,
-                serverId = owner.serverId
-            )
-        }
-    }
-
-    override suspend fun clearAll() {
-        database.transaction {
-            queries.clearAllAvatarCacheMetadata()
-            queries.clearAllAvatarCacheFailures()
-        }
-    }
-
-    private suspend fun commitGuarded(
-        key: RaftAvatarCacheKey,
-        guard: RaftAvatarCacheCommitGuard,
-        write: RaftSqlDatabase.() -> Unit
-    ): RaftAvatarCacheCommitResult =
-        try {
-            database.transaction {
-                if (!guard.allows(key)) throw AvatarCacheCommitRevoked
-                write()
-                if (!guard.allows(key)) throw AvatarCacheCommitRevoked
-            }
+        if (guard.allows(key)) {
             RaftAvatarCacheCommitResult.Accepted
-        } catch (_: AvatarCacheCommitRevoked) {
+        } else {
             RaftAvatarCacheCommitResult.RejectedStaleGeneration
         }
+
+    override suspend fun clearFailure(key: RaftAvatarCacheKey) = Unit
+
+    override suspend fun clearTemporaryFailures(owner: RaftAvatarCacheOwner) = Unit
+
+    override suspend fun clearSubject(owner: RaftAvatarCacheOwner, subject: RaftAvatarCacheSubject) = Unit
+
+    override suspend fun clearOwner(owner: RaftAvatarCacheOwner) = Unit
+
+    override suspend fun clearAll() = Unit
 }
 
 internal fun raftAvatarDurableCommitOrNull(

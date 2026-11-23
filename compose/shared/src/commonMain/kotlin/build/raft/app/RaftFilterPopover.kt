@@ -36,8 +36,8 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.runtime.remember
 import build.raft.app.components.RaftSlotIcon
 import build.raft.designsystem.components.RaftComboboxOption
-import build.raft.designsystem.components.RaftComboboxSheet
-import build.raft.designsystem.components.RaftMultiComboboxSheet
+import build.raft.designsystem.components.RaftComboboxPicker
+import build.raft.designsystem.components.RaftMultiComboboxPicker
 import build.raft.designsystem.components.RaftComboboxPopover
 import build.raft.designsystem.components.RaftMultiComboboxPopover
 import build.raft.designsystem.components.raftClickable
@@ -299,16 +299,18 @@ private fun RaftLookFilterPopover(
 
 /**
  * A searchable filter or picker opened from a chip (Tasks' channel / creator / assignee
- * filters and assignee picker): on a phone, raft-ui ComboboxSelect is a bottom sheet with
- * search ([RaftMultiComboboxSheet] / [RaftComboboxSheet]), not a popover under the chip.
- * Same callbacks as [RaftFilterPopover]: [onToggle] per changed id, [onClear] for "clear
- * all"; a one-value pick ([multiSelect] false) closes the sheet. An empty list says
- * [status] when given (a load in progress or its error), else "No matches". The short fixed
- * lists (sort, time, scope) stay anchored popovers. Search's sender and channel filters
- * open [RaftFilterComboboxPopover] instead, as on the web.
+ * filters and assignee picker), shown while composed: where the design system opens a
+ * searchable pick ([RaftMultiComboboxPicker] / [RaftComboboxPicker]), on a phone raft-ui
+ * ComboboxSelect's bottom sheet with search, on a wide window the Combobox popup under the
+ * chip, as the web's SelectionPopover. Compose it next to the chip, in the same `Box`, so the
+ * popup anchors to it. Same callbacks as [RaftFilterPopover]: [onToggle] per changed id,
+ * [onClear] for "clear all"; a one-value pick ([multiSelect] false) closes it. An empty list
+ * says [status] when given (a load in progress or its error), else "No matches". The short
+ * fixed lists (sort, time, scope) stay anchored popovers. Search's sender and channel filters
+ * open [RaftFilterComboboxPopover] instead, at every width, as on the web.
  */
 @Composable
-internal fun RaftFilterSheet(
+internal fun RaftFilterPicker(
     title: String,
     searchPlaceholder: String,
     searchText: String,
@@ -327,7 +329,8 @@ internal fun RaftFilterSheet(
     val emptyFor = raftFilterEmptyText(status)
     val clearLabel = stringResource(Res.string.common_clear)
     if (multiSelect) {
-        RaftMultiComboboxSheet(
+        RaftMultiComboboxPicker(
+            expanded = true,
             values = options.map { it.id }.filter { it in selectedIds },
             options = comboboxOptions,
             onValuesChange = { next -> applyRaftFilterSelection(selectedIds, next, onToggle, onClear) },
@@ -342,7 +345,8 @@ internal fun RaftFilterSheet(
             optionLeading = leading
         )
     } else {
-        RaftComboboxSheet(
+        RaftComboboxPicker(
+            expanded = true,
             value = selectedIds.firstOrNull(),
             options = comboboxOptions,
             onValueChange = onToggle,
@@ -365,7 +369,7 @@ internal fun RaftFilterSheet(
  * chip, at any number of options, with the title, Clear and the search row at its top
  * ([RaftComboboxPopover] / [RaftMultiComboboxPopover]); the search row takes focus only when
  * tapped. Place it in the same `Box` as the chip, shown while [expanded]. Callbacks as
- * [RaftFilterSheet]; a one-value pick ([multiSelect] false) closes the popup, a multiple
+ * [RaftFilterPicker]; a one-value pick ([multiSelect] false) closes the popup, a multiple
  * pick keeps it open.
  */
 @Composable

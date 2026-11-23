@@ -92,6 +92,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.setValue
 import androidx.compose.foundation.background
@@ -160,6 +161,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.runtime.key
 import build.raft.app.compat.pager.Pager
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
@@ -346,14 +348,26 @@ internal fun SharedHomeActivityScreen(
                 diagnosticsLogger = activityDiagnosticsLogger
             )
         }
-    val state by activityStore.state.collectAsState()
+    val panelInactiveFlow = remember { MutableStateFlow(!active) }
+    val panelActiveFlow = remember { MutableStateFlow(active) }
+    SideEffect {
+        panelInactiveFlow.value = !active
+        panelActiveFlow.value = active
+    }
+    val activityStateFlow =
+        remember(activityStore) {
+            activityStore.state.deferWhile(RaftScrollFrameSignal.homeScrolling, enabled = panelInactiveFlow)
+        }
+    val state by activityStateFlow.collectAsState(activityStore.state.value)
     val activitySummaryServerId =
         remember(state.ownerServerId, state.snapshot?.server?.id?.value) {
             ServerId(state.ownerServerId ?: state.snapshot?.server?.id?.value.orEmpty())
         }
     val activitySummaryFlow =
         remember(sharedStores.activityUnreadSummaryStore, activitySummaryServerId) {
-            sharedStores.activityUnreadSummaryStore.projectionFlow(activitySummaryServerId)
+            sharedStores.activityUnreadSummaryStore
+                .projectionFlow(activitySummaryServerId)
+                .deferWhile(RaftScrollFrameSignal.homeScrolling, enabled = panelInactiveFlow)
         }
     val activitySummary by activitySummaryFlow.collectAsState(
         sharedStores.activityUnreadSummaryStore.currentProjection(activitySummaryServerId)
@@ -401,7 +415,7 @@ internal fun SharedHomeActivityScreen(
                 unavailable to flowOf(unavailable)
             } else {
                 val initial = nextActivityConversationListContext(null, sharedHomeStore.state.value.content, serverId)
-                initial to
+                val base =
                     sharedHomeStore.state
                         .map { homeState -> homeState.content }
                         .distinctUntilChanged()
@@ -411,6 +425,7 @@ internal fun SharedHomeActivityScreen(
                         // Agent Lounge v0: Lounges known by id rename their rows as they become known.
                         .combine(RaftAgentLounges.lounges) { context, lounges -> context?.withKnownLounges(lounges[serverId]) }
                         .distinctUntilChanged()
+                initial to base.deferWhile(RaftScrollFrameSignal.homeScrolling, enabled = panelInactiveFlow)
             }
         }
     val conversationListContext by
@@ -462,9 +477,11 @@ internal fun SharedHomeActivityScreen(
     // the only exit; Pending is an explainable failure, never a guessed channel-shaped nav.
     val conversationDirectoryFlow =
         remember(sharedStores, state.snapshot?.server?.id) {
-            state.snapshot?.server?.id
-                ?.let { serverId -> sharedStores.conversationIdentityProvider(storeScope)?.observeServer(serverId) }
-                ?: flowOf(SharedConversationDirectoryState())
+            val base =
+                state.snapshot?.server?.id
+                    ?.let { serverId -> sharedStores.conversationIdentityProvider(storeScope)?.observeServer(serverId) }
+                    ?: flowOf(SharedConversationDirectoryState())
+            base.deferWhile(RaftScrollFrameSignal.homeScrolling, enabled = panelInactiveFlow)
         }
     val conversationDirectory by conversationDirectoryFlow.collectAsState(SharedConversationDirectoryState())
     val activityConversationDirectory = remember(state.snapshot, state.dmPeerNames) {
@@ -474,12 +491,20 @@ internal fun SharedHomeActivityScreen(
     val openConversationDirectory = remember(activityConversationDirectory, conversationDirectory) {
         listOf(activityConversationDirectory, conversationDirectory).mergedSharedConversationDirectoryState()
     }
-    val activeDraftRecords by sharedStores.composerDraftPersistSlice.activeDraftRecordsState.collectAsState()
+    val activeDraftRecordsFlow =
+        remember(sharedStores.composerDraftPersistSlice) {
+            sharedStores.composerDraftPersistSlice.activeDraftRecordsState
+                .deferWhile(RaftScrollFrameSignal.homeScrolling, enabled = panelInactiveFlow)
+        }
+    val activeDraftRecords by activeDraftRecordsFlow.collectAsState(
+        sharedStores.composerDraftPersistSlice.activeDraftRecordsState.value
+    )
     val draftProjection =
         remember(activeDraftRecords) {
             activeDraftRecords.toSharedThreadComposerDraftProjection()
         }
     val conversationNotReadyMessage = stringResource(Res.string.inbox_error_conversation_not_ready)
+    val latestActive by rememberUpdatedState(active)
     LaunchedEffect(activityStore) {
         // task #436: the probe must run from a COMMITTED effect, not from a
         // remember calculation. Composition can be abandoned or retried, so a
@@ -504,9 +529,11 @@ internal fun SharedHomeActivityScreen(
         }
     }
     LaunchedEffect(sharedHomeStore, state.snapshot, state.dmPeerNames) {
-        state.snapshot?.let { snapshot ->
-            sharedHomeStore?.supplementConversationIdentity(snapshot, dmPeerNames = state.dmPeerNames)
+        val snapshot = state.snapshot ?: return@LaunchedEffect
+        if (!latestActive) {
+            RaftScrollFrameSignal.awaitHomeScrollSettled(cancelWhen = panelActiveFlow)
         }
+        sharedHomeStore?.supplementConversationIdentity(snapshot, dmPeerNames = state.dmPeerNames)
     }
     // Task #60: the app-shell Activity tab stays composed (keep-alive) while another tab is
     // selected, and it still receives every shell pageDidAppear tick. Refreshing then cost a
@@ -521,7 +548,6 @@ internal fun SharedHomeActivityScreen(
             }
         }
     }
-    val latestActive by rememberUpdatedState(active)
     LaunchedEffect(routeVisibleTick) {
         if (activityPageDidAppearShouldRefresh(routeVisibleTick, active = latestActive)) {
             activityStore.dispatch(SharedActivityIntent.Refresh)
@@ -770,9 +796,9 @@ internal fun sharedActivityStoreDiagnosticsLogger(): (String) -> Unit {
 
 /**
  * Stamping is separated from delivery so the uniqueness contract can be tested
- * deterministically. Exercised through the logger it cannot be: the queue drops
- * under admission contention, so a duplicated number could be hidden by one of
- * the pair being dropped and the test would pass on a broken counter.
+ * deterministically. Exercised through the logger it cannot be: a full queue
+ * drops lines, so a duplicated number could be hidden by one of the pair being
+ * dropped and the test would pass on a broken counter.
  */
 internal fun stampSharedActivityDiagnosticsSequence(message: String): String =
     "seq=${sharedActivityDiagnosticsSequence.incrementAndGet()} $message"
@@ -1378,15 +1404,12 @@ private fun SharedActivityMarkAllReadButton(iconOnly: Boolean, onClick: () -> Un
 }
 
 /**
- * The Activity toolbar's height, its seam included: 54 on a phone (unchanged); on the wide layout
- * raft-design's list toolbar line, 49 with a finger and 44 under a mouse or trackpad.
+ * The Activity toolbar's height, its seam included: raft-design's list toolbar line (web
+ * ThreadsInbox `h-[calc(--spacing(12)+1px)] md:pointer-fine:h-(--header-height)`), 49 on a phone
+ * and on the wide layout with a finger, 44 only on the wide layout under a mouse or trackpad.
  */
 internal fun activityFilterBarHeight(scale: RaftScale, pointerInput: RaftPointerInput): Dp =
-    when {
-        scale != RaftScale.Wide -> 54.dp
-        pointerInput == RaftPointerInput.Fine -> 44.dp
-        else -> 49.dp
-    }
+    if (scale == RaftScale.Wide && pointerInput == RaftPointerInput.Fine) 44.dp else 49.dp
 
 /**
  * The Activity column's margin, where its toolbar and its rows start (raft-design lists.md, One
@@ -1420,15 +1443,16 @@ internal fun SharedActivityFilterBar(
     menuExpanded: Boolean = false,
     onMenuExpandedChange: (Boolean) -> Unit = {},
 ) {
-    // web inbox toolbar: a 1dp seam inside it, 16dp edges, its controls centred. 54dp on a phone;
-    // on the wide layout raft-design's list toolbar line (spacing.md): 49 with a finger (web
-    // `h-[calc(--spacing(12)+1px)]`), the 44 head height under a mouse or trackpad
-    // (`md:pointer-fine:h-(--header-height)`).
+    // web inbox toolbar: a 1dp seam inside it, its controls centred. raft-design's list toolbar
+    // line (spacing.md): 49 with a finger, on a phone too (web `h-[calc(--spacing(12)+1px)]`: a
+    // 32dp button 8dp from the top and from the seam), the 44 head height on the wide layout
+    // under a mouse or trackpad (`md:pointer-fine:h-(--header-height)`).
     val toolbarHeight = activityFilterBarHeight(RaftTheme.scale, RaftTheme.pointerInput)
-    // Its sides are the list column's margin (web `px-(--column-margin)`): 16 on a phone; on the
-    // wide layout 20 with a finger and 16 under a mouse or trackpad.
+    // Its sides are the list column's margin (web `px-(--column-margin)`): 20, and 16 only on the
+    // wide layout under a mouse or trackpad.
     val edge = activityColumnMargin(RaftTheme.scale, RaftTheme.pointerInput)
-    BoxWithConstraints(modifier = Modifier.fillMaxWidth().height(toolbarHeight).background(RaftColor.SurfaceWhite)) {
+    // Test tags are the web's data-testid, so the visual comparison pairs the two by name.
+    BoxWithConstraints(modifier = Modifier.fillMaxWidth().height(toolbarHeight).background(RaftColor.SurfaceWhite).testTag("inbox-toolbar")) {
         val markAllReadIconOnly = activityMarkAllReadIconOnly(maxWidth, edge)
         Row(
             modifier =
@@ -1447,7 +1471,7 @@ internal fun SharedActivityFilterBar(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                Box {
+                Box(Modifier.testTag("inbox-filter-button")) {
                     RaftPickerTriggerButton(
                         text = stringResource(Res.string.activity_filter_button),
                         onClick = { onMenuExpandedChange(!menuExpanded) },
@@ -2487,6 +2511,7 @@ internal fun SharedActivityList(
                                     onExitCollapsed = { completePendingRowExit(item.key) },
                                     onInFlightExitDisposed = { completePendingRowExit(item.key) },
                                     layout = rowLayout,
+                                    modifier = Modifier.testTag("inbox-row"),
                                 )
                             }
                         }

@@ -338,12 +338,23 @@
   --field-font-size: 16px;
   --field-font-weight: 400;
   --field-line-height: 24px;
+  /* Between two fields of a form, and between the parts of a form section: two
+     airs. */
+  --field-gap: calc(2 * var(--control-air));
   --card-title-font-size: 16px;
   --card-title-font-weight: 600;
   --card-title-line-height: 24px;
-  /* A default control: a field, a Button at lg, an icon button at icon-lg. A
-     finger's 44px on a phone, Feishu's 32px on a desktop. */
+  /* A default control: a field, a select, a Button, a tab, a selected segment, a
+     menu option, a sidebar row. A finger's 44px on a phone; 34px on a desktop,
+     the one desktop size for all of them (stdrc, 2026-11-04; Feishu's 32px
+     before). */
   --control-height: 44px;
+  /* A small control: Button md and icon-md, a filter trigger, a filter chip, a
+     tab, a segment, a field in a toolbar (InputGroup md). 32px on a phone and a
+     touch screen, its hit area still reaching 44px; the control height (34px) on
+     a desktop. Shared with the apps: the controls in the toolbar over a list are
+     this size, and the toolbar's height is built on it. */
+  --control-height-small: 32px;
   /* The full-width call to action across a sign-in, sign-up or setup form
      (Button xl). */
   --control-height-cta: 52px;
@@ -358,6 +369,127 @@
   /* A chip or a button embedded in a field: the control height less the embedded
      inset above and below, so the field keeps its height. */
   --control-embedded-size: 32px;
+  /* The air of the size chain: between a label, its control and its help, around
+     a control in a bar, and half of the gap between two fields. Every step below
+     is the control height plus or minus a number of airs. */
+  --control-air: 6px;
+  /* The corner of a control at the control height (a field, a Select, a Button
+     at lg and icon-lg), about a quarter of its height: 10px at 44 on a phone and
+     a touch screen, 8px at 34 on a desktop. */
+  --control-radius: 10px;
+  /* Every header: a panel, a sidebar or a thread head, a dialog's bar, a
+     drawer's head, a rail head. The control height with the header air above and
+     below, so the seams of a screen line up. */
+  --header-height: calc(var(--control-height) + 2 * var(--header-air));
+  /* The air above and below the control in a header: one control air on a phone
+     and a touch screen (44 + 12 = 56); 5px on a desktop, so a 34px control and
+     its head make 44 (34 + 10). */
+  --header-air: var(--control-air);
+  /* Every header in a window shorter than 600px. On a desktop, a bar button with
+     one air above and below (28 + 12 = 40). */
+  --header-height-short: 48px;
+  /* An icon button in a bar: a head's actions and its x, the composer's icons, a
+     row's actions. The control height on a phone and a touch screen; 28px on a
+     desktop, the size of the header's icon tile, so a head's tile and buttons
+     share one size and one centre line. Its hit area still reaches 44px. */
+  --bar-button-size: var(--control-height);
+  /* The corner of a bar button, about a quarter of its height: 10px at 44 on a
+     phone and a touch screen, 6px at the 28px bar button with a mouse on a
+     desktop. */
+  --bar-button-radius: 10px;
+  /* An item on the frame: the top bar's and the title bar's buttons, the
+     workspace button and the search box. 36px on a phone and a touch screen; the
+     control height on a desktop, so the top bar is a header (34 + 2 x 5 = 44
+     with a mouse). */
+  --frame-item-height: 36px;
+  /* The switch's track: 50 x 30 on a phone and a touch screen, macOS's regular
+     38 x 22 on a desktop. Its knob is the track height less 8px (a 1.5px border
+     and 2.5px of padding each side, so the 1px of track between the knob's ring
+     and the border stays) and travels the width less the height. */
+  --switch-width: 50px;
+  /* The switch's track height. */
+  --switch-height: 30px;
+  /* A sidebar row from 768px, 2px apart; its highlight fills the row. On a
+     desktop the control height (34px): one size for a sidebar item, a menu
+     option, a compact list row, a field, a select, a Button, a tab and a
+     selected segment (stdrc, 2026-11-04). A phone list of places keeps 44px. */
+  --row-height: 38px;
+  /* An option of a popup list or a menu item with one line: 36px on a phone and
+     a touch screen, the row height (34px, the control height) on a desktop. */
+  --option-height: 2.25rem;
+  /* Above and below the tallest part of a settings row (ListRow plain): two
+     airs. */
+  --settings-row-inset: calc(2 * var(--control-air));
+  /* The least height of a row with an avatar and a preview: a conversation, a
+     person, an agent, an Activity or Inbox item, a search result (ListRow
+     default, InboxItem, SearchEntity). 56px on a touch screen at any width: the
+     whole row is the target, so it needs no air past 44px, and one more
+     conversation fits on a phone screen. No floor with a mouse or a trackpad:
+     the row is its content and its inset. Shared with the apps, whose lists of
+     conversations and people are the same rows. */
+  --list-row-min-height: 56px;
+  /* Above and below the content of a row with an avatar and a preview: 8px at
+     every width and with every pointer, so a two-line Activity item is 60px with
+     a mouse (stdrc, 2026-11-04). The 12px a narrow window with a mouse had was a
+     breakpoint's accident, not a decision (Kirby, 2026-11-23,
+     #proj-raft-ui:#293). Shared with the apps: with the least height it sets how
+     many rows of conversations a screen shows. */
+  --list-row-inset: 8px;
+  /* In the toolbar over a list: above and below its small controls on a phone
+     and a touch screen, and between its two lines. Shared with the apps: it sets
+     the toolbar's height on a phone. */
+  --list-toolbar-air: 8px;
+  /* One line of the toolbar over a list, its seam included: 49px on a phone and
+     a touch screen (8 + 32 + 8 + 1), a row of controls and not a header, as
+     Material's chip rows are 48dp; the header height (44px) on a desktop. A
+     second line adds the air and a small control: 89px and 86px (Jasper,
+     2026-11-10, #proj-raft-ui:f9756e85). Shared with the apps: every page of a
+     list has the same toolbar. */
+  --list-toolbar-height: calc(var(--control-height-small) + 2 * var(--list-toolbar-air) + 1px);
+  /* The leading avatar column of a message row and of a list row with an avatar
+     and a preview: the avatar (Avatar md), and the column a message's
+     continuation rows keep under it. 35px at every width, so every message's
+     text and every row's title start on one line. One group for both, so a
+     timeline and a list beside it never drift apart. Shared with the apps, whose
+     timelines and lists are drawn from it. */
+  --avatar-column-size: 35px;
+  /* From the avatar column to the text beside it, in a message row and in a list
+     row with an avatar. Shared with the apps: with the column's size it sets
+     where a message's and a row's text start. */
+  --avatar-column-gap: 12px;
+  /* Between two sections of a form (FormSection), half above and half below the
+     hairline between them: 32px on a phone and a touch screen, two field gaps
+     (24px) on a desktop. */
+  --section-gap: 32px;
+  /* From a head's seam to the first thing of the content under it: the page
+     inset on a phone and a touch screen; 12px on a desktop, so the content sits
+     close under its compact head (stdrc, 2026-11-05). */
+  --page-top: var(--page-inset);
+  /* The inset of a column's content, a settings page, a drawer's body and a
+     dialog's form: 16px on a phone and a touch screen; 16px with a mouse on a
+     desktop too (20 before 2026-11-05), where the column margin, the list cells'
+     content and the heads follow it, one edge. */
+  --page-inset: 16px;
+  /* The rail, its 1px seam included: 57px on a touch screen, 49px on a desktop
+     (48 + 1, the short window's rail). Its own size, not the header's. */
+  --rail-width: 57px;
+  /* A rail item: 40px on a touch screen, 36px on a desktop. */
+  --rail-item: 40px;
+  /* The rail in a window shorter than 600px, its 1px seam included; with a mouse
+     the rail is always this width (48 + 1). */
+  --rail-width-short: 49px;
+  /* A rail item in a window shorter than 600px; with a mouse rail items are
+     always this size. */
+  --rail-item-short: 36px;
+  /* The phone tab bar (MobileNav) above its bottom inset, its 1px top seam
+     included: 52px (1 + 10 + a 22px icon + 7 + a 12px label line). Shared with
+     the Android app, which draws its own bottom bar with this height; the iOS
+     app draws the system tab bar instead. */
+  --mobile-nav-height: 52px;
+  /* The least space under the tab bar's content: 8px on a screen without a
+     bottom safe area; a larger safe area replaces it (on the web up to 34px).
+     Shared with the Android app, which pads its own bottom bar the same way. */
+  --mobile-nav-inset-bottom-min: 8px;
   /* The message step of a timeline: from the last line of one turn to the first
      line of the next (a sender line, an event line). Every row keeps the row
      inset above and below its text; the first row of a turn adds the rest above
@@ -594,6 +726,17 @@
   --line-field-hover: var(--line-strong);
 }
 
+/* A mouse or a trackpad at any width: the sizes that follow the input, not the
+   width (design/foundations/tokens.md#component-tokens). A touch screen at any
+   width keeps the values above; a desktop then takes its own values below. The
+   same query as Tailwind's `pointer-fine:`. */
+@media (pointer: fine) {
+  :where(:root),
+  .light {
+    --list-row-min-height: 0px;
+  }
+}
+
 /* Desktop: from 768px (Tailwind's `md`, where the desktop layout begins)
    with a mouse or trackpad. The metrics that follow Feishu's PC specs. A
    phone, and a touch screen at any width, keep the values above. The same
@@ -605,10 +748,27 @@
     --field-line-height: 22px;
     --card-title-font-size: 14px;
     --card-title-line-height: 22px;
-    --control-height: 32px;
+    --control-height: 34px;
+    --control-height-small: var(--control-height);
     --control-height-cta: 40px;
     --control-icon-size: 18px;
-    --control-hit-inset: 6px;
-    --control-embedded-size: 20px;
+    --control-hit-inset: 5px;
+    --control-embedded-size: 22px;
+    --control-radius: 8px;
+    --header-air: 5px;
+    --header-height-short: calc(var(--bar-button-size) + 2 * var(--control-air));
+    --bar-button-size: 28px;
+    --bar-button-radius: 6px;
+    --frame-item-height: var(--control-height);
+    --switch-width: 38px;
+    --switch-height: 22px;
+    --row-height: var(--control-height);
+    --option-height: var(--row-height);
+    --list-toolbar-height: var(--header-height);
+    --section-gap: calc(2 * var(--field-gap));
+    --page-top: 12px;
+    --page-inset: 16px;
+    --rail-width: var(--rail-width-short);
+    --rail-item: var(--rail-item-short);
   }
 }

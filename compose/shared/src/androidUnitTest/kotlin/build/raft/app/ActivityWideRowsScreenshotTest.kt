@@ -46,7 +46,7 @@ import org.robolectric.annotation.GraphicsMode
  *    every row shows its ink-outline Mark as Done at rest (web InboxRowDone), 12dp past its time and marks;
  *  - `screens.activity.wide.rows.fine`: a mouse or trackpad, content 16dp in, the third row hovered: the
  *    selected row and the hovered one show the ghost Mark as Done, 8dp past their time and marks.
- * The phone takes the same cell with two reserved excerpt lines: [ActivityConversationRowsScreenshotTest].
+ * The phone takes the same cell and the same one excerpt line: [ActivityConversationRowsScreenshotTest].
  * Verify / record as [RaftRobolectricScreenshot].
  */
 @RunWith(RobolectricTestRunner::class)

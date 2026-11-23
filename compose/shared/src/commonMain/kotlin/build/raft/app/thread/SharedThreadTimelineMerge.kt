@@ -684,7 +684,10 @@ private fun RaftThreadMessageItem.withReplySummary(
             replyCount = summary.replyCount,
             limit = InlineThreadReplyPreviewLimit,
         )
-    val nextInlineReplies = incomingInlineReplies
+    // The window shown under this row is this thread's, unless the row names another thread.
+    val knownInlineReplies =
+        inlineReplies?.takeIf { threadChannelId == null || threadChannelId == summaryThreadChannelId.value }
+    val nextInlineReplies = incomingInlineReplies.orNewerKnownWindow(knownInlineReplies)
     if (
         nextThreadChannelId == threadChannelId &&
         nextReplyCount == replyCount &&
@@ -703,6 +706,22 @@ private fun RaftThreadMessageItem.withReplySummary(
         isThreadFollowed = nextFollowed,
         inlineReplies = nextInlineReplies,
     )
+}
+
+/**
+ * Web `threadStore.hydrateSummariesWithReplyScopes`: a summary whose newest reply is older than the
+ * replies window a message already shows never replaces that window; only the count moves (up).
+ * A summary with no previews at all is the common case: the followed-threads list carries none,
+ * and it is all [build.raft.app.data.ConversationRepository.getThreadReplySummaries] returns when
+ * the channel's own summaries request fails. Taking its empty window emptied the inline replies of
+ * every followed parent, and the replies sync host then rebaselined on that empty window (artin,
+ * #wg-mobile-sync: "after a message is sent, all the inline thread reply previews are gone").
+ */
+private fun ThreadRepliesReadModel.orNewerKnownWindow(known: ThreadRepliesReadModel?): ThreadRepliesReadModel {
+    known ?: return this
+    val knownNewestSeq = known.replies.fold(known.snapshotSeq) { newest, reply -> maxOf(newest, reply.seq) }
+    if (knownNewestSeq <= snapshotSeq) return this
+    return if (replyCount <= known.replyCount) known else known.copy(replyCount = replyCount)
 }
 
 private fun RaftThreadFilesPayload?.orEmptyFilesPayload(basePayload: RaftThreadScreenPayload): RaftThreadFilesPayload =

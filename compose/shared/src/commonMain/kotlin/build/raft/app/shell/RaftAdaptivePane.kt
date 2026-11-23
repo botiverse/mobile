@@ -1,5 +1,10 @@
 package build.raft.app
 
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.ReadOnlyComposable
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalWindowInfo
+import androidx.compose.ui.unit.Dp
 import build.raft.app.compat.json.JSONArray
 import build.raft.app.compat.json.JSONObject
 import build.raft.designsystem.theme.RaftScale
@@ -248,6 +253,25 @@ private fun String.toRaftAdaptivePanePosture(): RaftAdaptivePanePosture =
  * system's [RaftScale.WideMinWidth], from where a window of any input takes the wide type.
  */
 internal val DualPaneMinimumWidthDp: Float = RaftScale.WideMinWidth.value
+
+/**
+ * Whether a window [windowWidth] wide is a wide window: from the wide breakpoint above (744),
+ * where the rail, the two panes and the wide type start ([RaftScale.of]). The one rule for every
+ * phone-or-wide choice made by the window's width, so they all switch at once: several were
+ * copied from the web's `md` breakpoint and kept their phone variant on an iPad mini held upright,
+ * which already has the rail (#307). A part sized by its own column asks its own width.
+ */
+internal fun raftWindowWide(windowWidth: Dp): Boolean = RaftScale.of(windowWidth) == RaftScale.Wide
+
+/** The width of the window this is composed in; 0 before the window is measured. */
+@Composable
+@ReadOnlyComposable
+internal fun raftWindowWidth(): Dp = with(LocalDensity.current) { LocalWindowInfo.current.containerSize.width.toDp() }
+
+/** [raftWindowWide] for the window this is composed in ([raftWindowWidth]). */
+@Composable
+@ReadOnlyComposable
+internal fun raftWindowWide(): Boolean = raftWindowWide(raftWindowWidth())
 
 internal fun RaftAdaptivePanePosture.toRaftAdaptivePanePostureWireName(): String =
     when (this) {

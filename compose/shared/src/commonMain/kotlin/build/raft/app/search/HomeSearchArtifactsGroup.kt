@@ -110,7 +110,10 @@ internal fun LazyListScope.homeSearchArtifactsItems(
                         hit = hit,
                         context = context,
                         selected = selectedKey == key,
-                        modifier = Modifier.raftSafeAreaHorizontalPadding().heightIn(min = RaftSearchMetrics.EntityMinHeight),
+                        modifier =
+                            Modifier
+                                .raftSafeAreaHorizontalPadding()
+                                .heightIn(min = RaftSearchMetrics.entityMinHeight(RaftTheme.pointerInput)),
                         onOpen = { onOpen(hit) },
                     )
                 }

@@ -69,6 +69,8 @@ object RaftProductEvents {
         // Before the trace account moves: the last realtime health window is queued under its own account.
         RaftRealtimeSessionHealth.onSignedIn(normalized, userId)
         RaftClientTraceEvents.onSignedIn(userId)
+        // After the trace account: a web step-up an earlier launch was killed in is queued under it.
+        RaftAppWebStepUp.onSignedIn()
         RaftInstallSourceReport.onSignedIn(userId)
         RaftAppSettingsSnapshotReport.onSignedIn()
     }

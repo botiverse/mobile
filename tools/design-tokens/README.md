@@ -9,6 +9,8 @@ Web palette change becomes a reviewable diff here instead of silent drift (task 
 | `source/` | Vendored copies of those files (raft-ui and Tailwind are MIT) |
 | `gen_tokens.py` | Resolves the CSS cascade per theme and writes the same tokens twice: `compose/shared/src/commonMain/kotlin/build/raft/app/designtokens/RaftUiColorTokens.g.kt` (Kuikly Compose `Color`, `internal`) and `compose/designsystem/src/commonMain/kotlin/build/raft/designsystem/tokens/RaftUiColorTokens.g.kt` (official Compose Multiplatform `androidx.compose.ui.graphics.Color`, public). The targets are listed in `TARGETS` |
 | `gen_theme_decor.py` | Extracts each theme's decor (the `--theme-decor-top` 190x48 and `--theme-decor-rail` 48x112 inline SVGs in `themes.css`, light and the `.dark[data-theme]` repaint) into `compose/designsystem/src/commonMain/kotlin/build/raft/designsystem/tokens/RaftThemeDecorArt.g.kt`: every SVG path as one layer of rectangles, group transforms applied. Fails on anything but unit-rectangle pixel art |
+| `gen_dimensions.py` | Resolves every root length custom property of raft-ui and the Web (`--control-height`, `--column-margin`, `--radius-chip`, `--text-body`...) in the Web's three contexts (a phone; 48rem and up by touch; 48rem and up with a mouse or trackpad) and writes `compose/designsystem/src/commonMain/kotlin/build/raft/designsystem/tokens/RaftUiDimensionTokens.g.kt` (`Compact`, `Wide`, `Fine`). Sizes written in a page's or a component's own classes (not custom properties) are not covered |
+| `gen_component_tokens.py` | Reads raft-ui's `tokens.resolved.json` (0.102.23 and later): the component tokens the Web and the apps both draw (`control.height`, `header.height`, `list-row.min-height`, `list-toolbar.height`, `mobile-nav.height`...), already resolved per context, and writes `compose/designsystem/src/commonMain/kotlin/build/raft/designsystem/tokens/RaftUiComponentTokens.g.kt` (`Touch`: a phone and a touch screen at any width; `Fine`: a mouse in a narrow window; `Desktop`: a wide window with a mouse; `RaftUiComponentTokens.of(wide, fine)`). Fails when a value disagrees with what `gen_dimensions.py` resolves from foundation.css |
 | `chrome-oracle.json` | The same tokens as painted by Chromium; `--check` requires every generated colour to match within 1/255 per channel |
 | `capture_chrome_oracle.mjs` | Regenerates the oracle (local, needs Playwright) |
 
@@ -26,7 +28,7 @@ The theme list and the Pro flag are not in the raft-ui package (its `themes.json
 
 Any token a theme overrides becomes theme-dependent and leaves `RaftUiPalette`: read it from the current theme colours (`RaftTheme.colors`, `RaftAppThemeState.colors`). Raft yellow that must not follow the theme has its own unthemed tokens (`selected`, `you`).
 
-Only colours are emitted. Names in Tailwind's non-colour namespaces (`--spacing-*`, `--radius-*`, `--text-*`, `--font-*`, `--shadow-*`... see `NON_COLOUR_NAMESPACES`) are skipped without being resolved, and any other value that is not a colour (a length, a shadow) is dropped. A colour that cannot be resolved (undefined `var()`, unsupported syntax) still fails the run.
+`gen_tokens.py` emits only colours (lengths come from `gen_dimensions.py`). Names in Tailwind's non-colour namespaces (`--spacing-*`, `--radius-*`, `--text-*`, `--font-*`, `--shadow-*`... see `NON_COLOUR_NAMESPACES`) are skipped without being resolved, and any other value that is not a colour (a length, a shadow) is dropped. A colour that cannot be resolved (undefined `var()`, unsupported syntax) still fails the run.
 
 Names drop the leading `--` and `color-` and are camel-cased (`--foreground-muted` → `foregroundMuted`).
 
@@ -38,13 +40,17 @@ python3 tools/design-tokens/gen_tokens.py --check      # CI: sources match manif
 python3 tools/design-tokens/gen_tokens.py --self-test  # local: colour maths, cascade, fail-closed parsing
 python3 tools/design-tokens/gen_theme_decor.py         # regenerate the theme decor art
 python3 tools/design-tokens/gen_theme_decor.py --check # CI: the decor art matches themes.css
+python3 tools/design-tokens/gen_dimensions.py          # regenerate the dimension tokens
+python3 tools/design-tokens/gen_dimensions.py --check  # CI: the dimension tokens match the sources
+python3 tools/design-tokens/gen_component_tokens.py          # regenerate the component tokens
+python3 tools/design-tokens/gen_component_tokens.py --check  # CI: the component tokens match tokens.resolved.json and foundation.css
 ```
 
 ## Bumping to a newer Web
 
 1. Read the versions in `slock/packages/web/package.json` and `pnpm-lock.yaml` (`@botiverse/raft-ui`, `tailwindcss`) at the target slock commit.
-2. Replace the files under `source/` (`npm pack @botiverse/raft-ui@<v>` (the package was `raft-ui` up to 0.6), `npm pack tailwindcss@<v>`, `git show <commit>:packages/web/src/index.css`), rename the version directories, and update `manifest.json` (paths, origins, `slockCommit`, sha256).
-3. `python3 tools/design-tokens/gen_tokens.py` and `python3 tools/design-tokens/gen_theme_decor.py`, then regenerate the oracle (it paints every token in every theme and mode) (see the header of `capture_chrome_oracle.mjs`), then `--check`. Capture with the same Chromium as the current oracle (its `chromium` field; pass it via `CHROMIUM_PATH`), so the oracle diff shows only token changes.
+2. Replace the files under `source/` (`npm pack @botiverse/raft-ui@<v>` (the package was `raft-ui` up to 0.6): `styles.css`, `foundation.css`, `themes.css` and `tokens.resolved.json` from its `dist/`; `npm pack tailwindcss@<v>`, `git show <commit>:packages/web/src/index.css`), rename the version directories, and update `manifest.json` (paths, origins, `slockCommit`, sha256).
+3. `python3 tools/design-tokens/gen_tokens.py`, `gen_theme_decor.py`, `gen_dimensions.py` and `gen_component_tokens.py`, then regenerate the oracle (it paints every token in every theme and mode) (see the header of `capture_chrome_oracle.mjs`), then `--check`. Capture with the same Chromium as the current oracle (its `chromium` field; pass it via `CHROMIUM_PATH`), so the oracle diff shows only token changes.
 4. Review the Kotlin diff: every changed colour is a visible change on mobile.
 
 ## How the cascade is resolved

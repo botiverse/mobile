@@ -136,8 +136,6 @@ internal enum class RaftAppTabBarRenderer {
     NativeHost
 }
 
-// The full-width edge bar (stdrc 2026-10-21); the bottom safe area is added below it.
-private val RaftSharedBottomTabBarHeight = RaftBottomTabBarSpec.BarHeight
 // UIKit's compact UITabBar height, used for the native host band until the host reports the
 // laid-out bar.
 private val RaftNativeHostTabBarFallbackHeight = 49.dp
@@ -202,8 +200,14 @@ internal fun raftAppBottomTabBarOverlaysContent(): Boolean {
     }
 }
 
+/**
+ * The full-width edge bar's band (stdrc 2026-10-21) over [bottomSafeArea], as raft-ui MobileNav
+ * draws it (mobile-nav.mjs): the 52dp bar and its bottom padding, the safe area or at least 8dp
+ * ([RaftMobileNavDefaults.height]). 60dp with nothing under it, 76dp over Android's 24dp gesture
+ * handle, 86dp over an iPhone's 34pt home indicator.
+ */
 internal fun raftSharedBottomTabBarHostHeight(bottomSafeArea: Dp): Dp =
-    RaftSharedBottomTabBarHeight + bottomSafeArea
+    RaftMobileNavDefaults.height(bottomSafeArea)
 
 internal fun raftSharedBottomTabBarContentInset(bottomSafeArea: Dp): Dp =
     raftSharedBottomTabBarHostHeight(bottomSafeArea) + RaftAppSpacing.Lg
@@ -318,7 +322,11 @@ internal fun RaftBottomTabBar(
  * [build.raft.designsystem.components.RaftMobileNavServerPopoverItem].
  */
 internal object RaftBottomTabBarSpec {
-    val BarHeight = RaftMobileNavDefaults.BarHeight
+    /**
+     * The bar with nothing under it: its 52dp and the least bottom padding, 8dp. Over a bottom
+     * safe area [RaftSharedBottomTabBarBand] adds the rest of the padding below it.
+     */
+    val BarHeight = RaftMobileNavDefaults.height()
     val TopPadding = RaftMobileNavDefaults.TopPadding
     val PillWidth = RaftMobileNavDefaults.PillWidth
     val PillHeight = RaftMobileNavDefaults.PillHeight
@@ -470,8 +478,10 @@ private fun RaftNativeTabBarToastAvoidance(bridge: RaftNativeTabBarBridge) {
 
 /**
  * The Compose edge bar's band (stdrc 2026-10-21: one edge bar for every Compose renderer, the
- * iOS Liquid Glass and Android floating docks are gone): the bar plus the bottom safe area, all
- * on the card layer, so the bar meets the screen edge.
+ * iOS Liquid Glass and Android floating docks are gone): the bar and its bottom padding over the
+ * bottom safe area ([raftSharedBottomTabBarHostHeight]: the safe area, at least 8dp, as raft-ui
+ * MobileNav pads it), all on the card layer, so the bar meets the screen edge. The tabs keep
+ * their place at the top and take taps down to the bar's least 8dp padding, as with no safe area.
  */
 @Composable
 internal fun RaftSharedBottomTabBarBand(

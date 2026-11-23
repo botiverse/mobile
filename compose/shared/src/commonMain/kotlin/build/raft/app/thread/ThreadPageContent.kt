@@ -1678,7 +1678,8 @@ private fun ThreadPageContentContent(
                         actionCardExecutedTimeLabel =
                             timelineRenderConfig.formatActionCardExecutedTimeLabel(
                                 actionCard?.executedAt,
-                                currentRaftTimeContextProvider?.todayEpochDay
+                                currentRaftTimeContextProvider?.todayEpochDay,
+                                rememberRaftMessageTimeFormat()
                             ),
                         resolvedTaskAssigneeName = linkedTask?.threadLinkedTaskAssigneeDisplayName(),
                         highlightedMentions = highlightedMentions,

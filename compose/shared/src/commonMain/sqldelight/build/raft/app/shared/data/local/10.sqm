@@ -1,0 +1,4 @@
+-- #proj-mobile:#294: retire unused slock-avatar-render-v1 SQLite tables; Coil's disk cache is the
+-- sole avatar byte/image cache.
+DROP TABLE IF EXISTS avatarCacheMetadataEntity;
+DROP TABLE IF EXISTS avatarCacheFailureEntity;

@@ -178,4 +178,133 @@ class ArtifactScreenshotsTest {
         assertContentEquals(byteArrayOf(3), store.read(key("kept")))
         assertEquals(3, fetcher.calls.size)
     }
+
+    @Test
+    fun diskCachePaintsImmediatelyThenRevalidatesEvictsOnGoneAndDropsServerInFlight() = runTest {
+        val disk =
+            object : ArtifactScreenshotDiskCache {
+                val entries = linkedMapOf<Pair<ArtifactScreenshotDiskOwner, ArtifactScreenshotKey>, ByteArray>()
+
+                override suspend fun read(owner: ArtifactScreenshotDiskOwner, key: ArtifactScreenshotKey): ByteArray? =
+                    entries[owner to key]
+
+                override suspend fun write(
+                    owner: ArtifactScreenshotDiskOwner,
+                    key: ArtifactScreenshotKey,
+                    bytes: ByteArray,
+                    writeToken: Long,
+                ) {
+                    entries[owner to key] = bytes
+                }
+
+                override suspend fun remove(
+                    owner: ArtifactScreenshotDiskOwner,
+                    key: ArtifactScreenshotKey,
+                    writeToken: Long,
+                ) {
+                    entries.remove(owner to key)
+                }
+
+                override suspend fun clearServer(serverId: String, accountId: String?, environmentId: String?) {
+                    entries.keys.filter { (o, k) ->
+                        k.serverId == serverId &&
+                            (accountId == null || o.accountId == accountId) &&
+                            (environmentId == null || o.environmentId == environmentId)
+                    }.forEach(entries::remove)
+                }
+            }
+        val owner = ArtifactScreenshotDiskOwner("https://api.example", "user-1")
+        val target = key("shot-1")
+        disk.write(owner, target, byteArrayOf(1, 2))
+
+        var outcome: ArtifactScreenshotFetchResult = ArtifactScreenshotFetchResult.TransientFailure
+        var gate: CompletableDeferred<Unit>? = null
+        val fetcher =
+            object : ArtifactScreenshotFetcher {
+                override suspend fun fetch(key: ArtifactScreenshotKey): ByteArray? = null
+                override suspend fun fetchOutcome(key: ArtifactScreenshotKey): ArtifactScreenshotFetchResult {
+                    gate?.await()
+                    return outcome
+                }
+            }
+        val store =
+            SharedArtifactScreenshotStore(
+                fetcher = fetcher,
+                scope = backgroundScope,
+                nowMillis = { testScheduler.currentTime },
+                diskCache = disk,
+                currentOwner = { owner },
+            )
+
+        // Transient failure: paints disk copy immediately and keeps it on disk.
+        val cachedCallbacks = mutableListOf<ByteArray>()
+        assertContentEquals(byteArrayOf(1, 2), store.read(target) { cachedCallbacks += it })
+        assertEquals(1, cachedCallbacks.size)
+        assertContentEquals(byteArrayOf(1, 2), disk.read(owner, target))
+
+        // 403/404 Gone (after clearAll resets cooldown): evicts disk copy and returns null.
+        store.clearAll()
+        outcome = ArtifactScreenshotFetchResult.Gone
+        assertNull(store.read(target))
+        assertNull(disk.read(owner, target))
+
+        // dropServer cancels in-flight write-back and caller never receives revoked bytes.
+        val otherServerKey = key("shot-other", serverId = "server-2")
+        disk.write(owner, otherServerKey, byteArrayOf(7))
+        outcome = ArtifactScreenshotFetchResult.Ok(byteArrayOf(9, 9))
+        gate = CompletableDeferred()
+        val inFlight = async { store.read(target) }
+        runCurrent()
+        store.dropServer(server, owner.accountId)
+        gate.complete(Unit)
+        assertNull(inFlight.await(), "caller suspended across dropServer must not receive revoked bytes")
+        assertNull(store.kept(target))
+        assertNull(disk.read(owner, target))
+        assertContentEquals(byteArrayOf(7), disk.read(owner, otherServerKey))
+
+        // Updated-bytes revalidation: paints old disk bytes first, then replaces with fresh network bytes.
+        disk.write(owner, target, byteArrayOf(1, 2))
+        outcome = ArtifactScreenshotFetchResult.Ok(byteArrayOf(3, 4, 5))
+        gate = null
+        val revalCallbacks = mutableListOf<ByteArray>()
+        assertContentEquals(byteArrayOf(3, 4, 5), store.read(target) { revalCallbacks += it })
+        assertEquals(1, revalCallbacks.size)
+        assertContentEquals(byteArrayOf(1, 2), revalCallbacks.single())
+        assertContentEquals(byteArrayOf(3, 4, 5), disk.read(owner, target))
+
+        // clearAll during in-flight read returns null (never leaks bytes across sign-out).
+        store.clearAll()
+        disk.write(owner, target, byteArrayOf(5))
+        outcome = ArtifactScreenshotFetchResult.Ok(byteArrayOf(8, 8))
+        gate = CompletableDeferred()
+        val clearInFlight = async { store.read(target) }
+        runCurrent()
+        store.clearAll()
+        gate.complete(Unit)
+        assertNull(clearInFlight.await(), "caller suspended across clearAll must not receive prior session bytes")
+        assertNull(store.kept(target))
+    }
+
+    @Test
+    fun networkFetcherDistinguishesGoneFromTransientFailureAndOk() = runTest {
+        val responses =
+            ArrayDeque(
+                listOf(
+                    HomeNetworkBytesResponse(code = 403, bytes = null, contentType = "application/json"),
+                    HomeNetworkBytesResponse(code = 404, bytes = null, contentType = "application/json"),
+                    HomeNetworkBytesResponse(code = 429, bytes = null, contentType = "application/json"),
+                    HomeNetworkBytesResponse(code = 500, bytes = null, contentType = "text/plain"),
+                    HomeNetworkBytesResponse(code = 200, bytes = byteArrayOf(1), contentType = "text/html"),
+                    HomeNetworkBytesResponse(code = 200, bytes = byteArrayOf(7, 8), contentType = "image/png"),
+                )
+            )
+        val fetcher = NetworkArtifactScreenshotFetcher(FakeBytesNetwork { responses.removeFirst() })
+        assertEquals(ArtifactScreenshotFetchResult.Gone, fetcher.fetchOutcome(key("a")))
+        assertEquals(ArtifactScreenshotFetchResult.Gone, fetcher.fetchOutcome(key("b")))
+        assertEquals(ArtifactScreenshotFetchResult.TransientFailure, fetcher.fetchOutcome(key("c")))
+        assertEquals(ArtifactScreenshotFetchResult.TransientFailure, fetcher.fetchOutcome(key("d")))
+        assertEquals(ArtifactScreenshotFetchResult.TransientFailure, fetcher.fetchOutcome(key("e")))
+        val ok = assertIs<ArtifactScreenshotFetchResult.Ok>(fetcher.fetchOutcome(key("f")))
+        assertContentEquals(byteArrayOf(7, 8), ok.bytes)
+    }
 }
