@@ -38,8 +38,14 @@ internal interface RaftShellNavigationIntakeHost {
     /** Opens a taken send-prompt link ([RaftSendPromptLinkInbox]) as the Send-to-agent sheet. */
     fun openSendPromptLink(taken: RaftPendingSendPromptLink) {}
 
+    /** Opens the in-app Download Center ([SETTINGS_STORAGE_PAGE]) from a platform notification tap. */
+    fun openDownloadCenter(taken: RaftPendingDownloadCenterLaunch) {}
+
     /** The signed-in account's id, for a link that waits for another account; null when unknown. */
     fun currentAccountId(): String? = null
+
+    /** The hosting window's shell instance id, for launches targeted at a specific window; null when unknown. */
+    fun shellInstanceId(): String? = null
 
     /** The coordinator's readiness, or null while Home may not start (nothing advances). */
     fun readiness(): WindowNavigationReadiness?
@@ -77,6 +83,7 @@ internal class RaftShellNavigationIntake(
     private val externalInviteInbox: RaftExternalInviteLinkInbox = RaftExternalInviteLinkInbox.Process,
     private val serverJoinInbox: RaftServerJoinLinkInbox = RaftServerJoinLinkInbox.Process,
     private val sendPromptInbox: RaftSendPromptLinkInbox = RaftSendPromptLinkInbox.Process,
+    private val downloadCenterInbox: RaftDownloadCenterLaunchInbox = RaftDownloadCenterLaunchInbox.Process,
 ) {
     private val wakeups = Channel<Unit>(Channel.CONFLATED)
 
@@ -96,6 +103,7 @@ internal class RaftShellNavigationIntake(
             launch { externalInviteInbox.pending.collect { pending -> if (pending != null) wake() } }
             launch { serverJoinInbox.pending.collect { pending -> if (pending != null) wake() } }
             launch { sendPromptInbox.pending.collect { pending -> if (pending != null) wake() } }
+            launch { downloadCenterInbox.pending.collect { pending -> if (pending != null) wake() } }
             for (ignored in wakeups) {
                 takeArtifactLink(host)?.let { taken ->
                     host.closeIncomingNavigationCover()
@@ -112,6 +120,10 @@ internal class RaftShellNavigationIntake(
                 takeSendPromptLink(host)?.let { taken ->
                     host.closeIncomingNavigationCover()
                     host.openSendPromptLink(taken)
+                }
+                takeDownloadCenterLaunch(host)?.let { taken ->
+                    host.closeIncomingNavigationCover()
+                    host.openDownloadCenter(taken)
                 }
                 takeMessageLink(host)?.let { taken ->
                     launch {
@@ -188,6 +200,22 @@ internal class RaftShellNavigationIntake(
             return null
         }
         host.log("send_prompt_link_take id=${taken.id} source=${taken.source}")
+        return taken
+    }
+
+    private fun takeDownloadCenterLaunch(host: RaftShellNavigationIntakeHost): RaftPendingDownloadCenterLaunch? {
+        val pending = downloadCenterInbox.pending.value ?: return null
+        if (!host.messageLinkSessionReady()) return null
+        val hostShellId = host.shellInstanceId()?.trim()?.takeIf(String::isNotEmpty)
+        if (pending.targetShellInstanceId != null && pending.targetShellInstanceId != hostShellId) {
+            return null
+        }
+        val taken = downloadCenterInbox.take(pending.id, hostShellId)
+        if (taken == null) {
+            host.log("download_center_launch_take_skipped id=${pending.id} reason=taken_replaced_or_expired")
+            return null
+        }
+        host.log("download_center_launch_take id=${taken.id} source=${taken.source}")
         return taken
     }
 

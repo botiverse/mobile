@@ -52,6 +52,12 @@ internal fun externalShareTokenFromPageDataOrNull(pageDataText: String?): String
     return token.takeIf(AndroidExternalShareInbox::isSafeToken)
 }
 
+internal fun shouldOpenDownloadCenterFromPageData(pageDataText: String?): Boolean {
+    val raw = pageDataText?.trim()?.takeIf { it.isNotEmpty() } ?: return false
+    val json = runCatching { JSONObject(raw) }.getOrNull() ?: return false
+    return json.optBoolean(RaftCmpActivity.KEY_APP_SHELL_OPEN_DOWNLOAD_CENTER, false)
+}
+
 private val ExternalShareForbiddenIncomingPageDataKeys =
     listOf(
         "text",

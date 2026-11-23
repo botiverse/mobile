@@ -108,6 +108,9 @@ internal object AndroidShellWindowRegistry {
     fun hasShellInTask(taskId: Int): Boolean =
         shellsById.values.any { registered -> registered.taskId == taskId }
 
+    fun shellInstanceIdInTask(taskId: Int): String? =
+        shellsById.values.firstOrNull { registered -> registered.taskId == taskId }?.target?.shellInstanceId
+
     fun clearForTest() {
         shellsById.clear()
     }

@@ -2022,8 +2022,9 @@ internal class RaftSharedStoreProvider private constructor(
                     (homeIdentityPersistSlice as? RaftScrollDeferredPersistControl)?.discardPending()
                     (homeRowHintPersistSlice as? RaftScrollDeferredPersistControl)?.discardPending()
                     accountLocalData.onSignOut()
-                    // The signed-out account's attachment uploads stop with it.
+                    // The signed-out account's attachment uploads and pending Download Center taps stop with it.
                     composerDraftUploads.cancelAll()
+                    build.raft.app.RaftDownloadCenterLaunchInbox.Process.clear()
                     // Pending-send rows are retired by the identity-bound
                     // processPresenceBindingTransition hook.  This terminal
                     // route deliberately has no captured environment/principal

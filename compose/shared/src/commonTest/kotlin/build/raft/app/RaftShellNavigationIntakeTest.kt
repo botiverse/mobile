@@ -51,7 +51,16 @@ class RaftShellNavigationIntakeTest {
     private val coordinator = SharedWindowNavigationCoordinator()
     private val artifactInbox = RaftArtifactLinkInbox(nowEpochMillis = { 1_000L })
     private val externalInviteInbox = RaftExternalInviteLinkInbox(nowEpochMillis = { 1_000L })
-    private val intake = RaftShellNavigationIntake(coordinator, inbox, artifactInbox, externalInviteInbox)
+    private var downloadCenterClockMillis = 1_000L
+    private val downloadCenterInbox = RaftDownloadCenterLaunchInbox(nowEpochMillis = { downloadCenterClockMillis })
+    private val intake =
+        RaftShellNavigationIntake(
+            coordinator = coordinator,
+            inbox = inbox,
+            artifactInbox = artifactInbox,
+            externalInviteInbox = externalInviteInbox,
+            downloadCenterInbox = downloadCenterInbox,
+        )
     private val host = FakeShellNavigationIntakeHost()
 
     @Test
@@ -76,6 +85,53 @@ class RaftShellNavigationIntakeTest {
         val open = assertIs<WindowNavigationAction.OpenConversation>(host.performed.single())
         assertEquals("system_notification", open.intent.source)
         assertEquals("message-1", open.request.anchorMessageId)
+    }
+
+    @Test
+    fun downloadCenterLaunchOpensWhileShellIsCoveredWaitsForSessionAndDropsExpired() = intakeTest {
+        // Pending while signed out: stays queued until session is ready.
+        host.sessionReady = false
+        downloadCenterInbox.submit(source = "android_download_notification")
+        advanceUntilIdle()
+        assertTrue(host.openedDownloadCenters.isEmpty())
+        assertTrue(downloadCenterInbox.pending.value != null)
+
+        // Session becomes ready and wakes intake -> taken once and delivered.
+        host.sessionReady = true
+        intake.wake()
+        advanceUntilIdle()
+        assertNull(downloadCenterInbox.pending.value)
+        assertEquals(listOf("android_download_notification"), host.openedDownloadCenters.map { it.source })
+
+        // Repeated wakes do not re-open.
+        intake.wake()
+        advanceUntilIdle()
+        assertEquals(1, host.openedDownloadCenters.size)
+
+        // Expired request is dropped when taken later.
+        host.sessionReady = false
+        downloadCenterInbox.submit(source = "expired_notification")
+        downloadCenterClockMillis += RaftMessageLinkInbox.DefaultTtlMillis + 1L
+        host.sessionReady = true
+        intake.wake()
+        advanceUntilIdle()
+        assertNull(downloadCenterInbox.pending.value)
+        assertEquals(1, host.openedDownloadCenters.size)
+
+        // Multi-window scoping: a background shell with another shellInstanceId must NOT steal or clear
+        // a launch targeted at the launcher shell.
+        host.shellId = "shell:document-2"
+        downloadCenterInbox.submit(source = "android_download_notification", targetShellInstanceId = "shell:default")
+        advanceUntilIdle()
+        assertEquals(1, host.openedDownloadCenters.size)
+        assertEquals("shell:default", downloadCenterInbox.pending.value?.targetShellInstanceId)
+
+        // Once the matching target shell wakes, it takes and opens the launch.
+        host.shellId = "shell:default"
+        intake.wake()
+        advanceUntilIdle()
+        assertNull(downloadCenterInbox.pending.value)
+        assertEquals(2, host.openedDownloadCenters.size)
     }
 
     @Test
@@ -388,7 +444,9 @@ internal class FakeShellNavigationIntakeHost : RaftShellNavigationIntakeHost {
     val performed = mutableListOf<WindowNavigationAction>()
     val openedArtifacts = mutableListOf<RaftPendingArtifactLink>()
     val openedInvites = mutableListOf<RaftPendingExternalInviteLink>()
+    val openedDownloadCenters = mutableListOf<RaftPendingDownloadCenterLaunch>()
     var accountId: String? = "account-a"
+    var shellId: String? = "shell:default"
     val logs = mutableListOf<String>()
     /** Runs after each [perform] is recorded (a UI test shows the opened page). */
     var onPerform: (WindowNavigationAction) -> Unit = {}
@@ -418,7 +476,13 @@ internal class FakeShellNavigationIntakeHost : RaftShellNavigationIntakeHost {
         openedInvites += taken
     }
 
+    override fun openDownloadCenter(taken: RaftPendingDownloadCenterLaunch) {
+        openedDownloadCenters += taken
+    }
+
     override fun currentAccountId(): String? = accountId
+
+    override fun shellInstanceId(): String? = shellId
 
     override fun readiness(): WindowNavigationReadiness =
         WindowNavigationReadiness(
