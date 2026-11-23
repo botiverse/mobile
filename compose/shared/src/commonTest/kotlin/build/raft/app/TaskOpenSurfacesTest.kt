@@ -14,6 +14,7 @@ import build.raft.app.data.DataRequestPriority
 import build.raft.app.data.HomeNetworkResponse
 import build.raft.app.data.PermissionBlocker
 import build.raft.app.data.RaftTasksApi
+import build.raft.app.data.ScreenError
 import build.raft.app.data.SharedTasksDataSource
 import build.raft.app.data.SharedTasksDataStore
 import build.raft.app.data.SharedTasksEvent
@@ -405,67 +406,128 @@ class TaskOpenSurfacesTest {
             }
         }
         val traceId = "62ac7fa79a3785a6bee414a074f82634"
+        val recorded = mutableListOf<Pair<String, ScreenError>>()
+        val bridge = newBridge()
 
-        // HTTP 403 status refusal has code "tasks_403" (not "tasks_status_*") and must still toast.
-        withWindow { state, bridge ->
-            bridge.showTaskOperationFailedToast(
-                event =
-                    SharedTasksEvent.OperationFailed(
-                        code = "tasks_403",
-                        traceId = traceId,
-                        serverMessage = "Channel is archived.",
-                        serverCode = "channel_archived",
-                        operation = SharedTasksOperation.UpdateStatus,
-                    ),
-                updateFailedLabel = "Unable to update task",
-                assignFailedLabel = "Unable to update assignee",
-            )
-            val statusToast = state.visible.single()
-            assertEquals("Unable to update task", statusToast.title)
-            assertEquals(RaftToastIntent.Error, statusToast.intent)
-        }
+        // HTTP 403 status refusal has code "tasks_403" (not "tasks_status_*") and must still toast with full ScreenError.
+        bridge.showTaskOperationFailedToast(
+            event =
+                SharedTasksEvent.OperationFailed(
+                    code = "tasks_403",
+                    traceId = traceId,
+                    serverMessage = "Channel is archived.",
+                    serverCode = "channel_archived",
+                    operation = SharedTasksOperation.UpdateStatus,
+                ),
+            updateFailedLabel = "Unable to update task",
+            assignFailedLabel = "Unable to update assignee",
+            onToast = { title, error -> recorded += title to error },
+        )
+        assertEquals(
+            "Unable to update task" to
+                ScreenError(
+                    code = "tasks_403",
+                    retryable = false,
+                    serverMessage = "Channel is archived.",
+                    serverCode = "channel_archived",
+                    traceId = traceId,
+                ),
+            recorded.removeAt(0),
+        )
 
         // HTTP 400 assign refusal has code "tasks_400" (not "tasks_assign_*") and must still toast.
-        withWindow { state, bridge ->
-            bridge.showTaskOperationFailedToast(
+        bridge.showTaskOperationFailedToast(
+            event =
+                SharedTasksEvent.OperationFailed(
+                    code = "tasks_400",
+                    traceId = traceId,
+                    serverMessage = "Assignee is not in channel.",
+                    serverCode = "assignee_not_in_channel",
+                    operation = SharedTasksOperation.AssignTask,
+                ),
+            updateFailedLabel = "Unable to update task",
+            assignFailedLabel = "Unable to update assignee",
+            onToast = { title, error -> recorded += title to error },
+        )
+        assertEquals(
+            "Unable to update assignee" to
+                ScreenError(
+                    code = "tasks_400",
+                    retryable = false,
+                    serverMessage = "Assignee is not in channel.",
+                    serverCode = "assignee_not_in_channel",
+                    traceId = traceId,
+                ),
+            recorded.removeAt(0),
+        )
+
+        // Plan/quota serverCode (e.g. "channel_read_only") on status mutation also toasts cleanly.
+        bridge.showTaskOperationFailedToast(
+            event =
+                SharedTasksEvent.OperationFailed(
+                    code = "channel_read_only",
+                    traceId = traceId,
+                    serverMessage = "Channel is read-only.",
+                    serverCode = "channel_read_only",
+                    operation = SharedTasksOperation.UpdateStatus,
+                ),
+            updateFailedLabel = "Unable to update task",
+            assignFailedLabel = "Unable to update assignee",
+            onToast = { title, error -> recorded += title to error },
+        )
+        assertEquals("Unable to update task", recorded.removeAt(0).first)
+
+        // Load and CreateTasks failures neither toast nor invoke routeAuthRequired.
+        var authChecks = 0
+        bridge.showTaskOperationFailedToast(
+            event = SharedTasksEvent.OperationFailed(code = "auth_required", operation = SharedTasksOperation.Load),
+            updateFailedLabel = "Unable to update task",
+            assignFailedLabel = "Unable to update assignee",
+            onToast = { title, error -> recorded += title to error },
+        ) {
+            authChecks += 1
+            true
+        }
+        bridge.showTaskOperationFailedToast(
+            event = SharedTasksEvent.OperationFailed(code = "tasks_403", operation = SharedTasksOperation.CreateTasks),
+            updateFailedLabel = "Unable to update task",
+            assignFailedLabel = "Unable to update assignee",
+            onToast = { title, error -> recorded += title to error },
+        ) {
+            authChecks += 1
+            false
+        }
+        assertEquals(0, authChecks)
+        assertTrue(recorded.isEmpty())
+
+        // Auth-routed mutation failures suppress the error toast.
+        bridge.showTaskOperationFailedToast(
+            event =
+                SharedTasksEvent.OperationFailed(
+                    code = "auth_required",
+                    operation = SharedTasksOperation.UpdateStatus,
+                ),
+            updateFailedLabel = "Unable to update task",
+            assignFailedLabel = "Unable to update assignee",
+            onToast = { title, error -> recorded += title to error },
+        ) { it == "auth_required" }
+        assertTrue(recorded.isEmpty())
+
+        // Default BridgeModule path posts an Error toast without resolving Compose string resources when traceId is null.
+        withWindow { state, liveBridge ->
+            liveBridge.showTaskOperationFailedToast(
                 event =
                     SharedTasksEvent.OperationFailed(
-                        code = "tasks_400",
-                        traceId = traceId,
-                        serverMessage = "Assignee is not in channel.",
-                        operation = SharedTasksOperation.AssignTask,
-                    ),
-                updateFailedLabel = "Unable to update task",
-                assignFailedLabel = "Unable to update assignee",
-            )
-            val assignToast = state.visible.single()
-            assertEquals("Unable to update assignee", assignToast.title)
-            assertEquals(RaftToastIntent.Error, assignToast.intent)
-        }
-
-        // Load failures do not trigger status/assign mutation toasts.
-        withWindow { state, bridge ->
-            bridge.showTaskOperationFailedToast(
-                event = SharedTasksEvent.OperationFailed(code = "tasks_500", operation = SharedTasksOperation.Load),
-                updateFailedLabel = "Unable to update task",
-                assignFailedLabel = "Unable to update assignee",
-            )
-            assertTrue(state.visible.isEmpty())
-        }
-
-        // Auth-routed failures suppress the error toast.
-        withWindow { state, bridge ->
-            bridge.showTaskOperationFailedToast(
-                event =
-                    SharedTasksEvent.OperationFailed(
-                        code = "auth_required",
+                        code = "tasks_local_projection_missing",
+                        traceId = null,
                         operation = SharedTasksOperation.UpdateStatus,
                     ),
                 updateFailedLabel = "Unable to update task",
                 assignFailedLabel = "Unable to update assignee",
-                routeAuthRequired = { it == "auth_required" },
             )
-            assertTrue(state.visible.isEmpty())
+            val toast = state.visible.single()
+            assertEquals("Unable to update task", toast.title)
+            assertEquals(RaftToastIntent.Error, toast.intent)
         }
     }
 

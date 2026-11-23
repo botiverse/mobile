@@ -15,6 +15,7 @@ import build.raft.app.model.TaskStatus
 import build.raft.app.model.TaskSummary
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
@@ -930,7 +931,7 @@ class SharedTasksStoreTest {
         )
 
         val statusFailure = CompletableDeferred<SharedTasksEvent>()
-        val statusCollector = launch { statusFailure.complete(viewModel.uiEvents.first()) }
+        val statusCollector = launch(start = CoroutineStart.UNDISPATCHED) { statusFailure.complete(viewModel.uiEvents.first()) }
         viewModel.dispatch(SharedTasksRouteIntent.UpdateStatus(previousTask, TaskStatus.Done))
         val statusEvent = assertIs<SharedTasksEvent.OperationFailed>(withTimeout(2_000L) { statusFailure.await() })
         statusCollector.cancel()
@@ -943,7 +944,7 @@ class SharedTasksStoreTest {
         assertEquals(traceId, statusEvent.traceId)
 
         val assignFailure = CompletableDeferred<SharedTasksEvent>()
-        val assignCollector = launch { assignFailure.complete(viewModel.uiEvents.first()) }
+        val assignCollector = launch(start = CoroutineStart.UNDISPATCHED) { assignFailure.complete(viewModel.uiEvents.first()) }
         viewModel.dispatch(SharedTasksRouteIntent.AssignTask(previousTask, assignee))
         val assignEvent = assertIs<SharedTasksEvent.OperationFailed>(withTimeout(2_000L) { assignFailure.await() })
         assignCollector.cancel()

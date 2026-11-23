@@ -469,13 +469,19 @@ internal fun build.raft.app.base.BridgeModule.showTaskOperationFailedToast(
     event: SharedTasksEvent.OperationFailed,
     updateFailedLabel: String,
     assignFailedLabel: String,
+    onToast: (title: String, error: build.raft.app.data.ScreenError) -> Unit = { title, error ->
+        errorToast(title, error)
+    },
     routeAuthRequired: (String?) -> Boolean = { false },
 ) {
+    val label =
+        when {
+            event.isStatusFailure() -> updateFailedLabel
+            event.isAssignFailure() -> assignFailedLabel
+            else -> return
+        }
     if (routeAuthRequired(event.code)) return
-    when {
-        event.isStatusFailure() -> errorToast(updateFailedLabel, event.toScreenError())
-        event.isAssignFailure() -> errorToast(assignFailedLabel, event.toScreenError())
-    }
+    onToast(label, event.toScreenError())
 }
 
 /** Renders the flow's surface (the pending task page or the legacy panel). */
