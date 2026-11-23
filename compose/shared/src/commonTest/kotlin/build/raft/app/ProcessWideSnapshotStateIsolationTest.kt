@@ -3,6 +3,7 @@ package build.raft.app
 import androidx.compose.runtime.snapshots.Snapshot
 import build.raft.app.data.RaftDisplayPreferenceRuntime
 import build.raft.app.data.RaftTimeFormatRuntime
+import build.raft.app.data.RaftTimeZoneRuntime
 import build.raft.app.model.ChannelId
 import build.raft.app.resources.StringDesc
 import kotlin.test.Test
@@ -44,6 +45,13 @@ class ProcessWideSnapshotStateIsolationTest {
         assertNoSnapshotStateReads("RaftTimeFormatRuntime") {
             RaftTimeFormatRuntime.current
             RaftTimeFormatRuntime.currentOrNull
+        }
+    }
+
+    @Test
+    fun raftTimeZoneRuntimeGettersNeverReadComposeSnapshotState() {
+        assertNoSnapshotStateReads("RaftTimeZoneRuntime") {
+            RaftTimeZoneRuntime.currentOrNull
         }
     }
 

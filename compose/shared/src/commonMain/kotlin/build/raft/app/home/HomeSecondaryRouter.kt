@@ -72,6 +72,7 @@ import build.raft.app.data.asSearchCoreGroupsSource
 import build.raft.app.data.SearchCoreGroupsIntent
 import build.raft.app.data.RaftShellStoreScope
 import build.raft.app.data.RaftTimeFormatRuntime
+import build.raft.app.data.RaftTimeZoneRuntime
 import build.raft.app.data.kuiklyBridgeCallContext
 import build.raft.app.data.mergedSharedConversationDirectoryState
 import build.raft.app.data.parseRaftHome
@@ -211,9 +212,13 @@ private fun rememberHomeSecondaryRouteEnvironment(
         }
     val runtimeTimeFormat =
         RaftTimeFormatRuntime.observe(fallback = baseTimeCapabilities?.timeFormat ?: RaftTimeFormat24Hour)
+    val runtimeTimeZone = RaftTimeZoneRuntime.observe()
     val timeCapabilities =
-        remember(baseTimeCapabilities, runtimeTimeFormat) {
-            baseTimeCapabilities?.copy(timeFormat = runtimeTimeFormat)
+        remember(baseTimeCapabilities, runtimeTimeFormat, runtimeTimeZone) {
+            baseTimeCapabilities?.withRuntimePreferences(
+                timeFormat = runtimeTimeFormat,
+                preferredTimeZoneId = runtimeTimeZone,
+            )
         }
     val inheritedTimeContextProvider = LocalRaftTimeContextProvider.current
     val fallbackTimeContextProvider = currentRaftTimeContextProvider
@@ -234,7 +239,8 @@ private fun rememberHomeSecondaryRouteEnvironment(
                 timeCapabilities?.let {
                     RaftTimeContext(
                         localOffsetMinutes = it.localOffsetMinutes,
-                        timeFormat = it.timeFormat
+                        timeFormat = it.timeFormat,
+                        timeZoneId = it.preferredTimeZoneId,
                     )
                 }
             }

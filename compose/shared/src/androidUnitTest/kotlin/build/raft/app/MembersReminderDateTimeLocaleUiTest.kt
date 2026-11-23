@@ -16,6 +16,7 @@ import build.raft.app.compat.pager.Pager
 import build.raft.app.compat.pager.PagerManager
 import build.raft.app.compat.pager.RaftPageActivity
 import build.raft.app.data.RaftTimeFormatRuntime
+import build.raft.app.data.RaftTimeZoneRuntime
 import build.raft.app.model.RaftTimeContext
 import build.raft.app.model.RaftTimeFormat12Hour
 import build.raft.app.model.RaftTimeFormat24Hour
@@ -55,6 +56,7 @@ class MembersReminderDateTimeLocaleUiTest {
     @BeforeTest
     fun setUp() {
         RaftTimeFormatRuntime.resetForTest()
+        RaftTimeZoneRuntime.resetForTest()
         PagerManager.register(livePager)
     }
 
@@ -62,6 +64,7 @@ class MembersReminderDateTimeLocaleUiTest {
     fun restoreLocale() {
         StringDesc.localeType = originalLocaleType
         RaftTimeFormatRuntime.resetForTest()
+        RaftTimeZoneRuntime.resetForTest()
         PagerManager.unregister(livePager)
     }
 
@@ -207,5 +210,49 @@ class MembersReminderDateTimeLocaleUiTest {
             waitForIdle()
 
             onNodeWithTag("live-relative").assertTextEquals("in 2 hours")
+        }
+
+    @Test
+    fun memberDetailTimeContextProviderHonorsAccountPreferredTimezoneOverDeviceOffset() =
+        runRobolectricComposeUiTest {
+            StringDesc.localeType = StringDesc.LocaleType.Custom("en")
+            val nov21Utc = 1_795_278_180_000L // 2026-11-21T16:23:00Z (10:23 CST / 11:23 EST)
+            val deviceUtcMinus6 =
+                RaftTimeContextProvider(
+                    RaftTimeContext(
+                        localOffsetMinutes = -6 * 60,
+                        todayEpochDay = 20_780L, // 2026-11-23
+                        nowEpochMillis = nov21Utc + 2 * 86_400_000L,
+                        timeFormat = RaftTimeFormat24Hour,
+                        timeZoneId = "America/Chicago",
+                    )
+                )
+            val livePayload =
+                RaftMemberDetailPayload(
+                    instanceId = "detail-tz-1",
+                    localOffsetMinutes = -6 * 60,
+                    todayEpochDay = 20_780L,
+                    nowEpochMillis = null,
+                )
+
+            setContent {
+                CompositionLocalProvider(
+                    LocalActivity provides RaftPageActivity(livePager),
+                    LocalRaftTimeContextProvider provides deviceUtcMinus6,
+                ) {
+                    val resolved = rememberMemberDetailTimeContextProvider(livePayload, pageVisibleTick = 0, pageVisible = true)
+                    val ctx = resolved.dateContext ?: livePayload.toRaftTimeContext()
+                    BasicText(
+                        text = membersAgentNowTurnTime(nov21Utc, ctx),
+                        modifier = Modifier.testTag("turn-time"),
+                    )
+                }
+            }
+            waitForIdle()
+            onNodeWithTag("turn-time").assertTextEquals("Nov 21, 10:23")
+
+            RaftTimeZoneRuntime.update("America/New_York")
+            waitForIdle()
+            onNodeWithTag("turn-time").assertTextEquals("Nov 21, 11:23")
         }
 }

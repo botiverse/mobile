@@ -38,7 +38,7 @@ import org.robolectric.annotation.GraphicsMode
  * [MembersAgentRecentActivityCard] with the profile's status chip as its first line, a running turn
  * (its focus line) and the three finished turns of [agentActivityOverviewScreenshotState] one line
  * each, light and dark; and the same card just past midnight, where one row is today's ("00:18")
- * and two are the day before's ("06-18 23:57"): the rows' texts start at one x. Verify / record
+ * and two are the day before's ("Jun 18, 23:57"): the rows' texts start at one x. Verify / record
  * as [RaftRobolectricScreenshot].
  */
 @RunWith(RobolectricTestRunner::class)

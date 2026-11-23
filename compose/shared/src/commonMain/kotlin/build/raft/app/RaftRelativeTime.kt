@@ -20,13 +20,16 @@ import build.raft.app.model.RaftTimeFormat24Hour
 import build.raft.app.model.civilDateFromEpochDay
 import build.raft.app.model.floorDiv
 import build.raft.app.model.formatRaftClock
+import build.raft.app.model.formatRaftLocalClock
 import build.raft.app.model.formatRaftTimestampEpochMillis
 import build.raft.app.model.formatRaftTimestampLabel
 import build.raft.app.model.normalizeRaftTimeFormatPreference
 import build.raft.app.data.ProcessRaftDatetimeFoundationOwner
 import build.raft.app.data.RaftDatetimeFoundationOwner
 import build.raft.app.data.RaftTimeFormatRuntime
+import build.raft.app.data.RaftTimeZoneRuntime
 import build.raft.app.data.defaultNowMillis
+import build.raft.app.data.offsetMinutesAt
 import build.raft.app.model.parseRaftTimestampEpochMillisOrNull
 import build.raft.app.model.resolveRaftRelativeTimeLabel
 import androidx.compose.material3.Text
@@ -422,20 +425,22 @@ internal fun raftFallbackDateTimeContext(
         todayEpochDay = todayEpochDay,
         nowEpochMillis = null,
         timeFormat = normalizeRaftTimeFormatPreference(timeFormat),
+        timeZoneId = foundationOwner.effectiveTimeZoneIdOrNull(),
     )
 }
 
 /**
  * Non-null low-frequency date/clock [RaftTimeContext]: prefers the enclosing DI provider's
- * `dateContext` (never recomposing on 1-minute ticks), falling back to the device zone with the
- * reactive 12h/24h preference when composed outside `BasePager`.
+ * `dateContext` (never recomposing on 1-minute ticks), falling back to the effective viewer zone
+ * with the reactive 12h/24h and timezone preferences when composed outside `BasePager`.
  */
 @Composable
 internal fun currentRaftEffectiveDateTimeContext(timeContext: RaftTimeContext? = null): RaftTimeContext {
     val resolved = currentRaftDateTimeContext(timeContext)
     if (resolved != null) return resolved
     val runtimeFormat = RaftTimeFormatRuntime.observe()
-    return remember(runtimeFormat) { raftFallbackDateTimeContext(timeFormat = runtimeFormat) }
+    val runtimeTimeZone = RaftTimeZoneRuntime.observe()
+    return remember(runtimeFormat, runtimeTimeZone) { raftFallbackDateTimeContext(timeFormat = runtimeFormat) }
 }
 
 /** Local clock formatter (`HH:mm` or `hh:mm AM/PM`) honoring the enclosing [RaftTimeContext]. */
@@ -477,6 +482,22 @@ internal fun raftLocalizedShortDateTime(iso: String?, timeContext: RaftTimeConte
     val parts = taskHeadDateTime(trimmed, context) ?: return trimmed
     val monthDay = stringResource(Res.string.settings_compact_month_day, raftLocalizedShortMonth(parts.month), parts.day)
     val clock = formatRaftClock(parts.hour, parts.minute, null, context.timeFormat)
+    return stringResource(Res.string.raft_short_date_time, monthDay, clock)
+}
+
+/**
+ * Localized short month/day + clock for an epoch-millis instant (web `formatShortDateTime`, e.g.,
+ * `"Nov 21, 11:23"` / `"11月21日 11:23"`) in the viewer's [RaftTimeContext] (respecting account
+ * `preferredTimezone` and per-instant DST offset when `timeZoneId` is set).
+ */
+@Composable
+internal fun raftLocalizedShortDateTime(epochMillis: Long, timeContext: RaftTimeContext? = null): String {
+    val context = currentRaftEffectiveDateTimeContext(timeContext)
+    val offsetMinutes = context.offsetMinutesAt(epochMillis)
+    val localMillis = epochMillis + offsetMinutes.toLong() * MillisPerMinute
+    val date = civilDateFromEpochDay(floorDiv(localMillis, MillisPerDay))
+    val monthDay = stringResource(Res.string.settings_compact_month_day, raftLocalizedShortMonth(date.month), date.day)
+    val clock = formatRaftLocalClock(epochMillis, offsetMinutes, context.timeFormat)
     return stringResource(Res.string.raft_short_date_time, monthDay, clock)
 }
 

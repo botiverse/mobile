@@ -306,6 +306,7 @@ class RealSettingsRepository(
      */
     private val serverNotificationLastKnownStore: SettingsServerNotificationLastKnownStore? = null,
     private val onTimeFormatUpdated: (String) -> Unit = {},
+    private val onTimeZoneUpdated: (String?) -> Unit = {},
 ) : SettingsRepository, SettingsServerActionRepository, SettingsServerManagementRepository {
     private val computersApiClient = RaftComputersApiClient(RaftComputersNetworkApi(networkClient))
     private val secondFactorStepUpRepository = SecondFactorStepUpRepository(networkClient)
@@ -1527,6 +1528,11 @@ class RealSettingsRepository(
                     request = request,
                     snapshot = snapshot,
                 )
+                persistUpdatedTimeZone(
+                    expectedAccountId = session.user.id,
+                    request = request,
+                    preferredTimezone = result.data.preferredTimezone,
+                )
                 DataResult.Content(snapshot)
             }
             is DataResult.Empty -> DataResult.Empty(result.reason)
@@ -1558,6 +1564,34 @@ class RealSettingsRepository(
         }
         if (applied) {
             onTimeFormatUpdated(effectiveTimeFormat)
+        }
+    }
+
+    private suspend fun persistUpdatedTimeZone(
+        expectedAccountId: String,
+        request: SettingsLanguageRegionPreferenceUpdateRequest,
+        preferredTimezone: String?,
+    ) {
+        if (request.preferredTimezone == null && !request.clearPreferredTimezone) return
+        val effectiveTimeZone =
+            if (request.clearPreferredTimezone) {
+                null
+            } else {
+                normalizeValidIanaTimeZoneOrNull(preferredTimezone ?: request.preferredTimezone) ?: return
+            }
+        var applied = false
+        sessionStore.updateMetadata(expectedAccountId) { latest ->
+            applied = true
+            latest.copy(
+                user =
+                    latest.user.copy(
+                        preferredTimezone = effectiveTimeZone,
+                        timezone = effectiveTimeZone,
+                    )
+            )
+        }
+        if (applied) {
+            onTimeZoneUpdated(effectiveTimeZone)
         }
     }
 
