@@ -24,10 +24,11 @@ import org.robolectric.annotation.GraphicsMode
 import org.robolectric.shadows.ShadowDialog
 
 /**
- * Leave Channel from the Home row menu (web botiverse/slock #11289 / #11292), light and dark:
- * - `home.leave-channel.menu`: a joined channel's row menu (Move to section / read / pin / mute,
- *   then Archive and Leave Channel under one separator). The real panel drawn in the page (in
- *   the app it is its own popup window, which the capture can't see);
+ * Leave Channel from the Home row menu (web botiverse/slock #11289 / #11292 / #16225), light and dark:
+ * - `home.leave-channel.menu`: a joined channel's row menu (read / mute, then pin / move to
+ *   section / sort, then Archive, then Leave channel, each group separated by its own divider). The
+ *   real panel drawn in the page (in the app it is its own popup window, which the capture can't
+ *   see);
  * - `home.leave-channel.dialog.{public,private,joint,last-member}`: the four confirmations —
  *   rejoin any time; a member's invite; an admin's invite; the last member's red "Leave and
  *   Delete" (the private channel and its messages are deleted).

@@ -750,8 +750,43 @@ internal fun raftComputerRackAction(
  * computer's own card. [createAgentAvailable] is false while the page has no signed-in owner for
  * the computer's server to create with.
  */
+internal enum class RaftComputerCardMenuAction {
+    CreateAgent,
+    Restart,
+    Delete,
+}
+
+internal data class RaftComputerCardMenuEntry(
+    val action: RaftComputerCardMenuAction,
+    val dividerBefore: Boolean = false,
+)
+
 internal data class RaftComputerCardMenu(val createAgent: Boolean, val restart: Boolean, val delete: Boolean = true) {
     val isEmpty: Boolean get() = !createAgent && !restart && !delete
+
+    /**
+     * Web `RackRowMenu` (menu order v4, botiverse/slock #16225 / `563672da5`): Create agent, then
+     * one divider only when followed by Restart or Delete computer; Restart and Delete computer
+     * share the second group.
+     */
+    fun entries(): List<RaftComputerCardMenuEntry> =
+        buildList {
+            if (createAgent) {
+                add(RaftComputerCardMenuEntry(RaftComputerCardMenuAction.CreateAgent))
+            }
+            var needDividerAfterCreate = createAgent
+            fun consumeDivider(): Boolean {
+                val divider = needDividerAfterCreate
+                needDividerAfterCreate = false
+                return divider
+            }
+            if (restart) {
+                add(RaftComputerCardMenuEntry(RaftComputerCardMenuAction.Restart, dividerBefore = consumeDivider()))
+            }
+            if (delete) {
+                add(RaftComputerCardMenuEntry(RaftComputerCardMenuAction.Delete, dividerBefore = consumeDivider()))
+            }
+        }
 }
 
 internal fun raftComputerCardMenu(

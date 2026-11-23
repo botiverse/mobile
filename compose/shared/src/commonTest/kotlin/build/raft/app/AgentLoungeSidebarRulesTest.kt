@@ -166,19 +166,27 @@ class AgentLoungeSidebarRulesTest {
 
     @Test
     fun theLoungeMenuIsADmRowsMenu() {
-        val ids = { item: RaftHomeConversationItem, pinned: Boolean -> raftHomeAgentLoungeMenuItems(item, pinned = pinned).map { it.id } }
+        val entries = { item: RaftHomeConversationItem, pinned: Boolean ->
+            raftHomeAgentLoungeMenuItems(item, pinned = pinned).map { it.id to it.dividerBefore }
+        }
         val joinedLoaded = loungeItem("lounge-bugen", "Bugen's Lounge", null, unread = 1).copy(activityMuteSupported = true)
-        assertEquals(listOf("mark-read", "toggle-pin", "mute-channel", "close-dm"), ids(joinedLoaded, false))
-        assertEquals("Unpin", raftHomeAgentLoungeMenuItems(joinedLoaded, pinned = true)[1].label)
+        assertEquals(
+            listOf("mark-read" to false, "mute-channel" to false, "toggle-pin" to true, "close-dm" to true),
+            entries(joinedLoaded, false),
+        )
+        assertEquals("Unpin", raftHomeAgentLoungeMenuItems(joinedLoaded, pinned = true).single { it.id == "toggle-pin" }.label)
         // Not joined (or not loaded): no Mute; nothing unread: Mark as Unread. Never Move to section,
         // Notifications or Sort.
-        assertEquals(listOf("mark-unread", "toggle-pin", "close-dm"), ids(loungeItem("lounge-bugen", "Bugen's Lounge", null), false))
+        assertEquals(
+            listOf("mark-unread" to false, "toggle-pin" to true, "close-dm" to true),
+            entries(loungeItem("lounge-bugen", "Bugen's Lounge", null), false),
+        )
         // A stored mute keeps its Unmute.
         assertEquals(
-            listOf("mark-unread", "toggle-pin", "unmute-channel", "close-dm"),
-            ids(loungeItem("lounge-bugen", "Bugen's Lounge", null).copy(activityMuted = true), false),
+            listOf("mark-unread" to false, "unmute-channel" to false, "toggle-pin" to true, "close-dm" to true),
+            entries(loungeItem("lounge-bugen", "Bugen's Lounge", null).copy(activityMuted = true), false),
         )
         // A mention with no count still reads as unread (Mark as Read clears the @).
-        assertEquals("mark-read", ids(loungeItem("lounge-bugen", "Bugen's Lounge", null, mentioned = true), false).first())
+        assertEquals("mark-read", entries(loungeItem("lounge-bugen", "Bugen's Lounge", null, mentioned = true), false).first().first)
     }
 }

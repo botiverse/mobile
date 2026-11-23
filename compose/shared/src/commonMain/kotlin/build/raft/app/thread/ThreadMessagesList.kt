@@ -5031,10 +5031,6 @@ private fun ThreadMessagesListContent(
                             )?.let { threadChannelId ->
                                     onThreadEvent(MARK_THREAD_UNREAD_ACTION, message.id, threadChannelId, null)
                                 }
-                        },
-                        onMarkConversationUnread = {
-                            close()
-                            onThreadEvent(MARK_CONVERSATION_UNREAD_ACTION, message.id, null, null)
                         }
                     )
             )
@@ -5218,7 +5214,6 @@ private fun ThreadMessagesListContent(
                         onSelectText = actions.tools.onSelectText,
                         onMarkThreadUnread = actions.tools.onMarkThreadUnread,
                         onCopySelection = onCopySelection ?: {},
-                        onMarkConversationUnread = actions.tools.onMarkConversationUnread,
                         link = linkSection
                     )
                 } else {
@@ -5313,11 +5308,6 @@ private fun ThreadMessagesListContent(
                             capabilities.markThreadUnreadChannelId?.let { threadChannelId ->
                                 onThreadEvent(MARK_THREAD_UNREAD_ACTION, message.id, threadChannelId, null)
                             }
-                        },
-                        markConversationUnread = capabilities.markConversationUnread,
-                        onMarkConversationUnread = {
-                            closeActionMenu()
-                            onThreadEvent(MARK_CONVERSATION_UNREAD_ACTION, message.id, null, null)
                         },
                         onCopySelection = onCopySelection,
                         onDownloadVideo =

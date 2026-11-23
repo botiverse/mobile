@@ -34,6 +34,7 @@ import build.raft.designsystem.components.RaftMeterSize
 import build.raft.designsystem.components.RaftProgressBar
 import build.raft.designsystem.components.RaftProgressBarSize
 import build.raft.designsystem.components.RaftProgressBarVariant
+import build.raft.designsystem.components.RaftMenuSeparator
 import build.raft.designsystem.components.RaftSeparator
 import build.raft.designsystem.components.RaftStatusSize
 import build.raft.designsystem.components.RaftStatusVariant
@@ -1367,8 +1368,9 @@ private fun RaftComputerRackCard(
 }
 
 /**
- * Web `RackRowMenu`: the card's ⋯ with the Computer page's own actions for this computer. Create
- * agent first (the app's create entry wording and Bot icon), then Restart while it can take one.
+ * Web `RackRowMenu` (menu order v4, botiverse/slock #16225 / `563672da5`): Create agent first (the
+ * app's create entry wording and Bot icon), a divider when followed by management actions, then
+ * Restart and Delete computer together.
  */
 @Composable
 private fun RaftComputerCardMenuButton(menu: RaftComputerCardMenu, onCreateAgent: () -> Unit, onRestart: () -> Unit, onDelete: () -> Unit) {
@@ -1384,36 +1386,40 @@ private fun RaftComputerCardMenuButton(menu: RaftComputerCardMenu, onCreateAgent
             RaftComputersIcon(RaftLucideIconName.EllipsisVertical)
         }
         RaftDropdownMenu(expanded = open, onDismissRequest = { open = false }, alignEnd = true) {
-            if (menu.createAgent) {
-                RaftMenuItem(
-                    text = stringResource(Res.string.agent_create_action_create),
-                    leadingIcon = { MembersMenuIcon(RaftLucideIconName.Bot) },
-                    onClick = {
-                        open = false
-                        onCreateAgent()
-                    },
-                )
-            }
-            if (menu.restart) {
-                RaftMenuItem(
-                    text = stringResource(Res.string.settings_computers_restart),
-                    leadingIcon = { MembersMenuIcon(RaftLucideIconName.RotateCcw) },
-                    onClick = {
-                        open = false
-                        onRestart()
-                    },
-                )
-            }
-            if (menu.delete) {
-                RaftMenuItem(
-                    text = stringResource(Res.string.settings_computers_delete_menu),
-                    leadingIcon = { MembersMenuIcon(RaftLucideIconName.Trash2) },
-                    modifier = Modifier.testTag(RaftComputersRackTags.MenuDelete),
-                    onClick = {
-                        open = false
-                        onDelete()
-                    },
-                )
+            menu.entries().forEach { entry ->
+                if (entry.dividerBefore) {
+                    RaftMenuSeparator()
+                }
+                when (entry.action) {
+                    RaftComputerCardMenuAction.CreateAgent ->
+                        RaftMenuItem(
+                            text = stringResource(Res.string.agent_create_action_create),
+                            leadingIcon = { MembersMenuIcon(RaftLucideIconName.Bot) },
+                            onClick = {
+                                open = false
+                                onCreateAgent()
+                            },
+                        )
+                    RaftComputerCardMenuAction.Restart ->
+                        RaftMenuItem(
+                            text = stringResource(Res.string.settings_computers_restart),
+                            leadingIcon = { MembersMenuIcon(RaftLucideIconName.RotateCcw) },
+                            onClick = {
+                                open = false
+                                onRestart()
+                            },
+                        )
+                    RaftComputerCardMenuAction.Delete ->
+                        RaftMenuItem(
+                            text = stringResource(Res.string.settings_computers_delete_menu),
+                            leadingIcon = { MembersMenuIcon(RaftLucideIconName.Trash2) },
+                            modifier = Modifier.testTag(RaftComputersRackTags.MenuDelete),
+                            onClick = {
+                                open = false
+                                onDelete()
+                            },
+                        )
+                }
             }
         }
     }

@@ -118,13 +118,79 @@ class ThreadMessageMenuParityTest {
                 onConvertToTask = { routed += ThreadNewMessageMenuTool.ConvertToTask },
                 onSelectText = { routed += ThreadNewMessageMenuTool.SelectText },
                 onMarkThreadUnread = { routed += ThreadNewMessageMenuTool.MarkThreadUnread },
-                onCopySelection = { routed += ThreadNewMessageMenuTool.CopySelection },
-                onMarkConversationUnread = { routed += ThreadNewMessageMenuTool.MarkConversationUnread }
+                onCopySelection = { routed += ThreadNewMessageMenuTool.CopySelection }
             )
 
         ThreadNewMessageMenuSecondaryToolOrder.forEach { it.dispatch(callbacks) }
 
         assertEquals(ThreadNewMessageMenuSecondaryToolOrder, routed)
+    }
+
+    @Test
+    fun classicMessageMenuFollowsWebMenuOrderV4GroupsAndOrder() {
+        // botiverse/slock #16225 (563672da5): thread -> task -> take-it-elsewhere -> personal.
+        val followedMessage = message(threadChannelId = "thread-1", replyCount = 2, isThreadFollowed = true)
+        val actions =
+            threadMessageMenuActions(
+                message = followedMessage,
+                replyMetadata = followedMessage.toThreadReplyMetadata(),
+                showReplyAction = true,
+                showSaveAction = true,
+                showFollowAction = true,
+                showTaskStatusAction = false,
+                showConvertToTaskAction = true,
+                createTaskFromMessage = true,
+                showCopyLinkAction = true,
+                showShareMessagesAction = true,
+                showCancelAction = false,
+                showDeleteAction = false,
+                showTranslateAction = true,
+                showForwardAction = true,
+                showMarkThreadUnreadAction = true,
+                showQuoteAction = true,
+                onReply = {},
+                onCopyLink = {},
+                onCopy = {},
+                onSelectText = {},
+                onShareMessages = {},
+                onSave = {},
+                onFollowThread = {},
+                onUnfollowThread = {},
+                onTaskStatusChange = {},
+                onConvertToTask = {},
+                onCancel = {},
+                onDelete = {},
+            )
+        assertEquals(
+            listOf(
+                Res.string.thread_action_reply_in_thread.desc() to "thread",
+                Res.string.thread_action_unfollow_thread.desc() to "thread",
+                Res.string.thread_action_mark_thread_unread.desc() to "thread",
+                Res.string.thread_action_create_task_from_message.desc() to "task",
+                Res.string.thread_action_quote.desc() to "copy",
+                Res.string.thread_action_copy_markdown.desc() to "copy",
+                Res.string.thread_action_copy_link.desc() to "copy",
+                Res.string.thread_action_forward.desc() to "copy",
+                Res.string.thread_action_select_text.desc() to "copy",
+                Res.string.thread_action_select_message.desc() to "copy",
+                Res.string.thread_action_save_message.desc() to "personal",
+                Res.string.thread_action_translate.desc() to "personal",
+            ),
+            actions.map { it.label to it.group },
+        )
+        // Compact secondary row also puts FollowThread before MarkThreadUnread and has no conversation unread tool.
+        assertEquals(
+            listOf(
+                ThreadNewMessageMenuTool.CopySelection,
+                ThreadNewMessageMenuTool.SelectText,
+                ThreadNewMessageMenuTool.CopyLink,
+                ThreadNewMessageMenuTool.FollowThread,
+                ThreadNewMessageMenuTool.MarkThreadUnread,
+                ThreadNewMessageMenuTool.TaskStatus,
+                ThreadNewMessageMenuTool.ConvertToTask,
+            ),
+            ThreadNewMessageMenuSecondaryToolOrder,
+        )
     }
 
     @Test

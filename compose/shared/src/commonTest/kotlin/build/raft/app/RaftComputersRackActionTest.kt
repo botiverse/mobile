@@ -121,4 +121,38 @@ class RaftComputersRackActionTest {
         val restarted = SettingsComputerControlState(restart = SettingsComputerRestartProgress(machineId = "m1", requestId = "r1", done = true))
         assertEquals(RaftComputerCardMenu(createAgent = true, restart = true), menu(computer(), restarted))
     }
+
+    @Test
+    fun cardMenuEntriesPlaceDividerOnlyBetweenCreateAgentAndManagementActions() {
+        assertEquals(
+            listOf(
+                RaftComputerCardMenuEntry(RaftComputerCardMenuAction.CreateAgent, dividerBefore = false),
+                RaftComputerCardMenuEntry(RaftComputerCardMenuAction.Restart, dividerBefore = true),
+                RaftComputerCardMenuEntry(RaftComputerCardMenuAction.Delete, dividerBefore = false),
+            ),
+            RaftComputerCardMenu(createAgent = true, restart = true, delete = true).entries(),
+        )
+        assertEquals(
+            listOf(
+                RaftComputerCardMenuEntry(RaftComputerCardMenuAction.CreateAgent, dividerBefore = false),
+                RaftComputerCardMenuEntry(RaftComputerCardMenuAction.Delete, dividerBefore = true),
+            ),
+            RaftComputerCardMenu(createAgent = true, restart = false, delete = true).entries(),
+        )
+        assertEquals(
+            listOf(
+                RaftComputerCardMenuEntry(RaftComputerCardMenuAction.Restart, dividerBefore = false),
+                RaftComputerCardMenuEntry(RaftComputerCardMenuAction.Delete, dividerBefore = false),
+            ),
+            RaftComputerCardMenu(createAgent = false, restart = true, delete = true).entries(),
+        )
+        assertEquals(
+            listOf(RaftComputerCardMenuEntry(RaftComputerCardMenuAction.Delete, dividerBefore = false)),
+            RaftComputerCardMenu(createAgent = false, restart = false, delete = true).entries(),
+        )
+        assertEquals(
+            listOf(RaftComputerCardMenuEntry(RaftComputerCardMenuAction.CreateAgent, dividerBefore = false)),
+            RaftComputerCardMenu(createAgent = true, restart = false, delete = false).entries(),
+        )
+    }
 }

@@ -382,9 +382,6 @@ internal class ThreadRouteEventHandler(
                 action == MARK_THREAD_UNREAD_ACTION && !attachmentId.isNullOrBlank() -> {
                     handleMarkThreadUnread(attachmentId)
                 }
-                action == MARK_CONVERSATION_UNREAD_ACTION -> {
-                    handleMarkConversationUnread()
-                }
                 action == "openParentMessage" -> {
                     handleOpenParentMessage()
                 }
@@ -851,11 +848,6 @@ internal class ThreadRouteEventHandler(
                     // botiverse/slock #11687: the reads of this page are held for it until it leaves
                     // (#14222: a followed thread marked from a channel's list is written, not held).
                     threadViewModel.dispatch(SharedThreadIntent.MarkThreadUnread(attachmentId))
-    }
-
-    private fun handleMarkConversationUnread() {
-                    // botiverse/slock #14222: this page's channel or DM, held unread while it stays here.
-                    threadViewModel.dispatch(SharedThreadIntent.MarkConversationUnread)
     }
 
     private fun handleOpenParentMessage() {
