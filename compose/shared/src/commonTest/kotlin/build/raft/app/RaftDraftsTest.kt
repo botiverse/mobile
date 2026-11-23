@@ -247,6 +247,18 @@ class RaftDraftsTest {
     }
 
     @Test
+    fun aQuoteReplyDraftsRowReadsItsReplyOrTheQuotesWords() {
+        // web DraftsPanel (botiverse/slock #16158): the draft through `extractQuoteReplyPreviewText`.
+        val labels = RaftDraftRowLabels(threadIn = { "Thread in $it" }, taskUntitled = "Untitled", unknownConversation = "Unknown", prefix = { "$it ·" })
+        fun preview(text: String) =
+            RaftDraftEntry("k", text, 1L, RaftDraftPlace.Conversation("general", directMessage = false)).toRaftDraftRowModel(directory, labels).preview
+        val quoted = appendThreadQuoteToComposer("", "> Status page banner goes live at 9:00 PT\n> msg=c54e1234")
+        // Quoted, nothing typed yet: the quote's words, without `>` or its ref line.
+        assertEquals("Status page banner goes live at 9:00 PT", preview(quoted))
+        assertEquals("Can we move it to 8:30?", preview(quoted + "Can we move it to 8:30?"))
+    }
+
+    @Test
     fun opensWhereTheDraftWasTyped() {
         fun open(place: RaftDraftPlace) =
             RaftDraftEntry("k", "x", 1L, place).toHomeMessageOpenRequest("s1", directory, SharedConversationDirectoryState())

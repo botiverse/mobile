@@ -17,6 +17,7 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.dp
 import build.raft.app.components.RaftDesignSystemTheme
 import build.raft.app.components.RaftSlotIcon
+import build.raft.app.data.stripQuoteReplyRefsForPreview
 import build.raft.designsystem.components.RaftButton
 import build.raft.designsystem.components.RaftButtonSize
 import build.raft.designsystem.components.RaftSheet
@@ -26,26 +27,35 @@ import build.raft.designsystem.theme.RaftTheme
 
 /*
  * "Select Text" from the long-press menu (web: botiverse/slock #11467, MessageSelectTextDrawer):
- * a bottom sheet holding just the message's Markdown source, nothing selected, with the system's
- * long-press selection and handles, so part of it can be copied or quoted. Copy and Quote take
- * the selection made in the sheet, or the whole message when nothing is selected.
+ * a bottom sheet holding just the message's Markdown source (a quote reply's `msg=` lines left out),
+ * nothing selected, with the system's long-press selection and handles, so part of it can be copied
+ * or quoted. Copy and Quote take the selection made in the sheet, or the whole message when nothing
+ * is selected.
  */
 
-/** The text Copy copies and Quote quotes: the selection in the sheet, else the whole Markdown. */
+/**
+ * What the sheet shows, and Copy copies with nothing selected: the message's Markdown with a quote
+ * reply's `> msg=<id>` lines taken out, its quotes kept (web MessageSelectTextDrawer `displayText`,
+ * `stripQuoteReplyRefsForPreview`, botiverse/slock #16158).
+ */
+internal fun threadSelectTextSheetText(markdown: String): String = stripQuoteReplyRefsForPreview(markdown)
+
+/** The text Copy copies and Quote quotes: the selection in the sheet, else the whole message ([threadSelectTextSheetText]). */
 internal fun threadSelectTextSheetSource(selectedText: String, markdown: String): String =
-    selectedText.takeIf { it.isNotBlank() } ?: markdown
+    selectedText.takeIf { it.isNotBlank() } ?: threadSelectTextSheetText(markdown)
 
 /**
  * Quote's Markdown: with [quoteMessageId] (a sent message's), a quote reply of it (web
  * MessageSelectTextDrawer with its `messageId`): the selection, or with nothing selected the
- * message's opening line ([threadWholeMessageQuote]). Without one, the plain blockquote (`> ` on
- * every line) the other quotes use.
+ * message's opening line ([threadWholeMessageQuote], read from the Markdown as written, as the web's
+ * `buildWholeMessageQuoteExcerpt(markdown)`). Without one, the plain blockquote (`> ` on every line)
+ * the other quotes use.
  */
 internal fun threadSelectTextSheetQuote(selectedText: String, markdown: String, quoteMessageId: String? = null): String =
     when {
         quoteMessageId == null -> formatThreadMessageQuote(threadSelectTextSheetSource(selectedText, markdown))
         selectedText.isNotBlank() -> threadSelectionQuote(selectedText, quoteMessageId)
-        else -> threadWholeMessageQuote(markdown, quoteMessageId) ?: formatThreadMessageQuote(markdown)
+        else -> threadWholeMessageQuote(markdown, quoteMessageId) ?: formatThreadMessageQuote(threadSelectTextSheetText(markdown))
     }
 
 /**
@@ -161,6 +171,7 @@ internal fun ThreadMessageSelectTextSheetContent(
 ) {
     val selection = remember { RaftNativeTextSelection() }
     val press = remember { ThreadSelectTextPressSelection() }
+    val shownText = remember(markdown) { threadSelectTextSheetText(markdown) }
     val title = stringResource(Res.string.thread_action_select_text)
     val hint = stringResource(Res.string.thread_select_text_hint)
     val colors = RaftTheme.colors
@@ -171,7 +182,7 @@ internal fun ThreadMessageSelectTextSheetContent(
             RaftText(byline, style = typography.footnote, color = colors.foregroundMuted)
         }
         RaftNativeSelectableText(
-            text = markdown,
+            text = shownText,
             // The message body's size and face (the reader's text-size setting), in the theme's ink.
             style = textStyle.copy(color = colors.foreground),
             modifier = Modifier.fillMaxWidth().padding(top = 4.dp).testTag("thread_message_selection_text"),

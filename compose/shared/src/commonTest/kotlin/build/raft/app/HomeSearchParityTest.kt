@@ -5,6 +5,7 @@ import build.raft.app.data.EmptyReason
 import build.raft.app.data.HomeChannelRow
 import build.raft.app.data.HomeDirectMessageRow
 import build.raft.app.data.HomeSnapshot
+import build.raft.app.data.InboxItem
 import build.raft.app.data.OpenDirectMessageResult
 import build.raft.app.data.PermissionBlocker
 import build.raft.app.data.ScreenError
@@ -13,6 +14,7 @@ import build.raft.app.data.SharedHomeState
 import build.raft.app.data.authSessionFixture
 import build.raft.app.model.ChannelId
 import build.raft.app.model.ConversationKind
+import build.raft.app.model.InboxItemKind
 import build.raft.app.model.MemberId
 import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberProfile
@@ -29,7 +31,8 @@ import kotlin.test.assertTrue
 /**
  * Search parity with the web (botiverse/slock staging `packages/web/src/features/search`):
  * destinations up to 50 behind "Show all N", a person or agent opening the DM (else the profile),
- * the Free plan's history notice, where an incomplete search got to and a thread result's title.
+ * the Free plan's history notice, where an incomplete search got to, a thread result's title and
+ * what a quote reply's hit reads.
  */
 class HomeSearchParityTest {
     // --- 1. Destinations: up to 50, 5 shown, then Show all N (searchConstants.ts) ---
@@ -178,6 +181,24 @@ class HomeSearchParityTest {
         // 80 characters are shown whole.
         val eighty = "Ship it. ".repeat(9).take(80)
         assertEquals(eighty, homeSearchThreadTitle(eighty))
+    }
+
+    // --- 7. A quote reply: its hit keeps the quote, its Saved row reads the reply (botiverse/slock #16158) ---
+
+    @Test
+    fun aQuoteReplysHitKeepsItsQuoteAndItsSavedRowReadsTheReply() {
+        val item =
+            InboxItem(
+                key = "channel:general:m1",
+                kind = InboxItemKind.Channel,
+                channelId = ChannelId("general"),
+                channelName = "general",
+                lastMessagePreview = "> Status page banner goes live at 9:00 PT\n> msg=c54e1234\n\nCan we move it to 8:30?",
+            )
+        // web MessageHitRow.tsx:123, `stripQuoteReplyRefsForPreview`: the word searched for may be in the quote.
+        assertEquals("Status page banner goes live at 9:00 PT Can we move it to 8:30?", item.searchHitPreviewText())
+        // web SavedPanel.tsx:173, `extractQuoteReplyPreviewText`.
+        assertEquals("Can we move it to 8:30?", item.previewMarkdownText())
     }
 
     private fun memberEntity(kind: MemberKind): SearchEntityResult =

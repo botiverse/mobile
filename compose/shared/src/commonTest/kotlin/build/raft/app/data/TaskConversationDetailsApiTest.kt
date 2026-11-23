@@ -187,4 +187,13 @@ class TaskConversationDetailsApiTest {
         assertEquals("hello", taskSourcePreviewLine("\n   \n  hello  \nworld"))
         assertEquals("", taskSourcePreviewLine(" \n "))
     }
+
+    @Test
+    fun aQuoteReplySourceReadsItsReply() {
+        // web TaskSourceProperty (botiverse/slock #16158): `extractQuoteReplyPreviewText` before the first line.
+        assertEquals(
+            "Can we move it to 8:30?",
+            taskSourcePreviewLine("> Status page banner goes live at 9:00 PT\n> msg=c54e1234\n\nCan we move it to 8:30?"),
+        )
+    }
 }

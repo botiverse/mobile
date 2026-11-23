@@ -62,6 +62,20 @@ class ForwardConversationTargetsTest {
     }
 
     @Test
+    fun aThreadRowWithoutATitleIsNamedByItsParentsReply() {
+        // web ForwardConversationTargetTitle.tsx:21 (botiverse/slock #16158): with no server title, the
+        // parent's preview through `extractQuoteReplyPreviewText`.
+        val body =
+            """
+            {"targets":[
+              {"type":"thread","channelType":"thread","id":"thread-q","channelId":"thread-q","title":"","subtitle":"","avatarUrl":null,"parentChannelId":"room-1","parentChannelName":"general","parentChannelType":"channel","parentMessagePreview":"> Status page banner goes live at 9:00 PT\n> msg=c54e1234\n\nCan we move it to 8:30?","joined":true,"dmExists":null,"canForwardNow":true,"requiredAction":null}
+            ]}
+            """.trimIndent()
+
+        assertEquals("Can we move it to 8:30?", parseForwardMessageTargetSearchResults(body, serverId).single().title)
+    }
+
+    @Test
     fun conversationRowWithoutChannelIdAndUnknownTypesAreDropped() {
         val body =
             """

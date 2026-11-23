@@ -170,6 +170,15 @@ class ThreadForwardBundleDetailStoreTest {
         assertTrue(previews.all { it.body.lines().size == ThreadForwardBundlePreviewLineLimit })
     }
 
+    @Test
+    fun aForwardedQuoteReplyKeepsItsQuoteWithoutTheRefLine() {
+        // web ForwardedBundleCard.tsx:185 (botiverse/slock #16158): each forwarded body through
+        // `stripQuoteReplyRefsForPreview`.
+        val reply = "> Status page banner goes live at 9:00 PT\n> msg=c54e1234\n\nCan we move it to 8:30?"
+        val preview = ForwardMessageBundle(messages = listOf(forwardItem("message-1", reply))).inlinePreviewMessages().single()
+        assertEquals("> Status page banner goes live at 9:00 PT\n\nCan we move it to 8:30?", preview.body)
+    }
+
     private fun threadForwardBundleRoute(): ThreadForwardBundleRoute =
         ThreadForwardBundleRoute(
             serverId = ServerId("server-1"),

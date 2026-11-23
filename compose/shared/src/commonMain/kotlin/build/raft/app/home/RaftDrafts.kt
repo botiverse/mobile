@@ -56,6 +56,7 @@ import build.raft.app.data.RaftNetworkClient
 import build.raft.app.data.SharedConversationDirectoryState
 import build.raft.app.data.SharedTasksDataStore
 import build.raft.app.data.SharedTasksScope
+import build.raft.app.data.extractQuoteReplyPreviewText
 import build.raft.app.data.formatTaskConversationRef
 import build.raft.app.data.parseRaftDraftChannelPlace
 import build.raft.app.model.ChannelId
@@ -559,7 +560,7 @@ internal data class RaftDraftRowModel(
     val title: String,
     /** A task's `#channel:#7 ·` before the text. */
     val prefix: String?,
-    /** The draft's first non-blank line. */
+    /** The draft's first non-blank line, a quote reply's own words first. */
     val preview: String,
     /** ISO-8601, for the relative time; null for a draft without an edit time. */
     val editedAt: String?,
@@ -592,7 +593,9 @@ private fun HomeConversationRow?.raftDraftChannelRef(fallback: String): String =
     }
 
 internal fun RaftDraftEntry.toRaftDraftRowModel(directory: RaftDraftDirectory, labels: RaftDraftRowLabels): RaftDraftRowModel {
-    val preview = text.lineSequence().map(String::trim).firstOrNull(String::isNotEmpty).orEmpty()
+    // web DraftsPanel (botiverse/slock #16158): a quote reply's draft reads its own words, or the
+    // quote's words while nothing is typed after it, never `>` or its `msg=` line.
+    val preview = extractQuoteReplyPreviewText(text).lineSequence().map(String::trim).firstOrNull(String::isNotEmpty).orEmpty()
     val editedAt = editedAtEpochMillis?.let { Instant.fromEpochMilliseconds(it).toString() }
     fun leading(
         kind: ActivityConversationLeadingKind,

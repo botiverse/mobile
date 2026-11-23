@@ -24,6 +24,7 @@ import build.raft.app.model.ChannelId
 import build.raft.app.model.MessageId
 import build.raft.app.model.TaskStatus
 import build.raft.app.data.DefaultTaskCreateStatus
+import build.raft.app.data.extractQuoteReplyPreviewText
 import build.raft.app.resources.*
 import build.raft.designsystem.components.RaftBanner
 import build.raft.designsystem.components.RaftBannerStatus
@@ -46,6 +47,13 @@ internal data class TaskCreateSourceMessage(
     val senderName: String,
     val text: String,
 )
+
+/**
+ * [TaskCreateSourceMessage.text] of a message (web MessageItem `createFromMessageSource`): a quote
+ * reply's own words, not its quote (`extractQuoteReplyPreviewText`, botiverse/slock #16158). The
+ * dialog quotes it and the first title starts as it.
+ */
+internal fun taskCreateSourceText(body: String): String = extractQuoteReplyPreviewText(body)
 
 private const val TaskSourceTitleMax = 200
 

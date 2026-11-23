@@ -1323,9 +1323,11 @@ private fun ForwardTargetSearchItemDto.toForwardConversationTarget(
 ): ForwardMessageTarget? {
     val conversationChannelId = channelId?.trim()?.takeIf { it.isNotBlank() } ?: return null
     val task = cleanType == "task"
+    // Without a title, a thread is named by its parent's preview, a quote reply's own words first
+    // (web ForwardConversationTargetTitle `extractQuoteReplyPreviewText`, botiverse/slock #16158).
     val cleanTitle =
         title.trim().takeIf { it.isNotBlank() }
-            ?: (if (task) taskTitle else parentMessagePreview)?.trim()?.takeIf { it.isNotBlank() }
+            ?: (if (task) taskTitle else parentMessagePreview?.let(::extractQuoteReplyPreviewText))?.trim()?.takeIf { it.isNotBlank() }
             ?: return null
     return ForwardMessageTarget(
         serverId = serverId?.trim()?.takeIf { it.isNotBlank() }?.let(::ServerId) ?: fallbackServerId,

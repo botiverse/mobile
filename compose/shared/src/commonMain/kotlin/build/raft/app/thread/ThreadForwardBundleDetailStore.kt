@@ -11,6 +11,7 @@ import build.raft.app.data.ThreadSnapshot
 import build.raft.app.data.RealConversationRepository
 import build.raft.app.data.RaftAuthSessionStore
 import build.raft.app.data.candidateCacheScopeId
+import build.raft.app.data.stripQuoteReplyRefsForPreview
 import build.raft.app.model.ChannelId
 import build.raft.app.model.ForwardMessageBundle
 import build.raft.app.model.ForwardMessageItem
@@ -47,15 +48,18 @@ internal fun JSONObject.toThreadForwardBundleRouteOrNull(): ThreadForwardBundleR
 
 internal fun ForwardMessageBundle.inlinePreviewMessages(): List<ForwardMessageItemPreview> =
     messages.take(ThreadForwardBundleInlinePreviewLimit).map { item ->
+        // web ForwardedBundleCard (botiverse/slock #16158): a forwarded quote reply keeps its quote
+        // without the `> msg=<id>` line, taken out before the card cuts the text.
+        val body = stripQuoteReplyRefsForPreview(item.body)
         val truncatedBody =
             raftForwardPreviewTruncatedText(
-                body = item.body,
+                body = body,
                 lineLimit = ThreadForwardBundlePreviewLineLimit,
                 charLimit = ThreadForwardBundlePreviewCharLimit
             )
         ForwardMessageItemPreview(
             item = item,
-            body = truncatedBody ?: item.body,
+            body = truncatedBody ?: body,
             truncated = truncatedBody != null
         )
     }

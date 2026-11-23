@@ -28,6 +28,22 @@ class ThreadMessageSelectTextSheetTest {
     }
 
     @Test
+    fun aQuoteReplyIsShownAndCopiedWithoutItsRefLine() {
+        // web MessageSelectTextDrawer.tsx:124,141,219 (botiverse/slock #16158): the sheet shows and copies
+        // the message through `stripQuoteReplyRefsForPreview`, its quote kept.
+        val reply = "> Status page banner goes live at 9:00 PT\n> msg=c54e1234\n\nCan we move it to 8:30?"
+        val shown = "> Status page banner goes live at 9:00 PT\n\nCan we move it to 8:30?"
+        assertEquals(shown, threadSelectTextSheetText(reply))
+        assertEquals(shown, threadSelectTextSheetSource(selectedText = "", markdown = reply))
+        // Quote with nothing selected still reads the Markdown as written: the reply's own words
+        // (:151, `buildWholeMessageQuoteExcerpt(markdown)`).
+        assertEquals(
+            "> Can we move it to 8:30?\n> msg=91c2b8aa",
+            threadSelectTextSheetQuote(selectedText = "", markdown = reply, quoteMessageId = "91c2b8aa-2222-4222-8222-222222222222"),
+        )
+    }
+
+    @Test
     fun quoteLandsAfterTheDraftWithTheCursorOnTheLineBelow() {
         val quote = threadSelectTextSheetQuote("picked", markdown)
         assertEquals("> picked\n\n", appendThreadQuoteToComposer("", quote))

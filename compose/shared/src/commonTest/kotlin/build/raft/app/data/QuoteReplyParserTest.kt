@@ -9,7 +9,9 @@ import kotlin.test.assertTrue
 /**
  * Quote reply Markdown, ported from botiverse/slock `packages/shared/src/quoteReply.test.ts` (staging
  * b0b65a4d1263c9bd39adf28a2f2553c5bacb1913): what reads as a quote block, what the composer writes,
- * and what previews show.
+ * and what previews show. The preview text cases (`extractQuoteReplyPreviewText` and the hardened
+ * `stripQuoteReplyRefsForPreview`, botiverse/slock #16158) are from staging
+ * 87ab82603b3c530eb8d96c4359c8109b662de793, quoteReply.test.ts:187-260, every assertion, same inputs.
  */
 class QuoteReplyParserTest {
     @Test
@@ -118,10 +120,76 @@ class QuoteReplyParserTest {
             "> first question\n\nAnswer 1\n\n> second question\n>\n> second line\n\nAnswer 2",
             stripQuoteReplyRefsForPreview(content),
         )
-        // The one-line preview every list row, banner and notification reads.
-        val preview = markdownToPreviewText(content)
-        assertFalse("msg=" in preview, preview)
-        assertTrue("first question" in preview && "Answer 2" in preview, preview)
+        // The one-line preview every list row, banner and notification reads: the answers, not the
+        // questions they quote (web `notificationPlainText` runs `extractQuoteReplyPreviewText`, #16158).
+        assertEquals("Answer 1 Answer 2", markdownToPreviewText(content))
+    }
+
+    @Test
+    fun aPreviewLeadsWithTheReplyAndFallsBackToTheQuote() {
+        // Single quote + reply (the web's InlineThreadReplies reproduction).
+        val reply =
+            serializeInlineQuoteReply(
+                "Status page banner goes live at 9:00 PT",
+                "c54e1234-1111-4111-8111-111111111111",
+                "Can we move it to 8:30 so it's up before the flags flip?",
+            )
+        assertEquals("Can we move it to 8:30 so it's up before the flags flip?", extractQuoteReplyPreviewText(reply))
+
+        // Multiple leading quotes + reply: what web `serializeInlineQuoteBlocks` writes for them.
+        val multiLead = "> Point A\n> msg=11111111\n\n> Point B\n> msg=22222222\n\nAgree with both."
+        assertEquals("Agree with both.", extractQuoteReplyPreviewText(multiLead))
+
+        // Interleaved intro + quotes + answers (also `serializeInlineQuoteBlocks`).
+        val interleaved =
+            "@Sage three quick answers:\n\n> First question\n> msg=54a733de\n\nAnswer 1\n\n> Second question\n> msg=91c2b8aa\n\nAnswer 2"
+        assertEquals("@Sage three quick answers:\n\nAnswer 1\n\nAnswer 2", extractQuoteReplyPreviewText(interleaved))
+
+        // Quote only (no reply body): the quote's words, without `>` or `> msg=`.
+        val quoteOnly = serializeInlineQuoteReply("Status page banner goes live at 9:00 PT", "c54e1234", "")
+        assertEquals("Status page banner goes live at 9:00 PT", extractQuoteReplyPreviewText(quoteOnly))
+    }
+
+    @Test
+    fun aPreviewCutInsideTheRefOrFoldedToOneLineNeverShowsTheRef() {
+        // Multi-line, cut right inside `> msg=c54e1…`.
+        assertEquals(
+            "Status page banner goes live at 9:00 PT…",
+            extractQuoteReplyPreviewText("> Status page banner goes live at 9:00 PT\n> msg=c54e1…"),
+        )
+        assertEquals(
+            "> Status page banner goes live at 9:00 PT…",
+            stripQuoteReplyRefsForPreview("> Status page banner goes live at 9:00 PT\n> msg=c54e1…"),
+        )
+
+        // One line, whitespace folded (legacy / SQL / search previews), whole and cut inside the ref.
+        assertEquals(
+            "Can we move it to 8:30?",
+            extractQuoteReplyPreviewText("> Status page banner goes live at 9:00 PT > msg=c54e1234 Can we move it to 8:30?"),
+        )
+        assertEquals(
+            "Status page banner goes live at 9:00 PT…",
+            extractQuoteReplyPreviewText("> Status page banner goes live at 9:00 PT > msg=c54e1…"),
+        )
+        assertEquals(
+            "> Status page banner goes live at 9:00 PT Can we move it to 8:30?",
+            stripQuoteReplyRefsForPreview("> Status page banner goes live at 9:00 PT > msg=c54e1234 Can we move it to 8:30?"),
+        )
+        assertEquals(
+            "> Status page banner goes live at 9:00 PT…",
+            stripQuoteReplyRefsForPreview("> Status page banner goes live at 9:00 PT > msg=c54e1…"),
+        )
+    }
+
+    @Test
+    fun plainQuotesCrossChannelRefsAndCodeFencesStayAsWritten() {
+        val plainQuote = "> legacy plain quote\n\nMy reply"
+        assertEquals(plainQuote, extractQuoteReplyPreviewText(plainQuote))
+        val fenced = "```markdown\n> code quote\n> msg=54a733de\n```"
+        assertEquals(fenced, extractQuoteReplyPreviewText(fenced))
+        assertEquals(fenced, stripQuoteReplyRefsForPreview(fenced))
+        val prose = "Check #general msg=54a733de when x > y"
+        assertEquals(prose, extractQuoteReplyPreviewText(prose))
     }
 
     @Test

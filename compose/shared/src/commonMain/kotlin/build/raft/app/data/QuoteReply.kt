@@ -12,9 +12,11 @@ package build.raft.app.data
  *
  * Line-for-line port of botiverse/slock `packages/shared/src/quoteReply.ts` (staging
  * b0b65a4d1263c9bd39adf28a2f2553c5bacb1913): the parser and its fast pre-check, the composer's
- * serializer, the previews' ref stripping and the whole-message excerpt. The server's excerpt
- * verification stays on the server. `\s` and `trim()` are JavaScript's ([isJsWhitespace]), so an
- * unusual space splits lines and blocks exactly as it does on the web.
+ * serializer, the previews' ref stripping and the whole-message excerpt. The preview text
+ * ([extractQuoteReplyPreviewText], and [stripQuoteReplyRefsForPreview] hardened for cut and folded
+ * previews) follows #16158, quoteReply.ts:282-491 at staging 87ab82603b3c530eb8d96c4359c8109b662de793.
+ * The server's excerpt verification stays on the server. `\s` and `trim()` are JavaScript's
+ * ([isJsWhitespace]), so an unusual space splits lines and blocks exactly as it does on the web.
  */
 
 /**
@@ -293,18 +295,195 @@ internal fun serializeInlineQuoteReply(excerpt: String, targetMessageId: String,
     return if (body.isNotEmpty()) "$quoteLines\n> msg=$shortId\n\n$body" else "$quoteLines\n> msg=$shortId"
 }
 
+/** web `TRUNCATED_QUOTE_REF_LINE_RE`, matched against a whole trimmed quote line: a `msg=` ref a preview cut, ending in `…`. */
+private val TruncatedQuoteRefLine =
+    Regex("msg=(?:[0-9a-f]{0,8}|[0-9a-f]{8}-[0-9a-f-]{0,28})…", RegexOption.IGNORE_CASE)
+
+/**
+ * web `COLLAPSED_QUOTE_REF_TOKEN_RE`: a quote's ref inside one line, where a preview folded the
+ * message's lines (` > msg=<id>`, or cut inside it: ` > msg=<prefix>…`). `(?![\s\S])` is
+ * JavaScript's `$`, the end of the input only (Kotlin's `$` also matches before a final line break).
+ */
+private val CollapsedQuoteRefToken =
+    Regex(
+        "$JsWhitespaceClass+>$JsWhitespaceClass*msg=" +
+            "(?:[0-9a-f]{8}(?:-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})?|(?:[0-9a-f]{0,8}|[0-9a-f]{8}-[0-9a-f-]{0,28})…)" +
+            "(?=$JsWhitespaceClass|(?![\\s\\S]))",
+        RegexOption.IGNORE_CASE,
+    )
+
+/** JavaScript `/\s+/g`. */
+private val JsWhitespaceRun = Regex("$JsWhitespaceClass+")
+
+/** JavaScript `/\s+>\s+/g`: a quote marker between two words of a folded preview. */
+private val FoldedQuoteMarker = Regex("$JsWhitespaceClass+>$JsWhitespaceClass+")
+
+/** web `"extract" | "strip-ref"`: a preview's own words, or its quotes kept as plain blockquotes. */
+private enum class QuoteRefCleanup { Extract, StripRef }
+
+/**
+ * web `stripTrailingTruncatedQuoteBlock`: a preview cut inside its last quote's `msg=` line
+ * (`> excerpt\n> msg=c54e1…`). [QuoteRefCleanup.Extract] keeps the text before that quote, or else
+ * the quote's words ending in `…`; [QuoteRefCleanup.StripRef] keeps the quote as a plain blockquote
+ * ending in `…`. Anything else, and a ref line inside an open code fence, stays as it is.
+ */
+private fun stripTrailingTruncatedQuoteBlock(content: String, mode: QuoteRefCleanup): String {
+    if (!content.contains('…') || !content.contains("msg=") || !content.contains('>')) return content
+    val lines = content.split(QuoteLineBreak)
+    var lastNonEmpty = lines.size - 1
+    while (lastNonEmpty >= 0 && lines[lastNonEmpty].jsTrim().isEmpty()) lastNonEmpty--
+    if (lastNonEmpty < 1) return content
+    val lastQuoted = blockquoteLineContent(lines[lastNonEmpty])
+    if (lastQuoted == null || !TruncatedQuoteRefLine.matches(lastQuoted.jsTrim())) return content
+
+    // The cut ref line must not sit inside an open fenced code block.
+    var activeFenceChar: Char? = null
+    var activeFenceLength = 0
+    for (index in 0..lastNonEmpty) {
+        val line = lines[index]
+        val fenceChar = activeFenceChar
+        if (fenceChar != null) {
+            if (closesFence(line, fenceChar, activeFenceLength)) {
+                activeFenceChar = null
+                activeFenceLength = 0
+            }
+            continue
+        }
+        if (blockquoteLineContent(line) != null) continue
+        val fence = fenceOpen(line)
+        if (fence != null && (fence.char == '~' || !line.substring(fence.end).contains('`'))) {
+            activeFenceChar = fence.char
+            activeFenceLength = fence.length
+        }
+    }
+    if (activeFenceChar != null) return content
+
+    var runStart = lastNonEmpty - 1
+    while (runStart >= 0 && blockquoteLineContent(lines[runStart]) != null) runStart--
+    runStart++
+    val excerptLines = (runStart until lastNonEmpty).mapNotNull { blockquoteLineContent(lines[it]) }.toMutableList()
+    while (excerptLines.isNotEmpty() && excerptLines.first().jsTrim().isEmpty()) excerptLines.removeAt(0)
+    while (excerptLines.isNotEmpty() && excerptLines.last().jsTrim().isEmpty()) excerptLines.removeAt(excerptLines.lastIndex)
+    if (excerptLines.isEmpty()) return content
+
+    val before = lines.subList(0, runStart).joinToString("\n").jsTrim()
+    val excerptRaw = excerptLines.joinToString("\n")
+    val excerptWithEllipsis = if (excerptRaw.endsWith("…")) excerptRaw else "${excerptRaw.jsTrimEnd()}…"
+    return when (mode) {
+        QuoteRefCleanup.Extract -> before.ifEmpty { excerptWithEllipsis }
+        QuoteRefCleanup.StripRef -> {
+            val plainQuote = formatPlainBlockquote(excerptWithEllipsis)
+            if (before.isNotEmpty()) "$before\n\n$plainQuote" else plainQuote
+        }
+    }
+}
+
+/** web `stripInlineCollapsedQuoteRefs`: every folded ref taken out of a one-line preview (a cut one leaves `…`), spaces folded. */
+private fun stripInlineCollapsedQuoteRefs(text: String): String {
+    val result = StringBuilder()
+    var lastIndex = 0
+    for (match in CollapsedQuoteRefToken.findAll(text)) {
+        val before = text.substring(lastIndex, match.range.first)
+        result.append(if (match.value.endsWith("…")) "${before.jsTrimEnd()}…" else before)
+        lastIndex = match.range.last + 1
+    }
+    if (lastIndex == 0) return text
+    result.append(text.substring(lastIndex))
+    return result.toString().replace(JsWhitespaceRun, " ").jsTrim()
+}
+
+/** The web's lead pattern (`^\s*>\s*`) on `content.slice(from)`: where the words after a quote marker start, or null without one. */
+private fun quoteMarkerEnd(content: String, from: Int): Int? {
+    var index = from
+    while (index < content.length && content[index].isJsWhitespace()) index++
+    if (index >= content.length || content[index] != '>') return null
+    index++
+    while (index < content.length && content[index].isJsWhitespace()) index++
+    return index
+}
+
+/**
+ * web `cleanCollapsedSingleLineQuoteRefs`: a one-line preview of a quote reply, its lines folded
+ * (`> excerpt > msg=c54e1234 reply`). [QuoteRefCleanup.Extract] keeps what follows the leading
+ * quotes, or else their words; [QuoteRefCleanup.StripRef] only takes the refs out.
+ */
+private fun cleanCollapsedSingleLineQuoteRefs(content: String, mode: QuoteRefCleanup): String {
+    if (mode == QuoteRefCleanup.StripRef) return stripInlineCollapsedQuoteRefs(content)
+    if (quoteMarkerEnd(content, 0) == null) return stripInlineCollapsedQuoteRefs(content)
+    var cursor = 0
+    val excerpts = mutableListOf<String>()
+    var lastEndedWithEllipsis = false
+    while (cursor < content.length) {
+        val afterLead = quoteMarkerEnd(content, cursor) ?: break
+        val ref = CollapsedQuoteRefToken.find(content, afterLead) ?: break
+        val excerpt = content.substring(afterLead, ref.range.first).replace(FoldedQuoteMarker, " ").jsTrim()
+        if (excerpt.isEmpty()) break
+        excerpts += excerpt
+        lastEndedWithEllipsis = ref.value.endsWith("…")
+        cursor = ref.range.last + 1
+    }
+    if (excerpts.isEmpty()) return stripInlineCollapsedQuoteRefs(content)
+    val rest = stripInlineCollapsedQuoteRefs(content.substring(cursor).jsTrim())
+    if (rest.isNotEmpty()) return rest
+    val fallback = excerpts.joinToString(" ")
+    return if (lastEndedWithEllipsis && !fallback.endsWith("…")) "${fallback.jsTrimEnd()}…" else fallback
+}
+
 /**
  * web `stripQuoteReplyRefsForPreview`: a message's Markdown with each quote block's `msg=` line taken
- * out, so a preview (Activity, notifications, search, a reply's line) reads the quote, not an id.
+ * out and its quote kept as a plain blockquote, for a surface that keeps the whole body (a search
+ * hit; a cut Activity body standing in for the message). Also for a preview cut inside a ref or
+ * folded to one line.
  */
 internal fun stripQuoteReplyRefsForPreview(content: String): String {
-    if (!hasSameConversationQuoteRef(content)) return content
-    return parseMessageQuoteSegments(content)
-        .mapNotNull { segment ->
+    if (content.isEmpty() || !content.contains("msg=") || !content.contains('>')) return content
+    if (hasSameConversationQuoteRef(content)) {
+        val parts = mutableListOf<String>()
+        var hasQuoteBlock = false
+        for (segment in parseMessageQuoteSegments(content)) {
             when (segment) {
-                is MessageQuoteSegment.QuoteBlock -> formatPlainBlockquote(segment.excerpt)
-                is MessageQuoteSegment.Text -> segment.text.takeIf { it.jsTrim().isNotEmpty() }
+                is MessageQuoteSegment.QuoteBlock -> {
+                    hasQuoteBlock = true
+                    parts += formatPlainBlockquote(segment.excerpt)
+                }
+                is MessageQuoteSegment.Text -> {
+                    val cleaned = stripTrailingTruncatedQuoteBlock(segment.text, QuoteRefCleanup.StripRef)
+                    if (cleaned.jsTrim().isNotEmpty()) parts += cleaned
+                }
             }
         }
-        .joinToString("\n\n")
+        if (!hasQuoteBlock) return stripTrailingTruncatedQuoteBlock(content, QuoteRefCleanup.StripRef)
+        return parts.joinToString("\n\n")
+    }
+    if (content.contains('\n') || content.contains('\r')) return stripTrailingTruncatedQuoteBlock(content, QuoteRefCleanup.StripRef)
+    return cleanCollapsedSingleLineQuoteRefs(content, QuoteRefCleanup.StripRef)
+}
+
+/**
+ * web `extractQuoteReplyPreviewText` (botiverse/slock #16158): what a one-line preview reads of a
+ * message. A quote reply leads with its sender's own words (its text, its quotes dropped); one that
+ * is only quotes reads their words, without `>` or `msg=` lines. A preview cut inside a ref or folded
+ * to one line loses the ref too. Plain blockquotes, cross-channel refs and code stay as written.
+ */
+internal fun extractQuoteReplyPreviewText(content: String): String {
+    if (content.isEmpty() || !content.contains("msg=") || !content.contains('>')) return content
+    if (hasSameConversationQuoteRef(content)) {
+        val quoteBlocks = mutableListOf<MessageQuoteSegment.QuoteBlock>()
+        val textParts = mutableListOf<String>()
+        for (segment in parseMessageQuoteSegments(content)) {
+            when (segment) {
+                is MessageQuoteSegment.QuoteBlock -> quoteBlocks += segment
+                is MessageQuoteSegment.Text -> {
+                    val cleaned = stripTrailingTruncatedQuoteBlock(segment.text, QuoteRefCleanup.Extract).jsTrim()
+                    if (cleaned.isNotEmpty()) textParts += cleaned
+                }
+            }
+        }
+        if (quoteBlocks.isEmpty()) return stripTrailingTruncatedQuoteBlock(content, QuoteRefCleanup.Extract)
+        if (textParts.isNotEmpty()) return textParts.joinToString("\n\n")
+        val excerpts = quoteBlocks.map { it.excerpt.jsTrim() }.filter { it.isNotEmpty() }
+        return if (excerpts.isNotEmpty()) excerpts.joinToString("\n\n") else content
+    }
+    if (content.contains('\n') || content.contains('\r')) return stripTrailingTruncatedQuoteBlock(content, QuoteRefCleanup.Extract)
+    return cleanCollapsedSingleLineQuoteRefs(content, QuoteRefCleanup.Extract)
 }

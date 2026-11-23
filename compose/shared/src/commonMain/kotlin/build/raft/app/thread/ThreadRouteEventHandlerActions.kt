@@ -823,7 +823,7 @@ internal fun ThreadRouteEventHandler.handleCreateTaskFromMessage(itemId: String)
                             channelId = taskChannelId,
                             messageId = MessageId(message.id),
                             senderName = message.threadAvatarName().ifBlank { message.shownAuthorName() },
-                            text = message.body,
+                            text = taskCreateSourceText(message.body),
                         )
                     )
 }
