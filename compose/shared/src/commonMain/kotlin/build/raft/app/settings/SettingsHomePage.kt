@@ -175,6 +175,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.NonRestartableComposable
 import androidx.compose.runtime.collectAsState
+import build.raft.app.compat.ui.LocalRaftPageActive
 import build.raft.app.compat.ui.collectAsStateWhileStarted
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
@@ -2160,7 +2161,7 @@ private fun RaftAppShellReadyContent(
                 readySession != null && authoritativeHomeStartAllowed
         }
     }
-    val activeAnnouncement by announcementStore.announcement.collectAsStateWhileStarted()
+    var announcementModalShown by remember { mutableStateOf(false) }
     val latestAnnouncementStore by rememberUpdatedState(announcementStore)
     AppShellAnnouncementEffects(
         announcementStore = announcementStore,
@@ -3390,6 +3391,7 @@ private fun RaftAppShellReadyContent(
     }
 
     fun openCreateChannelDialog(external: Boolean = false) {
+        if (!latestPageVisible) return
         createChannelExternalChosen = external
         createChannelSession += 1
         createChannelDialogOpen = true
@@ -5029,10 +5031,12 @@ private fun RaftAppShellReadyContent(
         searchOverlayOpen = true
         bridge.log("app_shell_search_overlay_open from=$source")
     }
+    val shellPageActive = LocalRaftPageActive.current
+    val latestShellPageActive by rememberUpdatedState(shellPageActive)
     LaunchedEffect(searchShortcutTick) {
-        if (searchShortcutTick > 0) openSearchOverlay(source = "host_shortcut")
+        if (searchShortcutTick > 0 && latestPageVisible && latestShellPageActive) openSearchOverlay(source = "host_shortcut")
     }
-    if (searchOverlayOpen && navRailActive) {
+    if (searchOverlayOpen && navRailActive && pageVisible && shellPageActive) {
         val density = LocalDensity.current
         val fieldBounds = appShellTopBar.searchFieldBounds.takeIf { appShellTopBar.drawn }
         val visited = remember(wideNavHistory) { wideNavHistory.visitedThreadIds() }
@@ -7063,37 +7067,40 @@ private fun RaftAppShellReadyContent(
                         }
                     )
                 }
-                activeAnnouncement?.let { announcement ->
-                    val announcementWebBase = sharedStores.apiEnvironmentStore.current().webUrl.trimEnd('/')
-                    SharedAnnouncementModal(
-                        announcement = announcement,
-                        onDismiss = {
-                            if (announcementStore.dismiss(announcement.id)) {
-                                appShellCoroutineScope.launch {
-                                    announcementStore.persistDismissal(announcement.id)
-                                }
-                            }
-                        },
-                        onOpenUrl = { url ->
-                            if (announcementOwner == latestAnnouncementOwner) {
-                                when (
-                                    val action =
-                                        announcementLinkAction(
-                                            href = url,
-                                            webBaseUrl = announcementWebBase,
-                                            currentServerId = readyServerId,
-                                            servers = readySession?.servers.orEmpty(),
-                                        )
-                                ) {
-                                    is AnnouncementLinkAction.OpenSettings ->
-                                        openSettingsFromLink(action.link, action.target, source = "announcement")
-                                    is AnnouncementLinkAction.OpenUrl -> linkNavigator.open(action.url, action.openIntent)
-                                    null -> Unit
-                                }
+                AppShellAnnouncementModalHost(
+                    announcementStore = announcementStore,
+                    pageVisible = pageVisible,
+                    pageVisibleTick = pageVisibleTick,
+                    hostDidAppearTick = hostDidAppearTick,
+                    isOnline = hostNetworkStatus != RaftAppShellNetworkStatus.Offline,
+                    onModalShownChanged = { announcementModalShown = it },
+                    onDismissAnnouncement = { announcementId ->
+                        if (announcementStore.dismiss(announcementId)) {
+                            appShellCoroutineScope.launch {
+                                announcementStore.persistDismissal(announcementId)
                             }
                         }
-                    )
-                }
+                    },
+                    onOpenUrl = { url ->
+                        if (announcementOwner == latestAnnouncementOwner) {
+                            val announcementWebBase = sharedStores.apiEnvironmentStore.current().webUrl.trimEnd('/')
+                            when (
+                                val action =
+                                    announcementLinkAction(
+                                        href = url,
+                                        webBaseUrl = announcementWebBase,
+                                        currentServerId = readyServerId,
+                                        servers = readySession?.servers.orEmpty(),
+                                    )
+                            ) {
+                                is AnnouncementLinkAction.OpenSettings ->
+                                    openSettingsFromLink(action.link, action.target, source = "announcement")
+                                is AnnouncementLinkAction.OpenUrl -> linkNavigator.open(action.url, action.openIntent)
+                                null -> Unit
+                            }
+                        }
+                    },
+                )
             }
         }
         }
@@ -7114,7 +7121,7 @@ private fun RaftAppShellReadyContent(
                 modalGestureBlocked =
                     appShellModalHostState.entries.isNotEmpty() ||
                         createChannelDialogOpen ||
-                        activeAnnouncement != null,
+                        announcementModalShown,
                 dismissLabel = stringResource(Res.string.common_dismiss),
                 onServerClick = ::openServerDrawerHome,
                 onConversationClick = ::openServerDrawerConversation,
