@@ -13,6 +13,7 @@ import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import build.raft.app.data.isDefaultAccount
+import build.raft.app.data.ResolvedServerRefusal
 import build.raft.app.data.RuntimeAccountUsageAccount
 import build.raft.app.data.RuntimeAccountUsageHealth
 import build.raft.app.data.RuntimeAccountUsageLoad
@@ -25,8 +26,10 @@ import build.raft.app.data.RuntimeAuthView
 import build.raft.app.data.RuntimeLimitResetIdempotencyKey
 import build.raft.app.data.RuntimeLimitResetRefusal
 import build.raft.app.data.RuntimeLimitResetResult
+import build.raft.app.data.ServerRefusalInput
 import build.raft.app.data.authRuntime
 import build.raft.app.data.allModels
+import build.raft.app.data.resolveServerRefusal
 import build.raft.app.data.usageOnCredits
 import build.raft.designsystem.components.RaftBanner
 import build.raft.designsystem.components.RaftBannerSize
@@ -147,6 +150,35 @@ internal fun RuntimeLimitResetRefusal.limitResetError(): ComputerRuntimeLimitRes
         else -> ComputerRuntimeLimitResetError.Unknown
     }
 
+/**
+ * Scrubbed Tier 3 server refusal words for a definite 4xx limit-reset refusal without a Tier 2 code.
+ * Always returns `null` when [outcomeUnknown] is true so the "may or may not have spent a reset"
+ * safety warning is never overwritten.
+ */
+internal fun RuntimeLimitResetRefusal.limitResetServerMessageOrNull(): String? {
+    if (outcomeUnknown) return null
+    val httpStatus = status?.takeIf { it > 0 } ?: return null
+    if (
+        httpStatus == 429 ||
+        code == "computer_offline" ||
+        code == "computer_upgrade_required" ||
+        code == "computer_not_attached" ||
+        code == "claude_limit_reset_disabled"
+    ) {
+        return null
+    }
+    val resolved =
+        resolveServerRefusal(
+            ServerRefusalInput(
+                status = httpStatus,
+                code = code,
+                serverMessage = serverMessage,
+                traceId = traceId,
+            ),
+        ) { _, _ -> null }
+    return (resolved as? ResolvedServerRefusal.ServerWords)?.message
+}
+
 /** The open confirm dialog. Its account and count are fixed for its life: the read after an outcome may change them. */
 internal data class ComputerRuntimeLimitResetDialogState(
     /** The account's masked email or name, as the card shows it; null when it has none. */
@@ -157,6 +189,8 @@ internal data class ComputerRuntimeLimitResetDialogState(
     val error: ComputerRuntimeLimitResetError? = null,
     /** The failed request's `X-Trace-Id`, shown under [error] (AGENTS.md "Errors carry the trace ID"). */
     val traceId: String? = null,
+    /** Scrubbed Tier 3 server refusal sentence for definite 4xx refusals without a Tier 2 code. */
+    val serverMessage: String? = null,
 )
 
 @Composable
@@ -268,7 +302,7 @@ internal fun ComputerRuntimeLimitResetDialog(
                 color = RaftTheme.colors.foregroundMuted,
             )
             state.error?.let { error ->
-                RaftBanner(description = error.text(runtimeName), status = RaftBannerStatus.Warning, size = RaftBannerSize.Sm)
+                RaftBanner(description = state.serverMessage ?: error.text(runtimeName), status = RaftBannerStatus.Warning, size = RaftBannerSize.Sm)
                 RaftTraceIdNote(state.traceId)
             }
         }

@@ -3,7 +3,9 @@ package build.raft.app
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import build.raft.app.data.ResolvedServerRefusal
 import build.raft.app.data.RuntimeAuthCall
+import build.raft.app.data.RuntimeAuthRequestError
 import build.raft.app.data.RuntimeAuthRuntime
 import build.raft.app.data.RuntimeAuthView
 import build.raft.app.data.RuntimeInstallPlan
@@ -13,6 +15,8 @@ import build.raft.app.data.RuntimeOperationErrorCode
 import build.raft.app.data.RuntimeUpdateCheck
 import build.raft.app.data.RuntimeUpgradeResult
 import build.raft.app.data.RuntimeUpgradeUnsupportedReason
+import build.raft.app.data.ServerRefusalInput
+import build.raft.app.data.resolveServerRefusal
 import build.raft.app.resources.*
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
@@ -52,6 +56,24 @@ internal fun computerRuntimeOperationRefusal(code: String?): ComputerRuntimeOper
         else -> ComputerRuntimeOperationRefusal.Failed
     }
 
+/** Resolves Tier 2 known codes first, then scrubbed Tier 3 server words for unrecognized 4xx refusals. */
+internal fun RuntimeAuthRequestError.toOperationRefusal(): Pair<ComputerRuntimeOperationRefusal, String?> {
+    val known = computerRuntimeOperationRefusal(code)
+    if (known != ComputerRuntimeOperationRefusal.Failed) return known to null
+    val httpStatus = status?.takeIf { it > 0 } ?: return ComputerRuntimeOperationRefusal.Failed to null
+    val resolved =
+        resolveServerRefusal(
+            ServerRefusalInput(
+                status = httpStatus,
+                code = code,
+                serverMessage = serverMessage,
+                traceId = traceId,
+            ),
+        ) { _, _ -> null }
+    val words = (resolved as? ResolvedServerRefusal.ServerWords)?.message
+    return ComputerRuntimeOperationRefusal.Failed to words
+}
+
 /** What one press of Upgrade has learned (web `RuntimeUpgradeState`). */
 internal sealed interface ComputerRuntimeUpgradeState {
     data object Idle : ComputerRuntimeUpgradeState
@@ -60,7 +82,11 @@ internal sealed interface ComputerRuntimeUpgradeState {
 
     data class Done(val result: RuntimeUpgradeResult) : ComputerRuntimeUpgradeState
 
-    data class Refused(val reason: ComputerRuntimeOperationRefusal, val traceId: String? = null) : ComputerRuntimeUpgradeState
+    data class Refused(
+        val reason: ComputerRuntimeOperationRefusal,
+        val traceId: String? = null,
+        val serverMessage: String? = null,
+    ) : ComputerRuntimeUpgradeState
 }
 
 /**
@@ -73,6 +99,8 @@ internal data class ComputerRuntimeOperationCopy(
     val success: Boolean,
     /** The failed request's trace id, shown under the sentence (AGENTS.md "Errors carry the trace ID"). */
     val traceId: String? = null,
+    /** Scrubbed Tier 3 server refusal sentence when [message] is a generic fallback. */
+    val serverMessage: String? = null,
 )
 
 /** Web `runtimeUpgradeCopy`: one plain sentence per outcome; null while idle or running. */
@@ -91,6 +119,7 @@ internal fun computerRuntimeUpgradeCopy(state: ComputerRuntimeUpgradeState): Com
                 },
                 success = false,
                 traceId = state.traceId,
+                serverMessage = state.serverMessage,
             )
         is ComputerRuntimeUpgradeState.Done ->
             when (val result = state.result) {
@@ -254,6 +283,7 @@ internal sealed interface ComputerRuntimeInstallState {
         override val runtimeName: String,
         val reason: ComputerRuntimeOperationRefusal,
         val traceId: String? = null,
+        val serverMessage: String? = null,
     ) : ForRuntime
 }
 
@@ -286,6 +316,7 @@ internal fun computerRuntimeInstallCopy(state: ComputerRuntimeInstallState): Com
                 },
                 success = false,
                 traceId = state.traceId,
+                serverMessage = state.serverMessage,
             )
         is ComputerRuntimeInstallState.Done ->
             when (val result = state.result) {
@@ -385,8 +416,17 @@ internal class ComputerRuntimeInstallController(
             state =
                 when (answer) {
                     is RuntimeAuthCall.Done -> computerRuntimeInstallStateForPlan(runtime, raftRuntimeId, runtimeName, answer.value)
-                    is RuntimeAuthCall.Refused ->
-                        ComputerRuntimeInstallState.Refused(runtime, raftRuntimeId, runtimeName, computerRuntimeOperationRefusal(answer.error.code), answer.error.traceId)
+                    is RuntimeAuthCall.Refused -> {
+                        val (reason, serverMessage) = answer.error.toOperationRefusal()
+                        ComputerRuntimeInstallState.Refused(
+                            runtime = runtime,
+                            raftRuntimeId = raftRuntimeId,
+                            runtimeName = runtimeName,
+                            reason = reason,
+                            traceId = answer.error.traceId,
+                            serverMessage = serverMessage,
+                        )
+                    }
                     RuntimeAuthCall.Superseded -> superseded()
                 }
         }
@@ -401,14 +441,17 @@ internal class ComputerRuntimeInstallController(
             state =
                 when (answer) {
                     is RuntimeAuthCall.Done -> ComputerRuntimeInstallState.Done(open.runtime, open.raftRuntimeId, open.runtimeName, answer.value)
-                    is RuntimeAuthCall.Refused ->
+                    is RuntimeAuthCall.Refused -> {
+                        val (reason, serverMessage) = answer.error.toOperationRefusal()
                         ComputerRuntimeInstallState.Refused(
-                            open.runtime,
-                            open.raftRuntimeId,
-                            open.runtimeName,
-                            computerRuntimeOperationRefusal(answer.error.code),
-                            answer.error.traceId,
+                            runtime = open.runtime,
+                            raftRuntimeId = open.raftRuntimeId,
+                            runtimeName = open.runtimeName,
+                            reason = reason,
+                            traceId = answer.error.traceId,
+                            serverMessage = serverMessage,
                         )
+                    }
                     RuntimeAuthCall.Superseded -> superseded()
                 }
             if (state !is ComputerRuntimeInstallState.Idle) read(force = true)

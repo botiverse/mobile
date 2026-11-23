@@ -622,8 +622,13 @@ internal data class RuntimeAuthLogoutBody(val providerId: String? = null, val re
 @Serializable
 internal data class RuntimeAuthConnectProviderBody(val providerId: String, val apiKey: String)
 
-/** Why a runtime-auth request got no answer to read: the HTTP status, the route's `code`, and the trace id. */
-internal data class RuntimeAuthRequestError(val status: Int?, val code: String?, val traceId: String? = null)
+/** Why a runtime-auth request got no answer to read: the HTTP status, the route's `code`, trace id, and refusal message. */
+internal data class RuntimeAuthRequestError(
+    val status: Int?,
+    val code: String?,
+    val traceId: String? = null,
+    val serverMessage: String? = null,
+)
 
 /** A runtime-auth request's answer, or why there is none. */
 internal sealed interface RuntimeAuthCall<out T> {

@@ -998,10 +998,7 @@ internal class RaftComputersApiClient(
         val traceId = response.traceId?.trim()?.takeIf { it.isNotBlank() }
         val payload = response.bodyText?.takeIf { it.isNotBlank() } ?: response.errorBodyText?.takeIf { it.isNotBlank() }
         if (!response.isSuccessful) {
-            val errCode =
-                payload?.let {
-                    runCatching { computersApiJson.decodeFromString(ComputerControlErrorDto.serializer(), it) }.getOrNull()
-                }?.code?.trim()?.takeIf { it.isNotBlank() }
+            val errCode = response.parseHttpErrorEnvelope()?.serverCode
             return if (errCode == "computer_upgrade_required") {
                 ComputerProcJobStopResult.UpgradeRequired
             } else {
@@ -1228,7 +1225,9 @@ private inline fun <Wire, T> HomeNetworkResponse.mapComputersBody(
 }
 
 private fun <T> HomeNetworkResponse.toComputersDataError(): DataResult<T> {
-    val serverMessage = computersRouteErrorTextOrNull()
+    val envelope = parseHttpErrorEnvelope()
+    val serverMessage = envelope?.serverMessage
+    val serverCode = envelope?.serverCode
     // Registering a machine or creating a new machine key with two-step verification on: the
     // caller asks for the second step and retries (SharedSettingsStore), never this 403's English.
     secondFactorStepUpErrorOrNull<T>(serverMessage)?.let { return it }
@@ -1238,7 +1237,9 @@ private fun <T> HomeNetworkResponse.toComputersDataError(): DataResult<T> {
                 PermissionBlocker(
                     code = "auth_required",
                     requiredCapability = "auth_session",
-                    serverMessage = serverMessage
+                    serverMessage = serverMessage,
+                    serverCode = serverCode,
+                    traceId = traceId,
                 )
             )
         403 ->
@@ -1246,41 +1247,75 @@ private fun <T> HomeNetworkResponse.toComputersDataError(): DataResult<T> {
                 PermissionBlocker(
                     code = "server_forbidden",
                     requiredCapability = "server_access",
-                    serverMessage = serverMessage
+                    serverMessage = serverMessage,
+                    serverCode = serverCode,
+                    traceId = traceId,
                 )
             )
         307 ->
             DataResult.Error(
-                ScreenError(code = "machine_offline_replay", retryable = true, serverMessage = serverMessage)
+                ScreenError(
+                    code = "machine_offline_replay",
+                    retryable = true,
+                    serverMessage = serverMessage,
+                    serverCode = serverCode,
+                    traceId = traceId,
+                )
             )
         400 ->
             DataResult.Error(
-                ScreenError(code = "computer_bad_request", retryable = false, serverMessage = serverMessage)
+                ScreenError(
+                    code = "computer_bad_request",
+                    retryable = false,
+                    serverMessage = serverMessage,
+                    serverCode = serverCode,
+                    traceId = traceId,
+                )
             )
         409 ->
             DataResult.Error(
-                ScreenError(code = "computer_has_agents", retryable = false, serverMessage = serverMessage)
+                ScreenError(
+                    code = "computer_has_agents",
+                    retryable = false,
+                    serverMessage = serverMessage,
+                    serverCode = serverCode,
+                    traceId = traceId,
+                )
             )
         503 ->
             DataResult.Error(
-                ScreenError(code = "machine_offline", retryable = true, serverMessage = serverMessage)
+                ScreenError(
+                    code = "machine_offline",
+                    retryable = true,
+                    serverMessage = serverMessage,
+                    serverCode = serverCode,
+                    traceId = traceId,
+                )
             )
         in 500..599 ->
             DataResult.Error(
-                ScreenError(code = "server_unavailable", retryable = true, serverMessage = serverMessage)
+                ScreenError(
+                    code = "server_unavailable",
+                    retryable = true,
+                    serverMessage = serverMessage,
+                    serverCode = serverCode,
+                    traceId = traceId,
+                )
             )
         else ->
             DataResult.Error(
-                ScreenError(code = "http_$code", retryable = code != 404, serverMessage = serverMessage)
+                ScreenError(
+                    code = "http_$code",
+                    retryable = code != 404,
+                    serverMessage = serverMessage,
+                    serverCode = serverCode,
+                    traceId = traceId,
+                )
             )
     }
 }
 
-@Serializable
-private data class ComputersRouteErrorDto(val error: String? = null, val code: String? = null)
-
-/** The route's machine-readable `code` (`computer_offline`, …), when its error body has one. */
-/** A runtime-auth answer: [read] its body, or the refusal with its status, `code` and trace id. */
+/** A runtime-auth answer: [read] its body, or the refusal with its status, `code`, message and trace id. */
 private inline fun <T> HomeNetworkResponse.runtimeAuthCall(read: (JsonElement) -> T?): RuntimeAuthCall<T> {
     if (!isSuccessful) return RuntimeAuthCall.Refused(runtimeAuthRequestError())
     val value =
@@ -1289,32 +1324,26 @@ private inline fun <T> HomeNetworkResponse.runtimeAuthCall(read: (JsonElement) -
         ?: RuntimeAuthCall.Refused(RuntimeAuthRequestError(status = code, code = "malformed_response", traceId = traceId))
 }
 
-/** Only the status, the route's `code` and the trace id are read: never the request. */
-private fun HomeNetworkResponse.runtimeAuthRequestError(): RuntimeAuthRequestError =
-    RuntimeAuthRequestError(status = code.takeIf { it > 0 }, code = computersRouteErrorCodeOrNull(), traceId = traceId)
-
-/** A limit-reset request with no outcome: the status (none without an answer), the route's `code` and the trace id. */
-private fun HomeNetworkResponse.limitResetRefusal(): RuntimeLimitResetRefusal =
-    RuntimeLimitResetRefusal(status = code.takeIf { it > 0 }, code = computersRouteErrorCodeOrNull(), traceId = traceId)
-
-private fun HomeNetworkResponse.computersRouteErrorCodeOrNull(): String? {
-    val payload = bodyText?.takeIf { it.isNotBlank() }
-        ?: errorBodyText?.takeIf { it.isNotBlank() }
-        ?: return null
-    return runCatching {
-        computersApiJson.decodeFromString(ComputersRouteErrorDto.serializer(), payload).code?.takeIf { it.isNotBlank() }
-    }.getOrNull()
+/** Only the status, the route's `code`, refusal message, and trace id are read: never the request. */
+private fun HomeNetworkResponse.runtimeAuthRequestError(): RuntimeAuthRequestError {
+    val envelope = parseHttpErrorEnvelope()
+    return RuntimeAuthRequestError(
+        status = code.takeIf { it > 0 },
+        code = envelope?.serverCode,
+        traceId = traceId,
+        serverMessage = envelope?.serverMessage,
+    )
 }
 
-private fun HomeNetworkResponse.computersRouteErrorTextOrNull(): String? {
-    val payload = bodyText?.takeIf { it.isNotBlank() }
-        ?: errorBodyText?.takeIf { it.isNotBlank() }
-        ?: return null
-    return runCatching {
-        computersApiJson.decodeFromString(ComputersRouteErrorDto.serializer(), payload)
-            .error
-            ?.takeIf { it.isNotBlank() }
-    }.getOrNull()
+/** A limit-reset request with no outcome: the status (none without an answer), the route's `code`, message, and trace id. */
+private fun HomeNetworkResponse.limitResetRefusal(): RuntimeLimitResetRefusal {
+    val envelope = parseHttpErrorEnvelope()
+    return RuntimeLimitResetRefusal(
+        status = code.takeIf { it > 0 },
+        code = envelope?.serverCode,
+        traceId = traceId,
+        serverMessage = envelope?.serverMessage,
+    )
 }
 
 private fun HomeNetworkResponse.mapComputersCommand(contractCode: String): DataResult<ComputerCommandResult> =
@@ -2020,23 +2049,21 @@ private data class ComputerRestartResponseDto(
 @Serializable
 private data class ComputerUpgradeResponseDto(val upgradeRequest: ComputerUpgradeRequestDto? = null)
 
-/** Computer control refusals carry a machine-readable `code` (`computer_offline`, `remote_upgrade_disabled`, …). */
-@Serializable
-private data class ComputerControlErrorDto(val error: String? = null, val code: String? = null)
-
 /**
- * A refused restart/upgrade keeps the server's `code` (the page picks its copy from it, never from the
- * English `error`); a refusal without one falls back to the status mapping of the other Computer routes.
+ * A refused restart/upgrade keeps the server's `code`, message, and trace id; a refusal without a
+ * machine-readable code falls back to the status mapping of the other Computer routes.
  */
 private fun <T> HomeNetworkResponse.toComputerControlError(): DataResult<T> {
-    val payload = bodyText?.takeIf { it.isNotBlank() } ?: errorBodyText?.takeIf { it.isNotBlank() }
-    val wire =
-        payload?.let {
-            runCatching { computersApiJson.decodeFromString(ComputerControlErrorDto.serializer(), it) }.getOrNull()
-        }
-    val code = wire?.code?.trim()?.takeIf { it.isNotBlank() } ?: return toComputersDataError()
+    val envelope = parseHttpErrorEnvelope()
+    val code = envelope?.serverCode ?: return toComputersDataError()
     return DataResult.Error(
-        ScreenError(code = code, retryable = this.code >= 500, serverMessage = wire.error?.takeIf { it.isNotBlank() })
+        ScreenError(
+            code = code,
+            retryable = this.code >= 500,
+            serverMessage = envelope.serverMessage,
+            serverCode = code,
+            traceId = traceId,
+        )
     )
 }
 

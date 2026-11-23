@@ -89,7 +89,10 @@ class MachineOperationsTest {
                 },
             )
         val load = RaftComputersApiClient(api).redeemRuntimeLimitReset(ServerId("s1"), "m1", RuntimeAccountUsageProvider.Codex, key())
-        assertEquals(RuntimeLimitResetRefusal(409, "computer_offline", TRACE), assertIs<RuntimeLimitResetLoad.Failed>(load).refusal)
+        assertEquals(
+            RuntimeLimitResetRefusal(409, "computer_offline", TRACE, "This Computer is offline."),
+            assertIs<RuntimeLimitResetLoad.Failed>(load).refusal,
+        )
         assertEquals(1, api.calls.size)
     }
 
@@ -105,7 +108,7 @@ class MachineOperationsTest {
                 .redeemRuntimeLimitReset(ServerId("s1"), "m1", RuntimeAccountUsageProvider.Claude, key(), RuntimeLimitResetKind.Weekly)
 
         val refusal = assertIs<RuntimeLimitResetLoad.Failed>(load).refusal
-        assertEquals(RuntimeLimitResetRefusal(504, "computer_timeout", TRACE), refusal)
+        assertEquals(RuntimeLimitResetRefusal(504, "computer_timeout", TRACE, "late"), refusal)
         assertTrue(api.calls.first().endsWith("""{"idempotencyKey":"$KEY","kind":"weekly","onboardingRequiredReason":true,"respondAsync":true}"""), api.calls.first())
     }
 

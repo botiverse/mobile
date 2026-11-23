@@ -17,11 +17,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import build.raft.app.data.ScreenError
 import build.raft.app.data.SettingsComputerCommandContext
 import build.raft.app.data.SettingsComputerReleaseNotesSnapshot
 import build.raft.app.data.SettingsComputerRestartProgress
 import build.raft.app.data.SettingsComputerSnapshot
 import build.raft.app.data.COMPUTER_RESTART_TIMED_OUT
+import build.raft.app.data.errorPresentation
 import build.raft.app.markdown.RaftMarkdownBody
 import build.raft.designsystem.components.RaftBanner
 import build.raft.designsystem.components.RaftBannerStatus
@@ -457,10 +459,11 @@ internal fun RaftComputerServiceCard(context: RaftComputerControlsContext) {
                     }
                 }
                 upgrade.releaseNotes?.let { RaftComputerReleaseNotesLink(it) }
+                val unknownUpgradeRefusal = card is RaftComputerCardState.OneClick && upgrade.refusal == RaftComputerUpgradeRefusal.Unknown
                 val outcome =
                     when {
-                        card is RaftComputerCardState.OneClick && upgrade.refusal == RaftComputerUpgradeRefusal.Unknown ->
-                            stringResource(Res.string.settings_computers_upgrade_status_refused_unknown)
+                        unknownUpgradeRefusal ->
+                            upgrade.refusalMessage ?: stringResource(Res.string.settings_computers_upgrade_status_refused_unknown)
                         card !is RaftComputerCardState.Upgrading && card !is RaftComputerCardState.UpToDate && upgrade.requestOutcome != null ->
                             if (upgrade.requestOutcome?.state == "failed") {
                                 stringResource(Res.string.settings_computers_upgrade_status_failed, computer.computerVersion.orEmpty(), status)
@@ -469,7 +472,12 @@ internal fun RaftComputerServiceCard(context: RaftComputerControlsContext) {
                             }
                         else -> null
                     }
-                if (outcome != null) RaftComputerProblem(outcome)
+                if (outcome != null) {
+                    RaftComputerProblem(outcome)
+                    if (unknownUpgradeRefusal && upgrade.refusalTraceId != null) {
+                        RaftTraceIdNote(upgrade.refusalTraceId)
+                    }
+                }
                 if (outcome != null && card is RaftComputerCardState.OneClick) {
                     Column {
                         RaftComputerHelp(stringResource(Res.string.settings_computers_upgrade_status_manual_fallback))
@@ -542,30 +550,35 @@ private fun raftComputerCardSentence(card: RaftComputerCardState, tier: RaftComp
 /** A restart in flight (spinner) or just finished (restarted / why it failed). */
 @Composable
 internal fun RaftComputerRestartProgressLine(restart: SettingsComputerRestartProgress) {
-    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-        if (!restart.done) {
-            RaftSpinner(size = RaftSpinnerSize.Sm)
-            RaftText(
-                stringResource(Res.string.settings_computers_restarting),
-                style = RaftTheme.typography.monoMeta,
-                color = RaftTheme.colors.foregroundMuted,
-            )
-        } else {
-            val error = restart.errorCode
-            RaftComputersIcon(if (error != null) RaftLucideIconName.TriangleAlert else RaftLucideIconName.CircleCheck, size = 14.dp)
-            RaftText(
-                if (error == null) stringResource(Res.string.settings_computers_restarted) else raftComputerRestartErrorText(restart),
-                style = RaftTheme.typography.monoMeta,
-                color = if (error != null) RaftTheme.colors.warningStrong else RaftTheme.colors.foregroundMuted,
-            )
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+            if (!restart.done) {
+                RaftSpinner(size = RaftSpinnerSize.Sm)
+                RaftText(
+                    stringResource(Res.string.settings_computers_restarting),
+                    style = RaftTheme.typography.monoMeta,
+                    color = RaftTheme.colors.foregroundMuted,
+                )
+            } else {
+                val error = restart.errorCode
+                RaftComputersIcon(if (error != null) RaftLucideIconName.TriangleAlert else RaftLucideIconName.CircleCheck, size = 14.dp)
+                RaftText(
+                    if (error == null) stringResource(Res.string.settings_computers_restarted) else raftComputerRestartErrorText(restart),
+                    style = RaftTheme.typography.monoMeta,
+                    color = if (error != null) RaftTheme.colors.warningStrong else RaftTheme.colors.foregroundMuted,
+                )
+            }
+        }
+        if (restart.failed && restart.traceId != null) {
+            RaftTraceIdNote(restart.traceId)
         }
     }
 }
 
 /**
  * Web `handleComputerRestart` / `completeComputerRestart` copy: the route's refusal (no request id
- * yet) reads as "couldn't request", the Computer's own `restart_failed` as "Restart failed", any
- * other Computer error as it reported it.
+ * yet) surfaces scrubbed Tier 3 server refusal words or reads as "couldn't request", the Computer's
+ * own `restart_failed` as "Restart failed", any other Computer error as it reported it.
  */
 @Composable
 private fun raftComputerRestartErrorText(restart: SettingsComputerRestartProgress): String =
@@ -574,7 +587,16 @@ private fun raftComputerRestartErrorText(restart: SettingsComputerRestartProgres
         "computer_offline" -> stringResource(Res.string.settings_computers_restart_computer_offline)
         "restart_failed", null -> stringResource(Res.string.settings_computers_restart_failed)
         else ->
-            if (restart.requestId == null) stringResource(Res.string.settings_computers_restart_request_failed) else code.orEmpty()
+            if (restart.requestId == null) {
+                ScreenError(
+                    code = code,
+                    serverMessage = restart.serverMessage,
+                    traceId = restart.traceId,
+                ).errorPresentation().rawServerMessage
+                    ?: stringResource(Res.string.settings_computers_restart_request_failed)
+            } else {
+                code.orEmpty()
+            }
     }
 
 /**
