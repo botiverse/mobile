@@ -18,7 +18,9 @@ import build.raft.app.model.parseRaftTimestampEpochMillisOrNull
  *    above. N counts every unread followed thread of the channel. A parent that is not loaded is
  *    resolved from the followed-threads list and placed above (older) or below (newer) the loaded
  *    messages. A tap focuses (scrolls to and highlights) that parent, loading the messages around
- *    it first when it is not loaded; ✕ hides the pill until N changes.
+ *    it first when it is not loaded; ✕ hides the pill until N changes. A parent in view gets no
+ *    pill: its inline replies show the thread's new replies, counted from the same followed-thread
+ *    unread as N ([withHomeFollowedThreadUnread]).
  *
  * The decisions are pure functions here; ThreadPage only feeds them and draws the result.
  */
@@ -101,6 +103,40 @@ internal fun threadConversationUnreadThreadIds(
         .filter { it.threadFollowed && it.unreadReplyCount > 0 }
         .mapNotNull { it.threadChannelId?.takeIf(String::isNotBlank) }
         .toSet()
+}
+
+/**
+ * The page's reply metadata as the parents' inline replies show it: a thread Home counts as unread
+ * ([followedThreadUnread], the list the channel row's thread mark is folded from) shows at least
+ * that many new replies under its parent.
+ *
+ * The web keeps the two together: someone else's reply in a followed thread that is not open is
+ * one more unread on the parent's summary and on the followed-thread list at once (botiverse/slock
+ * `store/socketBridge.ts` `threadUpdated`, `store/visibleConversations.ts` `liveReplyUnread`), and
+ * the unread-thread pill leaves a parent on screen to its inline replies
+ * (`ThreadUnreadJumpPill.tsx`, [projectThreadUnreadThreadJump]). The server's `thread:updated`
+ * carries no unread count (`services/messageService.ts` `emitPlainThreadUpdated`), so the page alone
+ * kept a reply that arrived while the channel was open at the count it had loaded: the row said a
+ * thread was unread and nothing on screen said which one (#wg-mobile-sync:#256). Home counts the
+ * reply (one more for a thread it lists, a summary reload for one it does not) and drops the thread
+ * once it is read, so the inline count follows the row mark both ways.
+ *
+ * Only raises: a higher count the page knows stays, and a thread Home does not list (read, not
+ * followed, a task conversation) keeps the page's own count. Nothing raised returns this map.
+ */
+internal fun Map<String, ThreadReplyMetadata>.withHomeFollowedThreadUnread(
+    followedThreadUnread: Map<String, HomeFollowedThreadUnread>?,
+): Map<String, ThreadReplyMetadata> {
+    if (followedThreadUnread.isNullOrEmpty()) return this
+    var raised: MutableMap<String, ThreadReplyMetadata>? = null
+    for ((parentMessageId, metadata) in this) {
+        val threadChannelId = metadata.threadChannelId ?: continue
+        val counted = followedThreadUnread[threadChannelId]?.unreadCount ?: continue
+        if (counted <= metadata.unreadReplyCount) continue
+        val next = raised ?: toMutableMap().also { raised = it }
+        next[parentMessageId] = metadata.copy(unreadReplyCount = counted)
+    }
+    return raised ?: this
 }
 
 internal enum class ThreadUnreadThreadJumpDirection {
