@@ -2062,6 +2062,7 @@
     <string name="tasks_section_assigned">나에게 할당됨</string>
     <string name="tasks_section_started">내가 요청함</string>
     <string name="tasks_section_empty">없음</string>
+    <string name="tasks_activity_stale_three_days">3일 동안 업데이트 없음</string>
     <string name="tasks_no_match">조건에 맞는 작업이 없어요</string>
     <string name="tasks_chip_channel">채널</string>
     <string name="tasks_chip_creator">만든 사람</string>

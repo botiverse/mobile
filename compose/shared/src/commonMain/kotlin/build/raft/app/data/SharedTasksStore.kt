@@ -159,7 +159,7 @@ internal class TasksPageFolds(
     serverId: String?,
     private val preferences: TasksPageFoldPreferenceRepository?,
 ) {
-    private val serverId: String? = serverId?.trim()?.takeIf { it.isNotEmpty() }
+    internal val serverId: String? = serverId?.trim()?.takeIf { it.isNotEmpty() }
 
     /** The folded statuses: as folded or opened by hand, else as by default (web tasksPageModel `boardColumnFolded`). */
     fun collapsedStatuses(defaults: Set<TaskStatus> = TasksPresentationState.Default.collapsedStatuses): Set<TaskStatus> {

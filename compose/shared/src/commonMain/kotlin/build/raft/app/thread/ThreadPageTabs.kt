@@ -943,6 +943,7 @@ internal fun ThreadTasksTab(
         showHeader = false,
         showChannelFilter = false,
         createTasksChannelId = channelId,
+        serverId = serverId,
         identityOptions = identityOptions,
         draftProjection = draftProjection,
         timeContext = timeContext,

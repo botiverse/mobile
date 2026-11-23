@@ -8,10 +8,12 @@ import build.raft.designsystem.components.RaftPickerTriggerButton
 import build.raft.designsystem.components.RaftFitToolbar
 import build.raft.designsystem.components.RaftFitToolbarAction
 import build.raft.designsystem.components.RaftFitToolbarChoice
+import build.raft.designsystem.components.RaftFitToolbarDefaults
 import build.raft.designsystem.components.RaftFitToolbarPrimary
 import build.raft.designsystem.components.RaftFitToolbarView
 import build.raft.designsystem.components.RaftFitToolbarViewOption
 import build.raft.designsystem.components.raftComboboxPickerInPlace
+import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.LocalRaftContentColor
 import androidx.compose.ui.platform.testTag
 import build.raft.designsystem.components.raftCopyable
@@ -126,6 +128,7 @@ import androidx.compose.material3.Text
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.draw.rotate
@@ -242,8 +245,11 @@ internal fun SharedTasksPanel(
     timeContext: RaftTimeContext? = null,
     query: SharedTasksQueryBinding? = null,
     /** The Tasks page's folds on its server; null (a channel's tasks, fixtures): for the page only. */
-    folds: TasksPageFolds? = null
+    folds: TasksPageFolds? = null,
+    /** Optional server id for resolving assignee avatars and agent presence; falls back to [folds]. */
+    serverId: String? = null
 ) {
+    val resolvedServerId = serverId ?: folds?.serverId
     var lastContent by remember { mutableStateOf<TasksContent?>(null) }
     val currentContent = (state.loadState as? ScreenLoadState.Content)?.data
     if (currentContent != null) {
@@ -280,7 +286,8 @@ internal fun SharedTasksPanel(
                 identityOptions = identityOptions,
                 timeContext = timeContext,
                 query = query,
-                folds = folds
+                folds = folds,
+                serverId = resolvedServerId
             )
         } else when (val loadState = displayState) {
             ScreenLoadState.Loading -> {
@@ -310,7 +317,8 @@ internal fun SharedTasksPanel(
                     initialPresentationOverride = initialPresentationOverride,
                     identityOptions = identityOptions,
                     timeContext = timeContext,
-                    folds = folds
+                    folds = folds,
+                    serverId = resolvedServerId
                 )
             is ScreenLoadState.Empty -> {
                 val showEmptyToolbar = sharedTasksEmptyToolbarVisible(createTasksChannelId)
@@ -336,7 +344,8 @@ internal fun SharedTasksPanel(
                                 ?: TasksPresentationState.Default.copy(selectedMode = TasksViewMode.List),
                         identityOptions = identityOptions,
                         timeContext = timeContext,
-                        folds = folds
+                        folds = folds,
+                        serverId = resolvedServerId
                     )
                 } else {
                     if (showHeader) {
@@ -475,7 +484,8 @@ private fun SharedTasksLoadedBody(
     identityOptions: List<MemberProfile>,
     timeContext: RaftTimeContext?,
     query: SharedTasksQueryBinding? = null,
-    folds: TasksPageFolds? = null
+    folds: TasksPageFolds? = null,
+    serverId: String? = null
 ) {
     BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
         SharedTasksLoadedBodyContent(
@@ -487,6 +497,7 @@ private fun SharedTasksLoadedBody(
             onOpenTask = onOpenTask,
             onIntent = onIntent,
             scrollToTopRequest = scrollToTopRequest,
+            availableWidth = maxWidth,
             defaultViewMode = defaultTasksViewMode(maxWidth),
             bottomContentPadding = bottomContentPadding,
             draftProjection = draftProjection,
@@ -496,7 +507,8 @@ private fun SharedTasksLoadedBody(
             identityOptions = identityOptions,
             timeContext = timeContext,
             query = query,
-            folds = folds
+            folds = folds,
+            serverId = serverId
         )
     }
 }
@@ -533,6 +545,7 @@ private fun SharedTasksLoadedBodyContent(
     onOpenTask: ((TaskSummary) -> Unit)?,
     onIntent: (SharedTasksRouteIntent) -> Unit,
     scrollToTopRequest: Int,
+    availableWidth: Dp,
     defaultViewMode: TasksViewMode,
     bottomContentPadding: Dp,
     draftProjection: SharedThreadComposerDraftProjection,
@@ -542,8 +555,11 @@ private fun SharedTasksLoadedBodyContent(
     identityOptions: List<MemberProfile>,
     timeContext: RaftTimeContext?,
     query: SharedTasksQueryBinding?,
-    folds: TasksPageFolds?
+    folds: TasksPageFolds?,
+    serverId: String?
 ) {
+    val narrowContainer = availableWidth < SharedTasksCompactNarrowBreakpoint
+    val surfaceInset = sharedTasksSurfaceInset(availableWidth)
     val pager = LocalActivity.current.getPager() as Pager
     val viewModeRepository =
         remember(pager) {
@@ -1023,6 +1039,7 @@ private fun SharedTasksLoadedBodyContent(
                                     )
                                 )
                         },
+                        horizontalPadding = surfaceInset,
                         filterPicker = filterPicker,
                     )
                 } else SharedTasksToolbar(
@@ -1090,7 +1107,11 @@ private fun SharedTasksLoadedBodyContent(
                             // The board's columns are cards: they keep out of the safe area.
                             modifier = Modifier.then(backSwipeRow.modifier).fillMaxSize().raftSafeAreaHorizontalPadding(),
                             horizontalArrangement = Arrangement.spacedBy(RaftAppSpacing.Md),
-                            contentPadding = PaddingValues(RaftAppSpacing.Md)
+                            contentPadding =
+                                PaddingValues(
+                                    horizontal = if (query != null) surfaceInset else RaftAppSpacing.Md,
+                                    vertical = RaftAppSpacing.Md,
+                                )
                         ) {
                             // The page's query: its rows grouped by status (the board keeps its status columns).
                             val shownBoardColumns = if (query != null) queryBoardColumns else boardColumns
@@ -1150,6 +1171,9 @@ private fun SharedTasksLoadedBodyContent(
                             state = queryState,
                             sections = querySections,
                             listState = listModeListState,
+                            narrow = narrowContainer,
+                            surfaceInset = surfaceInset,
+                            serverId = serverId,
                             bottomContentPadding = bottomContentPadding,
                             draftProjection = draftProjection,
                             timeContext = timeContext,
@@ -1158,11 +1182,6 @@ private fun SharedTasksLoadedBodyContent(
                                 statusMenuTask = task
                                 statusMenuAnchor = anchor
                             },
-                            onAssigneeMenu = { task, anchor ->
-                                assigneeMenuTask = task
-                                assigneeMenuAnchor = anchor
-                            },
-                            assigneePicker = cardAssigneePicker,
                             onRetry = { query.onIntent(TasksQueryIntent.Refresh) },
                         )
                     } else {
@@ -1177,56 +1196,109 @@ private fun SharedTasksLoadedBodyContent(
                                 detail = emptyCopy.description,
                                 iconName = RaftLucideIconName.SquareCheckBig
                             )
-                        } else {
+                        } else if (showHeader) {
                             LazyColumn(
                                 state = listModeListState,
-                                // Task cards on the canvas: the list keeps out of the safe area.
+                                // Grouped compact rows inside `COMPACT_LIST_PAGE` containers, aligned to web TasksListView.
                                 modifier = Modifier.fillMaxSize().raftSafeAreaHorizontalPadding(),
                                 contentPadding =
                                     PaddingValues(
-                                        start = RaftAppSpacing.Md,
-                                        top = RaftAppSpacing.Md,
-                                        end = RaftAppSpacing.Md,
+                                        start = RaftTheme.sizes.pageInset,
+                                        top = RaftTheme.sizes.pageTop,
+                                        end = RaftTheme.sizes.pageInset,
                                         bottom = bottomContentPadding
                                     ),
                             ) {
                                 listColumns.forEachIndexed { columnIndex, column ->
+                                    val collapsed = column.status in collapsedStatuses
                                     item(key = "list-header-${column.status.name}") {
-                                        // web TasksPanel list: sections `stack-y-6`, each section
-                                        // `stack-y-2.5` (header, then cards 10dp apart).
                                         BoardSectionHeader(
                                             modifier =
                                                 Modifier.padding(
-                                                    top = if (columnIndex == 0) 0.dp else SharedTasksListSectionGap
+                                                    top = if (columnIndex == 0) 0.dp else SharedTasksCompactStatusSectionGap,
+                                                    bottom = if (collapsed) 0.dp else 6.dp
                                                 ),
                                             status = column.status,
                                             count = column.totalCount,
-                                            collapsed = column.status in collapsedStatuses,
-                                            onClick = { toggleCollapsed(column.status) }
+                                            collapsed = collapsed,
+                                            onClick = { toggleCollapsed(column.status) },
+                                            horizontalPadding = 0.dp
                                         )
                                     }
-                                    if (column.status !in collapsedStatuses) {
+                                    if (!collapsed) {
                                         items(
                                             column.tasks.size,
                                             key = { index -> "list-card-${column.status.name}-${column.tasks[index].id.value}" }
                                         ) { index ->
                                             val task = column.tasks[index]
-                                            SharedTaskCard(
-                                                modifier = Modifier.padding(top = SharedTasksListItemGap),
+                                            SharedTasksCompactRow(
                                                 task = task,
+                                                variant = SharedTasksCompactRowVariant.Page,
+                                                narrow = narrowContainer,
+                                                firstInGroup = index == 0,
+                                                lastInGroup = index == column.tasks.lastIndex,
+                                                showChannel = showChannelFilter,
+                                                showStatus = true,
+                                                showAssignee = true,
+                                                showUnassigned = true,
+                                                showTime = true,
                                                 hasDraft = draftProjection.hasDraftForTask(task),
-                                                captureLongPressAnchor = !listModeListState.isScrollInProgress,
+                                                surfaceInset = surfaceInset,
                                                 timeContext = timeContext,
+                                                serverId = serverId,
+                                                captureLongPressAnchor = !listModeListState.isScrollInProgress,
                                                 onClick = { onOpenTask?.invoke(task) },
-                                                onStatusBadgeClick = { anchor ->
+                                                onLongPress = { anchor ->
                                                     statusMenuTask = task
                                                     statusMenuAnchor = anchor
-                                                },
-                                                onAssigneeBadgeClick = { anchor ->
-                                                    assigneeMenuTask = task
-                                                    assigneeMenuAnchor = anchor
-                                                },
-                                                assigneePicker = { cardAssigneePicker(task) },
+                                                }
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        } else {
+                            // Channel Tasks side panel (web ChannelTasksPanel): edge-to-edge plain compact rows.
+                            LazyColumn(
+                                state = listModeListState,
+                                modifier = Modifier.fillMaxSize().raftSafeAreaHorizontalPadding(),
+                                contentPadding = PaddingValues(top = 4.dp, bottom = bottomContentPadding),
+                            ) {
+                                listColumns.forEachIndexed { columnIndex, column ->
+                                    val collapsed = column.status in collapsedStatuses
+                                    item(key = "list-header-${column.status.name}") {
+                                        SharedTasksCompactChannelSectionHeader(
+                                            status = column.status,
+                                            count = column.totalCount,
+                                            collapsed = collapsed,
+                                            onClick = { toggleCollapsed(column.status) },
+                                            horizontalPadding = surfaceInset,
+                                            modifier = Modifier.padding(top = if (columnIndex == 0) 0.dp else 12.dp)
+                                        )
+                                    }
+                                    if (!collapsed) {
+                                        items(
+                                            column.tasks.size,
+                                            key = { index -> "list-card-${column.status.name}-${column.tasks[index].id.value}" }
+                                        ) { index ->
+                                            val task = column.tasks[index]
+                                            SharedTasksCompactRow(
+                                                task = task,
+                                                variant = SharedTasksCompactRowVariant.Plain,
+                                                narrow = narrowContainer,
+                                                firstInGroup = index == 0,
+                                                lastInGroup = index == column.tasks.lastIndex,
+                                                showChannel = false,
+                                                showStatus = false,
+                                                showAssignee = true,
+                                                showUnassigned = false,
+                                                showTime = false,
+                                                hasDraft = draftProjection.hasDraftForTask(task),
+                                                surfaceInset = surfaceInset,
+                                                timeContext = timeContext,
+                                                serverId = serverId,
+                                                captureLongPressAnchor = !listModeListState.isScrollInProgress,
+                                                onClick = { onOpenTask?.invoke(task) },
                                                 onLongPress = { anchor ->
                                                     statusMenuTask = task
                                                     statusMenuAnchor = anchor
@@ -1427,6 +1499,7 @@ private fun SharedTasksToolbar(
     onFilterClick: (String) -> Unit,
     onClearAll: () -> Unit,
     onCreateClick: () -> Unit,
+    horizontalPadding: Dp = RaftFitToolbarDefaults.HorizontalPadding,
     /** A filter's picker by its id, composed next to the filter's chip ([RaftFitToolbarChoice.popup]). */
     filterPicker: @Composable (String) -> Unit = {}
 ) {
@@ -1518,6 +1591,7 @@ private fun SharedTasksToolbar(
             moreLabel = stringResource(Res.string.list_toolbar_more),
             // The page's filters may move to a second line; a channel's Tasks keeps one line (web).
             wrap = !channelMode,
+            horizontalPadding = horizontalPadding,
             filtersTestTag = SharedTasksToolbarTags.Filters,
         )
     }
@@ -1657,6 +1731,7 @@ internal fun BoardSectionHeader(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     chevronLeading: Boolean = true,
+    horizontalPadding: Dp = 8.dp,
 ) {
     val colors = RaftAppThemeState.colors
     Row(
@@ -1666,7 +1741,7 @@ internal fun BoardSectionHeader(
                 .raftSlot("task-section-trigger")
                 .raftClickable(onClick = onClick, tier = RaftHoverTier.Subtle)
                 .height(32.dp)
-                .padding(horizontal = 8.dp),
+                .padding(horizontal = horizontalPadding),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp)
     ) {
@@ -1970,8 +2045,8 @@ internal fun RaftTaskStatusChip(
 private val SharedTaskMonoMetaStyle: androidx.compose.ui.text.TextStyle
     get() = RaftType.Caption.copy(fontFamily = RaftMonoFamily, fontWeight = FontWeight.Normal, fontSize = 12.sp, lineHeight = 16.sp)
 
-private val SharedTasksListSectionGap = 24.dp // not a token: web TasksPanel `stack-y-6`, not `--section-gap`
-private val SharedTasksListItemGap = 10.dp
+// not a token: compact status-grouped section rhythm on the fallback Tasks list
+private val SharedTasksCompactStatusSectionGap = 20.dp
 
 private data class SharedTaskCardGestureCallbacks(
     val onClick: () -> Unit,
@@ -2328,15 +2403,15 @@ private fun SharedTasksQueryList(
     state: TasksQueryState,
     sections: List<TasksQuerySectionRows>,
     listState: androidx.compose.foundation.lazy.LazyListState,
+    narrow: Boolean,
+    surfaceInset: Dp,
+    serverId: String?,
     bottomContentPadding: Dp,
     draftProjection: SharedThreadComposerDraftProjection,
     timeContext: RaftTimeContext?,
     onOpenTask: ((TaskSummary) -> Unit)?,
     onStatusMenu: (TaskSummary, RaftPopoverAnchor) -> Unit,
-    onAssigneeMenu: (TaskSummary, RaftPopoverAnchor) -> Unit,
     onRetry: () -> Unit,
-    /** What a card composes beside its assignee chip ([SharedTaskCard]). */
-    assigneePicker: @Composable (TaskSummary) -> Unit = {},
 ) {
     val anyRows = sections.any { it.rows.isNotEmpty() }
     val allLoaded = sections.all { it.loaded }
@@ -2360,49 +2435,60 @@ private fun SharedTasksQueryList(
             )
         else -> {
             val sectioned = state.query.scope == TasksPageScope.Mine
+            val sectionGap = RaftTheme.sizes.sectionGap
             LazyColumn(
                 state = listState,
-                // Task cards on the canvas: the list keeps out of the safe area.
+                // Web `TasksListView` + `COMPACT_LIST_PAGE`: grouped compact rows inset from the safe area.
                 modifier = Modifier.fillMaxSize().raftSafeAreaHorizontalPadding().testTag(SharedTasksQueryListTags.List),
                 contentPadding =
                     PaddingValues(
-                        start = RaftAppSpacing.Md,
-                        top = RaftAppSpacing.Md,
-                        end = RaftAppSpacing.Md,
+                        start = surfaceInset,
+                        top = RaftTheme.sizes.pageTop,
+                        end = surfaceInset,
                         bottom = bottomContentPadding
                     ),
             ) {
                 sections.forEachIndexed { sectionIndex, section ->
-                    item(key = "query-header-${section.section.name}") {
-                        if (sectioned) {
+                    if (sectioned) {
+                        item(key = "query-header-${section.section.name}") {
                             SharedTasksQuerySectionHeader(
                                 section = section,
-                                modifier = Modifier.padding(top = if (sectionIndex == 0) 0.dp else SharedTasksListSectionGap)
+                                modifier =
+                                    Modifier.padding(
+                                        top = if (sectionIndex == 0) 0.dp else sectionGap,
+                                        bottom = 12.dp
+                                    )
                             )
                         }
                     }
                     if (sectioned && section.loaded && section.rows.isEmpty()) {
                         item(key = "query-empty-${section.section.name}") {
-                            Text(
-                                text = stringResource(Res.string.tasks_section_empty),
-                                style = RaftType.SectionLabel,
-                                color = RaftColor.ForegroundHint,
-                                modifier = Modifier.padding(horizontal = 8.dp, vertical = SharedTasksListItemGap)
+                            SharedTasksEmptySectionBox(
+                                text = stringResource(Res.string.tasks_section_empty)
                             )
                         }
                     }
                     items(section.rows.size, key = { index -> "query-card-${section.section.name}-${section.rows[index].id.value}" }) { index ->
                         val task = section.rows[index]
-                        SharedTaskCard(
-                            modifier = Modifier.padding(top = SharedTasksListItemGap),
+                        SharedTasksCompactRow(
                             task = task,
+                            variant = SharedTasksCompactRowVariant.Page,
+                            narrow = narrow,
+                            firstInGroup = index == 0,
+                            lastInGroup = index == section.rows.lastIndex,
+                            showChannel = true,
+                            showStatus = true,
+                            // Web `TasksListView`: Assigned section omits assignee (always the viewer).
+                            showAssignee = section.section != TasksQuerySection.Assigned,
+                            showUnassigned = true,
+                            showTime = true,
                             hasDraft = draftProjection.hasDraftForTask(task),
-                            captureLongPressAnchor = !listState.isScrollInProgress,
+                            surfaceInset = surfaceInset,
                             timeContext = timeContext,
+                            viewerId = state.viewerId,
+                            serverId = serverId,
+                            captureLongPressAnchor = !listState.isScrollInProgress,
                             onClick = { onOpenTask?.invoke(task) },
-                            onStatusBadgeClick = { anchor -> onStatusMenu(task, anchor) },
-                            onAssigneeBadgeClick = { anchor -> onAssigneeMenu(task, anchor) },
-                            assigneePicker = { assigneePicker(task) },
                             onLongPress = { anchor -> onStatusMenu(task, anchor) }
                         )
                     }
@@ -2412,30 +2498,40 @@ private fun SharedTasksQueryList(
     }
 }
 
-/** A Mine section's head: its name and the server's total for it (none while searching). */
+/**
+ * A Mine section's head (web `TasksListView.tsx` `SectionHeading`): `text-subhead font-bold
+ * text-foreground` with its server total in `mono-meta` `foreground-hint` (none while searching).
+ */
 @Composable
 private fun SharedTasksQuerySectionHeader(section: TasksQuerySectionRows, modifier: Modifier = Modifier) {
+    val colors = RaftTheme.colors
+    val typography = RaftTheme.typography
     Row(
-        modifier = modifier.fillMaxWidth().height(32.dp).padding(horizontal = 8.dp).testTag(SharedTasksQueryListTags.section(section.section)),
+        modifier =
+            modifier
+                .fillMaxWidth()
+                .semantics { heading() }
+                .testTag(SharedTasksQueryListTags.section(section.section)),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        Text(
+        RaftText(
             text =
                 stringResource(
                     if (section.section == TasksQuerySection.Assigned) Res.string.tasks_section_assigned else Res.string.tasks_section_started
                 ),
-            style = RaftType.SectionLabel,
-            color = RaftColor.ForegroundHint,
+            style = typography.subhead.copy(fontWeight = FontWeight.Bold),
+            color = colors.foreground,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis
         )
         section.total?.let { total ->
-            Text(
+            RaftText(
                 text = total.toString(),
-                style = SharedTaskMonoMetaStyle,
-                color = RaftColor.ForegroundHint,
+                style = typography.monoMeta,
+                color = colors.foregroundHint,
                 maxLines = 1,
+                softWrap = false,
                 modifier = Modifier.testTag(SharedTasksQueryListTags.sectionCount(section.section))
             )
         }

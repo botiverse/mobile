@@ -2065,6 +2065,7 @@
     <string name="tasks_section_assigned">あなたの担当</string>
     <string name="tasks_section_started">あなたが依頼</string>
     <string name="tasks_section_empty">なし</string>
+    <string name="tasks_activity_stale_three_days">3日間更新なし</string>
     <string name="tasks_no_match">条件に合うタスクはありません</string>
     <string name="tasks_chip_channel">チャンネル</string>
     <string name="tasks_chip_creator">作成者</string>
