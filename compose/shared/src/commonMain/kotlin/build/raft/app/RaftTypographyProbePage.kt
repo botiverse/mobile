@@ -197,6 +197,8 @@ private fun isTypographyProbeMarkdownTagValid(tag: ThreadMarkdownTag): Boolean =
                     .lowercase()
             channelKey in TypographyProbeKnownChannelNames
         }
+        ThreadMarkdownTagKind.Lounge,
+        ThreadMarkdownTagKind.LoungeThread -> false
     }
 
 private val LatinWeightRows =

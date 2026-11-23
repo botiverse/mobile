@@ -27,14 +27,16 @@ import build.raft.app.data.loungeAgentDisplayName
  * The Lounges with a sidebar row here, as Home rows ([RaftHomeConversationItem.agentLounge] set):
  * every Lounge an agent DM row carries or this client knows ([known], this server's), listed per
  * [agentLoungeSidebarEntry]. Its unread and @ are the DM row's summary; its mute and recency come
- * from the Lounge's own row ([RaftAgentLounge]). [title] names it ("{Name}'s Lounge").
+ * from the Lounge's own row ([RaftAgentLounge]). [title] names it ("{Name}'s Lounge", or the bare
+ * "Lounge" for a null name): its agent's DM row's name, else the name the client knows it by, never
+ * its channel name (web useSidebarItems, slock #16282).
  */
 internal fun homeSidebarAgentLoungeItems(
     enabled: Boolean,
     directMessages: List<HomeDirectMessageRow>,
     known: Map<String, RaftAgentLounge>,
     markedUnreadIds: Set<String>,
-    title: (agentName: String) -> String,
+    title: (agentName: String?) -> String,
 ): List<RaftHomeConversationItem> {
     if (!enabled) return emptyList()
     val agentDmByAgentId =
@@ -52,7 +54,7 @@ internal fun homeSidebarAgentLoungeItems(
         val lounge = knownByAgentId[agentId] ?: summary?.let { known[it.channelId.value] }
         val entry = agentLoungeSidebarEntry(summary, lounge) ?: return@mapNotNull null
         val channelId = entry.channelId.value
-        val agentName = loungeAgentDisplayName(dm?.name ?: lounge?.agentName, lounge?.channelName.orEmpty())
+        val agentName = loungeAgentDisplayName(dm?.name) ?: lounge?.displayAgentName
         RaftHomeConversationItem(
             id = channelId,
             name = title(agentName),
@@ -60,7 +62,7 @@ internal fun homeSidebarAgentLoungeItems(
             channelType = "channel",
             unreadCount = entry.unreadCount,
             lastMessageAt = lounge?.lastMessageAt,
-            avatarLabel = agentName.take(2).uppercase(),
+            avatarLabel = agentName.orEmpty().take(2).uppercase(),
             avatarWireValue = dm?.directMessagePeerAvatarWireValue,
             presenceMemberId = agentId,
             // A Lounge's unread reads like a DM's (web getDmUnreadIndicatorState), joined or not.
@@ -76,7 +78,7 @@ internal fun homeSidebarAgentLoungeItems(
                     unreadCount = entry.unreadCount,
                     mentioned = entry.mentioned,
                     agentId = agentId,
-                    agentName = agentName,
+                    agentName = agentName.orEmpty(),
                     joined = lounge?.joined == true || summary?.joined == true,
                 ),
         )

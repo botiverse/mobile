@@ -31,6 +31,7 @@ import build.raft.app.data.RaftAgentLounges
 import build.raft.app.data.RaftNetworkClient
 import build.raft.app.data.SharedServerFeatureFlags
 import build.raft.app.data.agentLoungeEnabled
+import build.raft.app.data.loungeAgentDisplayName
 import build.raft.app.data.rememberServerFeatureLatched
 import build.raft.app.model.MemberKind
 import build.raft.app.model.ServerId
@@ -63,13 +64,21 @@ internal object AgentLoungeTestTags {
     const val DmHeaderToggle = "agent-dm-open-lounge"
 }
 
-/** "{Name}'s Lounge". */
+/**
+ * "{Name}'s Lounge", or the bare "Lounge" while the agent's name is unknown (web `formatLoungeTitle`,
+ * slock #16282): never anything read from the Lounge's channel name.
+ */
 @Composable
-internal fun agentLoungeTitle(agentName: String): String = stringResource(Res.string.agent_lounge_title, agentName)
+internal fun agentLoungeTitle(agentName: String?): String {
+    val name = loungeAgentDisplayName(agentName)
+    return if (name != null) stringResource(Res.string.agent_lounge_title, name) else stringResource(Res.string.agent_lounge_label)
+}
 
-/** "{Name}'s Lounge" outside composition. */
-internal fun agentLoungeTitleNow(agentName: String): String =
-    Res.string.agent_lounge_title.format(agentName).resolve()
+/** [agentLoungeTitle] outside composition. */
+internal fun agentLoungeTitleNow(agentName: String?): String {
+    val name = loungeAgentDisplayName(agentName)
+    return if (name != null) Res.string.agent_lounge_title.format(name).resolve() else Res.string.agent_lounge_label.desc().resolve()
+}
 
 /** The server has Lounges on and this person is not a Guest; recomposes when the flag resolves. */
 @Composable
@@ -91,9 +100,9 @@ internal fun rememberAgentLounge(serverId: String?, channelId: String?): RaftAge
     }
 }
 
-/** The name of [lounge]'s agent: the member directory's display name when it knows the agent, else the Lounge's own. */
+/** The name of [lounge]'s agent: the member directory's display name when it knows the agent, else the Lounge's own (null: unknown). */
 @Composable
-internal fun RaftAgentLounge.rememberDisplayAgentName(memberDisplayName: String? = null): String =
+internal fun RaftAgentLounge.rememberDisplayAgentName(memberDisplayName: String? = null): String? =
     remember(this, memberDisplayName) { memberDisplayName?.takeIf { it.isNotBlank() } ?: displayAgentName }
 
 /**
@@ -284,6 +293,8 @@ internal class ThreadPageLounge(
      * the Lounge's, because the route's page lambda is at the JVM's capture limit.
      */
     val archivedChannel: ThreadPageArchivedChannel? = null,
+    /** Lounges are on for this reader (the server's flag, not a Guest): `lounge:@agent…` refs may chip. */
+    val loungesEnabled: Boolean = false,
 ) {
     val agentName: String
         get() = lounge?.displayAgentName.orEmpty()
@@ -391,6 +402,7 @@ internal fun rememberThreadPageLounge(
         }
     return ThreadPageLounge(
         archivedChannel = archivedChannel,
+        loungesEnabled = enabled,
         lounge = lounge,
         agentAvatarWireValue = avatar,
         cacheServerId = serverId,
@@ -495,9 +507,9 @@ internal fun agentLoungeConversationIdentityOrNull(
 }
 
 /**
- * "{Name}'s Lounge" for a place known only by its channel id (an Activity / search / draft row, a
- * permalink), or null when that channel is not a Lounge this client knows. Use it where the
- * place would otherwise read `#<agent>-lounge`.
+ * "{Name}'s Lounge" (the bare "Lounge" while its agent's name is unknown) for a place known only by
+ * its channel id (an Activity / search / draft row, a permalink), or null when that channel is not
+ * a Lounge this client knows. Use it where the place would otherwise read `#<its slug>`.
  */
 internal fun agentLoungeLabelOrNull(channelId: String?): String? =
     RaftAgentLounges.loungeAnyServer(channelId)?.let { agentLoungeTitleNow(it.displayAgentName) }

@@ -219,7 +219,9 @@ enum class RaftRichTextRefKind(val wireValue: String) {
     DirectMessage("directMessage"),
     Task("task"),
     Message("message"),
-    UserMention("userMention")
+    UserMention("userMention"),
+    Lounge("lounge"),
+    LoungeThread("loungeThread")
 }
 
 data class RaftRichTextAction(
@@ -229,7 +231,9 @@ data class RaftRichTextAction(
     val label: String,
     val channelName: String? = null,
     val threadShortId: String? = null,
-    val directMessagePeerName: String? = null
+    val directMessagePeerName: String? = null,
+    /** The agent whose Lounge a `lounge:@agent…` ref names (a Lounge, a thread, task or message in it). */
+    val loungeAgentName: String? = null
 )
 
 enum class RaftRichTextActionKind(val wireValue: String) {
@@ -252,7 +256,9 @@ data class RaftRichTextContext(
     val knownTaskNumbers: Set<Int>? = null,
     val activeTagKey: String? = null,
     val inlineContentScope: String? = null,
-    val knownDirectMessagePeers: Set<String> = emptySet()
+    val knownDirectMessagePeers: Set<String> = emptySet(),
+    /** This server's agents by current name: a `lounge:@agent…` ref resolves among them ([resolveRaftLoungeRefAgent]). */
+    val knownLoungeAgents: Set<String> = emptySet()
 )
 
 /**
@@ -436,10 +442,14 @@ private fun RaftRichTextContext.toMarkdownTagValidator(): (ThreadMarkdownTag) ->
     val mentionKeys = knownMentions.mapTo(mutableSetOf()) { it.removePrefix("@").trim().lowercase() }
     val directMessagePeerKeys =
         knownDirectMessagePeers.mapTo(mutableSetOf()) { it.removePrefix("@").trim().lowercase() }
+    val loungeAgents = knownLoungeAgents.map { name -> RaftLoungeRefAgent(id = name, name = name) }
+    fun ThreadMarkdownTag.loungeResolves(): Boolean =
+        loungeAgentName?.let { resolveRaftLoungeRefAgent(it, loungeAgents) } != null
     return { tag ->
         when (tag.kind) {
             ThreadMarkdownTagKind.Task ->
                 when {
+                    tag.loungeAgentName != null -> tag.loungeResolves()
                     tag.channelName != null -> channelKeys.contains(tag.channelName.trim().lowercase())
                     tag.directMessagePeerName != null ->
                         directMessagePeerKeys.contains(tag.directMessagePeerName.trim().lowercase())
@@ -449,7 +459,9 @@ private fun RaftRichTextContext.toMarkdownTagValidator(): (ThreadMarkdownTag) ->
             ThreadMarkdownTagKind.UserMention ->
                 mentionKeys.contains(tag.label.removePrefix("@").trim().lowercase())
             ThreadMarkdownTagKind.Message ->
-                if (tag.directMessagePeerName != null) {
+                if (tag.loungeAgentName != null) {
+                    tag.loungeResolves()
+                } else if (tag.directMessagePeerName != null) {
                     directMessagePeerKeys.contains(tag.directMessagePeerName.trim().lowercase())
                 } else {
                     channelKeys.contains(tag.channelName.orEmpty().trim().lowercase())
@@ -464,6 +476,8 @@ private fun RaftRichTextContext.toMarkdownTagValidator(): (ThreadMarkdownTag) ->
             ThreadMarkdownTagKind.ChannelThread ->
                 channelKeys.contains(tag.channelName.orEmpty().trim().lowercase()) &&
                     !tag.threadShortId.isNullOrBlank()
+            ThreadMarkdownTagKind.Lounge -> tag.loungeResolves()
+            ThreadMarkdownTagKind.LoungeThread -> tag.loungeResolves() && !tag.threadShortId.isNullOrBlank()
         }
     }
 }
@@ -491,7 +505,8 @@ private fun ThreadMarkdownTag.toRichTextAction(id: String): RaftRichTextAction =
         label = label,
         channelName = channelName,
         threadShortId = threadShortId,
-        directMessagePeerName = directMessagePeerName
+        directMessagePeerName = directMessagePeerName,
+        loungeAgentName = loungeAgentName
     )
 
 private fun ThreadMarkdownTag.toRichTextChromeKind(
@@ -499,7 +514,12 @@ private fun ThreadMarkdownTag.toRichTextChromeKind(
     active: Boolean
 ): RaftRichTextChromeKind =
     when {
-        active && (kind == ThreadMarkdownTagKind.ChannelThread || kind == ThreadMarkdownTagKind.DirectMessageThread) ->
+        active &&
+            (
+                kind == ThreadMarkdownTagKind.ChannelThread ||
+                    kind == ThreadMarkdownTagKind.DirectMessageThread ||
+                    kind == ThreadMarkdownTagKind.LoungeThread
+            ) ->
             RaftRichTextChromeKind.Thread
         // A pending message ref keeps its cyan chip (yellow is only "@you").
         active && kind == ThreadMarkdownTagKind.Message -> RaftRichTextChromeKind.Message
@@ -510,6 +530,9 @@ private fun ThreadMarkdownTag.toRichTextChromeKind(
         kind == ThreadMarkdownTagKind.ChannelThread -> RaftRichTextChromeKind.Thread
         kind == ThreadMarkdownTagKind.DirectMessageThread -> RaftRichTextChromeKind.Thread
         kind == ThreadMarkdownTagKind.DirectMessage -> RaftRichTextChromeKind.Channel
+        // A Lounge is a place (pink, like a channel or DM); a thread in it is cyan.
+        kind == ThreadMarkdownTagKind.Lounge -> RaftRichTextChromeKind.Channel
+        kind == ThreadMarkdownTagKind.LoungeThread -> RaftRichTextChromeKind.Thread
         kind == ThreadMarkdownTagKind.Task -> RaftRichTextChromeKind.Task
         kind == ThreadMarkdownTagKind.Message -> RaftRichTextChromeKind.Message
         else -> RaftRichTextChromeKind.OrdinaryMention
@@ -524,6 +547,8 @@ private fun ThreadMarkdownTagKind.toRichTextRefKind(): RaftRichTextRefKind =
         ThreadMarkdownTagKind.Task -> RaftRichTextRefKind.Task
         ThreadMarkdownTagKind.Message -> RaftRichTextRefKind.Message
         ThreadMarkdownTagKind.UserMention -> RaftRichTextRefKind.UserMention
+        ThreadMarkdownTagKind.Lounge -> RaftRichTextRefKind.Lounge
+        ThreadMarkdownTagKind.LoungeThread -> RaftRichTextRefKind.LoungeThread
     }
 
 private fun IntRange.toRichTextRange(): RaftRichTextRange =
@@ -601,6 +626,10 @@ private fun RaftRichTextAction.toGoldenJson(): String =
         directMessagePeerName?.let {
             append(",")
             appendJsonField("directMessagePeerName", it)
+        }
+        loungeAgentName?.let {
+            append(",")
+            appendJsonField("loungeAgentName", it)
         }
         append("}")
     }

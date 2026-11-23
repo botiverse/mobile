@@ -2,6 +2,8 @@ package build.raft.app
 
 import build.raft.app.data.DataResult
 import build.raft.app.data.HomeSnapshot
+import build.raft.app.data.RaftAgentLounges
+import build.raft.app.data.agentLoungeConversationRow
 import build.raft.app.data.toConversationSummary
 import build.raft.app.data.ThreadActionResult
 import build.raft.app.data.ThreadSnapshot
@@ -11,6 +13,9 @@ import build.raft.app.model.ConversationKind
 import build.raft.app.model.ConversationSummary
 import build.raft.app.markdown.formatRaftDirectMessagePeerRef
 import build.raft.app.markdown.parseRaftDirectMessagePeerRef
+import build.raft.app.markdown.RaftLoungeRefAgent
+import build.raft.app.markdown.raftLoungeConversationAgentName
+import build.raft.app.markdown.resolveRaftLoungeRefAgent
 import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberProfile
 import build.raft.app.model.MessageId
@@ -458,6 +463,12 @@ internal fun resolveMarkdownChannelConversation(
     currentPayload: RaftThreadScreenPayload? = null,
     threadShortId: String? = null
 ): ConversationSummary? {
+    // `lounge:@agent` (slock #16279): the Lounge of the agent currently called so. A Lounge is a
+    // channel, never a DM.
+    raftLoungeConversationAgentName(channelLabel)?.let { agentName ->
+        if (requiredKind != null) return null
+        return resolveMarkdownLoungeConversation(home, agentName, knownMemberProfilesById, currentPayload)
+    }
     val rawKey = channelLabel.markdownChannelLookupKey()
     if (rawKey.isBlank()) return null
     // DM refs may pin the peer kind (`dm:@skyzh~agent`). A bare name that a
@@ -570,6 +581,42 @@ internal fun resolveMarkdownChannelConversation(
         null
     }
 }
+
+/**
+ * The Lounge `lounge:@<agentName>` names, as a conversation this client can open: the agent is the one
+ * the page's directory names so ([toMarkdownLoungeRefAgents], else the server directory's agents),
+ * by the server's rule ([resolveRaftLoungeRefAgent]); its Lounge is the one this client knows (opened,
+ * loaded, or carried on the agent's DM row). Null when either is unknown: a ref's open makes the
+ * Lounge known first (`prepareMarkdownRefLounge`).
+ */
+internal fun resolveMarkdownLoungeConversation(
+    home: HomeSnapshot,
+    agentName: String,
+    knownMemberProfilesById: Map<String, MemberProfile> = emptyMap(),
+    currentPayload: RaftThreadScreenPayload? = null
+): ConversationSummary? {
+    val serverId = home.server.id.value
+    val agents =
+        currentPayload?.toMarkdownLoungeRefAgents()?.takeIf { it.isNotEmpty() }
+            ?: knownMemberProfilesById.values.markdownLoungeRefAgents(serverId)
+    val agent = resolveRaftLoungeRefAgent(agentName, agents) ?: return null
+    val channelId =
+        RaftAgentLounges.loungeOfAgent(serverId, agent.id)?.channelId?.value
+            ?: home.directMessages.firstOrNull { it.presenceMemberId?.value == agent.id }?.lounge?.channelId?.value
+            ?: return null
+    return home.agentLoungeConversationRow(channelId)?.toConversationSummary()
+}
+
+/** This server's live agents among [this] directory profiles, as a `lounge:@agent` ref may name them. */
+private fun Iterable<MemberProfile>.markdownLoungeRefAgents(serverId: String): List<RaftLoungeRefAgent> =
+    filter { profile ->
+        profile.kind == MemberKind.Agent &&
+            profile.agentDeletedAt.isNullOrBlank() &&
+            (profile.inViewerServer ?: (profile.serverId?.value?.let { it == serverId } ?: true))
+    }.mapNotNull { profile ->
+        val name = profile.handle.trim().removePrefix("@").takeIf { it.isNotEmpty() } ?: return@mapNotNull null
+        RaftLoungeRefAgent(id = profile.id.value, name = name, displayName = profile.displayName.trim().takeIf { it.isNotEmpty() })
+    }.distinctBy { it.id }
 
 internal fun MemberProfile.matchesMarkdownChannelLabel(label: String): Boolean {
     val key = label.markdownChannelLookupKey().lowercase()

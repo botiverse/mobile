@@ -82,6 +82,7 @@ import build.raft.app.model.ChannelId
 import build.raft.app.model.ConversationKind
 import build.raft.app.model.ConversationSummary
 import build.raft.app.markdown.RaftMarkdownMessageRef
+import build.raft.app.markdown.raftLoungeConversationAgentName
 import build.raft.app.model.MemberProfile
 import build.raft.app.model.Message
 import build.raft.app.model.MessageId
@@ -3542,7 +3543,7 @@ internal class SharedThreadDataSource(
             channelLabel = channelLabel,
             requiredKind = requiredKind,
             knownMemberProfilesById =
-                if (requiredKind == ConversationKind.DirectMessage) {
+                if (requiredKind == ConversationKind.DirectMessage || raftLoungeConversationAgentName(channelLabel) != null) {
                     currentKnownMarkdownMemberProfilesById(home)
                 } else {
                     emptyMap()
@@ -3551,9 +3552,9 @@ internal class SharedThreadDataSource(
     }
 
     /**
-     * The local channel a conversation-qualified task ref (`#proj:#7`, `dm:@peer:#7`) names, the
-     * scope its task number resolves in (Web `findTaskRefChannel`). Null: the reader has no such
-     * conversation.
+     * The local channel a conversation-qualified task ref (`#proj:#7`, `dm:@peer:#7`,
+     * `lounge:@agent:#7`) names, the scope its task number resolves in (Web `findTaskRefChannel`).
+     * Null: the reader has no such conversation.
      */
     suspend fun markdownTaskRefChannelId(
         currentPayload: RaftThreadScreenPayload,
@@ -3570,7 +3571,7 @@ internal class SharedThreadDataSource(
                 channelLabel = conversationLabel,
                 requiredKind = requiredKind,
                 knownMemberProfilesById =
-                    if (requiredKind == ConversationKind.DirectMessage) {
+                    if (requiredKind == ConversationKind.DirectMessage || raftLoungeConversationAgentName(conversationLabel) != null) {
                         currentKnownMarkdownMemberProfilesById(home)
                     } else {
                         emptyMap()

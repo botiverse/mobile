@@ -623,7 +623,7 @@ internal fun RaftDraftEntry.toRaftDraftRowModel(directory: RaftDraftDirectory, l
     )
     // Agent Lounge v0: a draft in a Lounge (or a thread in one) names the Lounge; no list holds it.
     fun loungeOf(channelId: String?): ActivityConversationLounge? =
-        RaftAgentLounges.loungeAnyServer(channelId)?.let { ActivityConversationLounge(it.agentId, it.displayAgentName) }
+        RaftAgentLounges.loungeAnyServer(channelId)?.let { ActivityConversationLounge(it.agentId, it.displayAgentName.orEmpty()) }
     return when (val place = place) {
         is RaftDraftPlace.Conversation -> {
             val row = directory.conversationRow(place.channelId)

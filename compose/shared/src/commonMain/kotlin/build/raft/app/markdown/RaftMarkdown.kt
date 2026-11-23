@@ -204,7 +204,13 @@ data class ThreadMarkdownTag(
     val kind: ThreadMarkdownTagKind,
     val channelName: String? = null,
     val threadShortId: String? = null,
-    val directMessagePeerName: String? = null
+    val directMessagePeerName: String? = null,
+    /**
+     * `lounge:@agent…` (slock #16279): the agent whose Lounge the ref names, as written. Set on
+     * [ThreadMarkdownTagKind.Lounge] / [ThreadMarkdownTagKind.LoungeThread], and on a task or message
+     * in a Lounge.
+     */
+    val loungeAgentName: String? = null
 )
 
 internal typealias RaftMessagePermalinkLabelResolver =
@@ -277,7 +283,11 @@ enum class ThreadMarkdownTagKind {
     Channel,
     Task,
     Message,
-    UserMention
+    UserMention,
+    /** `lounge:@agent`: the agent's Lounge. */
+    Lounge,
+    /** `lounge:@agent:<short id>`: a thread in the agent's Lounge. */
+    LoungeThread
 }
 
 data class ThreadInlineTagMatch(
@@ -299,7 +309,9 @@ internal enum class MarkdownInlineTokenKind {
     Channel,
     Task,
     Message,
-    UserMention
+    UserMention,
+    Lounge,
+    LoungeThread
 }
 
 internal data class MarkdownInlineToken(
@@ -561,6 +573,8 @@ private fun ThreadMarkdownTagKind.toMarkdownInlineTokenKind(): MarkdownInlineTok
         ThreadMarkdownTagKind.Task -> MarkdownInlineTokenKind.Task
         ThreadMarkdownTagKind.Message -> MarkdownInlineTokenKind.Message
         ThreadMarkdownTagKind.UserMention -> MarkdownInlineTokenKind.UserMention
+        ThreadMarkdownTagKind.Lounge -> MarkdownInlineTokenKind.Lounge
+        ThreadMarkdownTagKind.LoungeThread -> MarkdownInlineTokenKind.LoungeThread
     }
 
 fun String.normalizeThreadMarkdownBody(): String {
@@ -727,6 +741,10 @@ private fun Set<String>.containsThreadMention(label: String): Boolean {
 }
 
 private fun String.toThreadMarkdownTagOrNull(): ThreadMarkdownTag? {
+    // `lounge:@agent`, `lounge:@agent:short`, `lounge:@agent:#7`, `lounge:@agent msg=id` (Web lounge
+    // refs, slock #16279). The label is the canonical target. A token the dialect claimed only to keep
+    // it text (`lounge:@ops.x`, `lounge:@ops~agent`) is no tag.
+    if (startsWith(RaftLoungeRefPrefix, ignoreCase = true)) return parseRaftLoungeRef(this)?.toThreadMarkdownTag()
     // `#channel msg=id` / `dm:@peer:short msg=id`: a message (Web message refs). The label is the
     // canonical target, which is what the Web's chip shows and what opening it parses.
     parseRaftMarkdownMessageRefLabel(this)?.let { ref ->
@@ -783,6 +801,16 @@ private fun String.toThreadMarkdownTagOrNull(): ThreadMarkdownTag? {
         else -> null
     }
 }
+
+private fun RaftLoungeRef.toThreadMarkdownTag(): ThreadMarkdownTag =
+    when (this) {
+        is RaftLoungeRef.Lounge -> ThreadMarkdownTag(format(), ThreadMarkdownTagKind.Lounge, loungeAgentName = agentName)
+        is RaftLoungeRef.Thread ->
+            ThreadMarkdownTag(format(), ThreadMarkdownTagKind.LoungeThread, threadShortId = threadShortId, loungeAgentName = agentName)
+        is RaftLoungeRef.Task -> ThreadMarkdownTag(format(), ThreadMarkdownTagKind.Task, loungeAgentName = agentName)
+        is RaftLoungeRef.Message ->
+            ThreadMarkdownTag(format(), ThreadMarkdownTagKind.Message, threadShortId = threadParentShortId, loungeAgentName = agentName)
+    }
 
 private fun String.isThreadDirectMessageReference(): Boolean {
     if (!startsWith("dm:@", ignoreCase = true)) return false
@@ -1342,10 +1370,13 @@ private fun RaftRichTextAction.toThreadMarkdownTag(): ThreadMarkdownTag =
                 RaftRichTextRefKind.Task -> ThreadMarkdownTagKind.Task
                 RaftRichTextRefKind.Message -> ThreadMarkdownTagKind.Message
                 RaftRichTextRefKind.UserMention -> ThreadMarkdownTagKind.UserMention
+                RaftRichTextRefKind.Lounge -> ThreadMarkdownTagKind.Lounge
+                RaftRichTextRefKind.LoungeThread -> ThreadMarkdownTagKind.LoungeThread
             },
         channelName = channelName,
         threadShortId = threadShortId,
-        directMessagePeerName = directMessagePeerName
+        directMessagePeerName = directMessagePeerName,
+        loungeAgentName = loungeAgentName
     )
 
 /**
@@ -3608,6 +3639,8 @@ private fun String.raftInlineChipWidthSafetySp(kind: ThreadMarkdownTagKind?): Fl
             kind == ThreadMarkdownTagKind.ChannelThread ||
             kind == ThreadMarkdownTagKind.DirectMessageThread ||
             kind == ThreadMarkdownTagKind.DirectMessage ||
+            kind == ThreadMarkdownTagKind.Lounge ||
+            kind == ThreadMarkdownTagKind.LoungeThread ||
             kind == ThreadMarkdownTagKind.Message -> 16f
         startsWith("#") && drop(1).any { !it.isDigit() } -> 16f
         else -> 0f
@@ -3695,6 +3728,10 @@ internal fun threadMarkdownTagActivationKey(tag: ThreadMarkdownTag): String =
             append(":dm=")
             append(peerName)
         }
+        tag.loungeAgentName?.trim()?.lowercase()?.takeIf { it.isNotBlank() }?.let { agentName ->
+            append(":lounge=")
+            append(agentName)
+        }
     }
 
 // Reference styling mirrors raft-ui (message-reference.recipe.ts, lib/inline-chip.ts):
@@ -3766,7 +3803,12 @@ private fun raftRichTextChromeKind(
     active: Boolean = false
 ): RaftRichTextChromeKind =
     when {
-        active && (kind == ThreadMarkdownTagKind.ChannelThread || kind == ThreadMarkdownTagKind.DirectMessageThread) ->
+        active &&
+            (
+                kind == ThreadMarkdownTagKind.ChannelThread ||
+                    kind == ThreadMarkdownTagKind.DirectMessageThread ||
+                    kind == ThreadMarkdownTagKind.LoungeThread
+            ) ->
             RaftRichTextChromeKind.Thread
         // A pending message ref keeps its cyan chip (yellow is only "@you").
         active && kind == ThreadMarkdownTagKind.Message -> RaftRichTextChromeKind.Message
@@ -3775,6 +3817,9 @@ private fun raftRichTextChromeKind(
         kind == ThreadMarkdownTagKind.UserMention -> RaftRichTextChromeKind.OrdinaryMention
         kind == ThreadMarkdownTagKind.DirectMessageThread -> RaftRichTextChromeKind.Thread
         kind == ThreadMarkdownTagKind.DirectMessage -> RaftRichTextChromeKind.Channel
+        // A Lounge is a place (pink, like a channel or DM); a thread in it is cyan.
+        kind == ThreadMarkdownTagKind.Lounge -> RaftRichTextChromeKind.Channel
+        kind == ThreadMarkdownTagKind.LoungeThread -> RaftRichTextChromeKind.Thread
         kind == ThreadMarkdownTagKind.ChannelThread -> RaftRichTextChromeKind.Thread
         kind == ThreadMarkdownTagKind.Channel -> RaftRichTextChromeKind.Channel
         kind == ThreadMarkdownTagKind.Task -> RaftRichTextChromeKind.Task

@@ -858,6 +858,7 @@ private fun ThreadPageContentContent(
             highlightedMentions = highlightedMentions,
             markdownReferencePendingActionId = markdownReferencePendingActionId,
             onThreadEvent = onThreadEvent,
+            loungeRefsEnabled = data.lounge?.loungesEnabled == true,
         )
     val isMarkdownTagValid = markdownTagResolution.isMarkdownTagValid
     val markdownTagContextSignature = markdownTagResolution.markdownTagContextSignature

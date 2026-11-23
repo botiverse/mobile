@@ -54,28 +54,15 @@ class AgentLoungeTest {
     }
 
     @Test
-    fun aLoungeIsNamedAfterItsAgentNeverTheRawChannelName() {
-        assertEquals("Bugen", loungeAgentDisplayName("Bugen", "bugen-lounge"))
-        assertEquals("bugen", loungeAgentDisplayName(null, "bugen-lounge"))
-        assertEquals("bugen", loungeAgentDisplayName("  ", "#bugen-lounge"))
-        // The web strips only a trailing "-lounge" (`/-lounge$/`).
-        assertEquals("bugen-lounge-2", loungeAgentDisplayName(null, "bugen-lounge-2"))
-        assertEquals("Bugen", RaftAgentLounge(ChannelId("l"), "agent-bugen", agentName = "Bugen", channelName = "bugen-lounge").displayAgentName)
-    }
-
-    @Test
-    fun aLoungeWithTheNewSlugIsStillNamedAfterItsAgent() {
-        // slock #16272: `_lounge-<agent>-<first 4 of the agent id>`, 8 on a collision.
-        assertEquals("bugen", loungeAgentNameFromChannelName("_lounge-bugen-3f9a"))
-        assertEquals("bugen", loungeAgentDisplayName(null, "#_lounge-bugen-3f9a"))
-        assertEquals("bugen", loungeAgentDisplayName("  ", "_lounge-bugen-3f9a07c1"))
-        assertEquals("code-reviewer", loungeAgentNameFromChannelName("_lounge-code-reviewer-a1b2"))
-        // The agent's own name still wins over any slug.
-        assertEquals("Bugen", loungeAgentDisplayName("Bugen", "_lounge-bugen-3f9a"))
+    fun aLoungeIsNamedAfterItsAgentAndNeverFromItsChannelName() {
+        // slock #16282: the agent's name, else none (the bare "Lounge"). The channel name is a reserved
+        // slug fixed at creation (`_lounge-<agent>-<id4>`, slock #16272) that does not follow a rename.
+        assertEquals("Bugen", loungeAgentDisplayName(" Bugen "))
+        assertNull(loungeAgentDisplayName("  "))
         assertEquals("Bugen", RaftAgentLounge(ChannelId("l"), "agent-bugen", agentName = "Bugen", channelName = "_lounge-bugen-3f9a").displayAgentName)
-        assertEquals("bugen", RaftAgentLounge(ChannelId("l"), "agent-bugen", channelName = "_lounge-bugen-3f9a").displayAgentName)
-        // Not a slug: left as it is, like any other name.
-        assertEquals("_lounge-bugen", loungeAgentNameFromChannelName("_lounge-bugen"))
+        for (channelName in listOf("_lounge-bugen-3f9a", "bugen-lounge")) {
+            assertNull(RaftAgentLounge(ChannelId("l"), "agent-bugen", channelName = channelName).displayAgentName, channelName)
+        }
     }
 
     @Test

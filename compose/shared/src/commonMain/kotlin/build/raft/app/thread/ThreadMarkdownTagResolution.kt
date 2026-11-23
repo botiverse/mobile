@@ -1,6 +1,7 @@
 package build.raft.app
 
 import build.raft.app.markdown.LocalRaftMarkdownTaskStatuses
+import build.raft.app.markdown.RaftLoungeRefPrefix
 import build.raft.app.markdown.ThreadMarkdownTag
 import build.raft.app.markdown.ThreadMarkdownTagKind
 import androidx.compose.runtime.Composable
@@ -32,6 +33,8 @@ internal fun threadMarkdownTagResolution(
     highlightedMentions: Set<String>,
     markdownReferencePendingActionId: String?,
     onThreadEvent: ThreadEventHandler,
+    /** Lounges are on for this reader (the server's flag, not a Guest): `lounge:@agent…` refs may chip. */
+    loungeRefsEnabled: Boolean = false,
 ): ThreadMarkdownTagResolution {
     val activeMarkdownTagKey = markdownReferencePendingActionId
     val openMarkdownTag: (ThreadMarkdownTag, String) -> Unit = openMarkdownTag@{ tag, actionId ->
@@ -43,10 +46,11 @@ internal fun threadMarkdownTagResolution(
                 onThreadEvent("openMarkdownTag", tag.label, null, tag.kind.name)
             }
             ThreadMarkdownTagKind.Task -> {
-                // `#proj:#7` / `dm:@peer:#7` name the task's conversation; the loaded timeline's own
-                // `#7` may be another conversation's task, so they always resolve by conversation.
+                // `#proj:#7` / `dm:@peer:#7` / `lounge:@agent:#7` name the task's conversation; the
+                // loaded timeline's own `#7` may be another conversation's task, so they always resolve
+                // by conversation.
                 val taskId =
-                    if (tag.channelName != null || tag.directMessagePeerName != null) {
+                    if (tag.channelName != null || tag.directMessagePeerName != null || tag.loungeAgentName != null) {
                         null
                     } else {
                         timelineSlice.findMarkdownTaskId(tag, linkedTasksProjection)
@@ -97,6 +101,24 @@ internal fun threadMarkdownTagResolution(
                     markdownActionId = actionId
                 )
             }
+            // `lounge:@agent`: the agent's Lounge; `lounge:@agent:<short>`: a thread in it. The item
+            // is the conversation (`lounge:@agent`), as a channel ref's is its name.
+            ThreadMarkdownTagKind.Lounge -> {
+                onThreadEvent(
+                    "openMarkdownLounge",
+                    tag.loungeAgentName?.let { "$RaftLoungeRefPrefix$it" } ?: tag.label,
+                    tab = tag.kind.name,
+                    markdownActionId = actionId
+                )
+            }
+            ThreadMarkdownTagKind.LoungeThread -> {
+                onThreadEvent(
+                    "openMarkdownLoungeThreadRef",
+                    tag.loungeAgentName?.let { "$RaftLoungeRefPrefix$it" } ?: tag.label,
+                    tab = tag.threadShortId,
+                    markdownActionId = actionId
+                )
+            }
         }
     }
     val openMarkdownUrl: (String) -> Unit = { url ->
@@ -138,19 +160,26 @@ internal fun threadMarkdownTagResolution(
         remember(payload.knownMarkdownTaskNumbers, loadedMarkdownTaskStatuses) {
             payload.toKnownMarkdownTaskNumberSetOrNull() ?: loadedMarkdownTaskStatuses?.keys
         }
+    // The agents a `lounge:@agent…` ref may name; none while Lounges are off for this reader.
+    val knownMarkdownLoungeAgents =
+        remember(loungeRefsEnabled, payload.members, payload.memberCandidates) {
+            if (loungeRefsEnabled) payload.toMarkdownLoungeRefAgents() else emptyList()
+        }
     val isMarkdownTagValid: (ThreadMarkdownTag) -> Boolean =
         remember(
             knownMarkdownChannelNames,
             knownMarkdownMentionNames,
             knownMarkdownDirectMessagePeerNames,
-            knownMarkdownTaskNumbers
+            knownMarkdownTaskNumbers,
+            knownMarkdownLoungeAgents
         ) {
             { tag ->
                 tag.isKnownThreadMarkdownTag(
                     knownMarkdownChannelNames,
                     knownMarkdownMentionNames,
                     knownMarkdownDirectMessagePeerNames,
-                    knownMarkdownTaskNumbers
+                    knownMarkdownTaskNumbers,
+                    knownMarkdownLoungeAgents
                 )
             }
         }
@@ -160,14 +189,16 @@ internal fun threadMarkdownTagResolution(
             knownMarkdownChannelNames,
             knownMarkdownMentionNames,
             knownMarkdownDirectMessagePeerNames,
-            knownMarkdownTaskNumbers
+            knownMarkdownTaskNumbers,
+            knownMarkdownLoungeAgents
         ) {
             threadMarkdownTagContextSignature(
                 highlightedMentions = highlightedMentions,
                 knownChannelNames = knownMarkdownChannelNames,
                 knownMentionNames = knownMarkdownMentionNames,
                 knownDirectMessagePeerNames = knownMarkdownDirectMessagePeerNames,
-                knownTaskNumbers = knownMarkdownTaskNumbers
+                knownTaskNumbers = knownMarkdownTaskNumbers,
+                loungeAgents = knownMarkdownLoungeAgents
             )
         }
     // Keyed on the resolved label index (equality), not on the member lists' identity: a

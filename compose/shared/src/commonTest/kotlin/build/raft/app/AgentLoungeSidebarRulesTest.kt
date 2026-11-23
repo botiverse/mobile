@@ -42,7 +42,7 @@ class AgentLoungeSidebarRulesTest {
             directMessages = dms,
             known = RaftAgentLounges.lounges.value["server-1"].orEmpty(),
             markedUnreadIds = markedUnreadIds,
-            title = { "$it's Lounge" },
+            title = { name -> name?.let { "$it's Lounge" } ?: "Lounge" },
         )
 
     private fun dmItem(id: String, name: String, lastMessageAt: String?) =
@@ -76,7 +76,7 @@ class AgentLoungeSidebarRulesTest {
         )
         val row = items(emptyList()).single()
         assertEquals("lounge-bugen", row.id)
-        assertEquals("bugen's Lounge", row.name, "the channel name's agent part when no DM row names the agent")
+        assertEquals("Lounge", row.name, "no DM row names the agent: the bare Lounge, never its channel name")
         assertEquals("2026-11-10T10:00:00.000Z", row.lastMessageAt)
         assertTrue(row.activityMuted)
         assertTrue(row.activityMuteSupported, "joined and loaded: the menu offers Unmute / Mute")

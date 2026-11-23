@@ -92,6 +92,7 @@ private fun ThreadMarkdownTag.isBareRaftMarkdownTaskRef(taskNumber: Int): Boolea
     kind == ThreadMarkdownTagKind.Task &&
         channelName == null &&
         directMessagePeerName == null &&
+        loungeAgentName == null &&
         label.removePrefix("#").trim().toIntOrNull() == taskNumber
 
 /**
