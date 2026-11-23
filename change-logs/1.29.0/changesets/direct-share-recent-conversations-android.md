@@ -3,7 +3,7 @@ type: added
 area: share
 platforms: [android]
 rollout: full
-pull_request: 0
+pull_request: 5528
 ---
 
 ## zh-CN
