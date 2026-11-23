@@ -224,6 +224,7 @@
     <string name="settings_step_up_passkeys_unavailable">지금은 패스키를 사용할 수 없어요. 잠시 후 다시 시도해 주세요.</string>
     <string name="settings_step_up_passkey_none_here">이 기기에는 Raft 패스키가 없어요. 다른 방법을 사용하세요.</string>
     <string name="settings_step_up_passkey_unsupported">이 기기에서는 여기서 패스키를 사용할 수 없어요. 다른 방법을 사용하세요.</string>
+    <string name="settings_step_up_passkey_failed">패스키 확인을 완료하지 못했어요. 네트워크 연결을 확인한 뒤 다시 시도하거나 다른 방법을 사용하세요.</string>
     <string name="settings_step_up_failed">확인하지 못했어요. 다시 시도해 주세요.</string>
     <string name="settings_step_up_lost_device_description">잃어버린 기기를 로그아웃하고 그 기기가 승인한 것의 연결을 끊으려면 2단계 인증을 다시 해야 해요. 인증은 10분 동안 유지돼요.</string>
     <string name="settings_step_up_lost_authenticator">인증 앱이 있는 기기를 잃어버렸나요?</string>

@@ -261,7 +261,7 @@ class SecondFactorPasskeyStepUpCoordinatorTest {
         val second = harness.usePasskey()
         assertTrue(second.id > first.id)
         harness.coordinator.accept(SecondFactorStepUpIntent.PasskeyAssertionFinished(second.id, RaftNativePasskeyAssertionResult.Error("interrupted")))
-        assertEquals(SecondFactorStepUpBanner.Failed(null), harness.coordinator.state.value?.banner)
+        assertEquals(SecondFactorStepUpBanner.PasskeyFailed, harness.coordinator.state.value?.banner)
         assertTrue(harness.answers.isEmpty())
 
         harness.coordinator.accept(SecondFactorStepUpIntent.Cancel)

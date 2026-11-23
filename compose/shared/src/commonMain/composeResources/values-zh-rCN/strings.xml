@@ -224,6 +224,7 @@
     <string name="settings_step_up_passkeys_unavailable">通行密钥暂时不可用。请稍后再试。</string>
     <string name="settings_step_up_passkey_none_here">这台设备上没有 Raft 的通行密钥。请换一种方式。</string>
     <string name="settings_step_up_passkey_unsupported">这台设备无法在这里使用你的通行密钥。请换一种方式。</string>
+    <string name="settings_step_up_passkey_failed">通行密钥验证未能完成。请检查网络后重试，或换一种方式。</string>
     <string name="settings_step_up_failed">验证失败，请重试。</string>
     <string name="settings_step_up_lost_device_description">让丢失的设备退出登录并断开它批准的内容，需要重新验证一次，10 分钟内有效。</string>
     <string name="settings_step_up_lost_authenticator">装有验证器的设备丢了？</string>
