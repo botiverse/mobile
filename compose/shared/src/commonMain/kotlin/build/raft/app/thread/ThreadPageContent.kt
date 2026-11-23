@@ -474,7 +474,8 @@ private fun ThreadPageContentContent(
     val accessResolution = data.accessResolution
     val canonicalAccessResolved = data.canonicalAccessResolved
     val replyParentAuthority = data.replyParentAuthority
-    val writeActionsEnabled = data.writeActionsEnabled
+    // #proj-chat:#44: Lounge reactions and action cards follow `canPost` (`postable`), not channel membership.
+    val writeActionsEnabled = data.writeActionsEnabled && (conversationLounge?.postable != false)
     val jointBillingNotice = data.jointBillingNotice
     val jointGraceDeadlineLabel = data.jointGraceDeadlineLabel
     val externalFreezeState = data.externalFreezeState

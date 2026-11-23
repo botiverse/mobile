@@ -489,7 +489,7 @@ class HomeParserTest {
         assertTrue(result is DataResult.Content)
         assertEquals(listOf("general"), result.data.channels.map { it.channelId.value })
         val bugen = result.data.directMessages.first { it.channelId.value == "dm-bugen" }
-        assertEquals(AgentLoungeSummary(ChannelId("lounge-bugen"), joined = true, unreadCount = 3, mentionCount = 1), bugen.lounge)
+        assertEquals(AgentLoungeSummary(ChannelId("lounge-bugen"), joined = true, unreadCount = 3, mentionCount = 1, listed = null), bugen.lounge)
         assertNull(result.data.directMessages.first { it.channelId.value == "dm-alice" }.lounge, "only an agent has a Lounge")
 
         val listed =
@@ -498,6 +498,77 @@ class HomeParserTest {
                 result.data.server,
             )
         assertEquals(listOf("general"), listed?.channels?.map { it.channelId.value }, "forward targets and #channel read this list")
+    }
+
+    @Test
+    fun agentLoungeExplicitListedSummaryWinsOverChannelUnreadAndParsesStandaloneLounges() {
+        val objectPayload =
+            json.decodeFromString(
+                HomeDirectMessagesWireResultSerializer,
+                """
+                {
+                  "dms": [
+                    {
+                      "id": "dm-bugen", "name": "bugen", "type": "dm", "peerType": "agent",
+                      "peerId": "agent-bugen", "peerName": "bugen", "peerDisplayName": "Bugen",
+                      "lounge": { "channelId": "lounge-bugen", "joined": false, "listed": true, "unreadCount": 2, "mentionCount": 1 }
+                    }
+                  ],
+                  "lounges": [
+                    {
+                      "agentId": "agent-bugen", "peerType": "agent", "peerName": "bugen", "peerDisplayName": "Bugen Dup",
+                      "lounge": { "channelId": "lounge-bugen", "joined": false, "canPost": true, "listed": true, "unreadCount": 9, "mentionCount": 0 }
+                    },
+                    {
+                      "agentId": "agent-solo", "peerType": "agent", "peerName": "solo", "peerDisplayName": "Solo",
+                      "peerAvatarUrl": "https://cdn.example/solo.png",
+                      "lounge": { "channelId": "lounge-solo", "joined": false, "canPost": true, "listed": true, "unreadCount": 4, "mentionCount": 2 }
+                    }
+                  ]
+                }
+                """.trimIndent(),
+            )
+        assertEquals(1, objectPayload.dms.size)
+        assertEquals(2, objectPayload.lounges.size)
+
+        val arrayPayload =
+            json.decodeFromString(
+                HomeDirectMessagesWireResultSerializer,
+                """[{"id":"dm-old","name":"old","type":"dm","peerType":"agent","peerId":"agent-old","peerName":"old"}]""",
+            )
+        assertEquals(1, arrayPayload.dms.size)
+        assertTrue(arrayPayload.lounges.isEmpty(), "legacy bare array has no standalone lounges")
+
+        val parsed =
+            parseRaftHome(
+                payload =
+                    homePayload(
+                        channels = emptyList(),
+                        directMessages = objectPayload.dms,
+                        unreadCounts = mapOf(ChannelId("lounge-bugen") to 99, ChannelId("lounge-solo") to 88),
+                    ).copy(
+                        standaloneLounges = objectPayload.lounges,
+                        mentionedChannelIds = setOf(ChannelId("lounge-bugen")),
+                    ),
+                session = sampleSession(),
+            )
+        assertTrue(parsed is DataResult.Content)
+        val dmLounge = parsed.data.directMessages.single().lounge
+        assertEquals(
+            AgentLoungeSummary(ChannelId("lounge-bugen"), joined = false, unreadCount = 2, mentionCount = 1, listed = true),
+            dmLounge,
+            "summary unread/mention wins over channel unread when listed is present",
+        )
+        // Same agent in both dms and lounges: DM row wins; only agent-solo stays in standaloneLounges.
+        val solo = parsed.data.standaloneLounges.single()
+        assertEquals("agent-solo", solo.agentId)
+        assertEquals("Solo", solo.agentName)
+        assertEquals("https://cdn.example/solo.png", solo.avatarWireValue)
+        assertEquals(true, solo.canPost)
+        assertEquals(
+            AgentLoungeSummary(ChannelId("lounge-solo"), joined = false, unreadCount = 4, mentionCount = 2, listed = true),
+            solo.lounge,
+        )
     }
 
     @Test

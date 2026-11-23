@@ -3642,8 +3642,13 @@ private fun RaftStructuralHomeShellContent(
             val activeNotificationLevelLabel = rememberRaftNotificationLevelMenuLabel(activeNotificationTarget)
             val pinMenuItems = activeConversation?.let { conversation ->
                 if (conversation.agentLounge != null) {
-                    // Agent Lounge v0 (web SidebarRowContextMenu `lounge`): a DM row's menu.
-                    return@let raftHomeAgentLoungeMenuItems(conversation, labels, pinTargetIsPinned)
+                    // Agent Lounge (#proj-chat:#44): Mark All as Read when unread, Unmute only if already muted, Pin, Close.
+                    return@let raftHomeAgentLoungeMenuItems(
+                        lounge = conversation,
+                        labels = labels,
+                        pinned = pinTargetIsPinned,
+                        markAllReadEnabled = onMarkConversationReadAll != null,
+                    )
                 }
                 raftHomeConversationMenuItems(
                     conversation = conversation,
@@ -4235,10 +4240,10 @@ private fun RaftHomeSortSection.sidebarSectionOrderId(): String =
     }
 
 /**
- * Agent Lounge v0 (menu order v4, botiverse/slock #16225 / `SidebarRowContextMenu` `lounge`):
- * Group 1: Mark as read / unread + Mute / Unmute (only once joined and its own row is loaded,
- * [RaftHomeConversationItem.activityMuteSupported]; a stored mute keeps Unmute).
- * Group 2: Pin / Unpin (own group after divider).
+ * Agent Lounge sidebar menu (`#proj-chat:#44`):
+ * Group 1: Mark All as Read / Mark as Read (only while unread — no Mark as Unread, since Lounge
+ *   unread is thread-scoped) + Unmute (only if already muted — Mute is removed from Lounges).
+ * Group 2: Pin / Unpin (own group after divider when Group 1 is non-empty).
  * Group 4: Close chat (own group after divider).
  * No Move to section, Notifications or Sort: a Lounge has no place in a custom section or in the
  * saved order.
@@ -4247,22 +4252,25 @@ internal fun raftHomeAgentLoungeMenuItems(
     lounge: RaftHomeConversationItem,
     labels: RaftHomeShellLabels = RaftHomeShellLabels(),
     pinned: Boolean,
+    markAllReadEnabled: Boolean = false,
 ): List<RaftBaseMenuItem> =
     buildList {
         val hasUnread = lounge.homeConversationBadgeProjection().hasUnread || lounge.mentioned
-        add(
-            RaftBaseMenuItem(
-                id = if (hasUnread) "mark-read" else "mark-unread",
-                label = if (hasUnread) labels.markAsRead else labels.markAsUnread,
-                icon = if (hasUnread) RaftLucideIconName.MailOpen else RaftLucideIconName.Mail
-            )
-        )
-        if (lounge.activityMuteSupported || lounge.activityMuted) {
+        if (hasUnread) {
             add(
                 RaftBaseMenuItem(
-                    id = if (lounge.activityMuted) "unmute-channel" else "mute-channel",
-                    label = if (lounge.activityMuted) labels.unmute else labels.mute,
-                    icon = if (lounge.activityMuted) RaftLucideIconName.Bell else RaftLucideIconName.BellOff
+                    id = if (markAllReadEnabled) "mark-all-read" else "mark-read",
+                    label = if (markAllReadEnabled) labels.markAllAsRead else labels.markAsRead,
+                    icon = RaftLucideIconName.MailOpen
+                )
+            )
+        }
+        if (lounge.activityMuted) {
+            add(
+                RaftBaseMenuItem(
+                    id = "unmute-channel",
+                    label = labels.unmute,
+                    icon = RaftLucideIconName.Bell
                 )
             )
         }
@@ -4271,7 +4279,7 @@ internal fun raftHomeAgentLoungeMenuItems(
                 id = "toggle-pin",
                 label = if (pinned) labels.unpin else labels.pin,
                 icon = if (pinned) RaftLucideIconName.PinOff else RaftLucideIconName.Pin,
-                dividerBefore = true
+                dividerBefore = isNotEmpty()
             )
         )
         add(RaftBaseMenuItem(id = "close-dm", label = labels.closeChat, icon = RaftLucideIconName.X, dividerBefore = true))

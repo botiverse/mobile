@@ -653,6 +653,11 @@ data class HomeSnapshot(
     // String keys: JSON map keys must be primitive, and HomeSnapshot is persisted.
     val followedThreadUnread: Map<String, HomeFollowedThreadUnread> = emptyMap(),
     /**
+     * Listed Lounges for agents without a DM row (`GET /channels/dm?include=lounges` `lounges[]`,
+     * `#proj-chat:#44`). Empty on older servers.
+     */
+    val standaloneLounges: List<HomeStandaloneLoungeRow> = emptyList(),
+    /**
      * Channels and DMs marked unread with nothing countable (botiverse/slock #11795, the unread
      * summary's `readState.markedUnread`), by channel id value: the row shows unread with a dot and
      * no number. Counts never include them. A read of the row (local or a newer read-state version)

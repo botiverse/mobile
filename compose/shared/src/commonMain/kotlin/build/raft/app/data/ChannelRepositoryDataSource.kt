@@ -40,6 +40,9 @@ private suspend fun RaftNetworkClient.channels(
  */
 internal val CHANNELS_INCLUDING_ARCHIVED_QUERY: List<Pair<String, String>> = listOf("archived" to "include")
 
+/** `GET /channels/dm?include=lounges` (`#proj-chat:#44`): returns `{ dms, lounges }` on new servers, bare array on old servers. */
+internal val DIRECT_MESSAGES_INCLUDE_LOUNGES_QUERY: List<Pair<String, String>> = listOf("include" to "lounges")
+
 private suspend fun RaftNetworkClient.directMessages(
     priority: DataRequestPriority,
     serverId: ServerId? = null
@@ -472,7 +475,7 @@ internal class NetworkRaftHomeApi(
         networkClient.channels(priority)
 
     override suspend fun directMessages(priority: DataRequestPriority): HomeNetworkResponse =
-        networkClient.directMessages(priority)
+        networkClient.request(priority, "channels/dm", query = DIRECT_MESSAGES_INCLUDE_LOUNGES_QUERY)
 
     override suspend fun channelUnreadCounts(priority: DataRequestPriority): HomeNetworkResponse =
         networkClient.channelUnreadCounts(priority)
@@ -484,7 +487,12 @@ internal class NetworkRaftHomeApi(
         networkClient.request(priority, "channels", serverIdOverride = serverId)
 
     override suspend fun directMessages(serverId: ServerId, priority: DataRequestPriority): HomeNetworkResponse =
-        networkClient.request(priority, "channels/dm", serverIdOverride = serverId)
+        networkClient.request(
+            priority,
+            "channels/dm",
+            query = DIRECT_MESSAGES_INCLUDE_LOUNGES_QUERY,
+            serverIdOverride = serverId,
+        )
 
     override suspend fun channelUnreadCounts(serverId: ServerId, priority: DataRequestPriority): HomeNetworkResponse =
         networkClient.request(

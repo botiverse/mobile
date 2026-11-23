@@ -3,6 +3,8 @@ package build.raft.app
 import build.raft.app.data.AgentLoungeSummary
 import build.raft.app.data.HomeChannelRow
 import build.raft.app.data.HomeDirectMessageRow
+import build.raft.app.data.HomeFollowedThreadUnread
+import build.raft.app.data.HomeStandaloneLoungeRow
 import build.raft.app.data.RaftAgentLounges
 import build.raft.app.data.SettingsServerSidebarPinnedItem
 import build.raft.app.model.ChannelActivityNotificationPreference
@@ -84,9 +86,9 @@ class AgentLoungeSidebarRulesTest {
     }
 
     @Test
-    fun muteIsOfferedOnlyOnceJoinedAndLoaded() {
+    fun muteIsRemovedFromLoungesButAlreadyMutedKeepsUnmute() {
         val mentionedNotJoined = AgentLoungeSummary(ChannelId("lounge-bugen"), joined = false, mentionCount = 1)
-        // Listed (an @), never loaded: no Mute (web #13876 loads it first).
+        // Listed (an @), never loaded: no Unmute.
         assertFalse(items(listOf(agentDm("bugen", mentionedNotJoined))).single().activityMuteSupported)
         RaftAgentLounges.rememberRow(
             "server-1",
@@ -94,14 +96,79 @@ class AgentLoungeSidebarRulesTest {
                 threadId = ThreadId("lounge-bugen"),
                 channelId = ChannelId("lounge-bugen"),
                 name = "bugen-lounge",
-                joined = false,
-                activityNotificationPreference = ChannelActivityNotificationPreference(activityMuteSupported = true),
+                joined = true,
+                activityNotificationPreference = ChannelActivityNotificationPreference(activityMuted = false, activityMuteSupported = true),
                 loungeAgentId = "agent-bugen",
             ),
         )
-        assertFalse(items(listOf(agentDm("bugen", mentionedNotJoined))).single().activityMuteSupported, "loaded, not joined")
-        RaftAgentLounges.markJoined("server-1", "lounge-bugen")
-        assertTrue(items(listOf(agentDm("bugen", mentionedNotJoined))).single().activityMuteSupported, "joined")
+        assertFalse(items(listOf(agentDm("bugen", mentionedNotJoined))).single().activityMuteSupported, "unmuted Lounge offers no Mute")
+        RaftAgentLounges.applyActivityMute(
+            "server-1",
+            "lounge-bugen",
+            ChannelActivityNotificationPreference(activityMuted = true, activityMuteSupported = true),
+        )
+        assertTrue(items(listOf(agentDm("bugen", mentionedNotJoined))).single().activityMuteSupported, "stored mute keeps Unmute")
+    }
+
+    @Test
+    fun standaloneLoungesAndLiveFollowedThreadUnreadDriveSidebarRows() {
+        val standalone =
+            HomeStandaloneLoungeRow(
+                agentId = "agent-solo",
+                agentName = "Solo",
+                avatarWireValue = "https://cdn.example/solo.png",
+                canPost = true,
+                lounge = AgentLoungeSummary(ChannelId("lounge-solo"), joined = false, unreadCount = 5, mentionCount = 1, listed = true),
+            )
+        // Before unread enrichment loads, the summary snapshot drives the badge.
+        val initial =
+            homeSidebarAgentLoungeItems(
+                enabled = true,
+                directMessages = emptyList(),
+                known = emptyMap(),
+                markedUnreadIds = emptySet(),
+                title = { name -> name?.let { "$it's Lounge" } ?: "Lounge" },
+                standaloneLounges = listOf(standalone),
+                useLiveFollowedThreadUnread = false,
+            ).single()
+        assertEquals("lounge-solo", initial.id)
+        assertEquals("Solo's Lounge", initial.name)
+        assertEquals("https://cdn.example/solo.png", initial.avatarWireValue)
+        assertEquals(5, initial.unreadCount)
+        assertTrue(initial.mentioned)
+
+        // Once unread enrichment is live, followedThreadUnread drives the non-member Lounge count directly.
+        val live =
+            homeSidebarAgentLoungeItems(
+                enabled = true,
+                directMessages = emptyList(),
+                known = emptyMap(),
+                markedUnreadIds = emptySet(),
+                title = { name -> name?.let { "$it's Lounge" } ?: "Lounge" },
+                standaloneLounges = listOf(standalone),
+                followedThreadUnread =
+                    mapOf(
+                        "t-1" to HomeFollowedThreadUnread(ChannelId("lounge-solo"), unreadCount = 2, hasMention = false),
+                    ),
+                useLiveFollowedThreadUnread = true,
+            ).single()
+        assertEquals(2, live.unreadCount)
+        assertFalse(live.mentioned)
+
+        // Reading all followed threads drops live unread to 0 without waiting for GET /channels/dm.
+        val afterRead =
+            homeSidebarAgentLoungeItems(
+                enabled = true,
+                directMessages = emptyList(),
+                known = emptyMap(),
+                markedUnreadIds = emptySet(),
+                title = { name -> name?.let { "$it's Lounge" } ?: "Lounge" },
+                standaloneLounges = listOf(standalone),
+                followedThreadUnread = emptyMap(),
+                useLiveFollowedThreadUnread = true,
+            ).single()
+        assertEquals(0, afterRead.unreadCount)
+        assertFalse(afterRead.mentioned)
     }
 
     @Test
@@ -165,28 +232,31 @@ class AgentLoungeSidebarRulesTest {
     }
 
     @Test
-    fun theLoungeMenuIsADmRowsMenu() {
-        val entries = { item: RaftHomeConversationItem, pinned: Boolean ->
-            raftHomeAgentLoungeMenuItems(item, pinned = pinned).map { it.id to it.dividerBefore }
+    fun theLoungeMenuDropsMarkUnreadAndMuteAndUsesConversationReadAll() {
+        val entries = { item: RaftHomeConversationItem, pinned: Boolean, markAllRead: Boolean ->
+            raftHomeAgentLoungeMenuItems(item, pinned = pinned, markAllReadEnabled = markAllRead).map { it.id to it.dividerBefore }
         }
-        val joinedLoaded = loungeItem("lounge-bugen", "Bugen's Lounge", null, unread = 1).copy(activityMuteSupported = true)
+        val unread = loungeItem("lounge-bugen", "Bugen's Lounge", null, unread = 1)
         assertEquals(
-            listOf("mark-read" to false, "mute-channel" to false, "toggle-pin" to true, "close-dm" to true),
-            entries(joinedLoaded, false),
+            listOf("mark-all-read" to false, "toggle-pin" to true, "close-dm" to true),
+            entries(unread, false, true),
         )
-        assertEquals("Unpin", raftHomeAgentLoungeMenuItems(joinedLoaded, pinned = true).single { it.id == "toggle-pin" }.label)
-        // Not joined (or not loaded): no Mute; nothing unread: Mark as Unread. Never Move to section,
-        // Notifications or Sort.
         assertEquals(
-            listOf("mark-unread" to false, "toggle-pin" to true, "close-dm" to true),
-            entries(loungeItem("lounge-bugen", "Bugen's Lounge", null), false),
+            listOf("mark-read" to false, "toggle-pin" to true, "close-dm" to true),
+            entries(unread, false, false),
         )
-        // A stored mute keeps its Unmute.
+        assertEquals("Unpin", raftHomeAgentLoungeMenuItems(unread, pinned = true).single { it.id == "toggle-pin" }.label)
+        // Nothing unread and unmuted: no Mark as Unread, no Mute; Pin starts cleanly without a leading divider.
         assertEquals(
-            listOf("mark-unread" to false, "unmute-channel" to false, "toggle-pin" to true, "close-dm" to true),
-            entries(loungeItem("lounge-bugen", "Bugen's Lounge", null).copy(activityMuted = true), false),
+            listOf("toggle-pin" to false, "close-dm" to true),
+            entries(loungeItem("lounge-bugen", "Bugen's Lounge", null), false, true),
         )
-        // A mention with no count still reads as unread (Mark as Read clears the @).
-        assertEquals("mark-read", entries(loungeItem("lounge-bugen", "Bugen's Lounge", null, mentioned = true), false).first().first)
+        // A stored mute keeps its Unmute even when read (no Mark as Unread).
+        assertEquals(
+            listOf("unmute-channel" to false, "toggle-pin" to true, "close-dm" to true),
+            entries(loungeItem("lounge-bugen", "Bugen's Lounge", null).copy(activityMuted = true), false, true),
+        )
+        // A mention with no count still reads as unread (Mark All as Read clears it).
+        assertEquals("mark-all-read", entries(loungeItem("lounge-bugen", "Bugen's Lounge", null, mentioned = true), false, true).first().first)
     }
 }

@@ -1,6 +1,8 @@
 package build.raft.app
 
 import build.raft.app.data.HomeDirectMessageRow
+import build.raft.app.data.HomeFollowedThreadUnread
+import build.raft.app.data.HomeStandaloneLoungeRow
 import build.raft.app.data.RaftAgentLounge
 import build.raft.app.data.agentLoungeSidebarEntry
 import build.raft.app.data.loungeAgentDisplayName
@@ -37,6 +39,9 @@ internal fun homeSidebarAgentLoungeItems(
     known: Map<String, RaftAgentLounge>,
     markedUnreadIds: Set<String>,
     title: (agentName: String?) -> String,
+    standaloneLounges: List<HomeStandaloneLoungeRow> = emptyList(),
+    followedThreadUnread: Map<String, HomeFollowedThreadUnread> = emptyMap(),
+    useLiveFollowedThreadUnread: Boolean = false,
 ): List<RaftHomeConversationItem> {
     if (!enabled) return emptyList()
     val agentDmByAgentId =
@@ -44,17 +49,48 @@ internal fun homeSidebarAgentLoungeItems(
             .filter { it.directMessagePeerType.equals("agent", ignoreCase = true) }
             .mapNotNull { dm -> dm.presenceMemberId?.value?.takeIf { it.isNotBlank() }?.let { it to dm } }
             .toMap()
+    val standaloneByAgentId =
+        standaloneLounges
+            .filter { it.agentId.isNotBlank() }
+            .associateBy { it.agentId }
     val knownByAgentId = known.values.associateBy { it.agentId }
     val agentIds = LinkedHashSet<String>()
     agentDmByAgentId.forEach { (agentId, dm) -> if (dm.lounge != null) agentIds += agentId }
+    standaloneByAgentId.keys.forEach { agentIds += it }
     agentIds += knownByAgentId.keys
+    val liveThreadUnreadByParent: Map<String, Pair<Int, Boolean>> =
+        if (useLiveFollowedThreadUnread) {
+            val acc = LinkedHashMap<String, Pair<Int, Boolean>>()
+            for (thread in followedThreadUnread.values) {
+                if (thread.unreadCount <= 0) continue
+                val key = thread.parentChannelId.value
+                val prev = acc[key]
+                acc[key] = ((prev?.first ?: 0) + thread.unreadCount) to (prev?.second == true || thread.hasMention)
+            }
+            acc
+        } else {
+            emptyMap()
+        }
     return agentIds.mapNotNull { agentId ->
         val dm = agentDmByAgentId[agentId]
-        val summary = dm?.lounge
+        val standalone = standaloneByAgentId[agentId]
+        // When an agent has both a DM row and a standalone entry, the DM row wins (#proj-chat:#44).
+        val summary = dm?.lounge ?: standalone?.lounge
         val lounge = knownByAgentId[agentId] ?: summary?.let { known[it.channelId.value] }
-        val entry = agentLoungeSidebarEntry(summary, lounge) ?: return@mapNotNull null
+        val targetChannelId = (lounge?.channelId ?: summary?.channelId)?.value
+        val livePair = if (useLiveFollowedThreadUnread && targetChannelId != null) liveThreadUnreadByParent[targetChannelId] else null
+        val entry =
+            agentLoungeSidebarEntry(
+                summary = summary,
+                known = lounge,
+                followedThreadUnreadCount = if (useLiveFollowedThreadUnread) (livePair?.first ?: 0) else null,
+                followedThreadHasMention = if (useLiveFollowedThreadUnread) (livePair?.second == true) else null,
+            ) ?: return@mapNotNull null
         val channelId = entry.channelId.value
-        val agentName = loungeAgentDisplayName(dm?.name) ?: lounge?.displayAgentName
+        val agentName =
+            loungeAgentDisplayName(dm?.name)
+                ?: loungeAgentDisplayName(standalone?.agentName)
+                ?: lounge?.displayAgentName
         RaftHomeConversationItem(
             id = channelId,
             name = title(agentName),
@@ -63,7 +99,7 @@ internal fun homeSidebarAgentLoungeItems(
             unreadCount = entry.unreadCount,
             lastMessageAt = lounge?.lastMessageAt,
             avatarLabel = agentName.orEmpty().take(2).uppercase(),
-            avatarWireValue = dm?.directMessagePeerAvatarWireValue,
+            avatarWireValue = dm?.directMessagePeerAvatarWireValue ?: standalone?.avatarWireValue,
             presenceMemberId = agentId,
             // A Lounge's unread reads like a DM's (web getDmUnreadIndicatorState), joined or not.
             joined = true,

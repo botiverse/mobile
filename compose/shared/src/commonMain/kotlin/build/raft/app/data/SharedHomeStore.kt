@@ -5004,6 +5004,10 @@ internal class SharedHomeStore(
                 content.baseSnapshot.server.id.value,
                 content.baseSnapshot.directMessages
             )
+            RaftAgentLounges.rememberStandaloneLounges(
+                content.baseSnapshot.server.id.value,
+                content.baseSnapshot.standaloneLounges
+            )
             contentByServer[content.baseSnapshot.server.id] = content
             content.baseSnapshot.sidebarOrder?.let { sidebarOrder ->
                 sidebarOrderByServer[content.baseSnapshot.server.id] = sidebarOrder
@@ -5590,6 +5594,10 @@ private fun HomeSnapshot.withRealtimeAgentLoungeMessages(
     if (index < 0) return this
     val row = directMessages[index]
     val lounge = row.lounge ?: return this
+    // Post-#proj-chat:#44 non-member model (`listed != null && !joined`): humans have no channel-level
+    // Lounge unread (only followed-thread unread counted by server summaries), so skip local top-level
+    // unread increments while still recording mention/last-message state.
+    val nonMemberChannelUnreadOff = lounge.listed != null && !lounge.joined
     val rowSeq = lounge.lastMessageSeq
     val unreadCandidates =
         if (!incrementUnread || activeConversationId == streamChannelId.value) {
@@ -5605,15 +5613,15 @@ private fun HomeSnapshot.withRealtimeAgentLoungeMessages(
         }
     val mentioned = unreadCandidates.any { message -> message.mentions.mentionsUser(currentMember.id.value) }
     val newer = rowSeq == null || latest.seq == null || latest.seq >= rowSeq
+    val increment = if (nonMemberChannelUnreadOff) 0 else unreadCandidates.size
     val nextLounge =
         lounge.copy(
-            unreadCount = lounge.unreadCount + unreadCandidates.size,
+            unreadCount = lounge.unreadCount + increment,
             mentionCount = if (mentioned) maxOf(lounge.mentionCount, 1) else lounge.mentionCount,
             lastMessageId = if (newer) latest.id else lounge.lastMessageId,
             lastMessageSeq = if (newer) latest.seq ?: rowSeq else rowSeq,
         )
     if (nextLounge == lounge) return this
-    val increment = unreadCandidates.size
     val nextServerUnreadCount = (server.unreadCount + increment).coerceAtLeast(0)
     return copy(
         directMessages = directMessages.replaceAt(index, row.copy(lounge = nextLounge)),
@@ -5775,6 +5783,22 @@ internal fun HomeSnapshot.withConversationUnread(
     }
     val nextChannels = channels.map { it.updated() }
     val nextDirectMessages = directMessages.map { it.updated() }
+    val nextStandaloneLounges =
+        standaloneLounges.map { row ->
+            if (row.lounge.channelId.value != conversationId) {
+                row
+            } else {
+                val nextLoungeUnread = unreadCount.coerceAtLeast(0)
+                delta += nextLoungeUnread - row.lounge.unreadCount
+                row.copy(
+                    lounge =
+                        row.lounge.copy(
+                            unreadCount = nextLoungeUnread,
+                            mentionCount = if (nextLoungeUnread > 0) row.lounge.mentionCount else 0,
+                        )
+                )
+            }
+        }
     // A read of a followed thread (its id is the conversation id) clears its part of the parent mark.
     val nextThreads =
         if (unreadCount <= 0) {
@@ -5788,6 +5812,7 @@ internal fun HomeSnapshot.withConversationUnread(
         return copy(
             channels = nextChannels,
             directMessages = nextDirectMessages,
+            standaloneLounges = nextStandaloneLounges,
             followedThreadUnread = nextThreads,
             markedUnreadIds = nextMarked
         )
@@ -5797,6 +5822,7 @@ internal fun HomeSnapshot.withConversationUnread(
     return copy(
         channels = nextChannels,
         directMessages = nextDirectMessages,
+        standaloneLounges = nextStandaloneLounges,
         followedThreadUnread = nextThreads,
         markedUnreadIds = nextMarked,
         server = server.copy(unreadCount = nextServerUnreadCount),

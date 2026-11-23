@@ -206,7 +206,13 @@ internal suspend fun openAgentLounge(
 ): DataResult<AgentLoungeOpenResult> {
     val result = AgentLoungeApi(networkClient).openLounge(ServerId(serverId), agentId)
     if (result is DataResult.Content) {
-        RaftAgentLounges.rememberRow(serverId, result.data.channel, canPost = result.data.canPost, agentName = agentName)
+        RaftAgentLounges.rememberRow(
+            serverId,
+            result.data.channel,
+            canPost = result.data.canPost,
+            agentName = agentName,
+            listed = result.data.listed,
+        )
     }
     return result
 }
@@ -223,7 +229,13 @@ internal suspend fun lookupAgentLounge(
 ): DataResult<AgentLoungeOpenResult> {
     val result = AgentLoungeApi(networkClient).lookupLounge(ServerId(serverId), agentId)
     if (result is DataResult.Content) {
-        RaftAgentLounges.rememberRow(serverId, result.data.channel, canPost = result.data.canPost, agentName = agentName)
+        RaftAgentLounges.rememberRow(
+            serverId,
+            result.data.channel,
+            canPost = result.data.canPost,
+            agentName = agentName,
+            listed = result.data.listed,
+        )
     }
     return result
 }
@@ -327,16 +339,15 @@ internal fun RaftThreadScreenPayload.agentLoungeLookupChannelId(): String? =
     }
 
 /**
- * A Lounge page's Mute row (web ChannelOverflowMenu for a Lounge, slock #13875): only once joined
- * ([joinedHint]: the page's own row says so) and its row is loaded; a stored mute keeps Unmute.
+ * A Lounge page's Mute row (#proj-chat:#44): Mute is removed from Lounges, while an already-muted
+ * Lounge keeps its Unmute row so users can clear stored mute state.
  */
 internal fun RaftAgentLounge.agentLoungeActivityMuteState(joinedHint: Boolean = false): ThreadActivityMuteUiState? {
     val preference = activityNotificationPreference ?: return null
-    val joinedHere = joined || joinedHint
-    if (!preference.activityMuted && !(joinedHere && preference.activityMuteSupported)) return null
+    if (!preference.activityMuted) return null
     return ThreadActivityMuteUiState(
         channelId = channelId.value,
-        muted = preference.activityMuted,
+        muted = true,
         supported = preference.activityMuteSupported,
         muteFromSeq = preference.muteFromSeq,
     )

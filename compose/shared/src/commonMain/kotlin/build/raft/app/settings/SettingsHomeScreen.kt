@@ -633,13 +633,24 @@ internal fun SharedHomeScreen(
             // Agent Lounge v0: each listed Lounge's own row (Direct Messages, or Pinned once pinned).
             val serverKnownAgentLounges = knownAgentLounges[snapshot.server.id.value].orEmpty()
             val agentLoungeItems =
-                remember(agentLoungeEnabled, snapshot.directMessages, serverKnownAgentLounges, snapshot.markedUnreadIds) {
+                remember(
+                    agentLoungeEnabled,
+                    snapshot.directMessages,
+                    snapshot.standaloneLounges,
+                    serverKnownAgentLounges,
+                    snapshot.markedUnreadIds,
+                    snapshot.followedThreadUnread,
+                    snapshot.unreadEnrichmentAvailable,
+                ) {
                     homeSidebarAgentLoungeItems(
                         enabled = agentLoungeEnabled,
                         directMessages = snapshot.directMessages,
                         known = serverKnownAgentLounges,
                         markedUnreadIds = snapshot.markedUnreadIds,
                         title = ::agentLoungeTitleNow,
+                        standaloneLounges = snapshot.standaloneLounges,
+                        followedThreadUnread = snapshot.followedThreadUnread,
+                        useLiveFollowedThreadUnread = snapshot.unreadEnrichmentAvailable,
                     )
                 }
             // web slock #13876 (useSidebarItems `ensureChannel`): a listed Lounge this client never

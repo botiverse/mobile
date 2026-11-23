@@ -2,6 +2,7 @@ package build.raft.app
 
 import build.raft.app.resources.*
 import build.raft.app.data.sideThreadParentFocus
+import build.raft.app.data.RaftAgentLounges
 import build.raft.app.data.RaftEventBus
 import build.raft.app.data.StoredAuthSession
 import build.raft.app.data.DataResult
@@ -786,6 +787,12 @@ internal class ThreadRouteEventHandler(
                                             replyCount = result.data.replyCount
                                         )
                                     )
+                                    // #proj-chat:#44: following a thread in a Lounge lists it locally without waiting for GET /channels/dm.
+                                    currentServerId?.let { serverId ->
+                                        renderedThread.agentLoungeLookupChannelId()?.let { loungeChannelId ->
+                                            RaftAgentLounges.markListed(serverId, loungeChannelId)
+                                        }
+                                    }
                                     bridge.toast(followedThreadLabel)
                                 }
                                 is DataResult.Empty,

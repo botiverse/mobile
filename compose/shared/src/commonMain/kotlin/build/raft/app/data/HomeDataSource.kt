@@ -639,6 +639,7 @@ data class HomeNetworkPayload(
     val serverId: ServerId,
     val channels: List<HomeChannelWireDto>,
     val directMessages: List<HomeDirectMessageWireDto>,
+    val standaloneLounges: List<HomeStandaloneLoungeWireDto> = emptyList(),
     val unreadCounts: Map<ChannelId, Int>,
     /** `channels/unread?summary=1` scopes whose unread messages mention the user (`hasMention`). */
     val mentionedChannelIds: Set<ChannelId> = emptySet(),
@@ -724,7 +725,7 @@ internal class RaftHomeApiClient(
                 requestHomeSection(
                     category = "direct_messages",
                     contractCode = "home_direct_messages_contract_mismatch",
-                    serializer = ListSerializer(HomeDirectMessageWireDto.serializer()),
+                    serializer = HomeDirectMessagesWireResultSerializer,
                     errorTextDecoder = HomeNetworkResponse::homeDirectMessagesRouteErrorTextOrNull
                 ) {
                     transport.directMessages(serverId, priority)
@@ -766,13 +767,15 @@ internal class RaftHomeApiClient(
                 is DataResult.Error -> return@supervisorScope DataResult.Error(result.error)
                 is DataResult.NoPermission -> return@supervisorScope DataResult.NoPermission(result.blocker)
             }
-        val directMessages =
+        val directMessagesResult =
             when (val result = directMessagesDeferred.await()) {
                 is DataResult.Content -> result.data
                 is DataResult.Empty -> return@supervisorScope DataResult.Empty(result.reason)
                 is DataResult.Error -> return@supervisorScope DataResult.Error(result.error)
                 is DataResult.NoPermission -> return@supervisorScope DataResult.NoPermission(result.blocker)
             }
+        val directMessages = directMessagesResult.dms
+        val standaloneLounges = directMessagesResult.lounges
 
         // task #831: the auxiliary unread endpoints are enrichment, not canonical.
         // Under supervisorScope a failing unread request can no longer cancel the
@@ -796,6 +799,7 @@ internal class RaftHomeApiClient(
                 serverId = serverId,
                 channels = channels,
                 directMessages = directMessages,
+                standaloneLounges = standaloneLounges,
                 unreadCounts = unreadCounts,
                 mentionedChannelIds = unreadSummary?.mentionedChannelIds ?: emptySet(),
                 followedThreadUnread = unreadSummary?.followedThreadUnread ?: emptyMap(),
