@@ -10,9 +10,11 @@
 //   no login: any sign-in line in the text evidence (web_login_attempt / app_login_complete)
 //     means the run saw a login after all: UNKNOWN.
 // Then, when the step has the QA credentials — or for login-email-password (#216), fetched in memory
-// from Testbed via OIDC (never written to disk) — the password anywhere is UNKNOWN and the email is
-// redacted from text files. If login-email-password's runtime credential cannot be fetched for a
-// passing login record, the gate fails closed (UNKNOWN) rather than uploading unscanned evidence.
+// from Testbed via OIDC (never written to disk) — the password anywhere (including short passwords and
+// JSON-escaped values in .json/.jsonl/.ndjson such as verdict.json) is UNKNOWN and the email is
+// redacted from text files. For login-email-password, BOTH the email and the password must be present
+// and scannable; if either is unavailable or uncheckable, the gate fails closed (UNKNOWN,
+// secrets_checked: false) rather than uploading unscanned evidence.
 // Anything else (missing, {}, malformed, foreign or unknown record) is UNKNOWN: everything
 // except verdict.json, agent-rc.txt, the record and this gate's own record is deleted,
 // verdict.json says "unknown", agent-rc.txt says 2, and the gate exits 1.
@@ -31,6 +33,8 @@ export const GATE = "evidence-gate.json";
 const KEEP_ON_FAILURE = new Set(["verdict.json", "agent-rc.txt", RECORD, GATE]);
 const LOG_FILE = /^(logcat|system-log|syslog).*\.(txt|log|ndjson)$/i;
 const TEXT_FILE = /\.(txt|log|json|jsonl|ndjson|xml|ips|md|csv)$/i;
+const JSON_FILE = /\.json$/i;
+const JSON_LINES_FILE = /\.(jsonl|ndjson)$/i;
 
 const walk = (dir) => fs.readdirSync(dir, { withFileTypes: true }).flatMap((e) => {
   const p = path.join(dir, e.name);
@@ -49,6 +53,117 @@ export function linesAfter(text, loginEnd) {
 const isLoginAcceptanceRun = (record, env) =>
   env?.STAMP_CLAIMED_CASE === LOGIN_ACCEPTANCE_CASE || record?.acceptance?.case_id === LOGIN_ACCEPTANCE_CASE;
 
+const isNonEmptyString = (value) => typeof value === "string" && value.length > 0;
+
+/** The interior of a JSON string literal for `value` (catches `\"`, `\\`, `\t`, etc. in raw JSON text). */
+const jsonLiteralInterior = (value) => JSON.stringify(value).slice(1, -1);
+
+/** Collects every string value and object key from a parsed JSON tree. */
+function jsonTreeContainsAny(value, needles) {
+  if (typeof value === "string") return needles.some((needle) => value.includes(needle));
+  if (Array.isArray(value)) return value.some((item) => jsonTreeContainsAny(item, needles));
+  if (value && typeof value === "object") {
+    for (const [k, v] of Object.entries(value)) {
+      if (needles.some((needle) => k.includes(needle)) || jsonTreeContainsAny(v, needles)) return true;
+    }
+  }
+  return false;
+}
+
+/** Recursively replaces every needle inside string values and object keys of a parsed JSON tree. */
+function redactJsonTree(value, needles) {
+  let changed = false;
+  const scrubString = (s) => {
+    let out = s;
+    for (const needle of needles) {
+      if (out.includes(needle)) {
+        out = out.split(needle).join("***");
+        changed = true;
+      }
+    }
+    return out;
+  };
+  const visit = (node) => {
+    if (typeof node === "string") return scrubString(node);
+    if (Array.isArray(node)) return node.map(visit);
+    if (node && typeof node === "object") {
+      const next = {};
+      for (const [k, v] of Object.entries(node)) next[scrubString(k)] = visit(v);
+      return next;
+    }
+    return node;
+  };
+  const result = visit(value);
+  return { changed, result };
+}
+
+/**
+ * Checks whether `bytes` of file `filePath` contain any password — raw, JSON-escaped (`\"`, `\\`,
+ * etc.), or decoded from parsed JSON / JSONL (including `\uXXXX` unicode escapes in `verdict.json`).
+ */
+function fileContainsPassword(filePath, bytes, passwords) {
+  if (passwords.length === 0) return false;
+  for (const password of passwords) {
+    if (bytes.includes(password)) return true;
+    const escaped = jsonLiteralInterior(password);
+    if (escaped !== password && bytes.includes(escaped)) return true;
+  }
+  if (JSON_FILE.test(filePath)) {
+    try {
+      const parsed = JSON.parse(bytes.toString("utf8"));
+      if (jsonTreeContainsAny(parsed, passwords)) return true;
+    } catch { /* Malformed JSON still checked by raw + escaped scans above. */ }
+  } else if (JSON_LINES_FILE.test(filePath)) {
+    for (const line of bytes.toString("utf8").split("\n")) {
+      const trimmed = line.trim();
+      if (!trimmed) continue;
+      try {
+        if (jsonTreeContainsAny(JSON.parse(trimmed), passwords)) return true;
+      } catch { /* Malformed line still checked by raw + escaped scans above. */ }
+    }
+  }
+  return false;
+}
+
+/** Redacts every email from a text file (raw, JSON-literal-escaped, and parsed JSON/JSONL escapes). */
+function redactEmailsInTextFile(filePath, bytes, emails) {
+  if (emails.length === 0 || !TEXT_FILE.test(filePath)) return;
+  let text = null;
+  for (const email of emails) {
+    for (const form of new Set([email, jsonLiteralInterior(email)])) {
+      if (bytes.includes(form) || (text !== null && text.includes(form))) {
+        text = (text ?? bytes.toString("utf8")).split(form).join("***");
+      }
+    }
+  }
+  const current = text ?? bytes.toString("utf8");
+  if (JSON_FILE.test(filePath)) {
+    try {
+      const parsed = JSON.parse(current);
+      const { changed, result } = redactJsonTree(parsed, emails);
+      if (changed) text = `${JSON.stringify(result, null, 2)}\n`;
+    } catch { /* Keep raw text redaction if JSON is malformed. */ }
+  } else if (JSON_LINES_FILE.test(filePath)) {
+    const lines = current.split("\n");
+    let anyChanged = false;
+    const rewritten = lines.map((line) => {
+      const trimmed = line.trim();
+      if (!trimmed) return line;
+      try {
+        const parsed = JSON.parse(trimmed);
+        const { changed, result } = redactJsonTree(parsed, emails);
+        if (changed) {
+          anyChanged = true;
+          return JSON.stringify(result);
+        }
+      } catch { /* Leave non-JSON lines as raw-redacted. */ }
+      return line;
+    });
+    if (anyChanged) text = rewritten.join("\n");
+  }
+  if (text !== null) fs.writeFileSync(filePath, text);
+}
+
 export function gate(dir, env = process.env, { credentials = null } = {}) {
   fs.mkdirSync(dir, { recursive: true });
   const { ok, record, reason } = readRecord(dir, env);
@@ -58,12 +173,15 @@ export function gate(dir, env = process.env, { credentials = null } = {}) {
     const terminal = readTerminal(dir, record, env);
     if (!terminal.ok) why = terminal.reason;
   }
-  const requiresAcceptanceCred = !why && isLoginAcceptanceRun(record, env);
-  if (requiresAcceptanceCred) {
+  const requiresAcceptanceCred = isLoginAcceptanceRun(record, env);
+  const acceptanceEmail = isNonEmptyString(credentials?.email) ? credentials.email : "";
+  const acceptancePassword = isNonEmptyString(credentials?.password) ? credentials.password : "";
+  const acceptanceCredComplete = Boolean(acceptanceEmail && acceptancePassword && !credentials?.problem);
+  if (!why && requiresAcceptanceCred) {
     if (credentials?.problem) {
       why = `login acceptance credential unavailable for evidence scan (${credentials.problem})`;
-    } else if (!credentials?.email || !credentials?.password) {
-      why = "login acceptance credential missing for evidence scan";
+    } else if (!acceptanceEmail || !acceptancePassword) {
+      why = "login acceptance credential incomplete for evidence scan";
     }
   }
   // Separate what is kept on failure from what is scanned before publishing: verdict.json
@@ -82,19 +200,22 @@ export function gate(dir, env = process.env, { credentials = null } = {}) {
     const hit = evidenceFiles().find((f) => TEXT_FILE.test(f) && fs.statSync(f).isFile() && LOGIN_LOG_MARKERS.test(fs.readFileSync(f, "utf8")));
     if (hit) why = `sign-in signal in ${path.basename(hit)} although this run never signs in`;
   }
-  const passwords = [env.QA_TEST_PASSWORD, credentials?.password].filter((v) => typeof v === "string" && v.length >= 4);
-  const emails = [env.QA_TEST_EMAIL, credentials?.email].filter((v) => typeof v === "string" && v.length >= 4);
-  for (const f of why ? [] : publishableFiles()) {
+  // Runtime acceptance credentials are checked in full (any non-empty password/email, no length >= 4 drop);
+  // legacy QA_TEST_* env values keep their >= 4 guard.
+  const passwords = [
+    ...(typeof env.QA_TEST_PASSWORD === "string" && env.QA_TEST_PASSWORD.length >= 4 ? [env.QA_TEST_PASSWORD] : []),
+    ...(acceptancePassword ? [acceptancePassword] : []),
+  ];
+  const emails = [
+    ...(typeof env.QA_TEST_EMAIL === "string" && env.QA_TEST_EMAIL.length >= 4 ? [env.QA_TEST_EMAIL] : []),
+    ...(acceptanceEmail ? [acceptanceEmail] : []),
+  ];
+  const scanRan = !why;
+  for (const f of scanRan ? publishableFiles() : []) {
     if (!fs.statSync(f).isFile()) continue;
     const bytes = fs.readFileSync(f);
-    if (passwords.some((password) => bytes.includes(password))) { why = `secret value in ${path.basename(f)}`; break; }
-    if (emails.length && TEXT_FILE.test(f)) {
-      let text = null;
-      for (const email of emails) {
-        if (bytes.includes(email)) text = (text ?? bytes.toString("utf8")).split(email).join("***");
-      }
-      if (text !== null) fs.writeFileSync(f, text);
-    }
+    if (fileContainsPassword(f, bytes, passwords)) { why = `secret value in ${path.basename(f)}`; break; }
+    redactEmailsInTextFile(f, bytes, emails);
   }
   if (why) {
     if (ok) markUnknown(dir, why, env);
@@ -102,7 +223,9 @@ export function gate(dir, env = process.env, { credentials = null } = {}) {
     fs.writeFileSync(path.join(dir, "verdict.json"), `${JSON.stringify({ verdict: "unknown", reason: `UNKNOWN: ${why}; no evidence uploaded` }, null, 2)}\n`);
     fs.writeFileSync(path.join(dir, "agent-rc.txt"), "2\n");
   }
-  const secretsChecked = passwords.length > 0 || emails.length > 0;
+  const secretsChecked = requiresAcceptanceCred
+    ? (scanRan && acceptanceCredComplete)
+    : (passwords.length > 0 || emails.length > 0);
   fs.writeFileSync(path.join(dir, GATE), `${JSON.stringify({ ok: !why, run: runId(env), reason: why, secrets_checked: secretsChecked }, null, 2)}\n`);
   return { ok: !why, reason: why };
 }

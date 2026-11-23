@@ -809,7 +809,56 @@ test("rule 3: secure_evidence scans verdict.json via Testbed OIDC runtime creden
       assert.equal(JSON.parse(fs.readFileSync(path.join(unavailable.dir, "verdict.json"), "utf8")).verdict, "unknown");
     } finally { fs.rmSync(unavailable.root, { recursive: true, force: true }); }
 
-    // 5. Legacy password path (no acceptance block) still uses QA_TEST_* env directly.
+    // 5. Short acceptance password (< 4 chars) and JSON-escaped passwords in verdict.json are caught and blocked.
+    for (const [label, shortOrEscapedPw, rawVerdictJson] of [
+      ["short 2-char password in verdict.json", "q9", JSON.stringify({ verdict: "pass", reason: "token q9 visible" })],
+      ["quote/backslash password escaped by JSON.stringify", 'p"w\\x', JSON.stringify({ verdict: "pass", reason: 'typed p"w\\x' })],
+      ["unicode-escaped password in verdict.json", "sEc!", '{"verdict":"pass","reason":"saw \\u0073\\u0045c! on screen"}'],
+    ]) {
+      const box = makePassDir({ verdict: "pass", reason: "placeholder" });
+      try {
+        fs.writeFileSync(path.join(box.dir, "verdict.json"), rawVerdictJson);
+        const res = gate.gate(box.dir, { ...RUN, STAMP_CLAIMED_CASE: "login-email-password" }, {
+          credentials: { email: EMAIL, password: shortOrEscapedPw },
+        });
+        assert.equal(res.ok, false, label);
+        assert.match(res.reason, /secret value in verdict\.json/, label);
+        assert.equal(fs.existsSync(path.join(box.dir, "step-00.png")), false, `${label}: evidence deleted`);
+        const rewritten = fs.readFileSync(path.join(box.dir, "verdict.json"), "utf8");
+        assert.equal(JSON.parse(rewritten).verdict, "unknown", label);
+        assert.ok(!rewritten.includes(shortOrEscapedPw), `${label}: password removed from verdict.json`);
+      } finally { fs.rmSync(box.root, { recursive: true, force: true }); }
+    }
+
+    // 6. Unicode-escaped email in verdict.json is redacted cleanly.
+    const escapedEmailDir = makePassDir({ verdict: "pass", reason: "placeholder" });
+    try {
+      const firstHex = EMAIL.charCodeAt(0).toString(16).padStart(4, "0");
+      fs.writeFileSync(path.join(escapedEmailDir.dir, "verdict.json"), `{"verdict":"pass","reason":"as \\u${firstHex}${EMAIL.slice(1)}"}`);
+      const res = gate.gate(escapedEmailDir.dir, { ...RUN, STAMP_CLAIMED_CASE: "login-email-password" }, {
+        credentials: { email: EMAIL, password: PASSWORD },
+      });
+      assert.equal(res.ok, true);
+      assert.deepEqual(JSON.parse(fs.readFileSync(path.join(escapedEmailDir.dir, "verdict.json"), "utf8")), { verdict: "pass", reason: "as ***" });
+    } finally { fs.rmSync(escapedEmailDir.root, { recursive: true, force: true }); }
+
+    // 7. Incomplete acceptance credential (e.g., email present but password missing/empty) blocks upload and never writes secrets_checked=true.
+    for (const [label, badCred] of [
+      ["email only, password empty", { email: EMAIL, password: "" }],
+      ["password only, email empty", { email: "", password: PASSWORD }],
+      ["null credential", null],
+    ]) {
+      const box = makePassDir({ verdict: "pass", reason: "home visible" });
+      try {
+        const res = gate.gate(box.dir, { ...RUN, STAMP_CLAIMED_CASE: "login-email-password" }, { credentials: badCred });
+        assert.equal(res.ok, false, label);
+        assert.match(res.reason, /login acceptance credential incomplete/, label);
+        assert.equal(fs.existsSync(path.join(box.dir, "step-00.png")), false, `${label}: evidence deleted`);
+        assert.equal(JSON.parse(fs.readFileSync(path.join(box.dir, "evidence-gate.json"), "utf8")).secrets_checked, false, `${label}: never claims secrets_checked=true`);
+      } finally { fs.rmSync(box.root, { recursive: true, force: true }); }
+    }
+
+    // 8. Legacy password path (no acceptance block) still uses QA_TEST_* env directly.
     const legacy = makePassDir({ verdict: "pass", reason: `signed in as ${EMAIL}` }, { withAcceptance: false });
     try {
       const res = gate.gate(legacy.dir, { ...RUN, QA_TEST_EMAIL: EMAIL, QA_TEST_PASSWORD: PASSWORD });

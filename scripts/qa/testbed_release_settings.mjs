@@ -50,14 +50,22 @@ export function releaseSettingsAudience(testbedUrl, runCaseId, endpoint) {
   return `${new URL(testbedUrl).origin}/api/agent/run-cases/${runCaseId}/${endpoint}`;
 }
 
-/** A GitHub OIDC token for one audience (needs `permissions: id-token: write` on the job). */
+/** A GitHub OIDC token for one audience (needs `permissions: id-token: write` on the job). Never follows redirects. */
 export async function requestOidcToken({ env = process.env, fetchImpl = fetch, audience }) {
   const url = env.ACTIONS_ID_TOKEN_REQUEST_URL;
   const bearer = env.ACTIONS_ID_TOKEN_REQUEST_TOKEN;
   if (!url || !bearer) fail("oidc_unavailable");
   const target = new URL(url);
   target.searchParams.set("audience", audience);
-  const response = await fetchImpl(target, { headers: { Authorization: `Bearer ${bearer}` }, signal: AbortSignal.timeout(20_000) });
+  const response = await fetchImpl(target, {
+    headers: { Authorization: `Bearer ${bearer}` },
+    redirect: "manual",
+    signal: AbortSignal.timeout(20_000),
+  });
+  if (response.status >= 300 && response.status < 400) {
+    await response.body?.cancel().catch(() => {});
+    fail("oidc_redirect_refused");
+  }
   const json = response.ok ? await response.json().catch(() => null) : null;
   if (typeof json?.value !== "string" || !json.value) fail("oidc_unavailable");
   return json.value;
@@ -113,7 +121,7 @@ export function createTestbedReleaseClient({ env = process.env, fetchImpl = fetc
         ...(claimed ? { "X-Testbed-Claim-Token": claimToken } : {}),
       },
       body: JSON.stringify({ id_token: idToken, ...body }),
-      ...(statusOnly ? { redirect: "manual" } : {}),
+      redirect: "manual",
     };
     const delays = retry ? retryDelaysMs : [];
     let lastFailure = `${endpoint}_no_reply`;
@@ -132,6 +140,10 @@ export function createTestbedReleaseClient({ env = process.env, fetchImpl = fetc
         if (response.status < 500) fail(refusals[response.status] ?? `${endpoint}_http_${response.status}`);
         lastFailure = `${endpoint}_http_${response.status}`;
         continue;
+      }
+      if (response.status >= 300 && response.status < 400) {
+        await response.body?.cancel().catch(() => {});
+        fail(`${endpoint}_http_${response.status}`);
       }
       if (response.status >= 400 && response.status < 500) fail(`${endpoint}_http_${response.status}`);
       if (!response.ok || (status !== null && response.status !== status)) {

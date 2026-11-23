@@ -279,3 +279,64 @@ test("fetchLoginAcceptanceCredential fetches runtime credentials in memory witho
     await testbed.close();
   }
 });
+
+test("3xx redirects on OIDC token or login-acceptance-input fail immediately without following or writing files", async () => {
+  const CRED = { email: "runtime.qa@example.invalid", password: "Runtime-Fake-Password-9x!" };
+  for (const [name, mode, expectedCode] of [
+    ["302 on OIDC token endpoint", "oidc-redirect", "oidc_redirect_refused"],
+    ["302 on login-acceptance-input endpoint", "input-redirect", "login-acceptance-input_http_302"],
+    ["307 on login-acceptance-input endpoint", "input-redirect-307", "login-acceptance-input_http_307"],
+  ]) {
+    const hits = [];
+    const server = http.createServer((req, res) => {
+      let text = "";
+      req.on("data", (c) => { text += c; });
+      req.on("end", () => {
+        const u = new URL(req.url, "http://127.0.0.1");
+        hits.push(u.pathname);
+        if (u.pathname === "/redirected") {
+          res.writeHead(200, { "content-type": "application/json" });
+          res.end(JSON.stringify({ value: "should-never-be-followed", ...INPUT, credential: CRED }));
+          return;
+        }
+        if (u.pathname === "/oidc") {
+          if (mode === "oidc-redirect") {
+            res.writeHead(302, { location: `${origin}/redirected` });
+            res.end();
+            return;
+          }
+          res.writeHead(200, { "content-type": "application/json" });
+          res.end(JSON.stringify({ value: `fake-oidc-token-for-${u.searchParams.get("audience")}` }));
+          return;
+        }
+        res.writeHead(mode === "input-redirect-307" ? 307 : 302, { location: `${origin}/redirected` });
+        res.end();
+      });
+    });
+    await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+    const origin = `http://127.0.0.1:${server.address().port}`;
+    const j = job(origin);
+    try {
+      fs.mkdirSync(path.dirname(j.file), { recursive: true });
+      fs.writeFileSync(j.file, JSON.stringify(INPUT), { mode: 0o600 });
+      fs.mkdirSync(path.dirname(j.credFile), { recursive: true });
+      fs.writeFileSync(j.credFile, `${CRED.email}\n${CRED.password}\n`, { mode: 0o600 });
+      await assert.rejects(
+        fetchLoginAcceptanceInput({ env: j.env, retryDelaysMs: [0, 0], includeCredential: true }),
+        (e) => e.message === expectedCode,
+        name,
+      );
+      assert.equal(hits.includes("/redirected"), false, `${name}: redirect target must never be requested`);
+      assert.deepEqual(
+        hits,
+        mode === "oidc-redirect" ? ["/oidc"] : ["/oidc", ENDPOINT],
+        `${name}: stopped on first 3xx without retries`,
+      );
+      assert.equal(fs.existsSync(j.file), false, `${name}: no input file left behind`);
+      assert.equal(fs.existsSync(j.credFile), false, `${name}: no credential file left behind`);
+    } finally {
+      j.close();
+      await new Promise((resolve) => server.close(resolve));
+    }
+  }
+});
