@@ -383,18 +383,17 @@ internal const val RAFT_ARTIFACT_VIEWER_HOST_LOADED_PARAM = "hostLoaded"
  */
 internal enum class RaftArtifactViewerHostAction(val wireName: String) {
     DesktopMode("desktop-mode"),
-    OpenInBrowser("open-in-browser"),
     CopyLink("copy-link"),
 }
 
 /** Every [RaftArtifactViewerHostAction], comma-separated (a const: [RaftArtifactViewerEmbedQuery] is read before it). */
-internal const val RAFT_ARTIFACT_VIEWER_HOST_MENU = "desktop-mode,open-in-browser,copy-link"
+internal const val RAFT_ARTIFACT_VIEWER_HOST_MENU = "desktop-mode,copy-link"
 
 /** What [url]'s fragment asks the App for (`#host=<request>`: the text after `host=`), or null when it asks for nothing. */
 private fun raftArtifactViewerHostRequest(url: String): String? =
     url.substringAfter('#', "").takeIf { it.startsWith("host=") }?.removePrefix("host=")
 
-/** The App action [url]'s fragment asks for (`#host=desktop-mode`, `#host=open-in-browser`, `#host=copy-link`); null for any other. */
+/** The App action [url]'s fragment asks for (`#host=desktop-mode`, `#host=copy-link`); null for any other. */
 internal fun raftArtifactViewerHostAction(url: String): RaftArtifactViewerHostAction? {
     val name = raftArtifactViewerHostRequest(url) ?: return null
     return RaftArtifactViewerHostAction.entries.firstOrNull { it.wireName == name }

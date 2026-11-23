@@ -74,7 +74,7 @@ class ThreadRowReservedHeightUiTest {
             CompositionLocalProvider(LocalArtifactScreenshotReader provides reader) {
                 RaftDesignSystemTheme {
                     Box(Modifier.width(360.dp).testTag("card")) {
-                        ArtifactMessageCard(summary, onOpen = {}, onOpenInNewPage = {})
+                        ArtifactMessageCard(summary, onOpen = {})
                     }
                 }
             }

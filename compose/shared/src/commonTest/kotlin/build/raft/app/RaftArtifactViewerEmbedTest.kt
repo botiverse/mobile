@@ -14,7 +14,7 @@ import kotlin.test.assertTrue
 class RaftArtifactViewerEmbedTest {
     private val web = "https://raft-app-staging.botiverse.dev"
     private val id = "pt_c82e597f-5434-4741-909b-d1c8a7a531c8"
-    private val embed = "embed=raft-settings-v1&shell=host&back=host&hostMenu=desktop-mode,open-in-browser,copy-link&hostOpen=message"
+    private val embed = "embed=raft-settings-v1&shell=host&back=host&hostMenu=desktop-mode,copy-link&hostOpen=message"
 
     @Test
     fun theViewerOpensThePageUnderTheAppTitleBar() {
@@ -73,15 +73,13 @@ class RaftArtifactViewerEmbedTest {
         val page = "$web/artifacts/$id/v/3?$embed&hostDesktop=off"
         // An App item in the page's ⋯ (`#host=<name>`): still this Artifact, at the version shown.
         assertEquals(RaftArtifactViewerHostAction.DesktopMode, raftArtifactViewerHostAction("$page#host=desktop-mode"))
-        assertEquals(RaftArtifactViewerHostAction.OpenInBrowser, raftArtifactViewerHostAction("$page#host=open-in-browser"))
-        assertEquals(RaftArtifactViewerNavigation.Stay(3), raftArtifactViewerNavigation("$page#host=open-in-browser", web, id))
         // Copy link (Hands d292d99f): the page's own item asks, and the viewer stays on this Artifact.
         assertEquals(RaftArtifactViewerHostAction.CopyLink, raftArtifactViewerHostAction("$page#host=copy-link"))
         assertEquals(RaftArtifactViewerNavigation.Stay(3), raftArtifactViewerNavigation("$page#host=copy-link", web, id))
-        // Back's `#host=close` still closes, and is no menu item; other fragments are none either.
+        // Back's `#host=close` still closes, and is no menu item; open-in-browser and other fragments are none either.
         assertEquals(null, raftArtifactViewerHostAction("$page#host=close"))
         assertEquals(RaftArtifactViewerNavigation.Close, raftArtifactViewerNavigation("$page#host=close", web, id))
-        for (other in listOf(page, "$page#host=share", "$page#panel=comments", "$page#host=desktop-mode-x")) {
+        for (other in listOf(page, "$page#host=open-in-browser", "$page#host=share", "$page#panel=comments", "$page#host=desktop-mode-x")) {
             assertEquals(null, raftArtifactViewerHostAction(other), other)
         }
     }
@@ -103,7 +101,7 @@ class RaftArtifactViewerEmbedTest {
         assertEquals(false, raftArtifactViewerHostActionIsNew(tap, handledUrl = tap, handledCleared = true, sinceHandledMs = 100))
         // Taken off since: the page set it again, a new tap.
         assertTrue(raftArtifactViewerHostActionIsNew(tap, handledUrl = tap, handledCleared = true, sinceHandledMs = RAFT_ARTIFACT_VIEWER_HOST_ACTION_REPEAT_MS))
-        assertTrue(raftArtifactViewerHostActionIsNew("$web/artifacts/$id?$embed#host=open-in-browser", handledUrl = tap, handledCleared = false, sinceHandledMs = 0))
+        assertTrue(raftArtifactViewerHostActionIsNew("$web/artifacts/$id?$embed#host=copy-link", handledUrl = tap, handledCleared = false, sinceHandledMs = 0))
     }
 
     @Test

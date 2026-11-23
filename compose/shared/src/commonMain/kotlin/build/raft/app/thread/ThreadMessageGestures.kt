@@ -305,7 +305,8 @@ internal fun Modifier.threadMessageLongPressActions(
     onPointerDown: ((Offset, PointerType) -> Unit)? = null,
     onDoubleTap: ((RaftPopoverAnchor) -> Unit)? = null,
     consumeSelectionDismissalTap: (() -> Boolean)? = null,
-    onContextClick: ((RaftPopoverAnchor) -> Unit)? = null
+    onContextClick: ((RaftPopoverAnchor) -> Unit)? = null,
+    deferContextClickAt: ((Offset) -> Boolean)? = null
 ): Modifier {
     SideEffect {
         gestureOwner.updateCallbacks(
@@ -321,7 +322,8 @@ internal fun Modifier.threadMessageLongPressActions(
                 onPointerDown = onPointerDown,
                 onDoubleTap = onDoubleTap,
                 consumeSelectionDismissalTap = consumeSelectionDismissalTap,
-                onContextClick = onContextClick
+                onContextClick = onContextClick,
+                deferContextClickAt = deferContextClickAt
             )
         )
     }
@@ -357,6 +359,7 @@ internal fun Modifier.threadMessageLongPressActions(
                 val callbacks =
                     gestureOwner.callbacksSnapshot(compositionLease) ?: return@awaitEachGesture
                 val onContextClickCallback = callbacks.onContextClick ?: return@awaitEachGesture
+                if (callbacks.deferContextClickAt?.invoke(press.position) == true) return@awaitEachGesture
                 event.changes.forEach { it.consume() }
                 val anchor = gestureOwner.rootAnchor.resolve(RaftPopoverLocalPoint.Exact(press.position))
                 if (anchor == null) {
@@ -698,7 +701,10 @@ internal data class ThreadMessageLongPressCallbacks(
     val consumeSelectionDismissalTap: (() -> Boolean)? = null,
     // A right-click on the row: open the message menu at the anchor (the pointer). Null: the
     // right-click is left to the row's children (the text's own menu).
-    val onContextClick: ((RaftPopoverAnchor) -> Unit)? = null
+    val onContextClick: ((RaftPopoverAnchor) -> Unit)? = null,
+    // Row-local point owned by a child's own context menu (e.g. an ArtifactMessageCard, web #16110):
+    // leave the secondary press unconsumed so the child opens its menu instead of the message's.
+    val deferContextClickAt: ((Offset) -> Boolean)? = null
 )
 
 /**
@@ -882,6 +888,31 @@ internal class ThreadMessageLongPressGestureOwner(
         return true
     }
 
+    /**
+     * A finger's long press on an interactive child card in this row ([position] in [source]'s
+     * local px, such as an [ArtifactMessageCard] whose own click would otherwise swallow the
+     * press): opens the row's long-press menu at the press, as a long press elsewhere on the row
+     * does. False when the row cannot open its menu now (left composition, no anchor).
+     */
+    fun showActionsForChild(
+        source: LayoutCoordinates,
+        position: Offset,
+        childRole: String,
+    ): Boolean {
+        val lease = captureActiveLease() ?: return false
+        val current = callbacksSnapshot(lease) ?: return false
+        val anchor =
+            rootAnchor.resolveAt(source, position)
+                ?: run {
+                    current.diagnosticsLogger("thread_message_child_long_press_anchor_unavailable role=$childRole messageId=${key.messageId}")
+                    return false
+                }
+        current.diagnosticsLogger("thread_message_child_long_press_menu role=$childRole messageId=${key.messageId}")
+        hidePressFeedback(lease)
+        current.onShowActions(anchor)
+        return true
+    }
+
     fun clearReleasedPressRipple(
         lease: ThreadMessageLongPressCompositionLease,
         expectedOrigin: Offset
@@ -1029,6 +1060,50 @@ internal class ThreadMessageLongPressGestureOwnerStore(
 
 internal val LocalThreadMessageLongPressGestureOwnerStore =
     compositionLocalOf<ThreadMessageLongPressGestureOwnerStore?> { null }
+
+/**
+ * Child regions inside a message row that own their own right-click context menu (live
+ * [ArtifactMessageCard]s, web `ArtifactCardMenu.tsx`, botiverse/slock #16110).
+ *
+ * The row's `context_click` detector runs in [PointerEventPass.Initial] (ahead of the body's
+ * `SelectionContainer`), before any descendant sees that pass. Active children register their live
+ * [LayoutCoordinates] here so the row leaves right-clicks inside them unconsumed for the child.
+ */
+internal class ThreadMessageChildContextMenus {
+    internal var rowCoordinates: LayoutCoordinates? = null
+    private val childCoordinates = mutableMapOf<Any, LayoutCoordinates>()
+
+    fun register(key: Any, coordinates: LayoutCoordinates) {
+        childCoordinates[key] = coordinates
+    }
+
+    fun unregister(key: Any) {
+        childCoordinates.remove(key)
+    }
+
+    fun containsRowOffset(offset: Offset): Boolean {
+        val row = rowCoordinates?.takeIf { it.isAttached } ?: return false
+        return childCoordinates.values.any { child ->
+            if (!child.isAttached) return@any false
+            val width = child.size.width.toFloat()
+            val height = child.size.height.toFloat()
+            if (width <= 0f || height <= 0f) return@any false
+            val local = child.localPositionOf(row, offset)
+            local.x in 0f..width && local.y in 0f..height
+        }
+    }
+}
+
+internal val LocalThreadMessageChildContextMenus =
+    staticCompositionLocalOf<ThreadMessageChildContextMenus?> { null }
+
+/** Where an interactive child card in a message row forwards a finger's long press. */
+internal fun interface ThreadMessageChildLongPressHandler {
+    fun onChildLongPress(source: LayoutCoordinates, position: Offset): Boolean
+}
+
+internal val LocalThreadMessageChildLongPress =
+    staticCompositionLocalOf<ThreadMessageChildLongPressHandler?> { null }
 
 internal fun nextThreadPointerSessionKey(current: Int): Int =
     if (current == Int.MAX_VALUE) 0 else current + 1

@@ -1891,6 +1891,15 @@ internal object RaftLucideIconPaths {
                         RaftLucidePathSpec("m14 9 3 3-3 3"),
                     ),
                 )
+            RaftLucideIconName.PanelRightOpen ->
+                RaftLucideIconSpec(
+                    "panel-right-open",
+                    listOf(
+                        RaftLucidePathSpec("M 5.0 3.0 H 19.0 A 2.0 2.0 0 0 1 21.0 5.0 V 19.0 A 2.0 2.0 0 0 1 19.0 21.0 H 5.0 A 2.0 2.0 0 0 1 3.0 19.0 V 5.0 A 2.0 2.0 0 0 1 5.0 3.0 Z"),
+                        RaftLucidePathSpec("M15 3v18"),
+                        RaftLucidePathSpec("m10 15-3-3 3-3"),
+                    ),
+                )
             RaftLucideIconName.Pause ->
                 RaftLucideIconSpec(
                     "pause",

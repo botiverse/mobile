@@ -4445,7 +4445,8 @@
     <string name="message_card_waiting_for_someone">다른 사람을 기다리는 중</string>
     <string name="message_card_declined">%1$s을(를) 꺼 두었어요.</string>
     <string name="message_card_allow_app">%1$s 허용</string>
-    <string name="artifacts_card_open_in_new_page">새 페이지에서 열기</string>
+    <string name="artifacts_menu_copy_link">링크 복사</string>
+    <string name="artifacts_menu_link_copied">링크를 복사했어요.</string>
     <string name="artifacts_card_comments_one">댓글 1개</string>
     <string name="artifacts_card_comments_many">댓글 %1$d개</string>
     <string name="artifacts_card_loading">Artifact 불러오는 중</string>
@@ -4494,7 +4495,6 @@
     <string name="artifacts_column_title">Artifact</string>
     <string name="artifacts_viewer_unavailable_title">이 Artifact를 열 수 없어요</string>
     <string name="artifacts_viewer_unavailable_body">존재하지 않거나 볼 권한이 없어요.</string>
-    <string name="artifacts_viewer_open_in_browser">브라우저에서 열기</string>
     <string name="activity_list_object_home">· %1$s</string>
     <string name="activity_action_unfollow_artifact">팔로우 취소</string>
     <string name="activity_unfollowed_artifact">%1$s 팔로우를 취소했어요</string>

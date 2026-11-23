@@ -5,13 +5,11 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import build.raft.app.base.Utils
 import build.raft.app.compat.json.JSONObject
 import build.raft.app.compat.module.RouterModule
 import build.raft.app.compat.pager.Pager
-import build.raft.app.components.RaftSlotIcon
 import build.raft.app.data.ARTIFACT_CONTENT_DOMAIN
 import build.raft.app.data.KeyValueLinkOpenPreferenceStore
 import build.raft.app.data.LinkOpenMode
@@ -25,10 +23,6 @@ import build.raft.app.links.raftComparableHostname
 import build.raft.app.nav.RAFT_REPLACE_CURRENT_PAGE
 import build.raft.app.network.RaftContentCdnHost
 import build.raft.app.network.RaftRetiredContentHost
-import build.raft.app.resources.*
-import build.raft.designsystem.components.RaftButtonVariant
-import build.raft.designsystem.components.RaftIconButton
-import build.raft.designsystem.components.RaftIconButtonSize
 
 internal const val SETTINGS_WEB_VIEW_TARGET_URL = "settingsWebViewTargetUrl"
 
@@ -448,7 +442,6 @@ internal fun SettingsOwnWebViewPage(pager: Pager) {
     val webViewController = rememberRaftWebViewController()
     var currentUrl by remember(validatedUrl) { mutableStateOf(validatedUrl) }
     var deflectedNavigation by remember(validatedUrl) { mutableStateOf(false) }
-    val openInBrowserLabel = stringResource(Res.string.in_app_browser_open_system)
 
     fun handleAppStoreRestrictedPurchase(targetUrl: String, closeCurrentPage: Boolean): Boolean {
         if (!appStoreBillingRules || !raftUrlIsAppStoreRestrictedPurchaseUrl(targetUrl, webBaseUrl)) return false
@@ -463,14 +456,6 @@ internal fun SettingsOwnWebViewPage(pager: Pager) {
             pager.acquireModule<RouterModule>(RouterModule.MODULE_NAME).closePage()
         }
         return true
-    }
-
-    fun openCurrentInBrowser() {
-        val candidate = currentUrl.takeIf { it.isNotBlank() && raftWebOriginOf(it) == expectedOrigin } ?: validatedUrl
-        val cleanUrl = stripRaftOwnWebPageEmbedParams(candidate)
-        if (handleAppStoreRestrictedPurchase(cleanUrl, closeCurrentPage = false)) return
-        bridge.log("settings_web-page_open_in_browser url=${raftOwnWebUrlForLog(cleanUrl)}")
-        bridge.openUrl(cleanUrl, inBrowser = true)
     }
 
     fun openExternally(targetUrl: String) {
@@ -508,37 +493,12 @@ internal fun SettingsOwnWebViewPage(pager: Pager) {
             )
         }
 
-    val currentOpenInBrowser by rememberUpdatedState { openCurrentInBrowser() }
-    val nativeActions =
-        remember(openInBrowserLabel, validatedUrl, bridge) {
-            listOf(
-                RaftNativeNavBarAction(
-                    id = "open_in_browser",
-                    label = openInBrowserLabel,
-                    systemSymbol = "arrow.up.right",
-                    icon = RaftLucideIconName.ArrowUpRight,
-                    onClick = { currentOpenInBrowser() },
-                ),
-            )
-        }
-
     StandaloneSettingsWebViewPage(
         pager = pager,
         title = "Raft",
         iconName = RaftLucideIconName.Globe,
         spec = spec,
         controller = webViewController,
-        trailingContent = {
-            RaftIconButton(
-                onClick = ::openCurrentInBrowser,
-                tooltip = openInBrowserLabel,
-                variant = RaftButtonVariant.Ghost,
-                size = RaftIconButtonSize.Md,
-            ) {
-                RaftSlotIcon(RaftLucideIconName.ArrowUpRight)
-            }
-        },
-        nativeActions = nativeActions,
         onNavigationStateChange = { update ->
             val nextUrl = update.state.url.trim()
             if (nextUrl.isNotEmpty() && raftWebOriginOf(nextUrl) == expectedOrigin) {
