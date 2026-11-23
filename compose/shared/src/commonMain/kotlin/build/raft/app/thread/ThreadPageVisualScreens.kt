@@ -656,7 +656,11 @@ internal fun DirectMessageSettingsPanelVisualScreen(
  * create agents.
  */
 @Composable
-internal fun ChannelAddMemberPanelVisualScreen() {
+internal fun ChannelAddMemberPanelVisualScreen(
+    viewerRole: String = "owner",
+    serverName: String = "Visual Server",
+    nowEpochMillis: Long = 1_781_872_200_000L,
+) {
     val candidates = remember { channelPanelVisualCandidates() }
     // fixtureData.json: every candidate agent is `active` / `working`.
     val workingState =
@@ -671,6 +675,13 @@ internal fun ChannelAddMemberPanelVisualScreen() {
         remember(workingState) {
             { memberId -> flowOf(workingState.takeIf { memberId?.startsWith("agent-") == true }) }
         }
+    // Web VisualTestingCases seeds owner role on Visual Server / #design (`useExternalInviteAccess`),
+    // so Add Member renders the bottom "Invite people outside Visual Server" row (#wg-mobile-sync:#207).
+    val externalInviteAccessOn =
+        externalInviteAccess(
+            serverRole = viewerRole,
+            channel = ExternalInviteChannel(type = "channel", name = "design", archived = false),
+        )
     ThreadMembersPageContent(
         members = emptyList(),
         filteredMembers = emptyList(),
@@ -703,6 +714,14 @@ internal fun ChannelAddMemberPanelVisualScreen() {
         onSubmit = {},
         canCreateAgents = true,
         channelName = "design",
+        externalInvites =
+            ExternalInvitesSection(
+                state = ExternalInvitesState(),
+                access = externalInviteAccessOn,
+                management = externalInviteAccessOn,
+                serverName = serverName,
+                nowEpochMillis = nowEpochMillis,
+            ),
     )
 }
 
