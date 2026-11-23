@@ -3847,6 +3847,9 @@ private fun ThreadMessagesListContent(
                     .then(timeRevealModifier)
                     .keyboardDismissModeInteractiveIOS()
                     .dismissInputFocusOnScrollableChrome()
+                    // A mouse wheel or trackpad scrolls without a touch: the touch listener below
+                    // never sees it (task #253).
+                    .threadListWheelScroll(userScrollGeneration)
                     .touchListenerWithConfiguration { type, position, touchSlop ->
                         newerDemandGeneration =
                             newerGestureDemandTracker.onTouch(
@@ -5514,10 +5517,6 @@ private data class ThreadNewerPageCycle(
     val anchor: ThreadVisibleMessageAnchor?,
     val requestViewportEpoch: Long,
     val requestViewportIntent: LazyViewportIntent
-)
-
-private class ThreadUserScrollGeneration(
-    var value: Int = 0
 )
 
 /** Whether the typing line showed in the last applied composition (written only from its SideEffect). */

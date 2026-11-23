@@ -313,15 +313,22 @@ internal fun ThreadListViewport.isThreadOlderAutoLoadThreshold(
         boundaryIndex = boundaryIndex,
         firstVisibleIndex = firstVisibleIndex,
         userScrollGeneration = userScrollGeneration,
-        lastSettledUserScrollGeneration = lastSettledUserScrollGeneration
+        lastSettledUserScrollGeneration = lastSettledUserScrollGeneration,
+        listScrolls = canScrollForward || canScrollBackward,
     )
 }
 
+/**
+ * Whether the list asks for the older page now: the history row is within reach and the reader has
+ * scrolled since the previous page settled (task #1303). [listScrolls]: the list is long enough to scroll.
+ */
+@Suppress("UNUSED_PARAMETER")
 internal fun shouldThreadAutoLoadOlderMessages(
     boundaryIndex: Int,
     firstVisibleIndex: Int,
     userScrollGeneration: Int,
-    lastSettledUserScrollGeneration: Int = 0
+    lastSettledUserScrollGeneration: Int = 0,
+    listScrolls: Boolean = true,
 ): Boolean {
     if (boundaryIndex < 0 || firstVisibleIndex < 0) return false
     if (userScrollGeneration <= lastSettledUserScrollGeneration) return false
