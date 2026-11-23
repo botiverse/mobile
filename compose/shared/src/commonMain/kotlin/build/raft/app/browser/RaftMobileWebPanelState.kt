@@ -146,6 +146,16 @@ internal enum class RaftMobileWebPanelDetent {
 
 internal const val RAFT_MOBILE_WEB_PANEL_DEFAULT_HEIGHT_FRACTION: Float = 0.88f
 
+/**
+ * Computes the backdrop scrim alpha for the mobile web panel overlay.
+ *
+ * Tracks [slideProgress] cleanly from `0f` (hidden) to `1f` (fully expanded at both Default88 and
+ * Fullscreen detents) so the opaque canvas backdrop completely masks the underlying conversation
+ * header behind the 1-line source strip and top safe area.
+ */
+internal fun resolveRaftMobileWebPanelBackdropAlpha(slideProgress: Float): Float =
+    slideProgress.coerceIn(0f, 1f)
+
 /** Target detent after releasing a vertical drag on the panel handle/bar. */
 internal fun resolveRaftMobileWebPanelDragTarget(
     current: RaftMobileWebPanelDetent,
