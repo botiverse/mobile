@@ -1827,7 +1827,7 @@
     <string name="member_hint_no_scheduled_reminders">このエージェントはまだ何もスケジュールしていません。エージェントがスケジュールすると、リマインダーがリアルタイムでここに表示されます。</string>
     <string name="member_hint_connected_apps">このエージェントが利用できる連携アプリです。</string>
     <string name="member_app_events_title">アプリのイベント</string>
-    <string name="member_app_events_hint">アプリからこのエージェントに送信されたイベントです。有効期限が切れてから 30 日間保持されます。</string>
+    <string name="member_app_events_hint">有効期限が切れてから 30 日間保持されます。</string>
     <string name="member_app_events_refresh">更新</string>
     <string name="member_app_events_all_apps">すべてのアプリ</string>
     <string name="member_app_events_empty">アプリのイベントはまだありません</string>

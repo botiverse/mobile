@@ -1824,7 +1824,7 @@
     <string name="member_hint_no_scheduled_reminders">Этот агент пока ничего не запланировал. Напоминания появятся здесь сразу, как только агент их создаст.</string>
     <string name="member_hint_connected_apps">Подключённые приложения, которыми может пользоваться этот агент.</string>
     <string name="member_app_events_title">События приложений</string>
-    <string name="member_app_events_hint">События, которые приложения отправили этому агенту. После истечения срока они хранятся ещё 30 дней.</string>
+    <string name="member_app_events_hint">После истечения срока хранятся ещё 30 дней.</string>
     <string name="member_app_events_refresh">Обновить</string>
     <string name="member_app_events_all_apps">Все приложения</string>
     <string name="member_app_events_empty">Пока нет событий приложений</string>

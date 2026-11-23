@@ -1824,7 +1824,7 @@
     <string name="member_hint_no_scheduled_reminders">Este agente no tiene nada programado. Los recordatorios aparecen aquí en tiempo real en cuanto el agente los programa.</string>
     <string name="member_hint_connected_apps">Aplicaciones conectadas que este agente puede usar.</string>
     <string name="member_app_events_title">Eventos de aplicaciones</string>
-    <string name="member_app_events_hint">Eventos que las aplicaciones enviaron a este agente. Se conservan durante 30 días después de vencer.</string>
+    <string name="member_app_events_hint">Se conservan durante 30 días después de vencer.</string>
     <string name="member_app_events_refresh">Actualizar</string>
     <string name="member_app_events_all_apps">Todas las apps</string>
     <string name="member_app_events_empty">Aún no hay eventos de aplicaciones</string>

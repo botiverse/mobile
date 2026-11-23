@@ -80,7 +80,7 @@ sealed interface AppLinkActionResult<out T> {
  * An execute that Raft accepted: the operation and its state (`sent`, `accepted`, `done`, `refused`...)
  * with Raft's fixed hint and its [tone] (`info`, `success`, `warning`: the state's). [appToast] is the
  * App's own words (`app_result.toast.text`, RFC 076 §6.3), only in the answer to a press whose read
- * declared `execute.toast.v1` (a card message's), when the App's answer finished the operation.
+ * declared `execute.toast.v1` (a link card's or a card message's), when the App's answer finished the operation.
  */
 data class AppLinkExecuted(
     val operationId: String,
