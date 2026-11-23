@@ -116,7 +116,7 @@ internal class ThreadInitialFocusedPlacementOwner(
             retired = true
             return
         }
-        if (!listState.reverse || !owns()) return
+        if (!listState.reverse || listState.isVirtual || !owns()) return
         val resolvedPlacement = placement()
         when (
             val decision =

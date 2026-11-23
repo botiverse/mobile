@@ -292,7 +292,7 @@ internal fun Modifier.raftThreadTailLayoutAnchor(
                 val next = currentInputs.value
                 val nextViewportPx = if (constraints.hasBoundedHeight) constraints.maxHeight else -1
                 var pinned = false
-                if (!next.reverseLayout) {
+                if (!next.reverseLayout && !listState.isVirtual) {
                     val state =
                         Snapshot.withoutReadObservation {
                             ThreadTailLayoutAnchorState(

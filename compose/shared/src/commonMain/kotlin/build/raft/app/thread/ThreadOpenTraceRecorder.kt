@@ -185,16 +185,16 @@ internal fun ThreadOpenShiftRecorderEffect(
     val currentTypeScale = rememberUpdatedState(typeScaleKey)
     val currentFill = rememberUpdatedState(fill)
     LaunchedEffect(session, listState) {
-        val raw: LazyListState = listState.raw
+        val interactionSource = listState.interactionSource
         val startUserNavigationCount = listState.userNavigationCount
         var touched = false
-        val drags = launch { raw.interactionSource.interactions.collect { if (it is DragInteraction.Start) touched = true } }
+        val drags = launch { interactionSource.interactions.collect { if (it is DragInteraction.Start) touched = true } }
         val rows = LazyListFrameRows()
         val inputs = ThreadOpenFrameInputs()
         try {
             while (!session.ended) {
                 withFrameNanos { }
-                rows.info = raw.layoutInfo
+                rows.info = if (listState.isVirtual) listState.layoutInfo else listState.raw.layoutInfo
                 inputs.density = density
                 inputs.userTouching = touched || listState.userNavigationCount != startUserNavigationCount
                 inputs.pageInMotion = inMotion.value

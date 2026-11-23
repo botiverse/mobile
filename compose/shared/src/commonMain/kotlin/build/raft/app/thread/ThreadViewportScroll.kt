@@ -348,8 +348,13 @@ internal suspend fun ThreadListViewport.scrollLatestItemToRenderedBottom(
     commandStillCurrent: () -> Boolean
 ): Boolean {
     if (latestItemIndex < 0) return false
-    if (layoutInfo.totalItemsCount <= latestItemIndex) {
+    if (itemCount <= latestItemIndex) {
         return false
+    }
+    if (!commandStillCurrent()) return false
+    if (isVirtual) {
+        scrollToVirtualBottom(suppressAutoLoad = false)
+        return commandStillCurrent()
     }
     val offset =
         threadRenderedBottomScrollOffset(
@@ -376,10 +381,21 @@ internal suspend fun ThreadListViewport.scrollThreadItemToFocusedViewport(
             viewportHeight = info.viewportEndOffset - info.viewportStartOffset
         )
     },
+    virtualAlign: build.raft.app.thread.experiment.VirtualTimelineAlign = build.raft.app.thread.experiment.VirtualTimelineAlign.Center,
+    virtualReserveBottomPx: Int = 0,
     commandStillCurrent: () -> Boolean
 ): Boolean {
-    if (itemIndex < 0 || layoutInfo.totalItemsCount <= itemIndex) {
+    if (itemIndex < 0 || itemCount <= itemIndex) {
         return false
+    }
+    if (isVirtual) {
+        if (!commandStillCurrent()) return false
+        return jumpToVirtualIndex(
+            index = itemIndex,
+            align = virtualAlign,
+            reserveBottomPx = virtualReserveBottomPx,
+            suppressAutoLoad = true,
+        ) && commandStillCurrent()
     }
     var didScroll = false
     repeat(ThreadFocusedMessageCenterAttempts) {
@@ -408,7 +424,16 @@ internal suspend fun ThreadListViewport.scrollThreadItemToRenderedBottom(
     trailingPaddingSize: Int,
     commandStillCurrent: () -> Boolean
 ): Boolean {
-    if (itemIndex < 0 || layoutInfo.totalItemsCount <= itemIndex) return false
+    if (itemIndex < 0 || itemCount <= itemIndex) return false
+    if (isVirtual) {
+        if (!commandStillCurrent()) return false
+        return jumpToVirtualIndex(
+            index = itemIndex,
+            align = build.raft.app.thread.experiment.VirtualTimelineAlign.End,
+            reserveBottomPx = trailingPaddingSize.coerceAtLeast(0),
+            suppressAutoLoad = true,
+        ) && commandStillCurrent()
+    }
     var didScroll = false
     repeat(ThreadFocusedMessageCenterAttempts) {
         if (!commandStillCurrent()) return false

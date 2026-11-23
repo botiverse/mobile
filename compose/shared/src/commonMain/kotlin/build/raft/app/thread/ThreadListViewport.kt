@@ -1,19 +1,22 @@
 package build.raft.app
 
+import androidx.compose.foundation.gestures.Orientation
+import androidx.compose.foundation.gestures.animateScrollBy
+import androidx.compose.foundation.gestures.scrollBy
+import androidx.compose.foundation.interaction.InteractionSource
+import androidx.compose.foundation.lazy.LazyListItemInfo
+import androidx.compose.foundation.lazy.LazyListLayoutInfo
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.State
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.staticCompositionLocalOf
-import androidx.compose.foundation.gestures.Orientation
-import androidx.compose.foundation.gestures.animateScrollBy
-import androidx.compose.foundation.gestures.scrollBy
-import androidx.compose.foundation.lazy.LazyListItemInfo
-import androidx.compose.foundation.lazy.LazyListLayoutInfo
-import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.ui.unit.IntSize
 import build.raft.app.nav.LocalRaftStackPageLeaving
+import build.raft.app.thread.experiment.VirtualMessageTimelineState
+import build.raft.app.thread.experiment.VirtualTimelineAlign
 import kotlin.coroutines.CoroutineContext
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
@@ -24,31 +27,42 @@ import kotlinx.coroutines.isActive
 internal val LocalThreadReverseLayout = staticCompositionLocalOf { false }
 
 /**
- * The thread message list seen in forward (top-to-bottom, oldest-first) terms, whichever way the
- * underlying [LazyListState] lays out.
- *
- * With [reverse] the list is a `LazyColumn(reverseLayout = true)`: the items are emitted newest-first,
- * so the newest row is physical index 0 and sits at the bottom from the very first frame — no
- * "scroll to the bottom" pass, and nothing to hide behind a loading state. Every thread-page
- * reader and scroll command keeps its forward meaning through this adapter: logical index `i` is
- * physical `count - 1 - i`, offsets are measured from the viewport top, "forward" means toward the
- * newest row. Without [reverse] every member is the raw state unchanged.
+ * Experimental switch (`#proj-mobile:#268`): replaces `ThreadMessagesList`'s `LazyColumn` with
+ * `VirtualMessageTimeline` (`LazyLayout`, forward-ordered, persistent Fenwick height index,
+ * coalesced system rows, native bottom pinning & reading anchor compensation).
  */
-internal class ThreadListViewport(
-    val raw: LazyListState,
+internal val LocalThreadUseVirtualTimeline = staticCompositionLocalOf { false }
+
+/**
+ * The thread message list seen in forward (top-to-bottom, oldest-first) terms, whichever backend
+ * (`LazyListState` or [VirtualMessageTimelineState]) lays it out.
+ */
+internal class ThreadListViewport private constructor(
+    private val rawState: LazyListState?,
     val reverse: Boolean,
+    val virtualState: VirtualMessageTimelineState?,
 ) {
-    /**
-     * Owner lifetime (scroll ownership contract, "Coordinator and native-view lifetime"; Hands
-     * 712d8386): set for good when the list this adapter drives leaves composition
-     * ([ThreadListViewportRetireOnDispose]). A retired adapter issues no scroll: a scroll on a
-     * [LazyListState] whose LazyColumn is gone cancels prefetch work on detached nodes and
-     * crashes (`LayoutNode should be attached to an owner`).
-     */
+    constructor(raw: LazyListState, reverse: Boolean) : this(rawState = raw, reverse = reverse, virtualState = null)
+
+    constructor(virtualState: VirtualMessageTimelineState) : this(
+        rawState = null,
+        reverse = false,
+        virtualState = virtualState,
+    )
+
+    val isVirtual: Boolean
+        get() = virtualState != null
+
+    val raw: LazyListState
+        get() = rawState ?: error("ThreadListViewport is backed by VirtualMessageTimelineState, not LazyListState")
+
+    val interactionSource: InteractionSource
+        get() = virtualState?.interactionSource ?: raw.interactionSource
+
     var isRetired: Boolean = false
         private set
 
-    /** Scrolls this adapter has passed to [raw]; the owner-lifetime tests read it. */
+    /** Scrolls this adapter has passed to its backing list; the owner-lifetime tests read it. */
     var issuedScrolls: Int = 0
         private set
 
@@ -71,26 +85,19 @@ internal class ThreadListViewport(
     var lastScrollOwnerAttempt: Int = 0
         private set
 
-    /**
-     * Explicit non-drag user navigation count (e.g. Back to bottom pill, header scroll-to-top,
-     * outline jump, local send, row expand/collapse). Observe-only: [ThreadOpenShiftRecorderEffect]
-     * treats an increment as [ThreadOpenEnd.UserTookOver] so deliberate user jumps are never
-     * misattributed as open-path jitter (#proj-mobile:#258).
-     */
     var userNavigationCount: Int = 0
         private set
 
     fun noteUserNavigation() {
         userNavigationCount += 1
+        virtualState?.notifyUserScrollGesture()
     }
 
-    /** A writer that dispatches a controller event names itself; the command executor picks it up. */
     fun noteDispatchOwner(tag: String, attempt: Int = 0) {
         pendingDispatchOwner = tag
         pendingDispatchAttempt = attempt
     }
 
-    /** The command executor: the dispatching writer's name, else [defaultTag] for the command's target. */
     fun noteCommandOwner(defaultTag: String) {
         val pending = pendingDispatchOwner
         activeOwnerTag = pending ?: defaultTag
@@ -98,24 +105,18 @@ internal class ThreadListViewport(
         pendingDispatchOwner = null
     }
 
-    /** A writer that scrolls through this adapter directly. */
     fun noteViewportOwner(tag: String) {
         activeOwnerTag = tag
         activeOwnerAttempt = 0
         pendingDispatchOwner = null
     }
 
-    /** A write that bypasses this adapter (`raw.requestScrollToItem`). */
     fun noteRawViewportWrite(tag: String) {
         lastScrollOwnerTag = tag
         lastScrollOwnerAttempt = 0
         ownedScrollCount += 1
     }
 
-    /**
-     * Checked right before each mutation of [raw], with no suspension in between: never from a
-     * cancelling job (throws its [kotlinx.coroutines.CancellationException]), never on a retired list.
-     */
     private suspend fun admitScroll(): Boolean {
         currentCoroutineContext().ensureActive()
         if (isRetired) return false
@@ -127,50 +128,70 @@ internal class ThreadListViewport(
     }
 
     val layoutInfo: LazyListLayoutInfo
-        get() = raw.layoutInfo.let { info -> if (reverse) ReversedThreadLayoutInfo(info) else info }
+        get() =
+            virtualState?.layoutInfo
+                ?: raw.layoutInfo.let { info -> if (reverse) ReversedThreadLayoutInfo(info) else info }
+
+    /** Live item count, reflecting newly-synced virtual rows before the next measure pass runs. */
+    val itemCount: Int
+        get() = virtualState?.heightIndex?.itemCount ?: layoutInfo.totalItemsCount
 
     val isScrollInProgress: Boolean
-        get() = raw.isScrollInProgress
+        get() = virtualState?.isScrollInProgress ?: raw.isScrollInProgress
 
     /** Toward the end of the forward list, i.e. toward the newest row. */
     val canScrollForward: Boolean
-        get() = if (reverse) raw.canScrollBackward else raw.canScrollForward
+        get() =
+            virtualState?.canScrollForward
+                ?: if (reverse) raw.canScrollBackward else raw.canScrollForward
 
     val canScrollBackward: Boolean
-        get() = if (reverse) raw.canScrollForward else raw.canScrollBackward
+        get() =
+            virtualState?.canScrollBackward
+                ?: if (reverse) raw.canScrollForward else raw.canScrollBackward
 
     /** The top-most visible row, as in `LazyListState.firstVisibleItemIndex`. */
     val firstVisibleItemIndex: Int
-        get() = if (reverse) topVisibleItem(layoutInfo)?.index ?: 0 else raw.firstVisibleItemIndex
+        get() =
+            virtualState?.firstVisibleItemIndex
+                ?: if (reverse) topVisibleItem(layoutInfo)?.index ?: 0 else raw.firstVisibleItemIndex
 
     /** How far the top-most visible row is scrolled past the viewport top, as in `LazyListState`. */
     val firstVisibleItemScrollOffset: Int
         get() =
-            if (reverse) {
-                val info = layoutInfo
-                topVisibleItem(info)?.let { (-it.offset).coerceAtLeast(0) } ?: 0
-            } else {
-                raw.firstVisibleItemScrollOffset
-            }
+            virtualState?.firstVisibleItemScrollOffset
+                ?: if (reverse) {
+                    val info = layoutInfo
+                    topVisibleItem(info)?.let { (-it.offset).coerceAtLeast(0) } ?: 0
+                } else {
+                    raw.firstVisibleItemScrollOffset
+                }
 
     /** Forward semantics: positive moves the content up, revealing newer rows. */
     suspend fun scrollBy(value: Float): Float {
         if (!admitScroll()) return 0f
+        virtualState?.let { return it.programmaticScrollBy(value) }
         return if (reverse) -raw.scrollBy(-value) else raw.scrollBy(value)
     }
 
     /** [scrollBy], animated (default spring); a drag cancels it through the scroll mutex. */
     suspend fun animateScrollBy(value: Float): Float {
         if (!admitScroll()) return 0f
+        virtualState?.let { return it.programmaticAnimateScrollBy(value) }
         return if (reverse) -raw.animateScrollBy(-value) else raw.animateScrollBy(value)
     }
 
     /**
      * Forward semantics, as `LazyListState.scrollToItem`: afterwards row [index] has `offset == -scrollOffset`,
-     * measured from the content start after the top padding. Reversed, that needs the row's measured size,
-     * so a row that is not laid out is first brought on screen.
+     * measured from the content start after the top padding.
      */
     suspend fun scrollToItem(index: Int, scrollOffset: Int = 0) {
+        virtualState?.let { virtual ->
+            if (!admitScroll()) return
+            virtual.scrollToIndexWithOffset(index, scrollOffset)
+            awaitVirtualJumpSettled(index)
+            return
+        }
         if (!reverse) {
             if (!admitScroll()) return
             raw.scrollToItem(index, scrollOffset)
@@ -187,26 +208,81 @@ internal class ThreadListViewport(
         currentCoroutineContext().ensureActive()
         val item = layoutInfo.visibleItemsInfo.firstOrNull { it.index == index } ?: return
         val delta = forwardScrollToItemDelta(itemOffset = item.offset, scrollOffset = scrollOffset)
-        // scrollBy admits again: awaitVisible suspended since the first scroll.
-        // Skip a delta into an already-clamped edge so a focused row near the tail doesn't emit a
-        // zero-movement scrollBy or bump ownedScrollCount.
         if (delta != 0 && ((delta > 0 && canScrollForward) || (delta < 0 && canScrollBackward))) {
             scrollBy(delta.toFloat())
         }
     }
 
+    /** Single-pass pre-draw jump on the virtual backend (no multi-frame retry loop). */
+    suspend fun jumpToVirtualIndex(
+        index: Int,
+        align: VirtualTimelineAlign,
+        reserveBottomPx: Int = 0,
+        suppressAutoLoad: Boolean = true,
+    ): Boolean {
+        val virtual = virtualState ?: return false
+        if (index !in 0 until virtual.heightIndex.itemCount) return false
+        if (!admitScroll()) return false
+        virtual.jumpToIndex(
+            index = index,
+            align = align,
+            reserveBottomPx = reserveBottomPx,
+            suppressAutoLoad = suppressAutoLoad,
+        )
+        awaitVirtualJumpSettled(index)
+        return true
+    }
+
+    /** Single-pass bottom-up tail convergence on the virtual backend. */
+    suspend fun scrollToVirtualBottom(suppressAutoLoad: Boolean = false): Boolean {
+        val virtual = virtualState ?: return false
+        if (!admitScroll()) return false
+        virtual.scrollToBottom(suppressAutoLoad = suppressAutoLoad)
+        val lastIndex = (virtual.heightIndex.itemCount - 1).coerceAtLeast(0)
+        awaitVirtualJumpSettled(lastIndex)
+        return true
+    }
+
+    /** Non-suspending forward scroll request (replaces `raw.requestScrollToItem` on virtual backend). */
+    fun requestForwardScrollToItem(index: Int, scrollOffset: Int = 0) {
+        if (isRetired) return
+        virtualState?.let { virtual ->
+            virtual.scrollToIndexWithOffset(index, scrollOffset)
+            return
+        }
+        raw.requestScrollToItem(index, scrollOffset)
+    }
+
+    fun setVirtualFollowBottom(enabled: Boolean) {
+        virtualState?.setFollowBottom(enabled)
+    }
+
+    fun pinVirtualReadingAnchorKey(key: Any?) {
+        virtualState?.pinReadingAnchorKey(key)
+    }
+
     /**
      * `scrollToItem` on [raw] in raw terms (physical index, offset from the bottom when reversed).
-     * It forces a remeasure, so started undispatched outside a layout pass it completes before the
-     * frame is drawn ([ThreadReadingAnchorKeeper]).
      */
     suspend fun scrollRawToItem(rawIndex: Int, scrollOffset: Int) {
+        virtualState?.let { virtual ->
+            if (!admitScroll()) return
+            virtual.scrollToIndexWithOffset(rawIndex, scrollOffset)
+            awaitVirtualJumpSettled(rawIndex)
+            return
+        }
         if (rawIndex !in 0 until raw.layoutInfo.totalItemsCount) return
         if (!admitScroll()) return
         raw.scrollToItem(rawIndex, scrollOffset)
     }
 
     suspend fun animateScrollToItem(index: Int, scrollOffset: Int = 0) {
+        virtualState?.let { virtual ->
+            if (!admitScroll()) return
+            virtual.animateScrollToIndex(index, scrollOffset)
+            awaitVirtualJumpSettled(index)
+            return
+        }
         if (!reverse) {
             if (!admitScroll()) return
             raw.animateScrollToItem(index, scrollOffset)
@@ -219,6 +295,21 @@ internal class ThreadListViewport(
         scrollToItem(index, scrollOffset)
     }
 
+    private suspend fun awaitVirtualJumpSettled(targetIndex: Int) {
+        val virtual = virtualState ?: return
+        repeat(ThreadListViewportSettleFrames) {
+            val info = virtual.layoutInfo
+            if (
+                !virtual.isJumpSettling &&
+                info.totalItemsCount > targetIndex &&
+                info.visibleItemsInfo.any { it.index == targetIndex }
+            ) {
+                return
+            }
+            delay(ThreadListViewportSettleFrameMs)
+        }
+    }
+
     private suspend fun awaitVisible(index: Int) {
         repeat(ThreadListViewportSettleFrames) {
             if (layoutInfo.visibleItemsInfo.any { it.index == index }) return
@@ -227,43 +318,22 @@ internal class ThreadListViewport(
     }
 }
 
-/**
- * Retires [viewport] ([ThreadListViewport.retire]) when this leaves composition. Call it in the
- * composable that owns the list, after the effects that scroll [viewport]: effects are disposed in
- * reverse order, so the list is retired before those effects' jobs are cancelled (the contract's
- * "invalidate before scope cancellation").
- */
 @Composable
 internal fun ThreadListViewportRetireOnDispose(viewport: ThreadListViewport) {
     DisposableEffect(viewport) { onDispose { viewport.retire() } }
 }
 
-/**
- * Whether the owner of a programmatic thread-list scroll is still live after a suspension: the job
- * issuing it ([context]) is active, the list is still composed, and its page is not leaving the
- * page stack ([pageLeaving], `LocalRaftStackPageLeaving`). Checked after every suspension point,
- * before the next `scrollToItem` / `scrollBy`, on top of the command's own currency checks.
- */
 internal fun ThreadListViewport.scrollOwnerLive(context: CoroutineContext, pageLeaving: Boolean): Boolean =
     context.isActive && !isRetired && !pageLeaving
 
-/** What a [ThreadListScrollOwnerEffect] block checks after each suspension: [ownerLive]. */
 internal class ThreadListScrollOwnerScope(
     val viewport: ThreadListViewport,
     private val context: CoroutineContext,
     private val pageLeaving: State<Boolean>,
 ) {
-    /** [scrollOwnerLive] for this effect's job, its list and its page, read now. */
     fun ownerLive(): Boolean = viewport.scrollOwnerLive(context, pageLeaving = pageLeaving.value)
 }
 
-/**
- * A `LaunchedEffect(key1, key2)` that scrolls [viewport], with the owner lifetime wired in (Hands
- * 712d8386): it is also keyed on the page leaving the stack (`LocalRaftStackPageLeaving`) and does
- * not run [block] on a leaving page, and it retires [viewport] when it leaves composition, before
- * its job is cancelled ([ThreadListViewportRetireOnDispose] after the effect). [block] still has to
- * check [ThreadListScrollOwnerScope.ownerLive] after every suspension, before its next scroll.
- */
 @Composable
 internal fun ThreadListScrollOwnerEffect(
     viewport: ThreadListViewport,
@@ -283,16 +353,10 @@ internal fun ThreadListScrollOwnerEffect(
 private const val ThreadListViewportSettleFrames = 6
 private const val ThreadListViewportSettleFrameMs = 16L
 
-/** Forward `scrollBy` that brings a row at [itemOffset] to `offset == -scrollOffset`. */
 internal fun forwardScrollToItemDelta(itemOffset: Int, scrollOffset: Int): Int = itemOffset + scrollOffset
 
-/** Physical index of forward index [index] (and back: the mapping is its own inverse). */
 internal fun reversedThreadListIndex(index: Int, count: Int): Int = count - 1 - index
 
-/**
- * Forward offset (from the viewport top, after the top content padding) of a reversed-layout row
- * whose raw offset is [rawOffset] (from the bottom, after the bottom padding) and size [size].
- */
 internal fun reversedThreadListItemOffset(
     rawOffset: Int,
     size: Int,
@@ -301,19 +365,11 @@ internal fun reversedThreadListItemOffset(
     rawAfterContentPadding: Int,
 ): Int = layoutSize - rawBeforeContentPadding - rawAfterContentPadding - rawOffset - size
 
-/**
- * The forward first visible item: like Compose, rows lying wholly inside the top content padding are
- * skipped (offsets are measured from the content start after that padding).
- */
 internal fun topVisibleItem(info: LazyListLayoutInfo): LazyListItemInfo? =
     info.visibleItemsInfo
         .filter { it.offset + it.size > 0 }
         .minByOrNull { it.index }
 
-/**
- * A reversed layout presented forward: indices flipped, offsets measured from the top, paddings
- * swapped (the raw "before" padding of a reversed list is the bottom one), items in ascending order.
- */
 internal class ReversedThreadLayoutInfo(private val raw: LazyListLayoutInfo) : LazyListLayoutInfo {
     private val layoutSize: Int = raw.viewportEndOffset - raw.viewportStartOffset
 

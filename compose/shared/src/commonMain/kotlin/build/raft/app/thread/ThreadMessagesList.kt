@@ -2,6 +2,13 @@ package build.raft.app
 
 import build.raft.app.nav.LocalRaftStackPageLeaving
 import build.raft.app.resources.*
+import build.raft.app.thread.experiment.LocalThreadViewportObserver
+import build.raft.app.thread.experiment.LocalThreadVirtualTimelineObserver
+import build.raft.app.thread.experiment.ThreadVirtualRow
+import build.raft.app.thread.experiment.VirtualMessageTimeline
+import build.raft.app.thread.experiment.VirtualTimelineAlign
+import build.raft.app.thread.experiment.buildThreadVirtualRowProjection
+import build.raft.app.thread.experiment.rememberVirtualMessageTimelineState
 import build.raft.designsystem.components.RaftLocatedMillis
 import build.raft.app.RAFT_ADAPTIVE_DETAIL_IDENTITY_KEY
 import build.raft.app.data.ThreadFindIntent
@@ -577,28 +584,64 @@ private fun ThreadMessagesListContent(
             )
     val showReplyEmptyState =
         renderPayload.messages.isEmpty() && renderPayload.originStatus != "none" && !showReplyLoadingSkeleton
+    val useVirtualTimelineRequested = LocalThreadUseVirtualTimeline.current
+    val useVirtualTimeline = remember(threadInstanceKey) { useVirtualTimelineRequested }
+    val duplicateMessageRandomIds =
+        remember(renderPayload.messages) {
+            renderPayload.messages.threadDuplicateRandomIds()
+        }
+    // Adjacent system messages fold into one row (ThreadSystemMessageGroups.kt, web
+    // systemMessageGrouping). On the experimental virtual timeline (#proj-mobile:#268), folded
+    // members are omitted from the virtual row list altogether via ThreadVirtualRowProjection.
+    val systemMessageFolds =
+        remember(renderPayload.messages, renderPayload.timelineGaps) {
+            threadSystemMessageFolds(renderPayload.messages, renderPayload.timelineGaps)
+        }
+    var expandedSystemMessageGroups by remember(threadInstanceKey) { mutableStateOf(emptySet<String>()) }
+    val virtualProjection =
+        remember(
+            useVirtualTimeline,
+            renderPayload,
+            duplicateMessageRandomIds,
+            systemMessageFolds,
+            expandedSystemMessageGroups,
+            showReplyEmptyState,
+            showReplyLoadingSkeleton,
+        ) {
+            if (useVirtualTimeline) {
+                buildThreadVirtualRowProjection(
+                    renderPayload = renderPayload,
+                    duplicateMessageRandomIds = duplicateMessageRandomIds,
+                    systemMessageFolds = systemMessageFolds,
+                    expandedSystemMessageGroups = expandedSystemMessageGroups,
+                    showReplyEmptyState = showReplyEmptyState,
+                    showReplyLoadingSkeleton = showReplyLoadingSkeleton,
+                )
+            } else {
+                null
+            }
+        }
+    val currentVirtualProjectionState = rememberUpdatedState(virtualProjection)
     val lazyItemCount =
-        threadMessagesLazyItemCount(
-            originStatus = renderPayload.originStatus,
-            showHistoryBoundary = renderPayload.hasThreadHistoryBoundaryItem(),
-            messagesCount = renderPayload.messages.size,
-            canLoadMoreAfter = renderPayload.canLoadMoreAfter,
-            showReplyEmptyState = showReplyEmptyState || showReplyLoadingSkeleton,
-            showBottomScrollPadding = true
-        )
-    // Bottom-anchor signature: only the fields the anchor logic actually
-    // reads. The previous remember keys listed the full payload message
-    // list reference) which invalidated the cache on any list
-    // replacement, even when the content was equivalent. Now the cache
-    // is keyed on the content fields the underlying functions read.
+        virtualProjection?.totalRowCount
+            ?: threadMessagesLazyItemCount(
+                originStatus = renderPayload.originStatus,
+                showHistoryBoundary = renderPayload.hasThreadHistoryBoundaryItem(),
+                messagesCount = renderPayload.messages.size,
+                canLoadMoreAfter = renderPayload.canLoadMoreAfter,
+                showReplyEmptyState = showReplyEmptyState || showReplyLoadingSkeleton,
+                showBottomScrollPadding = true
+            )
     val latestItemIndex = remember(
+        virtualProjection,
         renderPayload.originStatus,
         renderPayload.messages.size,
         lazyItemCount
     ) {
-        renderPayload.bottomScrollPaddingListItemIndex(lazyItemCount)
+        virtualProjection?.bottomSpacerRowIndex ?: renderPayload.bottomScrollPaddingListItemIndex(lazyItemCount)
     }
-    val latestMessageListItemIndex = renderPayload.latestMessageListItemIndex()
+    val latestMessageListItemIndex =
+        virtualProjection?.latestMessageRowIndex ?: renderPayload.latestMessageListItemIndex()
     val initialBottomAnchorTargetItemIndex =
         threadInitialBottomAnchorTargetItemIndex(
             latestMessageItemIndex = latestMessageListItemIndex,
@@ -619,22 +662,24 @@ private fun ThreadMessagesListContent(
         }
     // Decided once per list instance: re-mapping indices under a live list would be wrong.
     val reverseLayoutRequested = LocalThreadReverseLayout.current
-    val reverseLayout = remember(threadInstanceKey) { reverseLayoutRequested }
-    // Hands 9e3ca082: this state outlives the LazyColumn below (and its node); the LazyColumn's
-    // detachSafeLazyListPrefetch drops a detached node's pending prefetch, which a later scroll
-    // would otherwise cancel on that node and crash in requireOwner.
+    val reverseLayout = remember(threadInstanceKey) { if (useVirtualTimeline) false else reverseLayoutRequested }
     val initialFocusedItemIndex =
-        renderPayload
-            .focusedMessageListItemIndex()
+        (
+            if (virtualProjection != null) {
+                renderPayload.focusedMessageId
+                    ?.takeIf { it.isNotBlank() }
+                    ?.takeUnless(renderPayload::isFocusedOriginMessage)
+                    ?.let { virtualProjection.rowIndexForMessageId(it) }
+                    ?: -1
+            } else {
+                renderPayload.focusedMessageListItemIndex()
+            }
+        )
             .takeIf { it in 0 until lazyItemCount && !adaptiveAnchorRestoreInFlight }
             ?: -1
     val threadListPrefetch = rememberDetachSafeLazyListPrefetch()
     val rawListState = rememberDetachSafeLazyListState(
         prefetch = threadListPrefetch,
-        // Start at the cached focused target when present (#proj-mobile:#258) so Frame 1 never
-        // paints the bottom of the conversation and jumps up (`focused_reanchor @ cache_rows_shown`).
-        // Reversed lists then align the measured row synchronously before Frame 1 draws via
-        // ThreadInitialFocusedPlacementOwner; non-focused opens still start at the latest viewport.
         initialFirstVisibleItemIndex =
             threadInitialFirstVisibleItemIndex(
                 reverseLayout = reverseLayout,
@@ -643,7 +688,81 @@ private fun ThreadMessagesListContent(
                 focusedItemIndex = initialFocusedItemIndex,
             )
     )
-    val listState = remember(rawListState, reverseLayout) { ThreadListViewport(rawListState, reverseLayout) }
+    val initialVirtualJumpKey =
+        if (useVirtualTimeline && initialFocusedItemIndex >= 0) {
+            renderPayload.focusedMessageId?.let { virtualProjection?.rowKeyForMessageId(it) }
+                ?: virtualProjection?.rows?.getOrNull(initialFocusedItemIndex)?.key
+        } else {
+            null
+        }
+    val initialVirtualJumpBasePlacement =
+        threadFocusedAnchorBasePlacement(
+            requestNonce = renderPayload.focusedMessageRequestNonce,
+            unreadThreadJumpFocusNonce = jumpInputs.jumpFocusNonce,
+        )
+    val initialVirtualJumpAlign =
+        if (initialVirtualJumpBasePlacement == LazyViewportAnchorPlacement.FocusedThreadReplies) {
+            VirtualTimelineAlign.FocusedThreadReplies
+        } else {
+            VirtualTimelineAlign.Top
+        }
+    val initialVirtualJumpReserveBottomPx =
+        if (initialVirtualJumpBasePlacement == LazyViewportAnchorPlacement.FocusedThreadReplies) {
+            with(threadDensity) { ThreadRepliesFocusMinBottomReserve.roundToPx() }
+        } else {
+            0
+        }
+    val virtualTimelineState =
+        rememberVirtualMessageTimelineState(
+            key = threadInstanceKey,
+            initialFollowBottom = useVirtualTimeline && initialFocusedItemIndex < 0 && !adaptiveAnchorRestoreInFlight,
+            initialJumpKey = initialVirtualJumpKey,
+            initialJumpAlign = initialVirtualJumpAlign,
+            initialJumpReserveBottomPx = initialVirtualJumpReserveBottomPx,
+        )
+    val listState =
+        remember(useVirtualTimeline, rawListState, reverseLayout, virtualTimelineState) {
+            if (useVirtualTimeline) {
+                ThreadListViewport(virtualTimelineState)
+            } else {
+                ThreadListViewport(rawListState, reverseLayout)
+            }
+        }
+    fun messageListItemIndexFor(slice: ThreadTimelineSlice, messageId: String): Int =
+        currentVirtualProjectionState.value?.rowIndexForMessageId(messageId)
+            ?: slice.threadMessageListItemIndex(messageId)
+    fun focusedListItemIndexFor(slice: ThreadTimelineSlice): Int {
+        val projection = currentVirtualProjectionState.value
+        return if (projection != null) {
+            slice.focusedMessageId
+                ?.takeIf { it.isNotBlank() }
+                ?.takeUnless(slice::isFocusedOriginMessage)
+                ?.let { projection.rowIndexForMessageId(it) }
+                ?: -1
+        } else {
+            slice.focusedMessageListItemIndex()
+        }
+    }
+    fun viewportTargetIndexFor(slice: ThreadTimelineSlice, target: LazyViewportAnchorTarget): Int =
+        currentVirtualProjectionState.value?.rowIndexForViewportTarget(target)
+            ?: slice.threadViewportListItemIndex(target)
+    fun historyBoundaryIndexFor(slice: ThreadTimelineSlice): Int =
+        currentVirtualProjectionState.value?.historyBoundaryRowIndex
+            ?: slice.threadHistoryBoundaryListItemIndex()
+    fun firstVisibleAnchorFor(slice: ThreadTimelineSlice, scrollGen: Int): ThreadVisibleMessageAnchor? =
+        currentVirtualProjectionState.value?.firstVisibleMessageAnchor(listState.layoutInfo, scrollGen)
+            ?: listState.threadFirstVisibleMessageAnchor(slice, scrollGen)
+    fun readingAnchorFor(slice: ThreadTimelineSlice, scrollGen: Int): ThreadVisibleMessageAnchor? =
+        currentVirtualProjectionState.value?.readingAnchorMessage(listState.layoutInfo, scrollGen)
+            ?: listState.threadReadingAnchorMessage(slice, scrollGen)
+    val viewportObserver = LocalThreadViewportObserver.current
+    if (viewportObserver != null) {
+        SideEffect { viewportObserver(listState) }
+    }
+    val virtualObserver = LocalThreadVirtualTimelineObserver.current
+    if (useVirtualTimeline && virtualProjection != null && virtualObserver != null) {
+        SideEffect { virtualObserver(virtualTimelineState, virtualProjection) }
+    }
     var allowBottomAutoAnchor by remember(threadInstanceKey) {
         mutableStateOf(initialFocusedItemIndex < 0)
     }
@@ -760,9 +879,8 @@ private fun ThreadMessagesListContent(
             val firstMessageIndex = renderPayload.firstMessageListItemIndex()
             val locatedIndex =
                 anchor.messageId
-                    ?.let { id -> renderPayload.messages.indexOfFirst { m -> m.id == id } }
+                    ?.let { id -> messageListItemIndexFor(renderPayload, id) }
                     ?.takeIf { it >= 0 }
-                    ?.let { it + firstMessageIndex }
             if (locatedIndex != null) {
                 postDetailReadyTrace("layout_wait_begin") {
                     put("anchorMessageId", anchor.messageId)
@@ -824,9 +942,15 @@ private fun ThreadMessagesListContent(
                 listState.awaitThreadMessagesLayoutFrame()
                 postDetailReadyTrace("layout_wait_end")
                 val fallbackMessageId =
-                    renderPayload.messages
-                        .getOrNull(anchor.fallbackIndex - firstMessageIndex)
-                        ?.id
+                    currentVirtualProjectionState.value.let { projection ->
+                        if (projection != null) {
+                            projection.messageIdAtRowIndex(anchor.fallbackIndex)
+                        } else {
+                            renderPayload.messages
+                                .getOrNull(anchor.fallbackIndex - firstMessageIndex)
+                                ?.id
+                        }
+                    }
                 if (fallbackMessageId != null) {
                     // Same ownership transfer as the located branch: intent must leave
                     // FollowingLatest or a later inset relayout replays Latest and yanks the
@@ -925,7 +1049,8 @@ private fun ThreadMessagesListContent(
         val density = threadDensity.density
         var smoothedRowHeightPx = 0f
         snapshotFlow {
-            threadAverageVisibleRowHeightPx(listState.raw.layoutInfo.visibleItemsInfo) to measuredThreadViewportHeightDp
+            val info = if (listState.isVirtual) listState.layoutInfo else listState.raw.layoutInfo
+            threadAverageVisibleRowHeightPx(info.visibleItemsInfo) to measuredThreadViewportHeightDp
         }
             .distinctUntilChanged()
             .collect { (averageRowHeightPx, viewportHeightDp) ->
@@ -949,10 +1074,6 @@ private fun ThreadMessagesListContent(
     val imeTailPixelProbeRunner =
         remember(threadInstanceKey, coroutineScope) {
             ThreadImeTailPixelProbeRunner(coroutineScope)
-        }
-    val duplicateMessageRandomIds =
-        remember(renderPayload.messages) {
-            renderPayload.messages.threadDuplicateRandomIds()
         }
     // Phase 1 (#172) instrumentation: per-Thread session marker that
     // uniquely identifies this Thread entry. Combined with the row-level
@@ -980,7 +1101,7 @@ private fun ThreadMessagesListContent(
     val menuState = remember(threadInstanceKey) { ThreadMessageMenuState() }
     // Only the user's own scroll closes the author popover: a programmatic scroll such as the
     // reading-anchor correction (ThreadReadingAnchorKeeper.kt) after a Save or a reaction must not.
-    ThreadUserScrollEffect(listState.raw) {
+    ThreadUserScrollEffect(listState) {
         if (menuState.authorDescriptionPopover != null) menuState.authorDescriptionPopover = null
     }
 
@@ -1025,45 +1146,75 @@ private fun ThreadMessagesListContent(
         val expanding = !longMessageCollapseController.isExpanded(messageId)
         val heightDelta = longMessageCollapseController.toggleHeightDelta(messageId, expanding)
         val forwardItem = listState.layoutInfo.visibleItemsInfo.firstOrNull { it.index == listItemIndex }
-        val rawCount = listState.raw.layoutInfo.totalItemsCount
-        val rawIndex = if (reverseLayout) reversedThreadListIndex(listItemIndex, rawCount) else listItemIndex
-        val rawItem = listState.raw.layoutInfo.visibleItemsInfo.firstOrNull { it.index == rawIndex }
         longMessageCollapseController.setExpanded(messageId, expanding)
         if (forwardItem != null && !listState.isScrollInProgress) {
             listState.noteUserNavigation()
         }
         val ownsViewport =
-            forwardItem != null &&
-                rawItem != null &&
-                !listState.isScrollInProgress &&
-                (expanding || viewportControllerState.intent != LazyViewportIntent.FollowingLatest)
-        val keptByReadingAnchor =
-            ownsViewport && forwardItem != null && reverseLayout && (expanding || forwardItem.offset >= 0)
-        if (keptByReadingAnchor && forwardItem != null) {
-            keepTappedRowForLongMessage(messageId, forwardItem.offset, expanding)
-        } else if (ownsViewport && forwardItem != null && rawItem != null) {
-            val plan =
-                raftLongMessageToggleScrollPlan(
-                    reverseLayout = reverseLayout,
-                    expanding = expanding,
-                    forwardIndex = listItemIndex,
-                    totalItemsCount = rawCount,
-                    itemTopBefore = forwardItem.offset,
-                    rawItemOffsetBefore = rawItem.offset,
-                    heightDelta = heightDelta
-                )
-            plan.rawScrollRequest?.let { request ->
-                listState.raw.requestScrollToItem(request.rawIndex, request.scrollOffset)
-                listState.noteRawViewportWrite(ThreadViewportOwnerTag.LongMessageToggle)
+            if (listState.isVirtual) {
+                forwardItem != null &&
+                    !listState.isScrollInProgress &&
+                    (expanding || viewportControllerState.intent != LazyViewportIntent.FollowingLatest)
+            } else {
+                val rawCount = listState.raw.layoutInfo.totalItemsCount
+                val rawIndex = if (reverseLayout) reversedThreadListIndex(listItemIndex, rawCount) else listItemIndex
+                val rawItem = listState.raw.layoutInfo.visibleItemsInfo.firstOrNull { it.index == rawIndex }
+                forwardItem != null &&
+                    rawItem != null &&
+                    !listState.isScrollInProgress &&
+                    (expanding || viewportControllerState.intent != LazyViewportIntent.FollowingLatest)
             }
-            dispatchViewportEvent(
-                LazyViewportEvent.Anchor(
-                    target = LazyViewportAnchorTarget.Message(messageId),
-                    offset = plan.desiredTop,
-                    layoutGeneration = viewportLayoutGeneration,
-                    fallback = LazyViewportAnchorFallback.Free
+        if (listState.isVirtual) {
+            if (ownsViewport && forwardItem != null) {
+                val desiredTop = if (!expanding && forwardItem.offset < 0) 0 else forwardItem.offset
+                val rowKey = currentVirtualProjectionState.value?.rowKeyForMessageId(messageId)
+                if (!expanding && forwardItem.offset < 0) {
+                    listState.requestForwardScrollToItem(listItemIndex, 0)
+                    listState.noteRawViewportWrite(ThreadViewportOwnerTag.LongMessageToggle)
+                } else if (rowKey != null) {
+                    listState.pinVirtualReadingAnchorKey(rowKey)
+                }
+                dispatchViewportEvent(
+                    LazyViewportEvent.Anchor(
+                        target = LazyViewportAnchorTarget.Message(messageId),
+                        offset = desiredTop,
+                        layoutGeneration = viewportLayoutGeneration,
+                        fallback = LazyViewportAnchorFallback.Free
+                    )
                 )
-            )
+            }
+        } else {
+            val rawCount = listState.raw.layoutInfo.totalItemsCount
+            val rawIndex = if (reverseLayout) reversedThreadListIndex(listItemIndex, rawCount) else listItemIndex
+            val rawItem = listState.raw.layoutInfo.visibleItemsInfo.firstOrNull { it.index == rawIndex }
+            val keptByReadingAnchor =
+                ownsViewport && forwardItem != null && reverseLayout && (expanding || forwardItem.offset >= 0)
+            if (keptByReadingAnchor && forwardItem != null) {
+                keepTappedRowForLongMessage(messageId, forwardItem.offset, expanding)
+            } else if (ownsViewport && forwardItem != null && rawItem != null) {
+                val plan =
+                    raftLongMessageToggleScrollPlan(
+                        reverseLayout = reverseLayout,
+                        expanding = expanding,
+                        forwardIndex = listItemIndex,
+                        totalItemsCount = rawCount,
+                        itemTopBefore = forwardItem.offset,
+                        rawItemOffsetBefore = rawItem.offset,
+                        heightDelta = heightDelta
+                    )
+                plan.rawScrollRequest?.let { request ->
+                    listState.raw.requestScrollToItem(request.rawIndex, request.scrollOffset)
+                    listState.noteRawViewportWrite(ThreadViewportOwnerTag.LongMessageToggle)
+                }
+                dispatchViewportEvent(
+                    LazyViewportEvent.Anchor(
+                        target = LazyViewportAnchorTarget.Message(messageId),
+                        offset = plan.desiredTop,
+                        layoutGeneration = viewportLayoutGeneration,
+                        fallback = LazyViewportAnchorFallback.Free
+                    )
+                )
+            }
         }
         if (expanding && forwardItem != null && !listState.isScrollInProgress) {
             // The opened text starts where the "Show more" control was (the clipped body's end).
@@ -1112,13 +1263,14 @@ private fun ThreadMessagesListContent(
         }
         snapshotFlow {
             val info = listState.layoutInfo
-            threadVisibleMessageIndexRange(
-                rows = info.visibleItemsInfo.map { item -> ThreadJumpVisibleRow(item.index, item.offset, item.size) },
-                viewportStart = info.viewportStartOffset,
-                viewportEnd = info.viewportEndOffset,
-                firstMessageListItemIndex = renderPayload.firstMessageListItemIndex(),
-                messageCount = renderPayload.messages.size,
-            )
+            currentVirtualProjectionState.value?.visibleMessageIndexRange(info)
+                ?: threadVisibleMessageIndexRange(
+                    rows = info.visibleItemsInfo.map { item -> ThreadJumpVisibleRow(item.index, item.offset, item.size) },
+                    viewportStart = info.viewportStartOffset,
+                    viewportEnd = info.viewportEndOffset,
+                    firstMessageListItemIndex = renderPayload.firstMessageListItemIndex(),
+                    messageCount = renderPayload.messages.size,
+                )
         }
             .distinctUntilChanged()
             .collect { range -> if (range != visibleMessageIndexes) visibleMessageIndexes = range }
@@ -1168,15 +1320,19 @@ private fun ThreadMessagesListContent(
     val keepReadingAnchorFor: (String) -> Unit =
         remember(readingAnchorOwner) {
             { messageId ->
-                val index = readingAnchorPayloadState.value.threadMessageListItemIndex(messageId)
+                val index = messageListItemIndexFor(readingAnchorPayloadState.value, messageId)
                 val item = listState.layoutInfo.visibleItemsInfo.firstOrNull { it.index == index }
                 if (
                     item != null &&
-                    listState.reverse &&
+                    (listState.reverse || listState.isVirtual) &&
                     !listState.isScrollInProgress &&
                     viewportControllerState.intent != LazyViewportIntent.FollowingLatest
                 ) {
-                    readingAnchorOwner.keeper.anchorOn(messageId)
+                    if (listState.isVirtual) {
+                        listState.pinVirtualReadingAnchorKey(currentVirtualProjectionState.value?.rowKeyForMessageId(messageId))
+                    } else {
+                        readingAnchorOwner.keeper.anchorOn(messageId)
+                    }
                     dispatchViewportEvent(
                         LazyViewportEvent.Anchor(
                             target = LazyViewportAnchorTarget.Message(messageId),
@@ -1209,9 +1365,9 @@ private fun ThreadMessagesListContent(
         if (holder != null) {
             holder.captureAnchor = anchor@{ requestId ->
                 val first =
-                    listState.threadFirstVisibleMessageAnchor(
-                        timelineSlice = latestTimelineSlice,
-                        userScrollGeneration = userScrollGeneration.value,
+                    firstVisibleAnchorFor(
+                        slice = latestTimelineSlice,
+                        scrollGen = userScrollGeneration.value,
                     ) ?: return@anchor null
                 // atLatest must reflect the viewport's settled intent, not instantaneous
                 // geometry: during a resize/rotation frame `canScrollForward` can read
@@ -1370,7 +1526,7 @@ private fun ThreadMessagesListContent(
     val inlineSearchQuery = threadFindState?.query.orEmpty()
     val activeInlineSearchMatch =
         threadFindState?.activeMessageId?.takeIf { inlineSearchVisible }?.let { messageId ->
-            ThreadInlineSearchMatch(messageId, renderPayload.threadMessageListItemIndex(messageId))
+            ThreadInlineSearchMatch(messageId, messageListItemIndexFor(renderPayload, messageId))
         }
     val activeInlineSearchMessageId = activeInlineSearchMatch?.messageId
     // A match the page hasn't loaded: the thread timeline's jump loads around it, once per match.
@@ -1387,14 +1543,6 @@ private fun ThreadMessagesListContent(
         diagnosticsLogger("thread_find_jump messageId=${match.messageId.take(8)}")
         onThreadEvent(ThreadFindJumpAction, match.messageId, null, null)
     }
-    // Adjacent system messages fold into one row (ThreadSystemMessageGroups.kt, web
-    // systemMessageGrouping). Render-only: every message keeps its own lazy item, key and index.
-    // Groups are closed by default; the open ones are kept while this conversation is shown.
-    val systemMessageFolds =
-        remember(renderPayload.messages, renderPayload.timelineGaps) {
-            threadSystemMessageFolds(renderPayload.messages, renderPayload.timelineGaps)
-        }
-    var expandedSystemMessageGroups by remember(threadInstanceKey) { mutableStateOf(emptySet<String>()) }
     // A jump or a search match on a message folded into a closed group opens the group, so the
     // target is a drawn row (web lands on the group's row). Only state: the focus anchor effect
     // and its growth retries own the scroll. Once per request, so the reader can close it again.
@@ -1452,7 +1600,7 @@ private fun ThreadMessagesListContent(
         val expanding = groupId !in expandedSystemMessageGroups
         expandedSystemMessageGroups =
             if (expanding) expandedSystemMessageGroups + groupId else expandedSystemMessageGroups - groupId
-        val listItemIndex = renderPayload.threadMessageListItemIndex(summaryMessageId)
+        val listItemIndex = messageListItemIndexFor(renderPayload, summaryMessageId)
         val summaryItem = listState.layoutInfo.visibleItemsInfo.firstOrNull { it.index == listItemIndex }
         val ownsViewport = listItemIndex >= 0 && summaryItem != null && !listState.isScrollInProgress
         if (ownsViewport && summaryItem != null) {
@@ -1477,7 +1625,7 @@ private fun ThreadMessagesListContent(
     // A row's own disclosure (a system line's details): direct user action, like the group toggle.
     // Fence: the row is laid out, no scroll is active.
     val requestRowExpandReveal: (String) -> Unit = { messageId ->
-        val index = renderPayload.threadMessageListItemIndex(messageId)
+        val index = messageListItemIndexFor(renderPayload, messageId)
         val item = listState.layoutInfo.visibleItemsInfo.firstOrNull { it.index == index }
         if (item != null && !listState.isScrollInProgress) {
             listState.noteUserNavigation()
@@ -1499,7 +1647,7 @@ private fun ThreadMessagesListContent(
         owner = expandRevealOwner,
         listState = listState,
         instanceKey = threadInstanceKey,
-        listItemIndexOf = { messageId -> renderPayload.threadMessageListItemIndex(messageId) },
+        listItemIndexOf = { messageId -> messageListItemIndexFor(renderPayload, messageId) },
         userScrollGeneration = { userScrollGeneration.value },
         controllerSettled = { viewportControllerState.pendingCommand == null },
         topMarginPx = with(LocalDensity.current) { ThreadExpandRevealTopMargin.roundToPx() },
@@ -1670,11 +1818,18 @@ private fun ThreadMessagesListContent(
         // Per scroll frame only the visible index range is read and compared; the candidate
         // list and its joined key are built only when that range changes.
         snapshotFlow {
-            val visibleItems = listState.layoutInfo.visibleItemsInfo
-            if (visibleItems.isEmpty()) {
-                null
+            val info = listState.layoutInfo
+            val virtualRange = currentVirtualProjectionState.value?.visibleMessageIndexRange(info)
+            if (virtualRange != null) {
+                val firstMessageIndex = renderPayload.firstMessageListItemIndex()
+                (firstMessageIndex + virtualRange.first) to (firstMessageIndex + virtualRange.last)
             } else {
-                visibleItems.minOf { item -> item.index } to visibleItems.maxOf { item -> item.index }
+                val visibleItems = info.visibleItemsInfo
+                if (visibleItems.isEmpty()) {
+                    null
+                } else {
+                    visibleItems.minOf { item -> item.index } to visibleItems.maxOf { item -> item.index }
+                }
             }
         }
             .distinctUntilChanged()
@@ -1887,7 +2042,7 @@ private fun ThreadMessagesListContent(
                     }
                 }
                 is LazyViewportCommandTarget.Anchor -> {
-                    val targetIndex = currentPayloadState.value.threadViewportListItemIndex(target.target)
+                    val targetIndex = viewportTargetIndexFor(currentPayloadState.value, target.target)
                     if (targetIndex < 0 || !listState.canScrollToThreadItem(targetIndex)) {
                         dispatchViewportEvent(LazyViewportEvent.AnchorUnavailable(command.id))
                         false
@@ -1900,7 +2055,10 @@ private fun ThreadMessagesListContent(
                                     true
                                 }
                                 LazyViewportAnchorPlacement.Focused ->
-                                    listState.scrollThreadItemToFocusedViewport(targetIndex) {
+                                    listState.scrollThreadItemToFocusedViewport(
+                                        itemIndex = targetIndex,
+                                        virtualAlign = VirtualTimelineAlign.Top,
+                                    ) {
                                         commandIsLiveOrTerminallyInvalidate()
                                     }
                                 LazyViewportAnchorPlacement.FocusedThreadReplies -> {
@@ -1914,7 +2072,9 @@ private fun ThreadMessagesListContent(
                                                 viewportEnd = info.viewportEndOffset,
                                                 minBottomReservePx = minBottomReservePx
                                             )
-                                        }
+                                        },
+                                        virtualAlign = VirtualTimelineAlign.FocusedThreadReplies,
+                                        virtualReserveBottomPx = minBottomReservePx,
                                     ) {
                                         commandIsLiveOrTerminallyInvalidate()
                                     }
@@ -1941,7 +2101,7 @@ private fun ThreadMessagesListContent(
         }
     }
     // The head's title names the original once its row scrolls away (ThreadHeaderOriginalTitle.kt).
-    ThreadHeaderOriginalReporter(listState.raw, renderPayload, renderConfig.originErrorCode)
+    ThreadHeaderOriginalReporter(listState, renderPayload, renderConfig.originErrorCode)
     val headerScrollToTopRequestFence =
         remember(threadInstanceKey) { AppShellScrollToTopRequestFence(headerScrollToTopRequest) }
     val outlineOriginJumpRequestState = remember(threadInstanceKey) { mutableStateOf(0) }
@@ -2027,7 +2187,7 @@ private fun ThreadMessagesListContent(
             shareSelectionCaptureAnchorMessageId
                 ?.takeIf { shareSelectionCaptureActive && it.isNotBlank() }
                 ?: return@LaunchedEffect
-        val targetIndex = renderPayload.threadMessageListItemIndex(anchorMessageId)
+        val targetIndex = messageListItemIndexFor(renderPayload, anchorMessageId)
         val scrollIndex =
             threadShareCaptureAnchorListItemIndex(
                 targetIndex = targetIndex,
@@ -2049,13 +2209,24 @@ private fun ThreadMessagesListContent(
             onShareSelectionBounds(messageId, null)
         }
         val scrollTarget =
-            threadShareCaptureAnchorTarget(
-                targetIndex = targetIndex,
-                anchorBeforeTarget = shareSelectionCaptureAnchorBeforeTarget,
-                originVisible = renderPayload.hasThreadOriginItem(),
-                historyBoundaryVisible = renderPayload.hasThreadHistoryBoundaryItem(),
-                messageIds = renderPayload.messages.map { message -> message.id }
-            ) ?: return@LaunchedEffect
+            currentVirtualProjectionState.value.let { projection ->
+                if (projection != null) {
+                    when (val row = projection.rows.getOrNull(scrollIndex)) {
+                        is ThreadVirtualRow.Message -> LazyViewportAnchorTarget.Message(row.messageId)
+                        ThreadVirtualRow.Origin -> LazyViewportAnchorTarget.StableItem(ThreadOriginListItemKey)
+                        ThreadVirtualRow.HistoryBoundary -> LazyViewportAnchorTarget.StableItem(ThreadOlderMessagesListItemKey)
+                        else -> null
+                    }
+                } else {
+                    threadShareCaptureAnchorTarget(
+                        targetIndex = targetIndex,
+                        anchorBeforeTarget = shareSelectionCaptureAnchorBeforeTarget,
+                        originVisible = renderPayload.hasThreadOriginItem(),
+                        historyBoundaryVisible = renderPayload.hasThreadHistoryBoundaryItem(),
+                        messageIds = renderPayload.messages.map { message -> message.id }
+                    )
+                }
+            } ?: return@LaunchedEffect
         val desiredScrollOffset =
             if (shareSelectionCaptureAnchorBeforeTarget) 0 else shareSelectionCaptureScrollOffsetPx
         dispatchViewportEvent(
@@ -2219,9 +2390,9 @@ private fun ThreadMessagesListContent(
         val cycleId = nextNewerPageCycleId + 1L
         nextNewerPageCycleId = cycleId
         val anchor =
-            listState.threadFirstVisibleMessageAnchor(
-                timelineSlice = renderPayload,
-                userScrollGeneration = userScrollGeneration.value
+            firstVisibleAnchorFor(
+                slice = renderPayload,
+                scrollGen = userScrollGeneration.value
             )
         newerPageCycle =
             ThreadNewerPageCycle(
@@ -2255,13 +2426,15 @@ private fun ThreadMessagesListContent(
     // so newer messages fall outside the [firstMessageListItemIndex,
     // firstMessageListItemIndex + messageCount) window and the tail index never
     // advances (task #1139 — the ↓ x new count froze at the entry value).
-    LaunchedEffect(threadInstanceKey, renderPayload.messages, renderPayload.firstMessageListItemIndex()) {
+    LaunchedEffect(threadInstanceKey, renderPayload.messages, renderPayload.firstMessageListItemIndex(), virtualProjection) {
         snapshotFlow {
-            threadVisibleReadTailMessageIndex(
-                visibleListItemIndexes = listState.layoutInfo.visibleItemsInfo.map { item -> item.index },
-                firstMessageListItemIndex = renderPayload.firstMessageListItemIndex(),
-                messageCount = renderPayload.messages.size,
-            )
+            val visibleIndexes = listState.layoutInfo.visibleItemsInfo.map { item -> item.index }
+            currentVirtualProjectionState.value?.visibleReadTailMessageIndex(visibleIndexes)
+                ?: threadVisibleReadTailMessageIndex(
+                    visibleListItemIndexes = visibleIndexes,
+                    firstMessageListItemIndex = renderPayload.firstMessageListItemIndex(),
+                    messageCount = renderPayload.messages.size,
+                )
         }
             .distinctUntilChanged()
             .collect { index -> onVisibleReadTailChange(index) }
@@ -2426,13 +2599,17 @@ private fun ThreadMessagesListContent(
         ) {
             return@LaunchedEffect
         }
-        val boundaryIndex = renderPayload.threadHistoryBoundaryListItemIndex()
+        val boundaryIndex = historyBoundaryIndexFor(renderPayload)
         snapshotFlow {
-            listState.isThreadOlderAutoLoadThreshold(
-                boundaryIndex = boundaryIndex,
-                userScrollGeneration = userScrollGeneration.value,
-                lastSettledUserScrollGeneration = olderPageSettledUserScrollGeneration
-            )
+            if (listState.isVirtual && listState.virtualState?.isAutoLoadSuppressed == true) {
+                false
+            } else {
+                listState.isThreadOlderAutoLoadThreshold(
+                    boundaryIndex = boundaryIndex,
+                    userScrollGeneration = userScrollGeneration.value,
+                    lastSettledUserScrollGeneration = olderPageSettledUserScrollGeneration
+                )
+            }
         }
             .distinctUntilChanged()
             .collect { shouldLoad ->
@@ -2454,9 +2631,9 @@ private fun ThreadMessagesListContent(
         if (renderPayload.olderMessagesStatus == "loading" && previousStatus != "loading") {
             olderPageCycleActive = true
             pendingOlderPageAnchor =
-                listState.threadFirstVisibleMessageAnchor(
-                    timelineSlice = renderPayload,
-                    userScrollGeneration = userScrollGeneration.value
+                firstVisibleAnchorFor(
+                    slice = renderPayload,
+                    scrollGen = userScrollGeneration.value
                 )
             allowBottomAutoAnchor = false
             pendingOlderPageAnchor?.let { anchor ->
@@ -2485,12 +2662,13 @@ private fun ThreadMessagesListContent(
             if (
                 anchor != null &&
                 restoreOwnerLive &&
+                !listState.isVirtual &&
                 shouldRestoreThreadOlderPageAnchor(
                     capturedUserScrollGeneration = anchor.userScrollGeneration,
                     currentUserScrollGeneration = userScrollGeneration.value
                 )
             ) {
-                val targetIndex = renderPayload.threadMessageListItemIndex(anchor.messageId)
+                val targetIndex = messageListItemIndexFor(renderPayload, anchor.messageId)
                 if (targetIndex >= 0) {
                     listState.noteViewportOwner(ThreadViewportOwnerTag.OlderRestore)
                     listState.scrollToItem(targetIndex, -anchor.offset)
@@ -2503,6 +2681,10 @@ private fun ThreadMessagesListContent(
             } else if (anchor != null && !restoreOwnerLive) {
                 diagnosticsLogger(
                     "thread_older_anchor_restore result=skipped_owner_gone messageId=${anchor.messageId}"
+                )
+            } else if (anchor != null && listState.isVirtual) {
+                diagnosticsLogger(
+                    "thread_older_anchor_restore result=native_virtual messageId=${anchor.messageId}"
                 )
             } else if (anchor != null) {
                 diagnosticsLogger(
@@ -2643,7 +2825,7 @@ private fun ThreadMessagesListContent(
         ) {
             return@LaunchedEffect
         }
-        val targetIndex = renderPayload.focusedMessageListItemIndex()
+        val targetIndex = focusedListItemIndexFor(renderPayload)
         if (targetIndex < 0) {
             return@LaunchedEffect
         }
@@ -2889,7 +3071,7 @@ private fun ThreadMessagesListContent(
         ) {
             return@LaunchedEffect
         }
-        val targetIndex = renderPayload.focusedMessageListItemIndex()
+        val targetIndex = focusedListItemIndexFor(renderPayload)
         if (targetIndex < 0) return@LaunchedEffect
         listState.awaitThreadMessagesLayoutFrame()
         listState.awaitThreadMessagesLayoutStability(targetIndex)
@@ -3001,7 +3183,7 @@ private fun ThreadMessagesListContent(
             return@LaunchedEffect
         }
         val focusedMessageTargetIndex =
-            renderPayload.focusedMessageListItemIndex()
+            focusedListItemIndexFor(renderPayload)
         if (focusedMessageTargetIndex >= 0) {
             return@LaunchedEffect
         }
@@ -3261,7 +3443,7 @@ private fun ThreadMessagesListContent(
         )
         val focusedTargetIdentity = pendingFocusedMessageAnchorIdentityState.value
         val focusedTargetMessageId = renderPayload.focusedMessageId?.takeIf { it.isNotBlank() }
-        val focusedTargetItemIndex = renderPayload.focusedMessageListItemIndex()
+        val focusedTargetItemIndex = focusedListItemIndexFor(renderPayload)
         val focusedTailMessageId = renderPayload.messages.lastOrNull()?.id
         val imeHandoffIdentity =
             focusedAnchorImeHandoffIdentity(
@@ -3366,7 +3548,7 @@ private fun ThreadMessagesListContent(
                 currentPayload.focusedMessageId != focusedTargetMessageId ||
                 currentPayload.messages.lastOrNull()?.id != focusedTailMessageId ||
                 currentPayload.latestMessageLayoutKey() != latestMessageLayoutKey ||
-                currentPayload.focusedMessageListItemIndex() != focusedTargetItemIndex
+                focusedListItemIndexFor(currentPayload) != focusedTargetItemIndex
             ) {
                 return false
             }
@@ -3761,11 +3943,63 @@ private fun ThreadMessagesListContent(
                 } else {
                     Modifier
                 }
-            LazyColumn(
-                state = listState.raw,
-                reverseLayout = reverseLayout,
-                modifier = Modifier.fillMaxSize()
-                    .detachSafeLazyListPrefetch(threadListPrefetch)
+            if (useVirtualTimeline) {
+                val focusedAnchorOwnsViewportNow =
+                    focusedMessageAnchorOwnsViewport(
+                        pendingIdentity = pendingFocusedMessageAnchorIdentityState.value,
+                        consumedIdentity = consumedFocusedMessageAnchorIdentity,
+                        scrollInterruptedIdentity = scrollInterruptedFocusedMessageAnchorIdentity,
+                        yieldElapsedMs = bottomAnchorFocusedYieldElapsedMs
+                    )
+                val shouldVirtualFollowBottom =
+                    viewportControllerState.intent == LazyViewportIntent.FollowingLatest &&
+                        !listState.isScrollInProgress &&
+                        allowBottomAutoAnchor &&
+                        !renderPayload.canLoadMoreAfter &&
+                        !newerPageCycleActive &&
+                        !shareSelectionCaptureActive &&
+                        !adaptiveAnchorRestoreInFlight &&
+                        !focusedAnchorOwnsViewportNow
+                SideEffect {
+                    listState.setVirtualFollowBottom(shouldVirtualFollowBottom)
+                }
+            }
+            val virtualPinnedKeys =
+                if (useVirtualTimeline && virtualProjection != null) {
+                    remember(
+                        virtualProjection,
+                        menuState.actionMessageId,
+                        menuState.quickReactionBar?.messageId,
+                        menuState.taskStatusMenuMessageId,
+                        activeFocusedMessageId,
+                    ) {
+                        buildSet<Any> {
+                            menuState.actionMessageId?.let { virtualProjection.rowKeyForMessageId(it)?.let(::add) }
+                            menuState.quickReactionBar?.messageId?.let { virtualProjection.rowKeyForMessageId(it)?.let(::add) }
+                            menuState.taskStatusMenuMessageId?.let { virtualProjection.rowKeyForMessageId(it)?.let(::add) }
+                            activeFocusedMessageId?.let { virtualProjection.rowKeyForMessageId(it)?.let(::add) }
+                        }
+                    }
+                } else {
+                    emptySet()
+                }
+            val listContentPadding =
+                PaddingValues(
+                    top =
+                        (if (offlineLastKnownChrome.insetActive) ThreadOfflineLastKnownTipHeight else 0.dp) +
+                            threadFindBarTopInset,
+                    // The thread timeline's rail keeps clear of message content (web `--message-rail-inset`).
+                    end = if (LocalThreadOutlineState.current?.railShown == true) ThreadOutlineRailInset else 0.dp,
+                )
+            val listModifier =
+                Modifier.fillMaxSize()
+                    .then(
+                        if (!useVirtualTimeline) {
+                            Modifier.detachSafeLazyListPrefetch(threadListPrefetch)
+                        } else {
+                            Modifier
+                        }
+                    )
                     .then(
                         if (inPlaceSelectionViewportHost?.enabled == true) {
                             // In-place selection bar stays inside the list's visible viewport.
@@ -3841,6 +4075,9 @@ private fun ThreadMessagesListContent(
                             }
                             TouchType.Move -> {
                                 dispatchViewportEvent(LazyViewportEvent.PointerMove)
+                                if (useVirtualTimeline) {
+                                    virtualTimelineState.notifyUserScrollGesture()
+                                }
                             // Count every direct pointer move, not inertial/programmatic
                             // scrolling. Older-page completion may safely cancel the
                             // original top fling and restore its message anchor, but a
@@ -3876,9 +4113,9 @@ private fun ThreadMessagesListContent(
                                         return@launch
                                     }
                                     val anchor =
-                                        listState.threadFirstVisibleMessageAnchor(
-                                            timelineSlice = currentPayloadState.value,
-                                            userScrollGeneration = userScrollGeneration.value
+                                        firstVisibleAnchorFor(
+                                            slice = currentPayloadState.value,
+                                            scrollGen = userScrollGeneration.value
                                         )
                                     newerPageCycle
                                         ?.takeIf { cycle ->
@@ -3890,9 +4127,9 @@ private fun ThreadMessagesListContent(
                                     // The row being read (top in view), which the reading-anchor
                                     // keeper and the HeightChange replays then hold in place.
                                     val readingAnchor =
-                                        listState.threadReadingAnchorMessage(
-                                            timelineSlice = currentPayloadState.value,
-                                            userScrollGeneration = userScrollGeneration.value
+                                        readingAnchorFor(
+                                            slice = currentPayloadState.value,
+                                            scrollGen = userScrollGeneration.value
                                         )
                                     val settledAtBottom =
                                         listState.isLatestItemAtRenderedBottom(
@@ -3917,126 +4154,109 @@ private fun ThreadMessagesListContent(
                             latestItemIndex = latestItemIndex,
                             revealLatestLocalSendBeforeInitialAnchor = revealLatestLocalSendBeforeInitialAnchor
                         )
-                    ),
-                verticalArrangement = Arrangement.Bottom,
-                contentPadding =
-                    PaddingValues(
-                        top =
-                            (if (offlineLastKnownChrome.insetActive) ThreadOfflineLastKnownTipHeight else 0.dp) +
-                                threadFindBarTopInset,
-                        // The thread timeline's rail keeps clear of message content (web `--message-rail-inset`).
-                        end = if (LocalThreadOutlineState.current?.railShown == true) ThreadOutlineRailInset else 0.dp,
-                    ),
-            ) {
-            val threadListSegments = mutableListOf<LazyListScope.() -> Unit>()
-            threadListSegments += {
-            if (renderPayload.hasThreadOriginItem()) {
-                item(key = ThreadOriginListItemKey) {
-                    ThreadOriginCard(
-                        modifier =
-                            Modifier
-                                .fillMaxWidth()
-                                .onGloballyPositioned { coordinates ->
-                                    renderPayload.originMessage?.id?.let { messageId ->
-                                        recordMessageItemHeight(messageId, coordinates.size.height)
-                                    }
-                                    keepReadingAnchorAfterLayout()
-                                },
-                        renderConfig = renderConfig,
-                        messageBodyTextStyle = messageBodyTextStyle,
-                        timelineSlice = renderPayload,
-                        focusedMessageId = activeFocusedMessageId,
-                        searchMatchMessageId = activeInlineSearchMessageId,
-                        linkedTasksProjection = linkedTasksProjection,
-                        highlightedMentions = highlightedMentions,
-                        pendingActionCardIds = pendingActionCardIds,
-                        attachmentOpenStates = attachmentOpenStates,
-                        currentServerSlug = currentServerSlug,
-                        contentExtrasVisible = contentExtrasVisible,
-                        isMarkdownTagValid = isMarkdownTagValid,
-                        markdownTagContextSignature = markdownTagContextSignature,
-                        resolveMarkdownTagLabel = resolveMarkdownTagLabel,
-                        activeMarkdownTagKey = activeMarkdownTagKey,
-                        diagnosticsLogger = diagnosticsLogger,
-                        onThreadEvent = onThreadEventKeepingAnchor,
-                        onOpenMember = onOpenMember,
-                        onExternalAuthor = onExternalAuthor,
-                        showReactionReactors = true,
-                        onShowAuthorDescription = { description, anchor ->
-                            menuState.authorDescriptionPopover =
-                                ThreadAuthorDescriptionPopoverRequest(
-                                    description = description,
-                                    anchor = anchor
-                                )
-                        },
-                        onShowActions = { message, anchor ->
-                            menuState.actionMenuAnchor = anchor
-                            menuState.actionMessageId = message.id
-                            menuState.classicMenuOverrideMessageId = null
-                            menuState.actionMenuFromLongPress = false
-                            diagnosticsLogger("thread_origin_menu_tap messageId=${message.id}")
-                        },
-                        writeActionsEnabled = writeActionsEnabled,
-                        onShowQuickReactions = { message, anchor ->
-                            menuState.quickReactionBar = ThreadQuickReactionBarRequest(message.id, anchor)
-                        },
-                        onLongPressMenuOpened = { message ->
-                            if (menuState.actionMessageId == message.id) {
-                                menuState.actionMenuFromLongPress = true
-                                RaftProductEvents.messageActionSelected(RaftMessageAction.OpenMenu, inThread = false)
-                            }
-                        },
-                        onOpenTaskStatusMenu = { message, anchor ->
-                            menuState.taskStatusMenuMessageId = message.id
-                            menuState.taskStatusMenuAnchor = anchor
-                        },
-                        onMentionAuthor = onMentionAuthor,
-                        agentStatusResolver = agentStatusResolver,
-                        memberAvatarResolver = memberAvatarResolver,
-                        memberModelLabelResolver = memberModelLabelResolver,
-                        onOpenMarkdownTag = onOpenMarkdownTag,
-                        onOpenMarkdownUrl = onOpenMarkdownUrl,
-                        shareSelectionActive = shareSelectionActive,
-                        selectedShareMessageIds = selectedShareMessageIds,
-                        onToggleShareSelection = onToggleShareSelection,
-                        longMessageCollapse =
-                            longMessageCollapseController.takeIf {
-                                longMessageCollapseEnabled && !shareSelectionCaptureActive
-                            },
-                        onToggleLongMessage = { messageId ->
-                            toggleLongMessage(messageId, ThreadOriginListItemIndex)
-                        },
-                        popupOpen =
-                            renderPayload.originMessage?.id?.let { originId ->
-                                menuState.actionMessageId == originId || menuState.quickReactionBar?.messageId == originId
-                            } == true,
-                        hoverToolbar =
-                            renderPayload.originMessage?.let { origin ->
-                                threadMessageHoverToolbarActions(
-                                    message = origin,
-                                    capabilities =
-                                        threadMessageMenuCapabilities(
-                                            message = origin,
-                                            replyMetadata = origin.toThreadReplyMetadata(),
-                                            slice = renderPayload,
-                                            writeActionsEnabled = writeActionsEnabled
-                                        ),
-                                    onShowReactions = { anchor ->
-                                        menuState.quickReactionBar =
-                                            ThreadQuickReactionBarRequest(origin.id, anchor, fromHoverToolbar = true)
-                                    },
-                                    onForward = { onForwardMessage(origin.id) },
-                                    onToggleSave = { onThreadEventKeepingAnchor("toggleMessageSaved", origin.id, null, null) }
-                                )
-                            }
                     )
-                }
+            val renderOriginRow: @Composable () -> Unit = {
+                ThreadOriginCard(
+                    modifier =
+                        Modifier
+                            .fillMaxWidth()
+                            .onGloballyPositioned { coordinates ->
+                                renderPayload.originMessage?.id?.let { messageId ->
+                                    recordMessageItemHeight(messageId, coordinates.size.height)
+                                }
+                                keepReadingAnchorAfterLayout()
+                            },
+                    renderConfig = renderConfig,
+                    messageBodyTextStyle = messageBodyTextStyle,
+                    timelineSlice = renderPayload,
+                    focusedMessageId = activeFocusedMessageId,
+                    searchMatchMessageId = activeInlineSearchMessageId,
+                    linkedTasksProjection = linkedTasksProjection,
+                    highlightedMentions = highlightedMentions,
+                    pendingActionCardIds = pendingActionCardIds,
+                    attachmentOpenStates = attachmentOpenStates,
+                    currentServerSlug = currentServerSlug,
+                    contentExtrasVisible = contentExtrasVisible,
+                    isMarkdownTagValid = isMarkdownTagValid,
+                    markdownTagContextSignature = markdownTagContextSignature,
+                    resolveMarkdownTagLabel = resolveMarkdownTagLabel,
+                    activeMarkdownTagKey = activeMarkdownTagKey,
+                    diagnosticsLogger = diagnosticsLogger,
+                    onThreadEvent = onThreadEventKeepingAnchor,
+                    onOpenMember = onOpenMember,
+                    onExternalAuthor = onExternalAuthor,
+                    showReactionReactors = true,
+                    onShowAuthorDescription = { description, anchor ->
+                        menuState.authorDescriptionPopover =
+                            ThreadAuthorDescriptionPopoverRequest(
+                                description = description,
+                                anchor = anchor
+                            )
+                    },
+                    onShowActions = { message, anchor ->
+                        menuState.actionMenuAnchor = anchor
+                        menuState.actionMessageId = message.id
+                        menuState.classicMenuOverrideMessageId = null
+                        menuState.actionMenuFromLongPress = false
+                        diagnosticsLogger("thread_origin_menu_tap messageId=${message.id}")
+                    },
+                    writeActionsEnabled = writeActionsEnabled,
+                    onShowQuickReactions = { message, anchor ->
+                        menuState.quickReactionBar = ThreadQuickReactionBarRequest(message.id, anchor)
+                    },
+                    onLongPressMenuOpened = { message ->
+                        if (menuState.actionMessageId == message.id) {
+                            menuState.actionMenuFromLongPress = true
+                            RaftProductEvents.messageActionSelected(RaftMessageAction.OpenMenu, inThread = false)
+                        }
+                    },
+                    onOpenTaskStatusMenu = { message, anchor ->
+                        menuState.taskStatusMenuMessageId = message.id
+                        menuState.taskStatusMenuAnchor = anchor
+                    },
+                    onMentionAuthor = onMentionAuthor,
+                    agentStatusResolver = agentStatusResolver,
+                    memberAvatarResolver = memberAvatarResolver,
+                    memberModelLabelResolver = memberModelLabelResolver,
+                    onOpenMarkdownTag = onOpenMarkdownTag,
+                    onOpenMarkdownUrl = onOpenMarkdownUrl,
+                    shareSelectionActive = shareSelectionActive,
+                    selectedShareMessageIds = selectedShareMessageIds,
+                    onToggleShareSelection = onToggleShareSelection,
+                    longMessageCollapse =
+                        longMessageCollapseController.takeIf {
+                            longMessageCollapseEnabled && !shareSelectionCaptureActive
+                        },
+                    onToggleLongMessage = { messageId ->
+                        toggleLongMessage(messageId, ThreadOriginListItemIndex)
+                    },
+                    popupOpen =
+                        renderPayload.originMessage?.id?.let { originId ->
+                            menuState.actionMessageId == originId || menuState.quickReactionBar?.messageId == originId
+                        } == true,
+                    hoverToolbar =
+                        renderPayload.originMessage?.let { origin ->
+                            threadMessageHoverToolbarActions(
+                                message = origin,
+                                capabilities =
+                                    threadMessageMenuCapabilities(
+                                        message = origin,
+                                        replyMetadata = origin.toThreadReplyMetadata(),
+                                        slice = renderPayload,
+                                        writeActionsEnabled = writeActionsEnabled
+                                    ),
+                                onShowReactions = { anchor ->
+                                    menuState.quickReactionBar =
+                                        ThreadQuickReactionBarRequest(origin.id, anchor, fromHoverToolbar = true)
+                                },
+                                onForward = { onForwardMessage(origin.id) },
+                                onToggleSave = { onThreadEventKeepingAnchor("toggleMessageSaved", origin.id, null, null) }
+                            )
+                        }
+                )
             }
-            }
-            threadListSegments += {
-            if (renderPayload.hasThreadHistoryBoundaryItem()) {
-                item(key = ThreadOlderMessagesListItemKey) {
-                    Column(Modifier.fillMaxWidth()) {
+            val renderHistoryBoundaryRow: @Composable () -> Unit = {
+                Column(Modifier.fillMaxWidth()) {
                     // Task v2 on a phone: the head above where the conversation begins, or above the
                     // older messages still to load (they come in under it: it stays the first row).
                     taskHeadRow?.let { TaskConversationHeadRowContent(it) }
@@ -4059,51 +4279,31 @@ private fun ThreadMessagesListContent(
                         else ->
                             ThreadHistoryStatusRow(threadOlderMessagesStatusSpec(renderPayload))
                     }
-                    }
                 }
             }
-            }
-            threadListSegments += {
-            if (showReplyEmptyState) {
-                item(key = ThreadReplyEmptyListItemKey) {
-                    if (listHiddenHistory != null) {
-                        // Every reply is behind the Free plan's window: not empty, hidden.
-                        ThreadHistoryPaywall(
-                            scope = renderPayload.historyPaywallScope(),
-                            hidden = listHiddenHistory,
-                            allHidden = true,
-                            timeContext = renderConfig.timeContext,
-                            onUpgrade = { onThreadEvent(ThreadOpenPlanBillingEvent, null, null, null) }
-                        )
-                    } else {
-                        ThreadStateMessage(
-                            localizedThreadStateTitle(renderPayload.emptyTitle),
-                            localizedThreadStateDetail(renderPayload.emptyDetail)
-                        )
-                    }
+            val renderReplyEmptyRow: @Composable () -> Unit = {
+                if (listHiddenHistory != null) {
+                    // Every reply is behind the Free plan's window: not empty, hidden.
+                    ThreadHistoryPaywall(
+                        scope = renderPayload.historyPaywallScope(),
+                        hidden = listHiddenHistory,
+                        allHidden = true,
+                        timeContext = renderConfig.timeContext,
+                        onUpgrade = { onThreadEvent(ThreadOpenPlanBillingEvent, null, null, null) }
+                    )
+                } else {
+                    ThreadStateMessage(
+                        localizedThreadStateTitle(renderPayload.emptyTitle),
+                        localizedThreadStateDetail(renderPayload.emptyDetail)
+                    )
                 }
             }
-            }
-            threadListSegments += {
-            if (showReplyLoadingSkeleton) {
-                item(key = ThreadReplyLoadingListItemKey) {
-                    if (renderPayload.loadingIndicatorRevealed) {
-                        ThreadLoadingState()
-                    }
+            val renderReplyLoadingRow: @Composable () -> Unit = {
+                if (renderPayload.loadingIndicatorRevealed) {
+                    ThreadLoadingState()
                 }
             }
-            }
-            threadListSegments += {
-            val messageCount = renderPayload.messages.size
-            items(
-                messageCount,
-                key = { slot ->
-                    renderPayload.messages[if (reverseLayout) messageCount - 1 - slot else slot]
-                        .messageListItemKey(duplicateMessageRandomIds)
-                }
-            ) { slot ->
-                // `index` stays the forward (oldest-first) message index in both layouts.
-                val index = if (reverseLayout) messageCount - 1 - slot else slot
+            val renderMessageRow: @Composable (Int) -> Unit = { index ->
                 val message = renderPayload.messages[index]
                 val absoluteMessageIndex = index
                 val previousMessage = renderPayload.messages.getOrNull(index - 1)
@@ -4114,478 +4314,546 @@ private fun ThreadMessagesListContent(
                 val systemGroupExpanded = systemFold != null && systemFold.groupId in expandedSystemMessageGroups
                 if (systemFold is ThreadSystemMessageFold.Member && !systemGroupExpanded) {
                     // Folded into its group's closed summary row: the item stays (key and index
-                    // unchanged for anchoring and jumps) but draws nothing.
+                    // unchanged for anchoring and jumps) but draws nothing (LazyColumn only;
+                    // VirtualMessageTimeline omits folded members from its row projection).
                     Box(
                         Modifier.fillMaxWidth().onGloballyPositioned { coordinates ->
                             recordMessageItemHeight(message.id, coordinates.size.height)
                             keepReadingAnchorAfterLayout()
                         }
                     )
-                    return@items
-                }
-                val messagePerformanceKey =
-                    remember(message.id, absoluteMessageIndex) {
-                        threadMessagePerformanceKey(message.id, absoluteMessageIndex)
-                    }
-                val isSystemMessage = remember(message.messageType) { message.isSystemMessage() }
-                val previousCompactAuthorSignature = previousMessage?.threadCompactAuthorSignature()
-                val messageCompactAuthorSignature = message.threadCompactAuthorSignature()
-                val gapAboveMessage =
-                    remember(renderPayload.messages, index, renderPayload.timelineGaps) {
-                        threadTimelineGapAboveMessage(renderPayload.messages, index, renderPayload.timelineGaps)
-                    }
-                val suppressRepeatedAuthor =
-                    remember(
-                        renderPayload.compactConsecutiveMessages,
-                        renderConfig.timeContext.localOffsetMinutes,
-                        previousCompactAuthorSignature,
-                        messageCompactAuthorSignature,
-                        gapAboveMessage != null
-                    ) {
-                        gapAboveMessage == null &&
-                            renderPayload.compactConsecutiveMessages &&
-                            shouldSuppressCompactThreadAuthor(
-                                previous = previousMessage,
-                                next = message,
-                                localOffsetMinutes = renderConfig.timeContext.localOffsetMinutes
+                } else {
+                    val messagePerformanceKey =
+                        remember(message.id, absoluteMessageIndex) {
+                            threadMessagePerformanceKey(message.id, absoluteMessageIndex)
+                        }
+                    val isSystemMessage = remember(message.messageType) { message.isSystemMessage() }
+                    val previousCompactAuthorSignature = previousMessage?.threadCompactAuthorSignature()
+                    val messageCompactAuthorSignature = message.threadCompactAuthorSignature()
+                    val gapAboveMessage =
+                        remember(renderPayload.messages, index, renderPayload.timelineGaps) {
+                            threadTimelineGapAboveMessage(renderPayload.messages, index, renderPayload.timelineGaps)
+                        }
+                    val suppressRepeatedAuthor =
+                        remember(
+                            renderPayload.compactConsecutiveMessages,
+                            renderConfig.timeContext.localOffsetMinutes,
+                            previousCompactAuthorSignature,
+                            messageCompactAuthorSignature,
+                            gapAboveMessage != null
+                        ) {
+                            gapAboveMessage == null &&
+                                renderPayload.compactConsecutiveMessages &&
+                                shouldSuppressCompactThreadAuthor(
+                                    previous = previousMessage,
+                                    next = message,
+                                    localOffsetMinutes = renderConfig.timeContext.localOffsetMinutes
+                                )
+                        }
+                    // Web MessageItem `showSelectedGroupedHeader`: while messages are picked for the share
+                    // image, the first selected row of a run shows its author even when the timeline groups
+                    // it under an unselected message, so the image (the live rows) never starts headless.
+                    val rowSuppressesRepeatedAuthor =
+                        threadShareSelectionSuppressesAuthor(
+                            timelineSuppressesAuthor = suppressRepeatedAuthor,
+                            selectionActive = shareSelectionActive || shareSelectionCaptureActive,
+                            selected = message.id in selectedShareMessageIds,
+                            previousSelected = previousMessage != null && previousMessage.id in selectedShareMessageIds,
+                        )
+                    val isRichContentEnabled = contentExtrasVisible
+                    val actionCardSignature =
+                        if (isRichContentEnabled) {
+                            remember(message.id, message.metadata) { message.threadActionCardSignature() }
+                        } else {
+                            null
+                        }
+                    val actionCard =
+                        if (isRichContentEnabled) {
+                            remember(actionCardSignature) {
+                                val startedAt = TimeSource.Monotonic.markNow()
+                                message.threadActionCard()
+                                    .also { card ->
+                                        val durationMs = startedAt.elapsedNow().inWholeMilliseconds
+                                        if (shouldLogThreadPerformance(durationMs)) {
+                                            diagnosticsLogger(
+                                                "thread_action_card_parse key=$messagePerformanceKey " +
+                                                    "hasActionCard=${card != null} durationMs=$durationMs"
+                                            )
+                                        }
+                                    }
+                            }
+                        } else {
+                            null
+                        }
+                    // Phase 1 (#172) instrumentation: one-shot per-row log gated
+                    // by DEBUG_THREAD_VIRTUAL_RENDER_LOG so the diagnostic is
+                    // not a hot path. Fires on first composition of this row
+                    // per Thread sessionMarker; does not re-fire on scroll.
+                    if (DEBUG_THREAD_VIRTUAL_RENDER_LOG) {
+                        androidx.compose.runtime.LaunchedEffect(message.id, threadRowProbeSessionMarker) {
+                            diagnosticsLogger(
+                                "thread_row_compose sessionMarker=${threadRowProbeSessionMarker} " +
+                                    "index=$absoluteMessageIndex id=${message.id} messageType=${message.messageType} " +
+                                    "bodyLength=${message.body.length} isSystem=${isSystemMessage} " +
+                                    "hasActionCard=${actionCard != null} " +
+                                    "attachmentCount=${message.attachments.size} " +
+                                    "threadId=${renderPayload.sourceThreadId.orEmpty()} " +
+                                    "messagesTotal=${renderPayload.messages.size} richContentEnabled=$isRichContentEnabled " +
+                                    "renderMessages=${renderPayload.messages.size}"
                             )
+                        }
                     }
-                // Web MessageItem `showSelectedGroupedHeader`: while messages are picked for the share
-                // image, the first selected row of a run shows its author even when the timeline groups
-                // it under an unselected message, so the image (the live rows) never starts headless.
-                val rowSuppressesRepeatedAuthor =
-                    threadShareSelectionSuppressesAuthor(
-                        timelineSuppressesAuthor = suppressRepeatedAuthor,
-                        selectionActive = shareSelectionActive || shareSelectionCaptureActive,
-                        selected = message.id in selectedShareMessageIds,
-                        previousSelected = previousMessage != null && previousMessage.id in selectedShareMessageIds,
-                    )
-                val isRichContentEnabled = contentExtrasVisible
-                val actionCardSignature =
-                    if (isRichContentEnabled) {
-                        remember(message.id, message.metadata) { message.threadActionCardSignature() }
-                    } else {
-                        null
-                    }
-                val actionCard =
-                    if (isRichContentEnabled) {
-                        remember(actionCardSignature) {
+                    val linkedTask = linkedTasksProjection.lookup.threadLinkedTaskForMessage(message)
+                    val replyMetadata = replyMetadataByParentId.threadReplyMetadataFor(message)
+                    // Task v2: the list under the message replaces its single task chip (web MessageItem).
+                    // In a reply thread only the parent message carries it (web ThreadPanel), never a reply.
+                    val replyInThread =
+                        threadMessageIsReplyInThread(renderPayload.replyThreadSurface, renderPayload.originMessage?.id, message.id)
+                    val sourceTasks =
+                        remember(message.id, linkedTasksProjection, replyInThread) {
+                            if (replyInThread) emptyList() else linkedTasksProjection.sourceTasksFor(message)
+                        }
+                    val displayMessage =
+                        remember(message, linkedTasksProjection, sourceTasks.isEmpty()) {
                             val startedAt = TimeSource.Monotonic.markNow()
-                            message.threadActionCard()
-                                .also { card ->
+                            message.withLinkedTaskProjection(linkedTasksProjection)
+                                .let { if (sourceTasks.isEmpty()) it else it.withoutLinkedTask() }
+                                .also {
                                     val durationMs = startedAt.elapsedNow().inWholeMilliseconds
                                     if (shouldLogThreadPerformance(durationMs)) {
                                         diagnosticsLogger(
-                                            "thread_action_card_parse key=$messagePerformanceKey " +
-                                                "hasActionCard=${card != null} durationMs=$durationMs"
+                                            "thread_row_heavy_work stage=linked_task key=$messagePerformanceKey " +
+                                                "hasLinkedTask=${linkedTask != null} durationMs=$durationMs"
                                         )
                                     }
                                 }
                         }
-                    } else {
-                        null
+                    val linkedTaskAssigneeName = linkedTask?.threadLinkedTaskAssigneeDisplayName()
+                    // Start tracking as soon as the user selects a row. Export can
+                    // begin UNDISTPATCHED before the capture-mode recomposition
+                    // reaches this lazy item, so its already-visible bounds are the
+                    // only deterministic initial placement in that window.
+                    val captureShareBounds =
+                        (shareSelectionActive || shareSelectionCaptureActive) &&
+                            message.id in selectedShareMessageIds
+                    val liveTodayEpochDay = currentRaftTimeContextProvider?.todayEpochDay
+                    val dateDividerDay =
+                        remember(
+                            previousMessage?.timestampLabel,
+                            message.timestampLabel,
+                            renderConfig.timeContext.localOffsetMinutes,
+                            liveTodayEpochDay
+                        ) {
+                            threadDateDividerDay(
+                                previous = previousMessage,
+                                next = message,
+                                timeContext = renderConfig.dateDividerTimeContext(liveTodayEpochDay)
+                            )
+                        }
+                    // The row showing its hover toolbar draws over its neighbours: the toolbar reaches
+                    // 18dp into the row above, which a reversed list draws later.
+                    val raisedForHoverToolbar by remember(message.id) {
+                        derivedStateOf { menuState.hoverToolbarMessageId == message.id }
                     }
-                // Phase 1 (#172) instrumentation: one-shot per-row log gated
-                // by DEBUG_THREAD_VIRTUAL_RENDER_LOG so the diagnostic is
-                // not a hot path. Fires on first composition of this row
-                // per Thread sessionMarker; does not re-fire on scroll.
-                if (DEBUG_THREAD_VIRTUAL_RENDER_LOG) {
-                    androidx.compose.runtime.LaunchedEffect(message.id, threadRowProbeSessionMarker) {
-                                diagnosticsLogger(
-                                    "thread_row_compose sessionMarker=${threadRowProbeSessionMarker} " +
-                                        "index=$absoluteMessageIndex id=${message.id} messageType=${message.messageType} " +
-                                        "bodyLength=${message.body.length} isSystem=${isSystemMessage} " +
-                                        "hasActionCard=${actionCard != null} " +
-                                        "attachmentCount=${message.attachments.size} " +
-                                        "threadId=${renderPayload.sourceThreadId.orEmpty()} " +
-                                        "messagesTotal=${renderPayload.messages.size} richContentEnabled=$isRichContentEnabled " +
-                                        "renderMessages=${renderPayload.messages.size}"
-                                )
-                    }
-                }
-                val linkedTask = linkedTasksProjection.lookup.threadLinkedTaskForMessage(message)
-                val replyMetadata = replyMetadataByParentId.threadReplyMetadataFor(message)
-                // Task v2: the list under the message replaces its single task chip (web MessageItem).
-                // In a reply thread only the parent message carries it (web ThreadPanel), never a reply.
-                val replyInThread =
-                    threadMessageIsReplyInThread(renderPayload.replyThreadSurface, renderPayload.originMessage?.id, message.id)
-                val sourceTasks =
-                    remember(message.id, linkedTasksProjection, replyInThread) {
-                        if (replyInThread) emptyList() else linkedTasksProjection.sourceTasksFor(message)
-                    }
-                val displayMessage =
-                    remember(message, linkedTasksProjection, sourceTasks.isEmpty()) {
-                        val startedAt = TimeSource.Monotonic.markNow()
-                        message.withLinkedTaskProjection(linkedTasksProjection)
-                            .let { if (sourceTasks.isEmpty()) it else it.withoutLinkedTask() }
-                            .also {
-                                val durationMs = startedAt.elapsedNow().inWholeMilliseconds
-                                if (shouldLogThreadPerformance(durationMs)) {
-                                    diagnosticsLogger(
-                                        "thread_row_heavy_work stage=linked_task key=$messagePerformanceKey " +
-                                            "hasLinkedTask=${linkedTask != null} durationMs=$durationMs"
-                                    )
-                                }
-                            }
-                    }
-                val linkedTaskAssigneeName = linkedTask?.threadLinkedTaskAssigneeDisplayName()
-                // Start tracking as soon as the user selects a row. Export can
-                // begin UNDISTPATCHED before the capture-mode recomposition
-                // reaches this lazy item, so its already-visible bounds are the
-                // only deterministic initial placement in that window.
-                val captureShareBounds =
-                    (shareSelectionActive || shareSelectionCaptureActive) &&
-                        message.id in selectedShareMessageIds
-                val liveTodayEpochDay = currentRaftTimeContextProvider?.todayEpochDay
-                val dateDividerDay =
-                    remember(
-                        previousMessage?.timestampLabel,
-                        message.timestampLabel,
-                        renderConfig.timeContext.localOffsetMinutes,
-                        liveTodayEpochDay
-                    ) {
-                        threadDateDividerDay(
-                            previous = previousMessage,
-                            next = message,
-                            timeContext = renderConfig.dateDividerTimeContext(liveTodayEpochDay)
-                        )
-                    }
-                // The row showing its hover toolbar draws over its neighbours: the toolbar reaches
-                // 18dp into the row above, which a reversed list draws later.
-                val raisedForHoverToolbar by remember(message.id) {
-                    derivedStateOf { menuState.hoverToolbarMessageId == message.id }
-                }
-                Column(
-                    modifier =
-                        Modifier
-                            .fillMaxWidth()
-                            .zIndex(if (raisedForHoverToolbar) 1f else 0f)
-                            .onGloballyPositioned { coordinates ->
-                                recordMessageItemHeight(message.id, coordinates.size.height)
-                                imeTailDrawProbe.recordPlaced(message.id)
-                                keepReadingAnchorAfterLayout()
-                            }
-                            .drawWithContent {
-                                imeTailDrawProbe.recordDraw(message.id)
-                                drawContent()
-                            }
-                ) {
-                    gapAboveMessage?.let { gap ->
-                        ThreadTimelineGapRow(
-                            gap = gap,
-                            durableLastKnown = renderPayload.durableLastKnown,
-                            mainLoadFailed = renderPayload.mainLoadFailed,
-                            onFillGap = { target ->
-                                onThreadEvent(ThreadFillTimelineGapAction, target.key, null, null)
-                            }
-                        )
-                    }
-                    dateDividerDay?.let { day ->
-                        val dayLabel = day.localizedLabel()
-                        // Under the history paywall the first date line says the window: "Last 30 days · …".
-                        ThreadDateDivider(
-                            if (index == 0 && historyPaywall != null) {
-                                stringResource(Res.string.thread_history_paywall_recent_divider_with_date, ThreadHistoryPaywallDays, dayLabel)
-                            } else {
-                                dayLabel
-                            }
-                        )
-                    }
-                    Box(
+                    Column(
                         modifier =
                             Modifier
-                                .then(
-                                    if (firstViewportProbeActive) {
-                                        Modifier.onGloballyPositioned {
-                                            firstViewportProbe.recordPlacedMessage(message.id, absoluteMessageIndex)
-                                        }
-                                    } else {
-                                        Modifier
-                                    }
-                                )
-                                .then(
-                                    if (captureShareBounds) {
-                                        Modifier.onGloballyPositioned { coordinates ->
-                                            val pos = coordinates.positionInRoot()
-                                            onShareSelectionBounds(
-                                                message.id,
-                                                ThreadShareCaptureRect(
-                                                    x = pos.x,
-                                                    y = pos.y,
-                                                    width = coordinates.size.width.toFloat(),
-                                                    height = coordinates.size.height.toFloat()
-                                                )
-                                            )
-                                        }
-                                    } else {
-                                        Modifier
-                                    }
-                                )
+                                .fillMaxWidth()
+                                .zIndex(if (raisedForHoverToolbar) 1f else 0f)
+                                .onGloballyPositioned { coordinates ->
+                                    recordMessageItemHeight(message.id, coordinates.size.height)
+                                    imeTailDrawProbe.recordPlaced(message.id)
+                                    keepReadingAnchorAfterLayout()
+                                }
+                                .drawWithContent {
+                                    imeTailDrawProbe.recordDraw(message.id)
+                                    drawContent()
+                                }
                     ) {
-                        if (!captureShareBounds) {
-                            SideEffect {
-                                onShareSelectionBounds(message.id, null)
-                            }
+                        gapAboveMessage?.let { gap ->
+                            ThreadTimelineGapRow(
+                                gap = gap,
+                                durableLastKnown = renderPayload.durableLastKnown,
+                                mainLoadFailed = renderPayload.mainLoadFailed,
+                                onFillGap = { target ->
+                                    onThreadEvent(ThreadFillTimelineGapAction, target.key, null, null)
+                                }
+                            )
                         }
-                        if (systemFold is ThreadSystemMessageFold.Summary) {
-                            Column(modifier = Modifier.fillMaxWidth()) {
-                                ThreadSystemMessageGroupHeader(
-                                    summary = threadSystemMessageGroupSummary(systemFold.categories),
-                                    expanded = systemGroupExpanded,
-                                    onToggle = { toggleSystemMessageGroup(systemFold.groupId, message.id, systemFold.memberIds.last()) },
+                        dateDividerDay?.let { day ->
+                            val dayLabel = day.localizedLabel()
+                            // Under the history paywall the first date line says the window: "Last 30 days · …".
+                            ThreadDateDivider(
+                                if (index == 0 && historyPaywall != null) {
+                                    stringResource(Res.string.thread_history_paywall_recent_divider_with_date, ThreadHistoryPaywallDays, dayLabel)
+                                } else {
+                                    dayLabel
+                                }
+                            )
+                        }
+                        Box(
+                            modifier =
+                                Modifier
+                                    .then(
+                                        if (firstViewportProbeActive) {
+                                            Modifier.onGloballyPositioned {
+                                                firstViewportProbe.recordPlacedMessage(message.id, absoluteMessageIndex)
+                                            }
+                                        } else {
+                                            Modifier
+                                        }
+                                    )
+                                    .then(
+                                        if (captureShareBounds) {
+                                            Modifier.onGloballyPositioned { coordinates ->
+                                                val pos = coordinates.positionInRoot()
+                                                onShareSelectionBounds(
+                                                    message.id,
+                                                    ThreadShareCaptureRect(
+                                                        x = pos.x,
+                                                        y = pos.y,
+                                                        width = coordinates.size.width.toFloat(),
+                                                        height = coordinates.size.height.toFloat()
+                                                    )
+                                                )
+                                            }
+                                        } else {
+                                            Modifier
+                                        }
+                                    )
+                        ) {
+                            if (!captureShareBounds) {
+                                SideEffect {
+                                    onShareSelectionBounds(message.id, null)
+                                }
+                            }
+                            if (systemFold is ThreadSystemMessageFold.Summary) {
+                                Column(modifier = Modifier.fillMaxWidth()) {
+                                    ThreadSystemMessageGroupHeader(
+                                        summary = threadSystemMessageGroupSummary(systemFold.categories),
+                                        expanded = systemGroupExpanded,
+                                        onToggle = { toggleSystemMessageGroup(systemFold.groupId, message.id, systemFold.memberIds.last()) },
+                                    )
+                                    if (systemGroupExpanded) {
+                                        ThreadSystemMessageRow(
+                                            message = displayMessage,
+                                            timestampValue = message.timestampLabel,
+                                            timeline = renderPayload.messages,
+                                            serverSlug = currentServerSlug,
+                                            onOpenUrl = onOpenMarkdownUrl,
+                                            onExpand = { requestRowExpandReveal(message.id) },
+                                            handoffReasonMarkdown = handoffReasonMarkdown,
+                                        )
+                                    }
+                                }
+                            } else if (isSystemMessage && actionCard == null) {
+                                ThreadSystemMessageRow(
+                                    message = displayMessage,
+                                    timestampValue = message.timestampLabel,
+                                    timeline = renderPayload.messages,
+                                    serverSlug = currentServerSlug,
+                                    onOpenUrl = onOpenMarkdownUrl,
+                                    onExpand = { requestRowExpandReveal(message.id) },
+                                    handoffReasonMarkdown = handoffReasonMarkdown,
                                 )
-                                if (systemGroupExpanded) {
-                                    ThreadSystemMessageRow(
+                            } else {
+                                val translationUi =
+                                    if (translationStore != null) {
+                                        resolveThreadMessageTranslationUi(displayMessage, translationState)
+                                    } else {
+                                        null
+                                    }
+                                ThreadTimeRevealRow(
+                                    state = timeReveal,
+                                    timeLabel = formatThreadTimeRevealLabel(message.timestampLabel, renderConfig.timeContext),
+                                    continuation = renderPayload.compactConsecutiveMessages && rowSuppressesRepeatedAuthor,
+                                ) {
+                                    ThreadMessageCard(
                                         message = displayMessage,
-                                        timestampValue = message.timestampLabel,
-                                        timeline = renderPayload.messages,
-                                        serverSlug = currentServerSlug,
-                                        onOpenUrl = onOpenMarkdownUrl,
-                                        onExpand = { requestRowExpandReveal(message.id) },
-                                        handoffReasonMarkdown = handoffReasonMarkdown,
+                                        messageBodyTextStyle = messageBodyTextStyle,
+                                        replyMetadata = replyMetadata,
+                                        sourceTasks = sourceTasks,
+                                        onOpenSourceTask = { onThreadEvent("openSourceTask", it, null, null) },
+                                        hasReplyDraft = activeReplyDraftParentMessageIds.hasReplyComposerDraft(message.id),
+                                        actionCard = actionCard,
+                                        messageIndex = absoluteMessageIndex,
+                                        diagnosticsLogger = diagnosticsLogger,
+                                        highlightedMentions = highlightedMentions,
+                                        agentStatusResolver = agentStatusResolver,
+                                        memberAvatarResolver = memberAvatarResolver,
+                                        memberModelLabelResolver = memberModelLabelResolver,
+                                        inlineReplyParticipantsById = inlineReplyParticipantsById,
+                                        focused = activeFocusedMessageId == message.id,
+                                        searchMatch = activeInlineSearchMessageId == message.id,
+                                        popupOpen = menuState.actionMessageId == message.id || menuState.quickReactionBar?.messageId == message.id,
+                                        hoverToolbar =
+                                            threadMessageHoverToolbarActions(
+                                                message = message,
+                                                capabilities =
+                                                    threadMessageMenuCapabilities(
+                                                        message = message,
+                                                        replyMetadata = replyMetadata,
+                                                        slice = renderPayload,
+                                                        writeActionsEnabled = writeActionsEnabled
+                                                    ),
+                                                onShowReactions = { anchor ->
+                                                    menuState.quickReactionBar =
+                                                        ThreadQuickReactionBarRequest(message.id, anchor, fromHoverToolbar = true)
+                                                },
+                                                onForward = { onForwardMessage(message.id) },
+                                                onToggleSave = { onThreadEventKeepingAnchor("toggleMessageSaved", message.id, null, null) },
+                                                onShownChange = { shown ->
+                                                    if (shown) {
+                                                        menuState.hoverToolbarMessageId = message.id
+                                                    } else if (menuState.hoverToolbarMessageId == message.id) {
+                                                        menuState.hoverToolbarMessageId = null
+                                                    }
+                                                }
+                                            ),
+                                        shareSelectionActive = shareSelectionActive,
+                                        selectedForShare = message.id in selectedShareMessageIds,
+                                        onToggleShareSelection = { onToggleShareSelection(message.id) },
+                                        showSaveAction = !captureShareBounds,
+                                        // Defer this snapshot read to the avatar leaf. Reading it at the
+                                        // card boundary invalidates every visible message while anchoring.
+                                        isMessageListScrolling = { listState.isScrollInProgress },
+                                        alignOwnMessageRight = renderPayload.alignOwnMessagesRight && message.isOwn,
+                                        messageAlignmentModeEnabled = renderPayload.alignOwnMessagesRight,
+                                        compactConsecutiveMessages = renderPayload.compactConsecutiveMessages,
+                                        suppressRepeatedAuthor = rowSuppressesRepeatedAuthor,
+                                        showReplyAction = renderPayload.showReplyActions,
+                                        quickReactionsEnabled = threadMessageCanQuickReact(message, renderPayload, writeActionsEnabled),
+                                        resolvedTaskAssigneeName = linkedTaskAssigneeName,
+                                        resolveMarkdownTagLabel = resolveMarkdownTagLabel,
+                                        markdownTagContextSignature = markdownTagContextSignature,
+                                        activeMarkdownTagKey = activeMarkdownTagKey,
+                                        taskOpenEnabled = renderPayload.showTaskOpenActions && isRichContentEnabled,
+                                        taskStatusActionsEnabled = renderPayload.showTaskStatusActions && isRichContentEnabled,
+                                        isMarkdownTagValid = isMarkdownTagValid,
+                                        onShowActions = { anchor ->
+                                            if (!message.hasLocalSendState() || message.isFailedLocalSend() || message.isSendingLocalSend()) {
+                                                menuState.actionMenuAnchor = anchor
+                                                menuState.actionMessageId = message.id
+                                                menuState.classicMenuOverrideMessageId = null
+                                                menuState.actionMenuFromLongPress = false
+                                                diagnosticsLogger("thread_message_menu_tap messageId=${message.id}")
+                                            }
+                                        },
+                                        onLongPressMenuOpened = {
+                                            if (menuState.actionMessageId == message.id) {
+                                                menuState.actionMenuFromLongPress = true
+                                                RaftProductEvents.messageActionSelected(
+                                                    RaftMessageAction.OpenMenu,
+                                                    threadMessageIsReplyInThread(
+                                                        renderPayload.replyThreadSurface,
+                                                        renderPayload.originMessage?.id,
+                                                        message.id
+                                                    )
+                                                )
+                                            }
+                                        },
+                                        onOpenMember = onOpenMember,
+                                        onExternalAuthor = onExternalAuthor,
+                                        onOpenThread = { onThreadEvent("openMessageThread", it, null, null) },
+                                        onShowQuickReactions = { anchor ->
+                                            menuState.quickReactionBar = ThreadQuickReactionBarRequest(message.id, anchor)
+                                        },
+                                        onOpenTask = { onThreadEvent("openTask", it, null, null) },
+                                        onOpenTaskStatusMenu = { anchor ->
+                                            menuState.taskStatusMenuMessageId = message.id
+                                            menuState.taskStatusMenuAnchor = anchor
+                                        },
+                                        onToggleReaction = { emoji -> onThreadEventKeepingAnchor("toggleReaction", message.id, null, emoji) },
+                                        onToggleSave = { onThreadEventKeepingAnchor("toggleMessageSaved", message.id, null, null) },
+                                        showReactionReactors = true,
+                                        onShowAuthorDescription = { description, anchor ->
+                                            menuState.authorDescriptionPopover =
+                                                ThreadAuthorDescriptionPopoverRequest(
+                                                    description = description,
+                                                    anchor = anchor
+                                                )
+                                        },
+                                        showReactionAddAction = renderPayload.showReactionActions && !message.hasLocalSendState(),
+                                        onOpenCommentHost = { onThreadEvent("openCommentHost", message.id, null, null) },
+                                        timestampLabel = message.timestampLabel,
+                                        compactTimestampLabel = renderConfig.formatCompactTimestampLabel(message),
+                                        actionCardExecutedTimeLabel =
+                                            renderConfig.formatActionCardExecutedTimeLabel(
+                                                message.threadActionCard()?.executedAt,
+                                                liveTodayEpochDay
+                                            ),
+                                        onOpenAttachment = { onThreadEvent("openAttachment", null, it, null) },
+                                        onDownloadAttachment = { onThreadEvent("downloadAttachment", null, it, null) },
+                                        onRetryLocalSend = { onThreadEvent("retryLocalSend", message.id, null, null) },
+                                        onCopyLocalSendFailureDetails = {
+                                            onThreadEvent("copyLocalSendFailureDetails", message.id, null, null)
+                                        },
+                                        attachmentOpenStates = if (isRichContentEnabled) attachmentOpenStates else emptyMap(),
+                                        pendingActionCardIds = if (isRichContentEnabled) pendingActionCardIds else emptySet(),
+                                        writeActionsEnabled = writeActionsEnabled,
+                                        onCommitActionCard = { onThreadEvent("commitActionCard", it, null, null) },
+                                        onOpenActionCardChannel = { onThreadEvent("openActionCardChannel", it, null, null) },
+                                        currentServerSlug = currentServerSlug,
+                                        quotedPermalinkLoader = quotedPermalinkLoader,
+                                        onOpenMarkdownTag = onOpenMarkdownTag,
+                                        onOpenMarkdownUrl = onOpenMarkdownUrl,
+                                        onMentionAuthor = onMentionAuthor,
+                                        richContentEnabled = isRichContentEnabled,
+                                        translation = translationUi,
+                                        onToggleTranslationOriginal = {
+                                            translationStore?.setShowOriginal(
+                                                message.id,
+                                                !(translationUi?.showOriginal ?: false)
+                                            )
+                                        },
+                                        onRetryTranslation = {
+                                            translationStore?.retryTranslation(displayMessage.toTranslationCandidate())
+                                        },
+                                        onOpenForwardBundle = onOpenForwardBundle,
+                                        longMessageCollapse =
+                                            longMessageCollapseController.takeIf {
+                                                longMessageCollapseEnabled && !shareSelectionCaptureActive
+                                            },
+                                        onToggleLongMessage = {
+                                            toggleLongMessage(
+                                                message.id,
+                                                messageListItemIndexFor(renderPayload, message.id)
+                                            )
+                                        },
+                                        longPressGestureInstanceKey =
+                                            message.messageListItemKey(duplicateMessageRandomIds),
+                                        // A quote card's tap (web useJumpToQuotedMessage): the thread's first
+                                        // message scrolls to its row as the timeline's jump does; any other
+                                        // is focused here, loaded around first.
+                                        onJumpToQuotedMessage = { quotedMessageId ->
+                                            listState.noteUserNavigation()
+                                            if (quotedMessageId == (renderPayload.parentMessageId ?: renderPayload.originMessage?.id)) {
+                                                outlineOriginJumpRequestState.value += 1
+                                            } else {
+                                                onThreadEvent(ThreadOutlineJumpAction, quotedMessageId, null, null)
+                                            }
+                                        }
                                     )
                                 }
                             }
-                        } else if (isSystemMessage && actionCard == null) {
-                            ThreadSystemMessageRow(
-                                message = displayMessage,
-                                timestampValue = message.timestampLabel,
-                                timeline = renderPayload.messages,
-                                serverSlug = currentServerSlug,
-                                onOpenUrl = onOpenMarkdownUrl,
-                                onExpand = { requestRowExpandReveal(message.id) },
-                                handoffReasonMarkdown = handoffReasonMarkdown,
-                            )
-                        } else {
-                            val translationUi =
-                                if (translationStore != null) {
-                                    resolveThreadMessageTranslationUi(displayMessage, translationState)
-                                } else {
-                                    null
-                                }
-                            ThreadTimeRevealRow(
-                                state = timeReveal,
-                                timeLabel = formatThreadTimeRevealLabel(message.timestampLabel, renderConfig.timeContext),
-                                continuation = renderPayload.compactConsecutiveMessages && rowSuppressesRepeatedAuthor,
-                            ) {
-                                ThreadMessageCard(
-                                    message = displayMessage,
-                                    messageBodyTextStyle = messageBodyTextStyle,
-                                    replyMetadata = replyMetadata,
-                                    sourceTasks = sourceTasks,
-                                    onOpenSourceTask = { onThreadEvent("openSourceTask", it, null, null) },
-                                    hasReplyDraft = activeReplyDraftParentMessageIds.hasReplyComposerDraft(message.id),
-                                    actionCard = actionCard,
-                                    messageIndex = absoluteMessageIndex,
-                                    diagnosticsLogger = diagnosticsLogger,
-                                    highlightedMentions = highlightedMentions,
-                                    agentStatusResolver = agentStatusResolver,
-                                    memberAvatarResolver = memberAvatarResolver,
-                                    memberModelLabelResolver = memberModelLabelResolver,
-                                    inlineReplyParticipantsById = inlineReplyParticipantsById,
-                                    focused = activeFocusedMessageId == message.id,
-                                    searchMatch = activeInlineSearchMessageId == message.id,
-                                    popupOpen = menuState.actionMessageId == message.id || menuState.quickReactionBar?.messageId == message.id,
-                                    hoverToolbar =
-                                        threadMessageHoverToolbarActions(
-                                            message = message,
-                                            capabilities =
-                                                threadMessageMenuCapabilities(
-                                                    message = message,
-                                                    replyMetadata = replyMetadata,
-                                                    slice = renderPayload,
-                                                    writeActionsEnabled = writeActionsEnabled
-                                                ),
-                                            onShowReactions = { anchor ->
-                                                menuState.quickReactionBar =
-                                                    ThreadQuickReactionBarRequest(message.id, anchor, fromHoverToolbar = true)
-                                            },
-                                            onForward = { onForwardMessage(message.id) },
-                                            onToggleSave = { onThreadEventKeepingAnchor("toggleMessageSaved", message.id, null, null) },
-                                            onShownChange = { shown ->
-                                                if (shown) {
-                                                    menuState.hoverToolbarMessageId = message.id
-                                                } else if (menuState.hoverToolbarMessageId == message.id) {
-                                                    menuState.hoverToolbarMessageId = null
-                                                }
-                                            }
-                                        ),
-                                    shareSelectionActive = shareSelectionActive,
-                                    selectedForShare = message.id in selectedShareMessageIds,
-                                    onToggleShareSelection = { onToggleShareSelection(message.id) },
-                                    showSaveAction = !captureShareBounds,
-                                    // Defer this snapshot read to the avatar leaf. Reading it at the
-                                    // card boundary invalidates every visible message while anchoring.
-                                    isMessageListScrolling = { listState.isScrollInProgress },
-                                    alignOwnMessageRight = renderPayload.alignOwnMessagesRight && message.isOwn,
-                                    messageAlignmentModeEnabled = renderPayload.alignOwnMessagesRight,
-                                    compactConsecutiveMessages = renderPayload.compactConsecutiveMessages,
-                                    suppressRepeatedAuthor = rowSuppressesRepeatedAuthor,
-                                    showReplyAction = renderPayload.showReplyActions,
-                                    quickReactionsEnabled = threadMessageCanQuickReact(message, renderPayload, writeActionsEnabled),
-                                    resolvedTaskAssigneeName = linkedTaskAssigneeName,
-                                    resolveMarkdownTagLabel = resolveMarkdownTagLabel,
-                                    markdownTagContextSignature = markdownTagContextSignature,
-                                    activeMarkdownTagKey = activeMarkdownTagKey,
-                                    taskOpenEnabled = renderPayload.showTaskOpenActions && isRichContentEnabled,
-                                    taskStatusActionsEnabled = renderPayload.showTaskStatusActions && isRichContentEnabled,
-                                    isMarkdownTagValid = isMarkdownTagValid,
-                                    onShowActions = { anchor ->
-                                        if (!message.hasLocalSendState() || message.isFailedLocalSend() || message.isSendingLocalSend()) {
-                                            menuState.actionMenuAnchor = anchor
-                                            menuState.actionMessageId = message.id
-                                            menuState.classicMenuOverrideMessageId = null
-                                            menuState.actionMenuFromLongPress = false
-                                            diagnosticsLogger("thread_message_menu_tap messageId=${message.id}")
-                                        }
-                                    },
-                                    onLongPressMenuOpened = {
-                                        if (menuState.actionMessageId == message.id) {
-                                            menuState.actionMenuFromLongPress = true
-                                            RaftProductEvents.messageActionSelected(
-                                                RaftMessageAction.OpenMenu,
-                                                threadMessageIsReplyInThread(
-                                                    renderPayload.replyThreadSurface,
-                                                    renderPayload.originMessage?.id,
-                                                    message.id
-                                                )
-                                            )
-                                        }
-                                    },
-                                    onOpenMember = onOpenMember,
-                                    onExternalAuthor = onExternalAuthor,
-                                    onOpenThread = { onThreadEvent("openMessageThread", it, null, null) },
-                                    onShowQuickReactions = { anchor ->
-                                        menuState.quickReactionBar = ThreadQuickReactionBarRequest(message.id, anchor)
-                                    },
-                                    onOpenTask = { onThreadEvent("openTask", it, null, null) },
-                                    onOpenTaskStatusMenu = { anchor ->
-                                        menuState.taskStatusMenuMessageId = message.id
-                                        menuState.taskStatusMenuAnchor = anchor
-                                    },
-                                    onToggleReaction = { emoji -> onThreadEventKeepingAnchor("toggleReaction", message.id, null, emoji) },
-                                    onToggleSave = { onThreadEventKeepingAnchor("toggleMessageSaved", message.id, null, null) },
-                                    showReactionReactors = true,
-                                    onShowAuthorDescription = { description, anchor ->
-                                        menuState.authorDescriptionPopover =
-                                            ThreadAuthorDescriptionPopoverRequest(
-                                                description = description,
-                                                anchor = anchor
-                                            )
-                                    },
-                                    showReactionAddAction = renderPayload.showReactionActions && !message.hasLocalSendState(),
-                                    onOpenCommentHost = { onThreadEvent("openCommentHost", message.id, null, null) },
-                                    timestampLabel = message.timestampLabel,
-                                    compactTimestampLabel = renderConfig.formatCompactTimestampLabel(message),
-                                    actionCardExecutedTimeLabel =
-                                        renderConfig.formatActionCardExecutedTimeLabel(
-                                            message.threadActionCard()?.executedAt,
-                                            liveTodayEpochDay
-                                        ),
-                                    onOpenAttachment = { onThreadEvent("openAttachment", null, it, null) },
-                                    onDownloadAttachment = { onThreadEvent("downloadAttachment", null, it, null) },
-                                    onRetryLocalSend = { onThreadEvent("retryLocalSend", message.id, null, null) },
-                                    onCopyLocalSendFailureDetails = {
-                                        onThreadEvent("copyLocalSendFailureDetails", message.id, null, null)
-                                    },
-                                    attachmentOpenStates = if (isRichContentEnabled) attachmentOpenStates else emptyMap(),
-                                    pendingActionCardIds = if (isRichContentEnabled) pendingActionCardIds else emptySet(),
-                                    writeActionsEnabled = writeActionsEnabled,
-                                    onCommitActionCard = { onThreadEvent("commitActionCard", it, null, null) },
-                                    onOpenActionCardChannel = { onThreadEvent("openActionCardChannel", it, null, null) },
-                                    currentServerSlug = currentServerSlug,
-                                    quotedPermalinkLoader = quotedPermalinkLoader,
-                                    onOpenMarkdownTag = onOpenMarkdownTag,
-                                    onOpenMarkdownUrl = onOpenMarkdownUrl,
-                                    onMentionAuthor = onMentionAuthor,
-                                    richContentEnabled = isRichContentEnabled,
-                                    translation = translationUi,
-                                    onToggleTranslationOriginal = {
-                                        translationStore?.setShowOriginal(
-                                            message.id,
-                                            !(translationUi?.showOriginal ?: false)
-                                        )
-                                    },
-                                    onRetryTranslation = {
-                                        translationStore?.retryTranslation(displayMessage.toTranslationCandidate())
-                                    },
-                                    onOpenForwardBundle = onOpenForwardBundle,
-                                    longMessageCollapse =
-                                        longMessageCollapseController.takeIf {
-                                            longMessageCollapseEnabled && !shareSelectionCaptureActive
-                                        },
-                                    onToggleLongMessage = {
-                                        toggleLongMessage(
-                                            message.id,
-                                            renderPayload.threadMessageListItemIndex(message.id)
-                                        )
-                                    },
-                                    longPressGestureInstanceKey =
-                                        message.messageListItemKey(duplicateMessageRandomIds),
-                                    // A quote card's tap (web useJumpToQuotedMessage): the thread's first
-                                    // message scrolls to its row as the timeline's jump does; any other
-                                    // is focused here, loaded around first.
-                                    onJumpToQuotedMessage = { quotedMessageId ->
-                                        listState.noteUserNavigation()
-                                        if (quotedMessageId == (renderPayload.parentMessageId ?: renderPayload.originMessage?.id)) {
-                                            outlineOriginJumpRequestState.value += 1
-                                        } else {
-                                            onThreadEvent(ThreadOutlineJumpAction, quotedMessageId, null, null)
-                                        }
-                                    }
-                                )
-                            }
                         }
-                    }
-                    // read_receipts_v0 (web option C): a DM's "Read" line under its last message.
-                    if (message.id == dmReadStatusMessageId && peerReadReceipts?.showsDmReadStatus(displayMessage) == true) {
-                        // The card already ends in its 8dp bottom padding, which stands in for web `mt-1`.
-                        ThreadDmReadStatusRow(
-                            Modifier.padding(start = RaftAppSpacing.Sm, end = RaftAppSpacing.Sm, bottom = RaftAppSpacing.Xs)
-                        )
+                        // read_receipts_v0 (web option C): a DM's "Read" line under its last message.
+                        if (message.id == dmReadStatusMessageId && peerReadReceipts?.showsDmReadStatus(displayMessage) == true) {
+                            // The card already ends in its 8dp bottom padding, which stands in for web `mt-1`.
+                            ThreadDmReadStatusRow(
+                                Modifier.padding(start = RaftAppSpacing.Sm, end = RaftAppSpacing.Sm, bottom = RaftAppSpacing.Xs)
+                            )
+                        }
                     }
                 }
             }
+            val renderNewerBoundaryRow: @Composable () -> Unit = {
+                ThreadNewerMessagesBoundaryRow(
+                    newerMessagesStatus = renderPayload.newerMessagesStatus,
+                    onRetry = { requestNewerPage("retryLoadNewer") }
+                )
             }
-            threadListSegments += {
-            if (renderPayload.canLoadMoreAfter) {
-                item(key = ThreadNewerMessagesListItemKey) {
-                    ThreadNewerMessagesBoundaryRow(
-                        newerMessagesStatus = renderPayload.newerMessagesStatus,
-                        onRetry = { requestNewerPage("retryLoadNewer") }
+            val renderBottomSpacerRow: @Composable () -> Unit = {
+                Column(Modifier.fillMaxWidth()) {
+                    // No band for the assistant's otter: it lies over the list's end, so the list
+                    // never moves when it comes or goes (artin 11-03); a reader scrolls if it covers.
+                    Spacer(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(
+                                // The full end, the typing line's slot included where this
+                                // conversation can show the line, whether or not the line shows: the
+                                // row never changes height when the line comes or goes, so nothing
+                                // moves and the reading anchor has nothing to put back. The scroll
+                                // owners read the same value.
+                                bottomSpacerAndAnchorTrailingHeight +
+                                    (if (shareSelectionCaptureTailPaddingActive) {
+                                        ThreadShareCaptureBottomScrollPaddingHeight
+                                    } else {
+                                        0.dp
+                                    })
+                            )
                     )
                 }
             }
-            }
-            threadListSegments += {
-            item(key = ThreadBottomScrollPaddingListItemKey) {
-                Column(Modifier.fillMaxWidth()) {
-                // No band for the assistant's otter: it lies over the list's end, so the list
-                // never moves when it comes or goes (artin 11-03); a reader scrolls if it covers.
-                Spacer(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(
-                            // The full end, the typing line's slot included where this
-                            // conversation can show the line, whether or not the line shows: the
-                            // row never changes height when the line comes or goes, so nothing
-                            // moves and the reading anchor has nothing to put back. The scroll
-                            // owners read the same value.
-                            bottomSpacerAndAnchorTrailingHeight +
-                                (if (shareSelectionCaptureTailPaddingActive) {
-                                    ThreadShareCaptureBottomScrollPaddingHeight
-                                } else {
-                                    0.dp
-                                })
-                        )
-                )
+            if (useVirtualTimeline && virtualProjection != null) {
+                VirtualMessageTimeline(
+                    items = virtualProjection.rows,
+                    key = { row -> row.key },
+                    contentType = { row -> row.contentType },
+                    isAnchorable = { row -> row is ThreadVirtualRow.Message },
+                    state = virtualTimelineState,
+                    contentPadding = listContentPadding,
+                    sparseAnchorBottom = true,
+                    pinnedKeys = virtualPinnedKeys,
+                    modifier = listModifier,
+                ) { _, row ->
+                    when (row) {
+                        ThreadVirtualRow.Origin -> renderOriginRow()
+                        ThreadVirtualRow.HistoryBoundary -> renderHistoryBoundaryRow()
+                        ThreadVirtualRow.ReplyEmpty -> renderReplyEmptyRow()
+                        ThreadVirtualRow.ReplyLoading -> renderReplyLoadingRow()
+                        is ThreadVirtualRow.Message -> renderMessageRow(row.messageIndex)
+                        ThreadVirtualRow.NewerBoundary -> renderNewerBoundaryRow()
+                        ThreadVirtualRow.BottomSpacer -> renderBottomSpacerRow()
+                    }
+                }
+            } else {
+                LazyColumn(
+                    state = listState.raw,
+                    reverseLayout = reverseLayout,
+                    modifier = listModifier,
+                    verticalArrangement = Arrangement.Bottom,
+                    contentPadding = listContentPadding,
+                ) {
+                    val threadListSegments = mutableListOf<LazyListScope.() -> Unit>()
+                    threadListSegments += {
+                        if (renderPayload.hasThreadOriginItem()) {
+                            item(key = ThreadOriginListItemKey) { renderOriginRow() }
+                        }
+                    }
+                    threadListSegments += {
+                        if (renderPayload.hasThreadHistoryBoundaryItem()) {
+                            item(key = ThreadOlderMessagesListItemKey) { renderHistoryBoundaryRow() }
+                        }
+                    }
+                    threadListSegments += {
+                        if (showReplyEmptyState) {
+                            item(key = ThreadReplyEmptyListItemKey) { renderReplyEmptyRow() }
+                        }
+                    }
+                    threadListSegments += {
+                        if (showReplyLoadingSkeleton) {
+                            item(key = ThreadReplyLoadingListItemKey) { renderReplyLoadingRow() }
+                        }
+                    }
+                    threadListSegments += {
+                        val messageCount = renderPayload.messages.size
+                        items(
+                            messageCount,
+                            key = { slot ->
+                                renderPayload.messages[if (reverseLayout) messageCount - 1 - slot else slot]
+                                    .messageListItemKey(duplicateMessageRandomIds)
+                            }
+                        ) { slot ->
+                            // `index` stays the forward (oldest-first) message index in both layouts.
+                            val index = if (reverseLayout) messageCount - 1 - slot else slot
+                            renderMessageRow(index)
+                        }
+                    }
+                    threadListSegments += {
+                        if (renderPayload.canLoadMoreAfter) {
+                            item(key = ThreadNewerMessagesListItemKey) { renderNewerBoundaryRow() }
+                        }
+                    }
+                    threadListSegments += {
+                        item(key = ThreadBottomScrollPaddingListItemKey) { renderBottomSpacerRow() }
+                    }
+                    // Reversed (bottom-up) layout emits the same rows newest-first: physical item 0 is the
+                    // bottom padding row, the messages count down, the origin card comes last (at the top).
+                    (if (reverseLayout) threadListSegments.asReversed() else threadListSegments).forEach { segment -> segment() }
                 }
             }
-            }
-            // Reversed (bottom-up) layout emits the same rows newest-first: physical item 0 is the
-            // bottom padding row, the messages count down, the origin card comes last (at the top).
-            (if (reverseLayout) threadListSegments.asReversed() else threadListSegments).forEach { segment -> segment() }
-        }
         if (threadFind != null) {
             ThreadFindBarHost(
                 controller = threadFind,
@@ -4630,7 +4898,7 @@ private fun ThreadMessagesListContent(
         LaunchedEffect(threadInstanceKey, backToBottomPillInputs) {
             diagnosticsLogger(
                 "thread_back_to_bottom_pill $backToBottomPillInputs " +
-                    "rawFirst=${listState.raw.firstVisibleItemIndex}:${listState.raw.firstVisibleItemScrollOffset} " +
+                    "rawFirst=${listState.firstVisibleItemIndex}:${listState.firstVisibleItemScrollOffset} " +
                     listState.threadViewportGeometryDiagnostics(latestItemIndex)
             )
         }
@@ -5446,10 +5714,10 @@ private fun ThreadMessagesListContent(
     }
 }
 
-private const val ThreadNewerMessagesListItemKey = "thread-page:newer-messages"
-private const val ThreadReplyEmptyListItemKey = "thread-page:reply-empty"
-private const val ThreadReplyLoadingListItemKey = "thread-page:reply-loading"
-private const val ThreadBottomScrollPaddingListItemKey = "thread-page:bottom-scroll-padding"
+internal const val ThreadNewerMessagesListItemKey = "thread-page:newer-messages"
+internal const val ThreadReplyEmptyListItemKey = "thread-page:reply-empty"
+internal const val ThreadReplyLoadingListItemKey = "thread-page:reply-loading"
+internal const val ThreadBottomScrollPaddingListItemKey = "thread-page:bottom-scroll-padding"
 /**
  * The blank end of the list under the newest message: the list's own 16dp end or, in a
  * conversation that can show the typing / working line ([typingLineSlot],
@@ -5501,7 +5769,7 @@ private fun ThreadListViewport.focusedAnchorTargetOffset(targetIndex: Int): Int?
     layoutInfo.visibleItemsInfo.firstOrNull { it.index == targetIndex }?.offset
 
 private fun ThreadListViewport.canScrollToThreadItem(index: Int): Boolean =
-    index >= 0 && layoutInfo.totalItemsCount > index
+    index >= 0 && itemCount > index
 
 private fun ThreadListViewport.threadViewportGeometryDiagnostics(targetIndex: Int): String {
     val info = layoutInfo

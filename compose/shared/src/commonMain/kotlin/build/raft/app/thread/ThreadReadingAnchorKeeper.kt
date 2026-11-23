@@ -206,7 +206,7 @@ internal class ThreadReadingAnchorOwner(
     private var processedLayout: Any? = null
 
     fun afterLayout(owns: () -> Boolean, preferredMessageId: () -> String?, messageIdAt: (Int) -> String?) {
-        if (!listState.reverse) return
+        if (!listState.reverse || listState.isVirtual) return
         val info = listState.raw.layoutInfo
         if (info === processedLayout) return
         processedLayout = info
@@ -229,9 +229,22 @@ internal class ThreadReadingAnchorOwner(
  */
 @androidx.compose.runtime.Composable
 internal fun ThreadUserScrollEffect(state: LazyListState, onUserScroll: () -> Unit) {
+    ThreadUserScrollEffect(state.interactionSource, onUserScroll)
+}
+
+@androidx.compose.runtime.Composable
+internal fun ThreadUserScrollEffect(viewport: ThreadListViewport, onUserScroll: () -> Unit) {
+    ThreadUserScrollEffect(viewport.interactionSource, onUserScroll)
+}
+
+@androidx.compose.runtime.Composable
+private fun ThreadUserScrollEffect(
+    interactionSource: androidx.compose.foundation.interaction.InteractionSource,
+    onUserScroll: () -> Unit,
+) {
     val current = androidx.compose.runtime.rememberUpdatedState(onUserScroll)
-    androidx.compose.runtime.LaunchedEffect(state) {
-        state.interactionSource.interactions.collect { interaction ->
+    androidx.compose.runtime.LaunchedEffect(interactionSource) {
+        interactionSource.interactions.collect { interaction ->
             if (interaction is androidx.compose.foundation.interaction.DragInteraction.Start) current.value()
         }
     }

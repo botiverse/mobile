@@ -94,8 +94,7 @@ internal fun BoxWithConstraintsScope.ThreadMessagesListOverlays(
         val outlineViewport =
             remember(listState, reverseLayout, outlineKeyToMessageId) {
                 {
-                    val visible = listState.raw.layoutInfo.visibleItemsInfo
-                    val topFirst = if (reverseLayout) visible.sortedByDescending { it.offset } else visible.sortedBy { it.offset }
+                    val topFirst = listState.layoutInfo.visibleItemsInfo
                     val keys = outlineKeyToMessageId.value
                     ThreadOutlineViewport(topFirst.mapNotNull { keys[it.key] })
                 }

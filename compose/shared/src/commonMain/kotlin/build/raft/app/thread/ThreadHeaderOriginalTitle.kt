@@ -335,6 +335,35 @@ internal fun ThreadHeaderOriginalReporter(
     timelineSlice: ThreadTimelineSlice,
     originErrorCode: String?,
 ) {
+    ThreadHeaderOriginalReporter(
+        layoutInfoKey = listState,
+        readLayoutInfo = { listState.layoutInfo },
+        timelineSlice = timelineSlice,
+        originErrorCode = originErrorCode,
+    )
+}
+
+@Composable
+internal fun ThreadHeaderOriginalReporter(
+    viewport: ThreadListViewport,
+    timelineSlice: ThreadTimelineSlice,
+    originErrorCode: String?,
+) {
+    ThreadHeaderOriginalReporter(
+        layoutInfoKey = viewport,
+        readLayoutInfo = { viewport.layoutInfo },
+        timelineSlice = timelineSlice,
+        originErrorCode = originErrorCode,
+    )
+}
+
+@Composable
+private fun ThreadHeaderOriginalReporter(
+    layoutInfoKey: Any,
+    readLayoutInfo: () -> androidx.compose.foundation.lazy.LazyListLayoutInfo,
+    timelineSlice: ThreadTimelineSlice,
+    originErrorCode: String?,
+) {
     val state = LocalThreadHeaderOriginalState.current ?: return
     val replyThread = timelineSlice.replyThreadSurface
     val imageLabel = stringResource(Res.string.thread_reply_title_preview_image)
@@ -358,12 +387,12 @@ internal fun ThreadHeaderOriginalReporter(
         if (state.original != original) state.original = original
     }
     val originRowShown = replyThread && timelineSlice.hasThreadOriginItem()
-    LaunchedEffect(state, listState, originRowShown) {
+    LaunchedEffect(state, layoutInfoKey, originRowShown) {
         if (!originRowShown) {
             if (state.originOutOfView) state.originOutOfView = false
             return@LaunchedEffect
         }
-        snapshotFlow { threadOriginRowOutOfView(listState.layoutInfo) }
+        snapshotFlow { threadOriginRowOutOfView(readLayoutInfo()) }
             .distinctUntilChanged()
             .collect { out -> if (state.originOutOfView != out) state.originOutOfView = out }
     }
