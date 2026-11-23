@@ -57,6 +57,7 @@ const LOCALIZED_LABELS = {
   fire: { "zh-Hans": "火", "zh-Hant": "火" },
   joy: { "zh-Hans": "大笑", "zh-Hant": "大笑" },
   check_mark: { "zh-Hans": "完成", "zh-Hant": "完成" },
+  beers: { "zh-Hans": "干杯", "zh-Hant": "乾杯" },
 };
 
 const CELL_DP = 24;

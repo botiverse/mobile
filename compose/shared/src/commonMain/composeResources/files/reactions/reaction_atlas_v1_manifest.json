@@ -3,7 +3,7 @@
   "canonicalSource": "packages/web/assets/reactions/reactions.json",
   "atlas": {
     "image": "reaction_atlas_v1.png",
-    "width": 672,
+    "width": 768,
     "height": 96,
     "pixelRatio": 4,
     "defaultDisplaySizeDp": 18
@@ -118,6 +118,22 @@
       },
       "rect": {
         "x": 576,
+        "y": 0,
+        "w": 96,
+        "h": 96
+      }
+    },
+    {
+      "name": "beers",
+      "value": "🍻",
+      "aliases": [],
+      "labels": {
+        "en": "Clinking beer mugs",
+        "zh-Hans": "干杯",
+        "zh-Hant": "乾杯"
+      },
+      "rect": {
+        "x": 672,
         "y": 0,
         "w": 96,
         "h": 96

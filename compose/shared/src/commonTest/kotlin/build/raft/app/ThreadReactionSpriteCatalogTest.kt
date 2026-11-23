@@ -9,12 +9,21 @@ import kotlin.test.assertTrue
 class ThreadReactionSpriteCatalogTest {
     @Test
     fun catalogResolvesCanonicalValuesAndAliases() {
+        assertEquals(8, ThreadReactionSpriteCatalogV1.reactions.size)
+        assertEquals(768, ThreadReactionSpriteCatalogV1.atlas.width)
         assertNotNull(ThreadReactionSpriteCatalogV1.resolve("✅"))
         assertNull(ThreadReactionSpriteCatalogV1.resolve("☑️"))
         // "❤" (without VS16) is a canonical alias of "❤️" in reactions.json.
         val heart = assertNotNull(ThreadReactionSpriteCatalogV1.resolve("❤"))
         assertEquals("heart", heart.name)
         assertEquals(ThreadReactionSpriteCatalogV1.resolve("❤️"), heart)
+        // 🍻 joins the bundled sprite atlas (#16309) without expanding the 7-item quick bar.
+        val beers = assertNotNull(ThreadReactionSpriteCatalogV1.resolve("🍻"))
+        assertEquals("beers", beers.name)
+        assertEquals(ThreadReactionSpriteRect(x = 672, y = 0, width = 96, height = 96), beers.rect)
+        assertEquals("干杯", beers.label("zh-Hans-CN"))
+        assertEquals("Clinking beer mugs", beers.label("en"))
+        assertEquals(listOf("👍", "❤️", "🎉", "👀", "🔥", "😂", "✅"), ThreadQuickReactionEmojis)
     }
 
     @Test

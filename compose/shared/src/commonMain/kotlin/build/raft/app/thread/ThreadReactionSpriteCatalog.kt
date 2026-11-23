@@ -138,7 +138,7 @@ internal val ThreadReactionSpriteCatalogV1 = ThreadReactionSpriteCatalog(
     resource = ThreadReactionSpriteAtlasResource,
     atlas = ThreadReactionAtlas(
         imageName = "reaction_atlas_v1.png",
-        width = 672,
+        width = 768,
         height = 96,
         pixelRatio = 4,
         defaultDisplaySizeDp = 18
@@ -186,9 +186,18 @@ internal val ThreadReactionSpriteCatalogV1 = ThreadReactionSpriteCatalog(
             value = "✅",
             rect = ThreadReactionSpriteRect(x = 576, y = 0, width = 96, height = 96),
             labels = mapOf("en" to "Check mark", "zh-Hans" to "完成", "zh-Hant" to "完成")
+        ),
+        ThreadReactionSprite(
+            name = "beers",
+            value = "🍻",
+            rect = ThreadReactionSpriteRect(x = 672, y = 0, width = 96, height = 96),
+            labels = mapOf("en" to "Clinking beer mugs", "zh-Hans" to "干杯", "zh-Hant" to "乾杯")
         )
     )
 )
 
+// Mirrors web QUICK_REACTION_EMOJIS (packages/web/src/components/message/reactionConstants.ts):
+// the quick-reaction strip keeps the seven core emojis even as the bundled sprite atlas grows
+// (e.g. 🍻 beers in slock #16309 renders from the atlas when added via the full picker).
 internal val ThreadQuickReactionEmojis: List<String> =
-    ThreadReactionSpriteCatalogV1.reactions.map { it.value }
+    listOf("👍", "❤️", "🎉", "👀", "🔥", "😂", "✅")
