@@ -114,7 +114,16 @@ test("verifyAttemptSpecification validates CRLF bytes, digests, identity, budget
 
   const verified = verifyAttemptSpecification(
     payload,
-    { runId: "run-login", runCaseId: "rc-login-2", caseId: "login-email-password", caseRevision: 4, attempt: 2, platform: "android" },
+    {
+      runId: "run-login",
+      runCaseId: "rc-login-2",
+      caseId: "login-email-password",
+      caseRevision: 4,
+      attempt: 2,
+      platform: "android",
+      reportSpecSha256: payload.spec_sha256,
+      reportExecutionBudgetJson: JSON.stringify(payload.execution_budget),
+    },
     parseFixtureYaml,
   );
   assert.equal(verified.status, "verified");
@@ -127,7 +136,16 @@ test("verifyAttemptSpecification validates CRLF bytes, digests, identity, budget
 
 test("verifyAttemptSpecification fails closed on identity, digest, line-ending, or budget tampering", () => {
   const base = makeFrozenSpec();
-  const expected = { runId: "run-257", runCaseId: "rc-1", caseId: "settings-open", caseRevision: 1, attempt: 1, platform: "android" };
+  const expected = {
+    runId: "run-257",
+    runCaseId: "rc-1",
+    caseId: "settings-open",
+    caseRevision: 1,
+    attempt: 1,
+    platform: "android",
+    reportSpecSha256: base.spec_sha256,
+    reportExecutionBudgetJson: JSON.stringify(base.execution_budget),
+  };
 
   const mutations = [
     ["wrong contract_version", { ...base, contract_version: "testbed-attempt-spec/v2" }, /contract_version/],
@@ -201,14 +219,28 @@ test("verifyAttemptSpecification cross-checks run report spec_sha256, execution_
     /execution_budget disagrees with run report/,
   );
 
-  // Report spec_sha256 mismatch or null -> fail closed.
+  // Report spec_sha256 or execution_budget_json missing/null/mismatched -> fail closed.
   assert.throws(
     () => verifyAttemptSpecification(base, { ...expectedBase, reportSpecSha256: "0".repeat(64) }, parseFixtureYaml),
     /spec_sha256 disagrees with run report/,
   );
   assert.throws(
     () => verifyAttemptSpecification(base, { ...expectedBase, reportSpecSha256: null }, parseFixtureYaml),
-    /run report spec_sha256 is invalid or unbound/,
+    /run report spec_sha256 is missing, invalid, or unbound/,
+  );
+  assert.throws(
+    () => verifyAttemptSpecification(base, { ...expectedBase, reportSpecSha256: undefined }, parseFixtureYaml),
+    /run report spec_sha256 is missing, invalid, or unbound/,
+  );
+  // Argus review finding #4: omitting report execution_budget_json while tampering /spec 45 -> 60 must fail closed.
+  const { reportExecutionBudgetJson: _omitBudget, ...expectedWithoutBudget } = expectedBase;
+  assert.throws(
+    () => verifyAttemptSpecification(driftedSpecBudget, expectedWithoutBudget, parseFixtureYaml),
+    /run report execution_budget_json is missing or empty/,
+  );
+  assert.throws(
+    () => verifyAttemptSpecification(base, { ...expectedBase, reportExecutionBudgetJson: null }, parseFixtureYaml),
+    /run report execution_budget_json is missing or empty/,
   );
 
   // First-dispatch admission digest & identity mismatches -> fail closed.
@@ -220,6 +252,12 @@ test("verifyAttemptSpecification cross-checks run report spec_sha256, execution_
     ["wrong confirmation_id", { ...matchingAdmission, confirmation_id: "run-other" }, /confirmation_id mismatch/],
     ["wrong attempt", { ...matchingAdmission, attempt: 2 }, /admission attempt mismatch/],
     ["wrong case_id", { ...matchingAdmission, selection: { ...matchingAdmission.selection, case_id: "other" } }, /admission case_id mismatch/],
+    // Argus review finding #5: first-dispatch admission with swapped run_case_id + corrupted case_sha256 must fail closed.
+    ["first-dispatch wrong run_case_id + corrupted case_sha256", {
+      ...matchingAdmission,
+      run_case_id: "rc-other",
+      selection: { ...matchingAdmission.selection, case_sha256: "0".repeat(64) },
+    }, /admission run_case_id mismatch/],
   ];
   for (const [label, admission, pattern] of badAdmissions) {
     assert.throws(
@@ -228,6 +266,38 @@ test("verifyAttemptSpecification cross-checks run report spec_sha256, execution_
       label,
     );
   }
+
+  // Genuine retry (attempt 2) carries its own run_case_id, spec_sha256, and budget
+  // while report.admission still references attempt 1: must verify cleanly.
+  const retrySpec = makeFrozenSpec({
+    runId: "run-257",
+    runCaseId: "rc-2",
+    caseId: "settings-open",
+    caseRevision: 1,
+    attempt: 2,
+    platform: "android",
+    renderedGoal: "Retry goal on Android for attempt 2",
+    executionBudget: { max_turns: 60, max_minutes: 50, no_progress_turns: 10 },
+  });
+  const verifiedRetry = verifyAttemptSpecification(
+    retrySpec,
+    {
+      runId: "run-257",
+      runCaseId: "rc-2",
+      caseId: "settings-open",
+      caseRevision: 1,
+      attempt: 2,
+      platform: "android",
+      reportSpecSha256: retrySpec.spec_sha256,
+      reportExecutionBudgetJson: JSON.stringify(retrySpec.execution_budget),
+      admission: matchingAdmission,
+    },
+    parseFixtureYaml,
+  );
+  assert.equal(verifiedRetry.status, "verified");
+  assert.equal(verifiedRetry.run_case_id, "rc-2");
+  assert.equal(verifiedRetry.attempt, 2);
+  assert.deepEqual(verifiedRetry.execution_budget, { max_turns: 60, max_minutes: 50, no_progress_turns: 10 });
 });
 
 test("fetchAttemptSpecification maps 409 LEGACY_UNBOUND / FROZEN_SPEC_UNAVAILABLE to incomplete and fails closed on 404", async () => {
@@ -623,11 +693,30 @@ test("review_agent fails closed on 404, tampered digest, report budget drift, or
     ...baseReport,
     admission: { ...baseReport.admission, selection: { ...baseReport.admission.selection, goal_sha256: "f".repeat(64) } },
   };
+  const admissionWrongRunCaseId = {
+    ...baseReport,
+    admission: {
+      ...baseReport.admission,
+      run_case_id: "rc-other",
+      selection: { ...baseReport.admission.selection, case_sha256: "f".repeat(64) },
+    },
+  };
+  const missingReportBudget = {
+    ...baseReport,
+    cases: [(() => { const { execution_budget_json: _, ...rest } = baseReport.cases[0]; return rest; })()],
+  };
+  const missingReportSpecSha = {
+    ...baseReport,
+    cases: [(() => { const { spec_sha256: _, ...rest } = baseReport.cases[0]; return rest; })()],
+  };
   for (const [label, report, specs] of [
     ["404", baseReport, {}],
     ["digest-tamper", baseReport, { "rc-bad": { status: 200, body: tampered } }],
     ["report-budget-drift-45-vs-60", baseReport, { "rc-bad": { status: 200, body: budgetDrifted } }],
+    ["report-missing-budget-with-60-spec", missingReportBudget, { "rc-bad": { status: 200, body: budgetDrifted } }],
+    ["report-missing-spec-sha", missingReportSpecSha, { "rc-bad": { status: 200, body: valid } }],
     ["admission-goal-mismatch", admissionGoalMismatch, { "rc-bad": { status: 200, body: valid } }],
+    ["admission-wrong-run-case-id-on-first-attempt", admissionWrongRunCaseId, { "rc-bad": { status: 200, body: valid } }],
   ]) {
     const r = runReviewAgent({ report, specs });
     assert.notEqual(r.code, 0, label);
@@ -671,8 +760,27 @@ test("claim_spec_binding enforces run_case_id parity, fails closed on goal/budge
     /bound claim response is missing run_case_id/,
   );
   assert.throws(
+    () => extractClaimSpecBinding({
+      run_case_id: "rc-1",
+      case_id: "settings-open",
+      spec_yaml: frozen.platform_slice_yaml,
+      spec_sha256: frozen.spec_sha256,
+      rendered_goal_sha256: frozen.rendered_goal_sha256,
+      guardrails: frozen.execution_budget,
+    }, {}),
+    /bound claim requires non-empty requested run_case_id/,
+  );
+  assert.throws(
     () => extractClaimSpecBinding({ run_case_id: "rc-other", case_id: "settings-open", claim_token: "t" }, { runCaseId: "rc-1" }),
     /run_case_id mismatch/,
+  );
+  assert.throws(
+    () => verifyClaimSpecBinding(bound, { goal: frozen.rendered_goal, maxTurns: "45", maxMinutes: "40", noProgressTurns: "8" }, { requireGoal: true, requireBudget: true }),
+    /bound claim verification requires non-empty requested run_case_id/,
+  );
+  assert.throws(
+    () => verifyClaimSpecBinding(bound, { goal: frozen.rendered_goal, maxTurns: "45", maxMinutes: "40", noProgressTurns: "8" }, { requireGoal: true, requireBudget: true, expectedRunCaseId: "   " }),
+    /bound claim verification requires non-empty requested run_case_id/,
   );
   assert.throws(
     () => verifyClaimSpecBinding(bound, { goal: frozen.rendered_goal, maxTurns: "45", maxMinutes: "40", noProgressTurns: "8" }, { requireGoal: true, requireBudget: true, expectedRunCaseId: "rc-other" }),
@@ -747,6 +855,29 @@ cp "${replyFile}" "$out"
     assert.equal(fs.existsSync(path.join(runnerTemp, "stamp-claim-spec-rc-mis.json")), false, `${label}: invalid binding file must not be kept`);
   }
   assert.equal(Object.hasOwn(JSON.parse(fs.readFileSync(claimReqFile, "utf8")), "rendered_goal_sha256"), false, "rendered_goal_sha256 omitted by default so legacy runs never 409");
+
+  // CLI record and verify must both reject bound claims when run_case_id is missing from CLI flags AND env.
+  const cliResp = path.join(root, "cli-bound-reply.json");
+  const cliBinding = path.join(root, "cli-bound-binding.json");
+  const cliOut = path.join(root, "cli-bound-out.json");
+  fs.writeFileSync(cliResp, JSON.stringify(baseReply));
+  fs.writeFileSync(cliBinding, JSON.stringify(bound));
+  const cleanEnv = { ...process.env, QA_GOAL: frozen.rendered_goal, QA_MAX_TURNS: "45", QA_MAX_MINUTES: "40", QA_NO_PROGRESS_TURNS: "8" };
+  delete cleanEnv.STAMP_RUN_CASE_ID;
+  const recMissing = spawnSync(process.execPath, [CLAIM_BINDING_CLI, "record", "--response", cliResp, "--out", cliOut], {
+    encoding: "utf8",
+    env: cleanEnv,
+  });
+  assert.notEqual(recMissing.status, 0, "record CLI must fail closed when run_case_id is absent from CLI and env");
+  assert.match(recMissing.stderr, /bound claim requires non-empty requested run_case_id/);
+  assert.equal(fs.existsSync(cliOut), false);
+  const verMissing = spawnSync(process.execPath, [CLAIM_BINDING_CLI, "verify", "--binding", cliBinding, "--out", cliOut], {
+    encoding: "utf8",
+    env: cleanEnv,
+  });
+  assert.notEqual(verMissing.status, 0, "verify CLI must fail closed when run_case_id is absent from CLI and env");
+  assert.match(verMissing.stderr, /bound claim verification requires non-empty requested run_case_id/);
+  assert.equal(fs.existsSync(cliOut), false);
 
   // Workflow ordering check: verify step runs after claim, before preflight, and skips release-prelogin.
   const workflow = fs.readFileSync(new URL("../../.github/workflows/qa-acceptance.yml", import.meta.url), "utf8");

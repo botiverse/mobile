@@ -201,9 +201,20 @@ const attemptSpec = (rc) => {
   };
 };
 const res = (status, body) => ({ ok: status < 400, status, text: async () => JSON.stringify(body) });
+const enrichedReport = {
+  ...report,
+  cases: (report.cases || []).map((rc) => {
+    const spec = attemptSpec(rc);
+    return {
+      ...rc,
+      spec_sha256: Object.hasOwn(rc, "spec_sha256") ? rc.spec_sha256 : spec.spec_sha256,
+      execution_budget_json: Object.hasOwn(rc, "execution_budget_json") ? rc.execution_budget_json : JSON.stringify(spec.execution_budget),
+    };
+  }),
+};
 global.fetch = async (url, opts = {}) => {
   const p = new URL(url).pathname, m = opts.method || "GET";
-  if (m === "GET" && p === "/api/runs/run-1") return res(200, report);
+  if (m === "GET" && p === "/api/runs/run-1") return res(200, enrichedReport);
   if (m === "GET" && p.startsWith("/api/cases/")) throw new Error("catalog /api/cases/ must never be called by review_agent");
   const specMatch = p.match(/^\\/api\\/runs\\/run-1\\/cases\\/([^/]+)\\/spec$/);
   if (m === "GET" && specMatch) {

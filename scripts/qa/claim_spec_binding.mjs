@@ -64,6 +64,9 @@ export function extractClaimSpecBinding(claimResponse, { runCaseId = null } = {}
       case_id: resolvedCaseId,
     };
   }
+  if (!expectedRunCaseId) {
+    throw new ClaimSpecBindingError("bound claim requires non-empty requested run_case_id");
+  }
   if (!responseRunCaseId) {
     throw new ClaimSpecBindingError("bound claim response is missing run_case_id");
   }
@@ -114,10 +117,13 @@ export function verifyClaimSpecBinding(
   if (!binding.bound) {
     return { ...binding, verified: true, mode: "legacy_unbound" };
   }
+  if (!expectedId) {
+    throw new ClaimSpecBindingError("bound claim verification requires non-empty requested run_case_id");
+  }
   if (!bindingRunCaseId) {
     throw new ClaimSpecBindingError("bound claim spec binding is missing run_case_id");
   }
-  if (expectedId && bindingRunCaseId !== expectedId) {
+  if (bindingRunCaseId !== expectedId) {
     throw new ClaimSpecBindingError(
       `claim spec binding run_case_id mismatch: expected=${expectedId} actual=${bindingRunCaseId}`
     );
@@ -178,7 +184,9 @@ export function verifyClaimSpecBinding(
 
 function argValue(argv, flag) {
   const i = argv.indexOf(flag);
-  return i >= 0 ? argv[i + 1] : "";
+  if (i < 0 || i + 1 >= argv.length) return "";
+  const val = argv[i + 1];
+  return val.startsWith("--") ? "" : val;
 }
 
 function writePrivateJson(filePath, value) {
