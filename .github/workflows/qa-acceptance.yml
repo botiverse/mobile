@@ -502,7 +502,7 @@ jobs:
             --binding "$RUNNER_TEMP/stamp-claim-spec-${STAMP_RUN_CASE_ID}.json" \
             --out "$RUNNER_TEMP/stamp-claim-spec-verified-${STAMP_RUN_CASE_ID}.json"
 
-      # Fetch the assigned user and server after the claim, before comparing the GitHub account.
+      # Fetch the assigned user, server and runtime credential after the claim, before preflight and device login.
       - name: Fetch the login acceptance input from Testbed
         if: ${{ steps.stamp-claim.outputs.claimed_case == 'login-email-password' }}
         continue-on-error: true
@@ -510,7 +510,7 @@ jobs:
           STAMP_RUN_CASE_ID: ${{ inputs.stamp_run_case_id }}
           STAMP_URL: ${{ secrets.STAMP_URL }}
           STAMP_TOKEN: ${{ secrets.STAMP_TOKEN }}
-        run: node scripts/qa/testbed_login_acceptance_input.mjs
+        run: node scripts/qa/testbed_login_acceptance_input.mjs --include-credential
 
       # Password-login cases still exercise the UI normally. The QA account goes only to the
       # steps that use it, through their own env: from secrets.*, and only on the legacy path
@@ -553,16 +553,9 @@ jobs:
           STAMP_RUN_CASE_ID: ${{ inputs.stamp_run_case_id }}
           QA_TEST_EMAIL: ${{ steps.stamp-claim.outputs.claimed_case != 'login-email-password' && secrets.QA_TEST_EMAIL || '' }}
           QA_TEST_PASSWORD: ${{ steps.stamp-claim.outputs.claimed_case != 'login-email-password' && secrets.QA_TEST_PASSWORD || '' }}
-          QA_LOGIN_ACCEPTANCE_EMAIL: ${{ steps.stamp-claim.outputs.claimed_case == 'login-email-password' && secrets.QA_LOGIN_ACCEPTANCE_EMAIL || '' }}
-          QA_LOGIN_ACCEPTANCE_PASSWORD: ${{ steps.stamp-claim.outputs.claimed_case == 'login-email-password' && secrets.QA_LOGIN_ACCEPTANCE_PASSWORD || '' }}
         run: |
           if [ "$STAMP_CLAIMED_CASE" = "login-email-password" ]; then
-            if [ -z "$QA_LOGIN_ACCEPTANCE_EMAIL" ] || [ -z "$QA_LOGIN_ACCEPTANCE_PASSWORD" ]; then
-              echo "::error::login-email-password requires repository secrets QA_LOGIN_ACCEPTANCE_EMAIL and QA_LOGIN_ACCEPTANCE_PASSWORD"
-              echo "QA account preflight: missing_login_acceptance_secrets"
-              exit 2
-            fi
-            node scripts/qa/visible_servers_probe.mjs --testbed-input "$RUNNER_TEMP/testbed-login-acceptance/input.json"
+            node scripts/qa/visible_servers_probe.mjs --testbed-input "$RUNNER_TEMP/testbed-login-acceptance/input.json" --credential-file "$RUNNER_TEMP/login-acceptance-credential/account"
             exit $?
           fi
           mkdir -p qa-evidence
@@ -666,27 +659,10 @@ jobs:
           [ -n "$QA_TEST_EMAIL" ] && [ -n "$QA_TEST_PASSWORD" ] || { echo "::error::QA account secrets are missing"; exit 1; }
           printf '%s\n%s\n' "$QA_TEST_EMAIL" "$QA_TEST_PASSWORD" > "$dir/account"
 
-      # Login acceptance (#216): the dedicated QA account goes to one 0600 file in a 0700 runner-temp
-      # directory, never to the emulator step's env (so APK install, perf collection, logcat, the
-      # agent and other child processes never inherit it). Only login_phase.mjs reads it and removes
-      # it on read (--consume-credential-file); the emulator login line and the always() cleanup step
-      # below remove it too.
-      - name: Stage login acceptance credential
-        if: ${{ inputs.login_mode != 'release-prelogin' && (inputs.stamp_run_case_id == '' || steps.stamp-claim.outputs.bootstrap_required != 'true') && steps.stamp-claim.outputs.claimed_case == 'login-email-password' }}
-        env:
-          QA_LOGIN_ACCEPTANCE_EMAIL: ${{ secrets.QA_LOGIN_ACCEPTANCE_EMAIL }}
-          QA_LOGIN_ACCEPTANCE_PASSWORD: ${{ secrets.QA_LOGIN_ACCEPTANCE_PASSWORD }}
-        run: |
-          umask 077
-          dir="$RUNNER_TEMP/login-acceptance-credential"
-          mkdir -p "$dir"
-          chmod 700 "$dir"
-          [ -n "$QA_LOGIN_ACCEPTANCE_EMAIL" ] && [ -n "$QA_LOGIN_ACCEPTANCE_PASSWORD" ] || { echo "::error::login-email-password requires repository secrets QA_LOGIN_ACCEPTANCE_EMAIL and QA_LOGIN_ACCEPTANCE_PASSWORD"; exit 1; }
-          printf '%s\n%s\n' "$QA_LOGIN_ACCEPTANCE_EMAIL" "$QA_LOGIN_ACCEPTANCE_PASSWORD" > "$dir/account"
-
       # Login acceptance (#216), only for the claimed Testbed case login-email-password. login_phase.mjs checks the app's signing certificate with apksig
       # (AppIdentityApkSigner.java on build-tools 36.0.0, as the release lane), so it needs the JDK and
-      # build-tools here. The preflight has already checked the protected input.
+      # build-tools here. Both input.json and the 0600 runtime credential file were fetched from Testbed
+      # via OIDC before preflight; preflight verified them and login_phase.mjs consumes both.
       - name: Setup JDK 17 for the login acceptance certificate check
         if: ${{ steps.stamp-claim.outputs.claimed_case == 'login-email-password' }}
         uses: actions/setup-java@v6
@@ -837,15 +813,17 @@ jobs:
           echo '```' >> "$GITHUB_STEP_SUMMARY"
 
       # The artifact is the second exit of qa-evidence: same gate as the Stamp upload (secure_evidence.mjs).
-      # For login-email-password (#216), the emulator step never receives QA_LOGIN_ACCEPTANCE_* in env;
-      # this dedicated gate step checks and redacts qa-evidence with the dedicated pair before both the
-      # artifact upload and the Stamp evidence upload below.
+      # For login-email-password (#216), no QA credential exists in repository secrets or step env:
+      # secure_evidence.mjs fetches the runtime credential in memory from Testbed via OIDC (never written
+      # to disk) to scan and scrub qa-evidence before both the artifact upload and the Stamp upload below.
       - name: Secure evidence gate
         id: evidence-gate
         if: always()
         env:
-          QA_LOGIN_ACCEPTANCE_EMAIL: ${{ steps.stamp-claim.outputs.claimed_case == 'login-email-password' && secrets.QA_LOGIN_ACCEPTANCE_EMAIL || '' }}
-          QA_LOGIN_ACCEPTANCE_PASSWORD: ${{ steps.stamp-claim.outputs.claimed_case == 'login-email-password' && secrets.QA_LOGIN_ACCEPTANCE_PASSWORD || '' }}
+          STAMP_CLAIMED_CASE: ${{ steps.stamp-claim.outputs.claimed_case || '' }}
+          STAMP_RUN_CASE_ID: ${{ steps.stamp-claim.outputs.claimed_case == 'login-email-password' && inputs.stamp_run_case_id || '' }}
+          STAMP_URL: ${{ steps.stamp-claim.outputs.claimed_case == 'login-email-password' && secrets.STAMP_URL || '' }}
+          STAMP_TOKEN: ${{ steps.stamp-claim.outputs.claimed_case == 'login-email-password' && secrets.STAMP_TOKEN || '' }}
         run: node scripts/qa/secure_evidence.mjs --dir qa-evidence
 
       - name: Upload evidence
@@ -857,10 +835,11 @@ jobs:
           if-no-files-found: warn
 
       # For login-email-password (#216), Stamp evidence upload runs only after Secure evidence gate
-      # has scanned and scrubbed qa-evidence with the dedicated acceptance credentials.
+      # has scanned and scrubbed qa-evidence with the runtime acceptance credentials.
       - name: Report login acceptance evidence to Stamp
         if: ${{ always() && steps.stamp-claim.outputs.claimed_case == 'login-email-password' }}
         env:
+          STAMP_CLAIMED_CASE: ${{ steps.stamp-claim.outputs.claimed_case || '' }}
           STAMP_RUN_CASE_ID: ${{ inputs.stamp_run_case_id }}
           STAMP_URL: ${{ secrets.STAMP_URL }}
           STAMP_TOKEN: ${{ secrets.STAMP_TOKEN }}

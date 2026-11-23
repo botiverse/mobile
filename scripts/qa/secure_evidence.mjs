@@ -9,8 +9,10 @@
 //     another format or without a timestamp is dropped. .xcresult bundles (opaque) go.
 //   no login: any sign-in line in the text evidence (web_login_attempt / app_login_complete)
 //     means the run saw a login after all: UNKNOWN.
-// Then, when the step has the QA credentials, the password anywhere is UNKNOWN and the
-// email is redacted from text files.
+// Then, when the step has the QA credentials — or for login-email-password (#216), fetched in memory
+// from Testbed via OIDC (never written to disk) — the password anywhere is UNKNOWN and the email is
+// redacted from text files. If login-email-password's runtime credential cannot be fetched for a
+// passing login record, the gate fails closed (UNKNOWN) rather than uploading unscanned evidence.
 // Anything else (missing, {}, malformed, foreign or unknown record) is UNKNOWN: everything
 // except verdict.json, agent-rc.txt, the record and this gate's own record is deleted,
 // verdict.json says "unknown", agent-rc.txt says 2, and the gate exits 1.
@@ -19,8 +21,10 @@
 import fs from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
-import { LOGIN_LOG_MARKERS, RECORD, THREADTIME, markUnknown, readRecord, runId, secretValues } from "./login_phase.mjs";
+import { LOGIN_ACCEPTANCE_CASE, LOGIN_LOG_MARKERS, RECORD, THREADTIME, markUnknown, readRecord, runId } from "./login_phase.mjs";
 import { readTerminal } from "./release_settings_terminal.mjs";
+import { fetchLoginAcceptanceCredential } from "./testbed_login_acceptance_input.mjs";
+import { TestbedReleaseError } from "./testbed_release_settings.mjs";
 
 export const GATE = "evidence-gate.json";
 // Files that survive a failed gate (verdict.json and agent-rc.txt are overwritten on failure).
@@ -42,7 +46,10 @@ export function linesAfter(text, loginEnd) {
   }).join("\n");
 }
 
-export function gate(dir, env = process.env) {
+const isLoginAcceptanceRun = (record, env) =>
+  env?.STAMP_CLAIMED_CASE === LOGIN_ACCEPTANCE_CASE || record?.acceptance?.case_id === LOGIN_ACCEPTANCE_CASE;
+
+export function gate(dir, env = process.env, { credentials = null } = {}) {
   fs.mkdirSync(dir, { recursive: true });
   const { ok, record, reason } = readRecord(dir, env);
   let why = ok ? null : reason;
@@ -50,6 +57,14 @@ export function gate(dir, env = process.env) {
   if (!why && record.mode === "release-prelogin") {
     const terminal = readTerminal(dir, record, env);
     if (!terminal.ok) why = terminal.reason;
+  }
+  const requiresAcceptanceCred = !why && isLoginAcceptanceRun(record, env);
+  if (requiresAcceptanceCred) {
+    if (credentials?.problem) {
+      why = `login acceptance credential unavailable for evidence scan (${credentials.problem})`;
+    } else if (!credentials?.email || !credentials?.password) {
+      why = "login acceptance credential missing for evidence scan";
+    }
   }
   // Separate what is kept on failure from what is scanned before publishing: verdict.json
   // carries free-text from the agent and is both uploaded and echoed to $GITHUB_STEP_SUMMARY,
@@ -67,8 +82,8 @@ export function gate(dir, env = process.env) {
     const hit = evidenceFiles().find((f) => TEXT_FILE.test(f) && fs.statSync(f).isFile() && LOGIN_LOG_MARKERS.test(fs.readFileSync(f, "utf8")));
     if (hit) why = `sign-in signal in ${path.basename(hit)} although this run never signs in`;
   }
-  const passwords = [env.QA_TEST_PASSWORD, env.QA_LOGIN_ACCEPTANCE_PASSWORD].filter((v) => v && v.length >= 4);
-  const emails = [env.QA_TEST_EMAIL, env.QA_LOGIN_ACCEPTANCE_EMAIL].filter((v) => v && v.length >= 4);
+  const passwords = [env.QA_TEST_PASSWORD, credentials?.password].filter((v) => typeof v === "string" && v.length >= 4);
+  const emails = [env.QA_TEST_EMAIL, credentials?.email].filter((v) => typeof v === "string" && v.length >= 4);
   for (const f of why ? [] : publishableFiles()) {
     if (!fs.statSync(f).isFile()) continue;
     const bytes = fs.readFileSync(f);
@@ -87,13 +102,29 @@ export function gate(dir, env = process.env) {
     fs.writeFileSync(path.join(dir, "verdict.json"), `${JSON.stringify({ verdict: "unknown", reason: `UNKNOWN: ${why}; no evidence uploaded` }, null, 2)}\n`);
     fs.writeFileSync(path.join(dir, "agent-rc.txt"), "2\n");
   }
-  fs.writeFileSync(path.join(dir, GATE), `${JSON.stringify({ ok: !why, run: runId(env), reason: why, secrets_checked: secretValues(env).length > 0 }, null, 2)}\n`);
+  const secretsChecked = passwords.length > 0 || emails.length > 0;
+  fs.writeFileSync(path.join(dir, GATE), `${JSON.stringify({ ok: !why, run: runId(env), reason: why, secrets_checked: secretsChecked }, null, 2)}\n`);
   return { ok: !why, reason: why };
+}
+
+/** Async gate entry: for login-email-password, fetches the runtime credential in memory via Testbed OIDC before scanning. */
+export async function runGate(dir, env = process.env, { fetchImpl = fetch, retryDelaysMs, credentials = null } = {}) {
+  let resolvedCredentials = credentials;
+  const check = readRecord(dir, env);
+  if (check.ok && isLoginAcceptanceRun(check.record, env) && !resolvedCredentials) {
+    try {
+      resolvedCredentials = await fetchLoginAcceptanceCredential({ env, fetchImpl, retryDelaysMs });
+    } catch (error) {
+      const code = error instanceof TestbedReleaseError ? error.message : "unexpected_error";
+      resolvedCredentials = { problem: code };
+    }
+  }
+  return gate(dir, env, { credentials: resolvedCredentials });
 }
 
 if (import.meta.url === pathToFileURL(process.argv[1] || "").href) {
   const i = process.argv.indexOf("--dir");
-  const result = gate(i >= 0 ? process.argv[i + 1] : "qa-evidence");
+  const result = await runGate(i >= 0 ? process.argv[i + 1] : "qa-evidence");
   console.log(result.ok ? "evidence gate: OK" : `evidence gate: UNKNOWN (${result.reason}); evidence withheld`);
   process.exit(result.ok ? 0 : 1);
 }

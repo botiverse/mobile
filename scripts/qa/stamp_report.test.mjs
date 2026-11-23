@@ -620,15 +620,14 @@ test("Android and iOS freeze legacy email before execution and expose none for b
       assert.match(executeBlock, new RegExp(`QA_PASSWORD_LOGIN: \\$\\{\\{ ${legacy} && 'true' \\|\\| 'false' \\}\\}`));
       continue;
     }
-    // Android: login-email-password uses dedicated QA_LOGIN_ACCEPTANCE_* secrets with zero fallback to QA_TEST_*;
-    // the release settings lane gets the account only as QA_RELEASE_LOGIN_*, never the legacy or acceptance names.
+    // Android: login-email-password fetches its runtime credential from Testbed via OIDC (zero QA repo secrets,
+    // zero fallback to QA_TEST_*); the release settings lane gets the account only via Stage release login credential.
     const notRelease = String.raw`inputs\.login_mode != 'release-prelogin'`;
     const notLoginAcceptance = String.raw`steps\.stamp-claim\.outputs\.claimed_case != 'login-email-password'`;
-    const isLoginAcceptance = String.raw`steps\.stamp-claim\.outputs\.claimed_case == 'login-email-password'`;
     assert.match(preflightBlock, new RegExp(`QA_TEST_EMAIL: \\$\\{\\{ ${notLoginAcceptance} && secrets\\.QA_TEST_EMAIL \\|\\| '' \\}\\}`));
     assert.match(preflightBlock, new RegExp(`QA_TEST_PASSWORD: \\$\\{\\{ ${notLoginAcceptance} && secrets\\.QA_TEST_PASSWORD \\|\\| '' \\}\\}`));
-    assert.match(preflightBlock, new RegExp(`QA_LOGIN_ACCEPTANCE_EMAIL: \\$\\{\\{ ${isLoginAcceptance} && secrets\\.QA_LOGIN_ACCEPTANCE_EMAIL \\|\\| '' \\}\\}`));
-    assert.match(preflightBlock, new RegExp(`QA_LOGIN_ACCEPTANCE_PASSWORD: \\$\\{\\{ ${isLoginAcceptance} && secrets\\.QA_LOGIN_ACCEPTANCE_PASSWORD \\|\\| '' \\}\\}`));
+    assert.doesNotMatch(source, /secrets\.QA_LOGIN_ACCEPTANCE_/, "no QA_LOGIN_ACCEPTANCE_* repository secrets anywhere in qa-acceptance.yml");
+    assert.equal(source.includes("name: Stage login acceptance credential"), false, "no static secret staging step for login-email-password");
     const receiptStep = source.slice(receipt, source.indexOf("\n      - name:", receipt + 1));
     assert.match(receiptStep, new RegExp(notLoginAcceptance));
     assert.doesNotMatch(receiptStep, /QA_LOGIN_ACCEPTANCE_/);
@@ -639,11 +638,6 @@ test("Android and iOS freeze legacy email before execution and expose none for b
     assert.doesNotMatch(executeBlock, /QA_RELEASE_LOGIN_/);
     assert.doesNotMatch(executeBlock, /QA_LOGIN_ACCEPTANCE_EMAIL:|QA_LOGIN_ACCEPTANCE_PASSWORD:|secrets\.QA_LOGIN_ACCEPTANCE_/);
     assert.equal((executeBlock.match(/secrets\.QA_TEST_/g) ?? []).length, 2, "only the two legacy-gated keys");
-    const stageLoginAcceptance = source.slice(source.indexOf("name: Stage login acceptance credential"), execute);
-    assert.match(stageLoginAcceptance, new RegExp(`if: \\$\\{\\{ ${notRelease} && ${legacy} && ${isLoginAcceptance} \\}\\}`));
-    assert.match(stageLoginAcceptance, /umask 077/);
-    assert.match(stageLoginAcceptance, /secrets\.QA_LOGIN_ACCEPTANCE_EMAIL/);
-    assert.match(stageLoginAcceptance, /secrets\.QA_LOGIN_ACCEPTANCE_PASSWORD/);
     const stage = source.slice(source.indexOf("name: Stage release login credential"), execute);
     assert.match(stage, /if: \$\{\{ inputs\.stamp_run_case_id != '' && inputs\.login_mode == 'release-prelogin' \}\}/);
     assert.match(stage, /umask 077/);

@@ -506,9 +506,10 @@ function clearLoginStores(adb) {
   return ok;
 }
 
-// Reads a 0600 two-line credential file (email\npassword\n) staged for a single login invocation
-// (same pattern as release_auto_login.mjs). Rejects symlinks, non-regular files and group/world-
-// readable modes; when `consume` is true, always removes the file in `finally` even on error.
+// Reads a runner-owned 0600 two-line credential file (email\npassword\n) staged for a single login
+// invocation (same pattern as release_auto_login.mjs). Opens with O_NOFOLLOW to reject symlinks
+// atomically, checks regular file + owner + mode 0600, and when `consume` is true always removes
+// the file in `finally` even on error.
 export function readCredentialFile(filePath, { consume = false } = {}) {
   const remove = () => {
     if (!consume || !filePath) return;
@@ -516,12 +517,25 @@ export function readCredentialFile(filePath, { consume = false } = {}) {
   };
   try {
     if (!filePath) return { email: "", password: "", problem: "credential_file_missing" };
-    let stat;
-    try { stat = fs.lstatSync(filePath); } catch { return { email: "", password: "", problem: "credential_file_missing" }; }
-    if (stat.isSymbolicLink() || !stat.isFile()) return { email: "", password: "", problem: "credential_file_unreadable" };
-    if ((stat.mode & 0o077) !== 0) return { email: "", password: "", problem: "credential_file_unprotected" };
+    let fd;
+    try {
+      fd = fs.openSync(filePath, fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW);
+    } catch (error) {
+      return { email: "", password: "", problem: error?.code === "ENOENT" ? "credential_file_missing" : "credential_file_unreadable" };
+    }
     let text;
-    try { text = fs.readFileSync(filePath, "utf8"); } catch { return { email: "", password: "", problem: "credential_file_unreadable" }; }
+    try {
+      const stat = fs.fstatSync(fd);
+      if (!stat.isFile()) return { email: "", password: "", problem: "credential_file_unreadable" };
+      if ((stat.mode & 0o077) !== 0 || (typeof process.getuid === "function" && stat.uid !== process.getuid())) {
+        return { email: "", password: "", problem: "credential_file_unprotected" };
+      }
+      text = fs.readFileSync(fd, "utf8");
+    } catch {
+      return { email: "", password: "", problem: "credential_file_unreadable" };
+    } finally {
+      fs.closeSync(fd);
+    }
     try {
       const { email, password } = parseCredentialFile(text);
       return { email, password, problem: null };
@@ -539,12 +553,13 @@ export async function androidPasswordLogin({ out, pkg = "build.raft.app", device
   const {
     QA_TEST_EMAIL: legacyEmail,
     QA_TEST_PASSWORD: legacyPassword,
-    QA_LOGIN_ACCEPTANCE_EMAIL: acceptanceEmail,
-    QA_LOGIN_ACCEPTANCE_PASSWORD: acceptancePassword,
+    QA_LOGIN_ACCEPTANCE_EMAIL: _unusedAcceptanceEmail,
+    QA_LOGIN_ACCEPTANCE_PASSWORD: _unusedAcceptancePassword,
     ...adbEnv
   } = env;
-  const email = credentials ? credentials.email : (acceptance ? acceptanceEmail : legacyEmail);
-  const password = credentials ? credentials.password : (acceptance ? acceptancePassword : legacyPassword);
+  // #216: login-email-password takes runtime credentials only via --credential-file, never QA_TEST_* or legacy env secrets.
+  const email = credentials ? credentials.email : (acceptance ? "" : legacyEmail);
+  const password = credentials ? credentials.password : (acceptance ? "" : legacyPassword);
   let serial = device;
   const execAdb = (args, input) => execFileSync("adb", [...(serial ? ["-s", serial] : []), ...args], {
     env: adbEnv, encoding: "utf8", timeout: 60000, input, stdio: [input === undefined ? "ignore" : "pipe", "pipe", "pipe"],
@@ -654,7 +669,7 @@ export async function androidPasswordLogin({ out, pkg = "build.raft.app", device
       return unknown(`login acceptance credential file error: ${credentials.problem}`);
     }
     if (!email || !password) {
-      return unknown(acceptance ? "login acceptance secrets QA_LOGIN_ACCEPTANCE_EMAIL / QA_LOGIN_ACCEPTANCE_PASSWORD missing" : "QA credentials missing");
+      return unknown(acceptance ? "login acceptance credentials missing" : "QA credentials missing");
     }
     if ([email, password].some((value) => /[^!-~]/.test(value))) return unknown("unsupported credential format");
     if (!expectedOrigin) return unknown("unknown QA account environment");

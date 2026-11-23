@@ -544,7 +544,7 @@ test("rule 2: the workflow starts the recorder, the agent and every post-run rea
   for (const file of ["qa-acceptance.yml", "qa-acceptance-ios.yml"]) {
     const src = fs.readFileSync(path.join(here, "../../.github/workflows", file), "utf8");
     if (file === "qa-acceptance.yml") {
-      assert.match(src, /- name: Secure evidence gate\n\s+id: evidence-gate\n\s+if: always\(\)\n\s+env:\n\s+QA_LOGIN_ACCEPTANCE_EMAIL: \$\{\{ steps\.stamp-claim\.outputs\.claimed_case == 'login-email-password' && secrets\.QA_LOGIN_ACCEPTANCE_EMAIL \|\| '' \}\}\n\s+QA_LOGIN_ACCEPTANCE_PASSWORD: \$\{\{ steps\.stamp-claim\.outputs\.claimed_case == 'login-email-password' && secrets\.QA_LOGIN_ACCEPTANCE_PASSWORD \|\| '' \}\}\n\s+run: node scripts\/qa\/secure_evidence\.mjs --dir qa-evidence/, file);
+      assert.match(src, /- name: Secure evidence gate\n\s+id: evidence-gate\n\s+if: always\(\)\n\s+env:\n\s+STAMP_CLAIMED_CASE: \$\{\{ steps\.stamp-claim\.outputs\.claimed_case \|\| '' \}\}\n\s+STAMP_RUN_CASE_ID: \$\{\{ steps\.stamp-claim\.outputs\.claimed_case == 'login-email-password' && inputs\.stamp_run_case_id \|\| '' \}\}\n\s+STAMP_URL: \$\{\{ steps\.stamp-claim\.outputs\.claimed_case == 'login-email-password' && secrets\.STAMP_URL \|\| '' \}\}\n\s+STAMP_TOKEN: \$\{\{ steps\.stamp-claim\.outputs\.claimed_case == 'login-email-password' && secrets\.STAMP_TOKEN \|\| '' \}\}\n\s+run: node scripts\/qa\/secure_evidence\.mjs --dir qa-evidence/, file);
     } else {
       assert.match(src, /- name: Secure evidence gate\n\s+id: evidence-gate\n\s+if: always\(\)\n\s+run: node scripts\/qa\/secure_evidence\.mjs --dir qa-evidence/, file);
     }
@@ -673,88 +673,151 @@ test("rule 3: log lines survive only strictly after login complete; same-millise
 });
 
 test("rule 3: a mode that never signs in but shows a sign-in signal, or evidence holding the password, is UNKNOWN", () => {
-  for (const [name, file, content, env] of [
-    ["web login in a no-login run", "logcat-iosApp.txt", '{"eventMessage":"web_login_attempt phase=opening"}', {}],
-    ["app login line in a no-login run", "system-log-raft.txt", "SlockAppLogin: app_login_complete result=app_shell", {}],
-    ["password bytes in a screenshot", "step-03.png", `PNG...${PASSWORD}...`, { QA_TEST_PASSWORD: PASSWORD }],
-    ["acceptance password bytes in a screenshot", "step-04.png", `PNG...${PASSWORD}...`, { QA_LOGIN_ACCEPTANCE_PASSWORD: PASSWORD }],
+  for (const [name, file, content, env, opts] of [
+    ["web login in a no-login run", "logcat-iosApp.txt", '{"eventMessage":"web_login_attempt phase=opening"}', {}, {}],
+    ["app login line in a no-login run", "system-log-raft.txt", "SlockAppLogin: app_login_complete result=app_shell", {}, {}],
+    ["password bytes in a screenshot", "step-03.png", `PNG...${PASSWORD}...`, { QA_TEST_PASSWORD: PASSWORD }, {}],
+    ["runtime acceptance password bytes in a screenshot", "step-04.png", `PNG...${PASSWORD}...`, {}, { credentials: { email: EMAIL, password: PASSWORD } }],
   ]) {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "gate-none-"));
     phase.writeRecord(dir, { mode: "none", status: "no-login", login_end: null }, RUN);
     fs.writeFileSync(path.join(dir, file), content);
-    assert.equal(gate.gate(dir, { ...RUN, ...env }).ok, false, name);
+    assert.equal(gate.gate(dir, { ...RUN, ...env }, opts).ok, false, name);
     assert.equal(fs.existsSync(path.join(dir, file)), false, name);
   }
-  // A clean no-login run uploads, with the email redacted from text (legacy and dedicated acceptance secrets).
-  for (const env of [{ QA_TEST_EMAIL: EMAIL }, { QA_LOGIN_ACCEPTANCE_EMAIL: EMAIL }]) {
+  // A clean no-login run uploads, with the email redacted from text (legacy env and runtime credentials).
+  for (const [env, opts] of [[{ QA_TEST_EMAIL: EMAIL }, {}], [{}, { credentials: { email: EMAIL, password: PASSWORD } }]]) {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "gate-clean-"));
     phase.writeRecord(dir, { mode: "none", status: "no-login", login_end: null }, RUN);
     fs.writeFileSync(path.join(dir, "steps.jsonl"), `{"note":"account ${EMAIL}"}\n`);
-    assert.equal(gate.gate(dir, { ...RUN, ...env }).ok, true);
+    assert.equal(gate.gate(dir, { ...RUN, ...env }, opts).ok, true);
     assert.equal(fs.readFileSync(path.join(dir, "steps.jsonl"), "utf8"), '{"note":"account ***"}\n');
   }
 });
 
-test("rule 3: secure_evidence scans verdict.json too (blocks password on both exits, redacts email, preserves clean pass)", () => {
+test("rule 3: secure_evidence scans verdict.json via Testbed OIDC runtime credential (blocks password, redacts email, fails closed when unavailable)", async () => {
   const stamp = "11-21 10:00:00.000";
-  const makePassDir = (verdict) => {
+  const makePassDir = (verdict, { withAcceptance = true } = {}) => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), "gate-verdict-"));
     const dir = path.join(root, "qa-evidence");
-    phase.writeRecord(dir, { mode: "password", status: "complete", login_end: stamp, reason: "app_login_complete result=app_shell reason=exchanged",
-      acceptance: { ...BINDING, verdict: "pass", reason: "signed_in_as_expected" } }, RUN);
+    phase.writeRecord(dir, {
+      mode: "password", status: "complete", login_end: stamp, reason: "app_login_complete result=app_shell reason=exchanged",
+      ...(withAcceptance ? { acceptance: { ...BINDING, verdict: "pass", reason: "signed_in_as_expected" } } : {}),
+    }, RUN);
     fs.writeFileSync(path.join(dir, "step-00.png"), "PNG-clean-frame");
     fs.writeFileSync(path.join(dir, "verdict.json"), JSON.stringify(verdict));
     return { root, dir };
   };
-  for (const creds of [
-    { QA_LOGIN_ACCEPTANCE_EMAIL: EMAIL, QA_LOGIN_ACCEPTANCE_PASSWORD: PASSWORD },
-    { QA_TEST_EMAIL: EMAIL, QA_TEST_PASSWORD: PASSWORD },
-  ]) {
-    // 1. Password inside verdict.json: gate fails, deletes evidence, overwrites verdict.json, and blocks Stamp upload too.
+
+  // Loopback fake Testbed serving OIDC + login-acceptance-input with include_credential: true.
+  let mode = "ok";
+  const testbed = http.createServer((req, res) => {
+    let body = "";
+    req.on("data", (d) => { body += d; });
+    req.on("end", () => {
+      const u = new URL(req.url, "http://127.0.0.1");
+      if (u.pathname === "/oidc") {
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(JSON.stringify({ value: `oidc-${u.searchParams.get("audience")}` }));
+        return;
+      }
+      const parsed = JSON.parse(body);
+      assert.equal(parsed.include_credential, true);
+      if (mode === "unavailable") {
+        res.writeHead(503, { "content-type": "application/json", "cache-control": "no-store" });
+        res.end(JSON.stringify({ code: "LOGIN_ACCEPTANCE_CREDENTIAL_UNAVAILABLE" }));
+        return;
+      }
+      res.writeHead(200, { "content-type": "application/json", "cache-control": "no-store" });
+      res.end(JSON.stringify({
+        case_id: "login-email-password", run_case_id: RUN_CASE_ID, attempt: 1,
+        attempt_id: sample.attempt_id, nonce: fixture.nonce,
+        expected_target: { user_id: fixture.subject, server_id: fixture.server_id, server_slug: fixture.server_slug },
+        credential: { email: EMAIL, password: PASSWORD },
+      }));
+    });
+  });
+  await new Promise((resolve) => testbed.listen(0, "127.0.0.1", resolve));
+  const origin = `http://127.0.0.1:${testbed.address().port}`;
+  const oidcEnv = (root) => {
+    fs.writeFileSync(path.join(root, `stamp-claim-${RUN_CASE_ID}`), "fake-lease", { mode: 0o600 });
+    return {
+      ...RUN, RUNNER_TEMP: root, STAMP_CLAIMED_CASE: "login-email-password",
+      STAMP_RUN_CASE_ID: RUN_CASE_ID, STAMP_URL: origin, STAMP_TOKEN: "fake-exec",
+      GITHUB_SERVER_URL: "https://github.com", GITHUB_REPOSITORY: "botiverse/mobile",
+      ACTIONS_ID_TOKEN_REQUEST_URL: `${origin}/oidc?api-version=2.0`, ACTIONS_ID_TOKEN_REQUEST_TOKEN: "fake-oidc",
+    };
+  };
+
+  try {
+    // 1. Password inside verdict.json: runGate fetches runtime credential in memory, fails closed, deletes evidence, blocks Stamp upload.
     const leaked = makePassDir({ verdict: "pass", reason: `observed ${PASSWORD} on screen` });
     try {
-      const res = gate.gate(leaked.dir, { ...RUN, ...creds });
+      const env = oidcEnv(leaked.root);
+      const res = await gate.runGate(leaked.dir, env, { retryDelaysMs: [0, 0] });
       assert.equal(res.ok, false);
       assert.match(res.reason, /secret value in verdict\.json/);
       assert.equal(fs.existsSync(path.join(leaked.dir, "step-00.png")), false);
+      assert.equal(fs.existsSync(path.join(leaked.root, "login-acceptance-credential", "account")), false, "in-memory fetch writes no file");
       const rewritten = fs.readFileSync(path.join(leaked.dir, "verdict.json"), "utf8");
       assert.equal(JSON.parse(rewritten).verdict, "unknown");
       assert.ok(!rewritten.includes(PASSWORD), "leaked password scrubbed from verdict.json");
       assert.equal(fs.readFileSync(path.join(leaked.dir, "agent-rc.txt"), "utf8").trim(), "2");
-      // Stamp upload exit also refuses the failed gate (zero curl calls).
       const bin = path.join(leaked.root, "bin");
       fs.mkdirSync(bin);
       const curlLog = path.join(leaked.root, "curl.log");
       fs.writeFileSync(path.join(bin, "curl"), `#!/usr/bin/env bash\necho "$*" >> "${curlLog}"\nexit 0\n`, { mode: 0o755 });
-      fs.writeFileSync(path.join(leaked.root, "stamp-claim-rc-fake"), "fake-lease");
       const stampRes = spawnSync("bash", [path.join(here, "stamp_report.sh"), "report-evidence", leaked.dir], {
         cwd: leaked.root, encoding: "utf8",
-        env: { PATH: `${bin}:${path.dirname(process.execPath)}:/usr/bin:/bin`, ...RUN, ...creds, STAMP_RUN_CASE_ID: "rc-fake", STAMP_URL: "https://stamp.invalid", STAMP_TOKEN: "fake", RUNNER_TEMP: leaked.root },
+        env: { PATH: `${bin}:${path.dirname(process.execPath)}:/usr/bin:/bin`, ...env },
       });
       assert.notEqual(stampRes.status, 0);
       assert.equal(fs.existsSync(curlLog), false, "no Stamp upload after password in verdict.json");
     } finally { fs.rmSync(leaked.root, { recursive: true, force: true }); }
 
-    // 2. Email inside verdict.json: redacted in place before upload and step summary, gate passes.
+    // 2. Email inside verdict.json: redacted in place via OIDC-fetched credential, gate passes, zero credential files created.
     const withEmail = makePassDir({ verdict: "pass", reason: `signed in as ${EMAIL}` });
     try {
-      const res = gate.gate(withEmail.dir, { ...RUN, ...creds });
+      const env = oidcEnv(withEmail.root);
+      const res = await gate.runGate(withEmail.dir, env, { retryDelaysMs: [0, 0] });
       assert.equal(res.ok, true);
       const text = fs.readFileSync(path.join(withEmail.dir, "verdict.json"), "utf8");
       assert.ok(!text.includes(EMAIL), "email redacted from verdict.json");
       assert.deepEqual(JSON.parse(text), { verdict: "pass", reason: "signed in as ***" });
       assert.equal(JSON.parse(fs.readFileSync(path.join(withEmail.dir, "evidence-gate.json"), "utf8")).secrets_checked, true);
+      assert.equal(fs.existsSync(path.join(withEmail.root, "login-acceptance-credential", "account")), false);
     } finally { fs.rmSync(withEmail.root, { recursive: true, force: true }); }
 
     // 3. Clean control: passes untouched with secrets_checked: true.
     const clean = makePassDir({ verdict: "pass", reason: "home visible" });
     try {
-      const res = gate.gate(clean.dir, { ...RUN, ...creds });
+      const res = await gate.runGate(clean.dir, oidcEnv(clean.root), { retryDelaysMs: [0, 0] });
       assert.equal(res.ok, true);
       assert.deepEqual(JSON.parse(fs.readFileSync(path.join(clean.dir, "verdict.json"), "utf8")), { verdict: "pass", reason: "home visible" });
       assert.equal(fs.existsSync(path.join(clean.dir, "step-00.png")), true);
       assert.equal(JSON.parse(fs.readFileSync(path.join(clean.dir, "evidence-gate.json"), "utf8")).secrets_checked, true);
     } finally { fs.rmSync(clean.root, { recursive: true, force: true }); }
+
+    // 4. Testbed 503 LOGIN_ACCEPTANCE_CREDENTIAL_UNAVAILABLE during evidence scan: fails closed (UNKNOWN, deletes evidence).
+    mode = "unavailable";
+    const unavailable = makePassDir({ verdict: "pass", reason: "home visible" });
+    try {
+      const res = await gate.runGate(unavailable.dir, oidcEnv(unavailable.root), { retryDelaysMs: [0, 0] });
+      assert.equal(res.ok, false);
+      assert.match(res.reason, /login-acceptance-input_credential_unavailable/);
+      assert.equal(fs.existsSync(path.join(unavailable.dir, "step-00.png")), false, "evidence deleted when scan credential unavailable");
+      assert.equal(JSON.parse(fs.readFileSync(path.join(unavailable.dir, "verdict.json"), "utf8")).verdict, "unknown");
+    } finally { fs.rmSync(unavailable.root, { recursive: true, force: true }); }
+
+    // 5. Legacy password path (no acceptance block) still uses QA_TEST_* env directly.
+    const legacy = makePassDir({ verdict: "pass", reason: `signed in as ${EMAIL}` }, { withAcceptance: false });
+    try {
+      const res = gate.gate(legacy.dir, { ...RUN, QA_TEST_EMAIL: EMAIL, QA_TEST_PASSWORD: PASSWORD });
+      assert.equal(res.ok, true);
+      assert.deepEqual(JSON.parse(fs.readFileSync(path.join(legacy.dir, "verdict.json"), "utf8")), { verdict: "pass", reason: "signed in as ***" });
+    } finally { fs.rmSync(legacy.root, { recursive: true, force: true }); }
+  } finally {
+    await new Promise((resolve) => testbed.close(resolve));
   }
 });
 
@@ -809,10 +872,11 @@ const loginWith = (w, acceptance, options = {}) => phase.androidPasswordLogin({ 
   env: {
     ...w.env,
     ...(acceptance
-      ? { QA_LOGIN_ACCEPTANCE_EMAIL: EMAIL, QA_LOGIN_ACCEPTANCE_PASSWORD: PASSWORD, QA_TEST_EMAIL: "wrong.legacy@example.test", QA_TEST_PASSWORD: "wrong-legacy-pw" }
-      : { QA_TEST_EMAIL: EMAIL, QA_TEST_PASSWORD: PASSWORD, QA_LOGIN_ACCEPTANCE_EMAIL: "wrong.accept@example.test", QA_LOGIN_ACCEPTANCE_PASSWORD: "wrong-accept-pw" }),
+      ? { QA_TEST_EMAIL: "wrong.legacy@example.test", QA_TEST_PASSWORD: "wrong-legacy-pw" }
+      : { QA_TEST_EMAIL: EMAIL, QA_TEST_PASSWORD: PASSWORD }),
     ...(options.env ?? {}),
   },
+  ...(acceptance && options.credentials === undefined ? { credentials: { email: EMAIL, password: PASSWORD, problem: null } } : {}),
   pollMs: 5, chooserTimeoutMs: 100, acceptance, ...options, ...(options.env ? { env: { ...w.env, ...options.env } } : {}) });
 const recordOf = (w) => JSON.parse(fs.readFileSync(path.join(w.root, "ev", "login-record.json"), "utf8"));
 
@@ -859,15 +923,19 @@ test("#216 pass: signed out on the sign-in page, the form submitted, then the ex
   const w = identityWorld({ chooserAfterLogin: true, displayName: "Fixture Person", servers: [{ name: "Other team", id: "server-9", slug: "other" }, { name: "Fixture team", ...FIXTURE_SERVER }] });
   try {
     const input = writeTestbedInput(w.root);
+    const credFile = path.join(w.root, "runtime-account");
+    fs.writeFileSync(credFile, `${EMAIL}\n${PASSWORD}\n`, { mode: 0o600 });
+    fs.chmodSync(credFile, 0o600);
     const ev = path.join(w.root, "qa-evidence");
-    // As qa-acceptance.yml runs it for the claimed case: the required switch, the job's run case, and the dedicated acceptance secrets.
+    // As qa-acceptance.yml runs it for the claimed case: the required switch, the job's run case, and the runtime 0600 credential file.
     const r = await runAsync(w, [path.join(here, "login_phase.mjs"), "login", "--platform", "android", "--password-login", "true", "--device", "emulator-5554",
-      "--out", ev, "--testbed-input", input, "--require-acceptance", "login-email-password"],
-      { QA_LOGIN_ACCEPTANCE_EMAIL: EMAIL, QA_LOGIN_ACCEPTANCE_PASSWORD: PASSWORD, QA_TEST_EMAIL: "wrong.legacy@example.test", QA_TEST_PASSWORD: "wrong-legacy-pw", STAMP_RUN_CASE_ID: RUN_CASE_ID });
+      "--out", ev, "--testbed-input", input, "--require-acceptance", "login-email-password", "--credential-file", credFile, "--consume-credential-file"],
+      { QA_TEST_EMAIL: "wrong.legacy@example.test", QA_TEST_PASSWORD: "wrong-legacy-pw", STAMP_RUN_CASE_ID: RUN_CASE_ID });
     assert.equal(r.status, 0, r.stdout + r.stderr);
     assert.match(r.stdout, /^login phase: OK$/m);
     assert.match(r.stdout, /^login acceptance: pass \(signed_in_as_expected\)$/m);
     assert.equal(fs.existsSync(input), false, "the input is consumed");
+    assert.equal(fs.existsSync(credFile), false, "the runtime credential file is consumed");
     const text = fs.readFileSync(path.join(ev, "login-record.json"), "utf8");
     const record = JSON.parse(text);
     assert.deepEqual(Object.keys(record), [...V1_KEYS, "acceptance"]);
@@ -1113,18 +1181,17 @@ test("#216 --credential-file reads a 0600 staged file, removes it immediately (i
   } finally { w.close(); }
 });
 
-test("#216 missing dedicated acceptance secrets fail closed before any device call without falling back to QA_TEST_*", async () => {
+test("#216 missing runtime acceptance credentials fail closed before any device call without falling back to env secrets", async () => {
   for (const [name, creds] of [
-    ["both missing with legacy set", { QA_TEST_EMAIL: EMAIL, QA_TEST_PASSWORD: PASSWORD }],
-    ["email missing with legacy set", { QA_TEST_EMAIL: EMAIL, QA_TEST_PASSWORD: PASSWORD, QA_LOGIN_ACCEPTANCE_PASSWORD: PASSWORD }],
-    ["password missing with legacy set", { QA_TEST_EMAIL: EMAIL, QA_TEST_PASSWORD: PASSWORD, QA_LOGIN_ACCEPTANCE_EMAIL: EMAIL }],
+    ["legacy env set without credential file", { QA_TEST_EMAIL: EMAIL, QA_TEST_PASSWORD: PASSWORD }],
+    ["legacy acceptance env set without credential file", { QA_TEST_EMAIL: EMAIL, QA_TEST_PASSWORD: PASSWORD, QA_LOGIN_ACCEPTANCE_EMAIL: EMAIL, QA_LOGIN_ACCEPTANCE_PASSWORD: PASSWORD }],
   ]) {
     const w = identityWorld();
     try {
       const acceptance = phase.readTestbedInput(writeTestbedInput(w.root), { ...w.env, STAMP_RUN_CASE_ID: RUN_CASE_ID }, { required: true });
       const result = await phase.androidPasswordLogin({ out: path.join(w.root, "ev"), env: { ...w.env, ...creds }, pollMs: 5, chooserTimeoutMs: 100, acceptance });
       assert.equal(result.ok, false, name);
-      assert.match(result.reason, /QA_LOGIN_ACCEPTANCE_EMAIL \/ QA_LOGIN_ACCEPTANCE_PASSWORD missing/, name);
+      assert.match(result.reason, /login acceptance credentials missing/, name);
       assert.deepEqual(result.acceptance, { verdict: "unknown", reason: "login_not_completed" }, name);
       const record = recordOf(w);
       assert.equal(record.status, "unknown", name);
@@ -1138,7 +1205,7 @@ test("#216 --require-acceptance on the command line: no input or a mode that can
   const w = identityWorld();
   try {
     const login = (args, extra = {}) => runAsync(w, [path.join(here, "login_phase.mjs"), "login", "--out", path.join(w.root, "ev"), ...args],
-      { QA_LOGIN_ACCEPTANCE_EMAIL: EMAIL, QA_LOGIN_ACCEPTANCE_PASSWORD: PASSWORD, STAMP_RUN_CASE_ID: RUN_CASE_ID, ...extra });
+      { STAMP_RUN_CASE_ID: RUN_CASE_ID, ...extra });
     const missing = await login(["--platform", "android", "--password-login", "true", "--require-acceptance", "login-email-password"]);
     assert.equal(missing.status, 1);
     assert.match(missing.stdout, /^login acceptance: unknown \(input_missing\)$/m);
@@ -1171,7 +1238,7 @@ test("#216 qa-acceptance requires the login acceptance only for the claimed case
   assert.match(claim, /claimed_case=\$\(node -e '.*typeof v\.case_id==="string"&&\/\^\[a-z0-9\]\[a-z0-9-\]\{0,63\}\$\/\.test\(v\.case_id\)\?v\.case_id:""\)' "\$spec"\)\n/);
   const outputFile = /echo "bootstrap_required=\$required" >> ("\$\w+")/.exec(claim)[1];
   assert.ok(claim.includes(`echo "claimed_case=$claimed_case" >> ${outputFile}\n`), "claimed_case is a step output");
-  // Only that case sets up the certificate check and fetches its input. The account check precedes the emulator.
+  // Only that case sets up the certificate check and fetches its input+credential. The account check precedes the emulator.
   for (const name of ["Setup JDK 17 for the login acceptance certificate check", "Install build-tools 36.0.0 for the login acceptance certificate check"]) {
     assert.ok(step(name).includes(forCase), name);
     assert.ok(source.indexOf(`- name: ${name}`) > source.indexOf("- name: Stage release login credential") && source.indexOf(`- name: ${name}`) < source.indexOf("- name: Run acceptance agent"), name);
@@ -1186,15 +1253,15 @@ test("#216 qa-acceptance requires the login acceptance only for the claimed case
   const preflight = step("Preflight — QA account must not see the production server");
   assert.match(preflight, /QA_TEST_EMAIL: \$\{\{ steps\.stamp-claim\.outputs\.claimed_case != 'login-email-password' && secrets\.QA_TEST_EMAIL \|\| '' \}\}/);
   assert.match(preflight, /QA_TEST_PASSWORD: \$\{\{ steps\.stamp-claim\.outputs\.claimed_case != 'login-email-password' && secrets\.QA_TEST_PASSWORD \|\| '' \}\}/);
-  assert.match(preflight, /QA_LOGIN_ACCEPTANCE_EMAIL: \$\{\{ steps\.stamp-claim\.outputs\.claimed_case == 'login-email-password' && secrets\.QA_LOGIN_ACCEPTANCE_EMAIL \|\| '' \}\}/);
-  assert.match(preflight, /QA_LOGIN_ACCEPTANCE_PASSWORD: \$\{\{ steps\.stamp-claim\.outputs\.claimed_case == 'login-email-password' && secrets\.QA_LOGIN_ACCEPTANCE_PASSWORD \|\| '' \}\}/);
-  assert.match(preflight, /if \[ "\$STAMP_CLAIMED_CASE" = "login-email-password" \]; then[\s\S]*if \[ -z "\$QA_LOGIN_ACCEPTANCE_EMAIL" \] \|\| \[ -z "\$QA_LOGIN_ACCEPTANCE_PASSWORD" \]; then[\s\S]*missing_login_acceptance_secrets[\s\S]*exit 2[\s\S]*node scripts\/qa\/visible_servers_probe\.mjs --testbed-input/);
+  assert.doesNotMatch(preflight, /QA_LOGIN_ACCEPTANCE_/);
+  assert.match(preflight, /if \[ "\$STAMP_CLAIMED_CASE" = "login-email-password" \]; then[\s\S]*node scripts\/qa\/visible_servers_probe\.mjs --testbed-input "\$RUNNER_TEMP\/testbed-login-acceptance\/input\.json" --credential-file "\$RUNNER_TEMP\/login-acceptance-credential\/account"/);
   assert.match(fetchStep, /continue-on-error: true\n/);
-  assert.match(fetchStep.split("\n      #")[0].trimEnd(), /run: node scripts\/qa\/testbed_login_acceptance_input\.mjs$/);
+  assert.match(fetchStep.split("\n      #")[0].trimEnd(), /run: node scripts\/qa\/testbed_login_acceptance_input\.mjs --include-credential$/);
   assert.deepEqual([...fetchStep.matchAll(/^ {10}([A-Z_]+):/gm)].map((m) => m[1]), ["STAMP_RUN_CASE_ID", "STAMP_URL", "STAMP_TOKEN"], "no QA account in the fetch step");
   assert.ok(step("Remove login acceptance credential").includes("if: ${{ always() && steps.stamp-claim.outputs.claimed_case == 'login-email-password' }}"));
   assert.ok(step("Remove the login acceptance input").includes("if: ${{ always() && steps.stamp-claim.outputs.claimed_case == 'login-email-password' }}"));
-  assert.match(step("Stage login acceptance credential"), /umask 077[\s\S]*RUNNER_TEMP\/login-acceptance-credential[\s\S]*QA_LOGIN_ACCEPTANCE_EMAIL[\s\S]*QA_LOGIN_ACCEPTANCE_PASSWORD/);
+  assert.equal(source.includes("name: Stage login acceptance credential"), false, "no static repository secret staging step");
+  assert.doesNotMatch(source, /secrets\.QA_LOGIN_ACCEPTANCE_/, "no QA_LOGIN_ACCEPTANCE_* repository secrets anywhere");
   assert.doesNotMatch(step("Run acceptance agent"), /QA_LOGIN_ACCEPTANCE_EMAIL:|\bQA_LOGIN_ACCEPTANCE_PASSWORD:/, "emulator step env never carries login acceptance secrets");
   assert.match(step("Run acceptance agent"), /STAMP_CLAIMED_CASE: \$\{\{ steps\.stamp-claim\.outputs\.claimed_case \|\| '' \}\}/);
   assert.match(step("Report login acceptance evidence to Stamp"), /steps\.evidence-gate\.outcome/);
