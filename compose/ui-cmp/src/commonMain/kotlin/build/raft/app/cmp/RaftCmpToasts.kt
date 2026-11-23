@@ -57,10 +57,10 @@ object RaftCmpToasts {
         foregroundOnly: Boolean = true,
         durationMillis: Long? = null,
         description: String? = null,
-        footnote: String? = null,
         intent: RaftToastIntent? = null,
         actionLabel: String? = null,
         onAction: (() -> Unit)? = null,
+        footnote: String? = null,
     ): Boolean {
         if (message.isBlank()) return true
         val window = target(origin, foregroundOnly) ?: return false

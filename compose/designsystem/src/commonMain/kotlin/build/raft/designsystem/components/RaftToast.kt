@@ -24,7 +24,6 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDecoration
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.LocalRaftContentColor
@@ -90,12 +89,12 @@ fun RaftToast(
     title: String,
     modifier: Modifier = Modifier,
     description: String? = null,
-    footnote: String? = null,
     surface: RaftToastSurface = RaftToastSurface.Hud,
     intent: RaftToastIntent? = null,
     icon: (@Composable () -> Unit)? = null,
     actionLabel: String? = null,
     onAction: (() -> Unit)? = null,
+    footnote: String? = null,
 ) {
     val look = raftToastLook(surface, RaftTheme.colors)
     val typography = RaftTheme.typography
@@ -120,12 +119,12 @@ fun RaftToast(
             val hasAction = actionLabel != null && onAction != null
             // The text gives way to the action, but the toast still hugs its content.
             Column(if (hasAction) Modifier.weight(1f, fill = false) else Modifier) {
+                // Web `LocalizedToastProvider`: `ToastTitle className="whitespace-normal break-words"` (no line clamp).
                 RaftText(
                     title,
                     style = typography.callout,
                     color = look.ink,
-                    maxLines = if (intent == RaftToastIntent.Error) Int.MAX_VALUE else 2,
-                    overflow = TextOverflow.Ellipsis,
+                    maxLines = Int.MAX_VALUE,
                     textAlign = if (titleOnly) TextAlign.Center else null,
                 )
                 if (description != null) RaftText(description, style = typography.callout, color = look.muted)
@@ -135,8 +134,6 @@ fun RaftToast(
                         modifier = Modifier.padding(top = 2.dp),
                         style = typography.footnote,
                         color = look.muted,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
                     )
                 }
             }
