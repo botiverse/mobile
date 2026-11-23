@@ -272,9 +272,8 @@ private val HomeListHorizontalPadding = RaftAppSpacing.Md
 // and its content 12dp inside it, the section headers' words on the same 20dp edge
 // (RaftSidebarItem / RaftSidebarSectionHeader). The page gives the 8dp.
 private val HomeListRowHorizontalPadding = RaftAppSpacing.Sm
-// Web phone Sidebar.tsx scroller `pt-1` (the Home head stays on screen, so not `pt-2`).
-private val HomeListTopPadding = RaftAppSpacing.Xs
-private val HomeListTopPaddingUnderTopBar = RaftAppSpacing.Sm
+// Web `SidebarCellList` `py-2`: 8dp above the first entry (Saved), under the head or the top bar.
+private val HomeListTopPadding = RaftAppSpacing.Sm
 // Web `SidebarSectionDescription` `py-1.5`.
 private val HomeSidebarSectionEmptyHintPaddingVertical = 6.dp
 // Web `SidebarSectionDescription` `px-5`: with the page's 8dp, 20dp from the edge, the words
@@ -2873,7 +2872,7 @@ private fun RaftStructuralHomeShellContent(
                                 // Web phone Home (Sidebar.tsx `px-2 pt-1`): the list starts 4dp under the
                                 // header; the first row's own 1dp margin puts its box 5dp down. Under the
                                 // wide top bar, with no head, 8dp (Sidebar `hideTitle`: `pt-2`).
-                                item { Spacer(Modifier.height(if (serverSwitcherInTopBar) HomeListTopPaddingUnderTopBar else HomeListTopPadding)) }
+                                item { Spacer(Modifier.height(HomeListTopPadding)) }
                                 // Jasper 2026-10-20: with the phone bar on screen, Search and Activity
                                 // live there (Search and Activity tabs); only Saved stays here. The wide
                                 // rail carries both too (nav spec §5), so it drops them as well.
