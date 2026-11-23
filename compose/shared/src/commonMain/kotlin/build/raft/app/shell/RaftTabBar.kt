@@ -289,6 +289,9 @@ internal fun RaftBottomTabBar(
                 .fillMaxWidth()
                 .fillMaxHeight()
                 .padding(top = RaftAppStroke.Thin + RaftBottomTabBarSpec.TopPadding)
+                // The bar's bottom padding is the bar's, under the items (web MobileNav
+                // `pb-[max(8px,…)]` on the nav): an item is 45dp, its target ends with its label.
+                .padding(bottom = RaftMobileNavDefaults.MinBottomPadding)
                 .padding(horizontal = RaftMobileNavDefaults.SidePadding)
         ) {
             items.forEach { item ->
