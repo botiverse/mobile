@@ -23,12 +23,12 @@ import build.raft.app.data.ChannelAnnouncementPickerIntent
 import build.raft.app.data.ChannelAnnouncementPickerState
 import build.raft.app.data.ChannelAnnouncementPickerStore
 import build.raft.app.data.ChannelAnnouncementSlice
-import build.raft.app.data.DataRequestPriority
 import build.raft.app.data.NetworkRaftConversationArtifactsApi
 import build.raft.app.data.RaftChannelAnnouncement
+import build.raft.app.data.RaftFreshnessSignal
+import build.raft.app.data.RaftFreshnessTrigger
 import build.raft.app.data.RaftSharedStoreProvider
 import build.raft.app.data.RaftShellStoreScope
-import build.raft.app.data.RealtimeGuardedActiveThreadSink
 import build.raft.app.data.SharedChannelAnnouncementStore
 import build.raft.app.data.SharedHomeContentState
 import build.raft.app.data.SharedServerFeatureFlags
@@ -38,12 +38,14 @@ import build.raft.app.data.channelTypeSupportsAnnouncement
 import build.raft.app.data.rememberServerFeatureLatched
 import build.raft.app.model.ServerId
 import build.raft.app.resources.*
+import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.flowOf
 
 /*
- * Channel announcements wired to a page: the flag, the shared store's slice, the reads (open,
- * resume, every minute while shown, the realtime events SharedChannelAnnouncementStore names),
- * opening the Artifact in the in-app viewer and the details' set / replace / remove.
+ * Channel announcements wired to a page: the flag, the shared store's slice, what the page tells the
+ * store (it shows a channel, it is in front again, the socket is back; the store decides what reads,
+ * SharedChannelAnnouncementStore.kt), opening the Artifact in the in-app viewer and the details'
+ * set / replace / remove.
  */
 
 /**
@@ -70,9 +72,11 @@ internal fun rememberChannelAnnouncementKey(
 }
 
 /**
- * [key]'s announcement, read when it shows and whenever it comes back ([active]: the viewer
- * closed, so a version just opened reads as seen), every [CHANNEL_ANNOUNCEMENT_POLL_MILLIS] while
- * it shows, and on the realtime events that may change it.
+ * [key]'s announcement while it shows here. The page tells the store that it shows the channel
+ * (the open read), that it is in front again ([active] false, then true: the app back from the
+ * background, or a page over it closed) and that the socket of its server is back (kept until the
+ * page is in front, as the web holds its reconnect reload while hidden). The store decides what
+ * reads, and reads on the realtime events itself (botiverse/slock #16289).
  */
 @Composable
 internal fun rememberChannelAnnouncementSlice(
@@ -82,24 +86,56 @@ internal fun rememberChannelAnnouncementSlice(
     active: Boolean,
 ): ChannelAnnouncementSlice {
     val store = remember(sharedStores, storeScope) { sharedStores.channelAnnouncementStore(storeScope) }
-    // Read on open and on coming back; the minute-by-minute poll is the store's (its scope, not
-    // this composition's), held while the page shows it.
-    DisposableEffect(store, key, active) {
-        if (key == null || !active) return@DisposableEffect onDispose {}
-        store.dispatch(ChannelAnnouncementIntent.Load(key, "open", DataRequestPriority.Visible))
-        store.dispatch(ChannelAnnouncementIntent.Watch(key))
-        onDispose { store.dispatch(ChannelAnnouncementIntent.Unwatch(key)) }
-    }
-    val owner = remember(sharedStores, storeScope) { sharedStores.realtimeDomainEventOwner(storeScope) }
-    DisposableEffect(owner, store, key) {
+    DisposableEffect(store, key) {
         if (key == null) return@DisposableEffect onDispose {}
-        val sink = RealtimeGuardedActiveThreadSink { eventServerId, event -> store.dispatch(ChannelAnnouncementIntent.Realtime(key, eventServerId, event)) }
-        owner.registerGuardedActiveThreadSink(sink)
-        onDispose { owner.unregisterGuardedActiveThreadSink(sink) }
+        store.dispatch(ChannelAnnouncementIntent.Open(key))
+        onDispose { store.dispatch(ChannelAnnouncementIntent.Close(key)) }
+    }
+    // In front again after it was not; the first time it shows is the open.
+    val front = remember(store, key) { ChannelAnnouncementFront() }
+    DisposableEffect(store, key, active) {
+        if (key != null && !active) {
+            front.leftSinceShown = true
+        } else if (key != null && front.leftSinceShown) {
+            front.leftSinceShown = false
+            store.dispatch(ChannelAnnouncementIntent.Visible(key))
+        }
+        onDispose {}
+    }
+    val reconnects = remember { RaftFreshnessSignal.events.filter { it.trigger == RaftFreshnessTrigger.Reconnect } }
+    RaftLiveCatchUpEffect(serverId = key?.serverId, visible = key != null && active, foreground = false, events = reconnects) {
+        key?.let { store.dispatch(ChannelAnnouncementIntent.Reconnected(it)) }
     }
     if (key == null) return ChannelAnnouncementSlice.Unread
     val slice by remember(store, key) { store.slice(key) }.collectAsState(store.current(key))
     return slice
+}
+
+/** Whether the page has been out of front since it last showed the channel; nothing draws from it. */
+private class ChannelAnnouncementFront {
+    var leftSinceShown = false
+}
+
+/**
+ * The in-app viewer shows [artifactId] of [serverId] until it leaves it (closed, or moved to another
+ * Artifact): then a channel shown whose announcement it is reads at once, as seen now (web: the
+ * viewer's read of the latest version invalidates the Artifact's summaries, #16289 row 7). Only a
+ * store a page has made: no page shows a channel otherwise.
+ */
+@Composable
+internal fun ChannelAnnouncementViewedEffect(
+    sharedStores: RaftSharedStoreProvider,
+    storeScope: RaftShellStoreScope,
+    serverId: String?,
+    artifactId: String,
+) {
+    DisposableEffect(sharedStores, storeScope, serverId, artifactId) {
+        onDispose {
+            if (serverId != null) {
+                sharedStores.existingChannelAnnouncementStore(storeScope)?.dispatch(ChannelAnnouncementIntent.ArtifactViewed(serverId, artifactId))
+            }
+        }
+    }
 }
 
 /** Opens an announcement in the in-app Artifact viewer (its latest version), the browser only where no page can open. */

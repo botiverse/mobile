@@ -538,6 +538,8 @@ private fun RaftArtifactViewerScreen() {
     // The Artifact shown: the one opened, then the one the page moved to in place (its title, Open in
     // Browser, the summary read). The WebView's document is not reloaded for it ([bodyTarget]).
     var shown by remember(params.toString()) { mutableStateOf<ArtifactLinkTarget>(target) }
+    // Leaving it, it is seen: a channel shown whose announcement it is reads at once (#16289 row 7).
+    ChannelAnnouncementViewedEffect(host.sharedStores, host.storeScope, scope?.serverId, shown.canonicalId)
     LaunchedEffect(Unit) {
         raftLogInfo(
             RAFT_ARTIFACT_VIEWER_DIAGNOSTICS_TAG,

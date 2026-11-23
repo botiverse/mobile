@@ -1,18 +1,16 @@
 package build.raft.app.data
 
-import build.raft.app.data.realtime.RealtimeLocalEvents
+import build.raft.app.data.realtime.RealtimeSocketEvents
 import build.raft.app.model.ActivityChanged
 import build.raft.app.model.ChannelId
 import build.raft.app.model.MessageNew
 import build.raft.app.model.RealtimeEvent
 import build.raft.app.model.RealtimeRefreshRequired
-import build.raft.app.model.RealtimeRefreshScope
 import build.raft.app.model.ServerId
 import kotlinx.atomicfu.locks.SynchronizedObject
 import kotlinx.atomicfu.locks.synchronized
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -30,22 +28,51 @@ import kotlinx.coroutines.launch
  * Its own slice, not the channel row: `GET channels` (the list) doesn't carry it and a new version
  * changes the announcement without changing any channel row. Read from
  * `GET channels/:id/announcement`; written back from the answer of `PATCH channels/:id` (set,
- * replace, remove). Read again (web `useChannelAnnouncement`):
- *  - when the channel row changes (`channel:updated`: setting, replacing or removing it changes
- *    the row), and on a reconnect that could not replay what it missed;
- *  - on `activity:changed` for its server (a new version, for those who follow the Artifact; and
- *    the person's own open of it, which marks it seen);
- *  - when its change line arrives in the channel (`message:new` with the notice);
- *  - while shown ([ChannelAnnouncementIntent.Watch]) and the app is in front, every
- *    [CHANNEL_ANNOUNCEMENT_POLL_MILLIS]; and when
- *    the page comes back (the UI asks).
+ * replace, remove).
  *
- * There is no announcement event on the wire (botiverse/slock 6a848d0a: the server emits nothing
- * of its own for a set or a new version); these are the events the web reads it again on.
+ * When it is read: on events only, never on a timer (web `useChannelAnnouncement`, botiverse/slock
+ * #16289 at 4bb09d45d; the numbers are the rows of that PR's trigger table). "Held" is the answer
+ * last applied (a read or our own change), "last read" when it was applied.
+ *  1. A page opens the channel ([ChannelAnnouncementIntent.Open]): read, unless an answer is held
+ *     and was applied less than [CHANNEL_ANNOUNCEMENT_OPEN_FRESH_MILLIS] ago. One read at a time
+ *     per channel.
+ *  2-4. The announcement the channel's row names: `channel:updated` carries the row as stored, its
+ *     `announcementArtifactId` included, after every `PATCH channels/:id`; the change line a set,
+ *     replace or remove posts (`message:new` with the notice) names it too. Kept for every channel
+ *     (the shell's realtime owner feeds the store whichever page is open, as the web's socket bridge
+ *     feeds its channel rows). An open channel reads when the id named (none included) is not the
+ *     held one, or nothing is held; another change of the row (a rename, messages, unread counts,
+ *     activity) or a frame naming nothing never reads.
+ *  5. Such a change, or its Artifact viewed (7), while a read is in flight that predates it: one
+ *     more read after that one ends.
+ *  6. No timer.
+ *  7-8. Its Artifact left in the in-app viewer ([ChannelAnnouncementIntent.ArtifactViewed]: it is
+ *     seen now), while the app is in front: at once; another Artifact: nothing.
+ *  9-10. `activity:changed` of its server (a new version, for those who follow the Artifact), while
+ *     the app is in front: only if the last read is [CHANNEL_ANNOUNCEMENT_STALE_MILLIS] old or more.
+ *     Another server's: nothing.
+ *  11. The page in front again ([ChannelAnnouncementIntent.Visible]): the same 5-minute gate.
+ *  12. Its server's socket back ([ChannelAnnouncementIntent.Reconnected]): one read, however recent
+ *     the last one (a `channel:updated` sent while it was down is not replayed).
+ *  13. An answer dropped (older than a newer read or change, or from before a reset) is no read.
+ *  14. [ChannelAnnouncementIntent.Reset] drops held answers, read times, reads in flight and queued.
+ *
+ * Where mobile differs, and why: `activity:changed` carries no Artifact id (`{ serverId, source }`),
+ * so it is always the server-wide one; the web's own-Artifact invalidation is its viewer's read of
+ * the latest version, and mobile's viewer is a web page of its own, so 7 runs when the viewer leaves
+ * the Artifact. The web reads the row of a single-channel read too; nothing here reads that row, so
+ * `channel:updated` and the change line are the row. 12 comes from the app's freshness signal (a new
+ * socket connection of the server, RaftLiveCatchUpEffect): no 0-20 s reconnect jitter as on the
+ * web, and a page shown before the socket's first connection reads once more when it connects. A
+ * server switch needs no reset: a key names its server, so no answer can land on another server's
+ * channel.
  */
 
-/** How often a shown channel reads its announcement again (web `CHANNEL_ANNOUNCEMENT_POLL_MS`). */
-const val CHANNEL_ANNOUNCEMENT_POLL_MILLIS: Long = 60_000L
+/** A channel opened again within this of its last read is not read again (web `CHANNEL_ANNOUNCEMENT_OPEN_FRESH_MS`). */
+const val CHANNEL_ANNOUNCEMENT_OPEN_FRESH_MILLIS: Long = 30_000L
+
+/** The page in front again, or `activity:changed`, reads only when the last read is at least this old (web `CHANNEL_ANNOUNCEMENT_STALE_MS`). */
+const val CHANNEL_ANNOUNCEMENT_STALE_MILLIS: Long = 5 * 60_000L
 
 /** One channel's announcement, in one server. */
 data class ChannelAnnouncementKey(val serverId: String, val channelId: String)
@@ -87,12 +114,26 @@ data class ChannelAnnouncementState(
 )
 
 sealed interface ChannelAnnouncementIntent {
-    /** Read it (again). Coalesced per channel: one request at a time, and one more after it when asked meanwhile. */
-    data class Load(
-        val key: ChannelAnnouncementKey,
-        val reason: String,
-        val priority: DataRequestPriority,
-    ) : ChannelAnnouncementIntent
+    /**
+     * A page shows [key] (web: `useChannelAnnouncement` mounts): rule 1, then the announcement its
+     * row names (rule 3). Counted until the matching [Close]: the strip and the details row may show
+     * one channel at once.
+     */
+    data class Open(val key: ChannelAnnouncementKey) : ChannelAnnouncementIntent
+
+    data class Close(val key: ChannelAnnouncementKey) : ChannelAnnouncementIntent
+
+    /** The page showing [key] is in front again: the app back from the background, or the page uncovered (rule 11). */
+    data class Visible(val key: ChannelAnnouncementKey) : ChannelAnnouncementIntent
+
+    /** The realtime socket of [key]'s server joined its rooms again while a page shows [key] (rule 12). */
+    data class Reconnected(val key: ChannelAnnouncementKey) : ChannelAnnouncementIntent
+
+    /** The in-app Artifact viewer left [artifactId] of [serverId]: the person has seen it (rules 7 and 8). */
+    data class ArtifactViewed(val serverId: String, val artifactId: String) : ChannelAnnouncementIntent
+
+    /** An accepted realtime event of [serverId], whichever page is open (rules 2-4, 9 and 10). */
+    data class Realtime(val serverId: String, val event: RealtimeEvent) : ChannelAnnouncementIntent
 
     /** Set or replace ([artifactId]) or remove (null). Ignored while one is running for that channel. */
     data class Change(val key: ChannelAnnouncementKey, val artifactId: String?) : ChannelAnnouncementIntent
@@ -100,75 +141,46 @@ sealed interface ChannelAnnouncementIntent {
     /** The UI has taken a finished mutation's outcome. */
     data class ConsumeMutation(val key: ChannelAnnouncementKey, val id: Long) : ChannelAnnouncementIntent
 
-    /** A realtime event reached a page that shows [key]: read it again when the event may have changed it. */
-    data class Realtime(
-        val key: ChannelAnnouncementKey,
-        val eventServerId: String,
-        val event: RealtimeEvent,
-    ) : ChannelAnnouncementIntent
-
-    /**
-     * A page shows [key]: read it every [CHANNEL_ANNOUNCEMENT_POLL_MILLIS] until the matching
-     * [Unwatch] (counted, so two pages showing it poll once). The poll runs in the store's scope,
-     * not the composition's.
-     */
-    data class Watch(val key: ChannelAnnouncementKey) : ChannelAnnouncementIntent
-
-    data class Unwatch(val key: ChannelAnnouncementKey) : ChannelAnnouncementIntent
-
-    /** Signed out, or another account: nothing of the last one is kept. */
+    /** Signed out, or another account: nothing of the last one is kept (rule 14). */
     data object Reset : ChannelAnnouncementIntent
-}
-
-/**
- * Why [event] (for [eventServerId]) means [key]'s announcement may have changed; null when it
- * can't have. The web's triggers (see the file comment), on mobile's realtime events.
- */
-internal fun channelAnnouncementRealtimeReloadReason(
-    key: ChannelAnnouncementKey,
-    eventServerId: String,
-    event: RealtimeEvent,
-): String? {
-    if (eventServerId != key.serverId) return null
-    return when (event) {
-        is RealtimeRefreshRequired ->
-            when {
-                event.scope != RealtimeRefreshScope.Home -> null
-                event.serverId != null && event.serverId.value != key.serverId -> null
-                event.channelId?.value == key.channelId -> "channel_updated"
-                event.channelId == null && event.reason == RealtimeLocalEvents.CatchUpRequired -> "catch_up"
-                else -> null
-            }
-        is ActivityChanged -> if (event.serverId.value == key.serverId) "activity_changed" else null
-        is MessageNew ->
-            if (event.message.channelId?.value == key.channelId && channelAnnouncementNoticeOf(event.message.metadata) != null) {
-                "notice_posted"
-            } else {
-                null
-            }
-        else -> null
-    }
 }
 
 internal class SharedChannelAnnouncementStore(
     private val repository: ChannelAnnouncementRepository,
     private val scope: CoroutineScope,
     private val logger: (String) -> Unit = {},
-    private val pollMillis: Long = CHANNEL_ANNOUNCEMENT_POLL_MILLIS,
-    /** The poll runs only while this is true (the app in the foreground); see [repeatWhileProcessForeground]. */
+    /** Whether the app is in front (the web's page visibility): `activity:changed` and a viewed Artifact read only then. */
     private val foreground: StateFlow<Boolean> = RaftProcessForegroundGate.foreground,
+    /** Monotonic: the 30-second and 5-minute gates must not follow wall-clock changes. */
     private val nowMillis: () -> Long = ::raftForegroundGateNowMillis,
 ) {
     private val mutableState = MutableStateFlow(ChannelAnnouncementState())
     val state: StateFlow<ChannelAnnouncementState> = mutableState.asStateFlow()
 
     private val lock = SynchronizedObject()
+
+    /** Every answer older than the latest read or change of its channel is dropped. */
     private val generations = mutableMapOf<ChannelAnnouncementKey, Long>()
-    private val loading = mutableSetOf<ChannelAnnouncementKey>()
-    private val loadAgain = mutableSetOf<ChannelAnnouncementKey>()
+
+    /** The read in flight per channel, by number: an older read ending after a reset leaves a newer one alone. */
+    private val inFlight = mutableMapOf<ChannelAnnouncementKey, Long>()
+
+    /** What the channel's row named when its read in flight was asked (null: nothing). */
+    private val askedFor = mutableMapOf<ChannelAnnouncementKey, RaftChannelRowAnnouncement?>()
+
+    /** Channels with a change newer than their read in flight: one more read when it ends. */
+    private val dirty = mutableSetOf<ChannelAnnouncementKey>()
+
+    /** When an answer was last applied ([nowMillis]). */
+    private val lastReadAt = mutableMapOf<ChannelAnnouncementKey, Long>()
+
+    /** The announcement each channel's row last named; absent: nothing said yet. */
+    private val rowNames = mutableMapOf<ChannelAnnouncementKey, RaftChannelRowAnnouncement>()
+
+    /** How many pages show each channel. */
+    private val shown = mutableMapOf<ChannelAnnouncementKey, Int>()
+    private var nextReadId = 0L
     private var epoch = 0L
-    private val watchers = mutableMapOf<ChannelAnnouncementKey, Int>()
-    private val polls = mutableMapOf<ChannelAnnouncementKey, Job>()
     private var nextMutationId = 0L
 
     /** [key]'s slice alone, re-emitted only when it changes. */
@@ -190,7 +202,18 @@ internal class SharedChannelAnnouncementStore(
 
     fun dispatch(intent: ChannelAnnouncementIntent) {
         when (intent) {
-            is ChannelAnnouncementIntent.Load -> load(intent.key, intent.reason, intent.priority)
+            is ChannelAnnouncementIntent.Open -> open(intent.key)
+            is ChannelAnnouncementIntent.Close -> close(intent.key)
+            is ChannelAnnouncementIntent.Visible ->
+                if (isShown(intent.key) && !readWithin(intent.key, CHANNEL_ANNOUNCEMENT_STALE_MILLIS)) load(intent.key, "visible")
+            // However recent the last read: what was pushed while the socket was down is lost.
+            is ChannelAnnouncementIntent.Reconnected -> if (isShown(intent.key)) load(intent.key, "reconnect")
+            is ChannelAnnouncementIntent.ArtifactViewed ->
+                if (foreground.value) {
+                    shownKeys { it.serverId == intent.serverId && heldArtifactId(it) == intent.artifactId }
+                        .forEach { load(it, "artifact_viewed", again = true) }
+                }
+            is ChannelAnnouncementIntent.Realtime -> realtime(intent.serverId, intent.event)
             is ChannelAnnouncementIntent.Change -> change(intent.key, intent.artifactId)
             is ChannelAnnouncementIntent.ConsumeMutation ->
                 mutableState.update { current ->
@@ -201,111 +224,143 @@ internal class SharedChannelAnnouncementStore(
                         current.copy(mutations = current.mutations - intent.key)
                     }
                 }
-            is ChannelAnnouncementIntent.Realtime -> {
-                val reason = channelAnnouncementRealtimeReloadReason(intent.key, intent.eventServerId, intent.event) ?: return
-                load(intent.key, reason, DataRequestPriority.Background)
-            }
-            is ChannelAnnouncementIntent.Watch -> {
-                val start = synchronized(lock) {
-                    val count = (watchers[intent.key] ?: 0) + 1
-                    watchers[intent.key] = count
-                    count == 1
-                }
-                if (!start) return
-                val job =
-                    scope.launch {
-                        // Hidden, the page stays composed but nothing reads; back in front one read
-                        // at once if a poll came due meanwhile.
-                        repeatWhileProcessForeground(intervalMillis = pollMillis, foreground = foreground, nowMillis = nowMillis) {
-                            load(intent.key, "poll", DataRequestPriority.Background)
-                        }
-                    }
-                synchronized(lock) {
-                    if (watchers.containsKey(intent.key)) polls.put(intent.key, job)?.cancel() else job.cancel()
-                }
-            }
-            is ChannelAnnouncementIntent.Unwatch -> {
-                val stopped = synchronized(lock) {
-                    val count = (watchers[intent.key] ?: return) - 1
-                    if (count > 0) {
-                        watchers[intent.key] = count
-                        null
-                    } else {
-                        watchers.remove(intent.key)
-                        polls.remove(intent.key)
-                    }
-                }
-                stopped?.cancel()
-            }
-            ChannelAnnouncementIntent.Reset -> {
-                val stopped = synchronized(lock) {
-                    watchers.clear()
-                    polls.values.toList().also { polls.clear() }
-                }
-                stopped.forEach { it.cancel() }
+            ChannelAnnouncementIntent.Reset ->
                 synchronized(lock) {
                     epoch += 1
                     generations.clear()
-                    loadAgain.clear()
+                    inFlight.clear()
+                    askedFor.clear()
+                    dirty.clear()
+                    lastReadAt.clear()
+                    rowNames.clear()
+                    mutableState.value = ChannelAnnouncementState()
                 }
-                mutableState.value = ChannelAnnouncementState()
+        }
+    }
+
+    private fun open(key: ChannelAnnouncementKey) {
+        val named =
+            synchronized(lock) {
+                shown[key] = (shown[key] ?: 0) + 1
+                rowNames[key]
+            }
+        if (!(isHeld(key) && readWithin(key, CHANNEL_ANNOUNCEMENT_OPEN_FRESH_MILLIS))) {
+            load(key, "open", DataRequestPriority.Visible)
+        }
+        // The row as it is now: a change that landed while the channel was closed.
+        readIfRowDiffers(key, named)
+    }
+
+    private fun close(key: ChannelAnnouncementKey) {
+        synchronized(lock) {
+            val count = (shown[key] ?: return) - 1
+            if (count > 0) {
+                shown[key] = count
+            } else {
+                shown.remove(key)
             }
         }
     }
 
-    private fun nextGeneration(key: ChannelAnnouncementKey): Long {
-        val next = (generations[key] ?: 0L) + 1L
-        generations[key] = next
-        return next
-    }
-
-    /** Applies an answer still the newest for its channel, from before no reset. */
-    private fun applyIfCurrent(key: ChannelAnnouncementKey, generation: Long, startedEpoch: Long, announcement: RaftChannelAnnouncement?): Boolean {
-        val current = synchronized(lock) { generations[key] == generation && epoch == startedEpoch }
-        if (!current) return false
-        mutableState.update { state ->
-            if (key in state.byChannel && state.byChannel[key] == announcement) state else state.copy(byChannel = state.byChannel + (key to announcement))
+    private fun realtime(serverId: String, event: RealtimeEvent) {
+        when (event) {
+            is RealtimeRefreshRequired -> {
+                if (event.reason != RealtimeSocketEvents.ChannelUpdated) return
+                val named = event.channelAnnouncement ?: return
+                val channelId = event.channelId?.value ?: return
+                rowNamed(ChannelAnnouncementKey(event.serverId?.value ?: serverId, channelId), named)
+            }
+            is MessageNew -> {
+                val notice = channelAnnouncementNoticeOf(event.message.metadata) ?: return
+                val channelId = event.message.channelId?.value ?: return
+                // A removal names the Artifact it removed: the row names none now.
+                val named = notice.artifactId.takeUnless { notice.change == ChannelAnnouncementChangeKind.Removed }
+                rowNamed(ChannelAnnouncementKey(serverId, channelId), RaftChannelRowAnnouncement(named))
+            }
+            // Comes often on a busy server: a shown channel reads at most once per 5 minutes.
+            is ActivityChanged -> {
+                if (!foreground.value) return
+                shownKeys { it.serverId == event.serverId.value }
+                    .filterNot { readWithin(it, CHANNEL_ANNOUNCEMENT_STALE_MILLIS) }
+                    .forEach { load(it, "activity_changed") }
+            }
+            else -> Unit
         }
-        return true
     }
 
-    private fun load(key: ChannelAnnouncementKey, reason: String, priority: DataRequestPriority) {
-        val start =
+    /** [key]'s row names [named]: kept, and read if it changed while a page shows the channel. */
+    private fun rowNamed(key: ChannelAnnouncementKey, named: RaftChannelRowAnnouncement) {
+        val evaluate =
             synchronized(lock) {
-                if (key in loading) {
-                    loadAgain += key
+                val before = rowNames.put(key, named)
+                before != named && (shown[key] ?: 0) > 0
+            }
+        if (evaluate) readIfRowDiffers(key, named)
+    }
+
+    /**
+     * The row names [named] (null: nothing): read when that is not the held announcement (none held
+     * counts as different), or, with a read in flight, when the row named another one as it was asked.
+     */
+    private fun readIfRowDiffers(key: ChannelAnnouncementKey, named: RaftChannelRowAnnouncement?) {
+        if (named == null) return
+        val read =
+            synchronized(lock) {
+                if (key in inFlight) {
+                    if (askedFor[key] != named) dirty += key
                     false
                 } else {
-                    loading += key
-                    true
+                    val held = mutableState.value.byChannel
+                    key !in held || held[key]?.artifactId != named.artifactId
                 }
             }
-        if (!start) return
+        if (read) load(key, "row_changed")
+    }
+
+    /**
+     * Reads [key]'s announcement, one request at a time per channel; a failure keeps what is shown.
+     * [again]: the trigger is newer than a read in flight (a change), so one more read follows that
+     * one instead of sharing its answer.
+     */
+    private fun load(
+        key: ChannelAnnouncementKey,
+        reason: String,
+        priority: DataRequestPriority = DataRequestPriority.Background,
+        again: Boolean = false,
+    ) {
+        val started =
+            synchronized(lock) {
+                if (key in inFlight) {
+                    if (again) dirty += key
+                    return
+                }
+                nextReadId += 1
+                inFlight[key] = nextReadId
+                askedFor[key] = rowNames[key]
+                Triple(nextReadId, nextGeneration(key), epoch)
+            }
+        val (readId, generation, startedEpoch) = started
         scope.launch {
+            var followUp = false
             try {
-                var why = reason
-                while (true) {
-                    val (generation, startedEpoch) = synchronized(lock) {
-                        loadAgain -= key
-                        nextGeneration(key) to epoch
-                    }
-                    when (val result = repository.read(ServerId(key.serverId), ChannelId(key.channelId), priority)) {
-                        is DataResult.Content -> applyIfCurrent(key, generation, startedEpoch, result.data.announcement)
-                        // A failure keeps what is shown (web: `() => {}`).
-                        else -> logger("channel_announcement_load_failed channel=${key.channelId} reason=$why result=${result::class.simpleName}")
-                    }
-                    val again = synchronized(lock) { key in loadAgain }
-                    if (!again) break
-                    why = "coalesced"
+                when (val result = repository.read(ServerId(key.serverId), ChannelId(key.channelId), priority)) {
+                    is DataResult.Content -> applyIfCurrent(key, generation, startedEpoch, result.data.announcement)
+                    // A failure keeps what is shown (web: `() => {}`).
+                    else -> logger("channel_announcement_load_failed channel=${key.channelId} reason=$reason result=${result::class.simpleName}")
                 }
             } catch (cancellation: CancellationException) {
                 throw cancellation
             } finally {
                 synchronized(lock) {
-                    loading -= key
-                    loadAgain -= key
+                    // A reset since: a newer read (or none) is the channel's now.
+                    if (inFlight[key] == readId) {
+                        inFlight.remove(key)
+                        askedFor.remove(key)
+                        followUp = dirty.remove(key)
+                    }
                 }
             }
+            if (followUp) load(key, "changed_meanwhile")
         }
     }
 
@@ -322,7 +377,10 @@ internal class SharedChannelAnnouncementStore(
             val status =
                 when (val result = repository.update(ServerId(key.serverId), ChannelId(key.channelId), artifactId)) {
                     is DataResult.Content -> {
-                        applyIfCurrent(key, generation, startedEpoch, result.data.announcement)
+                        // Our own update's answer names the announcement on the row as well (web: it patches the row).
+                        if (applyIfCurrent(key, generation, startedEpoch, result.data.announcement)) {
+                            synchronized(lock) { rowNames[key] = RaftChannelRowAnnouncement(result.data.announcement?.artifactId) }
+                        }
                         ChannelAnnouncementMutationStatus.Succeeded
                     }
                     is DataResult.Error -> ChannelAnnouncementMutationStatus.Failed(result.error)
@@ -335,5 +393,37 @@ internal class SharedChannelAnnouncementStore(
                 if (state.mutations[key]?.id != id) state else state.copy(mutations = state.mutations + (key to ChannelAnnouncementMutation(id, artifactId, status)))
             }
         }
+    }
+
+    private fun nextGeneration(key: ChannelAnnouncementKey): Long {
+        val next = (generations[key] ?: 0L) + 1L
+        generations[key] = next
+        return next
+    }
+
+    /** Applies an answer still the newest for its channel and from before no reset; only then is it a read (rule 13). */
+    private fun applyIfCurrent(key: ChannelAnnouncementKey, generation: Long, startedEpoch: Long, announcement: RaftChannelAnnouncement?): Boolean {
+        synchronized(lock) {
+            if (generations[key] != generation || epoch != startedEpoch) return false
+            lastReadAt[key] = nowMillis()
+            mutableState.update { state ->
+                if (key in state.byChannel && state.byChannel[key] == announcement) state else state.copy(byChannel = state.byChannel + (key to announcement))
+            }
+        }
+        return true
+    }
+
+    private fun isShown(key: ChannelAnnouncementKey): Boolean = synchronized(lock) { (shown[key] ?: 0) > 0 }
+
+    private fun shownKeys(predicate: (ChannelAnnouncementKey) -> Boolean): List<ChannelAnnouncementKey> = synchronized(lock) { shown.keys.filter(predicate) }
+
+    private fun isHeld(key: ChannelAnnouncementKey): Boolean = key in mutableState.value.byChannel
+
+    private fun heldArtifactId(key: ChannelAnnouncementKey): String? = mutableState.value.byChannel[key]?.artifactId
+
+    /** Whether an answer for [key] was applied within [millis]. */
+    private fun readWithin(key: ChannelAnnouncementKey, millis: Long): Boolean {
+        val at = synchronized(lock) { lastReadAt[key] } ?: return false
+        return nowMillis() - at < millis
     }
 }

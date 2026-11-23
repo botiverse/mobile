@@ -1477,6 +1477,12 @@ data class RealtimeRefreshRequired(
      * (an id-only frame, or a row without the conversion fields).
      */
     val channelConversion: build.raft.app.data.RaftChannelConversion? = null,
+    /**
+     * `channel:updated` carrying the channel's row: the announcement the row names (its stored
+     * `announcementArtifactId`, on every row of a `PATCH channels/:id`). Null when the frame says
+     * nothing about it (an id-only frame, a row without the field).
+     */
+    val channelAnnouncement: build.raft.app.data.RaftChannelRowAnnouncement? = null,
 ) : RealtimeEvent
 
 @Serializable
