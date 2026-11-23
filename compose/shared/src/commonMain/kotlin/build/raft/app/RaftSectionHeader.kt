@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.designsystem.theme.RaftScale
 import build.raft.designsystem.theme.RaftTheme
 import build.raft.designsystem.components.LocalRaftBarButtons
 import androidx.compose.runtime.ReadOnlyComposable
@@ -170,7 +171,7 @@ internal fun RaftTopPageHeader(
     // [subtitle] sits after the title on its baseline instead of under it, and gives up its room
     // first (`md:shrink-1000`). The wide layout's column heads (raft-design desktop-density rule 2:
     // "by touch from 768px a head is one line too").
-    subtitleInline: Boolean = false,
+    subtitleInline: Boolean = RaftTheme.scale == RaftScale.Wide,
     // Long-press copy (raftCopyable) of the title when it is an identifier (a file name).
     titleCopyText: String? = null,
     // PROTOTYPE (native nav bar): what a host-drawn UINavigationBar shows for this head.
@@ -470,30 +471,63 @@ internal fun RaftPanelBackHeader(
                         )
                     }
                 } else {
-                    Column(
-                        // Title tap is a hidden shortcut (scroll to top), not a control: no press wash.
-                        modifier =
+                    val titleTapModifier =
+                        if (onTitleClick != null) {
                             Modifier.weight(1f).clickable(
                                 interactionSource = remember { MutableInteractionSource() },
                                 indication = null,
-                                enabled = onTitleClick != null
-                            ) { onTitleClick?.invoke() },
-                    ) {
-                        Text(
-                            text = title,
-                            style = RaftPanelHeaderTitleStyle,
-                            color = RaftColor.TextBlack,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                        subtitle?.takeIf { it.isNotBlank() }?.let {
+                                onClick = onTitleClick,
+                            )
+                        } else {
+                            // No title action: no clickable at all, matching RaftTopPageHeader (a
+                            // disabled clickable still takes taps and merges child semantics).
+                            Modifier.weight(1f)
+                        }
+                    val shownSubtitle = subtitle?.takeIf { it.isNotBlank() }
+                    if (RaftTheme.scale == RaftScale.Wide && shownSubtitle != null) {
+                        Row(
+                            // Title tap is a hidden shortcut (scroll to top), not a control: no press wash.
+                            modifier = titleTapModifier,
+                            horizontalArrangement = Arrangement.spacedBy(RaftPanelHeadInlineMetaGap),
+                        ) {
                             Text(
-                                text = it,
+                                text = title,
+                                modifier = Modifier.alignByBaseline(),
+                                style = RaftPanelHeaderTitleStyle,
+                                color = RaftColor.TextBlack,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            Text(
+                                text = shownSubtitle,
+                                modifier = Modifier.weight(1f).alignByBaseline(),
                                 style = RaftType.Caption,
                                 color = RaftColor.ForegroundHint,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis
                             )
+                        }
+                    } else {
+                        Column(
+                            // Title tap is a hidden shortcut (scroll to top), not a control: no press wash.
+                            modifier = titleTapModifier,
+                        ) {
+                            Text(
+                                text = title,
+                                style = RaftPanelHeaderTitleStyle,
+                                color = RaftColor.TextBlack,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            shownSubtitle?.let {
+                                Text(
+                                    text = it,
+                                    style = RaftType.Caption,
+                                    color = RaftColor.ForegroundHint,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
                         }
                     }
                 }

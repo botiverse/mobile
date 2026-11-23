@@ -56,6 +56,7 @@ import build.raft.designsystem.components.RaftIconButtonSize
 import build.raft.designsystem.components.RaftPresence
 import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.tokens.RaftStroke
+import build.raft.designsystem.theme.RaftScale
 import build.raft.designsystem.theme.RaftTheme
 import build.raft.designsystem.tokens.RaftRadius
 import androidx.compose.runtime.mutableStateOf
@@ -167,23 +168,47 @@ internal fun MembersHumanDetailHeader(
             }
         },
         titleContent = {
-            Column(modifier = Modifier.weight(1f)) {
-                RaftText(
-                    text = member.displayName,
-                    style = typography.headline,
-                    color = colors.foreground,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.raftCopyable(member.displayName)
-                )
-                RaftText(
-                    text = member.detailHandle,
-                    style = typography.monoMeta,
-                    color = colors.foregroundHint,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.raftCopyable(member.detailHandle)
-                )
+            if (RaftTheme.scale == RaftScale.Wide && member.detailHandle.isNotBlank()) {
+                Row(
+                    modifier = Modifier.weight(1f),
+                    horizontalArrangement = Arrangement.spacedBy(RaftPanelHeadInlineMetaGap),
+                ) {
+                    RaftText(
+                        text = member.displayName,
+                        style = typography.headline,
+                        color = colors.foreground,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.alignByBaseline().raftCopyable(member.displayName)
+                    )
+                    RaftText(
+                        text = member.detailHandle,
+                        style = typography.monoMeta,
+                        color = colors.foregroundHint,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f).alignByBaseline().raftCopyable(member.detailHandle)
+                    )
+                }
+            } else {
+                Column(modifier = Modifier.weight(1f)) {
+                    RaftText(
+                        text = member.displayName,
+                        style = typography.headline,
+                        color = colors.foreground,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.raftCopyable(member.displayName)
+                    )
+                    RaftText(
+                        text = member.detailHandle,
+                        style = typography.monoMeta,
+                        color = colors.foregroundHint,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.raftCopyable(member.detailHandle)
+                    )
+                }
             }
         },
         trailingContent =
@@ -378,24 +403,49 @@ internal fun MembersDetailHeader(
                             size = RaftAvatarSize.Md,
                             memberAvatarResolver = memberAvatarResolver
                         )
-                        Column(
-                            modifier = Modifier.weight(1f)
-                        ) {
-                            RaftText(
-                                text = member.displayName,
-                                style = typography.headline,
-                                color = colors.foreground,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                            if (!headerMetaLabel.isNullOrBlank()) {
+                        if (RaftTheme.scale == RaftScale.Wide && !headerMetaLabel.isNullOrBlank()) {
+                            // raft-design desktop-density rule 2: wide heads place meta on the title's baseline.
+                            Row(
+                                modifier = Modifier.weight(1f),
+                                horizontalArrangement = Arrangement.spacedBy(RaftPanelHeadInlineMetaGap),
+                            ) {
+                                RaftText(
+                                    text = member.displayName,
+                                    modifier = Modifier.alignByBaseline(),
+                                    style = typography.headline,
+                                    color = colors.foreground,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
                                 RaftText(
                                     text = headerMetaLabel,
+                                    modifier = Modifier.weight(1f).alignByBaseline(),
                                     style = if (deleted) typography.caption else typography.monoMeta.copy(lineHeight = typography.caption.lineHeight),
                                     color = if (deleted) colors.dangerStrong else colors.foregroundHint,
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis
                                 )
+                            }
+                        } else {
+                            Column(
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                RaftText(
+                                    text = member.displayName,
+                                    style = typography.headline,
+                                    color = colors.foreground,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                                if (!headerMetaLabel.isNullOrBlank()) {
+                                    RaftText(
+                                        text = headerMetaLabel,
+                                        style = if (deleted) typography.caption else typography.monoMeta.copy(lineHeight = typography.caption.lineHeight),
+                                        color = if (deleted) colors.dangerStrong else colors.foregroundHint,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
                             }
                         }
                     }
