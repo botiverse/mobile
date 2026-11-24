@@ -277,16 +277,62 @@ class RaftSandboxWebViewNavigationFenceIosTest {
             ),
         )
 
-        // Commit resets chain; link activation on scoped origin without header -> ReissueWithHeader.
+        // Pre-commit hop budget caps same-origin redirect re-issues at RAFT_HOST_REISSUE_BUDGET.
+        for (i in 1..RAFT_HOST_REISSUE_BUDGET) {
+            assertEquals(
+                RaftIosMainFramePolicyOutcome.ReissueWithHeader("$appOrigin/chain-$i"),
+                host.decideMainFramePolicy(
+                    source = webView,
+                    targetURL = NSURL.URLWithString("$appOrigin/chain-$i"),
+                    method = "GET",
+                    rawNavigationType = WK_NAVIGATION_TYPE_OTHER,
+                    requestCarriesHeader = false,
+                ),
+            )
+        }
+        assertEquals(
+            RaftIosMainFramePolicyOutcome.Allow,
+            host.decideMainFramePolicy(
+                source = webView,
+                targetURL = NSURL.URLWithString("$appOrigin/chain-over"),
+                method = "GET",
+                rawNavigationType = WK_NAVIGATION_TYPE_OTHER,
+                requestCarriesHeader = false,
+            ),
+        )
+
+        // Commit marks document live: document-initiated GET links, GET forms (e.g. Stamp
+        // /login?agree=1), and post-commit same-origin redirects stay native (Allow) to preserve
+        // Sec-Fetch-Site: same-origin and Referer.
         host.didCommit(webView)
         val linkUrl = "$appOrigin/settings"
         assertEquals(
-            RaftIosMainFramePolicyOutcome.ReissueWithHeader(linkUrl),
+            RaftIosMainFramePolicyOutcome.Allow,
             host.decideMainFramePolicy(
                 source = webView,
                 targetURL = NSURL.URLWithString(linkUrl),
                 method = "GET",
                 rawNavigationType = WK_NAVIGATION_TYPE_LINK_ACTIVATED,
+                requestCarriesHeader = false,
+            ),
+        )
+        assertEquals(
+            RaftIosMainFramePolicyOutcome.Allow,
+            host.decideMainFramePolicy(
+                source = webView,
+                targetURL = NSURL.URLWithString("$appOrigin/login?agree=1"),
+                method = "GET",
+                rawNavigationType = WK_NAVIGATION_TYPE_FORM_SUBMITTED,
+                requestCarriesHeader = false,
+            ),
+        )
+        assertEquals(
+            RaftIosMainFramePolicyOutcome.Allow,
+            host.decideMainFramePolicy(
+                source = webView,
+                targetURL = NSURL.URLWithString("$appOrigin/post-commit-redirect"),
+                method = "GET",
+                rawNavigationType = WK_NAVIGATION_TYPE_OTHER,
                 requestCarriesHeader = false,
             ),
         )
@@ -333,46 +379,15 @@ class RaftSandboxWebViewNavigationFenceIosTest {
             ),
         )
 
-        // Hop budget caps same-origin redirect re-issues at RAFT_HOST_REISSUE_BUDGET and resets on didCommit.
-        host.didCommit(webView)
-        host.decideMainFramePolicy(
-            source = webView,
-            targetURL = NSURL.URLWithString("$appOrigin/chain-0"),
-            method = "GET",
-            rawNavigationType = WK_NAVIGATION_TYPE_LINK_ACTIVATED,
-            requestCarriesHeader = true,
-        )
-        for (i in 1..RAFT_HOST_REISSUE_BUDGET) {
-            assertEquals(
-                RaftIosMainFramePolicyOutcome.ReissueWithHeader("$appOrigin/chain-$i"),
-                host.decideMainFramePolicy(
-                    source = webView,
-                    targetURL = NSURL.URLWithString("$appOrigin/chain-$i"),
-                    method = "GET",
-                    rawNavigationType = WK_NAVIGATION_TYPE_OTHER,
-                    requestCarriesHeader = false,
-                ),
-            )
-        }
+        // Post-commit cross-origin redirect still strips Raft-Host when carried (e.g. controller.loadUrl).
         assertEquals(
-            RaftIosMainFramePolicyOutcome.Allow,
+            RaftIosMainFramePolicyOutcome.ReissueWithoutHeader("https://third-party.example/after-commit"),
             host.decideMainFramePolicy(
                 source = webView,
-                targetURL = NSURL.URLWithString("$appOrigin/chain-over"),
+                targetURL = NSURL.URLWithString("https://third-party.example/after-commit"),
                 method = "GET",
                 rawNavigationType = WK_NAVIGATION_TYPE_OTHER,
-                requestCarriesHeader = false,
-            ),
-        )
-        host.didCommit(webView)
-        assertEquals(
-            RaftIosMainFramePolicyOutcome.ReissueWithHeader("$appOrigin/fresh"),
-            host.decideMainFramePolicy(
-                source = webView,
-                targetURL = NSURL.URLWithString("$appOrigin/fresh"),
-                method = "GET",
-                rawNavigationType = WK_NAVIGATION_TYPE_LINK_ACTIVATED,
-                requestCarriesHeader = false,
+                requestCarriesHeader = true,
             ),
         )
     }

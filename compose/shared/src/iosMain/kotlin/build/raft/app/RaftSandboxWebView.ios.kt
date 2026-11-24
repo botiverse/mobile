@@ -832,8 +832,8 @@ internal class RaftIosSandboxWebView(
      * (#356 §3/§5). Order:
      * 1. [RaftWebViewEvents.catchesMainFrameNavigation];
      * 2. existing scheme/origin/navigation fence and [RaftWebViewEvents.routesMainFrameNavigation];
-     * 3. [raftHostNavigationDecision] (re-issue with `Raft-Host` on scoped GET links, or strip on
-     *    cross-origin GET redirects where WebKit copied headers).
+     * 3. [raftHostNavigationDecision] (re-issue with `Raft-Host` on pre-commit same-origin GET
+     *    redirects, or strip on cross-origin GET redirects where WebKit copied headers).
      */
     internal fun decideMainFramePolicy(
         source: WKWebView,
@@ -945,6 +945,7 @@ internal class RaftIosSandboxWebView(
                 carriesHeader = carriesHeader,
                 host = raftHost,
                 budgetLeft = navChainReissueBudget,
+                committed = hasCommittedDocument,
             )
         recordNavChainHop(targetString)
         return when (hostDecision) {
