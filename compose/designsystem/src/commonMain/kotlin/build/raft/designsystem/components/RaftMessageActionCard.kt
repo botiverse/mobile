@@ -143,6 +143,7 @@ fun RaftMessageActionCard(
     toggleLabel: String? = null,
     showIcon: Boolean = true,
     statusColor: Color? = null,
+    headerTrailing: (@Composable () -> Unit)? = null,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     val colors = RaftTheme.colors
@@ -167,6 +168,7 @@ fun RaftMessageActionCard(
             toggleLabel = toggleLabel,
             showIcon = showIcon,
             statusColor = statusColor,
+            headerTrailing = headerTrailing,
         )
         AnimatedVisibility(
             visible = open,
@@ -194,6 +196,7 @@ private fun RaftMessageActionCardHeader(
     toggleLabel: String?,
     showIcon: Boolean = true,
     statusColor: Color? = null,
+    headerTrailing: (@Composable () -> Unit)? = null,
 ) {
     val colors = RaftTheme.colors
     val typography = RaftTheme.typography
@@ -238,6 +241,7 @@ private fun RaftMessageActionCardHeader(
         if (onExpandedChange != null) {
             RaftMessageActionCardCollapseTrigger(open, onExpandedChange, toggleLabel)
         }
+        headerTrailing?.invoke()
     }
 }
 

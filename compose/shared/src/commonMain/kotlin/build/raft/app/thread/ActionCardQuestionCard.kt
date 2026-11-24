@@ -11,6 +11,8 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -23,6 +25,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
@@ -41,12 +47,15 @@ import build.raft.app.data.ActionCardSpecTree
 import build.raft.app.data.QuestionAskActionCardType
 import build.raft.app.data.ThreadActionCard
 import build.raft.app.data.checkActionCardFormValues
+import build.raft.app.data.expiredAsOf
 import build.raft.app.data.renderActionCardMsgText
 import build.raft.designsystem.components.RaftBanner
 import build.raft.designsystem.components.RaftBannerSize
 import build.raft.designsystem.components.RaftBannerStatus
 import build.raft.designsystem.components.RaftButton
 import build.raft.designsystem.components.RaftButtonVariant
+import build.raft.designsystem.components.RaftIconButton
+import build.raft.designsystem.components.RaftIconButtonSize
 import build.raft.designsystem.components.RaftMessageActionCardDefaults
 import build.raft.designsystem.components.RaftGlyph
 import build.raft.designsystem.components.RaftGlyphIcon
@@ -123,6 +132,71 @@ internal fun ThreadActionCard.questionAsksViewer(viewerUserId: String?): Boolean
     if (questionAsksAnyone) return true
     val addressee = questionAddresseeUserId ?: return true
     return viewerUserId != null && addressee.trim().equals(viewerUserId.trim(), ignoreCase = true)
+}
+
+/**
+ * Whether this viewer is shown the answerer close (`×`) control on [this] card (web
+ * `useQuestionCardClose`, slock #16473): a `question:ask` card whose server serves
+ * `answererCanClose`, while still `prepared` and not past its `expiresAt`, and this viewer may
+ * answer it ([canAnswer]).
+ */
+internal fun ThreadActionCard.questionAnswererCanClose(
+    canAnswer: Boolean,
+    nowMillis: Long,
+): Boolean =
+    type.equals(QuestionAskActionCardType, ignoreCase = true) &&
+        answererCanClose &&
+        canAnswer &&
+        expiredAsOf(nowMillis).actionCardSpecStatus() == RaftActionCardStatus.Prepared
+
+internal const val ACTION_CARD_QUESTION_CLOSE_BUTTON_TAG = "action_card_question_close_button"
+internal const val ACTION_CARD_QUESTION_CLOSE_UNDO_ROW_TAG = "action_card_question_close_undo_row"
+
+/**
+ * The `×` at the end of a question card's header that closes it without answering (web
+ * `QuestionCardCloseControl`, slock #16473): a row-action ghost `×` ([RaftIconButtonSize.Sm],
+ * 28dp box with 16dp glyph and 44dp touch hit area, always visible to who may close). Pressed,
+ * "Closed · Undo" takes its place for [QUESTION_SUBMIT_UNDO_MS] before `POST /actions/:id/close`.
+ */
+@Composable
+internal fun ActionCardQuestionCloseControl(
+    waiting: Boolean,
+    closing: Boolean,
+    enabled: Boolean,
+    onStartClose: () -> Unit,
+    onUndo: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    if (waiting) {
+        Row(
+            modifier = modifier.testTag(ACTION_CARD_QUESTION_CLOSE_UNDO_ROW_TAG).semantics { liveRegion = LiveRegionMode.Polite },
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            RaftText(
+                stringResource(Res.string.thread_action_card_status_closed) + " ·",
+                style = RaftTheme.typography.callout,
+                color = RaftTheme.colors.foregroundMuted,
+            )
+            RaftButton(
+                text = stringResource(Res.string.action_card_question_undo),
+                onClick = onUndo,
+                variant = RaftButtonVariant.Ghost,
+            )
+        }
+    } else {
+        RaftIconButton(
+            onClick = onStartClose,
+            tooltip = stringResource(Res.string.common_close),
+            modifier = modifier.testTag(ACTION_CARD_QUESTION_CLOSE_BUTTON_TAG),
+            variant = RaftButtonVariant.Ghost,
+            size = RaftIconButtonSize.Sm,
+            enabled = enabled && !closing,
+            loading = closing,
+        ) {
+            RaftGlyphIcon(RaftGlyph.X, size = 16.dp)
+        }
+    }
 }
 
 /** How long a question card still waits ([questionTimeLeft]). */
@@ -257,13 +331,31 @@ internal fun ActionCardQuestionButtonRow(
     modifier: Modifier = Modifier,
     serverIssuesTraceId: String? = null,
     errorTraceId: String? = null,
+    headerTrailing: (@Composable () -> Unit)? = null,
+    onWaitingChange: ((Boolean) -> Unit)? = null,
 ) {
     RaftDesignSystemTheme {
         Column(
             modifier.fillMaxWidth().widthIn(max = RaftMessageActionCardDefaults.MaxWidth),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            RaftText(question, style = RaftTheme.typography.body.copy(fontWeight = FontWeight.SemiBold), color = RaftTheme.colors.foreground)
+            if (headerTrailing != null) {
+                Row(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.Top,
+                ) {
+                    RaftText(
+                        question,
+                        modifier = Modifier.weight(1f),
+                        style = RaftTheme.typography.body.copy(fontWeight = FontWeight.SemiBold),
+                        color = RaftTheme.colors.foreground,
+                    )
+                    headerTrailing()
+                }
+            } else {
+                RaftText(question, style = RaftTheme.typography.body.copy(fontWeight = FontWeight.SemiBold), color = RaftTheme.colors.foreground)
+            }
             val field = inline?.fields?.singleOrNull()
             when {
                 answeredLine != null -> QuestionStatusLine(answeredLine, check = true)
@@ -280,6 +372,7 @@ internal fun ActionCardQuestionButtonRow(
                         hint = hint,
                         displayLocale = displayLocale,
                         onSend = onSend,
+                        onWaitingChange = onWaitingChange,
                     )
                 hint != null -> QuestionHint(hint)
             }
@@ -345,6 +438,7 @@ private fun QuestionButtons(
     hint: String?,
     displayLocale: String,
     onSend: (Map<String, ActionCardFormValue>) -> Unit,
+    onWaitingChange: ((Boolean) -> Unit)? = null,
 ) {
     val undoable = rememberQuestionUndoableSubmit(inline.formId, onSend)
     val scope = rememberCoroutineScope()
@@ -354,6 +448,9 @@ private fun QuestionButtons(
     var pendingShown by remember(inline.formId) { mutableStateOf(false) }
     var focusOther by remember(inline.formId) { mutableStateOf(false) }
     val waiting = undoable.waiting
+    val currentOnWaitingChange by rememberUpdatedState(onWaitingChange)
+    LaunchedEffect(waiting) { currentOnWaitingChange?.invoke(waiting) }
+    DisposableEffect(Unit) { onDispose { currentOnWaitingChange?.invoke(false) } }
     val busy = submitting || waiting
     val value = (values[field.name] as? ActionCardFormValue.Choice) ?: ActionCardFormValue.Choice(emptyList())
     val other = field.other

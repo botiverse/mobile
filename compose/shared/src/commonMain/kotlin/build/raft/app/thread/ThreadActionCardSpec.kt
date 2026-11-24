@@ -2,8 +2,10 @@ package build.raft.app
 
 import build.raft.app.resources.*
 import org.jetbrains.compose.resources.StringResource
+import build.raft.app.data.ActionCardCloseOutcome
 import build.raft.app.data.PlanTrialActionCardType
 import build.raft.app.data.ActionCardExecuteOutcome
+import build.raft.app.data.QuestionAskActionCardType
 import build.raft.app.data.SecondFactorStepUpCoordinator
 import build.raft.app.data.SecondFactorStepUpOutcome
 import build.raft.app.data.ScreenError
@@ -508,6 +510,9 @@ internal data class ThreadActionCardSpecCardSlice(
     fun busyElement(typedPending: Boolean): String? = busy ?: typedPress?.takeIf { typedPending }
 }
 
+/** Synthetic [ThreadActionCardSpecState.busy] element key while `POST /actions/:id/close` is in flight. */
+internal const val ACTION_CARD_CLOSE_ELEMENT_ID: String = "__question_close__"
+
 internal sealed interface ThreadActionCardSpecIntent {
     /** A Button [threadActionCardSpecPress] routed to the store, on the card as the thread holds it now. */
     data class Press(val messageId: String, val elementId: String, val card: ThreadActionCard, val spec: ActionCardSpecCard) :
@@ -546,6 +551,13 @@ internal sealed interface ThreadActionCardSpecIntent {
         val values: Map<String, ActionCardFormValue>,
     ) : ThreadActionCardSpecIntent
 
+    /**
+     * A question card's answerer close (web `useQuestionCardClose`, slock #16473), sent once its
+     * 1.5 s Undo wait is over: calls `POST /actions/:messageId/close` unless [card] is no longer
+     * `prepared` (answered, withdrawn, expired, closed, frozen).
+     */
+    data class CloseQuestion(val messageId: String, val card: ThreadActionCard) : ThreadActionCardSpecIntent
+
     /** "Open in web": [link] (this message on this page) on the Developer environment's web URL, in the browser. */
     data class OpenInWeb(val messageId: String, val link: RaftMessageLink?) : ThreadActionCardSpecIntent
 }
@@ -580,6 +592,10 @@ internal class ThreadActionCardSpecStore(
     private val scope: CoroutineScope,
     private val execute: suspend (messageId: String, card: ThreadActionCard, form: ExecuteActionFormBody?) -> DataResult<ActionCardExecuteOutcome>,
     private val applyCard: (messageId: String, card: ThreadActionCard) -> Unit,
+    /** Answerer close (`POST /actions/:id/close`, slock #16473) on a `question:ask` card. */
+    private val closeQuestion: suspend (messageId: String, card: ThreadActionCard) -> DataResult<ActionCardCloseOutcome> = { _, _ ->
+        DataResult.Error(ScreenError(code = "action_card_actions_api_missing", retryable = false))
+    },
     /** A NoPermission the route handles (session expired): true when it did. */
     private val onNoPermission: (DataResult.NoPermission) -> Boolean = { false },
     /** The Developer environment's web URL (AGENTS.md "Environment Web Link URL Rule"); null is production. */
@@ -621,6 +637,7 @@ internal class ThreadActionCardSpecStore(
             ThreadActionCardSpecIntent.DismissForm -> update { if (it.form?.submitting == true) it else it.copy(form = null) }
             is ThreadActionCardSpecIntent.InlineValuesChanged -> inlineValuesChanged(intent.messageId, intent.values)
             is ThreadActionCardSpecIntent.SubmitInlineForm -> submitInline(intent)
+            is ThreadActionCardSpecIntent.CloseQuestion -> closeQuestion(intent)
             is ThreadActionCardSpecIntent.OpenInWeb -> openInWeb(intent.link)
         }
     }
@@ -800,6 +817,55 @@ internal class ThreadActionCardSpecStore(
                     it.copy(errors = it.errors + (messageId to error))
                 } else {
                     // Answered (or answered by someone else): the card draws its answers instead.
+                    it.copy(inlineValues = it.inlineValues - messageId, inlineIssues = it.inlineIssues - messageId)
+                }
+            }
+        }
+    }
+
+    /**
+     * A question card's answerer close (web `useQuestionCardClose`, slock #16473): sent once after
+     * its 1.5 s Undo wait. A card that ended or left `prepared` meanwhile sends nothing. A 409
+     * `ALREADY_EXECUTED` applies the answered card with no error; any other refusal shows the
+     * server's words under the card (or marks it expired on `QUESTION_EXPIRED`).
+     */
+    private fun closeQuestion(intent: ThreadActionCardSpecIntent.CloseQuestion) {
+        val messageId = intent.messageId
+        if (messageId in _state.value.busy) return
+        val card = intent.card.expiredAsOf(nowMillis())
+        if (!card.type.equals(QuestionAskActionCardType, ignoreCase = true) || card.actionCardSpecStatus() != RaftActionCardStatus.Prepared) {
+            if (card.hasEnded && !intent.card.hasEnded) {
+                applyCard(messageId, card)
+                update { it.copy(inlineValues = it.inlineValues - messageId, inlineIssues = it.inlineIssues - messageId) }
+            }
+            return
+        }
+        update { it.copy(busy = it.busy + (messageId to ACTION_CARD_CLOSE_ELEMENT_ID), errors = it.errors - messageId) }
+        scope.launch {
+            val result = closeQuestion(messageId, card)
+            update { it.copy(busy = it.busy - messageId) }
+            val error =
+                when (result) {
+                    is DataResult.Content ->
+                        when (val outcome = result.data) {
+                            is ActionCardCloseOutcome.Closed -> {
+                                outcome.card?.let { applyCard(messageId, it) }
+                                null
+                            }
+                            is ActionCardCloseOutcome.AlreadyExecuted -> {
+                                outcome.card?.let { applyCard(messageId, it) }
+                                null
+                            }
+                        }
+                    is DataResult.Empty -> ThreadActionCardSpecError.Failed()
+                    is DataResult.Error -> expiredOrError(messageId, card, result.error)
+                    is DataResult.NoPermission ->
+                        if (onNoPermission(result)) null else ThreadActionCardSpecError.Failed(result.blocker.serverMessage?.takeIf { it.isNotBlank() }, result.blocker.traceId)
+                }
+            update {
+                if (error != null) {
+                    it.copy(errors = it.errors + (messageId to error))
+                } else {
                     it.copy(inlineValues = it.inlineValues - messageId, inlineIssues = it.inlineIssues - messageId)
                 }
             }

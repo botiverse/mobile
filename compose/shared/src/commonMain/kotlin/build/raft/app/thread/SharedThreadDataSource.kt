@@ -2436,6 +2436,11 @@ internal class SharedThreadDataSource(
         form: ExecuteActionFormBody? = null,
     ): DataResult<ActionCardExecuteOutcome> = actionCardCommands.executeActionCardSpec(messageId, card, form)
 
+    suspend fun closeQuestionActionCard(
+        messageId: String,
+        card: ThreadActionCard,
+    ): DataResult<build.raft.app.data.ActionCardCloseOutcome> = actionCardCommands.closeQuestionActionCard(messageId, card)
+
     suspend fun fetchThreadPayload(
         basePayload: RaftThreadScreenPayload,
         persistResult: Boolean = true,

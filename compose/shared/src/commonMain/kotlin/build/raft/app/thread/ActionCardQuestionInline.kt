@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -278,6 +279,44 @@ internal fun rememberQuestionUndoableSubmit(
 }
 
 /**
+ * [QuestionUndoableSubmit] for closing a question card without answering (web
+ * `useQuestionCardClose`, slock #16473): waits [QUESTION_SUBMIT_UNDO_MS] with "Closed · Undo"
+ * before calling [onClose]; Undo takes it back and sends nothing; leaving the screen or going to
+ * the background flushes it immediately while [canClose] is still true. If the card stops being
+ * closable meanwhile (answered, withdrawn, expired, frozen), any waiting close is cancelled
+ * without sending.
+ */
+@Composable
+internal fun rememberQuestionUndoableClose(
+    messageId: String,
+    canClose: Boolean,
+    onClose: () -> Unit,
+): QuestionUndoableSubmit<Unit> {
+    val scope = rememberCoroutineScope()
+    val currentCanClose by rememberUpdatedState(canClose)
+    val currentClose by rememberUpdatedState(onClose)
+    val undoable =
+        remember(messageId) {
+            QuestionUndoableSubmit<Unit>(scope) {
+                if (currentCanClose) currentClose()
+            }
+        }
+    LaunchedEffect(undoable, canClose) {
+        if (!canClose) undoable.undo()
+    }
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(undoable, lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event -> if (event == Lifecycle.Event.ON_STOP) undoable.flush() }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+            undoable.flush()
+        }
+    }
+    return undoable
+}
+
+/**
  * A question card answered in its body (web `QuestionInlineForm`): each question numbered when
  * there are several, over its options ([ActionCardChoiceField]: radios or checkboxes, Other… last
  * with its one-line input), then the card's one button labelled as the button that would open the
@@ -308,6 +347,7 @@ internal fun ActionCardQuestionInlineForm(
     displayLocale: String,
     onSend: (Map<String, ActionCardFormValue>) -> Unit,
     serverIssuesTraceId: String? = null,
+    onWaitingChange: ((Boolean) -> Unit)? = null,
 ) {
     val scope = rememberCoroutineScope()
     // Leaving (the card scrolled away, another page) or the app going to the background sends at once.
@@ -315,6 +355,9 @@ internal fun ActionCardQuestionInlineForm(
     var clientIssues by remember(inline.formId) { mutableStateOf(emptyList<ActionCardFormIssue>()) }
     val latestValues by rememberUpdatedState(values)
     val waiting = undoable.waiting
+    val currentOnWaitingChange by rememberUpdatedState(onWaitingChange)
+    LaunchedEffect(waiting) { currentOnWaitingChange?.invoke(waiting) }
+    DisposableEffect(Unit) { onDispose { currentOnWaitingChange?.invoke(false) } }
     val busy = submitting || waiting
     // The submit tried with a required question unanswered: only then does each say what it lacks.
     var pendingShown by remember(inline.formId) { mutableStateOf(false) }

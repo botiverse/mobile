@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.app.data.ActionCardCloseOutcome
 import build.raft.app.data.ActionCardExecuteOutcome
 import build.raft.app.data.AddChannelMembersBatchRequest
 import build.raft.app.data.ChannelRepository
@@ -220,6 +221,34 @@ internal class ThreadActionCardCommands(
                 }
             }
             is DataResult.Empty -> DataResult.Error(ScreenError(code = "action_card_execute_empty", retryable = true))
+            is DataResult.Error -> result
+            is DataResult.NoPermission -> result
+        }
+    }
+
+    /**
+     * Closes an open `question:ask` card without answering (`POST /actions/:id/close`, web
+     * `closeQuestionCard`, slock #16473). An answer without metadata keeps a truthful `closed`
+     * terminal state, as [executeActionCardSpec] does for `executed`.
+     */
+    suspend fun closeQuestionActionCard(
+        messageId: String,
+        card: ThreadActionCard,
+    ): DataResult<ActionCardCloseOutcome> {
+        val actionsApi =
+            actionCardsApiClient
+                ?: return DataResult.Error(ScreenError(code = "action_card_actions_api_missing", retryable = false))
+        if (card.isFrozen) return DataResult.Error(ScreenError(code = "action_card_frozen", retryable = false))
+        return when (val result = actionsApi.closeQuestionActionCard(MessageId(messageId))) {
+            is DataResult.Content -> {
+                val outcome = result.data
+                if (outcome is ActionCardCloseOutcome.Closed && outcome.card == null) {
+                    DataResult.Content(ActionCardCloseOutcome.Closed(card.copy(state = "closed")))
+                } else {
+                    result
+                }
+            }
+            is DataResult.Empty -> DataResult.Error(ScreenError(code = "action_card_close_empty", retryable = true))
             is DataResult.Error -> result
             is DataResult.NoPermission -> result
         }

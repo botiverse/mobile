@@ -3956,6 +3956,7 @@ private fun SharedThreadRouteContentContent(
             ThreadActionCardSpecStore(
                 scope = coroutineScope,
                 execute = { messageId, card, form -> dataSource.executeActionCardSpec(messageId, card, form) },
+                closeQuestion = { messageId, card -> dataSource.closeQuestionActionCard(messageId, card) },
                 stepUp = actionCardStepUp,
                 applyCard = { messageId, card -> threadViewModel.dispatch(SharedThreadIntent.ApplyActionCard(messageId, card)) },
                 onNoPermission = { result -> routeAuthRequired(result) },
