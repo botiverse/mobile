@@ -168,6 +168,7 @@ import build.raft.app.data.KeyValueAuthSessionStore
 import build.raft.app.data.KeyValueChatLayoutPreferenceStore
 import build.raft.app.data.RAFT_APP_UPDATE_EVENT
 import build.raft.app.data.RaftAppUpdatePermissionResume
+import build.raft.app.data.RaftMinBuildGate
 import build.raft.app.data.SharedAuthDataSource
 import build.raft.app.data.SharedAuthResult
 import build.raft.app.data.SECOND_FACTOR_STEP_UP_REQUIRED_CODE
@@ -807,10 +808,25 @@ internal open class RaftCmpActivity :
     RaftCmpNavigator,
     RaftWebViewFileChooserHost {
 
+    private val playUpdateControllerDelegate =
+        lazy {
+            if (BuildConfig.HANDS_APK_UPDATE_ENABLED) {
+                null
+            } else {
+                RaftAndroidPlayInAppUpdates.create(application) {
+                    RaftBridgeModule.emitPlayUpdateStatusEvent()
+                }
+            }
+        }
+    private val playUpdateController: RaftAndroidPlayUpdateController? by playUpdateControllerDelegate
     private val bridgeDelegate =
         lazy {
             val activityRef = WeakReference<Activity>(this)
-            RaftBridgeModule(applicationContext, hostActivity = { activityRef.get() })
+            RaftBridgeModule(
+                applicationContext,
+                hostActivity = { activityRef.get() },
+                playUpdateController = { playUpdateController },
+            )
         }
     private val bridge by bridgeDelegate
     private val hostEvents = RaftHostEvents()
@@ -1773,6 +1789,7 @@ internal open class RaftCmpActivity :
             }
         }
         super.onDestroy()
+        if (playUpdateControllerDelegate.isInitialized()) playUpdateController?.release()
         if (bridgeDelegate.isInitialized()) bridge.onDestroy()
     }
 
@@ -1942,6 +1959,15 @@ internal open class RaftCmpActivity :
         super.onPause()
     }
 
+    @Deprecated("Play In-App Updates Activity flow delivers result via onActivityResult")
+    @Suppress("DEPRECATION")
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (playUpdateControllerDelegate.isInitialized()) {
+            playUpdateController?.onActivityResult(requestCode, resultCode)
+        }
+    }
+
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<String>, grantResults: IntArray) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
         // The notification permission rides the push registration (osPermission): report the
@@ -1985,6 +2011,9 @@ internal open class RaftCmpActivity :
         val appContext = applicationContext
         RaftBridgeModule.resumePendingHandsAutoInstall(appContext)
         RaftBridgeModule.resumeHandsDeltaInstallAfterPermission(appContext, lifecycleScope)
+        if (!BuildConfig.HANDS_APK_UPDATE_ENABLED) {
+            playUpdateController?.onActivityResume(this)
+        }
         postFirstFrameResumeJob?.cancel()
         postFirstFrameResumeJob =
             lifecycleScope.launch(Dispatchers.IO) {
@@ -4267,6 +4296,7 @@ internal fun showRaftHostToast(context: Context, message: String, long: Boolean 
 internal class RaftBridgeModule(
         private val appContext: Context,
         private val hostActivity: (() -> Activity?)? = null,
+        private val playUpdateController: (() -> RaftAndroidPlayUpdateController?)? = null,
 ) {
     /** The hosting Activity (a [RaftHostActivity] for every page host), or null once it is gone. */
     val activity: Activity?
@@ -5503,7 +5533,46 @@ internal class RaftBridgeModule(
         if (!BuildConfig.HANDS_APK_UPDATE_ENABLED &&
             action in setOf("handsDownloadProgress", "handsUpdateCheck", "handsUpdateStatus", "handsUpdateInstall")
         ) {
-            callback?.invoke(handsApkUpdateDisabledResponse())
+            val controller = playUpdateController?.invoke()
+            if (action == "handsDownloadProgress") {
+                val token = request.optString("token")
+                val progress = controller?.readProgress(token)
+                callback?.invoke(progress ?: mapOf("status" to "unavailable"))
+                return
+            }
+            if (controller == null) {
+                callback?.invoke(handsApkUpdateDisabledResponse())
+                return
+            }
+            val scope = (activity as? ComponentActivity)?.lifecycleScope ?: CoroutineScope(Dispatchers.Main)
+            scope.launch {
+                val playResult =
+                    runCatching {
+                        when (action) {
+                            "handsUpdateStatus" -> controller.checkStatus()
+                            else ->
+                                controller.startFlexibleUpdateOrComplete(
+                                    activity = activity,
+                                    onFallbackOpenStore = { storeUrl ->
+                                        openUrlDirectly(url = storeUrl, mimeType = null, inBrowser = false)
+                                    },
+                                )
+                        }
+                    }.getOrElse { throwable ->
+                        RaftAppLog.w(
+                            "SlockPlayUpdate",
+                            "bridge_action_failed action=$action error=${throwable.javaClass.simpleName}"
+                        )
+                        null
+                    }
+                val response =
+                    if (playResult != null) {
+                        loadSettingsDeveloper() + playResult
+                    } else {
+                        handsApkUpdateDisabledResponse()
+                    }
+                callback?.invoke(response)
+            }
             return
         }
         if (action == "handsDownloadProgress") {
@@ -6389,6 +6458,25 @@ internal class RaftBridgeModule(
                     updateAvailable -> currentHandsDownloadResult(response, arch)
                     else -> HandsInstallResult()
                 }
+        val resolvedTransactionState =
+                if (installResult.transactionState != SharedSettingsUpdateTransactionState.Unknown) {
+                    installResult.transactionState
+                } else {
+                    SharedSettingsUpdateTransactionState.Idle
+                }
+        val resolvedRetryable =
+                if (installResult.transactionState != SharedSettingsUpdateTransactionState.Unknown) {
+                    installResult.retryable
+                } else {
+                    updateAvailable
+                }
+        if (!install && updateAvailable) {
+            maybeStartHandsFullApkWifiPreload(
+                    response = response,
+                    arch = arch,
+                    transactionState = resolvedTransactionState,
+            )
+        }
         val updateStatusLabel = installResult.statusLabel.ifBlank { response.handsStatusLabel() }
         val updateDetail = installResult.detail.ifBlank { response.handsDetail(displaySizes) }
         val feedback =
@@ -6399,6 +6487,8 @@ internal class RaftBridgeModule(
         return loadSettingsDeveloper(feedback = feedback, updateRoute = updateRoute) +
                 mapOf(
                         "updateCheckSupported" to true,
+                        "updateTransactionState" to resolvedTransactionState.wireValue,
+                        "updateTransactionRetryable" to resolvedRetryable,
                         "updateCheckStatusLabel" to updateStatusLabel,
                         "updateCheckDetail" to updateDetail,
                         "updateCheckActionLabel" to installResult.actionLabel,
@@ -6535,6 +6625,15 @@ internal class RaftBridgeModule(
                         "language=$languageTag state=${decision.state.wireValue} " +
                         "current=$currentVersionCode latest=$latestVersionCode available=${decision.updateAvailable}"
         )
+        if (!install && decision.updateAvailable) {
+            handsDeltaSilentPrepareIfSupported(
+                    updateRoute = updateRoute,
+                    currentVersionCode = currentVersionCode,
+                    latestVersionCode = latestVersionCode,
+                    updateAvailable = decision.updateAvailable,
+                    transactionState = decision.state,
+            )
+        }
         return loadSettingsDeveloper(feedback = feedback, updateRoute = updateRoute) +
                 mapOf(
                         "updateCheckSupported" to true,
@@ -6688,6 +6787,118 @@ internal class RaftBridgeModule(
         RaftAppLog.w("SlockHandsUpdate", "install_permission_required $detail requested=$requested")
     }
 
+    private fun maybeStartHandsFullApkWifiPreload(
+            response: UpdateCheckResponse,
+            arch: String?,
+            transactionState: SharedSettingsUpdateTransactionState,
+    ) {
+        val latestVersionCode = response.latest?.version_code ?: response.latest_version_code ?: 0L
+        if (latestVersionCode <= 0L || response.asset == null) return
+        handsDownloadCompleteScope.launch {
+            val (unmeteredWifi, batteryNotLow) = readHandsWifiPreloadDeviceConditions(appContext)
+            val decision =
+                    decideHandsWifiPreload(
+                            HandsWifiPreloadContext(
+                                    apkUpdateEnabled = BuildConfig.HANDS_APK_UPDATE_ENABLED,
+                                    automaticAllowed = RaftServicesPrivacyGate.allowsAutomatic(),
+                                    unmeteredWifi = unmeteredWifi,
+                                    batteryNotLow = batteryNotLow,
+                                    updateAvailable = true,
+                                    currentVersionCode = BuildConfig.VERSION_CODE.toLong(),
+                                    latestVersionCode = latestVersionCode,
+                                    transactionState = transactionState,
+                                    alreadyAttemptedVersionCode = wifiPreloadAttemptedVersionCode,
+                            )
+                    )
+            if (decision != HandsWifiPreloadDecision.Preload) {
+                RaftAppLog.d(
+                        "SlockHandsUpdate",
+                        "wifi_preload_skipped mode=full_apk latest=$latestVersionCode reason=${decision.diagnosticReason}"
+                )
+                return@launch
+            }
+            synchronized(handsUpdateDownloadLock) {
+                if (wifiPreloadAttemptedVersionCode == latestVersionCode) return@launch
+                val existing = currentHandsDownload(response, arch)
+                if (existing != null) {
+                    val existingStatus = existing.status()
+                    if (
+                        existingStatus == DownloadManager.STATUS_SUCCESSFUL ||
+                        existingStatus == DownloadManager.STATUS_PENDING ||
+                        existingStatus == DownloadManager.STATUS_RUNNING ||
+                        existingStatus == DownloadManager.STATUS_PAUSED
+                    ) {
+                        return@launch
+                    }
+                    handsUpdateDownloads.remove(existing.key)
+                }
+                wifiPreloadAttemptedVersionCode = latestVersionCode
+                runCatching {
+                    enqueueHandsApkInstall(
+                            response = response,
+                            arch = arch,
+                            autoOpenInstaller = false,
+                            unmeteredWifiOnly = true,
+                    )
+                }.onSuccess { download ->
+                    RaftAppLog.infoAlways(
+                            "SlockHandsUpdate",
+                            "wifi_preload_queued mode=full_apk latest=$latestVersionCode downloadId=${download.downloadId}"
+                    )
+                    emitHandsUpdateStatusEvent()
+                }.onFailure { error ->
+                    RaftAppLog.w(
+                            "SlockHandsUpdate",
+                            "wifi_preload_enqueue_failed mode=full_apk latest=$latestVersionCode error=${error.javaClass.simpleName}"
+                    )
+                }
+            }
+        }
+    }
+
+    private fun handsDeltaSilentPrepareIfSupported(
+            updateRoute: HandsUpdateRoute,
+            currentVersionCode: Long,
+            latestVersionCode: Long,
+            updateAvailable: Boolean,
+            transactionState: SharedSettingsUpdateTransactionState,
+    ) {
+        if (!updateRoute.deltaEnabled || !updateAvailable || latestVersionCode <= 0L) return
+        handsDownloadCompleteScope.launch {
+            val (unmeteredWifi, batteryNotLow) = readHandsWifiPreloadDeviceConditions(appContext)
+            val decision =
+                    decideHandsWifiPreload(
+                            HandsWifiPreloadContext(
+                                    apkUpdateEnabled = BuildConfig.HANDS_APK_UPDATE_ENABLED,
+                                    automaticAllowed = RaftServicesPrivacyGate.allowsAutomatic(),
+                                    unmeteredWifi = unmeteredWifi,
+                                    batteryNotLow = batteryNotLow,
+                                    updateAvailable = updateAvailable,
+                                    currentVersionCode = currentVersionCode,
+                                    latestVersionCode = latestVersionCode,
+                                    transactionState = transactionState,
+                                    alreadyAttemptedVersionCode = wifiPreloadAttemptedVersionCode,
+                            )
+                    )
+            if (decision != HandsWifiPreloadDecision.Preload) {
+                RaftAppLog.d(
+                        "SlockHandsUpdate",
+                        "wifi_preload_skipped mode=${updateRoute.mode} latest=$latestVersionCode reason=${decision.diagnosticReason}"
+                )
+                return@launch
+            }
+            // Hands Android SDK 0.15.0 UpdateChecker.install() opens the system installer UI
+            // immediately whenever canInstallUpdates() is true, and surfaces
+            // INSTALL_PERMISSION_REQUIRED otherwise. Never call install() silently; wait for
+            // UpdateChecker.prepare(languageTag) in SDK 0.15.1.
+            wifiPreloadAttemptedVersionCode = latestVersionCode
+            RaftAppLog.infoAlways(
+                    "SlockHandsUpdate",
+                    "wifi_preload_delta_deferred reason=sdk_prepare_api_pending mode=${updateRoute.mode} latest=$latestVersionCode"
+            )
+        }
+    }
+
     private suspend fun installHandsUpdate(
             response: UpdateCheckResponse,
             arch: String?
@@ -6705,10 +6916,12 @@ internal class RaftBridgeModule(
                                 DownloadManager.STATUS_PENDING,
                                 DownloadManager.STATUS_RUNNING,
                                 DownloadManager.STATUS_PAUSED -> {
+                                    tracked.autoOpenOnComplete = true
                                     HandsInstallResult(
                                             statusLabel = "Downloading",
                                             detail = RaftHostStrings.appUpdateDownloading(),
-                                            actionLabel = "Downloading"
+                                            actionLabel = "Downloading",
+                                            transactionState = SharedSettingsUpdateTransactionState.Downloading,
                                     )
                                 }
                                 else -> {
@@ -6732,12 +6945,19 @@ internal class RaftBridgeModule(
                             // The platform's own words (English) stay in the log above.
                             detail = RaftHostStrings.appUpdateInstallFailed(),
                             actionLabel = "Download",
-                            errorCode = error.javaClass.simpleName
+                            errorCode = error.javaClass.simpleName,
+                            transactionState = SharedSettingsUpdateTransactionState.Failed,
+                            retryable = true,
                     )
                 }
     }
 
-    private fun enqueueHandsApkInstall(response: UpdateCheckResponse, arch: String?): HandsUpdateDownload {
+    private fun enqueueHandsApkInstall(
+            response: UpdateCheckResponse,
+            arch: String?,
+            autoOpenInstaller: Boolean = true,
+            unmeteredWifiOnly: Boolean = false,
+    ): HandsUpdateDownload {
         val latest = response.latest ?: error("Hands response did not include a latest release.")
         val asset = response.asset ?: error("Hands response did not include an APK asset.")
         val downloadUrl = asset.download_url
@@ -6755,15 +6975,28 @@ internal class RaftBridgeModule(
                     append(appContext.getString(R.string.app_name))
                     latest.version.takeIf { it.isNotBlank() }?.let { append(" ").append(it) }
                 }
+        // AndroidManifest.xml intentionally omits DOWNLOAD_WITHOUT_NOTIFICATION (VISIBILITY_HIDDEN
+        // would throw SecurityException). Silent Wi-Fi preloads use VISIBILITY_VISIBLE so no
+        // completed-download notification lingers once ready; user-started downloads keep
+        // VISIBILITY_VISIBLE_NOTIFY_COMPLETED.
+        val notificationVisibility =
+                if (autoOpenInstaller) {
+                    DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED
+                } else {
+                    DownloadManager.Request.VISIBILITY_VISIBLE
+                }
         val request =
                 DownloadManager.Request(Uri.parse(downloadUrl))
                         .setTitle(title)
                         .setDescription("Downloading latest version...")
-                        .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
-                        .setAllowedOverMetered(true)
-                        .setAllowedOverRoaming(true)
+                        .setNotificationVisibility(notificationVisibility)
+                        .setAllowedOverMetered(!unmeteredWifiOnly)
+                        .setAllowedOverRoaming(!unmeteredWifiOnly)
                         .setMimeType(ANDROID_PACKAGE_ARCHIVE_MIME_TYPE)
                         .setDestinationInExternalFilesDir(appContext, Environment.DIRECTORY_DOWNLOADS, fileName)
+        if (unmeteredWifiOnly) {
+            request.setAllowedNetworkTypes(DownloadManager.Request.NETWORK_WIFI)
+        }
         val downloadId = AtomicLong(-1L)
         val handled = AtomicBoolean(false)
         val receiver =
@@ -6787,16 +7020,22 @@ internal class RaftBridgeModule(
                                     runCatching { appContext.unregisterReceiver(self) }
                                     val status = handsDownloadStatus(downloadManager, completedId)
                                     if (status == DownloadManager.STATUS_SUCCESSFUL) {
-                                        handsUpdateDownloads[key]?.completed = true
-                                        RaftAppLog.infoAlways(
-                                                "SlockHandsUpdate",
-                                                "download_ready downloadId=$completedId latest=${latest.version_code}"
-                                        )
-                                        handsUpdateDownloads[key]?.let { download ->
+                                        val download = handsUpdateDownloads[key]
+                                        download?.completed = true
+                                        if (download != null && download.autoOpenOnComplete) {
+                                            RaftAppLog.infoAlways(
+                                                    "SlockHandsUpdate",
+                                                    "download_ready downloadId=$completedId latest=${latest.version_code}"
+                                            )
                                             openHandsDownloadedApkOrRequestPermissionAsync(
                                                     context = appContext,
                                                     download = download,
                                                     source = "download_complete"
+                                            )
+                                        } else {
+                                            RaftAppLog.infoAlways(
+                                                    "SlockHandsUpdate",
+                                                    "wifi_preload_ready downloadId=$completedId latest=${latest.version_code}"
                                             )
                                         }
                                     } else {
@@ -6842,7 +7081,8 @@ internal class RaftBridgeModule(
                             fileName = fileName,
                             downloadUrl = downloadUrl,
                             arch = arch.orEmpty(),
-                            downloadManager = downloadManager
+                            downloadManager = downloadManager,
+                            autoOpenOnComplete = autoOpenInstaller,
                     )
             // Register before publishing downloadId so an immediate ACTION_DOWNLOAD_COMPLETE broadcast
             // always finds the tracked entry.
@@ -6863,7 +7103,9 @@ internal class RaftBridgeModule(
                 HandsInstallResult(
                         statusLabel = "Install",
                         detail = RaftHostStrings.appUpdateDownloaded(),
-                        actionLabel = "Install"
+                        actionLabel = "Install",
+                        transactionState = SharedSettingsUpdateTransactionState.ReadyToInstall,
+                        retryable = true,
                 )
             }
             DownloadManager.STATUS_PENDING,
@@ -6872,12 +7114,15 @@ internal class RaftBridgeModule(
                 HandsInstallResult(
                         statusLabel = "Downloading",
                         detail = RaftHostStrings.appUpdateDownloading(),
-                        actionLabel = "Downloading"
+                        actionLabel = "Downloading",
+                        transactionState = SharedSettingsUpdateTransactionState.Downloading,
                 )
             else -> {
                 HandsInstallResult(
                     statusLabel = "Failed", actionLabel = "Download",
-                    errorCode = "settings_hands_update_download_failed"
+                    errorCode = "settings_hands_update_download_failed",
+                    transactionState = SharedSettingsUpdateTransactionState.Failed,
+                    retryable = true,
                 )
             }
         }
@@ -6912,7 +7157,8 @@ internal class RaftBridgeModule(
         return HandsInstallResult(
                 statusLabel = "Downloading",
                 detail = RaftHostStrings.appUpdateDownloading(),
-                actionLabel = "Downloading"
+                actionLabel = "Downloading",
+                transactionState = SharedSettingsUpdateTransactionState.Downloading,
         )
     }
 
@@ -6930,21 +7176,27 @@ internal class RaftBridgeModule(
                     HandsInstallResult(
                             statusLabel = "Install",
                             detail = RaftHostStrings.appUpdateInstallerOpened(),
-                            actionLabel = "Install"
+                            actionLabel = "Install",
+                            transactionState = SharedSettingsUpdateTransactionState.InstallerOpened,
+                            retryable = true,
                     )
                 HANDS_INSTALL_PERMISSION_REQUIRED ->
                     HandsInstallResult(
                             statusLabel = "Permission required",
                             detail = RaftHostStrings.appUpdateInstallPermissionRequired(),
                             actionLabel = "Install",
-                            errorCode = "install_permission_required"
+                            errorCode = "install_permission_required",
+                            transactionState = SharedSettingsUpdateTransactionState.ReadyToInstall,
+                            retryable = true,
                     )
                 else ->
                     HandsInstallResult(
                             statusLabel = "Install failed",
                             detail = RaftHostStrings.appUpdateInstallerFailed(),
                             actionLabel = "Install",
-                            errorCode = "install_intent_failed"
+                            errorCode = "install_intent_failed",
+                            transactionState = SharedSettingsUpdateTransactionState.ReadyToInstall,
+                            retryable = true,
                     )
             }
 
@@ -6961,7 +7213,9 @@ internal class RaftBridgeModule(
             val statusLabel: String = "",
             val detail: String = "",
             val actionLabel: String = "",
-            val errorCode: String? = null
+            val errorCode: String? = null,
+            val transactionState: SharedSettingsUpdateTransactionState = SharedSettingsUpdateTransactionState.Unknown,
+            val retryable: Boolean = false,
     )
 
     private fun UpdateCheckResponse.handsStatusLabel(): String =
@@ -7955,12 +8209,36 @@ internal class RaftBridgeModule(
         // the shared in-app browser rather than a plain VIEW, which Raft's own App Links route back here.
         val inBrowser = request.optBoolean("browser", false) && mimeType == null &&
             uri.scheme?.lowercase() in setOf("http", "https")
+        val hostActivity = activity?.takeUnless { it.isFinishing || it.isDestroyed }
+        if (
+            !BuildConfig.HANDS_APK_UPDATE_ENABLED &&
+            hostActivity != null &&
+            shouldInterceptPlayImmediateUpdate(
+                url = url,
+                packageName = appContext.packageName,
+                minBuildGateDecision = RaftMinBuildGate.decision.value,
+            )
+        ) {
+            val handled =
+                playUpdateController?.invoke()?.tryStartImmediateUpdate(hostActivity) {
+                    openUrlDirectly(url = url, mimeType = mimeType, inBrowser = inBrowser)
+                } == true
+            if (handled) {
+                return null
+            }
+        }
+        openUrlDirectly(url = url, mimeType = mimeType, inBrowser = inBrowser)
+        return null
+    }
+
+    private fun openUrlDirectly(url: String, mimeType: String?, inBrowser: Boolean) {
+        val uri = Uri.parse(url)
         if (inBrowser && androidExternalBrowserIntent(appContext, uri) == null) {
             RaftAppLog.record("SlockOpenUrl", "browser=unavailable fallback=in_app_browser")
             if (!openInAppBrowserFallback(url, mimeType)) {
                 showRaftHostToast(appContext, appContext.getString(R.string.open_link_no_app_toast))
             }
-            return null
+            return
         }
         if (shouldPreferDefaultCustomTabs(inBrowser = inBrowser, mimeType = mimeType, scheme = uri.scheme)) {
             val hostActivity = activity?.takeUnless { it.isFinishing || it.isDestroyed }
@@ -7987,7 +8265,7 @@ internal class RaftBridgeModule(
                         )
                     }.getOrDefault(false)
                 if (launched) {
-                    return null
+                    return
                 }
             }
         }
@@ -8004,7 +8282,6 @@ internal class RaftBridgeModule(
                 showRaftHostToast(appContext, appContext.getString(R.string.open_link_failed_toast))
             }
         }
-        return null
     }
 
     /**
@@ -9456,6 +9733,7 @@ internal class RaftBridgeModule(
         private val handsDownloadCompleteScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
         private val handsDeltaUpdateCallOwner = HandsDeltaUpdateCallOwner()
         @Volatile private var pendingHandsAutoInstallKey: String? = null
+        @Volatile private var wifiPreloadAttemptedVersionCode: Long = 0L
         private const val REQUEST_NOTIFICATIONS_CODE = 4207
         private const val ATTACHMENT_CACHE_MAX_FILES = 80
         private const val ATTACHMENT_CACHE_MAX_AGE_MS = 24L * 60L * 60L * 1000L
@@ -9609,6 +9887,10 @@ internal class RaftBridgeModule(
                         deltaAppSlug = BuildConfig.HANDS_DELTA_APP_SLUG,
                         deltaChannel = BuildConfig.HANDS_DELTA_CHANNEL
                 )
+
+        internal fun emitPlayUpdateStatusEvent() {
+            emitHandsUpdateStatusEvent()
+        }
 
         private fun emitHandsUpdateStatusEvent() {
             postAndroidAppScopeEvent(
@@ -10033,6 +10315,7 @@ private data class HandsUpdateDownload(
         val downloadUrl: String,
         val arch: String,
         val downloadManager: DownloadManager,
+        @Volatile var autoOpenOnComplete: Boolean = true,
         @Volatile var completed: Boolean = false,
         @Volatile var failed: Boolean = false
 ) {

@@ -42,9 +42,17 @@ internal object RaftAndroidPlayInstallChannel {
                         } else {
                             val info = task.result
                             when (info.updateAvailability()) {
-                                UpdateAvailability.UPDATE_AVAILABLE ->
+                                UpdateAvailability.UPDATE_AVAILABLE,
+                                UpdateAvailability.DEVELOPER_TRIGGERED_UPDATE_IN_PROGRESS ->
                                     info.availableVersionCode().toLong().takeIf { it > 0L }
-                                        ?.let { RaftInstallChannelLatest.Available(build = it, updateUrl = listingUrl) }
+                                        ?.let {
+                                            RaftInstallChannelLatest.Available(
+                                                build = it,
+                                                updateUrl = listingUrl,
+                                                updatePriority = info.updatePriority().coerceAtLeast(0),
+                                                stalenessDays = info.clientVersionStalenessDays()?.coerceAtLeast(0),
+                                            )
+                                        }
                                         ?: RaftInstallChannelLatest.Unknown
                                 UpdateAvailability.UPDATE_NOT_AVAILABLE -> RaftInstallChannelLatest.UpToDate
                                 else -> RaftInstallChannelLatest.Unknown
