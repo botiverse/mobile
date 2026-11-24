@@ -9,9 +9,12 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.text.rememberTextMeasurer
+import build.raft.app.data.ComputerHandoverState
 import build.raft.app.data.ComputerLoginStepAction
 import build.raft.app.data.ComputerProcJobSnapshot
 import build.raft.app.data.ComputerProcJobStopResult
+import build.raft.app.data.DataResult
+import build.raft.app.data.NetworkComputerHandoverRepository
 import build.raft.app.data.RaftAgentCreateEntry
 import build.raft.app.data.RaftRackUsageLinesMemory
 import build.raft.app.data.raftSharedPreferenceStore
@@ -2833,6 +2836,23 @@ private fun RaftSettingsComputerDetailScreen(pager: Pager, target: RaftComputerP
         pageVisible = pageVisible,
         refreshTick = procJobsRefreshTick,
     )
+    // Hand over a Computer (slock #16435 / #16445 / #16452): read for managed Computers only.
+    val handoverRepository =
+        remember(sharedStores, environment.storeScope) {
+            NetworkComputerHandoverRepository(sharedStores.networkClient(environment.storeScope))
+        }
+    val handoverController =
+        remember(handoverRepository, procJobsServerId, target.machineId) {
+            RaftComputerHandoverController(repository = handoverRepository)
+        }
+    val computerIsManaged = (model as? RaftComputerDetailModel.Content)?.snapshot?.computer?.isComputer == true
+    rememberComputerHandoverEffect(
+        controller = handoverController,
+        serverId = procJobsServerId?.let(::ServerId),
+        machineId = target.machineId,
+        enabled = computerIsManaged,
+        refreshTick = procJobsRefreshTick,
+    )
     val routeOwner by
         remember(sharedStores, environment.storeScope) {
             sharedStores.authenticatedRouteOwnerFlow(environment.storeScope)
@@ -2978,6 +2998,13 @@ private fun RaftSettingsComputerDetailScreen(pager: Pager, target: RaftComputerP
                     } else {
                         null
                     },
+                handoverState = handoverController.state,
+                onDesignateHandover = { toUserId ->
+                    handoverController.designate(procJobsServerId?.let(::ServerId), target.machineId, toUserId)
+                },
+                onCancelHandover = {
+                    handoverController.cancel(procJobsServerId?.let(::ServerId), target.machineId)
+                },
             )
         }
         }
@@ -3042,6 +3069,12 @@ internal fun RaftSettingsComputerDetailContent(
     serverId: String? = null,
     /** The server's migration log, opened on this computer (owners and admins); null shows no link. */
     onOpenMigrationLog: (() -> Unit)? = null,
+    /** Pending handover state and permissions (`GET …/machines/:machineId/handover`); null hides handover UI. */
+    handoverState: ComputerHandoverState? = null,
+    /** Designates a new attacher (`POST …/handover`); null hides Hand over. */
+    onDesignateHandover: (suspend (String) -> DataResult<ComputerHandoverState>)? = null,
+    /** Cancels or declines a pending handover (`DELETE …/handover`); null hides Cancel/Decline. */
+    onCancelHandover: (suspend () -> DataResult<ComputerHandoverState>)? = null,
 ) {
     build.raft.app.data.EnsureServerModelLabelCatalog(serverId)
     Box(Modifier.fillMaxSize().background(RaftTheme.colors.layerCanvas)) {
@@ -3089,6 +3122,9 @@ internal fun RaftSettingsComputerDetailContent(
                     onStopProcJob = onStopProcJob,
                     serverId = serverId,
                     onOpenMigrationLog = onOpenMigrationLog,
+                    handoverState = handoverState,
+                    onDesignateHandover = onDesignateHandover,
+                    onCancelHandover = onCancelHandover,
                 )
         }
     }
@@ -3115,6 +3151,9 @@ private fun RaftComputerDetailBody(
     onStopProcJob: (suspend (ComputerProcJobSnapshot, (ComputerProcJobStopResult) -> Unit) -> Unit)?,
     serverId: String? = null,
     onOpenMigrationLog: (() -> Unit)? = null,
+    handoverState: ComputerHandoverState? = null,
+    onDesignateHandover: (suspend (String) -> DataResult<ComputerHandoverState>)? = null,
+    onCancelHandover: (suspend () -> DataResult<ComputerHandoverState>)? = null,
 ) {
     val computer = model.computer
     val snapshot = model.snapshot
@@ -3314,16 +3353,26 @@ private fun RaftComputerDetailBody(
                         // Web: the date it was created ("Oct 22, 2026"), as on an agent's page.
                         Item(stringResource(Res.string.settings_computers_label_created), raftComputerCreatedDate(model.createdAt), mono = true)
                     }
-                    // Web: managed Computers name who attached them beside Created; raw daemons don't.
+                    // Web: managed Computers name who attached them ("Attached by" / 授权人) beside Created; raw daemons don't.
                     if (model.showsCreator) {
                         RaftDescriptionList(direction = RaftDescriptionListDirection.Vertical) {
-                            Item(stringResource(Res.string.settings_computers_label_creator)) {
+                            Item(stringResource(Res.string.settings_computers_label_attached_by)) {
                                 val creator = model.creator
                                 if (creator != null) {
                                     RaftComputerCreatorLink(creator, onClick = { onOpenCreator(creator) })
+                                    RaftComputerHandoverButton(
+                                        computerName = computer.name,
+                                        serverSlug = snapshot.commandContext?.serverSlug.orEmpty(),
+                                        attacher = creator,
+                                        registrantMoves = snapshot.computer.creatorUserId?.trim() == creator.id,
+                                        currentUserId = snapshot.currentUserId,
+                                        members = ownerMembers,
+                                        handoverState = handoverState,
+                                        onDesignate = onDesignateHandover,
+                                    )
                                 } else {
                                     RaftText(
-                                        stringResource(Res.string.settings_computers_state_no_creator),
+                                        stringResource(Res.string.settings_computers_state_no_attacher),
                                         style = RaftTheme.typography.callout,
                                         color = RaftTheme.colors.foregroundHint,
                                     )
@@ -3354,6 +3403,15 @@ private fun RaftComputerDetailBody(
                             )
                         }
                     }
+                }
+                if (snapshot.computer.isComputer && handoverState != null) {
+                    RaftComputerHandoverNotice(
+                        handoverState = handoverState,
+                        currentUserId = snapshot.currentUserId,
+                        serverSlug = snapshot.commandContext?.serverSlug.orEmpty(),
+                        onCancel = onCancelHandover,
+                        modifier = Modifier.padding(top = 12.dp),
+                    )
                 }
                 // Web: an offline Computer's version row links the notes of the version it can move to.
                 upgrade.releaseNotes?.takeIf { !snapshot.computer.online }?.let { notes ->
