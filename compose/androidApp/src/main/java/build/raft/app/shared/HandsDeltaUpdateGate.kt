@@ -9,7 +9,11 @@ import java.util.concurrent.atomic.AtomicBoolean
 internal const val HANDS_DELTA_ALPHA_APPLICATION_ID = "build.raft.app.alpha"
 internal const val HANDS_DELTA_ALPHA_APP_SLUG = "raft-android-alpha-delta"
 internal const val HANDS_DELTA_ALPHA_CHANNEL = "alpha-delta"
+internal const val HANDS_DELTA_PREVIEW_APPLICATION_ID = "build.raft.app"
+internal const val HANDS_DELTA_PREVIEW_APP_SLUG = "raft-android"
+internal const val HANDS_DELTA_PREVIEW_CHANNEL = "preview"
 internal const val HANDS_UPDATE_MODE_ALPHA_DELTA = "alpha_delta"
+internal const val HANDS_UPDATE_MODE_PREVIEW_DELTA = "preview_delta"
 internal const val HANDS_UPDATE_MODE_FULL_APK = "full_apk"
 
 /** The bridge's Hands update actions a person starts: Settings' Check for update, and Install. */
@@ -64,16 +68,29 @@ internal fun UpdateCheckResponse.handsUpdateDisplaySizes(deltaEnabled: Boolean):
     )
 }
 
+internal fun handsDeltaUpdateMode(
+    appSlug: String,
+    channel: String
+): String? =
+    when {
+        appSlug == HANDS_DELTA_ALPHA_APP_SLUG && channel == HANDS_DELTA_ALPHA_CHANNEL ->
+            HANDS_UPDATE_MODE_ALPHA_DELTA
+        appSlug == HANDS_DELTA_PREVIEW_APP_SLUG && channel == HANDS_DELTA_PREVIEW_CHANNEL ->
+            HANDS_UPDATE_MODE_PREVIEW_DELTA
+        else -> null
+    }
+
 internal fun resolveHandsUpdateRoute(
-    alphaDeltaEnabled: Boolean,
+    deltaEnabled: Boolean,
     defaultAppSlug: String,
     defaultChannel: String,
     deltaAppSlug: String,
     deltaChannel: String
-): HandsUpdateRoute =
-    if (alphaDeltaEnabled) {
+): HandsUpdateRoute {
+    val deltaMode = if (deltaEnabled) handsDeltaUpdateMode(deltaAppSlug, deltaChannel) else null
+    return if (deltaMode != null) {
         HandsUpdateRoute(
-            mode = HANDS_UPDATE_MODE_ALPHA_DELTA,
+            mode = deltaMode,
             appSlug = deltaAppSlug,
             channel = deltaChannel,
             deltaEnabled = true
@@ -86,6 +103,7 @@ internal fun resolveHandsUpdateRoute(
             deltaEnabled = false
         )
     }
+}
 
 internal class HandsDeltaUpdateCallOwner {
     private val running = AtomicBoolean(false)
@@ -107,16 +125,25 @@ internal class HandsDeltaUpdateCallOwner {
 
 internal fun handsDeltaUpdateAllowed(
     configuredEnabled: Boolean,
+    apkUpdateEnabled: Boolean,
     buildApplicationId: String,
     runtimePackageName: String,
     appSlug: String,
     channel: String
-): Boolean =
-    configuredEnabled &&
+): Boolean {
+    if (!configuredEnabled || !apkUpdateEnabled) return false
+    val isExactAlpha =
         buildApplicationId == HANDS_DELTA_ALPHA_APPLICATION_ID &&
-        runtimePackageName == HANDS_DELTA_ALPHA_APPLICATION_ID &&
-        appSlug == HANDS_DELTA_ALPHA_APP_SLUG &&
-        channel == HANDS_DELTA_ALPHA_CHANNEL
+            runtimePackageName == HANDS_DELTA_ALPHA_APPLICATION_ID &&
+            appSlug == HANDS_DELTA_ALPHA_APP_SLUG &&
+            channel == HANDS_DELTA_ALPHA_CHANNEL
+    val isExactPreview =
+        buildApplicationId == HANDS_DELTA_PREVIEW_APPLICATION_ID &&
+            runtimePackageName == HANDS_DELTA_PREVIEW_APPLICATION_ID &&
+            appSlug == HANDS_DELTA_PREVIEW_APP_SLUG &&
+            channel == HANDS_DELTA_PREVIEW_CHANNEL
+    return isExactAlpha || isExactPreview
+}
 
 internal fun handsUpdateLanguageTag(
     appLanguageTag: String?,
@@ -224,7 +251,7 @@ internal fun handsUpdateBridgeDecision(
 /** Reported for a waiting update when the build does not declare REQUEST_INSTALL_PACKAGES. */
 internal const val HANDS_DELTA_INSTALL_UNSUPPORTED = "install_unsupported"
 
-/** How the Alpha delta route shows its transaction. */
+/** How the Hands delta route (Alpha and Preview) shows its transaction. */
 internal enum class HandsDeltaInstallPresentation {
     /** The state's own status and detail. */
     AsReported,
@@ -245,7 +272,8 @@ internal data class HandsDeltaInstallPermissionDecision(
 )
 
 /**
- * The Alpha delta route while Android may block installs from Raft. Since hands-android-sdk 0.14
+ * The Hands delta route (Alpha and Preview) while Android may block installs from Raft. Since
+ * hands-android-sdk 0.14
  * an update downloaded or patched without that permission stops at READY_TO_INSTALL with
  * [INSTALL_PERMISSION_REQUIRED] and the SDK opens nothing; another `install()` only checks Hands
  * again. The code stays until the installer opens, so it is read against [canInstall]

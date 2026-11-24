@@ -472,6 +472,14 @@ async function main() {
         if (installedVersionCode() === B_CODE) return installer;
         const list = nodes();
         const pkgs = new Set(list.map((n) => n.pkg));
+        // 0. Restart-explanation dialog the Hands delta route shows before unknown-sources settings.
+        const openSettings = find(list, (n) => n.pkg === PKG && /^open settings$/i.test(n.text) && n.enabled);
+        if (openSettings && !installer.permission_toggle) {
+          log(`permission prompt: tapping "${openSettings.text}"`);
+          tapNode(openSettings);
+          await sleep(1500);
+          continue;
+        }
         // 1. Unknown-sources settings page the app opens when it may not install yet.
         const allow = find(list, (n) => n.text === "Allow from this source");
         if (allow && pkgs.has("com.android.settings")) {

@@ -6630,13 +6630,14 @@ internal class RaftBridgeModule(
             }
 
     /**
-     * Install on the Alpha delta route. While Raft may not install apps the SDK (0.14+) opens nothing
-     * and another install() only checks Hands again ([handsDeltaInstallPermissionDecision]), so a
-     * waiting APK leads to the "Install unknown apps" switch instead, and so does an install() whose
-     * patch finished inside the call. One tap at a time: a concurrent one only reads the status.
+     * Install on the Hands delta route (Alpha and Preview). While Raft may not install apps the
+     * SDK (0.14+) opens nothing and another install() only checks Hands again
+     * ([handsDeltaInstallPermissionDecision]), so a waiting APK leads to the "Install unknown apps"
+     * switch instead, and so does an install() whose patch finished inside the call. One tap at a
+     * time: a concurrent one only reads the status.
      */
     private suspend fun installHandsDeltaUpdate(checker: UpdateChecker, languageTag: String): HandsUpdateStatus =
-            alphaHandsUpdateCallOwner.runIfEligible(eligible = true) {
+            handsDeltaUpdateCallOwner.runIfEligible(eligible = true) {
                 if (!checker.canInstallUpdates()) {
                     val current = checker.status()
                     if (handsDeltaInstallPermission(current, checker).openPermissionSettings) {
@@ -9446,7 +9447,7 @@ internal class RaftBridgeModule(
         private val handsUpdateDownloads = ConcurrentHashMap<String, HandsUpdateDownload>()
         private val handsUpdateDownloadLock = Any()
         private val handsDownloadCompleteScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-        private val alphaHandsUpdateCallOwner = HandsDeltaUpdateCallOwner()
+        private val handsDeltaUpdateCallOwner = HandsDeltaUpdateCallOwner()
         @Volatile private var pendingHandsAutoInstallKey: String? = null
         private const val REQUEST_NOTIFICATIONS_CODE = 4207
         private const val ATTACHMENT_CACHE_MAX_FILES = 80
@@ -9479,10 +9480,11 @@ internal class RaftBridgeModule(
         }
 
         /**
-         * Alpha delta route, on resume: Raft is back from the "Install unknown apps" switch it led to
-         * for a waiting update (requestHandsDeltaInstallPermission). Android restarts Raft when the
-         * switch changes, hence the stored marker. When Raft may install now, the waiting installer
-         * reopens once, with no new check or download; a denial clears the marker and opens nothing.
+         * Hands delta route (Alpha and Preview), on resume: Raft is back from the "Install unknown
+         * apps" switch it led to for a waiting update (requestHandsDeltaInstallPermission). Android
+         * restarts Raft when the switch changes, hence the stored marker. When Raft may install now,
+         * the waiting installer reopens once, with no new check or download; a denial clears the
+         * marker and opens nothing.
          */
         internal fun resumeHandsDeltaInstallAfterPermission(context: Context, scope: CoroutineScope) {
             val updateRoute = handsUpdateRouteForRuntime(context)
@@ -9503,7 +9505,7 @@ internal class RaftBridgeModule(
                                     marker = RaftAppUpdatePermissionResume.repository,
                                     canInstall = { checker.canInstallUpdates() },
                                     reopen = {
-                                        alphaHandsUpdateCallOwner.runIfEligible(eligible = true) {
+                                        handsDeltaUpdateCallOwner.runIfEligible(eligible = true) {
                                             checker.reopenPendingInstaller()
                                         }
                                     }
@@ -9523,12 +9525,13 @@ internal class RaftBridgeModule(
             }
         }
 
-        /** The ABI an update is asked for; part of the Alpha route's update authority. */
+        /** The ABI an update is asked for; part of the Hands delta route's update authority. */
         private fun handsUpdateArch(): String? = Build.SUPPORTED_ABIS.firstOrNull { it.isNotBlank() }
 
         /**
-         * The Alpha delta route's [UpdateChecker]. Every caller builds the same update authority
-         * (base URL, app, channel, product, platform, arch), so all of them see one transaction.
+         * The Hands delta route's [UpdateChecker] (Alpha and Preview). Every caller builds the same
+         * update authority (base URL, app, channel, product, platform, arch), so all of them see one
+         * transaction.
          */
         private fun handsDeltaUpdateChecker(
                 context: Context,
@@ -9572,6 +9575,7 @@ internal class RaftBridgeModule(
             val allowed =
                     handsDeltaUpdateAllowed(
                             configuredEnabled = BuildConfig.HANDS_DELTA_UPDATE_ENABLED,
+                            apkUpdateEnabled = BuildConfig.HANDS_APK_UPDATE_ENABLED,
                             buildApplicationId = BuildConfig.APPLICATION_ID,
                             runtimePackageName = context.packageName,
                             appSlug = BuildConfig.HANDS_DELTA_APP_SLUG,
@@ -9580,8 +9584,11 @@ internal class RaftBridgeModule(
             if (BuildConfig.HANDS_DELTA_UPDATE_ENABLED && !allowed) {
                 RaftAppLog.record(
                         "SlockHandsUpdate",
-                        "alpha_delta_gate_denied buildApplicationId=${BuildConfig.APPLICATION_ID} " +
-                                "runtimePackageName=${context.packageName}"
+                        "hands_delta_gate_denied buildApplicationId=${BuildConfig.APPLICATION_ID} " +
+                                "runtimePackageName=${context.packageName} " +
+                                "apkUpdateEnabled=${BuildConfig.HANDS_APK_UPDATE_ENABLED} " +
+                                "appSlug=${BuildConfig.HANDS_DELTA_APP_SLUG} " +
+                                "channel=${BuildConfig.HANDS_DELTA_CHANNEL}"
                 )
             }
             return allowed
@@ -9589,7 +9596,7 @@ internal class RaftBridgeModule(
 
         private fun handsUpdateRouteForRuntime(context: Context): HandsUpdateRoute =
                 resolveHandsUpdateRoute(
-                        alphaDeltaEnabled = handsDeltaUpdateAllowedForRuntime(context),
+                        deltaEnabled = handsDeltaUpdateAllowedForRuntime(context),
                         defaultAppSlug = BuildConfig.HANDS_APP_SLUG,
                         defaultChannel = BuildConfig.HANDS_CHANNEL,
                         deltaAppSlug = BuildConfig.HANDS_DELTA_APP_SLUG,
