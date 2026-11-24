@@ -4666,7 +4666,7 @@ internal class SharedThreadStore(
 
     /**
      * Task #14 part C: persist the anchor context page a focused refresh (anchored open, [jumpToMessage])
-     * fetched. Fire-and-forget on the store scope like [launchDurableWindowExtension]; it never touches the
+     * fetched. Fire-and-forget on the store scope like [ThreadPaging.launchDurableWindowExtension]; it never touches the
      * visible payload. It first waits for this entry's enter snapshot: the enter commits a whole-page
      * snapshot, which would drop a context page written before it, and the context page can only join a
      * window that exists. Persisting does not depend on the route still being shown (the facts are the
