@@ -83,7 +83,6 @@ import androidx.compose.ui.unit.IntRect
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupPositionProvider
 import androidx.compose.ui.window.PopupProperties
 import build.raft.designsystem.text.RaftText
@@ -500,7 +499,7 @@ fun RaftDropdownMenu(
     DisposableEffect(Unit) { onDispose { if (stillExpanded && !closedForAnchor) dismiss() } }
     // Android: unfocused until the window carries the host's bar icons (RaftPopupWindowPolicy).
     var focusable by remember { mutableStateOf(!RaftPopupDefersFocus) }
-    Popup(popupPositionProvider = provider, onDismissRequest = { dismiss() }, properties = PopupProperties(focusable = focusable)) {
+    RaftSelectionSafePopup(popupPositionProvider = provider, onDismissRequest = { dismiss() }, properties = PopupProperties(focusable = focusable)) {
         // Its own window on Android: keep the host's bar icons while it holds focus.
         RaftPopupWindowPolicy(onReady = { focusable = true })
         LaunchedEffect(focusable) {

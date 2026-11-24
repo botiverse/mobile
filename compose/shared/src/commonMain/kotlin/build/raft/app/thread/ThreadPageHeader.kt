@@ -113,7 +113,6 @@ private val ThreadHeaderActionGroupSpacing = 2.dp
 private val ThreadHeaderActionIconSize: Dp
     @Composable @ReadOnlyComposable
     get() = RaftTheme.controls.barIconSize
-private val ThreadHeaderActionLabelMinWidth = 44.dp
 // raft `panelHeadEdges` on a phone + `panelHeadActions mr-[-3px]` / Back `-ml-[13px]`: the
 // Back button and the last trailing action both sit 3dp from the screen edge, which puts each
 // 22dp icon box 14dp in and makes the two ends mirror (foundations/alignment "Top bar icon buttons").
@@ -135,10 +134,14 @@ private val ThreadHeaderDmAgentActivityLeadingGap = RaftAppSpacing.Sm
 // smaller one-off dot.
 private val ThreadHeaderDmAgentActivityDotSize = RaftStatusIndicatorTokens.InlineSize
 // raft-ui `PanelHeaderIcon`: the 27dp location tile (`size-[27px]`) with a 14dp glyph
-// (`[&_svg]:size-3.5 stroke-2`); the DM avatar slot keeps the tile's former 34dp.
+// (`[&_svg]:size-3.5 stroke-2`). The DM / lounge avatar is web AvatarSlot `panel-header`
+// (RaftControlMetrics.headAvatar): 35 in the phone's 56 head, the tile's 27 in the 48 short
+// head and under a fine pointer.
 private val ThreadHeaderChannelTileSize = 27.dp
 private val ThreadHeaderChannelIconSize = 14.dp
-private val ThreadHeaderDmAvatarSize = 34.dp
+private val ThreadHeaderDmAvatarSize: Dp
+    @Composable @ReadOnlyComposable
+    get() = RaftTheme.controls.headAvatar.edge
 // raft-ui `panelHeader` on a phone: `max-md:gap-2` between Back, the tile, the title and actions.
 internal val ThreadHeaderContentSpacing = 8.dp
 private val ThreadHeaderChannelTitleGapExtra = 0.dp
@@ -547,7 +550,7 @@ internal fun ThreadPageHeader(
                             avatarWireValue = loungeHeader.agentAvatarWireValue,
                             label = loungeHeader.agentName,
                             cacheServerId = loungeHeader.cacheServerId,
-                            avatarSize = 35.dp,
+                            avatarSize = ThreadHeaderDmAvatarSize,
                         )
                     }
                 } else if (headerDisplay.surfaceKind == RaftThreadSurfaceKind.DirectMessage) {
@@ -783,7 +786,7 @@ internal fun ThreadPageHeader(
                     val leadingTileDp =
                         when {
                             headRowTabs != null -> 0f
-                            loungeHeader != null -> 35f + ThreadHeaderContentSpacing.value
+                            loungeHeader != null -> ThreadHeaderDmAvatarSize.value + ThreadHeaderContentSpacing.value
                             headerDisplay.surfaceKind == RaftThreadSurfaceKind.DirectMessage ->
                                 ThreadHeaderDmAvatarSize.value + ThreadHeaderContentSpacing.value
                             payload.showModeTabs -> ThreadHeaderChannelTileSize.value + ThreadHeaderContentSpacing.value
@@ -2276,7 +2279,7 @@ private fun ThreadHeaderCompactAction(
             } else {
                 modifier.semantics { this.contentDescription = contentDescription }
             },
-        minWidth = if (label == null) actionSize else ThreadHeaderActionLabelMinWidth,
+        minWidth = actionSize,
         minHeight = actionSize,
         // raft-ui `PanelAction` `px-2` once it carries a label next to its glyph.
         horizontalPadding = if (label == null) 0.dp else RaftAppSpacing.Sm,

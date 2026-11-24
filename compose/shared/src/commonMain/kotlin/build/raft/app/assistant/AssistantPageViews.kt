@@ -235,7 +235,7 @@ private fun AssistantConversationView(
                 variant = RaftButtonVariant.Ghost,
                 size = RaftIconButtonSize.Lg,
             ) {
-                RaftLucideIcon(RaftLucideIconName.Settings, Modifier.size(20.dp), color = raftArgbHex(LocalRaftContentColor.current))
+                RaftLucideIcon(RaftLucideIconName.Settings, Modifier.size(RaftTheme.controls.barIconSize), color = raftArgbHex(LocalRaftContentColor.current))
             }
         },
     ) {

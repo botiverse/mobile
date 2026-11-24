@@ -16,6 +16,8 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import build.raft.designsystem.components.RaftAvatarSize
+import build.raft.designsystem.tokens.RaftRadius
 import build.raft.designsystem.tokens.RaftUiComponentTokens
 
 /**
@@ -150,6 +152,12 @@ data class RaftControlMetrics(
      */
     val barEdgeInset: Dp,
     /**
+     * A head's leading identity (a DM's or a member's avatar, the location tile's slot): web
+     * AvatarSlot `panel-header`, `md` (35) with a finger in the 56 head; `sm` (27) in the 48 short
+     * head and under a fine pointer, so it matches the 27 location tile and the workspace avatar.
+     */
+    val headAvatar: RaftAvatarSize,
+    /**
      * The wide layout's top bar ([build.raft.designsystem.components.RaftTopBar]), its seam
      * included: web AppTopBar `h-12` (48) with a finger; 44 under a fine pointer (sizing v12,
      * raft-ui 0.65 desktop density).
@@ -205,6 +213,7 @@ data class RaftControlMetrics(
                 barButtonRadius = tokens.barButtonRadius,
                 // The first bar button's glyph lands on the page inset.
                 barEdgeInset = tokens.pageInset - (tokens.barButtonSize - barIconSize) / 2,
+                headAvatar = if (desktop) RaftAvatarSize.Sm else RaftAvatarSize.Md,
                 // Web AppTopBar: `h-[calc(var(--frame-item-height)+2*var(--header-air))]`.
                 topBarHeight = tokens.frameItemHeight + tokens.headerAir * 2,
                 topBarItemSize = tokens.frameItemHeight,
@@ -223,9 +232,24 @@ data class RaftControlMetrics(
 
         /**
          * The touch context in a wide window: [Mobile] with the short head (raft-ui
-         * `header-height-short`, 48: the 44 controls with 2 above and below).
+         * `header-height-short`, 48) and its bar buttons at the frame item's 36 (web
+         * `size-icon-header`, which keeps 36 in the 48 head), their glyph at the rail's 20, so a
+         * head's buttons sit in it with 6 above and below as the top bar's items do, instead of a
+         * 44 button with 2.
          */
-        val MobileShortHead = Mobile.copy(headHeight = RaftUiComponentTokens.Touch.headerHeightShort)
+        val MobileShortHead: RaftControlMetrics = run {
+            val touch = RaftUiComponentTokens.Touch
+            val button = touch.frameItemHeight
+            val glyph = 20.dp
+            Mobile.copy(
+                headHeight = touch.headerHeightShort,
+                barButtonSize = button,
+                barIconSize = glyph,
+                barButtonRadius = RaftRadius.Control,
+                barEdgeInset = touch.pageInset - (button - glyph) / 2,
+                headAvatar = RaftAvatarSize.Sm,
+            )
+        }
 
         /** The desktop context: a wide window with a mouse or trackpad (34dp controls). */
         val Desktop = of(RaftUiComponentTokens.Desktop)
