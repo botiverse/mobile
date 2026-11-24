@@ -312,6 +312,6 @@ internal fun EnsureServerModelLabelCatalog(serverId: String?) {
     val clean = serverId?.trim().orEmpty()
     LaunchedEffect(clean) {
         if (clean.isBlank()) return@LaunchedEffect
-        RaftSharedStoreRegistry.currentOrNull()?.ensureServerModelLabelCatalog(clean)
+        RaftDataStoreRegistry.currentOrNull()?.ensureServerModelLabelCatalog(clean)
     }
 }

@@ -99,7 +99,7 @@ internal object RaftMessageDisplayPrefsStore {
     /** Replaced in tests. */
     @Volatile
     internal var apiProvider: () -> RaftMessageDisplaySettingsApi? = {
-        RaftSharedStoreRegistry.currentOrNull()?.networkClient?.let(::RaftMessageDisplaySettingsApi)
+        RaftDataStoreRegistry.currentOrNull()?.networkClient?.let(::RaftMessageDisplaySettingsApi)
     }
 
     /** `GET message-display-settings`; keeps the held copy on failure. */

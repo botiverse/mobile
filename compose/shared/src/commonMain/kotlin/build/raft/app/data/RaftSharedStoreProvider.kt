@@ -2,6 +2,7 @@ package build.raft.app.data
 
 import build.raft.app.RaftBesideMemoryRepository
 import build.raft.app.RaftComputersRackToolbarStore
+import build.raft.app.image.raftClearImageCaches
 import build.raft.app.resources.raftSystemPreferredLanguageTagsOrEmpty
 import build.raft.app.toJointConnectionsDurableRecord
 import build.raft.app.toJointConnectionsSnapshot
@@ -497,22 +498,22 @@ internal class RaftSharedStoreProvider private constructor(
     /** Durable server rosters shared by every members store (data-layer plan step 3). */
     private val serverMembersDurableStore: RaftServerMembersDurableStore,
     private val apiEnvironmentKeyValueStore: RaftKeyValueStore,
-    val authStore: KeyValueAuthSessionStore,
+    override val authStore: KeyValueAuthSessionStore,
     val authSessionEvents: RaftAuthSessionEvents,
     val authDataSource: SharedAuthDataSource,
     val authLossFunnel: SharedAuthLossFunnel,
     val authRuntimeCapabilityStore: SharedAuthRuntimeCapabilityStore,
-    val networkClient: RaftNetworkClient,
+    override val networkClient: RaftNetworkClient,
     private val networkReachabilityGates: RaftHostReachabilityGates,
     private val scopedNetworkClientFactory: (RaftAuthSessionStore) -> RaftNetworkClient,
     private val ownerScopedNetworkClientFactory: (RaftAuthSessionStore, String) -> RaftNetworkClient,
-    val serverFeatureFlags: SharedServerFeatureFlags,
+    override val serverFeatureFlags: SharedServerFeatureFlags,
     private val canonicalMessageV2Canary: CanonicalMessageV2ProductionCanary,
     private val canonicalMessageV2GenerationEngine: CanonicalMessageV2GenerationEngine,
     val localDataStore: ComposeLocalDataStore,
     internal val avatarCacheMetadataStore: RaftAvatarCacheMetadataStore,
     internal val avatarCacheCoordinator: RaftAvatarCacheCoordinator,
-    internal val avatarCacheRuntime: RaftAvatarCacheRuntime,
+    override val avatarCacheRuntime: RaftAvatarCacheRuntime,
     internal val avatarMountedBinding: RaftAvatarMountedBinding,
     val agentDetailStore: SharedAgentDetailStore,
     val agentPanelTabOrderStore: SharedAgentPanelTabOrderStore,
@@ -540,7 +541,7 @@ internal class RaftSharedStoreProvider private constructor(
     /** Channel / thread member lists offline (rows only, never permission flags). */
     private val channelMembersOffline: SharedChannelMembersOffline,
     private val homeIdentityPersistSlice: MviPersistSlice<SharedHomeState, SharedHomeIntent>,
-    val apiEnvironmentStore: SharedApiEnvironmentStore,
+    override val apiEnvironmentStore: SharedApiEnvironmentStore,
     val eventBus: RaftEventBusRelay,
     val realtimeDomainEventOwner: SharedRealtimeDomainEventOwner,
     val realtimeAuthorityProvider: RealtimeAuthorityProvider,
@@ -564,7 +565,7 @@ internal class RaftSharedStoreProvider private constructor(
     private val homeStoreScope: CoroutineScope,
     private val homeActivityStoreScope: CoroutineScope,
     val threadSendScope: CoroutineScope
-) {
+) : RaftDataStoreProvider {
     /**
      * Composer attachment uploads, owned by their draft (server + conversation draft key) for the
      * life of the process rather than by the conversation page: leaving the conversation does not
@@ -3160,14 +3161,14 @@ internal class RaftSharedStoreProvider private constructor(
             )
         }
 
-    internal fun ensureServerModelLabelCatalog(serverId: String) {
+    override fun ensureServerModelLabelCatalog(serverId: String) {
         val clean = serverId.trim().takeIf { it.isNotBlank() } ?: return
         if (RaftModelLabelCatalogs.currentCatalog(clean) != null) return
         val repository = serverModelLabelCatalogRepository(scopesForServer(clean).firstOrNull() ?: RaftShellStoreScope.Legacy)
         threadSendScope.launch { repository.load(clean, DataRequestPriority.Background) }
     }
 
-    internal fun refreshServerModelLabelCatalogAfterLiveDetect(serverId: String) {
+    override fun refreshServerModelLabelCatalogAfterLiveDetect(serverId: String) {
         val clean = serverId.trim().takeIf { it.isNotBlank() } ?: return
         val repository = serverModelLabelCatalogRepository(scopesForServer(clean).firstOrNull() ?: RaftShellStoreScope.Legacy)
         repository.refreshAfterLiveDetect(clean)
@@ -3299,8 +3300,8 @@ internal class RaftSharedStoreProvider private constructor(
             }
         }
 
-    fun createAuthDataSourceForCurrentEnvironment(
-        avatarCacheNativeCache: RaftAvatarNativeCache = UnsupportedRaftAvatarNativeCache
+    override fun createAuthDataSourceForCurrentEnvironment(
+        avatarCacheNativeCache: RaftAvatarNativeCache
     ): SharedAuthDataSource =
         createSharedAuthDataSourceForCurrentEnvironment(
             apiEnvironmentStore = apiEnvironmentStore,
@@ -6048,6 +6049,11 @@ private fun RealtimeEvent.messageSeqEnvelope(epoch: String): MessageSeqEnvelope<
 private object ProcessServerThemeFollowKey
 
 internal object RaftSharedStoreRegistry {
+    init {
+        RaftDataStoreRegistry.bindCurrentProvider(::currentOrNull)
+        RaftImageCacheHooks.clearImageCaches = ::raftClearImageCaches
+    }
+
     private val productionFactory =
         RaftSharedStoreProviderFactory { request ->
             RaftSharedStoreProvider.create(

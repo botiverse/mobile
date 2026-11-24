@@ -49,7 +49,7 @@ internal class SharedCreateAgentCoordinator(
     private val computersApiClient: RaftComputersApiClient,
     private val logger: (String) -> Unit = {},
     private val onLiveModelDetect: (ServerId) -> Unit = { serverId ->
-        RaftSharedStoreRegistry.currentOrNull()?.refreshServerModelLabelCatalogAfterLiveDetect(serverId.value)
+        RaftDataStoreRegistry.currentOrNull()?.refreshServerModelLabelCatalogAfterLiveDetect(serverId.value)
     }
 ) {
     suspend fun createAgent(request: CreateAgentRequest): DataResult<AgentSummary> {

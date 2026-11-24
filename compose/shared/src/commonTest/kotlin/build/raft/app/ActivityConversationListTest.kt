@@ -14,6 +14,7 @@ import build.raft.app.data.SettingsServerSidebarPinnedItem
 import build.raft.app.data.SharedHomeContentState
 import build.raft.app.data.activityObjectRowKey
 import build.raft.app.data.session
+import build.raft.app.markdown.toAnnotatedString
 import build.raft.app.model.ChannelActivityNotificationPreference
 import build.raft.app.model.ChannelId
 import build.raft.app.model.ConversationKind

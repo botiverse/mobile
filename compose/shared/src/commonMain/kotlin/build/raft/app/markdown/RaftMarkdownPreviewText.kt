@@ -1,16 +1,8 @@
 package build.raft.app.markdown
 
 import androidx.compose.runtime.Immutable
-import build.raft.app.RaftAppThemeState
 import build.raft.app.data.extractQuoteReplyPreviewText
 import build.raft.app.data.stripQuoteReplyRefsForPreview
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.AnnotatedString
-import androidx.compose.ui.text.SpanStyle
-import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.font.FontStyle
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextDecoration
 import com.tencent.kuiklybase.markdown.model.RaftGFMFlavourDescriptor
 import com.tencent.kuiklybase.markdown.utils.EntityConverter
 import kotlinx.atomicfu.locks.SynchronizedObject
@@ -55,13 +47,6 @@ data class RaftMarkdownPreview(
     val text: String,
     val spans: List<RaftMarkdownPreviewSpan> = emptyList(),
 ) {
-    fun toAnnotatedString(linkColor: Color = RaftAppThemeState.colors.foregroundLink): AnnotatedString {
-        if (spans.isEmpty()) return AnnotatedString(text)
-        val spanStyles =
-            spans.map { span -> AnnotatedString.Range(span.style.toSpanStyle(linkColor), span.start, span.end) }
-        return AnnotatedString(text, spanStyles = spanStyles)
-    }
-
     companion object {
         val Empty = RaftMarkdownPreview("")
     }
@@ -71,17 +56,6 @@ data class RaftMarkdownPreview(
 data class RaftMarkdownPreviewSpan(val start: Int, val end: Int, val style: RaftMarkdownPreviewStyle)
 
 enum class RaftMarkdownPreviewStyle { Strong, Emphasis, Strikethrough, Code, Link }
-
-private fun RaftMarkdownPreviewStyle.toSpanStyle(linkColor: Color): SpanStyle =
-    when (this) {
-        RaftMarkdownPreviewStyle.Strong -> SpanStyle(fontWeight = FontWeight.Bold)
-        RaftMarkdownPreviewStyle.Emphasis -> SpanStyle(fontStyle = FontStyle.Italic)
-        RaftMarkdownPreviewStyle.Strikethrough -> SpanStyle(textDecoration = TextDecoration.LineThrough)
-        // web InlineMarkdownPreview: InlineCode with no chrome, so only the mono family remains.
-        RaftMarkdownPreviewStyle.Code -> SpanStyle(fontFamily = raftMarkdownInlineCodeTextStyle(TextStyle.Default).fontFamily)
-        // web: preview links are spans in the link colour, without the underline of a clickable link.
-        RaftMarkdownPreviewStyle.Link -> SpanStyle(color = linkColor)
-    }
 
 /** web `MAX_NOTIFICATION_BODY_LENGTH`: the push and banner preview length. */
 const val RaftMarkdownPreviewNotificationLength = 140

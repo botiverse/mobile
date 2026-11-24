@@ -329,7 +329,7 @@ private fun appWebStepUpSpan(
 internal fun emitAppWebStepUpSpan(span: RaftWebSpanRecord) {
     try {
         val serverId =
-            RaftSharedStoreRegistry.currentOrNull()
+            RaftDataStoreRegistry.currentOrNull()
                 ?.authStore
                 ?.readInMemorySessionSnapshot()
                 ?.session

@@ -151,14 +151,14 @@ object RaftAndroidPushRegistrationBridge {
         return RaftPushRegistrationCoordinator(
             store = store,
             spec = RaftPushProviderSpec.Fcm,
-            currentSession = { RaftSharedStoreRegistry.currentOrNull()?.authStore?.readSession() },
-            authRuntimeReady = { RaftSharedStoreRegistry.currentOrNull() != null },
+            currentSession = { RaftDataStoreRegistry.currentOrNull()?.authStore?.readSession() },
+            authRuntimeReady = { RaftDataStoreRegistry.currentOrNull() != null },
             apiProvider = {
-                RaftSharedStoreRegistry.currentOrNull()?.networkClient?.let(::RaftPushRegistrationNetworkApi)
+                RaftDataStoreRegistry.currentOrNull()?.networkClient?.let(::RaftPushRegistrationNetworkApi)
             },
             scope = scope,
             currentEnvironmentId = {
-                RaftSharedStoreRegistry.currentOrNull()?.apiEnvironmentStore?.current()?.apiBaseUrl
+                RaftDataStoreRegistry.currentOrNull()?.apiEnvironmentStore?.current()?.apiBaseUrl
             },
             deviceStateProvider = raftPushDeviceStateProvider(),
             infoLogger = { message -> raftLogInfo(PUSH_LOG_TAG, "$message provider=fcm") },

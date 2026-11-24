@@ -481,7 +481,7 @@ private fun DataResult<*>.isRouteMissing(): Boolean =
 
 /** Every server's level in one place, for the badge sum and the level pickers. */
 private fun currentNotificationApi(): RaftNotificationSettingsApi? =
-    RaftSharedStoreRegistry.currentOrNull()?.networkClient?.let(::RaftNotificationSettingsApi)
+    RaftDataStoreRegistry.currentOrNull()?.networkClient?.let(::RaftNotificationSettingsApi)
 
 /**
  * Process store of the explicit notification levels, per server (contract §1.1). Fed by
@@ -1043,7 +1043,7 @@ private const val RAFT_NOTIFICATION_TEST_POLL_MILLIS: Long = 1_000L
  * (APNs / FCM) carries it, so a shown test proves the whole path.
  */
 internal suspend fun raftSendServerTestNotification(
-    networkClient: RaftNetworkClient? = RaftSharedStoreRegistry.currentOrNull()?.networkClient,
+    networkClient: RaftNetworkClient? = RaftDataStoreRegistry.currentOrNull()?.networkClient,
     installationId: String? = RaftPushRegistrationLifecycle.installationIdOrNull(),
     pollMillis: Long = RAFT_NOTIFICATION_TEST_POLL_MILLIS,
     waitMillis: Long = RAFT_NOTIFICATION_TEST_WAIT_MILLIS
@@ -1118,7 +1118,7 @@ object RaftNotificationTestAck {
 
     fun ack(testId: String, shown: Boolean) {
         val id = testId.trim().takeIf { it.isNotEmpty() } ?: return
-        val client = RaftSharedStoreRegistry.currentOrNull()?.networkClient ?: return
+        val client = RaftDataStoreRegistry.currentOrNull()?.networkClient ?: return
         scope.launch {
             runCatching {
                 client.request(

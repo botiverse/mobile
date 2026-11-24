@@ -411,7 +411,7 @@ internal fun buildScrollFrameTraceSpan(
  */
 object RaftFrameMetricsTraceReporter {
     private fun currentServerAndFlags(): Pair<String, ServerFeatureFlagSnapshot>? {
-        val provider = RaftSharedStoreRegistry.currentOrNull() ?: return null
+        val provider = RaftDataStoreRegistry.currentOrNull() ?: return null
         val serverId =
             provider.authStore
                 .readInMemorySessionSnapshot()

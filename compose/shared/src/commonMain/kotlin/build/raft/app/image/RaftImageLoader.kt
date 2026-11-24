@@ -2,6 +2,7 @@ package build.raft.app.image
 
 import androidx.compose.ui.graphics.ImageBitmap
 import build.raft.app.compat.ui.toRaftImageBitmap
+import build.raft.app.data.RaftImageCacheHooks
 import build.raft.app.raftLogWarn
 import coil3.Extras
 import coil3.ImageLoader
@@ -200,6 +201,7 @@ suspend fun raftClearImageCaches() {
  * Coil 3 has no public "is the default loader created" check, so the exception is the signal.
  */
 fun raftInstallImageLoader() {
+    RaftImageCacheHooks.clearImageCaches = ::raftClearImageCaches
     if (!raftImageLoaderInstalled.compareAndSet(expect = false, update = true)) return
     try {
         SingletonImageLoader.setSafe { context -> raftBuildImageLoader(context) }
@@ -254,6 +256,7 @@ fun raftBuildImageLoader(context: PlatformContext): ImageLoader {
         }
         .build()
     raftBuiltImageLoader.value = loader
+    RaftImageCacheHooks.clearImageCaches = ::raftClearImageCaches
     return loader
 }
 

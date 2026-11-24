@@ -208,7 +208,7 @@ internal interface IosMobileOAuthRuntime {
 }
 
 private class SharedIosMobileOAuthRuntime(
-    provider: RaftSharedStoreProvider,
+    provider: RaftDataStoreProvider,
 ) : IosMobileOAuthRuntime {
     private val authDataSource = provider.createAuthDataSourceForCurrentEnvironment()
 
@@ -874,7 +874,7 @@ object RaftIosMobileOAuthBridge {
                     ).store
                 ),
             runtimeProvider = {
-                RaftSharedStoreRegistry.currentOrNull()?.let(::SharedIosMobileOAuthRuntime)
+                RaftDataStoreRegistry.currentOrNull()?.let(::SharedIosMobileOAuthRuntime)
             },
         )
     }
