@@ -61,6 +61,7 @@ final class RaftIosNativeMenuTouchGuardTests: XCTestCase {
     private func makeScene() -> SceneFixture {
         let frame = CGRect(x: 0, y: 0, width: 390, height: 844)
         let window = RaftIosWindow(frame: frame)
+        window.isHidden = false
         let navView = UIView(frame: frame)
         window.addSubview(navView)
 
@@ -155,10 +156,12 @@ final class RaftIosNativeMenuTouchGuardTests: XCTestCase {
         XCTAssertFalse(RaftIosNativeMenuTouchGuard.hasActiveNativeMenuPresentation(in: [scene.window]))
         menuContainer.removeFromSuperview()
 
-        // Context menu in a sibling overlay window is also detected.
+        // Context menu in a sibling overlay window is detected when visible and ignored when hidden.
         let overlayWindow = UIWindow(frame: scene.window.bounds)
         let (overlayMenu, _) = makeVisibleContextMenuContainer(frame: overlayWindow.bounds)
         overlayWindow.addSubview(overlayMenu)
+        XCTAssertFalse(RaftIosNativeMenuTouchGuard.hasActiveNativeMenuPresentation(in: [scene.window, overlayWindow]))
+        overlayWindow.isHidden = false
         XCTAssertTrue(RaftIosNativeMenuTouchGuard.hasActiveNativeMenuPresentation(in: [scene.window, overlayWindow]))
 
         // Native iPad popover view is detected.
@@ -342,6 +345,7 @@ final class RaftIosNativeMenuTouchGuardTests: XCTestCase {
     func testWindowGuardRecognizerSuppressesComposeOnPlainUiWindowAndRestoresCleanly() {
         let frame = CGRect(x: 0, y: 0, width: 390, height: 844)
         let plainWindow = UIWindow(frame: frame)
+        plainWindow.isHidden = false
         let navView = UIView(frame: frame)
         plainWindow.addSubview(navView)
 
