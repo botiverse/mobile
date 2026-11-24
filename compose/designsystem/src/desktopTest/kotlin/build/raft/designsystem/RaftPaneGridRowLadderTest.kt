@@ -1,5 +1,6 @@
 package build.raft.designsystem
 
+import build.raft.designsystem.theme.RaftControlMetrics
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
@@ -138,12 +139,12 @@ class RaftPaneGridRowLadderTest {
             showRow()
             val tabTag = RAFT_PANE_GRID_TABS_TEST_TAG + artifact.id
             val touchHeight = with(density) { onNodeWithTag(tabTag, useUnmergedTree = true).fetchSemanticsNode().size.height.toDp().value }
-            assertTrue(abs(56f - touchHeight) <= 1f, "touch tab strip height should be 56dp, was $touchHeight")
+            assertTrue(abs(RaftControlMetrics.MobileShortHead.headHeight.value - touchHeight) <= 1f, "touch tab strip: the head's height, was $touchHeight")
 
             pointer = RaftPointerInput.Fine
             waitForIdle()
             val fineHeight = with(density) { onNodeWithTag(tabTag, useUnmergedTree = true).fetchSemanticsNode().size.height.toDp().value }
-            assertTrue(abs(44f - fineHeight) <= 1f, "fine-pointer tab strip height should be 44dp, was $fineHeight")
+            assertTrue(abs(RaftControlMetrics.Desktop.headHeight.value - fineHeight) <= 1f, "fine-pointer tab strip: the head's height, was $fineHeight")
         }
 
     @Test
@@ -199,10 +200,10 @@ class RaftPaneGridRowLadderTest {
                 }
             }
             waitForIdle()
-            // Main header sits at y = 0 (no standalone strip pushed it down) and ends at 56dp (touch).
+            // Main header sits at y = 0 (no standalone strip pushed it down) and ends at the head's height (touch, wide).
             val mainBoundsTouch = onNodeWithTag("main-head", useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
             assertTrue(abs(0f - with(density) { mainBoundsTouch.top.toDp().value }) <= 1f, "main head top should be 0dp")
-            assertTrue(abs(56f - with(density) { mainBoundsTouch.bottom.toDp().value }) <= 1f, "main head bottom should be 56dp")
+            assertTrue(abs(RaftControlMetrics.MobileShortHead.headHeight.value - with(density) { mainBoundsTouch.bottom.toDp().value }) <= 1f, "main head bottom: the head's height")
 
             // Switch to Tasks · Files tab: only top cell receives head tabs, bottom cell sees null.
             onNodeWithText("Tasks · Files").performSemanticsAction(SemanticsActions.OnClick)
@@ -211,13 +212,13 @@ class RaftPaneGridRowLadderTest {
             assertEquals(false, bottomCellTabsPresent, "bottom stacked cell must not receive LocalRaftPaneGridHeadTabs")
             val cardsBoundsTouch = onNodeWithTag("cards-head", useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
             assertTrue(abs(0f - with(density) { cardsBoundsTouch.top.toDp().value }) <= 1f, "cards head top should be 0dp")
-            assertTrue(abs(56f - with(density) { cardsBoundsTouch.bottom.toDp().value }) <= 1f, "cards head bottom should be 56dp")
+            assertTrue(abs(RaftControlMetrics.MobileShortHead.headHeight.value - with(density) { cardsBoundsTouch.bottom.toDp().value }) <= 1f, "cards head bottom: the head's height")
 
             // Fine pointer tightens both to 44dp.
             inputMode = RaftPointerInput.Fine
             waitForIdle()
             val cardsBoundsFine = onNodeWithTag("cards-head", useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
-            assertTrue(abs(44f - with(density) { cardsBoundsFine.bottom.toDp().value }) <= 1f, "fine cards head bottom should be 44dp")
+            assertTrue(abs(RaftControlMetrics.Desktop.headHeight.value - with(density) { cardsBoundsFine.bottom.toDp().value }) <= 1f, "fine cards head bottom: the head's height")
         }
 
     private fun ComposeUiTest.onAllTabs(bounds: RaftPaneGridColumnBounds) =
