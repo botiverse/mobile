@@ -1253,7 +1253,6 @@
     <string name="thread_state_refreshing_original">Atualizando a mensagem original…</string>
     <string name="thread_error_refresh_original">Falha ao atualizar: %1$s</string>
     <string name="thread_comments_title">Comentários</string>
-    <string name="thread_comments_header">Comentários · %1$s</string>
     <string name="thread_comments_composer_placeholder">Comentar em %1$s…</string>
     <string name="thread_comments_empty_hint">Os comentários aqui ficam vinculados a %1$s. Para uma discussão geral, responda na thread.</string>
     <string name="thread_comments_filter_all">Todas</string>

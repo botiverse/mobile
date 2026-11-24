@@ -24,7 +24,6 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
@@ -50,7 +49,11 @@ import androidx.compose.ui.unit.sp
 import build.raft.app.compat.ui.raftColorFromArgbHex
 import build.raft.designsystem.components.RaftSegment
 import build.raft.designsystem.components.RaftSegmentedControl
+import build.raft.designsystem.components.RaftHoverTier
+import build.raft.designsystem.components.RaftPressSurface
 import build.raft.designsystem.components.raftPointerHover
+import build.raft.designsystem.components.raftStateOverlay
+import build.raft.designsystem.components.rememberRaftStateOverlay
 
 internal data class SegmentedControlOption(
     val value: String,
@@ -143,17 +146,19 @@ internal fun RaftAnchoredMetaChip(
     val geometryAnchor =
         remember(resolvedAnchorOwnerIdentity) { RaftLiveRootAnchorRef(identity = resolvedAnchorOwnerIdentity) }
     val interactionSource = remember { MutableInteractionSource() }
-    val pressed by interactionSource.collectIsPressedAsState()
     val interactive = clickDispatch != RaftMetaChipClickDispatch.Disabled
     val anchored = clickDispatch == RaftMetaChipClickDispatch.Anchored
-    // Press lays the raft press overlay over the chip's fill (never moves it): sticker-pressed on
-    // a colour block, fill-pressed on a clear chip.
-    val fill =
-        if (interactive && pressFeedback && pressed) {
-            raftOverlay(if (color.alpha == 0f) RaftColor.FillPressed else RaftColor.StickerPressed, color)
-        } else {
-            color
-        }
+    // raft-ui TaskChip as a button (`[a,button]:hover:overlay-medium [a,button]:active:overlay-medium`):
+    // a mouse hover and a press lay `fill-medium` over the chip's fill, never moving it. It is the
+    // themed overlay, so it shows on a dark soft fill too (an ink overlay would vanish there).
+    // Touch never hovers.
+    val stateOverlay =
+        rememberRaftStateOverlay(
+            interactionSource = interactionSource,
+            tier = RaftHoverTier.Medium,
+            surface = RaftPressSurface.Paper,
+            enabled = interactive && pressFeedback
+        )
     // raft: chips are 6dp-radius tags (`rounded-chip`); a colour block keeps its ink edge.
     val chipShape = RoundedCornerShape(RaftAppRadius.Chip)
     Box(
@@ -178,8 +183,9 @@ internal fun RaftAnchoredMetaChip(
                     if (interactive) {
                         Modifier
                             .raftPointerHover(interactionSource)
-                            // raw-click: the chip draws its own press fill (sticker-pressed / fill-pressed over its
-                            // colour, above) from this interaction source.
+                            // raw-click: the click sits before the caller's modifier and the chip's fill, where
+                            // raftClickable's overlay would draw under the fill; the chip draws the design
+                            // system's hover / press overlay itself (rememberRaftStateOverlay above), from this source.
                             .clickable(
                                 interactionSource = interactionSource,
                                 indication = null,
@@ -215,7 +221,8 @@ internal fun RaftAnchoredMetaChip(
                 .heightIn(min = minHeight)
                 // A zero width means no edge (a soft chip); Compose would draw 0.dp as a hairline.
                 .then(if (borderWidth > 0.dp) Modifier.border(borderWidth, borderColor ?: raftInkOnFill(color, RaftColor.BorderBlack), chipShape) else Modifier)
-                .background(fill, chipShape)
+                .background(color, chipShape)
+                .raftStateOverlay(stateOverlay, chipShape)
                 .padding(horizontal = horizontalPadding, vertical = verticalPadding)
                 .then(
                     if (anchored && anchorPlacement != RaftAnchorPlacement.Tap) {
