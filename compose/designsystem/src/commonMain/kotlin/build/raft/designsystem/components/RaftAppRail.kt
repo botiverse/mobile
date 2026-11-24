@@ -183,8 +183,11 @@ fun raftAppRailMetricsFor(windowHeight: Dp): RaftAppRailMetrics {
     val controls = RaftTheme.controls
     return if (controls.railCompact) {
         RaftAppRailMetrics.Compact.copy(headerHeight = controls.headHeight)
+    } else if (raftAppRailCompact(windowHeight)) {
+        RaftAppRailMetrics.Compact
     } else {
-        raftAppRailMetrics(raftAppRailCompact(windowHeight))
+        // Its header is the pages' head beside it (the short head in a wide window by touch), so the seams line up.
+        RaftAppRailMetrics.Regular.copy(headerHeight = controls.headHeight)
     }
 }
 

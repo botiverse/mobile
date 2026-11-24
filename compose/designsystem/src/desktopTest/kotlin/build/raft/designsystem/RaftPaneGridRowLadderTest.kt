@@ -138,7 +138,7 @@ class RaftPaneGridRowLadderTest {
             showRow()
             val tabTag = RAFT_PANE_GRID_TABS_TEST_TAG + artifact.id
             val touchHeight = with(density) { onNodeWithTag(tabTag, useUnmergedTree = true).fetchSemanticsNode().size.height.toDp().value }
-            assertTrue(abs(56f - touchHeight) <= 1f, "touch tab strip height should be 56dp, was $touchHeight")
+            assertTrue(abs(48f - touchHeight) <= 1f, "touch tab strip height should be 48dp, was $touchHeight")
 
             pointer = RaftPointerInput.Fine
             waitForIdle()
@@ -199,10 +199,10 @@ class RaftPaneGridRowLadderTest {
                 }
             }
             waitForIdle()
-            // Main header sits at y = 0 (no standalone strip pushed it down) and ends at 56dp (touch).
+            // Main header sits at y = 0 (no standalone strip pushed it down) and ends at 48dp (touch, wide).
             val mainBoundsTouch = onNodeWithTag("main-head", useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
             assertTrue(abs(0f - with(density) { mainBoundsTouch.top.toDp().value }) <= 1f, "main head top should be 0dp")
-            assertTrue(abs(56f - with(density) { mainBoundsTouch.bottom.toDp().value }) <= 1f, "main head bottom should be 56dp")
+            assertTrue(abs(48f - with(density) { mainBoundsTouch.bottom.toDp().value }) <= 1f, "main head bottom should be 48dp")
 
             // Switch to Tasks · Files tab: only top cell receives head tabs, bottom cell sees null.
             onNodeWithText("Tasks · Files").performSemanticsAction(SemanticsActions.OnClick)
@@ -211,7 +211,7 @@ class RaftPaneGridRowLadderTest {
             assertEquals(false, bottomCellTabsPresent, "bottom stacked cell must not receive LocalRaftPaneGridHeadTabs")
             val cardsBoundsTouch = onNodeWithTag("cards-head", useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
             assertTrue(abs(0f - with(density) { cardsBoundsTouch.top.toDp().value }) <= 1f, "cards head top should be 0dp")
-            assertTrue(abs(56f - with(density) { cardsBoundsTouch.bottom.toDp().value }) <= 1f, "cards head bottom should be 56dp")
+            assertTrue(abs(48f - with(density) { cardsBoundsTouch.bottom.toDp().value }) <= 1f, "cards head bottom should be 48dp")
 
             // Fine pointer tightens both to 44dp.
             inputMode = RaftPointerInput.Fine

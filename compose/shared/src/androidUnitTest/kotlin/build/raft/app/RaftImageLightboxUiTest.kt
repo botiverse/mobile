@@ -197,7 +197,8 @@ class RaftImageLightboxUiTest {
             )
             val bar = onNodeWithTag(RaftImageLightboxTopBarTag).getBoundsInRoot()
             val sender = onNodeWithTag(RaftImageLightboxSenderTag).getBoundsInRoot()
-            assertEquals(56.dp, bar.bottom, "one row with the title bar, not under it")
+            // The wide head by touch: 48 (#wg-mobile-sync:#265).
+            assertEquals(48.dp, bar.bottom, "one row with the title bar, not under it")
             assertTrue(sender.left >= 70.dp + 16.dp, "sender after the traffic lights: ${sender.left}")
             onNodeWithTagContentDescription("Close").performMouseInput { click(center) }
             mainClock.advanceTimeBy(500)

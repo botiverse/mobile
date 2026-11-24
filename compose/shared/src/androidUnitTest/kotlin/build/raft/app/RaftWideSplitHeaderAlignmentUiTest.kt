@@ -67,7 +67,7 @@ import org.robolectric.annotation.Config
  * First-principles split-view header bottom-line alignment across EVERY side-by-side column
  * (#proj-workspace:#379 PR2):
  * 1. Every visible side-by-side column's first horizontal hairline aligns with the conversation
- *    header's bottom hairline (`RaftTheme.controls.headHeight`: 56dp touch / 44dp fine pointer).
+ *    header's bottom hairline (`RaftTheme.controls.headHeight`: 48dp touch in a wide window / 44dp fine pointer).
  * 2. Loading and loaded Artifact share one layout (both aligned to `headHeight`, including beneath
  *    the `headHeight` standalone row-tab strip when crowded).
  * 3. Tasks/Files short-column switch (`shortSwitch`) aligns with `headHeight` in wide split view,
@@ -365,7 +365,7 @@ class RaftWideSplitHeaderAlignmentUiTest {
             pointer = RaftPointerInput.Touch
             showSplit()
 
-            listOf(RaftPointerInput.Touch to 56f, RaftPointerInput.Fine to 44f).forEach { (mode, expected) ->
+            listOf(RaftPointerInput.Touch to 48f, RaftPointerInput.Fine to 44f).forEach { (mode, expected) ->
                 runOnIdle { pointer = mode }
                 waitForIdle()
                 val label = mode.name
@@ -407,7 +407,7 @@ class RaftWideSplitHeaderAlignmentUiTest {
             pointer = RaftPointerInput.Touch
             showSplit()
 
-            listOf(RaftPointerInput.Touch to 56f, RaftPointerInput.Fine to 44f).forEach { (mode, expected) ->
+            listOf(RaftPointerInput.Touch to 48f, RaftPointerInput.Fine to 44f).forEach { (mode, expected) ->
                 runOnIdle { pointer = mode }
                 waitForIdle()
                 val convBottom = bottomDp(CONVERSATION_HEAD)
@@ -439,7 +439,7 @@ class RaftWideSplitHeaderAlignmentUiTest {
             pointer = RaftPointerInput.Touch
             showSplit()
 
-            listOf(RaftPointerInput.Touch to 56f, RaftPointerInput.Fine to 44f).forEach { (mode, expected) ->
+            listOf(RaftPointerInput.Touch to 48f, RaftPointerInput.Fine to 44f).forEach { (mode, expected) ->
                 runOnIdle { pointer = mode }
                 waitForIdle()
                 val label = "700dp ${mode.name}"
@@ -482,7 +482,7 @@ class RaftWideSplitHeaderAlignmentUiTest {
                 pointer = RaftPointerInput.Touch
             }
             waitForIdle()
-            listOf(RaftPointerInput.Touch to 56f, RaftPointerInput.Fine to 44f).forEach { (mode, expected) ->
+            listOf(RaftPointerInput.Touch to 48f, RaftPointerInput.Fine to 44f).forEach { (mode, expected) ->
                 runOnIdle { pointer = mode }
                 waitForIdle()
                 val label = "420dp ${mode.name}"
@@ -508,7 +508,7 @@ class RaftWideSplitHeaderAlignmentUiTest {
                 pointer = RaftPointerInput.Touch
             }
             waitForIdle()
-            listOf(RaftPointerInput.Touch to 56f, RaftPointerInput.Fine to 44f).forEach { (mode, expected) ->
+            listOf(RaftPointerInput.Touch to 48f, RaftPointerInput.Fine to 44f).forEach { (mode, expected) ->
                 runOnIdle { pointer = mode }
                 waitForIdle()
                 val label = "280dp ${mode.name}"
