@@ -2,9 +2,10 @@ package build.raft.app.data
 
 import build.raft.app.model.ServerId
 import build.raft.app.model.raftEpochMillisUtcIso
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.test.TestScope
@@ -22,8 +23,9 @@ import kotlin.test.assertTrue
 
 /**
  * Client trace events go the web's way (slock packages/web/src/utils/webAuthTrace.ts): a
- * `web-trace-batch:create` attestation, then `/api/web-traces` events batched after 4 s, with
- * `clientPlatform` beside each event's own attributes.
+ * `web-trace-batch:create` attestation, then `/api/web-traces` events batched after 15 s (or
+ * immediately when a server batch reaches 100) while foregrounded, with `clientPlatform` beside
+ * each event's own attributes.
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 class RaftClientTraceEventSenderTest {
@@ -86,6 +88,7 @@ class RaftClientTraceEventSenderTest {
     private fun TestScope.senderOnVirtualTime(
         transport: RecordingTransport,
         privacy: MutableStateFlow<RaftPrivacyMode> = MutableStateFlow(RaftPrivacyMode.Off),
+        foreground: MutableStateFlow<Boolean> = MutableStateFlow(true),
         networkRestored: Flow<Any> = emptyFlow(),
         log: (String) -> Unit = {},
         signedIn: String? = "user-1",
@@ -95,6 +98,7 @@ class RaftClientTraceEventSenderTest {
             nowEpochMillis = { baseEpochMillis + currentTime },
             defaultAttrs = { mapOf("clientPlatform" to "android") },
             privacyMode = privacy,
+            foreground = foreground,
             networkRestored = networkRestored,
             log = log,
         ).also { sender ->
@@ -159,6 +163,7 @@ class RaftClientTraceEventSenderTest {
                 nowEpochMillis = { 1_794_391_200_000L },
                 defaultAttrs = { mapOf("clientPlatform" to "android", "appVersion" to "1.2.3") },
                 privacyMode = MutableStateFlow(RaftPrivacyMode.Off),
+                foreground = MutableStateFlow(true),
             )
         sender.setAccount("user-1")
         sender.emit("server-1", RaftStateTransitionTraceName, attrs)
@@ -209,6 +214,7 @@ class RaftClientTraceEventSenderTest {
                 nowEpochMillis = { 1_794_391_200_000L },
                 defaultAttrs = { mapOf("clientPlatform" to "ios") },
                 privacyMode = MutableStateFlow(RaftPrivacyMode.Off),
+                foreground = MutableStateFlow(true),
             )
         sender.bindTransport(transport)
         sender.setAccount("user-1")
@@ -246,6 +252,7 @@ class RaftClientTraceEventSenderTest {
                     nowEpochMillis = { 1_794_391_200_000L },
                     defaultAttrs = { emptyMap() },
                     privacyMode = privacy,
+                    foreground = MutableStateFlow(true),
                 )
             sender.bindTransport(transport)
             sender.setAccount("user-1")
@@ -400,5 +407,231 @@ class RaftClientTraceEventSenderTest {
             for (reason in RaftClientTraceDropReason.entries) assertEquals(0, sender.droppedNotYetReported(reason), "$label: not a counted drop")
             assertTrue(logged.any { it.startsWith("client_trace_dropped reason=account_changed") }, "$label: logged: $logged")
         }
+    }
+
+    @Test
+    fun fifteenSecondWindowCoalescesMultipleEventsIntoOnePost() = runTest {
+        assertEquals(15_000L, RaftClientTraceFlushDelayMillis)
+        val transport = RecordingTransport(clock = { currentTime })
+        val sender = senderOnVirtualTime(transport)
+
+        sender.emitNumbered(1)
+        advance(4_000L)
+        assertTrue(transport.batches.isEmpty(), "old 4s window must not flush yet")
+        sender.emitNumbered(2)
+        advance(10_000L)
+        sender.emitNumbered(3)
+        advance(999L)
+        assertTrue(transport.batches.isEmpty(), "still waiting until the full 15s window elapses")
+
+        advance(1L)
+        assertEquals(1, transport.batches.size, "all three events coalesce into 1 POST")
+        assertEquals(listOf(1, 2, 3), transport.batches.single().numbers())
+        assertEquals(listOf(15_000L), transport.sendAtMillis)
+        assertEquals(0, sender.queuedCount)
+    }
+
+    @Test
+    fun reachingMaxBatchForOneServerFlushesImmediatelyWithoutBypassingRetryBackoff() = runTest {
+        // Multi-server queues below 100 each stay batched until a single (serverId, account) group reaches 100.
+        val transport = RecordingTransport(clock = { currentTime })
+        val sender = senderOnVirtualTime(transport)
+
+        repeat(60) { i -> sender.emitNumbered(i + 1, server = "server-1") }
+        repeat(60) { i -> sender.emitNumbered(i + 101, server = "server-2") }
+        runCurrent()
+        assertTrue(transport.batches.isEmpty(), "60 + 60 across two servers must not flush early")
+        assertEquals(120, sender.queuedCount)
+
+        advance(2_000L)
+        repeat(40) { i -> sender.emitNumbered(i + 61, server = "server-1") }
+        runCurrent()
+
+        assertEquals(2, transport.batches.size, "reaching 100 for server-1 triggers immediate flush at t=2s")
+        assertEquals((1..100).toList(), transport.batches[0].numbers())
+        assertEquals((101..160).toList(), transport.batches[1].numbers())
+        assertEquals(listOf(2_000L, 2_000L), transport.sendAtMillis)
+        assertEquals(0, sender.queuedCount)
+
+        // While a retry backoff is waiting, queueing 100 more events must NOT bypass the retry delay.
+        val retryTransport = RecordingTransport(status = 0, clock = { currentTime })
+        val retrySender = senderOnVirtualTime(retryTransport)
+        retrySender.emitNumbered(1)
+        advance(RaftClientTraceFlushDelayMillis)
+        assertEquals(1, retryTransport.batches.size, "initial attempt failed")
+        assertEquals(1, retrySender.queuedCount)
+
+        repeat(RaftClientTraceMaxBatch) { i -> retrySender.emitNumbered(i + 2) }
+        runCurrent()
+        advance(RaftClientTraceRetryDelaysMillis.first() - 1L)
+        assertEquals(1, retryTransport.batches.size, "retry backoff stays intact even at >=100 queued")
+
+        retryTransport.status = 200
+        advance(1L)
+        assertEquals((1..101).toList(), retryTransport.accepted.flatMap { it.numbers() })
+        assertEquals(listOf(100, 1), retryTransport.accepted.map { it.events.size })
+        assertEquals(0, retrySender.queuedCount)
+    }
+
+    @Test
+    fun enteringBackgroundCancelsFlushAndRetryTimersAndSuppressesBackgroundWakeups() = runTest {
+        val foreground = MutableStateFlow(true)
+        val privacy = MutableStateFlow(RaftPrivacyMode.Off)
+        val networkRestored = MutableSharedFlow<Unit>(extraBufferCapacity = 4)
+        val transport = RecordingTransport(clock = { currentTime })
+        val sender =
+            senderOnVirtualTime(
+                transport = transport,
+                privacy = privacy,
+                foreground = foreground,
+                networkRestored = networkRestored,
+            )
+
+        // 1. Scheduled 15s flush timer is cancelled on background transition.
+        sender.emitNumbered(1)
+        advance(5_000L)
+        foreground.value = false
+        runCurrent()
+        advance(60_000L)
+        assertTrue(transport.batches.isEmpty() && transport.attested.isEmpty(), "background cancels pending flush timer")
+        assertEquals(1, sender.queuedCount)
+
+        // 2. Events, spans, networkRestored, and privacyMode transitions while backgrounded never wake network.
+        sender.emitNumbered(2)
+        sender.emitSpan(
+            serverId = "server-1",
+            span =
+                RaftWebSpanRecord(
+                    traceId = "0af7651916cd43dd8448eb211c80319c",
+                    spanId = "b7ad6b7169203331",
+                    name = "mobile.realtime.session_health",
+                    startTime = raftEpochMillisUtcIso(baseEpochMillis + currentTime),
+                    endTime = raftEpochMillisUtcIso(baseEpochMillis + currentTime + 100L),
+                    attrs = buildJsonObject { put("window_ms", 100) },
+                ),
+            events = emptyList(),
+        )
+        privacy.value = RaftPrivacyMode.Unknown
+        runCurrent()
+        privacy.value = RaftPrivacyMode.Off
+        networkRestored.emit(Unit)
+        advance(600_000L)
+        assertTrue(transport.batches.isEmpty() && transport.attested.isEmpty(), "nothing fires while backgrounded")
+        assertEquals(3, sender.queuedCount)
+
+        // 3. Return to foreground delivers queued records after the normal 15s batch window.
+        foreground.value = true
+        advance(RaftClientTraceFlushDelayMillis - 1L)
+        assertTrue(transport.batches.isEmpty(), "foreground return waits out the 15s batch window")
+        advance(1L)
+        val firstBatch = transport.accepted.single()
+        assertEquals(listOf(1, 2), firstBatch.numbers())
+        assertEquals(1, firstBatch.records.size)
+        assertEquals(0, sender.queuedCount)
+
+        // 4. Retry timer is cancelled on background transition and networkRestored in background does not wake network.
+        transport.status = 0
+        sender.emitNumbered(3)
+        advance(RaftClientTraceFlushDelayMillis)
+        assertEquals(2, transport.batches.size, "failed flush schedules 4s retry")
+        assertEquals(1, sender.queuedCount)
+
+        foreground.value = false
+        runCurrent()
+        networkRestored.emit(Unit)
+        advance(600_000L)
+        assertEquals(2, transport.batches.size, "cancelled retry timer and background networkRestored stay silent")
+
+        // 5. Returning to foreground respects the pending retry delay and delivers cleanly.
+        transport.status = 200
+        foreground.value = true
+        runCurrent()
+        advance(RaftClientTraceRetryDelaysMillis.first() - 1L)
+        assertEquals(2, transport.batches.size, "foreground return respects existing retry delay")
+        advance(1L)
+        assertEquals(listOf(3), transport.accepted.last().numbers())
+        assertEquals(0, sender.queuedCount)
+    }
+
+    @Test
+    fun returningToForegroundFlushesFullBackgroundBatchImmediatelyAndPreservesInFlightBatches() = runTest {
+        // Part A: 100 records queued while backgrounded flush immediately on foreground return.
+        val foreground = MutableStateFlow(false)
+        val transport = RecordingTransport(clock = { currentTime })
+        val sender = senderOnVirtualTime(transport, foreground = foreground)
+        runCurrent()
+
+        repeat(RaftClientTraceMaxBatch) { i -> sender.emitNumbered(i + 1) }
+        advance(60_000L)
+        assertTrue(transport.batches.isEmpty(), "full batch held while backgrounded")
+        assertEquals(RaftClientTraceMaxBatch, sender.queuedCount)
+
+        foreground.value = true
+        runCurrent()
+        assertEquals(1, transport.accepted.size, "full batch flushes immediately on foreground return")
+        assertEquals((1..RaftClientTraceMaxBatch).toList(), transport.accepted.single().numbers())
+        assertEquals(0, sender.queuedCount)
+
+        // Part B: In-flight request during background transition:
+        // (i) status 0 retirement puts batch back cleanly with no background retry; foreground resumes it once.
+        val fgResend = MutableStateFlow(true)
+        val resendGate = CompletableDeferred<Unit>()
+        val resendTransport = RecordingTransport(status = 0, clock = { currentTime })
+        var resendGated = false
+        resendTransport.onSend = {
+            if (!resendGated) {
+                resendGated = true
+                resendGate.await()
+            }
+        }
+        val resendSender = senderOnVirtualTime(resendTransport, foreground = fgResend)
+        repeat(105) { i -> resendSender.emitNumbered(i + 1) }
+        runCurrent()
+        assertEquals(1, resendTransport.batches.size, "first 100-event batch is in flight")
+        assertEquals(5, resendSender.queuedCount)
+
+        fgResend.value = false
+        runCurrent()
+        resendGate.complete(Unit)
+        runCurrent()
+        assertEquals(105, resendSender.queuedCount, "retired in-flight batch returns to queue without loss")
+        advance(600_000L)
+        assertEquals(1, resendTransport.batches.size, "no retry or second batch runs while backgrounded")
+
+        resendTransport.status = 200
+        fgResend.value = true
+        advance(RaftClientTraceRetryDelaysMillis.first())
+        assertEquals((1..105).toList(), resendTransport.accepted.flatMap { it.numbers() })
+        assertEquals(0, resendSender.queuedCount)
+
+        // (ii) status 200 completion after background transition does not double-send and pauses before batch 2.
+        val fgSuccess = MutableStateFlow(true)
+        val successGate = CompletableDeferred<Unit>()
+        val successTransport = RecordingTransport(status = 200, clock = { currentTime })
+        var successGated = false
+        successTransport.onSend = {
+            if (!successGated) {
+                successGated = true
+                successGate.await()
+            }
+        }
+        val successSender = senderOnVirtualTime(successTransport, foreground = fgSuccess)
+        repeat(105) { i -> successSender.emitNumbered(i + 1) }
+        runCurrent()
+        assertEquals(1, successTransport.batches.size)
+
+        fgSuccess.value = false
+        runCurrent()
+        successGate.complete(Unit)
+        runCurrent()
+        advance(600_000L)
+        assertEquals(1, successTransport.accepted.size, "batch 1 settled cleanly and batch 2 paused in background")
+        assertEquals(5, successSender.queuedCount)
+
+        fgSuccess.value = true
+        advance(RaftClientTraceFlushDelayMillis)
+        assertEquals(2, successTransport.accepted.size)
+        assertEquals((1..105).toList(), successTransport.accepted.flatMap { it.numbers() })
+        assertEquals(0, successSender.queuedCount)
     }
 }

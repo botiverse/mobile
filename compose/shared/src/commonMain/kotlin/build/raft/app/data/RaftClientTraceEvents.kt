@@ -32,9 +32,12 @@ import kotlinx.serialization.json.JsonPrimitive
  * (`android` / `ios`, the `X-Raft-Client-Platform` value), the attribute web's
  * `withDefaultWebAttrs` adds to every event, with `appVersion` beside it.
  *
- * Batched [RaftClientTraceFlushDelayMillis] after the first event, at most
+ * Batched [RaftClientTraceFlushDelayMillis] (15 s) after the first event, at most
  * [RaftClientTraceMaxBatch] per request, each batch the records of one server recorded under one
- * account. Nothing here throws. What a failed flush does with its batch:
+ * account. When enqueueing brings a single `(serverId, account)` group in the queue to
+ * [RaftClientTraceMaxBatch] while in the foreground with privacy mode off and no retry waiting,
+ * the pending flush is brought forward immediately (0 ms delay) so bursts flush cleanly at the
+ * batch cap without dropping. Nothing here throws. What a failed flush does with its batch:
  *
  * - No HTTP answer (status 0 from [RaftNetworkClient]: connect, DNS, reset, timeout, a closed
  *   reachability gate) or a 5xx, from the attestation request or the trace POST
@@ -45,13 +48,21 @@ import kotlinx.serialization.json.JsonPrimitive
  *   [RaftClientTraceRetryDelaysMillis] after a flush that put a batch back: 4 s, 15 s, 60 s, then
  *   every 5 min while each flush puts one back, and back to the start after a flush where a batch got
  *   a 2xx or a refusal and none went back. A network-restored signal ([RaftFreshnessSignal]) replaces
- *   a waiting retry with one [RaftClientTraceFlushDelayMillis] from then, once per wait.
+ *   a longer waiting retry with one [RaftClientTraceFlushDelayMillis] from then, once per wait,
+ *   while in the foreground.
  * - Any other answer (4xx, including a refused attestation, or a 2xx attestation without a token),
  *   or an exception while building the request (a record that does not encode): the batch is
  *   dropped, as the web does, and the flush goes on with the next; sending it again cannot help. An
  *   exception is not an answer: the wait before the next retry stays as it was.
- * - Queueing an event never sends early: while a retry is waiting, new events (also at the cap)
- *   wait for it.
+ * - While a retry is waiting, new events (also at the cap) still wait for it.
+ * - Foreground gate ([RaftProcessForegroundGate]): when the process enters the background, any
+ *   pending flush or retry timer is cancelled immediately so nothing fires or wakes the network
+ *   while backgrounded (an already in-flight request settles cleanly and stops before the next
+ *   batch). While backgrounded, enqueueing, network-restored signals, and privacy-mode transitions
+ *   never schedule a flush; records remain queued in memory (capped at [RaftClientTraceMaxQueued]).
+ *   Returning to the foreground schedules a flush when privacy mode is off and the queue is
+ *   non-empty (respecting any pending retry delay, otherwise flushing immediately if a server
+ *   batch is full or after [RaftClientTraceFlushDelayMillis]).
  * - Bounds: the queue never holds more than [RaftClientTraceMaxQueued]; while sends are failing a
  *   full queue drops its oldest records to take newer ones (otherwise, as before, the new unit is
  *   dropped). A record still unsent [RaftClientTraceGiveUpMillis] after the first failed flush it
@@ -79,7 +90,7 @@ import kotlinx.serialization.json.JsonPrimitive
  * and nothing is sent, not even the attestation request; "on" drops what was held and every later
  * event; "off" sends what was held, then everything is as before.
  */
-internal const val RaftClientTraceFlushDelayMillis = 4_000L
+internal const val RaftClientTraceFlushDelayMillis = 15_000L
 internal const val RaftClientTraceMaxBatch = 100
 internal const val RaftClientTraceMaxQueued = 500
 
@@ -230,6 +241,8 @@ internal class RaftClientTraceEventSender(
     private val defaultAttrs: () -> Map<String, String>,
     private val flushDelayMillis: Long = RaftClientTraceFlushDelayMillis,
     private val privacyMode: StateFlow<RaftPrivacyMode> = RaftTelemetryPrivacy.state,
+    /** Process foreground gate: hidden, no timer or send runs; back in front, queued records flush. */
+    private val foreground: StateFlow<Boolean> = RaftProcessForegroundGate.foreground,
     /** Each emission: the device's network came back; a waiting retry is brought forward. */
     networkRestored: Flow<Any> = emptyFlow(),
     /** Diagnostics lines: counts and statuses only, never a record's name or content. */
@@ -291,10 +304,22 @@ internal class RaftClientTraceEventSender(
 
     /** Names the one flush job that may run; a replaced job (an early retry) finds another value. */
     private var flushGeneration = 0
+
+    /** True while [flush] is actively executing network sends (not merely waiting in `delay`). */
+    private var flushInProgress = false
+
+    /** True when the currently scheduled waiting [flushJob] already targets a 0 ms early flush. */
+    private var flushImmediateScheduled = false
     private var attestation: Attestation? = null
 
     /** Consecutive flushes that put a batch back. */
     private var failureStreak = 0
+
+    /**
+     * A previous flush put a batch back and records still await a retry (kept across background
+     * pauses so foreground return respects retry backoff rather than flushing at 0 ms / 15 s).
+     */
+    private var retryPending = false
 
     /** The flush job is waiting out a retry delay (not sending). */
     private var retryWaiting = false
@@ -318,9 +343,22 @@ internal class RaftClientTraceEventSender(
                             queue.clear()
                             resetTalliesLocked()
                             heldEpoch += 1
+                            retryPending = false
+                            cancelPendingFlushTimerLocked()
                         }
-                        RaftPrivacyMode.Off -> if (queue.isNotEmpty()) scheduleFlushLocked(flushDelayMillis)
-                        RaftPrivacyMode.Unknown -> Unit
+                        RaftPrivacyMode.Off -> scheduleForActiveStateLocked()
+                        RaftPrivacyMode.Unknown -> cancelPendingFlushTimerLocked()
+                    }
+                }
+            }
+        }
+        scope.launch {
+            foreground.collect {
+                synchronized(lock) {
+                    if (foreground.value) {
+                        scheduleForActiveStateLocked()
+                    } else {
+                        cancelPendingFlushTimerLocked()
                     }
                 }
             }
@@ -328,18 +366,24 @@ internal class RaftClientTraceEventSender(
         scope.launch {
             networkRestored.collect {
                 synchronized(lock) {
-                    if (retryWaiting && !retryBroughtForward && queue.isNotEmpty()) {
-                        retryBroughtForward = true
-                        flushJob?.cancel()
-                        flushJob = null
-                        scheduleFlushLocked(flushDelayMillis)
+                    if (
+                        foreground.value &&
+                        privacyMode.value == RaftPrivacyMode.Off &&
+                        !flushInProgress &&
+                        retryWaiting &&
+                        !retryBroughtForward &&
+                        queue.isNotEmpty() &&
+                        retryDelayForStreakLocked() > flushDelayMillis
+                    ) {
+                        cancelPendingFlushTimerLocked()
+                        scheduleFlushLocked(flushDelayMillis, isRetry = true, broughtForward = true)
                     }
                 }
             }
         }
     }
 
-    /** Events waiting to be sent (held while privacy mode is unknown, or for a retry). */
+    /** Events waiting to be sent (held while privacy mode is unknown, backgrounded, or for a retry). */
     internal val queuedCount: Int
         get() = synchronized(lock) { queue.size }
 
@@ -366,6 +410,8 @@ internal class RaftClientTraceEventSender(
                 accountEpoch += 1
                 heldEpoch += 1
                 attestation = null
+                retryPending = false
+                cancelPendingFlushTimerLocked()
                 resetTalliesLocked()
                 val held = queue.count { it.report == null }
                 queue.clear()
@@ -374,14 +420,82 @@ internal class RaftClientTraceEventSender(
         if (dropped > 0) logSafely("client_trace_dropped reason=account_changed count=$dropped")
     }
 
-    private fun scheduleFlushLocked(delayMillis: Long) {
-        if (flushJob != null) return
+    private fun retryDelayForStreakLocked(): Long =
+        RaftClientTraceRetryDelaysMillis[(failureStreak - 1).coerceIn(0, RaftClientTraceRetryDelaysMillis.lastIndex)]
+
+    private fun hasFullBatchForLocked(serverId: ServerId, account: String): Boolean {
+        if (queue.size < RaftClientTraceMaxBatch) return false
+        var count = 0
+        for (item in queue) {
+            if (item.serverId == serverId && item.account == account) {
+                count += 1
+                if (count >= RaftClientTraceMaxBatch) return true
+            }
+        }
+        return false
+    }
+
+    private fun hasAnyFullBatchLocked(): Boolean {
+        if (queue.size < RaftClientTraceMaxBatch) return false
+        val counts = HashMap<Pair<ServerId, String>, Int>()
+        for (item in queue) {
+            val key = item.serverId to item.account
+            val next = (counts[key] ?: 0) + 1
+            if (next >= RaftClientTraceMaxBatch) return true
+            counts[key] = next
+        }
+        return false
+    }
+
+    private fun scheduleFlushLocked(
+        delayMillis: Long,
+        isRetry: Boolean = false,
+        broughtForward: Boolean = false,
+    ) {
+        if (flushJob != null || flushInProgress) return
         val generation = ++flushGeneration
+        flushImmediateScheduled = !isRetry && delayMillis <= 0L
+        retryWaiting = isRetry
+        retryBroughtForward = broughtForward
         flushJob =
             scope.launch {
-                delay(delayMillis)
+                if (delayMillis > 0L) delay(delayMillis)
                 flush(generation)
             }
+    }
+
+    /** Cancels a waiting flush/retry timer without cancelling an already in-flight HTTP send. */
+    private fun cancelPendingFlushTimerLocked() {
+        if (flushInProgress) return
+        val pending = flushJob ?: return
+        flushJob = null
+        flushGeneration += 1
+        flushImmediateScheduled = false
+        retryWaiting = false
+        retryBroughtForward = false
+        pending.cancel()
+    }
+
+    /** Schedules a flush when foregrounded, privacy mode is off, and records are queued. */
+    private fun scheduleForActiveStateLocked() {
+        if (!foreground.value || privacyMode.value != RaftPrivacyMode.Off || queue.isEmpty() || flushInProgress) return
+        if (retryPending) {
+            scheduleFlushLocked(retryDelayForStreakLocked(), isRetry = true)
+            return
+        }
+        if (hasAnyFullBatchLocked()) {
+            bringForwardFlushForFullBatchLocked()
+            return
+        }
+        scheduleFlushLocked(flushDelayMillis)
+    }
+
+    /** Brings a pending normal flush forward to 0 ms when a server batch hits [RaftClientTraceMaxBatch]. */
+    private fun bringForwardFlushForFullBatchLocked() {
+        if (!foreground.value || privacyMode.value != RaftPrivacyMode.Off) return
+        if (flushInProgress || flushImmediateScheduled || retryPending || retryWaiting) return
+        if (flushJob != null) cancelPendingFlushTimerLocked()
+        scheduleFlushLocked(delayMillis = 0L)
     }
 
     /**
@@ -438,7 +552,9 @@ internal class RaftClientTraceEventSender(
                 if (mode == RaftPrivacyMode.On) return
                 if (transport == null) return
                 // Signed out, or before the first sign-in: no account it may be sent under.
-                val unit = build(account ?: return)
+                val currentAccount = account ?: return
+                val unit = build(currentAccount)
+                if (unit.isEmpty()) return
                 val over = queue.size + unit.size - RaftClientTraceMaxQueued
                 var dropLine: String? = null
                 if (over > 0) {
@@ -453,8 +569,20 @@ internal class RaftClientTraceEventSender(
                     dropLine = dropLineLocked(RaftClientTraceDropReason.QueueCap, over)
                 }
                 queue += unit
-                // Held, not sent, until the client config answers.
-                if (mode == RaftPrivacyMode.Off) scheduleFlushLocked(flushDelayMillis)
+                // Held, not sent, until the client config answers and the app is in the foreground.
+                if (mode == RaftPrivacyMode.Off && foreground.value) {
+                    if (
+                        !flushInProgress &&
+                        !flushImmediateScheduled &&
+                        !retryPending &&
+                        !retryWaiting &&
+                        hasFullBatchForLocked(unit.first().serverId, currentAccount)
+                    ) {
+                        bringForwardFlushForFullBatchLocked()
+                    } else {
+                        scheduleFlushLocked(flushDelayMillis)
+                    }
+                }
                 dropLine
             }
         line?.let(::logSafely)
@@ -539,6 +667,15 @@ internal class RaftClientTraceEventSender(
                 try {
                     send(work)
                 } catch (cancellation: CancellationException) {
+                    synchronized(lock) {
+                        val stillHeld = work.heldEpoch == heldEpoch && privacyMode.value != RaftPrivacyMode.On
+                        if (stillHeld) queue.addAll(0, work.batch)
+                        if (generation == flushGeneration) {
+                            flushJob = null
+                            flushInProgress = false
+                            flushImmediateScheduled = false
+                        }
+                    }
                     throw cancellation
                 } catch (_: Throwable) {
                     // Not a transport failure (the network client answers those with status 0): the
@@ -561,15 +698,22 @@ internal class RaftClientTraceEventSender(
         if (generation != flushGeneration) return null
         retryWaiting = false
         retryBroughtForward = false
+        flushImmediateScheduled = false
         val transport = transport
         val mode = privacyMode.value
+        val isForeground = foreground.value
         val first = queue.firstOrNull { item -> round.putBack.none { it.serverId == item.serverId } }
-        if (transport == null || mode != RaftPrivacyMode.Off || first == null) {
-            // Unknown again (an environment change): keep holding; the answer flushes.
-            if (mode == RaftPrivacyMode.On) queue.clear()
-            finishFlushLocked(round, mode, lines)
+        if (transport == null || mode != RaftPrivacyMode.Off || !isForeground || first == null) {
+            // Unknown again (an environment change) or backgrounded: keep holding until active again.
+            if (mode == RaftPrivacyMode.On) {
+                queue.clear()
+                retryPending = false
+            }
+            finishFlushLocked(round, mode, isForeground, lines)
             return null
         }
+        flushInProgress = true
+        retryPending = false
         val batch = queue.filter { it.serverId == first.serverId && it.account == first.account }.take(RaftClientTraceMaxBatch)
         queue.removeAll(batch.toSet())
         return FlushWork(
@@ -607,10 +751,13 @@ internal class RaftClientTraceEventSender(
     }
 
     /** This flush is over. One that put a batch back failed: the retry waits longer each time. */
-    private fun finishFlushLocked(round: FlushRound, mode: RaftPrivacyMode, lines: MutableList<String>) {
+    private fun finishFlushLocked(round: FlushRound, mode: RaftPrivacyMode, isForeground: Boolean, lines: MutableList<String>) {
         flushJob = null
+        flushInProgress = false
+        flushImmediateScheduled = false
         if (round.putBack.isEmpty()) {
             if (round.answered) failureStreak = 0
+            if (queue.isEmpty()) retryPending = false
             return
         }
         val now = nowEpochMillis()
@@ -636,10 +783,10 @@ internal class RaftClientTraceEventSender(
             if (item.report == null) pushedOut += 1
         }
         var retryInMillis = -1L
-        if (queue.isNotEmpty() && mode == RaftPrivacyMode.Off) {
-            retryInMillis = RaftClientTraceRetryDelaysMillis[(failureStreak - 1).coerceIn(0, RaftClientTraceRetryDelaysMillis.lastIndex)]
-            scheduleFlushLocked(retryInMillis)
-            retryWaiting = true
+        retryPending = queue.isNotEmpty()
+        if (retryPending && mode == RaftPrivacyMode.Off && isForeground) {
+            retryInMillis = retryDelayForStreakLocked()
+            scheduleFlushLocked(retryInMillis, isRetry = true)
         }
         round.putBack.forEach { put ->
             lines += "client_trace_send_failed stage=${put.stage} status=${put.status} failures=$failureStreak " +
@@ -717,6 +864,7 @@ object RaftClientTraceEvents {
             scope = CoroutineScope(SupervisorJob() + Dispatchers.Default),
             nowEpochMillis = { ProcessRaftDatetimeFoundationOwner.nowEpochMillis() },
             defaultAttrs = ::raftClientTraceDefaultAttrs,
+            foreground = RaftProcessForegroundGate.foreground,
             networkRestored = RaftFreshnessSignal.events.filter { it.trigger == RaftFreshnessTrigger.NetworkRestored },
             log = { message -> build.raft.app.raftLogInfo("RaftClientTrace", message) },
         )
