@@ -1190,7 +1190,7 @@ internal class SharedThreadDataSource(
                 scope = timelinePage.scope,
             )
         }
-        if (focusedId != null && !allowNewestFallbackForMissingAnchor) {
+        if (reader.supportsTimelineReads || (focusedId != null && !allowNewestFallbackForMissingAnchor)) {
             return null
         }
         val frame =
@@ -1362,6 +1362,7 @@ internal class SharedThreadDataSource(
                 scope = timelinePage.scope,
             )
         }
+        if (reader.supportsTimelineReads) return refuse("no_frame")
         if (!crossGaps) return refuse("no_timeline_reader")
         val page =
             when (admission) {

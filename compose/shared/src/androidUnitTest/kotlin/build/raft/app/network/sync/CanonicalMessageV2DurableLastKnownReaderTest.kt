@@ -379,12 +379,24 @@ class CanonicalMessageV2DurableLastKnownReaderTest {
                 userDriven = false,
             )
 
-            // readTimeline(Newest(5)) skips non-head island [100..110] and returns head tail + loose fact 120 with gap (20, 120)!
+            // readTimeline(Newest(5)) stays strictly inside head [10..20] up to head.highSeq (never splicing
+            // unproven loose fact 120 or context island [100..110] with a mid-timeline gap).
             val newest = assertNotNull(reader.readTimeline(partitionA, "channel-a", ThreadDurableTimelineAnchor.Newest(limit = 5)))
-            assertEquals(listOf(17L, 18L, 19L, 20L, 120L), newest.envelopes.map { it.fact.seq })
-            assertEquals(listOf(CanonicalMessageV2TimelineGap(afterSeq = 20L, beforeSeq = 120L)), newest.gaps)
+            assertEquals(listOf(16L, 17L, 18L, 19L, 20L), newest.envelopes.map { it.fact.seq })
+            assertTrue(newest.gaps.isEmpty(), "unanchored Newest must stay gap-free inside head: ${newest.gaps}")
             assertTrue(newest.hasOlderStored)
-            assertFalse(newest.insideProvenSegment, "newest row 120 is loose above head")
+            assertTrue(newest.reachesHead)
+            assertTrue(newest.insideProvenSegment)
+
+            // Anchored open still locates loose fact 120 on disk without losing it.
+            val anchoredLoose = assertNotNull(
+                reader.readTimeline(
+                    partition = partitionA,
+                    channelId = "channel-a",
+                    anchor = ThreadDurableTimelineAnchor.AroundMessageId("message-120", beforeCount = 0, afterCount = 0),
+                ),
+            )
+            assertEquals(listOf(120L), anchoredLoose.envelopes.map { it.fact.seq })
 
             // Legacy readBefore(beforeSeq=120, limit=5) also jumps past island [100..110] and returns head [16..20] + hasOlderStored=true!
             val legacyBefore = assertNotNull(reader.readBefore(partitionA, "channel-a", beforeSeq = 120L, limit = 5))
@@ -414,8 +426,281 @@ class CanonicalMessageV2DurableLastKnownReaderTest {
             )
             val looseOnly = assertNotNull(reader.readTimeline(partitionA, "channel-b", ThreadDurableTimelineAnchor.Newest(limit = 5)))
             assertEquals(listOf(50L), looseOnly.envelopes.map { it.fact.seq })
+            assertTrue(looseOnly.gaps.isEmpty())
             assertFalse(looseOnly.hasOlderStored, "skipped newer island above 50 must not mark hasOlderStored=true")
             assertFalse(looseOnly.insideProvenSegment)
+        }
+    }
+
+    @Test
+    fun newestTimelineStaysGapFreeAcrossLowerIslandsLooseFactsAndAbsorbsLooseFactsAfterLatestRefresh() = withFreshDatabase { database ->
+        val store = SqlDelightCanonicalMessageV2Store(database = database, now = { 10L })
+        val scope = SyncScopeKey(partitionA, "channel-a", "channel")
+        val reader = CanonicalMessageV2DurableLastKnownReader(store)
+
+        runBlocking {
+            // Lower island [1..5] (reachesOldest=true), small head [20..24] (< limit), loose realtime facts 50 & 65,
+            // and non-head context island [80..85] above head.
+            store.applyCoverage(
+                scope = scope,
+                envelopes = (1L..5L).map(::envelope),
+                coverage = CanonicalMessageV2Coverage(1L, 5L, reachesOldest = true, headAtVerify = false, CanonicalMessageV2SegmentSource.Context),
+                revAtRequest = 0L,
+                userDriven = false,
+            )
+            store.applyCoverage(
+                scope = scope,
+                envelopes = (20L..24L).map(::envelope),
+                coverage = CanonicalMessageV2Coverage(20L, 24L, reachesOldest = false, headAtVerify = true, CanonicalMessageV2SegmentSource.Latest),
+                revAtRequest = 0L,
+                userDriven = true,
+            )
+            store.applyCoverage(
+                scope = scope,
+                envelopes = (80L..85L).map(::envelope),
+                coverage = CanonicalMessageV2Coverage(80L, 85L, reachesOldest = false, headAtVerify = false, CanonicalMessageV2SegmentSource.Context),
+                revAtRequest = 0L,
+                userDriven = false,
+            )
+            store.applyCoverage(
+                scope = scope,
+                envelopes = listOf(envelope(50L), envelope(65L)),
+                coverage = null,
+                revAtRequest = 0L,
+                userDriven = false,
+            )
+
+            // 1. Unanchored Newest(10) returns strictly contiguous head [20..24] with zero gaps,
+            //    keeping hasOlderStored=true so explicit offline LoadOlder can still cross into [1..5].
+            val newestBeforeRefresh = assertNotNull(
+                reader.readTimeline(partitionA, "channel-a", ThreadDurableTimelineAnchor.Newest(limit = 10)),
+            )
+            assertEquals(listOf(20L, 21L, 22L, 23L, 24L), newestBeforeRefresh.envelopes.map { it.fact.seq })
+            assertTrue(newestBeforeRefresh.gaps.isEmpty())
+            assertTrue(newestBeforeRefresh.hasOlderStored, "lower island [1..5] must remain reachable via offline Before")
+            assertFalse(newestBeforeRefresh.reachesOldest)
+            assertTrue(newestBeforeRefresh.reachesHead)
+            assertTrue(newestBeforeRefresh.insideProvenSegment)
+
+            // 2. Explicit offline Before(20, crossGaps=true) still crosses into lower island [1..5] with gap (5, 20).
+            val offlineOlder = assertNotNull(
+                reader.readTimeline(partitionA, "channel-a", ThreadDurableTimelineAnchor.Before(20L, limit = 10, crossGaps = true)),
+            )
+            assertEquals(listOf(1L, 2L, 3L, 4L, 5L), offlineOlder.envelopes.map { it.fact.seq })
+            assertEquals(listOf(CanonicalMessageV2TimelineGap(afterSeq = 5L, beforeSeq = 20L)), offlineOlder.gaps)
+            assertTrue(offlineOlder.reachesOldest)
+
+            // 3. Online refresh commits Latest coverage [25..65] covering through 65: merges with head [20..24]
+            //    into [20..65] and absorbs loose realtime facts 50 & 65 with zero residual gaps!
+            store.applyCoverage(
+                scope = scope,
+                envelopes = listOf(envelope(25L), envelope(50L), envelope(65L)),
+                coverage = CanonicalMessageV2Coverage(25L, 65L, reachesOldest = false, headAtVerify = true, CanonicalMessageV2SegmentSource.Latest),
+                revAtRequest = 0L,
+                userDriven = true,
+            )
+            val newestAfterRefresh = assertNotNull(
+                reader.readTimeline(partitionA, "channel-a", ThreadDurableTimelineAnchor.Newest(limit = 10)),
+            )
+            assertEquals(listOf(20L, 21L, 22L, 23L, 24L, 25L, 50L, 65L), newestAfterRefresh.envelopes.map { it.fact.seq })
+            assertTrue(newestAfterRefresh.gaps.isEmpty(), "Latest coverage must absorb loose facts cleanly: ${newestAfterRefresh.gaps}")
+            assertTrue(newestAfterRefresh.hasOlderStored)
+            assertTrue(newestAfterRefresh.reachesHead)
+            assertTrue(newestAfterRefresh.insideProvenSegment)
+
+            // 4. Headless scope with non-consecutive loose facts [50, 55, 62] returns only gap-free newest [62],
+            //    while consecutive loose facts [61, 62] return both [61, 62] with zero gaps and hasOlderStored=true.
+            val scopeC = SyncScopeKey(partitionA, "channel-c", "channel")
+            fun envC(seq: Long) = CanonicalMessageEnvelopeV2(
+                fact = fact(seq).copy(id = "channel-c-message-$seq"),
+                context = CanonicalConversationContextV2.TopLevel(TopLevelScopeRefV2.Channel("server-a", "channel-c")),
+            )
+            store.applyCoverage(
+                scope = scopeC,
+                envelopes = listOf(envC(50L), envC(55L), envC(62L)),
+                coverage = null,
+                revAtRequest = 0L,
+                userDriven = false,
+            )
+            val nonConsecutiveLoose = assertNotNull(
+                reader.readTimeline(partitionA, "channel-c", ThreadDurableTimelineAnchor.Newest(limit = 5)),
+            )
+            assertEquals(listOf(62L), nonConsecutiveLoose.envelopes.map { it.fact.seq })
+            assertTrue(nonConsecutiveLoose.gaps.isEmpty())
+            assertTrue(nonConsecutiveLoose.hasOlderStored)
+            assertFalse(nonConsecutiveLoose.insideProvenSegment)
+
+            // Offline Before(62, crossGaps=true) can still reach earlier loose facts [50, 55].
+            val offlineLooseOlder = assertNotNull(
+                reader.readTimeline(partitionA, "channel-c", ThreadDurableTimelineAnchor.Before(62L, limit = 5, crossGaps = true)),
+            )
+            assertEquals(listOf(50L, 55L), offlineLooseOlder.envelopes.map { it.fact.seq })
+
+            // Adding consecutive loose fact 61 makes [61, 62] provably gap-free.
+            store.applyCoverage(
+                scope = scopeC,
+                envelopes = listOf(envC(61L)),
+                coverage = null,
+                revAtRequest = 0L,
+                userDriven = false,
+            )
+            val consecutiveLoose = assertNotNull(
+                reader.readTimeline(partitionA, "channel-c", ThreadDurableTimelineAnchor.Newest(limit = 5)),
+            )
+            assertEquals(listOf(61L, 62L), consecutiveLoose.envelopes.map { it.fact.seq })
+            assertTrue(consecutiveLoose.gaps.isEmpty())
+            assertTrue(consecutiveLoose.hasOlderStored)
+        }
+    }
+
+    @Test
+    fun newestTimelineCoversEmptyBaselineMaxSeqPoisonedLooseTouchingIslandAndUnknownFieldFiltering() = withFreshDatabase { database ->
+        val store = SqlDelightCanonicalMessageV2Store(database = database, now = { 10L })
+        val reader = CanonicalMessageV2DurableLastKnownReader(store)
+
+        runBlocking {
+            // 1. Empty baseline [0, 0] with loose realtime fact 10 above 0 still returns clean empty stand-in.
+            val emptyScope = SyncScopeKey(partitionA, "channel-empty", "channel")
+            fun envOf(channelId: String, seq: Long) = CanonicalMessageEnvelopeV2(
+                fact = fact(seq).copy(id = "$channelId-message-$seq"),
+                context = CanonicalConversationContextV2.TopLevel(TopLevelScopeRefV2.Channel("server-a", channelId)),
+            )
+            store.applyCoverage(
+                scope = emptyScope,
+                envelopes = emptyList(),
+                coverage = CanonicalMessageV2Coverage(0L, 0L, reachesOldest = true, headAtVerify = true, CanonicalMessageV2SegmentSource.Latest),
+                revAtRequest = 0L,
+                userDriven = true,
+            )
+            store.applyCoverage(
+                scope = emptyScope,
+                envelopes = listOf(envOf("channel-empty", 10L)),
+                coverage = null,
+                revAtRequest = 0L,
+                userDriven = false,
+            )
+            val emptyPage = assertNotNull(reader.readTimeline(partitionA, "channel-empty", ThreadDurableTimelineAnchor.Newest(limit = 5)))
+            assertTrue(emptyPage.envelopes.isEmpty())
+            assertTrue(emptyPage.gaps.isEmpty())
+            assertFalse(emptyPage.hasOlderStored)
+            assertTrue(emptyPage.reachesOldest)
+            assertTrue(emptyPage.reachesHead)
+            assertTrue(emptyPage.insideProvenSegment)
+
+            // 2. head.highSeq == Long.MAX_VALUE: limit == 1 and limit > 1 both handle max-seq without overflow.
+            val maxHeadScope = SyncScopeKey(partitionA, "channel-max-head", "channel")
+            val maxSeq = Long.MAX_VALUE
+            store.applyCoverage(
+                scope = maxHeadScope,
+                envelopes = listOf(envOf("channel-max-head", maxSeq - 2L), envOf("channel-max-head", maxSeq - 1L), envOf("channel-max-head", maxSeq)),
+                coverage = CanonicalMessageV2Coverage(maxSeq - 2L, maxSeq, reachesOldest = false, headAtVerify = true, CanonicalMessageV2SegmentSource.Latest),
+                revAtRequest = 0L,
+                userDriven = true,
+            )
+            val maxHeadOne = assertNotNull(reader.readTimeline(partitionA, "channel-max-head", ThreadDurableTimelineAnchor.Newest(limit = 1)))
+            assertEquals(listOf(maxSeq), maxHeadOne.envelopes.map { it.fact.seq })
+            assertTrue(maxHeadOne.gaps.isEmpty())
+            assertTrue(maxHeadOne.hasOlderStored)
+            assertTrue(maxHeadOne.reachesHead)
+            assertTrue(maxHeadOne.insideProvenSegment)
+
+            val maxHeadMany = assertNotNull(reader.readTimeline(partitionA, "channel-max-head", ThreadDurableTimelineAnchor.Newest(limit = 5)))
+            assertEquals(listOf(maxSeq - 2L, maxSeq - 1L, maxSeq), maxHeadMany.envelopes.map { it.fact.seq })
+            assertTrue(maxHeadMany.gaps.isEmpty())
+            assertFalse(maxHeadMany.hasOlderStored)
+            assertTrue(maxHeadMany.reachesHead)
+
+            // 3. head == null with loose fact at Long.MAX_VALUE (and partial unknownFields) + non-consecutive lower fact.
+            val maxLooseScope = SyncScopeKey(partitionA, "channel-max-loose", "channel")
+            val maxLooseFact = envOf("channel-max-loose", maxSeq)
+            store.applyCoverage(
+                scope = maxLooseScope,
+                envelopes = listOf(envOf("channel-max-loose", 10L), maxLooseFact),
+                coverage = null,
+                revAtRequest = 0L,
+                userDriven = false,
+                unknownFieldsByFactId = mapOf(maxLooseFact.fact.id to setOf(build.raft.app.canonical.message.MessageAggregateField.Reactions)),
+            )
+            val maxLoosePage = assertNotNull(reader.readTimeline(partitionA, "channel-max-loose", ThreadDurableTimelineAnchor.Newest(limit = 5)))
+            assertEquals(listOf(maxSeq), maxLoosePage.envelopes.map { it.fact.seq })
+            assertTrue(maxLoosePage.gaps.isEmpty())
+            assertTrue(maxLoosePage.hasOlderStored)
+            assertEquals(
+                setOf(build.raft.app.canonical.message.MessageAggregateField.Reactions),
+                maxLoosePage.unknownFieldsByFactId[maxLooseFact.fact.id],
+            )
+
+            // 4. head == null isolates poisoned non-consecutive loose fact 55 below newest loose fact 62,
+            //    and stops a consecutive run before a touching lower context island [50..61].
+            val poisonedLooseScope = SyncScopeKey(partitionA, "channel-poison-loose", "channel")
+            store.applyCoverage(
+                scope = poisonedLooseScope,
+                envelopes = listOf(envOf("channel-poison-loose", 50L), envOf("channel-poison-loose", 55L), envOf("channel-poison-loose", 62L)),
+                coverage = null,
+                revAtRequest = 0L,
+                userDriven = false,
+            )
+            database.queries.updateCanonicalFact(
+                seq = 55L,
+                createdAt = "2026-07-16T00:00:00.000Z",
+                canonicalFactJson = "malformed-loose-55",
+                id = "channel-poison-loose-message-55",
+                environmentId = poisonedLooseScope.environmentId,
+                serverId = poisonedLooseScope.serverId,
+                principalId = poisonedLooseScope.principalId,
+                consumerId = poisonedLooseScope.consumerId,
+                scopeKind = poisonedLooseScope.scopeKind,
+                channelId = poisonedLooseScope.scopeId,
+            )
+            val poisonedLoosePage = assertNotNull(reader.readTimeline(partitionA, "channel-poison-loose", ThreadDurableTimelineAnchor.Newest(limit = 5)))
+            assertEquals(listOf(62L), poisonedLoosePage.envelopes.map { it.fact.seq })
+            assertTrue(poisonedLoosePage.gaps.isEmpty())
+            assertTrue(poisonedLoosePage.hasOlderStored)
+
+            val touchingScope = SyncScopeKey(partitionA, "channel-touching-island", "channel")
+            store.applyCoverage(
+                scope = touchingScope,
+                envelopes = (50L..61L).map { envOf("channel-touching-island", it) },
+                coverage = CanonicalMessageV2Coverage(50L, 61L, reachesOldest = false, headAtVerify = false, CanonicalMessageV2SegmentSource.Context),
+                revAtRequest = 0L,
+                userDriven = false,
+            )
+            store.applyCoverage(
+                scope = touchingScope,
+                envelopes = listOf(envOf("channel-touching-island", 62L)),
+                coverage = null,
+                revAtRequest = 0L,
+                userDriven = false,
+            )
+            val touchingPage = assertNotNull(reader.readTimeline(partitionA, "channel-touching-island", ThreadDurableTimelineAnchor.Newest(limit = 5)))
+            assertEquals(listOf(62L), touchingPage.envelopes.map { it.fact.seq })
+            assertTrue(touchingPage.gaps.isEmpty())
+            assertTrue(touchingPage.hasOlderStored)
+
+            // 5. unknownFieldsByFactId filters out lower-island rows excluded below head.effectiveLowSeq.
+            val unknownFilterScope = SyncScopeKey(partitionA, "channel-unknown-filter", "channel")
+            val lowerFact = envOf("channel-unknown-filter", 5L)
+            val headFact = envOf("channel-unknown-filter", 20L)
+            store.applyCoverage(
+                scope = unknownFilterScope,
+                envelopes = listOf(lowerFact),
+                coverage = CanonicalMessageV2Coverage(5L, 5L, reachesOldest = true, headAtVerify = false, CanonicalMessageV2SegmentSource.Context),
+                revAtRequest = 0L,
+                userDriven = false,
+                unknownFieldsByFactId = mapOf(lowerFact.fact.id to setOf(build.raft.app.canonical.message.MessageAggregateField.Reactions)),
+            )
+            store.applyCoverage(
+                scope = unknownFilterScope,
+                envelopes = listOf(headFact),
+                coverage = CanonicalMessageV2Coverage(20L, 20L, reachesOldest = false, headAtVerify = true, CanonicalMessageV2SegmentSource.Latest),
+                revAtRequest = 0L,
+                userDriven = true,
+                unknownFieldsByFactId = mapOf(headFact.fact.id to setOf(build.raft.app.canonical.message.MessageAggregateField.Reactions)),
+            )
+            val filteredPage = assertNotNull(reader.readTimeline(partitionA, "channel-unknown-filter", ThreadDurableTimelineAnchor.Newest(limit = 10)))
+            assertEquals(listOf(20L), filteredPage.envelopes.map { it.fact.seq })
+            assertEquals(setOf(headFact.fact.id), filteredPage.unknownFieldsByFactId.keys)
+            assertTrue(filteredPage.hasOlderStored)
         }
     }
 
