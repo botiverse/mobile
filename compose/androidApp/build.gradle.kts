@@ -754,10 +754,27 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
+            val handsAppSlug = raftBuildConfigString("SLOCK_HANDS_APP_SLUG", "raft-android")
+            val handsChannel = raftBuildConfigString("SLOCK_HANDS_CHANNEL", "main")
+            val previewDeltaEnabled = handsAppSlug == "raft-android" && handsChannel == "preview"
+            buildConfigField("Boolean", "HANDS_DELTA_UPDATE_ENABLED", previewDeltaEnabled.toString())
+            buildConfigField(
+                "String",
+                "HANDS_DELTA_APP_SLUG",
+                if (previewDeltaEnabled) "\"raft-android\"" else "\"\""
+            )
+            buildConfigField(
+                "String",
+                "HANDS_DELTA_CHANNEL",
+                if (previewDeltaEnabled) "\"preview\"" else "\"\""
+            )
         }
         create("play") {
             initWith(getByName("release"))
             buildConfigField("Boolean", "HANDS_APK_UPDATE_ENABLED", "false")
+            buildConfigField("Boolean", "HANDS_DELTA_UPDATE_ENABLED", "false")
+            buildConfigField("String", "HANDS_DELTA_APP_SLUG", "\"\"")
+            buildConfigField("String", "HANDS_DELTA_CHANNEL", "\"\"")
             matchingFallbacks += listOf("release")
         }
         configureEach {

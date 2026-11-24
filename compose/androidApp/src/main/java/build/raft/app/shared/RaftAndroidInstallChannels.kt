@@ -48,9 +48,10 @@ internal class RaftAndroidHandsInstallChannel(private val context: Context) : Ra
         if (!RaftServicesPrivacyGate.allowsAutomatic()) return RaftInstallChannelLatest.Unknown
         val route =
             resolveHandsUpdateRoute(
-                alphaDeltaEnabled =
+                deltaEnabled =
                     handsDeltaUpdateAllowed(
                         configuredEnabled = BuildConfig.HANDS_DELTA_UPDATE_ENABLED,
+                        apkUpdateEnabled = BuildConfig.HANDS_APK_UPDATE_ENABLED,
                         buildApplicationId = BuildConfig.APPLICATION_ID,
                         runtimePackageName = context.packageName,
                         appSlug = BuildConfig.HANDS_DELTA_APP_SLUG,
