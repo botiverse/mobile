@@ -91,7 +91,8 @@ const val RaftDialogFooterNoteMaxLength: Int = 40
  * - Header: [title] in `text-headline` bold `foreground` (named by the words of the
  *   button that opened it, Title Case: "Create Channel"), and, with [onClose], the ghost
  *   × icon button named [closeLabel] at its end. 20dp padding, no bottom padding.
- * - Body: [description] (`text-subhead` `foreground-muted`) then [content], 20dp at the
+ * - Body: [description] (`text-subhead` `foreground-muted`, helper text only: why, for whom,
+ *   how to recover) then [content] in `foreground` (DialogBody, raft-ui 0.103), 20dp at the
  *   sides and bottom, 6dp under the header, 16dp between its children. It scrolls when the
  *   dialog reaches the window, so [content] goes in as it is: no `Modifier.weight` and no
  *   `verticalScroll` or lazy list of its own. Inside the scroll the body's height is
@@ -135,7 +136,9 @@ fun RaftDialogSurface(
         misuse("RaftDialogSurface: a footer note is at most $RaftDialogFooterNoteMaxLength characters; longer copy belongs in the body")
     }
     val fixedHeight = size.height
-    CompositionLocalProvider(LocalRaftContentColor provides colors.foregroundMuted, LocalRaftSurfaceColor provides colors.layerPopover) {
+    // DialogBody `text-foreground` (raft-ui 0.103): what the body says is read, so it is ink; only
+    // the [description] (helper text) stays `foreground-muted`.
+    CompositionLocalProvider(LocalRaftContentColor provides colors.foreground, LocalRaftSurfaceColor provides colors.layerPopover) {
         Column(
             modifier
                 .widthIn(max = size.maxWidth)

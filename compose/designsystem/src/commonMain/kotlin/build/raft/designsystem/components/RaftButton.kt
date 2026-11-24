@@ -59,6 +59,7 @@ import build.raft.designsystem.theme.RaftTheme
 import build.raft.designsystem.theme.RaftTypography
 import build.raft.designsystem.tokens.RaftRadius
 import build.raft.designsystem.tokens.RaftStroke
+import build.raft.designsystem.tokens.RaftUiComponentTokens
 import build.raft.designsystem.tokens.RaftUiPalette
 import build.raft.designsystem.tokens.RaftUiThemeColors
 
@@ -101,9 +102,8 @@ enum class RaftButtonSize {
 }
 
 /**
- * raft-ui Button icon sizes (0.21: `icon-md` and `icon-lg`; `icon-xs` / `icon-sm` are old
- * names of `icon-md`), plus the two inline sizes raft-ui draws inside a component rather than
- * as a Button: [Xs] and [Sm].
+ * raft-ui Button icon sizes: `icon-sm` (the row action, raft-ui 0.103), `icon-md` and `icon-lg`,
+ * plus [Xs], the inline size raft-ui draws inside a component rather than as a Button.
  */
 enum class RaftIconButtonSize(internal val box: Dp, internal val glyph: Dp) {
     /**
@@ -115,10 +115,12 @@ enum class RaftIconButtonSize(internal val box: Dp, internal val glyph: Dp) {
     Xs(24.dp, 16.dp),
 
     /**
-     * 28dp with a 16dp icon at `radius-chip`: a corner action over content, such as a code
-     * block's Copy. Its touch target widens to 44dp without changing its layout.
+     * raft-ui `icon-sm` (0.103): the row action, `--row-action-size` (28dp on every platform) with
+     * a 16dp icon at `radius-chip`. A comment header's More, a list row's or a card's single
+     * trailing action, a corner action over content such as a code block's Copy. Its touch target
+     * widens to 44dp without changing its layout.
      */
-    Sm(28.dp, 16.dp),
+    Sm(RaftUiComponentTokens.Touch.rowActionSize, 16.dp),
 
     /**
      * 32dp with an 18dp icon (36dp / 20dp on the frame). Under a fine pointer it takes the shared
