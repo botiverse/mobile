@@ -81,10 +81,14 @@ const val THREAD_MARKDOWN_SINGLE_PARAGRAPH_LIGHT_FEATURE_FLAG_KEY: String =
  */
 // runtime_form_v2_web (default on from 2026-10-21) is no longer read: runtime form v2 is the only form
 // (task #8, retire runtime form v1), so the server flag row can go once no client reads it.
-val SERVER_FEATURE_FLAG_CLIENT_DEFAULT_ON_KEYS: Set<String> = emptySet()
+val SERVER_FEATURE_FLAG_CLIENT_DEFAULT_ON_KEYS: Set<String> =
+    setOf(MOBILE_ACTIVITY_INPLACE_V1_FEATURE_FLAG_KEY)
 
 /** Server evaluation reason for a key that has no flag row at all (slock featureFlagService). */
 internal const val FEATURE_FLAG_REASON_MISSING_FLAG: String = "missing_flag"
+
+/** Server evaluation reason for a globally killed flag (slock featureFlagService). */
+internal const val FEATURE_FLAG_REASON_KILL_SWITCH: String = "kill_switch"
 
 // agent_migration_v0 is no longer read (2026-11-05): agent migration is always shown, as on web
 // (slock #13059). The server flag row can go once app versions that still read it are gone.
@@ -121,6 +125,16 @@ const val MOBILE_INBOX_INPLACE_FEATURE_FLAG_KEY: String = "mobile_inbox_inplace_
  * loaded All list is the badge's only writer. Per server, default OFF: off, every path is as before.
  */
 const val INBOX_ROW_POSITION_FEATURE_FLAG_KEY: String = "inbox_row_position_v1"
+
+/**
+ * 1.30 web-aligned Activity in-place + per-row position path (#proj-mobile:#163, Tenny d229571c):
+ * client default ON (in [SERVER_FEATURE_FLAG_CLIENT_DEFAULT_ON_KEYS]), so `missing_flag` /
+ * unresolved evaluates ON everywhere without a DB migration, while an explicit server rule,
+ * `flag_disabled`, or `kill_switch` turns it off per server or globally. A global `kill_switch`
+ * on [MOBILE_INBOX_INPLACE_FEATURE_FLAG_KEY] also acts as a day-0 emergency off-switch
+ * ([SharedServerFeatureFlags.isActivityInPlaceEnabled]).
+ */
+const val MOBILE_ACTIVITY_INPLACE_V1_FEATURE_FLAG_KEY: String = "mobile_activity_inplace_v1"
 
 /**
  * Activity rows in incremental sync (#proj-mobile:#167; botiverse/slock #15312, the server's
@@ -260,6 +274,7 @@ val REGISTERED_SERVER_FEATURE_FLAG_KEYS: List<String> = listOf(
     WORKSPACE_ARTIFACTS_FEATURE_FLAG_KEY,
     MOBILE_INBOX_INPLACE_FEATURE_FLAG_KEY,
     INBOX_ROW_POSITION_FEATURE_FLAG_KEY,
+    MOBILE_ACTIVITY_INPLACE_V1_FEATURE_FLAG_KEY,
     SYNC_INBOX_ROWS_FEATURE_FLAG_KEY,
     PERSONAL_ASSISTANT_FEATURE_FLAG_KEY,
     DRAFTS_SECTION_FEATURE_FLAG_KEY,
@@ -502,6 +517,18 @@ class SharedServerFeatureFlags(
 
     fun isEnabled(serverId: ServerId?, key: String): Boolean =
         applyDiagnosticOverride(serverId, key, serverEffective(serverId, key))
+
+    /**
+     * 1.30 web-aligned Activity in-place + per-row position gate (#proj-mobile:#163, Tenny d229571c):
+     * ON by default across all servers via [MOBILE_ACTIVITY_INPLACE_V1_FEATURE_FLAG_KEY] (default-on
+     * when unresolved or `missing_flag`), OFF when `mobile_activity_inplace_v1` explicitly evaluates
+     * false (`flag_disabled` / `kill_switch` / rule / local diagnostic override) OR when the legacy
+     * [MOBILE_INBOX_INPLACE_FEATURE_FLAG_KEY] carries an emergency `kill_switch` reason. An ordinary
+     * `default` false on `mobile_inbox_inplace_v0` does NOT disable 1.30.
+     */
+    internal fun isActivityInPlaceEnabled(serverId: ServerId): Boolean =
+        isEnabled(serverId, MOBILE_ACTIVITY_INPLACE_V1_FEATURE_FLAG_KEY) &&
+            snapshotFor(serverId).reasons[MOBILE_INBOX_INPLACE_FEATURE_FLAG_KEY] != FEATURE_FLAG_REASON_KILL_SWITCH
 
     /**
      * An online evaluation from this process always decides. Before the first one lands (offline cold
