@@ -45,8 +45,8 @@ private const val DEFAULT_HOST_WINDOW_ID = "host:default"
 
 /**
  * One host window-inset measurement, in pixels. [leftPx] / [rightPx] are PHYSICAL edges (the
- * iOS host's `safeAreaInsets.left/right`); the Android host does not send them and they stay 0
- * there, because Android pages keep their existing inset handling.
+ * iOS host's `safeAreaInsets.left/right` and Android's `systemBars() or displayCutout()`
+ * left/right for landscape cutouts and side navigation bars).
  */
 internal data class RaftHostWindowInsetValues(
     val topPx: Float,
@@ -400,8 +400,8 @@ internal data class RaftHorizontalSafeArea(val left: Dp = 0.dp, val right: Dp = 
 /**
  * The horizontal safe area from the host contract ([RaftHostWindowInsetValues.leftPx] /
  * [RaftHostWindowInsetValues.rightPx]) converted with [density]. Only the host contract counts:
- * the renderer's own `safeAreaInsets.left/right` are not read, so the Android host (which sends
- * no horizontal values) keeps its layout unchanged.
+ * both iOS and Android hosts publish physical left/right safe-area pixels through this contract,
+ * while hosts or tests that omit horizontal fields resolve to [RaftHorizontalSafeArea.Zero].
  */
 internal fun resolveRaftHorizontalSafeArea(
     values: RaftHostWindowInsetValues?,

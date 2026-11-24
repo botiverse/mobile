@@ -4,6 +4,7 @@ import build.raft.app.markdown.RaftCleanCopyClipboardScope
 import build.raft.app.resources.*
 import org.jetbrains.compose.resources.StringResource
 import build.raft.designsystem.components.RaftButton
+import build.raft.designsystem.components.raftSafeAreaHorizontalPadding
 import build.raft.designsystem.components.RaftSegment
 import build.raft.designsystem.components.RaftSegmentedControl
 import androidx.compose.foundation.horizontalScroll
@@ -12023,7 +12024,7 @@ private fun RaftFilePreviewDownloadStatusBar(
                     }
             )
     RaftDesignSystemTheme {
-        Box(modifier.fillMaxWidth().padding(12.dp)) {
+        Box(modifier.fillMaxWidth().raftSafeAreaHorizontalPadding().padding(12.dp)) {
             if (showProgress && view.inProgress) {
                 RaftCard(Modifier.fillMaxWidth()) {
                     RaftFilePreviewDownloadProgressBlock(
@@ -12083,7 +12084,7 @@ internal fun RaftFilePreviewMarkdownPanel(
 ) {
     if (!showChrome && status == "content") {
         LazyColumn(
-            modifier = modifier.fillMaxWidth(),
+            modifier = modifier.fillMaxWidth().raftSafeAreaHorizontalPadding(),
             contentPadding = PaddingValues(RaftAppSpacing.Md),
             verticalArrangement = Arrangement.spacedBy(RaftAppSpacing.Sm)
         ) {
@@ -12107,7 +12108,7 @@ internal fun RaftFilePreviewMarkdownPanel(
         return
     }
     RaftCard(
-        modifier = modifier.fillMaxWidth(),
+        modifier = modifier.fillMaxWidth().raftSafeAreaHorizontalPadding(),
         variant = RaftCardVariant.Inset,
     ) {
         RaftFilePreviewPanelHeader(
@@ -12160,7 +12161,7 @@ internal fun RaftFilePreviewTextPanel(
 ) {
     if (!showChrome) {
         LazyColumn(
-            modifier = modifier.fillMaxWidth(),
+            modifier = modifier.fillMaxWidth().raftSafeAreaHorizontalPadding(),
             contentPadding = PaddingValues(RaftAppSpacing.Md)
         ) {
             item {
@@ -12180,7 +12181,7 @@ internal fun RaftFilePreviewTextPanel(
         return
     }
     RaftCard(
-        modifier = modifier.fillMaxWidth(),
+        modifier = modifier.fillMaxWidth().raftSafeAreaHorizontalPadding(),
         variant = RaftCardVariant.Inset,
     ) {
         RaftFilePreviewPanelHeader(
@@ -12221,7 +12222,7 @@ internal fun RaftFilePreviewXlsxPanel(
             sheets.firstOrNull { it.name == selectedSheetName } ?: sheets.firstOrNull()
         }
     RaftCard(
-        modifier = modifier.fillMaxWidth(),
+        modifier = modifier.fillMaxWidth().raftSafeAreaHorizontalPadding(),
         variant = RaftCardVariant.Inset,
     ) {
         RaftFilePreviewPanelHeader(

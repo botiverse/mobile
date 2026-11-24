@@ -1,6 +1,7 @@
 package build.raft.app
 
 import build.raft.app.data.agentOffersLounge
+import build.raft.designsystem.components.raftSafeAreaHorizontalPadding
 import build.raft.app.data.agentBlockedState
 import build.raft.app.resources.*
 import androidx.compose.runtime.setValue
@@ -1262,7 +1263,7 @@ internal fun MembersDetailContent(
                     } else {
                         LazyColumn(
                             state = agentTabListStates.getValue(pageTab),
-                            modifier = Modifier.fillMaxSize(),
+                            modifier = Modifier.fillMaxSize().raftSafeAreaHorizontalPadding(),
                             verticalArrangement = Arrangement.spacedBy(RaftAppSpacing.Md),
                         ) {
                             // Web AgentWorkspace's path bar sits right under the tabs: no spacer.
@@ -1538,7 +1539,7 @@ internal fun MembersDetailContent(
                 }
             } else {
                 LazyColumn(
-                    modifier = Modifier.fillMaxSize(),
+                    modifier = Modifier.fillMaxSize().raftSafeAreaHorizontalPadding(),
                 ) {
                     item(key = "member-detail-${member.id.value}-human-content") {
                         MembersHumanDetailSections(

@@ -255,6 +255,7 @@ LUCIDE_ICONS = [
     "panel-left-open",
     "panel-right-open",
     "pause",
+    "paw-print",
     "pencil",
     "pin",
     "pin-off",

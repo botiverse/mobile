@@ -122,12 +122,13 @@ class RaftAndroidSandboxWebViewRaftHostTest {
         val secondCrossOrigin = "https://third-party.example/final"
         assertFalse(client.shouldOverrideUrlLoading(webView, request(secondCrossOrigin, redirect = true)))
 
-        // Same-origin link tap (non-redirect GET) also re-issues with Raft-Host.
-        val sameOriginLink = "$appOrigin/settings"
-        assertTrue(client.shouldOverrideUrlLoading(webView, request(sameOriginLink, redirect = false)))
+        // Document-initiated same-origin GET link / form (non-redirect) is allowed natively so
+        // Chromium preserves Sec-Fetch-Site: same-origin and Referer (e.g. Stamp /login?agree=1).
+        client.onPageFinished(webView, appStartUrl)
+        val sameOriginForm = "$appOrigin/login?terms_version=2026-10-20&agree=1"
+        assertFalse(client.shouldOverrideUrlLoading(webView, request(sameOriginForm, redirect = false)))
         idleMainLooper()
-        assertEquals(sameOriginLink, shadowOf(webView).lastLoadedUrl)
-        assertEquals(mapOf(RAFT_HOST_HEADER to "android"), shadowOf(webView).lastAdditionalHttpHeaders)
+        assertEquals(crossOriginRedirect, shadowOf(webView).lastLoadedUrl)
     }
 
     @Test
@@ -167,12 +168,13 @@ class RaftAndroidSandboxWebViewRaftHostTest {
         // Budget exhausted: next same-origin redirect proceeds without re-issue.
         assertFalse(client.shouldOverrideUrlLoading(webView, request("$appOrigin/hop-over-budget", redirect = true)))
 
-        // Commit resets budget for subsequent navigations.
+        // After commit, document-initiated links and post-commit same-origin redirects stay native
+        // (never cancelled & re-issued via loadUrl, preserving Sec-Fetch-Site: same-origin).
         client.onPageCommitVisible(webView, "$appOrigin/hop-over-budget")
-        assertTrue(client.shouldOverrideUrlLoading(webView, request("$appOrigin/after-commit", redirect = false)))
+        assertFalse(client.shouldOverrideUrlLoading(webView, request("$appOrigin/after-commit", redirect = false)))
+        assertFalse(client.shouldOverrideUrlLoading(webView, request("$appOrigin/after-commit-redirect", redirect = true)))
         idleMainLooper()
-        assertEquals("$appOrigin/after-commit", shadowOf(webView).lastLoadedUrl)
-        assertEquals(mapOf(RAFT_HOST_HEADER to "android"), shadowOf(webView).lastAdditionalHttpHeaders)
+        assertEquals("$appOrigin/hop-$RAFT_HOST_REISSUE_BUDGET", shadowOf(webView).lastLoadedUrl)
     }
 
     @Test
@@ -215,16 +217,25 @@ class RaftAndroidSandboxWebViewRaftHostTest {
         assertEquals(emptyList(), routed)
         assertEquals(emptyList(), blocked)
 
-        // Commit the start page, then a user-initiated page navigation redirects to authorize -> starter=Page, committed=true.
+        // Commit the start page, then a user-initiated GET form/link runs natively (returns false,
+        // preserving Sec-Fetch-Site: same-origin) and its 302 to authorize is caught with
+        // starter=Page, committed=true, hops=[loginStart]; trailing onPageFinished(loginStart) is
+        // swallowed so onLoadSuccess never drops the in-flight sign-in session.
+        var loadSuccessCount = 0
+        events.onLoadSuccess = { loadSuccessCount += 1 }
         client.onPageFinished(webView, appStartUrl)
+        assertEquals(1, loadSuccessCount)
         host.applyConfig(baseConfig(allowNavigation = true))
         events.routesMainFrameNavigation = null
         asks.clear()
         val loginStart = "$appOrigin/login/raft"
-        assertTrue(client.shouldOverrideUrlLoading(webView, request(loginStart, redirect = false)))
-        idleMainLooper()
+        assertFalse(client.shouldOverrideUrlLoading(webView, request(loginStart, redirect = false)))
+        client.onPageStarted(webView, loginStart, null)
         assertTrue(client.shouldOverrideUrlLoading(webView, request(authUrl, redirect = true)))
-        assertEquals(2, asks.size)
+        client.onPageFinished(webView, loginStart)
+        client.onPageCommitVisible(webView, loginStart)
+        assertEquals(1, loadSuccessCount, "trailing callbacks from host-cancelled redirect chain must not fire onLoadSuccess")
+        assertEquals(listOf(loginStart, loginStart, authUrl), asks.map { it.url })
         assertEquals(
             RaftWebViewMainFrameCatchAsk(
                 url = authUrl,
@@ -235,6 +246,14 @@ class RaftAndroidSandboxWebViewRaftHostTest {
             ),
             asks.last(),
         )
+        // After approval, loading the OAuth callback clears the host-cancelled fence and commits normally.
+        val callbackUrl = "$appOrigin/login/raft/callback?code=ok"
+        val controller = RaftWebViewController()
+        host.bindController(controller)
+        assertTrue(controller.loadUrl(callbackUrl))
+        client.onPageStarted(webView, callbackUrl, null)
+        client.onPageFinished(webView, callbackUrl)
+        assertEquals(2, loadSuccessCount, "OAuth callback load after cancelled authorize must commit normally")
     }
 
     @Test

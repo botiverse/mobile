@@ -1,6 +1,7 @@
 package build.raft.app
 
 import androidx.compose.foundation.background
+import build.raft.designsystem.components.raftSafeAreaHorizontalPadding
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -122,6 +123,7 @@ internal fun ArtifactForYouHead(
         modifier =
             Modifier
                 .fillMaxWidth()
+                .raftSafeAreaHorizontalPadding()
                 .padding(start = horizontalPadding, end = horizontalPadding, top = 12.dp, bottom = 0.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -170,6 +172,7 @@ internal fun ArtifactDateGroupHead(
         modifier =
             Modifier
                 .fillMaxWidth()
+                .raftSafeAreaHorizontalPadding()
                 .padding(start = horizontalPadding, end = horizontalPadding, top = 12.dp, bottom = 0.dp)
                 .testTag(ArtifactsHomeTags.DateGroupHeading)
                 .semantics { heading() },
@@ -253,6 +256,7 @@ internal fun ArtifactSettledStrip(
         modifier =
             Modifier
                 .fillMaxWidth()
+                .raftSafeAreaHorizontalPadding()
                 .padding(start = horizontalPadding, end = horizontalPadding, top = 8.dp, bottom = 0.dp)
                 .testTag(ArtifactsHomeTags.SettledStrip),
         verticalArrangement = Arrangement.Center,
@@ -777,6 +781,7 @@ internal fun ArtifactsHomeSkeleton(
     Column(
         Modifier
             .fillMaxWidth()
+            .raftSafeAreaHorizontalPadding()
             .padding(vertical = 4.dp)
             .testTag(ArtifactsHomeTags.Skeleton),
         verticalArrangement = Arrangement.spacedBy(8.dp),

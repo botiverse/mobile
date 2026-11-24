@@ -2,6 +2,7 @@ package build.raft.app
 
 import build.raft.app.resources.*
 import build.raft.designsystem.components.RaftSpinner
+import build.raft.designsystem.components.raftSafeAreaHorizontalPadding
 import build.raft.designsystem.components.RaftSpinnerSize
 import build.raft.designsystem.components.RaftButton
 import build.raft.designsystem.components.RaftButtonVariant
@@ -63,7 +64,7 @@ internal fun localizedThreadStateDetail(value: String?): String? =
 internal fun ThreadLoadingState(spinnerStillStep: Int? = null) {
     val label = stringResource(Res.string.thread_state_loading)
     Box(
-        modifier = Modifier.fillMaxSize().padding(horizontal = 24.dp, vertical = 32.dp),
+        modifier = Modifier.fillMaxSize().raftSafeAreaHorizontalPadding().padding(horizontal = 24.dp, vertical = 32.dp),
         contentAlignment = Alignment.Center
     ) {
         Column(
@@ -110,7 +111,7 @@ internal fun threadEmptyStandInAwaitsFirstLoad(
 @Composable
 internal fun ThreadStateMessage(title: String, detail: String?, traceId: String? = null) {
     Box(
-        modifier = Modifier.fillMaxSize().padding(horizontal = 24.dp, vertical = 32.dp),
+        modifier = Modifier.fillMaxSize().raftSafeAreaHorizontalPadding().padding(horizontal = 24.dp, vertical = 32.dp),
         contentAlignment = Alignment.Center
     ) {
         Column(
@@ -156,6 +157,7 @@ internal fun ThreadForwardSuccessToastView(
             Modifier
                 .fillMaxSize()
                 .zIndex(RaftFloatingOverlayHostZIndex + 20f)
+                .raftSafeAreaHorizontalPadding()
                 // Web viewport: top-center, at most calc(100vw - 1rem) wide.
                 .padding(start = 8.dp, top = raftTopSafeAreaPadding() + 8.dp, end = 8.dp),
         contentAlignment = Alignment.TopCenter
@@ -178,7 +180,7 @@ internal fun ThreadStateActionMessage(
     traceId: String? = null,
 ) {
     Box(
-        modifier = Modifier.fillMaxSize().padding(horizontal = 24.dp, vertical = 32.dp),
+        modifier = Modifier.fillMaxSize().raftSafeAreaHorizontalPadding().padding(horizontal = 24.dp, vertical = 32.dp),
         contentAlignment = Alignment.Center
     ) {
         Column(

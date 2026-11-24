@@ -39,6 +39,69 @@ internal data class RaftWebViewNavigationState(
     }
 }
 
+/**
+ * Re-entrancy-safe dispatcher for [RaftWebViewNavigationState] notifications shared across
+ * Android, iOS, and Desktop WebView hosts.
+ *
+ * When an `onNavigationStateChange` callback synchronously issues a controller command (such as
+ * `controller.stop()` while deflecting a routed/disallowed URL) that triggers another notification
+ * while the first callback is still on the stack, the re-entrant request is coalesced and drained
+ * iteratively with a hard cap instead of recursing unboundedly into native `stopLoading()` JNI.
+ */
+internal class RaftWebViewNavigationStateRelay(
+    private val maxReentrantRounds: Int = DEFAULT_MAX_REENTRANT_ROUNDS,
+) {
+    private var lastStateKey: String = ""
+    private var notifying: Boolean = false
+    private var pendingNotify: Boolean = false
+    private var pendingForce: Boolean = false
+
+    fun reset() {
+        lastStateKey = ""
+        pendingNotify = false
+        pendingForce = false
+    }
+
+    fun notify(
+        force: Boolean,
+        isActive: () -> Boolean,
+        readState: () -> RaftWebViewNavigationState,
+        deliver: (RaftWebViewNavigationState) -> Unit,
+    ) {
+        if (!isActive()) return
+        if (notifying) {
+            pendingNotify = true
+            if (force) pendingForce = true
+            return
+        }
+        notifying = true
+        try {
+            var nextForce = force
+            var rounds = 0
+            while (isActive()) {
+                pendingNotify = false
+                pendingForce = false
+                val state = readState()
+                val stateKey = state.toString()
+                if (nextForce || stateKey != lastStateKey) {
+                    lastStateKey = stateKey
+                    deliver(state)
+                }
+                if (!pendingNotify || !isActive()) break
+                rounds += 1
+                if (rounds >= maxReentrantRounds) break
+                nextForce = pendingForce
+            }
+        } finally {
+            notifying = false
+        }
+    }
+
+    companion object {
+        internal const val DEFAULT_MAX_REENTRANT_ROUNDS: Int = 4
+    }
+}
+
 internal class RaftWebViewController {
     private data class CommandBinding(
         val owner: Any,
@@ -48,6 +111,7 @@ internal class RaftWebViewController {
     private var commandBinding: CommandBinding? = null
     private val pendingCommands = mutableListOf<String>()
     private var flushingCommands: Boolean = false
+    private var dispatchingCommand: Boolean = false
 
     fun goBack() = issueCommand(COMMAND_GO_BACK)
 
@@ -96,10 +160,26 @@ internal class RaftWebViewController {
 
     private fun issueCommand(command: String) {
         val binding = commandBinding
-        if (binding == null || flushingCommands) {
+        if (binding == null || flushingCommands || dispatchingCommand) {
+            // Coalesce duplicate consecutive stops queued during synchronous re-entry.
+            if (command == COMMAND_STOP && pendingCommands.lastOrNull() == COMMAND_STOP) return
             pendingCommands += command
-        } else {
+            return
+        }
+        dispatchingCommand = true
+        try {
             binding.dispatch(command)
+            var reentrantDrains = 0
+            while (pendingCommands.isNotEmpty() && reentrantDrains < MAX_REENTRANT_COMMAND_DRAINS) {
+                val activeBinding = commandBinding ?: return
+                reentrantDrains += 1
+                activeBinding.dispatch(pendingCommands.removeAt(0))
+            }
+            if (pendingCommands.isNotEmpty() && commandBinding != null) {
+                pendingCommands.clear()
+            }
+        } finally {
+            dispatchingCommand = false
         }
     }
 
@@ -135,6 +215,7 @@ internal class RaftWebViewController {
         internal const val COMMAND_PROBE_DOCUMENT_CONTENT = "probeDocumentContent"
         internal const val COMMAND_EVALUATE_JAVA_SCRIPT_PREFIX = "evaluateJavaScript:"
         internal const val COMMAND_LOAD_URL_PREFIX = "loadUrl:"
+        private const val MAX_REENTRANT_COMMAND_DRAINS = 8
     }
 }
 

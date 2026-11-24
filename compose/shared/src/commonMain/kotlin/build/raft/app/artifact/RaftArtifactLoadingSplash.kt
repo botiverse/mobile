@@ -1,6 +1,7 @@
 package build.raft.app
 
 import androidx.compose.foundation.Canvas
+import build.raft.designsystem.components.raftSafeAreaHorizontalPadding
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -336,7 +337,7 @@ internal fun RaftArtifactLoadingSplashFrameContent(
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(RaftArtifactSplashLineGap * scale),
-                modifier = Modifier.padding(16.dp),
+                modifier = Modifier.raftSafeAreaHorizontalPadding().padding(16.dp),
             ) {
                 RaftArtifactSplashPixels(icon, shown.lit, scale)
                 Text(

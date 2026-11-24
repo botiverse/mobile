@@ -74,6 +74,13 @@ import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.RaftTheme
 import kotlinx.coroutines.launch
 
+/** Per-server installed Raft App origin lookup exposed to App link cards in a conversation. */
+@Immutable
+internal class ThreadInstalledAppOriginResolver(
+    val lookupSync: (origin: String) -> RaftInstalledAppSyncLookup,
+    val lookupAsync: suspend (origin: String) -> RaftInstalledAppOriginMatch?,
+)
+
 /**
  * The conversation's App link previews (artin #20 lane L): whose they are (viewer and Server),
  * the conversation an App is asked once in (the channel, DM or thread on screen), and the
@@ -98,6 +105,8 @@ internal data class ThreadAppLinkPreviewHost(
     val artifacts: ThreadArtifactLinkHost? = null,
     /** The batched link-card read (App link cards v2); false: always the GET (fixtures). */
     val batchedRead: Boolean = false,
+    /** Verified installed Raft App origins on [serverId] for cross-origin card buttons (e.g. Stamp on GitHub PR cards). */
+    val installedAppOrigins: ThreadInstalledAppOriginResolver? = null,
 )
 
 /**
@@ -242,14 +251,58 @@ internal fun ThreadAppLinkPreviewScope(
     val linkNavigator = LocalRaftLinkNavigator.current
     val webPanelHost = LocalRaftMobileWebPanelHost.current
     val currentWebPanelSource by rememberUpdatedState(LocalRaftMobileWebPanelMessageSource.current)
+    val installedAppLookupScope = rememberCoroutineScope()
+    val installedAppLookupGate = remember(messageId) { RaftPendingInstalledAppLookupGate() }
+    DisposableEffect(installedAppLookupGate) {
+        onDispose { installedAppLookupGate.cancel() }
+    }
     val openAppEntry: (String, RaftAppEntryRequest) -> Unit =
-        remember(linkNavigator, currentOnOpenLink, webPanelHost) {
+        remember(linkNavigator, currentOnOpenLink, webPanelHost, installedAppLookupGate) {
             { address, request ->
+                installedAppLookupGate.cancel()
                 webPanelHost?.setPendingSource(currentWebPanelSource)
                 if (linkNavigator != null) {
                     linkNavigator.openAppEntry(address, request)
                 } else {
                     currentOnOpenLink(address)
+                }
+            }
+        }
+    val installedAppResolver = host.installedAppOrigins
+    val lookupInstalledApp: ((origin: String) -> RaftInstalledAppSyncLookup)? =
+        remember(installedAppResolver) {
+            installedAppResolver?.let { resolver ->
+                { origin -> resolver.lookupSync(origin) }
+            }
+        }
+    val resolveInstalledAppAsync: (
+        (
+            address: String,
+            origin: String,
+            onMatched: (RaftInstalledAppOriginMatch) -> Unit,
+            onUnmatched: () -> Unit,
+        ) -> Boolean
+    )? =
+        remember(installedAppResolver, linkNavigator, installedAppLookupGate, installedAppLookupScope) {
+            installedAppResolver?.let { resolver ->
+                { address, origin, onMatched, onUnmatched ->
+                    val eligibleOrigin = linkNavigator?.candidateAppEntryScopeOrigin(address)
+                    if (eligibleOrigin == null || eligibleOrigin != origin) {
+                        false
+                    } else {
+                        installedAppLookupGate.launchLatest(
+                            scope = installedAppLookupScope,
+                            load = { resolver.lookupAsync(origin) },
+                            onComplete = { matched ->
+                                if (matched != null && matched.origin == origin) {
+                                    onMatched(matched)
+                                } else {
+                                    onUnmatched()
+                                }
+                            },
+                        )
+                        true
+                    }
                 }
             }
         }
@@ -261,6 +314,8 @@ internal fun ThreadAppLinkPreviewScope(
             onOpenLink = currentOnOpenLink,
             onOpenAppEntry = openAppEntry,
             onOpenInSystemBrowser = openInSystemBrowser,
+            lookupInstalledApp = lookupInstalledApp,
+            resolveInstalledAppAsync = resolveInstalledAppAsync,
         )
     // No card changes under the person: a card of this message open, or Raft's question open on it.
     ThreadAppLinkRowEngagementEffect(presence, cardActivity) { cards.opened != null || asking != null }
@@ -270,7 +325,18 @@ internal fun ThreadAppLinkPreviewScope(
     val openArtifactWebPage = rememberRaftWebPageOpener()
     val artifactOpener = rememberRaftArtifactOpener { openArtifactWebPage(artifactWebUrl(artifactWebBaseUrl, it)) }
     val chipHost =
-        remember(view.results, cards, artifacts, artifactWebBaseUrl, artifactOpener, host.serverId, openAppEntry, openInSystemBrowser) {
+        remember(
+            view.results,
+            cards,
+            artifacts,
+            artifactWebBaseUrl,
+            artifactOpener,
+            host.serverId,
+            openAppEntry,
+            openInSystemBrowser,
+            lookupInstalledApp,
+            resolveInstalledAppAsync,
+        ) {
             RaftAppLinkChipHost(
                 view.results,
                 onAsk = { asking = it },
@@ -300,6 +366,8 @@ internal fun ThreadAppLinkPreviewScope(
                         openLink = currentOnOpenLink,
                         openAppEntry = openAppEntry,
                         openInSystemBrowser = openInSystemBrowser,
+                        lookupInstalledApp = lookupInstalledApp,
+                        resolveInstalledAppAsync = resolveInstalledAppAsync,
                     )
                 },
             )
@@ -326,7 +394,15 @@ internal fun ThreadAppLinkPreviewScope(
             }
         }
     val blockHost =
-        remember(view.results, host.serverId, openAppEntry, openInSystemBrowser, actionHost) {
+        remember(
+            view.results,
+            host.serverId,
+            openAppEntry,
+            openInSystemBrowser,
+            actionHost,
+            lookupInstalledApp,
+            resolveInstalledAppAsync,
+        ) {
             if (view.results.values.none { it is AppLinkResult.Card && it.block != null }) {
                 null
             } else {
@@ -341,6 +417,8 @@ internal fun ThreadAppLinkPreviewScope(
                                 openLink = currentOnOpenLink,
                                 openAppEntry = openAppEntry,
                                 openInSystemBrowser = openInSystemBrowser,
+                                lookupInstalledApp = lookupInstalledApp,
+                                resolveInstalledAppAsync = resolveInstalledAppAsync,
                             )
                         },
                         actions = actionHost,
@@ -469,6 +547,9 @@ internal fun String.isAppLinkMessageId(): Boolean =
  * - A `connect_account` card's [AppLinkResult.Card.connectUrl] goes to the system browser.
  * - A card without [AppLinkResult.Card.connectUrl] whose [address] is on `origin(card.url)` opens
  *   as an App entry (`{scopeOrigin, card.app.name, preferredServerId}`).
+ * - A card without [AppLinkResult.Card.connectUrl] whose cross-origin [address] matches a verified
+ *   installed Raft App on [preferredServerId] (e.g. Stamp's "Review in Stamp" button on a GitHub
+ *   PR card) opens as an App entry with the verified App's origin, name, and logo.
  * - Anything else opens via ordinary [openLink].
  */
 internal fun openThreadAppLinkAddress(
@@ -478,25 +559,82 @@ internal fun openThreadAppLinkAddress(
     openLink: (String) -> Unit,
     openAppEntry: (String, RaftAppEntryRequest) -> Unit,
     openInSystemBrowser: (String) -> Unit,
+    lookupInstalledApp: ((origin: String) -> RaftInstalledAppSyncLookup)? = null,
+    resolveInstalledAppAsync: (
+        (
+            address: String,
+            origin: String,
+            onMatched: (RaftInstalledAppOriginMatch) -> Unit,
+            onUnmatched: () -> Unit,
+        ) -> Boolean
+    )? = null,
 ) {
     if (address == card.connectUrl) {
         openInSystemBrowser(address)
         return
     }
+    val cleanServerId = preferredServerId?.trim()?.takeIf { it.isNotEmpty() }
+    val cardAppName = card.app.name.trim().takeIf { it.isNotEmpty() }
+    val cardAppLogoUrl = card.app.icon?.trim()?.takeIf { it.isNotEmpty() }
     val cardOrigin = if (card.connectUrl == null) raftAppEntryOriginOf(card.url) else null
-    if (cardOrigin != null && raftAppEntryOriginOf(address) == cardOrigin) {
+    val addressOrigin = if (card.connectUrl == null) raftAppEntryOriginOf(address) else null
+    if (cardOrigin != null && addressOrigin == cardOrigin) {
         openAppEntry(
             address,
             RaftAppEntryRequest(
                 scopeOrigin = cardOrigin,
-                appName = card.app.name.trim().takeIf { it.isNotEmpty() },
-                preferredServerId = preferredServerId?.trim()?.takeIf { it.isNotEmpty() },
-                appLogoUrl = card.app.icon?.trim()?.takeIf { it.isNotEmpty() },
+                appName = cardAppName,
+                preferredServerId = cleanServerId,
+                appLogoUrl = cardAppLogoUrl,
             ),
         )
-    } else {
-        openLink(address)
+        return
     }
+    if (card.connectUrl == null && addressOrigin != null && cleanServerId != null) {
+        when (val sync = lookupInstalledApp?.invoke(addressOrigin)) {
+            is RaftInstalledAppSyncLookup.Matched -> {
+                if (sync.match.origin == addressOrigin) {
+                    openAppEntry(
+                        address,
+                        RaftAppEntryRequest(
+                            scopeOrigin = sync.match.origin,
+                            appName = sync.match.appName ?: cardAppName,
+                            preferredServerId = cleanServerId,
+                            appLogoUrl = sync.match.logoUrl ?: cardAppLogoUrl,
+                        ),
+                    )
+                    return
+                }
+            }
+            RaftInstalledAppSyncLookup.NotLoaded -> {
+                val dispatched =
+                    resolveInstalledAppAsync?.invoke(
+                        address,
+                        addressOrigin,
+                        { matched ->
+                            if (matched.origin == addressOrigin) {
+                                openAppEntry(
+                                    address,
+                                    RaftAppEntryRequest(
+                                        scopeOrigin = matched.origin,
+                                        appName = matched.appName ?: cardAppName,
+                                        preferredServerId = cleanServerId,
+                                        appLogoUrl = matched.logoUrl ?: cardAppLogoUrl,
+                                    ),
+                                )
+                            } else {
+                                openLink(address)
+                            }
+                        },
+                        { openLink(address) },
+                    ) == true
+                if (dispatched) return
+            }
+            RaftInstalledAppSyncLookup.KnownNotInstalled,
+            null -> Unit
+        }
+    }
+    openLink(address)
 }
 
 @Composable

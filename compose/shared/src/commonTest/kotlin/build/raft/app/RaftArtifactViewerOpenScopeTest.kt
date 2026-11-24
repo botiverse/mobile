@@ -13,6 +13,7 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 /**
@@ -71,5 +72,33 @@ class RaftArtifactViewerOpenScopeTest {
             }
         assertTrue(chatPager.openRaftArtifactViewerPage(target, storeScope = null))
         assertEquals(RAFT_ARTIFACT_VIEWER_PAGE, opened.single().first)
+    }
+
+    @Test
+    fun searchChildTabRejectsNullScopeAndOpensViewerWithExplicitScope() {
+        // artin 11-24: the Search bottom tab is also an app-shell child tab whose pageData holds
+        // only shellId/tab. Without the shell scope passed down, opening an Artifact hit failed
+        // with missing_source_scope and fell back to the external browser.
+        val searchPager =
+            activityTabPager().also { pager ->
+                pager.pageData =
+                    PageData(
+                        raftEmbeddedChildPageData(
+                            JSONObject().apply {
+                                put("shellId", "shell-artifact-test")
+                                put("tab", "search")
+                            }
+                        )
+                    )
+            }
+        assertFalse(searchPager.openRaftArtifactViewerPage(target, storeScope = null))
+        assertTrue(opened.isEmpty())
+
+        assertTrue(searchPager.openRaftArtifactViewerPage(target, storeScope = activityScope))
+        val (pageName, pageData) = opened.single()
+        assertEquals(RAFT_ARTIFACT_VIEWER_PAGE, pageName)
+        assertEquals("android-default-app-shell", pageData[RAFT_SHELL_INSTANCE_ID]?.jsonPrimitive?.content)
+        assertEquals("server-1", pageData[RAFT_SHELL_SERVER_ID]?.jsonPrimitive?.content)
+        assertEquals(target, JSONObject(pageData.toString()).raftArtifactViewerTargetOrNull())
     }
 }

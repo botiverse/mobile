@@ -156,4 +156,72 @@ class AppShellRailSurfaceVisibilityTest {
             )
         )
     }
+
+    @Test
+    fun `wide tasks pending column opens only on wide desktop tasks tab`() {
+        assertTrue(
+            appShellTasksPendingColumnAllowed(
+                desktopModeOnLargeScreen = true,
+                dualPane = true,
+                selectedTab = "tasks",
+            )
+        )
+        assertTrue(
+            appShellTasksPendingColumnOpen(
+                desktopModeOnLargeScreen = true,
+                dualPane = true,
+                selectedTab = "tasks",
+                pendingSurfaceOpen = true,
+            )
+        )
+        assertFalse(
+            appShellTasksPendingColumnOpen(
+                desktopModeOnLargeScreen = true,
+                dualPane = true,
+                selectedTab = "tasks",
+                pendingSurfaceOpen = false,
+            )
+        )
+        assertFalse(
+            appShellTasksPendingColumnOpen(
+                desktopModeOnLargeScreen = false,
+                dualPane = true,
+                selectedTab = "tasks",
+                pendingSurfaceOpen = true,
+            )
+        )
+        assertFalse(
+            appShellTasksPendingColumnOpen(
+                desktopModeOnLargeScreen = true,
+                dualPane = false,
+                selectedTab = "tasks",
+                pendingSurfaceOpen = true,
+            )
+        )
+        assertFalse(
+            appShellTasksPendingColumnOpen(
+                desktopModeOnLargeScreen = true,
+                dualPane = true,
+                selectedTab = "home",
+                pendingSurfaceOpen = true,
+            )
+        )
+        assertFalse(
+            appShellTasksPendingColumnOpen(
+                desktopModeOnLargeScreen = true,
+                dualPane = true,
+                selectedTab = "activity",
+                pendingSurfaceOpen = true,
+            )
+        )
+        assertFalse(
+            appShellTasksPendingColumnOpen(
+                desktopModeOnLargeScreen = true,
+                dualPane = true,
+                selectedTab = "tasks",
+                pendingSurfaceOpen = true,
+                railInlineSecondaryDestination = AppShellRailSearchKey,
+            )
+        )
+    }
 }

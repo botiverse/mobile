@@ -372,7 +372,6 @@
     <string name="settings_usage_data_learn_more">자세히 알아보기</string>
     <string name="settings_usage_data_save_failed">설정을 저장하지 못했어요. 다시 시도해 주세요.</string>
     <string name="settings_computers_title">컴퓨터</string>
-    <string name="settings_computers_alerts_section">알림</string>
     <string name="settings_computers_subtitle">연결된 컴퓨터 및 워크스페이스</string>
     <string name="settings_server_title">서버</string>
     <string name="settings_server_profile_title">서버 프로필</string>
@@ -2464,10 +2463,6 @@
     <string name="home_notification_action_download">다운로드</string>
     <string name="home_notification_action_downloading">다운로드 중</string>
     <string name="home_notification_action_install">설치</string>
-    <string name="home_notification_machine_offline_title_one">%1$s 컴퓨터가 오프라인이에요</string>
-    <string name="home_notification_machine_offline_title_many">%1$s 컴퓨터가 오프라인이에요</string>
-    <string name="home_notification_machine_offline_body_one">지금 이 컴퓨터에서 활성 상태인 에이전트는 없어요. 다음에 필요할 때 다시 연결하세요.</string>
-    <string name="home_notification_machine_offline_body_many">지금 이 컴퓨터들에서 활성 상태인 에이전트가 없어요. 다음에 필요할 때 다시 연결해 주세요.</string>
     <string name="home_notification_machine_outdated_title_one">%1$s 업데이트 가능</string>
     <string name="home_notification_machine_outdated_title_many">%1$s 업데이트 가능</string>
     <string name="home_notification_machine_outdated_body">중지한 뒤 다시 연결해 업데이트하세요.</string>
@@ -2814,8 +2809,6 @@
     <string name="background_kill_notice_body">기기에서 백그라운드에 있던 Raft를 종료해 메시지와 알림이 지연될 수 있어요. 알림 설정을 열어 Raft의 백그라운드 실행을 허용해 주세요.</string>
     <string name="background_kill_notice_action_open_settings">설정 열기</string>
     <string name="background_kill_notice_action_dont_show_again">다시 표시 안 함</string>
-    <string name="settings_notifications_offline_computers_title">오프라인 컴퓨터 알림</string>
-    <string name="settings_notifications_offline_computers_detail">등록된 컴퓨터가 오프라인이면 홈에 알림을 표시해요. 기본적으로 꺼져 있어요.</string>
     <string name="settings_notifications_test_title">테스트 알림 보내기</string>
     <string name="settings_notifications_test_detail">로컬 테스트 알림을 보내 이 기기를 확인해요.</string>
     <string name="settings_notifications_test_allow_permission">테스트를 보내려면 Raft의 알림을 허용하세요.</string>
@@ -6135,6 +6128,10 @@
     <string name="action_card_seats_add_purpose_person">%1$s × 1</string>
     <string name="action_card_seats_add_sum_note">사람은 1명당 시트 1개, 에이전트는 1개당 시트 0.1개를 차지해요. 앱은 시트를 차지하지 않아요.</string>
     <string name="action_card_seats_add_sum_note_person">사람은 1명당 시트 1개를 차지해요. 에이전트와 앱은 시트를 차지하지 않아요.</string>
+    <string name="settings_appearance_assistant_section">어시스턴트</string>
+    <string name="settings_appearance_assistant_otter_description">%1$s은(는) 메시지 입력창 위에 있어서 누르면 바로 열려요. 끄면 모든 페이지와 모든 기기에서 보이지 않아요. %1$s의 DM은 그대로 쓸 수 있어요.</string>
+    <string name="settings_appearance_assistant_panel_link_title">%1$s 설정 더 보기</string>
+    <string name="settings_appearance_assistant_panel_link_description">권한, 추가 지시, WeChat은 채팅 옆 %1$s의 프로필에 있어요.</string>
     <string name="settings_computers_revoked_status">키 취소됨</string>
     <string name="settings_computers_revoked_title">%1$s에 연결 끊김</string>
     <string name="settings_computers_revoked_cause_member_left">%1$s 님이 서버를 나가서 이 컴퓨터의 키가 취소되었어요.</string>

@@ -366,6 +366,7 @@ internal suspend fun dispatchSettingsWebViewHostOpen(
                         scopeOrigin = matched.origin,
                         appName = matched.appName,
                         preferredServerId = serverId,
+                        appLogoUrl = matched.logoUrl,
                     ),
                 )
                 return "entry"

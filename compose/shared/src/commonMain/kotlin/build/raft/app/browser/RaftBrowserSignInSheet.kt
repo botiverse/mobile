@@ -144,6 +144,9 @@ internal fun rememberInAppBrowserSignInHost(
                     raftAuthorizeOrigin(currentApiUrl, allowLoopback = RaftCmpRouter.isDebugBuild)
                 },
                 webUrlProvider = { currentWebUrl },
+                setupOriginProvider = {
+                    raftAuthorizeOrigin(currentWebUrl, allowLoopback = RaftCmpRouter.isDebugBuild)
+                },
                 raftHostsProvider = { raftBrowserRaftHosts(currentWebUrl, currentApiUrl) },
                 featureEnabledProvider = { currentFlagEnabled },
                 accountProvider = { currentSession?.toSignInAccountContext(currentEnvKey) },

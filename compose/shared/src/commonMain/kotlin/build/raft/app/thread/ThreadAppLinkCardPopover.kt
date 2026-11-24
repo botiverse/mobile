@@ -48,6 +48,15 @@ internal class ThreadAppLinkCards(
     val openLink: (String) -> Unit,
     val openAppEntry: (String, RaftAppEntryRequest) -> Unit,
     val openInSystemBrowser: (String) -> Unit,
+    val lookupInstalledApp: ((origin: String) -> RaftInstalledAppSyncLookup)? = null,
+    val resolveInstalledAppAsync: (
+        (
+            address: String,
+            origin: String,
+            onMatched: (RaftInstalledAppOriginMatch) -> Unit,
+            onUnmatched: () -> Unit,
+        ) -> Boolean
+    )? = null,
 ) {
     private val refs = mutableMapOf<String, RaftLiveRootAnchorRef>()
 
@@ -76,6 +85,8 @@ internal class ThreadAppLinkCards(
                 openLink = openLink,
                 openAppEntry = openAppEntry,
                 openInSystemBrowser = openInSystemBrowser,
+                lookupInstalledApp = lookupInstalledApp,
+                resolveInstalledAppAsync = resolveInstalledAppAsync,
             )
             return
         }
@@ -97,10 +108,21 @@ internal fun rememberThreadAppLinkCards(
     onOpenLink: (String) -> Unit,
     onOpenAppEntry: (String, RaftAppEntryRequest) -> Unit = { url, _ -> onOpenLink(url) },
     onOpenInSystemBrowser: (String) -> Unit = rememberRaftSystemBrowserOpener(),
+    lookupInstalledApp: ((origin: String) -> RaftInstalledAppSyncLookup)? = null,
+    resolveInstalledAppAsync: (
+        (
+            address: String,
+            origin: String,
+            onMatched: (RaftInstalledAppOriginMatch) -> Unit,
+            onUnmatched: () -> Unit,
+        ) -> Boolean
+    )? = null,
 ): ThreadAppLinkCards {
     val openLink by rememberUpdatedState(onOpenLink)
     val openAppEntry by rememberUpdatedState(onOpenAppEntry)
     val openInSystemBrowser by rememberUpdatedState(onOpenInSystemBrowser)
+    val currentLookupInstalledApp by rememberUpdatedState(lookupInstalledApp)
+    val currentResolveInstalledAppAsync by rememberUpdatedState(resolveInstalledAppAsync)
     return remember(messageId, preferredServerId) {
         ThreadAppLinkCards(
             messageId = messageId,
@@ -108,6 +130,12 @@ internal fun rememberThreadAppLinkCards(
             openLink = { openLink(it) },
             openAppEntry = { url, request -> openAppEntry(url, request) },
             openInSystemBrowser = { openInSystemBrowser(it) },
+            lookupInstalledApp = { origin ->
+                currentLookupInstalledApp?.invoke(origin) ?: RaftInstalledAppSyncLookup.KnownNotInstalled
+            },
+            resolveInstalledAppAsync = { address, origin, onMatched, onUnmatched ->
+                currentResolveInstalledAppAsync?.invoke(address, origin, onMatched, onUnmatched) == true
+            },
         )
     }
 }
@@ -176,6 +204,8 @@ internal fun ThreadAppLinkCardPopoverHost(
             openLink = cards.openLink,
             openAppEntry = cards.openAppEntry,
             openInSystemBrowser = openInSystemBrowser,
+            lookupInstalledApp = cards.lookupInstalledApp,
+            resolveInstalledAppAsync = cards.resolveInstalledAppAsync,
         )
     }
     Modal(onWillDismiss = { cards.close() }) {

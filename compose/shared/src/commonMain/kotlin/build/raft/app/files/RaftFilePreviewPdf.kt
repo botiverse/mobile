@@ -1,6 +1,7 @@
 package build.raft.app
 
 import build.raft.app.resources.*
+import build.raft.designsystem.components.raftSafeAreaHorizontalPadding
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -241,7 +242,7 @@ private fun RaftFilePreviewPdfStatusCard(
     val colors = RaftTheme.colors
     val typography = RaftTheme.typography
     val failure = (state as? RaftFilePreviewPdfState.Failed)?.reason
-    Box(modifier.background(colors.layerCanvas), contentAlignment = Alignment.Center) {
+    Box(modifier.background(colors.layerCanvas).raftSafeAreaHorizontalPadding(), contentAlignment = Alignment.Center) {
         Column(
             Modifier
                 .widthIn(max = 440.dp)

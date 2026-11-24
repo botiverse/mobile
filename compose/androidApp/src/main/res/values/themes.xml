@@ -23,7 +23,16 @@
         <item name="android:colorBackground">@color/raft_window_background</item>
     </style>
 
-    <style name="Theme.Raft" parent="Base.Theme.Raft">
+    <style name="Base.Theme.Raft.Window" parent="Base.Theme.Raft">
+        <!-- Match RaftCmpActivity.setupImmersiveMode() from the first frame and in Compose
+             RaftWindowDialog windows (Modal, sheets, menus, lightbox) so dialog windows draw
+             edge-to-edge under short-edge cutouts on API 29 instead of letterboxing behind
+             Modal's horizontal safe-area shell. API 30+ upgrades this to always in
+             values-v30/themes.xml. -->
+        <item name="android:windowLayoutInDisplayCutoutMode">shortEdges</item>
+    </style>
+
+    <style name="Theme.Raft" parent="Base.Theme.Raft.Window">
         <item name="android:windowNoTitle">true</item>
         <item name="android:windowActionBar">false</item>
         <item name="android:windowBackground">@color/raft_window_background</item>

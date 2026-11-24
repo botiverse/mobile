@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.Composable
@@ -229,10 +230,18 @@ private fun SettingsFeedbackTicketsRoute(resumeTick: Int) {
                             ?: session?.currentServerSlug()
                     val webUrl = (settingsCapabilities.loadDeveloper() as? DataResult.Content)?.data?.webUrl
                     // A ticket of another app (the one list holds every app's) links to its own app.
-                    val ticketSource = store.state.value.detail?.takeIf { it.ticketId == ticketId }?.ticket?.source
+                    val currentState = store.state.value
+                    val ticket =
+                        currentState.detail?.takeIf { it.ticketId == ticketId }?.ticket
+                            ?: currentState.list.tickets.firstOrNull { it.id == ticketId }
+                    val ticketSource = ticket?.source
                     val link = settingsFeedbackTicketLink(webUrl, serverSlug, ticketId, ticketSource ?: platform)
                     bridge.log("settings_feedback_tickets_copy_link ticket=${ticketId.take(8)} ok=${link != null}")
-                    if (link != null) settingsCapabilities.bridgeCopyToClipboard(link) else bridge.toast(copyLinkFailedMessage)
+                    if (link != null) {
+                        settingsCapabilities.bridgeCopyToClipboard(settingsFeedbackTicketCopyText(link, ticket?.message))
+                    } else {
+                        bridge.toast(copyLinkFailedMessage)
+                    }
                 }
             }
         }
@@ -298,6 +307,67 @@ internal fun settingsFeedbackTicketLink(webUrl: String?, serverSlug: String?, ti
             else -> return null
         }
     return "${sharedSettingsResolvedWebBaseUrl(webUrl)}/s/$slug/settings/feedback/ticket/${id.encodeUriComponent()}$query"
+}
+
+/**
+ * Formats clipboard text for Copy Link on a feedback ticket (#proj-mobile:dcf007d7): a single-line,
+ * whitespace-normalized excerpt of [message] (truncated cleanly by Unicode code points so CJK and
+ * emoji never split surrogate pairs) followed by a newline and [link]. Blank/null [message] returns
+ * [link] unchanged.
+ */
+internal fun settingsFeedbackTicketCopyText(
+    link: String,
+    message: String?,
+    maxExcerptChars: Int = 80,
+): String {
+    if (maxExcerptChars <= 0) return link
+    val trimmed = message?.trim()?.takeIf { it.isNotEmpty() } ?: return link
+    val normalized =
+        buildString(trimmed.length) {
+            var inWhitespace = false
+            for (ch in trimmed) {
+                if (ch.isWhitespace()) {
+                    if (!inWhitespace) {
+                        append(' ')
+                        inWhitespace = true
+                    }
+                } else {
+                    append(ch)
+                    inWhitespace = false
+                }
+            }
+        }
+    if (normalized.isEmpty()) return link
+    val excerpt = truncateFeedbackExcerptCodePoints(normalized, maxExcerptChars)
+    return "$excerpt\n$link"
+}
+
+private fun truncateFeedbackExcerptCodePoints(
+    text: String,
+    maxCodePoints: Int,
+): String {
+    var codePoints = 0
+    var i = 0
+    var cutIndex = -1
+    val limitBeforeEllipsis = (maxCodePoints - 1).coerceAtLeast(0)
+    while (i < text.length) {
+        val step =
+            if (text[i].isHighSurrogate() && i + 1 < text.length && text[i + 1].isLowSurrogate()) {
+                2
+            } else {
+                1
+            }
+        if (codePoints == limitBeforeEllipsis) {
+            cutIndex = i
+        }
+        codePoints += 1
+        i += step
+        if (codePoints > maxCodePoints) {
+            val end = if (cutIndex >= 0) cutIndex else 0
+            return "${text.substring(0, end).trimEnd()}…"
+        }
+    }
+    return text
 }
 
 /** JavaScript `encodeURIComponent`: UTF-8, all but `A-Z a-z 0-9 - _ . ! ~ * ' ( )` escaped. */
@@ -377,6 +447,7 @@ internal fun SettingsFeedbackTicketsScreen(
     privacyMode: RaftPrivacyMode = RaftPrivacyMode.Off,
 ) {
     val detail = state.detail
+    val listState = remember(state.list.filter) { LazyListState() }
     var closeDialogOpen by remember(detail?.ticketId) { mutableStateOf(false) }
     val openCloseDialog = {
         actions.onClearCloseError()
@@ -433,6 +504,7 @@ internal fun SettingsFeedbackTicketsScreen(
                 ownClient = ownClient,
                 showAgentHint = state.showAgentHint,
                 newFeedbackBlocked = settingsFeedbackNewFeedbackNotice(privacyMode),
+                listState = listState,
             )
         } else {
             FeedbackTicketDetail(detail, timeContext, actions, replyComposer, bottomContentPadding, ownClient = ownClient, onOpenCloseDialog = openCloseDialog)
@@ -526,6 +598,7 @@ private fun FeedbackTicketList(
     showAgentHint: Boolean = false,
     /** Why New Feedback is not offered (privacy mode on or unknown); null offers it. */
     newFeedbackBlocked: String? = null,
+    listState: LazyListState = rememberLazyListState(),
 ) {
     Column(Modifier.fillMaxSize()) {
         newFeedbackBlocked?.let { reason ->
@@ -579,7 +652,6 @@ private fun FeedbackTicketList(
             onRefresh = actions.onRefresh,
             modifier = Modifier.weight(1f).fillMaxWidth(),
         ) {
-            val listState = rememberLazyListState()
             LazyColumn(
                 state = listState,
                 modifier = Modifier.fillMaxSize().testTag(SettingsFeedbackTicketsListTag),

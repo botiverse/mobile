@@ -7,6 +7,7 @@ import kotlin.math.roundToInt
 import build.raft.designsystem.components.RaftPopoverSurface
 import build.raft.designsystem.components.RaftDismissOnPageCover
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.text.selection.DisableSelection
 import androidx.compose.ui.window.PopupProperties
 import androidx.compose.ui.window.PopupPositionProvider
 import androidx.compose.ui.window.Popup
@@ -448,7 +449,9 @@ private fun ThreadAssistantPanelPopover(
         onDismissRequest = onDismissRequest,
         properties = PopupProperties(focusable = true, dismissOnBackPress = true, dismissOnClickOutside = true),
     ) {
-        with(density) { ThreadAssistantPanelPopoverSurface(bounds.width.toDp(), bounds.height.toDp(), content) }
+        DisableSelection {
+            with(density) { ThreadAssistantPanelPopoverSurface(bounds.width.toDp(), bounds.height.toDp(), content) }
+        }
     }
 }
 

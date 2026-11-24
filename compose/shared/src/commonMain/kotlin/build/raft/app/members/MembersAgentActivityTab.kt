@@ -1,6 +1,7 @@
 package build.raft.app
 
 import build.raft.app.resources.*
+import build.raft.designsystem.components.raftSafeAreaHorizontalPadding
 import org.jetbrains.compose.resources.StringResource
 import build.raft.app.data.agentToolLogLabel
 import build.raft.app.data.agentToolSemantic
@@ -148,7 +149,8 @@ internal fun MembersAgentActivityTab(
         onSelectedIndexChange = { index -> activityViews.getOrNull(index)?.let(changeView) },
         modifier = modifier
             .fillMaxWidth()
-            .background(RaftTheme.colors.layerCanvas),
+            .background(RaftTheme.colors.layerCanvas)
+            .raftSafeAreaHorizontalPadding(),
         header = {
             if (overview != null || showSubagents) {
                 // Web AgentActivityLog's view toolbar (stdrc 2026-11-04/05): no bar of its own, so no

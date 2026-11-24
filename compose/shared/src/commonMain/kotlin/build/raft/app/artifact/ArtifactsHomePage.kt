@@ -309,6 +309,7 @@ internal fun ArtifactsHomeRoute(pageVisibleResumeTick: Int = 0, pageVisible: Boo
             val opener =
                 rememberRaftArtifactOpener(
                     conversationId = null,
+                    storeScope = storeScope,
                     openPageOverride =
                         if (wide) {
                             { target, scopeOverride, conv ->
@@ -322,7 +323,7 @@ internal fun ArtifactsHomeRoute(pageVisibleResumeTick: Int = 0, pageVisible: Boo
                             null
                         },
                 ) { openArtifactWebPage(artifactWebUrl(webBaseUrl, it)) }
-            RaftArtifactViewerPrewarm(enabled = pageVisible && !state.rows.isNullOrEmpty(), conversationId = null)
+            RaftArtifactViewerPrewarm(enabled = pageVisible && !state.rows.isNullOrEmpty(), conversationId = null, storeScope = storeScope)
             ArtifactsHomeScreen(
                 state = shown,
                 view = prefs.view,

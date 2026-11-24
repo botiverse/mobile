@@ -169,7 +169,7 @@ internal class RaftDesktopWryWebView(
     /** Main-frame loads started ([RaftWebViewNavigationState.loadGeneration]). */
     private var loadGeneration = 0
     private var commitSent = false
-    private var lastStateKey = ""
+    private val navigationStateRelay = RaftWebViewNavigationStateRelay()
 
     init {
         // Wry asks for every navigation, main frame and sub-frames alike (URL only).
@@ -407,6 +407,7 @@ internal class RaftDesktopWryWebView(
             }
             return
         }
+        var forceNotify = true
         when (command) {
             RaftWebViewController.COMMAND_GO_BACK -> bridge.goBackIfPossible { poll() }
             RaftWebViewController.COMMAND_GO_FORWARD -> bridge.goForwardIfPossible { poll() }
@@ -415,28 +416,33 @@ internal class RaftDesktopWryWebView(
                 progress = 0
                 bridge.reload { poll() }
             }
-            RaftWebViewController.COMMAND_STOP -> bridge.stopLoading { poll() }
+            RaftWebViewController.COMMAND_STOP -> {
+                loading = false
+                bridge.stopLoading { poll() }
+                forceNotify = false
+            }
             else -> return
         }
-        notifyState(force = true)
+        notifyState(force = forceNotify)
     }
 
     private fun notifyState(force: Boolean) {
-        if (disposed) return
-        val state =
-            RaftWebViewNavigationState(
-                url = currentUrl,
-                title = currentTitle,
-                canGoBack = canGoBack,
-                canGoForward = canGoForward,
-                isLoading = loading,
-                progress = progress.coerceIn(0, 100),
-                loadGeneration = loadGeneration,
-            )
-        val key = state.toString()
-        if (!force && key == lastStateKey) return
-        lastStateKey = key
-        events.onNavigationStateChange(state)
+        navigationStateRelay.notify(
+            force = force,
+            isActive = { !disposed },
+            readState = {
+                RaftWebViewNavigationState(
+                    url = currentUrl,
+                    title = currentTitle,
+                    canGoBack = canGoBack,
+                    canGoForward = canGoForward,
+                    isLoading = loading,
+                    progress = progress.coerceIn(0, 100),
+                    loadGeneration = loadGeneration,
+                )
+            },
+            deliver = { state -> events.onNavigationStateChange(state) },
+        )
     }
 
     internal companion object {

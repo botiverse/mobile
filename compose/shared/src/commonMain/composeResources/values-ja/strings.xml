@@ -372,7 +372,6 @@
     <string name="settings_usage_data_learn_more">詳細を見る</string>
     <string name="settings_usage_data_save_failed">この設定を保存できませんでした。もう一度お試しください。</string>
     <string name="settings_computers_title">コンピューター</string>
-    <string name="settings_computers_alerts_section">アラート</string>
     <string name="settings_computers_subtitle">接続されたコンピューターとワークスペース</string>
     <string name="settings_server_title">サーバー</string>
     <string name="settings_server_profile_title">サーバープロフィール</string>
@@ -2467,10 +2466,6 @@
     <string name="home_notification_action_download">ダウンロード</string>
     <string name="home_notification_action_downloading">ダウンロード中</string>
     <string name="home_notification_action_install">インストール</string>
-    <string name="home_notification_machine_offline_title_one">%1$s はオフラインです</string>
-    <string name="home_notification_machine_offline_title_many">%1$s はオフラインです</string>
-    <string name="home_notification_machine_offline_body_one">現在このコンピューターでアクティブなエージェントはいません — 次に必要になったときに再接続してください。</string>
-    <string name="home_notification_machine_offline_body_many">現在これらのコンピューターでアクティブなエージェントはいません — 次に必要になったときに再接続してください。</string>
     <string name="home_notification_machine_outdated_title_one">%1$s のアップデートがあります</string>
     <string name="home_notification_machine_outdated_title_many">%1$s のアップデートがあります</string>
     <string name="home_notification_machine_outdated_body">停止して再接続するとアップデートできます。</string>
@@ -2817,8 +2812,6 @@
     <string name="background_kill_notice_body">バックグラウンド中に Raft がシステムによって停止されたため、メッセージや通知が遅れることがあります。通知設定を開き、Raft のバックグラウンド実行を許可してください。</string>
     <string name="background_kill_notice_action_open_settings">設定を開く</string>
     <string name="background_kill_notice_action_dont_show_again">今後表示しない</string>
-    <string name="settings_notifications_offline_computers_title">オフラインのコンピューター通知</string>
-    <string name="settings_notifications_offline_computers_detail">登録済みのコンピューターがオフラインのとき、ホームに通知を表示します。デフォルトではオフです。</string>
     <string name="settings_notifications_test_title">テスト通知を送信</string>
     <string name="settings_notifications_test_detail">このデバイスを確認するため、ローカルのテスト通知を送信します。</string>
     <string name="settings_notifications_test_allow_permission">テストを送信するには、Raft の通知を許可してください。</string>
@@ -6136,6 +6129,10 @@
     <string name="action_card_seats_add_purpose_person">%1$s × 1</string>
     <string name="action_card_seats_add_sum_note">人間は 1 人につき 1 席、エージェントは 1 個につき 0.1 席を使用します。アプリはシートを使用しません。</string>
     <string name="action_card_seats_add_sum_note_person">人間は 1 人につき 1 席を使用します。エージェントとアプリはシートを使用しません。</string>
+    <string name="settings_appearance_assistant_section">アシスタント</string>
+    <string name="settings_appearance_assistant_otter_description">%1$s はメッセージ入力欄の上にいて、押すとすぐ開けます。オフにすると、すべてのページとすべてのデバイスで表示されなくなります。%1$s の DM はそのまま使えます。</string>
+    <string name="settings_appearance_assistant_panel_link_title">%1$s のその他の設定</string>
+    <string name="settings_appearance_assistant_panel_link_description">権限、追加の指示、WeChat は %1$s のプロフィール（チャットの横）にあります。</string>
     <string name="settings_computers_revoked_status">キー取り消し済み</string>
     <string name="settings_computers_revoked_title">%1$s に切断</string>
     <string name="settings_computers_revoked_cause_member_left">%1$s がサーバーから退出したため、このコンピューターのキーが取り消されました。</string>

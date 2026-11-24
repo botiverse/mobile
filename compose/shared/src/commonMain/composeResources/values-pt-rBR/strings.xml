@@ -372,7 +372,6 @@
     <string name="settings_usage_data_learn_more">Saiba mais</string>
     <string name="settings_usage_data_save_failed">Não foi possível salvar esta configuração. Tente novamente.</string>
     <string name="settings_computers_title">Computadores</string>
-    <string name="settings_computers_alerts_section">Alertas</string>
     <string name="settings_computers_subtitle">Computadores conectados e espaços de trabalho</string>
     <string name="settings_server_title">Servidor</string>
     <string name="settings_server_profile_title">Perfil do servidor</string>
@@ -2464,10 +2463,6 @@
     <string name="home_notification_action_download">Baixar</string>
     <string name="home_notification_action_downloading">Baixando</string>
     <string name="home_notification_action_install">Instalar</string>
-    <string name="home_notification_machine_offline_title_one">%1$s está offline</string>
-    <string name="home_notification_machine_offline_title_many">%1$s estão offline</string>
-    <string name="home_notification_machine_offline_body_one">Nenhum agente está ativo neste computador agora — reconecte-o quando precisar dele de novo.</string>
-    <string name="home_notification_machine_offline_body_many">Nenhum agente está ativo nestes computadores agora — reconecte-os quando precisar deles novamente.</string>
     <string name="home_notification_machine_outdated_title_one">Atualização disponível para %1$s</string>
     <string name="home_notification_machine_outdated_title_many">Atualização disponível para %1$s</string>
     <string name="home_notification_machine_outdated_body">Pare e conecte novamente para atualizar.</string>
@@ -2814,8 +2809,6 @@
     <string name="background_kill_notice_body">Seu dispositivo encerrou o Raft enquanto ele estava em segundo plano, o que pode atrasar mensagens e notificações. Abra as configurações de notificações para permitir que o Raft seja executado em segundo plano.</string>
     <string name="background_kill_notice_action_open_settings">Abrir configurações</string>
     <string name="background_kill_notice_action_dont_show_again">Não mostrar novamente</string>
-    <string name="settings_notifications_offline_computers_title">Alertas de computadores offline</string>
-    <string name="settings_notifications_offline_computers_detail">Mostra um alerta no Início quando um computador registrado está offline. Desativado por padrão.</string>
     <string name="settings_notifications_test_title">Enviar uma notificação de teste</string>
     <string name="settings_notifications_test_detail">Envia uma notificação de teste local para verificar este dispositivo.</string>
     <string name="settings_notifications_test_allow_permission">Permita as notificações do Raft para enviar um teste.</string>
@@ -6135,6 +6128,10 @@
     <string name="action_card_seats_add_purpose_person">%1$s × 1</string>
     <string name="action_card_seats_add_sum_note">Cada pessoa usa 1 licença e cada agente, 0,1; apps não usam licenças.</string>
     <string name="action_card_seats_add_sum_note_person">Cada pessoa usa 1 licença; agentes e apps não usam licenças.</string>
+    <string name="settings_appearance_assistant_section">Assistente</string>
+    <string name="settings_appearance_assistant_otter_description">%1$s fica sobre a sua caixa de mensagem, pronto para abrir com um toque. Desative para ocultá-lo em todas as páginas e em todos os dispositivos. A mensagem direta de %1$s continua funcionando.</string>
+    <string name="settings_appearance_assistant_panel_link_title">Mais configurações de %1$s</string>
+    <string name="settings_appearance_assistant_panel_link_description">Permissões, instruções extras e WeChat ficam no perfil de %1$s, ao lado do chat.</string>
     <string name="settings_computers_revoked_status">Chave revogada</string>
     <string name="settings_computers_revoked_title">Desconectado em %1$s</string>
     <string name="settings_computers_revoked_cause_member_left">%1$s saiu do servidor, então a chave deste computador foi revogada.</string>

@@ -16,6 +16,8 @@ import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollToIndex
 import build.raft.app.compat.json.JSONObject
 import build.raft.app.compat.pager.LocalActivity
 import build.raft.app.compat.pager.PageData
@@ -119,9 +121,10 @@ class SettingsFeedbackTicketsPageUiTest {
         agentDraftSent: kotlinx.coroutines.flow.Flow<Boolean> = kotlinx.coroutines.flow.flowOf(true),
         ownClient: FeedbackClient? = FeedbackClient.Android,
         privacyMode: RaftPrivacyMode = RaftPrivacyMode.Off,
+        onStoreReady: (SettingsFeedbackTicketsStore) -> Unit = {},
     ) {
         val scope = rememberCoroutineScope()
-        val store = remember { SettingsFeedbackTicketsStore(repository, scope, agentDraftSent = agentDraftSent).also { it.start() } }
+        val store = remember { SettingsFeedbackTicketsStore(repository, scope, agentDraftSent = agentDraftSent).also { it.start(); onStoreReady(it) } }
         val state by store.state.collectAsState()
         Host {
             SettingsFeedbackTicketsScreen(
@@ -179,6 +182,62 @@ class SettingsFeedbackTicketsPageUiTest {
                     onNodeWithText(notice).assertIsDisplayed()
                 }
             }
+        }
+    }
+
+    @Test
+    fun ticketListPreservesScrollPositionAcrossDetailRoundTripAndResetsOnFilterChange() {
+        val tickets =
+            (0 until 24).map { index ->
+                FeedbackTicket(
+                    id = "11111111-2222-4333-8444-${index.toString().padStart(12, '0')}",
+                    kind = FeedbackTicketKind.Bug,
+                    status = FeedbackTicketStatus.Open,
+                    closureReason = null,
+                    message = "Feedback ticket item #$index",
+                    createdAt = now - (index + 1) * 60_000L,
+                    updatedAt = now - index * 10_000L,
+                    unread = false,
+                    unreadCount = 0,
+                    attachmentCount = 0,
+                    commentCount = 0,
+                    latestComment = null,
+                )
+            }
+        val target = tickets[18]
+        val detail =
+            FeedbackTicketDetail(
+                ticket = target,
+                comments = listOf(FeedbackComment("c-1", FeedbackAuthorType.Staff, "Detail body for #18", now - 1_000L)),
+                attachments = emptyList(),
+                nextCommentCursor = null,
+                unreadTotal = 0,
+            )
+        runRobolectricComposeUiTest {
+            val repository = FakeRepository(pageOf(*tickets.toTypedArray()), details = mapOf(target.id to detail))
+            var storeRef: SettingsFeedbackTicketsStore? = null
+            setContent { Page(repository, onStoreReady = { storeRef = it }) }
+            waitForIdle()
+
+            onNodeWithTag(SettingsFeedbackTicketsListTag).performScrollToIndex(18)
+            waitForIdle()
+            onNodeWithText("Feedback ticket item #18").assertIsDisplayed()
+            onNodeWithText("Feedback ticket item #0").assertDoesNotExist()
+
+            // Open ticket detail, verify it rendered, then navigate back to the list.
+            onNodeWithText("Feedback ticket item #18").performClick()
+            waitForIdle()
+            onNodeWithText("Detail body for #18").assertIsDisplayed()
+
+            runOnIdle { storeRef!!.closeTicketView() }
+            waitForIdle()
+            onNodeWithText("Feedback ticket item #18").assertIsDisplayed()
+            onNodeWithText("Feedback ticket item #0").assertDoesNotExist()
+
+            // Switching filter tab resets scroll back to top.
+            runOnIdle { storeRef!!.setFilter(build.raft.app.data.FeedbackTicketFilter.Active) }
+            waitForIdle()
+            onNodeWithText("Feedback ticket item #0").assertIsDisplayed()
         }
     }
 

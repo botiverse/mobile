@@ -1,12 +1,10 @@
 package build.raft.app
 
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Stable
@@ -17,25 +15,16 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import build.raft.app.components.RaftDesignSystemTheme
 import build.raft.app.resources.*
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import build.raft.designsystem.components.LocalRaftBarButtons
 import build.raft.designsystem.components.LocalRaftPaneGridPlatform
-import build.raft.designsystem.components.RaftButtonVariant
-import build.raft.designsystem.components.RaftIconButton
-import build.raft.designsystem.components.RaftIconButtonSize
 import build.raft.designsystem.components.RaftPaneSplitter
 import build.raft.designsystem.focus.RaftFocusRegion
 import build.raft.designsystem.focus.RaftFocusRegionHost
 import build.raft.designsystem.theme.RaftPointerInput
-import build.raft.designsystem.theme.RaftPointerInputState
-import build.raft.designsystem.theme.RaftScale
-import build.raft.designsystem.theme.raftControlMetrics
 import build.raft.designsystem.theme.RaftTheme
 import build.raft.app.data.KeyValueChatLayoutPreferenceStore
 import build.raft.app.data.RAFT_LIST_PANE_COLLAPSE_RELEASE_SHARE
@@ -112,16 +101,13 @@ internal fun raftListPaneShareCapDp(roomDp: Float, share: Float, minDp: Float): 
  * - [fillListWhenNothingPicked] with no [hasSelection] (web Search before a result is picked):
  *   the list takes the whole row and there is no empty detail beside it.
  * - [collapsed] (the rail's Collapse Sidebar, [RaftSidebarCollapseState]): the detail takes the
- *   row at once, without the list's handle; the list leaves composition until it is expanded
- *   (web: the collapsed sidebar is inert). Only while [hasSelection]: with nothing open the list shows
- *   beside the empty detail (#4394), and hides again once something opens. With [onCollapsedChange] (the columns the rail's toggle
+ *   whole row at once, with no seam or handle; the list leaves composition until it is expanded
+ *   (web: the collapsed sidebar is inert; the rail's toggle and Ctrl+\ / ⌘\ bring it back). Only
+ *   while [hasSelection]: with nothing open the list shows beside the empty detail (#4394), and
+ *   hides again once something opens. With [onCollapsedChange] (the columns the rail's toggle
  *   collapses) the handle collapses the list too, by the input in use ([raftListPaneDragCollapses]:
  *   with a mouse or trackpad 40dp past its minimum while held, by touch only its edge let go of
- *   near the rail), or Enter; and where the list was, a strip keeps the rail toggle's Expand
- *   sidebar in sight ([RaftListPaneExpandStrip]), which brings it back. [detailHeadTopInset] is
- *   the top safe area the detail's head pads, the shell's to give (it has no page host to read it
- *   from here): 0 under the wide top bar, the window's on iPhone Duo's inner screen, which has
- *   none; the strip's button stays level with that head.
+ *   near the rail), or Enter.
  * - Otherwise (compact): the detail when something is selected, else the list.
  */
 @Composable
@@ -140,7 +126,6 @@ internal fun RaftAdaptiveListDetailSplit(
     maxShare: Float? = null,
     onResizingChange: (Boolean) -> Unit = {},
     log: (String) -> Unit = {},
-    detailHeadTopInset: Dp = 0.dp,
 ) {
     val density = LocalDensity.current
     var rowWidthDp by remember { mutableStateOf<Float?>(null) }
@@ -152,11 +137,6 @@ internal fun RaftAdaptiveListDetailSplit(
     // conversation"); [collapsed] is kept, so it hides again once something opens.
     val listCollapsed = dualPane && !listFillsRow && collapsed && hasSelection
     val split = dualPane && !listFillsRow && !listCollapsed
-    // Collapsed where the rail's toggle brings it back: the strip with Expand sidebar stands where it was.
-    val expandStrip = listCollapsed && onCollapsedChange != null
-    // The split stands outside any page's theme: the strip is as wide as the bar button of the input in use, which
-    // the outermost RaftTheme (the strip's own) reads from RaftPointerInputState too.
-    val expandStripWidthDp = raftListPaneExpandStripWidthDp(RaftPointerInputState.current)
     Box(
         modifier =
             Modifier
@@ -171,11 +151,11 @@ internal fun RaftAdaptiveListDetailSplit(
             modifier = Modifier.fillMaxSize(),
             leading =
                 RaftPaneGridLeadingColumn(
-                    widthDp = if (expandStrip) expandStripWidthDp else listWidthDp,
+                    widthDp = listWidthDp,
                     mode =
                         when {
                             listFillsRow -> RaftPaneGridLeadingMode.Fill
-                            split || expandStrip -> RaftPaneGridLeadingMode.Beside
+                            split -> RaftPaneGridLeadingMode.Beside
                             else -> RaftPaneGridLeadingMode.Hidden
                         },
                 ) {
@@ -183,8 +163,6 @@ internal fun RaftAdaptiveListDetailSplit(
                         RaftFocusRegionHost(region = RaftFocusRegion.ListPane, modifier = Modifier.fillMaxSize()) {
                             listPane(active)
                         }
-                    } else if (expandStrip) {
-                        RaftListPaneExpandStrip(topInset = detailHeadTopInset, onExpand = { onCollapsedChange?.invoke(false) })
                     }
                 },
         ) {
@@ -207,7 +185,6 @@ internal fun RaftAdaptiveListDetailSplit(
             listWidthDp = listWidthDp,
             listMaxDp = listMaxDp,
             rowWidthDp = rowWidthDp,
-            collapsedSeamDp = if (expandStrip) expandStripWidthDp else 0f,
             onCollapsedChange = onCollapsedChange,
             onResizingChange = onResizingChange,
             log = log,
@@ -252,9 +229,8 @@ internal fun raftListPaneDragCollapses(
  * touch only letting go near the rail, the list stopping at its minimum while the finger goes on
  * (a drag cut short, the host going inactive or the handle leaving, never collapses it). The width
  * from before the drag stays remembered (the over-drag is never saved), so Expand sidebar
- * restores it. Enter collapses it too. While a drag has the list collapsed the handle stays on the
- * edge of what is left ([collapsedSeamDp]: the collapsed strip's, else the row's start), so the
- * drag goes on.
+ * restores it. Enter collapses it too. While a drag has the list collapsed the handle stays at the
+ * row's start, so the drag goes on.
  *
  * The split stands outside any page's theme: the handle takes the design system's
  * ([RaftDesignSystemTheme]) for its colours and the input in use ([RaftTheme.pointerInput]).
@@ -271,7 +247,6 @@ private fun RaftListPaneSeam(
     listWidthDp: Float,
     listMaxDp: Float,
     rowWidthDp: Float?,
-    collapsedSeamDp: Float,
     onCollapsedChange: ((Boolean) -> Unit)?,
     onResizingChange: (Boolean) -> Unit,
     log: (String) -> Unit,
@@ -318,7 +293,7 @@ private fun RaftListPaneSeam(
         if (!split && !dragCollapsed) return@RaftDesignSystemTheme
         val min = kind.minDp
         val max = maxOf(min, listMaxDp)
-        val seamDp = if (split) listWidthDp else collapsedSeamDp
+        val seamDp = if (split) listWidthDp else 0f
         RaftPaneGridAppLocals {
             // The splitter's hit area: 12dp across the seam for a mouse, 24dp for a finger.
             val hit = if (LocalRaftPaneGridPlatform.current.finePointer) 12.dp else 24.dp
@@ -365,47 +340,3 @@ private fun RaftListPaneSeam(
 
 /** [RaftListPaneDragSession]'s end when the pointer lets go of the edge (or the gesture is cancelled): by touch the only end that may collapse. */
 private const val RAFT_LIST_PANE_DRAG_RELEASE = "lift"
-
-/** Test tag of the collapsed list's Expand sidebar ([RaftListPaneExpandStrip]). */
-internal const val RAFT_LIST_PANE_EXPAND_TEST_TAG = "raftListPaneExpand"
-
-/**
- * The collapsed list's strip ([RaftListPaneExpandStrip]) for [pointerInput]: the head's bar button with the 16dp
- * content margin on either side of its glyph (54 with a finger, 48 under a mouse or trackpad).
- */
-internal fun raftListPaneExpandStripWidthDp(pointerInput: RaftPointerInput): Float =
-    // The split is the wide layout's, so its controls are the wide window's under [pointerInput].
-    raftControlMetrics(RaftScale.Wide, pointerInput).let { controls -> controls.barButtonSize.value + 2 * controls.barEdgeInset.value }
-
-/**
- * Where the list was while it is collapsed: a strip of the list's surface at the row's start holding the rail toggle's
- * Expand sidebar (web LeftRail SidebarToggleRailItem: PanelLeftOpen, "Expand sidebar"; the web shows it only on the
- * rail, at the foot of it, far from where the list was), a head's bar button level with the head beside it. It brings
- * the list back at the width it had ([onExpand]); the rail's toggle and ⌘\ / Ctrl+\ still do too. The split stands
- * outside any page's theme: the strip takes the design system's, for its colours and the input in use. [topInset]: the
- * top safe area the head beside it pads ([RaftAdaptiveListDetailSplit]'s `detailHeadTopInset`). Nothing here reads the
- * page host (LocalActivity), so the split composes without one, as it always did.
- */
-@Composable
-private fun RaftListPaneExpandStrip(topInset: Dp, onExpand: () -> Unit) {
-    RaftDesignSystemTheme {
-        val controls = RaftTheme.controls
-        Box(Modifier.fillMaxSize().background(RaftTheme.colors.layerCanvas), contentAlignment = Alignment.TopCenter) {
-            // The head's icon-lg buttons are bar buttons: 44 with a finger, 28 under a mouse or trackpad (sizing v12).
-            CompositionLocalProvider(LocalRaftBarButtons provides true) {
-                RaftIconButton(
-                    onClick = onExpand,
-                    tooltip = stringResource(Res.string.rail_expand_sidebar),
-                    modifier =
-                        Modifier
-                            .padding(top = topInset + (controls.headHeight - controls.barButtonSize) / 2)
-                            .testTag(RAFT_LIST_PANE_EXPAND_TEST_TAG),
-                    variant = RaftButtonVariant.Ghost,
-                    size = RaftIconButtonSize.Lg,
-                ) {
-                    RaftContentLucideIcon(RaftLucideIconName.PanelLeftOpen, size = controls.barIconSize)
-                }
-            }
-        }
-    }
-}

@@ -1443,10 +1443,25 @@ class SharedHomeStoreTest {
     }
 
     @Test
-    fun startLoadsOfflineMachinesIntoHomeNotifications() = runBlocking {
+    fun startDoesNotSurfaceOfflineMachinesInHomeNotifications() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val announcementsApi = RecordingAnnouncementsApi(activeBody = """{"announcements":[]}""")
-        val computersApi = RecordingComputersApi()
+        val computersApi =
+            RecordingComputersApi(
+                bodyText =
+                    """
+                    {
+                      "machines": [
+                        {
+                          "id": "machine-1",
+                          "name": "OranixSlockTest",
+                          "status": "offline",
+                          "statusVersion": 1
+                        }
+                      ]
+                    }
+                    """.trimIndent()
+            )
         val store = SharedHomeStore(
             authStore = InMemoryRaftAuthSessionStore(sampleSession()),
             dataSource =
@@ -1460,20 +1475,7 @@ class SharedHomeStoreTest {
 
         store.accept(SharedHomeIntent.Start)
 
-        val notification = store.state.value.notifications.single()
-        assertEquals("machine-offline:machine-1", notification.id)
-        assertEquals("OranixSlockTest is offline", notification.title)
-        assertEquals(
-            "No agents are active on this computer right now - reconnect when you need it next.",
-            notification.body
-        )
-        assertEquals("View", notification.actionLabel)
-        assertTrue(notification.titleDesc != null)
-        assertTrue(notification.bodyDesc != null)
-        assertTrue(notification.actionLabelDesc != null)
-        assertEquals("machine-1", notification.targetId)
-        assertEquals(SharedHomeNotificationKind.Warning, notification.kind)
-        assertEquals(SharedHomeNotificationIcon.WifiOff, notification.icon)
+        assertEquals(emptyList(), store.state.value.notifications)
         assertEquals(emptyList(), announcementsApi.calls)
         assertEquals(listOf("GET machines:server-1"), computersApi.calls)
         scope.cancel()
@@ -2010,7 +2012,6 @@ class SharedHomeStoreTest {
         computersApi: RaftComputersApi? = null,
         sessionStore: RaftAuthSessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
         appUpdateStatusProvider: (suspend () -> DataResult<SharedSettingsUpdateCheckSnapshot>)? = null,
-        offlineComputerAlertsEnabled: Boolean = true,
         serverMembersStore: SharedServerMembersStore? = null,
     ): SharedHomeDataSource =
         SharedHomeDataSource(
@@ -2020,23 +2021,6 @@ class SharedHomeStoreTest {
             computersApi = computersApi,
             appUpdateStatusProvider = appUpdateStatusProvider,
             serverMembersStore = serverMembersStore,
-            notificationPreferenceRepository =
-                object : NotificationPreferenceRepository {
-                    override suspend fun getNotificationPreference(): NotificationPreferenceSnapshot =
-                        NotificationPreferenceSnapshot(
-                            enabled = true,
-                            offlineComputerAlertsEnabled = offlineComputerAlertsEnabled,
-                        )
-
-                    override suspend fun setNotificationEnabled(enabled: Boolean): NotificationPreferenceSnapshot =
-                        error("unused")
-
-                    override suspend fun setForegroundKeepAliveEnabled(enabled: Boolean): NotificationPreferenceSnapshot =
-                        error("unused")
-
-                    override suspend fun setOfflineComputerAlertsEnabled(enabled: Boolean): NotificationPreferenceSnapshot =
-                        error("unused")
-                },
             parseHome = { payload, _ -> DataResult.Content(sampleHome(payload.serverId)) },
             // Decode inline, as in sourceWithSnapshot: on the real JSON lane a launched Home load
             // resumes on a parse worker after its channels request, so a test that waits for that
@@ -2424,12 +2408,14 @@ class SharedHomeStoreTest {
         private val bodyText: String =
             """
             {
+              "latestDaemonVersion": "0.63.7",
               "machines": [
                 {
                   "id": "machine-1",
                   "name": "OranixSlockTest",
-                  "status": "offline",
-                  "statusVersion": 1
+                  "status": "online",
+                  "statusVersion": 1,
+                  "daemonVersion": "0.62.0"
                 }
               ]
             }
@@ -2490,7 +2476,7 @@ class SharedHomeStoreTest {
             return HomeNetworkResponse(
                 code = 200,
                 bodyText =
-                    """{"machines":[{"id":"machine-1","name":"Old owner machine","status":"offline","statusVersion":1}]}"""
+                    """{"latestDaemonVersion":"0.63.7","machines":[{"id":"machine-1","name":"Old owner machine","status":"online","statusVersion":1,"daemonVersion":"0.62.0"}]}"""
             )
         }
 

@@ -4,6 +4,7 @@ import build.raft.app.resources.*
 import androidx.compose.foundation.text.contextmenu.provider.LocalTextContextMenuToolbarProvider
 import androidx.compose.foundation.text.contextmenu.provider.TextContextMenuDataProvider
 import androidx.compose.foundation.text.contextmenu.provider.TextContextMenuProvider
+import androidx.compose.foundation.text.selection.DisableSelection
 import androidx.compose.foundation.text.selection.LocalTextSelectionColors
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.text.selection.SelectionState
@@ -982,7 +983,9 @@ private fun ThreadInPlaceSelectionMenuHost(
         popupPositionProvider = positionProvider,
         properties = PopupProperties(focusable = false)
     ) {
-        menu()
+        DisableSelection {
+            menu()
+        }
     }
 }
 

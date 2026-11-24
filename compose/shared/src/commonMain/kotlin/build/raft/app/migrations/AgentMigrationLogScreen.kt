@@ -338,26 +338,47 @@ private fun AgentMigrationLogToolbar(
         }
     } else {
         val scroll = rememberScrollState()
-        Row(
+        BoxWithConstraints(
             modifier =
                 Modifier
                     .fillMaxWidth()
-                    .raftScrollEdgeFade(scroll)
-                    .horizontalScroll(scroll)
                     .padding(horizontal = margin, vertical = 8.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalAlignment = Alignment.CenterVertically,
         ) {
-            controls()
-            AgentMigrationLogViewControl(state.view, onIntent)
+            // Keep icon + label on normal phones; fall back to icons-only only on very narrow panes.
+            val compactViewSwitch = maxWidth < 320.dp
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Row(
+                    modifier =
+                        Modifier
+                            .weight(1f)
+                            .raftScrollEdgeFade(scroll)
+                            .horizontalScroll(scroll),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    controls()
+                }
+                AgentMigrationLogViewControl(state.view, onIntent, iconsOnly = compactViewSwitch)
+            }
         }
     }
 }
 
 @Composable
-private fun AgentMigrationLogViewControl(view: AgentMigrationLogView, onIntent: (AgentMigrationLogIntent) -> Unit) {
+private fun AgentMigrationLogViewControl(
+    view: AgentMigrationLogView,
+    onIntent: (AgentMigrationLogIntent) -> Unit,
+    iconsOnly: Boolean = false,
+) {
     val label = stringResource(Res.string.agent_migration_log_view_label)
-    RaftSegmentedControl(Modifier.testTag(AgentMigrationLogTags.View).semantics { contentDescription = label }) {
+    RaftSegmentedControl(
+        modifier = Modifier.testTag(AgentMigrationLogTags.View).semantics { contentDescription = label },
+        iconsOnly = iconsOnly,
+    ) {
         RaftSegment(
             text = stringResource(Res.string.agent_migration_log_view_chart),
             selected = view == AgentMigrationLogView.Chart,

@@ -71,6 +71,10 @@ class ThreadFooterBottomInsetUiTest {
     fun joinFooterClearsGestureNavigationBar() =
         assertJoinFooterClearsNavBar(navBarPx = 72, minClearancePx = 72f)
 
+    @Test
+    fun joinFooterKeepsBaselinePaddingWithoutSystemInset() =
+        assertJoinFooterClearsNavBar(navBarPx = 0, minClearancePx = 30f)
+
     private fun assertArchivedNoticeClearsNavBar(navBarPx: Int, minClearancePx: Float) =
         runRobolectricComposeUiTest {
             showAtBottom(navBarPx = navBarPx) {

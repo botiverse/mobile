@@ -149,25 +149,27 @@ internal enum class RaftHostNavigationDecision {
     ReissueWithoutHeader,
 }
 
-private val RaftHostReissuableKinds = setOf(RaftHostNavigationKind.Page, RaftHostNavigationKind.Redirect)
-
 /**
  * What the WebView does about the header for a main-frame navigation to [url] (#356 §3). [host] is the
  * page's [RaftAppEntryContext.raftHost] (null: not an entry page). [carriesHeader]: the request has the
  * header, or its chain was sent with it and nothing committed since (where a platform can't see a
  * redirect's headers). [budgetLeft]: re-issues with the header this chain may still make, from
- * [RAFT_HOST_REISSUE_BUDGET].
- * - [RaftHostNavigationDecision.ReissueWithHeader]: a GET [RaftHostNavigationKind.Page] or
+ * [RAFT_HOST_REISSUE_BUDGET]. [committed]: whether the WebView has already committed a document.
+ * - [RaftHostNavigationDecision.ReissueWithHeader]: a pre-commit (`!committed`) GET
  *   [RaftHostNavigationKind.Redirect] to exactly [host]'s origin, without the header, while the budget
- *   lasts (no platform adds it to the page's own links, and Android's load headers don't follow a
- *   redirect).
+ *   lasts (Android's initial `loadUrl` headers don't follow a redirect, and pre-commit launch redirects
+ *   already have `Sec-Fetch-Site: none`). Never used for [RaftHostNavigationKind.Page] or post-commit
+ *   redirects: cancelling and re-issuing a document-initiated link or GET form via `loadUrl`/`loadRequest`
+ *   strips `Referer` and downgrades `Sec-Fetch-Site` from `same-origin` to `none`, breaking CSRF-checked
+ *   same-origin login/consent forms such as Stamp's `GET /login?agree=1`.
  * - [RaftHostNavigationDecision.ReissueWithoutHeader]: a GET carrying the header to any address that is
- *   not exactly on [host]'s origin, whatever the budget (WebKit copies a request's headers onto its
- *   redirect, so a redirect to another origin would take it there). Once re-issued without it, the
- *   request no longer carries it.
+ *   not exactly on [host]'s origin, whatever the budget or commit state (WebKit copies a request's headers
+ *   onto its redirect, so a redirect to another origin would take it there). Once re-issued without it,
+ *   the request no longer carries it.
  * - [RaftHostNavigationDecision.Allow]: anything else. A POST can't be re-issued (its body is the
- *   page's); back, forward and reload can't without adding history; an address that is not http(s) has
- *   no request header to send.
+ *   page's); back, forward and reload can't without adding history; document-initiated page navigations
+ *   and post-commit redirects proceed natively to preserve `Sec-Fetch-Site` and `Referer`; an address
+ *   that is not http(s) has no request header to send.
  */
 internal fun raftHostNavigationDecision(
     url: String,
@@ -176,12 +178,13 @@ internal fun raftHostNavigationDecision(
     carriesHeader: Boolean,
     host: RaftHostHeader?,
     budgetLeft: Int,
+    committed: Boolean,
 ): RaftHostNavigationDecision {
     if (!method.equals("GET", ignoreCase = true) || !raftUrlIsHttpOrHttps(url)) return RaftHostNavigationDecision.Allow
     val onScope = host != null && raftAppEntryOriginOf(url) == host.origin
     return when {
         carriesHeader && !onScope -> RaftHostNavigationDecision.ReissueWithoutHeader
-        !carriesHeader && onScope && kind in RaftHostReissuableKinds && budgetLeft > 0 ->
+        !committed && !carriesHeader && onScope && kind == RaftHostNavigationKind.Redirect && budgetLeft > 0 ->
             RaftHostNavigationDecision.ReissueWithHeader
         else -> RaftHostNavigationDecision.Allow
     }

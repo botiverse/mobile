@@ -12,11 +12,9 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.ComposeUiTest
 import androidx.compose.ui.test.ExperimentalTestApi
-import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertWidthIsEqualTo
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
-import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.unit.dp
 import build.raft.app.data.InMemoryRaftKeyValueStore
@@ -75,17 +73,19 @@ class RaftAdaptiveListDetailSplitUiTest {
             hasSelection = true
             waitForIdle()
             onNodeWithTag(LIST).assertDoesNotExist()
-            onNodeWithTag(DETAIL).assertExists()
+            onNodeWithContentDescription("Expand sidebar").assertDoesNotExist()
+            onNodeWithTag(DETAIL).assertExists().assertWidthIsEqualTo(1280.dp)
         }
 
     /**
      * By touch the list's edge is a 24dp touch target beside its rows, so collapsing it takes a deliberate gesture
-     * ([raftListPaneDragCollapses]), and a collapsed list leaves the rail toggle's Expand sidebar where it was
-     * (web SidebarToggleRailItem). Let go of near the rail, the edge collapses the list, which keeps the width it had;
-     * Expand sidebar brings it back; a drag that only overshoots its minimum resizes it, stopping there.
+     * ([raftListPaneDragCollapses]). When collapsed, the detail takes the full row width with no extra expand strip
+     * (only the rail's toggle and Ctrl+\ / ⌘\ expand it, matching web). Let go of near the rail, the edge collapses
+     * the list, which keeps the width it had; expanding restores that width; a drag that only overshoots its minimum
+     * resizes it, stopping there.
      */
     @Test
-    fun byTouchADeliberateReleaseCollapsesTheListAndExpandSidebarWhereItWasBringsItBack() =
+    fun byTouchADeliberateReleaseCollapsesTheListWithoutAnExpandStrip() =
         runRobolectricComposeUiTest {
             val sidebar = RaftListPaneKind.Sidebar
             val widths = RaftListPaneWidths(KeyValueChatLayoutPreferenceStore(InMemoryRaftKeyValueStore()))
@@ -95,13 +95,15 @@ class RaftAdaptiveListDetailSplitUiTest {
             dragEdgeLeft(200)
             assertTrue(collapsed, "let go near the rail, the list collapses")
             onNodeWithTag(LIST).assertDoesNotExist()
+            onNodeWithContentDescription("Expand sidebar").assertDoesNotExist()
+            onNodeWithContentDescription("Resize sidebar").assertDoesNotExist()
+            onNodeWithTag(DETAIL).assertWidthIsEqualTo(1280.dp)
             assertEquals(sidebar.defaultDp, widths.preferredDp(sidebar), "it keeps the width it had before the drag")
 
-            onNodeWithContentDescription("Expand sidebar").assertIsDisplayed().performClick()
+            // Expanding via the rail toggle / shortcut (collapsed = false) restores the remembered width.
+            runOnIdle { collapsed = false }
             waitForIdle()
-            assertFalse(collapsed, "Expand sidebar brings the list back")
             onNodeWithTag(LIST).assertWidthIsEqualTo(240.dp)
-            onNodeWithTag(RAFT_LIST_PANE_EXPAND_TEST_TAG).assertDoesNotExist()
 
             // 100dp: past the minimum (and the web's 40dp snap line), not near the rail.
             dragEdgeLeft(100)
@@ -127,6 +129,8 @@ class RaftAdaptiveListDetailSplitUiTest {
             waitForIdle()
             assertTrue(collapsed, "past the line, the list collapses while the edge is held")
             onNodeWithTag(LIST).assertDoesNotExist()
+            onNodeWithContentDescription("Expand sidebar").assertDoesNotExist()
+            onNodeWithTag(DETAIL).assertWidthIsEqualTo(1280.dp)
             // 50dp back, over the line, then let go: the list shows again and stays.
             onNodeWithContentDescription("Resize sidebar").performTouchInput {
                 repeat(5) { moveBy(Offset(10f, 0f)) }

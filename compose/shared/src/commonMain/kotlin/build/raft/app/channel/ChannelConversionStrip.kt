@@ -1,6 +1,7 @@
 package build.raft.app
 
 import androidx.compose.foundation.background
+import build.raft.designsystem.components.raftSafeAreaHorizontalPadding
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -336,7 +337,7 @@ internal fun ChannelConversionStatus(
                     )
                 },
             )
-            model.statusTraceId?.let { RaftTraceIdNote(it, Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) }
+            model.statusTraceId?.let { RaftTraceIdNote(it, Modifier.raftSafeAreaHorizontalPadding().padding(horizontal = 16.dp, vertical = 4.dp)) }
         }
         model.error?.let { error ->
             val text = channelConversionErrorString(error)
@@ -376,7 +377,7 @@ internal fun ChannelConversionStatus(
                         null
                     },
             )
-            model.errorTraceId?.let { RaftTraceIdNote(it, Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) }
+            model.errorTraceId?.let { RaftTraceIdNote(it, Modifier.raftSafeAreaHorizontalPadding().padding(horizontal = 16.dp, vertical = 4.dp)) }
         }
         if (model.showsStrip) {
             ChannelConversionStripRow(
@@ -452,7 +453,7 @@ private fun ChannelConversionStripRow(title: String, percent: Int, onView: () ->
         val wide = maxWidth >= ChannelConversionStripWideFrom
         val showsBar = maxWidth >= ChannelConversionBarFrom
         Row(
-            Modifier.fillMaxSize().padding(start = if (wide) 20.dp else 16.dp, end = if (wide) 12.dp else 8.dp),
+            Modifier.fillMaxSize().raftSafeAreaHorizontalPadding().padding(start = if (wide) 20.dp else 16.dp, end = if (wide) 12.dp else 8.dp),
             horizontalArrangement = Arrangement.spacedBy(10.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
