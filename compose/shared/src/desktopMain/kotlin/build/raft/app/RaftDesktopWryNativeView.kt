@@ -28,7 +28,7 @@ import javax.swing.JPanel
  * All Wry-specific native operations are injected by [RaftDesktopWryGateway] so this Swing view
  * never calls Wry directly.
  */
-internal class RaftDesktopWryNativeView(
+class RaftDesktopWryNativeView(
     val content: Component,
     private val onMoveOffScreen: (width: Int, height: Int) -> Unit,
     private val onResyncBounds: () -> Unit,
@@ -40,7 +40,8 @@ internal class RaftDesktopWryNativeView(
     private val onScreen: Boolean get() = revealed && attached
 
     init {
-        background = java.awt.Color.WHITE
+        isOpaque = false
+        background = TransparentAwtColor
         layout = OffscreenUntilShownLayout()
         add(content)
         addComponentListener(
@@ -63,22 +64,33 @@ internal class RaftDesktopWryNativeView(
         )
     }
 
-    fun reveal() {
-        if (revealed) return
-        revealed = true
+    fun reveal() = setRevealed(true)
+
+    fun setRevealed(show: Boolean) {
+        if (revealed == show) return
+        revealed = show
+        updateBackdrop()
         relayout()
     }
 
     override fun addNotify() {
         super.addNotify()
         attached = true
+        updateBackdrop()
         relayout()
     }
 
     override fun removeNotify() {
         attached = false
+        updateBackdrop()
         hideNative()
         super.removeNotify()
+    }
+
+    private fun updateBackdrop() {
+        val visibleOnScreen = onScreen
+        isOpaque = visibleOnScreen
+        background = if (visibleOnScreen) java.awt.Color.WHITE else TransparentAwtColor
     }
 
     private fun relayout() {
@@ -121,5 +133,6 @@ internal class RaftDesktopWryNativeView(
 
     private companion object {
         const val OffscreenGap = 20_000
+        val TransparentAwtColor = java.awt.Color(0, 0, 0, 0)
     }
 }

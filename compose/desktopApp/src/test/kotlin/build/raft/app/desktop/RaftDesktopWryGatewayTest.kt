@@ -3,6 +3,7 @@ package build.raft.app.desktop
 import build.raft.app.RaftDesktopWebViewPolicy
 import build.raft.app.RaftDesktopWryGateway
 import build.raft.app.RaftDesktopWryNativeOps
+import build.raft.app.RaftDesktopWryNativeView
 import build.raft.app.RaftDesktopWryPanelAccess
 import build.raft.app.RaftDesktopWryPollSnapshot
 import java.awt.Container
@@ -345,5 +346,92 @@ class RaftDesktopWryGatewayTest {
         gateway.dispose()
         pendingTasks.removeAt(0).invoke()
         assertEquals(listOf(listOf(-32_000, -32_000, 900, 700)), setBoundsCalls)
+    }
+
+    @Test fun `native view stays transparent and off-screen until attached and revealed then hides cleanly`() {
+        val content = JPanel()
+        val offScreenCalls = mutableListOf<Pair<Int, Int>>()
+        var resyncCalls = 0
+        val nativeView =
+            RaftDesktopWryNativeView(
+                content = content,
+                onMoveOffScreen = { w, h -> offScreenCalls += w to h },
+                onResyncBounds = { resyncCalls += 1 },
+            )
+        nativeView.setBounds(0, 0, 800, 600)
+        nativeView.doLayout()
+
+        // Before reveal: non-opaque transparent backdrop and content laid out off-screen at full size.
+        assertFalse(nativeView.isOpaque)
+        assertEquals(0, nativeView.background.alpha)
+        assertEquals(800, content.width)
+        assertEquals(600, content.height)
+        assertTrue(content.x <= -20_800, "expected off-screen x, got ${content.x}")
+
+        // Attach while still unrevealed: remains transparent and off-screen.
+        nativeView.addNotify()
+        assertFalse(nativeView.isOpaque)
+        assertEquals(0, resyncCalls)
+        assertTrue(offScreenCalls.isNotEmpty())
+        assertTrue(content.x <= -20_800)
+
+        // Reveal: turns opaque white, moves content to (0, 0), and resyncs native bounds.
+        nativeView.setRevealed(true)
+        assertTrue(nativeView.isOpaque)
+        assertEquals(java.awt.Color.WHITE, nativeView.background)
+        assertEquals(0, content.x)
+        assertEquals(0, content.y)
+        assertEquals(800, content.width)
+        assertEquals(600, content.height)
+        assertTrue(resyncCalls >= 1, "expected at least one bounds resync on reveal, got $resyncCalls")
+
+        // Hide while a cover returns: drops white backdrop and parks content off-screen again.
+        val offScreenBeforeHide = offScreenCalls.size
+        nativeView.setRevealed(false)
+        assertFalse(nativeView.isOpaque)
+        assertEquals(0, nativeView.background.alpha)
+        assertTrue(content.x <= -20_800)
+        assertTrue(offScreenCalls.size > offScreenBeforeHide)
+    }
+
+    @Test fun `gateway hide delegates to hideComponent until disposed`() {
+        var revealCount = 0
+        var hideCount = 0
+        val ops =
+            object : RaftDesktopWryNativeOps {
+                override fun drainIpcMessages(id: ULong) = emptyList<String>()
+                override fun isLoading(id: ULong) = false
+                override fun getTitle(id: ULong) = ""
+                override fun canGoBack(id: ULong) = false
+                override fun canGoForward(id: ULong) = false
+                override fun evaluateJavascript(id: ULong, script: String, onResult: (String) -> Unit) = Unit
+                override fun loadUrl(id: ULong, url: String) = Unit
+                override fun goBack(id: ULong) = Unit
+                override fun goForward(id: ULong) = Unit
+                override fun reload(id: ULong) = Unit
+                override fun stopLoading(id: ULong) = Unit
+                override fun focus(id: ULong) = Unit
+                override fun setBounds(id: ULong, x: Int, y: Int, width: Int, height: Int) = Unit
+            }
+        val gateway =
+            RaftDesktopWryGateway(
+                component = JPanel(),
+                readWebviewId = { 11uL },
+                registerNavigateListener = {},
+                revealComponent = { revealCount += 1 },
+                hideComponent = { hideCount += 1 },
+                nativeOps = ops,
+                worker = { it() },
+                postToEdt = { it() },
+            )
+        gateway.reveal()
+        gateway.hide()
+        assertEquals(1, revealCount)
+        assertEquals(1, hideCount)
+        gateway.dispose()
+        gateway.reveal()
+        gateway.hide()
+        assertEquals(1, revealCount)
+        assertEquals(1, hideCount)
     }
 }

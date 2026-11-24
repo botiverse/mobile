@@ -266,6 +266,8 @@ internal fun RaftSandboxWebView(
     allowsBackForwardNavigationGestures: Boolean = false,
     /** [RaftWebViewConfig.raftHost]. */
     raftHost: RaftHostHeader? = null,
+    /** [RaftWebViewConfig.coverActive]. */
+    coverActive: Boolean = false,
     /** [RaftWebViewEvents.catchesMainFrameNavigation]. */
     catchesMainFrameNavigation: ((RaftWebViewMainFrameCatchAsk) -> Boolean)? = null,
     /** [RaftWebViewEvents.onContentProcessGone]. */
@@ -315,6 +317,7 @@ internal fun RaftSandboxWebView(
             storagePartition,
             allowsBackForwardNavigationGestures,
             raftHost,
+            coverActive,
         ) {
             RaftWebViewConfig(
                 url = url,
@@ -338,6 +341,7 @@ internal fun RaftSandboxWebView(
                 storagePartition = storagePartition,
                 allowsBackForwardNavigationGestures = allowsBackForwardNavigationGestures,
                 raftHost = raftHost,
+                coverActive = coverActive,
             )
         }
     // Full-bleed: in a clipped pane of the wide row (the Artifact column) the page is cut hard at the pane's edge, never

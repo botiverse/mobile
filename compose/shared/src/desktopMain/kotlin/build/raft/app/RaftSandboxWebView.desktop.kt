@@ -1,13 +1,25 @@
 package build.raft.app
 
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.requiredSize
+import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.awt.SwingPanel
+import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.unit.dp
 import java.awt.Component
 import javax.swing.SwingUtilities
 import kotlinx.coroutines.delay
@@ -82,9 +94,52 @@ internal actual fun RaftSandboxWebViewHost(
         }
     val effectiveEphemeral = config.effectiveStoragePartition != RaftWebViewStoragePartition.Default
     key(policy, effectiveEphemeral) {
-        val host = remember { RaftDesktopWryWebView(policy, bridgeFactory(policy, effectiveEphemeral), events) }
+        var pageReady by remember { mutableStateOf(false) }
+        val displayAllowed = !config.coverActive
+        val host =
+            remember {
+                RaftDesktopWryWebView(
+                    policy = policy,
+                    bridge = bridgeFactory(policy, effectiveEphemeral),
+                    events = events,
+                    initialDisplayAllowed = displayAllowed,
+                    onReadyChanged = { pageReady = it },
+                )
+            }
         host.events = events
-        SwingPanel(factory = { host.view }, modifier = modifier)
+        val showNative = pageReady && displayAllowed
+        LaunchedEffect(host, displayAllowed) {
+            host.setDisplayAllowed(displayAllowed)
+        }
+        // #wg-mobile-sync:#242: SwingPanel registers a Skiko ClipRectangle for its clipped Compose
+        // bounds, which would punch a blank hole through Compose loading covers (like
+        // RaftArtifactViewerSplashCover). While loading or covered, clip the SwingPanel slot to a
+        // 1dp corner (non-empty so Wry's host Canvas stays showing and initializes) while keeping
+        // the interop view at full viewport dimensions via requiredSize so the web page lays out
+        // off-screen at its real width, then expand the same SwingPanel in place once ready.
+        BoxWithConstraints(modifier = modifier) {
+            val fullWidth = maxWidth.coerceAtLeast(1.dp)
+            val fullHeight = maxHeight.coerceAtLeast(1.dp)
+            Box(
+                modifier =
+                    if (showNative) {
+                        Modifier.fillMaxSize()
+                    } else {
+                        Modifier.align(Alignment.BottomEnd).size(1.dp).clipToBounds()
+                    },
+            ) {
+                SwingPanel(
+                    background = if (showNative) Color.White else Color.Transparent,
+                    factory = { host.view },
+                    modifier =
+                        if (showNative) {
+                            Modifier.fillMaxSize()
+                        } else {
+                            Modifier.requiredSize(fullWidth, fullHeight)
+                        },
+                )
+            }
+        }
         DisposableEffect(controller) {
             host.bind(controller)
             onDispose { host.unbind(controller) }
@@ -141,13 +196,17 @@ internal class RaftDesktopWryWebView(
     var events: RaftWebViewEvents,
     private val nowMs: () -> Long = System::currentTimeMillis,
     private val postToEdt: (() -> Unit) -> Unit = { SwingUtilities.invokeLater(it) },
+    initialDisplayAllowed: Boolean = true,
+    private val onReadyChanged: (Boolean) -> Unit = {},
 ) {
     private val initialUrl = policy.initialUrl()
 
     /** What Compose hosts: keeps the native view off screen until [revealWhenReady] and when the page leaves. */
     val view: Component get() = bridge.component
 
-    private var revealed = false
+    private var pageReady = false
+    private var displayAllowed = initialDisplayAllowed
+    private var bridgeShown = false
     private var loadFinishedAt = 0L
     private var readyCheckPending = false
     private var pollInFlight = false
@@ -183,12 +242,18 @@ internal class RaftDesktopWryWebView(
 
     /** Quick polls while a declared-frame navigation is unverified (its timeout) or the page is about to show. */
     fun nextPollDelayMs(): Long =
-        if (verifySoon || topLevelCheck.armed || (!revealed && loadFinishedAt != 0L)) {
+        if (verifySoon || topLevelCheck.armed || (!bridgeShown && loadFinishedAt != 0L)) {
             verifySoon = false
             RaftDesktopWebViewVerifyMs
         } else {
             RaftDesktopWebViewPollMs
         }
+
+    fun setDisplayAllowed(allowed: Boolean) {
+        if (displayAllowed == allowed) return
+        displayAllowed = allowed
+        syncBridgeVisibility()
+    }
 
     fun bind(controller: RaftWebViewController) {
         boundController = controller
@@ -296,23 +361,36 @@ internal class RaftDesktopWryWebView(
 
     /** Shows the native view once the page is past its loading frame, or at the deadline. */
     private fun revealWhenReady() {
-        if (revealed || loadFinishedAt == 0L || readyCheckPending) return
+        if (pageReady || loadFinishedAt == 0L || readyCheckPending) return
         if (nowMs() - loadFinishedAt >= RaftDesktopWebViewRevealDeadlineMs) {
-            reveal()
+            markPageReady()
             return
         }
         readyCheckPending = true
         bridge.evaluateJavaScript(RaftDesktopWebViewReadyScript) { result ->
             val ready = RaftDesktopWebViewPolicy.decodeEvaluatedString(result) == "1"
             readyCheckPending = false
-            if (ready && !disposed) reveal()
+            if (ready && !disposed) markPageReady()
         }
     }
 
-    private fun reveal() {
-        if (revealed) return
-        revealed = true
-        bridge.reveal()
+    private fun markPageReady() {
+        if (pageReady) return
+        pageReady = true
+        onReadyChanged(true)
+        syncBridgeVisibility()
+    }
+
+    private fun syncBridgeVisibility() {
+        if (disposed) return
+        val shouldShow = pageReady && displayAllowed
+        if (shouldShow == bridgeShown) return
+        bridgeShown = shouldShow
+        if (shouldShow) {
+            bridge.reveal()
+        } else {
+            bridge.hide()
+        }
     }
 
     private fun onTopLevelUrl(token: Long, idle: Boolean, href: String?) {
