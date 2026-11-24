@@ -31,7 +31,6 @@ import build.raft.app.data.SERVER_ACTION_LEAVE
 import build.raft.app.data.MemberRemovalImpactRepository
 import build.raft.app.data.NotificationPreferenceSnapshot
 import build.raft.app.data.SharedAuthDataSource
-import build.raft.app.data.SharedHomeIntent
 import build.raft.app.data.SharedSettingsDestination
 import build.raft.app.data.SharedSettingsDiagnosticsSnapshot
 import build.raft.app.data.SharedSettingsEffect
@@ -142,9 +141,6 @@ internal fun SettingsNativeDetailScreen() {
         val subscription =
             notificationEvents.addPreferenceListener { snapshot ->
                 notificationPreferenceSnapshot = snapshot
-                sharedStores
-                    .sharedHomeStore(environment.storeScope)
-                    ?.dispatch(SharedHomeIntent.RefreshNotifications)
             }
         onDispose { subscription.close() }
     }

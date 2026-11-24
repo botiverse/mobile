@@ -47,7 +47,6 @@ class SharedHomeDataSource(
     announcementsApi: RaftAnnouncementsRemindersApi? = null,
     computersApi: RaftComputersApi? = null,
     private val appUpdateStatusProvider: (suspend () -> DataResult<SharedSettingsUpdateCheckSnapshot>)? = null,
-    private val notificationPreferenceRepository: NotificationPreferenceRepository? = null,
     private val memberRepository: MemberRepository? = null,
     private val serverMembersStore: SharedServerMembersStore? = null,
     private val parseHome: (HomeNetworkPayload, StoredAuthSession) -> DataResult<HomeSnapshot>,
@@ -276,10 +275,6 @@ class SharedHomeDataSource(
         if (!canManageMachines) return DataResult.Content(emptyList())
         val serverRole = session.servers.firstOrNull { it.id == serverId.value }?.role
         val currentUserId = session.user.id
-        val offlineComputerAlertsEnabled =
-            notificationPreferenceRepository
-                ?.getNotificationPreference()
-                ?.offlineComputerAlertsEnabled == true
         val cacheKey = "${session.user.id}|${serverId.value}"
         val syncCovers = homeReload && serverMembersStore?.incrementalSyncCovers(serverId) == true
         val (reusable, dropsAtRead) =
@@ -290,7 +285,6 @@ class SharedHomeDataSource(
             diagnosticsLogger("home_machine_notifications serverId=${serverId.value} source=held network=false reason=incremental_sync")
             return DataResult.Content(
                 reusable.toSharedHomeMachineNotifications(
-                    offlineComputerAlertsEnabled = offlineComputerAlertsEnabled,
                     serverRole = serverRole,
                     currentUserId = currentUserId
                 )
@@ -303,7 +297,6 @@ class SharedHomeDataSource(
                 }
                 DataResult.Content(
                     result.data.toSharedHomeMachineNotifications(
-                        offlineComputerAlertsEnabled = offlineComputerAlertsEnabled,
                         serverRole = serverRole,
                         currentUserId = currentUserId
                     )
@@ -516,46 +509,11 @@ private fun SharedSettingsUpdateCheckSnapshot.appUpdateNotificationActionDesc():
     }
 
 private fun ComputerListSummary.toSharedHomeMachineNotifications(
-    offlineComputerAlertsEnabled: Boolean,
     serverRole: String?,
     currentUserId: String?
 ): List<SharedHomeNotification> {
     val notifications = mutableListOf<SharedHomeNotification>()
     notifications += homeComputerVersionGateNotifications(machines, serverRole, currentUserId)
-    val offlineMachines = machines.filter { it.status == ComputerStatus.Offline }
-    if (offlineComputerAlertsEnabled && offlineMachines.isNotEmpty()) {
-        val sortedIds = offlineMachines.map { it.id }.sorted()
-        val names = offlineMachines.joinToString(", ") { it.name }
-        val verb = if (offlineMachines.size == 1) "is offline" else "are offline"
-        val body =
-            if (offlineMachines.size == 1) {
-                "No agents are active on this computer right now - reconnect when you need it next."
-            } else {
-                "No agents are active on these computers right now - reconnect when you need them next."
-            }
-        notifications += SharedHomeNotification(
-            id = "machine-offline:${sortedIds.joinToString(",")}",
-            title = "$names $verb",
-            body = body,
-            actionLabel = "View",
-            titleDesc =
-                if (offlineMachines.size == 1) {
-                    Res.string.home_notification_machine_offline_title_one.format(listOf(names))
-                } else {
-                    Res.string.home_notification_machine_offline_title_many.format(listOf(names))
-                },
-            bodyDesc =
-                if (offlineMachines.size == 1) {
-                    Res.string.home_notification_machine_offline_body_one.desc()
-                } else {
-                    Res.string.home_notification_machine_offline_body_many.desc()
-                },
-            actionLabelDesc = Res.string.home_action_view.desc(),
-            targetId = offlineMachines.first().id,
-            kind = SharedHomeNotificationKind.Warning,
-            icon = SharedHomeNotificationIcon.WifiOff
-        )
-    }
     val outdatedMachines =
         machines.filter { machine ->
             !machine.isComputer &&

@@ -372,7 +372,6 @@
     <string name="settings_usage_data_learn_more">Más información</string>
     <string name="settings_usage_data_save_failed">No se pudo guardar este ajuste. Inténtalo de nuevo.</string>
     <string name="settings_computers_title">Computadoras</string>
-    <string name="settings_computers_alerts_section">Alertas</string>
     <string name="settings_computers_subtitle">Computadoras conectadas y espacios de trabajo</string>
     <string name="settings_server_title">Servidor</string>
     <string name="settings_server_profile_title">Perfil del servidor</string>
@@ -2463,10 +2462,6 @@
     <string name="home_notification_action_download">Descargar</string>
     <string name="home_notification_action_downloading">Descargando</string>
     <string name="home_notification_action_install">Instalar</string>
-    <string name="home_notification_machine_offline_title_one">%1$s está sin conexión</string>
-    <string name="home_notification_machine_offline_title_many">%1$s están sin conexión</string>
-    <string name="home_notification_machine_offline_body_one">No hay agentes activos en esta computadora en este momento; vuelve a conectarla cuando la necesites.</string>
-    <string name="home_notification_machine_offline_body_many">No hay agentes activos en estas computadoras en este momento; vuelve a conectarlas cuando las necesites.</string>
     <string name="home_notification_machine_outdated_title_one">Actualización disponible para %1$s</string>
     <string name="home_notification_machine_outdated_title_many">Actualización disponible para %1$s</string>
     <string name="home_notification_machine_outdated_body">Detenlo y vuelve a conectarlo para actualizar.</string>
@@ -2813,8 +2808,6 @@
     <string name="background_kill_notice_body">Tu dispositivo detuvo Raft mientras estaba en segundo plano, lo que puede retrasar mensajes y notificaciones. Abre los ajustes de notificaciones para permitir que Raft se ejecute en segundo plano.</string>
     <string name="background_kill_notice_action_open_settings">Abrir ajustes</string>
     <string name="background_kill_notice_action_dont_show_again">No volver a mostrar</string>
-    <string name="settings_notifications_offline_computers_title">Alertas de computadoras sin conexión</string>
-    <string name="settings_notifications_offline_computers_detail">Muestra una alerta en Inicio cuando una computadora registrada está sin conexión. Desactivado de forma predeterminada.</string>
     <string name="settings_notifications_test_title">Enviar una notificación de prueba</string>
     <string name="settings_notifications_test_detail">Envía una notificación de prueba local para comprobar este dispositivo.</string>
     <string name="settings_notifications_test_allow_permission">Permite las notificaciones de Raft para enviar una prueba.</string>

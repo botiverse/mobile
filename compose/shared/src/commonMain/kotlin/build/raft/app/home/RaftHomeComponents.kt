@@ -105,9 +105,6 @@ import build.raft.app.data.RaftSidebarHideEmptySectionsDefault
 import build.raft.app.data.ScreenError
 import build.raft.app.data.APP_UPDATE_HOME_NOTIFICATION_ID
 import build.raft.app.data.SharedHomeDataSource
-import build.raft.app.data.KeyValueNotificationPreferenceStore
-import build.raft.app.data.PersistentNotificationPreferenceRepository
-import build.raft.app.data.raftSharedPreferenceStore
 import build.raft.app.data.SharedHomeIntent
 import build.raft.app.data.RaftComputersNetworkApi
 import build.raft.app.data.RaftAvatarCacheSubject
@@ -850,21 +847,14 @@ private fun RaftHomePageContent(routeVisibleTick: Int = 0) {
         bridge.log("home_render instanceId=${payload.instanceId} channels=${payload.channels.size} dms=${payload.directMessages.size}")
     }
     val sharedStores = remember { RaftSharedStoreRegistry.get(bridge) }
-    val notificationPreferenceRepository =
-        remember {
-            PersistentNotificationPreferenceRepository(
-                KeyValueNotificationPreferenceStore(raftSharedPreferenceStore())
-            )
-        }
     val standaloneHomeStore =
-        remember(sharedStores, notificationPreferenceRepository) {
+        remember(sharedStores) {
             val homeDataSource =
                 SharedHomeDataSource(
                     sessionStore = sharedStores.authStore,
                     api = NetworkRaftHomeApi(sharedStores.networkClient),
                     announcementsApi = NetworkRaftAnnouncementsRemindersApi(sharedStores.networkClient),
                     computersApi = RaftComputersNetworkApi(sharedStores.networkClient),
-                    notificationPreferenceRepository = notificationPreferenceRepository,
                     serverMembersStore = sharedStores.serverMembersStore,
                     parseHome = { networkPayload, session ->
                         parseRaftHome(networkPayload, session) { message -> bridge.log(message) }

@@ -56,7 +56,7 @@ class HomeDataSourceTest {
     }
 
     @Test
-    fun offlineComputerAlertsDefaultOffWithoutSuppressingOutdatedAlerts() = runBlocking {
+    fun offlineComputersNeverSurfaceHomeAlertsWithoutSuppressingOutdatedAlerts() = runBlocking {
         val machinesBody =
             """
             {
@@ -79,35 +79,24 @@ class HomeDataSourceTest {
             }
             """.trimIndent()
 
-        suspend fun notifications(offlineComputerAlertsEnabled: Boolean?): List<SharedHomeNotification> {
-            val source =
-                SharedHomeDataSource(
-                    sessionStore = InMemoryRaftAuthSessionStore(sampleSession(role = "admin")),
-                    api = FakeHomeApi(),
-                    computersApi =
-                        ConcurrentComputersApi(
-                            announcementsStarted = CompletableDeferred(Unit),
-                            bodyText = machinesBody,
-                        ),
-                    notificationPreferenceRepository =
-                        offlineComputerAlertsEnabled?.let(::notificationPreferences),
-                    parseHome = { _, session ->
-                        DataResult.Content(sampleHome(ServerId(session.currentServerId!!)))
-                    },
-                )
-            return (source.loadNotifications() as DataResult.Content).data
-        }
+        val source =
+            SharedHomeDataSource(
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession(role = "admin")),
+                api = FakeHomeApi(),
+                computersApi =
+                    ConcurrentComputersApi(
+                        announcementsStarted = CompletableDeferred(Unit),
+                        bodyText = machinesBody,
+                    ),
+                parseHome = { _, session ->
+                    DataResult.Content(sampleHome(ServerId(session.currentServerId!!)))
+                },
+            )
+        val notifications = (source.loadNotifications() as DataResult.Content).data
 
         assertEquals(
             listOf("machine-outdated:0.63.7:machine-outdated"),
-            notifications(offlineComputerAlertsEnabled = null).map { it.id },
-        )
-        assertEquals(
-            listOf(
-                "machine-offline:machine-offline",
-                "machine-outdated:0.63.7:machine-outdated",
-            ),
-            notifications(offlineComputerAlertsEnabled = true).map { it.id },
+            notifications.map { it.id },
         )
     }
 
@@ -370,16 +359,17 @@ class HomeDataSourceTest {
     fun syncOnDroppedMachineListIsReadAgainByTheNextHomeReload() = runBlocking {
         val computersApi = ConcurrentComputersApi(CompletableDeferred(Unit))
         val source = syncOnMachinesSource(computersApi)
-        source.loadNotificationsAfterHomeLoad()
+        val beforeDrop = source.loadNotificationsAfterHomeLoad() as DataResult.Content
         source.loadNotificationsAfterHomeLoad()
         assertEquals(1, computersApi.machineCalls)
+        assertEquals(listOf("machine-outdated:0.63.7:machine-1"), beforeDrop.data.map { it.id })
 
         source.dropHeldMachines()
         computersApi.bodyText = ONLINE_MACHINE_BODY
         val afterChange = source.loadNotificationsAfterHomeLoad() as DataResult.Content
 
         assertEquals(2, computersApi.machineCalls)
-        assertEquals(emptyList(), afterChange.data.map { it.id }, "the offline alert left with the fresh list")
+        assertEquals(emptyList(), afterChange.data.map { it.id }, "the outdated alert left with the fresh list")
     }
 
     /**
@@ -396,12 +386,12 @@ class HomeDataSourceTest {
 
         source.dropHeldMachines()
         machinesAnswer.complete(Unit)
-        assertEquals(listOf("machine-offline:machine-1"), (inFlight.await() as DataResult.Content).data.map { it.id })
+        assertEquals(listOf("machine-outdated:0.63.7:machine-1"), (inFlight.await() as DataResult.Content).data.map { it.id })
         computersApi.bodyText = ONLINE_MACHINE_BODY
         val next = source.loadNotificationsAfterHomeLoad() as DataResult.Content
 
         assertEquals(2, computersApi.machineCalls, "the next reload read the list again")
-        assertEquals(emptyList(), next.data.map { it.id }, "not the offline list read before the change")
+        assertEquals(emptyList(), next.data.map { it.id }, "not the outdated list read before the change")
     }
 
     private fun syncOnMachinesSource(computersApi: ConcurrentComputersApi) =
@@ -409,7 +399,6 @@ class HomeDataSourceTest {
             sessionStore = InMemoryRaftAuthSessionStore(sampleSession(role = "admin")),
             api = FakeHomeApi(),
             computersApi = computersApi,
-            notificationPreferenceRepository = notificationPreferences(offlineComputerAlertsEnabled = true),
             serverMembersStore = SharedServerMembersStore(FakeMemberRepository(emptyList()), incrementalSyncCoversRoster = { true }),
             parseHome = { _, session -> DataResult.Content(sampleHome(ServerId(session.currentServerId!!))) },
         )
@@ -667,37 +656,19 @@ class HomeDataSourceTest {
             error("unused")
     }
 
-    private fun notificationPreferences(
-        offlineComputerAlertsEnabled: Boolean
-    ): NotificationPreferenceRepository =
-        object : NotificationPreferenceRepository {
-            override suspend fun getNotificationPreference(): NotificationPreferenceSnapshot =
-                NotificationPreferenceSnapshot(
-                    enabled = true,
-                    offlineComputerAlertsEnabled = offlineComputerAlertsEnabled,
-                )
-
-            override suspend fun setNotificationEnabled(enabled: Boolean): NotificationPreferenceSnapshot =
-                error("unused")
-
-            override suspend fun setForegroundKeepAliveEnabled(enabled: Boolean): NotificationPreferenceSnapshot =
-                error("unused")
-
-            override suspend fun setOfflineComputerAlertsEnabled(enabled: Boolean): NotificationPreferenceSnapshot =
-                error("unused")
-        }
-
     private class ConcurrentComputersApi(
         private val announcementsStarted: CompletableDeferred<Unit>,
         var bodyText: String =
             """
             {
+              "latestDaemonVersion": "0.63.7",
               "machines": [
                 {
                   "id": "machine-1",
                   "name": "OranixSlockTest",
-                  "status": "offline",
-                  "statusVersion": 1
+                  "status": "online",
+                  "statusVersion": 1,
+                  "daemonVersion": "0.62.0"
                 }
               ]
             }
