@@ -55,6 +55,9 @@
 		A54200010000000000000001 /* RaftIosNativeMenuTouchGuard.swift in Sources */ = {isa = PBXBuildFile; fileRef = A54200020000000000000001 /* RaftIosNativeMenuTouchGuard.swift */; };
 		A54200010000000000000002 /* RaftIosNativeMenuTouchGuard.swift in Sources */ = {isa = PBXBuildFile; fileRef = A54200020000000000000001 /* RaftIosNativeMenuTouchGuard.swift */; };
 		A54200010000000000000003 /* RaftIosNativeMenuTouchGuardTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A54200020000000000000002 /* RaftIosNativeMenuTouchGuardTests.swift */; };
+		A54300010000000000000001 /* RaftIosDisplayLinkJankTracker.swift in Sources */ = {isa = PBXBuildFile; fileRef = A54300020000000000000001 /* RaftIosDisplayLinkJankTracker.swift */; };
+		A54300010000000000000002 /* RaftIosDisplayLinkJankTracker.swift in Sources */ = {isa = PBXBuildFile; fileRef = A54300020000000000000001 /* RaftIosDisplayLinkJankTracker.swift */; };
+		A54300010000000000000003 /* RaftIosDisplayLinkJankTrackerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A54300020000000000000002 /* RaftIosDisplayLinkJankTrackerTests.swift */; };
 		A53100010000000000000002 /* RaftIosTabBarItemMapping.swift in Sources */ = {isa = PBXBuildFile; fileRef = A53100020000000000000002 /* RaftIosTabBarItemMapping.swift */; };
 		A53100010000000000000003 /* RaftIosTabBarItemMapping.swift in Sources */ = {isa = PBXBuildFile; fileRef = A53100020000000000000002 /* RaftIosTabBarItemMapping.swift */; };
 		A53100010000000000000004 /* RaftIosTabBarItemMappingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A53100020000000000000003 /* RaftIosTabBarItemMappingTests.swift */; };
@@ -194,6 +197,8 @@
 		A54100020000000000000002 /* RaftIosComposeScrollEdgeEffectsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RaftIosComposeScrollEdgeEffectsTests.swift; sourceTree = "<group>"; };
 		A54200020000000000000001 /* RaftIosNativeMenuTouchGuard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RaftIosNativeMenuTouchGuard.swift; sourceTree = "<group>"; };
 		A54200020000000000000002 /* RaftIosNativeMenuTouchGuardTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RaftIosNativeMenuTouchGuardTests.swift; sourceTree = "<group>"; };
+		A54300020000000000000001 /* RaftIosDisplayLinkJankTracker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RaftIosDisplayLinkJankTracker.swift; sourceTree = "<group>"; };
+		A54300020000000000000002 /* RaftIosDisplayLinkJankTrackerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RaftIosDisplayLinkJankTrackerTests.swift; sourceTree = "<group>"; };
 		A53100020000000000000002 /* RaftIosTabBarItemMapping.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RaftIosTabBarItemMapping.swift; sourceTree = "<group>"; };
 		A53100020000000000000003 /* RaftIosTabBarItemMappingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RaftIosTabBarItemMappingTests.swift; sourceTree = "<group>"; };
 		A1D000032C0000000000003 /* RaftIosDuoGeometry.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = RaftIosDuoGeometry.m; sourceTree = "<group>"; };
@@ -475,6 +480,7 @@
 				A53100020000000000000099 /* RaftIosTopBandDiagnostics.swift */,
 				A54100020000000000000001 /* RaftIosComposeScrollEdgeEffects.swift */,
 				A54200020000000000000001 /* RaftIosNativeMenuTouchGuard.swift */,
+				A54300020000000000000001 /* RaftIosDisplayLinkJankTracker.swift */,
 				A53100020000000000000002 /* RaftIosTabBarItemMapping.swift */,
 				E36000020000000000000002 /* RaftIosExternalShareLaunch.swift */,
 				E36000020000000000000008 /* RaftIosShareSuggestionsHost.swift */,
@@ -503,6 +509,7 @@
 				A47400070000000000000001 /* RaftIosSideActionItemsTests.swift */,
 				A54100020000000000000002 /* RaftIosComposeScrollEdgeEffectsTests.swift */,
 				A54200020000000000000002 /* RaftIosNativeMenuTouchGuardTests.swift */,
+				A54300020000000000000002 /* RaftIosDisplayLinkJankTrackerTests.swift */,
 				A62600020000000000000001 /* RaftIosComposerPasteTests.swift */,
 				A42700020000000000000001 /* RaftAdaptiveEditorSnapshotTests.m */,
 				J0NY00020000000000000001 /* RaftShareControllerFailureReasonTests.m */,
@@ -972,6 +979,7 @@
 				A53100010000000000000099 /* RaftIosTopBandDiagnostics.swift in Sources */,
 				A54100010000000000000001 /* RaftIosComposeScrollEdgeEffects.swift in Sources */,
 				A54200010000000000000001 /* RaftIosNativeMenuTouchGuard.swift in Sources */,
+				A54300010000000000000001 /* RaftIosDisplayLinkJankTracker.swift in Sources */,
 				A53100010000000000000002 /* RaftIosTabBarItemMapping.swift in Sources */,
 				A1D000012C0000000000001 /* RaftIosDuoGeometry.m in Sources */,
 				A1D000022C0000000000002 /* RaftIosDuoRuntime.m in Sources */,
@@ -1028,6 +1036,8 @@
 				A54100010000000000000003 /* RaftIosComposeScrollEdgeEffectsTests.swift in Sources */,
 				A54200010000000000000002 /* RaftIosNativeMenuTouchGuard.swift in Sources */,
 				A54200010000000000000003 /* RaftIosNativeMenuTouchGuardTests.swift in Sources */,
+				A54300010000000000000002 /* RaftIosDisplayLinkJankTracker.swift in Sources */,
+				A54300010000000000000003 /* RaftIosDisplayLinkJankTrackerTests.swift in Sources */,
 				A62600010000000000000001 /* RaftIosComposerPasteTests.swift in Sources */,
 				J0NY00010000000000000001 /* RaftShareControllerFailureReasonTests.m in Sources */,
 				A19300010000000000000001 /* RaftInteractivePopGestureTests.m in Sources */,

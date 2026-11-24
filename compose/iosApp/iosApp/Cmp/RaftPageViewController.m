@@ -376,6 +376,7 @@ static NSString *RaftPageWindowId(NSString *controllerToken) {
     [self raftPublishWindowInsets];
     [RaftIosComposeScrollEdgeEffects hideInView:self.view];
     [RaftIosTopBandDiagnostics notePageAppear];
+    [RaftIosDisplayLinkJankTracker noteRoute:self.raftPageName operation:@"page_appear"];
     if (self.raftIsAppShellPage) {
         [self raftAppShellDidAppear];
     }
