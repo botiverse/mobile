@@ -263,7 +263,14 @@ internal class RaftSyncChangesStoreRouter(
         }
     }
 
+    override suspend fun applyPage(scope: RaftSyncScope, plan: RaftSyncApplyPlan): Int =
+        applyPlanAndCountInboxRows(scope, plan)
+
     override suspend fun apply(scope: RaftSyncScope, plan: RaftSyncApplyPlan) {
+        applyPlanAndCountInboxRows(scope, plan)
+    }
+
+    private suspend fun applyPlanAndCountInboxRows(scope: RaftSyncScope, plan: RaftSyncApplyPlan): Int {
         val serverId = scope.serverId
         val reason = "sync_changes"
         val resnapshot = LinkedHashSet(plan.snapshots)
@@ -374,6 +381,7 @@ internal class RaftSyncChangesStoreRouter(
                 "inboxRows=${settledRows.size}/${plan.inboxRows.size}" +
                 (if (plan.inboxRows.isNotEmpty() && inboxRows == RaftSyncInboxRowsOutcome.NotApplied) " inboxRowsApplied=false" else "")
         )
+        return settledRows.size
     }
 
     private class ConversationRefresh(val home: Boolean, val activity: Boolean, val remoteDone: Int)
