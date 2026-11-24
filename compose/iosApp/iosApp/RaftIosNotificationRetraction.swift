@@ -357,6 +357,8 @@ enum RaftIosRetractWatermarks {
 enum RaftIosNotificationOpen {
     /// `slockNotificationTarget` value: "switch to `slockNotificationServerId` and open its Activity tab".
     static let activityTarget = "activity"
+    /// `slockNotificationTarget` value: "switch to `slockNotificationServerId` and open `slockNotificationAppId`'s detail".
+    static let appTarget = "app"
 
     /// A conversation target when the legacy top-level fields or a `channel` / `dm` / `thread` / `task`
     /// `route` yield one (unchanged output). Otherwise, for a payload that names a server (a message-less
@@ -392,6 +394,24 @@ enum RaftIosNotificationOpen {
         var routeTaskConversationChannelId: String?
         var routeTaskMessageId: String?
         let routeType = routeValue("type")
+        let raftCategory = stringValue("raftCategory")
+        let targetShellId =
+            RaftIosNotificationRetraction.string(shellInstanceId) ?? stringValue("slockShellInstanceId")
+        if routeType == "app",
+           let appServerId = routeValue("serverId") ?? stringValue("serverId"),
+           let appId = routeValue("appId")
+        {
+            var payload = [
+                "slockNotificationServerId": appServerId,
+                "slockNotificationTarget": appTarget,
+                "slockNotificationAppId": appId,
+            ]
+            if let id = stringValue("id") { payload["slockNotificationId"] = id }
+            if let groupKey = stringValue("groupKey") { payload["slockNotificationGroupKey"] = groupKey }
+            if let raftCategory { payload["slockNotificationRaftCategory"] = raftCategory }
+            if let targetShellId { payload["slockShellInstanceId"] = targetShellId }
+            return payload
+        }
         switch routeType {
         case "channel", "dm":
             routeKind = routeType
@@ -416,9 +436,6 @@ enum RaftIosNotificationOpen {
             break
         }
         let serverId = stringValue("serverId") ?? routeValue("serverId")
-        let raftCategory = stringValue("raftCategory")
-        let targetShellId =
-            RaftIosNotificationRetraction.string(shellInstanceId) ?? stringValue("slockShellInstanceId")
         let legacyKind = stringValue("kind").flatMap { supportedKinds.contains($0) ? $0 : nil }
         guard
             let serverId,
@@ -495,6 +512,7 @@ enum RaftIosNotificationOpen {
         if payload["slockNotificationMessageId"] == nil {
             parts += [
                 payload["slockNotificationTarget"] ?? "",
+                payload["slockNotificationAppId"] ?? "",
                 payload["slockNotificationId"] ?? "",
                 payload["slockNotificationGroupKey"] ?? "",
             ]

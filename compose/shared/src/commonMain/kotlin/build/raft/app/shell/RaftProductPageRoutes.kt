@@ -73,6 +73,8 @@ internal fun SettingsWebViewSurface.productPageView(): RaftProductPageView? =
         SettingsWebViewSurface.Billing -> RaftProductPageView(RaftPageRoute.Settings, RaftSettingsTab.Billing)
         SettingsWebViewSurface.Administration -> RaftProductPageView(RaftPageRoute.Settings, RaftSettingsTab.Administration)
         SettingsWebViewSurface.ImBridges -> RaftProductPageView(RaftPageRoute.Settings, RaftSettingsTab.ImBridges)
+        // The shared contract keeps `authorized-accounts` for App authorizations; RaftSettingsTab does not mirror it yet.
+        SettingsWebViewSurface.AppAuthorizations -> null
         // Settings > Connected apps: the web's Integrations section.
         SettingsWebViewSurface.Marketplace -> RaftProductPageView(RaftPageRoute.Settings, RaftSettingsTab.Integrations)
         // The web's Account > Delete Account page.

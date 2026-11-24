@@ -39,6 +39,8 @@ class RaftSettingsLinkTest {
                 "administration" to SettingsDestinationAdministration,
                 "moderation" to SettingsDestinationAdministration,
                 "im-bridges" to SettingsDestinationImBridges,
+                "app-authorizations" to SettingsDestinationAppAuthorizations,
+                "authorized-accounts" to SettingsDestinationAppAuthorizations,
                 "applications" to SettingsDestinationConnectedApps,
                 "integrations" to SettingsDestinationConnectedApps,
                 "mcp" to SettingsDestinationConnectedApps,
@@ -126,6 +128,16 @@ class RaftSettingsLinkTest {
         val none = raftSettingsLinkTarget(parse("$prod/settings/account")!!, "srv-hq", servers)
         assertEquals(RaftSettingsLinkTarget(null, SettingsDestinationAccount), none)
         assertNull(raftSettingsLinkTarget(parse("$prod/s/elsewhere/settings/theme")!!, "srv-hq", servers))
+        // slock #16572: a guest's /settings/applications opens App authorizations.
+        val guestServers = listOf(StoredAuthServer(id = "srv-guest", name = "Guest", slug = "guest", role = "guest"))
+        assertEquals(
+            RaftSettingsLinkTarget(null, SettingsDestinationAppAuthorizations),
+            raftSettingsLinkTarget(parse("$prod/s/guest/settings/applications")!!, "srv-guest", guestServers),
+        )
+        assertEquals(
+            RaftSettingsLinkTarget(null, SettingsDestinationAppAuthorizations),
+            raftSettingsLinkTarget(parse("$prod/s/guest/settings/authorized-accounts")!!, "srv-guest", guestServers),
+        )
     }
 
     private fun action(href: String, webBase: String = prod) =

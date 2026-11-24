@@ -3526,6 +3526,8 @@ internal open class RaftCmpActivity :
         internal const val KEY_APP_SHELL_NOTIFICATION_SERVER_ID = "slockNotificationServerId"
         internal const val KEY_APP_SHELL_NOTIFICATION_TARGET = "slockNotificationTarget"
         internal const val NOTIFICATION_TARGET_ACTIVITY = "activity"
+        internal const val NOTIFICATION_TARGET_APP = "app"
+        internal const val KEY_APP_SHELL_NOTIFICATION_APP_ID = "slockNotificationAppId"
         internal const val KEY_APP_SHELL_NOTIFICATION_THREAD_ID = "slockNotificationThreadId"
         internal const val KEY_APP_SHELL_NOTIFICATION_CHANNEL_ID = "slockNotificationChannelId"
         internal const val KEY_APP_SHELL_NOTIFICATION_MESSAGE_ID = "slockNotificationMessageId"
@@ -3939,6 +3941,13 @@ internal open class RaftCmpActivity :
         internal fun buildNotificationTapAppShellPageData(request: JSONObject): JSONObject? {
             buildUnreadNotificationAppShellPageData(request)?.let { return it }
             val route = build.raft.app.data.parseRaftNotificationRoute(request.optTrimmedString("route"))
+            if (route is build.raft.app.data.RaftNotificationRoute.App) {
+                return buildNotificationAppAppShellPageData(
+                    serverId = route.serverId,
+                    appId = route.appId,
+                    notificationId = request.optTrimmedString("id") ?: request.optTrimmedString("groupKey"),
+                )
+            }
             if (route != null) {
                 val fields = JSONObject()
                 route.legacyOpenFields().forEach { (key, value) -> fields.put(key, value) }
@@ -3967,6 +3976,19 @@ internal open class RaftCmpActivity :
                 .put(KEY_APP_SHELL_NOTIFICATION_SERVER_ID, serverId)
                 .put(KEY_APP_SHELL_NOTIFICATION_TARGET, NOTIFICATION_TARGET_ACTIVITY)
                 .put(KEY_APP_SHELL_INITIAL_TAB, NOTIFICATION_TARGET_ACTIVITY)
+                .withAndroidHostPageData(PAGE_APP_SHELL)
+
+        /** Open the app shell on [serverId] and push [appId]'s installed App detail (`?installed_app=`, slock #16546). */
+        internal fun buildNotificationAppAppShellPageData(
+            serverId: String,
+            appId: String,
+            notificationId: String?,
+        ): JSONObject =
+            JSONObject()
+                .put("instanceId", "notification-app-$serverId-$appId-${notificationId.orEmpty()}")
+                .put(KEY_APP_SHELL_NOTIFICATION_SERVER_ID, serverId)
+                .put(KEY_APP_SHELL_NOTIFICATION_TARGET, NOTIFICATION_TARGET_APP)
+                .put(KEY_APP_SHELL_NOTIFICATION_APP_ID, appId)
                 .withAndroidHostPageData(PAGE_APP_SHELL)
 
         internal fun buildUnreadNotificationThreadPageData(request: JSONObject): JSONObject? {

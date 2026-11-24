@@ -51,6 +51,7 @@ class RaftAppDestinationsTest {
             listOf(
                 RaftAppDestination.Activity,
                 RaftAppDestination.Computers,
+                RaftAppDestination.Apps,
                 RaftAppDestination.Server,
                 RaftAppDestination.Settings,
             ),

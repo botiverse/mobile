@@ -143,6 +143,13 @@ internal enum class RaftMoreAttention(val settingsRowKey: String) {
      * the Feedback row (web `useSettingsPageAttention` / SettingsSidebarList `FeedbackUnreadDot`).
      */
     FeedbackReplies(SettingsDestinationHandsFeedback),
+
+    /**
+     * An installed App waits for an owner/admin review (a permission update or prompt-text
+     * confirmation, `needsAdminReview` on `GET /integrations/permission-updates`, web
+     * `useAppsPageAttention`): dots Apps on the wide rail and the phone server panel.
+     */
+    AppsReview(SettingsDestinationConnectedApps),
 }
 
 /**
@@ -160,6 +167,7 @@ internal fun raftMoreAttention(
     homeNotificationIds: List<String>,
     computersSeen: Set<String> = emptySet(),
     feedbackUnreadTotal: Int = 0,
+    appsNeedsReview: Boolean = false,
 ): Set<RaftMoreAttention> =
     buildSet {
         if (homeNotificationIds.any { it.isAppUpdateHomeNotificationId() }) add(RaftMoreAttention.AppUpdate)
@@ -167,6 +175,7 @@ internal fun raftMoreAttention(
             add(RaftMoreAttention.Computers)
         }
         if (feedbackUnreadTotal > 0) add(RaftMoreAttention.FeedbackReplies)
+        if (appsNeedsReview) add(RaftMoreAttention.AppsReview)
     }
 
 /**
@@ -319,6 +328,7 @@ internal fun RaftMoreAttention.serverMenuEntry(): RaftServerMenuEntry =
     when (this) {
         RaftMoreAttention.AppUpdate, RaftMoreAttention.FeedbackReplies -> RaftServerMenuEntry.Settings
         RaftMoreAttention.Computers -> RaftServerMenuEntry.Computers
+        RaftMoreAttention.AppsReview -> RaftServerMenuEntry.Apps
     }
 
 /** What the current-server tab and its menu show. */

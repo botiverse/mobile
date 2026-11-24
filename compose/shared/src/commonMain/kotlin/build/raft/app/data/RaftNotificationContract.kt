@@ -294,6 +294,9 @@ sealed interface RaftNotificationRoute {
     ) : RaftNotificationRoute
 
     data class Agent(override val serverId: String, val agentId: String) : RaftNotificationRoute
+
+    /** An installed App's detail on its Server's Apps page (`?installed_app=<appId>`, slock #16546). */
+    data class App(override val serverId: String, val appId: String) : RaftNotificationRoute
 }
 
 /** The route of a push: the FCM `route` (a JSON string) or the APNs / socket `route` object as text. */
@@ -303,7 +306,7 @@ fun parseRaftNotificationRoute(rawJson: String?): RaftNotificationRoute? {
     return parseRaftNotificationRouteObject(obj)
 }
 
-/** Closed validation of a route object (any of the five types); anything else is null. */
+/** Closed validation of a route object (any of the six types); anything else is null. */
 fun parseRaftNotificationRouteObject(obj: JsonObject): RaftNotificationRoute? {
     val serverId = obj.notificationStringOrNull("serverId") ?: return null
     val messageId = obj.notificationStringOrNull("messageId")
@@ -329,6 +332,7 @@ fun parseRaftNotificationRouteObject(obj: JsonObject): RaftNotificationRoute? {
             RaftNotificationRoute.Task(serverId, parent, isDm, taskId, messageId)
         }
         "agent" -> obj.notificationStringOrNull("agentId")?.let { RaftNotificationRoute.Agent(serverId, it) }
+        "app" -> obj.notificationStringOrNull("appId")?.let { RaftNotificationRoute.App(serverId, it) }
         else -> null
     }
 }
@@ -366,6 +370,7 @@ fun RaftNotificationRoute.legacyOpenFields(): Map<String, String> =
                 route.messageId?.let { put("taskMessageId", it) }
             }
             is RaftNotificationRoute.Agent -> put("agentId", route.agentId)
+            is RaftNotificationRoute.App -> put("appId", route.appId)
         }
     }
 

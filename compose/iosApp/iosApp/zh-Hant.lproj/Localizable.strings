@@ -40,3 +40,10 @@
 "push.body.sender_no_text" = "%1$@：（無文字）";
 "push.body.agent_migration_review" = "%1$@ 已暫停，等你確認。請在時限結束前檢查要遷移過來的檔案。";
 "push.body.test" = "如果你能看到這則通知，代表通知可以送達這台裝置。";
+/* App permission update notices (preview key set 4, slock #16546). */
+"push.title.app_permission_update" = "%1$@ 在 %2$@ 有一項更新待核准";
+"push.body.app_permission_update.sign_in" = "它要求新的登入權限。請核准更新，或解除安裝該應用程式。";
+"push.body.app_permission_update.data" = "它要求存取此伺服器上更多的資料。請核准更新，或解除安裝該應用程式。";
+"push.body.app_permission_update.sign_in_data" = "它要求新的登入權限，以及存取此伺服器上更多的資料。請核准更新，或解除安裝該應用程式。";
+"push.body.app_permission_update.card_button" = "它變更了卡片按鈕呼叫的位址。請核准更新，或解除安裝該應用程式。";
+"push.body.app_permission_update.permissions_card_button" = "它要求新的權限，並變更了卡片按鈕呼叫的位址。請核准更新，或解除安裝該應用程式。";

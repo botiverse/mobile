@@ -21,7 +21,7 @@ class RaftSettingsSearchIndexTest {
             "live-agent-activity", "show-agent-model", "show-sender-description", "hide-empty-sidebar-sections", "send-with",
             "push-notifications", "pause-notifications", "quiet-hours", "notification-preview", "notification-sound",
             "notification-followed-thread-replies",
-            "theme", "server-theme", "mute-server", "server-name", "public-access", "leave-server", "plan",
+            "theme", "server-theme", "mute-server", "app-authorizations", "server-name", "public-access", "leave-server", "plan",
             "invite-links", "single-sign-on", "member-permissions", "ai-providers", "desktop-app",
         )
 

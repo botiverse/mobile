@@ -27,6 +27,7 @@ internal enum class SettingsWebViewSurface(val diagnosticsName: String) {
     Marketplace("marketplace"),
     Administration("administration"),
     ImBridges("im-bridges"),
+    AppAuthorizations("app-authorizations"),
     ReleaseNotes("release-notes"),
     /** Settings > Account > Delete account: the web deletion page (also its pending state). */
     AccountDeletion("account-deletion"),

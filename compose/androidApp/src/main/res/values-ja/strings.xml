@@ -72,7 +72,6 @@
     <string name="push_title_task_in_channel">#%1$s のタスク</string>
     <string name="push_title_task_assigned">あなたに割り当てられたタスク</string>
     <string name="push_title_agent_action_required">%1$s が対応を求めています</string>
-    <string name="push_title_agent_tool_stuck">%1$s が止まっています</string>
     <string name="push_title_reminder">リマインダー</string>
     <string name="push_title_agent_migration_review">%1$s のクラウドへの移行を確定してください</string>
     <string name="push_title_test">Raft のテスト通知</string>
@@ -86,6 +85,12 @@
     <string name="push_body_sender_no_text">%1$s：（テキストなし）</string>
     <string name="push_body_agent_migration_review">%1$s は確定するまで一時停止しています。期限が切れる前に、移行するファイルを確認してください。</string>
     <string name="push_body_test">この通知が表示されていれば、このデバイスに通知が届いています。</string>
+    <string name="push_title_app_permission_update">%1$s に %2$s で承認待ちの更新があります</string>
+    <string name="push_body_app_permission_update_sign_in">新しいログイン権限を求めています。更新を承認するか、アプリをアンインストールしてください。</string>
+    <string name="push_body_app_permission_update_data">このサーバーのデータへのより広いアクセスを求めています。更新を承認するか、アプリをアンインストールしてください。</string>
+    <string name="push_body_app_permission_update_sign_in_data">新しいログイン権限と、このサーバーのデータへのより広いアクセスを求めています。更新を承認するか、アプリをアンインストールしてください。</string>
+    <string name="push_body_app_permission_update_card_button">カードボタンの呼び出し先アドレスが変わりました。更新を承認するか、アプリをアンインストールしてください。</string>
+    <string name="push_body_app_permission_update_permissions_card_button">新しい権限を求めており、カードボタンの呼び出し先アドレスも変わりました。更新を承認するか、アプリをアンインストールしてください。</string>
     <string name="notification_unread_general_channel_name">未読メッセージ</string>
     <string name="notification_unread_general_channel_description">Raft の一般的な未読メッセージ通知。</string>
     <string name="notification_unread_channel_channel_name">チャンネルの未読メッセージ</string>

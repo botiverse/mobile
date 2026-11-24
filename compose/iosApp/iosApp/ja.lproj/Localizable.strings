@@ -38,3 +38,10 @@
 "push.body.sender_no_text" = "%1$@：（テキストなし）";
 "push.body.agent_migration_review" = "%1$@ は確定するまで一時停止しています。期限が切れる前に、移行するファイルを確認してください。";
 "push.body.test" = "この通知が表示されていれば、このデバイスに通知が届いています。";
+/* App permission update notices (preview key set 4, slock #16546). */
+"push.title.app_permission_update" = "%1$@ に %2$@ で承認待ちの更新があります";
+"push.body.app_permission_update.sign_in" = "新しいログイン権限を求めています。更新を承認するか、アプリをアンインストールしてください。";
+"push.body.app_permission_update.data" = "このサーバーのデータへのより広いアクセスを求めています。更新を承認するか、アプリをアンインストールしてください。";
+"push.body.app_permission_update.sign_in_data" = "新しいログイン権限と、このサーバーのデータへのより広いアクセスを求めています。更新を承認するか、アプリをアンインストールしてください。";
+"push.body.app_permission_update.card_button" = "カードボタンの呼び出し先アドレスが変わりました。更新を承認するか、アプリをアンインストールしてください。";
+"push.body.app_permission_update.permissions_card_button" = "新しい権限を求めており、カードボタンの呼び出し先アドレスも変わりました。更新を承認するか、アプリをアンインストールしてください。";

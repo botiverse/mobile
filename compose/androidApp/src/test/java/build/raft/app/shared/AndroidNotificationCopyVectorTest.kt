@@ -1,10 +1,10 @@
 package build.raft.app.shared
 
 // Vendored from packages/shared/src/notificationCopy.ts (NOTIFICATION_COPY) at
-//   github.com/botiverse/slock PR #12282 (merged to staging) @ fbc091209976f3d22d58f0cc65e330599c45bccf
+//   github.com/botiverse/slock PR #16546 (merged to staging) @ 9bd45ecf815dc645b29e7c36fc182b0c7328fc4d
 // (scripts/check_notification_copy_vector.sh keeps this header, the test's assertion and
 // AndroidPushCopyKeys.SLOCK_SHA in step). To update: re-copy the catalogue, add the new keys to the
-// three string files and AndroidPushCopyKeys, and bump all three pins together.
+// string files and AndroidPushCopyKeys, and bump all three pins together.
 
 import android.app.Application
 import android.content.Context
@@ -53,7 +53,6 @@ class AndroidNotificationCopyVectorTest {
             CopyKey("push.title.task_in_channel", "Task in #{0}", 3),
             CopyKey("push.title.task_assigned", "Assigned to you", 3),
             CopyKey("push.title.agent_action_required", "{0} needs your attention", 3),
-            CopyKey("push.title.agent_tool_stuck", "{0} is stuck", 3),
             CopyKey("push.title.reminder", "Reminder", 3),
             CopyKey("push.title.agent_migration_review", "Confirm moving {0} to the cloud", 3),
             CopyKey("push.title.test", "Raft test notification", 3),
@@ -67,13 +66,19 @@ class AndroidNotificationCopyVectorTest {
             CopyKey("push.body.sender_no_text", "{0}: (no text)", 3),
             CopyKey("push.body.agent_migration_review", "{0} is paused until you confirm. Review which files come over before the window closes.", 3),
             CopyKey("push.body.test", "If you can read this, notifications reach this device.", 3),
+            CopyKey("push.title.app_permission_update", "{0} has an update to approve on {1}", 4),
+            CopyKey("push.body.app_permission_update.sign_in", "It asks for new sign-in permissions. Approve the update or uninstall the App.", 4),
+            CopyKey("push.body.app_permission_update.data", "It asks for more access to data on this Server. Approve the update or uninstall the App.", 4),
+            CopyKey("push.body.app_permission_update.sign_in_data", "It asks for new sign-in permissions and more access to data on this Server. Approve the update or uninstall the App.", 4),
+            CopyKey("push.body.app_permission_update.card_button", "It changed the address its card buttons call. Approve the update or uninstall the App.", 4),
+            CopyKey("push.body.app_permission_update.permissions_card_button", "It asks for new permissions and changed the address its card buttons call. Approve the update or uninstall the App.", 4),
         )
 
     @Test
     fun pinnedToTheSlockCatalogue() {
-        assertEquals("fbc091209976f3d22d58f0cc65e330599c45bccf", AndroidPushCopyKeys.SLOCK_SHA)
-        assertEquals(3, RAFT_ANDROID_PUSH_PREVIEW_KEY_SET)
-        assertEquals(36, catalogue.size)
+        assertEquals("9bd45ecf815dc645b29e7c36fc182b0c7328fc4d", AndroidPushCopyKeys.SLOCK_SHA)
+        assertEquals(4, RAFT_ANDROID_PUSH_PREVIEW_KEY_SET)
+        assertEquals(41, catalogue.size)
     }
 
     @Test
@@ -91,9 +96,10 @@ class AndroidNotificationCopyVectorTest {
     }
 
     @Test
-    fun zhCnAndJaKeepThePlaceholders() {
+    fun allLocalesKeepThePlaceholders() {
         val en = localized("en")
-        for ((tag, context) in listOf("zh-CN" to localized("zh-CN"), "ja" to localized("ja"))) {
+        for (tag in listOf("es", "ja", "ko", "pt-BR", "ru", "zh-CN", "zh-TW")) {
+            val context = localized(tag)
             for (copy in catalogue) {
                 val (resource, _) = AndroidPushCopyKeys.resources.getValue(copy.key)
                 val text = context.getString(resource)

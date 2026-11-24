@@ -286,6 +286,8 @@ internal const val SettingsDestinationComputers = "computers"
 internal const val SettingsDestinationAdministration = "administration"
 /** IM Bridges, the web section `/settings/im-bridges`; a row only while `slack_bridge_v0` is on. */
 internal const val SettingsDestinationImBridges = "im-bridges"
+/** App authorizations, the web section `/settings/app-authorizations` (slock #16572); every member including guests. */
+internal const val SettingsDestinationAppAuthorizations = "app-authorizations"
 /** Labs, the web section `/settings/labs`; a row only while `server_labs_ui_v0` is on. */
 internal const val SettingsDestinationLabs = "labs"
 internal const val SettingsDestinationConnectedApps = "connected-apps"
@@ -1052,6 +1054,14 @@ private fun RaftAppShellReadyContent(
         appShellRealtimeDomainEventOwner = appShellRealtimeDomainEventOwner,
         jointInviteStore = jointInviteStore,
     )
+    // Pending App permission updates / admin review dot for owners & admins (#proj-mobile:#345).
+    val appPermissionUpdatesStore =
+        remember(appShellNetworkClient, jointInviteScope) {
+            build.raft.app.data.SharedAppPermissionUpdatesStore(
+                dataSource = build.raft.app.data.NetworkAppPermissionUpdatesDataSource(appShellNetworkClient),
+                scope = jointInviteScope,
+            )
+        }
     // A pending two-step verification reset, first in the Home notification center (web #12295).
     val secondFactorRecoveryStore =
         remember(appShellNetworkClient, jointInviteScope) {
@@ -1369,6 +1379,12 @@ private fun RaftAppShellReadyContent(
         mutableStateOf(pager.pageData.params.appShellNotificationActivityServerId())
     }
     var pendingNotificationActivityServerId by pendingNotificationActivityServerIdState
+    // An App permission update push (`{ type: "app" }`, slock #16546): switch to its server and
+    // open the installed App's detail in the authenticated Apps WebView.
+    val pendingNotificationAppTargetState = remember(pager.pageData.params.toString()) {
+        mutableStateOf(pager.pageData.params.appShellNotificationAppTarget())
+    }
+    var pendingNotificationAppTarget by pendingNotificationAppTargetState
     // #proj-mobile #25/#26: external message links wait in the process inbox (through sign-in)
     // and, once resolved for this account, enter the same window navigation queue as a
     // notification tap ([navigationIntake]).
@@ -1381,6 +1397,7 @@ private fun RaftAppShellReadyContent(
         eventBus = eventBus,
         navigationIntake = navigationIntake,
         pendingNotificationActivityServerIdState = pendingNotificationActivityServerIdState,
+        pendingNotificationAppTargetState = pendingNotificationAppTargetState,
     )
     val homeSearchSavedViewModel: SharedHomeSearchSavedViewModel =
         viewModel(key = "shared-home-search-saved") {
@@ -4367,12 +4384,39 @@ private fun RaftAppShellReadyContent(
         pager.openSettingsComputersPage(storeScope, attention = attention)
     }
     val openComputersPage: () -> Unit = { openComputersPageWith(false) }
+    val appPermissionUpdatesRole =
+        (homeState.content as? SharedHomeContentState.Content)
+            ?.takeIf { it.snapshot.server.id.value == readyServerId }
+            ?.snapshot
+            ?.server
+            ?.role
+            ?: readySession?.servers?.firstOrNull { it.id == readyServerId }?.role
+            ?: readySession?.currentServerSummary()?.role
+    val canManageIntegrations = build.raft.app.model.serverRoleCanManageIntegrations(appPermissionUpdatesRole)
+    AppShellAppPermissionUpdatesEffect(
+        appShellRealtimeDomainEventOwner = appShellRealtimeDomainEventOwner,
+        store = appPermissionUpdatesStore,
+        serverId = readyServerId,
+        canManageIntegrations = canManageIntegrations,
+        pageVisibleTick = pageVisibleTick,
+    )
+    val appPermissionUpdatesState by appPermissionUpdatesStore.state.collectAsState()
+    val appsNeedsReview =
+        canManageIntegrations &&
+            readyServerId != null &&
+            appPermissionUpdatesState.serverId == readyServerId &&
+            appPermissionUpdatesState.needsAdminReview
     // Something new in More / Settings (app update -> About; an offline/outdated machine not yet
-    // seen -> Computers; a feedback reply not read yet -> Feedback); it dots the More tab and the
-    // matching Settings rows from this one set, so tab and rows light and clear together.
+    // seen -> Computers; a feedback reply not read yet -> Feedback; pending App admin review -> Apps);
+    // it dots the rail/panel entries and the matching Settings rows from this one set.
     val feedbackUnreadTotal by sharedStores.feedbackUnread.unreadTotal.collectAsState()
-    val moreAttention = remember(homeState.notifications, computerAttentionSeen, feedbackUnreadTotal) {
-        raftMoreAttention(homeState.notifications.map { it.id }, computerAttentionSeen, feedbackUnreadTotal)
+    val moreAttention = remember(homeState.notifications, computerAttentionSeen, feedbackUnreadTotal, appsNeedsReview) {
+        raftMoreAttention(
+            homeNotificationIds = homeState.notifications.map { it.id },
+            computersSeen = computerAttentionSeen,
+            feedbackUnreadTotal = feedbackUnreadTotal,
+            appsNeedsReview = appsNeedsReview,
+        )
     }
     // D1a: the current-server tab and its menu, from the Home switcher's own items.
     val serverMenuContent = homeState.content as? SharedHomeContentState.Content
@@ -4830,6 +4874,32 @@ private fun RaftAppShellReadyContent(
         bridge.log("notification_open_activity_done targetServerId=$target")
     }
 
+    LaunchedEffect(pendingNotificationAppTarget, readySession?.currentServerId) {
+        val target = pendingNotificationAppTarget ?: return@LaunchedEffect
+        val session = readySession ?: return@LaunchedEffect
+        if (session.servers.none { it.id == target.serverId }) {
+            pendingNotificationAppTarget = null
+            bridge.logWarn("notification_open_app_drop reason=unknown_server targetServerId=${target.serverId}")
+            return@LaunchedEffect
+        }
+        if (session.currentServerId != target.serverId) {
+            val switched = session.withAppShellSelectedServer(target.serverId)
+            if (switched == null) {
+                pendingNotificationAppTarget = null
+                bridge.logWarn("notification_open_app_drop reason=server_switch_unavailable targetServerId=${target.serverId}")
+                return@LaunchedEffect
+            }
+            authGateViewModel.dispatch(SharedAuthGateIntent.ServerReady(switched))
+            homeShellStore.dispatch(SharedHomeShellIntent.SetSelectedConversation(null))
+            homeShellStore.dispatch(SharedHomeShellIntent.Home(SharedHomeIntent.SelectServer(target.serverId)))
+            return@LaunchedEffect
+        }
+        pendingNotificationAppTarget = null
+        serverMenuState.dismiss()
+        pager.openSettingsMarketplacePage(storeScope = storeScope, installedAppId = target.appId)
+        bridge.log("notification_open_app_done targetServerId=${target.serverId} appId=${target.appId}")
+    }
+
     // D1a: the server panel's pages open the pages the More rows opened, as pushed pages that
     // belong to no tab; Back returns to the page that showed when the panel opened them.
     fun openServerMenuEntry(entry: RaftServerMenuEntry) {
@@ -4918,6 +4988,7 @@ private fun RaftAppShellReadyContent(
             }
             SettingsDestinationAdministration -> pager.openSettingsAdministrationPage(storeScope, anchor)
             SettingsDestinationImBridges -> pager.openSettingsImBridgesPage(storeScope)
+            SettingsDestinationAppAuthorizations -> pager.openSettingsAppAuthorizationsPage(storeScope, anchor)
             SettingsDestinationLabs -> pager.openSettingsLabsPage(storeScope)
             SettingsDestinationConnectedApps -> pager.openSettingsMarketplacePage(storeScope)
             // The native ticket list, on every platform.

@@ -158,4 +158,39 @@ final class RaftIosNotificationRetractionTests: XCTestCase {
         ])!
         XCTAssertEqual(RaftIosNotificationOpen.dedupeKey(message), "s1|c1|m1")
     }
+
+    func testAppRouteOpensInstalledAppDetail() {
+        let payload = RaftIosNotificationOpen.sanitizedPayload(userInfo: [
+            "type": "alert",
+            "id": "app_permission_update:inst-1:abc",
+            "raftCategory": "system_notice",
+            "serverId": "s1",
+            "groupKey": "s1:app_permission_update",
+            "route": ["type": "app", "serverId": "s2", "appId": "app-42"],
+            "aps": ["category": "RAFT_MESSAGE"],
+        ])
+        XCTAssertEqual(payload, [
+            "slockNotificationServerId": "s2",
+            "slockNotificationTarget": "app",
+            "slockNotificationAppId": "app-42",
+            "slockNotificationRaftCategory": "system_notice",
+            "slockNotificationId": "app_permission_update:inst-1:abc",
+            "slockNotificationGroupKey": "s1:app_permission_update",
+        ])
+
+        // Distinct installed apps on the same server do not collapse in dedupeKey.
+        let other = RaftIosNotificationOpen.sanitizedPayload(userInfo: [
+            "serverId": "s2",
+            "route": ["type": "app", "serverId": "s2", "appId": "app-99"],
+        ])!
+        XCTAssertNotEqual(RaftIosNotificationOpen.dedupeKey(payload!), RaftIosNotificationOpen.dedupeKey(other))
+
+        // An app route missing appId falls back cleanly to Activity on its server.
+        let missingAppId = RaftIosNotificationOpen.sanitizedPayload(userInfo: [
+            "serverId": "s2",
+            "route": ["type": "app", "serverId": "s2"],
+        ])
+        XCTAssertEqual(missingAppId?["slockNotificationTarget"], "activity")
+        XCTAssertEqual(missingAppId?["slockNotificationServerId"], "s2")
+    }
 }

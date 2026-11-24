@@ -234,6 +234,13 @@ private fun SettingsWebViewScreen() {
                 iconName = RaftLucideIconName.Network,
                 spec = settingsImBridgesWebViewSpec,
             )
+        SettingsWebViewSurface.AppAuthorizations ->
+            StandaloneSettingsWebViewPage(
+                pager = pager,
+                title = stringResource(Res.string.settings_app_authorizations_title),
+                iconName = RaftLucideIconName.KeyRound,
+                spec = remember(searchAnchor) { settingsAppAuthorizationsWebViewSpec.withSettingsSearchAnchor(searchAnchor) },
+            )
         SettingsWebViewSurface.AccountDeletion -> SettingsAccountDeletionWebViewPage(pager)
         // Keep old settings-webview route payloads compatible while rendering
         // the Hands-hosted Release Notes WebView.

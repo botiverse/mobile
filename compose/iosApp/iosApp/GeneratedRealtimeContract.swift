@@ -109,6 +109,7 @@ enum GeneratedRealtimeContract {
         static let notificationPush = "notification:push"
         static let notificationRetract = "notification:retract"
         static let jointInvitesChanged = "joint-invites:changed"
+        static let permissionUpdatesChanged = "permission-updates:changed"
         static let linkCardOperationChanged = "link_card.operation_changed"
         static let linkCardChanged = "link_card.changed"
         static let actorUpdated = "actor:updated"
@@ -173,6 +174,7 @@ enum GeneratedRealtimeContract {
             SocketEvent.notificationPush,
             SocketEvent.notificationRetract,
             SocketEvent.jointInvitesChanged,
+            SocketEvent.permissionUpdatesChanged,
             SocketEvent.linkCardOperationChanged,
             SocketEvent.linkCardChanged,
             SocketEvent.actorUpdated,

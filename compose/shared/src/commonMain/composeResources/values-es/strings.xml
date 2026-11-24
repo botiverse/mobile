@@ -3359,6 +3359,8 @@
     <string name="settings_server_administration_subtitle">Administradores, invitaciones, enlaces de invitación, acuerdos</string>
     <string name="settings_im_bridges_title">Puentes de mensajería</string>
     <string name="settings_im_bridges_subtitle">Administra las conexiones entre Raft y servicios de mensajería externos</string>
+    <string name="settings_app_authorizations_title">Autorizaciones de apps</string>
+    <string name="settings_app_authorizations_subtitle">Cuentas conectadas y tus vistas previas de enlaces para apps en este servidor</string>
     <string name="settings_labs_title">Labs</string>
     <string name="settings_labs_section_label">Labs</string>
     <string name="settings_labs_unavailable_title">Configuración de Labs no disponible</string>

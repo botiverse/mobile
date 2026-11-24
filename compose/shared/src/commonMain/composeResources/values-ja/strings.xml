@@ -3538,6 +3538,8 @@
     <string name="settings_server_administration_subtitle">管理者、招待、参加リンク、同意事項</string>
     <string name="settings_im_bridges_title">IM ブリッジ</string>
     <string name="settings_im_bridges_subtitle">Raft と外部メッセージングサービスとの接続を管理します</string>
+    <string name="settings_app_authorizations_title">アプリの認可</string>
+    <string name="settings_app_authorizations_subtitle">このサーバーのアプリに連携したアカウントとリンクプレビューの設定</string>
     <string name="settings_labs_title">Labs</string>
     <string name="settings_labs_section_label">Labs</string>
     <string name="settings_labs_unavailable_title">Labs 設定を利用できません</string>

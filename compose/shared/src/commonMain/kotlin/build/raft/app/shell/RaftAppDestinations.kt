@@ -54,7 +54,7 @@ internal enum class RaftNavBadgeSource {
 
     /**
      * An App waiting for an owner/admin review (web `useAppsPageAttention`: `needsAdminReview` of
-     * `GET /integrations/permission-updates`). The app does not load it yet, so it never lights.
+     * `GET /integrations/permission-updates`, [RaftMoreAttention.AppsReview]).
      */
     AppsReview,
 }
@@ -271,7 +271,8 @@ internal data class RaftNavBadgeInputs(
 /** Whether [destination] wears its attention dot; a selected destination never does. */
 internal fun raftNavShowsBadge(destination: RaftAppDestination, inputs: RaftNavBadgeInputs, selected: Boolean): Boolean =
     when (destination.badge) {
-        RaftNavBadgeSource.None, RaftNavBadgeSource.AppsReview -> false
+        RaftNavBadgeSource.None -> false
+        RaftNavBadgeSource.AppsReview -> !selected && RaftMoreAttention.AppsReview in inputs.moreAttention
         RaftNavBadgeSource.ActivityUnread -> appShellActivityTabShowsDot(inputs.activityUnreadCount, selected)
         RaftNavBadgeSource.ServerPages -> appShellMoreTabShowsDot(inputs.moreAttention, selected)
         RaftNavBadgeSource.ComputersAttention -> !selected && RaftMoreAttention.Computers in inputs.moreAttention

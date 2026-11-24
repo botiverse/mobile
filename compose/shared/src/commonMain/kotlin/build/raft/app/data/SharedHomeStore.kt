@@ -7400,6 +7400,7 @@ private fun RealtimeEvent.homeRealtimeDirtyReason(): String =
         is build.raft.app.model.ServerFeaturesChanged -> "server_features_changed"
         is build.raft.app.model.ActivityChanged -> "activity_changed"
         is build.raft.app.model.JointInvitesChanged -> "joint_invites_changed"
+        is build.raft.app.model.PermissionUpdatesChanged -> "permission_updates_changed"
         is build.raft.app.model.ServerAppearanceUpdated -> "appearance_updated"
         // Never dirties Home (updatesHomeSnapshot is false); named for the diagnostics only.
         is build.raft.app.model.UserProfileUpdated -> "user_profile_updated"
