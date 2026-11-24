@@ -3242,7 +3242,9 @@ internal fun ComputerSummary.toSettingsComputerSnapshot(): SettingsComputerSnaps
         diskStatus = diskStatus?.let { SettingsComputerSizeStatusSnapshot(it.availableBytes, it.totalBytes) },
         memoryStatus = memoryStatus?.let { SettingsComputerSizeStatusSnapshot(it.availableBytes, it.totalBytes) },
         loginSteps = loginSteps.orEmpty(),
-        serverNeedsAttention = serverNeedsAttention
+        serverNeedsAttention = serverNeedsAttention,
+        revocation = revocation,
+        versionRefusedAt = versionRefusedAt
     )
 
 private fun ComputerWorkspaceSummary.toSettingsWorkspaceSnapshot(): SettingsComputerWorkspaceSnapshot =

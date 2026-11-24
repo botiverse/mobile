@@ -130,6 +130,61 @@ class ComputerControlApiTest {
     }
 
     @Test
+    fun machinesRowsParseRevocationCauseAndVersionRefusedAt() = runPortableCoroutineTest {
+        val body =
+            """
+            {"machines":[
+              {"id":"m-left","name":"Build Box","status":"offline","isComputer":false,
+               "revocation":{"at":"2026-11-20T12:00:00.000Z","via":"member_left","byUserName":null,"subjectUserName":"Jonathan","departureReason":"left"}},
+              {"id":"m-removed","name":"CI Box","status":"offline","isComputer":false,
+               "revocation":{"at":"2026-11-21T08:00:00.000Z","via":"member_removed","byUserName":"Alice","subjectUserName":"Bob","departureReason":"removed"}},
+              {"id":"m-future-via","name":"Future Box","status":"offline","isComputer":false,
+               "revocation":{"at":"2026-11-22T09:00:00.000Z","via":"some_future_cause","byUserName":"  ","subjectUserName":null,"departureReason":"future"}},
+              {"id":"m-bad-at","name":"Bad At","status":"offline","isComputer":false,
+               "revocation":{"at":"   ","via":"setup_reset"}},
+              {"id":"m-refused","name":"Old Node","status":"offline","isComputer":true,"computerVersion":"1.0.52",
+               "versionRefusedAt":"2026-11-24T11:30:00.000Z",
+               "versionGate":{"reason":"computer_version_unsupported","minVersion":"1.0.53","enforcedAt":null,"enforced":true}}
+            ]}
+            """.trimIndent()
+        val client = RaftComputersApiClient(ControlComputersApi(machinesBody = body))
+        val machines = assertIs<DataResult.Content<ComputerListSummary>>(client.machines(ServerId("server-1"))).data.machines.associateBy { it.id }
+
+        val leftRevocation =
+            SettingsComputerRevocationSnapshot(
+                at = "2026-11-20T12:00:00.000Z",
+                via = SettingsComputerRevokedVia.MemberLeft,
+                byUserName = null,
+                subjectUserName = "Jonathan",
+                departureReason = "left",
+            )
+        assertEquals(leftRevocation, machines.getValue("m-left").revocation)
+        assertEquals(leftRevocation, machines.getValue("m-left").toSettingsComputerSnapshot().revocation)
+
+        assertEquals(
+            SettingsComputerRevocationSnapshot(
+                at = "2026-11-21T08:00:00.000Z",
+                via = SettingsComputerRevokedVia.MemberRemoved,
+                byUserName = "Alice",
+                subjectUserName = "Bob",
+                departureReason = "removed",
+            ),
+            machines.getValue("m-removed").revocation,
+        )
+        // Additive: an unrecognized `via` decodes as null without dropping the revocation.
+        assertEquals(
+            SettingsComputerRevocationSnapshot(at = "2026-11-22T09:00:00.000Z", via = null),
+            machines.getValue("m-future-via").revocation,
+        )
+        assertNull(machines.getValue("m-bad-at").revocation)
+
+        val refused = machines.getValue("m-refused")
+        assertEquals("2026-11-24T11:30:00.000Z", refused.versionRefusedAt)
+        assertEquals("2026-11-24T11:30:00.000Z", refused.toSettingsComputerSnapshot().versionRefusedAt)
+        assertNull(refused.revocation)
+    }
+
+    @Test
     fun restartPostsAnEmptyBodyAndReturnsTheRequestId() = runPortableCoroutineTest {
         val api = ControlComputersApi()
         val client = RaftComputersApiClient(api)

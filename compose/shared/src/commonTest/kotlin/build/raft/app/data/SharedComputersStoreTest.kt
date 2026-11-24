@@ -296,6 +296,38 @@ class SharedComputersStoreTest {
     }
 
     @Test
+    fun syncedMachineRowsCarryAndClearRevocationAndVersionRefusedAt() = runBlocking {
+        val api = RecordingComputersApi()
+        val store = store(api)
+        store.ensureComputerPickerForServer("server-1")
+
+        val revokedRow =
+            parseSyncedComputerRow(
+                kotlinx.serialization.json.Json.parseToJsonElement(
+                    """{"id":"machine-1","name":"Maria Laptop","status":"offline","isComputer":false,"versionRefusedAt":"2026-11-24T10:00:00.000Z","revocation":{"at":"2026-11-20T12:00:00.000Z","via":"key_revoked_manually","byUserName":"Alice","subjectUserName":null,"departureReason":null}}"""
+                ) as kotlinx.serialization.json.JsonObject
+            )!!
+        assertTrue(store.applySyncedMachineRows("server-1", listOf(revokedRow), deletes = emptySet()))
+        val afterRevoke = store.state.value.selectComputerServerSlice("server-1").machines.single()
+        assertEquals(SettingsComputerRevokedVia.KeyRevokedManually, afterRevoke.revocation?.via)
+        assertEquals("Alice", afterRevoke.revocation?.byUserName)
+        assertEquals("2026-11-24T10:00:00.000Z", afterRevoke.versionRefusedAt)
+
+        // Reattaching sends a sync row with isComputer=true and revocation=null: revocation clears.
+        val reattachedRow =
+            parseSyncedComputerRow(
+                kotlinx.serialization.json.Json.parseToJsonElement(
+                    """{"id":"machine-1","name":"Maria Laptop","status":"online","isComputer":true,"computerVersion":"1.0.53","revocation":null,"versionRefusedAt":null}"""
+                ) as kotlinx.serialization.json.JsonObject
+            )!!
+        assertTrue(store.applySyncedMachineRows("server-1", listOf(reattachedRow), deletes = emptySet()))
+        val afterReattach = store.state.value.selectComputerServerSlice("server-1").machines.single()
+        assertNull(afterReattach.revocation)
+        assertNull(afterReattach.versionRefusedAt)
+        assertTrue(afterReattach.isComputer)
+    }
+
+    @Test
     fun aSyncReloadDoesNotJoinALoadReadBeforeTheChangeAndTheOlderAnswerIsDropped() = runBlocking {
         val api = ControlledComputersApi()
         api.enqueue(HomeNetworkResponse(code = 200, bodyText = machinesBody))

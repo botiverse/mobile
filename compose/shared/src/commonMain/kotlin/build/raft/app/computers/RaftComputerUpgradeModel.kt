@@ -77,14 +77,25 @@ internal fun raftCompareComputerVersions(left: String, right: String): Int {
     return 0
 }
 
-/** Oldest Computer the web drives a remote upgrade on (shared `COMPUTER_REMOTE_UPGRADE_MIN_VERSION`). */
-internal const val RAFT_COMPUTER_REMOTE_UPGRADE_MIN_VERSION = "1.0.45"
+/**
+ * Built-in Computer version floor (shared `COMPUTER_VERSION_FLOOR.minVersion`, slock #16346,
+ * #16514): the oldest Computer the server accepts and the web drives a remote upgrade on. Below it
+ * (or without a SemVer version), the server refuses the Computer at connect and its owner re-runs
+ * the install command instead.
+ */
+internal const val RAFT_COMPUTER_VERSION_FLOOR = "1.0.53"
 
-/** Shared `isRemoteUpgradeSupported`: null when the version is unknown. */
+private fun String.computerReleasePart(): String = substringBefore('+').substringBefore('-')
+
+/**
+ * Shared `isRemoteUpgradeSupported` (slock #16514): null when the version is unknown; otherwise at
+ * or above [RAFT_COMPUTER_VERSION_FLOOR] comparing the release part only (so `1.0.53-rc.1` passes,
+ * matching the server's floor check). Fail-closed: non-SemVer returns false.
+ */
 internal fun raftIsRemoteUpgradeSupported(version: String?): Boolean? {
     val trimmed = version?.trim()?.takeIf { it.isNotBlank() } ?: return null
     if (!raftIsComputerSemver(trimmed)) return false
-    return raftCompareComputerVersions(trimmed, RAFT_COMPUTER_REMOTE_UPGRADE_MIN_VERSION) >= 0
+    return raftCompareComputerVersions(trimmed.computerReleasePart(), RAFT_COMPUTER_VERSION_FLOOR.computerReleasePart()) >= 0
 }
 
 /** Web `ComputerVersionFact`. */
@@ -137,7 +148,7 @@ internal fun raftComputerVersionTier(computer: SettingsComputerSnapshot): RaftCo
     if (!computer.isComputer) return RaftComputerVersionTier.None
     val gate = computer.versionGate ?: return RaftComputerVersionTier.None
     val version = computer.computerVersion?.trim()?.takeIf { it.isNotBlank() } ?: return RaftComputerVersionTier.None
-    val webCanUpgrade = raftIsComputerSemver(version) && raftCompareComputerVersions(version, RAFT_COMPUTER_REMOTE_UPGRADE_MIN_VERSION) >= 0
+    val webCanUpgrade = raftIsRemoteUpgradeSupported(version) == true
     return RaftComputerVersionTier.Notice(
         reinstall = !webCanUpgrade,
         reason = gate.reason,
@@ -358,6 +369,10 @@ internal fun raftComputerUpgradeModel(
     val inFlight = reconnect.inFlight
     val card =
         when {
+            // A pending server upgrade already in flight keeps the card consistent with the row's
+            // "Updating to v..." header (toRaftComputerRow gives updating precedence over tier).
+            fact is RaftComputerVersionFact.Outdated && inFlight != null ->
+                RaftComputerCardState.Upgrading(inFlight.targetVersion, raftComputerUpgradeWaitingAgents(inFlight))
             tier is RaftComputerVersionTier.Notice && tier.reinstall -> RaftComputerCardState.Reinstall
             fact is RaftComputerVersionFact.Unknown -> RaftComputerCardState.Reading
             fact is RaftComputerVersionFact.CannotCheck -> RaftComputerCardState.CannotCheck
@@ -365,7 +380,6 @@ internal fun raftComputerUpgradeModel(
             fact is RaftComputerVersionFact.Outdated -> {
                 val version = fact.availableVersion
                 when {
-                    inFlight != null -> RaftComputerCardState.Upgrading(inFlight.targetVersion, raftComputerUpgradeWaitingAgents(inFlight))
                     submittingVersion != null -> RaftComputerCardState.Upgrading(submittingVersion)
                     policy?.reasonCode == "managed_by_desktop" || refusal == RaftComputerUpgradeRefusal.ManagedByDesktop ->
                         RaftComputerCardState.ManagedByDesktop

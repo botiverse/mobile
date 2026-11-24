@@ -446,7 +446,9 @@ internal fun MembersAgentProfileHeader(
      * Web AgentDetailPanel: the status sits under the tags unless the profile shows the Recent
      * activity card, whose first line it is then ([MembersAgentProfileStatus]).
      */
-    showStatus: Boolean = true
+    showStatus: Boolean = true,
+    /** Web `AgentComputerRevokedNote` (#16468): shown under the revoked status notice when present. */
+    computerRevokedNote: MembersAgentComputerRevokedNoteState? = null,
 ) {
     Column(
         modifier = Modifier
@@ -562,6 +564,7 @@ internal fun MembersAgentProfileHeader(
                         onRetry = onRetry,
                         retryInProgress = retryInProgress,
                         onOpenComputer = onOpenComputer,
+                        computerRevokedNote = computerRevokedNote,
                     )
                 }
             }
@@ -594,6 +597,7 @@ internal fun MembersAgentProfileStatus(
     retryInProgress: Boolean = false,
     onOpenComputer: (() -> Unit)? = null,
     itemTop: Dp = 6.dp,
+    computerRevokedNote: MembersAgentComputerRevokedNoteState? = null,
 ) {
     val appBot = !member.managedByAppInstallId.isNullOrBlank()
     // Web AgentDisplayState.blocked (botiverse/slock #13575): held agents say why, not their activity.
@@ -851,6 +855,13 @@ internal fun MembersAgentProfileStatus(
     }
     if (blocked != null && blocked != AgentBlockedState.ComputerUpdateRequired) {
         AgentBlockedStatusNotice(blocked = blocked, modifier = Modifier.padding(top = itemTop))
+        if (blocked == AgentBlockedState.ComputerAccessRevoked && computerRevokedNote != null) {
+            MembersAgentComputerRevokedNote(
+                state = computerRevokedNote,
+                timeContext = timeContext,
+                modifier = Modifier.padding(top = itemTop),
+            )
+        }
     }
     // Web #10446: stuck on one tool call: its own lines under the status chip, so the
     // chip never truncates it, with the way out for whoever can stop the turn.
@@ -958,7 +969,12 @@ internal class MembersAgentLifecycleInputs(
      */
     val computerOfflineCard: MembersAgentComputerOfflineCardState? = null,
     /** Optional copy override for [computerOfflineCard]'s restart command; null uses `rememberRaftCopyAction`. */
-    val onCopyComputerCommand: ((String) -> Unit)? = null
+    val onCopyComputerCommand: ((String) -> Unit)? = null,
+    /**
+     * Web `AgentComputerRevokedNote` (slock #16468): shown under the agent profile's "Computer
+     * access revoked" status when the machine list carries its revocation cause; null otherwise.
+     */
+    val computerRevokedNote: MembersAgentComputerRevokedNoteState? = null,
 )
 
 /**
@@ -1963,7 +1979,8 @@ private fun MembersAgentProfileIdentity(
                 onOpenComputer = lifecycle.onOpenComputer,
                 onOpenManagedApp = lifecycle.onOpenManagedApp,
                 // With Recent activity the status is the card's first line (web).
-                showStatus = recentActivity == null
+                showStatus = recentActivity == null,
+                computerRevokedNote = lifecycle.computerRevokedNote,
             )
             lifecycle.computerOfflineCard?.let { offlineCard ->
                 // Web AgentDetailPanel: `<div className="px-5 pb-4"><AgentComputerOfflineCard /></div>`,
@@ -2007,7 +2024,8 @@ private fun MembersAgentProfileIdentity(
                             onRetry = lifecycle.onRetryRestart,
                             retryInProgress = lifecycle.retryRestartInProgress,
                             onOpenComputer = lifecycle.onOpenComputer,
-                            itemTop = 0.dp
+                            itemTop = 0.dp,
+                            computerRevokedNote = lifecycle.computerRevokedNote,
                         )
                     }
                     Spacer(Modifier.height(MembersProfileSectionPaddingY))

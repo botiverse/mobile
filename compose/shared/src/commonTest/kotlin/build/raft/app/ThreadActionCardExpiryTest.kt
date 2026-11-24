@@ -246,7 +246,9 @@ class ThreadActionCardExpiryTest {
         val error = assertIs<DataResult.Error>(client.executeAction(MessageId("m-card"), "{}")).error
         assertTrue(error.isActionCardExpiredRefusal())
         assertTrue(ScreenError(code = "x", serverCode = "QUESTION_EXPIRED").isActionCardExpiredRefusal())
-        assertFalse(ScreenError(code = "x", serverCode = "EXPIRED").isActionCardExpiredRefusal())
+        // `seats:add` seat-request expiry refusal (`slock` seatRequestService.ts, #5610).
+        assertTrue(ScreenError(code = "x", serverCode = "EXPIRED").isActionCardExpiredRefusal())
+        assertFalse(ScreenError(code = "x", serverCode = "TOKEN_EXPIRED").isActionCardExpiredRefusal())
         assertFalse(ScreenError(code = "x", serverCode = "STATE_MISMATCH").isActionCardExpiredRefusal())
         assertFalse(ScreenError(code = "x").isActionCardExpiredRefusal())
         // The 409 carries no date: drawn expired with the card's own `expiresAt`, else undated.
