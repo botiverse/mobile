@@ -195,6 +195,14 @@ internal class RaftAndroidSandboxWebView(
     /** URL intentionally cancelled by [RaftWebViewEvents.catchesMainFrameNavigation] (mirrors iOS `hostCancelledUrl`). */
     private var lastHostCancelledUrl: String = ""
     private var lastHostCancelledAtMs: Long = 0L
+    /**
+     * `loadGeneration` of an in-flight navigation whose redirect target was caught & cancelled by
+     * [tryCatchMainFrameNavigation] after `onPageStarted` had already started that load (e.g. a
+     * same-origin GET form `/login?agree=1` redirecting 302 to `/api/oauth/authorize`). Swallows
+     * trailing `onPageFinished`/`onPageCommitVisible`/`onReceivedError` callbacks for the aborted
+     * intermediate URL so they never falsely commit or cancel the in-flight native sign-in pipeline.
+     */
+    private var hostCancelledLoadGeneration: Int = -1
     private var lastLoadFailureReason: String = ""
     private var hostMessageListener: WebViewCompat.WebMessageListener? = null
     /** [startPageDownload]'s `blob:` reads in flight, by token; their port and name hook. */
@@ -406,6 +414,7 @@ internal class RaftAndroidSandboxWebView(
         lastRoutedBlockedAtMs = 0L
         lastHostCancelledUrl = ""
         lastHostCancelledAtMs = 0L
+        hostCancelledLoadGeneration = -1
         lastLoadFailureReason = ""
         pendingRuntimeJavaScript = ""
         committedDocumentUrl = ""
@@ -630,6 +639,7 @@ internal class RaftAndroidSandboxWebView(
                     ) {
                         recordNavChainHop(target)
                     }
+                    hostCancelledLoadGeneration = -1
                     currentUrl = target
                     currentTitle = ""
                     currentProgress = 0
@@ -647,7 +657,7 @@ internal class RaftAndroidSandboxWebView(
                     super.onPageFinished(view, url)
                     val target = url.orEmpty()
                     diagnosticsInfo("page_finished url=${target.formatUrlForLog()} ${loadElapsedField()}")
-                    if (isRecentlyHostCancelled(target) || isRecentlyRoutedBlocked(target)) {
+                    if (isCurrentLoadHostCancelled(target) || isRecentlyRoutedBlocked(target)) {
                         currentIsLoading = false
                         notifyNavigationState()
                         return
@@ -675,7 +685,7 @@ internal class RaftAndroidSandboxWebView(
                     super.onPageCommitVisible(view, url)
                     val target = url.orEmpty()
                     diagnosticsInfo("page_commit_visible url=${target.formatUrlForLog()} ${loadElapsedField()}")
-                    if (isRecentlyHostCancelled(target) || isRecentlyRoutedBlocked(target)) {
+                    if (isCurrentLoadHostCancelled(target) || isRecentlyRoutedBlocked(target)) {
                         currentIsLoading = false
                         notifyNavigationState()
                         return
@@ -744,7 +754,7 @@ internal class RaftAndroidSandboxWebView(
                     if (destroyed) return
                     if (request?.isForMainFrame == true) {
                         val failedUrl = request.url?.toString().orEmpty()
-                        if (isRecentlyHostCancelled(failedUrl) || isRecentlyRoutedBlocked(failedUrl)) {
+                        if (isCurrentLoadHostCancelled(failedUrl) || isRecentlyRoutedBlocked(failedUrl)) {
                             currentIsLoading = false
                             notifyNavigationState()
                             return
@@ -796,7 +806,7 @@ internal class RaftAndroidSandboxWebView(
                     super.onReceivedHttpError(view, request, errorResponse)
                     if (destroyed || request?.isForMainFrame != true) return
                     val failedUrl = request.url?.toString().orEmpty()
-                    if (isRecentlyHostCancelled(failedUrl) || isRecentlyRoutedBlocked(failedUrl)) return
+                    if (isCurrentLoadHostCancelled(failedUrl) || isRecentlyRoutedBlocked(failedUrl)) return
                     val statusCode = errorResponse?.statusCode ?: -1
                     diagnosticsWarn(
                         "page_http_error status=$statusCode " +
@@ -958,8 +968,18 @@ internal class RaftAndroidSandboxWebView(
         }
         var forceNotify = true
         when (next.trim()) {
-            RaftWebViewController.COMMAND_GO_BACK -> if (webView.canGoBack()) webView.goBack()
-            RaftWebViewController.COMMAND_GO_FORWARD -> if (webView.canGoForward()) webView.goForward()
+            RaftWebViewController.COMMAND_GO_BACK -> {
+                if (webView.canGoBack()) {
+                    hostCancelledLoadGeneration = -1
+                    webView.goBack()
+                }
+            }
+            RaftWebViewController.COMMAND_GO_FORWARD -> {
+                if (webView.canGoForward()) {
+                    hostCancelledLoadGeneration = -1
+                    webView.goForward()
+                }
+            }
             RaftWebViewController.COMMAND_RELOAD -> {
                 if (isolatedProfileUnavailable) {
                     currentIsLoading = false
@@ -967,6 +987,7 @@ internal class RaftAndroidSandboxWebView(
                     notifyLoadFailure(RAFT_WEBVIEW_ISOLATED_PROFILE_UNAVAILABLE_REASON)
                     return
                 }
+                hostCancelledLoadGeneration = -1
                 lastSuccessfulUrl = ""
                 lastLoadFailureReason = ""
                 mainFrameLoadFailed = false
@@ -1051,6 +1072,7 @@ internal class RaftAndroidSandboxWebView(
         hasCommittedDocument = false
         lastHostCancelledUrl = ""
         lastHostCancelledAtMs = 0L
+        hostCancelledLoadGeneration = -1
         lastRoutedBlockedUrl = ""
         lastRoutedBlockedAtMs = 0L
         resetNavigationChain()
@@ -1140,6 +1162,7 @@ internal class RaftAndroidSandboxWebView(
             handleBlockedMainFrameNavigation(target)
             return
         }
+        hostCancelledLoadGeneration = -1
         lastSuccessfulUrl = ""
         lastLoadFailureReason = ""
         mainFrameLoadFailed = false
@@ -1217,6 +1240,12 @@ internal class RaftAndroidSandboxWebView(
         if (stopLoading) view?.stopLoading()
         lastHostCancelledUrl = target
         lastHostCancelledAtMs = System.currentTimeMillis()
+        if (currentIsLoading && loadGeneration > 0) {
+            hostCancelledLoadGeneration = loadGeneration
+            if (committedDocumentUrl.isNotEmpty()) {
+                currentUrl = committedDocumentUrl
+            }
+        }
         currentIsLoading = false
         notifyNavigationState()
         return true
@@ -1226,8 +1255,8 @@ internal class RaftAndroidSandboxWebView(
      * Main-frame `shouldOverrideUrlLoading` order (#356 §3/§5):
      * 1. [RaftWebViewEvents.catchesMainFrameNavigation] (e.g. Raft OAuth authorize catch);
      * 2. existing link routing and navigation fence;
-     * 3. [raftHostNavigationDecision] (re-issue same-origin GET with `Raft-Host`, or cross-origin
-     *    GET without it, bounded by [RAFT_HOST_REISSUE_BUDGET]).
+     * 3. [raftHostNavigationDecision] (re-issue pre-commit same-origin GET redirects with
+     *    `Raft-Host`, or strip on cross-origin GET redirects, bounded by [RAFT_HOST_REISSUE_BUDGET]).
      */
     private fun handleMainFrameShouldOverrideUrlLoading(
         view: WebView?,
@@ -1272,6 +1301,7 @@ internal class RaftAndroidSandboxWebView(
                 carriesHeader = carriesHeader,
                 host = raftHost,
                 budgetLeft = navChainReissueBudget,
+                committed = hasCommittedDocument,
             )
         recordNavChainHop(target)
         return when (decision) {
@@ -1302,6 +1332,10 @@ internal class RaftAndroidSandboxWebView(
         url.isNotEmpty() &&
             url == lastHostCancelledUrl &&
             (System.currentTimeMillis() - lastHostCancelledAtMs) in 0L..1_500L
+
+    private fun isCurrentLoadHostCancelled(url: String): Boolean =
+        isRecentlyHostCancelled(url) ||
+            (hostCancelledLoadGeneration > 0 && hostCancelledLoadGeneration == loadGeneration)
 
     private fun isRecentlyRoutedBlocked(url: String): Boolean =
         url.isNotEmpty() &&

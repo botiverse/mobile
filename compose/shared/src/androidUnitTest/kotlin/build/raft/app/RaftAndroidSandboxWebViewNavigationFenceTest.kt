@@ -277,12 +277,16 @@ class RaftAndroidSandboxWebViewNavigationFenceTest {
         loadFailures.clear()
         loadSuccessCount = 0
 
-        // Step 1: User taps Stamp login link -> ReissueWithHeader posts webView.loadUrl(stampLogin, Raft-Host).
-        assertTrue(client.shouldOverrideUrlLoading(webView, request(stampLogin, mainFrame = true)))
-        shadowOf(Looper.getMainLooper()).idle()
+        // Step 1: User submits Stamp consent GET form -> allowed natively (false) so Chromium keeps
+        // Sec-Fetch-Site: same-origin, then onPageStarted begins loading stampLogin.
+        assertFalse(client.shouldOverrideUrlLoading(webView, request(stampLogin, mainFrame = true)))
         assertEquals(1, caughtAsks.size)
         caughtAsks.clear()
         routedUrls.clear()
+        client.onPageStarted(webView, stampLogin, null)
+        caughtAsks.clear()
+        routedUrls.clear()
+        observedUrls.clear()
 
         // Step 2: Older Android WebView (e.g. Huawei WebView 114) follows the 302 directly to onPageStarted
         // without calling shouldOverrideUrlLoading for authorizeUrl. catchesMainFrameNavigation MUST run first.
@@ -304,12 +308,14 @@ class RaftAndroidSandboxWebViewNavigationFenceTest {
         assertEquals(emptyList<String>(), blocked, "caught authorize must not escape to external browser")
         assertFalse(observedUrls.any { it == authorizeUrl }, "caught authorize must not overwrite currentUrl")
 
-        // Step 3: Duplicate onPageStarted / onReceivedError / onPageCommitVisible / onPageFinished for the
-        // cancelled authorizeUrl within the fence window must be swallowed without re-catching, failing, or committing.
+        // Step 3: Trailing callbacks for the cancelled authorizeUrl OR aborted intermediate stampLogin
+        // must be swallowed without re-catching, failing, or firing onLoadSuccess/commit.
         client.onPageStarted(webView, authorizeUrl, null)
         client.onReceivedError(webView, request(authorizeUrl, mainFrame = true), null)
         client.onPageCommitVisible(webView, authorizeUrl)
         client.onPageFinished(webView, authorizeUrl)
+        client.onPageFinished(webView, stampLogin)
+        client.onPageCommitVisible(webView, stampLogin)
 
         assertEquals(1, caughtAsks.size, "duplicate onPageStarted within fence must not invoke catch twice")
         assertEquals(emptyList<String>(), routedUrls)

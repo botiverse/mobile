@@ -1,7 +1,13 @@
 package build.raft.app
 
+import build.raft.app.RaftHostNavigationDecision.Allow
+import build.raft.app.RaftHostNavigationDecision.ReissueWithHeader
 import build.raft.app.RaftHostNavigationDecision.ReissueWithoutHeader
+import build.raft.app.RaftHostNavigationKind.History
+import build.raft.app.RaftHostNavigationKind.Initial
 import build.raft.app.RaftHostNavigationKind.Page
+import build.raft.app.RaftHostNavigationKind.Redirect
+import build.raft.app.RaftHostNavigationKind.Reload
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
@@ -29,7 +35,8 @@ class RaftAppEntryRulesTest {
         carriesHeader: Boolean = false,
         host: RaftHostHeader? = this.host,
         budgetLeft: Int = RAFT_HOST_REISSUE_BUDGET,
-    ): RaftHostNavigationDecision = raftHostNavigationDecision(url, method, kind, carriesHeader, host, budgetLeft)
+        committed: Boolean = false,
+    ): RaftHostNavigationDecision = raftHostNavigationDecision(url, method, kind, carriesHeader, host, budgetLeft, committed)
 
     @Test
     fun scopeIsHttpsOnAnAsciiHostAndNeverOneOfRaftsOwn() {
@@ -73,7 +80,25 @@ class RaftAppEntryRulesTest {
             }
         }
         assertEquals(ReissueWithoutHeader, decide("https://evil.example.com/", carriesHeader = true, budgetLeft = 0), "the budget aside")
+        assertEquals(ReissueWithoutHeader, decide("https://evil.example.com/", kind = Redirect, carriesHeader = true, committed = true), "even after commit")
         assertEquals(ReissueWithoutHeader, decide(appHome, carriesHeader = true, host = null), "not an entry page: no header at all")
+    }
+
+    @Test
+    fun reissueWithHeaderRunsOnlyForPreCommitSameOriginGetRedirects() {
+        assertEquals(ReissueWithHeader, decide(appHome, kind = Redirect, carriesHeader = false, committed = false))
+        assertEquals(Allow, decide(appHome, kind = Redirect, carriesHeader = true, committed = false), "already carries header")
+        assertEquals(Allow, decide(appHome, kind = Redirect, carriesHeader = false, committed = false, budgetLeft = 0), "budget exhausted")
+        assertEquals(Allow, decide(appHome, kind = Redirect, method = "POST", carriesHeader = false, committed = false), "never POST")
+
+        // Document-initiated Page navigations (links, GET forms like Stamp /login?agree=1) and
+        // post-commit redirects must not be cancelled and re-issued, preserving Sec-Fetch-Site: same-origin.
+        assertEquals(Allow, decide(appHome, kind = Page, carriesHeader = false, committed = false))
+        assertEquals(Allow, decide(appHome, kind = Page, carriesHeader = false, committed = true))
+        assertEquals(Allow, decide(appHome, kind = Redirect, carriesHeader = false, committed = true))
+        assertEquals(Allow, decide(appHome, kind = Initial, carriesHeader = false, committed = false))
+        assertEquals(Allow, decide(appHome, kind = History, carriesHeader = false, committed = true))
+        assertEquals(Allow, decide(appHome, kind = Reload, carriesHeader = false, committed = true))
     }
 
     @Test
