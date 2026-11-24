@@ -3724,6 +3724,7 @@ NSString *const RaftBridgeCallbackKey = @"callback";
     RaftBridgeRunOnMain(^{
         UINavigationController *navigationController = controller.navigationController;
         if (navigationController && navigationController.viewControllers.count > 1) {
+            [RaftIosDisplayLinkJankTracker noteNavTransitionRequested];
             [navigationController popViewControllerAnimated:YES];
             return;
         }
@@ -7092,6 +7093,7 @@ didFinishPickingMediaWithInfo:(NSDictionary<UIImagePickerControllerInfoKey, id> 
         UINavigationController *navigationController = controller.navigationController;
         if (navigationController) {
             if (replaceCurrent && navigationController.viewControllers.count > 0) {
+                [RaftIosDisplayLinkJankTracker noteNavTransitionRequested];
                 UIViewController *renderViewController =
                     [RaftPageControllerFactory controllerForPageName:pageName pageData:openPageData];
                 NSMutableArray<UIViewController *> *viewControllers = [navigationController.viewControllers mutableCopy];
@@ -7109,6 +7111,7 @@ didFinishPickingMediaWithInfo:(NSDictionary<UIImagePickerControllerInfoKey, id> 
                     if (!strongNavigationController) {
                         return nil;
                     }
+                    [RaftIosDisplayLinkJankTracker noteNavTransitionRequested];
                     UIViewController *renderViewController =
                         [RaftPageControllerFactory controllerForPageName:pageName pageData:openPageData];
                     [strongNavigationController pushViewController:renderViewController animated:YES];

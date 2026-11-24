@@ -2,6 +2,7 @@ package build.raft.app
 
 import build.raft.app.network.installIosRaftUserAgentDevice
 import build.raft.app.data.RaftAppAppearanceRuntime
+import build.raft.app.data.RaftFrameMetricsTraceReporter
 import build.raft.app.compat.pager.RaftPageRegistry
 import build.raft.app.image.RaftImageHost
 import build.raft.app.image.RaftManagedImageRead
@@ -79,6 +80,143 @@ object RaftIosHostHooks {
      */
     fun forgetPageWindowInsets(windowId: String) {
         RaftHostWindowInsets.remove(windowId)
+    }
+
+    /**
+     * Installs the iOS host's scroll-session edge sink for [RaftScrollFrameSignal] so
+     * `RaftIosDisplayLinkJankTracker` can measure `mobile.frames.scroll` sessions with parity to
+     * Android's `RaftScrollFrameProbe`. Main thread only.
+     */
+    fun installScrollFrameSignalSink(sink: (list: String, scrolling: Boolean) -> Unit) {
+        RaftScrollFrameSignal.sink = sink
+    }
+
+    /** Reports one finished iOS scroll frame-metrics session to ScopeDB (`mobile.frames.scroll`). */
+    fun reportScrollFrameTrace(
+        page: String,
+        list: String,
+        reason: String,
+        firstFrameMs: Long,
+        durationMs: Long,
+        frames: Int,
+        jankFrames: Int,
+        longestFrameMs: Long,
+        p95FrameMs: Long,
+        frameIntervalNanos: Long,
+        endFrameIntervalNanos: Long,
+        skippedSessions: Int,
+        skippedJankFrames: Int,
+        skippedLongestFrameMs: Long,
+        deviceModel: String?,
+        osVersion: String?,
+    ) {
+        RaftFrameMetricsTraceReporter.reportScroll(
+            page = page,
+            list = list,
+            reason = reason,
+            firstFrameMs = firstFrameMs,
+            durationMs = durationMs,
+            frames = frames,
+            jankFrames = jankFrames,
+            longestFrameMs = longestFrameMs,
+            p95FrameMs = p95FrameMs,
+            frameIntervalNanos = frameIntervalNanos,
+            endFrameIntervalNanos = endFrameIntervalNanos,
+            skippedSessions = skippedSessions,
+            skippedJankFrames = skippedJankFrames,
+            skippedLongestFrameMs = skippedLongestFrameMs,
+            deviceModel = deviceModel,
+            osVersion = osVersion,
+        )
+    }
+
+    /** Flushes throttled iOS scroll sessions that hit jank when pausing (`reason = "paused_skipped"`). */
+    fun reportScrollSkippedFlushFrameTrace(
+        page: String,
+        list: String,
+        skippedSessions: Int,
+        skippedJankFrames: Int,
+        skippedLongestFrameMs: Long,
+        deviceModel: String?,
+        osVersion: String?,
+    ) {
+        RaftFrameMetricsTraceReporter.reportScrollSkippedFlush(
+            page = page,
+            list = list,
+            skippedSessions = skippedSessions,
+            skippedJankFrames = skippedJankFrames,
+            skippedLongestFrameMs = skippedLongestFrameMs,
+            deviceModel = deviceModel,
+            osVersion = osVersion,
+        )
+    }
+
+    /** Reports one iOS foreground-return frame window to ScopeDB (`mobile.frames.resume`). */
+    fun reportResumeFrameTrace(
+        page: String,
+        reason: String,
+        backgroundMs: Long,
+        startToResumeMs: Long,
+        firstFrameMs: Long,
+        windowMs: Long,
+        frames: Int,
+        jankFrames: Int,
+        blockedMs: Long,
+        longestFrameMs: Long,
+        frameIntervalNanos: Long,
+        deviceModel: String?,
+        osVersion: String?,
+    ) {
+        RaftFrameMetricsTraceReporter.reportResume(
+            page = page,
+            reason = reason,
+            backgroundMs = backgroundMs,
+            startToResumeMs = startToResumeMs,
+            firstFrameMs = firstFrameMs,
+            windowMs = windowMs,
+            frames = frames,
+            jankFrames = jankFrames,
+            blockedMs = blockedMs,
+            longestFrameMs = longestFrameMs,
+            frameIntervalNanos = frameIntervalNanos,
+            deviceModel = deviceModel,
+            osVersion = osVersion,
+        )
+    }
+
+    /** Reports one iOS page push/pop transition to ScopeDB (`mobile.frames.nav_transition`). */
+    fun reportNavTransitionFrameTrace(
+        navKind: String,
+        outcome: String,
+        fromPage: String,
+        toPage: String,
+        firstFrameMs: Long,
+        durationMs: Long,
+        frames: Int,
+        jankFrames: Int,
+        longestFrameMs: Long,
+        p95FrameMs: Long,
+        frameIntervalNanos: Long,
+        endFrameIntervalNanos: Long,
+        deviceModel: String?,
+        osVersion: String?,
+    ) {
+        RaftFrameMetricsTraceReporter.reportNavTransition(
+            navKind = navKind,
+            outcome = outcome,
+            fromPage = fromPage,
+            toPage = toPage,
+            firstFrameMs = firstFrameMs,
+            durationMs = durationMs,
+            frames = frames,
+            jankFrames = jankFrames,
+            longestFrameMs = longestFrameMs,
+            p95FrameMs = p95FrameMs,
+            frameIntervalNanos = frameIntervalNanos,
+            endFrameIntervalNanos = endFrameIntervalNanos,
+            deviceModel = deviceModel,
+            osVersion = osVersion,
+        )
     }
 
     /** Main thread only. Idempotent. */

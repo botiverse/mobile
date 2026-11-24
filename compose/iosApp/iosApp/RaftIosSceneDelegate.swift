@@ -71,9 +71,7 @@ final class RaftIosSceneDelegate: UIResponder, UIWindowSceneDelegate {
             RaftIosAppearanceHost.attach()
             window.makeKeyAndVisible()
         }
-        RaftIosDisplayLinkJankTracker.install { level, tag, message in
-            RaftIosDiagnosticsRecord(level, tag, message)
-        }
+        RaftIosFrameMetricsHost.install()
 
         // Product analytics: a launch for a URL or a link is not a plain launcher open.
         if !connectionOptions.urlContexts.isEmpty || connectionOptions.userActivities.contains(where: {
@@ -223,6 +221,94 @@ final class RaftIosSceneDelegate: UIResponder, UIWindowSceneDelegate {
             "RaftIosShellWindow",
             "scene_released shell=\(shellInstanceId)"
         )
+    }
+}
+
+/// Installs `RaftIosDisplayLinkJankTracker` once with both local JSONL diagnostics logging and
+/// ScopeDB frame-metrics trace reporting (`mobile.frames.{scroll,resume,nav_transition}`) via
+/// `RaftIosHostHooks`, keeping the tracker itself decoupled from `import shared`.
+private enum RaftIosFrameMetricsHost {
+    private static var installed = false
+
+    static func install() {
+        guard !installed else { return }
+        installed = true
+        RaftIosDisplayLinkJankTracker.install(
+            logSink: { level, tag, message in
+                RaftIosDiagnosticsRecord(level, tag, message)
+            },
+            traceSink: RaftIosFrameMetricsTraceSink(
+                reportScroll: { payload in
+                    RaftIosHostHooks.shared.reportScrollFrameTrace(
+                        page: payload.page,
+                        list: payload.list,
+                        reason: payload.reason,
+                        firstFrameMs: payload.firstFrameMs,
+                        durationMs: payload.durationMs,
+                        frames: Int32(clamping: payload.frames),
+                        jankFrames: Int32(clamping: payload.jankFrames),
+                        longestFrameMs: payload.longestFrameMs,
+                        p95FrameMs: payload.p95FrameMs,
+                        frameIntervalNanos: payload.frameIntervalNanos,
+                        endFrameIntervalNanos: payload.endFrameIntervalNanos,
+                        skippedSessions: Int32(clamping: payload.skippedSessions),
+                        skippedJankFrames: Int32(clamping: payload.skippedJankFrames),
+                        skippedLongestFrameMs: payload.skippedLongestFrameMs,
+                        deviceModel: payload.deviceModel,
+                        osVersion: payload.osVersion
+                    )
+                },
+                reportScrollSkippedFlush: { payload in
+                    RaftIosHostHooks.shared.reportScrollSkippedFlushFrameTrace(
+                        page: payload.page,
+                        list: payload.list,
+                        skippedSessions: Int32(clamping: payload.skippedSessions),
+                        skippedJankFrames: Int32(clamping: payload.skippedJankFrames),
+                        skippedLongestFrameMs: payload.skippedLongestFrameMs,
+                        deviceModel: payload.deviceModel,
+                        osVersion: payload.osVersion
+                    )
+                },
+                reportResume: { payload in
+                    RaftIosHostHooks.shared.reportResumeFrameTrace(
+                        page: payload.page,
+                        reason: payload.reason,
+                        backgroundMs: payload.backgroundMs,
+                        startToResumeMs: payload.startToResumeMs,
+                        firstFrameMs: payload.firstFrameMs,
+                        windowMs: payload.windowMs,
+                        frames: Int32(clamping: payload.frames),
+                        jankFrames: Int32(clamping: payload.jankFrames),
+                        blockedMs: payload.blockedMs,
+                        longestFrameMs: payload.longestFrameMs,
+                        frameIntervalNanos: payload.frameIntervalNanos,
+                        deviceModel: payload.deviceModel,
+                        osVersion: payload.osVersion
+                    )
+                },
+                reportNavTransition: { payload in
+                    RaftIosHostHooks.shared.reportNavTransitionFrameTrace(
+                        navKind: payload.navKind,
+                        outcome: payload.outcome,
+                        fromPage: payload.fromPage,
+                        toPage: payload.toPage,
+                        firstFrameMs: payload.firstFrameMs,
+                        durationMs: payload.durationMs,
+                        frames: Int32(clamping: payload.frames),
+                        jankFrames: Int32(clamping: payload.jankFrames),
+                        longestFrameMs: payload.longestFrameMs,
+                        p95FrameMs: payload.p95FrameMs,
+                        frameIntervalNanos: payload.frameIntervalNanos,
+                        endFrameIntervalNanos: payload.endFrameIntervalNanos,
+                        deviceModel: payload.deviceModel,
+                        osVersion: payload.osVersion
+                    )
+                }
+            )
+        )
+        RaftIosHostHooks.shared.installScrollFrameSignalSink { list, scrolling in
+            RaftIosDisplayLinkJankTracker.noteScrollChanged(list: list, scrolling: scrolling.boolValue)
+        }
     }
 }
 
