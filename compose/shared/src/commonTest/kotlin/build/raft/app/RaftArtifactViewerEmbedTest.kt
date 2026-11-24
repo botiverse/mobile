@@ -1,9 +1,26 @@
 package build.raft.app
 
+import build.raft.app.base.BridgeModule
+import build.raft.app.cmp.host.BridgeWireHostCapabilities
+import build.raft.app.cmp.host.HostBridgeTransport
+import build.raft.app.cmp.host.RaftCmpHost
+import build.raft.app.cmp.host.RaftCmpNavigator
+import build.raft.app.compat.json.JSONObject
+import build.raft.app.compat.module.Module
+import build.raft.app.compat.pager.PageData
+import build.raft.app.compat.pager.Pager
 import build.raft.app.data.ArtifactLinkTarget
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlinx.coroutines.test.resetMain
+import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.test.setMain
+import kotlinx.serialization.json.JsonObject
 
 /**
  * The in-app Artifact viewer under the App's own title bar: the web page is opened with the embed
@@ -14,7 +31,7 @@ import kotlin.test.assertTrue
 class RaftArtifactViewerEmbedTest {
     private val web = "https://raft-app-staging.botiverse.dev"
     private val id = "pt_c82e597f-5434-4741-909b-d1c8a7a531c8"
-    private val embed = "embed=raft-settings-v1&shell=host&back=host&hostMenu=desktop-mode,copy-link&hostOpen=message"
+    private val embed = "embed=raft-settings-v1&shell=host&back=host&hostMenu=desktop-mode,copy-link,share-link&hostOpen=message"
 
     @Test
     fun theViewerOpensThePageUnderTheAppTitleBar() {
@@ -73,9 +90,11 @@ class RaftArtifactViewerEmbedTest {
         val page = "$web/artifacts/$id/v/3?$embed&hostDesktop=off"
         // An App item in the page's ⋯ (`#host=<name>`): still this Artifact, at the version shown.
         assertEquals(RaftArtifactViewerHostAction.DesktopMode, raftArtifactViewerHostAction("$page#host=desktop-mode"))
-        // Copy link (Hands d292d99f): the page's own item asks, and the viewer stays on this Artifact.
+        // Copy link (Hands d292d99f) and Share link (slock #16442): the page's own items ask, and the viewer stays on this Artifact.
         assertEquals(RaftArtifactViewerHostAction.CopyLink, raftArtifactViewerHostAction("$page#host=copy-link"))
         assertEquals(RaftArtifactViewerNavigation.Stay(3), raftArtifactViewerNavigation("$page#host=copy-link", web, id))
+        assertEquals(RaftArtifactViewerHostAction.ShareLink, raftArtifactViewerHostAction("$page#host=share-link"))
+        assertEquals(RaftArtifactViewerNavigation.Stay(3), raftArtifactViewerNavigation("$page#host=share-link", web, id))
         // Back's `#host=close` still closes, and is no menu item; open-in-browser and other fragments are none either.
         assertEquals(null, raftArtifactViewerHostAction("$page#host=close"))
         assertEquals(RaftArtifactViewerNavigation.Close, raftArtifactViewerNavigation("$page#host=close", web, id))
@@ -102,6 +121,7 @@ class RaftArtifactViewerEmbedTest {
         // Taken off since: the page set it again, a new tap.
         assertTrue(raftArtifactViewerHostActionIsNew(tap, handledUrl = tap, handledCleared = true, sinceHandledMs = RAFT_ARTIFACT_VIEWER_HOST_ACTION_REPEAT_MS))
         assertTrue(raftArtifactViewerHostActionIsNew("$web/artifacts/$id?$embed#host=copy-link", handledUrl = tap, handledCleared = false, sinceHandledMs = 0))
+        assertTrue(raftArtifactViewerHostActionIsNew("$web/artifacts/$id?$embed#host=share-link", handledUrl = tap, handledCleared = false, sinceHandledMs = 0))
     }
 
     @Test
@@ -141,5 +161,54 @@ class RaftArtifactViewerEmbedTest {
             RaftArtifactViewerNavigation.OpenArtifact(ArtifactLinkTarget(id, 2)),
             raftArtifactViewerNavigation("$web/artifacts/$id/v/2", web, short),
         )
+    }
+
+    @OptIn(ExperimentalCoroutinesApi::class)
+    @Test
+    fun shareLinkInvokesNativeShareTextAndFallsBackToCopyWithToast() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        try {
+            val calls = mutableListOf<Pair<String, String>>()
+            var shareOk = true
+            val transport =
+                HostBridgeTransport { method, params, callback ->
+                    calls += method to params
+                    if (method == "settingsCapability") {
+                        callback?.invoke(if (shareOk) """{"status":"ok"}""" else """{"code":"NOT_IMPLEMENTED"}""")
+                    }
+                }
+            val capabilities = BridgeWireHostCapabilities(transport)
+            val navigator =
+                object : RaftCmpNavigator {
+                    override fun openPage(pageName: String, pageData: JsonObject) = Unit
+                    override fun closePage() = Unit
+                }
+            val pager =
+                object : Pager() {
+                    override fun createExternalModules(): Map<String, Module> = mapOf(BridgeModule.MODULE_NAME to BridgeModule())
+                }
+            pager.pagerId = "artifact-share-link-test"
+            pager.pageData = PageData(JSONObject())
+            pager.host = RaftCmpHost(capabilities, navigator, bridgeTransport = transport)
+            val bridge: BridgeModule = pager.acquireModule(BridgeModule.MODULE_NAME)
+
+            val link = "$web/artifacts/$id/v/3"
+            assertTrue(raftArtifactViewerShareLink(bridge, link, "Link copied."))
+            assertEquals(1, calls.size)
+            assertEquals("settingsCapability", calls[0].first)
+            val shareReq = JSONObject(calls[0].second)
+            assertEquals("shareText", shareReq.optString("action"))
+            assertEquals(link, shareReq.optString("text"))
+
+            // When the host lacks a native share sheet (e.g. Desktop), falls back to clipboard + toast.
+            calls.clear()
+            shareOk = false
+            assertFalse(raftArtifactViewerShareLink(bridge, link, "Link copied."))
+            assertEquals("settingsCapability", calls[0].first)
+            assertTrue(calls.any { it.first == "copyToPasteboard" && JSONObject(it.second).optString("content") == link })
+            assertTrue(calls.any { it.first == "toast" && JSONObject(it.second).optString("content") == "Link copied." })
+        } finally {
+            Dispatchers.resetMain()
+        }
     }
 }

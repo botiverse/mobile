@@ -279,16 +279,20 @@ internal class RaftArtifactOpener(
 /**
  * The opener for the current page. [fallback] (the web URL in the browser, as before) is used only
  * when no page can be opened from here. [conversationId]: the conversation the Artifact is opened
- * from ([LocalRaftArtifactOpenConversation]; null: none).
+ * from ([LocalRaftArtifactOpenConversation]; null: none). [openPageOverride]: optional in-page
+ * opener (e.g. Artifacts Home's wide split column, slock #16418) that receives the prepared target,
+ * scope and conversation after the opener primes the header cache and kept WebView.
  */
 @Composable
 internal fun rememberRaftArtifactOpener(
     conversationId: String? = LocalRaftArtifactOpenConversation.current,
+    openPageOverride: ((target: ArtifactLinkTarget, storeScope: RaftShellStoreScope?, conversationId: String?) -> Boolean)? = null,
     fallback: (ArtifactLinkTarget) -> Unit,
 ): RaftArtifactOpener {
     val host = rememberRaftArtifactViewerHost(LocalRaftArtifactOpenStoreScope.current)
     val coroutineScope = rememberCoroutineScope()
     val currentFallback by rememberUpdatedState(fallback)
+    val currentOpenPageOverride by rememberUpdatedState(openPageOverride)
     val conversation = raftArtifactViewerHostConversationOrNull(conversationId)
     // The head height the viewer opened from here sends (the Artifact column's; none elsewhere), as at the tap.
     val currentHostHead by rememberUpdatedState(raftArtifactViewerOpenHostHead())
@@ -332,7 +336,9 @@ internal fun rememberRaftArtifactOpener(
                     }
                 }
             }
-            val opened = host.pager.openRaftArtifactViewerPage(target, host.openStoreScope, conversation)
+            val opened =
+                currentOpenPageOverride?.invoke(target, host.openStoreScope, conversation)
+                    ?: host.pager.openRaftArtifactViewerPage(target, host.openStoreScope, conversation)
             if (!opened) {
                 RaftArtifactOpenTrace.mark("browser_fallback", "reason=no_page_scope")
                 currentFallback(target)
@@ -708,6 +714,12 @@ private fun RaftArtifactViewerScreen() {
         host.bridge.copyToPasteboard(url)
         host.bridge.toast(copiedMessage)
     }
+    fun shareLink(url: String) {
+        host.bridge.log("artifact_viewer_share_link from=page")
+        downloadScope.launch {
+            raftArtifactViewerShareLink(host.bridge, url, copiedMessage)
+        }
+    }
     val viewing = bodyState == RaftArtifactViewerBodyState.Viewing
     // One bar where the page draws it (`hostToolbar=1`, artin "双栏"): its toolbar has Back, the
     // title and this bar's ⋮ items in its own ⋯. Otherwise (a web that does not, while loading, a
@@ -805,6 +817,10 @@ private fun RaftArtifactViewerScreen() {
                                     // version on the viewer's own web base (never anything the page sends).
                                     RaftArtifactViewerHostAction.CopyLink ->
                                         copyLink(raftArtifactViewerPageUrl(webBaseUrl, ArtifactLinkTarget(shown.id, version)))
+                                    // Shared by the App (#16442, hostMenu=share-link): opens the native share sheet
+                                    // for the Artifact's canonical link, falling back to clipboard copy on desktop.
+                                    RaftArtifactViewerHostAction.ShareLink ->
+                                        shareLink(raftArtifactViewerPageUrl(webBaseUrl, ArtifactLinkTarget(shown.id, version)))
                                 }
                             },
                             onPageDrawsBar = { pageDrawsBar = it },
@@ -1679,6 +1695,25 @@ internal fun raftArtifactViewerSavedToast(
         result?.optString("savedTo") == "files" -> savedToFiles
         else -> saved
     }
+
+/**
+ * Hands [url] to the host's native share sheet (`shareText`, slock #16442 `hostMenu=share-link`),
+ * falling back to copying the link with a toast on hosts without a share sheet (desktop).
+ */
+internal suspend fun raftArtifactViewerShareLink(
+    bridge: BridgeModule,
+    url: String,
+    copiedMessage: String,
+): Boolean {
+    val shared =
+        bridge.settingsCapability(JSONObject().put("action", "shareText").put("text", url))
+            ?.optString("status") == "ok"
+    if (!shared) {
+        bridge.copyToPasteboard(url)
+        bridge.toast(copiedMessage)
+    }
+    return shared
+}
 
 /** A file-name-safe key for the device copy of [url] in [serverId]: `artifact-<16 hex>` (FNV-1a 64). */
 internal fun raftArtifactViewerDownloadCacheId(serverId: String, url: String): String {

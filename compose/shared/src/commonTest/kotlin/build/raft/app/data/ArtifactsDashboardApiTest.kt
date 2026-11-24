@@ -156,6 +156,63 @@ class ArtifactsDashboardApiTest {
     }
 
     @Test
+    fun parsesFollowingAndCrossServerPublicFollowEligibility() {
+        val body =
+            """
+            {
+              "rows": [
+                { "card": ${artifactsHomeCardJson("pt_a", "Local", extra = "\"following\": true,")} },
+                { "card": ${artifactsHomeCardJson("pt_b", "Foreign public", home = publicHome, extra = "\"following\": false, \"fromAnotherServer\": true,")} },
+                { "card": ${artifactsHomeCardJson("pt_c", "Own public", home = publicHome, extra = "\"following\": false, \"fromAnotherServer\": false,")} },
+                { "card": ${artifactsHomeCardJson("pt_d", "Older server")} }
+              ],
+              "nextCursor": null
+            }
+            """.trimIndent()
+        val rows = parseArtifactsHomePage(body)!!.rows
+        assertEquals(true, rows[0].summary.following)
+        assertTrue(rows[0].summary.readsInOwnServer())
+        assertTrue(rows[0].summary.canToggleFollow())
+
+        assertEquals(false, rows[1].summary.following)
+        assertTrue(rows[1].summary.fromAnotherServer)
+        assertFalse(rows[1].summary.readsInOwnServer())
+        assertFalse(rows[1].summary.canToggleFollow())
+
+        assertEquals(false, rows[2].summary.following)
+        assertTrue(rows[2].summary.readsInOwnServer())
+        assertTrue(rows[2].summary.canToggleFollow())
+
+        assertNull(rows[3].summary.following)
+        assertFalse(rows[3].summary.canToggleFollow())
+    }
+
+    @Test
+    fun subscriptionRouteUsesPutAndDeleteInTheReadersServer() = runTest {
+        val network = RecordingNetworkClient(HomeNetworkResponse(200, """{ "following": true }"""))
+        val api = NetworkRaftArtifactsDashboardApi(network)
+
+        val followed = assertIs<ArtifactsHomeLoad.Ok<Boolean>>(api.updateArtifactFollowing("s-1", "pt_a", true))
+        assertTrue(followed.value)
+
+        network.response = HomeNetworkResponse(200, """{ "following": false }""")
+        val unfollowed = assertIs<ArtifactsHomeLoad.Ok<Boolean>>(api.updateArtifactFollowing("s-1", "pt_a", false))
+        assertFalse(unfollowed.value)
+
+        assertEquals(
+            listOf(
+                Recorded("PUT", DataRequestPriority.Foreground, "artifacts/pt_a/subscription", emptyList(), ServerId("s-1")),
+                Recorded("DELETE", DataRequestPriority.Foreground, "artifacts/pt_a/subscription", emptyList(), ServerId("s-1")),
+            ),
+            network.requests,
+        )
+
+        network.response = HomeNetworkResponse(500, null, errorBodyText = """{ "code": "INTERNAL", "error": "boom" }""")
+        val failed = assertIs<ArtifactsHomeLoad.Failed>(api.updateArtifactFollowing("s-1", "pt_a", false))
+        assertEquals("INTERNAL", failed.error.serverCode)
+    }
+
+    @Test
     fun refusalsReadAsOffMissingOrFailed() = runTest {
         suspend fun load(response: HomeNetworkResponse) =
             NetworkRaftArtifactsDashboardApi(RecordingNetworkClient(response)).loadArtifactsHomePage("s", ArtifactsHomeQuery(), null, DataRequestPriority.Visible)

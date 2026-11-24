@@ -4507,6 +4507,11 @@
     <string name="message_card_allow_app">允許 %1$s</string>
     <string name="artifacts_menu_copy_link">複製連結</string>
     <string name="artifacts_menu_link_copied">已複製連結。</string>
+    <string name="artifacts_menu_follow">關注</string>
+    <string name="artifacts_menu_unfollow">取消關注</string>
+    <string name="artifacts_follow_unfollowed">已取消關注</string>
+    <string name="artifacts_follow_undo">復原</string>
+    <string name="artifacts_follow_failed">無法變更關注狀態，請再試一次。</string>
     <string name="artifacts_card_comments_one">1 則留言</string>
     <string name="artifacts_card_comments_many">%1$d 則留言</string>
     <string name="artifacts_card_loading">正在載入 Artifact</string>

@@ -5,15 +5,21 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.ComposeUiTest
 import androidx.compose.ui.test.ExperimentalTestApi
+import androidx.compose.ui.test.MouseButton
 import androidx.compose.ui.test.assertCountEquals
+import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performMouseInput
 import build.raft.app.compat.json.JSONObject
 import build.raft.app.compat.pager.LocalActivity
 import build.raft.app.compat.pager.PageData
@@ -369,6 +375,135 @@ class ArtifactsHomeUiTest {
         onNodeWithText("Artifacts aren't on for this server").assertExists()
     }
 
+    @Test
+    fun contextMenuAlwaysOpensShowsFollowUnfollowAfterCopyLinkAndHidesFollowForForeignPublic() = runRobolectricComposeUiTest {
+        val copied = mutableListOf<String>()
+        setContent {
+            val pager = remember { object : Pager() {}.apply { pageData = PageData(JSONObject().apply { put("slockVisualZeroSafeArea", true) }) } }
+            CompositionLocalProvider(
+                LocalActivity provides RaftPageActivity(pager),
+                LocalRaftTimeContextProvider provides RaftTimeContextProvider(timeContext),
+            ) {
+                ArtifactsHomeScreen(
+                    state =
+                        loaded(
+                            rows =
+                                listOf(
+                                    row("pt_followed", "Followed doc", following = true),
+                                    row("pt_unfollowed", "Not followed", following = false),
+                                    row("pt_foreign", "Foreign public", home = ArtifactHome.Public, following = false, fromAnotherServer = true),
+                                ),
+                            settledEnabled = false,
+                        ),
+                    view = ArtifactsHomeView.List,
+                    readerId = "me",
+                    serverName = "Northwind Labs",
+                    wide = false,
+                    onIntent = { intents += it },
+                    onView = {},
+                    onOpen = { opened += it.summary.id },
+                    onBack = {},
+                    onCopyLink = { copied += it.summary.id },
+                )
+            }
+        }
+        waitForIdle()
+
+        // Context menu opens even when settledEnabled = false; Copy link sits above Unfollow.
+        onAllNodesWithTag(ArtifactsHomeTags.Row)[0].performMouseInput {
+            moveTo(Offset(width * 0.3f, height * 0.5f))
+            press(MouseButton.Secondary)
+            release(MouseButton.Secondary)
+        }
+        waitForIdle()
+        onNodeWithTag(ArtifactsHomeTags.HomeMenu).assertIsDisplayed()
+        val copyTop = onNodeWithTag(ArtifactsHomeTags.HomeMenuCopyLink).fetchSemanticsNode().boundsInRoot.top
+        val followTop = onNodeWithTag(ArtifactsHomeTags.HomeMenuFollow).fetchSemanticsNode().boundsInRoot.top
+        assertEquals(true, copyTop < followTop, "Copy link precedes Follow/Unfollow")
+        assertEquals("Unfollow", onNodeWithTag(ArtifactsHomeTags.HomeMenuFollow).fetchSemanticsNode().config[SemanticsProperties.Text].joinToString("") { it.text })
+        onNodeWithTag(ArtifactsHomeTags.HomeMenuFollow).performClick()
+        waitForIdle()
+        assertEquals(ArtifactsHomeIntent.SetFollowing("pt_followed", false), intents.last())
+
+        // Second row has following = false -> menu says Follow and dispatches SetFollowing(true).
+        onAllNodesWithTag(ArtifactsHomeTags.Row)[1].performMouseInput {
+            moveTo(Offset(width * 0.3f, height * 0.5f))
+            press(MouseButton.Secondary)
+            release(MouseButton.Secondary)
+        }
+        waitForIdle()
+        assertEquals("Follow", onNodeWithTag(ArtifactsHomeTags.HomeMenuFollow).fetchSemanticsNode().config[SemanticsProperties.Text].joinToString("") { it.text })
+        onNodeWithTag(ArtifactsHomeTags.HomeMenuFollow).performClick()
+        waitForIdle()
+        assertEquals(ArtifactsHomeIntent.SetFollowing("pt_unfollowed", true), intents.last())
+
+        // Cross-server public item omits Follow/Unfollow.
+        onAllNodesWithTag(ArtifactsHomeTags.Row)[2].performMouseInput {
+            moveTo(Offset(width * 0.3f, height * 0.5f))
+            press(MouseButton.Secondary)
+            release(MouseButton.Secondary)
+        }
+        waitForIdle()
+        onNodeWithTag(ArtifactsHomeTags.HomeMenu).assertIsDisplayed()
+        onAllNodesWithTag(ArtifactsHomeTags.HomeMenuFollow).assertCountEquals(0)
+    }
+
+    @Test
+    fun relevantToMeUnfollowedShowsBadgeOnTileAndListRowAndClearsOnUndoOrAllView() = runRobolectricComposeUiTest {
+        var state by mutableStateOf(
+            loaded(
+                rows = listOf(row("pt_a", "Plan", following = false), row("pt_b", "Active", following = true)),
+                query = ArtifactsHomeQuery(relevant = true),
+                unfollowedIds = setOf("pt_a"),
+            ),
+        )
+        var view by mutableStateOf(ArtifactsHomeView.Grid)
+        setContent {
+            val pager = remember { object : Pager() {}.apply { pageData = PageData(JSONObject().apply { put("slockVisualZeroSafeArea", true) }) } }
+            CompositionLocalProvider(
+                LocalActivity provides RaftPageActivity(pager),
+                LocalRaftTimeContextProvider provides RaftTimeContextProvider(timeContext),
+            ) {
+                ArtifactsHomeScreen(
+                    state = state,
+                    view = view,
+                    readerId = "me",
+                    serverName = "Northwind Labs",
+                    wide = false,
+                    onIntent = { intents += it },
+                    onView = { view = it },
+                    onOpen = { opened += it.summary.id },
+                    onBack = {},
+                )
+            }
+        }
+        waitForIdle()
+
+        // Under Relevant to me, Grid tile shows the Unfollowed badge.
+        onAllNodesWithTag(ArtifactsHomeTags.UnfollowedTag, useUnmergedTree = true).assertCountEquals(1)
+        onNodeWithText("Unfollowed", useUnmergedTree = true).assertExists()
+
+        // List row shows the Unfollowed badge too.
+        view = ArtifactsHomeView.List
+        waitForIdle()
+        onAllNodesWithTag(ArtifactsHomeTags.UnfollowedTag, useUnmergedTree = true).assertCountEquals(1)
+
+        // Outside Relevant to me, Unfollowed badge is omitted.
+        state = state.copy(query = ArtifactsHomeQuery(relevant = false))
+        waitForIdle()
+        onAllNodesWithTag(ArtifactsHomeTags.UnfollowedTag, useUnmergedTree = true).assertCountEquals(0)
+
+        // Back under Relevant to me, after Undo sets following = true and clears unfollowedIds, badge disappears.
+        state =
+            state.copy(
+                query = ArtifactsHomeQuery(relevant = true),
+                rows = listOf(row("pt_a", "Plan", following = true), row("pt_b", "Active", following = true)),
+                unfollowedIds = emptySet(),
+            )
+        waitForIdle()
+        onAllNodesWithTag(ArtifactsHomeTags.UnfollowedTag, useUnmergedTree = true).assertCountEquals(0)
+    }
+
     private val assistant =
         ArtifactsHomeActor(type = "agent", id = "a-1", name = "ottie", displayName = "Ottie", onBehalfOf = ArtifactsHomeBehalf("me", "Me"))
 
@@ -389,6 +524,8 @@ class ArtifactsHomeUiTest {
         updatedAt: String = "2026-11-18T08:00:00.000Z",
         settled: ArtifactSettled? = null,
         settledShown: Boolean = settled != null,
+        following: Boolean? = null,
+        fromAnotherServer: Boolean = false,
     ) =
         ArtifactsHomeRow(
             summary =
@@ -405,10 +542,13 @@ class ArtifactsHomeUiTest {
                     commentCount = commentCount,
                     settled = settled,
                     settledShown = settledShown,
+                    following = following,
+                    fromAnotherServer = fromAnotherServer,
                 ),
             author = author,
             openedAt = null,
             news = news,
+            fromAnotherServer = fromAnotherServer,
         )
 
     private fun loaded(
@@ -418,6 +558,7 @@ class ArtifactsHomeUiTest {
         search: String = query.q,
         settledEnabled: Boolean = false,
         statusFilter: ArtifactsHomeStatusFilter = ArtifactsHomeStatusFilter.Unsettled,
+        unfollowedIds: Set<String> = emptySet(),
     ) =
         ArtifactsHomeState(
             serverId = "s-1",
@@ -429,5 +570,6 @@ class ArtifactsHomeUiTest {
             rows = rows,
             nextCursor = nextCursor,
             counts = ArtifactsHomeCounts(total = 24, filtered = 24, relevant = 2),
+            unfollowedIds = unfollowedIds,
         )
 }

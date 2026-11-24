@@ -43,18 +43,24 @@ internal class SharedArtifactsHomeStore(
     private val logger: ((String) -> Unit)? = null,
     private val filterRepository: ArtifactsHomeFilterRepository? = null,
     private val settledSeenRepository: ArtifactsHomeSettledSeenRepository? = null,
+    /** Own Follow/Unfollow events emitted from other surfaces (e.g. message cards, slock #16357). */
+    private val ownFollowEvents: SharedFlow<ArtifactOwnFollowEvent>? = null,
+    /** Reports a Follow/Unfollow committed here to the shared follow store so message cards sync. */
+    private val onOwnFollowCommitted: (serverId: String, artifactId: String, following: Boolean) -> Unit = { _, _, _ -> },
 ) {
     private val mutableState = MutableStateFlow(ArtifactsHomeState(query = ArtifactsHomeQuery(sort = initialSort)))
     val state: StateFlow<ArtifactsHomeState> = mutableState.asStateFlow()
 
-    private val mutableEvents = MutableSharedFlow<ArtifactsHomeEvent>(extraBufferCapacity = 4, onBufferOverflow = BufferOverflow.DROP_OLDEST)
+    private val mutableEvents = MutableSharedFlow<ArtifactsHomeEvent>(extraBufferCapacity = 8, onBufferOverflow = BufferOverflow.DROP_OLDEST)
     val events: SharedFlow<ArtifactsHomeEvent> = mutableEvents.asSharedFlow()
 
     private var generation = 0
+    private var reloadGeneration = 0
     private var readJob: Job? = null
     private var pageJob: Job? = null
     private var searchJob: Job? = null
     private var legacyAuthorJob: Job? = null
+    private var ownFollowObserveJob: Job? = null
 
     /** What the rows on screen were read with: their cursor continues only that. */
     private var shownQuery: ArtifactsHomeQuery? = null
@@ -70,6 +76,29 @@ internal class SharedArtifactsHomeStore(
 
     private val choiceJobs = mutableMapOf<ArtifactsHomeChoiceKind, Job>()
     private val settleJobs = mutableMapOf<String, Job>()
+    private val followJobs = mutableMapOf<String, Job>()
+
+    /**
+     * Own Follow/Unfollow answers within the current [reloadGeneration] scope (web
+     * `useArtifactHomeGroups.ts` `OwnAnswers`, slock #16357 + #16397): preserved across background
+     * `keepRows = true` refreshes and cleared on `keepRows = false` filter/server reloads.
+     */
+    private val ownFollows = LinkedHashMap<String, Boolean>()
+    private val retainedUnfollowed = LinkedHashMap<String, RetainedUnfollowedItem>()
+
+    init {
+        if (ownFollowEvents != null) {
+            ownFollowObserveJob =
+                scope.launch {
+                    ownFollowEvents.collect { event ->
+                        val current = mutableState.value
+                        if (current.serverId == event.serverId && current.rows != null) {
+                            applyOwnFollow(event.artifactId, event.following)
+                        }
+                    }
+                }
+        }
+    }
 
     fun dispatch(intent: ArtifactsHomeIntent) {
         when (intent) {
@@ -111,6 +140,7 @@ internal class SharedArtifactsHomeStore(
             ArtifactsHomeIntent.ClearFilters,
             -> clearAllFilters()
             is ArtifactsHomeIntent.SetSettled -> setSettled(intent.artifactId, intent.settled)
+            is ArtifactsHomeIntent.SetFollowing -> setFollowing(intent.artifactId, intent.following)
             ArtifactsHomeIntent.Retry -> read(keepRows = mutableState.value.rows != null)
             ArtifactsHomeIntent.LoadMore -> loadMore()
             is ArtifactsHomeIntent.ActivityChanged -> onActivity(intent.serverId)
@@ -138,11 +168,15 @@ internal class SharedArtifactsHomeStore(
         pageJob?.cancel()
         searchJob?.cancel()
         legacyAuthorJob?.cancel()
+        ownFollowObserveJob?.cancel()
         choiceJobs.values.forEach { it.cancel() }
         choiceJobs.clear()
         val pendingSettle = settleJobs.values.toList()
         settleJobs.clear()
         pendingSettle.forEach { it.cancel() }
+        val pendingFollow = followJobs.values.toList()
+        followJobs.clear()
+        pendingFollow.forEach { it.cancel() }
     }
 
     private fun start(serverId: String?, readerId: String?) {
@@ -154,6 +188,9 @@ internal class SharedArtifactsHomeStore(
             // An answer still on its way is the old server's: it must never land under the new one
             // (review H2), even while the new one's flag is still unknown (Start(null)).
             generation++
+            reloadGeneration = generation
+            ownFollows.clear()
+            retainedUnfollowed.clear()
             readJob?.cancel()
             pageJob?.cancel()
             activityRead = ActivityRead.Idle
@@ -165,6 +202,9 @@ internal class SharedArtifactsHomeStore(
             val pendingSettle = settleJobs.values.toList()
             settleJobs.clear()
             pendingSettle.forEach { it.cancel() }
+            val pendingFollow = followJobs.values.toList()
+            followJobs.clear()
+            pendingFollow.forEach { it.cancel() }
             val persisted =
                 if (serverId != null) {
                     filterRepository?.read(cleanReader, serverId) ?: ArtifactsHomeFilters.Default
@@ -189,6 +229,7 @@ internal class SharedArtifactsHomeStore(
                 ArtifactsHomeState(
                     serverId = serverId,
                     readerId = cleanReader,
+                    reloadGeneration = reloadGeneration,
                     query = restoredQuery,
                     search = persisted.search,
                     authorActor = persisted.authorActor,
@@ -307,14 +348,22 @@ internal class SharedArtifactsHomeStore(
         val serverId = current.serverId ?: return null
         val query = current.query
         val readGeneration = ++generation
+        if (!keepRows) {
+            reloadGeneration = readGeneration
+            ownFollows.clear()
+            retainedUnfollowed.clear()
+        }
+        val expectedReloadGeneration = reloadGeneration
         readFor = filterKey(serverId, query)
         pageJob?.cancel()
         mutableState.value =
             current.copy(
                 status = ArtifactsHomeStatus.Loading,
+                reloadGeneration = reloadGeneration,
                 rows = if (keepRows) current.rows else null,
                 nextCursor = if (keepRows) current.nextCursor else null,
                 counts = if (keepCounts) current.counts else null,
+                unfollowedIds = if (keepRows) current.unfollowedIds else emptySet(),
                 paging = false,
                 error = null,
             )
@@ -332,16 +381,28 @@ internal class SharedArtifactsHomeStore(
                         shownGeneration = readGeneration
                         answeredSort = query.sort
                         val page = load.value
-                        val rowsLoaded = page.rows.isNotEmpty()
-                        val rowHasSettled = rowsLoaded && page.rows.any { it.summary.settledShown }
+                        val mergedRows =
+                            if (latest.reloadGeneration == expectedReloadGeneration) {
+                                val withRetained =
+                                    if (query.relevant && retainedUnfollowed.isNotEmpty()) {
+                                        mergeRetainedUnfollowed(page.rows, retainedUnfollowed, ownFollows, latest.unfollowedIds)
+                                    } else {
+                                        page.rows
+                                    }
+                                withOwnFollows(withRetained, ownFollows)
+                            } else {
+                                page.rows
+                            }
+                        val rowsLoaded = mergedRows.isNotEmpty()
+                        val rowHasSettled = rowsLoaded && mergedRows.any { it.summary.settledShown }
                         val nextSettledEnabled =
                             settledSeenRepository?.observe(latest.readerId, serverId, rowHasSettled, rowsLoaded)
                                 ?: if (rowsLoaded) rowHasSettled else latest.settledEnabled
-                        val mergedKnown = mergeKnownAuthors(latest.knownAuthors, page.rows.map { it.author })
+                        val mergedKnown = mergeKnownAuthors(latest.knownAuthors, mergedRows.map { it.author })
                         mutableState.value =
                             latest.copy(
                                 status = ArtifactsHomeStatus.Ok,
-                                rows = page.rows,
+                                rows = mergedRows,
                                 nextCursor = page.nextCursor,
                                 counts = page.counts ?: latest.counts,
                                 countsNarrowed = if (page.counts != null) query.narrowed else latest.countsNarrowed,
@@ -413,6 +474,79 @@ internal class SharedArtifactsHomeStore(
             if (settleJobs[artifactId] === job) {
                 settleJobs.remove(artifactId)
             }
+        }
+    }
+
+    private fun setFollowing(artifactId: String, following: Boolean) {
+        val current = mutableState.value
+        val serverId = current.serverId ?: return
+        if (current.status == ArtifactsHomeStatus.Off || artifactId in current.followingIds) return
+        if (following) {
+            mutableEvents.tryEmit(ArtifactsHomeEvent.Followed(artifactId))
+        }
+        val startedReloadGeneration = current.reloadGeneration
+        mutableState.value = current.copy(followingIds = current.followingIds + artifactId)
+        val job =
+            scope.launch {
+                val load = api.setFollowing(serverId, artifactId, following)
+                val latest = mutableState.value
+                if (latest.serverId != serverId) return@launch
+                val remaining = latest.followingIds - artifactId
+                when (load) {
+                    is ArtifactsHomeLoad.Ok -> {
+                        val answered = load.value
+                        mutableState.value = latest.copy(followingIds = remaining)
+                        if (latest.reloadGeneration == startedReloadGeneration && latest.rows != null) {
+                            applyOwnFollow(artifactId, answered)
+                        }
+                        onOwnFollowCommitted(serverId, artifactId, answered)
+                        if (!answered) {
+                            mutableEvents.tryEmit(ArtifactsHomeEvent.Unfollowed(artifactId))
+                        } else {
+                            mutableEvents.tryEmit(ArtifactsHomeEvent.Followed(artifactId))
+                        }
+                    }
+                    else -> {
+                        mutableState.value = latest.copy(followingIds = remaining)
+                        mutableEvents.tryEmit(ArtifactsHomeEvent.FollowFailed(load.errorOrNull()))
+                    }
+                }
+            }
+        followJobs[artifactId] = job
+        job.invokeOnCompletion {
+            if (followJobs[artifactId] === job) {
+                followJobs.remove(artifactId)
+            }
+        }
+    }
+
+    private fun applyOwnFollow(artifactId: String, following: Boolean) {
+        val current = mutableState.value
+        val rows = current.rows ?: return
+        val canonical = artifactCanonicalId(artifactId)
+        val existingIdx = rows.indexOfFirst { artifactCanonicalId(it.summary.id) == canonical }
+        val matchedId =
+            when {
+                existingIdx >= 0 -> rows[existingIdx].summary.id
+                else -> retainedUnfollowed.keys.firstOrNull { artifactCanonicalId(it) == canonical } ?: artifactId
+            }
+        if (ownFollows[matchedId] == following && (following || matchedId in current.unfollowedIds)) {
+            return
+        }
+        ownFollows[matchedId] = following
+        val nextUnfollowed =
+            if (following) {
+                current.unfollowedIds - matchedId
+            } else {
+                if (existingIdx >= 0) {
+                    val afterId = if (existingIdx > 0) rows[existingIdx - 1].summary.id else null
+                    retainedUnfollowed[matchedId] = RetainedUnfollowedItem(row = rows[existingIdx], afterId = afterId)
+                }
+                current.unfollowedIds + matchedId
+            }
+        val updatedRows = withOwnFollows(rows, mapOf(matchedId to following))
+        if (updatedRows != rows || nextUnfollowed != current.unfollowedIds) {
+            mutableState.value = current.copy(rows = updatedRows, unfollowedIds = nextUnfollowed)
         }
     }
 
@@ -554,12 +688,63 @@ internal class SharedArtifactsHomeStore(
 
     private enum class ActivityRead { Idle, Reading, Queued }
 
+    private data class RetainedUnfollowedItem(
+        val row: ArtifactsHomeRow,
+        val afterId: String?,
+    )
+
     companion object {
         /** web `ALL_SEARCH_DEBOUNCE_MS`. */
         const val SEARCH_DEBOUNCE_MILLIS: Long = 300
 
         /** web `useFilterChoices` `SEARCH_DEBOUNCE_MS`. */
         const val CHOICES_DEBOUNCE_MILLIS: Long = 250
+
+        private fun mergeRetainedUnfollowed(
+            rows: List<ArtifactsHomeRow>,
+            retained: Map<String, RetainedUnfollowedItem>,
+            follows: Map<String, Boolean>,
+            unfollowedIds: Set<String>,
+        ): List<ArtifactsHomeRow> {
+            if (retained.isEmpty()) return rows
+            val present = rows.mapTo(HashSet()) { it.summary.id }
+            val missing = mutableListOf<Pair<String, RetainedUnfollowedItem>>()
+            for ((id, entry) in retained) {
+                if (id !in present && (id in unfollowedIds || follows[id] == true)) {
+                    missing += id to entry
+                }
+            }
+            if (missing.isEmpty()) return rows
+            val merged = rows.toMutableList()
+            for ((id, entry) in missing) {
+                val clearedNews =
+                    if (id in unfollowedIds && !entry.row.news.mentioned) {
+                        ArtifactsHomeNews()
+                    } else {
+                        entry.row.news
+                    }
+                val restored = entry.row.copy(news = clearedNews)
+                val anchorIdx = if (entry.afterId == null) -1 else merged.indexOfFirst { it.summary.id == entry.afterId }
+                merged.add(anchorIdx + 1, restored)
+                present += id
+            }
+            return merged
+        }
+
+        private fun withOwnFollows(
+            rows: List<ArtifactsHomeRow>,
+            follows: Map<String, Boolean>,
+        ): List<ArtifactsHomeRow> {
+            if (follows.isEmpty()) return rows
+            return rows.map { row ->
+                val following = follows[row.summary.id]
+                if (following == null || row.summary.following == following) {
+                    row
+                } else {
+                    row.copy(summary = row.summary.copy(following = following))
+                }
+            }
+        }
     }
 }
 
@@ -608,6 +793,8 @@ internal data class ArtifactsHomeChoices(
 internal data class ArtifactsHomeState(
     val serverId: String? = null,
     val readerId: String? = null,
+    /** Increments only on `keepRows = false` reloads (filter/server resets), not background refreshes (slock #16397). */
+    val reloadGeneration: Int = 0,
     val status: ArtifactsHomeStatus = ArtifactsHomeStatus.Idle,
     /** The settled query the list is read for. */
     val query: ArtifactsHomeQuery = ArtifactsHomeQuery(),
@@ -623,6 +810,10 @@ internal data class ArtifactsHomeState(
     val settledEnabled: Boolean = false,
     /** Artifact ids whose Settle / Unsettle write is currently in flight. */
     val settlingIds: Set<String> = emptySet(),
+    /** Artifact ids whose Follow / Unfollow write is currently in flight (slock #16357). */
+    val followingIds: Set<String> = emptySet(),
+    /** Artifacts unfollowed in place on the current view scope until a filter/server reload (slock #16357/#16397). */
+    val unfollowedIds: Set<String> = emptySet(),
     /** The rows on screen; null before the first page (the skeleton). */
     val rows: List<ArtifactsHomeRow>? = null,
     val nextCursor: String? = null,
@@ -711,6 +902,7 @@ internal sealed interface ArtifactsHomeIntent {
     data class SetRelevant(val relevant: Boolean) : ArtifactsHomeIntent
     data class SetSort(val sort: ArtifactsHomeSort) : ArtifactsHomeIntent
     data class SetSettled(val artifactId: String, val settled: Boolean) : ArtifactsHomeIntent
+    data class SetFollowing(val artifactId: String, val following: Boolean) : ArtifactsHomeIntent
 
     /** Empty state's clear: resets all 5 persisted filters atomically (web `clearFilters`). */
     data object ClearSearchAndFilters : ArtifactsHomeIntent
@@ -735,4 +927,7 @@ internal sealed interface ArtifactsHomeEvent {
     data class SortFailed(val error: ScreenError) : ArtifactsHomeEvent
     data class MoreFailed(val error: ScreenError?) : ArtifactsHomeEvent
     data class SettleFailed(val forbidden: Boolean, val error: ScreenError?) : ArtifactsHomeEvent
+    data class Unfollowed(val artifactId: String) : ArtifactsHomeEvent
+    data class Followed(val artifactId: String) : ArtifactsHomeEvent
+    data class FollowFailed(val error: ScreenError?) : ArtifactsHomeEvent
 }

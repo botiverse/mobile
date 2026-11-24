@@ -5926,6 +5926,7 @@ private fun SharedThreadRouteContentContent(
                         conversationId = appLinkPreviewConversationId,
                         toast = { message -> bridge.toast(message) },
                         toastWithIntent = { message, intent -> bridge.toastWithIntent(message, intent) },
+                        toastWithAction = { message, actionLabel, onAction -> bridge.toastWithAction(message, actionLabel, onAction) },
                         errorToast = { message, traceId -> bridge.errorToast(message, traceId) },
                         copyText = { text -> bridge.copyToPasteboard(text) },
                         // Workspace Artifacts links (behind workspace_artifacts_v0, read per message).
@@ -5937,6 +5938,7 @@ private fun SharedThreadRouteContentContent(
                                 webBaseUrl = sharedStores.apiEnvironmentStore.current().webUrl,
                                 screenshots = sharedStores.artifactScreenshotStore,
                                 readerId = viewerId,
+                                follows = sharedStores.artifactFollowStore,
                             ),
                         // The batched link-card read (App link cards v2).
                         batchedRead = true,
