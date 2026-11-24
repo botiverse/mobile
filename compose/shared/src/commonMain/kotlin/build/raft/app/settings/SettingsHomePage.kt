@@ -191,6 +191,8 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.padding
@@ -4202,8 +4204,18 @@ private fun RaftAppShellReadyContent(
         wideNavHistory = wideNavHistory,
     )
 
+    val appShellFocusManager = LocalFocusManager.current
+    val appShellKeyboardController = LocalSoftwareKeyboardController.current
+    val dismissAppShellKeyboard: () -> Unit = {
+        appShellFocusManager.clearFocus(force = true)
+        appShellKeyboardController?.hide()
+    }
+
     /** Reopens [entry] through the normal open paths (identity only; the stores load the content). */
     fun restoreWideNavEntry(entry: RaftWideNavEntry) {
+        if (entry.surface != AppShellRailSearchKey) {
+            dismissAppShellKeyboard()
+        }
         serverMenuState.dismiss()
         if (
             entry.surface == AppShellRailSearchKey || entry.surface == AppShellRailSavedKey || entry.surface == AppShellRailDraftsKey ||
@@ -4729,6 +4741,9 @@ private fun RaftAppShellReadyContent(
                     AppShellBottomTabTapAction.Select -> Unit
                 }
                 if (!shouldHandleAppShellTabSelection(selectedTab, nextTab)) return@onBottomTabSelected
+                if (shouldDismissKeyboardOnAppShellTabSwitch(nextTab)) {
+                    dismissAppShellKeyboard()
+                }
                 // Selecting a real rail tab dismisses an inline secondary destination
                 // (Search) — its middle-pane slot goes back to the tab's own content.
                 railInlineSecondaryDestination = null
@@ -5310,6 +5325,10 @@ private fun RaftAppShellReadyContent(
                                     // Computers and Apps open the pages their Settings rows open, in
                                     // the content area beside the rail (an inline page; the selected
                                     // tab stays under it).
+                                    val inlinePage = appShellRailInlinePageKey(destination)
+                                    if (shouldDismissKeyboardOnRailInlinePageSelect(inlinePage, railInlineSecondaryDestination)) {
+                                        dismissAppShellKeyboard()
+                                    }
                                     serverMenuState.dismiss()
                                     appShellTopBar.bellOpen.value = false
                                     RaftProductEvents.navEntrySelected(
@@ -5318,7 +5337,6 @@ private fun RaftAppShellReadyContent(
                                         wasActive = false,
                                     )
                                     bridge.log("app_shell_rail_page_open key=$key")
-                                    val inlinePage = appShellRailInlinePageKey(destination)
                                     if (inlinePage == null) {
                                         bridge.logWarn("app_shell_rail_page_unrouted key=$key")
                                     } else {
@@ -5330,6 +5348,9 @@ private fun RaftAppShellReadyContent(
                                         railInlineSecondaryDestination = inlinePage
                                     }
                                     return@RaftNavigationRailTabBar
+                                }
+                                if (shouldDismissKeyboardOnRailTabSelect(key, railInlineSecondaryDestination, selectedTab)) {
+                                    dismissAppShellKeyboard()
                                 }
                                 RaftProductEvents.navEntrySelected(
                                     destination = appShellNavDestination(key),
@@ -5359,11 +5380,15 @@ private fun RaftAppShellReadyContent(
                                 },
                             onBottomItemSelect = { key ->
                                 if (RaftAppDestination.fromId(key)?.route == RaftNavRoute.Menu) {
+                                    if (!railHelpOpen) dismissAppShellKeyboard()
                                     serverMenuState.dismiss()
                                     appShellTopBar.bellOpen.value = false
                                     railHelpOpen = !railHelpOpen
                                     bridge.log("app_shell_rail_help_toggle open=$railHelpOpen")
                                     return@RaftNavigationRailTabBar
+                                }
+                                if (shouldDismissKeyboardOnRailTabSelect(key, railInlineSecondaryDestination, selectedTab)) {
+                                    dismissAppShellKeyboard()
                                 }
                                 railHelpOpen = false
                                 RaftProductEvents.navEntrySelected(

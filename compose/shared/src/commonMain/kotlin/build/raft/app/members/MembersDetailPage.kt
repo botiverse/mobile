@@ -1750,13 +1750,14 @@ private fun MemberDetailRoutePageShell(
     onBack: () -> Unit,
     content: @Composable () -> Unit
 ) {
+    val inWideSplit = LocalRaftMembersWideSplitDetail.current
     Column(modifier = Modifier.fillMaxSize().background(RaftColor.SurfaceWhite)) {
         RaftTopPageHeader(
             title = stringResource(Res.string.member_role_member),
             subtitle = stringResource(Res.string.member_label_profile),
             iconName = RaftLucideIconName.Users,
             backgroundColor = RaftColor.SurfaceWhite,
-            onBack = onBack
+            onBack = onBack.takeUnless { inWideSplit }
         )
         Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
             content()

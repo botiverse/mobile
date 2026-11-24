@@ -1526,54 +1526,66 @@ internal fun ChannelMembersSection(
     val loading = slice.status == SharedServerMembersLoadStatus.InFlight && members.isEmpty()
     val summary = channelSettingsMemberSummary(slice = slice, fallbackCount = fallbackCount)
     RaftListRowGroup(Modifier.fillMaxWidth()) {
-        Column(Modifier.fillMaxWidth().raftClickable(onClick = onOpen, tier = RaftHoverTier.Subtle)) {
-            RaftListRow(
-                title = stringResource(Res.string.channel_settings_members),
-                variant = RaftListRowVariant.Plain,
-                trailing = {
-                    RaftListRowValue(summary, maxWidth = 200.dp)
-                    RaftListRowChevron()
-                },
-            )
-            // A row that belongs to the heading (ListRow `attached`): no top inset, the row's 12 under it.
-            BoxWithConstraints(Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, bottom = 12.dp)) {
-                val columns = channelSettingsMemberStripColumns(maxWidth)
-                val visible = channelSettingsMemberStripVisibleCount(members.size + slice.externalMembers.size, columns, canAdd)
-                FlowRow(
-                    horizontalArrangement = Arrangement.spacedBy(ChannelSettingsStripGap),
-                    verticalArrangement = Arrangement.spacedBy(ChannelSettingsStripGap),
-                ) {
-                    if (loading) {
-                        repeat(3) {
-                            RaftSkeleton(Modifier.size(ChannelSettingsStripTile), variant = RaftSkeletonVariant.Circle)
+        BoxWithConstraints(Modifier.fillMaxWidth()) {
+            val cardWidth = maxWidth
+            val summaryMaxWidth = channelSettingsMembersSummaryMaxWidth(cardWidth)
+            val stripWidth = (cardWidth - 32.dp).coerceAtLeast(0.dp)
+            Column(Modifier.fillMaxWidth().raftClickable(onClick = onOpen, tier = RaftHoverTier.Subtle)) {
+                RaftListRow(
+                    title = stringResource(Res.string.channel_settings_members),
+                    variant = RaftListRowVariant.Plain,
+                    trailing = {
+                        RaftListRowValue(summary, maxWidth = summaryMaxWidth)
+                        RaftListRowChevron()
+                    },
+                )
+                // A row that belongs to the heading (ListRow `attached`): no top inset, the row's 12 under it.
+                Box(Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, bottom = 12.dp)) {
+                    val columns = channelSettingsMemberStripColumns(stripWidth)
+                    val visible = channelSettingsMemberStripVisibleCount(members.size + slice.externalMembers.size, columns, canAdd)
+                    FlowRow(
+                        horizontalArrangement = Arrangement.spacedBy(ChannelSettingsStripGap),
+                        verticalArrangement = Arrangement.spacedBy(ChannelSettingsStripGap),
+                    ) {
+                        if (loading) {
+                            repeat(3) {
+                                RaftSkeleton(Modifier.size(ChannelSettingsStripTile), variant = RaftSkeletonVariant.Circle)
+                            }
+                        } else {
+                            members.take(visible).forEach { member -> ChannelSettingsMemberAvatar(member, agentStatusResolver) }
+                            slice.externalMembers.take((visible - members.size).coerceAtLeast(0)).forEach { external ->
+                                RaftAppAvatar(
+                                    // An external participant (web `type="app"`): their image, else initials.
+                                    kind = RaftAvatarKind.Labeled,
+                                    avatarWireValue = external.avatarUrl,
+                                    label = external.displayName,
+                                    avatarSize = ChannelSettingsStripTile,
+                                )
+                            }
+                            val overflow = members.size + slice.externalMembers.size - visible
+                            if (overflow > 0) RaftAvatarGroupCount(text = "+$overflow", size = RaftAvatarSize.Md)
                         }
-                    } else {
-                        members.take(visible).forEach { member -> ChannelSettingsMemberAvatar(member, agentStatusResolver) }
-                        slice.externalMembers.take((visible - members.size).coerceAtLeast(0)).forEach { external ->
-                            RaftAppAvatar(
-                                // An external participant (web `type="app"`): their image, else initials.
-                                kind = RaftAvatarKind.Labeled,
-                                avatarWireValue = external.avatarUrl,
-                                label = external.displayName,
-                                avatarSize = ChannelSettingsStripTile,
+                        if (canAdd) {
+                            RaftAvatarEmpty(
+                                size = RaftAvatarSize.Md,
+                                contentDescription = stringResource(Res.string.thread_action_add_member),
+                                enabled = !loading,
+                                onClick = onAdd,
                             )
                         }
-                        val overflow = members.size + slice.externalMembers.size - visible
-                        if (overflow > 0) RaftAvatarGroupCount(text = "+$overflow", size = RaftAvatarSize.Md)
-                    }
-                    if (canAdd) {
-                        RaftAvatarEmpty(
-                            size = RaftAvatarSize.Md,
-                            contentDescription = stringResource(Res.string.thread_action_add_member),
-                            enabled = !loading,
-                            onClick = onAdd,
-                        )
                     }
                 }
             }
         }
     }
 }
+
+/**
+ * Cap the trailing member count summary inside the card width so the localized "Members" row title
+ * never truncates to "Memb..." in a 300-320dp wide Details side pane.
+ */
+internal fun channelSettingsMembersSummaryMaxWidth(cardWidth: Dp): Dp =
+    (cardWidth - 162.dp).coerceIn(72.dp, 200.dp)
 
 private val ChannelSettingsStripTile = 35.dp
 private val ChannelSettingsStripGap = 8.dp

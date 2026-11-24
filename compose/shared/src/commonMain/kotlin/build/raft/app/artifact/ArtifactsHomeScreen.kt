@@ -69,6 +69,7 @@ import build.raft.designsystem.components.RaftFitToolbarView
 import build.raft.designsystem.components.RaftFitToolbarViewOption
 import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.LocalRaftContentColor
+import build.raft.designsystem.theme.RaftScale
 import build.raft.designsystem.theme.RaftTheme
 import build.raft.designsystem.tokens.RaftStroke
 
@@ -181,25 +182,57 @@ internal object ArtifactsHomeTags {
     const val HomeMenuSettle = "artifacts-home-menu-settle"
 }
 
+internal fun artifactsHomeTitleIsInline(scale: RaftScale): Boolean = scale == RaftScale.Wide
+
 @Composable
 private fun RowScope.ArtifactsHomeTitle(state: ArtifactsHomeState) {
-    Column(Modifier.weight(1f).padding(vertical = 2.dp)) {
-        RaftText(
-            stringResource(Res.string.artifacts_dashboard_title),
-            style = RaftTheme.typography.headline,
-            color = RaftTheme.colors.foreground,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
-        val counts = state.counts
-        if (counts != null) {
+    val countText = state.counts?.let { counts ->
+        artifactsHomeCountLine(counts.total, counts.filtered, state.countsNarrowed)
+    }
+    if (artifactsHomeTitleIsInline(RaftTheme.scale)) {
+        // raft-design desktop-density rule 2: wide heads place the count inline on the title's baseline.
+        Row(
+            modifier = Modifier.weight(1f),
+            horizontalArrangement = Arrangement.spacedBy(RaftPanelHeadInlineMetaGap),
+        ) {
             RaftText(
-                artifactsHomeCountLine(counts.total, counts.filtered, state.countsNarrowed),
-                modifier = Modifier.testTag(ArtifactsHomeTags.Count),
-                style = RaftTheme.typography.footnote,
-                color = RaftTheme.colors.foregroundMuted,
+                stringResource(Res.string.artifacts_dashboard_title),
+                modifier = Modifier.alignByBaseline(),
+                style = RaftTheme.typography.headline,
+                color = RaftTheme.colors.foreground,
                 maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
             )
+            if (countText != null) {
+                RaftText(
+                    countText,
+                    modifier = Modifier.weight(1f, fill = false).alignByBaseline().testTag(ArtifactsHomeTags.Count),
+                    style = RaftTheme.typography.footnote,
+                    color = RaftTheme.colors.foregroundMuted,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
+    } else {
+        Column(Modifier.weight(1f).padding(vertical = 2.dp)) {
+            RaftText(
+                stringResource(Res.string.artifacts_dashboard_title),
+                style = RaftTheme.typography.headline,
+                color = RaftTheme.colors.foreground,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            if (countText != null) {
+                RaftText(
+                    countText,
+                    modifier = Modifier.testTag(ArtifactsHomeTags.Count),
+                    style = RaftTheme.typography.footnote,
+                    color = RaftTheme.colors.foregroundMuted,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
         }
     }
 }
