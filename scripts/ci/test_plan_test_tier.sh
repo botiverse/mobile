@@ -21,6 +21,7 @@ empty="$(paths empty)"
 common="$(paths common compose/shared/src/commonMain/kotlin/A.kt)"
 ios_app="$(paths ios_app compose/iosApp/iosApp/App.swift)"
 ios_main="$(paths ios_main compose/shared/src/iosMain/kotlin/A.kt)"
+ios_main_web_container="$(paths ios_main_web_container compose/web-container/src/iosMain/kotlin/A.kt)"
 ios_test="$(paths ios_test compose/shared/src/iosTest/kotlin/ATest.kt)"
 ios_test_other="$(paths ios_test_other compose/ui-cmp/src/iosTest/kotlin/ATest.kt)"
 ios_app_tests="$(paths ios_app_tests compose/iosApp/iosAppTests/RaftRouterLoginTransitionTests.swift)"
@@ -141,6 +142,7 @@ expect "main push not queue-tested" "false true true false $B false [] false fal
 expect "release push ignores no reuse" "true true true true $BG false [] true false false" -- push "$common" false release-1.20 "" "" "" false
 expect "main push commonMain"       "true false false false [] false [] false false false"        -- push "$common" false main
 expect "main push iosMain"          "false true true false $B false [] false false false"         -- push "$ios_main" false main
+expect "main push web-container iosMain" "true true true false $B false [] false false false"     -- push "$ios_main_web_container" false main
 expect "main push iosApp (no 27.1)" "false true true false $B false [] false false false"         -- push "$ios_app" false main
 expect "main push iosTest"          "false true true false $B false [] true false false"          -- push "$ios_test" false main
 expect "main push ui-cmp iosTest"   "true true true false $B false [] true false false"           -- push "$ios_test_other" false main

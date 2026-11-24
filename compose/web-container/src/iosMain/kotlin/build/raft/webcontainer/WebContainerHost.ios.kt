@@ -1,0 +1,1151 @@
+@file:OptIn(kotlinx.cinterop.ExperimentalForeignApi::class, kotlinx.cinterop.BetaInteropApi::class)
+
+package build.raft.webcontainer
+
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.viewinterop.UIKitView
+import build.raft.webcontainer.jsb.JsbBootstrapScripts
+import build.raft.webcontainer.jsb.JsbDispatcher
+import build.raft.webcontainer.jsb.JsbErrorCode
+import build.raft.webcontainer.jsb.JsbRegistry
+import build.raft.webcontainer.jsb.JsbResult
+import build.raft.webcontainer.jsb.JsbWireCodec
+import build.raft.webcontainer.pool.WebContainerTelemetryEvent
+import build.raft.webcontainer.pool.WebContainerTelemetrySink
+import build.raft.webcontainer.resilience.WebContainerWatchdog
+import build.raft.webcontainer.resilience.WebContainerWatchdogAction
+import build.raft.webcontainer.resilience.WebContainerWatchdogEvent
+import build.raft.webcontainer.resilience.WebNavigationStateRelay
+import build.raft.webcontainer.resource.WebResourceInterceptor
+import build.raft.webcontainer.resource.WebResourceRequest
+import build.raft.webcontainer.resource.isValidIosCustomScheme
+import kotlinx.cinterop.CEnum
+import kotlinx.cinterop.ObjCSignatureOverride
+import kotlinx.cinterop.addressOf
+import kotlinx.cinterop.objcPtr
+import kotlinx.cinterop.usePinned
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import platform.CoreGraphics.CGRectMake
+import platform.Foundation.*
+import platform.UIKit.UIColor
+import platform.UIKit.UIView
+import platform.UIKit.UIViewAutoresizingFlexibleHeight
+import platform.UIKit.UIViewAutoresizingFlexibleWidth
+import platform.WebKit.WKAudiovisualMediaTypeAll
+import platform.WebKit.WKContentWorld
+import platform.WebKit.WKNavigation
+import platform.WebKit.WKNavigationAction
+import platform.WebKit.WKNavigationActionPolicy
+import platform.WebKit.WKNavigationDelegateProtocol
+import platform.WebKit.WKScriptMessage
+import platform.WebKit.WKScriptMessageHandlerWithReplyProtocol
+import platform.WebKit.WKUIDelegateProtocol
+import platform.WebKit.WKURLSchemeHandlerProtocol
+import platform.WebKit.WKURLSchemeTaskProtocol
+import platform.WebKit.WKUserContentController
+import platform.WebKit.WKUserScript
+import platform.WebKit.WKUserScriptInjectionTime
+import platform.WebKit.WKWebView
+import platform.WebKit.WKWebViewConfiguration
+import platform.WebKit.WKWebpagePreferences
+import platform.WebKit.WKWindowFeatures
+import platform.darwin.NSObject
+import platform.darwin.dispatch_async
+import platform.darwin.dispatch_get_main_queue
+
+@Composable
+internal actual fun WebContainerPlatformHost(
+    config: WebContainerConfig,
+    events: WebContainerEvents,
+    controller: WebContainerController,
+    jsbRegistry: JsbRegistry,
+    resourceInterceptor: WebResourceInterceptor?,
+    telemetrySink: WebContainerTelemetrySink?,
+    modifier: Modifier,
+) {
+    UIKitView(
+        factory = {
+            WebContainerIosContainerView(
+                events = events,
+                jsbRegistry = jsbRegistry,
+                resourceInterceptor = resourceInterceptor,
+                telemetrySink = telemetrySink,
+            ).also { it.host.applyInitialBackground(config.backgroundArgb) }
+        },
+        modifier = modifier,
+        update = { view ->
+            view.host.events = events
+            view.host.telemetrySink = telemetrySink
+            view.host.updateRuntimeHooks(jsbRegistry, resourceInterceptor)
+            view.host.applyConfig(config)
+            view.host.bindController(controller)
+        },
+        onRelease = { view -> view.host.dispose() },
+    )
+}
+
+/** Pointer-identity equality for Objective-C objects returned across Kotlin/Native bridges. */
+internal fun isSameObjCObject(a: Any?, b: Any?): Boolean =
+    a != null && b != null && a.objcPtr() == b.objcPtr()
+
+private const val IOS_POLL_INTERVAL_SECONDS = 0.25
+private const val IOS_REVEAL_CAP_SECONDS = 1.5
+
+internal class WebContainerIosContainerView(
+    events: WebContainerEvents,
+    jsbRegistry: JsbRegistry,
+    resourceInterceptor: WebResourceInterceptor?,
+    telemetrySink: WebContainerTelemetrySink?,
+) : UIView(frame = CGRectMake(0.0, 0.0, 0.0, 0.0)) {
+    val host =
+        WebContainerIosHost(
+            container = this,
+            events = events,
+            jsbRegistry = jsbRegistry,
+            resourceInterceptor = resourceInterceptor,
+            telemetrySink = telemetrySink,
+        )
+
+    override fun layoutSubviews() {
+        super.layoutSubviews()
+        host.layout()
+    }
+
+    override fun didMoveToWindow() {
+        super.didMoveToWindow()
+        host.onWindowAttachmentChanged(attached = window != null)
+    }
+}
+
+/**
+ * iOS `WKWebView` container host with:
+ * - Dual `WKContentWorld` isolation: `window.raftBridge` (`WKScriptMessageHandlerWithReply`) in
+ *   `WKContentWorld.pageWorld` with strict `frameInfo.securityOrigin` + `WKWebView.URL` matching
+ *   (fail closed on opaque/null frame origins); internal DOM probes in
+ *   `WKContentWorld.defaultClientWorld`.
+ * - Origin-fenced document-start user scripts and offline bundle scripts (closing `WKUserScript`'s
+ *   lack of native origin filtering).
+ * - Custom-scheme-only `WKURLSchemeHandler` (strictly rejecting `http`/`https`).
+ * - Host-cancelled navigation tracking (`WebKitErrorDomain:102` / `-999` swallowing +
+ *   `pendingHostLoadUrl` de-duplication).
+ * - Rolling-window `webViewWebContentProcessDidTerminate` circuit breaker via [WebContainerWatchdog].
+ */
+internal class WebContainerIosHost(
+    private val container: UIView,
+    var events: WebContainerEvents,
+    private var jsbRegistry: JsbRegistry,
+    private var resourceInterceptor: WebResourceInterceptor?,
+    var telemetrySink: WebContainerTelemetrySink?,
+) {
+    private var webView: WKWebView? = null
+    private var config: WebContainerConfig? = null
+    private var registeredActiveScope: WebIsolationScope? = null
+    private var disposed: Boolean = false
+
+    private var currentUrl: String = ""
+    private var currentTitle: String = ""
+    private var currentProgress: Int = 0
+    private var currentLoading: Boolean = false
+    private var loadGeneration: Int = 0
+    private var lastSuccessfulUrl: String = ""
+    private var pagePainted: Boolean = false
+    private var pageRevealed: Boolean = false
+    private var activeJsbPortName: String? = null
+    private var pendingHostLoadUrl: String? = null
+    private var pendingHostLoadIsReissue: Boolean = false
+    private var hostCancelledUrl: String? = null
+
+    private val chainState = WebNavigationChainState()
+    private val navigationStateRelay = WebNavigationStateRelay()
+    private val watchdog = WebContainerWatchdog()
+    private val hostScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+
+    private var jsbDispatcher: JsbDispatcher? = null
+    private var boundController: WebContainerController? = null
+    private var stateTimer: NSTimer? = null
+    private var revealTimer: NSTimer? = null
+
+    private val navDelegate = WebContainerIosNavigationDelegate(this)
+    private val jsbReplyHandler = WebContainerIosJsbReplyHandler(this)
+    private var activeSchemeHandler: WebContainerIosSchemeHandler? = null
+
+    init {
+        container.backgroundColor = UIColor.whiteColor
+    }
+
+    fun applyInitialBackground(argb: Int) {
+        if (argb != 0 && config == null) {
+            container.backgroundColor = iosColorFromArgb(argb)
+        }
+    }
+
+    fun updateRuntimeHooks(
+        nextRegistry: JsbRegistry,
+        nextInterceptor: WebResourceInterceptor?,
+    ) {
+        resourceInterceptor = nextInterceptor
+        activeSchemeHandler?.interceptor = nextInterceptor
+        if (jsbRegistry !== nextRegistry) {
+            jsbRegistry = nextRegistry
+            config?.let { rebuildJsbDispatcher(it) }
+        }
+    }
+
+    fun bindController(controller: WebContainerController) {
+        if (boundController === controller) return
+        boundController?.unbindDispatcher(this)
+        boundController = controller
+        controller.bindDispatcher(this) { command -> executeCommand(command) }
+    }
+
+    fun layout() {
+        webView?.setFrame(container.bounds)
+    }
+
+    fun onWindowAttachmentChanged(attached: Boolean) {
+        if (disposed) return
+        val view = webView ?: return
+        if (attached) {
+            startPolling(view)
+            syncObservedState(view)
+        } else {
+            stopPolling()
+        }
+    }
+
+    fun applyConfig(next: WebContainerConfig) {
+        if (disposed) return
+        val prev = config
+        val needsRebuild =
+            prev == null ||
+                prev.isolationScope != next.isolationScope ||
+                prev.allowScripts != next.allowScripts ||
+                prev.allowPinchZoom != next.allowPinchZoom ||
+                prev.desktopViewportMode != next.desktopViewportMode ||
+                prev.jsbPolicy != next.jsbPolicy ||
+                prev.documentStartScripts != next.documentStartScripts ||
+                prev.offlineBundle != next.offlineBundle ||
+                prev.backgroundArgb != next.backgroundArgb ||
+                prev.isDarkTheme != next.isDarkTheme
+        val urlChanged = prev == null || prev.url.trim() != next.url.trim()
+
+        config = next
+        chainState.configureBudget(next.navigationPolicy.requestHeaderRule?.maxSameOriginReissues ?: 0)
+        webView?.allowsBackForwardNavigationGestures = next.allowsBackForwardNavigationGestures
+
+        if (needsRebuild) {
+            // Tear down existing WKWebView BEFORE switching registered active scope so deferred
+            // store deletion on the previous scope never fires while the old WKWebView is alive.
+            rebuildWebView(next, restoreUrl = null)
+        } else {
+            registerActiveScope(next.isolationScope)
+            if (urlChanged) {
+                loadUrlInternal(next, overrideUrl = null)
+            }
+        }
+    }
+
+    fun dispose() {
+        if (disposed) return
+        disposed = true
+        boundController?.unbindDispatcher(this)
+        boundController = null
+        jsbDispatcher?.cancelInFlight("container_disposed")
+        tearDownWebView()
+        hostScope.cancel()
+        unregisterActiveScope()
+    }
+
+    private fun registerActiveScope(scope: WebIsolationScope) {
+        if (registeredActiveScope == scope) return
+        unregisterActiveScope()
+        registeredActiveScope = scope
+        IosWebContainerDataStoreRegistry.scopeManager.registerActive(scope)
+    }
+
+    private fun unregisterActiveScope() {
+        val current = registeredActiveScope ?: return
+        registeredActiveScope = null
+        IosWebContainerDataStoreRegistry.scopeManager.unregisterActive(current)
+    }
+
+    private fun tearDownWebView() {
+        stopPolling()
+        revealTimer?.invalidate()
+        revealTimer = null
+        pendingHostLoadUrl = null
+        pendingHostLoadIsReissue = false
+        hostCancelledUrl = null
+        activeSchemeHandler?.invalidate()
+        activeSchemeHandler = null
+        val previous = webView ?: return
+        webView = null
+        previous.navigationDelegate = null
+        previous.UIDelegate = null
+        previous.stopLoading()
+        activeJsbPortName?.let { port ->
+            previous.configuration.userContentController.removeScriptMessageHandlerForName(port, WKContentWorld.pageWorld)
+        }
+        activeJsbPortName = null
+        previous.removeFromSuperview()
+    }
+
+    private fun rebuildJsbDispatcher(cfg: WebContainerConfig) {
+        jsbDispatcher?.cancelInFlight("jsb_rebound")
+        jsbDispatcher =
+            if (cfg.allowScripts && cfg.jsbPolicy.isEffectivelyEnabled) {
+                JsbDispatcher(
+                    policy = cfg.jsbPolicy,
+                    registry = jsbRegistry,
+                    scope = hostScope,
+                    surfaceId = cfg.surfaceId,
+                    isolationScope = cfg.isolationScope,
+                    telemetrySinkProvider = { telemetrySink },
+                )
+            } else {
+                null
+            }
+    }
+
+    private fun rebuildWebView(
+        cfg: WebContainerConfig,
+        restoreUrl: String?,
+    ) {
+        tearDownWebView()
+        registerActiveScope(cfg.isolationScope)
+        rebuildJsbDispatcher(cfg)
+
+        val defaultOriginSet =
+            buildSet {
+                parseWebContainerOrigin(cfg.url)?.let(::add)
+                cfg.navigationPolicy.lockedMainFrameOrigin?.let(::add)
+            }
+
+        val userContentController = WKUserContentController()
+        if (cfg.allowScripts && cfg.jsbPolicy.isEffectivelyEnabled) {
+            val portName = cfg.jsbPolicy.portName
+            // Web-accessible bridge lives in WKContentWorld.pageWorld so page JS can call window.raftBridge;
+            // internal probes execute strictly in WKContentWorld.defaultClientWorld.
+            userContentController.addScriptMessageHandlerWithReply(jsbReplyHandler, WKContentWorld.pageWorld, portName)
+            activeJsbPortName = portName
+            userContentController.addUserScript(
+                WKUserScript(
+                    source = JsbBootstrapScripts.buildPageBridgeScript(portName, cfg.jsbPolicy.allowedOrigins),
+                    injectionTime = WKUserScriptInjectionTime.WKUserScriptInjectionTimeAtDocumentStart,
+                    forMainFrameOnly = true,
+                ),
+            )
+        }
+        if (cfg.allowScripts && cfg.backgroundArgb != 0) {
+            userContentController.addUserScript(
+                WKUserScript(
+                    source = JsbBootstrapScripts.buildFirstPaintThemeScript(cfg.backgroundArgb, cfg.isDarkTheme),
+                    injectionTime = WKUserScriptInjectionTime.WKUserScriptInjectionTimeAtDocumentStart,
+                    forMainFrameOnly = true,
+                ),
+            )
+        }
+        if (cfg.allowScripts && cfg.desktopViewportMode) {
+            userContentController.addUserScript(
+                WKUserScript(
+                    source = JsbBootstrapScripts.DesktopViewportMetaScript,
+                    injectionTime = WKUserScriptInjectionTime.WKUserScriptInjectionTimeAtDocumentStart,
+                    forMainFrameOnly = true,
+                ),
+            )
+        }
+        if (cfg.allowScripts) {
+            cfg.offlineBundle?.let { bundle ->
+                val bundleOrigins = defaultOriginSet
+                if (bundleOrigins.isNotEmpty() || bundle.iosCustomScheme != null) {
+                    val script = JsbBootstrapScripts.buildOfflineBundleScript(bundle, allowedOrigins = bundleOrigins)
+                    if (script.isNotBlank()) {
+                        userContentController.addUserScript(
+                            WKUserScript(
+                                source = script,
+                                injectionTime = WKUserScriptInjectionTime.WKUserScriptInjectionTimeAtDocumentStart,
+                                forMainFrameOnly = true,
+                            ),
+                        )
+                    }
+                }
+            }
+            for (script in cfg.documentStartScripts) {
+                val allowedOrigins = script.allowedOrigins.ifEmpty { defaultOriginSet }
+                // WKUserScript has no native origin filter: fail closed if no allowed origins exist,
+                // and always wrap in a runtime origin + frame guard.
+                if (allowedOrigins.isNotEmpty() && script.source.isNotBlank()) {
+                    val wrapped =
+                        JsbBootstrapScripts.wrapDocumentStartScript(
+                            source = script.source,
+                            allowedOrigins = allowedOrigins,
+                            mainFrameOnly = script.mainFrameOnly,
+                        )
+                    userContentController.addUserScript(
+                        WKUserScript(
+                            source = wrapped,
+                            injectionTime = WKUserScriptInjectionTime.WKUserScriptInjectionTimeAtDocumentStart,
+                            forMainFrameOnly = script.mainFrameOnly,
+                        ),
+                    )
+                }
+            }
+        }
+
+        val configuration = WKWebViewConfiguration()
+        configuration.websiteDataStore = IosWebContainerDataStoreRegistry.dataStoreFor(cfg.isolationScope)
+        configuration.userContentController = userContentController
+        configuration.allowsInlineMediaPlayback = true
+        configuration.ignoresViewportScaleLimits = cfg.allowPinchZoom || cfg.desktopViewportMode
+        configuration.preferences.javaScriptCanOpenWindowsAutomatically = false
+        configuration.mediaTypesRequiringUserActionForPlayback = WKAudiovisualMediaTypeAll
+        val pagePrefs = WKWebpagePreferences()
+        pagePrefs.allowsContentJavaScript = cfg.allowScripts
+        configuration.defaultWebpagePreferences = pagePrefs
+
+        val customScheme = cfg.offlineBundle?.iosCustomScheme
+        if (customScheme != null && isValidIosCustomScheme(customScheme)) {
+            val handler = WebContainerIosSchemeHandler(resourceInterceptor)
+            activeSchemeHandler = handler
+            configuration.setURLSchemeHandler(handler, forURLScheme = customScheme.trim().lowercase())
+        }
+
+        val nextView = WKWebView(frame = container.bounds, configuration = configuration)
+        nextView.navigationDelegate = navDelegate
+        nextView.UIDelegate = navDelegate
+        nextView.allowsBackForwardNavigationGestures = cfg.allowsBackForwardNavigationGestures
+        nextView.autoresizingMask = UIViewAutoresizingFlexibleWidth or UIViewAutoresizingFlexibleHeight
+        webView = nextView
+        pagePainted = false
+        pageRevealed = false
+        currentProgress = 0
+        currentLoading = false
+        currentTitle = ""
+        lastSuccessfulUrl = ""
+        chainState.reset(clearCommitted = true)
+        navigationStateRelay.reset()
+        applyBackgroundVisuals(cfg)
+        container.addSubview(nextView)
+        startPolling(nextView)
+        loadUrlInternal(cfg, overrideUrl = restoreUrl)
+    }
+
+    private fun applyBackgroundVisuals(cfg: WebContainerConfig) {
+        val view = webView
+        val hasPlaceholder = cfg.backgroundArgb != 0
+        val color = if (!pagePainted && hasPlaceholder) iosColorFromArgb(cfg.backgroundArgb) else UIColor.whiteColor
+        container.backgroundColor = color
+        if (view == null) return
+        val showView = !hasPlaceholder || pageRevealed
+        view.alpha = if (showView) 1.0 else 0.0
+        view.opaque = pagePainted || !hasPlaceholder
+        view.backgroundColor = if (view.opaque) color else UIColor.clearColor
+        view.scrollView.backgroundColor = view.backgroundColor
+    }
+
+    private fun revealView() {
+        val cfg = config ?: return
+        if (pageRevealed) return
+        pageRevealed = true
+        revealTimer?.invalidate()
+        revealTimer = null
+        applyBackgroundVisuals(cfg)
+    }
+
+    private fun startPolling(target: WKWebView) {
+        stopPolling()
+        if (container.window == null) return
+        stateTimer =
+            NSTimer.scheduledTimerWithTimeInterval(IOS_POLL_INTERVAL_SECONDS, repeats = true) { _ ->
+                if (disposed || !isSameObjCObject(target, webView)) return@scheduledTimerWithTimeInterval
+                syncObservedState(target)
+                val action = watchdog.onEvent(WebContainerWatchdogEvent.Tick, webContainerMonotonicMillis())
+                handleWatchdogAction(action)
+            }
+    }
+
+    private fun stopPolling() {
+        stateTimer?.invalidate()
+        stateTimer = null
+    }
+
+    private fun syncObservedState(view: WKWebView) {
+        currentUrl = view.URL?.absoluteString ?: currentUrl
+        currentTitle = view.title ?: ""
+        currentProgress = (view.estimatedProgress * 100.0 + 0.5).toInt().coerceIn(0, 100)
+        currentLoading = view.loading
+        notifyNavigationState(force = false)
+    }
+
+    private fun loadUrlInternal(
+        cfg: WebContainerConfig,
+        overrideUrl: String?,
+    ) {
+        val view = webView ?: return
+        val target = (overrideUrl ?: cfg.url).trim()
+        if (target.isEmpty()) {
+            pendingHostLoadUrl = null
+            pendingHostLoadIsReissue = false
+            hostCancelledUrl = null
+            currentUrl = ""
+            currentLoading = false
+            view.loadHTMLString("", baseURL = null)
+            notifyNavigationState(force = true)
+            return
+        }
+        val nsUrl = NSURL.URLWithString(target)
+        if (nsUrl == null) {
+            events.onLoadFailure("invalid_url")
+            return
+        }
+        val resolvedTarget = nsUrl.absoluteString ?: target
+        val decision =
+            evaluateMainFrameNavigation(
+                targetUrl = resolvedTarget,
+                initialUrl = cfg.url,
+                policy = cfg.navigationPolicy,
+                method = "GET",
+                requestCarriesScopedHeader = false,
+                chainState = null,
+            )
+        when (decision) {
+            is WebNavigationDecision.Block -> {
+                notifyNavigationBlocked(decision.url, decision.reason)
+                return
+            }
+            is WebNavigationDecision.InterceptedByHost -> return
+            is WebNavigationDecision.ReissueWithHeader -> {
+                val budget = cfg.navigationPolicy.requestHeaderRule?.maxSameOriginReissues ?: 0
+                chainState.startChain(carriesHeader = true, reissueBudget = budget, starter = WebNavigationStarter.Launch)
+                pendingHostLoadUrl = resolvedTarget
+                pendingHostLoadIsReissue = false
+                hostCancelledUrl = null
+                view.loadRequest(buildRequest(nsUrl, cfg.cacheEnabled, decision.headerName to decision.headerValue))
+            }
+            else -> {
+                val budget = cfg.navigationPolicy.requestHeaderRule?.maxSameOriginReissues ?: 0
+                chainState.startChain(carriesHeader = false, reissueBudget = budget, starter = WebNavigationStarter.Launch)
+                pendingHostLoadUrl = resolvedTarget
+                pendingHostLoadIsReissue = false
+                hostCancelledUrl = null
+                view.loadRequest(buildRequest(nsUrl, cfg.cacheEnabled, null))
+            }
+        }
+    }
+
+    private fun buildRequest(
+        url: NSURL,
+        cacheEnabled: Boolean,
+        header: Pair<String, String>?,
+    ): NSMutableURLRequest {
+        val cachePolicy =
+            if (cacheEnabled) NSURLRequestUseProtocolCachePolicy else NSURLRequestReloadIgnoringLocalCacheData
+        val request = NSMutableURLRequest.requestWithURL(url, cachePolicy = cachePolicy, timeoutInterval = 60.0)
+        if (header != null) {
+            request.setValue(header.second, forHTTPHeaderField = header.first)
+        }
+        return request
+    }
+
+    private fun executeCommand(command: WebContainerCommand) {
+        if (disposed) return
+        val view = webView ?: return
+        val cfg = config ?: return
+        when (command) {
+            WebContainerCommand.GoBack -> if (view.canGoBack) view.goBack()
+            WebContainerCommand.GoForward -> if (view.canGoForward) view.goForward()
+            WebContainerCommand.Reload -> view.reload()
+            WebContainerCommand.Stop -> {
+                view.stopLoading()
+                currentLoading = false
+                notifyNavigationState(force = false)
+            }
+            is WebContainerCommand.LoadUrl -> {
+                val target = command.url.trim()
+                val nsUrl = NSURL.URLWithString(target) ?: return
+                val resolvedTarget = nsUrl.absoluteString ?: target
+                val budget = cfg.navigationPolicy.requestHeaderRule?.maxSameOriginReissues ?: 0
+                chainState.startChain(carriesHeader = false, reissueBudget = budget, starter = WebNavigationStarter.Page)
+                val decision =
+                    evaluateMainFrameNavigation(
+                        targetUrl = resolvedTarget,
+                        initialUrl = cfg.url,
+                        policy = cfg.navigationPolicy,
+                        method = "GET",
+                        chainState = chainState,
+                        catchesMainFrameNavigation = events.catchesMainFrameNavigation,
+                        routesMainFrameNavigation = events.routesMainFrameNavigation,
+                    )
+                when (decision) {
+                    WebNavigationDecision.Allow -> {
+                        pendingHostLoadUrl = resolvedTarget
+                        pendingHostLoadIsReissue = false
+                        hostCancelledUrl = null
+                        view.loadRequest(buildRequest(nsUrl, cfg.cacheEnabled, null))
+                    }
+                    is WebNavigationDecision.ReissueWithHeader -> {
+                        pendingHostLoadUrl = resolvedTarget
+                        pendingHostLoadIsReissue = false
+                        hostCancelledUrl = null
+                        view.loadRequest(buildRequest(nsUrl, cfg.cacheEnabled, decision.headerName to decision.headerValue))
+                    }
+                    is WebNavigationDecision.ReissueWithoutHeader -> {
+                        pendingHostLoadUrl = resolvedTarget
+                        pendingHostLoadIsReissue = false
+                        hostCancelledUrl = null
+                        view.loadRequest(buildRequest(nsUrl, cfg.cacheEnabled, null))
+                    }
+                    is WebNavigationDecision.Block -> notifyNavigationBlocked(decision.url, decision.reason)
+                    is WebNavigationDecision.InterceptedByHost -> Unit
+                }
+            }
+            is WebContainerCommand.EvaluateJavaScript -> {
+                if (!cfg.allowScripts || command.script.isBlank()) return
+                if (command.script.length > cfg.maxRuntimeJavaScriptLength) return
+                val activeUrl = view.URL?.absoluteString.orEmpty()
+                val activeOrigin = parseWebContainerOrigin(activeUrl) ?: return
+                val locked = cfg.navigationPolicy.lockedMainFrameOrigin
+                if (locked != null && activeOrigin != locked) return
+                val initialOrigin = parseWebContainerOrigin(cfg.url)
+                if (initialOrigin != null && activeOrigin != initialOrigin) return
+                view.evaluateJavaScript(command.script, completionHandler = null)
+            }
+            WebContainerCommand.ProbeContent -> probeDocumentContent(view, loadGeneration)
+            is WebContainerCommand.EmitJsbEvent -> {
+                val script = jsbDispatcher?.buildEventDispatchScript(command.name, command.payload) ?: return
+                if (cfg.allowScripts) {
+                    view.evaluateJavaScript(script, completionHandler = null)
+                }
+            }
+        }
+    }
+
+    /** Runs the internal read-only DOM visibility probe strictly inside `WKContentWorld.defaultClientWorld`. */
+    private fun probeDocumentContent(
+        view: WKWebView,
+        expectedGeneration: Int,
+    ) {
+        val cfg = config ?: return
+        if (!cfg.allowScripts) {
+            events.onContentProbe(null)
+            val action =
+                watchdog.onEvent(
+                    WebContainerWatchdogEvent.DomProbeResult(expectedGeneration, null),
+                    webContainerMonotonicMillis(),
+                )
+            handleWatchdogAction(action)
+            return
+        }
+        view.evaluateJavaScript(
+            JsbBootstrapScripts.ContentVisibilityProbeScript,
+            null,
+            WKContentWorld.defaultClientWorld,
+        ) { result, _ ->
+            if (disposed || !isSameObjCObject(view, webView) || expectedGeneration != loadGeneration) {
+                return@evaluateJavaScript
+            }
+            val hasContent = JsbBootstrapScripts.decodeContentProbeResult(result as? String)
+            events.onContentProbe(hasContent)
+            val action =
+                watchdog.onEvent(
+                    WebContainerWatchdogEvent.DomProbeResult(expectedGeneration, hasContent),
+                    webContainerMonotonicMillis(),
+                )
+            handleWatchdogAction(action)
+        }
+    }
+
+    internal fun onJsbScriptMessage(
+        controller: WKUserContentController,
+        message: WKScriptMessage,
+        replyHandler: (Any?, String?) -> Unit,
+    ) {
+        var settled = false
+        val replyOnMainOnce: (String) -> Unit = { replyJson ->
+            dispatch_async(dispatch_get_main_queue()) {
+                if (!settled) {
+                    settled = true
+                    replyHandler(replyJson, null)
+                }
+            }
+        }
+        val raw = message.body as? String ?: ""
+        val quickCallId = JsbWireCodec.extractBestEffortCallId(raw)
+        val activeView = webView
+        if (disposed || activeView == null || !isSameObjCObject(controller, activeView.configuration.userContentController)) {
+            replyOnMainOnce(
+                JsbWireCodec.encodeResponse(
+                    quickCallId,
+                    JsbResult.Failure(JsbErrorCode.BRIDGE_DISABLED, "Stale WebView"),
+                ),
+            )
+            return
+        }
+        val dispatcher = jsbDispatcher
+        if (dispatcher == null) {
+            replyOnMainOnce(
+                JsbWireCodec.encodeResponse(
+                    quickCallId,
+                    JsbResult.Failure(JsbErrorCode.BRIDGE_DISABLED, "JSB disabled"),
+                ),
+            )
+            return
+        }
+        val frameInfo = message.frameInfo
+        val isMainFrame = frameInfo.mainFrame
+        val securityOrigin = frameInfo.securityOrigin
+        val secPort = securityOrigin.port
+        val secHost =
+            if (securityOrigin.host.contains(':') && !securityOrigin.host.startsWith("[")) {
+                "[${securityOrigin.host}]"
+            } else {
+                securityOrigin.host
+            }
+        val rawSecOrigin =
+            if (securityOrigin.protocol.isNotEmpty() && secHost.isNotEmpty()) {
+                if (secPort > 0L) "${securityOrigin.protocol}://$secHost:$secPort"
+                else "${securityOrigin.protocol}://$secHost"
+            } else {
+                ""
+            }
+        val frameOrigin = parseWebContainerOrigin(rawSecOrigin)
+        val docUrl = activeView.URL?.absoluteString.orEmpty()
+        val docOrigin = parseWebContainerOrigin(docUrl)
+        // Fail closed: opaque/sandboxed frames (frameOrigin == null) NEVER inherit main-frame docOrigin,
+        // and main-frame calls must match WKWebView.URL when both are present.
+        val verifiedOrigin =
+            when {
+                frameOrigin == null -> null
+                isMainFrame && (docOrigin == null || frameOrigin != docOrigin) -> null
+                else -> frameOrigin
+            }
+        dispatcher.dispatch(
+            rawPayload = raw,
+            origin = verifiedOrigin,
+            documentUrl = docUrl.ifEmpty { currentUrl },
+            isMainFrame = isMainFrame,
+            onReply = replyOnMainOnce,
+        )
+    }
+
+    // ---- WKNavigationDelegate / WKUIDelegate callbacks ----------------------------------------
+
+    internal fun decideNavigationPolicy(
+        source: WKWebView,
+        action: WKNavigationAction,
+    ): WKNavigationActionPolicy {
+        if (disposed || !isSameObjCObject(source, webView)) {
+            return WKNavigationActionPolicy.WKNavigationActionPolicyCancel
+        }
+        val cfg = config ?: return WKNavigationActionPolicy.WKNavigationActionPolicyCancel
+        val targetUrl = action.request.URL?.absoluteString.orEmpty()
+        val targetFrame = action.targetFrame
+        if (targetFrame == null) {
+            if (!cfg.navigationPolicy.allowNewWindows) {
+                notifyNavigationBlocked(targetUrl, "new_window_blocked")
+            }
+            return WKNavigationActionPolicy.WKNavigationActionPolicyCancel
+        }
+        if (!targetFrame.mainFrame) {
+            return if (isAllowedSubframeUrl(targetUrl, cfg.navigationPolicy)) {
+                WKNavigationActionPolicy.WKNavigationActionPolicyAllow
+            } else {
+                WKNavigationActionPolicy.WKNavigationActionPolicyCancel
+            }
+        }
+
+        val isPendingHostLoad = pendingHostLoadUrl != null && pendingHostLoadUrl == targetUrl
+        if (isPendingHostLoad) {
+            pendingHostLoadUrl = null
+            pendingHostLoadIsReissue = false
+            return WKNavigationActionPolicy.WKNavigationActionPolicyAllow
+        }
+
+        val navTypeRaw = iosNavigationTypeRaw(action)
+        val isUserClickOrForm = navTypeRaw == 0L || navTypeRaw == 1L
+        val headerRule = cfg.navigationPolicy.requestHeaderRule
+        val carriesHeader =
+            headerRule != null && !action.request.valueForHTTPHeaderField(headerRule.headerName).isNullOrBlank()
+        if (isUserClickOrForm) {
+            val budget = headerRule?.maxSameOriginReissues ?: 0
+            chainState.startChain(
+                carriesHeader = carriesHeader,
+                reissueBudget = budget,
+                starter = if (navTypeRaw == 1L) WebNavigationStarter.Form else WebNavigationStarter.Link,
+            )
+        }
+        val decision =
+            evaluateMainFrameNavigation(
+                targetUrl = targetUrl,
+                initialUrl = cfg.url,
+                policy = cfg.navigationPolicy,
+                method = action.request.HTTPMethod ?: "GET",
+                requestCarriesScopedHeader = carriesHeader,
+                chainState = chainState,
+                isUserGesture = navTypeRaw == 0L,
+                catchesMainFrameNavigation = events.catchesMainFrameNavigation,
+                routesMainFrameNavigation = events.routesMainFrameNavigation,
+            )
+        return when (decision) {
+            WebNavigationDecision.Allow -> WKNavigationActionPolicy.WKNavigationActionPolicyAllow
+            is WebNavigationDecision.InterceptedByHost -> {
+                hostCancelledUrl = targetUrl
+                WKNavigationActionPolicy.WKNavigationActionPolicyCancel
+            }
+            is WebNavigationDecision.Block -> {
+                hostCancelledUrl = targetUrl
+                notifyNavigationBlocked(decision.url, decision.reason)
+                WKNavigationActionPolicy.WKNavigationActionPolicyCancel
+            }
+            is WebNavigationDecision.ReissueWithHeader -> {
+                hostCancelledUrl = targetUrl
+                action.request.URL?.let { nsUrl ->
+                    val reissued = buildRequest(nsUrl, cfg.cacheEnabled, decision.headerName to decision.headerValue)
+                    pendingHostLoadUrl = targetUrl
+                    pendingHostLoadIsReissue = true
+                    dispatch_async(dispatch_get_main_queue()) {
+                        if (!disposed && isSameObjCObject(source, webView)) {
+                            source.loadRequest(reissued)
+                        }
+                    }
+                }
+                WKNavigationActionPolicy.WKNavigationActionPolicyCancel
+            }
+            is WebNavigationDecision.ReissueWithoutHeader -> {
+                hostCancelledUrl = targetUrl
+                action.request.URL?.let { nsUrl ->
+                    val reissued = buildRequest(nsUrl, cfg.cacheEnabled, null)
+                    pendingHostLoadUrl = targetUrl
+                    pendingHostLoadIsReissue = true
+                    dispatch_async(dispatch_get_main_queue()) {
+                        if (!disposed && isSameObjCObject(source, webView)) {
+                            source.loadRequest(reissued)
+                        }
+                    }
+                }
+                WKNavigationActionPolicy.WKNavigationActionPolicyCancel
+            }
+        }
+    }
+
+    internal fun didStartProvisional(source: WKWebView) {
+        if (disposed || !isSameObjCObject(source, webView)) return
+        jsbDispatcher?.cancelInFlight("main_frame_navigation")
+        loadGeneration += 1
+        currentLoading = true
+        currentProgress = 0
+        lastSuccessfulUrl = ""
+        currentUrl = source.URL?.absoluteString ?: currentUrl
+        watchdog.onEvent(WebContainerWatchdogEvent.LoadStarted(loadGeneration), webContainerMonotonicMillis())
+        events.onUrlChange(currentUrl)
+        notifyNavigationState(force = false)
+    }
+
+    internal fun didCommit(source: WKWebView) {
+        if (disposed || !isSameObjCObject(source, webView)) return
+        hostCancelledUrl = null
+        currentUrl = source.URL?.absoluteString ?: currentUrl
+        chainState.markCommitted()
+        watchdog.onEvent(WebContainerWatchdogEvent.PageCommitted(loadGeneration), webContainerMonotonicMillis())
+        events.onLoadCommit()
+        revealTimer?.invalidate()
+        revealTimer =
+            NSTimer.scheduledTimerWithTimeInterval(IOS_REVEAL_CAP_SECONDS, repeats = false) { _ ->
+                if (!disposed && isSameObjCObject(source, webView)) {
+                    revealView()
+                }
+            }
+        notifyNavigationState(force = false)
+    }
+
+    internal fun didFinish(source: WKWebView) {
+        if (disposed || !isSameObjCObject(source, webView)) return
+        hostCancelledUrl = null
+        currentUrl = source.URL?.absoluteString ?: currentUrl
+        currentTitle = source.title ?: currentTitle
+        currentLoading = false
+        currentProgress = 100
+        pagePainted = true
+        revealView()
+        chainState.markCommitted()
+        val action = watchdog.onEvent(WebContainerWatchdogEvent.PageFinished(loadGeneration), webContainerMonotonicMillis())
+        handleWatchdogAction(action)
+        if (lastSuccessfulUrl != currentUrl) {
+            lastSuccessfulUrl = currentUrl
+            events.onLoadSuccess()
+        }
+        events.onUrlChange(currentUrl)
+        notifyNavigationState(force = false)
+    }
+
+    internal fun didFail(
+        source: WKWebView,
+        error: NSError,
+    ) {
+        if (disposed || !isSameObjCObject(source, webView)) return
+        val failingUrl = error.userInfo[NSURLErrorFailingURLStringErrorKey] as? String
+        val isCancelled =
+            (error.domain == NSURLErrorDomain && error.code == NSURLErrorCancelled) ||
+                (error.domain == "WebKitErrorDomain" && error.code == 102L &&
+                    hostCancelledUrl != null && (failingUrl.isNullOrEmpty() || failingUrl == hostCancelledUrl))
+        if (isCancelled) {
+            if (failingUrl == null || failingUrl == hostCancelledUrl) {
+                hostCancelledUrl = null
+            }
+            return
+        }
+        currentLoading = false
+        val reason = "${error.domain}:${error.code}"
+        watchdog.onEvent(WebContainerWatchdogEvent.LoadFailed(loadGeneration, reason), webContainerMonotonicMillis())
+        events.onLoadFailure(reason)
+        notifyNavigationState(force = false)
+    }
+
+    internal fun contentProcessDidTerminate(source: WKWebView) {
+        if (disposed || !isSameObjCObject(source, webView)) return
+        val cfg = config ?: return
+        jsbDispatcher?.cancelInFlight("web_content_process_terminated")
+        events.onContentProcessGone(true)
+        val action =
+            watchdog.onEvent(
+                WebContainerWatchdogEvent.RenderProcessGone(didCrash = true),
+                webContainerMonotonicMillis(),
+            )
+        val shouldRecover = action is WebContainerWatchdogAction.TriggerRecoveryReload
+        val attempt =
+            (action as? WebContainerWatchdogAction.TriggerRecoveryReload)?.recoveryAttempt
+                ?: watchdog.recentRecoveryCount
+        telemetrySink?.onEvent(
+            WebContainerTelemetryEvent.RenderProcessGone(
+                surfaceId = cfg.surfaceId,
+                didCrash = true,
+                recovered = shouldRecover,
+                attempt = attempt,
+            ),
+        )
+        if (shouldRecover) {
+            val restoreUrl =
+                sanitizeRendererRestoreUrl(
+                    initialUrl = cfg.url,
+                    candidateUrl = currentUrl,
+                    policy = cfg.navigationPolicy,
+                )
+            rebuildWebView(cfg, restoreUrl = restoreUrl)
+        } else {
+            handleWatchdogAction(action)
+        }
+    }
+
+    internal fun createWindowBlocked(
+        source: WKWebView,
+        action: WKNavigationAction,
+    ) {
+        if (disposed || !isSameObjCObject(source, webView)) return
+        notifyNavigationBlocked(action.request.URL?.absoluteString.orEmpty(), "new_window_blocked")
+    }
+
+    private fun handleWatchdogAction(action: WebContainerWatchdogAction) {
+        when (action) {
+            WebContainerWatchdogAction.None -> Unit
+            is WebContainerWatchdogAction.RequestDomProbe -> {
+                webView?.let { probeDocumentContent(it, action.generation) }
+            }
+            is WebContainerWatchdogAction.TriggerRecoveryReload -> Unit
+            is WebContainerWatchdogAction.EmitTerminalError -> {
+                val cfg = config
+                if (cfg != null) {
+                    telemetrySink?.onEvent(
+                        WebContainerTelemetryEvent.WatchdogTerminalError(
+                            surfaceId = cfg.surfaceId,
+                            reason = action.reason,
+                        ),
+                    )
+                }
+                events.onWatchdogTerminalError(action.reason)
+            }
+        }
+    }
+
+    private fun notifyNavigationBlocked(
+        url: String,
+        reason: String,
+    ) {
+        val cfg = config
+        if (cfg != null) {
+            telemetrySink?.onEvent(
+                WebContainerTelemetryEvent.NavigationBlocked(
+                    surfaceId = cfg.surfaceId,
+                    sanitizedUrl = sanitizeUrlForTelemetry(url),
+                    reason = reason,
+                ),
+            )
+        }
+        events.onNavigationBlocked(url, reason)
+    }
+
+    private fun notifyNavigationState(force: Boolean) {
+        navigationStateRelay.notify(
+            force = force,
+            isActive = { !disposed },
+            readState = {
+                val view = webView
+                WebNavigationState(
+                    url = currentUrl,
+                    title = currentTitle,
+                    canGoBack = view?.canGoBack ?: false,
+                    canGoForward = view?.canGoForward ?: false,
+                    isLoading = currentLoading,
+                    progress = currentProgress.coerceIn(0, 100),
+                    loadGeneration = loadGeneration,
+                )
+            },
+            deliver = { state -> events.onNavigationStateChange(state) },
+        )
+    }
+}
+
+private class WebContainerIosNavigationDelegate(
+    private val owner: WebContainerIosHost,
+) : NSObject(), WKNavigationDelegateProtocol, WKUIDelegateProtocol {
+    override fun webView(
+        webView: WKWebView,
+        decidePolicyForNavigationAction: WKNavigationAction,
+        decisionHandler: (WKNavigationActionPolicy) -> Unit,
+    ) {
+        decisionHandler(owner.decideNavigationPolicy(webView, decidePolicyForNavigationAction))
+    }
+
+    @ObjCSignatureOverride
+    override fun webView(webView: WKWebView, didStartProvisionalNavigation: WKNavigation?) {
+        owner.didStartProvisional(webView)
+    }
+
+    @ObjCSignatureOverride
+    override fun webView(webView: WKWebView, didCommitNavigation: WKNavigation?) {
+        owner.didCommit(webView)
+    }
+
+    @ObjCSignatureOverride
+    override fun webView(webView: WKWebView, didFinishNavigation: WKNavigation?) {
+        owner.didFinish(webView)
+    }
+
+    @ObjCSignatureOverride
+    override fun webView(webView: WKWebView, didFailNavigation: WKNavigation?, withError: NSError) {
+        owner.didFail(webView, withError)
+    }
+
+    @ObjCSignatureOverride
+    override fun webView(webView: WKWebView, didFailProvisionalNavigation: WKNavigation?, withError: NSError) {
+        owner.didFail(webView, withError)
+    }
+
+    override fun webViewWebContentProcessDidTerminate(webView: WKWebView) {
+        owner.contentProcessDidTerminate(webView)
+    }
+
+    override fun webView(
+        webView: WKWebView,
+        createWebViewWithConfiguration: WKWebViewConfiguration,
+        forNavigationAction: WKNavigationAction,
+        windowFeatures: WKWindowFeatures,
+    ): WKWebView? {
+        owner.createWindowBlocked(webView, forNavigationAction)
+        return null
+    }
+}
+
+private class WebContainerIosJsbReplyHandler(
+    private val owner: WebContainerIosHost,
+) : NSObject(), WKScriptMessageHandlerWithReplyProtocol {
+    override fun userContentController(
+        userContentController: WKUserContentController,
+        didReceiveScriptMessage: WKScriptMessage,
+        replyHandler: (Any?, String?) -> Unit,
+    ) {
+        owner.onJsbScriptMessage(userContentController, didReceiveScriptMessage, replyHandler)
+    }
+}
+
+private class WebContainerIosSchemeHandler(
+    var interceptor: WebResourceInterceptor?,
+) : NSObject(), WKURLSchemeHandlerProtocol {
+    private val activeTasks = mutableListOf<WKURLSchemeTaskProtocol>()
+    private var invalidated: Boolean = false
+
+    fun invalidate() {
+        invalidated = true
+        activeTasks.clear()
+    }
+
+    @ObjCSignatureOverride
+    override fun webView(webView: WKWebView, startURLSchemeTask: WKURLSchemeTaskProtocol) {
+        activeTasks += startURLSchemeTask
+        val request = startURLSchemeTask.request
+        val url = request.URL
+        val urlString = url?.absoluteString.orEmpty()
+        if (invalidated || url == null || urlString.isEmpty()) {
+            activeTasks.removeAll { isSameObjCObject(it, startURLSchemeTask) }
+            startURLSchemeTask.didFailWithError(NSError.errorWithDomain(NSURLErrorDomain, -1000L, null))
+            return
+        }
+        val hit =
+            runCatching {
+                interceptor?.intercept(
+                    WebResourceRequest(
+                        url = urlString,
+                        method = request.HTTPMethod ?: "GET",
+                        isMainFrame = false,
+                        headers = emptyMap(),
+                    ),
+                )
+            }.getOrNull()
+        val stillActive = activeTasks.removeAll { isSameObjCObject(it, startURLSchemeTask) }
+        if (!stillActive || invalidated) return
+        if (hit == null) {
+            startURLSchemeTask.didFailWithError(NSError.errorWithDomain(NSURLErrorDomain, -1008L, null))
+            return
+        }
+        val headers = LinkedHashMap<Any?, Any?>()
+        hit.headers.forEach { (k, v) -> headers[k] = v }
+        if (headers.keys.none { (it as? String)?.equals("Content-Type", ignoreCase = true) == true }) {
+            headers["Content-Type"] = "${hit.mimeType}; charset=${hit.encoding}"
+        }
+        val response = NSHTTPURLResponse(url, hit.statusCode.toLong(), "HTTP/1.1", headers)
+        startURLSchemeTask.didReceiveResponse(response)
+        startURLSchemeTask.didReceiveData(hit.body.toIosNSData())
+        startURLSchemeTask.didFinish()
+    }
+
+    @ObjCSignatureOverride
+    override fun webView(webView: WKWebView, stopURLSchemeTask: WKURLSchemeTaskProtocol) {
+        activeTasks.removeAll { isSameObjCObject(it, stopURLSchemeTask) }
+    }
+}
+
+private fun ByteArray.toIosNSData(): NSData {
+    if (isEmpty()) return NSData()
+    return usePinned { pinned ->
+        NSData.create(bytes = pinned.addressOf(0), length = size.toULong())
+    }
+}
+
+private fun iosColorFromArgb(argb: Int): UIColor =
+    UIColor.colorWithRed(
+        red = ((argb ushr 16) and 0xFF) / 255.0,
+        green = ((argb ushr 8) and 0xFF) / 255.0,
+        blue = (argb and 0xFF) / 255.0,
+        alpha = ((argb ushr 24) and 0xFF) / 255.0,
+    )
+
+private fun iosNavigationTypeRaw(action: WKNavigationAction): Long =
+    when (val navType: Any = action.navigationType) {
+        is Long -> navType
+        is Int -> navType.toLong()
+        is CEnum -> (navType.value as? Number)?.toLong() ?: -1L
+        else -> -1L
+    }
