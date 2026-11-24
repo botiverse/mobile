@@ -677,8 +677,36 @@ enum class RaftPaneGridLeadingMode { Beside, Fill, Hidden }
 class RaftPaneGridLeadingColumn(
     val widthDp: Float,
     val mode: RaftPaneGridLeadingMode = RaftPaneGridLeadingMode.Beside,
+    /**
+     * Told, after each frame, whether the column at [widthDp] beside the main pane leaves the row too little room for
+     * the conversation's 360 and the content minimum of every column open right of it ([raftPaneGridLeadingCrowdsRow]),
+     * whatever [mode] it shows in now. The host decides what to do about it (the app's portrait tablet collapses its
+     * sidebar for as long as it is true). Null: nobody asks.
+     */
+    val onCrowdsRowChange: ((Boolean) -> Unit)? = null,
     val content: @Composable () -> Unit,
 )
+
+/**
+ * Whether a leading column [leadingWidthDp] wide (its seam included) leaves the row of [availableDp] too little room for
+ * the main pane's content minimum ([mainMinDp], web `MAIN_COLUMN_MIN_WIDTH`) and the content minimum of each column
+ * open right of it ([columns]), so that the row would have to clip one of them (#189 rule 4). A column's minimum is
+ * its widest region's; the thread does not count, as it folds over the conversation before anything clips (rule 3),
+ * so a column holding only the thread asks for nothing. No column open: nothing to crowd.
+ */
+fun raftPaneGridLeadingCrowdsRow(
+    availableDp: Float,
+    leadingWidthDp: Float,
+    columns: List<RaftRowPlanColumn>,
+    mainMinDp: Float = RAFT_PANE_GRID_MAIN_MIN_WIDTH_DP,
+): Boolean {
+    val mins =
+        columns.mapNotNull { column ->
+            column.regions.zip(column.mins).filter { (region, _) -> region != RAFT_ROW_THREAD }.maxOfOrNull { it.second }
+        }
+    if (availableDp <= 0f || mins.isEmpty()) return false
+    return availableDp - leadingWidthDp < mainMinDp + mins.sum()
+}
 
 // ---------------------------------------------------------------- one grid for nested pages
 
@@ -1233,6 +1261,19 @@ fun RaftPaneGrid(
                     expanded = expandedRegion,
                 )
             }
+        // Whether the leading column at its width crowds the columns open right of the main pane (its host decides).
+        val crowdsLeading = leading?.takeIf { outer == null }
+        val onCrowds = crowdsLeading?.onCrowdsRowChange
+        if (crowdsLeading != null && onCrowds != null) {
+            val crowds =
+                crowdsLeading.mode != RaftPaneGridLeadingMode.Fill && !filling &&
+                    raftPaneGridLeadingCrowdsRow(
+                        availableDp = availableDp,
+                        leadingWidthDp = crowdsLeading.widthDp + RaftStroke.Hairline.value,
+                        columns = placed.map { it.column.planColumn(store) },
+                    )
+            SideEffect { onCrowds(crowds) }
+        }
         // The row's cells as planned, left to right (the sections open in it).
         val rowCells = if (plan == null) emptyList() else placed.map { place -> place.column.cells.map { it.id } }
         if (outer == null && expandState != null) {

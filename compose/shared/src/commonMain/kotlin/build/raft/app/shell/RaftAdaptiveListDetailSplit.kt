@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -18,6 +19,7 @@ import build.raft.app.resources.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import build.raft.designsystem.components.LocalRaftPaneGridPlatform
@@ -108,6 +110,9 @@ internal fun raftListPaneShareCapDp(roomDp: Float, share: Float, minDp: Float): 
  *   collapses) the handle collapses the list too, by the input in use ([raftListPaneDragCollapses]:
  *   with a mouse or trackpad 40dp past its minimum while held, by touch only its edge let go of
  *   near the rail), or Enter.
+ * - [onGivesWayChange] (#337): told whether the list gives way to the columns open right of the
+ *   detail ([raftSidebarGivesWay]: a portrait touch tablet where the list would leave the
+ *   conversation under 360); the host collapses it for that long ([RaftSidebarCollapseState]).
  * - Otherwise (compact): the detail when something is selected, else the list.
  */
 @Composable
@@ -124,10 +129,13 @@ internal fun RaftAdaptiveListDetailSplit(
     collapsed: Boolean = false,
     onCollapsedChange: ((Boolean) -> Unit)? = null,
     maxShare: Float? = null,
+    onGivesWayChange: ((Boolean) -> Unit)? = null,
     onResizingChange: (Boolean) -> Unit = {},
     log: (String) -> Unit = {},
 ) {
     val density = LocalDensity.current
+    val pointerInput = RaftTheme.pointerInput
+    val windowSize = LocalWindowInfo.current.containerSize
     var rowWidthDp by remember { mutableStateOf<Float?>(null) }
     val shareCap = maxShare?.let { share -> rowWidthDp?.let { raftListPaneShareCapDp(it, share, kind.minDp) } }
     val listWidthDp = widths.renderedDp(kind, rowWidthDp).let { if (shareCap != null) minOf(it, shareCap) else it }
@@ -137,6 +145,27 @@ internal fun RaftAdaptiveListDetailSplit(
     // conversation"); [collapsed] is kept, so it hides again once something opens.
     val listCollapsed = dualPane && !listFillsRow && collapsed && hasSelection
     val split = dualPane && !listFillsRow && !listCollapsed
+    // #337: whether the list gives way to the columns open right of the detail (raftSidebarGivesWay), told to the
+    // host after each frame while the list stands beside the detail or is collapsed; false once it can't.
+    val givesWayReport by rememberUpdatedState(onGivesWayChange)
+    val reportsGivingWay = onGivesWayChange != null && dualPane && !listFillsRow
+    DisposableEffect(Unit) { onDispose { givesWayReport?.invoke(false) } }
+    if (onGivesWayChange != null && !reportsGivingWay) SideEffect { onGivesWayChange(false) }
+    val onCrowdsRowChange: ((Boolean) -> Unit)? =
+        if (!reportsGivingWay) {
+            null
+        } else {
+            { crowds ->
+                givesWayReport?.invoke(
+                    raftSidebarGivesWay(
+                        pointerInput = pointerInput,
+                        windowWidthDp = with(density) { windowSize.width.toDp().value },
+                        windowHeightDp = with(density) { windowSize.height.toDp().value },
+                        crowdsRow = crowds,
+                    )
+                )
+            }
+        }
     Box(
         modifier =
             Modifier
@@ -158,6 +187,7 @@ internal fun RaftAdaptiveListDetailSplit(
                             split -> RaftPaneGridLeadingMode.Beside
                             else -> RaftPaneGridLeadingMode.Hidden
                         },
+                    onCrowdsRowChange = onCrowdsRowChange,
                 ) {
                     if (dualPane && !listCollapsed) {
                         RaftFocusRegionHost(region = RaftFocusRegion.ListPane, modifier = Modifier.fillMaxSize()) {

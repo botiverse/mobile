@@ -22,6 +22,7 @@ import build.raft.app.components.RaftDesignSystemTheme
 import androidx.compose.foundation.layout.padding
 import build.raft.app.data.InMemoryRaftKeyValueStore
 import build.raft.app.data.KeyValueChatLayoutPreferenceStore
+import build.raft.app.data.RaftCollapsibleColumn
 import build.raft.app.data.RaftListPaneKind
 import build.raft.app.data.raftSharedPreferenceStore
 import build.raft.designsystem.components.RaftListRow
@@ -168,6 +169,82 @@ class WorkspacePaneGridScreenshotTest {
                                             Header(both)
                                             Column(Modifier.weight(1f).fillMaxWidth().background(RaftColor.SurfaceWhite)) { Conversation() }
                                         }
+                                    }
+                                }
+                            },
+                        )
+                    }
+                }
+            }
+        }
+}
+
+/**
+ * #337 (Reef's patrol item 7): an iPad held upright (820 x 1180) with the sidebar open and Tasks / Files open beside
+ * the conversation. The sidebar's 240 would leave the conversation and the cards 579, under their 360 + 280, so the
+ * row would clip the conversation's composer (its Send). On a portrait touch tablet the sidebar gives way
+ * ([raftSidebarGivesWay], [RaftSidebarCollapseState]): it collapses, not saved, and the conversation keeps 360.
+ * `kept-open` is the sidebar the person brought back with the rail's toggle (and the row before #337): web's row, the
+ * conversation clipped.
+ */
+@RunWith(RobolectricTestRunner::class)
+@GraphicsMode(GraphicsMode.Mode.NATIVE)
+@Config(sdk = [34], qualifiers = "w820dp-h1180dp-mdpi")
+class PortraitTabletPaneGridScreenshotTest {
+    @get:Rule
+    val activities = RobolectricComposeActivityRule()
+
+    @Before
+    fun installPreferenceStore() {
+        val store = InMemoryRaftKeyValueStore()
+        RaftSharedKeyValueStoreProvider.installAppScopeFactory(RaftLocalPreferenceStore.KuiklyNamespace) { store }
+    }
+
+    @After
+    fun clearPreferenceStore() = RaftSharedKeyValueStoreProvider.clearAppScopeFactoryForTests()
+
+    @Test fun sidebarGivesWayToTheCards() = capture("workspace.pane-grid.portrait-tablet.cards", givesWay = true)
+
+    @Test fun sidebarKeptOpenClipsTheRow() = capture("workspace.pane-grid.portrait-tablet.cards.kept-open", givesWay = false)
+
+    private val both = ConversationSideCardsState().withOpen(ConversationSideCard.Tasks, true).withOpen(ConversationSideCard.Files, true)
+
+    private fun capture(name: String, givesWay: Boolean) =
+        RaftRobolectricScreenshot.capture(name, RaftAppAppearance.Light, reportDir = "build/reports/side-cards", activities = activities) {
+            val pager = remember { object : Pager() {}.apply { pageData = PageData(JSONObject()) } }
+            val widths = remember { RaftListPaneWidths(KeyValueChatLayoutPreferenceStore(raftSharedPreferenceStore())) }
+            val collapse = remember { RaftSidebarCollapseState(store = null) }
+            val grid = remember { RaftPaneGridStore() }
+            CompositionLocalProvider(LocalActivity provides RaftPageActivity(pager), LocalRaftPaneGridStore provides grid) {
+                RaftDesignSystemTheme {
+                    Box(Modifier.fillMaxSize().background(RaftColor.Canvas)) {
+                        RaftAdaptiveListDetailSplit(
+                            kind = RaftListPaneKind.Sidebar,
+                            widths = widths,
+                            dualPane = true,
+                            active = true,
+                            hasSelection = true,
+                            detailBottomInset = 0.dp,
+                            listPane = { SidebarFixture() },
+                            collapsed = collapse.isHidden(RaftCollapsibleColumn.Sidebar),
+                            onGivesWayChange = if (givesWay) { yields: Boolean -> collapse.setGivingWay(RaftCollapsibleColumn.Sidebar, yields) } else null,
+                            detailPane = { modifier ->
+                                RaftPaneGrid(
+                                    columns =
+                                        listOfNotNull(
+                                            conversationSideCardsColumn(
+                                                cards = both,
+                                                onPick = {},
+                                                onClose = {},
+                                                tasksContent = { TasksFixture() },
+                                                filesContent = { ThreadFilesContent(payload = filesPayload, onEvent = { _, _ -> }) },
+                                            )
+                                        ),
+                                    modifier = modifier,
+                                ) {
+                                    Column(Modifier.fillMaxSize().background(RaftColor.Canvas)) {
+                                        Header(both)
+                                        Column(Modifier.weight(1f).fillMaxWidth().background(RaftColor.SurfaceWhite)) { Conversation() }
                                     }
                                 }
                             },
