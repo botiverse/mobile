@@ -23,20 +23,25 @@ import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.composed
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.layout
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.onPlaced
 import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.platform.LocalDensity
@@ -122,14 +127,37 @@ internal fun raftToastSafeBottomPx(overridePx: Float?, safeDrawingBottomPx: Floa
  *   closes after its timeout ([RaftToastHostState.runTimers]); a pointer over it or a finger on
  *   it pauses every timer. Each toast is a polite live region (an error, assertive) and offers
  *   the dismiss accessibility action in place of the swipe.
+ *
+ * [onToastBoundsChange] is intended for window-level hit-testing (for example, a dedicated
+ * pass-through overlay window): when non-null, it reports the window-pixel bounding union of all
+ * currently visible toast cards including slide-in and drag-dismiss translation, only when that
+ * union changes (`null` when the last toast leaves or when this host is disposed so the caller
+ * never keeps stale bounds, without emitting duplicate consecutive `null` callbacks). When `null`
+ * (the default), no layout bounds tracking is installed.
  */
 @Composable
-fun RaftToastHost(state: RaftToastHostState, modifier: Modifier = Modifier) {
+fun RaftToastHost(
+    state: RaftToastHostState,
+    modifier: Modifier = Modifier,
+    onToastBoundsChange: ((Rect?) -> Unit)? = null,
+) {
     LaunchedEffect(state) { state.runTimers() }
     val toasts by state.toasts.collectAsState()
     // Toasts already on screen when the host appears (handed over from another window) do not
     // slide in again.
     val presentAtStart = remember(state) { state.visible.map { it.id }.toSet() }
+    val boundsReporter =
+        if (onToastBoundsChange != null) {
+            val currentOnBoundsChange by rememberUpdatedState(onToastBoundsChange)
+            val reporter = remember { RaftToastBoundsReporter() }
+            DisposableEffect(reporter) {
+                reporter.attach { rect -> currentOnBoundsChange(rect) }
+                onDispose { reporter.dispose() }
+            }
+            reporter
+        } else {
+            null
+        }
     var hostBottomPx by remember { mutableFloatStateOf(Float.NaN) }
     val safeDrawing = WindowInsets.safeDrawing
     val horizontalInsets = rememberRaftStableWindowInsets(safeDrawing.only(WindowInsetsSides.Horizontal))
@@ -144,7 +172,12 @@ fun RaftToastHost(state: RaftToastHostState, modifier: Modifier = Modifier) {
             }
         },
     ) {
-        if (toasts.isEmpty()) return@Box
+        if (toasts.isEmpty()) {
+            if (boundsReporter != null) {
+                LaunchedEffect(boundsReporter) { boundsReporter.clear() }
+            }
+            return@Box
+        }
         // The stack leaving (its last toast gone) must not leave the timers paused.
         DisposableEffect(state) { onDispose { state.setPaused(false) } }
         Column(
@@ -182,9 +215,104 @@ fun RaftToastHost(state: RaftToastHostState, modifier: Modifier = Modifier) {
                         state,
                         toast,
                         appearAtOnce = toast.appearAtOnce || toast.id in presentAtStart,
+                        boundsReporter = boundsReporter,
                     )
                 }
             }
+        }
+    }
+}
+
+internal fun raftToastTransformedBounds(
+    baseRect: Rect,
+    entryProgress: Float,
+    swipeOffset: Offset,
+): Rect {
+    if (baseRect.isEmpty) return Rect.Zero
+    val closed = (1f - entryProgress).coerceIn(0f, 1f)
+    val scale = 1f - 0.02f * closed
+    val centerX = (baseRect.left + baseRect.right) * 0.5f
+    val centerY = (baseRect.top + baseRect.bottom) * 0.5f
+    val halfWidth = baseRect.width * 0.5f * scale
+    val halfHeight = baseRect.height * 0.5f * scale
+    val translationX = swipeOffset.x
+    val translationY = baseRect.height * 1.2f * closed + swipeOffset.y
+    return Rect(
+        left = centerX - halfWidth + translationX,
+        top = centerY - halfHeight + translationY,
+        right = centerX + halfWidth + translationX,
+        bottom = centerY + halfHeight + translationY,
+    )
+}
+
+internal fun raftToastUnionBounds(rects: Collection<Rect>): Rect? {
+    var union: Rect? = null
+    for (rect in rects) {
+        if (rect.isEmpty) continue
+        union =
+            if (union == null) {
+                rect
+            } else {
+                Rect(
+                    left = minOf(union.left, rect.left),
+                    top = minOf(union.top, rect.top),
+                    right = maxOf(union.right, rect.right),
+                    bottom = maxOf(union.bottom, rect.bottom),
+                )
+            }
+    }
+    return union
+}
+
+private class RaftToastBoundsReporter {
+    private val itemBounds = LinkedHashMap<Long, Rect>()
+    private var lastReported: Rect? = null
+    private var hasReported = false
+    private var listener: ((Rect?) -> Unit)? = null
+
+    fun attach(onBoundsChange: (Rect?) -> Unit) {
+        listener = onBoundsChange
+    }
+
+    fun update(toastId: Long, rect: Rect?) {
+        if (rect == null || rect.isEmpty) {
+            itemBounds.remove(toastId)
+        } else {
+            itemBounds[toastId] = rect
+        }
+        emitIfChanged()
+    }
+
+    fun remove(toastId: Long) {
+        if (itemBounds.remove(toastId) != null) {
+            emitIfChanged()
+        }
+    }
+
+    fun clear() {
+        itemBounds.clear()
+        emitIfChanged()
+    }
+
+    fun dispose() {
+        itemBounds.clear()
+        val shouldEmitNull = !hasReported || lastReported != null
+        lastReported = null
+        hasReported = true
+        val target = listener
+        listener = null
+        if (shouldEmitNull) {
+            target?.invoke(null)
+        }
+    }
+
+    private fun emitIfChanged() {
+        val next = raftToastUnionBounds(itemBounds.values)
+        if (!hasReported && next == null) return
+        if (!hasReported || next != lastReported) {
+            hasReported = true
+            lastReported = next
+            listener?.invoke(next)
         }
     }
 }
@@ -206,7 +334,12 @@ private fun Modifier.raftToastPausesTimers(state: RaftToastHostState): Modifier 
     }
 
 @Composable
-private fun RaftToastHostItem(state: RaftToastHostState, toast: RaftToastData, appearAtOnce: Boolean) {
+private fun RaftToastHostItem(
+    state: RaftToastHostState,
+    toast: RaftToastData,
+    appearAtOnce: Boolean,
+    boundsReporter: RaftToastBoundsReporter? = null,
+) {
     val reducedMotion = rememberRaftReducedMotion()
     // raft-ui `data-starting-style`: translateY(120%) scale(0.98), on ease-slide.
     val entry = remember { Animatable(if (appearAtOnce || reducedMotion) 1f else 0f) }
@@ -219,6 +352,37 @@ private fun RaftToastHostItem(state: RaftToastHostState, toast: RaftToastData, a
     val scope = rememberCoroutineScope()
     val thresholdPx = with(LocalDensity.current) { RaftToastSwipeThreshold.toPx() }
     val onAction = toast.onAction
+    val boundsModifier =
+        if (boundsReporter != null) {
+            var baseWindowBounds by remember(toast.id) { mutableStateOf<Rect?>(null) }
+            DisposableEffect(boundsReporter, toast.id) {
+                onDispose { boundsReporter.remove(toast.id) }
+            }
+            LaunchedEffect(boundsReporter, toast.id, entry, swipe) {
+                snapshotFlow {
+                    baseWindowBounds?.let { base ->
+                        raftToastTransformedBounds(base, entry.value, swipe.value)
+                    }
+                }.collect { rect ->
+                    boundsReporter.update(toast.id, rect)
+                }
+            }
+            Modifier.onGloballyPositioned { coordinates ->
+                val base =
+                    if (coordinates.isAttached && coordinates.size.width > 0 && coordinates.size.height > 0) {
+                        coordinates.boundsInWindow()
+                    } else {
+                        null
+                    }
+                baseWindowBounds = base
+                boundsReporter.update(
+                    toast.id,
+                    base?.let { raftToastTransformedBounds(it, entry.value, swipe.value) },
+                )
+            }
+        } else {
+            Modifier
+        }
     RaftToast(
         title = toast.title,
         description = toast.description,
@@ -257,6 +421,7 @@ private fun RaftToastHostItem(state: RaftToastHostState, toast: RaftToastData, a
                         scope.launch { swipe.snapTo(Offset(next.x.coerceAtLeast(0f), next.y.coerceAtLeast(0f))) }
                     }
                 }
+                .then(boundsModifier)
                 .graphicsLayer {
                     val closed = 1f - entry.value
                     translationX = swipe.value.x

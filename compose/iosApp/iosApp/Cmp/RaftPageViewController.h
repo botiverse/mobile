@@ -81,6 +81,20 @@ NS_ASSUME_NONNULL_BEGIN
  */
 @property (nonatomic, copy, nullable) void (^raftPageWillBeCoveredHook)(void);
 
+/**
+ * Host -> page: binds this page to its hosting `UIWindowScene`'s single window-level toast overlay
+ * (`RaftIosToastOverlayRegistry`) when the page appears in a scene. Set by
+ * `RaftPageControllerFactory`.
+ */
+@property (nonatomic, copy, nullable) void (^raftToastOverlaySceneHook)(UIWindowScene * _Nullable windowScene);
+
+/**
+ * Host -> page: toggles whether this page's bottom bars/composers and IME inset report into the
+ * scene's shared `RaftToastHostState` (`NO` while covered or presented as a non-fullscreen sheet).
+ * Set by `RaftPageControllerFactory`.
+ */
+@property (nonatomic, copy, nullable) void (^raftToastAvoidanceActiveHook)(BOOL active);
+
 /** Full-page back swipe probe: [locationInView] is in this controller's view. */
 - (BOOL)raftContentConsumesBackSwipeAtPoint:(CGPoint)locationInView;
 

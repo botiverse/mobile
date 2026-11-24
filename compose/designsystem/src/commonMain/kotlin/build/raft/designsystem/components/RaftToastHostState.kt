@@ -100,8 +100,8 @@ class RaftToastHostState(
     /** The toasts on screen, oldest first (the newest is the frontmost, at the bottom). */
     val visible: List<RaftToastData> get() = model.value.toasts
 
-    /** [visible] as a flow, for the host. */
-    internal val toasts: StateFlow<List<RaftToastData>> get() = visibleFlow
+    /** [visible] as a flow, for hosts and window-level overlay visibility observers. */
+    val toasts: StateFlow<List<RaftToastData>> get() = visibleFlow
 
     /** Whether the timers are paused ([setPaused]). */
     val isPaused: Boolean get() = model.value.pausedAt != null

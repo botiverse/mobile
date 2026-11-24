@@ -27,6 +27,10 @@
 		4983CA96F486D911EC6CCFB8 /* UIKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = CFD86DD765CA5210E2F6061E /* UIKit.framework */; };
 		7555FF83242A565900829871 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7555FF82242A565900829871 /* ContentView.swift */; };
 		A47100010000000000000001 /* RaftIosSceneDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = A47100020000000000000001 /* RaftIosSceneDelegate.swift */; };
+		A35100010000000000000001 /* RaftIosToastOverlayHost.swift in Sources */ = {isa = PBXBuildFile; fileRef = A35100020000000000000001 /* RaftIosToastOverlayHost.swift */; };
+		A35100010000000000000003 /* RaftIosToastOverlayWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = A35100020000000000000003 /* RaftIosToastOverlayWindow.swift */; };
+		A35100010000000000000004 /* RaftIosToastOverlayWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = A35100020000000000000003 /* RaftIosToastOverlayWindow.swift */; };
+		A35100010000000000000002 /* RaftIosToastOverlayTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A35100020000000000000002 /* RaftIosToastOverlayTests.swift */; };
 		A47300010000000000000001 /* RaftIosImagePaste.swift in Sources */ = {isa = PBXBuildFile; fileRef = A47300020000000000000001 /* RaftIosImagePaste.swift */; };
 		A48800010000000000000001 /* RaftIosVlcVideoPlayer.swift in Sources */ = {isa = PBXBuildFile; fileRef = A48800020000000000000001 /* RaftIosVlcVideoPlayer.swift */; };
 		A48800010000000000000002 /* RaftIosVlcEngine.m in Sources */ = {isa = PBXBuildFile; fileRef = A48800020000000000000002 /* RaftIosVlcEngine.m */; };
@@ -168,6 +172,9 @@
 		1DAE3769BAE68C43F5D78324 /* iosAppUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = iosAppUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		2152FB032600AC8F00CF470E /* iOSApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = iOSApp.swift; sourceTree = "<group>"; };
 		A47100020000000000000001 /* RaftIosSceneDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RaftIosSceneDelegate.swift; sourceTree = "<group>"; };
+		A35100020000000000000001 /* RaftIosToastOverlayHost.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RaftIosToastOverlayHost.swift; sourceTree = "<group>"; };
+		A35100020000000000000003 /* RaftIosToastOverlayWindow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RaftIosToastOverlayWindow.swift; sourceTree = "<group>"; };
+		A35100020000000000000002 /* RaftIosToastOverlayTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RaftIosToastOverlayTests.swift; sourceTree = "<group>"; };
 		A47300020000000000000001 /* RaftIosImagePaste.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RaftIosImagePaste.swift; sourceTree = "<group>"; };
 		A48800020000000000000001 /* RaftIosVlcVideoPlayer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RaftIosVlcVideoPlayer.swift; sourceTree = "<group>"; };
 		A48800020000000000000002 /* RaftIosVlcEngine.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = RaftIosVlcEngine.m; sourceTree = "<group>"; };
@@ -463,6 +470,8 @@
 				D49163102E14000100C0DE01 /* Fonts */,
 				7555FF82242A565900829871 /* ContentView.swift */,
 				A47100020000000000000001 /* RaftIosSceneDelegate.swift */,
+				A35100020000000000000001 /* RaftIosToastOverlayHost.swift */,
+				A35100020000000000000003 /* RaftIosToastOverlayWindow.swift */,
 				A47300020000000000000001 /* RaftIosImagePaste.swift */,
 				A48800020000000000000001 /* RaftIosVlcVideoPlayer.swift */,
 				A48800020000000000000003 /* RaftIosVlcEngine.h */,
@@ -515,6 +524,7 @@
 				A54200020000000000000002 /* RaftIosNativeMenuTouchGuardTests.swift */,
 				A54300020000000000000002 /* RaftIosDisplayLinkJankTrackerTests.swift */,
 				A62600020000000000000001 /* RaftIosComposerPasteTests.swift */,
+				A35100020000000000000002 /* RaftIosToastOverlayTests.swift */,
 				A42700020000000000000001 /* RaftAdaptiveEditorSnapshotTests.m */,
 				J0NY00020000000000000001 /* RaftShareControllerFailureReasonTests.m */,
 				A19300020000000000000001 /* RaftInteractivePopGestureTests.m */,
@@ -998,6 +1008,8 @@
 				FF6B714729A2A315009349F1 /* RaftPageView.swift in Sources */,
 				7555FF83242A565900829871 /* ContentView.swift in Sources */,
 				A47100010000000000000001 /* RaftIosSceneDelegate.swift in Sources */,
+				A35100010000000000000001 /* RaftIosToastOverlayHost.swift in Sources */,
+				A35100010000000000000003 /* RaftIosToastOverlayWindow.swift in Sources */,
 				A47300010000000000000001 /* RaftIosImagePaste.swift in Sources */,
 				A48800010000000000000001 /* RaftIosVlcVideoPlayer.swift in Sources */,
 				A48800010000000000000002 /* RaftIosVlcEngine.m in Sources */,
@@ -1045,6 +1057,8 @@
 				A54300010000000000000005 /* RaftIosFrameMetricsSessions.swift in Sources */,
 				A54300010000000000000003 /* RaftIosDisplayLinkJankTrackerTests.swift in Sources */,
 				A62600010000000000000001 /* RaftIosComposerPasteTests.swift in Sources */,
+				A35100010000000000000004 /* RaftIosToastOverlayWindow.swift in Sources */,
+				A35100010000000000000002 /* RaftIosToastOverlayTests.swift in Sources */,
 				J0NY00010000000000000001 /* RaftShareControllerFailureReasonTests.m in Sources */,
 				A19300010000000000000001 /* RaftInteractivePopGestureTests.m in Sources */,
 				A19300030000000000000001 /* RaftConversationForwardGestureTests.m in Sources */,

@@ -1,9 +1,14 @@
 package build.raft.app.cmp.ios
 
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.uikit.LocalUIViewController
 import androidx.compose.ui.uikit.OnFocusBehavior
@@ -11,6 +16,8 @@ import androidx.compose.ui.window.ComposeUIViewController
 import build.raft.app.cmp.ProvideRaftTextToolbarGuard
 import build.raft.app.cmp.RaftCmpRoot
 import build.raft.app.cmp.RaftCmpRouter
+import build.raft.app.cmp.RaftCmpToastWindow
+import build.raft.app.cmp.RaftCmpToasts
 import build.raft.app.cmp.host.BridgeWireHostCapabilities
 import build.raft.app.cmp.host.HostBridgeTransport
 import build.raft.app.cmp.host.RaftHostEvents
@@ -23,9 +30,18 @@ import build.raft.app.parseRaftJsonObjectOrNull
 import build.raft.app.toRaftJsonString
 import build.raft.designsystem.components.RaftPageCoverSignal
 import build.raft.designsystem.components.RaftSystemBarsAppearance
+import build.raft.designsystem.components.RaftToastHost
+import build.raft.designsystem.components.RaftToastHostState
 import build.raft.designsystem.gesture.RaftBackSwipeRegions
+import build.raft.designsystem.theme.RaftTheme
 import kotlin.experimental.ExperimentalObjCName
 import kotlin.native.ObjCName
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.launch
 import kotlinx.serialization.json.JsonObject
 import platform.Foundation.NSThread
 import platform.UIKit.UIColor
@@ -105,6 +121,57 @@ interface RaftIosPageListener {
 }
 
 /**
+ * Implemented by the iOS scene-level toast overlay host (`RaftIosToastOverlayHost`): receives
+ * toast visibility and window-point hit-test bounds from the scene's single [RaftToastHost].
+ */
+interface RaftIosToastOverlayListener {
+    /**
+     * Called on the main thread when the scene's toast stack transitions between empty and
+     * non-empty. The host unhides its transparent overlay `UIWindow` while [hasToasts] is true
+     * (without making it key) and hides it again when false.
+     */
+    fun onToastVisibilityChanged(hasToasts: Boolean)
+
+    /**
+     * Called on the main thread when the union bounding box of visible toast cards changes, in
+     * UIKit points relative to the overlay window (`hasBounds = false` means pass every touch
+     * through).
+     */
+    fun onToastBoundsChanged(
+        hasBounds: Boolean,
+        leftPt: Double,
+        topPt: Double,
+        rightPt: Double,
+        bottomPt: Double,
+    )
+}
+
+/**
+ * One `UIWindowScene`'s window-level toast overlay on iOS: owns the single [RaftCmpToastWindow]
+ * shared by every `RaftPageViewController` in that scene plus the transparent [viewController]
+ * hosting [RaftToastHost] above the navigation stack.
+ */
+class RaftIosToastOverlay internal constructor(
+    internal val window: RaftCmpToastWindow,
+    val viewController: UIViewController,
+    private val observerScope: CoroutineScope,
+) {
+    /**
+     * Updates the scene's foreground/active lifecycle in [RaftCmpToasts].
+     * Leaving the foreground hands off live toasts to another foreground scene if one exists.
+     */
+    fun setLifecycle(visible: Boolean, resumed: Boolean) {
+        window.setLifecycle(visible = visible, resumed = resumed)
+    }
+
+    /** Detaches this scene's toast host (called when the `UIWindowScene` disconnects). */
+    fun detach() {
+        observerScope.cancel()
+        window.detach()
+    }
+}
+
+/**
  * One CMP page created for the iOS host: the Compose view controller the host embeds, plus the
  * host -> page event channel (the Kuikly `sendWithEvent` counterpart: adaptive panes, window
  * insets, theme changes, adaptive navigation receipts, conversation forward requests).
@@ -117,11 +184,27 @@ class RaftIosPage internal constructor(
     private val events: RaftHostEvents,
     private val backSwipeRegions: RaftBackSwipeRegions,
     private val coverSignal: RaftPageCoverSignal,
+    private val toastOverlayState: MutableStateFlow<RaftIosToastOverlay?>,
+    private val toastAvoidanceActiveState: MutableStateFlow<Boolean>,
     content: (RaftIosPage) -> UIViewController,
 ) {
     private val sticky = LinkedHashMap<String, JsonObject>()
 
     val viewController: UIViewController = content(this)
+
+    /** Rebinds this page to the [RaftIosToastOverlay] of the `UIWindowScene` currently hosting it. */
+    fun setToastOverlay(overlay: RaftIosToastOverlay?) {
+        toastOverlayState.value = overlay
+    }
+
+    /**
+     * Controls whether this page's `raftToastAvoid`, `RaftToastAvoidBottom`, and IME bottom inset
+     * report into the scene's shared [RaftToastHostState]. False while covered or presented as a
+     * non-fullscreen sheet whose view coordinates do not match the full overlay window.
+     */
+    fun setToastAvoidanceActive(active: Boolean) {
+        toastAvoidanceActiveState.value = active
+    }
 
     /**
      * Main thread. True when a back-direction drag starting at ([x], [y]) (points in
@@ -212,8 +295,75 @@ object RaftCmpIos {
     }
 
     /**
+     * Creates one scene-level transparent [RaftIosToastOverlay] that renders [RaftToastHost]
+     * above every `RaftPageViewController` in that `UIWindowScene` and reports hit-test bounds
+     * and visibility transitions to [listener].
+     */
+    @OptIn(ExperimentalComposeUiApi::class)
+    fun makeToastOverlay(listener: RaftIosToastOverlayListener): RaftIosToastOverlay {
+        val state = RaftToastHostState()
+        val toastWindow = RaftCmpToasts.attach(state)
+        val observerScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+        var lastHasToasts: Boolean? = null
+        observerScope.launch {
+            state.toasts.collect { list ->
+                val hasToasts = list.isNotEmpty()
+                if (hasToasts != lastHasToasts) {
+                    lastHasToasts = hasToasts
+                    listener.onToastVisibilityChanged(hasToasts)
+                }
+            }
+        }
+        val viewController =
+            ComposeUIViewController(
+                configure = {
+                    opaque = false
+                    onFocusBehavior = OnFocusBehavior.DoNothing
+                },
+            ) {
+                val controller = LocalUIViewController.current
+                val density = LocalDensity.current.density
+                val systemDark = isSystemInDarkTheme()
+                SideEffect {
+                    controller.view.opaque = false
+                    controller.view.backgroundColor = UIColor.clearColor
+                }
+                LaunchedEffect(systemDark) {
+                    controller.view.opaque = false
+                    controller.view.backgroundColor = UIColor.clearColor
+                }
+                RaftTheme(systemDark = systemDark) {
+                    RaftToastHost(
+                        state = state,
+                        onToastBoundsChange = { rect ->
+                            if (rect == null || rect.isEmpty || density <= 0f) {
+                                listener.onToastBoundsChanged(false, 0.0, 0.0, 0.0, 0.0)
+                            } else {
+                                val scale = density.toDouble()
+                                listener.onToastBoundsChanged(
+                                    true,
+                                    rect.left.toDouble() / scale,
+                                    rect.top.toDouble() / scale,
+                                    rect.right.toDouble() / scale,
+                                    rect.bottom.toDouble() / scale,
+                                )
+                            }
+                        },
+                    )
+                }
+            }
+        return RaftIosToastOverlay(
+            window = toastWindow,
+            viewController = viewController,
+            observerScope = observerScope,
+        )
+    }
+
+    /**
      * A page rendering [pageName] with [pageDataJson] (the page's pageData as JSON text). The host
-     * embeds [RaftIosPage.viewController] in its page container and pushes the container.
+     * embeds [RaftIosPage.viewController] in its page container and pushes the container. When
+     * [toastOverlay] is non-null, the page shares that scene's single window-level toast host
+     * instead of mounting a per-page [RaftToastHost].
      */
     @OptIn(ExperimentalComposeUiApi::class)
     fun makePage(
@@ -222,6 +372,7 @@ object RaftCmpIos {
         bridge: RaftCmpIosBridge,
         navigator: RaftCmpIosNavigator,
         listener: RaftIosPageListener?,
+        toastOverlay: RaftIosToastOverlay? = null,
     ): RaftIosPage {
         val transport = IosBridgeTransport(bridge)
         val events = RaftHostEvents()
@@ -239,7 +390,15 @@ object RaftCmpIos {
         // One per page, shared by the page's navigator (RaftCmpRoot) and its container's
         // viewWillDisappear (RaftIosPage.pageWillBeCovered).
         val coverSignal = RaftPageCoverSignal()
-        return RaftIosPage(events, backSwipeRegions, coverSignal) { page ->
+        val toastOverlayState = MutableStateFlow(toastOverlay)
+        val toastAvoidanceActiveState = MutableStateFlow(true)
+        return RaftIosPage(
+            events = events,
+            backSwipeRegions = backSwipeRegions,
+            coverSignal = coverSignal,
+            toastOverlayState = toastOverlayState,
+            toastAvoidanceActiveState = toastAvoidanceActiveState,
+        ) { page ->
             ComposeUIViewController(
                 configure = {
                     // Not opaque: an opaque CMP view clears its canvas, and fills its view, with
@@ -267,6 +426,8 @@ object RaftCmpIos {
                 // controller that holds this content would be an ObjC/Kotlin retain cycle.
                 val controller = LocalUIViewController.current
                 val focusManager = LocalFocusManager.current
+                val currentToastOverlay by toastOverlayState.collectAsState()
+                val currentToastAvoidanceActive by toastAvoidanceActiveState.collectAsState()
                 // Clear Compose focus when another iOS page covers this UIViewController so stale
                 // non-text region/window focus cannot linger in the shared focus coordinator.
                 DisposableEffect(coverSignal, focusManager) {
@@ -283,6 +444,8 @@ object RaftCmpIos {
                         onCanvasColorResolved = { color -> controller.raftPaintHostCanvas(color) },
                         backSwipeRegions = backSwipeRegions,
                         coverSignal = coverSignal,
+                        toastWindow = currentToastOverlay?.window,
+                        toastAvoidanceActive = currentToastAvoidanceActive,
                     )
                 }
                 // Runs after the first composition is applied, i.e. after RaftPagerHost subscribed.

@@ -75,4 +75,27 @@ class RaftCmpToastsTest {
         assertFalse(RaftCmpToasts.post("Deleted."))
         assertEquals(listOf("Saved."), b.titles())
     }
+
+    @Test
+    fun multiplePagesSharingOneSceneWindowKeepSingleLiveToastAcrossPopsWithoutHandOff() {
+        val sceneWindow = window(visible = true, resumed = true)
+        val parentPage = capabilities()
+        val childPage = capabilities()
+        val removeParent = sceneWindow.addOrigin(parentPage)
+        val removeChild = sceneWindow.addOrigin(childPage)
+
+        assertTrue(RaftCmpToasts.post("Link copied.", childPage))
+        val originalId = sceneWindow.state.visible.single().id
+
+        // Child page pops and removes its origin: the scene toast stays undisturbed with the same id.
+        removeChild()
+        assertEquals(listOf("Link copied."), sceneWindow.titles())
+        assertEquals(originalId, sceneWindow.state.visible.single().id)
+        assertFalse(sceneWindow.state.visible.single().appearAtOnce)
+
+        // Parent page posts directly into the same scene window.
+        assertTrue(RaftCmpToasts.post("Saved.", parentPage))
+        assertEquals(listOf("Saved."), sceneWindow.titles())
+        removeParent()
+    }
 }

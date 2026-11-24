@@ -100,6 +100,7 @@ static NSString *RaftPageWindowId(NSString *controllerToken) {
     void (^_sendEvent)(NSString *event, NSDictionary *data);
     BOOL _raftConversationForwardGestureEnabled;
     BOOL _raftAdaptivePanePublishingActive;
+    BOOL _raftToastPageAppearing;
     RaftIosAdaptivePanePublisher *_raftAdaptivePanePublisher;
     RaftIosWindowInsetsPublisher *_raftWindowInsetsPublisher;
     NSNumber *_darkTheme;
@@ -222,12 +223,21 @@ static NSString *RaftPageWindowId(NSString *controllerToken) {
     sendEvent(event, data ?: @{});
 }
 
+- (void)raftNotifyOverlayStatusBarAppearanceForWindow:(UIWindow *)window {
+    UIWindowScene *scene = window.windowScene;
+    if (scene != nil) {
+        [[NSNotificationCenter defaultCenter] postNotificationName:@"RaftIosPageStatusBarAppearanceDidChange"
+                                                            object:scene];
+    }
+}
+
 - (void)raftSetDarkTheme:(BOOL)dark {
     if (_darkTheme != nil && _darkTheme.boolValue == dark) {
         return;
     }
     _darkTheme = @(dark);
     [self setNeedsStatusBarAppearanceUpdate];
+    [self raftNotifyOverlayStatusBarAppearanceForWindow:self.viewIfLoaded.window];
 }
 
 - (UIStatusBarStyle)preferredStatusBarStyle {
@@ -316,10 +326,37 @@ static NSString *RaftPageWindowId(NSString *controllerToken) {
     [self raftPublishWindowInsets];
 }
 
+- (BOOL)raftIsPresentedAsSheetInWindow:(UIWindow *)window {
+    UIViewController *presented = self.navigationController ?: self;
+    if (presented.presentingViewController == nil ||
+        ![RaftIosWindowInsetsPublisher isSheetStyle:presented.modalPresentationStyle]) {
+        return NO;
+    }
+    if (window == nil) {
+        return YES;
+    }
+    UIView *presentedView = presented.presentationController.presentedView;
+    if (presentedView == nil) {
+        return YES;
+    }
+    return !CGRectEqualToRect(presentedView.frame, window.bounds);
+}
+
 - (void)viewWillAppear:(BOOL)animated {
     [super viewWillAppear:animated];
     [self raftLogFilePreviewLifecycleStage:@"will_appear" animated:@(animated)];
     [self raftTrackNavTransitionIfNeededAnimated:animated];
+    _raftToastPageAppearing = YES;
+    UIWindow *window = self.viewIfLoaded.window;
+    void (^overlaySceneHook)(UIWindowScene * _Nullable) = self.raftToastOverlaySceneHook;
+    if (overlaySceneHook != nil) {
+        overlaySceneHook(window.windowScene);
+    }
+    void (^toastAvoidHook)(BOOL) = self.raftToastAvoidanceActiveHook;
+    if (toastAvoidHook != nil) {
+        toastAvoidHook(![self raftIsPresentedAsSheetInWindow:window]);
+    }
+    [self raftNotifyOverlayStatusBarAppearanceForWindow:window];
     // PROTOTYPE: a native-bar page shows the real bar (animated with the push / pop); every other
     // page keeps it hidden and draws its own head, as before.
     [self.navigationController setNavigationBarHidden:![self raftShowsNativeNavBar]
@@ -403,6 +440,17 @@ static NSString *RaftPageWindowId(NSString *controllerToken) {
 - (void)viewDidAppear:(BOOL)animated {
     [super viewDidAppear:animated];
     [self raftLogFilePreviewLifecycleStage:@"did_appear" animated:@(animated)];
+    _raftToastPageAppearing = YES;
+    UIWindow *window = self.viewIfLoaded.window;
+    void (^overlaySceneHook)(UIWindowScene * _Nullable) = self.raftToastOverlaySceneHook;
+    if (overlaySceneHook != nil) {
+        overlaySceneHook(window.windowScene);
+    }
+    void (^toastAvoidHook)(BOOL) = self.raftToastAvoidanceActiveHook;
+    if (toastAvoidHook != nil) {
+        toastAvoidHook(![self raftIsPresentedAsSheetInWindow:window]);
+    }
+    [self raftNotifyOverlayStatusBarAppearanceForWindow:window];
     [self.navigationController setNavigationBarHidden:![self raftShowsNativeNavBar] animated:NO];
     // PROTOTYPE: the system edge swipe for native-bar pages (FD's full-page pan stays off for
     // them through fd_interactivePopDisabled); FD keeps the swipe for every other page. Switched
@@ -458,6 +506,11 @@ static NSString *RaftPageWindowId(NSString *controllerToken) {
 
 - (void)viewWillDisappear:(BOOL)animated {
     [super viewWillDisappear:animated];
+    _raftToastPageAppearing = NO;
+    void (^toastAvoidHook)(BOOL) = self.raftToastAvoidanceActiveHook;
+    if (toastAvoidHook != nil) {
+        toastAvoidHook(NO);
+    }
     // Overlays (CMP popups and dialogs, layers of this window) close while the page still
     // composes: once covered it stops, and an overlay left open sits over the next page.
     // An external browser sheet (`SFSafariViewController`) is a transient return-to-dialog detour,
@@ -681,11 +734,13 @@ static NSString *RaftPageWindowId(NSString *controllerToken) {
     // The content of a page or form sheet (the router presents pages in a navigation controller):
     // its own top safe area is about 0, so shared keeps the sheet's header off its top edge. A
     // sheet that adapts to full screen (compact height) is not one.
-    UIViewController *presented = self.navigationController ?: self;
-    BOOL presentedAsSheet = presented.presentingViewController != nil &&
-        presented.presentationController.presentedView != nil &&
-        !CGRectEqualToRect(presented.presentationController.presentedView.frame, window.bounds) &&
-        [RaftIosWindowInsetsPublisher isSheetStyle:presented.modalPresentationStyle];
+    BOOL presentedAsSheet = [self raftIsPresentedAsSheetInWindow:window];
+    if (_raftToastPageAppearing) {
+        void (^toastAvoidHook)(BOOL) = self.raftToastAvoidanceActiveHook;
+        if (toastAvoidHook != nil) {
+            toastAvoidHook(!presentedAsSheet);
+        }
+    }
     // The bar that holds the Duo side column's buttons draws them in the vertical bar; its top
     // band is not the page's, so the page keeps the navigation controller's safe area.
     UIEdgeInsets insets = [RaftIosWindowInsetsPublisher resolvedInsetsWithPage:view.safeAreaInsets

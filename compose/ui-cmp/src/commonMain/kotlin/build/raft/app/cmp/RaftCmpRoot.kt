@@ -34,6 +34,7 @@ import build.raft.app.cmp.host.RaftCmpPageArgs
 import build.raft.app.cmp.host.RaftPageOpenGuard
 import build.raft.designsystem.components.LocalRaftPageCoverSignal
 import build.raft.designsystem.components.LocalRaftStatusBarBackdrop
+import build.raft.designsystem.components.LocalRaftToastAvoidanceActive
 import build.raft.designsystem.components.RaftDismissOnPageCover
 import build.raft.designsystem.components.RaftPageCoverSignal
 import build.raft.designsystem.components.RaftStatusBarBackdrop
@@ -83,6 +84,8 @@ fun RaftCmpRoot(
     backSwipeRegions: RaftBackSwipeRegions? = null,
     coverSignal: RaftPageCoverSignal? = null,
     systemDark: Boolean? = null,
+    toastWindow: RaftCmpToastWindow? = null,
+    toastAvoidanceActive: Boolean = true,
 ) {
     if (backSwipeRegions != null) {
         val density = LocalDensity.current.density
@@ -90,7 +93,15 @@ fun RaftCmpRoot(
     }
     val pageCoverSignal = coverSignal ?: remember { RaftPageCoverSignal() }
     ProvideRaftPageCover(host, pageCoverSignal) {
-        RaftCmpPage(args, onSystemBarsResolved, onCanvasColorResolved, backSwipeRegions, systemDark)
+        RaftCmpPage(
+            args = args,
+            onSystemBarsResolved = onSystemBarsResolved,
+            onCanvasColorResolved = onCanvasColorResolved,
+            backSwipeRegions = backSwipeRegions,
+            systemDark = systemDark,
+            toastWindow = toastWindow,
+            toastAvoidanceActive = toastAvoidanceActive,
+        )
     }
 }
 
@@ -175,6 +186,8 @@ private fun RaftCmpPage(
     onCanvasColorResolved: ((Color) -> Unit)?,
     backSwipeRegions: RaftBackSwipeRegions?,
     systemDark: Boolean?,
+    toastWindow: RaftCmpToastWindow?,
+    toastAvoidanceActive: Boolean,
 ) {
     val host = LocalRaftHost.current
     CompositionLocalProvider(
@@ -192,13 +205,16 @@ private fun RaftCmpPage(
             }
             val pressWash = RaftTheme.colors.fillMedium
             val indication = remember(pressWash) { RaftPressIndication(pressWash) }
+            val parentToastAvoidActive = LocalRaftToastAvoidanceActive.current
             CompositionLocalProvider(
                 LocalIndication provides indication,
                 LocalRaftStatusBarBackdrop provides statusBarBackdrop,
+                LocalRaftToastAvoidanceActive provides (parentToastAvoidActive && toastAvoidanceActive),
             ) {
                 // The window's one toast host, over the page (unless a host already put one
-                // round this root: Android's and the desktop's page stacks).
-                RaftCmpToastLayer(origin = host.capabilities) {
+                // round this root: Android's and the desktop's page stacks, or iOS's scene-level
+                // transparent overlay window via [toastWindow]).
+                RaftCmpToastLayer(origin = host.capabilities, externalWindow = toastWindow) {
                     Box(Modifier.fillMaxSize().background(canvas).raftObserveFocusInteractions()) {
                         CompositionLocalProvider(LocalRaftFocusInteractionObserverInstalled provides true) {
                             val content = RaftCmpRouter.content(args.pageName)
