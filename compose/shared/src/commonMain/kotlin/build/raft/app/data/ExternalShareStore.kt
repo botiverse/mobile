@@ -17,7 +17,9 @@ internal const val ExternalShareMaximumTargetCount = 1
 internal data class ExternalShareServerOption(
     val id: String,
     val title: String,
-    val slug: String? = null
+    val slug: String? = null,
+    val avatarUrl: String? = null,
+    val publicPageLive: Boolean = false
 )
 
 @Serializable
@@ -1183,7 +1185,9 @@ private fun List<ExternalShareServerOption>.normalizedExternalShareServerOptions
         ExternalShareServerOption(
             id = id,
             title = option.title.trim().takeIf(String::isNotBlank) ?: id,
-            slug = option.slug?.trim()?.takeIf(String::isNotBlank)
+            slug = option.slug?.trim()?.takeIf(String::isNotBlank),
+            avatarUrl = option.avatarUrl?.trim()?.takeIf(String::isNotBlank),
+            publicPageLive = option.publicPageLive
         )
     }.distinctBy { it.id }
 

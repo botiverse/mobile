@@ -293,10 +293,10 @@ private val HomeLoadingSkeletonLineHeight = 12.dp
 private val HomeServerSwitcherTopGap = 4.dp
 private val HomeServerSwitcherRowMinHeight = 52.dp
 // web ServerSwitcherMenu `SortableServerRow`: `h-12`.
-private val HomeServerSwitcherMenuRowHeight = 48.dp
-private val HomeServerSwitcherMenuInset = 8.dp
+internal val HomeServerSwitcherMenuRowHeight = 48.dp
+internal val HomeServerSwitcherMenuInset = 8.dp
 // The full-width phone menu stops growing on a large window.
-private val HomeServerSwitcherMenuMaxWidth = 480.dp
+internal val HomeServerSwitcherMenuMaxWidth = 480.dp
 private val HomeServerSwitcherDragHandleWidth = 32.dp
 // web AvatarSlot `switcher-row`: raft-ui `md` (35) by touch.
 private val HomeServerSwitcherMenuAvatarSize = 35.dp
@@ -7343,6 +7343,63 @@ internal fun ServerSwitcherPanel(
     }
 }
 
+/**
+ * Reusable server selection popover panel matching Home's [ServerSwitcherPanel] visual chrome
+ * ([HardShadowPanel] + [ServerSwitcherRow] + [ServerSwitcherAvatarTile]), scoped to picking a
+ * server without unread badges, drag-reorder handles, or server-management footer actions.
+ * Intended for flows (such as External Share) that must not mutate the app-wide selected server.
+ */
+@Composable
+internal fun RaftServerSwitcherSelectionPanel(
+    servers: List<RaftServerSwitcherItem>,
+    selectedServerId: String?,
+    onSelect: (RaftServerSwitcherItem) -> Unit,
+    modifier: Modifier = Modifier,
+    minWidth: Dp = 276.dp,
+    maxWidth: Dp = HomeServerSwitcherMenuMaxWidth,
+) {
+    val listState = rememberLazyListState()
+    HardShadowPanel(
+        modifier = modifier.fillMaxWidth(),
+        minWidth = minWidth,
+        maxWidth = maxWidth,
+        contentPadding = androidx.compose.foundation.layout.PaddingValues(4.dp)
+    ) {
+        val serverListMaxHeight = homeServerSwitcherServerListMaxHeight(servers.size)
+        val serverListModifier =
+            if (serverListMaxHeight == null) {
+                Modifier.fillMaxWidth()
+            } else {
+                Modifier.fillMaxWidth().height(serverListMaxHeight)
+            }
+        val serverLazyListModifier =
+            if (serverListMaxHeight == null) {
+                Modifier.fillMaxWidth()
+            } else {
+                Modifier.fillMaxSize()
+            }
+        Box(modifier = serverListModifier.clipToBounds()) {
+            LazyColumn(
+                state = listState,
+                modifier = serverLazyListModifier
+            ) {
+                items(servers.size, key = { index -> "server-${servers[index].id}" }) { index ->
+                    val server = servers[index]
+                    ServerSwitcherRow(
+                        server = server,
+                        selected = server.id == selectedServerId,
+                        mutedLabel = "",
+                        dragHandleVisible = false,
+                        showUnread = false,
+                        copyable = false,
+                        onClick = { onSelect(server) }
+                    )
+                }
+            }
+        }
+    }
+}
+
 @Composable
 private fun HardShadowPanel(
     modifier: Modifier = Modifier,
@@ -7361,12 +7418,14 @@ private fun HardShadowPanel(
 }
 
 @Composable
-private fun ServerSwitcherRow(
+internal fun ServerSwitcherRow(
     server: RaftServerSwitcherItem,
     selected: Boolean,
     mutedLabel: String,
     dragHandleVisible: Boolean = false,
     pressed: Boolean = false,
+    showUnread: Boolean = true,
+    copyable: Boolean = true,
     onClick: (() -> Unit)?,
     modifier: Modifier = Modifier
 ) {
@@ -7388,7 +7447,7 @@ private fun ServerSwitcherRow(
                     RoundedCornerShape(RaftAppRadius.Chip)
                 )
                 .then(clickModifier)
-                .padding(start = 10.dp, end = 4.dp),
+                .padding(start = 10.dp, end = if (dragHandleVisible) 4.dp else 10.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(10.dp)
     ) {
@@ -7402,28 +7461,32 @@ private fun ServerSwitcherRow(
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                     // A long press copies the name / the slug as shown ("/slug"); a tap still switches.
-                    modifier = Modifier.weight(1f, fill = false).raftCopyable(server.name)
+                    modifier = Modifier.weight(1f, fill = false).then(if (copyable) Modifier.raftCopyable(server.name) else Modifier)
                 )
                 if (server.publicPageLive) {
                     Spacer(Modifier.width(HomeServerPublicPageGlobeGap))
                     RaftPublicPageGlobe(live = true, size = HomeServerPublicPageGlobeSize)
                 }
             }
-            val shownSlug = "/${server.slug}"
-            Text(
-                shownSlug,
-                modifier = Modifier.raftCopyable(shownSlug),
-                style = RaftType.Caption.copy(fontFamily = RaftMonoFamily, fontSize = 12.sp, lineHeight = 16.sp, fontWeight = FontWeight.Normal),
-                color = RaftColor.ForegroundHint,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
+            val shownSlug = server.slug.trim().takeIf { it.isNotBlank() }?.let { "/$it" }
+            if (shownSlug != null) {
+                Text(
+                    shownSlug,
+                    modifier = if (copyable) Modifier.raftCopyable(shownSlug) else Modifier,
+                    style = RaftType.Caption.copy(fontFamily = RaftMonoFamily, fontSize = 12.sp, lineHeight = 16.sp, fontWeight = FontWeight.Normal),
+                    color = RaftColor.ForegroundHint,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
         }
         // No "..." while a switch is pending (web ServerSwitcherMenu): the whole list dims.
         if (selected) {
             RaftLucideIcon(RaftLucideIconName.Check, Modifier.size(16.dp), color = raftArgbHex(RaftColor.TextBlack))
         }
-        ServerSwitcherUnreadIndicator(server, current = selected, mutedLabel = mutedLabel)
+        if (showUnread) {
+            ServerSwitcherUnreadIndicator(server, current = selected, mutedLabel = mutedLabel)
+        }
         if (dragHandleVisible) {
             Box(modifier = Modifier.width(HomeServerSwitcherDragHandleWidth), contentAlignment = Alignment.Center) {
                 RaftLucideIcon(

@@ -2,6 +2,7 @@ package build.raft.app
 
 import build.raft.app.data.ExternalShareEnvelope
 import build.raft.app.data.ExternalShareIntent
+import build.raft.app.data.ExternalShareServerOption
 import build.raft.app.data.ExternalShareState
 import build.raft.app.data.ForwardMessageTarget
 import build.raft.app.data.ForwardMessageTargetKind
@@ -179,6 +180,68 @@ class ExternalSharePickerAdapterTest {
 
         // Reply thread missing parentMessageId fails closed.
         assertNull(threadTarget("thread-incomplete", parentMessageId = null).toExternalShareConversationIdentityOrNull())
+    }
+
+    @Test
+    fun serverOptionsMapToReusableServerSwitcherItemsWithAvatarsAndNoUnreadBadges() {
+        val selecting =
+            state(targets = listOf(target("channel-a")), generation = 1).copy(
+                serverId = "srv-2",
+                serverOptions =
+                    listOf(
+                        ExternalShareServerOption(
+                            id = "srv-1",
+                            title = "Botiverse",
+                            slug = "botiverse",
+                            avatarUrl = "https://cdn.example/botiverse.png",
+                            publicPageLive = true
+                        ),
+                        ExternalShareServerOption(
+                            id = "srv-2",
+                            title = "Acme Labs",
+                            slug = null,
+                            avatarUrl = null,
+                            publicPageLive = false
+                        )
+                    )
+            )
+
+        val switcherItems = selecting.toExternalShareServerSwitcherItems()
+
+        assertEquals(2, switcherItems.size)
+        val first = switcherItems[0]
+        assertEquals("srv-1", first.id)
+        assertEquals("Botiverse", first.name)
+        assertEquals("botiverse", first.slug)
+        assertEquals("https://cdn.example/botiverse.png", first.avatarUrl)
+        assertTrue(first.publicPageLive)
+        assertEquals(0, first.broaderUnreadCount)
+        assertNull(first.activityUnreadCount)
+        assertFalse(first.serverPushMuted)
+        assertEquals("https://cdn.example/botiverse.png", first.toServerSwitcherAvatarPresentation().avatarWireValue)
+
+        val second = switcherItems[1]
+        assertEquals("srv-2", second.id)
+        assertEquals("Acme Labs", second.name)
+        assertEquals("", second.slug)
+        assertNull(second.avatarUrl)
+        assertFalse(second.publicPageLive)
+        assertNull(second.toServerSwitcherAvatarPresentation().avatarWireValue)
+        assertEquals("A", second.toServerSwitcherAvatarPresentation().fallbackLabel)
+
+        // Control state resolves selected server and enables menu only when interactive with 2+ servers.
+        val multiEnabled = assertNotNull(resolveRaftServerSwitcherControlState(switcherItems, "srv-2", enabled = true))
+        assertEquals("srv-2", multiEnabled.selectedServer.id)
+        assertTrue(multiEnabled.canOpenMenu)
+
+        val multiLoading = assertNotNull(resolveRaftServerSwitcherControlState(switcherItems, "srv-2", enabled = false))
+        assertFalse(multiLoading.canOpenMenu)
+
+        val singleServer = assertNotNull(resolveRaftServerSwitcherControlState(listOf(first), "srv-1", enabled = true))
+        assertEquals("srv-1", singleServer.selectedServer.id)
+        assertFalse(singleServer.canOpenMenu)
+
+        assertNull(resolveRaftServerSwitcherControlState(emptyList(), "srv-1", enabled = true))
     }
 
     private fun state(

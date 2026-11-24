@@ -8,6 +8,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import build.raft.app.resources.*
 import build.raft.app.data.ExternalShareIntent
+import build.raft.app.data.ExternalShareServerOption
 import build.raft.app.data.ExternalShareState
 import build.raft.app.data.externalShareDirectorySessionId
 import build.raft.app.data.externalShareSelectionKey
@@ -52,18 +53,28 @@ internal fun ExternalShareTargetPickerSurface(
         searchInputInteractive = true,
         bottomSafeArea = bottomSafeArea,
         topContent = {
-            RaftServerChoice(
-                title = stringResource(Res.string.settings_server_title),
-                options = state.serverOptions,
-                selectedId = state.serverId,
-                optionId = { server -> server.id },
-                optionLabel = { server -> server.title },
-                enabled = !state.loading,
-                onSelect = { server -> onIntent(ExternalShareIntent.SelectServer(server.id)) }
+            RaftServerSwitcherControl(
+                servers = state.toExternalShareServerSwitcherItems(),
+                selectedServerId = state.serverId,
+                accessibilityLabel = stringResource(Res.string.settings_server_title),
+                enabled = !state.loading && !state.handoffInProgress,
+                onSelect = { serverId -> onIntent(ExternalShareIntent.SelectServer(serverId)) }
             )
         }
     )
 }
+
+internal fun ExternalShareServerOption.toRaftServerSwitcherItem(): RaftServerSwitcherItem =
+    RaftServerSwitcherItem(
+        id = id,
+        name = title,
+        slug = slug.orEmpty(),
+        avatarUrl = avatarUrl,
+        publicPageLive = publicPageLive
+    )
+
+internal fun ExternalShareState.SelectingTargets.toExternalShareServerSwitcherItems(): List<RaftServerSwitcherItem> =
+    serverOptions.map { it.toRaftServerSwitcherItem() }
 
 internal fun ExternalShareState.SelectingTargets.toExternalSharePickerSurface(
     queryOverride: String = query
